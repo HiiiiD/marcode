@@ -1,17 +1,40 @@
 import { randomBytes } from 'node:crypto';
 import * as vscode from 'vscode';
+import { MessageRouter } from './message-router';
+import type { SessionManager } from './session-manager';
+import type { HostToWebview, WebviewToHost } from '../protocol/messages';
 
 export class PanelViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'hiiiid-code.panel';
+  private view: vscode.WebviewView | undefined;
 
-  constructor(private readonly extensionUri: vscode.Uri) {}
+  constructor(
+    private readonly extensionUri: vscode.Uri,
+    private readonly manager: SessionManager,
+  ) {}
+
+  post(msg: HostToWebview): void {
+    void this.view?.webview.postMessage(msg);
+  }
 
   resolveWebviewView(view: vscode.WebviewView): void {
+    this.view = view;
     view.webview.options = {
       enableScripts: true,
       localResourceRoots: [vscode.Uri.joinPath(this.extensionUri, 'dist')],
     };
     view.webview.html = this.render(view.webview);
+
+    const router = new MessageRouter(this.manager, (m) => this.post(m));
+    view.webview.onDidReceiveMessage(async (raw: WebviewToHost) => {
+      try {
+        await router.handle(raw);
+      } catch (err) {
+        console.error('[hiiiid-code] message handling failed', err);
+      }
+    });
+
+    view.onDidDispose(() => { this.view = undefined; });
   }
 
   render(webview: vscode.Webview): string {
