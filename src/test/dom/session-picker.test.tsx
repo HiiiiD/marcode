@@ -76,9 +76,13 @@ suite('SessionPicker', () => {
     await userEvent.click(await screen.findByRole('menuitem', { name: 'Keep it' }));
 
     assert.ok(!posted().some((m) => m.t === 'delete-session'));
+    assert.strictEqual(
+      screen.queryByRole('menuitem', { name: /Delete Session/ }), null,
+      'activating "Keep it" must close the submenu, not just decline to delete',
+    );
   });
 
-  test('arrow keys alone reach and open the delete submenu', async () => {
+  test('opening the submenu by keyboard lands on the safe item, not delete', async () => {
     renderApp();
     hydrateAOpen();
 
@@ -91,8 +95,36 @@ suite('SessionPicker', () => {
     );
 
     await userEvent.keyboard('{ArrowRight}');
-    await userEvent.keyboard('{Enter}');
+    const keepIt = await screen.findByRole('menuitem', { name: 'Keep it' });
+    assert.strictEqual(
+      document.activeElement, keepIt,
+      'ArrowRight must focus "Keep it" first — Delete must never be the default '
+        + 'focus a keyboard user lands on when opening the submenu',
+    );
 
+    // Enter here must be a no-op for deletion: it activates the highlighted
+    // "Keep it" item, not "Delete".
+    await userEvent.keyboard('{Enter}');
+    assert.ok(
+      !posted().some((m) => m.t === 'delete-session'),
+      'ArrowRight then Enter is the natural "open and activate" gesture and must not delete',
+    );
+  });
+
+  test('reaching delete by keyboard requires a further deliberate step', async () => {
+    renderApp();
+    hydrateAOpen();
+
+    await userEvent.click(screen.getByText('Sessions (1/2)'));
+    await userEvent.keyboard('{ArrowDown}{ArrowDown}{ArrowDown}{ArrowDown}');
+    await userEvent.keyboard('{ArrowRight}');
+    await screen.findByRole('menuitem', { name: 'Keep it' });
+
+    await userEvent.keyboard('{ArrowDown}');
+    const deleteItem = await screen.findByRole('menuitem', { name: 'Delete Session b' });
+    assert.strictEqual(document.activeElement, deleteItem);
+
+    await userEvent.keyboard('{Enter}');
     assert.deepStrictEqual(posted().at(-1), { t: 'delete-session', id: 'b' });
   });
 

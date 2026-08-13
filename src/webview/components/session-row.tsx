@@ -35,6 +35,13 @@ export function SessionRow({
         )}
       </DropdownMenuCheckboxItem>
 
+      {/*
+        Base UI focuses the submenu's first item on open (`focusItemOnOpen`
+        defaults to 'auto'). ArrowRight then Enter is the natural "open and
+        activate" gesture for a keyboard user, so the destructive action must
+        never be first — "Keep it" is listed before "Delete" below so the
+        default landing spot is the safe one.
+      */}
       <DropdownMenuSub>
         <DropdownMenuSubTrigger
           aria-label={`Delete session ${session.title}`}
@@ -43,13 +50,13 @@ export function SessionRow({
           <Trash2Icon aria-hidden />
         </DropdownMenuSubTrigger>
         <DropdownMenuSubContent>
+          <DropdownMenuItem>Keep it</DropdownMenuItem>
           <DropdownMenuItem
             variant="destructive"
             onClick={() => post({ t: 'delete-session', id: session.id })}
           >
             Delete {session.title}
           </DropdownMenuItem>
-          <DropdownMenuItem>Keep it</DropdownMenuItem>
         </DropdownMenuSubContent>
       </DropdownMenuSub>
     </DropdownMenuGroup>
