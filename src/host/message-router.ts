@@ -21,17 +21,25 @@ export class MessageRouter {
     try {
       await this.route(msg);
     } catch (err) {
-      console.error('[hiiiid-code] message-router: failed to handle', msg.t, err);
+      // `msg` itself can be why this failed (e.g. `msg` is null, or `msg.t`
+      // isn't a recognized case) — dereference defensively so the catch
+      // block can never itself throw and reject handle().
+      console.error('[hiiiid-code] message-router: failed to handle', msg?.t, err);
     }
   }
 
   private async route(msg: WebviewToHost): Promise<void> {
+    if (!isWireMessage(msg)) {
+      console.error('[hiiiid-code] message-router: dropping malformed message', msg);
+      return;
+    }
+
     switch (msg.t) {
       case 'ready': {
         const layout = this.manager.layout();
         const snapshots: SessionSnapshot[] = [];
         for (const pane of layout.panes) {
-          const session = this.manager.get(pane.sessionId);
+          const session = this.manager.get(pane.sessionId) ?? await this.reopen(pane.sessionId);
           if (session) { snapshots.push(await session.snapshot()); }
         }
         this.emit({
@@ -78,13 +86,17 @@ export class MessageRouter {
         await this.manager.get(msg.id)?.interrupt();
         return;
 
-      case 'set-effort':
-        this.manager.get(msg.id)?.setEffort(msg.effort);
+      case 'set-effort': {
+        const session = this.manager.get(msg.id) ?? await this.reopen(msg.id);
+        session?.setEffort(msg.effort);
         return;
+      }
 
-      case 'set-permission-mode':
-        this.manager.get(msg.id)?.setPermissionMode(msg.mode);
+      case 'set-permission-mode': {
+        const session = this.manager.get(msg.id) ?? await this.reopen(msg.id);
+        session?.setPermissionMode(msg.mode);
         return;
+      }
 
       case 'permission-decision':
         this.manager.get(msg.id)?.respondToPermission(msg.requestId, msg.decision);
@@ -115,4 +127,36 @@ export class MessageRouter {
       return undefined;
     }
   }
+}
+
+const KNOWN_MESSAGE_TAGS = new Set<WebviewToHost['t']>([
+  'ready', 'create-session', 'set-visible', 'set-layout', 'close-session',
+  'delete-session', 'send', 'interrupt', 'set-effort', 'set-permission-mode',
+  'permission-decision', 'load-more',
+]);
+
+/**
+ * A minimal shape guard for messages arriving over `webview.postMessage`,
+ * which — unlike a same-process call — hands us `unknown` at runtime no
+ * matter what `WebviewToHost` claims at compile time. `route()`'s switch
+ * dereferences `msg.t` (and, for `set-layout`, `msg.layout.panes` by way of
+ * `SessionManager.layout()`/`setLayout()`) unconditionally; a `null` message
+ * or a malformed `set-layout` would otherwise either throw before the
+ * try/catch even reaches a case (fine, since `handle()` catches it) or —
+ * worse — silently store a broken `PaneLayout` that then throws on every
+ * future `ready`, permanently breaking hydrate for the life of the
+ * extension host. Reject anything malformed here instead of letting it in.
+ */
+function isWireMessage(msg: unknown): msg is WebviewToHost {
+  if (typeof msg !== 'object' || msg === null) { return false; }
+  const t = (msg as { t?: unknown }).t;
+  if (typeof t !== 'string' || !KNOWN_MESSAGE_TAGS.has(t as WebviewToHost['t'])) {
+    return false;
+  }
+  if (t === 'set-layout') {
+    const layout = (msg as { layout?: unknown }).layout;
+    if (typeof layout !== 'object' || layout === null) { return false; }
+    if (!Array.isArray((layout as { panes?: unknown }).panes)) { return false; }
+  }
+  return true;
 }

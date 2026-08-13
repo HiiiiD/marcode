@@ -87,4 +87,82 @@ suite('MessageRouter', () => {
     assert.strictEqual(manager.summaries().length, 0);
     assert.ok(true, 'no exception escaped the router');
   });
+
+  test('ready after a restart materializes and returns persisted session snapshots', async () => {
+    await router.handle({ t: 'create-session', providerId: 'fake', cwd: '/tmp' });
+    const id = manager.summaries()[0].id;
+    await router.handle({ t: 'set-visible', sessionIds: [id] });
+    await router.handle({ t: 'send', id, text: 'hello' });
+    await settle();
+    await router.handle({
+      t: 'set-layout',
+      layout: { orientation: 'vertical', panes: [{ sessionId: id, size: 1 }] },
+    });
+    // Flush everything to disk and tear down the live session, simulating a
+    // window/extension-host reload: index.json + transcript exist on disk,
+    // but nothing is live in the new SessionManager's `live` map.
+    await manager.dispose();
+
+    const providers2 = new Map<string, AgentProvider>([
+      ['fake', new FakeProvider(() => [
+        { kind: 'text', delta: 'ok' },
+        { kind: 'turn-end', reason: 'done' },
+      ])],
+    ]);
+    const sent2: HostToWebview[] = [];
+    const manager2 = new SessionManager(new TranscriptStore(dir), providers2, (m) => sent2.push(m));
+    await manager2.init();
+    const router2 = new MessageRouter(manager2, (m) => sent2.push(m));
+
+    await router2.handle({ t: 'ready' });
+    const hydrate = sent2.find((m) => m.t === 'hydrate') as
+      Extract<HostToWebview, { t: 'hydrate' }>;
+    assert.ok(hydrate);
+    assert.strictEqual(hydrate.snapshots.length, 1);
+    assert.ok(hydrate.snapshots[0].items.length > 0, 'restored snapshot should carry persisted items');
+
+    await manager2.dispose();
+  });
+
+  test('handle(null) resolves rather than throwing', async () => {
+    await router.handle(null as never);
+    assert.ok(true, 'no exception escaped the router');
+  });
+
+  test('a malformed set-layout does not brick subsequent ready calls', async () => {
+    await router.handle({ t: 'set-layout', layout: undefined } as never);
+    sent.length = 0;
+    await router.handle({ t: 'ready' });
+    const hydrate = sent.find((m) => m.t === 'hydrate');
+    assert.ok(hydrate, 'ready should still hydrate after a malformed set-layout');
+  });
+
+  test('set-effort for a restored-but-not-live session lands in persisted state', async () => {
+    await router.handle({ t: 'create-session', providerId: 'fake', cwd: '/tmp' });
+    const id = manager.summaries()[0].id;
+    await router.handle({ t: 'set-visible', sessionIds: [id] });
+    // Simulate "restored but not live": archive+release without deleting.
+    await manager.close(id);
+    assert.strictEqual(manager.get(id), undefined, 'session must not be live before the mutation');
+
+    await router.handle({ t: 'set-effort', id, effort: 'high' });
+
+    const session = manager.get(id);
+    assert.ok(session, 'set-effort should have revived the session');
+    assert.strictEqual(session!.state.effort, 'high');
+  });
+
+  test('set-permission-mode for a restored-but-not-live session lands in persisted state', async () => {
+    await router.handle({ t: 'create-session', providerId: 'fake', cwd: '/tmp' });
+    const id = manager.summaries()[0].id;
+    await router.handle({ t: 'set-visible', sessionIds: [id] });
+    await manager.close(id);
+    assert.strictEqual(manager.get(id), undefined, 'session must not be live before the mutation');
+
+    await router.handle({ t: 'set-permission-mode', id, mode: 'bypass' });
+
+    const session = manager.get(id);
+    assert.ok(session, 'set-permission-mode should have revived the session');
+    assert.strictEqual(session!.state.permissionMode, 'bypass');
+  });
 });

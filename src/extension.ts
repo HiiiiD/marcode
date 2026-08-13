@@ -17,13 +17,22 @@ export async function activate(context: vscode.ExtensionContext) {
 
   let provider: PanelViewProvider;
   const manager = new SessionManager(store, providers, (msg) => provider.post(msg));
-  await manager.init();
 
   provider = new PanelViewProvider(context.extensionUri, manager);
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(PanelViewProvider.viewType, provider),
     { dispose: () => { void manager.dispose(); } },
   );
+
+  try {
+    await manager.init();
+  } catch (err) {
+    // A corrupt index.json (or any other restore failure) must not take the
+    // whole extension down with it: the view provider is already registered
+    // above, so the panel still comes up — with an empty roster — instead
+    // of the extension failing to activate and there being no UI at all.
+    console.error('[hiiiid-code] failed to restore session index; starting with an empty roster', err);
+  }
 }
 
 export function deactivate() {}
