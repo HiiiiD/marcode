@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { PaneGroup } from './components/pane-group';
 import { SessionPicker } from './components/session-picker';
@@ -9,22 +9,46 @@ function App() {
   const { state, post } = useStore();
 
   const byIdKeys = Object.keys(state.byId);
-  const sessionsKey = state.sessions.map((s) => `${s.id}:${s.archived}`).join(',');
+  const rosterKey = state.sessions.map((s) => s.id).join(',');
   const paneIdsKey = state.layout.panes.map((p) => p.sessionId).join(',');
+  // Session ids this client has already offered a pane at least once (see
+  // reconcilePaneLayout's doc comment): once a session is "known", removing
+  // its pane is the user's choice (roster checkbox / close) and reconcile
+  // must never put it back. Only a session whose `byId` snapshot arrives for
+  // the very first time — a freshly created session — gets auto-appended.
+  const knownSessionIdsRef = useRef<Set<string>>(new Set());
 
-  // New sessions open into a pane; closed/deleted ones fall out of one. The
-  // host doesn't drive this (it has no concept of "which panes the client
-  // currently shows" beyond the last `set-layout` it was told about), so the
-  // client reconciles its own layout against the roster on every roster or
-  // snapshot-arrival change. reconcilePaneLayout() (pane-layout.ts) is a
-  // no-op (`null`) once the layout already matches, so this doesn't loop.
+  // A pane's session can be deleted outright (removed from the roster
+  // entirely, unlike close-session which only archives it) or a brand new
+  // session can arrive that has no pane yet. The host doesn't drive this —
+  // it has no concept of "which panes the client currently shows" beyond
+  // the last `set-layout` it was told — so the client reconciles its own
+  // layout against the roster on every roster/snapshot-arrival change.
+  // reconcilePaneLayout() (pane-layout.ts) returns `layout: null` once the
+  // layout already matches, so this doesn't loop.
   useEffect(() => {
-    const eligible = new Set(state.sessions.filter((s) => !s.archived).map((s) => s.id));
-    const next = reconcilePaneLayout(state.layout, eligible, byIdKeys);
-    if (!next) { return; }
-    post({ t: 'set-layout', layout: next });
-    post({ t: 'set-visible', sessionIds: next.panes.map((p) => p.sessionId) });
-  }, [byIdKeys.join(','), sessionsKey, paneIdsKey]);
+    const roster = new Set(state.sessions.map((s) => s.id));
+    const result = reconcilePaneLayout(
+      state.layout, roster, byIdKeys, knownSessionIdsRef.current,
+    );
+    knownSessionIdsRef.current = result.knownSessionIds;
+    if (result.layout) {
+      post({ t: 'set-layout', layout: result.layout });
+    }
+  }, [byIdKeys.join(','), rosterKey, paneIdsKey]);
+
+  // `set-visible` must be posted whenever the *set of panes shown* changes,
+  // independent of whether reconciliation above found anything to change —
+  // after a clean reload the persisted layout already matches the roster
+  // (reconcile is a no-op), but `SessionManager.visible` starts empty and
+  // `ready`'s `hydrate` never calls `setVisible`, so without this every
+  // restored pane would sit dead (no `session-patch` ever reaches it) until
+  // the user happened to create or close a session. Keyed on `paneIdsKey`
+  // alone so it doesn't re-fire on every render, only when the shown pane
+  // set actually changes.
+  useEffect(() => {
+    post({ t: 'set-visible', sessionIds: state.layout.panes.map((p) => p.sessionId) });
+  }, [paneIdsKey]);
 
   if (!state.ready) {
     return <div className="p-3 text-sm text-muted-foreground">Loading…</div>;

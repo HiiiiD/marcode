@@ -25,53 +25,85 @@ export function evenlySizedPanes(ids: string[], orientation: LayoutLike['orienta
 
 /**
  * The subset of `panes` that should actually render: the session must still
- * be "eligible" (present in the roster and not archived — see
- * `eligibleSessionIds` below) *and* its full state must have already
- * arrived in `byId`.
+ * be in the roster (i.e. not deleted outright — `delete-session` is the
+ * only thing that removes a session from the roster; `close-session` only
+ * archives it) *and* its full state must have already arrived in `byId`.
  *
- * A pane can outlive both `close-session` (only `delete-session` prunes the
- * persisted layout, so a closed session's pane lingers, archived) and
- * `delete-session` itself on the client (the layout the client optimistically
- * applies is only corrected by the reconcile effect one render later) — and
- * a stale `byId` entry for either case is never cleaned up client-side. This
- * is the render-time guard against showing either kind of stale pane.
+ * Archived is deliberately NOT excluded here: whether an archived session
+ * has a pane is the user's call (see `reconcilePaneLayout`'s doc comment on
+ * why eligibility can't be derived from session state), not something
+ * render-time filtering should second-guess.
+ *
+ * A pane can outlive `delete-session` on the client for a render or two
+ * (the layout the client optimistically applies is only corrected by the
+ * reconcile effect one render later), and a stale `byId` entry for a
+ * deleted session is never cleaned up client-side either. This is the
+ * render-time guard against showing that kind of stale pane.
  */
 export function visiblePanes(
   panes: PaneEntry[],
-  eligibleSessionIds: ReadonlySet<string>,
+  rosterSessionIds: ReadonlySet<string>,
   snapshotArrivedIds: ReadonlySet<string>,
 ): PaneEntry[] {
   return panes.filter(
-    (p) => eligibleSessionIds.has(p.sessionId) && snapshotArrivedIds.has(p.sessionId),
+    (p) => rosterSessionIds.has(p.sessionId) && snapshotArrivedIds.has(p.sessionId),
   );
 }
 
+export interface ReconcileResult {
+  /** The next layout to persist, or `null` if nothing needs to change. */
+  layout: LayoutLike | null;
+  /**
+   * The session ids this reconciliation has now "seen" — pass this back in
+   * as `knownSessionIds` on the next call (see below).
+   */
+  knownSessionIds: Set<string>;
+}
+
 /**
- * Reconciles a persisted layout against the current roster:
- *  - a pane pointing at a session that is no longer eligible — archived, or
- *    deleted outright and no longer in the roster at all — is dropped;
- *  - a session whose snapshot has arrived (`snapshotArrivedIds`) but is not
- *    yet in the layout gets appended as a new pane (a freshly created
- *    session, or one just reopened).
- * Sizes are re-split evenly across the resulting pane set. Returns `null`
- * when nothing needs to change, so a caller driving this from a render
- * effect can skip posting `set-layout` on every pass.
+ * Reconciles a persisted layout against the current roster. The layout IS
+ * the user's intent — which sessions have a pane open is something only the
+ * user's own actions (the roster checkbox, "+ New", closing a pane) get to
+ * decide. Session *state* (archived or not) must never be used to derive
+ * "should this session have a pane": an archived session the user has
+ * explicitly opened must keep its pane, and a live session the user has
+ * explicitly closed via the roster checkbox must NOT come back on the next
+ * pass just because it's still live and still in `byId`.
+ *
+ * So reconciliation only ever does two things:
+ *  - drops a pane whose session is no longer in the roster at all (deleted
+ *    outright — the one case where the session itself is gone, not just the
+ *    user's choice to hide it);
+ *  - appends a pane for a session that has a snapshot in `byId` for the
+ *    FIRST time (`snapshotArrivedIds` minus `knownSessionIds`) — this is
+ *    what makes a freshly created session open into a pane. A session
+ *    already in `knownSessionIds` (because a previous pass already offered
+ *    it a pane, or because it arrived via an explicit `set-visible` from
+ *    the roster checkbox) is never auto-appended again, even if the user
+ *    just removed its pane.
+ *
+ * Sizes are re-split evenly across the resulting pane set. `layout` is
+ * `null` when nothing needs to change, so a caller driving this from a
+ * render effect can skip posting `set-layout` on every pass.
  */
 export function reconcilePaneLayout(
   layout: LayoutLike,
-  eligibleSessionIds: ReadonlySet<string>,
+  rosterSessionIds: ReadonlySet<string>,
   snapshotArrivedIds: string[],
-): LayoutLike | null {
+  knownSessionIds: ReadonlySet<string>,
+): ReconcileResult {
   const kept = layout.panes
     .map((p) => p.sessionId)
-    .filter((id) => eligibleSessionIds.has(id));
+    .filter((id) => rosterSessionIds.has(id));
   const known = new Set(kept);
-  const missing = snapshotArrivedIds.filter(
-    (id) => eligibleSessionIds.has(id) && !known.has(id),
+  const newlyArrived = snapshotArrivedIds.filter(
+    (id) => rosterSessionIds.has(id) && !known.has(id) && !knownSessionIds.has(id),
   );
 
-  const unchanged = kept.length === layout.panes.length && missing.length === 0;
-  if (unchanged) { return null; }
+  const nextKnown = new Set(knownSessionIds);
+  for (const id of snapshotArrivedIds) { nextKnown.add(id); }
 
-  return evenlySizedPanes([...kept, ...missing], layout.orientation);
+  const unchanged = kept.length === layout.panes.length && newlyArrived.length === 0;
+  const nextLayout = unchanged ? null : evenlySizedPanes([...kept, ...newlyArrived], layout.orientation);
+  return { layout: nextLayout, knownSessionIds: nextKnown };
 }
