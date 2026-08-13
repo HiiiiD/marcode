@@ -1,6 +1,4 @@
-import {
-  Fragment, useEffect, useRef, useState,
-} from 'react';
+import { Fragment } from 'react';
 import {
   ResizableHandle, ResizablePanel, ResizablePanelGroup,
 } from '@/components/ui/resizable';
@@ -16,35 +14,14 @@ import { rosterSessionIds, visiblePanes } from './pane-layout';
 import { SessionCreateMenu } from './session-create-menu';
 import { useStore } from '../store';
 
-/** Below this width the split can only stack — see `useIsNarrow`. */
-export const NARROW_PX = 500;
-
-/**
- * Tracks whether the element behind `ref` is narrower than `NARROW_PX`.
- * `PaneGroup` and `SessionPicker` render at the same width (both are direct
- * children of the panel root) but neither is an ancestor of the other, so
- * each observes its own root rather than one lifting state to the other.
- */
-export function useIsNarrow(ref: React.RefObject<HTMLElement | null>): boolean {
-  const [narrow, setNarrow] = useState(false);
-
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) { return; }
-    const observer = new ResizeObserver(([entry]) => {
-      setNarrow(entry.contentRect.width < NARROW_PX);
-    });
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [ref]);
-
-  return narrow;
+interface PaneGroupProps {
+  /** Whether the panel is too narrow to split side by side. Measured once,
+   * in `App`, and shared with `SessionPicker` — see `use-is-narrow.ts`. */
+  narrow: boolean;
 }
 
-export function PaneGroup() {
+export function PaneGroup({ narrow }: PaneGroupProps) {
   const { state, post } = useStore();
-  const rootRef = useRef<HTMLDivElement>(null);
-  const narrow = useIsNarrow(rootRef);
 
   // A pane can outlive `delete-session` on the client for a render or two,
   // and its stale `byId` entry is never cleaned up. Render only sessions
@@ -59,7 +36,7 @@ export function PaneGroup() {
 
   if (panes.length === 0) {
     return (
-      <div ref={rootRef} className="flex h-full flex-col items-center justify-center gap-2 p-4 text-center">
+      <div className="flex h-full flex-col items-center justify-center gap-2 p-4 text-center">
         <p className="text-xs text-muted-foreground">
           {roster.size === 0
             ? 'No sessions yet. Start one to give an agent something to do.'
@@ -71,7 +48,7 @@ export function PaneGroup() {
   }
 
   return (
-    <div ref={rootRef} className="h-full">
+    <div className="h-full">
       <ResizablePanelGroup
         orientation={orientation}
         aria-label="Open agent sessions"

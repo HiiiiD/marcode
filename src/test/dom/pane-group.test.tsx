@@ -53,13 +53,13 @@ suite('PaneGroup', () => {
     // condition from visiblePanes' `&&` would still pass it; this test would
     // catch that.
     //
-    // Mounted directly with renderWithStore(<PaneGroup />) rather than
+    // Mounted directly with renderWithStore(<PaneGroup narrow={false} />) rather than
     // renderApp(): App's reconcile effect would see 'b''s pane pointing at a
     // session outside the roster, drop it, and post set-layout before this
     // test could observe visiblePanes ever having considered it. PaneGroup
     // has no such effect, so the hydrated state — including the
     // roster/snapshot mismatch — survives intact.
-    renderWithStore(<PaneGroup />);
+    renderWithStore(<PaneGroup narrow={false} />);
     sendFromHost({
       t: 'hydrate',
       sessions: [summary('a')],

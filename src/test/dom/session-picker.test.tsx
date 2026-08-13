@@ -3,6 +3,7 @@ import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { catalog, layoutOf, snapshot, summary } from '../fixtures/protocol';
 import { posted, renderApp, sendFromHost } from './harness';
+import { resizeTo } from './setup';
 
 /** Two sessions in the roster, only 'a' currently open in a pane. */
 function hydrateAOpen() {
@@ -166,6 +167,32 @@ suite('SessionPicker', () => {
     assert.ok(
       !/\b[hw]-\d/.test(toggle.className),
       'use size="icon-sm"; twMerge does not strip size-8 when h-7 w-7 is added',
+    );
+  });
+
+  test('a narrow panel disables the orientation toggle, explains why, and stacks the panes', () => {
+    renderApp();
+    sendFromHost({
+      t: 'hydrate',
+      sessions: [summary('a'), summary('b')],
+      layout: { orientation: 'horizontal', panes: [{ sessionId: 'a', size: 50 }, { sessionId: 'b', size: 50 }] },
+      snapshots: [snapshot('a'), snapshot('b')],
+      catalog: catalog(),
+    });
+
+    // App owns the single ResizeObserver both SessionPicker and PaneGroup
+    // read `narrow` from — driving it here exercises both at once, and is
+    // the only way to prove they agree rather than each observing their
+    // own root and drifting apart near the threshold.
+    resizeTo(400);
+
+    const toggle = screen.getByLabelText(/split direction/i);
+    assert.strictEqual((toggle as HTMLButtonElement).disabled, true);
+    assert.match(toggle.getAttribute('title') ?? '', /too narrow to split side by side/i);
+
+    assert.strictEqual(
+      (screen.getByLabelText('Open agent sessions') as HTMLElement).style.flexDirection, 'column',
+      'the layout says horizontal, but a narrow panel must still stack the panes',
     );
   });
 

@@ -1,4 +1,3 @@
-import { useRef } from 'react';
 import { ColumnsIcon, RowsIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -7,14 +6,17 @@ import {
 import { evenlySizedPanes } from './pane-layout';
 import { SessionCreateMenu } from './session-create-menu';
 import { SessionRow } from './session-row';
-import { useIsNarrow } from './pane-group';
 import { useStore } from '../store';
 import type { SessionId } from '../../protocol/messages';
 
-export function SessionPicker() {
+interface SessionPickerProps {
+  /** Whether the panel is too narrow to split side by side. Measured once,
+   * in `App`, and shared with `PaneGroup` — see `use-is-narrow.ts`. */
+  narrow: boolean;
+}
+
+export function SessionPicker({ narrow }: SessionPickerProps) {
   const { state, post } = useStore();
-  const rootRef = useRef<HTMLDivElement>(null);
-  const narrow = useIsNarrow(rootRef);
   const open = new Set(state.layout.panes.map((p) => p.sessionId));
   const horizontal = state.layout.orientation === 'horizontal';
 
@@ -28,7 +30,7 @@ export function SessionPicker() {
   };
 
   return (
-    <div ref={rootRef} className="flex items-center gap-2 border-b border-border px-2 py-1 text-xs">
+    <div className="flex items-center gap-2 border-b border-border px-2 py-1 text-xs">
       <DropdownMenu>
         <DropdownMenuTrigger
           render={<Button variant="outline" size="sm" className="min-w-0 flex-1 justify-start" />}
