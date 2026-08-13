@@ -61,9 +61,12 @@ export function SessionPicker({ narrow }: SessionPickerProps) {
         aria-label={`Split direction: ${horizontal ? 'side by side' : 'stacked'}`}
         aria-pressed={horizontal}
         disabled={narrow}
-        title={narrow
-          ? 'The panel is too narrow to split side by side; panes stack until it is wider.'
-          : undefined}
+        // A `title` on a disabled button is reachable by neither keyboard
+        // focus nor most screen readers — disabled elements are pulled out
+        // of both. `aria-describedby` plus real, rendered (if visually
+        // hidden) text is the same remedy as the composer's disabled bypass
+        // option.
+        aria-describedby={narrow ? 'orientation-reason' : undefined}
         className="shrink-0"
         onClick={() => post({
           t: 'set-layout',
@@ -75,6 +78,14 @@ export function SessionPicker({ narrow }: SessionPickerProps) {
       >
         {horizontal ? <ColumnsIcon aria-hidden /> : <RowsIcon aria-hidden />}
       </Button>
+      {narrow && (
+        // sr-only rather than visible: at the width where this applies,
+        // there is no room for a sentence in the toolbar, and the control is
+        // already visibly disabled.
+        <span id="orientation-reason" className="sr-only">
+          The panel is too narrow to split side by side; panes stack until it is wider.
+        </span>
+      )}
 
       <SessionCreateMenu />
     </div>

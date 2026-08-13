@@ -1,4 +1,4 @@
-import { Fragment } from 'react';
+import { Fragment, useEffect, useRef } from 'react';
 import {
   ResizableHandle, ResizablePanel, ResizablePanelGroup,
 } from '@/components/ui/resizable';
@@ -34,9 +34,42 @@ export function PaneGroup({ narrow }: PaneGroupProps) {
   const panes = visiblePanes(state.layout.panes, roster, snapshotArrived);
   const orientation = narrow ? 'vertical' : state.layout.orientation;
 
+  // Closing or deleting a session unmounts its pane. If the element that
+  // held focus (e.g. the pane's own "Close session" button) goes with it,
+  // the browser's `activeElement` getter falls back to `<body>` per spec —
+  // there is no focus event to hook, just that fallback. Left alone, a
+  // keyboard user is silently dropped at the top of the document mid-task.
+  // `prevCount` distinguishes "a pane just disappeared" from every other
+  // reason this effect re-runs (e.g. a resize), so this only ever moves
+  // focus in response to a pane actually going away, never on an unrelated
+  // render. Runs as a (passive) effect, which React guarantees fires only
+  // after the unmount has committed — `document.activeElement` already
+  // reflects the fallback by the time this reads it.
+  //
+  // Prefers the first real control inside what's left of the pane group;
+  // when the last pane closes, that group renders its own empty-state
+  // fallback instead (no `[data-slot="button"]` when the roster still has
+  // sessions, just hidden ones) — `rootRef.current` itself, made
+  // programmatically focusable via `tabIndex={-1}`, is the last resort so
+  // focus always lands on something real rather than failing silently.
+  const rootRef = useRef<HTMLDivElement>(null);
+  const prevCount = useRef(panes.length);
+  useEffect(() => {
+    if (panes.length < prevCount.current && document.activeElement === document.body) {
+      const target = rootRef.current?.querySelector<HTMLElement>('[data-slot="button"]')
+        ?? rootRef.current;
+      target?.focus();
+    }
+    prevCount.current = panes.length;
+  }, [panes.length]);
+
   if (panes.length === 0) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-2 p-4 text-center">
+      <div
+        ref={rootRef}
+        tabIndex={-1}
+        className="flex h-full flex-col items-center justify-center gap-2 p-4 text-center outline-none"
+      >
         <p className="text-xs text-muted-foreground">
           {roster.size === 0
             ? 'No sessions yet. Start one to give an agent something to do.'
@@ -48,7 +81,7 @@ export function PaneGroup({ narrow }: PaneGroupProps) {
   }
 
   return (
-    <div className="h-full">
+    <div ref={rootRef} tabIndex={-1} className="h-full outline-none">
       <ResizablePanelGroup
         orientation={orientation}
         aria-label="Open agent sessions"
@@ -78,7 +111,10 @@ export function PaneGroup({ narrow }: PaneGroupProps) {
           return (
             <Fragment key={pane.sessionId}>
               {index > 0 && (
-                <ResizableHandle aria-label={`Resize between panes ${index} and ${index + 1}`} withHandle />
+                <ResizableHandle
+                  aria-label={`Resize between ${state.byId[panes[index - 1].sessionId].summary.title} and ${paneState.summary.title}`}
+                  withHandle
+                />
               )}
               <ResizablePanel
                 id={pane.sessionId}

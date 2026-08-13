@@ -188,7 +188,15 @@ suite('SessionPicker', () => {
 
     const toggle = screen.getByLabelText(/split direction/i);
     assert.strictEqual((toggle as HTMLButtonElement).disabled, true);
-    assert.match(toggle.getAttribute('title') ?? '', /too narrow to split side by side/i);
+    // A `title` on a disabled control is unreliably announced and
+    // unreachable without a pointer — the reason lives in `aria-describedby`
+    // text instead (see task 12).
+    const describedBy = toggle.getAttribute('aria-describedby');
+    assert.ok(describedBy, 'the disabled toggle must point at its reason via aria-describedby');
+    assert.match(
+      document.getElementById(describedBy!)?.textContent ?? '',
+      /too narrow to split side by side/i,
+    );
 
     assert.strictEqual(
       (screen.getByLabelText('Open agent sessions') as HTMLElement).style.flexDirection, 'column',

@@ -16,7 +16,13 @@ export function SessionHeader({ pane, models }: { pane: PaneState; models: Model
   return (
     <div className="flex items-center gap-2 border-b border-border px-2 py-1 text-xs">
       <StatusBadge status={s.status} />
-      <span className="truncate font-medium" title={s.title}>{s.title}</span>
+      {/*
+        `h2`, not `h1`: this panel is a view inside VS Code's own document,
+        not a page with its own top-level heading. One per pane gives a
+        keyboard/screen-reader user document structure to navigate the split
+        by, where previously there were zero headings anywhere in the webview.
+      */}
+      <h2 className="truncate text-xs font-medium" title={s.title}>{s.title}</h2>
       <span className="truncate text-muted-foreground" title={s.cwd}>
         {folderName(s.cwd)}
       </span>

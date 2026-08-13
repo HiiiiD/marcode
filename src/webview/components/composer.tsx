@@ -120,18 +120,25 @@ export function Composer({ pane, model }: { pane: PaneState; model: ModelInfo | 
                     key={item.value}
                     value={item.value}
                     disabled={disableBypass}
-                    // Disabled-with-a-reason: a native tooltip, not a
-                    // silently-absent option — a user who used bypass earlier
-                    // in this same session should be able to tell why it is
-                    // greyed out now rather than wonder if it vanished.
-                    title={disableBypass
-                      ? 'Bypass can only be chosen before the first message is sent'
-                      : undefined}
+                    // Disabled-with-a-reason, not a silently-absent option —
+                    // a user who used bypass earlier in this same session
+                    // should be able to tell why it is greyed out now rather
+                    // than wonder if it vanished. `aria-describedby` pointing
+                    // at real, rendered text rather than a `title`: a title
+                    // on a disabled control is reachable by neither keyboard
+                    // focus nor most screen readers, since disabled elements
+                    // are pulled out of both.
+                    aria-describedby={disableBypass ? 'bypass-reason' : undefined}
                   >
                     {item.label}
                   </SelectItem>
                 );
               })}
+              {hasStarted && (
+                <p id="bypass-reason" className="px-1.5 py-1 text-[0.65rem] text-muted-foreground">
+                  Bypass can only be chosen before the first message is sent.
+                </p>
+              )}
             </SelectContent>
           </Select>
 

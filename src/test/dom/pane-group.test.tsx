@@ -1,5 +1,6 @@
 import * as assert from 'assert';
 import { screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { catalog, layoutOf, snapshot, summary } from '../fixtures/protocol';
 import { renderApp, renderWithStore, sendFromHost } from './harness';
 import { PaneGroup } from '@/components/pane-group';
@@ -29,9 +30,9 @@ suite('PaneGroup', () => {
     renderApp();
     hydrate(['a', 'b', 'c']);
 
-    screen.getByLabelText('Resize between panes 1 and 2');
-    screen.getByLabelText('Resize between panes 2 and 3');
-    assert.strictEqual(screen.queryByLabelText('Resize between panes 0 and 1'), null);
+    screen.getByLabelText('Resize between Session a and Session b');
+    screen.getByLabelText('Resize between Session b and Session c');
+    assert.strictEqual(screen.queryByLabelText(/Resize between panes/), null);
   });
 
   test('a pane whose session left the roster is not rendered', () => {
@@ -77,5 +78,40 @@ suite('PaneGroup', () => {
     hydrate(['a', 'b']);
 
     assert.strictEqual(screen.getAllByLabelText('Message').length, 2);
+  });
+
+  test('closing a pane from its header moves focus off <body>', async () => {
+    renderApp();
+    hydrate(['a', 'b']);
+
+    const closeA = screen.getByLabelText('Close session Session a');
+    closeA.focus();
+    await userEvent.click(closeA);
+
+    // The remaining pane's own state doesn't need a host round-trip here:
+    // `set-layout` is applied optimistically (see store.tsx's `local-layout`
+    // comment), so the pane is already gone by the time this assertion runs.
+    assert.strictEqual(screen.queryByLabelText('Session: Session a'), null);
+    assert.notStrictEqual(
+      document.activeElement, document.body,
+      'closing the focused pane must not silently drop focus to <body>',
+    );
+    assert.ok(document.activeElement?.isConnected, 'focus must land on an element still in the document');
+  });
+
+  test('closing the last pane focuses the empty-state fallback, not <body>', async () => {
+    renderApp();
+    hydrate(['a']);
+
+    const closeA = screen.getByLabelText('Close session Session a');
+    closeA.focus();
+    await userEvent.click(closeA);
+
+    screen.getByText(/no sessions in the split/i);
+    assert.notStrictEqual(
+      document.activeElement, document.body,
+      'closing the only pane must not silently drop focus to <body>',
+    );
+    assert.ok(document.activeElement?.isConnected, 'focus must land on an element still in the document');
   });
 });
