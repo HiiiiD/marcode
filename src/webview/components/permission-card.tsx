@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { useStore } from '../store';
 import type { SessionId, TranscriptItem } from '../../protocol/messages';
@@ -33,6 +34,13 @@ export function PermissionCard({
 }) {
   const { state, post } = useStore();
   const diff = diffPreview(item.input);
+  // `respondToPermission` is exactly-once on the host and silently drops a
+  // second response for the same requestId. Without local state, both
+  // buttons stay live until the session-patch round-trips back, so a
+  // double-click (or Allow-then-panic-Deny) gets no feedback that the
+  // second click did nothing. Disable both the instant either is clicked,
+  // independent of the patch round trip.
+  const [answered, setAnswered] = useState(false);
 
   if (item.state !== 'pending') {
     return (
@@ -62,19 +70,25 @@ export function PermissionCard({
 {diff ?? safeStringify(item.input)}
         </pre>
         <div className="flex gap-2">
-          <Button size="sm" disabled aria-label={`Allow ${item.name} (unavailable)`}>Allow</Button>
-          <Button variant="outline" size="sm" disabled aria-label={`Deny ${item.name} (unavailable)`}>Deny</Button>
+          <Button size="sm" disabled aria-label={`Deny ${item.name} (unavailable)`}>Deny</Button>
+          <Button variant="outline" size="sm" disabled aria-label={`Allow ${item.name} (unavailable)`}>Allow</Button>
         </div>
       </div>
     );
   }
 
-  const decide = (allow: boolean) => post({
-    t: 'permission-decision',
-    id: sessionId,
-    requestId: item.requestId,
-    decision: allow ? { allow: true } : { allow: false, reason: 'Denied by user' },
-  });
+  const decide = (allow: boolean) => {
+    // Set synchronously on first click, before the post — this is the only
+    // thing standing between a double-click and a silently-dropped second
+    // decision, since the host never acknowledges on the wire.
+    setAnswered(true);
+    post({
+      t: 'permission-decision',
+      id: sessionId,
+      requestId: item.requestId,
+      decision: allow ? { allow: true } : { allow: false, reason: 'Denied by user' },
+    });
+  };
 
   return (
     <div className="my-2 rounded border-2 border-destructive p-2 text-xs">
@@ -82,15 +96,28 @@ export function PermissionCard({
       <pre className="mb-2 max-h-48 overflow-auto rounded bg-muted p-1">
 {diff ?? safeStringify(item.input)}
       </pre>
+      {/* Deny is the safe, reversible-feeling choice: it comes first in DOM
+          and tab order, and Allow — the consequential, irreversible-feeling
+          action — is deliberately not styled with solid-primary emphasis,
+          so it isn't both the most prominent control and the first tab
+          stop. Neither button autofocuses. */}
       <div className="flex gap-2">
-        <Button size="sm" onClick={() => decide(true)} aria-label={`Allow ${item.name}`}>Allow</Button>
         <Button
-          variant="outline"
           size="sm"
+          disabled={answered}
           onClick={() => decide(false)}
           aria-label={`Deny ${item.name}`}
         >
           Deny
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={answered}
+          onClick={() => decide(true)}
+          aria-label={`Allow ${item.name}`}
+        >
+          Allow
         </Button>
       </div>
     </div>

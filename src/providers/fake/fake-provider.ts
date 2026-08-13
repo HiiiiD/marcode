@@ -73,7 +73,15 @@ export class FakeProvider implements AgentProvider {
         }
         for (const ev of this.script(text)) { channel.push(ev); }
       },
-      respondToTool: (id, decision) => { this.decisions.set(id, decision); },
+      respondToTool: (id, decision) => {
+        this.decisions.set(id, decision);
+        // A real provider resolves the tool and completes the turn once the
+        // decision lands. Without a follow-up event here, AgentSession sets
+        // status to 'running' when pending.size reaches 0 (see
+        // respondToPermission) and nothing ever arrives after that for the
+        // fake provider — the status dot is stuck at 'running' forever.
+        channel.push({ kind: 'turn-end', reason: 'done' });
+      },
       setEffort: (_effort: EffortLevel) => { /* recorded by tests via lastEffort if needed */ },
       interrupt: async () => { channel.push({ kind: 'turn-end', reason: 'interrupted' }); },
       dispose: async () => { channel.close(); },
