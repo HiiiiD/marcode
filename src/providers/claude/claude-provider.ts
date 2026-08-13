@@ -143,6 +143,15 @@ export class ClaudeProvider implements AgentProvider {
         : { behavior: 'deny', message: decision.reason ?? 'Denied by user' };
     };
 
+    // `allowDangerouslySkipPermissions` must be `true` exactly when, and only
+    // when, the session was started in 'bypass' mode — the .d.ts documents
+    // it as a required safety companion to `permissionMode: 'bypassPermissions'`
+    // ("Must be set to true... a safety measure to ensure intentional
+    // bypassing"). No defaulting, no truthy shortcut: this is a strict
+    // identity check against the one mode it is meant for, so no other
+    // PermissionMode value can ever set it.
+    const isBypassMode = opts.permissionMode === 'bypass';
+
     const options: Options = {
       cwd: opts.cwd,
       model: opts.model,
@@ -150,6 +159,7 @@ export class ClaudeProvider implements AgentProvider {
       permissionMode: PERMISSION_MODE[opts.permissionMode],
       canUseTool,
       ...(effort !== undefined ? { effort } : {}),
+      ...(isBypassMode ? { allowDangerouslySkipPermissions: true } : {}),
     };
 
     const pump = (async () => {

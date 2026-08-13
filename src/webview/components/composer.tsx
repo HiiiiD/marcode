@@ -4,6 +4,7 @@ import { Textarea } from '@/components/ui/textarea';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
+import { cn } from '@/lib/utils';
 import { useStore } from '../store';
 import type { PaneState } from '../reducer';
 import type { EffortLevel, ModelInfo, PermissionMode } from '../../protocol/messages';
@@ -29,6 +30,7 @@ export function Composer({ pane, model }: { pane: PaneState; model: ModelInfo | 
   const [text, setText] = useState('');
   const running = pane.summary.status === 'running'
     || pane.summary.status === 'awaiting-approval';
+  const bypassing = pane.summary.permissionMode === 'bypass';
 
   const submit = () => {
     const trimmed = text.trim();
@@ -92,7 +94,13 @@ export function Composer({ pane, model }: { pane: PaneState; model: ModelInfo | 
             t: 'set-permission-mode', id: pane.summary.id, mode: value as PermissionMode,
           })}
         >
-          <SelectTrigger className="h-7 w-28" aria-label="Permission mode">
+          <SelectTrigger
+            className={cn(
+              'h-7 w-28',
+              bypassing && 'border-destructive text-destructive dark:border-destructive/50',
+            )}
+            aria-label="Permission mode"
+          >
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
