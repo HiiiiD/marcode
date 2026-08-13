@@ -302,12 +302,12 @@ export class ClaudeProvider implements AgentProvider {
           // doesn't support it) is not a failed agent turn, so it is not
           // surfaced as a turn-end error — logged only. See the header comment.
           queryRef.applyFlagSettings({ effortLevel: next }).catch((reason: unknown) => {
-            console.warn('[hiiiid-code] applyFlagSettings rejected', 'effort=', next, 'reason=', reason);
+            console.warn('[hiiiid-code] applyFlagSettings rejected', 'effort=', next, 'reason=', errorMessage(reason));
           });
         } catch (err) {
           // A synchronous throw (e.g. the query is already torn down) is
           // exactly as non-fatal as an async rejection above — same reason.
-          console.warn('[hiiiid-code] applyFlagSettings threw', 'effort=', next, 'error=', err);
+          console.warn('[hiiiid-code] applyFlagSettings threw', 'effort=', next, 'error=', errorMessage(err));
         }
       },
       setPermissionMode: (mode: PermissionMode) => {
@@ -320,11 +320,11 @@ export class ClaudeProvider implements AgentProvider {
           // turn, so it is not surfaced as a turn-end error — same reasoning as
           // setEffort above.
           queryRef.setPermissionMode(PERMISSION_MODE[mode]).catch((reason: unknown) => {
-            console.warn('[hiiiid-code] setPermissionMode rejected', 'mode=', mode, 'reason=', reason);
+            console.warn('[hiiiid-code] setPermissionMode rejected', 'mode=', mode, 'reason=', errorMessage(reason));
           });
         } catch (err) {
           // Synchronous throw, same treatment as the async rejection above.
-          console.warn('[hiiiid-code] setPermissionMode threw', 'mode=', mode, 'error=', err);
+          console.warn('[hiiiid-code] setPermissionMode threw', 'mode=', mode, 'error=', errorMessage(err));
         }
       },
       interrupt: async () => {

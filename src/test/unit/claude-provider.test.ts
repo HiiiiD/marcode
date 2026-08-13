@@ -127,4 +127,52 @@ suite('ClaudeProvider (lazy start)', () => {
     assert.strictEqual(fake.calls.length, 0);
     await run.dispose();
   });
+
+  test('setEffort()/setPermissionMode() failures are logged redacted, never raw', async () => {
+    // These two are the only error paths in the provider that log instead of
+    // becoming a turn-end event, so they are the only ones that could put a
+    // raw SDK message — which can carry a stderr tail with credentials in it
+    // — into the extension-host output channel unredacted.
+    const secret = 'api_key=sk-not-a-real-key-0123456789';
+    const boom = () => Promise.reject(new Error(`refused: ${secret}`));
+
+    const queryFn = (params: { prompt: AsyncIterable<unknown>; options: unknown }) => {
+      void params;
+      const gen = (async function* () { /* stays open */ })() as AsyncGenerator<never, void> & {
+        interrupt: () => Promise<undefined>;
+        setPermissionMode: () => Promise<void>;
+        applyFlagSettings: () => Promise<void>;
+        close: () => void;
+      };
+      gen.interrupt = async () => undefined;
+      gen.setPermissionMode = boom;
+      gen.applyFlagSettings = boom;
+      gen.close = () => { /* no-op fake */ };
+      return gen;
+    };
+
+    const provider = new ClaudeProvider((async () => queryFn) as never);
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+    run.send('go');
+    await flushMicrotasks();
+
+    const logged: string[] = [];
+    const realWarn = console.warn;
+    console.warn = (...args: unknown[]) => { logged.push(args.map(String).join(' ')); };
+    try {
+      run.setEffort('high');
+      run.setPermissionMode('plan');
+      await flushMicrotasks();
+      await flushMicrotasks();
+    } finally {
+      console.warn = realWarn;
+    }
+
+    assert.strictEqual(logged.length, 2, 'both failures must still be logged, not swallowed');
+    for (const line of logged) {
+      assert.ok(!line.includes(secret), `logged the raw secret-bearing reason: ${line}`);
+      assert.ok(line.includes('[redacted]'), `expected a redacted reason, got: ${line}`);
+    }
+    await run.dispose();
+  });
 });
