@@ -55,7 +55,7 @@ export function Transcript({
                 messageId={item.id}
                 scrollAnchor={item.role === 'user'}
               >
-                <TranscriptItemView item={item} />
+                <TranscriptItemView item={item} sessionId={pane.summary.id} />
               </MessageScrollerItem>
             ))}
           </MessageScrollerContent>

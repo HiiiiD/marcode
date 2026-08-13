@@ -10,10 +10,9 @@ export async function activate(context: vscode.ExtensionContext) {
   const store = new TranscriptStore(rootDir);
 
   const providers = new Map<string, AgentProvider>();
-  providers.set('fake', new FakeProvider(() => [
-    { kind: 'text', delta: 'This is the fake provider. ' },
-    { kind: 'turn-end', reason: 'done' },
-  ]));
+  providers.set('fake', new FakeProvider((text) => (text.includes('rm')
+    ? [{ kind: 'permission', id: `p-${Date.now()}`, name: 'Bash', input: { command: text } }]
+    : [{ kind: 'text', delta: 'ok' }, { kind: 'turn-end', reason: 'done' }])));
 
   let provider: PanelViewProvider;
   const manager = new SessionManager(store, providers, (msg) => provider.post(msg));

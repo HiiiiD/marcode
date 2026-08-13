@@ -1,7 +1,13 @@
+import { PermissionCard } from './permission-card';
 import { ToolCard } from './tool-card';
-import type { TranscriptItem } from '../../protocol/messages';
+import type { SessionId, TranscriptItem } from '../../protocol/messages';
 
-export function TranscriptItemView({ item }: { item: TranscriptItem }) {
+export function TranscriptItemView({
+  item, sessionId,
+}: {
+  item: TranscriptItem;
+  sessionId: SessionId;
+}) {
   switch (item.role) {
     case 'user':
       return (
@@ -33,7 +39,7 @@ export function TranscriptItemView({ item }: { item: TranscriptItem }) {
       );
 
     case 'permission':
-      return null;
+      return <PermissionCard item={item} sessionId={sessionId} />;
 
     default:
       // The TranscriptItem type is closed, but nothing guarantees a runtime
