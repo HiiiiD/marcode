@@ -34,5 +34,16 @@ export function TranscriptItemView({ item }: { item: TranscriptItem }) {
 
     case 'permission':
       return null;
+
+    default:
+      // The TranscriptItem type is closed, but nothing guarantees a runtime
+      // value matches it (schema drift between an older webview bundle and a
+      // newer host, or corrupted persisted transcript data). Render an
+      // unobtrusive placeholder rather than falling off the switch and
+      // returning undefined, which React treats as a render error and would
+      // unmount the whole transcript.
+      return (
+        <div className="my-2 text-xs text-muted-foreground">Unsupported item</div>
+      );
   }
 }

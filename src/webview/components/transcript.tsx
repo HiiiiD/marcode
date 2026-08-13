@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import {
   MessageScroller, MessageScrollerButton, MessageScrollerContent,
   MessageScrollerItem, MessageScrollerProvider, MessageScrollerViewport,
@@ -14,6 +15,18 @@ export function Transcript({
 }) {
   const first = pane.items[0];
 
+  // `load-more` is a stateless lookup keyed on beforeItemId, not a consumed
+  // cursor — two rapid clicks before the first session-prepend lands would
+  // post the same beforeItemId twice and duplicate the prepended items. Track
+  // whether a request for the current oldest item is in flight and disable
+  // the button meanwhile. Reset when the oldest item changes (the request
+  // landed, or history was reset) or when there's nothing left to load.
+  const [loadingBeforeId, setLoadingBeforeId] = useState<string | null>(null);
+
+  useEffect(() => {
+    setLoadingBeforeId(null);
+  }, [first?.id, pane.hasMore]);
+
   return (
     <MessageScrollerProvider
       autoScroll
@@ -26,7 +39,11 @@ export function Transcript({
             {pane.hasMore && first && (
               <Button
                 variant="outline"
-                onClick={() => onLoadMore(first.id)}
+                disabled={loadingBeforeId === first.id}
+                onClick={() => {
+                  setLoadingBeforeId(first.id);
+                  onLoadMore(first.id);
+                }}
                 className="my-2 h-auto w-full py-1 text-xs"
               >
                 Load earlier messages

@@ -1,15 +1,9 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import type { TranscriptItem } from '../../protocol/messages';
+import { safeStringify, summarize } from './tool-card-format';
 
 type ToolItem = Extract<TranscriptItem, { role: 'tool' }>;
-
-function summarize(input: unknown): string {
-  if (input === null || input === undefined) { return ''; }
-  if (typeof input === 'string') { return input; }
-  const text = JSON.stringify(input);
-  return text.length > 80 ? `${text.slice(0, 80)}…` : text;
-}
 
 export function ToolCard({ item }: { item: ToolItem }) {
   const [open, setOpen] = useState(false);
@@ -28,7 +22,7 @@ export function ToolCard({ item }: { item: ToolItem }) {
       </Button>
       {open && (
         <pre className="overflow-x-auto border-t border-border px-2 py-1">
-{JSON.stringify({ input: item.input, output: item.output }, null, 2)}
+{safeStringify({ input: item.input, output: item.output })}
         </pre>
       )}
     </div>
