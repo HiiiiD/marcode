@@ -18,6 +18,8 @@ Spec: [docs/superpowers/specs/2026-08-13-vscode-agent-manager-design.md](../spec
 - **The webview loads no remote resources.** No CDN scripts, styles, fonts, or images. Everything is bundled into `dist/` and referenced via `webview.asWebviewUri()`.
 - **CSP:** `default-src 'none'`; scripts and styles restricted to `webview.cspSource` plus a per-load nonce. `localResourceRoots` pinned to `dist/`.
 - **`retainContextWhenHidden` stays off.** Durable state lives in the host.
+- **Use shadcn components, never raw HTML controls.** No bare `<select>`, `<button>`, or `<textarea>` in feature code — use `Select`, `Button`, `Textarea`, `DropdownMenu` from `@/components/ui/*`. shadcn's registry is **Base UI**-backed (`@base-ui/react`), not Radix; import parts from the vendored file and do not mix in Radix packages.
+- **Use the short Tailwind utilities** — `border-border`, `bg-muted`, `text-muted-foreground`. The `@theme inline` block in `src/webview/index.css` registers every token under the `--color-*` namespace, so `[var(--…)]` arbitrary values are never needed and must not appear in component code.
 - **Every protocol message addressed to a session carries an explicit `SessionId`.** There is no implicit "current session" on the wire.
 - **Errors are state, never exceptions across `postMessage`.** A failing provider puts a session into `error` with a transcript item; it never rejects into the message handler.
 - **Extension host target:** VS Code `^1.125.0`, Node 22 (`@types/node` 24.x is already a devDependency).
@@ -44,6 +46,54 @@ Spec: [docs/superpowers/specs/2026-08-13-vscode-agent-manager-design.md](../spec
 | `src/webview/store.tsx` | Client state: sessions, layout, catalog; reducer over `HostToWebview` |
 | `src/webview/components/*.tsx` | Panes, transcript, composer, permission card, roster |
 | `src/webview/components/ui/*.tsx` | Vendored shadcn primitives |
+
+---
+
+## Parallelization
+
+Tasks are numbered for reading order, not execution order. The host chain and the webview chain are independent until Task 13, so they can run concurrently.
+
+```
+T1 (build + shell) ──┬─→ T9 (vendor ui) ──────────────┐
+                     │                                 │
+T2 (provider seam) ──┴─→ T3 (protocol) ─┬─→ T4 ─→ T5 ─┼─→ T6 ─→ T7 ──┐
+                     │                  │              │              │
+                     │                  └─→ T8 ────────┼─→ T10 ─→ T11 ┤
+                     │                                 │        └→ T12┤
+                     └─→ T14a (claude adapter) ────────┴──────────────┴─→ T13 ─→ T14b ─→ T15
+```
+
+| Wave | Run concurrently | Why they don't collide |
+|---|---|---|
+| 1 | **T1**, **T2** | T1 owns build config + `src/host/` + `src/webview/`; T2 owns `src/providers/` |
+| 2 | **T3**, **T9** | `src/protocol/` vs `src/webview/components/ui/` |
+| 3 | **T4**, **T8** | `src/host/transcript-store.ts` vs `src/webview/reducer.ts` |
+| 4 | **T5**, **T10**, **T14a** | host / webview components / `src/providers/claude/` |
+| 5 | **T6**, **T11** | `src/host/session-manager.ts` vs `src/webview/components/` |
+| 6 | **T7**, **T12** | `src/host/message-router.ts` vs `permission-card.tsx` |
+| 7 | **T13** | alone — it reconciles `main.tsx` and `extension.ts` |
+| 8 | **T14b** | wiring only |
+| 9 | **T15** | docs and packaging |
+
+Nine waves instead of fifteen serial tasks.
+
+**Split Task 14 to make wave 4 work.** It is the longest task and mostly self-contained:
+
+- **T14a** — Steps 1–6: install the SDK, read the `.d.ts`, write `map-events.ts` + its tests, write `claude-provider.ts`. Touches only `src/providers/claude/`, `src/test/unit/`, and adds one dependency.
+- **T14b** — Steps 7–8: register the provider in `extension.ts` and mark it external in `esbuild.js`. Must follow T13.
+
+**Files with more than one writer — never edit these in two concurrent tasks:**
+
+| File | Written by | Rule |
+|---|---|---|
+| `package.json` | T1, T9, T14a, T15 | Dependency adds only; T1 owns `contributes`, T15 owns `walkthroughs` |
+| `esbuild.js` | T1, T9, T14b | T1 creates both configs; T9 adds `alias`; T14b adds `external` |
+| `src/extension.ts` | T1, T7, T13, T14b | Serial by construction — these are in different waves |
+| `src/webview/main.tsx` | T1, T8, T10, T13 | T13 writes the final version; earlier ones are scaffolding |
+
+Everything in `package.json` outside `contributes` is an append, so concurrent dependency adds resolve trivially even when git reports a conflict.
+
+If running each wave in its own worktree, merge the wave before starting the next — the dependency edges above assume the previous wave is on disk.
 
 ---
 
@@ -187,7 +237,11 @@ One config type-checks both bundles. `DOM` in the host's scope is a mild impreci
 
 - [ ] **Step 5: Write `src/webview/index.css`**
 
-Tailwind v4 plus the token bridge. shadcn components read `--background`/`--foreground`/etc.; these map them onto VS Code's theme variables so light, dark, and high-contrast all follow the user's theme.
+Two layers. `:root` points shadcn's token names at VS Code's theme variables, and `@theme inline` registers those tokens with Tailwind under the `--color-*` namespace.
+
+**The `@theme inline` block is what makes `bg-background`, `border-border`, `text-muted-foreground` exist as utilities.** Without it, Tailwind knows nothing about these names and the only way to reach them is the long `border-[var(--border)]` arbitrary-value form. Register them once here and use the short utilities everywhere — no `[var(--…)]` in component code.
+
+shadcn's own guide wraps the `:root` values in `hsl()`; ours are already complete colors coming from VS Code, so they are referenced as-is.
 
 ```css
 @import "tailwindcss";
@@ -215,6 +269,31 @@ Tailwind v4 plus the token bridge. shadcn components read `--background`/`--fore
   --radius: 4px;
 }
 
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 2px);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) + 2px);
+}
+
 body {
   margin: 0;
   padding: 0;
@@ -224,6 +303,14 @@ body {
   font-size: var(--vscode-font-size);
 }
 ```
+
+Verify the registration before building any component on it. After Step 10's `yarn run compile`, run:
+
+```bash
+grep -c "\-\-color-border" dist/webview.css
+```
+
+Expected: at least 1. If the count is 0, `@theme inline` did not take effect and every short utility will silently render unstyled.
 
 - [ ] **Step 6: Write `src/webview/main.tsx`**
 
@@ -2607,7 +2694,7 @@ import { StoreProvider, useStore } from './store';
 function App() {
   const { state } = useStore();
   if (!state.ready) {
-    return <div className="p-3 text-sm text-[var(--muted-foreground)]">Loading…</div>;
+    return <div className="p-3 text-sm text-muted-foreground">Loading…</div>;
   }
   return (
     <div className="p-3 text-sm">
@@ -2641,7 +2728,7 @@ git commit -m "feat: add the webview transport and protocol reducer"
 
 ## Task 9: Vendor shadcn primitives
 
-Bring in `message-scroller` and `resizable` before the components that use them.
+Bring in every primitive the UI tasks build on. shadcn's registry is **Base UI**-backed — `add` pulls `@base-ui/react` as a peer dependency. Do not add Radix packages alongside it.
 
 **Files:**
 - Create: `components.json`
@@ -2652,6 +2739,9 @@ Bring in `message-scroller` and `resizable` before the components that use them.
 **Interfaces:**
 - Produces: `MessageScrollerProvider`, `MessageScroller`, `MessageScrollerViewport`, `MessageScrollerContent`, `MessageScrollerItem`, `MessageScrollerButton`, `useMessageScrollerVisibility` from `@/components/ui/message-scroller`.
 - Produces: `ResizablePanelGroup`, `ResizablePanel`, `ResizableHandle` from `@/components/ui/resizable`.
+- Produces: `Select`, `SelectTrigger`, `SelectValue`, `SelectContent`, `SelectGroup`, `SelectItem` from `@/components/ui/select`.
+- Produces: `DropdownMenu`, `DropdownMenuTrigger`, `DropdownMenuContent`, `DropdownMenuCheckboxItem`, `DropdownMenuItem`, `DropdownMenuSeparator` from `@/components/ui/dropdown-menu`.
+- Produces: `Button` from `@/components/ui/button`, `Textarea` from `@/components/ui/textarea`.
 - Produces: `cn(...inputs: ClassValue[]): string` from `@/lib/utils`.
 
 - [ ] **Step 1: Install runtime dependencies**
@@ -2698,10 +2788,26 @@ export function cn(...inputs: ClassValue[]): string {
 - [ ] **Step 4: Add the components**
 
 ```bash
-npx shadcn@latest add message-scroller resizable
+npx shadcn@latest add message-scroller resizable select dropdown-menu button textarea
 ```
 
-**If the CLI fails** (it targets framework presets and may not recognise a bare esbuild project), fall back to copying the component source manually. Both components are published as source on their docs pages — `https://ui.shadcn.com/docs/components/base/message-scroller` and `https://ui.shadcn.com/docs/components/resizable`. Save them to `src/webview/components/ui/message-scroller.tsx` and `src/webview/components/ui/resizable.tsx`, then rename the files to kebab-case if the CLI wrote them otherwise. Do not hand-write substitutes — the scroll behaviour is the reason for using them.
+**If the CLI fails** (it targets framework presets and may not recognise a bare esbuild project), fall back to copying the component source manually from its docs page — e.g. `https://ui.shadcn.com/docs/components/base/message-scroller`, `https://ui.shadcn.com/docs/components/base/select`. Save each to `src/webview/components/ui/<name>.tsx` in kebab-case, and install the Base UI peer dependency yourself:
+
+```bash
+yarn add @base-ui/react
+```
+
+Do not hand-write substitutes — `message-scroller`'s scroll behaviour is the whole reason for the dependency, and re-implementing `select` loses keyboard and screen-reader support.
+
+- [ ] **Step 4b: Record the real exported names**
+
+Base UI-backed components can differ from the Radix-era API this plan was written against. Read each vendored file and confirm the exports match the Interfaces block above:
+
+```bash
+grep -hn "^export" src/webview/components/ui/*.tsx
+```
+
+If a name differs (for example `DropdownMenuCheckboxItem` absent, or `Select` taking `items` rather than children), note the real signature and use it in Tasks 10–13 — the vendored source is authoritative over this plan.
 
 - [ ] **Step 5: Verify the import alias resolves**
 
@@ -2754,6 +2860,7 @@ Renders a session's items with correct scroll behaviour under streaming.
 
 ```tsx
 import { useState } from 'react';
+import { Button } from '@/components/ui/button';
 import type { TranscriptItem } from '../../protocol/messages';
 
 type ToolItem = Extract<TranscriptItem, { role: 'tool' }>;
@@ -2770,20 +2877,18 @@ export function ToolCard({ item }: { item: ToolItem }) {
   const dot = item.state === 'running' ? '○' : item.state === 'ok' ? '●' : '✕';
 
   return (
-    <div className="my-1 rounded border border-[var(--border)] text-xs">
-      <button
-        type="button"
+    <div className="my-1 rounded border border-border text-xs">
+      <Button
+        variant="ghost"
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center gap-2 px-2 py-1 text-left hover:bg-[var(--accent)]"
+        className="flex h-auto w-full items-center justify-start gap-2 px-2 py-1 font-normal"
       >
         <span aria-hidden>{dot}</span>
         <span className="font-medium">{item.name}</span>
-        <span className="truncate text-[var(--muted-foreground)]">
-          {summarize(item.input)}
-        </span>
-      </button>
+        <span className="truncate text-muted-foreground">{summarize(item.input)}</span>
+      </Button>
       {open && (
-        <pre className="overflow-x-auto border-t border-[var(--border)] px-2 py-1">
+        <pre className="overflow-x-auto border-t border-border px-2 py-1">
 {JSON.stringify({ input: item.input, output: item.output }, null, 2)}
         </pre>
       )}
@@ -2804,7 +2909,7 @@ export function TranscriptItemView({ item }: { item: TranscriptItem }) {
   switch (item.role) {
     case 'user':
       return (
-        <div className="my-2 rounded bg-[var(--muted)] px-2 py-1 whitespace-pre-wrap">
+        <div className="my-2 rounded bg-muted px-2 py-1 whitespace-pre-wrap">
           {item.text}
         </div>
       );
@@ -2813,7 +2918,7 @@ export function TranscriptItemView({ item }: { item: TranscriptItem }) {
       return (
         <div className="my-2 whitespace-pre-wrap">
           {item.thinking && (
-            <div className="mb-1 border-l-2 border-[var(--border)] pl-2 text-xs italic text-[var(--muted-foreground)]">
+            <div className="mb-1 border-l-2 border-border pl-2 text-xs italic text-muted-foreground">
               {item.thinking}
             </div>
           )}
@@ -2826,7 +2931,7 @@ export function TranscriptItemView({ item }: { item: TranscriptItem }) {
 
     case 'error':
       return (
-        <div className="my-2 rounded border border-[var(--destructive)] px-2 py-1 text-xs text-[var(--destructive)]">
+        <div className="my-2 rounded border border-destructive px-2 py-1 text-xs text-destructive">
           {item.message}
         </div>
       );
@@ -2846,6 +2951,7 @@ import {
   MessageScroller, MessageScrollerButton, MessageScrollerContent,
   MessageScrollerItem, MessageScrollerProvider, MessageScrollerViewport,
 } from '@/components/ui/message-scroller';
+import { Button } from '@/components/ui/button';
 import { TranscriptItemView } from './transcript-item';
 import type { PaneState } from '../reducer';
 
@@ -2868,13 +2974,13 @@ export function Transcript({
         <MessageScrollerViewport className="px-2">
           <MessageScrollerContent>
             {pane.hasMore && first && (
-              <button
-                type="button"
+              <Button
+                variant="outline"
                 onClick={() => onLoadMore(first.id)}
-                className="my-2 w-full rounded border border-[var(--border)] py-1 text-xs hover:bg-[var(--accent)]"
+                className="my-2 h-auto w-full py-1 text-xs"
               >
                 Load earlier messages
-              </button>
+              </Button>
             )}
             {pane.items.map((item) => (
               <MessageScrollerItem
@@ -2906,13 +3012,12 @@ function App() {
   const first = state.sessions[0];
   if (!first) {
     return (
-      <button
-        type="button"
-        className="m-3 rounded bg-[var(--primary)] px-2 py-1 text-[var(--primary-foreground)]"
+      <Button
+        className="m-3"
         onClick={() => post({ t: 'create-session', providerId: 'fake', cwd: '/tmp' })}
       >
         New session
-      </button>
+      </Button>
     );
   }
 
@@ -2923,13 +3028,14 @@ function App() {
         {pane && <Transcript pane={pane} onLoadMore={(beforeItemId) =>
           post({ t: 'load-more', id: first.id, beforeItemId })} />}
       </div>
-      <button
-        type="button"
-        className="m-2 rounded border border-[var(--border)] px-2 py-1 text-xs"
+      <Button
+        variant="outline"
+        size="sm"
+        className="m-2"
         onClick={() => post({ t: 'send', id: first.id, text: 'hello' })}
       >
         Send test message
-      </button>
+      </Button>
     </div>
   );
 }
@@ -2980,9 +3086,30 @@ Effort is only rendered when the session's model declares it — the capability 
 
 ```tsx
 import { useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select';
 import { useStore } from '../store';
 import type { PaneState } from '../reducer';
-import type { EffortLevel, ModelInfo } from '../../protocol/messages';
+import type { EffortLevel, ModelInfo, PermissionMode } from '../../protocol/messages';
+
+const MODE_LABEL: Record<PermissionMode, string> = {
+  default: 'ask',
+  acceptEdits: 'auto-edits',
+  plan: 'plan',
+  dontAsk: 'deny',
+  bypass: 'bypass',
+};
+
+/**
+ * The `items` prop is what lets the trigger render the *label* of the selected
+ * option. Without it Base UI's SelectValue falls back to the raw value, so the
+ * trigger would read "acceptEdits" rather than "auto-edits".
+ */
+const MODE_ITEMS = (Object.keys(MODE_LABEL) as PermissionMode[])
+  .map((value) => ({ value, label: MODE_LABEL[value] }));
 
 export function Composer({ pane, model }: { pane: PaneState; model: ModelInfo | undefined }) {
   const { post } = useStore();
@@ -2998,8 +3125,8 @@ export function Composer({ pane, model }: { pane: PaneState; model: ModelInfo | 
   };
 
   return (
-    <div className="border-t border-[var(--border)] p-2">
-      <textarea
+    <div className="border-t border-border p-2">
+      <Textarea
         value={text}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={(e) => {
@@ -3007,76 +3134,77 @@ export function Composer({ pane, model }: { pane: PaneState; model: ModelInfo | 
         }}
         rows={3}
         placeholder="Message the agent…"
-        className="w-full resize-none rounded border border-[var(--border)] bg-[var(--input)] p-1 text-sm outline-none focus:border-[var(--ring)]"
+        className="resize-none text-sm"
       />
       <div className="mt-1 flex items-center gap-2 text-xs">
         {running ? (
-          <button
-            type="button"
-            onClick={() => post({ t: 'interrupt', id: pane.summary.id })}
-            className="rounded border border-[var(--border)] px-2 py-0.5 hover:bg-[var(--accent)]"
-          >
+          <Button variant="outline" size="sm" onClick={() =>
+            post({ t: 'interrupt', id: pane.summary.id })}>
             Stop
-          </button>
+          </Button>
         ) : (
-          <button
-            type="button"
-            onClick={submit}
-            className="rounded bg-[var(--primary)] px-2 py-0.5 text-[var(--primary-foreground)]"
-          >
-            Send
-          </button>
+          <Button size="sm" onClick={submit}>Send</Button>
         )}
 
         {model?.effort && (
-          <select
+          <Select
+            items={model.effort.levels.map((level) => ({ value: level, label: level }))}
             value={pane.summary.effort ?? model.effort.default}
-            onChange={(e) => post({
-              t: 'set-effort', id: pane.summary.id,
-              effort: e.target.value as EffortLevel,
+            onValueChange={(value: string) => post({
+              t: 'set-effort', id: pane.summary.id, effort: value as EffortLevel,
             })}
-            className="rounded border border-[var(--border)] bg-[var(--input)] px-1 py-0.5"
-            aria-label="Effort"
           >
-            {model.effort.levels.map((level) => (
-              <option key={level} value={level}>{level}</option>
-            ))}
-          </select>
+            <SelectTrigger className="h-7 w-24" aria-label="Effort">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {model.effort.levels.map((level) => (
+                <SelectItem key={level} value={level}>{level}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         )}
 
-        <select
+        <Select
+          items={MODE_ITEMS}
           value={pane.summary.permissionMode}
-          onChange={(e) => post({
-            t: 'set-permission-mode', id: pane.summary.id,
-            mode: e.target.value as PaneState['summary']['permissionMode'],
+          onValueChange={(value: string) => post({
+            t: 'set-permission-mode', id: pane.summary.id, mode: value as PermissionMode,
           })}
-          className="rounded border border-[var(--border)] bg-[var(--input)] px-1 py-0.5"
-          aria-label="Permission mode"
         >
-          <option value="default">ask</option>
-          <option value="acceptEdits">auto-edits</option>
-          <option value="plan">plan</option>
-          <option value="dontAsk">deny</option>
-          <option value="bypass">bypass</option>
-        </select>
+          <SelectTrigger className="h-7 w-28" aria-label="Permission mode">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {MODE_ITEMS.map((item) => (
+              <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
     </div>
   );
 }
 ```
 
+`MODE_LABEL` is typed `Record<PermissionMode, string>`, so if Task 14 Step 1 changes the union, this fails to compile rather than silently offering a mode the SDK rejects.
+
+**Every `Select` in this codebase passes `items`.** It is what makes the closed trigger show the human label instead of the raw value. If Step 4b found the vendored `Select` does not accept `items`, use the render-function form instead — `<SelectValue>{(value: string) => MODE_LABEL[value as PermissionMode]}</SelectValue>` — and apply the same treatment anywhere a label differs from its value.
+```
+
 - [ ] **Step 2: Write `src/webview/components/session-header.tsx`**
 
 ```tsx
+import { Button } from '@/components/ui/button';
 import { useStore } from '../store';
 import type { PaneState } from '../reducer';
 import type { SessionStatus } from '../../protocol/messages';
 
 const DOT: Record<SessionStatus, string> = {
-  idle: 'bg-[var(--muted-foreground)]',
-  running: 'bg-[var(--primary)]',
-  'awaiting-approval': 'bg-[var(--destructive)]',
-  error: 'bg-[var(--destructive)]',
+  idle: 'bg-muted-foreground',
+  running: 'bg-primary animate-pulse',
+  'awaiting-approval': 'bg-destructive',
+  error: 'bg-destructive',
 };
 
 export function SessionHeader({ pane }: { pane: PaneState }) {
@@ -3084,20 +3212,21 @@ export function SessionHeader({ pane }: { pane: PaneState }) {
   const s = pane.summary;
 
   return (
-    <div className="flex items-center gap-2 border-b border-[var(--border)] px-2 py-1 text-xs">
+    <div className="flex items-center gap-2 border-b border-border px-2 py-1 text-xs">
       <span className={`h-2 w-2 shrink-0 rounded-full ${DOT[s.status]}`} aria-hidden />
       <span className="truncate font-medium" title={s.title}>{s.title}</span>
-      <span className="ml-auto shrink-0 text-[var(--muted-foreground)]">
+      <span className="ml-auto shrink-0 text-muted-foreground">
         {s.model}{s.effort ? ` · ${s.effort}` : ''}
       </span>
-      <button
-        type="button"
+      <Button
+        variant="ghost"
+        size="icon"
         aria-label="Close session"
         onClick={() => post({ t: 'close-session', id: s.id })}
-        className="shrink-0 px-1 hover:bg-[var(--accent)]"
+        className="h-5 w-5 shrink-0"
       >
         ×
-      </button>
+      </Button>
     </div>
   );
 }
@@ -3114,7 +3243,12 @@ Replace the temporary test button with the real header and composer around `Tran
 
 - [ ] **Step 4: Verify manually**
 
-F5, create a session, type and press Enter. Expected: message sends, Send becomes Stop while running, the effort dropdown appears for `fake-large` and is absent for `fake-small`.
+F5, create a session, type and press Enter. Expected:
+
+1. The message sends; Send becomes Stop while running.
+2. The effort dropdown appears for `fake-large` and is absent for `fake-small`.
+3. **The permission-mode trigger reads `ask`, and selecting auto-edits leaves it reading `auto-edits` — never `default` or `acceptEdits`.** A raw value in the closed trigger means `items` was not honoured; switch to the `SelectValue` render-function form.
+4. Both dropdowns are keyboard-navigable — Tab to focus, Enter/Space to open, arrows to move, Enter to pick.
 
 - [ ] **Step 5: Commit**
 
@@ -3137,6 +3271,7 @@ git commit -m "feat: add the composer with interrupt, effort and permission-mode
 - [ ] **Step 1: Write `src/webview/components/permission-card.tsx`**
 
 ```tsx
+import { Button } from '@/components/ui/button';
 import { useStore } from '../store';
 import type { SessionId, TranscriptItem } from '../../protocol/messages';
 
@@ -3173,7 +3308,7 @@ export function PermissionCard({
 
   if (item.state !== 'pending') {
     return (
-      <div className="my-2 rounded border border-[var(--border)] px-2 py-1 text-xs text-[var(--muted-foreground)]">
+      <div className="my-2 rounded border border-border px-2 py-1 text-xs text-muted-foreground">
         {item.name} — {item.state}
         {item.reason ? `: ${item.reason}` : ''}
       </div>
@@ -3188,26 +3323,14 @@ export function PermissionCard({
   });
 
   return (
-    <div className="my-2 rounded border-2 border-[var(--destructive)] p-2 text-xs">
+    <div className="my-2 rounded border-2 border-destructive p-2 text-xs">
       <div className="mb-1 font-medium">Allow {item.name}?</div>
-      <pre className="mb-2 max-h-48 overflow-auto rounded bg-[var(--muted)] p-1">
+      <pre className="mb-2 max-h-48 overflow-auto rounded bg-muted p-1">
 {diff ?? JSON.stringify(item.input, null, 2)}
       </pre>
       <div className="flex gap-2">
-        <button
-          type="button"
-          onClick={() => decide(true)}
-          className="rounded bg-[var(--primary)] px-2 py-0.5 text-[var(--primary-foreground)]"
-        >
-          Allow
-        </button>
-        <button
-          type="button"
-          onClick={() => decide(false)}
-          className="rounded border border-[var(--border)] px-2 py-0.5 hover:bg-[var(--accent)]"
-        >
-          Deny
-        </button>
+        <Button size="sm" onClick={() => decide(true)}>Allow</Button>
+        <Button variant="outline" size="sm" onClick={() => decide(false)}>Deny</Button>
       </div>
     </div>
   );
@@ -3306,7 +3429,7 @@ export function PaneGroup() {
 
   if (panes.length === 0) {
     return (
-      <div ref={rootRef} className="flex h-full items-center justify-center p-4 text-xs text-[var(--muted-foreground)]">
+      <div ref={rootRef} className="flex h-full items-center justify-center p-4 text-xs text-muted-foreground">
         No open sessions.
       </div>
     );
@@ -3362,6 +3485,11 @@ export function PaneGroup() {
 - [ ] **Step 2: Write `src/webview/components/session-picker.tsx`**
 
 ```tsx
+import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent,
+  DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { useStore } from '../store';
 import type { SessionId } from '../../protocol/messages';
 
@@ -3382,34 +3510,53 @@ export function SessionPicker() {
   };
 
   const toggle = (id: SessionId) => {
-    const next = open.has(id)
-      ? [...open].filter((x) => x !== id)
-      : [...open, id];
-    setPanes(next);
+    setPanes(open.has(id) ? [...open].filter((x) => x !== id) : [...open, id]);
   };
 
   const providerId = state.catalog[0]?.id;
 
   return (
-    <div className="flex items-center gap-2 border-b border-[var(--border)] px-2 py-1 text-xs">
-      <select
-        value=""
-        onChange={(e) => { if (e.target.value) { toggle(e.target.value); } }}
-        className="min-w-0 flex-1 rounded border border-[var(--border)] bg-[var(--input)] px-1 py-0.5"
-        aria-label="Sessions"
-      >
-        <option value="">Sessions ({state.sessions.length})</option>
-        {state.sessions.map((s) => (
-          <option key={s.id} value={s.id}>
-            {open.has(s.id) ? '● ' : ''}
-            {s.archived ? '[archived] ' : ''}
-            {s.title}
-          </option>
-        ))}
-      </select>
+    <div className="flex items-center gap-2 border-b border-border px-2 py-1 text-xs">
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={<Button variant="outline" size="sm" className="min-w-0 flex-1 justify-start" />}
+        >
+          Sessions ({open.size}/{state.sessions.length})
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" className="max-h-80 w-72 overflow-y-auto">
+          {state.sessions.length === 0 && (
+            <DropdownMenuItem disabled>No sessions yet</DropdownMenuItem>
+          )}
+          {state.sessions.map((s) => (
+            <DropdownMenuCheckboxItem
+              key={s.id}
+              checked={open.has(s.id)}
+              onCheckedChange={() => toggle(s.id)}
+            >
+              <span className="truncate">{s.title}</span>
+              {s.archived && (
+                <span className="ml-auto pl-2 text-muted-foreground">archived</span>
+              )}
+            </DropdownMenuCheckboxItem>
+          ))}
+          <DropdownMenuSeparator />
+          {state.sessions.map((s) => (
+            <DropdownMenuItem
+              key={`del-${s.id}`}
+              variant="destructive"
+              onClick={() => post({ t: 'delete-session', id: s.id })}
+            >
+              Delete “{s.title}”
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
 
-      <button
-        type="button"
+      <Button
+        variant="outline"
+        size="icon"
+        aria-label="Toggle split orientation"
+        className="h-7 w-7 shrink-0"
         onClick={() => post({
           t: 'set-layout',
           layout: {
@@ -3417,25 +3564,26 @@ export function SessionPicker() {
             orientation: state.layout.orientation === 'vertical' ? 'horizontal' : 'vertical',
           },
         })}
-        className="shrink-0 rounded border border-[var(--border)] px-1 py-0.5 hover:bg-[var(--accent)]"
-        aria-label="Toggle split orientation"
       >
         {state.layout.orientation === 'vertical' ? '⬍' : '⬌'}
-      </button>
+      </Button>
 
-      <button
-        type="button"
+      <Button
+        size="sm"
+        className="shrink-0"
         disabled={!providerId}
-        onClick={() => providerId && post({
-          t: 'create-session', providerId, cwd: '',
-        })}
-        className="shrink-0 rounded bg-[var(--primary)] px-2 py-0.5 text-[var(--primary-foreground)]"
+        onClick={() => providerId && post({ t: 'create-session', providerId, cwd: '' })}
       >
         + New
-      </button>
+      </Button>
     </div>
   );
 }
+```
+
+A `DropdownMenu` with checkbox items, not a `Select`: opening panes is inherently multi-select, and a `Select` can only hold one value. The trigger shows `open/total` so the roster state is legible without opening it.
+
+Base UI composes a trigger with another component via a `render` prop rather than Radix's `asChild`. If Step 4b showed the vendored `dropdown-menu` uses `asChild`, swap to `<DropdownMenuTrigger asChild><Button …>…</Button></DropdownMenuTrigger>`. Likewise, drop `variant="destructive"` from `DropdownMenuItem` if the vendored version has no such prop and use `className="text-destructive"`.
 ```
 
 - [ ] **Step 3: Make new sessions open into a pane**
@@ -3466,7 +3614,7 @@ Final `App`:
 function App() {
   const { state } = useStore();
   if (!state.ready) {
-    return <div className="p-3 text-sm text-[var(--muted-foreground)]">Loading…</div>;
+    return <div className="p-3 text-sm text-muted-foreground">Loading…</div>;
   }
   return (
     <div className="flex h-screen flex-col">
@@ -3522,7 +3670,9 @@ git commit -m "feat: add resizable split panes and the session roster"
 
 ## Task 14: Claude provider
 
-Last, and deliberately so — everything above is already proven against `FakeProvider`.
+Deliberately last in reading order — everything above is already proven against `FakeProvider`.
+
+**Splits for parallel execution** (see Parallelization above): **T14a** is Steps 1–6 and touches only `src/providers/claude/`, so it can run during wave 4. **T14b** is Steps 7–8, which edit `extension.ts` and `esbuild.js`, and must follow Task 13.
 
 **Files:**
 - Create: `src/providers/claude/map-events.ts`

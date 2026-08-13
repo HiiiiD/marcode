@@ -399,8 +399,15 @@ into the repo rather than adding a runtime dependency.
 
 **Theming.** shadcn components read shadcn's token layer (`--background`,
 `--foreground`, `--muted`, …). One CSS layer redefines those tokens in terms of
-VS Code's `--vscode-*` variables. Light, dark, and high-contrast follow the
-user's theme for free.
+VS Code's `--vscode-*` variables, and a Tailwind v4 `@theme inline` block
+registers them under the `--color-*` namespace so `bg-background` and
+`border-border` exist as ordinary utilities. Light, dark, and high-contrast
+follow the user's theme for free.
+
+shadcn's current registry is **Base UI**-backed (`@base-ui/react`), not Radix.
+All interactive controls — selects, dropdowns, buttons, text areas — come from
+vendored shadcn components rather than raw HTML elements, for keyboard and
+screen-reader behaviour we would otherwise have to reimplement.
 
 **`retainContextWhenHidden` stays off.** Hydrate-on-`ready` makes that
 affordable, and durable state is host-side.
