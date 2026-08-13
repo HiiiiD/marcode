@@ -13,6 +13,16 @@ function pane(status: SessionStatus = 'idle'): PaneState {
   return { summary: summary('a', { status }), items: [], hasMore: false, pending: [] };
 }
 
+/** A pane whose first message has already been sent — hasStarted === true. */
+function startedPane(id: string): PaneState {
+  return {
+    summary: summary(id),
+    items: [{ id: `i-${id}`, ts: 1, role: 'user', text: 'go' }],
+    hasMore: false,
+    pending: [],
+  };
+}
+
 const WITH_EFFORT = catalog()[0].models[0];   // fake-large, effort low/medium/high
 const NO_EFFORT = catalog()[0].models[1];     // fake-small
 
@@ -85,6 +95,46 @@ suite('Composer', () => {
     await userEvent.click(await screen.findByRole('option', { name: 'high' }));
 
     assert.deepStrictEqual(posted().at(-1), { t: 'set-effort', id: 'a', effort: 'high' });
+  });
+
+  /**
+   * The bypass-disabled reason (`<p id="bypass-reason...">`) is rendered
+   * once per pane's Composer. A fixed, unqualified id would collide across
+   * panes — `getElementById`, which is what `aria-describedby` resolves
+   * against, returns only the first match in the whole document, so the
+   * second pane's disabled bypass option would describe itself using the
+   * first pane's reason text. A single-Composer test can never catch that;
+   * this renders two.
+   */
+  test('the bypass-disabled reason id does not collide across panes', async () => {
+    renderWithStore(
+      <>
+        <Composer pane={startedPane('a')} model={WITH_EFFORT} />
+        <Composer pane={startedPane('b')} model={WITH_EFFORT} />
+      </>,
+    );
+
+    const triggers = screen.getAllByLabelText('Permission mode');
+    assert.strictEqual(triggers.length, 2);
+
+    await userEvent.click(triggers[0]);
+    const optionA = await screen.findByRole('option', { name: /bypass/i });
+    const describedByA = optionA.getAttribute('aria-describedby');
+    await userEvent.keyboard('{Escape}');
+
+    await userEvent.click(triggers[1]);
+    const optionB = await screen.findByRole('option', { name: /bypass/i });
+    const describedByB = optionB.getAttribute('aria-describedby');
+
+    assert.ok(describedByA);
+    assert.ok(describedByB);
+    assert.notStrictEqual(describedByA, describedByB, 'each pane must own a distinct reason id');
+    assert.ok(
+      document.getElementById(describedByA!)?.textContent?.includes('Bypass can only be chosen'),
+    );
+    assert.ok(
+      document.getElementById(describedByB!)?.textContent?.includes('Bypass can only be chosen'),
+    );
   });
 
   test('the effort and mode selects use the sm size variant, not a hand-written height', () => {

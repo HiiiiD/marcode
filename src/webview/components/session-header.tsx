@@ -35,6 +35,12 @@ export function SessionHeader({ pane, models, accessibleTitle }: SessionHeaderPr
    * no-opping.
    */
   const hasStarted = pane.items.length > 0;
+  // Session-scoped, not a bare literal: SessionHeader renders once per pane,
+  // so a fixed id would collide across panes — `getElementById`, which is
+  // what `aria-describedby` resolves against, returns only the first match,
+  // and every other pane's disabled model control would describe itself
+  // using pane one's reason text.
+  const modelReasonId = `model-reason-${s.id}`;
 
   return (
     <div className="flex items-center gap-2 border-b border-border px-2 py-1 text-xs">
@@ -74,7 +80,7 @@ export function SessionHeader({ pane, models, accessibleTitle }: SessionHeaderPr
         >
           <SelectTrigger
             size="sm"
-            className="h-auto min-w-0 shrink truncate border-0 bg-transparent p-0 text-muted-foreground"
+            className="min-w-0 shrink truncate border-0 bg-transparent p-0 text-muted-foreground"
             aria-label="Model"
             disabled={hasStarted}
             // Disabled-with-a-reason, not a silently-frozen label: matches
@@ -84,7 +90,7 @@ export function SessionHeader({ pane, models, accessibleTitle }: SessionHeaderPr
             // disabled control is reachable by neither keyboard focus nor
             // most screen readers, since disabled elements are pulled out
             // of both.
-            aria-describedby={hasStarted ? 'model-reason' : undefined}
+            aria-describedby={hasStarted ? modelReasonId : undefined}
           >
             <SelectValue className="truncate" />
           </SelectTrigger>
@@ -98,7 +104,7 @@ export function SessionHeader({ pane, models, accessibleTitle }: SessionHeaderPr
           // sr-only rather than visible: the header has no room for a
           // sentence next to the status badge, title and cwd, and the
           // control is already visibly disabled.
-          <span id="model-reason" className="sr-only">
+          <span id={modelReasonId} className="sr-only">
             The model can only be chosen before the first message is sent.
           </span>
         )}

@@ -41,6 +41,12 @@ export function Composer({ pane, model }: { pane: PaneState; model: ModelInfo | 
    * message" are the same fact told from two sides of the wire.
    */
   const hasStarted = pane.items.length > 0;
+  // Session-scoped, not a bare literal: Composer renders once per pane, so a
+  // fixed id would collide across panes — `getElementById`, which is what
+  // `aria-describedby` resolves against, returns only the first match, and
+  // every other pane's disabled bypass option would describe itself using
+  // pane one's reason text.
+  const bypassReasonId = `bypass-reason-${pane.summary.id}`;
 
   const submit = () => {
     const trimmed = text.trim();
@@ -128,14 +134,14 @@ export function Composer({ pane, model }: { pane: PaneState; model: ModelInfo | 
                     // on a disabled control is reachable by neither keyboard
                     // focus nor most screen readers, since disabled elements
                     // are pulled out of both.
-                    aria-describedby={disableBypass ? 'bypass-reason' : undefined}
+                    aria-describedby={disableBypass ? bypassReasonId : undefined}
                   >
                     {item.label}
                   </SelectItem>
                 );
               })}
               {hasStarted && (
-                <p id="bypass-reason" className="px-1.5 py-1 text-[0.65rem] text-muted-foreground">
+                <p id={bypassReasonId} className="px-1.5 py-1 text-[0.65rem] text-muted-foreground">
                   Bypass can only be chosen before the first message is sent.
                 </p>
               )}
