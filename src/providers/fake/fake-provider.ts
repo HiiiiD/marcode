@@ -40,13 +40,6 @@ class EventChannel implements AsyncIterable<AgentEvent> {
   }
 }
 
-export interface FakeStartCall {
-  /** The StartOptions this particular start() call was given. */
-  opts: StartOptions;
-  /** Flips to true once the AgentRun returned by this call is dispose()d. */
-  disposed: boolean;
-}
-
 export class FakeProvider implements AgentProvider {
   readonly id = 'fake';
   readonly displayName = 'Fake';
@@ -54,8 +47,6 @@ export class FakeProvider implements AgentProvider {
   readonly decisions = new Map<string, ToolDecision>();
   /** Records every mode passed to setPermissionMode, for assertions. */
   readonly permissionModes: PermissionMode[] = [];
-  /** Records every start() call, in order, for assertions about restarts. */
-  readonly calls: FakeStartCall[] = [];
   private sessionCounter = 0;
 
   constructor(private readonly script: (text: string) => AgentEvent[]) {}
@@ -71,9 +62,7 @@ export class FakeProvider implements AgentProvider {
     ];
   }
 
-  start(opts: StartOptions): AgentRun {
-    const call: FakeStartCall = { opts, disposed: false };
-    this.calls.push(call);
+  start(_opts: StartOptions): AgentRun {
     const channel = new EventChannel();
     const resumeToken = `fake-session-${++this.sessionCounter}`;
     let started = false;
@@ -99,7 +88,7 @@ export class FakeProvider implements AgentProvider {
       setEffort: (_effort: EffortLevel) => { /* recorded by tests via lastEffort if needed */ },
       setPermissionMode: (mode: PermissionMode) => { this.permissionModes.push(mode); },
       interrupt: async () => { channel.push({ kind: 'turn-end', reason: 'interrupted' }); },
-      dispose: async () => { call.disposed = true; channel.close(); },
+      dispose: async () => { channel.close(); },
     };
   }
 }
