@@ -459,6 +459,19 @@ design to be revisited.
 
 ## Open questions
 
-**Transcript retention.** None in v1 — transcripts accumulate on disk until
-deleted. Unbounded storage is a real if slow-moving problem. A size cap or
-prune-by-age is reasonable for v1.1, once there is evidence of actual volume.
+**Transcript storage growth.** v1 stores plain, uncompressed JSONL and applies
+no retention — transcripts accumulate on disk until explicitly deleted.
+Unbounded storage is a real if slow-moving problem. Two v1.1 levers, deferred
+together because neither is worth designing without evidence of actual volume:
+
+- **Compress on archive.** Live sessions stay plain JSONL so appends stay one
+  `appendFile` and tail reads stay a byte-offset seek; gzip the file once when a
+  session is archived, and decompress on reopen. `index.json` records which form
+  each session is in. Archived sessions are the bulk of stored bytes and are
+  read rarely, so this captures most of the saving with no cost on the path that
+  runs per token. Compressing on write instead would mean a member-offset index
+  just to support tail reads and backward paging.
+- **Retention policy.** A size cap or prune-by-age.
+
+Compression is a constant factor, not a substitute for retention — it buys
+roughly an order of magnitude, then the same question returns.
