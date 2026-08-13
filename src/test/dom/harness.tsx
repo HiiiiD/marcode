@@ -23,20 +23,6 @@ const sent: WebviewToHost[] = [];
 const { App } = require('@/app') as typeof AppModule;
 const { StoreProvider } = require('@/store') as typeof StoreModule;
 
-// global-jsdom copies a one-time snapshot of jsdom's window properties onto
-// Node's globalThis; it does not keep the two in sync afterwards. jsdom has
-// no ResizeObserver of its own, so setup.ts's `globalThis.ResizeObserver
-// ??= StubObserver` never reaches the real jsdom Window (a distinct object,
-// `window` here) — and react-resizable-panels (PaneGroup) reads it off
-// `element.ownerDocument.defaultView`, i.e. that real window, not globalThis.
-class StubResizeObserver {
-  observe(): void {}
-  unobserve(): void {}
-  disconnect(): void {}
-}
-(window as unknown as { ResizeObserver: typeof ResizeObserver })
-  .ResizeObserver ??= StubResizeObserver as unknown as typeof ResizeObserver;
-
 /**
  * Everything the webview has posted, oldest first.
  *
@@ -47,7 +33,7 @@ class StubResizeObserver {
  * component, `ready` is the only message on mount.
  */
 export function posted(): WebviewToHost[] {
-  return sent;
+  return [...sent];
 }
 
 export function resetHost(): void {
@@ -60,6 +46,10 @@ export function resetHost(): void {
  * Deliberately `dispatchEvent` rather than `window.postMessage`: jsdom queues
  * postMessage asynchronously, which makes every assertion after it racy.
  * `onHostMessage` listens for a `message` event and cannot tell the difference.
+ *
+ * `window.MessageEvent`, not the bare `MessageEvent`: Node 22 has its own
+ * native `MessageEvent` global from a different realm than jsdom's, and
+ * jsdom's `dispatchEvent` rejects an event constructed from the wrong realm.
  */
 export function sendFromHost(...msgs: HostToWebview[]): void {
   act(() => {
