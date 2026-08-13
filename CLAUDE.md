@@ -101,10 +101,15 @@ element "just this once".
   the vendored file. Do not mix in Radix packages.
 - Primitives are vendored into `src/webview/components/ui/`. Tailwind picks them up through
   the esbuild plugin — no config change needed when you add one.
-- **Use the short Tailwind utilities**: `border-border`, `bg-muted`, `text-muted-foreground`.
-  The `@theme inline` block in `src/webview/index.css` registers every token under the
-  `--color-*` namespace, so `[var(--…)]` arbitrary values are never needed and must not
-  appear in component code.
+- **Prefer the short Tailwind utilities for plain token lookups**: `border-border`,
+  `bg-muted`, `text-muted-foreground`. The `@theme inline` block in
+  `src/webview/index.css` registers every token under the `--color-*` namespace, so
+  `bg-[var(--color-muted)]` is just a worse spelling of `bg-muted` — don't write that.
+- **Arbitrary values are fine when you need a computation the utility scale can't
+  express.** shadcn's own vendored source does this, and matching it is correct:
+  `rounded-[min(var(--radius-md),10px)]`, `bg-[color-mix(in_oklch,var(--secondary),var(--foreground)_5%)]`.
+  The test is whether a plain utility would say the same thing — if it would, use it; if
+  the value is derived (`min()`, `calc()`, `color-mix()`), reach for the arbitrary value.
 
 ## Conventions
 
