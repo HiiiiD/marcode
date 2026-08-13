@@ -48,6 +48,9 @@ export function Composer({ pane, model }: { pane: PaneState; model: ModelInfo | 
   // every other pane's disabled bypass option would describe itself using
   // pane one's reason text.
   const bypassReasonId = `bypass-reason-${pane.summary.id}`;
+  // Same session-scoping rationale as `bypassReasonId` above, for the Send
+  // button's disabled-while-running reason.
+  const sendReasonId = `send-reason-${pane.summary.id}`;
 
   const submit = () => {
     const trimmed = text.trim();
@@ -172,15 +175,31 @@ export function Composer({ pane, model }: { pane: PaneState; model: ModelInfo | 
             aria-label="Send"
             // Icon-only control: the hover title is a discoverability aid for
             // sighted mouse/keyboard users, not the accessible name (that's
-            // aria-label above). Only set while enabled — a title on a
-            // disabled element is unreliable for assistive tech, so the
-            // disabled state gets its explanatory reason instead.
-            title={running
-              ? 'The agent is working. Stop it to send another message.'
-              : 'Send message'}
+            // aria-label above). There are two disabled states here, not
+            // one — `running` and an empty box — so the title can't just key
+            // off `running`: doing that left `title="Send message"` sitting
+            // on a disabled, empty composer, which is actively misleading
+            // since clicking does nothing. Set only when the button is
+            // actually clickable; the running case gets its explanatory
+            // reason via `aria-describedby` instead, matching the other
+            // disabled-with-a-reason sites in this file and
+            // session-header.tsx/session-picker.tsx — a `title` on a
+            // disabled element is reachable by neither keyboard focus nor
+            // most screen readers, since disabled elements are pulled out of
+            // both.
+            aria-describedby={running ? sendReasonId : undefined}
+            title={!running && text.trim() ? 'Send message' : undefined}
           >
             <SendHorizontal />
           </Button>
+          {running && (
+            // sr-only rather than visible: the row has no room for a
+            // sentence next to the settings and the Stop/Send buttons, and
+            // Send is already visibly disabled.
+            <span id={sendReasonId} className="sr-only">
+              The agent is working. Stop it to send another message.
+            </span>
+          )}
         </InputGroupAddon>
       </InputGroup>
     </div>

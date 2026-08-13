@@ -152,9 +152,11 @@ suite('Composer', () => {
       // variant-qualified tokens (CSS picks the active one via the
       // data-size attribute) — a bare \b boundary matches "h-8"/"h-7"
       // inside those regardless of what we authored. A hand-written height
-      // is always a space-separated, unqualified token instead.
+      // is always a space-separated, unqualified token instead. Also covers
+      // `h-auto`, not just `h-<digit>` — the same hand-written-over-a-size-
+      // variant defect tool-card.tsx and transcript.tsx once had.
       assert.ok(
-        !/(?:^|\s)h-\d/.test(trigger.className),
+        !/(?:^|\s)h-(?:\d|auto)/.test(trigger.className),
         `${label} must not hand-write a height over the size variant`,
       );
     }
@@ -185,10 +187,43 @@ suite('Composer', () => {
     const send = screen.getByRole('button', { name: 'Send' });
     assert.ok((send as HTMLButtonElement).disabled, 'Send is disabled, not removed, during a run');
     assert.strictEqual(
-      send.getAttribute('title'),
-      'The agent is working. Stop it to send another message.',
+      send.getAttribute('title'), null,
+      'a title on a disabled control is unreachable by assistive tech; the reason lives in aria-describedby instead',
+    );
+    const describedBy = send.getAttribute('aria-describedby');
+    assert.ok(describedBy, 'Send must explain why it is disabled while the agent runs');
+    const reason = document.getElementById(describedBy!);
+    assert.ok(reason, 'the aria-describedby target must be real, rendered text');
+    assert.strictEqual(
+      reason!.textContent, 'The agent is working. Stop it to send another message.',
     );
     screen.getByRole('button', { name: 'Stop' });
+  });
+
+  test('Send carries no misleading title when disabled by an empty box', () => {
+    renderApp();
+    hydrateOne();
+
+    const send = screen.getByRole('button', { name: 'Send' }) as HTMLButtonElement;
+    assert.ok(send.disabled, 'Send starts disabled with nothing typed');
+    assert.strictEqual(
+      send.getAttribute('title'), null,
+      '"Send message" on a disabled, empty composer is misleading since clicking does nothing',
+    );
+    assert.strictEqual(
+      send.getAttribute('aria-describedby'), null,
+      'an empty box needs no explanatory reason the way the running state does',
+    );
+  });
+
+  test('Send carries its discoverability title once there is text and the agent is idle', async () => {
+    renderApp();
+    hydrateOne();
+
+    await userEvent.type(screen.getByLabelText('Message'), 'hello');
+    const send = screen.getByRole('button', { name: 'Send' }) as HTMLButtonElement;
+    assert.strictEqual(send.disabled, false);
+    assert.strictEqual(send.getAttribute('title'), 'Send message');
   });
 
   test('Stop still posts interrupt', async () => {
