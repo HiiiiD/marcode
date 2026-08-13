@@ -40,7 +40,7 @@ export function SessionPicker({ narrow }: SessionPickerProps) {
           <ColumnsIcon aria-hidden />
           {open.size} of {state.sessions.length} in split
           {needing > 0 && (
-            <span className="ml-auto text-primary" aria-live="polite">
+            <span className="ml-auto text-primary">
               {needing} needs you
             </span>
           )}

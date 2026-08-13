@@ -1,15 +1,15 @@
 import { cn } from '@/lib/utils';
-import { statusView } from '../status';
+import { statusView, type StatusView } from '../status';
 import type { SessionStatus } from '../../protocol/messages';
 
-const DOT: Record<string, string> = {
+const DOT: Record<StatusView['tone'], string> = {
   idle: 'bg-muted-foreground',
   busy: 'bg-primary animate-pulse',
   attention: 'bg-primary',
   failed: 'bg-destructive',
 };
 
-const CHIP: Record<string, string> = {
+const CHIP: Record<StatusView['tone'], string> = {
   idle: 'text-muted-foreground',
   busy: 'text-muted-foreground',
   attention: 'border border-primary/40 bg-primary/10 text-foreground',

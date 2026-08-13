@@ -38,4 +38,16 @@ suite('SessionHeader status', () => {
 
     screen.getByText(/1 needs you/i);
   });
+
+  test('only the header badge is a live region, not the roster count', () => {
+    renderApp();
+    hydrate();
+    sendFromHost({ t: 'session-status', id: 'a', status: 'awaiting-approval' });
+
+    const badge = screen.getByText('Needs you');
+    assert.strictEqual(badge.closest('[aria-live]')?.getAttribute('aria-live'), 'polite');
+
+    const rosterCount = screen.getByText(/1 needs you/i);
+    assert.strictEqual(rosterCount.closest('[aria-live]'), null);
+  });
 });
