@@ -70,13 +70,4 @@ suite('SessionPicker', () => {
       'use size="icon-sm"; twMerge does not strip size-8 when h-7 w-7 is added',
     );
   });
-
-  test('New posts create-session with the first catalog provider', async () => {
-    renderApp();
-    hydrateAOpen();
-
-    await userEvent.click(screen.getByText('+ New'));
-
-    assert.deepStrictEqual(posted().at(-1), { t: 'create-session', providerId: 'fake', cwd: '' });
-  });
 });

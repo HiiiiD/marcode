@@ -4,6 +4,7 @@ import {
   DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { evenlySizedPanes } from './pane-layout';
+import { SessionCreateMenu } from './session-create-menu';
 import { useStore } from '../store';
 import type { SessionId } from '../../protocol/messages';
 
@@ -19,8 +20,6 @@ export function SessionPicker() {
   const toggle = (id: SessionId) => {
     setPanes(open.has(id) ? [...open].filter((x) => x !== id) : [...open, id]);
   };
-
-  const providerId = state.catalog[0]?.id;
 
   return (
     <div className="flex items-center gap-2 border-b border-border px-2 py-1 text-xs">
@@ -76,14 +75,7 @@ export function SessionPicker() {
         {state.layout.orientation === 'vertical' ? '⬍' : '⬌'}
       </Button>
 
-      <Button
-        size="sm"
-        className="shrink-0"
-        disabled={!providerId}
-        onClick={() => providerId && post({ t: 'create-session', providerId, cwd: '' })}
-      >
-        + New
-      </Button>
+      <SessionCreateMenu />
     </div>
   );
 }
