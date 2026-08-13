@@ -83,13 +83,16 @@ suite('PermissionCard', () => {
     );
   });
 
-  test('a resolved item renders as a one-line summary with no buttons', () => {
+  test('a resolved item keeps the diff available under a details disclosure', () => {
     const item = permission({ state: 'denied', reason: 'nope' });
     renderWithStore(<PermissionCard item={item} sessionId="a" />);
     hydrateWith(LIVE);
 
-    screen.getByText('Write — denied: nope');
+    screen.getByText('Write — denied');
+    screen.getByText('nope');
     assert.strictEqual(screen.queryByLabelText('Allow Write'), null);
+    const details = document.querySelector('details');
+    assert.notStrictEqual(details, null, 'the diff must not be discarded on resolution');
   });
 
   test('an edit-shaped input renders a diff preview', () => {
@@ -102,6 +105,13 @@ suite('PermissionCard', () => {
 
     const pre = document.querySelector('pre');
     assert.notStrictEqual(pre, null);
-    assert.strictEqual(pre!.textContent, '--- /tmp/a.txt\n- one\n+ two');
+    assert.strictEqual(pre!.textContent, '--- /tmp/a.txt- one+ two');
+  });
+
+  test('the live card shows the session folder next to the tool name', () => {
+    renderWithStore(<PermissionCard item={permission()} sessionId="a" />);
+    hydrateWith(LIVE);
+
+    screen.getByText('tmp');
   });
 });

@@ -1,5 +1,7 @@
+import { Markdown } from './markdown';
 import { PermissionCard } from './permission-card';
 import { ToolCard } from './tool-card';
+import { TranscriptItemShell } from './transcript-item-shell';
 import type { SessionId, TranscriptItem } from '../../protocol/messages';
 
 export function TranscriptItemView({
@@ -11,21 +13,23 @@ export function TranscriptItemView({
   switch (item.role) {
     case 'user':
       return (
-        <div className="my-2 rounded bg-muted px-2 py-1 whitespace-pre-wrap">
-          {item.text}
-        </div>
+        <TranscriptItemShell role="user" label="You" ts={item.ts}>
+          <div className="rounded bg-muted px-2 py-1 wrap-break-word whitespace-pre-wrap">
+            {item.text}
+          </div>
+        </TranscriptItemShell>
       );
 
     case 'assistant':
       return (
-        <div className="my-2 whitespace-pre-wrap">
+        <TranscriptItemShell role="assistant" label="Agent" ts={item.ts}>
           {item.thinking && (
-            <div className="mb-1 border-l-2 border-border pl-2 text-xs italic text-muted-foreground">
+            <div className="mb-1 border-l-2 border-border pl-2 text-xs wrap-break-word text-muted-foreground italic">
               {item.thinking}
             </div>
           )}
-          {item.text}
-        </div>
+          <Markdown>{item.text}</Markdown>
+        </TranscriptItemShell>
       );
 
     case 'tool':
@@ -33,9 +37,11 @@ export function TranscriptItemView({
 
     case 'error':
       return (
-        <div className="my-2 rounded border border-destructive px-2 py-1 text-xs text-destructive">
-          {item.message}
-        </div>
+        <TranscriptItemShell role="error" label="Error" ts={item.ts}>
+          <div className="max-h-48 overflow-auto rounded border border-destructive px-2 py-1 text-xs wrap-break-word whitespace-pre-wrap text-destructive">
+            {item.message}
+          </div>
+        </TranscriptItemShell>
       );
 
     case 'permission':

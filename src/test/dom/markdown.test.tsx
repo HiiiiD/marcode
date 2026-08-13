@@ -30,4 +30,19 @@ suite('Markdown', () => {
     const { container } = render(<Markdown>{'<img src=x onerror=alert(1)>'}</Markdown>);
     assert.strictEqual(container.querySelector('img'), null);
   });
+
+  // Assistant text arrives token by token via session-patch deltas, so this
+  // component re-renders on syntactically incomplete markdown mid-stream —
+  // an unclosed fence or a list cut off after a dash. It must not throw.
+  test('an unterminated fence renders without throwing', () => {
+    assert.doesNotThrow(() => {
+      render(<Markdown>{'```ts\nconst a = 1;'}</Markdown>);
+    });
+  });
+
+  test('a truncated list renders without throwing', () => {
+    assert.doesNotThrow(() => {
+      render(<Markdown>{'- one\n- '}</Markdown>);
+    });
+  });
 });
