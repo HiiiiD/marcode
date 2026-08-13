@@ -16,6 +16,20 @@ suite('Markdown', () => {
     assert.strictEqual(container.querySelectorAll('li').length, 2);
   });
 
+  test('no heading level injects a real heading into the document outline', () => {
+    const source = ['# one', '## two', '### three', '#### four', '##### five', '###### six'].join('\n\n');
+    const { container } = render(<Markdown>{source}</Markdown>);
+    for (let level = 1; level <= 6; level += 1) {
+      assert.strictEqual(
+        container.querySelector(`h${level}`), null,
+        `h${level} must be downgraded to an emphasized paragraph, not a real heading`,
+      );
+    }
+    for (const text of ['one', 'two', 'three', 'four', 'five', 'six']) {
+      screen.getByText(text);
+    }
+  });
+
   test('never emits a remote resource', () => {
     const { container } = render(
       <Markdown>{'![x](https://evil.test/a.png)\n\n[link](https://evil.test)'}</Markdown>,

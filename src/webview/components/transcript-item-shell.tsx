@@ -1,7 +1,9 @@
 import type { ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 
-const RULE: Record<string, string> = {
+export type TranscriptItemRole = 'user' | 'assistant' | 'tool' | 'permission' | 'error';
+
+const RULE: Record<TranscriptItemRole, string> = {
   user: 'border-l-muted-foreground/40',
   assistant: 'border-l-primary/40',
   tool: 'border-l-border',
@@ -17,7 +19,7 @@ const RULE: Record<string, string> = {
 export function TranscriptItemShell({
   role, label, ts, children,
 }: {
-  role: 'user' | 'assistant' | 'tool' | 'permission' | 'error';
+  role: TranscriptItemRole;
   label: string;
   ts?: number;
   children: ReactNode;

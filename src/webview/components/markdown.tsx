@@ -13,10 +13,13 @@ import { cn } from '@/lib/utils';
  * `react-markdown` does not parse raw HTML unless rehype-raw is added — it
  * is deliberately absent.
  *
- * Headings render as emphasized paragraphs, not <h1>-<h3>, on purpose: real
+ * Headings render as emphasized paragraphs, not <h1>-<h6>, on purpose: real
  * headings from arbitrary agent output would inject a nonsense document
  * outline into a panel whose own heading structure is established
- * elsewhere.
+ * elsewhere — the panel now has its own `h2` per pane (session-header.tsx),
+ * so there is a real outline to pollute. All six levels are mapped, not just
+ * `h1`-`h3`: an unmapped `h4`-`h6` would fall through to react-markdown's
+ * default and emit a real heading.
  */
 export function Markdown({ children }: { children: string }) {
   return (
@@ -39,6 +42,9 @@ export function Markdown({ children }: { children: string }) {
         h1: ({ children: content }) => <p className="mt-2 font-semibold">{content}</p>,
         h2: ({ children: content }) => <p className="mt-2 font-semibold">{content}</p>,
         h3: ({ children: content }) => <p className="mt-2 font-semibold">{content}</p>,
+        h4: ({ children: content }) => <p className="mt-2 font-semibold">{content}</p>,
+        h5: ({ children: content }) => <p className="mt-2 font-semibold">{content}</p>,
+        h6: ({ children: content }) => <p className="mt-2 font-semibold">{content}</p>,
         p: ({ children: content }) => <p className="my-1 wrap-break-word">{content}</p>,
       }}
     >
