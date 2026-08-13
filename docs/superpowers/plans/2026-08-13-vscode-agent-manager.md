@@ -131,7 +131,7 @@ Replace the `contributes` block and add scripts. `activationEvents` stays `[]` �
       "activitybar": [
         {
           "id": "hiiiid-code",
-          "title": "Agents",
+          "title": "HiiiiD Code",
           "icon": "media/icon.svg"
         }
       ]
@@ -140,7 +140,7 @@ Replace the `contributes` block and add scripts. `activationEvents` stays `[]` �
       "hiiiid-code": [
         {
           "id": "hiiiid-code.panel",
-          "name": "Agents",
+          "name": "Sessions",
           "type": "webview"
         }
       ]
@@ -324,7 +324,7 @@ Expected: at least 1. If the count is 0, `@theme inline` did not take effect and
 import { createRoot } from 'react-dom/client';
 
 function App() {
-  return <div className="p-3 text-sm">Agents panel ready.</div>;
+  return <div className="p-3 text-sm">HiiiiD Code panel ready.</div>;
 }
 
 const container = document.getElementById('root');
@@ -375,7 +375,7 @@ export class PanelViewProvider implements vscode.WebviewViewProvider {
 <meta http-equiv="Content-Security-Policy" content="${csp}">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link href="${styleUri}" rel="stylesheet">
-<title>Agents</title>
+<title>HiiiiD Code</title>
 </head>
 <body>
 <div id="root"></div>
@@ -469,9 +469,9 @@ Expected: PASS, 2 passing.
 - [ ] **Step 11: Manually verify sidebar placement**
 
 Press F5 to launch the Extension Development Host. Confirm:
-1. An "Agents" icon appears in the activity bar.
-2. Clicking it shows "Agents panel ready." styled with the current theme's colors.
-3. Dragging the "Agents" container from the activity bar into the secondary sidebar (View → Appearance → Secondary Side Bar, `Ctrl+Alt+B`) works, and it stays there after reloading the window.
+1. A "HiiiiD Code" icon appears in the activity bar.
+2. Clicking it shows "HiiiiD Code panel ready." styled with the current theme's colors.
+3. Dragging the "HiiiiD Code" container from the activity bar into the secondary sidebar (View → Appearance → Secondary Side Bar, `Ctrl+Alt+B`) works, and it stays there after reloading the window.
 
 Point 3 is the gating requirement. If it fails, stop and report before continuing.
 
@@ -4089,14 +4089,14 @@ git commit -m "feat: add the Claude Agent SDK provider"
     "walkthroughs": [
       {
         "id": "hiiiid-code.setup",
-        "title": "Set up the Agents panel",
-        "description": "Move the Agents panel into the secondary sidebar",
+        "title": "Set up the HiiiiD Code panel",
+        "description": "Move the HiiiiD Code panel into the secondary sidebar",
         "steps": [
           {
             "id": "move-to-secondary",
-            "title": "Move Agents to the secondary sidebar",
-            "description": "VS Code extensions cannot place a view in the secondary sidebar directly. Open the secondary sidebar with Ctrl+Alt+B, then drag the Agents icon from the activity bar into it. VS Code remembers the location.",
-            "media": { "markdown": "media/walkthrough-sidebar.md", "altText": "Drag Agents to the secondary sidebar" }
+            "title": "Move HiiiiD Code to the secondary sidebar",
+            "description": "VS Code extensions cannot place a view in the secondary sidebar directly. Open the secondary sidebar with Ctrl+Alt+B, then drag the HiiiiD Code icon from the activity bar into it. VS Code remembers the location.",
+            "media": { "markdown": "media/walkthrough-sidebar.md", "altText": "Drag HiiiiD Code to the secondary sidebar" }
           }
         ]
       }
@@ -4106,10 +4106,10 @@ git commit -m "feat: add the Claude Agent SDK provider"
 - [ ] **Step 2: Write `media/walkthrough-sidebar.md`**
 
 ```markdown
-## Move Agents to the secondary sidebar
+## Move HiiiiD Code to the secondary sidebar
 
 1. Open the secondary sidebar — **View → Appearance → Secondary Side Bar**, or `Ctrl+Alt+B`.
-2. Drag the **Agents** icon from the activity bar into the secondary sidebar.
+2. Drag the **HiiiiD Code** icon from the activity bar into the secondary sidebar.
 3. Widen it by dragging its inner edge — split panes need the room.
 
 VS Code stores this per profile and workspace, so it only has to be done once.

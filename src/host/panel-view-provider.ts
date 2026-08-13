@@ -37,7 +37,7 @@ export class PanelViewProvider implements vscode.WebviewViewProvider {
 <meta http-equiv="Content-Security-Policy" content="${csp}">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link href="${styleUri}" rel="stylesheet">
-<title>Agents</title>
+<title>HiiiiD Code</title>
 </head>
 <body>
 <div id="root"></div>

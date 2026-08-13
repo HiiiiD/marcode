@@ -1,6 +1,6 @@
 {
   "name": "hiiiid-code",
-  "displayName": "hiiiid-code",
+  "displayName": "HiiiiD Code",
   "description": "Use your code agents at ease",
   "version": "0.0.1",
   "engines": {
@@ -16,7 +16,7 @@
       "activitybar": [
         {
           "id": "hiiiid-code",
-          "title": "Agents",
+          "title": "HiiiiD Code",
           "icon": "media/icon.svg"
         }
       ]
@@ -25,7 +25,7 @@
       "hiiiid-code": [
         {
           "id": "hiiiid-code.panel",
-          "name": "Agents",
+          "name": "Sessions",
           "type": "webview"
         }
       ]
