@@ -64,8 +64,11 @@ extension.ts
 **Build:** esbuild produces two bundles — node/CJS for the host, browser/IIFE for the
 webview. TypeScript, React 19, Tailwind v4.
 
-**Tests:** mocha for unit tests (`yarn test:unit`, TDD-style `suite`/`test` globals),
-`@vscode/test-cli` for integration (`yarn test`).
+**Tests:** mocha for unit tests (`yarn test:unit`, TDD-style `suite`/`test` globals, run
+straight from source through the `tsx/cjs` hook), mocha + jsdom for webview DOM tests
+(`yarn test:dom`, components mounted under a real `StoreProvider` and driven with genuine
+`HostToWebview` messages — see `src/test/dom/harness.tsx`), `@vscode/test-cli` for
+integration (`yarn test`).
 
 ### Invariants
 
@@ -87,6 +90,10 @@ These are not style preferences. Breaking one breaks the design.
   a per-load CSPRNG nonce; `localResourceRoots` pinned to `dist/`.
 - **Filenames are kebab-case**, including React components (`session-list.tsx`, not
   `SessionList.tsx`). Component *identifiers* stay PascalCase.
+- **DOM tests drive components through the real `StoreProvider`.** State arrives as genuine
+  `HostToWebview` messages via `sendFromHost`; assertions read the messages the webview
+  posted back. Never mock `useStore` or hand-build a `ClientState` — a fake provider bypasses
+  `reduce` and lets a test pass against a state the host could never produce.
 
 ## UI: shadcn is mandatory
 
