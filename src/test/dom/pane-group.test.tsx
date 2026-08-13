@@ -113,5 +113,59 @@ suite('PaneGroup', () => {
       'closing the only pane must not silently drop focus to <body>',
     );
     assert.ok(document.activeElement?.isConnected, 'focus must land on an element still in the document');
+    // The fallback container itself is the focus target here (there's no
+    // `[data-slot="button"]` left to prefer) — it must carry a visible
+    // focus ring, or the recovery this test is about is invisible to a
+    // sighted keyboard user, exactly where it's hardest won.
+    assert.match(
+      document.activeElement!.className, /focus-visible:ring-2/,
+      'the empty-state fallback focus target must carry a focus-visible ring',
+    );
+  });
+
+  test('deleting the session behind a focused pane does not drop focus to <body>', async () => {
+    renderApp();
+    hydrate(['a']);
+
+    // Establishes that focus was live inside the pane the deletion is about
+    // to remove — the same starting point as the header-close tests above.
+    screen.getByLabelText('Close session Session a').focus();
+
+    await userEvent.click(screen.getByText(/1 of 1 in split/i));
+    await userEvent.click(await screen.findByLabelText('Delete session Session a'));
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Delete Session a' }));
+
+    // `delete-session` alone doesn't touch the roster locally — only the
+    // host's echo does (see pane-layout.ts's `reconcilePaneLayout` doc
+    // comment) — so this simulates that echo, which is what actually drops
+    // 'a' from the roster and, via App's reconcile effect one render later,
+    // from the layout.
+    sendFromHost({ t: 'sessions-changed', sessions: [] });
+
+    assert.strictEqual(screen.queryByLabelText('Session: Session a'), null);
+    assert.notStrictEqual(
+      document.activeElement, document.body,
+      'deleting the session behind a focused pane must not silently drop focus to <body>',
+    );
+    assert.ok(document.activeElement?.isConnected, 'focus must land on an element still in the document');
+  });
+
+  test('title-derived accessible names disambiguate when panes share a title', () => {
+    renderApp();
+    sendFromHost({
+      t: 'hydrate',
+      sessions: [summary('a', { title: 'Untitled' }), summary('b', { title: 'Untitled' })],
+      layout: layoutOf('a', 'b'),
+      snapshots: [snapshot('a', { title: 'Untitled' }), snapshot('b', { title: 'Untitled' })],
+      catalog: catalog(),
+    });
+
+    const closeA = screen.getByLabelText(/Close session Untitled \(a\)/);
+    const closeB = screen.getByLabelText(/Close session Untitled \(b\)/);
+    assert.notStrictEqual(
+      closeA.getAttribute('aria-label'), closeB.getAttribute('aria-label'),
+      'two same-titled panes must still be distinguishable to a screen reader',
+    );
+    screen.getByLabelText('Resize between Untitled (a) and Untitled (b)');
   });
 });

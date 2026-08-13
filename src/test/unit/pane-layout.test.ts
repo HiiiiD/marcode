@@ -1,6 +1,6 @@
 import * as assert from 'assert';
 import {
-  evenlySizedPanes, reconcilePaneLayout, rosterSessionIds, visiblePanes,
+  accessibleTitles, evenlySizedPanes, reconcilePaneLayout, rosterSessionIds, visiblePanes,
 } from '../../webview/components/pane-layout';
 
 suite('pane-layout evenlySizedPanes', () => {
@@ -139,5 +139,29 @@ suite('pane-layout rosterSessionIds', () => {
 
   test('an empty roster yields an empty set', () => {
     assert.deepStrictEqual([...rosterSessionIds([])], []);
+  });
+});
+
+suite('pane-layout accessibleTitles', () => {
+  test('a unique title passes through unchanged', () => {
+    const names = accessibleTitles([{ id: 'a', title: 'Session a' }, { id: 'b', title: 'Session b' }]);
+    assert.strictEqual(names.get('a'), 'Session a');
+    assert.strictEqual(names.get('b'), 'Session b');
+  });
+
+  test('a shared title gets the id appended, for every session that shares it', () => {
+    const names = accessibleTitles([
+      { id: 'a', title: 'Untitled' },
+      { id: 'b', title: 'Untitled' },
+      { id: 'c', title: 'Session c' },
+    ]);
+    assert.strictEqual(names.get('a'), 'Untitled (a)');
+    assert.strictEqual(names.get('b'), 'Untitled (b)');
+    assert.strictEqual(names.get('c'), 'Session c', 'a title with no collision must stay plain');
+    assert.notStrictEqual(names.get('a'), names.get('b'));
+  });
+
+  test('an empty list yields an empty map', () => {
+    assert.deepStrictEqual([...accessibleTitles([])], []);
   });
 });

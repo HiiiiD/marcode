@@ -146,3 +146,32 @@ export function reconcilePaneLayout(
   const nextLayout = unchanged ? null : evenlySizedPanes([...kept, ...newlyArrived], layout.orientation);
   return { layout: nextLayout, knownSessionIds: nextKnown };
 }
+
+export interface TitledSession {
+  id: string;
+  title: string;
+}
+
+/**
+ * The name each currently-visible pane's title-derived controls (the close
+ * button, the resize handles either side of it) should actually announce.
+ *
+ * Session titles are user/host-controlled and can collide — most visibly,
+ * every freshly created session starts out titled `'Untitled'` until its
+ * first message lands, so two brand-new panes read identically to a screen
+ * reader even though they're visually distinguishable side by side. This
+ * disambiguates only when a collision actually exists among the given
+ * (visible) sessions, and only in the accessible name — the id is stable,
+ * always present on every session, and needs no new format invented for it,
+ * so it's a safe suffix to add without touching what's rendered on screen.
+ */
+export function accessibleTitles(sessions: TitledSession[]): Map<string, string> {
+  const counts = new Map<string, number>();
+  for (const s of sessions) { counts.set(s.title, (counts.get(s.title) ?? 0) + 1); }
+
+  const result = new Map<string, string>();
+  for (const s of sessions) {
+    result.set(s.id, (counts.get(s.title) ?? 0) > 1 ? `${s.title} (${s.id})` : s.title);
+  }
+  return result;
+}

@@ -7,7 +7,17 @@ import { folderName, formatTokens } from '../format';
 import type { PaneState } from '../reducer';
 import type { ModelInfo } from '../../protocol/messages';
 
-export function SessionHeader({ pane, models }: { pane: PaneState; models: ModelInfo[] }) {
+interface SessionHeaderProps {
+  pane: PaneState;
+  models: ModelInfo[];
+  /** The name this pane's title-derived controls (the close button) should
+   * announce — the plain title, or the title plus the session id when
+   * another visible pane shares it. See `accessibleTitles` in
+   * `pane-layout.ts`. */
+  accessibleTitle: string;
+}
+
+export function SessionHeader({ pane, models, accessibleTitle }: SessionHeaderProps) {
   const { state, post } = useStore();
   const s = pane.summary;
   const modelLabel = models.find((m) => m.id === s.model)?.displayName ?? s.model;
@@ -22,7 +32,7 @@ export function SessionHeader({ pane, models }: { pane: PaneState; models: Model
         keyboard/screen-reader user document structure to navigate the split
         by, where previously there were zero headings anywhere in the webview.
       */}
-      <h2 className="truncate text-xs font-medium" title={s.title}>{s.title}</h2>
+      <h2 className="truncate font-medium" title={s.title}>{s.title}</h2>
       <span className="truncate text-muted-foreground" title={s.cwd}>
         {folderName(s.cwd)}
       </span>
@@ -55,7 +65,7 @@ export function SessionHeader({ pane, models }: { pane: PaneState; models: Model
       <Button
         variant="ghost"
         size="icon-xs"
-        aria-label={`Close session ${s.title}`}
+        aria-label={`Close session ${accessibleTitle}`}
         onClick={() => {
           // `close-session` alone only flips the session to archived on the
           // host and revokes its visibility (SessionManager.close) — it does

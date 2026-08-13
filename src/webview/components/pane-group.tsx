@@ -2,6 +2,7 @@ import { Fragment, useEffect, useRef } from 'react';
 import {
   ResizableHandle, ResizablePanel, ResizablePanelGroup,
 } from '@/components/ui/resizable';
+import { cn } from '@/lib/utils';
 // react-resizable-panels ships ESM-only; a type-only import from a CommonJS
 // module needs an explicit resolution-mode attribute (TS 5.3+) or tsc's
 // per-file CJS/ESM interop check rejects it outright (TS1541) — see the
@@ -10,7 +11,7 @@ import type { Layout, LayoutChangedMeta } from 'react-resizable-panels' with { '
 import { SessionHeader } from './session-header';
 import { Transcript } from './transcript';
 import { Composer } from './composer';
-import { rosterSessionIds, visiblePanes } from './pane-layout';
+import { accessibleTitles, rosterSessionIds, visiblePanes } from './pane-layout';
 import { SessionCreateMenu } from './session-create-menu';
 import { useStore } from '../store';
 
@@ -33,6 +34,13 @@ export function PaneGroup({ narrow }: PaneGroupProps) {
   const snapshotArrived = new Set(Object.keys(state.byId));
   const panes = visiblePanes(state.layout.panes, roster, snapshotArrived);
   const orientation = narrow ? 'vertical' : state.layout.orientation;
+  // Disambiguates title-derived accessible names (close button, resize
+  // handles) when two or more visible panes share a title — most commonly
+  // two freshly created sessions, both still 'Untitled'. See
+  // accessibleTitles' doc comment in pane-layout.ts.
+  const names = accessibleTitles(
+    panes.map((p) => ({ id: p.sessionId, title: state.byId[p.sessionId].summary.title })),
+  );
 
   // Closing or deleting a session unmounts its pane. If the element that
   // held focus (e.g. the pane's own "Close session" button) goes with it,
@@ -51,7 +59,10 @@ export function PaneGroup({ narrow }: PaneGroupProps) {
   // fallback instead (no `[data-slot="button"]` when the roster still has
   // sessions, just hidden ones) — `rootRef.current` itself, made
   // programmatically focusable via `tabIndex={-1}`, is the last resort so
-  // focus always lands on something real rather than failing silently.
+  // focus always lands on something real rather than failing silently. Both
+  // root elements below carry `focus-visible:ring-2` so that last resort is
+  // not just real but *visible* to a sighted keyboard user — the same ring
+  // every other focusable control here uses (see `button.tsx`).
   const rootRef = useRef<HTMLDivElement>(null);
   const prevCount = useRef(panes.length);
   useEffect(() => {
@@ -68,7 +79,10 @@ export function PaneGroup({ narrow }: PaneGroupProps) {
       <div
         ref={rootRef}
         tabIndex={-1}
-        className="flex h-full flex-col items-center justify-center gap-2 p-4 text-center outline-none"
+        className={cn(
+          'flex h-full flex-col items-center justify-center gap-2 p-4 text-center outline-none',
+          'focus-visible:ring-2 focus-visible:ring-ring',
+        )}
       >
         <p className="text-xs text-muted-foreground">
           {roster.size === 0
@@ -81,7 +95,11 @@ export function PaneGroup({ narrow }: PaneGroupProps) {
   }
 
   return (
-    <div ref={rootRef} tabIndex={-1} className="h-full outline-none">
+    <div
+      ref={rootRef}
+      tabIndex={-1}
+      className={cn('h-full outline-none', 'focus-visible:ring-2 focus-visible:ring-ring')}
+    >
       <ResizablePanelGroup
         orientation={orientation}
         aria-label="Open agent sessions"
@@ -112,7 +130,7 @@ export function PaneGroup({ narrow }: PaneGroupProps) {
             <Fragment key={pane.sessionId}>
               {index > 0 && (
                 <ResizableHandle
-                  aria-label={`Resize between ${state.byId[panes[index - 1].sessionId].summary.title} and ${paneState.summary.title}`}
+                  aria-label={`Resize between ${names.get(panes[index - 1].sessionId)} and ${names.get(paneState.summary.id)}`}
                   withHandle
                 />
               )}
@@ -128,6 +146,7 @@ export function PaneGroup({ narrow }: PaneGroupProps) {
                     key={paneState.summary.id}
                     pane={paneState}
                     models={provider?.models ?? []}
+                    accessibleTitle={names.get(paneState.summary.id)!}
                   />
                   <div className="min-h-0 flex-1">
                     <Transcript
