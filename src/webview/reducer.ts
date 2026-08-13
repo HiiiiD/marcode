@@ -56,8 +56,24 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
       };
     }
 
-    case 'sessions-changed':
-      return { ...state, sessions: msg.sessions };
+    case 'sessions-changed': {
+      // `sessions-changed` is the only HostToWebview message carrying a
+      // session's full summary — effort and permissionMode changes
+      // (AgentSession.setEffort/setPermissionMode notify via
+      // sink.changed() -> sessions-changed) reach the wire only through it,
+      // not through session-status or session-patch. Mirror each incoming
+      // summary into the matching byId entry so panes reflect it without
+      // waiting for a session-snapshot (which only arrives on hydrate or
+      // set-visible) — the same reason session-status below mirrors
+      // `status` specifically, generalized to every summary field.
+      const byId = { ...state.byId };
+      for (const s of msg.sessions) {
+        const pane = byId[s.id];
+        if (!pane) { continue; } // no existing pane: nothing to mirror onto, and not created here.
+        byId[s.id] = { ...pane, summary: s };
+      }
+      return { ...state, sessions: msg.sessions, byId };
+    }
 
     case 'session-snapshot': {
       const s = msg.session;

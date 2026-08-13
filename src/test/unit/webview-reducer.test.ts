@@ -115,6 +115,49 @@ suite('webview reducer', () => {
     assert.strictEqual(state.byId['s1'].summary.status, 'running');
   });
 
+  test('sessions-changed mirrors an updated summary (effort, permissionMode) into byId', () => {
+    let state = reduce(initialState, { t: 'session-snapshot', session: snapshot('s1') });
+    assert.strictEqual(state.byId['s1'].summary.effort, undefined);
+    assert.strictEqual(state.byId['s1'].summary.permissionMode, 'default');
+
+    const updated: SessionSummary = { ...summary('s1'), effort: 'high', permissionMode: 'bypass' };
+    state = reduce(state, { t: 'sessions-changed', sessions: [updated] });
+
+    assert.strictEqual(state.byId['s1'].summary.effort, 'high');
+    assert.strictEqual(state.byId['s1'].summary.permissionMode, 'bypass');
+  });
+
+  test('sessions-changed for a session with no byId entry does not create one', () => {
+    const before = reduce(initialState, { t: 'session-snapshot', session: snapshot('s1') });
+    const after = reduce(before, {
+      t: 'sessions-changed', sessions: [summary('s1'), summary('ghost')],
+    });
+
+    assert.ok(!('ghost' in after.byId));
+    // Referentially unchanged for the id that never had a pane: no
+    // half-initialized pane is created, and no new object is allocated for
+    // an id this reducer has nothing to mirror onto.
+    assert.strictEqual(after.byId['ghost'], undefined);
+  });
+
+  test('sessions-changed preserves items, hasMore and pending on the mirrored pane', () => {
+    let state = reduce(initialState, { t: 'session-snapshot', session: snapshot('s1') });
+    state = reduce(state, {
+      t: 'session-patch', id: 's1',
+      patch: { op: 'append', item: { id: 'a1', ts: 1, role: 'assistant', text: 'hi' } },
+    });
+    const before = state.byId['s1'];
+    assert.strictEqual(before.items.length, 1);
+
+    const updated: SessionSummary = { ...summary('s1'), effort: 'low' };
+    state = reduce(state, { t: 'sessions-changed', sessions: [updated] });
+
+    assert.strictEqual(state.byId['s1'].items, before.items);
+    assert.strictEqual(state.byId['s1'].hasMore, before.hasMore);
+    assert.strictEqual(state.byId['s1'].pending, before.pending);
+    assert.strictEqual(state.byId['s1'].summary.effort, 'low');
+  });
+
   test('local-layout applies a client-optimistic layout update', () => {
     const next = reduce(initialState, {
       t: 'local-layout',
