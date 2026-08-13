@@ -140,7 +140,10 @@ const MODELS: ModelInfo[] = [
     id: 'claude-sonnet-5', displayName: 'Sonnet 5',
     effort: { levels: ['low', 'medium', 'high', 'xhigh', 'max'], default: 'high' },
   },
-  { id: 'claude-haiku-4-5', displayName: 'Haiku 4.5' },
+  // `claude-haiku-4-5` is NOT a value the CLI knows: it silently becomes a
+  // "Custom model" passthrough. `haiku` is the CLI's own alias, and resolves to
+  // claude-haiku-4-5-20251001. Verified against the SDK's initializationResult.
+  { id: 'haiku', displayName: 'Haiku 4.5' },
 ];
 
 /**
