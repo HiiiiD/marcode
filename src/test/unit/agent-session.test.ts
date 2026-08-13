@@ -5,7 +5,91 @@ import * as path from 'path';
 import { AgentSession, type SessionSink } from '../../host/agent-session';
 import { TranscriptStore } from '../../host/transcript-store';
 import { FakeProvider } from '../../providers/fake/fake-provider';
+import type {
+  AgentEvent, AgentProvider, AgentRun, ModelInfo, StartOptions, ToolDecision,
+} from '../../providers/types';
 import type { SessionId, SessionState, SessionStatus, TranscriptPatch } from '../../protocol/messages';
+
+/** Minimal pushable async-iterable, mirroring FakeProvider's internal channel. */
+class EventChannel implements AsyncIterable<AgentEvent> {
+  private queue: AgentEvent[] = [];
+  private waiting: ((v: IteratorResult<AgentEvent>) => void) | undefined;
+  private closed = false;
+
+  push(event: AgentEvent): void {
+    if (this.closed) { return; }
+    if (this.waiting) {
+      const resolve = this.waiting;
+      this.waiting = undefined;
+      resolve({ value: event, done: false });
+    } else {
+      this.queue.push(event);
+    }
+  }
+
+  close(): void {
+    this.closed = true;
+    if (this.waiting) {
+      const resolve = this.waiting;
+      this.waiting = undefined;
+      resolve({ value: undefined, done: true });
+    }
+  }
+
+  [Symbol.asyncIterator](): AsyncIterator<AgentEvent> {
+    return {
+      next: (): Promise<IteratorResult<AgentEvent>> => {
+        const next = this.queue.shift();
+        if (next) { return Promise.resolve({ value: next, done: false }); }
+        if (this.closed) { return Promise.resolve({ value: undefined, done: true }); }
+        return new Promise((resolve) => { this.waiting = resolve; });
+      },
+    };
+  }
+}
+
+interface ThrowingProviderOptions {
+  throwOnSend?: boolean;
+  throwOnRespond?: boolean;
+  throwOnInterrupt?: boolean;
+  throwOnSetEffort?: boolean;
+  script?: (text: string) => AgentEvent[];
+}
+
+/**
+ * A provider whose AgentRun methods throw/reject synchronously, to exercise
+ * the "errors are state, never exceptions" contract on AgentSession's
+ * public API without depending on FakeProvider's scripted-event model.
+ */
+class ThrowingProvider implements AgentProvider {
+  readonly id = 'throwing';
+  readonly displayName = 'Throwing';
+
+  constructor(private readonly opts: ThrowingProviderOptions) {}
+
+  listModels(): ModelInfo[] { return []; }
+
+  start(_opts: StartOptions): AgentRun {
+    const channel = new EventChannel();
+    return {
+      events: channel,
+      send: (text: string) => {
+        if (this.opts.throwOnSend) { throw new Error('send failed'); }
+        for (const ev of this.opts.script?.(text) ?? []) { channel.push(ev); }
+      },
+      respondToTool: (_id: string, _decision: ToolDecision) => {
+        if (this.opts.throwOnRespond) { throw new Error('respond failed'); }
+      },
+      setEffort: () => {
+        if (this.opts.throwOnSetEffort) { throw new Error('setEffort failed'); }
+      },
+      interrupt: async () => {
+        if (this.opts.throwOnInterrupt) { throw new Error('interrupt failed'); }
+      },
+      dispose: async () => { channel.close(); },
+    };
+  }
+}
 
 function baseState(): SessionState {
   return {
@@ -152,6 +236,74 @@ suite('AgentSession', () => {
     await settle();
 
     assert.strictEqual(session.state.resumeToken, 'fake-session-1');
+    await session.dispose();
+  });
+
+  test('send() on a throwing provider settles the session into error instead of throwing', async () => {
+    const provider = new ThrowingProvider({ throwOnSend: true });
+    const session = new AgentSession(baseState(), provider, store, sink);
+    assert.doesNotThrow(() => session.send('go'));
+    await settle();
+
+    assert.strictEqual(session.state.status, 'error');
+    const snap = await session.snapshot();
+    const err = snap.items.find((i) => i.role === 'error');
+    assert.strictEqual((err as { message: string }).message, 'send failed');
+    await session.dispose();
+  });
+
+  test('respondToPermission() on a throwing provider denies the item and clears it from pending', async () => {
+    const provider = new ThrowingProvider({
+      throwOnRespond: true,
+      script: () => [{ kind: 'permission', id: 'r1', name: 'Bash', input: {} }],
+    });
+    const session = new AgentSession(baseState(), provider, store, sink);
+    session.send('list files');
+    await settle();
+    assert.strictEqual(session.state.status, 'awaiting-approval');
+
+    assert.doesNotThrow(() => session.respondToPermission('r1', { allow: true }));
+    await settle();
+
+    // The provider rejected the decision: the session moves to error, the
+    // request is gone from pending, and the transcript item is settled as
+    // denied rather than being stuck at 'pending' forever (regression for
+    // the finding where the item disappeared from `pending` while staying
+    // 'pending' on disk with no way for the user to retry).
+    assert.strictEqual(session.state.status, 'error');
+    const snap = await session.snapshot();
+    assert.strictEqual(snap.pending.length, 0);
+    const perm = snap.items.find((i) => i.role === 'permission');
+    assert.strictEqual((perm as { state: string }).state, 'denied');
+    assert.strictEqual((perm as { reason?: string }).reason, 'respond failed');
+    await session.dispose();
+  });
+
+  test('interrupt() on a throwing provider does not reject and settles the session into error', async () => {
+    const provider = new ThrowingProvider({ throwOnInterrupt: true });
+    const session = new AgentSession(baseState(), provider, store, sink);
+    session.send('go');
+    await settle();
+
+    await assert.doesNotReject(() => session.interrupt());
+    await settle();
+
+    assert.strictEqual(session.state.status, 'error');
+    const snap = await session.snapshot();
+    const err = snap.items.find((i) => i.role === 'error');
+    assert.strictEqual((err as { message: string }).message, 'interrupt failed');
+    await session.dispose();
+  });
+
+  test('setEffort() on a throwing provider does not throw and settles the session into error', async () => {
+    const provider = new ThrowingProvider({ throwOnSetEffort: true });
+    const session = new AgentSession(baseState(), provider, store, sink);
+
+    assert.doesNotThrow(() => session.setEffort('high'));
+    assert.strictEqual(session.state.status, 'error');
+    const snap = await session.snapshot();
+    const err = snap.items.find((i) => i.role === 'error');
+    assert.strictEqual((err as { message: string }).message, 'setEffort failed');
     await session.dispose();
   });
 });

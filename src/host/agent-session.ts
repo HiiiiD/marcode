@@ -32,6 +32,10 @@ export class AgentSession {
    * session id — two overlapping calls can both observe the same pending
    * queue before either clears it, duplicating writes. We only ever flush
    * this session, so chain every flush onto the previous one to serialize.
+   * This chain never rejects (see scheduleFlush): a rejected link here
+   * would otherwise surface as an unhandled rejection at the fire-and-forget
+   * call sites, or reject out of dispose()/snapshot() for no actionable
+   * reason.
    */
   private flushChain: Promise<void> = Promise.resolve();
 
@@ -99,7 +103,18 @@ export class AgentSession {
     try {
       this.run.respondToTool(requestId, decision);
     } catch (err) {
-      this.fail(err instanceof Error ? err.message : String(err));
+      const message = err instanceof Error ? err.message : String(err);
+      // The provider rejected the decision, so the request is no longer
+      // outstanding as far as it's concerned. Settle the persisted item as
+      // denied (rather than leaving it 'pending' forever with no way for
+      // the user to retry, since `pending` no longer has this requestId).
+      const existing = this.permissionItems.get(requestId);
+      if (existing && existing.role === 'permission') {
+        const settled: TranscriptItem = { ...existing, state: 'denied', reason: message };
+        this.replaceItem(settled);
+        this.permissionItems.set(requestId, settled);
+      }
+      this.fail(message);
       return;
     }
 
@@ -237,12 +252,20 @@ export class AgentSession {
     void this.scheduleFlush();
   }
 
-  /** Serializes calls into TranscriptStore.flush(), which is not safe to overlap. */
+  /**
+   * Serializes calls into TranscriptStore.flush(), which is not safe to
+   * overlap. Always resolves — a flush failure is swallowed here rather
+   * than rejecting, so it can never become an unhandled rejection at a
+   * fire-and-forget call site and can never reject out of dispose()/
+   * snapshot() for the caller.
+   */
   private scheduleFlush(): Promise<void> {
-    this.flushChain = this.flushChain.then(
-      () => this.store.flush(this._state.id),
-      () => this.store.flush(this._state.id),
-    );
+    this.flushChain = this.flushChain
+      .then(
+        () => this.store.flush(this._state.id),
+        () => this.store.flush(this._state.id),
+      )
+      .catch(() => { /* swallowed: see flushChain doc comment above */ });
     return this.flushChain;
   }
 
