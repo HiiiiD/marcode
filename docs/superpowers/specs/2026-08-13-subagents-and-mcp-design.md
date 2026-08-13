@@ -72,11 +72,15 @@ export type AgentEvent =
 
 export type McpServerStatus = {
   name: string;
-  state: 'pending' | 'connected' | 'failed' | 'needs-auth';
+  state: 'pending' | 'connected' | 'failed' | 'needs-auth' | 'disabled';
   toolCount?: number;
   error?: string;
 };
 ```
+
+`'disabled'` mirrors the SDK's own union (`sdk.d.ts:1083`). A configured-but-off
+server is a distinct thing from a broken one and the user needs to tell them
+apart — that is the whole point of the strip.
 
 **`parentId` is a tool-use id, not a session id.** When present it is the id of
 the `tool-start` that spawned the subagent — the `Task` call. That id is already
@@ -89,23 +93,49 @@ user's decision, and the approval card must render where the work is happening.
 This is the case that makes collapsed-but-live summaries mandatory rather than
 pleasant: a collapsed subagent must be able to report that it is blocked.
 
-**Subagent prose is dropped at the seam.** `map-events.ts` discards `text` and
-`thinking` from any message carrying a parent id. Only the subagent's tool
-activity enters the transcript.
+**Subagent prose is never requested.** The SDK's `forwardSubagentText` option
+defaults to `false`, and its documented behaviour at that default is exactly what
+this spec wants:
 
-Filtering above the seam instead would allocate those events and throw them
-away, and would leave a tempting one-line change that quietly reintroduces the
-token volume. Dropping at the boundary makes the decision structural: showing
-subagent prose becomes a deliberate seam change.
+> By default, only tool_use/tool_result blocks from subagents are emitted
+> (enough for a heartbeat counter). When true, the full subagent conversation is
+> forwarded so consumers can render a nested transcript.
+> — `sdk.d.ts:1655`
 
-Nothing is lost that the user reads. The subagent's returned result arrives
-anyway as the parent `Task` tool's `tool-end` output. The intermediate prose is
-largely restated parent context; the tool sequence is the part worth watching.
+So the mechanism is leaving the flag alone, not filtering. `claude-provider.ts`
+must never set it to `true`.
 
-**`mcp-servers` is a snapshot, not a delta.** The full array each time, at init
-and on any state change. Servers number in the single digits, so diffing is
-complexity for nothing, and replace-whole makes hydrate and live update the same
-code path.
+`map-events.ts` still drops `text` and `thinking` carrying a parent id. That is
+now a defensive assertion rather than the mechanism — it keeps a future provider,
+or a future default flip, from silently reintroducing the token volume, and it
+gives the behaviour a test that does not depend on an SDK default staying put.
+
+Nothing the user reads is lost. The subagent's returned result arrives anyway as
+the parent `Task` tool's `tool-end` output. The intermediate prose is largely
+restated parent context; the tool sequence is the part worth watching.
+
+**`mcp-servers` is a snapshot, not a delta** — the full array each time. Servers
+number in the single digits, so diffing is complexity for nothing, and
+replace-whole makes hydrate and live update the same code path.
+
+**The provider pulls that status; nothing pushes it.** There is no MCP event in
+the SDK stream. Two sources, both handled inside `claude-provider.ts`:
+
+- `SDKSystemMessage` (`subtype: 'init'`) carries `mcp_servers: { name, status }[]`
+  — a push, but name and status only. This is what makes the strip appear
+  immediately.
+- `Query.mcpServerStatus(): Promise<McpServerStatus[]>` (`sdk.d.ts:2500`) returns
+  the full shape: `error`, `serverInfo`, `scope`, and `tools[]` — so `toolCount`
+  is `tools.length`, a real number rather than an invented one.
+
+The provider emits `mcp-servers` from the init message, then again after awaiting
+the pull. Two snapshots, second one richer, and replace-whole semantics make that
+a non-event for every consumer above the seam.
+
+This keeps the pull inside the provider. Exposing `mcpServerStatus()` through
+`AgentRun` would put a Claude-shaped request/response method on a seam that is
+otherwise a one-way event stream, for a value that changes about once per
+session.
 
 ## Transcript items
 
@@ -305,28 +335,37 @@ All against `FakeProvider` — no SDK, no VS Code, no network.
 - **MCP parsing** — `mcp__github__create_pr` splits; `mcp__weird` is left alone
   with no `mcpServer`.
 - **Status snapshot** — successive `mcp-servers` events replace wholesale; the
-  strip is absent when the array is empty.
+  strip is absent when the array is empty; `'disabled'` renders distinctly from
+  `'failed'`.
+- **Status sourcing** — an init message with `mcp_servers` produces a first
+  `mcp-servers` event; a resolved `mcpServerStatus()` pull produces a second,
+  richer one that supersedes it, including `toolCount` from `tools.length`.
+- **`forwardSubagentText` is never enabled** — assert `claude-provider.ts` does
+  not pass it. Cheap, and it is the single line that would silently undo the
+  whole cost argument.
 - **Child window** — an item with 213 children renders 10; the rendered 10 are
   the last 10; a collapsed card renders 0.
 
 ## Risks
 
-**SDK exposure is unverified and this feature is entirely downstream of it.**
-Two facts need checking before the plan is written:
+**SDK exposure: verified, risk closed.** Checked against
+`@anthropic-ai/claude-agent-sdk` 0.3.228 as installed:
 
-1. Subagent messages carry `parent_tool_use_id` (or equivalent) through the
-   streaming interface.
-2. MCP server state is readable at init.
+- `parent_tool_use_id: string | null` is present on `SDKAssistantMessage`
+  (`sdk.d.ts:3022`) and four other message types. Nesting is viable.
+- `forwardSubagentText` (`sdk.d.ts:1662`) makes tool-activity-only the default.
+- `Query.mcpServerStatus()` (`sdk.d.ts:2500`) and `SDKSystemMessage.mcp_servers`
+  (`sdk.d.ts:4610`) both exist.
 
-This is the same risk class as v1's SDK risk but sharper. v1 degrades gracefully
-if a detail differs; here, no parent correlation means no nesting feature at all.
+The contingency this spec carried — cut the strip, ship attribution alone — is
+not needed and is withdrawn.
 
-**The first step of the implementation plan is a spike against the installed
-package, not implementation.**
-
-If MCP state proves unreadable, the status strip is cut and attribution ships
-alone — attribution depends on nothing but the tool name, so it cannot be
-blocked by this.
+**Residual: these are SDK details, not a stable contract.** `map-events.ts`
+already absorbed one correction where the plan's assumption about
+`SDKResultError` did not match the installed `.d.ts`. Every fact above is read
+from a vendored type definition that a dependency bump can change. Blast radius
+stays `providers/claude/`, and the table-driven `map-events` tests are what
+surface a drift as a failure rather than as silence.
 
 **Collapsed-but-live is a render-cost trap.** Child items stream into the host
 whether or not a card is open. If a collapsed card renders its children, the
