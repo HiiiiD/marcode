@@ -17,6 +17,18 @@ export class TranscriptStore {
   private pending = new Map<SessionId, TranscriptItem[]>();
   private dirty = new Set<SessionId>();
   private replacements = new Map<SessionId, Map<string, TranscriptItem>>();
+  /**
+   * flush() reads a session's pending/dirty queues and only clears them
+   * after the write completes. Two overlapping flush() calls for the same
+   * session id — one from a caller that flushes a single id, another from a
+   * caller that flushes "all pending ids" — can both observe the same
+   * pending queue before either clears it, duplicating writes on disk (the
+   * append-only path appends the same queued items twice). Chain every
+   * flush for a given id onto the previous one for that id so overlapping
+   * callers serialize instead of racing, no matter which caller or call
+   * shape triggered them.
+   */
+  private flushChains = new Map<SessionId, Promise<void>>();
 
   constructor(private readonly rootDir: string) {}
 
@@ -72,30 +84,45 @@ export class TranscriptStore {
   }
 
   async flush(id?: SessionId): Promise<void> {
-    const ids = id ? [id] : new Set([...this.pending.keys(), ...this.dirty]);
+    const ids = id ? [id] : [...new Set([...this.pending.keys(), ...this.dirty])];
     await fs.mkdir(path.join(this.rootDir, 'sessions'), { recursive: true });
+    await Promise.all(ids.map((sessionId) => this.flushSerialized(sessionId)));
+  }
 
-    for (const sessionId of ids) {
-      if (this.dirty.has(sessionId)) {
-        const items = await this.ensureLoaded(sessionId);
-        const queued = this.pending.get(sessionId) ?? [];
-        for (const q of queued) {
-          if (!items.some((i) => i.id === q.id)) { items.push(q); }
-        }
-        const body = items.map((i) => JSON.stringify(i)).join('\n');
-        await fs.writeFile(this.sessionFile(sessionId), body ? `${body}\n` : '', 'utf8');
-        this.dirty.delete(sessionId);
-        this.pending.delete(sessionId);
-        this.replacements.delete(sessionId);
-        continue;
+  /** Chains onto any in-flight flush for this id so callers never overlap. */
+  private flushSerialized(sessionId: SessionId): Promise<void> {
+    const prior = this.flushChains.get(sessionId) ?? Promise.resolve();
+    const next = prior.then(
+      () => this.flushOne(sessionId),
+      () => this.flushOne(sessionId),
+    );
+    // Store a variant that never rejects, so a failed flush doesn't wedge
+    // the chain for the next caller (who still needs to run) or surface as
+    // an unhandled rejection when nobody is awaiting this particular link.
+    this.flushChains.set(sessionId, next.catch(() => { /* see chain doc above */ }));
+    return next;
+  }
+
+  private async flushOne(sessionId: SessionId): Promise<void> {
+    if (this.dirty.has(sessionId)) {
+      const items = await this.ensureLoaded(sessionId);
+      const queued = this.pending.get(sessionId) ?? [];
+      for (const q of queued) {
+        if (!items.some((i) => i.id === q.id)) { items.push(q); }
       }
-
-      const queued = this.pending.get(sessionId);
-      if (!queued || queued.length === 0) { continue; }
-      const body = queued.map((i) => JSON.stringify(i)).join('\n');
-      await fs.appendFile(this.sessionFile(sessionId), `${body}\n`, 'utf8');
+      const body = items.map((i) => JSON.stringify(i)).join('\n');
+      await fs.writeFile(this.sessionFile(sessionId), body ? `${body}\n` : '', 'utf8');
+      this.dirty.delete(sessionId);
       this.pending.delete(sessionId);
+      this.replacements.delete(sessionId);
+      return;
     }
+
+    const queued = this.pending.get(sessionId);
+    if (!queued || queued.length === 0) { return; }
+    const body = queued.map((i) => JSON.stringify(i)).join('\n');
+    await fs.appendFile(this.sessionFile(sessionId), `${body}\n`, 'utf8');
+    this.pending.delete(sessionId);
   }
 
   async tail(

@@ -127,6 +127,22 @@ suite('TranscriptStore', () => {
     await assert.rejects(fs.access(sessionFile), /ENOENT/);
   });
 
+  test('overlapping flush() calls for the same id do not duplicate items', async () => {
+    store.append('s1', item('a', 'one'));
+    store.append('s1', item('b', 'two'));
+
+    // Two calls racing for the same session id — one naming the id
+    // explicitly (as AgentSession does), one flushing "everything pending"
+    // (as SessionManager's periodic persist does) — must serialize rather
+    // than both observing the same pending queue and each writing it.
+    await Promise.all([store.flush('s1'), store.flush()]);
+
+    const fresh = new TranscriptStore(dir);
+    const { items } = await fresh.tail('s1');
+    assert.strictEqual(items.length, 2);
+    assert.deepStrictEqual(items.map((i) => i.id), ['a', 'b']);
+  });
+
   test('remove on a session with unflushed pending appends is not resurrected by a later flush', async () => {
     store.append('s1', item('a', 'one'));
 
