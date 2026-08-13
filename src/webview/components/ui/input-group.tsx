@@ -47,7 +47,7 @@ function InputGroupAddon({
       data-slot="input-group-addon"
       data-align={align}
       className={cn(
-        "flex flex-wrap items-center gap-1.5 px-1.5 py-1",
+        "flex items-center gap-1.5 px-1.5 py-1",
         align === "block-end" && "order-last",
         align === "block-start" && "order-first",
         className
