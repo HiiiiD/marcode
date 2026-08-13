@@ -64,7 +64,7 @@ suite('Composer', () => {
 
     await userEvent.type(box, '   ');
 
-    assert.strictEqual((screen.getByText('Send') as HTMLButtonElement).disabled, true);
+    assert.strictEqual(screen.getByRole('button', { name: 'Send' }).hasAttribute('disabled'), true);
     await userEvent.type(box, '{Enter}');
     assert.deepStrictEqual(posted().at(-1), { t: 'ready' });
   });
@@ -72,15 +72,15 @@ suite('Composer', () => {
   test('a running session shows Send disabled and Stop beside it; Stop posts interrupt', async () => {
     renderWithStore(<Composer pane={pane('running')} model={NO_EFFORT} />);
 
-    assert.strictEqual((screen.getByText('Send') as HTMLButtonElement).disabled, true);
-    await userEvent.click(screen.getByText('Stop'));
+    assert.strictEqual(screen.getByRole('button', { name: 'Send' }).hasAttribute('disabled'), true);
+    await userEvent.click(screen.getByRole('button', { name: 'Stop' }));
 
     assert.deepStrictEqual(posted().at(-1), { t: 'interrupt', id: 'a' });
   });
 
   test('awaiting-approval also shows Stop', () => {
     renderWithStore(<Composer pane={pane('awaiting-approval')} model={NO_EFFORT} />);
-    screen.getByText('Stop');
+    screen.getByRole('button', { name: 'Stop' });
   });
 
   test('a model without effort renders no Effort control', () => {

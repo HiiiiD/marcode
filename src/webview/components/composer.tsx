@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { SendHorizontal, Square } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { InputGroup, InputGroupAddon, InputGroupTextarea } from '@/components/ui/input-group';
 import {
@@ -151,26 +152,34 @@ export function Composer({ pane, model }: { pane: PaneState; model: ModelInfo | 
           {running && (
             <Button
               variant="outline"
-              size="xs"
+              size="icon-xs"
               className="ml-auto"
               onClick={() => post({ t: 'interrupt', id: pane.summary.id })}
+              aria-label="Stop"
+              title="Stop the agent"
             >
-              Stop
+              <Square />
             </Button>
           )}
           <Button
-            size="xs"
+            size="icon-xs"
             className={cn(!running && 'ml-auto')}
             onClick={submit}
             // Disabled-with-a-reason rather than unmounted: swapping Send out
             // for Stop makes the row jump and leaves a user who has typed the
             // next instruction with no explanation of where Send went.
             disabled={running || !text.trim()}
+            aria-label="Send"
+            // Icon-only control: the hover title is a discoverability aid for
+            // sighted mouse/keyboard users, not the accessible name (that's
+            // aria-label above). Only set while enabled — a title on a
+            // disabled element is unreliable for assistive tech, so the
+            // disabled state gets its explanatory reason instead.
             title={running
               ? 'The agent is working. Stop it to send another message.'
-              : undefined}
+              : 'Send message'}
           >
-            Send
+            <SendHorizontal />
           </Button>
         </InputGroupAddon>
       </InputGroup>
