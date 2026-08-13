@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { PanelViewProvider } from './host/panel-view-provider';
 import { SessionManager } from './host/session-manager';
 import { TranscriptStore } from './host/transcript-store';
+import { ClaudeProvider } from './providers/claude/claude-provider';
 import { FakeProvider } from './providers/fake/fake-provider';
 import type { AgentProvider } from './providers/types';
 
@@ -9,7 +10,10 @@ export async function activate(context: vscode.ExtensionContext) {
   const rootDir = context.storageUri?.fsPath ?? context.globalStorageUri.fsPath;
   const store = new TranscriptStore(rootDir);
 
+  // Order matters: SessionPicker uses state.catalog[0] for the New button,
+  // so Claude — the real provider — is registered first.
   const providers = new Map<string, AgentProvider>();
+  providers.set('claude', new ClaudeProvider());
   providers.set('fake', new FakeProvider((text) => (text.includes('rm')
     ? [{ kind: 'permission', id: `p-${Date.now()}`, name: 'Bash', input: { command: text } }]
     : [{ kind: 'text', delta: 'ok' }, { kind: 'turn-end', reason: 'done' }])));

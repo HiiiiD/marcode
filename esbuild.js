@@ -78,7 +78,7 @@ async function main() {
 		format: 'cjs',
 		platform: 'node',
 		outfile: 'dist/extension.js',
-		external: ['vscode'],
+		external: ['vscode', '@anthropic-ai/claude-agent-sdk'],
 		alias: { '@': require('path').resolve(__dirname, 'src/webview') },
 	});
 
