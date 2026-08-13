@@ -1,6 +1,6 @@
 import * as assert from 'assert';
 import {
-  evenlySizedPanes, reconcilePaneLayout, visiblePanes,
+  evenlySizedPanes, reconcilePaneLayout, rosterSessionIds, visiblePanes,
 } from '../../webview/components/pane-layout';
 
 suite('pane-layout evenlySizedPanes', () => {
@@ -103,28 +103,41 @@ suite('pane-layout reconcilePaneLayout', () => {
     assert.strictEqual(result.layout, null, 'reconcile must not re-append the unchecked, already-known session');
   });
 
-  // --- Fix round 1: FINDING 3 ---
-  // Checking an archived session in the roster must give it a pane, and
-  // that pane must survive the next reconcile pass rather than being
-  // dropped again by session-state-derived eligibility.
-  test('keeps a pane the user just opened for an archived session across reconcile', () => {
-    // Simulates: user checked an archived session 'a' in the roster. The
-    // picker posted set-visible + a layout containing 'a'; its (disk-served)
-    // snapshot has landed in byId. Archived sessions are still counted as
-    // "in the roster" (SessionManager never removes an archived session
-    // from the roster — only delete-session does), so 'a' stays eligible.
-    const layoutAfterCheckingArchived = { orientation: 'vertical' as const, panes: [{ sessionId: 'a', size: 100 }] };
-    const result = reconcilePaneLayout(
-      layoutAfterCheckingArchived, new Set(['a']), ['a'], new Set(['a']),
-    );
-    assert.strictEqual(result.layout, null, 'an explicitly opened archived session\'s pane must not be dropped');
+  // Fix round 1's "Finding 3" cases here were removed in fix round 2: they
+  // were byte-identical to `returns layout: null when the layout already
+  // matches the roster` above (and to each other) — reconcilePaneLayout has
+  // no notion of "archived" at all, only roster membership, so nothing in
+  // them actually exercised archived-specific behavior despite what their
+  // names claimed. Finding 3's real bug lived in how CALLERS built the
+  // roster set (pane-group.tsx / main.tsx used to filter out archived
+  // sessions before ever calling into this module) — that's now pinned
+  // directly against `rosterSessionIds` below, which is where the decision
+  // actually lives.
+});
+
+suite('pane-layout rosterSessionIds', () => {
+  // Fix round 2: pins the actual caller-side bug behind Finding 3. Before
+  // the fix, `pane-group.tsx` and `main.tsx` each independently computed
+  // eligibility as `state.sessions.filter(s => !s.archived).map(s => s.id)`
+  // — an archived session's id was never even offered to `visiblePanes` /
+  // `reconcilePaneLayout`, so checking it in the roster picker could never
+  // give it a pane. `rosterSessionIds` is the single, tested place that
+  // decision now lives, and it must include archived sessions.
+  test('includes archived sessions — eligibility is roster membership, not liveness', () => {
+    const ids = rosterSessionIds([
+      { id: 'a', archived: false },
+      { id: 'b', archived: true },
+    ]);
+    assert.ok(ids.has('a'));
+    assert.ok(ids.has('b'), 'an archived session must still be eligible for a pane');
   });
 
-  test('never drops or blocks re-adding an archived session that was never removed from the roster', () => {
-    // reconcile only removes sessions absent from the roster entirely
-    // (deleted) — archived status by itself must never cause a drop.
-    const layout = { orientation: 'vertical' as const, panes: [{ sessionId: 'a', size: 100 }] };
-    const result = reconcilePaneLayout(layout, new Set(['a']), ['a'], new Set(['a']));
-    assert.strictEqual(result.layout, null);
+  test('reflects exactly the roster, not a subset of it', () => {
+    const ids = rosterSessionIds([{ id: 'x', archived: false }]);
+    assert.deepStrictEqual([...ids], ['x']);
+  });
+
+  test('an empty roster yields an empty set', () => {
+    assert.deepStrictEqual([...rosterSessionIds([])], []);
   });
 });

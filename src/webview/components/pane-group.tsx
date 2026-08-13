@@ -12,7 +12,7 @@ import type { Layout, LayoutChangedMeta } from 'react-resizable-panels' with { '
 import { SessionHeader } from './session-header';
 import { Transcript } from './transcript';
 import { Composer } from './composer';
-import { visiblePanes } from './pane-layout';
+import { rosterSessionIds, visiblePanes } from './pane-layout';
 import { useStore } from '../store';
 
 const NARROW_PX = 500;
@@ -38,7 +38,7 @@ export function PaneGroup() {
   // sessions DO keep rendering here if the user has them open; see
   // pane-layout.ts for why eligibility can't be "not archived") and have an
   // arrived snapshot.
-  const roster = new Set(state.sessions.map((s) => s.id));
+  const roster = rosterSessionIds(state.sessions);
   const snapshotArrived = new Set(Object.keys(state.byId));
   const panes = visiblePanes(state.layout.panes, roster, snapshotArrived);
   const orientation = narrow ? 'vertical' : state.layout.orientation;

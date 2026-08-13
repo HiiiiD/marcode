@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { PaneGroup } from './components/pane-group';
 import { SessionPicker } from './components/session-picker';
-import { reconcilePaneLayout } from './components/pane-layout';
+import { reconcilePaneLayout, rosterSessionIds } from './components/pane-layout';
 import { StoreProvider, useStore } from './store';
 
 function App() {
@@ -27,7 +27,7 @@ function App() {
   // reconcilePaneLayout() (pane-layout.ts) returns `layout: null` once the
   // layout already matches, so this doesn't loop.
   useEffect(() => {
-    const roster = new Set(state.sessions.map((s) => s.id));
+    const roster = rosterSessionIds(state.sessions);
     const result = reconcilePaneLayout(
       state.layout, roster, byIdKeys, knownSessionIdsRef.current,
     );

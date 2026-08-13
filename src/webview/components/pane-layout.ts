@@ -23,6 +23,28 @@ export function evenlySizedPanes(ids: string[], orientation: LayoutLike['orienta
   return { orientation, panes: ids.map((sessionId) => ({ sessionId, size })) };
 }
 
+export interface RosterEntry {
+  id: string;
+  archived: boolean;
+}
+
+/**
+ * The set of session ids eligible to have a pane, derived from the roster
+ * (`ClientState.sessions`). This is where "eligibility is roster
+ * membership, not archived status" (see `reconcilePaneLayout`'s doc
+ * comment) actually gets decided for both `visiblePanes` and
+ * `reconcilePaneLayout` callers — deliberately does NOT filter out
+ * `archived: true` entries. Only `delete-session` removes a session from
+ * the roster entirely; `close-session` only flips `archived`, and an
+ * archived session the user has explicitly opened (checked in the roster
+ * picker) must keep its pane. Extracted so this decision has its own name
+ * and is pinned by a test, rather than living as an easy-to-get-wrong
+ * inline `.map()` at each call site.
+ */
+export function rosterSessionIds(sessions: RosterEntry[]): Set<string> {
+  return new Set(sessions.map((s) => s.id));
+}
+
 /**
  * The subset of `panes` that should actually render: the session must still
  * be in the roster (i.e. not deleted outright — `delete-session` is the
@@ -85,6 +107,23 @@ export interface ReconcileResult {
  * Sizes are re-split evenly across the resulting pane set. `layout` is
  * `null` when nothing needs to change, so a caller driving this from a
  * render effect can skip posting `set-layout` on every pass.
+ *
+ * ⚠️ `knownSessionIds` is client-only state (a `useRef` in `main.tsx`) and
+ * genuinely resets to empty on every reload. That does NOT resurrect
+ * previously-unchecked panes only because of a second, non-obvious
+ * invariant this relies on: `newlyArrived` also requires the id to be in
+ * `snapshotArrivedIds` (`byId`), and after a reload `byId` is seeded solely
+ * from `hydrate.snapshots` — which the host builds from `layout.panes`
+ * (`message-router.ts`'s `ready` handler), NOT from the full roster. An
+ * unchecked session has no pane in the persisted layout, so it gets no
+ * snapshot, so it's absent from `byId`, so it can never be `newlyArrived`
+ * regardless of what `knownSessionIds` contains. If `ready` ever changed to
+ * hydrate snapshots for the whole roster instead of just `layout.panes`,
+ * the empty post-reload `knownSessionIds` would treat every roster session
+ * as "arriving for the first time" and re-append all of them — silently
+ * reintroducing the bug this function exists to fix. This module has no way
+ * to enforce that invariant (it lives on the host), so: know this before
+ * changing what `ready` hydrates.
  */
 export function reconcilePaneLayout(
   layout: LayoutLike,
