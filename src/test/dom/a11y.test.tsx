@@ -27,12 +27,12 @@ function hydrateOne() {
 }
 
 suite('accessibility sweep', () => {
-  test('close buttons are distinguishable from each other', () => {
+  test('hide buttons are distinguishable from each other', () => {
     renderApp();
     hydrateTwoPanes();
 
-    screen.getByLabelText('Close session Session a');
-    screen.getByLabelText('Close session Session b');
+    screen.getByLabelText('Hide Session a from the split');
+    screen.getByLabelText('Hide Session b from the split');
   });
 
   test('resize handles name the panes they sit between', () => {

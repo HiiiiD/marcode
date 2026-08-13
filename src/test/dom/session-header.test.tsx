@@ -14,6 +14,17 @@ function hydrate(over = {}) {
   });
 }
 
+/** Two sessions in the roster, both open in their own pane. */
+function hydrateTwoPanes() {
+  sendFromHost({
+    t: 'hydrate',
+    sessions: [summary('a'), summary('b')],
+    layout: layoutOf('a', 'b'),
+    snapshots: [snapshot('a'), snapshot('b')],
+    catalog: catalog(),
+  });
+}
+
 suite('SessionHeader status', () => {
   test('status is announced as text, not colour alone', () => {
     renderApp();
@@ -107,5 +118,19 @@ suite('SessionHeader status', () => {
     const reason = document.getElementById(describedBy!);
     assert.ok(reason, 'the aria-describedby target must be real, rendered text');
     assert.ok(/before the first message/i.test(reason!.textContent ?? ''));
+  });
+
+  test('the pane X removes the pane without archiving the session', async () => {
+    renderApp();
+    hydrateTwoPanes();
+
+    await userEvent.click(screen.getByLabelText('Hide Session a from the split'));
+
+    const layouts = posted().filter((m) => m.t === 'set-layout');
+    assert.deepStrictEqual(layouts.at(-1)!.layout.panes.map((p) => p.sessionId), ['b']);
+    assert.ok(
+      !posted().some((m) => m.t === 'close-session'),
+      'X means hide; archiving is a deliberate choice made from the roster',
+    );
   });
 });

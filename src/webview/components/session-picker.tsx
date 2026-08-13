@@ -1,7 +1,8 @@
 import { ColumnsIcon, RowsIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+  DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem,
+  DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { evenlySizedPanes } from './pane-layout';
 import { SessionCreateMenu } from './session-create-menu';
@@ -31,6 +32,9 @@ export function SessionPicker({ narrow }: SessionPickerProps) {
     setPanes(open.has(id) ? [...open].filter((x) => x !== id) : [...open, id]);
   };
 
+  const live = state.sessions.filter((s) => !s.archived);
+  const archived = state.sessions.filter((s) => s.archived);
+
   return (
     <div className="flex items-center gap-2 border-b border-border px-2 py-1 text-xs">
       <DropdownMenu>
@@ -49,9 +53,27 @@ export function SessionPicker({ narrow }: SessionPickerProps) {
           {state.sessions.length === 0 && (
             <DropdownMenuItem disabled>No sessions yet</DropdownMenuItem>
           )}
-          {state.sessions.map((s) => (
+          {live.map((s) => (
             <SessionRow key={s.id} session={s} open={open.has(s.id)} onToggle={() => toggle(s.id)} />
           ))}
+          {archived.length > 0 && (
+            <>
+              <DropdownMenuSeparator />
+              {/*
+                `DropdownMenuLabel` renders Base UI's `Menu.GroupLabel`,
+                which calls `useMenuGroupRootContext()` and throws without a
+                `Menu.Group` ancestor — so the label and the archived rows it
+                names are wrapped in one `DropdownMenuGroup` rather than the
+                label standing alone.
+              */}
+              <DropdownMenuGroup>
+                <DropdownMenuLabel>{`Archived (${archived.length})`}</DropdownMenuLabel>
+                {archived.map((s) => (
+                  <SessionRow key={s.id} session={s} open={open.has(s.id)} onToggle={() => toggle(s.id)} />
+                ))}
+              </DropdownMenuGroup>
+            </>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
 

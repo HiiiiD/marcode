@@ -119,24 +119,16 @@ export function SessionHeader({ pane, models, accessibleTitle }: SessionHeaderPr
       <Button
         variant="ghost"
         size="icon-xs"
-        aria-label={`Close session ${accessibleTitle}`}
+        aria-label={`Hide ${accessibleTitle} from the split`}
         onClick={() => {
-          // `close-session` alone only flips the session to archived on the
-          // host and revokes its visibility (SessionManager.close) — it does
-          // NOT touch the layout. Eligibility for a pane is roster
-          // membership, not archived status (see pane-layout.ts), so
-          // without also dropping this pane from the layout here, the pane
-          // would keep rendering — now permanently patch-less, since the
-          // host no longer considers it visible — until the user happened
-          // to toggle it off/on in the roster picker or reload the window.
-          // Post the layout change too, exactly like the roster picker's
-          // uncheck does, so `paneIdsKey` changes and the app's
-          // `set-visible` effect re-syncs the host.
+          // Hide, not archive. This is the same operation as unchecking the
+          // row in the roster, and posts the same message, so the two entry
+          // points cannot drift. Archiving is a deliberate choice and lives
+          // in the roster row's actions menu, under its own word.
           const remaining = state.layout.panes
             .map((p) => p.sessionId)
             .filter((id) => id !== s.id);
           post({ t: 'set-layout', layout: evenlySizedPanes(remaining, state.layout.orientation) });
-          post({ t: 'close-session', id: s.id });
         }}
         className="shrink-0"
       >

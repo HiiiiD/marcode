@@ -52,11 +52,23 @@ suite('SessionPicker', () => {
     );
   });
 
+  test('archive is an explicit, labelled action in the roster row', async () => {
+    renderApp();
+    hydrateAOpen();
+
+    await userEvent.click(screen.getByText(/1 of 2 in split/i));
+    await userEvent.click(await screen.findByLabelText('More actions for Session b'));
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Archive Session b' }));
+
+    assert.deepStrictEqual(posted().at(-1), { t: 'close-session', id: 'b' });
+  });
+
   test('delete is behind a per-row confirm and only fires on the second step', async () => {
     renderApp();
     hydrateAOpen();
 
     await userEvent.click(screen.getByText(/1 of 2 in split/i));
+    await userEvent.click(await screen.findByLabelText('More actions for Session b'));
     await userEvent.click(await screen.findByLabelText('Delete session Session b'));
 
     assert.ok(
@@ -73,6 +85,7 @@ suite('SessionPicker', () => {
     hydrateAOpen();
 
     await userEvent.click(screen.getByText(/1 of 2 in split/i));
+    await userEvent.click(await screen.findByLabelText('More actions for Session b'));
     await userEvent.click(await screen.findByLabelText('Delete session Session b'));
     await userEvent.click(await screen.findByRole('menuitem', { name: 'Keep it' }));
 
@@ -83,16 +96,30 @@ suite('SessionPicker', () => {
     );
   });
 
-  test('opening the submenu by keyboard lands on the safe item, not delete', async () => {
+  test('opening the actions submenu by keyboard lands on the safe item, not delete', async () => {
     renderApp();
     hydrateAOpen();
 
     await userEvent.click(screen.getByText(/1 of 2 in split/i));
-    // a checkbox, a delete trigger, b checkbox, b delete trigger.
+    // a checkbox, a actions trigger, b checkbox, b actions trigger.
     await userEvent.keyboard('{ArrowDown}{ArrowDown}{ArrowDown}{ArrowDown}');
     assert.strictEqual(
-      document.activeElement?.getAttribute('aria-label'), 'Delete session Session b',
+      document.activeElement?.getAttribute('aria-label'), 'More actions for Session b',
       'roving focus must land on the submenu trigger without a mouse',
+    );
+
+    await userEvent.keyboard('{ArrowRight}');
+    const archiveItem = await screen.findByRole('menuitem', { name: 'Archive Session b' });
+    assert.strictEqual(
+      document.activeElement, archiveItem,
+      'ArrowRight must focus "Archive" first — it is the first, non-nested item in the actions menu',
+    );
+
+    await userEvent.keyboard('{ArrowDown}');
+    const deleteTrigger = await screen.findByLabelText('Delete session Session b');
+    assert.strictEqual(
+      document.activeElement, deleteTrigger,
+      'the next roving-focus stop is the nested delete trigger, not a menu item that deletes',
     );
 
     await userEvent.keyboard('{ArrowRight}');
@@ -100,7 +127,8 @@ suite('SessionPicker', () => {
     assert.strictEqual(
       document.activeElement, keepIt,
       'ArrowRight must focus "Keep it" first — Delete must never be the default '
-        + 'focus a keyboard user lands on when opening the submenu',
+        + 'focus a keyboard user lands on when opening the delete confirm, even one level '
+        + 'deeper than before',
     );
 
     // Enter here must be a no-op for deletion: it activates the highlighted
@@ -119,6 +147,8 @@ suite('SessionPicker', () => {
     await userEvent.click(screen.getByText(/1 of 2 in split/i));
     await userEvent.keyboard('{ArrowDown}{ArrowDown}{ArrowDown}{ArrowDown}');
     await userEvent.keyboard('{ArrowRight}');
+    await screen.findByRole('menuitem', { name: 'Archive Session b' });
+    await userEvent.keyboard('{ArrowDown}{ArrowRight}');
     await screen.findByRole('menuitem', { name: 'Keep it' });
 
     await userEvent.keyboard('{ArrowDown}');
@@ -127,6 +157,20 @@ suite('SessionPicker', () => {
 
     await userEvent.keyboard('{Enter}');
     assert.deepStrictEqual(posted().at(-1), { t: 'delete-session', id: 'b' });
+  });
+
+  test('archived sessions are grouped, not marked with a word', async () => {
+    renderApp();
+    sendFromHost({
+      t: 'hydrate',
+      sessions: [summary('a'), summary('b', { archived: true })],
+      layout: layoutOf('a'),
+      snapshots: [snapshot('a')],
+      catalog: catalog(),
+    });
+
+    await userEvent.click(screen.getByText(/1 of 2 in split/i));
+    screen.getByText('Archived (1)');
   });
 
   test('toggling visibility still posts set-layout and set-visible', async () => {

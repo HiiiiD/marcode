@@ -80,11 +80,11 @@ suite('PaneGroup', () => {
     assert.strictEqual(screen.getAllByLabelText('Message').length, 2);
   });
 
-  test('closing a pane from its header moves focus off <body>', async () => {
+  test('hiding a pane from its header moves focus off <body>', async () => {
     renderApp();
     hydrate(['a', 'b']);
 
-    const closeA = screen.getByLabelText('Close session Session a');
+    const closeA = screen.getByLabelText('Hide Session a from the split');
     closeA.focus();
     await userEvent.click(closeA);
 
@@ -99,11 +99,11 @@ suite('PaneGroup', () => {
     assert.ok(document.activeElement?.isConnected, 'focus must land on an element still in the document');
   });
 
-  test('closing the last pane focuses the empty-state fallback, not <body>', async () => {
+  test('hiding the last pane focuses the empty-state fallback, not <body>', async () => {
     renderApp();
     hydrate(['a']);
 
-    const closeA = screen.getByLabelText('Close session Session a');
+    const closeA = screen.getByLabelText('Hide Session a from the split');
     closeA.focus();
     await userEvent.click(closeA);
 
@@ -128,10 +128,11 @@ suite('PaneGroup', () => {
     hydrate(['a']);
 
     // Establishes that focus was live inside the pane the deletion is about
-    // to remove — the same starting point as the header-close tests above.
-    screen.getByLabelText('Close session Session a').focus();
+    // to remove — the same starting point as the header-hide tests above.
+    screen.getByLabelText('Hide Session a from the split').focus();
 
     await userEvent.click(screen.getByText(/1 of 1 in split/i));
+    await userEvent.click(await screen.findByLabelText('More actions for Session a'));
     await userEvent.click(await screen.findByLabelText('Delete session Session a'));
     await userEvent.click(await screen.findByRole('menuitem', { name: 'Delete Session a' }));
 
@@ -160,8 +161,8 @@ suite('PaneGroup', () => {
       catalog: catalog(),
     });
 
-    const closeA = screen.getByLabelText(/Close session Untitled \(a\)/);
-    const closeB = screen.getByLabelText(/Close session Untitled \(b\)/);
+    const closeA = screen.getByLabelText(/Hide Untitled \(a\) from the split/);
+    const closeB = screen.getByLabelText(/Hide Untitled \(b\) from the split/);
     assert.notStrictEqual(
       closeA.getAttribute('aria-label'), closeB.getAttribute('aria-label'),
       'two same-titled panes must still be distinguishable to a screen reader',

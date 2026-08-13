@@ -42,9 +42,10 @@ export function PaneGroup({ narrow }: PaneGroupProps) {
     panes.map((p) => ({ id: p.sessionId, title: state.byId[p.sessionId].summary.title })),
   );
 
-  // Closing or deleting a session unmounts its pane. If the element that
-  // held focus (e.g. the pane's own "Close session" button) goes with it,
-  // the browser's `activeElement` getter falls back to `<body>` per spec —
+  // Hiding a pane or deleting its session unmounts the pane. If the element
+  // that held focus (e.g. the pane's own "Hide … from the split" button)
+  // goes with it, the browser's `activeElement` getter falls back to
+  // `<body>` per spec —
   // there is no focus event to hook, just that fallback. Left alone, a
   // keyboard user is silently dropped at the top of the document mid-task.
   // `prevCount` distinguishes "a pane just disappeared" from every other
