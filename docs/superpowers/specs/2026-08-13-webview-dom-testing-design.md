@@ -120,9 +120,11 @@ Exports:
 `postMessage` asynchronously, which makes assertions racy. A direct dispatch is synchronous
 and deterministic, and `onHostMessage` cannot tell the difference.
 
-`StoreProvider` posts `{ t: 'ready' }` on mount, so `posted()[0]` is always that message.
-Tests asserting the effect of a click read `posted().at(-1)`; one test asserts the `ready`
-handshake itself.
+`StoreProvider` posts `{ t: 'ready' }` on mount, but `posted()[0]` is not reliably that
+message: React flushes child effects before parent ones, so under `renderApp` every effect
+in `App` — including the one that posts `set-visible` — runs before `StoreProvider`'s own
+`ready` post. Tests asserting the effect of a click read `posted().at(-1)`; tests that need
+the `ready` handshake filter by `t` rather than indexing.
 
 ### Required refactor
 

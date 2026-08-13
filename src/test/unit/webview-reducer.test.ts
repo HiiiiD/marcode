@@ -1,19 +1,7 @@
 import * as assert from 'assert';
 import { initialState, reduce } from '../../webview/reducer';
-import type { SessionSnapshot, SessionSummary } from '../../protocol/messages';
-
-function summary(id: string): SessionSummary {
-  return {
-    id, providerId: 'fake', model: 'fake-large', title: 'T', cwd: '/tmp',
-    status: 'idle', permissionMode: 'default',
-    usage: { inputTokens: 0, outputTokens: 0 },
-    archived: false, createdAt: 1, updatedAt: 1,
-  };
-}
-
-function snapshot(id: string): SessionSnapshot {
-  return { ...summary(id), items: [], hasMore: false, pending: [] };
-}
+import type { SessionSummary } from '../../protocol/messages';
+import { snapshot, summary } from '../fixtures/protocol';
 
 suite('webview reducer', () => {
   test('hydrate populates sessions, layout, catalog and panes', () => {
