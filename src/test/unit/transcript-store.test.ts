@@ -105,4 +105,39 @@ suite('TranscriptStore', () => {
     assert.deepStrictEqual(index.sessions, []);
     assert.deepStrictEqual(index.layout, { orientation: 'vertical', panes: [] });
   });
+
+  test('remove deletes the file, clears the cache, and stays gone after a later flush', async () => {
+    store.append('s1', item('a', 'one'));
+    store.append('s1', item('b', 'two'));
+    await store.flush();
+    await store.tail('s1');
+
+    const sessionFile = path.join(dir, 'sessions', 's1.jsonl');
+    await fs.access(sessionFile);
+
+    await store.remove('s1');
+
+    await assert.rejects(fs.access(sessionFile), /ENOENT/);
+
+    const { items, hasMore } = await store.tail('s1');
+    assert.deepStrictEqual(items, []);
+    assert.strictEqual(hasMore, false);
+
+    await store.flush();
+    await assert.rejects(fs.access(sessionFile), /ENOENT/);
+  });
+
+  test('remove on a session with unflushed pending appends is not resurrected by a later flush', async () => {
+    store.append('s1', item('a', 'one'));
+
+    await store.remove('s1');
+    await store.flush();
+
+    const sessionFile = path.join(dir, 'sessions', 's1.jsonl');
+    await assert.rejects(fs.access(sessionFile), /ENOENT/);
+
+    const { items, hasMore } = await store.tail('s1');
+    assert.deepStrictEqual(items, []);
+    assert.strictEqual(hasMore, false);
+  });
 });
