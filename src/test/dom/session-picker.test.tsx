@@ -40,14 +40,72 @@ suite('SessionPicker', () => {
     assert.deepStrictEqual(visible.at(-1), { t: 'set-visible', sessionIds: ['a', 'b'] });
   });
 
-  test('the delete item posts delete-session', async () => {
+  test('each session appears exactly once in the roster', async () => {
+    renderApp();
+    hydrateAOpen();
+
+    await userEvent.click(screen.getByText('Sessions (1/2)'));
+    assert.strictEqual(
+      (await screen.findAllByText('Session b')).length, 1,
+      'the roster listed every session twice: once to toggle, once to delete',
+    );
+  });
+
+  test('delete is behind a per-row confirm and only fires on the second step', async () => {
     renderApp();
     hydrateAOpen();
 
     await userEvent.click(screen.getByText('Sessions (1/2)'));
     await userEvent.click(await screen.findByLabelText('Delete session Session b'));
 
+    assert.ok(
+      !posted().some((m) => m.t === 'delete-session'),
+      'opening the confirm must not delete anything',
+    );
+
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Delete Session b' }));
     assert.deepStrictEqual(posted().at(-1), { t: 'delete-session', id: 'b' });
+  });
+
+  test('the confirm offers a way out', async () => {
+    renderApp();
+    hydrateAOpen();
+
+    await userEvent.click(screen.getByText('Sessions (1/2)'));
+    await userEvent.click(await screen.findByLabelText('Delete session Session b'));
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Keep it' }));
+
+    assert.ok(!posted().some((m) => m.t === 'delete-session'));
+  });
+
+  test('arrow keys alone reach and open the delete submenu', async () => {
+    renderApp();
+    hydrateAOpen();
+
+    await userEvent.click(screen.getByText('Sessions (1/2)'));
+    // a checkbox, a delete trigger, b checkbox, b delete trigger.
+    await userEvent.keyboard('{ArrowDown}{ArrowDown}{ArrowDown}{ArrowDown}');
+    assert.strictEqual(
+      document.activeElement?.getAttribute('aria-label'), 'Delete session Session b',
+      'roving focus must land on the submenu trigger without a mouse',
+    );
+
+    await userEvent.keyboard('{ArrowRight}');
+    await userEvent.keyboard('{Enter}');
+
+    assert.deepStrictEqual(posted().at(-1), { t: 'delete-session', id: 'b' });
+  });
+
+  test('toggling visibility still posts set-layout and set-visible', async () => {
+    renderApp();
+    hydrateAOpen();
+
+    await userEvent.click(screen.getByText('Sessions (1/2)'));
+    await userEvent.click(await screen.findByRole('menuitemcheckbox', { name: /Session b/ }));
+
+    assert.deepStrictEqual(posted().filter((m) => m.t === 'set-visible').at(-1), {
+      t: 'set-visible', sessionIds: ['a', 'b'],
+    });
   });
 
   test('the orientation toggle posts the flipped layout', async () => {

@@ -1,10 +1,10 @@
 import { Button } from '@/components/ui/button';
 import {
-  DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent,
-  DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { evenlySizedPanes } from './pane-layout';
 import { SessionCreateMenu } from './session-create-menu';
+import { SessionRow } from './session-row';
 import { useStore } from '../store';
 import type { SessionId } from '../../protocol/messages';
 
@@ -34,27 +34,7 @@ export function SessionPicker() {
             <DropdownMenuItem disabled>No sessions yet</DropdownMenuItem>
           )}
           {state.sessions.map((s) => (
-            <DropdownMenuCheckboxItem
-              key={s.id}
-              checked={open.has(s.id)}
-              onCheckedChange={() => toggle(s.id)}
-            >
-              <span className="truncate">{s.title}</span>
-              {s.archived && (
-                <span className="ml-auto pl-2 text-muted-foreground">archived</span>
-              )}
-            </DropdownMenuCheckboxItem>
-          ))}
-          <DropdownMenuSeparator />
-          {state.sessions.map((s) => (
-            <DropdownMenuItem
-              key={`del-${s.id}`}
-              variant="destructive"
-              aria-label={`Delete session ${s.title}`}
-              onClick={() => post({ t: 'delete-session', id: s.id })}
-            >
-              Delete “{s.title}”
-            </DropdownMenuItem>
+            <SessionRow key={s.id} session={s} open={open.has(s.id)} onToggle={() => toggle(s.id)} />
           ))}
         </DropdownMenuContent>
       </DropdownMenu>
