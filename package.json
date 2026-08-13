@@ -12,36 +12,56 @@
   "activationEvents": [],
   "main": "./dist/extension.js",
   "contributes": {
-    "commands": [
-      {
-        "command": "hiiiid-code.helloWorld",
-        "title": "Hello World"
-      }
-    ]
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "hiiiid-code",
+          "title": "Agents",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "hiiiid-code": [
+        {
+          "id": "hiiiid-code.panel",
+          "name": "Agents",
+          "type": "webview"
+        }
+      ]
+    }
   },
   "scripts": {
     "vscode:prepublish": "yarn run package",
-    "compile": "yarn run check-types && yarn run lint && node esbuild.js",
+    "compile": "yarn run check-types && yarn run lint && node esbuild.js && yarn run build:css",
     "watch": "npm-run-all -p watch:*",
     "watch:esbuild": "node esbuild.js --watch",
     "watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
-    "package": "yarn run check-types && yarn run lint && node esbuild.js --production",
+    "watch:css": "tailwindcss -i src/webview/index.css -o dist/webview.css --watch",
+    "build:css": "tailwindcss -i src/webview/index.css -o dist/webview.css",
+    "package": "yarn run check-types && yarn run lint && node esbuild.js --production && yarn run build:css",
     "compile-tests": "tsc -p . --outDir out",
     "watch-tests": "tsc -p . -w --outDir out",
     "pretest": "yarn run compile-tests && yarn run compile && yarn run lint",
     "check-types": "tsc --noEmit",
     "lint": "eslint src",
-    "test": "vscode-test"
+    "test": "vscode-test",
+    "test:unit": "tsc -p . --outDir out && mocha \"out/test/unit/**/*.test.js\""
   },
   "devDependencies": {
+    "@tailwindcss/cli": "^4.3.3",
     "@types/mocha": "^10.0.10",
     "@types/node": "24.x",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
     "@types/vscode": "^1.125.0",
     "@vscode/test-cli": "^0.0.15",
     "@vscode/test-electron": "^3.0.0",
     "esbuild": "^0.28.1",
     "eslint": "^10.5.0",
+    "mocha": "^11.8.0",
     "npm-run-all": "^4.1.5",
+    "tailwindcss": "^4.3.3",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.61.1"
   },
@@ -49,5 +69,9 @@
     "diff": "^8.0.4",
     "serialize-javascript": "^7.0.6"
   },
-  "packageManager": "yarn@4.18.0"
+  "packageManager": "yarn@4.18.0",
+  "dependencies": {
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  }
 }
