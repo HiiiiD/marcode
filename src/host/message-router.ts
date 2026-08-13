@@ -38,7 +38,18 @@ export class MessageRouter {
       case 'ready': {
         const layout = this.manager.layout();
         const snapshots: SessionSnapshot[] = [];
+        // A pane can outlive close-session (only delete-session prunes the
+        // layout), so a pane's sessionId may point at an archived session.
+        // Only the genuine "live at shutdown, restored with no live
+        // AgentSession yet" case should be materialized via reopen() here —
+        // an explicitly-closed session must stay archived and provider-run
+        // free until the user re-opens it (e.g. via set-visible, which
+        // already serves archived sessions from disk without reviving them).
+        const archived = new Set(
+          this.manager.summaries().filter((s) => s.archived).map((s) => s.id),
+        );
         for (const pane of layout.panes) {
+          if (archived.has(pane.sessionId)) { continue; }
           const session = this.manager.get(pane.sessionId) ?? await this.reopen(pane.sessionId);
           if (session) { snapshots.push(await session.snapshot()); }
         }

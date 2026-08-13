@@ -124,6 +124,43 @@ suite('MessageRouter', () => {
     await manager2.dispose();
   });
 
+  test('ready does not revive a session the user explicitly closed', async () => {
+    await router.handle({ t: 'create-session', providerId: 'fake', cwd: '/tmp' });
+    const id = manager.summaries()[0].id;
+    await router.handle({ t: 'set-visible', sessionIds: [id] });
+    await router.handle({ t: 'send', id, text: 'hello' });
+    await settle();
+    // close() archives the session but does NOT prune its pane from the
+    // layout (only delete-session does) — the pane is still there on the
+    // next `ready`, just pointing at an archived session.
+    await router.handle({
+      t: 'set-layout',
+      layout: { orientation: 'vertical', panes: [{ sessionId: id, size: 1 }] },
+    });
+    await router.handle({ t: 'close-session', id });
+    await manager.dispose();
+
+    const providers2 = new Map<string, AgentProvider>([
+      ['fake', new FakeProvider(() => [
+        { kind: 'text', delta: 'ok' },
+        { kind: 'turn-end', reason: 'done' },
+      ])],
+    ]);
+    const sent2: HostToWebview[] = [];
+    const manager2 = new SessionManager(new TranscriptStore(dir), providers2, (m) => sent2.push(m));
+    await manager2.init();
+    const router2 = new MessageRouter(manager2, (m) => sent2.push(m));
+
+    await router2.handle({ t: 'ready' });
+
+    assert.strictEqual(manager2.get(id), undefined, 'closed session must not be revived as live');
+    const summary = manager2.summaries().find((s) => s.id === id);
+    assert.ok(summary);
+    assert.strictEqual(summary!.archived, true, 'closed session must remain archived');
+
+    await manager2.dispose();
+  });
+
   test('handle(null) resolves rather than throwing', async () => {
     await router.handle(null as never);
     assert.ok(true, 'no exception escaped the router');
