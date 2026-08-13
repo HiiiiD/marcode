@@ -40,7 +40,10 @@
             "id": "move-to-secondary",
             "title": "Move HiiiiD Code to the secondary sidebar",
             "description": "VS Code extensions cannot place a view in the secondary sidebar directly. Open the secondary sidebar with Ctrl+Alt+B, then drag the HiiiiD Code icon from the activity bar into it. VS Code remembers the location.",
-            "media": { "markdown": "media/walkthrough-sidebar.md", "altText": "Drag HiiiiD Code to the secondary sidebar" }
+            "media": {
+              "markdown": "media/walkthrough-sidebar.md",
+              "altText": "Drag HiiiiD Code to the secondary sidebar"
+            }
           }
         ]
       }
@@ -61,7 +64,8 @@
     "check-types": "tsc --noEmit",
     "lint": "eslint src",
     "test": "yarn run pretest && vscode-test",
-    "test:unit": "yarn run compile-tests && mocha --ui tdd \"out/test/unit/**/*.test.js\"",
+    "test:unit": "mocha --ui tdd --require tsx/cjs \"src/test/unit/**/*.test.ts\"",
+    "test:dom": "mocha --ui tdd --require tsx/cjs --require global-jsdom/register --require src/test/dom/setup.ts \"src/test/dom/**/*.test.tsx\"",
     "dev": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev-host.ps1",
     "dev:clean": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev-host.ps1 -Clean"
   },
@@ -69,6 +73,10 @@
     "@anthropic-ai/sdk": "^0.116.0",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "@tailwindcss/cli": "^4.3.3",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.4",
+    "@types/jsdom": "^30.0.0",
     "@types/mocha": "^10.0.10",
     "@types/node": "24.x",
     "@types/react": "^19.2.18",
@@ -78,9 +86,12 @@
     "@vscode/test-electron": "^3.0.0",
     "esbuild": "^0.28.1",
     "eslint": "^10.5.0",
+    "global-jsdom": "^29.0.0",
+    "jsdom": "^30.0.1",
     "mocha": "^11.8.0",
     "npm-run-all": "^4.1.5",
     "tailwindcss": "^4.3.3",
+    "tsx": "^4.23.12",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.61.1",
     "zod": "^4.4.3"
