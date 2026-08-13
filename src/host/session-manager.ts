@@ -28,8 +28,20 @@ export class SessionManager implements SessionSink {
    * follow and getting silently clobbered when the (now stale) snapshot
    * arrives after it. Buffer patches per id while its snapshot fetch is in
    * flight and replay them, in order, right after that snapshot is emitted.
+   *
+   * setVisible() is also re-entrant: unchecking then re-checking a session in
+   * the roster picker starts a second fetch for the same id while the first
+   * is still in flight, and the second `snapshotting.set(id, [])` replaces
+   * the first's buffer. Whichever fetch resolves first would then drain the
+   * *other's* patches and delete the entry, and the loser's now-stale
+   * snapshot would be emitted afterwards, wholesale replacing the pane and
+   * discarding exactly the patches this buffer exists to protect. So each
+   * invocation stamps a per-id sequence number; on resume, an invocation
+   * that is no longer the newest for that id (or whose id has since left
+   * `visible`) drops its snapshot and touches nothing.
    */
   private snapshotting = new Map<SessionId, TranscriptPatch[]>();
+  private snapshotSeq = new Map<SessionId, number>();
 
   constructor(
     private readonly store: TranscriptStore,
@@ -116,20 +128,25 @@ export class SessionManager implements SessionSink {
     for (const id of added) {
       // Mark this id as "snapshot in flight" so patch() buffers instead of
       // emitting for it — see the `snapshotting` field doc comment.
+      const seq = (this.snapshotSeq.get(id) ?? 0) + 1;
+      this.snapshotSeq.set(id, seq);
       this.snapshotting.set(id, []);
 
       const session = this.live.get(id);
       if (session) {
-        this.emit({ t: 'session-snapshot', session: await session.snapshot() });
+        const snapshot = await session.snapshot();
+        if (!this.claimSnapshot(id, seq)) { continue; }
+        this.emit({ t: 'session-snapshot', session: snapshot });
         this.drainSnapshotBuffer(id);
         continue;
       }
       const state = this.meta.get(id);
       if (!state) {
-        this.snapshotting.delete(id);
+        if (this.snapshotSeq.get(id) === seq) { this.snapshotting.delete(id); }
         continue;
       }
       const { items, hasMore } = await this.store.tail(id);
+      if (!this.claimSnapshot(id, seq)) { continue; }
       this.emit({
         t: 'session-snapshot',
         session: { ...state, items, hasMore, pending: [] },
@@ -138,10 +155,28 @@ export class SessionManager implements SessionSink {
     }
   }
 
+  /**
+   * True when this invocation is still the one entitled to emit a snapshot
+   * for `id`. A superseded invocation must leave the buffer alone — it
+   * belongs to the newer fetch, whose snapshot is strictly fresher. An id
+   * that left `visible` mid-flight has no pane to fill, so its buffer is
+   * dropped instead.
+   */
+  private claimSnapshot(id: SessionId, seq: number): boolean {
+    if (this.snapshotSeq.get(id) !== seq) { return false; }
+    if (!this.visible.has(id)) {
+      this.snapshotting.delete(id);
+      this.snapshotSeq.delete(id);
+      return false;
+    }
+    return true;
+  }
+
   /** Emits any patches that arrived for `id` while its snapshot was in flight. */
   private drainSnapshotBuffer(id: SessionId): void {
     const buffered = this.snapshotting.get(id);
     this.snapshotting.delete(id);
+    this.snapshotSeq.delete(id);
     if (!buffered) { return; }
     for (const patch of buffered) {
       this.emit({ t: 'session-patch', id, patch });

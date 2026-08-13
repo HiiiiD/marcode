@@ -121,6 +121,63 @@ suite('SessionManager', () => {
     assert.ok(patchIdx > snapIdx, 'the patch must arrive after the snapshot, not before');
   });
 
+  test('a re-entrant setVisible() does not let a stale snapshot clobber the newer one\'s patches', async () => {
+    // Unchecking then re-checking a streaming session in the roster picker:
+    // setVisible([a]) is still awaiting its snapshot when setVisible([]) and
+    // a second setVisible([a]) run. The first call's now-stale snapshot must
+    // not be emitted after the newer call has replayed its buffered patches.
+    const a = await manager.create('fake', '/tmp');
+    const id = a.state.id;
+    sent.length = 0;
+
+    const realTail = store.tail.bind(store);
+    const releases: (() => void)[] = [];
+    const startSignals: (() => void)[] = [];
+    const started = [
+      new Promise<void>((r) => startSignals.push(r)),
+      new Promise<void>((r) => startSignals.push(r)),
+    ];
+    let call = 0;
+    (store as unknown as { tail: typeof store.tail }).tail = async (
+      ...args: Parameters<typeof store.tail>
+    ) => {
+      startSignals[Math.min(call++, startSignals.length - 1)]?.();
+      await new Promise<void>((resolve) => { releases.push(resolve); });
+      return realTail(...args);
+    };
+
+    try {
+      const first = manager.setVisible([id]);
+      await started[0]; // first snapshot fetch is in flight
+
+      await manager.setVisible([]); // id leaves the visible set
+      const third = manager.setVisible([id]); // id comes back: buffer replaced
+      await started[1];
+
+      a.send('hello'); // patch buffered by the newest invocation
+      await settle();
+
+      releases[0]?.(); // the stale first call resumes and emits its snapshot
+      await first;
+      await settle();
+
+      releases[1]?.();
+      await third;
+      await settle();
+    } finally {
+      (store as unknown as { tail: typeof store.tail }).tail = realTail;
+    }
+
+    const lastSnapshot = sent.map((m) => m.t).lastIndexOf('session-snapshot');
+    const firstPatch = sent.findIndex((m) => m.t === 'session-patch' && m.id === id);
+    assert.ok(firstPatch >= 0, 'the patch must not be lost');
+    assert.ok(lastSnapshot >= 0, 'a snapshot must be emitted');
+    assert.ok(
+      firstPatch > lastSnapshot,
+      'no snapshot may be emitted after a patch it predates — it wholesale replaces the pane',
+    );
+  });
+
   test('sink calls after dispose() do not arm a persist timer', async () => {
     const a = await manager.create('fake', '/tmp');
     await manager.dispose();
