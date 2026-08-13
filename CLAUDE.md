@@ -101,6 +101,11 @@ element "just this once".
   the vendored file. Do not mix in Radix packages.
 - Primitives are vendored into `src/webview/components/ui/`. Tailwind picks them up through
   the esbuild plugin — no config change needed when you add one.
+- **Compose classNames with `cn` from `@/lib/utils`** — never template literals or string
+  concatenation. Conditional segments are arguments (`cn('h-7', active && 'border-destructive')`),
+  not interpolations. `cn` is `twMerge(clsx(...))`, so it resolves conflicting Tailwind
+  utilities; a template literal leaves both in the class list and lets source order decide,
+  which silently breaks any conditional override of a base color or size.
 - **Prefer the short Tailwind utilities for plain token lookups**: `border-border`,
   `bg-muted`, `text-muted-foreground`. The `@theme inline` block in
   `src/webview/index.css` registers every token under the `--color-*` namespace, so
