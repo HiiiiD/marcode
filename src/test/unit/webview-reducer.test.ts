@@ -114,4 +114,10 @@ suite('webview reducer', () => {
     assert.strictEqual(state.sessions[0].status, 'running');
     assert.strictEqual(state.byId['s1'].summary.status, 'running');
   });
+
+  test('an out-of-contract message is a no-op that returns the same state object', () => {
+    const bogus = { t: 'not-a-real-variant' } as unknown as Parameters<typeof reduce>[1];
+    const next = reduce(initialState, bogus);
+    assert.strictEqual(next, initialState);
+  });
 });

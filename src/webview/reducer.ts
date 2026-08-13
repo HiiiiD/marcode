@@ -90,6 +90,13 @@ export function reduce(state: ClientState, msg: HostToWebview): ClientState {
         byId: { ...state.byId, [msg.id]: applyPatch(pane, msg.patch) },
       };
     }
+
+    default:
+      // The HostToWebview type is closed, but nothing guarantees a runtime value
+      // matches it (a host that shipped a new variant before this bundle updated,
+      // or a stray/malformed message). Treat an unrecognized message as a no-op
+      // rather than falling off the switch and returning undefined.
+      return state;
   }
 }
 
