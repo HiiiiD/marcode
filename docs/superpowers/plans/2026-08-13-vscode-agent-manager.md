@@ -148,6 +148,12 @@ Replace the `contributes` block and add scripts. `activationEvents` stays `[]` �
   },
 ```
 
+Extend the ESLint file glob in `eslint.config.mjs` to cover `.tsx`, or `src/webview/main.tsx` and every later component is silently unlinted while `yarn run lint` still reports green:
+
+```js
+    files: ["**/*.ts", "**/*.tsx"],
+```
+
 Add to `scripts`:
 
 ```json
@@ -330,6 +336,7 @@ if (container) {
 - [ ] **Step 7: Write `src/host/panel-view-provider.ts`**
 
 ```ts
+import { randomBytes } from 'node:crypto';
 import * as vscode from 'vscode';
 
 export class PanelViewProvider implements vscode.WebviewViewProvider {
@@ -379,14 +386,11 @@ export class PanelViewProvider implements vscode.WebviewViewProvider {
 }
 
 function makeNonce(): string {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  let out = '';
-  for (let i = 0; i < 32; i++) {
-    out += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return out;
+  return randomBytes(16).toString('base64url');
 }
 ```
+
+A CSP nonce must be unpredictable, so it comes from `node:crypto`, not `Math.random()`. The extension host is Node, so this is a plain import. Every later webview change inherits this function unchanged.
 
 - [ ] **Step 8: Rewrite `src/extension.ts`**
 
@@ -428,6 +432,15 @@ suite('extension', () => {
   });
 });
 ```
+
+Add CSP assertions against the HTML `PanelViewProvider` actually renders — every later webview change inherits this template, and without a test nothing catches an accidental loosening. Drive the real provider with a minimal `vscode.Webview` stub supplying `cspSource` and `asWebviewUri`, and assert:
+
+- the CSP contains `default-src 'none'`
+- the CSP contains neither `unsafe-inline` nor `unsafe-eval`
+- the nonce in the `<meta>` CSP matches the nonce on the `<script>` tag
+- two renders produce different nonces
+
+Assert on the provider's real output, not on a re-implementation of the template — a test that rebuilds the string it is checking verifies nothing.
 
 Update `.vscode-test.mjs`:
 
