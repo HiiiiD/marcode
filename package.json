@@ -45,8 +45,8 @@
     "pretest": "yarn run compile-tests && yarn run compile && yarn run lint",
     "check-types": "tsc --noEmit",
     "lint": "eslint src",
-    "test": "vscode-test",
-    "test:unit": "tsc -p . --outDir out && mocha \"out/test/unit/**/*.test.js\""
+    "test": "yarn run pretest && vscode-test",
+    "test:unit": "yarn run compile-tests && mocha \"out/test/unit/**/*.test.js\""
   },
   "devDependencies": {
     "@tailwindcss/cli": "^4.3.3",
