@@ -1,16 +1,10 @@
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { evenlySizedPanes } from './pane-layout';
+import { StatusBadge } from './status-badge';
 import { useStore } from '../store';
 import type { PaneState } from '../reducer';
-import type { ModelInfo, SessionStatus } from '../../protocol/messages';
-
-const DOT: Record<SessionStatus, string> = {
-  idle: 'bg-muted-foreground',
-  running: 'bg-primary animate-pulse',
-  'awaiting-approval': 'bg-destructive',
-  error: 'bg-destructive',
-};
+import type { ModelInfo } from '../../protocol/messages';
 
 export function SessionHeader({ pane, models }: { pane: PaneState; models: ModelInfo[] }) {
   const { state, post } = useStore();
@@ -19,7 +13,7 @@ export function SessionHeader({ pane, models }: { pane: PaneState; models: Model
 
   return (
     <div className="flex items-center gap-2 border-b border-border px-2 py-1 text-xs">
-      <span className={cn('h-2 w-2 shrink-0 rounded-full', DOT[s.status])} aria-hidden />
+      <StatusBadge status={s.status} />
       <span className="truncate font-medium" title={s.title}>{s.title}</span>
       {s.permissionMode === 'bypass' && (
         // Text, not a bare colored dot: a color alone would be invisible to

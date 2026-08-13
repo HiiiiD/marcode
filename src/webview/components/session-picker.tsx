@@ -7,6 +7,7 @@ import { evenlySizedPanes } from './pane-layout';
 import { SessionCreateMenu } from './session-create-menu';
 import { SessionRow } from './session-row';
 import { useStore } from '../store';
+import { statusView } from '../status';
 import type { SessionId } from '../../protocol/messages';
 
 interface SessionPickerProps {
@@ -19,6 +20,7 @@ export function SessionPicker({ narrow }: SessionPickerProps) {
   const { state, post } = useStore();
   const open = new Set(state.layout.panes.map((p) => p.sessionId));
   const horizontal = state.layout.orientation === 'horizontal';
+  const needing = state.sessions.filter((s) => statusView(s.status).needsUser).length;
 
   const setPanes = (ids: SessionId[]) => {
     post({ t: 'set-layout', layout: evenlySizedPanes(ids, state.layout.orientation) });
@@ -37,6 +39,11 @@ export function SessionPicker({ narrow }: SessionPickerProps) {
         >
           <ColumnsIcon aria-hidden />
           {open.size} of {state.sessions.length} in split
+          {needing > 0 && (
+            <span className="ml-auto text-primary" aria-live="polite">
+              {needing} needs you
+            </span>
+          )}
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="max-h-80 w-72 overflow-y-auto">
           {state.sessions.length === 0 && (
