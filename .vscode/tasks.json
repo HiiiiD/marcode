@@ -4,50 +4,73 @@
 	"version": "2.0.0",
 	"tasks": [
 		{
-            "label": "watch",
-            "dependsOn": [
-                "npm: watch:tsc",
-                "npm: watch:esbuild"
-            ],
-            "presentation": {
-                "reveal": "never"
-            },
-            "group": {
-                "kind": "build",
-                "isDefault": true
-            }
-        },
-        {
-            "type": "npm",
-            "script": "watch:esbuild",
-            "group": "build",
-            "problemMatcher": "$esbuild-watch",
-            "isBackground": true,
-            "label": "npm: watch:esbuild",
-            "presentation": {
-                "group": "watch",
-                "reveal": "never"
-            }
-        },
-		{
-            "type": "npm",
-            "script": "watch:tsc",
-            "group": "build",
-            "problemMatcher": "$tsc-watch",
-            "isBackground": true,
-            "label": "npm: watch:tsc",
-            "presentation": {
-                "group": "watch",
-                "reveal": "never"
-            }
-        },
-		{
-			"type": "npm",
-			"script": "watch-tests",
-			"problemMatcher": "$tsc-watch",
-			"isBackground": true,
+			"label": "watch",
+			// watch:css is deliberately absent — esbuild.js rebuilds the CSS as part
+			// of the webview build. Tailwind's own watch mode emits no per-rebuild
+			// marker, so a background task keyed to it would never signal completion
+			// and the preLaunchTask would hang.
+			"dependsOn": [
+				"watch:tsc",
+				"watch:esbuild"
+			],
 			"presentation": {
-				"reveal": "never",
+				"reveal": "silent"
+			},
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "watch:esbuild",
+			"type": "shell",
+			"command": "yarn run watch:esbuild",
+			"isBackground": true,
+			"group": "build",
+			"presentation": {
+				"group": "watch",
+				"reveal": "silent"
+			},
+			// Inline matcher keyed to the markers esbuild.js already prints, so this
+			// works without the connor4312.esbuild-problem-matchers extension.
+			"problemMatcher": {
+				"owner": "esbuild",
+				"fileLocation": [
+					"relative",
+					"${workspaceFolder}"
+				],
+				"pattern": {
+					"regexp": "^\\s*(?:✘ )?\\[ERROR\\]\\s+(.*)$",
+					"message": 1
+				},
+				"background": {
+					"activeOnStart": true,
+					"beginsPattern": "^\\[watch\\] build started$",
+					"endsPattern": "^\\[watch\\] build finished$"
+				}
+			}
+		},
+		{
+			"label": "watch:tsc",
+			"type": "shell",
+			"command": "yarn run watch:tsc",
+			"isBackground": true,
+			"group": "build",
+			"presentation": {
+				"group": "watch",
+				"reveal": "silent"
+			},
+			"problemMatcher": "$tsc-watch"
+		},
+		{
+			"label": "watch-tests",
+			"type": "shell",
+			"command": "yarn run watch-tests",
+			"isBackground": true,
+			"problemMatcher": "$tsc-watch",
+			"presentation": {
+				"reveal": "silent",
 				"group": "watchers"
 			},
 			"group": "build"
@@ -55,8 +78,8 @@
 		{
 			"label": "tasks: watch-tests",
 			"dependsOn": [
-				"npm: watch",
-				"npm: watch-tests"
+				"watch",
+				"watch-tests"
 			],
 			"problemMatcher": []
 		}
