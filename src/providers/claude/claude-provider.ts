@@ -21,12 +21,19 @@
 //   surfaced as a turn-end error — a rejected effort change is not a failed
 //   agent turn, and AgentSession.setEffort() only awaits nothing (setEffort
 //   is fire-and-forget by interface), so there is no caller to report to.
-// - `Options.stderr` is deliberately left unset. Forwarding raw CLI stderr
+// - `Options.stderr` is deliberately left unset — forwarding raw CLI stderr
 //   into a `console.error` (as the plan's pseudocode did) risks leaking
-//   secrets: stderr can echo failed subprocess command lines, and this
-//   task's brief explicitly requires never logging or echoing credentials.
-//   Thrown errors and `result` messages already carry a legible, structured
-//   error surface (see map-events.ts) without touching stderr.
+//   secrets. CORRECTION to an earlier pass of this comment: leaving the
+//   option unset does NOT keep stderr out of the picture. The installed
+//   SDK's `ProcessTransport` accumulates a `stderrTail` unconditionally (not
+//   gated on `Options.stderr`) and appends `. stderr: <tail>` to the `Error`
+//   it throws on a nonzero exit or signal kill — which reaches `pump()`'s
+//   catch below regardless of whether we ever set the callback. The SDK
+//   pre-redacts a fixed table of well-known token shapes before capturing
+//   that tail, but anything outside the table passes through verbatim. See
+//   redact.ts for the mitigation: every message built by `errorMessage()`
+//   below is run through `redactSecrets()` before it becomes an `AgentEvent`
+//   (and therefore before it can reach a persisted transcript item).
 // - `Options.includePartialMessages` is left unset (defaults to false/off).
 //   Enabling it emits fine-grained `SDKPartialAssistantMessage` stream
 //   events (`type: 'stream_event'`) requiring a much wider set of shapes to
@@ -37,6 +44,7 @@ import type {
   CanUseTool, Options, PermissionMode as SdkPermissionMode, Query, SDKUserMessage,
 } from '@anthropic-ai/claude-agent-sdk' with { 'resolution-mode': 'import' };
 import { mapEvent } from './map-events';
+import { redactSecrets } from './redact';
 import type {
   AgentEvent, AgentProvider, AgentRun, EffortLevel, ModelInfo, PermissionMode,
   StartOptions, ToolDecision,
@@ -105,7 +113,8 @@ class Channel<T> implements AsyncIterable<T> {
 }
 
 function errorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
+  const raw = err instanceof Error ? err.message : String(err);
+  return redactSecrets(raw);
 }
 
 export class ClaudeProvider implements AgentProvider {

@@ -48,10 +48,24 @@
 //     `usage: NonNullableUsage` (`input_tokens`/`output_tokens`, verified
 //     against `BetaUsage`). `SDKResultError` (`subtype:
 //     'error_during_execution' | 'error_max_turns' | 'error_max_budget_usd' |
-//     'error_max_structured_output_retries'`) has NO free-text `error` field
-//     — the plan's pseudocode read `msg.error`, which does not exist on the
-//     real type and would always be `undefined`. We build the error string
-//     from `subtype` (and `stop_reason` when present) instead.
+//     'error_max_structured_output_retries'`) DOES carry free-text error
+//     detail — CORRECTING an earlier pass of this comment (and the task-14
+//     report) that claimed otherwise: `errors: string[]` (sdk.d.ts:4461) and
+//     `terminal_reason?: TerminalReason` (sdk.d.ts:4462, values including
+//     `'api_error' | 'model_error' | 'prompt_too_long' | 'budget_exhausted' |
+//     'aborted_streaming' | 'aborted_tools' | ...`, full union at
+//     sdk.d.ts:7254) are both real, typed fields. We prefer `errors.join('; ')`
+//     when non-empty, then `terminal_reason`, then `stop_reason`, then
+//     `subtype`, so an auth failure or an over-length prompt surfaces its
+//     actual cause instead of the bare subtype string.
+//   - `terminal_reason` values `'aborted_streaming'` and `'aborted_tools'` are
+//     how the SDK reports a user-initiated `Query.interrupt()` — the result
+//     still arrives with `subtype !== 'success'`, so without special-casing
+//     these two values every Stop click would surface as a red `turn-end
+//     reason: 'error'` transcript item instead of `reason: 'interrupted'`
+//     (the reason `FakeProvider` and the `AgentEvent` union establish for a
+//     user-initiated stop). Mapped to `{ kind: 'turn-end', reason:
+//     'interrupted' }` here, ahead of the generic error path.
 //
 // `SDKUserMessage` (what we construct for `send`): `{ type: 'user', message:
 // MessageParam, parent_tool_use_id: string | null, ... }` where `MessageParam
@@ -143,11 +157,24 @@ export function mapEvent(msg: unknown): AgentEvent[] {
     const subtype = (msg as { subtype?: string }).subtype;
     if (subtype === 'success') {
       out.push({ kind: 'turn-end', reason: 'done' });
-    } else {
-      const stopReason = (msg as { stop_reason?: string | null }).stop_reason;
-      const detail = [subtype, stopReason].filter((v): v is string => Boolean(v)).join(': ');
-      out.push({ kind: 'turn-end', reason: 'error', error: detail || 'Agent error' });
+      return out;
     }
+
+    const terminalReason = (msg as { terminal_reason?: string }).terminal_reason;
+    if (terminalReason === 'aborted_streaming' || terminalReason === 'aborted_tools') {
+      out.push({ kind: 'turn-end', reason: 'interrupted' });
+      return out;
+    }
+
+    const errors = (msg as { errors?: unknown }).errors;
+    const errorList = Array.isArray(errors)
+      ? errors.filter((e): e is string => typeof e === 'string' && e.length > 0)
+      : [];
+    const stopReason = (msg as { stop_reason?: string | null }).stop_reason;
+    const detail = errorList.length > 0
+      ? errorList.join('; ')
+      : (terminalReason || stopReason || subtype);
+    out.push({ kind: 'turn-end', reason: 'error', error: detail || 'Agent error' });
     return out;
   }
 

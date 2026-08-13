@@ -79,7 +79,7 @@ suite('mapEvent', () => {
     ]);
   });
 
-  test('an error result yields turn-end with a message built from subtype', () => {
+  test('an error result with no errors/terminal_reason falls back to subtype', () => {
     const events = mapEvent({
       type: 'result', subtype: 'error_during_execution', stop_reason: null,
     } as never);
@@ -88,6 +88,43 @@ suite('mapEvent', () => {
       events.at(-1),
       { kind: 'turn-end', reason: 'error', error: 'error_during_execution' },
     );
+  });
+
+  test('an error result prefers the real errors[] text over subtype/terminal_reason', () => {
+    const events = mapEvent({
+      type: 'result',
+      subtype: 'error_during_execution',
+      errors: ['Invalid API key'],
+      terminal_reason: 'api_error',
+    } as never);
+    assert.deepStrictEqual(
+      events.at(-1),
+      { kind: 'turn-end', reason: 'error', error: 'Invalid API key' },
+    );
+  });
+
+  test('an error result with no errors[] falls back to terminal_reason', () => {
+    const events = mapEvent({
+      type: 'result', subtype: 'error_during_execution', terminal_reason: 'prompt_too_long',
+    } as never);
+    assert.deepStrictEqual(
+      events.at(-1),
+      { kind: 'turn-end', reason: 'error', error: 'prompt_too_long' },
+    );
+  });
+
+  test('an aborted_streaming terminal_reason maps to turn-end interrupted, not error', () => {
+    const events = mapEvent({
+      type: 'result', subtype: 'error_during_execution', terminal_reason: 'aborted_streaming',
+    } as never);
+    assert.deepStrictEqual(events, [{ kind: 'turn-end', reason: 'interrupted' }]);
+  });
+
+  test('an aborted_tools terminal_reason maps to turn-end interrupted, not error', () => {
+    const events = mapEvent({
+      type: 'result', subtype: 'error_during_execution', terminal_reason: 'aborted_tools',
+    } as never);
+    assert.deepStrictEqual(events, [{ kind: 'turn-end', reason: 'interrupted' }]);
   });
 
   test('unrecognised messages produce no events', () => {
