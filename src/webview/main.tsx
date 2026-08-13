@@ -33,12 +33,12 @@ function App() {
 
   return (
     <div className="flex h-screen flex-col">
-      {pane && <SessionHeader pane={pane} models={provider?.models ?? []} />}
+      {pane && <SessionHeader key={pane.summary.id} pane={pane} models={provider?.models ?? []} />}
       <div className="flex-1 overflow-hidden">
         {pane && <Transcript pane={pane} onLoadMore={(beforeItemId) =>
           post({ t: 'load-more', id: first.id, beforeItemId })} />}
       </div>
-      {pane && <Composer pane={pane} model={model} />}
+      {pane && <Composer key={pane.summary.id} pane={pane} model={model} />}
     </div>
   );
 }

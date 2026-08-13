@@ -43,7 +43,10 @@ export function Composer({ pane, model }: { pane: PaneState; model: ModelInfo | 
         value={text}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={(e) => {
-          if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); }
+          if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+            e.preventDefault();
+            submit();
+          }
         }}
         rows={3}
         placeholder="Message the agent…"
