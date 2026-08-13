@@ -95,6 +95,12 @@ export class AgentSession {
   setPermissionMode(mode: PermissionMode): void {
     this._state.permissionMode = mode;
     this._state.updatedAt = Date.now();
+    try {
+      this.run.setPermissionMode(mode);
+    } catch (err) {
+      this.fail(err instanceof Error ? err.message : String(err));
+      return;
+    }
     this.sink.changed();
   }
 

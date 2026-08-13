@@ -21,6 +21,19 @@
 //   surfaced as a turn-end error — a rejected effort change is not a failed
 //   agent turn, and AgentSession.setEffort() only awaits nothing (setEffort
 //   is fire-and-forget by interface), so there is no caller to report to.
+// - `setPermissionMode` uses `Query.setPermissionMode(mode)` (sdk.d.ts:2377,
+//   "Only available in streaming input mode" — which is the mode this
+//   provider always uses), so a mode switch mutates the *running* session,
+//   not just recorded UI state. `Query.setPermissionMode` returns
+//   `Promise<void>`, and the `AgentRun`/`Query` methods it's built on are
+//   themselves capable of throwing synchronously before ever returning a
+//   promise (e.g. if the underlying transport is already torn down) — both
+//   `setEffort` and `setPermissionMode` below wrap the call in `try/catch`
+//   *and* attach a `.catch()` to the returned promise, so neither a
+//   synchronous throw nor an async rejection can escape a `void`-returning
+//   `AgentRun` method. (An earlier pass of this file only had the `.catch()`
+//   on `setEffort`'s `applyFlagSettings` call, missing the synchronous case
+//   — fixed here on both methods.)
 // - `Options.stderr` is deliberately left unset — forwarding raw CLI stderr
 //   into a `console.error` (as the plan's pseudocode did) risks leaking
 //   secrets. CORRECTION to an earlier pass of this comment: leaving the
@@ -143,23 +156,30 @@ export class ClaudeProvider implements AgentProvider {
         : { behavior: 'deny', message: decision.reason ?? 'Denied by user' };
     };
 
-    // `allowDangerouslySkipPermissions` must be `true` exactly when, and only
-    // when, the session was started in 'bypass' mode — the .d.ts documents
-    // it as a required safety companion to `permissionMode: 'bypassPermissions'`
-    // ("Must be set to true... a safety measure to ensure intentional
-    // bypassing"). No defaulting, no truthy shortcut: this is a strict
-    // identity check against the one mode it is meant for, so no other
-    // PermissionMode value can ever set it.
-    const isBypassMode = opts.permissionMode === 'bypass';
-
+    // `allowDangerouslySkipPermissions` is now set unconditionally, on every
+    // session regardless of its starting mode — CORRECTING an earlier pass
+    // that set it only when `opts.permissionMode === 'bypass'` at session
+    // start. That was wrong once `setPermissionMode` became a live,
+    // mid-session seam (see below): the flag is a *capability gate* ("this
+    // application may bypass permissions at all"), while `permissionMode` —
+    // set once here and changeable afterward via `Query.setPermissionMode`
+    // — is what actually governs behavior at any given moment. Leaving the
+    // flag conditional on the start mode meant `setPermissionMode('bypassPermissions')`
+    // would fail for any session that didn't happen to start in bypass, so
+    // the header badge and destructive styling (session-header.tsx,
+    // composer.tsx) could show "bypassing" while the live agent silently
+    // kept enforcing its old mode — the exact lie those two UI layers exist
+    // to prevent. The human has explicitly opted into bypass being
+    // available for every session; `PERMISSION_MODE` below remains the only
+    // place a `PermissionMode` is translated to the SDK's spelling.
     const options: Options = {
       cwd: opts.cwd,
       model: opts.model,
       resume: opts.resumeToken,
       permissionMode: PERMISSION_MODE[opts.permissionMode],
       canUseTool,
+      allowDangerouslySkipPermissions: true,
       ...(effort !== undefined ? { effort } : {}),
-      ...(isBypassMode ? { allowDangerouslySkipPermissions: true } : {}),
     };
 
     const pump = (async () => {
@@ -193,11 +213,28 @@ export class ClaudeProvider implements AgentProvider {
       setEffort: (next: EffortLevel) => {
         effort = next;
         if (!queryRef) { return; }
-        queryRef.applyFlagSettings({ effortLevel: next }).catch(() => {
-          // Best-effort: an effort change that the SDK rejects (e.g. the
-          // model doesn't support it) is not a failed agent turn, so it is
-          // not surfaced as a turn-end error — see the header comment.
-        });
+        try {
+          queryRef.applyFlagSettings({ effortLevel: next }).catch(() => {
+            // Best-effort: an effort change that the SDK rejects (e.g. the
+            // model doesn't support it) is not a failed agent turn, so it is
+            // not surfaced as a turn-end error — see the header comment.
+          });
+        } catch {
+          // A synchronous throw (e.g. the query is already torn down) is
+          // exactly as non-fatal as an async rejection above — same reason.
+        }
+      },
+      setPermissionMode: (mode: PermissionMode) => {
+        if (!queryRef) { return; }
+        try {
+          queryRef.setPermissionMode(PERMISSION_MODE[mode]).catch(() => {
+            // Best-effort: a mode change the SDK rejects is not a failed
+            // agent turn, so it is not surfaced as a turn-end error — same
+            // reasoning as setEffort above.
+          });
+        } catch {
+          // Synchronous throw, same treatment as the async rejection above.
+        }
       },
       interrupt: async () => {
         try {

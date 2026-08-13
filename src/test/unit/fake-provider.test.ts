@@ -40,6 +40,17 @@ suite('FakeProvider', () => {
     await run.dispose();
   });
 
+  test('setPermissionMode records the mode, mirroring how decisions records tool decisions', async () => {
+    const provider = new FakeProvider(() => []);
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+
+    run.setPermissionMode('bypass');
+    run.setPermissionMode('plan');
+
+    assert.deepStrictEqual(provider.permissionModes, ['bypass', 'plan']);
+    await run.dispose();
+  });
+
   test('interrupt emits turn-end with reason interrupted', async () => {
     const provider = new FakeProvider(() => [{ kind: 'text', delta: 'working' }]);
     const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });

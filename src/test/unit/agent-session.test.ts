@@ -53,6 +53,7 @@ interface ThrowingProviderOptions {
   throwOnRespond?: boolean;
   throwOnInterrupt?: boolean;
   throwOnSetEffort?: boolean;
+  throwOnSetPermissionMode?: boolean;
   script?: (text: string) => AgentEvent[];
 }
 
@@ -82,6 +83,9 @@ class ThrowingProvider implements AgentProvider {
       },
       setEffort: () => {
         if (this.opts.throwOnSetEffort) { throw new Error('setEffort failed'); }
+      },
+      setPermissionMode: () => {
+        if (this.opts.throwOnSetPermissionMode) { throw new Error('setPermissionMode failed'); }
       },
       interrupt: async () => {
         if (this.opts.throwOnInterrupt) { throw new Error('interrupt failed'); }
@@ -304,6 +308,18 @@ suite('AgentSession', () => {
     const snap = await session.snapshot();
     const err = snap.items.find((i) => i.role === 'error');
     assert.strictEqual((err as { message: string }).message, 'setEffort failed');
+    await session.dispose();
+  });
+
+  test('setPermissionMode() on a throwing provider does not throw and settles the session into error', async () => {
+    const provider = new ThrowingProvider({ throwOnSetPermissionMode: true });
+    const session = new AgentSession(baseState(), provider, store, sink);
+
+    assert.doesNotThrow(() => session.setPermissionMode('bypass'));
+    assert.strictEqual(session.state.status, 'error');
+    const snap = await session.snapshot();
+    const err = snap.items.find((i) => i.role === 'error');
+    assert.strictEqual((err as { message: string }).message, 'setPermissionMode failed');
     await session.dispose();
   });
 });

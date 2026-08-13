@@ -43,6 +43,13 @@ export interface AgentRun {
   readonly events: AsyncIterable<AgentEvent>;
   respondToTool(id: string, decision: ToolDecision): void;
   setEffort(effort: EffortLevel): void;
+  /**
+   * Changes the permission mode of the *running* session, not just recorded
+   * state — a live agent process should actually start enforcing the new
+   * mode. Fire-and-forget by design (`void`, not `Promise<void>`): callers
+   * must never see this reject. A failure is state, not an exception.
+   */
+  setPermissionMode(mode: PermissionMode): void;
   interrupt(): Promise<void>;
   dispose(): Promise<void>;
 }

@@ -76,15 +76,25 @@
 //
 // `Query` (returned by `query()`): extends `AsyncGenerator<SDKMessage, void>`
 // and exposes `interrupt(): Promise<SDKControlInterruptResponse | undefined>`
-// and `setPermissionMode(mode): Promise<void>`. There is no `setEffort`
-// method. Effort is only settable as a one-shot `Options.effort` at `query()`
-// construction, OR live mid-session via `Query.applyFlagSettings({
-// effortLevel })` (its type explicitly widens to accept the full
-// `EffortLevel` union, including `'max'`, for that one key). We use the
-// latter in claude-provider.ts, which is a stronger guarantee than the
-// plan's fallback ("store the value, apply on next send") — the plan
-// assumed no live setter existed at all, but `applyFlagSettings` is one.
+// and `setPermissionMode(mode): Promise<void>` — the latter is a genuine
+// live, mid-session mode setter and is used as such in claude-provider.ts.
+// There is no `setEffort` method. Effort is only settable as a one-shot
+// `Options.effort` at `query()` construction, OR live mid-session via
+// `Query.applyFlagSettings({ effortLevel })` (its type explicitly widens to
+// accept the full `EffortLevel` union, including `'max'`, for that one
+// key). We use the latter in claude-provider.ts, which is a stronger
+// guarantee than the plan's fallback ("store the value, apply on next
+// send") — the plan assumed no live setter existed at all, but
+// `applyFlagSettings` is one.
+//
+// The `errors[]` text mapped above reaches a persisted transcript item via
+// `AgentSession.fail()` exactly like the thrown-`Error` text
+// claude-provider.ts's `errorMessage()` redacts — so it goes through the
+// same `redactSecrets()` pass before becoming a `turn-end` event.
+// `redactSecrets` is pure and does no I/O, so calling it here does not
+// violate this file's purity constraint.
 import type { AgentEvent } from '../types';
+import { redactSecrets } from './redact';
 
 interface Block {
   type: string;
@@ -174,7 +184,7 @@ export function mapEvent(msg: unknown): AgentEvent[] {
     const detail = errorList.length > 0
       ? errorList.join('; ')
       : (terminalReason || stopReason || subtype);
-    out.push({ kind: 'turn-end', reason: 'error', error: detail || 'Agent error' });
+    out.push({ kind: 'turn-end', reason: 'error', error: redactSecrets(detail || 'Agent error') });
     return out;
   }
 
