@@ -1,7 +1,7 @@
 # hiiiid-code — Invocable Catalog (Skills and Slash Commands)
 
 **Date:** 2026-08-13
-**Status:** Design approved, pending implementation plan
+**Status:** Design approved, amended after SDK spike, pending implementation plan
 **Builds on:** [2026-08-13-vscode-agent-manager-design.md](2026-08-13-vscode-agent-manager-design.md),
 [2026-08-13-subagents-and-mcp-design.md](2026-08-13-subagents-and-mcp-design.md)
 
@@ -54,15 +54,28 @@ export type AgentEvent =
 export type Invocable = {
   /** Verbatim from the provider: 'brainstorming', 'superpowers:brainstorming', 'init'. */
   name: string;
-  kind: 'skill' | 'command';
   /** One line. Rendered as the menu subtitle. */
   description?: string;
-  /** 'personal' | 'project' | plugin name. Badge, and collision disambiguation. */
+  /**
+   * Plugin or namespace prefix, when the name carries one. Badge, and
+   * collision disambiguation. Absent for unqualified names.
+   */
   origin?: string;
   /** e.g. '[interval] [prompt]'. Rendered as ghost text after insertion. */
   argHint?: string;
 };
 ```
+
+**There is no `kind`.** The SDK spike (see Risks) established that skills and
+slash commands arrive as one undifferentiated list with no discriminator. A
+`kind` field would have to be guessed at, and a guessed badge that says `skill`
+about `/init` is worse than no badge.
+
+**`origin` is derived from the name, not reported.** A name of the form
+`prefix:leaf` yields `origin: 'prefix'`; the `name` is still stored verbatim,
+because that is what gets inserted into the composer. Unqualified names get no
+origin — personal, project, and built-in are not distinguishable, and the spec
+declines to invent a distinction the provider cannot support.
 
 **A snapshot, not a delta.** The full array each time: at session init, and on
 any change the provider notices. Entries number in the tens, so diffing is
@@ -72,6 +85,10 @@ code path. This is deliberately the same shape as `mcp-servers`.
 **One emit at init is a complete implementation of the contract.** Change
 detection — file watchers, plugin installs — is the provider's business and may
 not exist. Nothing above the seam assumes a second emit will arrive.
+
+For the Claude provider it does exist: the SDK pushes a `commands_changed`
+system message carrying the full replacement list, which maps straight to a
+second `invocables` emit with no extra machinery.
 
 **Empty and unknown are different states.** An empty array means "this session
 has none". Never having emitted means "we have not been told". Both hide the
@@ -130,16 +147,16 @@ skill actually did lives in the transcript's tool cards, which already exist.
 
 ### Chrome strip
 
-A pill beside the MCP one: `24 skills`. Click expands a grouped list.
+A pill beside the MCP one: `24 commands`. Click expands a grouped list.
 
-**The count is skills only.** Commands (`/init`, `/review`, …) would inflate it
-with entries the user did not install and rarely browses. The pill is a
-discovery hint, not a metric; commands still appear in the expanded list and in
-the menu.
+The count is every entry in the snapshot. An earlier draft counted skills only,
+to keep built-in commands from inflating a discovery hint; the spike removed the
+information needed to do that, and a count that silently omitted entries the
+menu then offered would be worse than a plain total.
 
-Expanded: `Skills`, then `Commands`. Within each, grouped by origin — personal,
-project, then plugins alphabetically. Each row is `name — description`, with the
-origin implied by its group heading.
+Expanded: one group per `origin`, alphabetically, then `Other` last for
+unqualified names. Each row is `name — description`, with the origin implied by
+its group heading.
 
 Absent entirely when the snapshot is empty or unknown. No empty state.
 
@@ -181,6 +198,10 @@ it needs a scoring function and its own test surface, and substring already
 reaches every entry because matching runs over the whole name including the
 plugin prefix.
 
+**Aliases are ignored.** The SDK reports alternate names for some commands
+(`/cost` and `/stats` both resolving to `/usage`). Indexing them would double
+the menu's apparent size for entries that do the same thing. Deferred to Future.
+
 **Long names truncate in the middle**, keeping the prefix and the leaf
 (`document-skills:…:pptx` style), with the full name on the row's title
 attribute.
@@ -203,26 +224,37 @@ All against `FakeProvider`. No SDK, no VS Code, no network.
   text is absent from the sent message body.
 - **Cap** — 200 entries render 50 rows plus `+150 more`; filtering to 3 renders
   3 rows and no more-line.
+- **Origin derivation** — `superpowers:brainstorming` yields origin
+  `superpowers` and keeps its full name; `init` yields no origin; a name with
+  two colons keeps everything after the first as the leaf.
+- **Claude mapping** — a `SlashCommand` with `argumentHint: ''` maps to an
+  `Invocable` with no `argHint`; a `commands_changed` message maps to an
+  `invocables` event carrying the full list.
 
 ## Risks
 
-**SDK exposure is unverified and the whole feature is downstream of it.** Step 1
-of the implementation plan is a spike against the installed package, not
-implementation. Two facts to check:
+**SDK exposure — resolved by spike, 2026-08-13.** Read from the installed
+`@anthropic-ai/claude-agent-sdk` type definitions:
 
-1. Skills available to a live session are enumerable, with descriptions.
-2. Slash commands are too.
+- `Query.supportedCommands(): Promise<SlashCommand[]>` — one merged list of
+  skills and slash commands, available on a live session.
+- `SlashCommand = { name; description; argumentHint; aliases? }`. No kind, no
+  origin, no source path.
+- `SDKCommandsChangedMessage` (`system` / `commands_changed`) pushes the full
+  replacement list mid-session.
+- `SDKControlInitializeResponse.commands` carries the same list at init.
 
-Degradation ladder, in order:
+The feature ships. The cost of the merged list is the `kind` field and the
+Skills/Commands split, both dropped above.
 
-- Both enumerable → ship as designed.
-- Commands only → ship commands-only; the strip counts commands and the skills
-  group is dropped.
-- Neither → cut the feature. No composer work starts.
+**`supportedCommands()` is a pull on a live query, so it can reject.** It is
+called once after the query starts and its failure is swallowed: no
+`invocables` event, so the snapshot stays unknown, the strip stays hidden, and
+the composer keeps working as plain text. A catalog that fails to load must
+never take the session down with it.
 
-Unlike the MCP spec, no partial version of this is worth building blind: the
-composer changes are the expensive part and they are worthless without entries
-to show.
+**`argumentHint` is provider-authored and may be empty.** An empty string maps
+to `argHint: undefined`, so ghost text is absent rather than blank.
 
 **Menu key handling collides with the composer.** The composer owns Enter and
 likely arrow-key history. A handler that leaks after close makes Enter stop
@@ -236,8 +268,8 @@ not shown anywhere in this version.
 
 ## Future
 
-- **Change detection.** If the provider gains a watcher, the snapshot contract
-  already supports it with no change above the seam.
+- **Aliases**, either as extra matchable strings on an entry or as a hint on the
+  row, once there is evidence anyone misses them.
 - **Fuzzy matching**, if long prefixed names prove annoying in practice.
 - **Description on hover or in an expanded row**, once there is evidence a
   one-line clamp is losing something users need.
