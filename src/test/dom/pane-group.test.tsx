@@ -1,7 +1,8 @@
 import * as assert from 'assert';
 import { screen } from '@testing-library/react';
 import { catalog, layoutOf, snapshot, summary } from '../fixtures/protocol';
-import { renderApp, sendFromHost } from './harness';
+import { renderApp, renderWithStore, sendFromHost } from './harness';
+import { PaneGroup } from '@/components/pane-group';
 
 function hydrate(paneIds: string[], rosterIds = paneIds) {
   sendFromHost({
@@ -37,6 +38,35 @@ suite('PaneGroup', () => {
     renderApp();
     // 'b' has a pane in the layout but is absent from sessions and snapshots.
     hydrate(['a', 'b'], ['a']);
+
+    screen.getByLabelText('Session: Session a');
+    assert.strictEqual(screen.queryByLabelText('Session: Session b'), null);
+  });
+
+  test('a pane whose session is gone from the roster but whose snapshot lingers is not rendered', () => {
+    // Isolates the roster-membership half of visiblePanes' `&&` from the
+    // snapshot-arrival half: 'b' has a pane in the layout AND a snapshot in
+    // byId, but is absent from the roster — the stale-pane-after-
+    // delete-session scenario described at pane-group.tsx's comment on
+    // `roster`/`snapshotArrived`. The previous test leaves 'b' out of both
+    // roster and snapshots at once, so a regression that dropped either
+    // condition from visiblePanes' `&&` would still pass it; this test would
+    // catch that.
+    //
+    // Mounted directly with renderWithStore(<PaneGroup />) rather than
+    // renderApp(): App's reconcile effect would see 'b''s pane pointing at a
+    // session outside the roster, drop it, and post set-layout before this
+    // test could observe visiblePanes ever having considered it. PaneGroup
+    // has no such effect, so the hydrated state — including the
+    // roster/snapshot mismatch — survives intact.
+    renderWithStore(<PaneGroup />);
+    sendFromHost({
+      t: 'hydrate',
+      sessions: [summary('a')],
+      layout: layoutOf('a', 'b'),
+      snapshots: [snapshot('a'), snapshot('b')],
+      catalog: catalog(),
+    });
 
     screen.getByLabelText('Session: Session a');
     assert.strictEqual(screen.queryByLabelText('Session: Session b'), null);
