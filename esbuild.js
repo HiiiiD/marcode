@@ -79,6 +79,7 @@ async function main() {
 		platform: 'node',
 		outfile: 'dist/extension.js',
 		external: ['vscode'],
+		alias: { '@': require('path').resolve(__dirname, 'src/webview') },
 	});
 
 	const webviewCtx = await esbuild.context({
@@ -88,6 +89,7 @@ async function main() {
 		platform: 'browser',
 		outfile: 'dist/webview.js',
 		loader: { '.tsx': 'tsx', '.ts': 'ts' },
+		alias: { '@': require('path').resolve(__dirname, 'src/webview') },
 		// tailwindPlugin is registered first so its onEnd is awaited before the
 		// problem matcher logs "[watch] build finished" — the CSS is on disk by
 		// the time anything downstream treats the build as complete.
