@@ -170,7 +170,15 @@ suite('SessionPicker', () => {
     });
 
     await userEvent.click(screen.getByText(/1 of 2 in split/i));
-    screen.getByText('Archived (1)');
+    // Every other assertion in this file that follows a menu-opening click
+    // uses `findBy*` (see `checking a closed session...`, `archive is an
+    // explicit...`, etc.), not `getBy*`: Base UI's `Menu.Positioner` commits
+    // its `Popup` after an async anchor-positioning pass (floating-ui's
+    // `computePosition` resolves via microtask), so the archived group can
+    // still be absent from the DOM in the same tick `userEvent.click`
+    // resolves in. `getByText` here was the one query in the suite that
+    // skipped that wait, which is exactly why only this test flaked.
+    await screen.findByText('Archived (1)');
   });
 
   test('toggling visibility still posts set-layout and set-visible', async () => {
