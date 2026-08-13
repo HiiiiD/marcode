@@ -92,35 +92,24 @@
 //   arrive per content block, which is enough for `AgentSession` to render
 //   incremental text/thinking/tool-start items.
 //
-// TEMPORARY INSTRUMENTATION (fix round 5, task-14-report.md): a live test
-// found effort/permission-mode changes have no visible effect on a running
-// session (only closing and reopening picks up the new value), and the
-// live setters' error handling swallowed every failure with no logging —
-// undiagnosable from the outside. `console.error('[hiiiid-code] ...')`
-// calls were added at query construction (the built Options, plus
-// `typeof queryRef.applyFlagSettings`/`typeof queryRef.setPermissionMode` —
-// confirms the SDK's Query object actually carries these methods at
-// runtime, not just in the .d.ts) and on every path through both live
-// setters (attempted-before-construction, resolved, rejected, threw
-// synchronously) — so "call never made" (queryRef undefined), "call made
-// and rejected/threw", and "call made and resolved but had no visible
-// effect" are now distinguishable from the Extension Host output. The
-// swallow behavior itself is unchanged: still non-fatal, still no
-// turn-end error surfaced to the user — this round adds visibility only,
-// per instruction; a later round decides how (or whether) to surface these
-// failures properly and, once a cause is confirmed, this instrumentation
-// should be pared back down to what's worth keeping permanently.
+// The two live setters below (`setEffort`, `setPermissionMode`) swallow their
+// failures: a rejected effort or mode change is not a failed agent turn, so it
+// is not surfaced to the user as one. Swallowing silently, though, once cost a
+// full debugging round — a live report of "changing effort does nothing" was
+// indistinguishable from the outside between "the call was never made", "the
+// call was made and rejected", and "the call resolved but had no effect". The
+// failure paths therefore log; the success paths do not, so normal operation
+// stays quiet. That root cause turned out to be in the webview reducer, not
+// here: both SDK calls resolve.
 //
-// OPEN QUESTION for the live Step 9 pass, not acted on here: the installed
-// `.d.ts` also shows `Settings.permissions.defaultMode` accepting
-// `'bypassPermissions'`, `Query.applyFlagSettings` taking arbitrary
-// `Settings` keys, and a `permissions.disableBypassPermissionsMode` opt-out
-// — suggesting bypass may be reachable live, via `applyFlagSettings`,
-// without ever touching `Options.allowDangerouslySkipPermissions` at all.
-// Unverified without live CLI credentials; the lazy-start design in this
-// file is correct either way (it does not depend on that question's
-// answer), but it may mean the "only at construction" constraint this file
-// documents is narrower than the SDK actually requires.
+// OPEN QUESTION, not acted on here: the installed `.d.ts` shows
+// `Settings.permissions.defaultMode` accepting `'bypassPermissions'`,
+// `Query.applyFlagSettings` taking arbitrary `Settings` keys, and a
+// `permissions.disableBypassPermissionsMode` opt-out — suggesting bypass may be
+// reachable live, via `applyFlagSettings`, without ever touching
+// `Options.allowDangerouslySkipPermissions`. Unverified. The lazy-start design
+// in this file is correct either way, but it may mean the "only at
+// construction" constraint documented here is narrower than the SDK requires.
 import type {
   CanUseTool, Options, PermissionMode as SdkPermissionMode, Query, SDKUserMessage,
 } from '@anthropic-ai/claude-agent-sdk' with { 'resolution-mode': 'import' };
@@ -278,18 +267,6 @@ export class ClaudeProvider implements AgentProvider {
           const constructedOptions = buildOptions();
           const session = query({ prompt: prompts, options: constructedOptions });
           queryRef = session;
-          // INSTRUMENTATION (temporary — evidence-gathering round, see
-          // claude-provider.ts's header comment / task-14-report.md "Fix
-          // round 5"): confirms exactly what Options the query was built
-          // with, and whether the SDK's Query object actually carries the
-          // live setters at runtime (as opposed to merely in the .d.ts).
-          console.error(
-            '[hiiiid-code] claude-provider: query constructed',
-            'permissionMode=', constructedOptions.permissionMode,
-            'effort=', constructedOptions.effort,
-            'typeof applyFlagSettings=', typeof session.applyFlagSettings,
-            'typeof setPermissionMode=', typeof session.setPermissionMode,
-          );
           for await (const msg of session) {
             for (const event of mapEvent(msg)) { events.push(event); }
           }
@@ -317,56 +294,37 @@ export class ClaudeProvider implements AgentProvider {
       },
       setEffort: (next: EffortLevel) => {
         pendingEffort = next;
-        // INSTRUMENTATION (temporary — see task-14-report.md "Fix round
-        // 5"): logs whether the live call was even attempted (queryRef
-        // defined), and on the async path, distinguishes "resolved" from
-        // "rejected" — the swallow below still discards nothing but the
-        // *reaction*, not the visibility.
         if (!queryRef) {
-          console.error('[hiiiid-code] claude-provider: setEffort called before query construction — queued as pendingEffort only', 'effort=', next);
           return; // not yet constructed: pendingEffort above is picked up at construction.
         }
         try {
-          queryRef.applyFlagSettings({ effortLevel: next }).then(
-            () => {
-              console.error('[hiiiid-code] claude-provider: applyFlagSettings resolved', 'effort=', next);
-            },
-            (reason: unknown) => {
-              console.error('[hiiiid-code] claude-provider: applyFlagSettings rejected', 'effort=', next, 'reason=', reason);
-            },
-          ).catch(() => {
-            // Best-effort: an effort change that the SDK rejects (e.g. the
-            // model doesn't support it) is not a failed agent turn, so it is
-            // not surfaced as a turn-end error — see the header comment.
+          // Best-effort: an effort change that the SDK rejects (e.g. the model
+          // doesn't support it) is not a failed agent turn, so it is not
+          // surfaced as a turn-end error — logged only. See the header comment.
+          queryRef.applyFlagSettings({ effortLevel: next }).catch((reason: unknown) => {
+            console.warn('[hiiiid-code] applyFlagSettings rejected', 'effort=', next, 'reason=', reason);
           });
         } catch (err) {
-          console.error('[hiiiid-code] claude-provider: applyFlagSettings threw synchronously', 'effort=', next, 'error=', err);
           // A synchronous throw (e.g. the query is already torn down) is
           // exactly as non-fatal as an async rejection above — same reason.
+          console.warn('[hiiiid-code] applyFlagSettings threw', 'effort=', next, 'error=', err);
         }
       },
       setPermissionMode: (mode: PermissionMode) => {
         pendingMode = mode;
         if (!queryRef) {
-          console.error('[hiiiid-code] claude-provider: setPermissionMode called before query construction — queued as pendingMode only', 'mode=', mode, 'sdkMode=', PERMISSION_MODE[mode]);
           return; // not yet constructed: pendingMode above is picked up at construction.
         }
         try {
-          queryRef.setPermissionMode(PERMISSION_MODE[mode]).then(
-            () => {
-              console.error('[hiiiid-code] claude-provider: Query.setPermissionMode resolved', 'mode=', mode, 'sdkMode=', PERMISSION_MODE[mode]);
-            },
-            (reason: unknown) => {
-              console.error('[hiiiid-code] claude-provider: Query.setPermissionMode rejected', 'mode=', mode, 'sdkMode=', PERMISSION_MODE[mode], 'reason=', reason);
-            },
-          ).catch(() => {
-            // Best-effort: a mode change the SDK rejects is not a failed
-            // agent turn, so it is not surfaced as a turn-end error — same
-            // reasoning as setEffort above.
+          // Best-effort: a mode change the SDK rejects is not a failed agent
+          // turn, so it is not surfaced as a turn-end error — same reasoning as
+          // setEffort above.
+          queryRef.setPermissionMode(PERMISSION_MODE[mode]).catch((reason: unknown) => {
+            console.warn('[hiiiid-code] setPermissionMode rejected', 'mode=', mode, 'reason=', reason);
           });
         } catch (err) {
-          console.error('[hiiiid-code] claude-provider: Query.setPermissionMode threw synchronously', 'mode=', mode, 'sdkMode=', PERMISSION_MODE[mode], 'error=', err);
           // Synchronous throw, same treatment as the async rejection above.
+          console.warn('[hiiiid-code] setPermissionMode threw', 'mode=', mode, 'error=', err);
         }
       },
       interrupt: async () => {
