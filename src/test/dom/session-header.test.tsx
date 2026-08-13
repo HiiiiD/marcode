@@ -120,6 +120,26 @@ suite('SessionHeader status', () => {
     assert.ok(/before the first message/i.test(reason!.textContent ?? ''));
   });
 
+  test('the provider is hidden when only one is configured', () => {
+    renderApp();
+    hydrate();
+
+    assert.strictEqual(screen.queryByText('Fake'), null);
+  });
+
+  test('the provider is shown, appended to the metadata span, once more than one is configured', () => {
+    renderApp();
+    sendFromHost({
+      t: 'hydrate',
+      sessions: [summary('a')],
+      layout: layoutOf('a'),
+      snapshots: [snapshot('a')],
+      catalog: [...catalog(), { id: 'other', displayName: 'Other', models: [] }],
+    });
+
+    screen.getByText('· Fake');
+  });
+
   test('the pane X removes the pane without archiving the session', async () => {
     renderApp();
     hydrateTwoPanes();

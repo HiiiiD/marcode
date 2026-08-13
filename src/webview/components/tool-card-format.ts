@@ -9,8 +9,11 @@ const UNSERIALIZABLE = '<unserializable>';
  * can throw (circular structures, `BigInt`) or return `undefined` (a
  * top-level function or symbol), and this runs during render on payloads we
  * don't control — so it must never throw.
+ *
+ * `budget` defaults to 44 chars, what fits at ~300px — the width this panel
+ * usually has — not the 80-char budget a desktop-width column would afford.
  */
-export function summarize(input: unknown): string {
+export function summarize(input: unknown, budget = 44): string {
   if (input === null || input === undefined) { return ''; }
   if (typeof input === 'string') { return input; }
   let text: string;
@@ -20,7 +23,7 @@ export function summarize(input: unknown): string {
   } catch {
     text = UNSERIALIZABLE;
   }
-  return text.length > 80 ? `${text.slice(0, 80)}…` : text;
+  return text.length > budget ? `${text.slice(0, budget - 1)}…` : text;
 }
 
 /** Pretty-printed JSON with the same unserializable-safe fallback as summarize. */

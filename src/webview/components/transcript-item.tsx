@@ -55,7 +55,7 @@ export function TranscriptItemView({
       // returning undefined, which React treats as a render error and would
       // unmount the whole transcript.
       return (
-        <div className="my-2 text-xs text-muted-foreground">Unsupported item</div>
+        <div className="my-0 text-xs text-muted-foreground">Unsupported item</div>
       );
   }
 }

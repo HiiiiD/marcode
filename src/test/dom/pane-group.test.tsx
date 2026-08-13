@@ -1,5 +1,5 @@
 import * as assert from 'assert';
-import { screen } from '@testing-library/react';
+import { act, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { catalog, layoutOf, snapshot, summary } from '../fixtures/protocol';
 import { renderApp, renderWithStore, sendFromHost } from './harness';
@@ -149,6 +149,39 @@ suite('PaneGroup', () => {
       'deleting the session behind a focused pane must not silently drop focus to <body>',
     );
     assert.ok(document.activeElement?.isConnected, 'focus must land on an element still in the document');
+  });
+
+  test('the focused pane is visually distinguished', () => {
+    renderApp();
+    hydrate(['a', 'b']);
+
+    // `getAllByRole('region')` doesn't work here: react-resizable-panels'
+    // Panel renders a plain `div` (see resizable.tsx) with no implicit or
+    // explicit ARIA role, so there is nothing to query by role. Panes are
+    // reliably identified by the `aria-label={'Session: ' + title}` every
+    // other test in this file already relies on.
+    //
+    // A real `.focus()` call, not `userEvent.click`: react-resizable-panels
+    // installs a document-level capturing `pointerdown` listener that hit-
+    // tests the click against every registered resize-handle's
+    // `getBoundingClientRect()` to start a drag. jsdom has no layout engine,
+    // so every rect collapses to (0,0,0,0) and the pointer's own (0,0)
+    // coordinates spuriously "hit" the handle, and that listener calls
+    // `preventDefault()` on the `pointerdown` — which per spec suppresses
+    // the compatibility `mousedown` userEvent's click relies on to focus the
+    // target. This is the same root cause behind the harness's known
+    // "Select can't open with two ResizablePanels" limitation. Driving focus
+    // directly sidesteps the resizable-panels hit-testing entirely and still
+    // exercises exactly what's under test: the pane's `onFocusCapture`.
+    const [messageA] = screen.getAllByLabelText('Message', { selector: '[data-slot="input-group-textarea"]' });
+    act(() => { messageA.focus(); });
+
+    const panels = [
+      screen.getByLabelText('Session: Session a'),
+      screen.getByLabelText('Session: Session b'),
+    ];
+    const active = panels.filter((p) => p.getAttribute('data-active') === 'true');
+    assert.strictEqual(active.length, 1, 'exactly one pane is active at a time');
   });
 
   test('title-derived accessible names disambiguate when panes share a title', () => {

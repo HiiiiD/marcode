@@ -1,4 +1,6 @@
-import { Fragment, useEffect, useRef } from 'react';
+import {
+  Fragment, useEffect, useRef, useState,
+} from 'react';
 import {
   ResizableHandle, ResizablePanel, ResizablePanelGroup,
 } from '@/components/ui/resizable';
@@ -66,6 +68,21 @@ export function PaneGroup({ narrow }: PaneGroupProps) {
   // every other focusable control here uses (see `button.tsx`).
   const rootRef = useRef<HTMLDivElement>(null);
   const prevCount = useRef(panes.length);
+
+  // With N panes rendered at identical weight there was no indication of
+  // which one a keyboard or pointer user was actually acting in. React's
+  // `onFocusCapture` is backed by the native `focusin` event (unlike plain
+  // `focus`, `focusin` bubbles), so one handler per pane catches focus
+  // landing anywhere inside it — the header's model Select trigger, the
+  // composer's textarea, a tool card's disclosure button — without needing
+  // a listener per focusable descendant. `activeId` starts `null`: nothing
+  // is "active" until something in the split has actually been focused.
+  // Content rendered into a portal (e.g. an open Select's listbox) is not a
+  // DOM descendant of the pane it logically belongs to, so focus moving
+  // into a portalled menu does not bubble through this pane's tree and
+  // does not update `activeId` — the pane that opened the menu simply
+  // stays active, which is the reading a user would want anyway.
+  const [activeId, setActiveId] = useState<string | null>(null);
   useEffect(() => {
     if (panes.length < prevCount.current && document.activeElement === document.body) {
       const target = rootRef.current?.querySelector<HTMLElement>('[data-slot="button"]')
@@ -141,6 +158,16 @@ export function PaneGroup({ narrow }: PaneGroupProps) {
                 defaultSize={`${pane.size}%`}
                 minSize="15%"
                 collapsible
+                data-active={activeId === pane.sessionId}
+                onFocusCapture={() => setActiveId(pane.sessionId)}
+                className={cn(
+                  'transition-colors',
+                  // A ring, not a background: at 300px a filled active pane
+                  // would compete with the permission card, which must stay
+                  // the loudest thing on screen — it's the only transcript
+                  // item demanding an action.
+                  activeId === pane.sessionId && 'ring-1 ring-ring/40 ring-inset',
+                )}
               >
                 <div className="flex h-full flex-col">
                   <SessionHeader

@@ -35,7 +35,7 @@ export function Transcript({
     >
       <MessageScroller className="h-full">
         <MessageScrollerViewport className="px-2" preserveScrollOnPrepend>
-          <MessageScrollerContent>
+          <MessageScrollerContent className="gap-2">
             {pane.hasMore && first && (
               <Button
                 variant="outline"
@@ -44,7 +44,7 @@ export function Transcript({
                   setLoadingBeforeId(first.id);
                   onLoadMore(first.id);
                 }}
-                className="my-2 h-auto w-full py-1 text-xs"
+                className="my-0 h-auto w-full py-1 text-xs"
               >
                 Load earlier messages
               </Button>

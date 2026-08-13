@@ -41,6 +41,9 @@ export function SessionHeader({ pane, models, accessibleTitle }: SessionHeaderPr
   // and every other pane's disabled model control would describe itself
   // using pane one's reason text.
   const modelReasonId = `model-reason-${s.id}`;
+  // Shown only when there's more than one provider to distinguish between —
+  // with a single backend configured, naming it on every pane is noise.
+  const providerLabel = state.catalog.find((p) => p.id === s.providerId)?.displayName;
 
   return (
     <div className="flex items-center gap-2 border-b border-border px-2 py-1 text-xs">
@@ -115,6 +118,7 @@ export function SessionHeader({ pane, models, accessibleTitle }: SessionHeaderPr
             <span>{formatTokens(total)} tokens</span>
           </>
         )}
+        {state.catalog.length > 1 && providerLabel && ` · ${providerLabel}`}
       </span>
       <Button
         variant="ghost"

@@ -71,7 +71,7 @@ export function PermissionCard({
 
   if (!isLive) {
     return (
-      <div className="my-2 rounded border-2 border-dashed border-muted-foreground/40 p-2 text-xs">
+      <div className="my-0 rounded border-2 border-dashed border-muted-foreground/40 p-2 text-xs">
         <div className="mb-1 font-medium text-muted-foreground">
           {item.name} — no longer awaiting a response
         </div>
@@ -100,7 +100,7 @@ export function PermissionCard({
   };
 
   return (
-    <div className="my-2 rounded border-2 border-destructive bg-destructive/10 p-2 text-xs">
+    <div className="my-0 rounded border-2 border-destructive bg-destructive/10 p-2 text-xs">
       <div className="mb-1 flex items-baseline gap-2">
         <span className="font-medium">Allow {item.name}?</span>
         <span className="truncate text-muted-foreground" title={cwd}>{folderName(cwd)}</span>

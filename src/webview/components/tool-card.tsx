@@ -13,7 +13,7 @@ export function ToolCard({ item }: { item: ToolItem }) {
     : item.state === 'ok' ? CheckIcon : XIcon;
 
   return (
-    <div className="my-1 rounded border border-border text-xs">
+    <div className="my-0 rounded border border-border text-xs">
       <Button
         variant="ghost"
         onClick={() => setOpen((v) => !v)}

@@ -23,7 +23,7 @@ export function TranscriptItemShell({
   children: ReactNode;
 }) {
   return (
-    <div className={cn('my-2 border-l-2 pl-2', RULE[role])}>
+    <div className={cn('my-0 border-l-2 pl-2', RULE[role])}>
       <div className="mb-0.5 flex items-baseline gap-2">
         <span className="text-[0.65rem] font-medium tracking-wide text-muted-foreground uppercase">
           {label}
