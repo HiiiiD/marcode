@@ -138,8 +138,10 @@ the gate for the code.
   Exit 0 is clean, exit 2 means findings. A non-zero exit is a failing check, not a
   suggestion.
 - **Periodically, and before merging a UI branch**, run `critique` over `src/webview` and
-  compare against the last snapshot in `.impeccable/critique/`. The score is expected to
-  go up, never down.
+  compare against the previous run already sitting in the working tree's
+  `.impeccable/critique/` (that directory is gitignored — a fresh clone has no baseline
+  until `critique` has run there at least once). The score is expected to go up, never
+  down.
 - Remember the mode: this panel is **Operate**, not Persuade. The visitor is completing a
   task in a 300–500px sidebar during a long-running agent turn. Scanability, consistency,
   native VS Code expectations and that real usage scene outrank expression. Brand lives in
