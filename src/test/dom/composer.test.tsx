@@ -59,10 +59,10 @@ suite('Composer', () => {
     assert.deepStrictEqual(posted().at(-1), { t: 'ready' });
   });
 
-  test('a running session shows Stop, and clicking it posts interrupt', async () => {
+  test('a running session shows Send disabled and Stop beside it; Stop posts interrupt', async () => {
     renderWithStore(<Composer pane={pane('running')} model={NO_EFFORT} />);
 
-    assert.strictEqual(screen.queryByText('Send'), null);
+    assert.strictEqual((screen.getByText('Send') as HTMLButtonElement).disabled, true);
     await userEvent.click(screen.getByText('Stop'));
 
     assert.deepStrictEqual(posted().at(-1), { t: 'interrupt', id: 'a' });
@@ -108,5 +108,45 @@ suite('Composer', () => {
         `${label} must not hand-write a height over the size variant`,
       );
     }
+  });
+
+  test('Send sits inside the input group, after the settings', () => {
+    renderApp();
+    hydrateOne();
+
+    const group = screen.getByLabelText('Message').closest('[data-slot="input-group"]');
+    assert.ok(group, 'the textarea must live inside an InputGroup');
+
+    const send = screen.getByRole('button', { name: 'Send' });
+    assert.ok(group!.contains(send), 'Send must live inside the group, not in a row below it');
+
+    const mode = screen.getByLabelText('Permission mode');
+    assert.ok(
+      mode.compareDocumentPosition(send) & Node.DOCUMENT_POSITION_FOLLOWING,
+      'settings come first, the action comes last',
+    );
+  });
+
+  test('Send stays visible but disabled while the agent runs, with Stop beside it', () => {
+    renderApp();
+    hydrateOne();
+    sendFromHost({ t: 'session-status', id: 'a', status: 'running' });
+
+    const send = screen.getByRole('button', { name: 'Send' });
+    assert.ok((send as HTMLButtonElement).disabled, 'Send is disabled, not removed, during a run');
+    assert.strictEqual(
+      send.getAttribute('title'),
+      'The agent is working. Stop it to send another message.',
+    );
+    screen.getByRole('button', { name: 'Stop' });
+  });
+
+  test('Stop still posts interrupt', async () => {
+    renderApp();
+    hydrateOne();
+    sendFromHost({ t: 'session-status', id: 'a', status: 'running' });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Stop' }));
+    assert.deepStrictEqual(posted().at(-1), { t: 'interrupt', id: 'a' });
   });
 });
