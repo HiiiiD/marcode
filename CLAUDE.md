@@ -123,6 +123,33 @@ element "just this once".
   The test is whether a plain utility would say the same thing — if it would, use it; if
   the value is derived (`min()`, `calc()`, `color-mix()`), reach for the arbitrary value.
 
+## UI changes go through impeccable
+
+**Every change to the webview UI is checked with the `impeccable` skill before it is
+called done.** Not just new surfaces — a moved button, a changed label, a new state, a
+restyled card. The skill is the quality gate for this panel, the same way `yarn lint` is
+the gate for the code.
+
+- **Before building** a new surface or reshaping an existing one, invoke the skill and let
+  it route: `shape` to plan the UX, or its new-work flow for a replacement visual world.
+- **After changing** any file under `src/webview/components/`, run the mechanical detector
+  over what you touched:
+  `node <impeccable-skill-dir>/scripts/detect.mjs --json <changed files>`
+  Exit 0 is clean, exit 2 means findings. A non-zero exit is a failing check, not a
+  suggestion.
+- **Periodically, and before merging a UI branch**, run `critique` over `src/webview` and
+  compare against the previous run already sitting in the working tree's
+  `.impeccable/critique/` (that directory is gitignored — a fresh clone has no baseline
+  until `critique` has run there at least once). The score is expected to go up, never
+  down.
+- Remember the mode: this panel is **Operate**, not Persuade. The visitor is completing a
+  task in a 300–500px sidebar during a long-running agent turn. Scanability, consistency,
+  native VS Code expectations and that real usage scene outrank expression. Brand lives in
+  precise details, not in decoration.
+
+The detector only catches mechanical tells. It passing is necessary, not sufficient — a
+clean scan over an under-designed surface is exactly what the 2026-08-13 critique found.
+
 ## Conventions
 
 - Conventional-commit prefixes: `feat:`, `fix:`, `test:`, `chore:`, `docs:`. Commit after

@@ -35,16 +35,19 @@ export function Transcript({
     >
       <MessageScroller className="h-full">
         <MessageScrollerViewport className="px-2" preserveScrollOnPrepend>
-          <MessageScrollerContent>
+          <MessageScrollerContent className="gap-2">
             {pane.hasMore && first && (
               <Button
                 variant="outline"
+                size="sm"
                 disabled={loadingBeforeId === first.id}
                 onClick={() => {
                   setLoadingBeforeId(first.id);
                   onLoadMore(first.id);
                 }}
-                className="my-2 h-auto w-full py-1 text-xs"
+                // The fixed h-7 comes from `size="sm"`, not a hand-written
+                // height — see the note on tool-card.tsx's own Button.
+                className="my-0 w-full text-xs"
               >
                 Load earlier messages
               </Button>

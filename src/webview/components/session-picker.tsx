@@ -1,15 +1,27 @@
+import { ColumnsIcon, RowsIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
-  DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent,
-  DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
+  DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem,
+  DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { evenlySizedPanes } from './pane-layout';
+import { SessionCreateMenu } from './session-create-menu';
+import { SessionRow } from './session-row';
 import { useStore } from '../store';
+import { statusView } from '../status';
 import type { SessionId } from '../../protocol/messages';
 
-export function SessionPicker() {
+interface SessionPickerProps {
+  /** Whether the panel is too narrow to split side by side. Measured once,
+   * in `App`, and shared with `PaneGroup` — see `use-is-narrow.ts`. */
+  narrow: boolean;
+}
+
+export function SessionPicker({ narrow }: SessionPickerProps) {
   const { state, post } = useStore();
   const open = new Set(state.layout.panes.map((p) => p.sessionId));
+  const horizontal = state.layout.orientation === 'horizontal';
+  const needing = state.sessions.filter((s) => statusView(s.status).needsUser).length;
 
   const setPanes = (ids: SessionId[]) => {
     post({ t: 'set-layout', layout: evenlySizedPanes(ids, state.layout.orientation) });
@@ -20,7 +32,8 @@ export function SessionPicker() {
     setPanes(open.has(id) ? [...open].filter((x) => x !== id) : [...open, id]);
   };
 
-  const providerId = state.catalog[0]?.id;
+  const live = state.sessions.filter((s) => !s.archived);
+  const archived = state.sessions.filter((s) => s.archived);
 
   return (
     <div className="flex items-center gap-2 border-b border-border px-2 py-1 text-xs">
@@ -28,43 +41,55 @@ export function SessionPicker() {
         <DropdownMenuTrigger
           render={<Button variant="outline" size="sm" className="min-w-0 flex-1 justify-start" />}
         >
-          Sessions ({open.size}/{state.sessions.length})
+          <ColumnsIcon aria-hidden />
+          {open.size} of {state.sessions.length} in split
+          {needing > 0 && (
+            <span className="ml-auto text-primary">
+              {needing} needs you
+            </span>
+          )}
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="max-h-80 w-72 overflow-y-auto">
           {state.sessions.length === 0 && (
             <DropdownMenuItem disabled>No sessions yet</DropdownMenuItem>
           )}
-          {state.sessions.map((s) => (
-            <DropdownMenuCheckboxItem
-              key={s.id}
-              checked={open.has(s.id)}
-              onCheckedChange={() => toggle(s.id)}
-            >
-              <span className="truncate">{s.title}</span>
-              {s.archived && (
-                <span className="ml-auto pl-2 text-muted-foreground">archived</span>
-              )}
-            </DropdownMenuCheckboxItem>
+          {live.map((s) => (
+            <SessionRow key={s.id} session={s} open={open.has(s.id)} onToggle={() => toggle(s.id)} />
           ))}
-          <DropdownMenuSeparator />
-          {state.sessions.map((s) => (
-            <DropdownMenuItem
-              key={`del-${s.id}`}
-              variant="destructive"
-              aria-label={`Delete session ${s.title}`}
-              onClick={() => post({ t: 'delete-session', id: s.id })}
-            >
-              Delete “{s.title}”
-            </DropdownMenuItem>
-          ))}
+          {archived.length > 0 && (
+            <>
+              <DropdownMenuSeparator />
+              {/*
+                `DropdownMenuLabel` renders Base UI's `Menu.GroupLabel`,
+                which calls `useMenuGroupRootContext()` and throws without a
+                `Menu.Group` ancestor — so the label and the archived rows it
+                names are wrapped in one `DropdownMenuGroup` rather than the
+                label standing alone.
+              */}
+              <DropdownMenuGroup>
+                <DropdownMenuLabel>{`Archived (${archived.length})`}</DropdownMenuLabel>
+                {archived.map((s) => (
+                  <SessionRow key={s.id} session={s} open={open.has(s.id)} onToggle={() => toggle(s.id)} />
+                ))}
+              </DropdownMenuGroup>
+            </>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
 
       <Button
         variant="outline"
-        size="icon"
-        aria-label="Toggle split orientation"
-        className="h-7 w-7 shrink-0"
+        size="icon-sm"
+        aria-label={`Split direction: ${horizontal ? 'side by side' : 'stacked'}`}
+        aria-pressed={horizontal}
+        disabled={narrow}
+        // A `title` on a disabled button is reachable by neither keyboard
+        // focus nor most screen readers — disabled elements are pulled out
+        // of both. `aria-describedby` plus real, rendered (if visually
+        // hidden) text is the same remedy as the composer's disabled bypass
+        // option.
+        aria-describedby={narrow ? 'orientation-reason' : undefined}
+        className="shrink-0"
         onClick={() => post({
           t: 'set-layout',
           layout: {
@@ -73,17 +98,18 @@ export function SessionPicker() {
           },
         })}
       >
-        {state.layout.orientation === 'vertical' ? '⬍' : '⬌'}
+        {horizontal ? <ColumnsIcon aria-hidden /> : <RowsIcon aria-hidden />}
       </Button>
+      {narrow && (
+        // sr-only rather than visible: at the width where this applies,
+        // there is no room for a sentence in the toolbar, and the control is
+        // already visibly disabled.
+        <span id="orientation-reason" className="sr-only">
+          The panel is too narrow to split side by side; panes stack until it is wider.
+        </span>
+      )}
 
-      <Button
-        size="sm"
-        className="shrink-0"
-        disabled={!providerId}
-        onClick={() => providerId && post({ t: 'create-session', providerId, cwd: '' })}
-      >
-        + New
-      </Button>
+      <SessionCreateMenu />
     </div>
   );
 }

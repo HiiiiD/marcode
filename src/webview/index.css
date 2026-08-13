@@ -1,25 +1,44 @@
 @import "tailwindcss";
 
+/* VS Code stamps vscode-light / vscode-dark / vscode-high-contrast on <body>.
+   Tailwind v4's stock `dark:` is prefers-color-scheme, which tracks the OS and
+   not the editor theme, so the two disagree for anyone whose OS and VS Code
+   themes differ. Bind the variant to the class VS Code actually sets.
+   High contrast is a dark-family theme in VS Code's own token defaults, so it
+   takes the dark branch. */
+@custom-variant dark (&:where(body.vscode-dark, body.vscode-dark *, body.vscode-high-contrast, body.vscode-high-contrast *));
+
 :root {
-  --background: var(--vscode-sideBar-background);
+  --background: var(--vscode-sideBar-background, var(--vscode-editor-background));
   --foreground: var(--vscode-sideBar-foreground, var(--vscode-foreground));
-  --card: var(--vscode-editorWidget-background);
+  --card: var(--vscode-editorWidget-background, var(--vscode-editor-background));
   --card-foreground: var(--vscode-editorWidget-foreground, var(--vscode-foreground));
-  --popover: var(--vscode-editorWidget-background);
+  --popover: var(--vscode-editorWidget-background, var(--vscode-editor-background));
   --popover-foreground: var(--vscode-editorWidget-foreground, var(--vscode-foreground));
-  --primary: var(--vscode-button-background);
-  --primary-foreground: var(--vscode-button-foreground);
-  --secondary: var(--vscode-button-secondaryBackground);
-  --secondary-foreground: var(--vscode-button-secondaryForeground);
-  --muted: var(--vscode-editorWidget-background);
-  --muted-foreground: var(--vscode-descriptionForeground);
-  --accent: var(--vscode-list-hoverBackground);
-  --accent-foreground: var(--vscode-foreground);
-  --destructive: var(--vscode-errorForeground);
-  --destructive-foreground: var(--vscode-editor-background);
+  --primary: var(--vscode-button-background, var(--vscode-focusBorder));
+  --primary-foreground: var(--vscode-button-foreground, var(--vscode-foreground));
+  --secondary: var(--vscode-button-secondaryBackground, var(--vscode-editorWidget-background));
+  --secondary-foreground: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
+  --muted: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  --muted-foreground: var(--vscode-descriptionForeground, var(--vscode-foreground));
+  --accent: var(--vscode-list-hoverBackground, var(--vscode-editorWidget-background));
+  --accent-foreground: var(--vscode-foreground, var(--vscode-editor-foreground));
+  --destructive: var(--vscode-errorForeground, var(--vscode-foreground));
+  --destructive-foreground: var(--vscode-editor-background, var(--vscode-sideBar-background));
   --border: var(--vscode-panel-border, var(--vscode-editorWidget-border));
-  --input: var(--vscode-input-background);
-  --ring: var(--vscode-focusBorder);
+  /*
+   * shadcn's --input is a border colour for form controls, reused at low
+   * opacity (bg-input/30, dark:bg-input/50, ...) as their fill — never a
+   * background on its own. Upstream ships --border and --input as the same
+   * grey (oklch(0.922 0 0) in light, near-identical in dark): two semantic
+   * names over one visual value, not two colours. VS Code has no dedicated
+   * "form control border" token, and --vscode-input-border is frequently
+   * unset by themes, so alias to --border's already-guaranteed value rather
+   * than open a second fallback chain that can drift from it or resolve to
+   * nothing.
+   */
+  --input: var(--border);
+  --ring: var(--vscode-focusBorder, var(--vscode-foreground));
   --radius: 4px;
 }
 

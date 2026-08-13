@@ -1,5 +1,7 @@
 import { useState } from 'react';
+import { CheckIcon, Loader2Icon, XIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import type { TranscriptItem } from '../../protocol/messages';
 import { safeStringify, summarize } from './tool-card-format';
 
@@ -7,21 +9,29 @@ type ToolItem = Extract<TranscriptItem, { role: 'tool' }>;
 
 export function ToolCard({ item }: { item: ToolItem }) {
   const [open, setOpen] = useState(false);
-  const dot = item.state === 'running' ? '○' : item.state === 'ok' ? '●' : '✕';
+  const StateIcon = item.state === 'running' ? Loader2Icon
+    : item.state === 'ok' ? CheckIcon : XIcon;
 
   return (
-    <div className="my-1 rounded border border-border text-xs">
+    <div className="my-0 rounded border border-border text-xs">
       <Button
         variant="ghost"
+        size="sm"
         onClick={() => setOpen((v) => !v)}
-        className="flex h-auto w-full items-center justify-start gap-2 px-2 py-1 font-normal"
+        aria-expanded={open}
+        aria-controls={`tool-${item.toolId}`}
+        // `gap-2`/`px-2`/`justify-start` override `size="sm"`'s own gap/px —
+        // the fixed h-7 the variant sets is kept, not hand-written, per the
+        // Task 2 discipline against overriding a size variant's height.
+        className="flex w-full items-center justify-start gap-2 px-2 font-normal"
       >
-        <span aria-hidden>{dot}</span>
+        <StateIcon aria-hidden className={cn(item.state === 'running' && 'animate-spin')} />
+        <span className="sr-only">{item.state}</span>
         <span className="font-medium">{item.name}</span>
         <span className="truncate text-muted-foreground">{summarize(item.input)}</span>
       </Button>
       {open && (
-        <pre className="overflow-x-auto border-t border-border px-2 py-1">
+        <pre id={`tool-${item.toolId}`} className="border-t border-border px-2 py-1 wrap-break-word whitespace-pre-wrap">
 {safeStringify({ input: item.input, output: item.output })}
         </pre>
       )}

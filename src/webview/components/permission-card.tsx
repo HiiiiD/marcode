@@ -1,8 +1,11 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import { useStore } from '../store';
+import { folderName } from '../format';
 import type { SessionId, TranscriptItem } from '../../protocol/messages';
 import { safeStringify } from './tool-card-format';
+import { TranscriptItemShell } from './transcript-item-shell';
 
 type PermissionItem = Extract<TranscriptItem, { role: 'permission' }>;
 
@@ -34,6 +37,7 @@ export function PermissionCard({
 }) {
   const { state, post } = useStore();
   const diff = diffPreview(item.input);
+  const cwd = state.byId[sessionId]?.summary.cwd ?? '';
   // `respondToPermission` is exactly-once on the host and silently drops a
   // second response for the same requestId. Without local state, both
   // buttons stay live until the session-patch round-trips back, so a
@@ -44,10 +48,15 @@ export function PermissionCard({
 
   if (item.state !== 'pending') {
     return (
-      <div className="my-2 rounded border border-border px-2 py-1 text-xs text-muted-foreground">
-        {item.name} — {item.state}
-        {item.reason ? `: ${item.reason}` : ''}
-      </div>
+      <TranscriptItemShell role="permission" label={`${item.name} — ${item.state}`} ts={item.ts}>
+        {item.reason && <div className="text-xs text-muted-foreground">{item.reason}</div>}
+        <details className="text-xs">
+          <summary className="cursor-default text-muted-foreground">What was requested</summary>
+          <pre className="mt-1 max-h-48 overflow-auto rounded bg-muted p-1 wrap-break-word whitespace-pre-wrap">
+{diff ?? safeStringify(item.input)}
+          </pre>
+        </details>
+      </TranscriptItemShell>
     );
   }
 
@@ -62,11 +71,11 @@ export function PermissionCard({
 
   if (!isLive) {
     return (
-      <div className="my-2 rounded border-2 border-dashed border-muted-foreground/40 p-2 text-xs">
+      <div className="my-0 rounded border-2 border-dashed border-muted-foreground/40 p-2 text-xs">
         <div className="mb-1 font-medium text-muted-foreground">
           {item.name} — no longer awaiting a response
         </div>
-        <pre className="mb-2 max-h-48 overflow-auto rounded bg-muted p-1">
+        <pre className="mb-2 max-h-48 overflow-auto rounded bg-muted p-1 wrap-break-word whitespace-pre-wrap">
 {diff ?? safeStringify(item.input)}
         </pre>
         <div className="flex gap-2">
@@ -91,10 +100,23 @@ export function PermissionCard({
   };
 
   return (
-    <div className="my-2 rounded border-2 border-destructive p-2 text-xs">
-      <div className="mb-1 font-medium">Allow {item.name}?</div>
-      <pre className="mb-2 max-h-48 overflow-auto rounded bg-muted p-1">
-{diff ?? safeStringify(item.input)}
+    <div className="my-0 rounded border-2 border-destructive bg-destructive/10 p-2 text-xs">
+      <div className="mb-1 flex items-baseline gap-2">
+        <span className="font-medium">Allow {item.name}?</span>
+        <span className="truncate text-muted-foreground" title={cwd}>{folderName(cwd)}</span>
+      </div>
+      <pre className="mb-2 max-h-48 overflow-auto rounded bg-muted p-1 wrap-break-word whitespace-pre-wrap">
+        {(diff ?? safeStringify(item.input)).split('\n').map((line, i) => (
+          <div
+            key={i}
+            className={cn(
+              line.startsWith('+') && 'text-(--vscode-gitDecoration-addedResourceForeground)',
+              line.startsWith('-') && 'text-(--vscode-gitDecoration-deletedResourceForeground)',
+            )}
+          >
+            {line}
+          </div>
+        ))}
       </pre>
       {/* Deny is the safe, reversible-feeling choice: it comes first in DOM
           and tab order, and Allow — the consequential, irreversible-feeling

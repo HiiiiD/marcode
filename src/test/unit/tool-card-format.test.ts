@@ -11,11 +11,17 @@ suite('tool-card summarize', () => {
     assert.strictEqual(summarize('hello'), 'hello');
   });
 
-  test('truncates JSON longer than 80 characters with an ellipsis', () => {
+  test('truncates JSON longer than the default 44-char budget with an ellipsis', () => {
     const input = { a: 'x'.repeat(100) };
     const result = summarize(input);
     assert.ok(result.endsWith('…'));
-    assert.strictEqual(result.length, 81);
+    assert.strictEqual(result.length, 44);
+  });
+
+  test('summarize fits the sidebar, not a desktop column', () => {
+    const long = { path: 'x'.repeat(200) };
+    assert.ok(summarize(long).length <= 44, '80 chars was tuned for a width this panel rarely has');
+    assert.ok(summarize(long, 80).length <= 80, 'the budget stays overridable');
   });
 
   test('falls back to a placeholder for a circular object instead of throwing', () => {

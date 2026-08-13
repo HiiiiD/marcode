@@ -103,19 +103,22 @@ With no selection the element is self-closing and carries no body. When text was
 
 ## Webview
 
-The composer toolbar carries a toggle whose label is the live chip:
+Shaped through the `impeccable` skill against `PRODUCT.md`; the full brief heads Task 6 of the implementation plan. The composer's control row carries a toggle chip whose label is the live context:
 
 ```
-┌──────────────────────────────────────┐
-│ fix the send path…                   │
-│ [◉ agent-session.ts:60-73 +2] [Send] │
-└──────────────────────────────────────┘
+┌─────────────────────────────────────────┐
+│ fix the send path…                      │
+├─────────────────────────────────────────┤
+│ [Send] [📎 agent-session.ts:60-73] [ask ▾] │
+└─────────────────────────────────────────┘
 ```
 
 - The label doubles as a preview of what will be attached. `+N` counts ranges beyond the first.
-- Off state renders `○` and dims the label.
-- `ctx: null` renders a disabled `○ no editor`. The toggle's stored value is untouched, so it returns as soon as an editor is active again.
-- Clicking flips local state optimistically and sends `set-include-context`. The host value wins on reload.
+- On is a filled (`secondary`) button, off is `ghost` with a muted icon; `aria-pressed` carries the state for assistive tech. No colour-only signal.
+- **`ctx: null` renders nothing at all.** A disabled control in a 300px sidebar is a dead affordance that costs a slot in an already-crowded row. The accepted consequence: with no file open there is no way to pre-set the toggle for the next message. The stored per-session value is untouched, so it returns as soon as an editor is active.
+- The label collapses to the icon alone below a **container** width of 17rem — a pane can be half the sidebar, so viewport width says nothing useful. The accessible name always carries the full path, so the collapse costs a screen reader nothing.
+- The basename truncates; the line span never does. `:60-73 +2` is what differs between two messages about the same file.
+- Clicking posts `set-include-context`. The host value wins on reload.
 - Reducer state: `editorContext` sits in global webview state; `includeEditorContext` is per session and arrives inside `SessionState`.
 
 A user transcript item with `context` renders the same chip above its text, built from the stored item rather than the live tracker, so history stays accurate. Clicking it sends `reveal-file` for the path and first range.

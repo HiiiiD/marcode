@@ -33,19 +33,14 @@ if (-not (Test-Path $exe)) {
     Write-Error "Could not find Code.exe. Set the path at the top of this script."
 }
 
-# These leak in from the parent extension host and break the launch.
-foreach ($name in @(
-    'ELECTRON_RUN_AS_NODE',
-    'ELECTRON_NO_ATTACH_CONSOLE',
-    'VSCODE_IPC_HOOK',
-    'VSCODE_IPC_HOOK_CLI',
-    'VSCODE_PID',
-    'VSCODE_CLI',
-    'VSCODE_NLS_CONFIG',
-    'VSCODE_CWD'
-)) {
-    if (Test-Path "Env:$name") { Remove-Item "Env:$name" }
-}
+# Every ELECTRON_* / VSCODE_* variable leaks in from the parent extension host
+# and can break the launch. A literal list goes stale with each VS Code
+# release -- 1.127 added VSCODE_ESM_ENTRYPOINT, which boots the child as an
+# extension host even after ELECTRON_RUN_AS_NODE is cleared. Match the shape
+# instead of naming the members.
+Get-ChildItem Env: |
+    Where-Object { $_.Name -match '^(ELECTRON|VSCODE)_' } |
+    ForEach-Object { Remove-Item "Env:$($_.Name)" -ErrorAction SilentlyContinue }
 
 # Deliberately outside the repo: VS Code opens and file-watches $repo, and a
 # profile directory living inside the watched folder makes the instance exit

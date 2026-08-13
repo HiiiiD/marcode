@@ -46,8 +46,9 @@ Everything in the agent-manager plan's Global Constraints still applies. The one
 | `src/host/panel-view-provider.ts` | Pass the editor host into the router | modify |
 | `src/extension.ts` | Build the source + tracker, push changes, implement `reveal` | modify |
 | `src/webview/reducer.ts` | `editorContext` in client state | modify |
-| `src/webview/components/editor-context-chip.tsx` | `chipLabel()` + the chip component, shared by composer and transcript | create |
-| `src/webview/components/composer.tsx` | The toggle button | modify |
+| `src/webview/components/editor-context-chip.tsx` | `chipLabel()`, the label, and the transcript chip | create |
+| `src/webview/components/editor-context-toggle.tsx` | The composer control: attach on/off, container-responsive | create |
+| `src/webview/components/composer.tsx` | Mount the toggle in the controls row; make the root a container | modify |
 | `src/webview/components/transcript-item.tsx` | Chip above a user message that carried context | modify |
 
 ---
@@ -58,8 +59,14 @@ Strictly serial. Every task depends on the one before it, and several tasks touc
 
 ```
 T1 (type + builder) → T2 (formatter + provider seam) → T3 (tracker + adapter)
-   → T4 (protocol + session + manager) → T5 (router + wiring) → T6 (webview + manual verify)
+   → T4 (protocol + session + manager) → T5 (router + wiring)
+   → T6 (webview + manual verify) → T7 (critique before merge)
 ```
+
+The UI in T6 was shaped through the `impeccable` skill before this plan was
+revised; `PRODUCT.md` holds the product truth it was shaped against, and the
+design brief sits at the head of that task. T6 ends with the mechanical
+detector and T7 with the critique — both are gates, not suggestions.
 
 ---
 
@@ -1440,20 +1447,40 @@ git commit -m "feat: attach the tracked editor context to sends"
 
 ---
 
-## Task 6: The composer toggle and the transcript chip
+## Task 6: The composer control and the transcript chip
+
+**Design brief** (from `impeccable shape`; product truth in `PRODUCT.md`):
+
+- **Mode: Operate.** A solo dev supervising 2–4 agents in a 300–500px sidebar, mid-turn. Before sending they must be able to answer "is my selection going with this?" at a glance; after sending, see which message carried what and click back to the code.
+- **Direction: the incumbent world, extended.** shadcn/Base UI on VS Code theme tokens. The control is a toggle chip — `Button size="sm"`, lucide `Paperclip` — not a new pattern. On is `secondary` (filled), off is `ghost` with a muted icon. Filled-vs-unfilled carries the state visually; `aria-pressed` carries it for assistive tech. No colour-only state.
+- **Responsive by container, not viewport.** A pane can be half the sidebar, so viewport width is the wrong signal: the composer root becomes a `@container` and the label is `hidden @[17rem]:inline`. Full-width sidebar shows `agent-session.ts:60-73 +2`; a split pane shows the icon alone with the path in `title` and `aria-label`.
+- **Truncation is directional.** The basename truncates; the line span never does — `:60-73 +2` is the part that changes per message.
+- **States.** No editor → the control is absent entirely (no dead affordance, no wasted line). Off → present and unfilled. Truncated selection → `(truncated)` in the title. Transcript chip only when context was actually attached, so a message sent with the toggle off looks exactly as it does today.
+- **Anti-goals.** No extra row of chrome in the composer. No motion. No filename in the transcript that isn't clickable.
 
 **Files:**
 - Modify: `src/webview/reducer.ts:13-27,41-58`
 - Create: `src/webview/components/editor-context-chip.tsx`
-- Modify: `src/webview/components/composer.tsx:27-38,56-68`
+- Create: `src/webview/components/editor-context-toggle.tsx`
+- Modify: `src/webview/components/composer.tsx:27-41,56-68`
 - Modify: `src/webview/components/transcript-item.tsx:12-17`
-- Test: `src/test/unit/webview-reducer.test.ts`, `src/test/unit/editor-context-chip.test.ts`
+- Test: `src/test/unit/webview-reducer.test.ts`, `src/test/unit/editor-context-chip.test.ts`, `src/test/dom/composer.test.tsx`, `src/test/dom/transcript-item.test.tsx`
+- Modify: `src/test/fixtures/protocol.ts` (the new required `SessionSummary` field)
 
 **Interfaces:**
 - Consumes: `editor-context` and `set-include-context` messages, `SessionSummary.includeEditorContext`, `TranscriptItem.context` (Task 4).
-- Produces: `ClientState.editorContext`, `chipLabel(ctx: EditorContext): string`, `<EditorContextChip>`.
+- Produces: `ClientState.editorContext`, `chipLabel(ctx: EditorContext): string`, `<EditorContextLabel ctx>`, `<EditorContextChip ctx onClick>`, `<EditorContextToggle pane>`.
 
-- [ ] **Step 1: Write the failing reducer test**
+- [ ] **Step 1: Add the field to the test fixture**
+
+`SessionSummary.includeEditorContext` became required in Task 4, so `src/test/fixtures/protocol.ts` no longer compiles. In `summary()`, add it after `permissionMode`:
+
+```ts
+    permissionMode: 'default',
+    includeEditorContext: true,
+```
+
+- [ ] **Step 2: Write the failing reducer test**
 
 Append to `src/test/unit/webview-reducer.test.ts`, inside its existing top-level `suite`:
 
@@ -1472,7 +1499,7 @@ Append to `src/test/unit/webview-reducer.test.ts`, inside its existing top-level
   });
 ```
 
-- [ ] **Step 2: Write the failing chip-label test**
+- [ ] **Step 3: Write the failing chip-label test**
 
 Create `src/test/unit/editor-context-chip.test.ts`:
 
@@ -1521,19 +1548,146 @@ suite('chipLabel', () => {
 });
 ```
 
-- [ ] **Step 3: Run both tests to verify they fail**
+- [ ] **Step 4: Write the failing DOM tests for the composer control**
 
-Run: `yarn test:unit`
-Expected: FAIL — `editorContext` is not on `ClientState`, and the chip module does not exist.
+Append to `src/test/dom/composer.test.tsx`, inside its existing top-level `suite`. These drive the real `StoreProvider` and feed genuine `HostToWebview` messages, per the DOM-test invariant in `CLAUDE.md` — never hand-build a `ClientState`.
 
-- [ ] **Step 4: Extend the reducer**
+```ts
+  const CTX = {
+    path: 'src/host/agent-session.ts',
+    languageId: 'typescript',
+    selection: { ranges: [{ startLine: 60, endLine: 73, text: 'x' }], truncated: false },
+  };
+
+  test('no editor context means no control at all', () => {
+    renderWithStore(<Composer pane={pane()} model={NO_EFFORT} />);
+    assert.strictEqual(screen.queryByRole('button', { name: /editor context/i }), null);
+  });
+
+  test('an editor context reveals the control, on and naming the file', () => {
+    renderWithStore(<Composer pane={pane()} model={NO_EFFORT} />);
+    sendFromHost({ t: 'editor-context', ctx: CTX });
+
+    const toggle = screen.getByRole('button', { name: /editor context/i });
+    assert.strictEqual(toggle.getAttribute('aria-pressed'), 'true');
+    // The accessible name carries the file even when the container query has
+    // collapsed the visible label to an icon.
+    assert.ok(/agent-session\.ts/.test(toggle.getAttribute('aria-label') ?? ''));
+  });
+
+  test('clicking the control posts the opposite of the session flag', async () => {
+    renderWithStore(<Composer pane={pane()} model={NO_EFFORT} />);
+    sendFromHost({ t: 'editor-context', ctx: CTX });
+
+    await userEvent.click(screen.getByRole('button', { name: /editor context/i }));
+
+    assert.deepStrictEqual(posted().at(-1), {
+      t: 'set-include-context', id: 'a', on: false,
+    });
+  });
+
+  test('a session with the flag off renders the control unpressed', () => {
+    const off = {
+      summary: summary('a', { includeEditorContext: false }),
+      items: [], hasMore: false, pending: [],
+    };
+    renderWithStore(<Composer pane={off} model={NO_EFFORT} />);
+    sendFromHost({ t: 'editor-context', ctx: CTX });
+
+    const toggle = screen.getByRole('button', { name: /editor context/i });
+    assert.strictEqual(toggle.getAttribute('aria-pressed'), 'false');
+  });
+
+  test('a context with no selection names the file without a line span', () => {
+    renderWithStore(<Composer pane={pane()} model={NO_EFFORT} />);
+    sendFromHost({
+      t: 'editor-context',
+      ctx: { path: 'src/a.ts', languageId: 'typescript' },
+    });
+
+    const toggle = screen.getByRole('button', { name: /editor context/i });
+    const label = toggle.getAttribute('aria-label') ?? '';
+    assert.ok(label.includes('src/a.ts'));
+    assert.ok(!label.includes(':'));
+  });
+```
+
+jsdom does not evaluate container queries, so the label element is always present in the DOM there. Every assertion above therefore reads the accessible name, which is width-independent by design — the visible collapse is verified by hand in Step 10.
+
+- [ ] **Step 5: Write the failing DOM test for the transcript chip**
+
+Create `src/test/dom/transcript-item.test.tsx`:
+
+```tsx
+import * as assert from 'assert';
+import { screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { TranscriptItemView } from '@/components/transcript-item';
+import type { TranscriptItem } from '../../protocol/messages';
+import { posted, renderWithStore } from './harness';
+
+const WITH_CONTEXT: TranscriptItem = {
+  id: 'u1', ts: 1, role: 'user', text: 'fix the send path',
+  context: {
+    path: 'src/host/agent-session.ts',
+    languageId: 'typescript',
+    selection: { ranges: [{ startLine: 60, endLine: 73, text: 'x' }], truncated: false },
+  },
+};
+
+const PLAIN: TranscriptItem = { id: 'u2', ts: 2, role: 'user', text: 'plain' };
+
+suite('TranscriptItemView user context', () => {
+  test('a message sent without context shows no chip', () => {
+    renderWithStore(<TranscriptItemView item={PLAIN} sessionId="a" />);
+    assert.strictEqual(screen.queryByRole('button', { name: /agent-session/ }), null);
+    assert.ok(screen.getByText('plain'));
+  });
+
+  test('a message sent with context shows the chip it carried', () => {
+    renderWithStore(<TranscriptItemView item={WITH_CONTEXT} sessionId="a" />);
+    assert.ok(screen.getByRole('button', { name: /agent-session\.ts:60-73/ }));
+  });
+
+  test('clicking the chip asks the host to reveal the first selected line', async () => {
+    renderWithStore(<TranscriptItemView item={WITH_CONTEXT} sessionId="a" />);
+
+    await userEvent.click(screen.getByRole('button', { name: /agent-session\.ts:60-73/ }));
+
+    assert.deepStrictEqual(posted().at(-1), {
+      t: 'reveal-file', path: 'src/host/agent-session.ts', startLine: 60,
+    });
+  });
+
+  test('a file-reference chip reveals the file with no line', async () => {
+    const fileOnly: TranscriptItem = {
+      id: 'u3', ts: 3, role: 'user', text: 'look',
+      context: { path: 'src/a.ts', languageId: 'typescript' },
+    };
+    renderWithStore(<TranscriptItemView item={fileOnly} sessionId="a" />);
+
+    await userEvent.click(screen.getByRole('button', { name: /a\.ts/ }));
+
+    assert.deepStrictEqual(posted().at(-1), {
+      t: 'reveal-file', path: 'src/a.ts', startLine: undefined,
+    });
+  });
+});
+```
+
+- [ ] **Step 6: Run both suites to verify they fail**
+
+Run: `yarn test:unit && yarn test:dom`
+Expected: FAIL — `editorContext` is not on `ClientState`, and neither new component module exists.
+
+- [ ] **Step 7: Extend the reducer**
 
 In `src/webview/reducer.ts`, add to `ClientState`:
 
 ```ts
   /**
    * Client-wide, not per session: the active editor is global IDE state and
-   * every composer shows the same chip.
+   * every composer shows the same file.
    */
   editorContext: EditorContext | null;
 ```
@@ -1545,172 +1699,284 @@ add `editorContext: null` to `initialState`, add `EditorContext` to the type imp
       return { ...state, editorContext: msg.ctx };
 ```
 
-- [ ] **Step 5: Write the chip component**
+- [ ] **Step 8: Write the chip module**
 
 Create `src/webview/components/editor-context-chip.tsx`:
 
 ```tsx
+import { cn } from '@/lib/utils';
 import type { EditorContext } from '../../protocol/messages';
 
 /**
- * What the user reads in the composer and above a sent message: the file's
- * basename, the first range's line span, and a count of any further ranges.
- * The full path lives in the title attribute rather than the label — a
- * sidebar pane is narrow, and the basename is what identifies the file.
+ * What the user reads: the file's basename, the first range's line span, and
+ * a count of any further ranges. The full path lives in `title` rather than
+ * the label — a pane can be 150px wide, and the basename is what identifies
+ * the file.
  */
 export function chipLabel(ctx: EditorContext): string {
-  const name = ctx.path.split('/').pop() ?? ctx.path;
   const ranges = ctx.selection?.ranges ?? [];
-  if (ranges.length === 0) { return name; }
+  if (ranges.length === 0) { return basename(ctx); }
   const [first] = ranges;
   const span = first.startLine === first.endLine
     ? `${first.startLine}`
     : `${first.startLine}-${first.endLine}`;
   const extra = ranges.length > 1 ? ` +${ranges.length - 1}` : '';
-  return `${name}:${span}${extra}`;
+  return `${basename(ctx)}:${span}${extra}`;
 }
 
-export function EditorContextChip({
-  ctx, onClick,
-}: {
+export function contextTitle(ctx: EditorContext): string {
+  return ctx.selection?.truncated ? `${ctx.path} (truncated)` : ctx.path;
+}
+
+function basename(ctx: EditorContext): string {
+  return ctx.path.split('/').pop() ?? ctx.path;
+}
+
+/**
+ * Two spans, not one string: the basename truncates and the line span never
+ * does. `:60-73 +2` is the part that differs between two messages about the
+ * same file, so it is the part that must survive a narrow pane.
+ */
+export function EditorContextLabel({ ctx, className }: {
   ctx: EditorContext;
-  onClick?: () => void;
+  className?: string;
 }) {
-  const label = chipLabel(ctx);
-  const title = ctx.selection?.truncated ? `${ctx.path} (truncated)` : ctx.path;
+  const ranges = ctx.selection?.ranges ?? [];
+  const [first] = ranges;
+  const span = first
+    ? `:${first.startLine === first.endLine ? first.startLine : `${first.startLine}-${first.endLine}`}`
+      + (ranges.length > 1 ? ` +${ranges.length - 1}` : '')
+    : '';
 
-  if (!onClick) {
-    return (
-      <span className="text-xs text-muted-foreground" title={title}>{label}</span>
-    );
-  }
+  return (
+    <span className={cn('flex min-w-0 items-baseline', className)}>
+      <span className="truncate">{basename(ctx)}</span>
+      {span && <span className="shrink-0">{span}</span>}
+    </span>
+  );
+}
 
+/**
+ * The transcript's record of what a message carried. A link, not a Button:
+ * it sits inline above a message body, and a Button variant's padding and
+ * background would break that line's flow. It is still a real `<button>` —
+ * keyboard reachable, with the focus ring the theme provides.
+ */
+export function EditorContextChip({ ctx, onClick }: {
+  ctx: EditorContext;
+  onClick: () => void;
+}) {
   return (
     <button
       type="button"
       onClick={onClick}
-      title={title}
-      className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+      title={contextTitle(ctx)}
+      aria-label={`Open ${chipLabel(ctx)}`}
+      className={cn(
+        'flex max-w-full items-baseline text-xs text-muted-foreground',
+        'underline decoration-dotted underline-offset-2',
+        'hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none',
+      )}
     >
-      {label}
+      <EditorContextLabel ctx={ctx} />
     </button>
   );
 }
 ```
 
-The bare `<button>` here is deliberate and is the one exception to the shadcn rule in this plan: it is a text link inside a transcript line, not a control — a `Button` variant would impose padding and a background that break the line's flow. Everything interactive in the composer still uses `Button`.
+- [ ] **Step 9: Write the composer control**
 
-- [ ] **Step 6: Add the composer toggle**
-
-In `src/webview/components/composer.tsx`:
-
-Change the store destructure (line 28) to take state as well:
-
-```ts
-  const { state, post } = useStore();
-```
-
-Add, next to the `running` binding:
-
-```ts
-  const ctx = state.editorContext;
-  const attaching = pane.summary.includeEditorContext;
-```
-
-Add the toggle inside the controls row, immediately after the Send/Stop button (line 67):
+Create `src/webview/components/editor-context-toggle.tsx`:
 
 ```tsx
-        <Button
-          variant={attaching ? 'secondary' : 'outline'}
-          size="sm"
-          disabled={!ctx}
-          aria-pressed={attaching}
-          aria-label="Attach editor context"
-          title={ctx ? `${attaching ? 'Attaching' : 'Not attaching'} ${ctx.path}` : 'No file open'}
-          onClick={() => post({
-            t: 'set-include-context', id: pane.summary.id, on: !attaching,
-          })}
-        >
-          {attaching ? '◉' : '○'} {ctx ? chipLabel(ctx) : 'no editor'}
-        </Button>
+import { Paperclip } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
+import { EditorContextLabel, chipLabel, contextTitle } from './editor-context-chip';
+import { useStore } from '../store';
+import type { PaneState } from '../reducer';
+
+/**
+ * Attach-or-not for the next message, and a preview of what would be
+ * attached.
+ *
+ * Renders nothing when there is no editor: a disabled control in a 300px
+ * sidebar is a dead affordance, and the absence is unambiguous because the
+ * control only ever exists when there is something to attach.
+ *
+ * The label is revealed by a container query rather than a viewport one —
+ * a pane can be half the sidebar, so the viewport says nothing useful about
+ * how much room this control actually has. The accessible name carries the
+ * file either way, so collapsing to the icon costs nothing to a screen
+ * reader.
+ */
+export function EditorContextToggle({ pane }: { pane: PaneState }) {
+  const { state, post } = useStore();
+  const ctx = state.editorContext;
+  if (!ctx) { return null; }
+
+  const on = pane.summary.includeEditorContext;
+
+  return (
+    <Button
+      variant={on ? 'secondary' : 'ghost'}
+      size="sm"
+      aria-pressed={on}
+      aria-label={`${on ? 'Attaching' : 'Not attaching'} editor context: ${ctx.path}`}
+      title={`${on ? 'Attaching' : 'Not attaching'} ${contextTitle(ctx)}`}
+      onClick={() => post({ t: 'set-include-context', id: pane.summary.id, on: !on })}
+      className={cn('min-w-0 max-w-[14rem]', !on && 'text-muted-foreground')}
+    >
+      <Paperclip aria-hidden="true" />
+      <EditorContextLabel ctx={ctx} className="hidden @[17rem]:flex" />
+      <span className="sr-only">{chipLabel(ctx)}</span>
+    </Button>
+  );
+}
 ```
 
-and import the label helper:
+- [ ] **Step 10: Mount it in the composer**
+
+In `src/webview/components/composer.tsx`, make the root a query container — every responsive decision inside the composer keys off the pane's own width, not the window's:
+
+```tsx
+    <div className="@container border-t border-border p-2">
+```
+
+and mount the control in the controls row, immediately after the Send/Stop button (line 67), before the effort select:
+
+```tsx
+        <EditorContextToggle pane={pane} />
+```
+
+with the import:
 
 ```ts
-import { chipLabel } from './editor-context-chip';
+import { EditorContextToggle } from './editor-context-toggle';
 ```
 
-- [ ] **Step 7: Render the chip in the transcript**
+The controls row already reads `className="mt-1 flex items-center gap-2 text-xs"`. Add `flex-wrap` to it so that a long filename on a wide pane wraps the row rather than overflowing it:
+
+```tsx
+      <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
+```
+
+- [ ] **Step 11: Render the chip in the transcript**
 
 In `src/webview/components/transcript-item.tsx`, replace the `user` case (lines 12-17):
 
 ```tsx
     case 'user':
-      return (
-        <div className="my-2 rounded bg-muted px-2 py-1">
-          {item.context && (
-            <div className="mb-1">
-              <EditorContextChip
-                ctx={item.context}
-                onClick={() => post({
-                  t: 'reveal-file',
-                  path: item.context!.path,
-                  startLine: item.context!.selection?.ranges[0]?.startLine,
-                })}
-              />
-            </div>
-          )}
-          <div className="whitespace-pre-wrap">{item.text}</div>
-        </div>
-      );
+      return <UserItem item={item} />;
 ```
 
-Add at the top of the component body (the file currently has no store access):
+and add the component below `TranscriptItemView` in the same file:
 
 ```tsx
+function UserItem({ item }: { item: Extract<TranscriptItem, { role: 'user' }> }) {
   const { post } = useStore();
+  const ctx = item.context;
+
+  return (
+    <div className="my-2 rounded bg-muted px-2 py-1">
+      {ctx && (
+        <div className="mb-1 flex">
+          <EditorContextChip
+            ctx={ctx}
+            onClick={() => post({
+              t: 'reveal-file',
+              path: ctx.path,
+              startLine: ctx.selection?.ranges[0]?.startLine,
+            })}
+          />
+        </div>
+      )}
+      <div className="whitespace-pre-wrap">{item.text}</div>
+    </div>
+  );
+}
 ```
 
-and the imports:
+with the imports:
 
 ```ts
 import { useStore } from '../store';
 import { EditorContextChip } from './editor-context-chip';
 ```
 
-Note the chip is built from `item.context` — the stored value — never from the live `state.editorContext`, so history keeps showing what was actually sent.
+A separate component rather than inline JSX because `TranscriptItemView` is a switch that returns early — a hook may not be called inside one branch of it. The chip is built from `item.context`, the stored value, never from the live `state.editorContext`, so history keeps showing what was actually sent.
 
-- [ ] **Step 8: Run the tests to verify they pass**
+- [ ] **Step 12: Run the tests to verify they pass**
 
-Run: `yarn test:unit`
+Run: `yarn test:unit && yarn test:dom`
 Expected: PASS.
 
 Run: `yarn check-types && yarn lint`
 Expected: no errors.
 
-- [ ] **Step 9: Build**
+- [ ] **Step 13: Run the design detector**
+
+Required by `CLAUDE.md` after any change under `src/webview/components/`:
+
+```bash
+node C:/Users/Marco/.claude/skills/impeccable/scripts/detect.mjs --json \
+  src/webview/components/editor-context-chip.tsx \
+  src/webview/components/editor-context-toggle.tsx \
+  src/webview/components/composer.tsx \
+  src/webview/components/transcript-item.tsx
+```
+
+Exit 0 is clean. Exit 2 means findings — fix them, then re-run. A non-zero exit is a failing check, not a suggestion.
+
+- [ ] **Step 14: Build**
 
 Run: `yarn compile && yarn build:css`
 Expected: both bundles emit with no errors.
 
-- [ ] **Step 10: Verify by hand in the extension host**
+- [ ] **Step 15: Verify by hand in the extension host**
 
 Run: `yarn dev` (or press F5), then in the host window:
 
-1. Open a source file and select a few lines. Open the panel. The composer button reads `◉ <file>:<start>-<end>`.
-2. **Click into the composer and type.** The button label must not change to `no editor`. This is the focus-theft case and it only reproduces here.
+1. Open a source file, select a few lines, open the panel. The control reads `📎 agent-session.ts:60-73` and is filled.
+2. **Click into the composer and type.** The label must not change or disappear. This is the focus-theft case and only reproduces here.
 3. Send. The user message shows the chip above the text. Click the chip — the file opens at the first selected line.
-4. Add a second cursor and select a second block. The label gains ` +1`.
-5. Click the toggle so it reads `○`. Send again. The new message has no chip.
-6. Reload the window (`Developer: Reload Window`). The toggle is still `○` for that session.
-7. Toggle back on, close every editor tab. The button goes disabled and reads `no editor`.
+4. Add a second cursor, select a second block. The label gains ` +1`.
+5. **Split the panel into two panes.** The label collapses to the icon alone; hovering it still names the file. Widen the sidebar until the label returns.
+6. Click the control so it goes unfilled. Send. The new message has no chip.
+7. Reload the window (`Developer: Reload Window`). The control is still unfilled for that session.
+8. Close every editor tab. The control disappears; the composer row keeps its other controls in place with no gap.
+9. Switch VS Code between a light and a dark theme, then a high-contrast one. Filled and unfilled stay distinguishable in all three, and the focus ring is visible when tabbing to the control.
 
-- [ ] **Step 11: Commit**
+- [ ] **Step 16: Commit**
 
 ```bash
-git add src/webview src/test/unit/webview-reducer.test.ts src/test/unit/editor-context-chip.test.ts
+git add src/webview src/test/dom src/test/fixtures/protocol.ts src/test/unit/webview-reducer.test.ts src/test/unit/editor-context-chip.test.ts
 git commit -m "feat: toggle and show the editor context in the panel"
+```
+
+---
+
+## Task 7: Design review before merge
+
+**Files:** none — this task produces a critique snapshot, not code.
+
+- [ ] **Step 1: Run the critique**
+
+Required by `CLAUDE.md` before merging a UI branch:
+
+```
+/impeccable critique src/webview
+```
+
+- [ ] **Step 2: Compare against the last snapshot**
+
+Read the newest file in `.impeccable/critique/` and compare with the previous one. The score is expected to go up, never down. If it dropped, fix what the critique names and re-run before merging.
+
+- [ ] **Step 3: Commit the snapshot**
+
+```bash
+git add .impeccable/critique
+git commit -m "docs: critique snapshot after editor context"
 ```
 
 ---
@@ -1728,7 +1994,12 @@ Spec coverage, section by section:
 | `EditorContextTracker` (focus theft, clear on close) | T3 |
 | Send flow (`AgentRun.send`, `AgentSession.send`, router resolution) | T2 Step 4, T4 Step 5, T5 Step 3 |
 | `formatEditorContext` | T2 Steps 1-3 |
-| Webview (toggle, disabled state, transcript chip, reveal) | T6 |
+| Webview (toggle, empty state, transcript chip, reveal) | T6 |
 | Testing (six listed suites) | T1, T2, T3, T4, T5, T6 |
+| Design gates (detector, critique) | T6 Step 13, T7 |
 
-Two things the spec left implicit that this plan pins down, both flagged inline where they land: the `ready` handler seeds `editor-context` (T5 Step 3), otherwise a freshly loaded panel shows `no editor` until the user touches an editor; and a relative chip path resolves against the first workspace folder on reveal (T5 Step 6), which is imperfect in a multi-root workspace.
+Three things the spec left implicit that this plan pins down, all flagged inline where they land:
+
+- The `ready` handler seeds `editor-context` (T5 Step 3), otherwise a freshly loaded panel shows nothing until the user touches an editor.
+- A relative chip path resolves against the first workspace folder on reveal (T5 Step 6), which is imperfect in a multi-root workspace.
+- **The spec's empty state was overruled by the `shape` pass.** The spec says a disabled control reading `no editor`; the shaped design removes the control entirely when there is no editor, because a dead affordance in a 300px sidebar costs a slot and says nothing. The consequence, accepted deliberately: with no file open there is no way to pre-set the toggle for the next message. Update the spec's Webview section to match before merging, so the two documents do not disagree.

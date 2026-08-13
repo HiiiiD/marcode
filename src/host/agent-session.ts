@@ -93,6 +93,27 @@ export class AgentSession {
   }
 
   /**
+   * Records the choice as state either way — even after the first message,
+   * once the SDK can no longer honor it live — the same as the other
+   * setters. Whether it takes effect is a provider concern (see
+   * AgentRun.setModel); this method has no way to tell the difference
+   * between "took effect" and "recorded, ignored by the running query", and
+   * doesn't need to: the UI itself disables the control once a change would
+   * be a no-op.
+   */
+  setModel(model: string): void {
+    this._state.model = model;
+    this._state.updatedAt = Date.now();
+    try {
+      this.run.setModel(model);
+    } catch (err) {
+      this.fail(err instanceof Error ? err.message : String(err));
+      return;
+    }
+    this.sink.changed();
+  }
+
+  /**
    * Always goes through the live run.setPermissionMode() seam, in either
    * direction — including into and out of 'bypass'. ClaudeProvider itself
    * decides whether that means updating a not-yet-constructed session's

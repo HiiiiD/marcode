@@ -1,11 +1,20 @@
 import { useEffect, useRef } from 'react';
 import { PaneGroup } from './components/pane-group';
 import { SessionPicker } from './components/session-picker';
+import { useIsNarrow } from './components/use-is-narrow';
 import { reconcilePaneLayout, rosterSessionIds } from './components/pane-layout';
 import { useStore } from './store';
 
 export function App() {
   const { state, post } = useStore();
+  // A single observer on the panel root, shared by both children: they used
+  // to each run their own `ResizeObserver` against their own root element,
+  // and because one root carries padding the other doesn't, `contentRect`
+  // (a content-box measurement) put them 16-32px apart — close enough to
+  // NARROW_PX that the two disagreed near the threshold. One measurement,
+  // passed down, makes that structurally impossible.
+  const rootRef = useRef<HTMLDivElement>(null);
+  const narrow = useIsNarrow(rootRef);
 
   const byIdKeys = Object.keys(state.byId);
   const rosterKey = state.sessions.map((s) => s.id).join(',');
@@ -49,14 +58,26 @@ export function App() {
     post({ t: 'set-visible', sessionIds: state.layout.panes.map((p) => p.sessionId) });
   }, [paneIdsKey]);
 
-  if (!state.ready) {
-    return <div className="p-3 text-sm text-muted-foreground">Loading…</div>;
-  }
-
+  // `rootRef` is attached to a div that mounts unconditionally — including
+  // during the pre-hydrate `Loading…` state — so `useIsNarrow`'s effect (it
+  // runs once, keyed on the `ref` object's identity, which doesn't change
+  // across a ready/not-ready re-render) observes the real element from the
+  // start rather than binding to a `Loading…` node that's gone by the time
+  // hydrate replaces it. `data-narrow-observer` marks this as the one
+  // element whose width `useIsNarrow` tracks — `resizeTo` (in
+  // src/test/dom/setup.ts) uses it to target only this observer's callback,
+  // since react-resizable-panels registers its own `ResizeObserver`s on
+  // panel/group elements that expect a different entry shape.
   return (
-    <div className="flex h-screen flex-col">
-      <SessionPicker />
-      <div className="min-h-0 flex-1"><PaneGroup /></div>
+    <div ref={rootRef} data-narrow-observer className="flex h-screen flex-col">
+      {state.ready ? (
+        <>
+          <SessionPicker narrow={narrow} />
+          <div className="min-h-0 flex-1"><PaneGroup narrow={narrow} /></div>
+        </>
+      ) : (
+        <div className="p-3 text-sm text-muted-foreground">Loading…</div>
+      )}
     </div>
   );
 }

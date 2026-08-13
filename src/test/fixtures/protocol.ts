@@ -43,6 +43,11 @@ export function catalog(): ProviderInfo[] {
         effort: { levels: ['low', 'medium', 'high'], default: 'medium' },
       },
       { id: 'fake-small', displayName: 'Fake Small' },
+      {
+        id: 'fake-medium',
+        displayName: 'Fake Medium',
+        effort: { levels: ['low', 'medium'], default: 'low' },
+      },
     ],
   }];
 }
