@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import * as vscode from 'vscode';
 
 export class PanelViewProvider implements vscode.WebviewViewProvider {
@@ -13,7 +14,7 @@ export class PanelViewProvider implements vscode.WebviewViewProvider {
     view.webview.html = this.render(view.webview);
   }
 
-  private render(webview: vscode.Webview): string {
+  render(webview: vscode.Webview): string {
     const nonce = makeNonce();
     const scriptUri = webview.asWebviewUri(
       vscode.Uri.joinPath(this.extensionUri, 'dist', 'webview.js'),
@@ -47,10 +48,5 @@ export class PanelViewProvider implements vscode.WebviewViewProvider {
 }
 
 function makeNonce(): string {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  let out = '';
-  for (let i = 0; i < 32; i++) {
-    out += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return out;
+  return randomBytes(16).toString('base64url');
 }
