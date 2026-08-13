@@ -26,7 +26,18 @@
   --destructive: var(--vscode-errorForeground, var(--vscode-foreground));
   --destructive-foreground: var(--vscode-editor-background, var(--vscode-sideBar-background));
   --border: var(--vscode-panel-border, var(--vscode-editorWidget-border));
-  --input: var(--vscode-input-background, var(--vscode-editorWidget-background));
+  /*
+   * shadcn's --input is a border colour for form controls, reused at low
+   * opacity (bg-input/30, dark:bg-input/50, ...) as their fill — never a
+   * background on its own. Upstream ships --border and --input as the same
+   * grey (oklch(0.922 0 0) in light, near-identical in dark): two semantic
+   * names over one visual value, not two colours. VS Code has no dedicated
+   * "form control border" token, and --vscode-input-border is frequently
+   * unset by themes, so alias to --border's already-guaranteed value rather
+   * than open a second fallback chain that can drift from it or resolve to
+   * nothing.
+   */
+  --input: var(--border);
   --ring: var(--vscode-focusBorder, var(--vscode-foreground));
   --radius: 4px;
 }
