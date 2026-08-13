@@ -16,7 +16,7 @@
   --popover: var(--vscode-editorWidget-background, var(--vscode-editor-background));
   --popover-foreground: var(--vscode-editorWidget-foreground, var(--vscode-foreground));
   --primary: var(--vscode-button-background, var(--vscode-focusBorder));
-  --primary-foreground: var(--vscode-button-foreground, var(--vscode-editor-background));
+  --primary-foreground: var(--vscode-button-foreground, var(--vscode-foreground));
   --secondary: var(--vscode-button-secondaryBackground, var(--vscode-editorWidget-background));
   --secondary-foreground: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
   --muted: var(--vscode-editorWidget-background, var(--vscode-editor-background));
