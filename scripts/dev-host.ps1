@@ -47,7 +47,10 @@ foreach ($name in @(
     if (Test-Path "Env:$name") { Remove-Item "Env:$name" }
 }
 
-$profileDir = Join-Path $repo '.dev-host-profile'
+# Deliberately outside the repo: VS Code opens and file-watches $repo, and a
+# profile directory living inside the watched folder makes the instance exit
+# before it opens a window.
+$profileDir = Join-Path $env:TEMP 'hiiiid-devhost'
 
 $launchArgs = @(
     "--extensionDevelopmentPath=$repo",
