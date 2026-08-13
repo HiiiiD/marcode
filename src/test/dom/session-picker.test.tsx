@@ -1,5 +1,5 @@
 import * as assert from 'assert';
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { catalog, layoutOf, snapshot, summary } from '../fixtures/protocol';
 import { posted, renderApp, sendFromHost } from './harness';
@@ -16,18 +16,18 @@ function hydrateAOpen() {
 }
 
 suite('SessionPicker', () => {
-  test('the trigger shows open-over-total', () => {
+  test('the roster trigger says what checking a row does', () => {
     renderApp();
     hydrateAOpen();
 
-    screen.getByText('Sessions (1/2)');
+    screen.getByRole('button', { name: /1 of 2 in split/i });
   });
 
   test('checking a closed session posts set-layout and set-visible for both', async () => {
     renderApp();
     hydrateAOpen();
 
-    await userEvent.click(screen.getByText('Sessions (1/2)'));
+    await userEvent.click(screen.getByText(/1 of 2 in split/i));
     await userEvent.click(await screen.findByText('Session b'));
 
     const layouts = posted().filter((m) => m.t === 'set-layout');
@@ -44,7 +44,7 @@ suite('SessionPicker', () => {
     renderApp();
     hydrateAOpen();
 
-    await userEvent.click(screen.getByText('Sessions (1/2)'));
+    await userEvent.click(screen.getByText(/1 of 2 in split/i));
     assert.strictEqual(
       (await screen.findAllByText('Session b')).length, 1,
       'the roster listed every session twice: once to toggle, once to delete',
@@ -55,7 +55,7 @@ suite('SessionPicker', () => {
     renderApp();
     hydrateAOpen();
 
-    await userEvent.click(screen.getByText('Sessions (1/2)'));
+    await userEvent.click(screen.getByText(/1 of 2 in split/i));
     await userEvent.click(await screen.findByLabelText('Delete session Session b'));
 
     assert.ok(
@@ -71,7 +71,7 @@ suite('SessionPicker', () => {
     renderApp();
     hydrateAOpen();
 
-    await userEvent.click(screen.getByText('Sessions (1/2)'));
+    await userEvent.click(screen.getByText(/1 of 2 in split/i));
     await userEvent.click(await screen.findByLabelText('Delete session Session b'));
     await userEvent.click(await screen.findByRole('menuitem', { name: 'Keep it' }));
 
@@ -86,7 +86,7 @@ suite('SessionPicker', () => {
     renderApp();
     hydrateAOpen();
 
-    await userEvent.click(screen.getByText('Sessions (1/2)'));
+    await userEvent.click(screen.getByText(/1 of 2 in split/i));
     // a checkbox, a delete trigger, b checkbox, b delete trigger.
     await userEvent.keyboard('{ArrowDown}{ArrowDown}{ArrowDown}{ArrowDown}');
     assert.strictEqual(
@@ -115,7 +115,7 @@ suite('SessionPicker', () => {
     renderApp();
     hydrateAOpen();
 
-    await userEvent.click(screen.getByText('Sessions (1/2)'));
+    await userEvent.click(screen.getByText(/1 of 2 in split/i));
     await userEvent.keyboard('{ArrowDown}{ArrowDown}{ArrowDown}{ArrowDown}');
     await userEvent.keyboard('{ArrowRight}');
     await screen.findByRole('menuitem', { name: 'Keep it' });
@@ -132,7 +132,7 @@ suite('SessionPicker', () => {
     renderApp();
     hydrateAOpen();
 
-    await userEvent.click(screen.getByText('Sessions (1/2)'));
+    await userEvent.click(screen.getByText(/1 of 2 in split/i));
     await userEvent.click(await screen.findByRole('menuitemcheckbox', { name: /Session b/ }));
 
     assert.deepStrictEqual(posted().filter((m) => m.t === 'set-visible').at(-1), {
@@ -144,20 +144,43 @@ suite('SessionPicker', () => {
     renderApp();
     hydrateAOpen();
 
-    await userEvent.click(screen.getByLabelText('Toggle split orientation'));
+    await userEvent.click(screen.getByLabelText(/split direction/i));
 
     const layouts = posted().filter((m) => m.t === 'set-layout');
     assert.strictEqual(layouts.at(-1)!.layout.orientation, 'horizontal');
+  });
+
+  test('the orientation toggle announces its current state', () => {
+    renderApp();
+    hydrateAOpen();
+
+    const toggle = screen.getByLabelText(/split direction/i);
+    assert.strictEqual(toggle.getAttribute('aria-pressed'), 'false');
   });
 
   test('icon buttons use icon size variants rather than hand-written boxes', () => {
     renderApp();
     hydrateAOpen();
 
-    const toggle = screen.getByLabelText('Toggle split orientation');
+    const toggle = screen.getByLabelText(/split direction/i);
     assert.ok(
       !/\b[hw]-\d/.test(toggle.className),
       'use size="icon-sm"; twMerge does not strip size-8 when h-7 w-7 is added',
     );
+  });
+
+  test('the empty state offers the way out', () => {
+    renderApp();
+    sendFromHost({
+      t: 'hydrate', sessions: [], layout: { orientation: 'vertical', panes: [] },
+      snapshots: [], catalog: catalog(),
+    });
+
+    const emptyState = screen.getByText(/no sessions yet/i).closest('div')!;
+    // The roster's own "New" trigger also matches this accessible name, so
+    // this is scoped to the empty-state panel rather than screen-wide —
+    // this test is about the empty state offering its own way out, not
+    // about there being exactly one "New session" control on the page.
+    within(emptyState).getByRole('button', { name: 'New session' });
   });
 });

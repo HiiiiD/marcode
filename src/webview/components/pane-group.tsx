@@ -13,24 +13,38 @@ import { SessionHeader } from './session-header';
 import { Transcript } from './transcript';
 import { Composer } from './composer';
 import { rosterSessionIds, visiblePanes } from './pane-layout';
+import { SessionCreateMenu } from './session-create-menu';
 import { useStore } from '../store';
 
-const NARROW_PX = 500;
+/** Below this width the split can only stack — see `useIsNarrow`. */
+export const NARROW_PX = 500;
 
-export function PaneGroup() {
-  const { state, post } = useStore();
-  const rootRef = useRef<HTMLDivElement>(null);
+/**
+ * Tracks whether the element behind `ref` is narrower than `NARROW_PX`.
+ * `PaneGroup` and `SessionPicker` render at the same width (both are direct
+ * children of the panel root) but neither is an ancestor of the other, so
+ * each observes its own root rather than one lifting state to the other.
+ */
+export function useIsNarrow(ref: React.RefObject<HTMLElement | null>): boolean {
   const [narrow, setNarrow] = useState(false);
 
   useEffect(() => {
-    const el = rootRef.current;
+    const el = ref.current;
     if (!el) { return; }
     const observer = new ResizeObserver(([entry]) => {
       setNarrow(entry.contentRect.width < NARROW_PX);
     });
     observer.observe(el);
     return () => observer.disconnect();
-  }, []);
+  }, [ref]);
+
+  return narrow;
+}
+
+export function PaneGroup() {
+  const { state, post } = useStore();
+  const rootRef = useRef<HTMLDivElement>(null);
+  const narrow = useIsNarrow(rootRef);
 
   // A pane can outlive `delete-session` on the client for a render or two,
   // and its stale `byId` entry is never cleaned up. Render only sessions
@@ -45,8 +59,13 @@ export function PaneGroup() {
 
   if (panes.length === 0) {
     return (
-      <div ref={rootRef} className="flex h-full items-center justify-center p-4 text-xs text-muted-foreground">
-        No open sessions.
+      <div ref={rootRef} className="flex h-full flex-col items-center justify-center gap-2 p-4 text-center">
+        <p className="text-xs text-muted-foreground">
+          {roster.size === 0
+            ? 'No sessions yet. Start one to give an agent something to do.'
+            : 'No sessions in the split. Pick one from the roster above to show it here.'}
+        </p>
+        {roster.size === 0 && <SessionCreateMenu />}
       </div>
     );
   }

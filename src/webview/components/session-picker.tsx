@@ -1,3 +1,5 @@
+import { useRef } from 'react';
+import { ColumnsIcon, RowsIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
@@ -5,12 +7,16 @@ import {
 import { evenlySizedPanes } from './pane-layout';
 import { SessionCreateMenu } from './session-create-menu';
 import { SessionRow } from './session-row';
+import { useIsNarrow } from './pane-group';
 import { useStore } from '../store';
 import type { SessionId } from '../../protocol/messages';
 
 export function SessionPicker() {
   const { state, post } = useStore();
+  const rootRef = useRef<HTMLDivElement>(null);
+  const narrow = useIsNarrow(rootRef);
   const open = new Set(state.layout.panes.map((p) => p.sessionId));
+  const horizontal = state.layout.orientation === 'horizontal';
 
   const setPanes = (ids: SessionId[]) => {
     post({ t: 'set-layout', layout: evenlySizedPanes(ids, state.layout.orientation) });
@@ -22,12 +28,13 @@ export function SessionPicker() {
   };
 
   return (
-    <div className="flex items-center gap-2 border-b border-border px-2 py-1 text-xs">
+    <div ref={rootRef} className="flex items-center gap-2 border-b border-border px-2 py-1 text-xs">
       <DropdownMenu>
         <DropdownMenuTrigger
           render={<Button variant="outline" size="sm" className="min-w-0 flex-1 justify-start" />}
         >
-          Sessions ({open.size}/{state.sessions.length})
+          <ColumnsIcon aria-hidden />
+          {open.size} of {state.sessions.length} in split
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="max-h-80 w-72 overflow-y-auto">
           {state.sessions.length === 0 && (
@@ -42,7 +49,12 @@ export function SessionPicker() {
       <Button
         variant="outline"
         size="icon-sm"
-        aria-label="Toggle split orientation"
+        aria-label={`Split direction: ${horizontal ? 'side by side' : 'stacked'}`}
+        aria-pressed={horizontal}
+        disabled={narrow}
+        title={narrow
+          ? 'The panel is too narrow to split side by side; panes stack until it is wider.'
+          : undefined}
         className="shrink-0"
         onClick={() => post({
           t: 'set-layout',
@@ -52,7 +64,7 @@ export function SessionPicker() {
           },
         })}
       >
-        {state.layout.orientation === 'vertical' ? '⬍' : '⬌'}
+        {horizontal ? <ColumnsIcon aria-hidden /> : <RowsIcon aria-hidden />}
       </Button>
 
       <SessionCreateMenu />

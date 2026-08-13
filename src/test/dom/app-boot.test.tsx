@@ -55,6 +55,6 @@ suite('App boot', () => {
     renderApp();
     hydrate([]);
 
-    screen.getByText('No open sessions.');
+    screen.getByText(/no sessions yet/i);
   });
 });

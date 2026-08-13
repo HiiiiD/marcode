@@ -74,7 +74,14 @@ suite('SessionCreateMenu', () => {
       catalog: [],
     });
 
-    const trigger = screen.getByRole('button', { name: 'New session' });
-    assert.ok((trigger as HTMLButtonElement).disabled);
+    // Two "New session" triggers exist here: the roster's persistent one and
+    // the empty state's own (pane-group.tsx renders `<SessionCreateMenu />`
+    // when the roster is empty) — both must be disabled when no provider is
+    // available, since they share the same underlying menu.
+    const triggers = screen.getAllByRole('button', { name: 'New session' });
+    assert.strictEqual(triggers.length, 2);
+    for (const trigger of triggers) {
+      assert.ok((trigger as HTMLButtonElement).disabled);
+    }
   });
 });
