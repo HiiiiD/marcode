@@ -84,6 +84,60 @@ suite('SessionManager', () => {
     assert.strictEqual(snaps.length, 1);
   });
 
+  test('a patch arriving while a snapshot fetch is in flight is buffered and replayed after the snapshot, not lost', async () => {
+    const a = await manager.create('fake', '/tmp');
+    sent.length = 0;
+
+    // Pause session.snapshot()'s underlying store.tail() call so we can
+    // deterministically fire a patch (via a.send()) while setVisible() is
+    // still awaiting the snapshot for this id, then release it.
+    const realTail = store.tail.bind(store);
+    let releaseTail: (() => void) | undefined;
+    let tailStarted: (() => void) | undefined;
+    const started = new Promise<void>((resolve) => { tailStarted = resolve; });
+    (store as unknown as { tail: typeof store.tail }).tail = async (
+      ...args: Parameters<typeof store.tail>
+    ) => {
+      tailStarted?.();
+      await new Promise<void>((resolve) => { releaseTail = resolve; });
+      return realTail(...args);
+    };
+
+    try {
+      const visiblePromise = manager.setVisible([a.state.id]);
+      await started; // setVisible() is now mid session.snapshot() -> store.tail().
+      a.send('hello'); // appends a user item, emitting a patch synchronously.
+      await settle();
+      releaseTail?.();
+      await visiblePromise;
+    } finally {
+      (store as unknown as { tail: typeof store.tail }).tail = realTail;
+    }
+
+    const snapIdx = sent.findIndex((m) => m.t === 'session-snapshot');
+    const patchIdx = sent.findIndex((m) => m.t === 'session-patch');
+    assert.ok(snapIdx >= 0, 'the snapshot must be emitted');
+    assert.ok(patchIdx >= 0, 'the patch must not be lost');
+    assert.ok(patchIdx > snapIdx, 'the patch must arrive after the snapshot, not before');
+  });
+
+  test('sink calls after dispose() do not arm a persist timer', async () => {
+    const a = await manager.create('fake', '/tmp');
+    await manager.dispose();
+    await fs.rm(dir, { recursive: true, force: true });
+
+    // Simulate a sink call landing after dispose() has resolved (e.g. from
+    // a provider event still draining during an earlier session.dispose()).
+    // This must not arm a new persist timer that later recreates the
+    // directory the caller already tore down.
+    manager.changed();
+    manager.status(a.state.id, 'idle');
+
+    await new Promise((r) => setTimeout(r, 600));
+    const exists = await fs.access(dir).then(() => true, () => false);
+    assert.strictEqual(exists, false, 'a stray persist timer recreated the removed root directory');
+  });
+
   test('close archives and keeps the transcript; remove deletes it', async () => {
     const a = await manager.create('fake', '/tmp');
     const id = a.state.id;

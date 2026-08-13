@@ -17,6 +17,19 @@ export class SessionManager implements SessionSink {
   private visible = new Set<SessionId>();
   private paneLayout: PaneLayout = { orientation: 'vertical', panes: [] };
   private persistTimer: NodeJS.Timeout | undefined;
+  private disposed = false;
+  /**
+   * setVisible() reveals a session by fetching its snapshot (an await), then
+   * emitting `session-snapshot`. A patch for that same id can arrive from
+   * the live AgentSession while that snapshot fetch is in flight — patch()
+   * only gates on `visible`, so once we've added the id to `visible` (which
+   * we must do promptly so status/changed keep flowing) that patch is
+   * emitted immediately, potentially landing before the snapshot it should
+   * follow and getting silently clobbered when the (now stale) snapshot
+   * arrives after it. Buffer patches per id while its snapshot fetch is in
+   * flight and replay them, in order, right after that snapshot is emitted.
+   */
+  private snapshotting = new Map<SessionId, TranscriptPatch[]>();
 
   constructor(
     private readonly store: TranscriptStore,
@@ -101,18 +114,37 @@ export class SessionManager implements SessionSink {
     this.visible = next;
 
     for (const id of added) {
+      // Mark this id as "snapshot in flight" so patch() buffers instead of
+      // emitting for it — see the `snapshotting` field doc comment.
+      this.snapshotting.set(id, []);
+
       const session = this.live.get(id);
       if (session) {
         this.emit({ t: 'session-snapshot', session: await session.snapshot() });
+        this.drainSnapshotBuffer(id);
         continue;
       }
       const state = this.meta.get(id);
-      if (!state) { continue; }
+      if (!state) {
+        this.snapshotting.delete(id);
+        continue;
+      }
       const { items, hasMore } = await this.store.tail(id);
       this.emit({
         t: 'session-snapshot',
         session: { ...state, items, hasMore, pending: [] },
       });
+      this.drainSnapshotBuffer(id);
+    }
+  }
+
+  /** Emits any patches that arrived for `id` while its snapshot was in flight. */
+  private drainSnapshotBuffer(id: SessionId): void {
+    const buffered = this.snapshotting.get(id);
+    this.snapshotting.delete(id);
+    if (!buffered) { return; }
+    for (const patch of buffered) {
+      this.emit({ t: 'session-patch', id, patch });
     }
   }
 
@@ -144,9 +176,19 @@ export class SessionManager implements SessionSink {
   }
 
   async dispose(): Promise<void> {
-    if (this.persistTimer) { clearTimeout(this.persistTimer); }
+    // AgentSession.dispose() drains in-flight events (denying outstanding
+    // permissions, waiting out its event pump) before it resolves; any
+    // event arriving during that drain calls sink.changed() ->
+    // schedulePersist(), which would arm a new timer. Clearing the timer
+    // and marking disposed BEFORE the session disposals lets that race
+    // reintroduce a live timer that fires after dispose() has returned and
+    // the caller has already torn down rootDir. Mark disposed (so
+    // schedulePersist() becomes a no-op) and only clear the timer AFTER
+    // every session has actually finished disposing.
+    this.disposed = true;
     await Promise.all([...this.live.values()].map((s) => s.dispose()));
     this.live.clear();
+    if (this.persistTimer) { clearTimeout(this.persistTimer); }
     await this.persist();
   }
 
@@ -154,6 +196,8 @@ export class SessionManager implements SessionSink {
 
   patch(id: SessionId, patch: TranscriptPatch): void {
     if (!this.visible.has(id)) { return; }
+    const buffer = this.snapshotting.get(id);
+    if (buffer) { buffer.push(patch); return; }
     this.emit({ t: 'session-patch', id, patch });
   }
 
@@ -167,8 +211,12 @@ export class SessionManager implements SessionSink {
   }
 
   private schedulePersist(): void {
+    if (this.disposed) { return; }
     if (this.persistTimer) { clearTimeout(this.persistTimer); }
-    this.persistTimer = setTimeout(() => { void this.persist(); }, 500);
+    // persist() awaits real fs calls (writeIndex/flush) that can reject
+    // (EPERM/EBUSY are routine on Windows) with nothing here to catch them
+    // — never let that become an unhandled rejection.
+    this.persistTimer = setTimeout(() => { this.persist().catch(() => { /* see above */ }); }, 500);
   }
 
   private async persist(): Promise<void> {

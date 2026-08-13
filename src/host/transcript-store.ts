@@ -23,12 +23,15 @@ export class TranscriptStore {
    * session id — one from a caller that flushes a single id, another from a
    * caller that flushes "all pending ids" — can both observe the same
    * pending queue before either clears it, duplicating writes on disk (the
-   * append-only path appends the same queued items twice). Chain every
-   * flush for a given id onto the previous one for that id so overlapping
-   * callers serialize instead of racing, no matter which caller or call
-   * shape triggered them.
+   * append-only path appends the same queued items twice). remove() has the
+   * same hazard from the other direction: it deletes the on-disk file
+   * directly, so a flush() already mid-flight for that id can finish its
+   * fs.appendFile *after* remove() has run, recreating the file the caller
+   * asked to delete. Both flush() and remove() route through `serialize()`
+   * for a given session id so they always run strictly one-at-a-time
+   * regardless of which caller or call shape triggered them.
    */
-  private flushChains = new Map<SessionId, Promise<void>>();
+  private chains = new Map<SessionId, Promise<void>>();
 
   constructor(private readonly rootDir: string) {}
 
@@ -86,20 +89,22 @@ export class TranscriptStore {
   async flush(id?: SessionId): Promise<void> {
     const ids = id ? [id] : [...new Set([...this.pending.keys(), ...this.dirty])];
     await fs.mkdir(path.join(this.rootDir, 'sessions'), { recursive: true });
-    await Promise.all(ids.map((sessionId) => this.flushSerialized(sessionId)));
+    await Promise.all(
+      ids.map((sessionId) => this.serialize(sessionId, () => this.flushOne(sessionId))),
+    );
   }
 
-  /** Chains onto any in-flight flush for this id so callers never overlap. */
-  private flushSerialized(sessionId: SessionId): Promise<void> {
-    const prior = this.flushChains.get(sessionId) ?? Promise.resolve();
-    const next = prior.then(
-      () => this.flushOne(sessionId),
-      () => this.flushOne(sessionId),
-    );
-    // Store a variant that never rejects, so a failed flush doesn't wedge
-    // the chain for the next caller (who still needs to run) or surface as
-    // an unhandled rejection when nobody is awaiting this particular link.
-    this.flushChains.set(sessionId, next.catch(() => { /* see chain doc above */ }));
+  /**
+   * Chains `work` onto any in-flight flush/remove for this id so callers
+   * never overlap, regardless of which operation they are.
+   */
+  private serialize(sessionId: SessionId, work: () => Promise<void>): Promise<void> {
+    const prior = this.chains.get(sessionId) ?? Promise.resolve();
+    const next = prior.then(work, work);
+    // Store a variant that never rejects, so a failed link doesn't wedge the
+    // chain for the next caller (who still needs to run) or surface as an
+    // unhandled rejection when nobody is awaiting this particular link.
+    this.chains.set(sessionId, next.catch(() => { /* see chain doc above */ }));
     return next;
   }
 
@@ -147,11 +152,17 @@ export class TranscriptStore {
   }
 
   async remove(id: SessionId): Promise<void> {
-    this.cache.delete(id);
-    this.pending.delete(id);
-    this.dirty.delete(id);
-    this.replacements.delete(id);
-    await fs.rm(this.sessionFile(id), { force: true });
+    await this.serialize(id, async () => {
+      this.cache.delete(id);
+      this.pending.delete(id);
+      this.dirty.delete(id);
+      this.replacements.delete(id);
+      await fs.rm(this.sessionFile(id), { force: true });
+    });
+    // Drop the chain entry now that removal has actually run: nothing is
+    // pending for this id anymore, so there is nothing left to serialize
+    // against, and a later flush()/remove() for a reused id starts clean.
+    this.chains.delete(id);
   }
 
   async readIndex(): Promise<StoredIndex> {

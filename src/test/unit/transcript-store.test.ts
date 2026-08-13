@@ -143,6 +143,54 @@ suite('TranscriptStore', () => {
     assert.deepStrictEqual(items.map((i) => i.id), ['a', 'b']);
   });
 
+  test('a concurrent flush() cannot let its write land after remove() has deleted the file', async () => {
+    // Deterministically reproduces the exact interleave from the finding —
+    // flush()'s underlying fs.appendFile is genuinely in flight (not just
+    // "about to be called") when remove() runs for the same id — without
+    // depending on real disk-I/O timing. We patch fs.appendFile (the shared
+    // 'fs/promises' module instance also used inside transcript-store.ts)
+    // to pause right after flush() has read the pending queue and issued
+    // the write, let remove() run, then release the write and confirm it
+    // cannot resurrect the file remove() just deleted.
+    const id = 's1';
+    store.append(id, item('a', 'one'));
+
+    // `import * as fs` gives us a read-only forwarding view (TS namespace
+    // import semantics), so patch the live 'fs/promises' module object
+    // directly via require — the same singleton module instance
+    // transcript-store.ts reads from at call time.
+    const fsPromisesModule = require('fs/promises') as typeof fs;
+    const realAppendFile = fsPromisesModule.appendFile;
+    let releaseWrite: (() => void) | undefined;
+    let writeStarted: (() => void) | undefined;
+    const started = new Promise<void>((resolve) => { writeStarted = resolve; });
+    fsPromisesModule.appendFile = async (...args: Parameters<typeof fs.appendFile>) => {
+      writeStarted?.();
+      await new Promise<void>((resolve) => { releaseWrite = resolve; });
+      return realAppendFile(...args);
+    };
+
+    try {
+      const flushPromise = store.flush(id);
+      await started; // flush() has read the pending queue and is mid-write.
+      const removePromise = store.remove(id);
+      // Give remove() a chance to run everything it can before the write
+      // it's racing against is allowed to land.
+      for (let i = 0; i < 5; i++) { await new Promise((r) => setImmediate(r)); }
+      releaseWrite?.();
+      await Promise.all([flushPromise, removePromise]);
+    } finally {
+      fsPromisesModule.appendFile = realAppendFile;
+    }
+
+    const sessionFile = path.join(dir, 'sessions', `${id}.jsonl`);
+    await assert.rejects(
+      fs.access(sessionFile),
+      /ENOENT/,
+      'remove() must win — the file must not exist after both settle',
+    );
+  });
+
   test('remove on a session with unflushed pending appends is not resurrected by a later flush', async () => {
     store.append('s1', item('a', 'one'));
 
