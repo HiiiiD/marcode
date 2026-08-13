@@ -1,7 +1,8 @@
 import * as assert from 'assert';
 import { screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { catalog, layoutOf, snapshot, summary } from '../fixtures/protocol';
-import { renderApp, sendFromHost } from './harness';
+import { posted, renderApp, sendFromHost } from './harness';
 
 function hydrate(over = {}) {
   sendFromHost({
@@ -81,7 +82,30 @@ suite('SessionHeader status', () => {
 
     const title = screen.getByTitle('Session a');
     assert.ok(title.className.includes('truncate'));
-    const model = screen.getByText(/Fake Large/);
-    assert.ok(model.className.includes('truncate'), 'the model label must be able to shrink too');
+    const model = screen.getByLabelText('Model');
+    assert.ok(model.className.includes('truncate'), 'the model control must be able to shrink too');
+  });
+
+  test('the model label is a control that posts set-model', async () => {
+    renderApp();
+    hydrate();
+
+    await userEvent.click(screen.getByLabelText('Model'));
+    await userEvent.click(await screen.findByRole('option', { name: 'Fake Small' }));
+
+    assert.deepStrictEqual(posted().at(-1), { t: 'set-model', id: 'a', model: 'fake-small' });
+  });
+
+  test('the model control is disabled once the session has started, with a reason for assistive tech', () => {
+    renderApp();
+    hydrate({ items: [{ id: 'u1', ts: 1, role: 'user', text: 'hi' }] });
+
+    const model = screen.getByLabelText('Model') as HTMLButtonElement;
+    assert.strictEqual(model.disabled, true);
+    const describedBy = model.getAttribute('aria-describedby');
+    assert.ok(describedBy, 'a disabled control must not rely on a title attribute for its reason');
+    const reason = document.getElementById(describedBy!);
+    assert.ok(reason, 'the aria-describedby target must be real, rendered text');
+    assert.ok(/before the first message/i.test(reason!.textContent ?? ''));
   });
 });

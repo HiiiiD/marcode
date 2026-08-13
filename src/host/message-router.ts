@@ -110,6 +110,12 @@ export class MessageRouter {
         return;
       }
 
+      case 'set-model': {
+        const session = this.manager.get(msg.id) ?? await this.reopen(msg.id);
+        session?.setModel(msg.model);
+        return;
+      }
+
       case 'permission-decision':
         this.manager.get(msg.id)?.respondToPermission(msg.requestId, msg.decision);
         return;
@@ -144,7 +150,7 @@ export class MessageRouter {
 const KNOWN_MESSAGE_TAGS = new Set<WebviewToHost['t']>([
   'ready', 'create-session', 'set-visible', 'set-layout', 'close-session',
   'delete-session', 'send', 'interrupt', 'set-effort', 'set-permission-mode',
-  'permission-decision', 'load-more',
+  'set-model', 'permission-decision', 'load-more',
 ]);
 
 /**

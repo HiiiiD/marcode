@@ -81,6 +81,7 @@ export type WebviewToHost =
   | { t: 'interrupt'; id: SessionId }
   | { t: 'set-effort'; id: SessionId; effort: EffortLevel }
   | { t: 'set-permission-mode'; id: SessionId; mode: PermissionMode }
+  | { t: 'set-model'; id: SessionId; model: string }
   | { t: 'permission-decision'; id: SessionId; requestId: string; decision: ToolDecision }
   | { t: 'load-more'; id: SessionId; beforeItemId: string };
 

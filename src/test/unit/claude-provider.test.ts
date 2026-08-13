@@ -117,6 +117,38 @@ suite('ClaudeProvider (lazy start)', () => {
     await run.dispose();
   });
 
+  test('a model chosen before the first send is the one the query is built with', async () => {
+    const fake = fakeLoadQuery();
+    const provider = new ClaudeProvider(fake.load as never);
+    const run = provider.start({ cwd: '/tmp', model: 'opus', permissionMode: 'default' });
+
+    run.setModel('haiku');
+    run.send('go');
+    await flushMicrotasks();
+
+    assert.strictEqual(fake.calls.length, 1);
+    assert.strictEqual(
+      fake.calls.at(-1)!.options.model, 'haiku',
+      'options are built lazily on first send, so a pre-send change must win',
+    );
+    await run.dispose();
+  });
+
+  test('setModel() after the first send is recorded but does not rebuild the running query', async () => {
+    const fake = fakeLoadQuery();
+    const provider = new ClaudeProvider(fake.load as never);
+    const run = provider.start({ cwd: '/tmp', model: 'opus', permissionMode: 'default' });
+
+    run.send('go');
+    await flushMicrotasks();
+    run.setModel('haiku');
+    await flushMicrotasks();
+
+    assert.strictEqual(fake.calls.length, 1, 'setModel() must not construct a second query');
+    assert.strictEqual(fake.calls[0].options.model, 'opus', 'the already-running query keeps its model');
+    await run.dispose();
+  });
+
   test('setEffort()/interrupt() before send() do not construct a query either', async () => {
     const fake = fakeLoadQuery();
     const provider = new ClaudeProvider(fake.load as never);

@@ -17,6 +17,7 @@ function describeInbound(m: WebviewToHost): string {
     case 'interrupt': return 'interrupt';
     case 'set-effort': return 'set-effort';
     case 'set-permission-mode': return 'set-permission-mode';
+    case 'set-model': return 'set-model';
     case 'permission-decision': return 'permission-decision';
     case 'load-more': return 'load-more';
     default: return assertNever(m);

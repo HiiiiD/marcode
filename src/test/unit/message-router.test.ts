@@ -202,4 +202,16 @@ suite('MessageRouter', () => {
     assert.ok(session, 'set-permission-mode should have revived the session');
     assert.strictEqual(session!.state.permissionMode, 'bypass');
   });
+
+  test('set-model reaches the session', async () => {
+    await router.handle({ t: 'create-session', providerId: 'fake', cwd: '/tmp' });
+    const id = manager.summaries()[0].id;
+    await router.handle({ t: 'set-visible', sessionIds: [id] });
+
+    await router.handle({ t: 'set-model', id, model: 'fake-small' });
+
+    const session = manager.get(id);
+    assert.ok(session);
+    assert.strictEqual((await session!.snapshot()).model, 'fake-small');
+  });
 });

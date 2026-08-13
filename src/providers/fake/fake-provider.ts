@@ -47,6 +47,8 @@ export class FakeProvider implements AgentProvider {
   readonly decisions = new Map<string, ToolDecision>();
   /** Records every mode passed to setPermissionMode, for assertions. */
   readonly permissionModes: PermissionMode[] = [];
+  /** Records every model passed to setModel, for assertions. */
+  readonly models: string[] = [];
   private sessionCounter = 0;
 
   constructor(private readonly script: (text: string) => AgentEvent[]) {}
@@ -87,6 +89,7 @@ export class FakeProvider implements AgentProvider {
       },
       setEffort: (_effort: EffortLevel) => { /* recorded by tests via lastEffort if needed */ },
       setPermissionMode: (mode: PermissionMode) => { this.permissionModes.push(mode); },
+      setModel: (model: string) => { this.models.push(model); },
       interrupt: async () => { channel.push({ kind: 'turn-end', reason: 'interrupted' }); },
       dispose: async () => { channel.close(); },
     };

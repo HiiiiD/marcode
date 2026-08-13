@@ -54,6 +54,7 @@ interface ThrowingProviderOptions {
   throwOnInterrupt?: boolean;
   throwOnSetEffort?: boolean;
   throwOnSetPermissionMode?: boolean;
+  throwOnSetModel?: boolean;
   script?: (text: string) => AgentEvent[];
 }
 
@@ -86,6 +87,9 @@ class ThrowingProvider implements AgentProvider {
       },
       setPermissionMode: () => {
         if (this.opts.throwOnSetPermissionMode) { throw new Error('setPermissionMode failed'); }
+      },
+      setModel: () => {
+        if (this.opts.throwOnSetModel) { throw new Error('setModel failed'); }
       },
       interrupt: async () => {
         if (this.opts.throwOnInterrupt) { throw new Error('interrupt failed'); }
@@ -320,6 +324,30 @@ suite('AgentSession', () => {
     const snap = await session.snapshot();
     const err = snap.items.find((i) => i.role === 'error');
     assert.strictEqual((err as { message: string }).message, 'setPermissionMode failed');
+    await session.dispose();
+  });
+
+  test('setModel() updates state and notifies the sink', async () => {
+    const provider = new FakeProvider(() => []);
+    const session = new AgentSession(baseState(), provider, store, sink);
+
+    session.setModel('fake-small');
+
+    assert.strictEqual(session.state.model, 'fake-small');
+    const snap = await session.snapshot();
+    assert.strictEqual(snap.model, 'fake-small');
+    await session.dispose();
+  });
+
+  test('setModel() on a throwing provider does not throw and settles the session into error', async () => {
+    const provider = new ThrowingProvider({ throwOnSetModel: true });
+    const session = new AgentSession(baseState(), provider, store, sink);
+
+    assert.doesNotThrow(() => session.setModel('haiku'));
+    assert.strictEqual(session.state.status, 'error');
+    const snap = await session.snapshot();
+    const err = snap.items.find((i) => i.role === 'error');
+    assert.strictEqual((err as { message: string }).message, 'setModel failed');
     await session.dispose();
   });
 });

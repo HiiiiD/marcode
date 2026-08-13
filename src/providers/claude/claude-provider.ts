@@ -229,6 +229,15 @@ export class ClaudeProvider implements AgentProvider {
     // setEffort() below whenever that hasn't happened yet.
     let pendingMode: PermissionMode = opts.permissionMode;
     let pendingEffort = opts.effort;
+    // Same closure-var treatment as pendingMode/pendingEffort above, but
+    // there is no live counterpart once the query exists: the SDK reads
+    // `Options.model` only at query construction and has no
+    // `Query.setModel`-shaped seam to migrate a running query onto a new
+    // model. A change before the first send() is picked up by
+    // buildOptions() below; a change after it is simply recorded and never
+    // takes effect on this run — which is why the UI disables the model
+    // control once the session has started.
+    let pendingModel = opts.model;
     let pump: Promise<void> = Promise.resolve();
 
     const canUseTool: CanUseTool = async (toolName, input, options) => {
@@ -246,7 +255,7 @@ export class ClaudeProvider implements AgentProvider {
       const isBypassMode = pendingMode === 'bypass';
       return {
         cwd: opts.cwd,
-        model: opts.model,
+        model: pendingModel,
         resume: opts.resumeToken,
         permissionMode: PERMISSION_MODE[pendingMode],
         canUseTool,
@@ -309,6 +318,13 @@ export class ClaudeProvider implements AgentProvider {
           // exactly as non-fatal as an async rejection above — same reason.
           console.warn('[hiiiid-code] applyFlagSettings threw', 'effort=', next, 'error=', errorMessage(err));
         }
+      },
+      setModel: (next: string) => {
+        pendingModel = next;
+        // No applyFlagSettings equivalent: the SDK fixes the model at query
+        // construction. Before the first send() there is no query yet, so the
+        // line above is the whole change. After it, the new model applies to
+        // the next session — which is why the UI disables this mid-conversation.
       },
       setPermissionMode: (mode: PermissionMode) => {
         pendingMode = mode;

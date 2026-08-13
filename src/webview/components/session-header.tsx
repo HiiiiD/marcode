@@ -1,4 +1,7 @@
 import { Button } from '@/components/ui/button';
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 import { evenlySizedPanes } from './pane-layout';
 import { StatusBadge } from './status-badge';
@@ -20,8 +23,18 @@ interface SessionHeaderProps {
 export function SessionHeader({ pane, models, accessibleTitle }: SessionHeaderProps) {
   const { state, post } = useStore();
   const s = pane.summary;
-  const modelLabel = models.find((m) => m.id === s.model)?.displayName ?? s.model;
   const total = s.usage.inputTokens + s.usage.outputTokens;
+  /**
+   * The SDK fixes the model at query construction (see claude-provider.ts's
+   * pendingModel), which happens lazily on the session's first send() — the
+   * same "has a first message been sent yet" condition the composer's
+   * bypass gate tracks, told from the same fact (pane.items is the
+   * transcript; AgentSession.send() always appends a user item first).
+   * Once that's true, a model change would be recorded but never take
+   * effect on this run, so the control is disabled rather than silently
+   * no-opping.
+   */
+  const hasStarted = pane.items.length > 0;
 
   return (
     <div className="flex items-center gap-2 border-b border-border px-2 py-1 text-xs">
@@ -53,8 +66,43 @@ export function SessionHeader({ pane, models, accessibleTitle }: SessionHeaderPr
           Bypassing permissions
         </span>
       )}
-      <span className="ml-auto min-w-0 truncate text-muted-foreground">
-        {modelLabel}{s.effort ? ` · ${s.effort}` : ''}
+      <span className="ml-auto flex min-w-0 items-center text-muted-foreground">
+        <Select
+          items={models.map((m) => ({ value: m.id, label: m.displayName }))}
+          value={s.model}
+          onValueChange={(value) => post({ t: 'set-model', id: s.id, model: value as string })}
+        >
+          <SelectTrigger
+            size="sm"
+            className="h-auto min-w-0 shrink truncate border-0 bg-transparent p-0 text-muted-foreground"
+            aria-label="Model"
+            disabled={hasStarted}
+            // Disabled-with-a-reason, not a silently-frozen label: matches
+            // the composer's disabled bypass option and the roster picker's
+            // disabled split-direction button. `aria-describedby` pointing
+            // at real, rendered (if visually hidden) text — a `title` on a
+            // disabled control is reachable by neither keyboard focus nor
+            // most screen readers, since disabled elements are pulled out
+            // of both.
+            aria-describedby={hasStarted ? 'model-reason' : undefined}
+          >
+            <SelectValue className="truncate" />
+          </SelectTrigger>
+          <SelectContent>
+            {models.map((m) => (
+              <SelectItem key={m.id} value={m.id}>{m.displayName}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {hasStarted && (
+          // sr-only rather than visible: the header has no room for a
+          // sentence next to the status badge, title and cwd, and the
+          // control is already visibly disabled.
+          <span id="model-reason" className="sr-only">
+            The model can only be chosen before the first message is sent.
+          </span>
+        )}
+        {s.effort ? ` · ${s.effort}` : ''}
         {total > 0 && (
           <>
             {' · '}
