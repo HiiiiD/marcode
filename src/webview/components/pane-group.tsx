@@ -57,15 +57,23 @@ export function PaneGroup({ narrow }: PaneGroupProps) {
   // after the unmount has committed — `document.activeElement` already
   // reflects the fallback by the time this reads it.
   //
-  // Prefers the first real control inside what's left of the pane group;
-  // when the last pane closes, that group renders its own empty-state
-  // fallback instead (no `[data-slot="button"]` when the roster still has
-  // sessions, just hidden ones) — `rootRef.current` itself, made
-  // programmatically focusable via `tabIndex={-1}`, is the last resort so
-  // focus always lands on something real rather than failing silently. Both
-  // root elements below carry `focus-visible:ring-2` so that last resort is
-  // not just real but *visible* to a sighted keyboard user — the same ring
-  // every other focusable control here uses (see `button.tsx`).
+  // Prefers the surviving pane's own composer textarea — the control a user
+  // who was just typing or hiding a pane is most likely to want next —
+  // over the first `[data-slot="button"]` in what's left of the group.
+  // That fallback used to be tried first, but the first such button in a
+  // surviving pane is that pane's own "Hide … from the split" button: with
+  // one keystroke, holding Enter after hiding a pane would walk the split
+  // apart one pane per keypress, hiding the next one and refocusing the
+  // *new* next one's hide button in a loop. The textarea has no such
+  // recursive effect. When the last pane closes, that group renders its own
+  // empty-state fallback instead (no `[data-slot="input-group-textarea"]`
+  // or `[data-slot="button"]` when the roster still has sessions, just
+  // hidden ones) — `rootRef.current` itself, made programmatically
+  // focusable via `tabIndex={-1}`, is the last resort so focus always lands
+  // on something real rather than failing silently. Both root elements
+  // below carry `focus-visible:ring-2` so that last resort is not just real
+  // but *visible* to a sighted keyboard user — the same ring every other
+  // focusable control here uses (see `button.tsx`).
   const rootRef = useRef<HTMLDivElement>(null);
   const prevCount = useRef(panes.length);
 
@@ -85,7 +93,8 @@ export function PaneGroup({ narrow }: PaneGroupProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
   useEffect(() => {
     if (panes.length < prevCount.current && document.activeElement === document.body) {
-      const target = rootRef.current?.querySelector<HTMLElement>('[data-slot="button"]')
+      const target = rootRef.current?.querySelector<HTMLElement>('[data-slot="input-group-textarea"]')
+        ?? rootRef.current?.querySelector<HTMLElement>('[data-slot="button"]')
         ?? rootRef.current;
       target?.focus();
     }
@@ -154,7 +163,7 @@ export function PaneGroup({ narrow }: PaneGroupProps) {
               )}
               <ResizablePanel
                 id={pane.sessionId}
-                aria-label={`Session: ${paneState.summary.title}`}
+                aria-label={`Session: ${names.get(paneState.summary.id)}`}
                 defaultSize={`${pane.size}%`}
                 minSize="15%"
                 collapsible

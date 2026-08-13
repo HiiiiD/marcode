@@ -201,5 +201,16 @@ suite('PaneGroup', () => {
       'two same-titled panes must still be distinguishable to a screen reader',
     );
     screen.getByLabelText('Resize between Untitled (a) and Untitled (b)');
+
+    // The pane region itself is the third title-derived accessible name
+    // `accessibleTitles` exists for — a screen-reader user navigates the
+    // split by these region names, so they must disambiguate too, not just
+    // the close button and the resize handle either side of it.
+    const panelA = screen.getByLabelText('Session: Untitled (a)');
+    const panelB = screen.getByLabelText('Session: Untitled (b)');
+    assert.notStrictEqual(
+      panelA.getAttribute('aria-label'), panelB.getAttribute('aria-label'),
+      'two same-titled panes must still be distinguishable by their region name',
+    );
   });
 });

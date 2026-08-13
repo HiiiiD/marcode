@@ -63,6 +63,21 @@ suite('SessionHeader status', () => {
     assert.strictEqual(rosterCount.closest('[aria-live]'), null);
   });
 
+  test('the bypass badge is a live region mounted before it has anything to say', () => {
+    renderApp();
+    hydrate({ permissionMode: 'default' });
+
+    // Mounted with `role="status"` (implicit aria-live="polite") from the
+    // very first render, empty, rather than only once bypass is chosen — a
+    // live region created with its announcement text already inside it is
+    // typically not announced by assistive tech.
+    const badge = screen.getByRole('status');
+    assert.strictEqual(badge.textContent, '');
+
+    sendFromHost({ t: 'sessions-changed', sessions: [summary('a', { permissionMode: 'bypass' })] });
+    assert.strictEqual(screen.getByRole('status').textContent, 'Bypassing permissions');
+  });
+
   test('the header shows the folder the agent is working in', () => {
     renderApp();
     hydrate({ cwd: '/repos/hiiiid-code' });

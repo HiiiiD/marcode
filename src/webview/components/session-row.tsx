@@ -1,6 +1,6 @@
 import { MoreHorizontalIcon } from 'lucide-react';
 import {
-  DropdownMenuCheckboxItem, DropdownMenuGroup, DropdownMenuItem,
+  DropdownMenuCheckboxItem, DropdownMenuItem,
   DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useStore } from '../store';
@@ -28,7 +28,16 @@ export function SessionRow({
   const { post } = useStore();
 
   return (
-    <DropdownMenuGroup className="group/row flex items-center gap-1">
+    // A plain div, not `DropdownMenuGroup`: `Menu.Group` (see
+    // node_modules/@base-ui/react/menu/group/MenuGroup.js) renders
+    // `role="group"` unconditionally, and this wrapper exists only for the
+    // `flex items-center gap-1` layout, not to group menu semantics — every
+    // roster row would otherwise announce an unnamed group boundary, and an
+    // archived row would nest a second unnamed group inside the named
+    // `Archived (n)` group below it. Base UI's roving focus tracks items via
+    // context refs, not DOM structure, so arrow-key navigation across rows
+    // is unaffected by dropping the `Menu.Group` wrapper here.
+    <div className="group/row flex items-center gap-1">
       <DropdownMenuCheckboxItem
         checked={open}
         onCheckedChange={onToggle}
@@ -73,6 +82,6 @@ export function SessionRow({
           </DropdownMenuSub>
         </DropdownMenuSubContent>
       </DropdownMenuSub>
-    </DropdownMenuGroup>
+    </div>
   );
 }

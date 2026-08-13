@@ -1,3 +1,4 @@
+import { XIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -58,23 +59,32 @@ export function SessionHeader({ pane, models, accessibleTitle }: SessionHeaderPr
       <span className="truncate text-muted-foreground" title={s.cwd}>
         {folderName(s.cwd)}
       </span>
-      {s.permissionMode === 'bypass' && (
-        // Text, not a bare colored dot: a color alone would be invisible to
-        // a colorblind user and meaningless to a new one. `role="status"`
-        // exposes it to assistive tech even though it renders no live
-        // announcement region elsewhere. Lives in the header (not just the
-        // composer's Select) because the composer can scroll out of view
-        // during a long turn while this header does not.
-        <span
-          role="status"
-          className={cn(
-            'shrink-0 rounded-full border border-destructive/40 bg-destructive/10',
-            'px-1.5 py-0.5 text-[0.7rem] font-medium text-destructive dark:bg-destructive/20',
-          )}
-        >
-          Bypassing permissions
-        </span>
-      )}
+      {/*
+        Text, not a bare colored dot: a color alone would be invisible to a
+        colorblind user and meaningless to a new one. Lives in the header
+        (not just the composer's Select) because the composer can scroll out
+        of view during a long turn while this header does not.
+
+        Rendered unconditionally (empty when not bypassing) rather than
+        mounted only while `s.permissionMode === 'bypass'`: `role="status"`
+        carries an implicit `aria-live="polite"`, and a live region that is
+        created with its announcement text already inside it is typically
+        not announced — the same reason Task 8 dropped this pattern from the
+        roster count. Keeping the node mounted and only toggling its text
+        content is what lets a screen reader actually hear the mode change.
+      */}
+      <span
+        role="status"
+        className={cn(
+          'shrink-0 rounded-full text-[0.7rem] font-medium',
+          s.permissionMode === 'bypass' && [
+            'border border-destructive/40 bg-destructive/10 px-1.5 py-0.5',
+            'text-destructive dark:bg-destructive/20',
+          ],
+        )}
+      >
+        {s.permissionMode === 'bypass' && 'Bypassing permissions'}
+      </span>
       <span className="ml-auto flex min-w-0 items-center text-muted-foreground">
         <Select
           items={models.map((m) => ({ value: m.id, label: m.displayName }))}
@@ -136,7 +146,7 @@ export function SessionHeader({ pane, models, accessibleTitle }: SessionHeaderPr
         }}
         className="shrink-0"
       >
-        ×
+        <XIcon aria-hidden />
       </Button>
     </div>
   );
