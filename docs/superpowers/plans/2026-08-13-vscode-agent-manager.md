@@ -131,7 +131,7 @@ Replace the `contributes` block and add scripts. `activationEvents` stays `[]` �
       "activitybar": [
         {
           "id": "hiiiid-code",
-          "title": "Agents",
+          "title": "HiiiiD Code",
           "icon": "media/icon.svg"
         }
       ]
@@ -140,12 +140,18 @@ Replace the `contributes` block and add scripts. `activationEvents` stays `[]` �
       "hiiiid-code": [
         {
           "id": "hiiiid-code.panel",
-          "name": "Agents",
+          "name": "Sessions",
           "type": "webview"
         }
       ]
     }
   },
+```
+
+Extend the ESLint file glob in `eslint.config.mjs` to cover `.tsx`, or `src/webview/main.tsx` and every later component is silently unlinted while `yarn run lint` still reports green:
+
+```js
+    files: ["**/*.ts", "**/*.tsx"],
 ```
 
 Add to `scripts`:
@@ -318,7 +324,7 @@ Expected: at least 1. If the count is 0, `@theme inline` did not take effect and
 import { createRoot } from 'react-dom/client';
 
 function App() {
-  return <div className="p-3 text-sm">Agents panel ready.</div>;
+  return <div className="p-3 text-sm">HiiiiD Code panel ready.</div>;
 }
 
 const container = document.getElementById('root');
@@ -330,6 +336,7 @@ if (container) {
 - [ ] **Step 7: Write `src/host/panel-view-provider.ts`**
 
 ```ts
+import { randomBytes } from 'node:crypto';
 import * as vscode from 'vscode';
 
 export class PanelViewProvider implements vscode.WebviewViewProvider {
@@ -368,7 +375,7 @@ export class PanelViewProvider implements vscode.WebviewViewProvider {
 <meta http-equiv="Content-Security-Policy" content="${csp}">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link href="${styleUri}" rel="stylesheet">
-<title>Agents</title>
+<title>HiiiiD Code</title>
 </head>
 <body>
 <div id="root"></div>
@@ -379,14 +386,11 @@ export class PanelViewProvider implements vscode.WebviewViewProvider {
 }
 
 function makeNonce(): string {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  let out = '';
-  for (let i = 0; i < 32; i++) {
-    out += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return out;
+  return randomBytes(16).toString('base64url');
 }
 ```
+
+A CSP nonce must be unpredictable, so it comes from `node:crypto`, not `Math.random()`. The extension host is Node, so this is a plain import. Every later webview change inherits this function unchanged.
 
 - [ ] **Step 8: Rewrite `src/extension.ts`**
 
@@ -429,6 +433,15 @@ suite('extension', () => {
 });
 ```
 
+Add CSP assertions against the HTML `PanelViewProvider` actually renders — every later webview change inherits this template, and without a test nothing catches an accidental loosening. Drive the real provider with a minimal `vscode.Webview` stub supplying `cspSource` and `asWebviewUri`, and assert:
+
+- the CSP contains `default-src 'none'`
+- the CSP contains neither `unsafe-inline` nor `unsafe-eval`
+- the nonce in the `<meta>` CSP matches the nonce on the `<script>` tag
+- two renders produce different nonces
+
+Assert on the provider's real output, not on a re-implementation of the template — a test that rebuilds the string it is checking verifies nothing.
+
 Update `.vscode-test.mjs`:
 
 ```js
@@ -456,9 +469,9 @@ Expected: PASS, 2 passing.
 - [ ] **Step 11: Manually verify sidebar placement**
 
 Press F5 to launch the Extension Development Host. Confirm:
-1. An "Agents" icon appears in the activity bar.
-2. Clicking it shows "Agents panel ready." styled with the current theme's colors.
-3. Dragging the "Agents" container from the activity bar into the secondary sidebar (View → Appearance → Secondary Side Bar, `Ctrl+Alt+B`) works, and it stays there after reloading the window.
+1. A "HiiiiD Code" icon appears in the activity bar.
+2. Clicking it shows "HiiiiD Code panel ready." styled with the current theme's colors.
+3. Dragging the "HiiiiD Code" container from the activity bar into the secondary sidebar (View → Appearance → Secondary Side Bar, `Ctrl+Alt+B`) works, and it stays there after reloading the window.
 
 Point 3 is the gating requirement. If it fails, stop and report before continuing.
 
@@ -1436,7 +1449,7 @@ export class AgentSession {
     }
     const item: TranscriptItem = { id: nextId('u'), ts: Date.now(), role: 'user', text };
     this.appendItem(item);
-    this.openAssistantId = undefined;
+    this.closeAssistant();
     this.setStatus('running');
     this.run.send(text);
   }
@@ -1530,7 +1543,7 @@ export class AgentSession {
           toolId: event.id, name: event.name, input: event.input, state: 'running',
         };
         this.toolItems.set(event.id, item);
-        this.openAssistantId = undefined;
+        this.closeAssistant();
         this.appendItem(item);
         return;
       }
@@ -1555,7 +1568,7 @@ export class AgentSession {
         this.pending.set(event.id, {
           requestId: event.id, name: event.name, input: event.input,
         });
-        this.openAssistantId = undefined;
+        this.closeAssistant();
         this.appendItem(item);
         this.setStatus('awaiting-approval');
         return;
@@ -1569,7 +1582,7 @@ export class AgentSession {
         return;
 
       case 'turn-end':
-        this.openAssistantId = undefined;
+        this.closeAssistant();
         if (event.reason === 'error') {
           this.fail(event.error ?? 'Agent run failed');
         } else {
@@ -1598,44 +1611,9 @@ export class AgentSession {
     this.sink.patch(this._state.id, { op: 'replace', item });
   }
 
-  private mergeDelta(itemId: string, field: 'text' | 'thinking', delta: string): void {
-    const cached = this.store as unknown as {
-      append: (id: SessionId, item: TranscriptItem) => void;
-    };
-    void cached;
-    this.applyDeltaToStore(itemId, field, delta);
-    this.sink.patch(this._state.id, { op: 'delta', itemId, field, delta });
-  }
-
-  private applyDeltaToStore(
-    itemId: string, field: 'text' | 'thinking', delta: string,
-  ): void {
-    const current = this.pendingAssistant ?? { text: '', thinking: '' };
-    current[field] = (current[field] ?? '') + delta;
-    this.pendingAssistant = current;
-    this.store.replace(this._state.id, {
-      id: itemId, ts: Date.now(), role: 'assistant',
-      text: current.text ?? '', thinking: current.thinking || undefined,
-    });
-  }
-
   private pendingAssistant: { text?: string; thinking?: string } | undefined;
 
-  private setStatus(status: SessionStatus): void {
-    if (this._state.status === status) { return; }
-    this._state.status = status;
-    this._state.updatedAt = Date.now();
-    this.sink.status(this._state.id, status);
-    this.sink.changed();
-  }
-}
-```
-
-- [ ] **Step 4: Simplify the delta path**
-
-The `mergeDelta` above carries dead scaffolding. Replace both `mergeDelta` and `applyDeltaToStore` with a single method, and reset `pendingAssistant` whenever `openAssistantId` is cleared:
-
-```ts
+  /** Accumulates streamed deltas into the open assistant item. */
   private mergeDelta(itemId: string, field: 'text' | 'thinking', delta: string): void {
     const current = this.pendingAssistant ?? {};
     current[field] = (current[field] ?? '') + delta;
@@ -1647,23 +1625,29 @@ The `mergeDelta` above carries dead scaffolding. Replace both `mergeDelta` and `
     this._state.updatedAt = Date.now();
     this.sink.patch(this._state.id, { op: 'delta', itemId, field, delta });
   }
-```
 
-Then in `handle`, every place that sets `this.openAssistantId = undefined` must also set `this.pendingAssistant = undefined`. Add a helper and use it in the `tool-start`, `permission`, and `turn-end` branches plus `send()`:
-
-```ts
+  /** Ends the current assistant item so the next delta starts a new one. */
   private closeAssistant(): void {
     this.openAssistantId = undefined;
     this.pendingAssistant = undefined;
   }
+
+  private setStatus(status: SessionStatus): void {
+    if (this._state.status === status) { return; }
+    this._state.status = status;
+    this._state.updatedAt = Date.now();
+    this.sink.status(this._state.id, status);
+    this.sink.changed();
+  }
+}
 ```
 
-- [ ] **Step 5: Run the tests to verify they pass**
+- [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `yarn test:unit`
 Expected: PASS, 19 passing total.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 git add src/host/agent-session.ts src/test/unit/agent-session.test.ts
@@ -2579,8 +2563,9 @@ export function reduce(state: ClientState, msg: HostToWebview): ClientState {
   }
 }
 
-function applyPatch(pane: PaneState, patch: HostToWebview extends never ? never
-  : Extract<HostToWebview, { t: 'session-patch' }>['patch']): PaneState {
+type Patch = Extract<HostToWebview, { t: 'session-patch' }>['patch'];
+
+function applyPatch(pane: PaneState, patch: Patch): PaneState {
   switch (patch.op) {
     case 'append':
       return {
@@ -4104,14 +4089,14 @@ git commit -m "feat: add the Claude Agent SDK provider"
     "walkthroughs": [
       {
         "id": "hiiiid-code.setup",
-        "title": "Set up the Agents panel",
-        "description": "Move the Agents panel into the secondary sidebar",
+        "title": "Set up the HiiiiD Code panel",
+        "description": "Move the HiiiiD Code panel into the secondary sidebar",
         "steps": [
           {
             "id": "move-to-secondary",
-            "title": "Move Agents to the secondary sidebar",
-            "description": "VS Code extensions cannot place a view in the secondary sidebar directly. Open the secondary sidebar with Ctrl+Alt+B, then drag the Agents icon from the activity bar into it. VS Code remembers the location.",
-            "media": { "markdown": "media/walkthrough-sidebar.md", "altText": "Drag Agents to the secondary sidebar" }
+            "title": "Move HiiiiD Code to the secondary sidebar",
+            "description": "VS Code extensions cannot place a view in the secondary sidebar directly. Open the secondary sidebar with Ctrl+Alt+B, then drag the HiiiiD Code icon from the activity bar into it. VS Code remembers the location.",
+            "media": { "markdown": "media/walkthrough-sidebar.md", "altText": "Drag HiiiiD Code to the secondary sidebar" }
           }
         ]
       }
@@ -4121,10 +4106,10 @@ git commit -m "feat: add the Claude Agent SDK provider"
 - [ ] **Step 2: Write `media/walkthrough-sidebar.md`**
 
 ```markdown
-## Move Agents to the secondary sidebar
+## Move HiiiiD Code to the secondary sidebar
 
 1. Open the secondary sidebar — **View → Appearance → Secondary Side Bar**, or `Ctrl+Alt+B`.
-2. Drag the **Agents** icon from the activity bar into the secondary sidebar.
+2. Drag the **HiiiiD Code** icon from the activity bar into the secondary sidebar.
 3. Widen it by dragging its inner edge — split panes need the room.
 
 VS Code stores this per profile and workspace, so it only has to be done once.

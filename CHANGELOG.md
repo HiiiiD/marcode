@@ -1,9 +1,10 @@
 # Change Log
 
-All notable changes to the "hiiiid-code" extension will be documented in this file.
-
-Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
-
 ## [Unreleased]
 
-- Initial release
+Initial development. Not yet released.
+
+- Concurrent agent sessions in the secondary sidebar, in resizable split panes.
+- Tool-permission requests answered from the transcript.
+- Transcripts persisted per session, restored across a window reload.
+- Two backends: a scripted fake provider, and the Claude Agent SDK.

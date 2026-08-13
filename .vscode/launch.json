@@ -16,6 +16,20 @@
 				"${workspaceFolder}/dist/**/*.js"
 			],
 			"preLaunchTask": "${defaultBuildTask}"
+		},
+		{
+			// Launches without running any task. Use this when the build task
+			// misbehaves, or to isolate a task problem from an extension problem:
+			// run `yarn run compile` once in a terminal first, then launch this.
+			"name": "Run Extension (no prebuild)",
+			"type": "extensionHost",
+			"request": "launch",
+			"args": [
+				"--extensionDevelopmentPath=${workspaceFolder}"
+			],
+			"outFiles": [
+				"${workspaceFolder}/dist/**/*.js"
+			]
 		}
 	]
 }

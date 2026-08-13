@@ -1,26 +1,42 @@
-// The module 'vscode' contains the VS Code extensibility API
-// Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
+import { PanelViewProvider } from './host/panel-view-provider';
+import { SessionManager } from './host/session-manager';
+import { TranscriptStore } from './host/transcript-store';
+import { ClaudeProvider } from './providers/claude/claude-provider';
+import { FakeProvider } from './providers/fake/fake-provider';
+import type { AgentProvider } from './providers/types';
 
-// This method is called when your extension is activated
-// Your extension is activated the very first time the command is executed
-export function activate(context: vscode.ExtensionContext) {
+export async function activate(context: vscode.ExtensionContext) {
+  const rootDir = context.storageUri?.fsPath ?? context.globalStorageUri.fsPath;
+  const store = new TranscriptStore(rootDir);
 
-	// Use the console to output diagnostic information (console.log) and errors (console.error)
-	// This line of code will only be executed once when your extension is activated
-	console.log('Congratulations, your extension "hiiiid-code" is now active!');
+  // Order matters: SessionPicker uses state.catalog[0] for the New button,
+  // so Claude — the real provider — is registered first.
+  const providers = new Map<string, AgentProvider>();
+  providers.set('claude', new ClaudeProvider());
+  providers.set('fake', new FakeProvider((text) => (text.includes('rm')
+    ? [{ kind: 'permission', id: `p-${Date.now()}`, name: 'Bash', input: { command: text } }]
+    : [{ kind: 'text', delta: 'ok' }, { kind: 'turn-end', reason: 'done' }])));
 
-	// The command has been defined in the package.json file
-	// Now provide the implementation of the command with registerCommand
-	// The commandId parameter must match the command field in package.json
-	const disposable = vscode.commands.registerCommand('hiiiid-code.helloWorld', () => {
-		// The code you place here will be executed every time your command is executed
-		// Display a message box to the user
-		vscode.window.showInformationMessage('Hello World from hiiiid-code!');
-	});
+  let provider: PanelViewProvider;
+  const manager = new SessionManager(store, providers, (msg) => provider.post(msg));
 
-	context.subscriptions.push(disposable);
+  const defaultCwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd();
+  provider = new PanelViewProvider(context.extensionUri, manager, defaultCwd);
+  context.subscriptions.push(
+    vscode.window.registerWebviewViewProvider(PanelViewProvider.viewType, provider),
+    { dispose: () => { void manager.dispose(); } },
+  );
+
+  try {
+    await manager.init();
+  } catch (err) {
+    // A corrupt index.json (or any other restore failure) must not take the
+    // whole extension down with it: the view provider is already registered
+    // above, so the panel still comes up — with an empty roster — instead
+    // of the extension failing to activate and there being no UI at all.
+    console.error('[hiiiid-code] failed to restore session index; starting with an empty roster', err);
+  }
 }
 
-// This method is called when your extension is deactivated
 export function deactivate() {}

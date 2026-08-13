@@ -1,6 +1,6 @@
 {
   "name": "hiiiid-code",
-  "displayName": "hiiiid-code",
+  "displayName": "HiiiiD Code",
   "description": "Use your code agents at ease",
   "version": "0.0.1",
   "engines": {
@@ -12,42 +12,94 @@
   "activationEvents": [],
   "main": "./dist/extension.js",
   "contributes": {
-    "commands": [
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "hiiiid-code",
+          "title": "HiiiiD Code",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "hiiiid-code": [
+        {
+          "id": "hiiiid-code.panel",
+          "name": "Sessions",
+          "type": "webview"
+        }
+      ]
+    },
+    "walkthroughs": [
       {
-        "command": "hiiiid-code.helloWorld",
-        "title": "Hello World"
+        "id": "hiiiid-code.setup",
+        "title": "Set up the HiiiiD Code panel",
+        "description": "Move the HiiiiD Code panel into the secondary sidebar",
+        "steps": [
+          {
+            "id": "move-to-secondary",
+            "title": "Move HiiiiD Code to the secondary sidebar",
+            "description": "VS Code extensions cannot place a view in the secondary sidebar directly. Open the secondary sidebar with Ctrl+Alt+B, then drag the HiiiiD Code icon from the activity bar into it. VS Code remembers the location.",
+            "media": { "markdown": "media/walkthrough-sidebar.md", "altText": "Drag HiiiiD Code to the secondary sidebar" }
+          }
+        ]
       }
     ]
   },
   "scripts": {
     "vscode:prepublish": "yarn run package",
-    "compile": "yarn run check-types && yarn run lint && node esbuild.js",
+    "compile": "node esbuild.js && yarn run check-types && yarn run lint",
     "watch": "npm-run-all -p watch:*",
     "watch:esbuild": "node esbuild.js --watch",
     "watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
+    "watch:css": "tailwindcss -i src/webview/index.css -o dist/webview.css --watch",
+    "build:css": "tailwindcss -i src/webview/index.css -o dist/webview.css",
     "package": "yarn run check-types && yarn run lint && node esbuild.js --production",
     "compile-tests": "tsc -p . --outDir out",
     "watch-tests": "tsc -p . -w --outDir out",
     "pretest": "yarn run compile-tests && yarn run compile && yarn run lint",
     "check-types": "tsc --noEmit",
     "lint": "eslint src",
-    "test": "vscode-test"
+    "test": "yarn run pretest && vscode-test",
+    "test:unit": "yarn run compile-tests && mocha --ui tdd \"out/test/unit/**/*.test.js\"",
+    "dev": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev-host.ps1",
+    "dev:clean": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev-host.ps1 -Clean"
   },
   "devDependencies": {
+    "@anthropic-ai/sdk": "^0.116.0",
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@tailwindcss/cli": "^4.3.3",
     "@types/mocha": "^10.0.10",
     "@types/node": "24.x",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
     "@types/vscode": "^1.125.0",
     "@vscode/test-cli": "^0.0.15",
     "@vscode/test-electron": "^3.0.0",
     "esbuild": "^0.28.1",
     "eslint": "^10.5.0",
+    "mocha": "^11.8.0",
     "npm-run-all": "^4.1.5",
+    "tailwindcss": "^4.3.3",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.61.1"
+    "typescript-eslint": "^8.61.1",
+    "zod": "^4.4.3"
   },
   "overrides": {
     "diff": "^8.0.4",
     "serialize-javascript": "^7.0.6"
   },
-  "packageManager": "yarn@4.18.0"
+  "packageManager": "yarn@4.18.0",
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.3.228",
+    "@base-ui/react": "^1.7.0",
+    "@shadcn/react": "^0.3.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.31.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "react-resizable-panels": "^4.12.2",
+    "tailwind-merge": "^3.6.0"
+  }
 }

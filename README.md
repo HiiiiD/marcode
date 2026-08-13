@@ -1,71 +1,47 @@
-# hiiiid-code README
+# HiiiiD Code
 
-This is the README for your extension "hiiiid-code". After writing up a brief description, we recommend including the following sections.
+Run several coding-agent sessions at once, in resizable split panes, in VS Code's
+secondary sidebar. Tool-permission requests show up as cards in the transcript and are
+answered from the UI. Transcripts survive a window reload.
 
 ## Features
 
-Describe specific features of your extension including screenshots of your extension in action. Image paths are relative to this README file.
+- A roster of concurrent agent sessions, each its own conversation with its own status,
+  model, effort level and permission mode.
+- Split panes over the visible subset of that roster, with a persisted layout.
+- Tool-permission requests surfaced as cards in the transcript, answered from the UI.
+- Durable transcripts, paged on demand, that survive a window reload.
 
-For example if there is an image subfolder under your extension project workspace:
+## Setup: move the panel to the secondary sidebar
 
-\!\[feature X\]\(images/feature-x.png\)
+VS Code extensions cannot place a view in the secondary sidebar directly, so this is a
+one-time manual step:
 
-> Tip: Many popular extensions utilize animations. This is an excellent way to show off your extension! We recommend short, focused animations that are easy to follow.
+1. Open the secondary sidebar — **View → Appearance → Secondary Side Bar**, or `Ctrl+Alt+B`.
+2. Drag the **HiiiiD Code** icon from the activity bar into the secondary sidebar.
+3. Widen it by dragging its inner edge — split panes need the room.
+
+VS Code stores this per profile and workspace, so it only has to be done once. The
+extension also ships a walkthrough with the same steps — open it from the Command
+Palette with **Get Started: Open Walkthrough...** and pick "Set up the HiiiiD Code panel".
 
 ## Requirements
 
-If you have any requirements or dependencies, add a section describing those and how to install and configure them.
+The Claude Agent SDK backend shells out to the `claude` CLI. That CLI must already be
+installed and authenticated before starting a session — this extension does not manage
+or prompt for authentication itself.
 
-## Extension Settings
+## What v1 does not do
 
-Include if your extension adds any VS Code settings through the `contributes.configuration` extension point.
+- No Codex or OpenCode provider backends — only the Claude Agent SDK and a scripted
+  provider used for tests and development.
+- No transcript retention policy — transcripts accumulate under extension storage with
+  no automatic pruning.
+- No virtualized scrolling in the transcript view.
 
-For example:
+## Platform note
 
-This extension contributes the following settings:
-
-* `myExtension.enable`: Enable/disable this extension.
-* `myExtension.thing`: Set to `blah` to do something.
-
-## Known Issues
-
-Calling out known issues can help limit users opening duplicate issues against your extension.
-
-## Release Notes
-
-Users appreciate release notes as you update your extension.
-
-### 1.0.0
-
-Initial release of ...
-
-### 1.0.1
-
-Fixed issue #.
-
-### 1.1.0
-
-Added features X, Y, and Z.
-
----
-
-## Following extension guidelines
-
-Ensure that you've read through the extensions guidelines and follow the best practices for creating your extension.
-
-* [Extension Guidelines](https://code.visualstudio.com/api/references/extension-guidelines)
-
-## Working with Markdown
-
-You can author your README using Visual Studio Code. Here are some useful editor keyboard shortcuts:
-
-* Split the editor (`Cmd+\` on macOS or `Ctrl+\` on Windows and Linux).
-* Toggle preview (`Shift+Cmd+V` on macOS or `Shift+Ctrl+V` on Windows and Linux).
-* Press `Ctrl+Space` (Windows, Linux, macOS) to see a list of Markdown snippets.
-
-## For more information
-
-* [Visual Studio Code's Markdown Support](http://code.visualstudio.com/docs/languages/markdown)
-* [Markdown Syntax Reference](https://help.github.com/articles/markdown-basics/)
-
-**Enjoy!**
+**This build runs on Windows x64 only.** The Claude Agent SDK ships its native binaries as
+separate per-platform optional dependencies, and the packaged `.vsix` carries just the
+Windows x64 one. Other platforms need a `.vsix` built with their own native package —
+per-platform builds are not set up yet.

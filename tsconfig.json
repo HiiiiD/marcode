@@ -2,19 +2,14 @@
     "compilerOptions": {
         "module": "Node16",
         "target": "ES2022",
-        "lib": [
-            "ES2022"
-        ],
-        "types": [
-            "node",
-            "mocha"
-        ],
+        "lib": ["ES2022", "DOM", "DOM.Iterable"],
+        "types": ["node", "mocha"],
+        "jsx": "react-jsx",
+        "baseUrl": ".",
+        "paths": { "@/*": ["src/webview/*"] },
         "sourceMap": true,
         "rootDir": "src",
-        "strict": true, /* enable all strict type-checking options */
-        /* Additional Checks */
-        // "noImplicitReturns": true, /* Report error when not all code paths in function return a value. */
-        // "noFallthroughCasesInSwitch": true, /* Report errors for fallthrough cases in switch statement. */
-        // "noUnusedParameters": true,  /* Report errors on unused parameters. */
+        "strict": true,
+        "ignoreDeprecations": "6.0"
     }
 }
