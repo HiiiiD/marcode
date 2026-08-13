@@ -11,6 +11,7 @@ export class PanelViewProvider implements vscode.WebviewViewProvider {
   constructor(
     private readonly extensionUri: vscode.Uri,
     private readonly manager: SessionManager,
+    private readonly defaultCwd: string,
   ) {}
 
   post(msg: HostToWebview): void {
@@ -25,7 +26,7 @@ export class PanelViewProvider implements vscode.WebviewViewProvider {
     };
     view.webview.html = this.render(view.webview);
 
-    const router = new MessageRouter(this.manager, (m) => this.post(m));
+    const router = new MessageRouter(this.manager, (m) => this.post(m), this.defaultCwd);
     view.webview.onDidReceiveMessage(async (raw: WebviewToHost) => {
       try {
         await router.handle(raw);

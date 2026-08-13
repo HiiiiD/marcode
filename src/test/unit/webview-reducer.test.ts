@@ -115,6 +115,15 @@ suite('webview reducer', () => {
     assert.strictEqual(state.byId['s1'].summary.status, 'running');
   });
 
+  test('local-layout applies a client-optimistic layout update', () => {
+    const next = reduce(initialState, {
+      t: 'local-layout',
+      layout: { orientation: 'horizontal', panes: [{ sessionId: 's1', size: 100 }] },
+    });
+    assert.strictEqual(next.layout.orientation, 'horizontal');
+    assert.deepStrictEqual(next.layout.panes, [{ sessionId: 's1', size: 100 }]);
+  });
+
   test('an out-of-contract message is a no-op that returns the same state object', () => {
     const bogus = { t: 'not-a-real-variant' } as unknown as Parameters<typeof reduce>[1];
     const next = reduce(initialState, bogus);

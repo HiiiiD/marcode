@@ -30,7 +30,7 @@ suite('MessageRouter', () => {
     ]);
     manager = new SessionManager(new TranscriptStore(dir), providers, (m) => sent.push(m));
     await manager.init();
-    router = new MessageRouter(manager, (m) => sent.push(m));
+    router = new MessageRouter(manager, (m) => sent.push(m), '/tmp');
   });
 
   teardown(async () => {
@@ -112,7 +112,7 @@ suite('MessageRouter', () => {
     const sent2: HostToWebview[] = [];
     const manager2 = new SessionManager(new TranscriptStore(dir), providers2, (m) => sent2.push(m));
     await manager2.init();
-    const router2 = new MessageRouter(manager2, (m) => sent2.push(m));
+    const router2 = new MessageRouter(manager2, (m) => sent2.push(m), '/tmp');
 
     await router2.handle({ t: 'ready' });
     const hydrate = sent2.find((m) => m.t === 'hydrate') as
@@ -149,7 +149,7 @@ suite('MessageRouter', () => {
     const sent2: HostToWebview[] = [];
     const manager2 = new SessionManager(new TranscriptStore(dir), providers2, (m) => sent2.push(m));
     await manager2.init();
-    const router2 = new MessageRouter(manager2, (m) => sent2.push(m));
+    const router2 = new MessageRouter(manager2, (m) => sent2.push(m), '/tmp');
 
     await router2.handle({ t: 'ready' });
 

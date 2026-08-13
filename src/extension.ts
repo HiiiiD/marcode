@@ -17,7 +17,8 @@ export async function activate(context: vscode.ExtensionContext) {
   let provider: PanelViewProvider;
   const manager = new SessionManager(store, providers, (msg) => provider.post(msg));
 
-  provider = new PanelViewProvider(context.extensionUri, manager);
+  const defaultCwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd();
+  provider = new PanelViewProvider(context.extensionUri, manager, defaultCwd);
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(PanelViewProvider.viewType, provider),
     { dispose: () => { void manager.dispose(); } },

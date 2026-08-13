@@ -21,8 +21,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return off;
   }, []);
 
+  const post = (msg: WebviewToHost) => {
+    postToHost(msg);
+    // See the `local-layout` doc comment in reducer.ts: the host never
+    // echoes `set-layout` back, so apply it here too or newly
+    // opened/closed panes would never render until the next reload.
+    if (msg.t === 'set-layout') {
+      dispatch({ t: 'local-layout', layout: msg.layout });
+    }
+  };
+
   return (
-    <StoreContext.Provider value={{ state, post: postToHost }}>
+    <StoreContext.Provider value={{ state, post }}>
       {children}
     </StoreContext.Provider>
   );

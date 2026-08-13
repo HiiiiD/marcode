@@ -26,8 +26,23 @@ export const initialState: ClientState = {
   byId: {},
 };
 
-export function reduce(state: ClientState, msg: HostToWebview): ClientState {
+/**
+ * `HostToWebview` plus one client-local action. The host persists
+ * `set-layout` but never echoes it back — `hydrate` is the only
+ * `HostToWebview` message carrying `layout`, and it only arrives on
+ * `ready`. `local-layout` lets `StoreProvider.post` apply a posted layout
+ * change optimistically so a newly opened or closed pane renders
+ * immediately instead of waiting for the next reload; the host ends up
+ * persisting exactly the value computed here, so there's nothing to
+ * reconcile against later.
+ */
+export type ClientAction = HostToWebview | { t: 'local-layout'; layout: PaneLayout };
+
+export function reduce(state: ClientState, msg: ClientAction): ClientState {
   switch (msg.t) {
+    case 'local-layout':
+      return { ...state, layout: msg.layout };
+
     case 'hydrate': {
       const byId: Record<SessionId, PaneState> = {};
       for (const s of msg.snapshots) {
