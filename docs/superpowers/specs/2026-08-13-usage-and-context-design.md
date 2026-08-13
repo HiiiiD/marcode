@@ -53,23 +53,28 @@ The four `*Percent` fields sum to 100. `memoryFiles` percentages sum to `memoryP
 
 Percentages are computed inside the provider. Only the provider knows the model's context window size and the text of its own system prompt, so nothing above `AgentProvider` sees tokens.
 
-Provider surface, both members optional:
+Provider surface, both members optional and both on `AgentRun`:
 
 ```ts
-export interface AgentProvider {
-  // …existing
-  /** Account usage windows. Absent → this provider reports none. */
-  getUsageWindows?(): Promise<UsageWindow[]>;
-}
-
 export interface AgentRun {
   // …existing
   /** Startup context inventory for this conversation. */
   contextBreakdown?(): Promise<ContextBreakdown>;
+  /** Account usage windows visible from this run. */
+  usageWindows?(): Promise<UsageWindow[]>;
 }
 ```
 
-`contextBreakdown` sits on `AgentRun` rather than `AgentProvider` because memory resolution depends on the session's `cwd`.
+`contextBreakdown` sits on the run because memory resolution depends on the session's `cwd`. `usageWindows` sits there too because the Claude Agent SDK exposes plan limits only from a live `Query` — there is no provider-level entry point. Account limits are nonetheless a property of the *account*, not the session, so the host asks any one live run of a provider and treats the answer as that provider's. A provider with no live run answers `{ ok: false }`.
+
+### Where the numbers come from (Claude)
+
+`@anthropic-ai/claude-agent-sdk` supplies both directly:
+
+- `Query.getContextUsage()` → `SDKControlGetContextUsageResponse`: `categories[]`, `totalTokens`, `maxTokens`, `percentage`, `memoryFiles[{ path, type, tokens }]`, `systemPromptSections[]`, `messageBreakdown`. `ContextBreakdown` is derived from it — memory from `memoryFiles`, conversation from `messageBreakdown`, system as the remainder of `totalTokens`, free from `maxTokens`.
+- `Query.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET()` → `rate_limits.{ five_hour, seven_day, seven_day_opus, … }`, each `{ utilization: 0-100 | null, resets_at: ISO | null }`, plus `rate_limits_available: false` for API-key, Bedrock and Vertex sessions.
+
+The usage method is explicitly experimental and named to discourage reliance, so it is feature-detected at the call site and any throw or absence degrades to `{ ok: false }` rather than propagating.
 
 ## Protocol
 
@@ -86,18 +91,18 @@ contextPercent?: number;
 Webview → host:
 
 ```ts
-| { type: 'request-context'; sessionId: SessionId }
-| { type: 'request-usage'; providerId: string }
-| { type: 'open-file'; path: string }
+| { t: 'request-context'; id: SessionId }
+| { t: 'request-usage'; providerId: string }
+| { t: 'open-file'; path: string }
 ```
 
 Host → webview:
 
 ```ts
-| { type: 'context-breakdown'; sessionId: SessionId;
+| { t: 'context-breakdown'; id: SessionId;
     result: { ok: true; breakdown: ContextBreakdown }
           | { ok: false; reason: string } }
-| { type: 'usage-windows'; providerId: string;
+| { t: 'usage-windows'; providerId: string;
     result: { ok: true; windows: UsageWindow[] }
           | { ok: false; reason: string } }
 ```
@@ -110,9 +115,9 @@ Both replies carry their key, so a late reply for a closed session or a switched
 
 **Popover — pulled.** Opening the popover posts `request-context`. `MessageRouter` forwards to `SessionManager.contextBreakdown(id)`, which awaits the run and replies once. The host caches nothing; the webview keeps the last reply per session and renders it while a refetch is in flight.
 
-**Usage strip — pulled, refreshed.** Posts `request-usage` per distinct provider on mount, and again after any session's `turn-end`. The webview debounces to at most one request per provider every few seconds.
+**Usage strip — pulled, refreshed.** Posts `request-usage` per distinct provider on mount, and again after any session's `turn-end`. The webview debounces to at most one request per provider every few seconds. `SessionManager` resolves the provider to any one live session and asks its run.
 
-**`open-file`** is the only new call into the `vscode` API (`window.showTextDocument`). It is handled in `PanelViewProvider`, not `MessageRouter`, so the router keeps its no-`vscode` invariant and stays unit-testable.
+**`open-file`** is the only new call into the `vscode` API (`window.showTextDocument`). It is handled in `PanelViewProvider`, not `MessageRouter`, so the router keeps its no-`vscode` invariant and stays unit-testable. The router therefore ignores `open-file`; `PanelViewProvider` intercepts it before delegating.
 
 A provider method that rejects is caught in `SessionManager` and converted to `{ ok: false, reason }`. Nothing rejects across `postMessage`.
 
@@ -176,4 +181,4 @@ Integration, under `@vscode/test-cli`: the panel loads, the ring renders, the po
 
 ## Staging
 
-`context-ring` depends on the composer, which the in-flight agent-manager plan has not built yet, so the implementation plan slots that half in after the composer task. `usage-strip` carries no such dependency and can land first, together with the protocol and provider-surface changes it shares with the ring.
+The composer, pane group and Claude provider all exist as of `187302a`, so nothing here is blocked. The protocol and provider-surface changes land first, the host wiring next, and the two UI surfaces last and independently of each other.
