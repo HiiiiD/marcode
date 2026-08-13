@@ -29,11 +29,26 @@
           "type": "webview"
         }
       ]
-    }
+    },
+    "walkthroughs": [
+      {
+        "id": "hiiiid-code.setup",
+        "title": "Set up the HiiiiD Code panel",
+        "description": "Move the HiiiiD Code panel into the secondary sidebar",
+        "steps": [
+          {
+            "id": "move-to-secondary",
+            "title": "Move HiiiiD Code to the secondary sidebar",
+            "description": "VS Code extensions cannot place a view in the secondary sidebar directly. Open the secondary sidebar with Ctrl+Alt+B, then drag the HiiiiD Code icon from the activity bar into it. VS Code remembers the location.",
+            "media": { "markdown": "media/walkthrough-sidebar.md", "altText": "Drag HiiiiD Code to the secondary sidebar" }
+          }
+        ]
+      }
+    ]
   },
   "scripts": {
     "vscode:prepublish": "yarn run package",
-    "compile": "yarn run check-types && yarn run lint && node esbuild.js",
+    "compile": "node esbuild.js && yarn run check-types && yarn run lint",
     "watch": "npm-run-all -p watch:*",
     "watch:esbuild": "node esbuild.js --watch",
     "watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
