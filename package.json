@@ -46,7 +46,7 @@
     "check-types": "tsc --noEmit",
     "lint": "eslint src",
     "test": "yarn run pretest && vscode-test",
-    "test:unit": "yarn run compile-tests && node test-runner.js",
+    "test:unit": "yarn run compile-tests && mocha --ui tdd \"out/test/unit/**/*.test.js\"",
     "dev": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev-host.ps1",
     "dev:clean": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev-host.ps1 -Clean"
   },
