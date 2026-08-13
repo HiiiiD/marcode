@@ -41,6 +41,7 @@ or prompt for authentication itself.
 
 ## Platform note
 
-The packaged build currently targets Windows x64: the Claude Agent SDK ships its native
-binaries as separate per-platform optional dependencies, and only the Windows x64
-package is installed in this build environment.
+**This build runs on Windows x64 only.** The Claude Agent SDK ships its native binaries as
+separate per-platform optional dependencies, and the packaged `.vsix` carries just the
+Windows x64 one. Other platforms need a `.vsix` built with their own native package —
+per-platform builds are not set up yet.
