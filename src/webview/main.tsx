@@ -2,6 +2,8 @@ import { useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Button } from '@/components/ui/button';
 import { Transcript } from './components/transcript';
+import { Composer } from './components/composer';
+import { SessionHeader } from './components/session-header';
 import { StoreProvider, useStore } from './store';
 
 function App() {
@@ -26,20 +28,17 @@ function App() {
   }
 
   const pane = state.byId[first.id];
+  const provider = state.catalog.find((p) => p.id === first.providerId);
+  const model = provider?.models.find((m) => m.id === first.model);
+
   return (
     <div className="flex h-screen flex-col">
+      {pane && <SessionHeader pane={pane} models={provider?.models ?? []} />}
       <div className="flex-1 overflow-hidden">
         {pane && <Transcript pane={pane} onLoadMore={(beforeItemId) =>
           post({ t: 'load-more', id: first.id, beforeItemId })} />}
       </div>
-      <Button
-        variant="outline"
-        size="sm"
-        className="m-2"
-        onClick={() => post({ t: 'send', id: first.id, text: 'hello' })}
-      >
-        Send test message
-      </Button>
+      {pane && <Composer pane={pane} model={model} />}
     </div>
   );
 }
