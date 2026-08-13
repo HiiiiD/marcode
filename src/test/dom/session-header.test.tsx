@@ -50,4 +50,38 @@ suite('SessionHeader status', () => {
     const rosterCount = screen.getByText(/1 needs you/i);
     assert.strictEqual(rosterCount.closest('[aria-live]'), null);
   });
+
+  test('the header shows the folder the agent is working in', () => {
+    renderApp();
+    hydrate({ cwd: '/repos/hiiiid-code' });
+
+    screen.getByText('hiiiid-code');
+    assert.strictEqual(
+      screen.getByText('hiiiid-code').getAttribute('title'), '/repos/hiiiid-code',
+      'the basename is what fits at 300px; the full path is the tooltip',
+    );
+  });
+
+  test('token usage is shown once there is any', () => {
+    renderApp();
+    hydrate({ usage: { inputTokens: 12000, outputTokens: 3400 } });
+
+    screen.getByText('15.4k tokens');
+  });
+
+  test('usage is hidden at zero rather than shown as 0', () => {
+    renderApp();
+    hydrate();
+    assert.strictEqual(screen.queryByText(/tokens/), null);
+  });
+
+  test('the title wins the space contest, not the model label', () => {
+    renderApp();
+    hydrate();
+
+    const title = screen.getByTitle('Session a');
+    assert.ok(title.className.includes('truncate'));
+    const model = screen.getByText(/Fake Large/);
+    assert.ok(model.className.includes('truncate'), 'the model label must be able to shrink too');
+  });
 });

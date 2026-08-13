@@ -3,6 +3,7 @@ import { cn } from '@/lib/utils';
 import { evenlySizedPanes } from './pane-layout';
 import { StatusBadge } from './status-badge';
 import { useStore } from '../store';
+import { folderName, formatTokens } from '../format';
 import type { PaneState } from '../reducer';
 import type { ModelInfo } from '../../protocol/messages';
 
@@ -10,11 +11,15 @@ export function SessionHeader({ pane, models }: { pane: PaneState; models: Model
   const { state, post } = useStore();
   const s = pane.summary;
   const modelLabel = models.find((m) => m.id === s.model)?.displayName ?? s.model;
+  const total = s.usage.inputTokens + s.usage.outputTokens;
 
   return (
     <div className="flex items-center gap-2 border-b border-border px-2 py-1 text-xs">
       <StatusBadge status={s.status} />
       <span className="truncate font-medium" title={s.title}>{s.title}</span>
+      <span className="truncate text-muted-foreground" title={s.cwd}>
+        {folderName(s.cwd)}
+      </span>
       {s.permissionMode === 'bypass' && (
         // Text, not a bare colored dot: a color alone would be invisible to
         // a colorblind user and meaningless to a new one. `role="status"`
@@ -32,8 +37,14 @@ export function SessionHeader({ pane, models }: { pane: PaneState; models: Model
           Bypassing permissions
         </span>
       )}
-      <span className="ml-auto shrink-0 text-muted-foreground">
+      <span className="ml-auto min-w-0 truncate text-muted-foreground">
         {modelLabel}{s.effort ? ` · ${s.effort}` : ''}
+        {total > 0 && (
+          <>
+            {' · '}
+            <span>{formatTokens(total)} tokens</span>
+          </>
+        )}
       </span>
       <Button
         variant="ghost"
