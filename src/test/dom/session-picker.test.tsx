@@ -209,7 +209,10 @@ suite('SessionPicker', () => {
 
     const toggle = screen.getByLabelText(/split direction/i);
     assert.ok(
-      !/\b[hw]-\d/.test(toggle.className),
+      // Also covers `h-auto`/`w-auto`, not just a hand-written pixel size —
+      // the same discipline tool-card.tsx and transcript.tsx's Buttons are
+      // held to (see composer.test.tsx's matching guard).
+      !/\b[hw]-(?:\d|auto)/.test(toggle.className),
       'use size="icon-sm"; twMerge does not strip size-8 when h-7 w-7 is added',
     );
   });

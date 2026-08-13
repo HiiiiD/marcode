@@ -39,7 +39,7 @@ export function StatusBadge({ status }: { status: SessionStatus }) {
         CHIP[view.tone],
       )}
     >
-      <span className={cn('h-2 w-2 rounded-full', DOT[view.tone])} aria-hidden />
+      <span className={cn('size-2 rounded-full', DOT[view.tone])} aria-hidden />
       {view.label}
     </span>
   );

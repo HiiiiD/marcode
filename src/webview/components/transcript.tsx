@@ -39,12 +39,15 @@ export function Transcript({
             {pane.hasMore && first && (
               <Button
                 variant="outline"
+                size="sm"
                 disabled={loadingBeforeId === first.id}
                 onClick={() => {
                   setLoadingBeforeId(first.id);
                   onLoadMore(first.id);
                 }}
-                className="my-0 h-auto w-full py-1 text-xs"
+                // The fixed h-7 comes from `size="sm"`, not a hand-written
+                // height — see the note on tool-card.tsx's own Button.
+                className="my-0 w-full text-xs"
               >
                 Load earlier messages
               </Button>

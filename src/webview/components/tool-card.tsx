@@ -16,10 +16,14 @@ export function ToolCard({ item }: { item: ToolItem }) {
     <div className="my-0 rounded border border-border text-xs">
       <Button
         variant="ghost"
+        size="sm"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-controls={`tool-${item.toolId}`}
-        className="flex h-auto w-full items-center justify-start gap-2 px-2 py-1 font-normal"
+        // `gap-2`/`px-2`/`justify-start` override `size="sm"`'s own gap/px —
+        // the fixed h-7 the variant sets is kept, not hand-written, per the
+        // Task 2 discipline against overriding a size variant's height.
+        className="flex w-full items-center justify-start gap-2 px-2 font-normal"
       >
         <StateIcon aria-hidden className={cn(item.state === 'running' && 'animate-spin')} />
         <span className="sr-only">{item.state}</span>
