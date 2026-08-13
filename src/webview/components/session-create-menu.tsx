@@ -49,7 +49,10 @@ export function SessionCreateMenu() {
         New
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">
-        <DropdownMenuRadioGroup value={model?.id} onValueChange={setModelId}>
+        <DropdownMenuRadioGroup
+          value={model?.id}
+          onValueChange={(id: string) => { setModelId(id); setEffort(null); }}
+        >
           <DropdownMenuLabel>Model</DropdownMenuLabel>
           {provider?.models.map((m) => (
             <DropdownMenuRadioItem key={m.id} value={m.id}>

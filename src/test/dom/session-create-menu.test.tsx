@@ -46,6 +46,24 @@ suite('SessionCreateMenu', () => {
     });
   });
 
+  test('switching models resets a stale effort selection', async () => {
+    renderApp();
+    hydrate();
+
+    await userEvent.click(screen.getByRole('button', { name: 'New session' }));
+    await userEvent.click(await screen.findByRole('menuitemradio', { name: 'high' }));
+    await userEvent.click(screen.getByRole('menuitemradio', { name: 'Fake Medium' }));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Create session' }));
+
+    assert.deepStrictEqual(posted().at(-1), {
+      t: 'create-session',
+      providerId: 'fake',
+      cwd: '',
+      model: 'fake-medium',
+      effort: 'low',
+    });
+  });
+
   test('the trigger is disabled when no provider is available', () => {
     renderApp();
     sendFromHost({
