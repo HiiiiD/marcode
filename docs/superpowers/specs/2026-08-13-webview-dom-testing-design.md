@@ -144,7 +144,8 @@ Ordered so the stack proves itself on the richest target first.
 ### 1. `permission-card.test.tsx`
 
 - pending, with its `requestId` in `state.byId[id].pending` → Allow and Deny render enabled;
-  clicking Allow posts `permission-response` with `allow: true`
+  clicking Allow posts `permission-decision` with `decision: { allow: true }`, and clicking
+  Deny posts `decision: { allow: false, reason: 'Denied by user' }`
 - after one click both buttons are disabled, with no host round-trip — the `answered` local
   state, invisible to a unit test, guarding the double-click case
 - pending item whose `requestId` is *not* in `pending` → renders "no longer awaiting a
