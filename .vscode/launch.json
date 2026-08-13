@@ -15,19 +15,12 @@
 			"outFiles": [
 				"${workspaceFolder}/dist/**/*.js"
 			],
-			// The extension host runs as Code.exe with ELECTRON_RUN_AS_NODE=1 — that
-			// is what makes Electron behave as Node. The debug adapter launching this
-			// window runs inside that host, so without clearing the variable the new
-			// window starts as plain Node and exits instantly: it flashes and dies.
-			// Setting a variable to null deletes it from the inherited environment.
-			"env": {
-				"ELECTRON_RUN_AS_NODE": null
-			},
 			"preLaunchTask": "${defaultBuildTask}"
 		},
 		{
-			// Same, minus the build task. Use this to isolate a task failure from an
-			// extension failure: run `yarn run compile` once in a terminal, then launch.
+			// Launches without running any task. Use this when the build task
+			// misbehaves, or to isolate a task problem from an extension problem:
+			// run `yarn run compile` once in a terminal first, then launch this.
 			"name": "Run Extension (no prebuild)",
 			"type": "extensionHost",
 			"request": "launch",
@@ -36,27 +29,7 @@
 			],
 			"outFiles": [
 				"${workspaceFolder}/dist/**/*.js"
-			],
-			"env": {
-				"ELECTRON_RUN_AS_NODE": null
-			}
-		},
-		{
-			// Loads no other extensions, so the activity bar contains only this one.
-			// Useful when something else in the profile is interfering.
-			"name": "Run Extension (clean profile)",
-			"type": "extensionHost",
-			"request": "launch",
-			"args": [
-				"--extensionDevelopmentPath=${workspaceFolder}",
-				"--disable-extensions"
-			],
-			"outFiles": [
-				"${workspaceFolder}/dist/**/*.js"
-			],
-			"env": {
-				"ELECTRON_RUN_AS_NODE": null
-			}
+			]
 		}
 	]
 }
