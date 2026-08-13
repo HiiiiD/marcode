@@ -4,8 +4,10 @@ import userEvent from '@testing-library/user-event';
 import { Composer } from '@/components/composer';
 import type { PaneState } from '@/reducer';
 import type { SessionStatus } from '../../protocol/messages';
-import { catalog, summary } from '../fixtures/protocol';
-import { posted, renderWithStore } from './harness';
+import { catalog, layoutOf, snapshot, summary } from '../fixtures/protocol';
+import {
+  posted, renderApp, renderWithStore, sendFromHost,
+} from './harness';
 
 function pane(status: SessionStatus = 'idle'): PaneState {
   return { summary: summary('a', { status }), items: [], hasMore: false, pending: [] };
@@ -13,6 +15,17 @@ function pane(status: SessionStatus = 'idle'): PaneState {
 
 const WITH_EFFORT = catalog()[0].models[0];   // fake-large, effort low/medium/high
 const NO_EFFORT = catalog()[0].models[1];     // fake-small
+
+/** One session in the roster, in its own pane, with the effort-capable model. */
+function hydrateOne() {
+  sendFromHost({
+    t: 'hydrate',
+    sessions: [summary('a')],
+    layout: layoutOf('a'),
+    snapshots: [snapshot('a')],
+    catalog: catalog(),
+  });
+}
 
 suite('Composer', () => {
   test('Enter posts send and clears the textarea', async () => {
@@ -72,5 +85,28 @@ suite('Composer', () => {
     await userEvent.click(await screen.findByRole('option', { name: 'high' }));
 
     assert.deepStrictEqual(posted().at(-1), { t: 'set-effort', id: 'a', effort: 'high' });
+  });
+
+  test('the effort and mode selects use the sm size variant, not a hand-written height', () => {
+    renderApp();
+    hydrateOne();
+
+    for (const label of ['Effort', 'Permission mode']) {
+      const trigger = screen.getByLabelText(label);
+      assert.strictEqual(
+        trigger.getAttribute('data-size'), 'sm',
+        `${label} must set size="sm"; a hand-written h-7 loses to data-[size=default]:h-8`,
+      );
+      // Not \bh-\d: SelectTrigger's own base classes always carry both
+      // `data-[size=default]:h-8` and `data-[size=sm]:h-7` as compound,
+      // variant-qualified tokens (CSS picks the active one via the
+      // data-size attribute) — a bare \b boundary matches "h-8"/"h-7"
+      // inside those regardless of what we authored. A hand-written height
+      // is always a space-separated, unqualified token instead.
+      assert.ok(
+        !/(?:^|\s)h-\d/.test(trigger.className),
+        `${label} must not hand-write a height over the size variant`,
+      );
+    }
   });
 });

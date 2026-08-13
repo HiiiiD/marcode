@@ -60,6 +60,17 @@ suite('SessionPicker', () => {
     assert.strictEqual(layouts.at(-1)!.layout.orientation, 'horizontal');
   });
 
+  test('icon buttons use icon size variants rather than hand-written boxes', () => {
+    renderApp();
+    hydrateAOpen();
+
+    const toggle = screen.getByLabelText('Toggle split orientation');
+    assert.ok(
+      !/\b[hw]-\d/.test(toggle.className),
+      'use size="icon-sm"; twMerge does not strip size-8 when h-7 w-7 is added',
+    );
+  });
+
   test('New posts create-session with the first catalog provider', async () => {
     renderApp();
     hydrateAOpen();

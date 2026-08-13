@@ -43,8 +43,8 @@ export function SessionHeader({ pane, models }: { pane: PaneState; models: Model
       </span>
       <Button
         variant="ghost"
-        size="icon"
-        aria-label="Close session"
+        size="icon-xs"
+        aria-label={`Close session ${s.title}`}
         onClick={() => {
           // `close-session` alone only flips the session to archived on the
           // host and revokes its visibility (SessionManager.close) — it does
@@ -63,7 +63,7 @@ export function SessionHeader({ pane, models }: { pane: PaneState; models: Model
           post({ t: 'set-layout', layout: evenlySizedPanes(remaining, state.layout.orientation) });
           post({ t: 'close-session', id: s.id });
         }}
-        className="h-5 w-5 shrink-0"
+        className="shrink-0"
       >
         ×
       </Button>

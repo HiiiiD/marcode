@@ -62,9 +62,9 @@ export function SessionPicker() {
 
       <Button
         variant="outline"
-        size="icon"
+        size="icon-sm"
         aria-label="Toggle split orientation"
-        className="h-7 w-7 shrink-0"
+        className="shrink-0"
         onClick={() => post({
           t: 'set-layout',
           layout: {

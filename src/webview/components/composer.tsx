@@ -86,7 +86,7 @@ export function Composer({ pane, model }: { pane: PaneState; model: ModelInfo | 
               t: 'set-effort', id: pane.summary.id, effort: value as EffortLevel,
             })}
           >
-            <SelectTrigger className="h-7 w-24" aria-label="Effort">
+            <SelectTrigger size="sm" className="w-24" aria-label="Effort">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -105,8 +105,9 @@ export function Composer({ pane, model }: { pane: PaneState; model: ModelInfo | 
           })}
         >
           <SelectTrigger
+            size="sm"
             className={cn(
-              'h-7 w-28',
+              'w-28',
               bypassing && 'border-destructive text-destructive dark:border-destructive/50',
             )}
             aria-label="Permission mode"
