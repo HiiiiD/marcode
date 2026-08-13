@@ -178,6 +178,86 @@ suite('SessionManager', () => {
     );
   });
 
+  test('a snapshot sequence number is never reused, so a long-stalled fetch cannot claim a later one\'s turn (ABA)', async () => {
+    // The sequence counter must be global and monotonic. A per-id counter
+    // reset whenever its entry is deleted makes numbers reusable: with fetch
+    // #1 still in flight, a second reveal that completes and drains resets the
+    // counter, so a third reveal reissues the same number fetch #1 is holding.
+    // Fetch #1 would then pass the staleness check, emit its long-stale
+    // snapshot and drain fetch #3's buffer — the clobber, via ABA.
+    const a = await manager.create('fake', '/tmp');
+    const id = a.state.id;
+    sent.length = 0;
+
+    const realTail = store.tail.bind(store);
+    const releases: (() => void)[] = [];
+    const startSignals: (() => void)[] = [];
+    const started = [0, 1, 2].map(
+      () => new Promise<void>((r) => startSignals.push(r)),
+    );
+    let call = 0;
+    (store as unknown as { tail: typeof store.tail }).tail = async (
+      ...args: Parameters<typeof store.tail>
+    ) => {
+      // Tag each fetch's result so a stale snapshot is identifiable by
+      // content — the ABA failure emits fetch #1's items, not fetch #3's,
+      // and every fetch here otherwise returns an identical transcript.
+      const which = call;
+      startSignals[Math.min(call++, startSignals.length - 1)]?.();
+      await new Promise<void>((resolve) => { releases.push(resolve); });
+      const real = await realTail(...args);
+      return {
+        ...real,
+        items: [
+          ...real.items,
+          { id: `fetch-${which}`, ts: 0, role: 'error' as const, message: 'tag' },
+        ],
+      };
+    };
+
+    try {
+      const first = manager.setVisible([id]); // fetch #1: stalls for the whole test
+      await started[0];
+
+      await manager.setVisible([]);
+      const second = manager.setVisible([id]); // fetch #2
+      await started[1];
+      releases[1]?.();
+      await second;                            // completes and drains: counter reset
+      await settle();
+
+      await manager.setVisible([]);
+      const third = manager.setVisible([id]);  // fetch #3: reissues the reused number
+      await started[2];
+
+      a.send('hello');                         // patch buffered by fetch #3
+      await settle();
+
+      releases[0]?.();                         // fetch #1 resumes — must emit nothing
+      await first;
+      await settle();
+
+      releases[2]?.();
+      await third;
+      await settle();
+    } finally {
+      (store as unknown as { tail: typeof store.tail }).tail = realTail;
+    }
+
+    const snapshots = sent.filter((m) => m.t === 'session-snapshot');
+    const tags = snapshots.flatMap(
+      (m) => m.session.items.filter((i) => i.id.startsWith('fetch-')).map((i) => i.id),
+    );
+    assert.ok(
+      !tags.includes('fetch-0'),
+      `fetch #1's long-stale snapshot must never be emitted, but was: ${tags.join(', ')}`,
+    );
+    assert.ok(
+      sent.some((m) => m.t === 'session-patch' && m.id === id),
+      'the patch buffered by the newest fetch must not be lost',
+    );
+  });
+
   test('sink calls after dispose() do not arm a persist timer', async () => {
     const a = await manager.create('fake', '/tmp');
     await manager.dispose();

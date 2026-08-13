@@ -36,12 +36,20 @@ export class SessionManager implements SessionSink {
    * *other's* patches and delete the entry, and the loser's now-stale
    * snapshot would be emitted afterwards, wholesale replacing the pane and
    * discarding exactly the patches this buffer exists to protect. So each
-   * invocation stamps a per-id sequence number; on resume, an invocation
-   * that is no longer the newest for that id (or whose id has since left
-   * `visible`) drops its snapshot and touches nothing.
+   * invocation stamps a sequence number; on resume, an invocation that is no
+   * longer the newest for that id (or whose id has since left `visible`)
+   * drops its snapshot and touches nothing.
+   *
+   * The counter is global and strictly monotonic, never per-id and never
+   * reset. A per-id counter that restarted whenever its entry was deleted
+   * would make sequence numbers reusable: with fetch #1 (seq 1) still in
+   * flight, a reveal that drains at seq 2 and a third uncheck/recheck would
+   * reissue seq 1, and fetch #1 would then claim the snapshot it no longer
+   * owns — the exact clobber this sequencing exists to prevent, via ABA.
    */
   private snapshotting = new Map<SessionId, TranscriptPatch[]>();
   private snapshotSeq = new Map<SessionId, number>();
+  private nextSnapshotSeq = 0;
 
   constructor(
     private readonly store: TranscriptStore,
@@ -128,7 +136,7 @@ export class SessionManager implements SessionSink {
     for (const id of added) {
       // Mark this id as "snapshot in flight" so patch() buffers instead of
       // emitting for it — see the `snapshotting` field doc comment.
-      const seq = (this.snapshotSeq.get(id) ?? 0) + 1;
+      const seq = ++this.nextSnapshotSeq;
       this.snapshotSeq.set(id, seq);
       this.snapshotting.set(id, []);
 

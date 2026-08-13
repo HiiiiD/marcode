@@ -286,6 +286,25 @@ suite('TranscriptStore', () => {
       'the skipped line must surface as an error transcript item, not silence');
   });
 
+  test('a second corruption does not stack a duplicate corrupt marker id', async () => {
+    // The marker is persisted by the next dirty-path rewrite, so on the load
+    // after that rewrite it is already in the file. Pushing another one would
+    // put two items with the same id in the transcript: duplicate React keys,
+    // and replace()/before() would only ever see the first.
+    await fs.mkdir(path.join(dir, 'sessions'), { recursive: true });
+    const sessionFile = path.join(dir, 'sessions', 's1.jsonl');
+    await fs.writeFile(
+      sessionFile,
+      `{"id":"i1","ts":1,"role":"user","text":"one"}\n{"id":"corrupt-s1","ts":2,"role":"error","message":"1 unreadable transcript line was skipped"}\n{"id":"i3","ts":3,"ro`,
+      'utf8',
+    );
+
+    const { items } = await store.tail('s1');
+    const markers = items.filter((i) => i.id === 'corrupt-s1');
+    assert.strictEqual(markers.length, 1,
+      'exactly one corrupt marker may exist per session, however many loads corrupt');
+  });
+
   test('a torn rewrite leaves the previous transcript intact and re-queues the write', async () => {
     store.append('s1', item('a', 'one'));
     await store.flush();

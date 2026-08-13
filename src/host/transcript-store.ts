@@ -64,11 +64,15 @@ export class TranscriptStore {
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== 'ENOENT') { throw err; }
     }
-    if (skipped > 0) {
+    const corruptId = `corrupt-${id}`;
+    // The marker is persisted by the next dirty-path rewrite, so a *second*
+    // corruption event would otherwise push a second item with the same id:
+    // duplicate React keys, and replace()/before() would only ever see the
+    // first. One marker per session is enough — the count is in its message.
+    if (skipped > 0 && !items.some((i) => i.id === corruptId)) {
       // Make the loss visible in the transcript rather than silently short.
-      // A stable id keeps a rewrite from stacking duplicates.
       items.push({
-        id: `corrupt-${id}`,
+        id: corruptId,
         ts: Date.now(),
         role: 'error',
         message: `${skipped} unreadable transcript ${skipped === 1 ? 'line was' : 'lines were'} skipped (the file was damaged, most likely by an interrupted write).`,
