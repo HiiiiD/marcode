@@ -1436,7 +1436,7 @@ export class AgentSession {
     }
     const item: TranscriptItem = { id: nextId('u'), ts: Date.now(), role: 'user', text };
     this.appendItem(item);
-    this.openAssistantId = undefined;
+    this.closeAssistant();
     this.setStatus('running');
     this.run.send(text);
   }
@@ -1530,7 +1530,7 @@ export class AgentSession {
           toolId: event.id, name: event.name, input: event.input, state: 'running',
         };
         this.toolItems.set(event.id, item);
-        this.openAssistantId = undefined;
+        this.closeAssistant();
         this.appendItem(item);
         return;
       }
@@ -1555,7 +1555,7 @@ export class AgentSession {
         this.pending.set(event.id, {
           requestId: event.id, name: event.name, input: event.input,
         });
-        this.openAssistantId = undefined;
+        this.closeAssistant();
         this.appendItem(item);
         this.setStatus('awaiting-approval');
         return;
@@ -1569,7 +1569,7 @@ export class AgentSession {
         return;
 
       case 'turn-end':
-        this.openAssistantId = undefined;
+        this.closeAssistant();
         if (event.reason === 'error') {
           this.fail(event.error ?? 'Agent run failed');
         } else {
@@ -1598,44 +1598,9 @@ export class AgentSession {
     this.sink.patch(this._state.id, { op: 'replace', item });
   }
 
-  private mergeDelta(itemId: string, field: 'text' | 'thinking', delta: string): void {
-    const cached = this.store as unknown as {
-      append: (id: SessionId, item: TranscriptItem) => void;
-    };
-    void cached;
-    this.applyDeltaToStore(itemId, field, delta);
-    this.sink.patch(this._state.id, { op: 'delta', itemId, field, delta });
-  }
-
-  private applyDeltaToStore(
-    itemId: string, field: 'text' | 'thinking', delta: string,
-  ): void {
-    const current = this.pendingAssistant ?? { text: '', thinking: '' };
-    current[field] = (current[field] ?? '') + delta;
-    this.pendingAssistant = current;
-    this.store.replace(this._state.id, {
-      id: itemId, ts: Date.now(), role: 'assistant',
-      text: current.text ?? '', thinking: current.thinking || undefined,
-    });
-  }
-
   private pendingAssistant: { text?: string; thinking?: string } | undefined;
 
-  private setStatus(status: SessionStatus): void {
-    if (this._state.status === status) { return; }
-    this._state.status = status;
-    this._state.updatedAt = Date.now();
-    this.sink.status(this._state.id, status);
-    this.sink.changed();
-  }
-}
-```
-
-- [ ] **Step 4: Simplify the delta path**
-
-The `mergeDelta` above carries dead scaffolding. Replace both `mergeDelta` and `applyDeltaToStore` with a single method, and reset `pendingAssistant` whenever `openAssistantId` is cleared:
-
-```ts
+  /** Accumulates streamed deltas into the open assistant item. */
   private mergeDelta(itemId: string, field: 'text' | 'thinking', delta: string): void {
     const current = this.pendingAssistant ?? {};
     current[field] = (current[field] ?? '') + delta;
@@ -1647,23 +1612,29 @@ The `mergeDelta` above carries dead scaffolding. Replace both `mergeDelta` and `
     this._state.updatedAt = Date.now();
     this.sink.patch(this._state.id, { op: 'delta', itemId, field, delta });
   }
-```
 
-Then in `handle`, every place that sets `this.openAssistantId = undefined` must also set `this.pendingAssistant = undefined`. Add a helper and use it in the `tool-start`, `permission`, and `turn-end` branches plus `send()`:
-
-```ts
+  /** Ends the current assistant item so the next delta starts a new one. */
   private closeAssistant(): void {
     this.openAssistantId = undefined;
     this.pendingAssistant = undefined;
   }
+
+  private setStatus(status: SessionStatus): void {
+    if (this._state.status === status) { return; }
+    this._state.status = status;
+    this._state.updatedAt = Date.now();
+    this.sink.status(this._state.id, status);
+    this.sink.changed();
+  }
+}
 ```
 
-- [ ] **Step 5: Run the tests to verify they pass**
+- [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `yarn test:unit`
 Expected: PASS, 19 passing total.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 git add src/host/agent-session.ts src/test/unit/agent-session.test.ts
@@ -2579,8 +2550,9 @@ export function reduce(state: ClientState, msg: HostToWebview): ClientState {
   }
 }
 
-function applyPatch(pane: PaneState, patch: HostToWebview extends never ? never
-  : Extract<HostToWebview, { t: 'session-patch' }>['patch']): PaneState {
+type Patch = Extract<HostToWebview, { t: 'session-patch' }>['patch'];
+
+function applyPatch(pane: PaneState, patch: Patch): PaneState {
   switch (patch.op) {
     case 'append':
       return {
