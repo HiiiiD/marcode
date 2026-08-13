@@ -44,14 +44,35 @@ export class TranscriptStore {
     if (cached) { return cached; }
 
     let items: TranscriptItem[] = [];
+    let skipped = 0;
     try {
       const raw = await fs.readFile(this.sessionFile(id), 'utf8');
-      items = raw
-        .split('\n')
-        .filter((line) => line.trim().length > 0)
-        .map((line) => JSON.parse(line) as TranscriptItem);
+      for (const line of raw.split('\n')) {
+        if (line.trim().length === 0) { continue; }
+        try {
+          items.push(JSON.parse(line) as TranscriptItem);
+        } catch {
+          // A truncated or otherwise unparseable line — what a process kill
+          // during a write leaves behind. Throwing here escapes tail()/
+          // before()/flushOne() and, since MessageRouter only logs, leaves
+          // the pane permanently blank with no error state, violating
+          // "errors are state, never exceptions". A partial transcript beats
+          // no transcript: skip the line and surface it below instead.
+          skipped++;
+        }
+      }
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code !== 'ENOENT') { throw err; }
+    }
+    if (skipped > 0) {
+      // Make the loss visible in the transcript rather than silently short.
+      // A stable id keeps a rewrite from stacking duplicates.
+      items.push({
+        id: `corrupt-${id}`,
+        ts: Date.now(),
+        role: 'error',
+        message: `${skipped} unreadable transcript ${skipped === 1 ? 'line was' : 'lines were'} skipped (the file was damaged, most likely by an interrupted write).`,
+      });
     }
     const reps = this.replacements.get(id);
     if (reps) {
@@ -108,26 +129,98 @@ export class TranscriptStore {
     return next;
   }
 
+  /**
+   * Writes `body` to `file` atomically: a partial or failed write lands on a
+   * temp file and the destination is only ever swapped in whole, by rename.
+   * The previous non-atomic truncate-then-write left a half-written JSONL
+   * file behind whenever the process died mid-write.
+   */
+  private async writeAtomic(file: string, body: string): Promise<void> {
+    const tmp = `${file}.tmp`;
+    try {
+      await fs.writeFile(tmp, body, 'utf8');
+      await fs.rename(tmp, file);
+    } catch (err) {
+      await fs.rm(tmp, { force: true }).catch(() => { /* best effort cleanup */ });
+      throw err;
+    }
+  }
+
+  /**
+   * Puts `queued` back at the *front* of the pending queue after a failed
+   * write, ahead of anything appended while that write was in flight, so
+   * transcript order survives the retry.
+   */
+  private requeue(sessionId: SessionId, queued: TranscriptItem[]): void {
+    if (queued.length === 0) { return; }
+    const since = this.pending.get(sessionId);
+    this.pending.set(sessionId, since ? [...queued, ...since] : queued);
+  }
+
+  /**
+   * IMPORTANT: everything this method takes out of `pending`/`dirty`/
+   * `replacements` is taken *before* the write's first await, and put back
+   * only if that write fails. append()/replace() are synchronous calls made
+   * by AgentSession's event pump and can land at any await point here; the
+   * per-id `serialize()` chain orders flush-vs-flush and flush-vs-remove but
+   * has no bearing on them. Clearing the queues *after* the await (as this
+   * used to) discards every item that arrived during it — it was never in
+   * `body`, and its queue entry and dirty flag are wiped, so no later flush
+   * recovers it. Taking the queues up front means such an item lands in a
+   * fresh queue that the next flush writes.
+   */
   private async flushOne(sessionId: SessionId): Promise<void> {
     if (this.dirty.has(sessionId)) {
+      // ensureLoaded() awaits, but anything appended/replaced during it is
+      // still in the queues we take below (append() only touches
+      // pending/cache; replace() lands in `replacements`, which
+      // ensureLoaded() itself applies to the items it returns).
       const items = await this.ensureLoaded(sessionId);
+
+      // --- no awaits from here to the write ---
       const queued = this.pending.get(sessionId) ?? [];
+      const reps = this.replacements.get(sessionId);
+      this.pending.delete(sessionId);
+      this.replacements.delete(sessionId);
+      this.dirty.delete(sessionId);
       for (const q of queued) {
         if (!items.some((i) => i.id === q.id)) { items.push(q); }
       }
       const body = items.map((i) => JSON.stringify(i)).join('\n');
-      await fs.writeFile(this.sessionFile(sessionId), body ? `${body}\n` : '', 'utf8');
-      this.dirty.delete(sessionId);
-      this.pending.delete(sessionId);
-      this.replacements.delete(sessionId);
+      // --- ---
+
+      try {
+        await this.writeAtomic(this.sessionFile(sessionId), body ? `${body}\n` : '');
+      } catch (err) {
+        // Nothing reached disk (writeAtomic is all-or-nothing), so restore
+        // what we took. Merging *under* anything recorded since keeps the
+        // newer replacement of the same item id winning.
+        this.requeue(sessionId, queued);
+        if (reps) {
+          for (const [key, value] of this.replacements.get(sessionId) ?? []) {
+            reps.set(key, value);
+          }
+          this.replacements.set(sessionId, reps);
+        }
+        this.dirty.add(sessionId);
+        throw err;
+      }
       return;
     }
 
     const queued = this.pending.get(sessionId);
     if (!queued || queued.length === 0) { return; }
-    const body = queued.map((i) => JSON.stringify(i)).join('\n');
-    await fs.appendFile(this.sessionFile(sessionId), `${body}\n`, 'utf8');
     this.pending.delete(sessionId);
+    const body = queued.map((i) => JSON.stringify(i)).join('\n');
+    try {
+      await fs.appendFile(this.sessionFile(sessionId), `${body}\n`, 'utf8');
+    } catch (err) {
+      // A failed append may still have written part of `body`; re-queueing
+      // risks a duplicated prefix, but losing the items outright is worse
+      // and the dedupe in the dirty path above bounds the damage.
+      this.requeue(sessionId, queued);
+      throw err;
+    }
   }
 
   async tail(
@@ -158,6 +251,9 @@ export class TranscriptStore {
       this.dirty.delete(id);
       this.replacements.delete(id);
       await fs.rm(this.sessionFile(id), { force: true });
+      // A crash between writeAtomic()'s writeFile and its rename can leave
+      // this behind; don't let it outlive the session it belonged to.
+      await fs.rm(`${this.sessionFile(id)}.tmp`, { force: true });
     });
     // Drop the chain entry now that removal has actually run: nothing is
     // pending for this id anymore, so there is nothing left to serialize

@@ -191,6 +191,141 @@ suite('TranscriptStore', () => {
     );
   });
 
+  test('an append() landing during flush()\'s write is not discarded', async () => {
+    // The event pump calls append() synchronously; SessionManager's periodic
+    // persist timer can have a flush() write in flight at that exact moment.
+    // flushOne() must have taken the queue *before* its first await, so the
+    // late append lands in a fresh queue instead of being cleared unwritten.
+    store.append('s1', item('i1', 'one'));
+
+    const fsPromisesModule = require('fs/promises') as typeof fs;
+    const realAppendFile = fsPromisesModule.appendFile;
+    let fired = false;
+    fsPromisesModule.appendFile = async (...args: Parameters<typeof fs.appendFile>) => {
+      const result = await realAppendFile(...args);
+      if (!fired) {
+        fired = true;
+        // A tool-start/permission event arriving mid-write.
+        store.append('s1', item('i2', 'two'));
+      }
+      return result;
+    };
+
+    try {
+      await store.flush();
+      await store.flush();
+    } finally {
+      fsPromisesModule.appendFile = realAppendFile;
+    }
+
+    assert.strictEqual(fired, true, 'the mid-write append must actually have fired');
+
+    const live = await store.tail('s1');
+    assert.deepStrictEqual(live.items.map((i) => i.id), ['i1', 'i2'],
+      'the in-memory cache must still hold the mid-write append');
+
+    const fresh = new TranscriptStore(dir);
+    const { items } = await fresh.tail('s1');
+    assert.deepStrictEqual(items.map((i) => i.id), ['i1', 'i2'],
+      'the mid-write append must reach disk on the next flush');
+  });
+
+  test('a replace() landing during flush()\'s rewrite is not discarded', async () => {
+    const perm = (state: 'pending' | 'allowed' | 'denied'): TranscriptItem => ({
+      id: 'p1', ts: 1, role: 'permission', requestId: 'r1',
+      name: 'Bash', input: {}, state,
+    });
+
+    store.append('s1', perm('pending'));
+    await store.flush();
+    store.replace('s1', perm('allowed')); // marks the session dirty (rewrite path)
+
+    const fsPromisesModule = require('fs/promises') as typeof fs;
+    const realWriteFile = fsPromisesModule.writeFile;
+    let fired = false;
+    fsPromisesModule.writeFile = async (...args: Parameters<typeof fs.writeFile>) => {
+      const result = await realWriteFile(...args);
+      if (!fired) {
+        fired = true;
+        // The user answers the permission card while the rewrite is in flight.
+        store.replace('s1', perm('denied'));
+      }
+      return result;
+    };
+
+    try {
+      await store.flush();
+      await store.flush();
+    } finally {
+      fsPromisesModule.writeFile = realWriteFile;
+    }
+
+    assert.strictEqual(fired, true, 'the mid-write replace must actually have fired');
+
+    const fresh = new TranscriptStore(dir);
+    const { items } = await fresh.tail('s1');
+    assert.strictEqual(items.length, 1);
+    assert.strictEqual((items[0] as { state: string }).state, 'denied',
+      'the mid-rewrite replacement must survive to disk');
+  });
+
+  test('a corrupt JSONL line is skipped rather than throwing out of a read path', async () => {
+    // Exactly what a kill during a non-atomic write leaves behind: a
+    // truncated final line. tail() must never throw — the pane would render
+    // permanently blank with no error state.
+    await fs.mkdir(path.join(dir, 'sessions'), { recursive: true });
+    await fs.writeFile(
+      path.join(dir, 'sessions', 's1.jsonl'),
+      '{"id":"i1","ts":1,"role":"user","text":"one"}\n{"id":"i2","ts":2,"ro',
+      'utf8',
+    );
+
+    const { items } = await store.tail('s1');
+    assert.ok(items.some((i) => i.id === 'i1'), 'the parseable history must survive');
+    assert.ok(items.some((i) => i.role === 'error'),
+      'the skipped line must surface as an error transcript item, not silence');
+  });
+
+  test('a torn rewrite leaves the previous transcript intact and re-queues the write', async () => {
+    store.append('s1', item('a', 'one'));
+    await store.flush();
+    const sessionFile = path.join(dir, 'sessions', 's1.jsonl');
+    const before = await fs.readFile(sessionFile, 'utf8');
+
+    store.replace('s1', item('a', 'changed')); // dirty -> rewrite path
+
+    const fsPromisesModule = require('fs/promises') as typeof fs;
+    const realWriteFile = fsPromisesModule.writeFile;
+    let torn = false;
+    fsPromisesModule.writeFile = async (
+      file: Parameters<typeof fs.writeFile>[0],
+      data: Parameters<typeof fs.writeFile>[1],
+      options?: Parameters<typeof fs.writeFile>[2],
+    ) => {
+      torn = true;
+      // Simulate the process dying part-way through the write.
+      await realWriteFile(file, String(data).slice(0, 12), options);
+      throw new Error('simulated torn write');
+    };
+
+    try {
+      await assert.rejects(store.flush('s1'), /simulated torn write/);
+    } finally {
+      fsPromisesModule.writeFile = realWriteFile;
+    }
+    assert.strictEqual(torn, true);
+
+    assert.strictEqual(await fs.readFile(sessionFile, 'utf8'), before,
+      'a failed rewrite must not corrupt the file it was replacing');
+
+    // Nothing was dropped: retrying the flush still lands the replacement.
+    await store.flush('s1');
+    const fresh = new TranscriptStore(dir);
+    const { items } = await fresh.tail('s1');
+    assert.strictEqual(items.length, 1);
+    assert.strictEqual((items[0] as { text: string }).text, 'changed');
+  });
+
   test('remove on a session with unflushed pending appends is not resurrected by a later flush', async () => {
     store.append('s1', item('a', 'one'));
 
