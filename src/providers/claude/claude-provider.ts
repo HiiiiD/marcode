@@ -14,6 +14,30 @@
 //   PermissionResult | null>`, where `options.toolUseID` is the id — not the
 //   single-object `(request: { tool_name, name, input }) => ...` shape the
 //   plan's pseudocode assumed. Fixed here.
+//
+// LAZY START (this round): `start()` used to call `query()` immediately —
+// i.e. inside the `AgentSession` constructor, before any message exists —
+// which spawns a `claude` CLI subprocess for every session the moment it is
+// created, whether or not the user ever sends anything (flagged by an
+// earlier review as "opening N sessions spawns N idle CLI processes"). The
+// query is now constructed lazily, on the first `send()`, via `ensureStarted()`.
+// This has a second, load-bearing consequence: `Options` — in particular
+// `permissionMode` and the conditional `allowDangerouslySkipPermissions`
+// (see below) — are built from `pendingMode`/`pendingEffort`, mutable local
+// state that `setPermissionMode`/`setEffort` update directly whenever the
+// query has not been constructed yet, rather than from the `StartOptions`
+// snapshot `start()` was originally called with. A `setPermissionMode('bypass')`
+// call before the first `send()` is therefore simply what the session
+// starts with, flag included — no restart, no dispose-and-respawn hack, no
+// guard on transcript items needed anywhere in this file or in
+// `AgentSession`. `PERMISSION_MODE` remains the only place a `PermissionMode`
+// is translated to the SDK's spelling.
+//
+// After the query is constructed (`queryRef` is set), `setPermissionMode`
+// and `setEffort` switch to the live seams described below
+// (`Query.setPermissionMode` / `Query.applyFlagSettings`) instead of
+// mutating the now-irrelevant pending values.
+//
 // - `setEffort` uses `Query.applyFlagSettings({ effortLevel })`, a genuine
 //   live setter (see map-events.ts header for why this is stronger than the
 //   plan's "store and apply on next send" fallback). If it fails (e.g. the
@@ -28,31 +52,56 @@
 //   `Promise<void>`, and the `AgentRun`/`Query` methods it's built on are
 //   themselves capable of throwing synchronously before ever returning a
 //   promise (e.g. if the underlying transport is already torn down) — both
-//   `setEffort` and `setPermissionMode` below wrap the call in `try/catch`
-//   *and* attach a `.catch()` to the returned promise, so neither a
-//   synchronous throw nor an async rejection can escape a `void`-returning
-//   `AgentRun` method. (An earlier pass of this file only had the `.catch()`
-//   on `setEffort`'s `applyFlagSettings` call, missing the synchronous case
-//   — fixed here on both methods.)
+//   `setEffort` and `setPermissionMode` wrap the call in `try/catch` *and*
+//   attach a `.catch()` to the returned promise, so neither a synchronous
+//   throw nor an async rejection can escape a `void`-returning `AgentRun`
+//   method.
+// - `allowDangerouslySkipPermissions` must be `true` exactly when, and only
+//   when, the *effective mode at construction time* is 'bypass' — strict
+//   equality, key absent (not `false`) for every other mode. This was
+//   briefly set unconditionally in an earlier pass; that reasoning ("the
+//   human has explicitly opted into bypass for every session") did not
+//   come from the human — it was an inference in the instruction that
+//   produced it, and the human decided against it on review. The accurate,
+//   verifiable statement is narrower: bypass is an opt-in capability
+//   granted per session at construction, because the SDK reads this flag
+//   only once, when `query()` is constructed
+//   (`Options.allowDangerouslySkipPermissions`) — unlike `permissionMode`
+//   itself, which has a live setter. Because construction is now lazy (see
+//   above), "at construction time" means "at first `send()`", not "when
+//   `start()` was called" — so a mode chosen any time before the first
+//   message is still exactly what the session starts with.
 // - `Options.stderr` is deliberately left unset — forwarding raw CLI stderr
 //   into a `console.error` (as the plan's pseudocode did) risks leaking
 //   secrets. CORRECTION to an earlier pass of this comment: leaving the
 //   option unset does NOT keep stderr out of the picture. The installed
 //   SDK's `ProcessTransport` accumulates a `stderrTail` unconditionally (not
 //   gated on `Options.stderr`) and appends `. stderr: <tail>` to the `Error`
-//   it throws on a nonzero exit or signal kill — which reaches `pump()`'s
-//   catch below regardless of whether we ever set the callback. The SDK
-//   pre-redacts a fixed table of well-known token shapes before capturing
-//   that tail, but anything outside the table passes through verbatim. See
-//   redact.ts for the mitigation: every message built by `errorMessage()`
-//   below is run through `redactSecrets()` before it becomes an `AgentEvent`
-//   (and therefore before it can reach a persisted transcript item).
+//   it throws on a nonzero exit or signal kill — which reaches the query
+//   pump's catch below regardless of whether we ever set the callback. The
+//   SDK pre-redacts a fixed table of well-known token shapes before
+//   capturing that tail, but anything outside the table passes through
+//   verbatim. See redact.ts for the mitigation: every message built by
+//   `errorMessage()` below is run through `redactSecrets()` before it
+//   becomes an `AgentEvent` (and therefore before it can reach a persisted
+//   transcript item).
 // - `Options.includePartialMessages` is left unset (defaults to false/off).
 //   Enabling it emits fine-grained `SDKPartialAssistantMessage` stream
 //   events (`type: 'stream_event'`) requiring a much wider set of shapes to
 //   map for no functional gain here: full `assistant` messages already
 //   arrive per content block, which is enough for `AgentSession` to render
 //   incremental text/thinking/tool-start items.
+//
+// OPEN QUESTION for the live Step 9 pass, not acted on here: the installed
+// `.d.ts` also shows `Settings.permissions.defaultMode` accepting
+// `'bypassPermissions'`, `Query.applyFlagSettings` taking arbitrary
+// `Settings` keys, and a `permissions.disableBypassPermissionsMode` opt-out
+// — suggesting bypass may be reachable live, via `applyFlagSettings`,
+// without ever touching `Options.allowDangerouslySkipPermissions` at all.
+// Unverified without live CLI credentials; the lazy-start design in this
+// file is correct either way (it does not depend on that question's
+// answer), but it may mean the "only at construction" constraint this file
+// documents is narrower than the SDK actually requires.
 import type {
   CanUseTool, Options, PermissionMode as SdkPermissionMode, Query, SDKUserMessage,
 } from '@anthropic-ai/claude-agent-sdk' with { 'resolution-mode': 'import' };
@@ -87,6 +136,24 @@ const PERMISSION_MODE: Record<PermissionMode, SdkPermissionMode> = {
   dontAsk: 'dontAsk',
   bypass: 'bypassPermissions',
 };
+
+/** The shape of the SDK's `query()` export, isolated so tests can inject a fake. */
+type QueryFn = (params: {
+  prompt: AsyncIterable<SDKUserMessage>;
+  options: Options;
+}) => Query;
+
+/**
+ * Real, dynamic-import-backed query loader — the production default. Kept
+ * as its own function (rather than inlined into `start()`) so a test can
+ * construct `new ClaudeProvider(fakeLoadQuery)` and observe exactly when,
+ * and with what `Options`, a query gets constructed, without contorting the
+ * lazy-start logic itself or reaching into a real CLI subprocess.
+ */
+async function loadQuery(): Promise<QueryFn> {
+  const mod = await import('@anthropic-ai/claude-agent-sdk');
+  return mod.query;
+}
 
 class Channel<T> implements AsyncIterable<T> {
   private queue: T[] = [];
@@ -134,16 +201,24 @@ export class ClaudeProvider implements AgentProvider {
   readonly id = 'claude';
   readonly displayName = 'Claude';
 
+  constructor(private readonly loadQueryFn: () => Promise<QueryFn> = loadQuery) {}
+
   listModels(): ModelInfo[] { return MODELS; }
 
   start(opts: StartOptions): AgentRun {
     const events = new Channel<AgentEvent>();
     const prompts = new Channel<SDKUserMessage>();
     const approvals = new Map<string, (decision: ToolDecision) => void>();
-    let effort = opts.effort;
     let disposed = false;
-
+    let started = false;
     let queryRef: Query | undefined;
+    // Effective mode/effort for a query not yet constructed. Read by
+    // ensureStarted() -> buildOptions() at the moment the query actually
+    // gets built (first send()); mutated directly by setPermissionMode()/
+    // setEffort() below whenever that hasn't happened yet.
+    let pendingMode: PermissionMode = opts.permissionMode;
+    let pendingEffort = opts.effort;
+    let pump: Promise<void> = Promise.resolve();
 
     const canUseTool: CanUseTool = async (toolName, input, options) => {
       const id = options.toolUseID;
@@ -156,50 +231,45 @@ export class ClaudeProvider implements AgentProvider {
         : { behavior: 'deny', message: decision.reason ?? 'Denied by user' };
     };
 
-    // `allowDangerouslySkipPermissions` is now set unconditionally, on every
-    // session regardless of its starting mode — CORRECTING an earlier pass
-    // that set it only when `opts.permissionMode === 'bypass'` at session
-    // start. That was wrong once `setPermissionMode` became a live,
-    // mid-session seam (see below): the flag is a *capability gate* ("this
-    // application may bypass permissions at all"), while `permissionMode` —
-    // set once here and changeable afterward via `Query.setPermissionMode`
-    // — is what actually governs behavior at any given moment. Leaving the
-    // flag conditional on the start mode meant `setPermissionMode('bypassPermissions')`
-    // would fail for any session that didn't happen to start in bypass, so
-    // the header badge and destructive styling (session-header.tsx,
-    // composer.tsx) could show "bypassing" while the live agent silently
-    // kept enforcing its old mode — the exact lie those two UI layers exist
-    // to prevent. The human has explicitly opted into bypass being
-    // available for every session; `PERMISSION_MODE` below remains the only
-    // place a `PermissionMode` is translated to the SDK's spelling.
-    const options: Options = {
-      cwd: opts.cwd,
-      model: opts.model,
-      resume: opts.resumeToken,
-      permissionMode: PERMISSION_MODE[opts.permissionMode],
-      canUseTool,
-      allowDangerouslySkipPermissions: true,
-      ...(effort !== undefined ? { effort } : {}),
-    };
+    function buildOptions(): Options {
+      const isBypassMode = pendingMode === 'bypass';
+      return {
+        cwd: opts.cwd,
+        model: opts.model,
+        resume: opts.resumeToken,
+        permissionMode: PERMISSION_MODE[pendingMode],
+        canUseTool,
+        ...(pendingEffort !== undefined ? { effort: pendingEffort } : {}),
+        ...(isBypassMode ? { allowDangerouslySkipPermissions: true } : {}),
+      };
+    }
 
-    const pump = (async () => {
-      try {
-        const { query } = await import('@anthropic-ai/claude-agent-sdk');
-        const session = query({ prompt: prompts, options });
-        queryRef = session;
-        for await (const msg of session) {
-          for (const event of mapEvent(msg)) { events.push(event); }
+    // Constructs the SDK query exactly once, on the first send(). Never
+    // called from interrupt()/setEffort()/setPermissionMode()/dispose() —
+    // none of those should spawn a subprocess that was never asked to run.
+    const ensureStarted = (): void => {
+      if (started || disposed) { return; }
+      started = true;
+      pump = (async () => {
+        try {
+          const query = await this.loadQueryFn();
+          const session = query({ prompt: prompts, options: buildOptions() });
+          queryRef = session;
+          for await (const msg of session) {
+            for (const event of mapEvent(msg)) { events.push(event); }
+          }
+        } catch (err) {
+          events.push({ kind: 'turn-end', reason: 'error', error: errorMessage(err) });
+        } finally {
+          events.close();
         }
-      } catch (err) {
-        events.push({ kind: 'turn-end', reason: 'error', error: errorMessage(err) });
-      } finally {
-        events.close();
-      }
-    })();
+      })();
+    };
 
     return {
       events,
       send: (text: string) => {
+        ensureStarted();
         prompts.push({
           type: 'user',
           message: { role: 'user', content: [{ type: 'text', text }] },
@@ -211,8 +281,8 @@ export class ClaudeProvider implements AgentProvider {
         if (resolve) { approvals.delete(id); resolve(decision); }
       },
       setEffort: (next: EffortLevel) => {
-        effort = next;
-        if (!queryRef) { return; }
+        pendingEffort = next;
+        if (!queryRef) { return; } // not yet constructed: pendingEffort above is picked up at construction.
         try {
           queryRef.applyFlagSettings({ effortLevel: next }).catch(() => {
             // Best-effort: an effort change that the SDK rejects (e.g. the
@@ -225,7 +295,8 @@ export class ClaudeProvider implements AgentProvider {
         }
       },
       setPermissionMode: (mode: PermissionMode) => {
-        if (!queryRef) { return; }
+        pendingMode = mode;
+        if (!queryRef) { return; } // not yet constructed: pendingMode above is picked up at construction.
         try {
           queryRef.setPermissionMode(PERMISSION_MODE[mode]).catch(() => {
             // Best-effort: a mode change the SDK rejects is not a failed
@@ -237,8 +308,9 @@ export class ClaudeProvider implements AgentProvider {
         }
       },
       interrupt: async () => {
+        if (!queryRef) { return; } // nothing has ever run: a no-op, not a failure.
         try {
-          await queryRef?.interrupt();
+          await queryRef.interrupt();
         } catch (err) {
           events.push({ kind: 'turn-end', reason: 'error', error: errorMessage(err) });
         }
@@ -256,6 +328,13 @@ export class ClaudeProvider implements AgentProvider {
         } catch {
           // Best-effort: the process is being torn down regardless.
         }
+        // If send() was never called, nothing ever closes `events` (the
+        // query pump's own `finally` never runs) — AgentSession.dispose()
+        // awaits this run's `events` draining to `done` via its own pump,
+        // so closing here unconditionally is required to avoid hanging it
+        // forever on a channel nothing else will ever close. Idempotent
+        // with the pump's own close() when a query WAS constructed.
+        events.close();
         await pump;
       },
     };

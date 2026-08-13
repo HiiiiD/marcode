@@ -31,6 +31,16 @@ export function Composer({ pane, model }: { pane: PaneState; model: ModelInfo | 
   const running = pane.summary.status === 'running'
     || pane.summary.status === 'awaiting-approval';
   const bypassing = pane.summary.permissionMode === 'bypass';
+  /**
+   * The Claude provider can only honor 'bypass' at query construction —
+   * which now happens lazily, on the session's first send() — so this must
+   * track the same "has a first message been sent yet" condition the
+   * provider itself uses, not an approximation of it. `pane.items` is the
+   * session's transcript; AgentSession.send() always appends a user item
+   * before ever calling the provider, so "any items" and "sent the first
+   * message" are the same fact told from two sides of the wire.
+   */
+  const hasStarted = pane.items.length > 0;
 
   const submit = () => {
     const trimmed = text.trim();
@@ -104,9 +114,25 @@ export function Composer({ pane, model }: { pane: PaneState; model: ModelInfo | 
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {MODE_ITEMS.map((item) => (
-              <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>
-            ))}
+            {MODE_ITEMS.map((item) => {
+              const disableBypass = item.value === 'bypass' && hasStarted;
+              return (
+                <SelectItem
+                  key={item.value}
+                  value={item.value}
+                  disabled={disableBypass}
+                  // Disabled-with-a-reason: a native tooltip, not a
+                  // silently-absent option — a user who used bypass earlier
+                  // in this same session should be able to tell why it is
+                  // greyed out now rather than wonder if it vanished.
+                  title={disableBypass
+                    ? 'Bypass can only be chosen before the first message is sent'
+                    : undefined}
+                >
+                  {item.label}
+                </SelectItem>
+              );
+            })}
           </SelectContent>
         </Select>
       </div>

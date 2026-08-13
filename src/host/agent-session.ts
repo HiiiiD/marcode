@@ -92,6 +92,14 @@ export class AgentSession {
     this.sink.changed();
   }
 
+  /**
+   * Always goes through the live run.setPermissionMode() seam, in either
+   * direction — including into and out of 'bypass'. ClaudeProvider itself
+   * decides whether that means updating a not-yet-constructed session's
+   * pending options or calling the SDK's live Query.setPermissionMode,
+   * depending on whether this session's first message has been sent yet;
+   * AgentSession does not need to know which.
+   */
   setPermissionMode(mode: PermissionMode): void {
     this._state.permissionMode = mode;
     this._state.updatedAt = Date.now();
