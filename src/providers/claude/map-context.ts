@@ -43,23 +43,48 @@ function share(tokens: number, max: number): number {
 }
 
 /**
+ * Splits an integer `total` points across `parts` (proportionally to their
+ * token weights) so the parts sum to exactly `total` — the largest-remainder
+ * method. Rounding each part independently (`Math.round(part/base*total)`)
+ * can over- or under-shoot `total` by a point or two; clamping the shortfall
+ * onto one designated part (as an earlier version of this function did)
+ * just moves the failure to a different input, since the clamp can go either
+ * direction depending on which way the roundings happen to lean. Assigning
+ * every part its floor and then handing the leftover points, one each, to
+ * the parts with the largest fractional remainder is exact by construction
+ * and needs no clamp. Ties break by array order (`parts` is always passed
+ * as `[system, memory, conversation]`), so the output is deterministic.
+ */
+function largestRemainder(weights: number[], base: number, total: number): number[] {
+  if (base <= 0) { return weights.map(() => 0); }
+  const exact = weights.map((w) => (w / base) * total);
+  const floors = exact.map((e) => Math.floor(e));
+  const used = floors.reduce((sum, f) => sum + f, 0);
+  let remainder = total - used;
+  const order = exact
+    .map((e, i) => ({ i, frac: e - floors[i] }))
+    .sort((a, b) => b.frac - a.frac);
+  const out = [...floors];
+  for (const { i } of order) {
+    if (remainder <= 0) { break; }
+    out[i] += 1;
+    remainder -= 1;
+  }
+  return out;
+}
+
+/**
  * Tokens enter here and percentages leave: this is the only place in the
- * codebase allowed to reason in tokens for these surfaces. `freePercent` is
- * derived by subtraction (`100 - usedPercent`, itself one rounding of the
- * real occupied share) rather than from `maxTokens - totalTokens`, and
- * `systemPercent` absorbs whatever rounding slack `memoryPercent` and
- * `conversationPercent` leave behind, so the four slices always sum to
- * exactly 100 despite per-slice rounding.
+ * codebase allowed to reason in tokens for these surfaces. `usedPercent` —
+ * the occupied share of the window — is rounded exactly once, so
+ * `freePercent = 100 - usedPercent` is exact by definition; the three
+ * attributed slices then split that same `usedPercent` via
+ * `largestRemainder`, which sums to `usedPercent` by construction. The four
+ * fields therefore always sum to exactly 100, regardless of how the
+ * underlying token counts round.
  */
 export function toContextBreakdown(res: ContextUsageLike): ContextBreakdown {
   const max = res.maxTokens;
-  if (!Number.isFinite(max) || max <= 0) {
-    return {
-      systemPercent: 0, memoryPercent: 0, conversationPercent: 0, freePercent: 100,
-      memoryFiles: [],
-    };
-  }
-
   const memoryTokens = res.memoryFiles.reduce((sum, f) => sum + f.tokens, 0);
   const m = res.messageBreakdown;
   const conversationTokens = m
@@ -67,19 +92,24 @@ export function toContextBreakdown(res: ContextUsageLike): ContextBreakdown {
       + m.assistantMessageTokens + m.userMessageTokens
       + m.redirectedContextTokens + m.unattributedTokens
     : 0;
+  // Whatever the SDK counts in the total but does not attribute to memory
+  // or messages is the system prompt and its tool definitions — the one
+  // slice the spec folds together.
+  const systemTokens = Math.max(0, res.totalTokens - memoryTokens - conversationTokens);
+  const base = systemTokens + memoryTokens + conversationTokens;
 
-  // Rounding each of the three attributed slices independently and then
-  // deriving free by subtraction (the original approach) can push their sum
-  // past 100 — e.g. 33 + 33 + 35 = 101 — which then clamps free to 0 and
-  // leaves the four fields totalling 101. Instead, round the *occupied*
-  // share of the window exactly once, and let system — already defined as
-  // the unattributed remainder — absorb whatever rounding the other two
-  // slices introduce. That keeps the sum at exactly 100 by construction.
-  const usedPercent = share(Math.min(res.totalTokens, max), max);
-  const memoryPercent = share(memoryTokens, max);
-  const conversationPercent = share(conversationTokens, max);
-  const systemPercent = Math.max(0, usedPercent - memoryPercent - conversationPercent);
+  if (!Number.isFinite(max) || max <= 0 || base <= 0) {
+    return {
+      systemPercent: 0, memoryPercent: 0, conversationPercent: 0, freePercent: 100,
+      memoryFiles: [],
+    };
+  }
+
+  const usedPercent = Math.max(0, Math.min(100, Math.round((Math.min(base, max) / max) * 100)));
   const freePercent = 100 - usedPercent;
+  const [systemPercent, memoryPercent, conversationPercent] = largestRemainder(
+    [systemTokens, memoryTokens, conversationTokens], base, usedPercent,
+  );
 
   return {
     systemPercent,

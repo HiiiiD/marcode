@@ -75,6 +75,60 @@ suite('map-context', () => {
     assert.strictEqual(sum, 100);
   });
 
+  test('an under-shoot case (memory + conversation rounding above usedPercent) still sums to 100', () => {
+    // maxTokens=200, memoryTokens=65 (-> 33), conversationTokens=65 (-> 33),
+    // totalTokens=130 so systemTokens=0: usedPercent=65, but
+    // memoryPercent+conversationPercent alone would round to 66 — one point
+    // over usedPercent, which an earlier `max(0, used - memory - conversation)`
+    // clamp silently discarded, leaving free=35 and a total of 101.
+    const breakdown = toContextBreakdown({
+      totalTokens: 130,
+      maxTokens: 200,
+      memoryFiles: [{ path: '/repo/CLAUDE.md', type: 'project', tokens: 65 }],
+      messageBreakdown: {
+        toolCallTokens: 65, toolResultTokens: 0, attachmentTokens: 0,
+        assistantMessageTokens: 0, userMessageTokens: 0,
+        redirectedContextTokens: 0, unattributedTokens: 0,
+      },
+    });
+    const sum = breakdown.systemPercent + breakdown.memoryPercent
+      + breakdown.conversationPercent + breakdown.freePercent;
+    assert.strictEqual(sum, 100);
+  });
+
+  test('the four slices sum to 100 across a spread of token combinations', () => {
+    const maxTokensValues = [0, 1, 100, 200, 200_000];
+    const partValues = [0, 1, 65, 100, 130, 300, 65_000, 130_000, 200_000, 250_000];
+
+    for (const maxTokens of maxTokensValues) {
+      for (const memoryTokens of partValues) {
+        for (const conversationTokens of partValues) {
+          for (const totalTokens of partValues) {
+            const breakdown = toContextBreakdown({
+              totalTokens,
+              maxTokens,
+              memoryFiles: memoryTokens > 0
+                ? [{ path: '/repo/CLAUDE.md', type: 'project', tokens: memoryTokens }]
+                : [],
+              messageBreakdown: {
+                toolCallTokens: conversationTokens, toolResultTokens: 0, attachmentTokens: 0,
+                assistantMessageTokens: 0, userMessageTokens: 0,
+                redirectedContextTokens: 0, unattributedTokens: 0,
+              },
+            });
+            const sum = breakdown.systemPercent + breakdown.memoryPercent
+              + breakdown.conversationPercent + breakdown.freePercent;
+            assert.strictEqual(
+              sum, 100,
+              `maxTokens=${maxTokens} memoryTokens=${memoryTokens} `
+              + `conversationTokens=${conversationTokens} totalTokens=${totalTokens} -> sum=${sum}`,
+            );
+          }
+        }
+      }
+    }
+  });
+
   test('maps the plan windows that report a utilization, in a stable order', () => {
     const windows = toUsageWindows({
       rate_limits_available: true,
