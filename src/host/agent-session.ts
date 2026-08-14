@@ -1,5 +1,6 @@
 import type {
-  AgentEvent, AgentProvider, AgentRun, EffortLevel, PermissionMode, ToolDecision,
+  AgentEvent, AgentProvider, AgentRun, ContextBreakdown, EffortLevel, PermissionMode,
+  ToolDecision, UsageWindow,
 } from '../providers/types';
 import type {
   PermissionRequest, SessionId, SessionSnapshot, SessionState, SessionStatus,
@@ -166,6 +167,26 @@ export class AgentSession {
     this.setStatus(this.pending.size > 0 ? 'awaiting-approval' : 'running');
   }
 
+  /**
+   * Rejects rather than returning a sentinel when the provider does not
+   * implement this: SessionManager is the single place that converts a
+   * failure into the `{ ok: false, reason }` the wire carries, so there is
+   * exactly one shape of "unavailable" reaching the webview.
+   */
+  async contextBreakdown(): Promise<ContextBreakdown> {
+    if (!this.run.contextBreakdown) {
+      throw new Error('This provider does not report context usage');
+    }
+    return this.run.contextBreakdown();
+  }
+
+  async usageWindows(): Promise<UsageWindow[]> {
+    if (!this.run.usageWindows) {
+      throw new Error('This provider does not report plan usage');
+    }
+    return this.run.usageWindows();
+  }
+
   async snapshot(): Promise<SessionSnapshot> {
     await this.scheduleFlush();
     const { items, hasMore } = await this.store.tail(this._state.id);
@@ -276,6 +297,7 @@ export class AgentSession {
         } else {
           this.setStatus('idle');
           void this.scheduleFlush();
+          void this.refreshContextPercent();
         }
         return;
     }
@@ -302,6 +324,26 @@ export class AgentSession {
       )
       .catch(() => { /* swallowed: see flushChain doc comment above */ });
     return this.flushChain;
+  }
+
+  /**
+   * Best-effort: the ring is decoration over a live conversation, so a
+   * provider that fails to answer must not turn a completed turn into an
+   * error item. Fire-and-forget from handle(), hence the internal catch —
+   * a rejection here would otherwise be an unhandled rejection.
+   */
+  private async refreshContextPercent(): Promise<void> {
+    try {
+      const breakdown = await this.run.contextBreakdown?.();
+      if (!breakdown || this.disposed) { return; }
+      const next = Math.round(100 - breakdown.freePercent);
+      if (this._state.contextPercent === next) { return; }
+      this._state.contextPercent = next;
+      this._state.updatedAt = Date.now();
+      this.sink.changed();
+    } catch {
+      // See the doc comment: an unavailable breakdown is not a failed turn.
+    }
   }
 
   private appendItem(item: TranscriptItem): void {
