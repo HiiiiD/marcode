@@ -320,4 +320,54 @@ suite('SessionManager', () => {
     assert.strictEqual(revived.state.archived, false);
     assert.strictEqual(manager.get(id), revived);
   });
+
+  test('contextBreakdown answers ok for a live session with a reporting run', async () => {
+    const provider = new FakeProvider(() => [], {
+      context: {
+        systemPercent: 12, memoryPercent: 4, conversationPercent: 27, freePercent: 57,
+        memoryFiles: [{ path: '/repo/CLAUDE.md', percent: 3 }],
+      },
+    });
+    const local = new SessionManager(
+      new TranscriptStore(dir), new Map([['fake', provider]]), () => {},
+    );
+    await local.init();
+    const session = await local.create('fake', '/tmp');
+
+    const result = await local.contextBreakdown(session.state.id);
+
+    // `assert.fail` returns `never`, which narrows the union for the line
+    // below; `assert.ok(result.ok)` would not.
+    if (!result.ok) { assert.fail(result.reason); }
+    assert.strictEqual(result.breakdown.freePercent, 57);
+    await local.dispose();
+  });
+
+  test('contextBreakdown answers not-ok for an unknown session', async () => {
+    const result = await manager.contextBreakdown('nope');
+    assert.strictEqual(result.ok, false);
+  });
+
+  test('usageWindows resolves a provider through any one live session', async () => {
+    const provider = new FakeProvider(() => [], {
+      windows: [{ id: 'five-hour', label: 'Session (5h)', usedPercent: 62 }],
+    });
+    const local = new SessionManager(
+      new TranscriptStore(dir), new Map([['fake', provider]]), () => {},
+    );
+    await local.init();
+    await local.create('fake', '/tmp');
+
+    const result = await local.usageWindows('fake');
+
+    if (!result.ok) { assert.fail(result.reason); }
+    assert.strictEqual(result.windows[0].usedPercent, 62);
+    await local.dispose();
+  });
+
+  test('usageWindows answers not-ok when no session of that provider is live', async () => {
+    const result = await manager.usageWindows('claude');
+    if (result.ok) { assert.fail('expected no live session for this provider'); }
+    assert.match(result.reason, /No active session/);
+  });
 });

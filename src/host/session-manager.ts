@@ -2,8 +2,8 @@ import { AgentSession, type SessionSink } from './agent-session';
 import type { StoredIndex, TranscriptStore } from './transcript-store';
 import type { AgentProvider, EffortLevel } from '../providers/types';
 import type {
-  HostToWebview, PaneLayout, ProviderInfo, SessionId, SessionState,
-  SessionStatus, SessionSummary, TranscriptPatch,
+  ContextResult, HostToWebview, PaneLayout, ProviderInfo, SessionId, SessionState,
+  SessionStatus, SessionSummary, TranscriptPatch, UsageResult,
 } from '../protocol/messages';
 
 let counter = 0;
@@ -110,6 +110,38 @@ export class SessionManager implements SessionSink {
   }
 
   get(id: SessionId): AgentSession | undefined { return this.live.get(id); }
+
+  /**
+   * Never rejects: this is answered straight onto the wire, where "errors
+   * are state". An archived or never-opened session has no live run to ask,
+   * which is a legitimate not-ok rather than a failure.
+   */
+  async contextBreakdown(id: SessionId): Promise<ContextResult> {
+    const session = this.live.get(id);
+    if (!session) { return { ok: false, reason: 'This session is not running' }; }
+    try {
+      return { ok: true, breakdown: await session.contextBreakdown() };
+    } catch (err) {
+      return { ok: false, reason: err instanceof Error ? err.message : String(err) };
+    }
+  }
+
+  /**
+   * Plan limits belong to the account, not the session, but the Claude
+   * Agent SDK only exposes them from a live `Query` — so any one live
+   * session of this provider is taken to speak for the whole account.
+   */
+  async usageWindows(providerId: string): Promise<UsageResult> {
+    for (const session of this.live.values()) {
+      if (session.state.providerId !== providerId) { continue; }
+      try {
+        return { ok: true, windows: await session.usageWindows() };
+      } catch (err) {
+        return { ok: false, reason: err instanceof Error ? err.message : String(err) };
+      }
+    }
+    return { ok: false, reason: 'No active session for this provider' };
+  }
 
   async open(id: SessionId): Promise<AgentSession> {
     const existing = this.live.get(id);
