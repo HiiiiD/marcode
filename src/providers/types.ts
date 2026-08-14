@@ -15,6 +15,30 @@ export interface ModelInfo {
   effort?: { levels: EffortLevel[]; default: EffortLevel };
 }
 
+/**
+ * What the user is looking at in the editor when they hit send. Carries the
+ * file reference always, and the selected text only when there is a
+ * selection — the model has file-reading tools, so inlining a whole file on
+ * every message would spend tokens on what it can fetch on demand.
+ */
+export interface EditorContext {
+  /** Workspace-relative when inside an open folder, absolute otherwise. POSIX separators. */
+  path: string;
+  languageId: string;
+  /** Absent when nothing is selected. */
+  selection?: {
+    /**
+     * 1-based inclusive line numbers, sorted, non-overlapping. An array from
+     * day one: multi-cursor selections are ordinary, and transcript items
+     * persist to disk, so widening a scalar pair later would need a tolerant
+     * reader for already-written history.
+     */
+    ranges: { startLine: number; endLine: number; text: string }[];
+    /** True when text was cut or whole ranges dropped to fit the budget. */
+    truncated: boolean;
+  };
+}
+
 export interface StartOptions {
   cwd: string;
   model?: string;
