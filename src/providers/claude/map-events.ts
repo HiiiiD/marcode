@@ -94,6 +94,7 @@
 // `redactSecrets` is pure and does no I/O, so calling it here does not
 // violate this file's purity constraint.
 import type { AgentEvent } from '../types';
+import { toInvocables } from './map-commands';
 import { redactSecrets } from './redact';
 
 interface Block {
@@ -118,6 +119,14 @@ export function mapEvent(msg: unknown): AgentEvent[] {
 
   if (type === 'system') {
     const subtype = (msg as { subtype?: string }).subtype;
+    if (subtype === 'commands_changed') {
+      // A full replacement list, which is exactly our snapshot contract —
+      // no diffing, and an empty array is a legitimate "none available".
+      return [{
+        kind: 'invocables',
+        entries: toInvocables((msg as { commands?: unknown }).commands),
+      }];
+    }
     if (subtype !== 'init') { return []; }
     const sessionId = (msg as { session_id?: string }).session_id;
     return sessionId ? [{ kind: 'session', resumeToken: sessionId }] : [];

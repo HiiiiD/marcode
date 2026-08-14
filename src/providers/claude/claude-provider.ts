@@ -113,10 +113,11 @@
 import type {
   CanUseTool, Options, PermissionMode as SdkPermissionMode, Query, SDKUserMessage,
 } from '@anthropic-ai/claude-agent-sdk' with { 'resolution-mode': 'import' };
+import { toInvocables } from './map-commands';
 import { mapEvent } from './map-events';
 import { redactSecrets } from './redact';
 import type {
-  AgentEvent, AgentProvider, AgentRun, EffortLevel, ModelInfo, PermissionMode,
+  AgentEvent, AgentProvider, AgentRun, EffortLevel, Invocable, ModelInfo, PermissionMode,
   StartOptions, ToolDecision,
 } from '../types';
 
@@ -215,6 +216,40 @@ export class ClaudeProvider implements AgentProvider {
   constructor(private readonly loadQueryFn: () => Promise<QueryFn> = loadQuery) {}
 
   listModels(): ModelInfo[] { return MODELS; }
+
+  /**
+   * The cwd's catalog, with no session. Constructs a throwaway query over a
+   * prompt stream that never yields, asks it for the command list, and closes
+   * it. Nothing is ever sent, so there is no turn, no tokens and no agent
+   * work — only the CLI's init handshake.
+   *
+   * This exists because the session's own query is constructed lazily on the
+   * first send() (only construction can set `bypass`), and the menu has to
+   * work before that first message — creating a session in order to run a
+   * slash command is the primary case, not an edge one.
+   *
+   * Rejections propagate: CatalogService decides the retry policy, and
+   * swallowing here would hide a permanently broken CLI behind an empty menu.
+   */
+  async listInvocables(cwd: string): Promise<Invocable[]> {
+    const query = await this.loadQueryFn();
+    // A channel that is closed immediately: the query needs an async iterable
+    // for `prompt`, and this one ends without ever yielding a message.
+    const prompts = new Channel<SDKUserMessage>();
+    prompts.close();
+    const probe = query({ prompt: prompts, options: { cwd } });
+    try {
+      return toInvocables(await probe.supportedCommands());
+    } finally {
+      // finally, not a success-path close: a failed control request must not
+      // leak a CLI subprocess for the life of the window.
+      try {
+        probe.close();
+      } catch {
+        // Best-effort: the probe is being discarded regardless.
+      }
+    }
+  }
 
   start(opts: StartOptions): AgentRun {
     const events = new Channel<AgentEvent>();
