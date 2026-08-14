@@ -113,6 +113,7 @@
 import type {
   CanUseTool, Options,
   Query,
+  EffortLevel as SdkEffortLevel,
   PermissionMode as SdkPermissionMode,
   SDKUserMessage,
 } from '@anthropic-ai/claude-agent-sdk' with { 'resolution-mode': 'import' };
@@ -417,6 +418,13 @@ export class ClaudeProvider implements AgentProvider {
       // in. An id the catalog does not list keeps whatever it was given — the
       // CLI is the authority on models this build has never heard of.
       const effort = resolveEffort(findModel(this.listModels(), pendingModel), pendingEffort);
+      // 'ultra' is Codex-only: no Claude model's `effort.levels` ever lists
+      // it (see providers/types.ts), so `resolveEffort` can only return it
+      // here for a Claude model if the catalog itself is wrong — not
+      // something this cast should silently paper over further than the SDK
+      // already would. The SDK's own `EffortLevel` predates 'ultra' and has
+      // no reason to grow it, which is why the widened, shared union needs a
+      // narrowing cast at this boundary rather than the SDK type following it.
       return {
         cwd: opts.cwd,
         model: pendingModel,
@@ -432,7 +440,7 @@ export class ClaudeProvider implements AgentProvider {
         // Safe on models without adaptive thinking — verified on Haiku, which
         // takes the same option and returns a summary.
         thinking: { type: 'adaptive', display: 'summarized' },
-        ...(effort !== undefined ? { effort } : {}),
+        ...(effort !== undefined ? { effort: effort as SdkEffortLevel } : {}),
         ...(isBypassMode ? { allowDangerouslySkipPermissions: true } : {}),
       };
     };
@@ -527,7 +535,8 @@ export class ClaudeProvider implements AgentProvider {
           // Best-effort: an effort change that the SDK rejects (e.g. the model
           // doesn't support it) is not a failed agent turn, so it is not
           // surfaced as a turn-end error — logged only. See the header comment.
-          queryRef.applyFlagSettings({ effortLevel: next }).catch((reason: unknown) => {
+          // Same 'ultra' narrowing as buildOptions above.
+          queryRef.applyFlagSettings({ effortLevel: next as SdkEffortLevel }).catch((reason: unknown) => {
             console.warn('[hiiiid-code] applyFlagSettings rejected', 'effort=', next, 'reason=', errorMessage(reason));
           });
         } catch (err) {

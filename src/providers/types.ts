@@ -1,4 +1,4 @@
-export type EffortLevel = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+export type EffortLevel = 'low' | 'medium' | 'high' | 'xhigh' | 'max' | 'ultra';
 /**
  * 'default'     — prompt on anything that falls through to a prompt
  * 'acceptEdits' — auto-accept file edits, still prompt for everything else
