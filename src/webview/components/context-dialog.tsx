@@ -33,22 +33,65 @@ function splitPath(path: string): { dir: string; base: string } {
     : { dir: path.slice(0, cut + 1), base: path.slice(cut + 1) };
 }
 
+/**
+ * The three used slices, densest first, plus the track that stands for the
+ * free remainder.
+ *
+ * One hue at three strengths rather than three hues: the panel inherits the
+ * user's VS Code theme, and a palette of its own would read as a guest in it.
+ * The order is fixed, so the tint doubles as the row's key.
+ */
+const SLICE_FILL = {
+  system: 'bg-primary',
+  memory: 'bg-primary/60',
+  conversation: 'bg-primary/30',
+  free: 'bg-muted-foreground/25',
+} as const;
+
+type SliceKey = keyof typeof SLICE_FILL;
+
+/**
+ * The window as a single 100% track, because these four numbers are parts of
+ * one whole. Four independent 0–100 bars said the opposite, and at the
+ * everyday values — 2%, 0%, 2%, 96% — three of them rendered as an empty
+ * groove beside one full one, which is noise where a shape should be.
+ */
+function StackedBar({ slices }: { slices: { key: SliceKey; percent: number }[] }) {
+  return (
+    <div className="flex h-2 overflow-hidden rounded-full bg-muted" aria-hidden="true">
+      {slices.map(({ key, percent }) => (
+        <span
+          key={key}
+          className={SLICE_FILL[key]}
+          // A slice under about half a percent rounds to nothing at this
+          // width. It is present, so it gets the thinnest mark that still
+          // reads as one — being a hair wide than true beats vanishing.
+          style={{ width: `${percent}%`, minWidth: percent > 0 ? '2px' : undefined }}
+        />
+      ))}
+    </div>
+  );
+}
+
 function Row({
-  label, percent, muted,
-}: { label: string; percent: number; muted?: boolean }) {
+  slice, label, percent,
+}: { slice: SliceKey; label: string; percent: number }) {
   const value = clampPercent(percent);
   return (
-    <div className="flex items-center gap-2 py-0.5">
-      <span className="w-24 shrink-0 truncate" title={label}>{label}</span>
-      <span className="h-1.5 min-w-0 flex-1 rounded-full bg-muted">
-        <span
-          // `Free` is the absence of use: filling its bar with the accent
-          // would say the opposite of what the row means.
-          className={cn('block h-full rounded-full', muted ? 'bg-muted-foreground/40' : 'bg-primary')}
-          style={{ width: `${value}%` }}
-        />
+    <div className="flex items-center gap-2 py-1">
+      {/* Centered, not baseline-aligned: the swatch has no text in it, so a
+          baseline is inferred from its box edge and lands a pixel or two off
+          the label it keys. */}
+      <span aria-hidden="true" className={cn('size-2 shrink-0 rounded-xs', SLICE_FILL[slice])} />
+      <span className="min-w-0 flex-1 truncate" title={label}>{label}</span>
+      <span
+        className={cn(
+          'shrink-0 tabular-nums',
+          slice === 'free' ? 'text-muted-foreground' : undefined,
+        )}
+      >
+        {value}%
       </span>
-      <span className="w-9 shrink-0 text-right tabular-nums">{value}%</span>
     </div>
   );
 }
@@ -62,7 +105,9 @@ function MemoryRow({
       <Button
         variant="link"
         size="xs"
-        className="h-auto min-w-0 flex-1 justify-start gap-0 px-0 pl-3 font-normal"
+        // pl-4 lines the filename up with the labels beside their swatches,
+        // so the files read as belonging to the Memory row above them.
+        className="h-auto min-w-0 flex-1 justify-start gap-0 px-0 pl-4 font-normal"
         title={path}
         onClick={() => onOpenFile(path)}
       >
@@ -77,7 +122,7 @@ function MemoryRow({
         )}
         <span className="shrink-0">{base}</span>
       </Button>
-      <span className="w-9 shrink-0 text-right tabular-nums text-muted-foreground">
+      <span className="shrink-0 tabular-nums text-muted-foreground">
         {formatPercent(clampPercent(percent))}
       </span>
     </div>
@@ -125,21 +170,31 @@ function Body({
 
   const b = result.breakdown;
   return (
-    <div>
-      <Row label="System prompt" percent={b.systemPercent} />
-      <Row label="Memory" percent={b.memoryPercent} />
-      {b.memoryFiles.length === 0 ? (
-        <p className="py-0.5 pl-3 text-muted-foreground">No memory files loaded</p>
-      ) : b.memoryFiles.map((file) => (
-        <MemoryRow
-          key={file.path}
-          path={file.path}
-          percent={file.percent}
-          onOpenFile={onOpenFile}
-        />
-      ))}
-      <Row label="Conversation" percent={b.conversationPercent} />
-      <Row label="Free" percent={b.freePercent} muted />
+    <div className="space-y-3">
+      <StackedBar
+        slices={[
+          { key: 'system', percent: clampPercent(b.systemPercent) },
+          { key: 'memory', percent: clampPercent(b.memoryPercent) },
+          { key: 'conversation', percent: clampPercent(b.conversationPercent) },
+          { key: 'free', percent: clampPercent(b.freePercent) },
+        ]}
+      />
+      <div>
+        <Row slice="system" label="System prompt" percent={b.systemPercent} />
+        <Row slice="memory" label="Memory" percent={b.memoryPercent} />
+        {b.memoryFiles.length === 0 ? (
+          <p className="py-0.5 pl-4 text-muted-foreground">No memory files loaded</p>
+        ) : b.memoryFiles.map((file) => (
+          <MemoryRow
+            key={file.path}
+            path={file.path}
+            percent={file.percent}
+            onOpenFile={onOpenFile}
+          />
+        ))}
+        <Row slice="conversation" label="Conversation" percent={b.conversationPercent} />
+        <Row slice="free" label="Free" percent={b.freePercent} />
+      </div>
     </div>
   );
 }
@@ -175,7 +230,10 @@ export function ContextDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="gap-3 text-xs">
         <DialogHeader>
-          <div className="flex items-baseline justify-between gap-2 border-b border-border pb-2">
+          {/* pr-7 clears the close button, which is positioned over this
+              row's top-right corner. Without it the reading — the one number
+              the header exists to give — sits under the X. */}
+          <div className="flex items-baseline justify-between gap-2 border-b border-border pr-7 pb-2">
             <DialogTitle className="text-sm">Context</DialogTitle>
             <span
               className={cn(

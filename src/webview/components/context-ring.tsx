@@ -33,14 +33,15 @@ export function ContextRing({
           render={(
             <Button
               variant="ghost"
-              size="xs"
+              // Send's own size. The ring sits in the same addon row, and a
+              // shorter control beside it reads as a misalignment rather
+              // than as a smaller thing. In the danger state the percentage
+              // rides alongside, so the height is held but the width comes
+              // from the content.
+              size={danger ? 'sm' : 'icon-sm'}
               aria-label={label}
               onClick={() => setOpen(true)}
-              // h-6, not the ring's own 14px: a 14px target is under the
-              // floor for a control this panel expects to be clickable and
-              // keyboard-reachable. In the danger state the label rides
-              // alongside, so the width comes from the content instead.
-              className={cn('ml-1 shrink-0', danger ? 'px-1' : 'w-6 px-0')}
+              className={cn('ml-1 shrink-0', danger && 'px-1.5')}
             />
           )}
         >
