@@ -184,6 +184,25 @@ suite('TranscriptStore', () => {
     });
   });
 
+  test('a window with an object label or usedPercent is dropped — both render as React children', async () => {
+    await fs.writeFile(
+      path.join(dir, 'usage.json'),
+      JSON.stringify({
+        providers: {
+          fake: [
+            { id: 'bad-label', label: { oops: true }, usedPercent: 62 },
+            { id: 'bad-percent', label: 'Session (5h)', usedPercent: [62] },
+            { id: 'five-hour', label: 'Session (5h)', usedPercent: 62 },
+          ],
+        },
+      }),
+      'utf8',
+    );
+    assert.deepStrictEqual(await new TranscriptStore(dir).readUsage(), {
+      providers: { fake: [{ id: 'five-hour', label: 'Session (5h)', usedPercent: 62 }] },
+    });
+  });
+
   test('remove deletes the file, clears the cache, and stays gone after a later flush', async () => {
     store.append('s1', item('a', 'one'));
     store.append('s1', item('b', 'two'));

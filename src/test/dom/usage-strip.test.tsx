@@ -90,4 +90,21 @@ suite('UsageStrip', () => {
     const chip = screen.getByLabelText('Session (5h) 62% used');
     assert.strictEqual(chip.getAttribute('tabindex'), '0');
   });
+
+  test('with several providers in the roster, an unreported one still names itself in the quiet state', () => {
+    renderWithStore(<UsageStrip />);
+    sendFromHost({
+      t: 'hydrate',
+      sessions: [summary('a'), summary('b', { providerId: 'other' })],
+      layout: layoutOf('a', 'b'),
+      snapshots: [snapshot('a'), snapshot('b', { providerId: 'other' })],
+      catalog: [...catalog(), { id: 'other', displayName: 'Other', models: [] }],
+      usage: {},
+    });
+
+    assert.deepStrictEqual(
+      screen.getAllByText('Plan usage not reported').map((el) => el.parentElement?.textContent),
+      ['FakePlan usage not reported', 'OtherPlan usage not reported'],
+    );
+  });
 });

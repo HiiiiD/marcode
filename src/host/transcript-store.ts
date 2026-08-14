@@ -29,14 +29,21 @@ const EMPTY_INDEX: StoredIndex = {
  * each provider's value must be an array (so `.map()` exists); and each
  * element of that array must be a non-null object with a string `id` (so
  * `w.id` can be read and used as a Map key without throwing on `null`,
- * `42`, or an object with no `id`). `label`/`usedPercent`/`resetsAt` are
- * deliberately NOT checked past that: a malformed value there is display
- * corruption the strip already renders safely (a bad percent just renders
- * oddly), not a crash, so validating it would make this a schema validator
- * rather than a throw-guard. A provider whose value fails the array check,
- * or an individual window that fails the element check, is dropped rather
- * than failing the whole file — one corrupt provider or window does not
- * blank out its siblings.
+ * `42`, or an object with no `id`). `resetsAt` is deliberately NOT checked
+ * past that: a malformed value there is display corruption the strip
+ * already renders safely — `Ring` guards with `Number.isFinite`, and a
+ * non-number `resetsAt` simply fails the `> now` comparison and is dropped —
+ * not a crash, so validating it would make this a schema validator rather
+ * than a throw-guard. `label` and `usedPercent` do NOT get that pass: both
+ * are rendered directly as React children in `usage-strip.tsx`, and React
+ * throws on an object or array child, which would take down the whole
+ * panel rather than just misrender one chip. So those two are checked here
+ * too — a string `label`, a numeric `usedPercent` — for the same reason as
+ * `id`: to keep the two calls above safe, this time by keeping what they
+ * hand to React safe rather than what they hand to `Map`/`Object.entries`.
+ * A provider whose value fails the array check, or an individual window
+ * that fails the element check, is dropped rather than failing the whole
+ * file — one corrupt provider or window does not blank out its siblings.
  */
 function validProviders(parsed: unknown): Record<string, UsageWindow[]> {
   if (typeof parsed !== 'object' || parsed === null) { return {}; }
@@ -54,6 +61,8 @@ function isUsageWindow(value: unknown): value is UsageWindow {
   return (
     typeof value === 'object' && value !== null
     && typeof (value as { id?: unknown }).id === 'string'
+    && typeof (value as { label?: unknown }).label === 'string'
+    && typeof (value as { usedPercent?: unknown }).usedPercent === 'number'
   );
 }
 

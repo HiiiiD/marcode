@@ -63,8 +63,18 @@ function ProviderUsage({
   // Bedrock or Vertex, where plan limits do not exist), and one whose windows
   // have all expired unrefreshed. Asserting any one of them would be a claim
   // we cannot support, so the copy says only what is true of all three.
+  //
+  // showName applies here too, not just in the chip branch below: with
+  // several providers in the roster, an unlabelled "Plan usage not reported"
+  // is ambiguous about which account it describes, and two of them side by
+  // side are indistinguishable.
   if (!live || live.length === 0) {
-    return <span className="text-muted-foreground">Plan usage not reported</span>;
+    return (
+      <span className="flex shrink-0 items-center gap-3 text-muted-foreground">
+        {showName && <span>{displayName}</span>}
+        <span>Plan usage not reported</span>
+      </span>
+    );
   }
 
   return (
