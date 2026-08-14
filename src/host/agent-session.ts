@@ -31,6 +31,12 @@ export interface SessionSink {
    * owns the map, exactly like `invocables`.
    */
   usageWindow(providerId: string, window: UsageWindow): void;
+  /**
+   * A session pulled a whole window set for its provider. Keyed by provider,
+   * not by session: plan limits belong to the account. A whole set, not one
+   * window, because a pull is a snapshot — see SessionManager.usageWindows.
+   */
+  usageWindows(providerId: string, windows: UsageWindow[] | undefined): void;
 }
 
 const TITLE_MAX = 60;
@@ -319,6 +325,24 @@ export class AgentSession {
   }
 
   /**
+   * Best-effort, exactly like refreshContextPercent: the strip is decoration
+   * over a live conversation, so a provider that cannot answer must not turn
+   * a completed turn into an error item. Fire-and-forget from handle(),
+   * hence the internal catch — a rejection here would otherwise be an
+   * unhandled rejection.
+   */
+  private async refreshUsage(): Promise<void> {
+    if (!this.run.usageWindows) { return; }
+    try {
+      const windows = await this.run.usageWindows();
+      if (this.disposed) { return; }
+      this.sink.usageWindows(this._state.providerId, windows);
+    } catch {
+      // See the doc comment: an unavailable pull is not a failed turn.
+    }
+  }
+
+  /**
    * The one place `contextPercent` and `lastContext` are written, so the
    * ring, its danger threshold and the popover header — everything
    * downstream of those fields — are always the same measurement as of the
@@ -513,6 +537,10 @@ export class AgentSession {
         this.sink.usageWindow(this._state.providerId, event.window);
         return;
 
+      case 'usage-stale':
+        void this.refreshUsage();
+        return;
+
       case 'mcp-servers':
         // Replace-whole, not a merge: the provider always sends the full
         // array, so hydrate and live update are the same code path.
@@ -534,6 +562,7 @@ export class AgentSession {
           this.setStatus(this.pending.size > 0 ? 'awaiting-approval' : 'idle');
           void this.scheduleFlush();
           void this.refreshContextPercent();
+          void this.refreshUsage();
         }
         return;
     }

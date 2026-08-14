@@ -628,6 +628,45 @@ suite('SessionManager', () => {
     assert.strictEqual(emitted.filter((m) => m.t === 'usage-windows').length, before);
   });
 
+  test('a reported set replaces the provider set wholesale', async () => {
+    const { manager: local } = await makeManager();
+    local.usageWindows('fake', [
+      { id: 'five-hour', label: 'Session (5h)', usedPercent: 10 },
+      { id: 'seven-day', label: 'Week', usedPercent: 4 },
+    ]);
+    local.usageWindows('fake', [{ id: 'five-hour', label: 'Session (5h)', usedPercent: 12 }]);
+
+    // Replacement, not upsert: a window the account stopped reporting must be
+    // able to disappear. An upsert would strand 'seven-day' forever.
+    assert.deepStrictEqual(local.usageSnapshot().fake.map((w) => w.id), ['five-hour']);
+  });
+
+  test('an identical set emits nothing', async () => {
+    const { manager: local, emitted } = await makeManager();
+    const windows = [{ id: 'five-hour', label: 'Session (5h)', usedPercent: 10 }];
+    local.usageWindows('fake', windows);
+    const before = emitted.filter((m) => m.t === 'usage-windows').length;
+    local.usageWindows('fake', [...windows]);
+
+    // The CLI re-announces on reconnect; re-rendering the strip for an
+    // unchanged set is work for nothing.
+    assert.strictEqual(emitted.filter((m) => m.t === 'usage-windows').length, before);
+  });
+
+  test('undefined clears the provider entirely and emits the clearance', async () => {
+    const { manager: local, emitted } = await makeManager();
+    local.usageWindows('fake', [{ id: 'five-hour', label: 'Session (5h)', usedPercent: 10 }]);
+    local.usageWindows('fake', undefined);
+
+    // An account that moved from a subscription to an API key must not keep
+    // showing its last subscription numbers forever.
+    assert.deepStrictEqual(local.usageSnapshot(), {});
+    assert.deepStrictEqual(
+      emitted.filter((m) => m.t === 'usage-windows').at(-1),
+      { t: 'usage-windows', providerId: 'fake', windows: [] },
+    );
+  });
+
   test('a window past its reset is dropped rather than shown stale', async () => {
     const { manager: local, provider } = await makeManager();
     await local.create('fake', '/w');

@@ -31,6 +31,7 @@ class RecordingSink implements SessionSink {
   // This suite is about tool nesting; usage never arrives here, but the sink
   // must still satisfy the interface.
   usageWindow() {}
+  usageWindows() {}
   changed() { this.changes++; }
 }
 

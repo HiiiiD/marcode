@@ -134,6 +134,15 @@ export type AgentEvent =
    * event carries one window — never the whole set.
    */
   | { kind: 'usage-window'; window: UsageWindow }
+  /**
+   * The provider believes its plan usage has moved and a pull is due.
+   *
+   * Carries no data on purpose. `rate_limit_event`, which raises this, does
+   * not populate a utilization percentage at steady state — reading values
+   * off it is what made the strip permanently blank. The numbers come from
+   * `AgentRun.usageWindows()`.
+   */
+  | { kind: 'usage-stale' }
   /** Full replacement list, not a delta. Emitted whenever the provider notices a change. */
   | { kind: 'invocables'; entries: Invocable[] }
   /** Full replacement list, not a delta — same snapshot semantics as `invocables`. */

@@ -526,6 +526,30 @@ export class SessionManager implements SessionSink {
     this.schedulePersist();
   }
 
+  usageWindows(providerId: string, windows: UsageWindow[] | undefined): void {
+    // A pull is a snapshot, so it REPLACES the provider's map rather than
+    // upserting into it — that is what lets a window the account stopped
+    // reporting actually disappear. (The old push carried one window at a
+    // time and had to upsert; this does not.)
+    const next = windows ?? [];
+    const prev = this.windowsFor(providerId);
+    const same = prev.length === next.length && prev.every((w, i) =>
+      w.id === next[i]?.id
+      && w.usedPercent === next[i]?.usedPercent
+      && w.resetsAt === next[i]?.resetsAt);
+    if (same && (windows !== undefined || !this.usage.has(providerId))) { return; }
+
+    if (windows === undefined) {
+      // A positive "this account has no plan limits". Drop the provider so a
+      // subscription-to-API-key switch cannot keep showing stale numbers.
+      this.usage.delete(providerId);
+    } else {
+      this.usage.set(providerId, new Map(orderWindows(windows).map((w) => [w.id, w])));
+    }
+    this.emit({ t: 'usage-windows', providerId, windows: this.windowsFor(providerId) });
+    this.schedulePersist();
+  }
+
   mcp(id: SessionId, servers: McpServerStatus[]): void {
     // Gated on visibility for the same reason patch() is: a background
     // session's server list is rendered nowhere. Unlike invocables, this is
