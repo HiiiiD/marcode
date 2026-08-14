@@ -192,6 +192,21 @@ suite('AgentSession', () => {
     await session.dispose();
   });
 
+  test('an mcp-named permission event carries the bare name and the parsed server', async () => {
+    const provider = new FakeProvider(() => [
+      { kind: 'permission', id: 'r1', name: 'mcp__github__create_pr', input: {} },
+    ]);
+    const session = new AgentSession(baseState(), provider, store, sink);
+    session.send('open a pr');
+    await settle();
+
+    const snap = await session.snapshot();
+    const perm = snap.items.find((i) => i.role === 'permission');
+    assert.strictEqual((perm as { name: string }).name, 'create_pr');
+    assert.strictEqual((perm as { mcpServer?: string }).mcpServer, 'github');
+    await session.dispose();
+  });
+
   test('tool-start then tool-end replaces the tool item in place', async () => {
     const provider = new FakeProvider(() => [
       { kind: 'tool-start', id: 't1', name: 'Read', input: { path: 'a.ts' } },

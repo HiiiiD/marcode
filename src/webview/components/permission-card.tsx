@@ -47,8 +47,11 @@ export function PermissionCard({
   const [answered, setAnswered] = useState(false);
 
   if (item.state !== 'pending') {
+    const label = item.mcpServer
+      ? `${item.mcpServer} ${item.name} — ${item.state}`
+      : `${item.name} — ${item.state}`;
     return (
-      <TranscriptItemShell role="permission" label={`${item.name} — ${item.state}`} ts={item.ts}>
+      <TranscriptItemShell role="permission" label={label} ts={item.ts}>
         {item.reason && <div className="text-xs text-muted-foreground">{item.reason}</div>}
         <details className="text-xs">
           <summary className="cursor-default text-muted-foreground">What was requested</summary>
@@ -72,8 +75,14 @@ export function PermissionCard({
   if (!isLive) {
     return (
       <div className="my-0 rounded border-2 border-dashed border-muted-foreground/40 p-2 text-xs">
-        <div className="mb-1 font-medium text-muted-foreground">
-          {item.name} — no longer awaiting a response
+        <div className="mb-1 flex items-baseline gap-2 font-medium text-muted-foreground">
+          {item.mcpServer && (
+            // Muted, not colour-per-server — mirrors ToolCard's badge treatment.
+            <span className="shrink-0 rounded bg-muted px-1 text-muted-foreground">
+              {item.mcpServer}
+            </span>
+          )}
+          <span>{item.name} — no longer awaiting a response</span>
         </div>
         <pre className="mb-2 max-h-48 overflow-auto rounded bg-muted p-1 wrap-break-word whitespace-pre-wrap">
 {diff ?? safeStringify(item.input)}
@@ -102,6 +111,12 @@ export function PermissionCard({
   return (
     <div className="my-0 rounded border-2 border-destructive bg-destructive/10 p-2 text-xs">
       <div className="mb-1 flex items-baseline gap-2">
+        {item.mcpServer && (
+          // Muted, not colour-per-server — mirrors ToolCard's badge treatment.
+          <span className="shrink-0 rounded bg-muted px-1 text-muted-foreground">
+            {item.mcpServer}
+          </span>
+        )}
         <span className="font-medium">Allow {item.name}?</span>
         <span className="truncate text-muted-foreground" title={cwd}>{folderName(cwd)}</span>
       </div>

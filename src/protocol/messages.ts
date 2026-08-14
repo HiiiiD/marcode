@@ -28,6 +28,8 @@ export type TranscriptItem =
   | (ItemBase & {
       role: 'permission'; requestId: string; name: string; input: unknown;
       state: 'pending' | 'allowed' | 'denied'; reason?: string;
+      /** Parsed from an `mcp__<server>__<tool>` name; `name` holds the bare tool. */
+      mcpServer?: string;
     })
   | (ItemBase & { role: 'error'; message: string });
 
