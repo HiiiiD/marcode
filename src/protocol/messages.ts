@@ -1,8 +1,8 @@
 import type {
-  EditorContext, EffortLevel, ModelInfo, PermissionMode, ToolDecision,
+  EditorContext, EffortLevel, Invocable, ModelInfo, PermissionMode, ToolDecision,
 } from '../providers/types';
 
-export type { EditorContext, EffortLevel, ModelInfo, PermissionMode, ToolDecision };
+export type { EditorContext, EffortLevel, Invocable, ModelInfo, PermissionMode, ToolDecision };
 
 export type SessionId = string;
 export type SessionStatus = 'idle' | 'running' | 'awaiting-approval' | 'error';
@@ -59,6 +59,11 @@ export interface SessionSnapshot extends SessionState {
   /** More history available before items[0]. */
   hasMore: boolean;
   pending: PermissionRequest[];
+  /**
+   * The cwd's catalog, when the host has one. In-memory host state: absent
+   * before the probe resolves, and absent forever if it failed.
+   */
+  invocables?: Invocable[];
 }
 
 export interface ProviderInfo {
@@ -98,5 +103,6 @@ export type HostToWebview =
   | { t: 'session-prepend'; id: SessionId; items: TranscriptItem[]; hasMore: boolean }
   | { t: 'session-status'; id: SessionId; status: SessionStatus }
   | { t: 'sessions-changed'; sessions: SessionSummary[] }
+  | { t: 'session-invocables'; id: SessionId; entries: Invocable[] }
   /** Broadcast, not session-addressed: every composer shows the same editor. */
   | { t: 'editor-context'; ctx: EditorContext | null };

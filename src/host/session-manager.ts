@@ -1,6 +1,7 @@
 import { AgentSession, type SessionSink } from './agent-session';
+import { catalogKey, CatalogService } from './catalog-service';
 import type { StoredIndex, TranscriptStore } from './transcript-store';
-import type { AgentProvider, EffortLevel } from '../providers/types';
+import type { AgentProvider, EffortLevel, Invocable } from '../providers/types';
 import type {
   HostToWebview, PaneLayout, ProviderInfo, SessionId, SessionState,
   SessionStatus, SessionSummary, TranscriptPatch,
@@ -50,6 +51,9 @@ export class SessionManager implements SessionSink {
   private snapshotting = new Map<SessionId, TranscriptPatch[]>();
   private snapshotSeq = new Map<SessionId, number>();
   private nextSnapshotSeq = 0;
+  private readonly catalogSvc = new CatalogService(
+    (key, entries) => { this.fanOutCatalog(key, entries); },
+  );
 
   constructor(
     private readonly store: TranscriptStore,
@@ -81,6 +85,36 @@ export class SessionManager implements SessionSink {
 
   layout(): PaneLayout { return this.paneLayout; }
 
+  private keyOf(state: SessionState): string {
+    return catalogKey(state.providerId, state.cwd);
+  }
+
+  /**
+   * Pushes a catalog to every session on this key — live or not — and emits
+   * it to the visible ones. Meta, not `live`, is the roster: a session that
+   * is not materialized still needs its snapshot to carry the catalog when
+   * it is next revealed.
+   *
+   * Skips the direct emit while a session's snapshot fetch is in flight
+   * (`snapshotting.has(id)`) — the same ordering hazard `patch()` guards
+   * against. `visible` is set synchronously at the top of `setVisible()`,
+   * before its `await session.snapshot()`; emitting here during that window
+   * would land `session-invocables` before the `session-snapshot` it
+   * belongs to. `setInvocables` still runs unconditionally, so the pending
+   * snapshot carries the fresh value, and `setVisible`'s live-branch
+   * catch-up re-announces it in a standalone message once the snapshot has
+   * landed — see there.
+   */
+  private fanOutCatalog(key: string, entries: Invocable[]): void {
+    for (const state of this.meta.values()) {
+      if (this.keyOf(state) !== key) { continue; }
+      this.live.get(state.id)?.setInvocables(entries);
+      if (this.visible.has(state.id) && !this.snapshotting.has(state.id)) {
+        this.emit({ t: 'session-invocables', id: state.id, entries });
+      }
+    }
+  }
+
   setLayout(layout: PaneLayout): void {
     this.paneLayout = layout;
     this.schedulePersist();
@@ -110,6 +144,9 @@ export class SessionManager implements SessionSink {
     const session = new AgentSession(state, provider, this.store, this);
     this.meta.set(state.id, state);
     this.live.set(state.id, session);
+    const cached = this.catalogSvc.get(this.keyOf(state));
+    if (cached) { session.setInvocables(cached); }
+    this.catalogSvc.ensure(this.keyOf(state), provider, state.cwd);
     this.changed();
     return session;
   }
@@ -129,6 +166,9 @@ export class SessionManager implements SessionSink {
     state.status = 'idle';
     const session = new AgentSession(state, provider, this.store, this);
     this.live.set(id, session);
+    const cached = this.catalogSvc.get(this.keyOf(state));
+    if (cached) { session.setInvocables(cached); }
+    this.catalogSvc.ensure(this.keyOf(state), provider, state.cwd);
     this.changed();
     return session;
   }
@@ -150,6 +190,17 @@ export class SessionManager implements SessionSink {
         const snapshot = await session.snapshot();
         if (!this.claimSnapshot(id, seq)) { continue; }
         this.emit({ t: 'session-snapshot', session: snapshot });
+        // Every reveal with a known catalog re-announces it in a standalone
+        // message — whether that catalog was cached long ago or only just
+        // landed (fanOutCatalog withholds its emit for the whole time this
+        // session's snapshot is in flight; see its doc comment). Either way
+        // the webview needs no special case for a pane revealed before its
+        // probe resolved: it always gets a `session-invocables` right after
+        // the `session-snapshot` that already carries the same value inline.
+        const cachedEntries = this.catalogSvc.get(this.keyOf(session.state));
+        if (cachedEntries) {
+          this.emit({ t: 'session-invocables', id, entries: cachedEntries });
+        }
         this.drainSnapshotBuffer(id);
         continue;
       }
@@ -158,11 +209,16 @@ export class SessionManager implements SessionSink {
         if (this.snapshotSeq.get(id) === seq) { this.snapshotting.delete(id); }
         continue;
       }
+      const provider = this.providers.get(state.providerId);
+      if (provider) { this.catalogSvc.ensure(this.keyOf(state), provider, state.cwd); }
       const { items, hasMore } = await this.store.tail(id);
       if (!this.claimSnapshot(id, seq)) { continue; }
       this.emit({
         t: 'session-snapshot',
-        session: { ...state, items, hasMore, pending: [] },
+        session: {
+          ...state, items, hasMore, pending: [],
+          invocables: this.catalogSvc.get(this.keyOf(state)),
+        },
       });
       this.drainSnapshotBuffer(id);
     }
@@ -251,6 +307,15 @@ export class SessionManager implements SessionSink {
 
   status(id: SessionId, status: SessionStatus): void {
     this.emit({ t: 'session-status', id, status });
+  }
+
+  invocables(id: SessionId, entries: Invocable[]): void {
+    const state = this.meta.get(id);
+    if (!state) { return; }
+    // Cache under the cwd key and fan out. The reporting session gets the
+    // entries back through the same fan-out as its siblings, so there is one
+    // path, not two.
+    this.catalogSvc.set(this.keyOf(state), entries);
   }
 
   changed(): void {

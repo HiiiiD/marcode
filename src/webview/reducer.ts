@@ -1,6 +1,7 @@
 import type {
-  EditorContext, HostToWebview, PaneLayout, PermissionRequest, ProviderInfo, SessionId,
-  SessionSummary, TranscriptItem,
+  EditorContext,
+  HostToWebview, Invocable, PaneLayout, PermissionRequest, ProviderInfo, SessionId,
+  SessionSummary, TranscriptItem
 } from '../protocol/messages';
 
 export interface PaneState {
@@ -8,6 +9,8 @@ export interface PaneState {
   items: TranscriptItem[];
   hasMore: boolean;
   pending: PermissionRequest[];
+  /** The cwd's catalog. Absent until the host has one; see the spec's States. */
+  invocables?: Invocable[];
 }
 
 export interface ClientState {
@@ -54,6 +57,7 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
       for (const s of msg.snapshots) {
         byId[s.id] = {
           summary: s, items: s.items, hasMore: s.hasMore, pending: s.pending,
+          invocables: s.invocables,
         };
       }
       return {
@@ -97,8 +101,21 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
         ...state,
         byId: {
           ...state.byId,
-          [s.id]: { summary: s, items: s.items, hasMore: s.hasMore, pending: s.pending },
+          [s.id]: {
+            summary: s, items: s.items, hasMore: s.hasMore, pending: s.pending,
+            invocables: s.invocables,
+          },
         },
+      };
+    }
+
+    case 'session-invocables': {
+      const pane = state.byId[msg.id];
+      if (!pane) { return state; }
+      // Full replacement, matching the seam: no merge, no ordering to keep.
+      return {
+        ...state,
+        byId: { ...state.byId, [msg.id]: { ...pane, invocables: msg.entries } },
       };
     }
 

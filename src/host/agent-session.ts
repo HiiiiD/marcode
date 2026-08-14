@@ -1,16 +1,24 @@
 import type {
-  AgentEvent, AgentProvider, AgentRun, EditorContext, EffortLevel, PermissionMode, ToolDecision,
-} from '../providers/types';
-import type {
   PermissionRequest, SessionId, SessionSnapshot, SessionState, SessionStatus,
   TranscriptItem, TranscriptPatch,
 } from '../protocol/messages';
+import type {
+  AgentEvent, AgentProvider, AgentRun,
+  EditorContext,
+  EffortLevel, Invocable, PermissionMode, ToolDecision
+} from '../providers/types';
 import type { TranscriptStore } from './transcript-store';
 
 export interface SessionSink {
   patch(id: SessionId, patch: TranscriptPatch): void;
   status(id: SessionId, status: SessionStatus): void;
   changed(): void;
+  /**
+   * A running session reported its catalog. Goes UP to the manager, which
+   * owns the per-cwd cache and the fan-out; it is not this session's answer
+   * alone.
+   */
+  invocables(id: SessionId, entries: Invocable[]): void;
 }
 
 const TITLE_MAX = 60;
@@ -38,6 +46,11 @@ export class AgentSession {
    * reason.
    */
   private flushChain: Promise<void> = Promise.resolve();
+  /**
+   * The cwd catalog as last told to us by the manager. Held only so
+   * snapshot() can carry it; this session is not its owner.
+   */
+  private invocableEntries: Invocable[] | undefined;
 
   constructor(
     private readonly _state: SessionState,
@@ -140,6 +153,11 @@ export class AgentSession {
     this.sink.changed();
   }
 
+  setInvocables(entries: Invocable[]): void {
+    // Replace wholesale: the catalog is always a full list.
+    this.invocableEntries = entries;
+  }
+  
   setIncludeEditorContext(on: boolean): void {
     this._state.includeEditorContext = on;
     this._state.updatedAt = Date.now();
@@ -182,7 +200,10 @@ export class AgentSession {
   async snapshot(): Promise<SessionSnapshot> {
     await this.scheduleFlush();
     const { items, hasMore } = await this.store.tail(this._state.id);
-    return { ...this._state, items, hasMore, pending: [...this.pending.values()] };
+    return {
+      ...this._state, items, hasMore, pending: [...this.pending.values()],
+      invocables: this.invocableEntries,
+    };
   }
 
   async loadMore(beforeItemId: string) {
@@ -274,6 +295,10 @@ export class AgentSession {
         this.setStatus('awaiting-approval');
         return;
       }
+
+      case 'invocables':
+        this.sink.invocables(this._state.id, event.entries);
+        return;
 
       case 'usage':
         this._state.usage = {

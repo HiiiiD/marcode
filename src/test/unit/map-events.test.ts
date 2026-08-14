@@ -130,4 +130,28 @@ suite('mapEvent', () => {
   test('unrecognised messages produce no events', () => {
     assert.deepStrictEqual(mapEvent({ type: 'stream_event' } as never), []);
   });
+
+  test('a commands_changed message becomes an invocables event', () => {
+    const out = mapEvent({
+      type: 'system', subtype: 'commands_changed',
+      commands: [{ name: 'init', description: 'Init', argumentHint: '' }],
+      uuid: 'u', session_id: 's',
+    } as never);
+
+    assert.deepStrictEqual(out, [
+      { kind: 'invocables', entries: [{ name: 'init', description: 'Init' }] },
+    ]);
+  });
+
+  test('a commands_changed message with an empty list emits an empty snapshot', () => {
+    const out = mapEvent({
+      type: 'system', subtype: 'commands_changed', commands: [], uuid: 'u', session_id: 's',
+    } as never);
+
+    assert.deepStrictEqual(out, [{ kind: 'invocables', entries: [] }]);
+  });
+
+  test('other system subtypes still map to nothing', () => {
+    assert.deepStrictEqual(mapEvent({ type: 'system', subtype: 'status', session_id: 's' } as never), []);
+  });
 });
