@@ -1,5 +1,5 @@
 import * as assert from 'assert';
-import { screen } from '@testing-library/react';
+import { act, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ContextRing } from '@/components/context-ring';
 import type { PaneState } from '@/reducer';
@@ -11,6 +11,21 @@ function pane(contextPercent?: number): PaneState {
     summary: summary('a', { contextPercent }),
     items: [], hasMore: false, pending: [],
   };
+}
+
+/**
+ * The trigger composes a Tooltip and a Popover on the same element. Base
+ * UI's own open/close transitions for both resolve on timers that outlive
+ * `userEvent.click`'s `act()` scope, so without this flush their state
+ * updates land after the test body returns and React logs a "not wrapped in
+ * act" warning even though the assertions that follow are correct. A
+ * microtask flush, not a timeout, is enough to let those timers settle.
+ */
+async function settle(): Promise<void> {
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+  });
 }
 
 suite('ContextRing', () => {
@@ -30,6 +45,7 @@ suite('ContextRing', () => {
     renderWithStore(<ContextRing pane={pane(43)} />);
 
     await userEvent.click(screen.getByLabelText('Context 43% used'));
+    await settle();
 
     assert.deepStrictEqual(posted().at(-1), { t: 'request-context', id: 'a' });
   });
@@ -37,6 +53,7 @@ suite('ContextRing', () => {
   test('renders the slices and memory files once the reply arrives', async () => {
     renderWithStore(<ContextRing pane={pane(43)} />);
     await userEvent.click(screen.getByLabelText('Context 43% used'));
+    await settle();
 
     sendFromHost({
       t: 'context-breakdown', id: 'a', result: { ok: true, breakdown: breakdown() },
@@ -50,6 +67,7 @@ suite('ContextRing', () => {
   test('a sub-one-percent memory file reads as <1%, never 0%', async () => {
     renderWithStore(<ContextRing pane={pane(43)} />);
     await userEvent.click(screen.getByLabelText('Context 43% used'));
+    await settle();
 
     sendFromHost({
       t: 'context-breakdown', id: 'a',
@@ -65,6 +83,7 @@ suite('ContextRing', () => {
   test('an empty memory list says so rather than showing a lone row', async () => {
     renderWithStore(<ContextRing pane={pane(43)} />);
     await userEvent.click(screen.getByLabelText('Context 43% used'));
+    await settle();
 
     sendFromHost({
       t: 'context-breakdown', id: 'a',
@@ -77,11 +96,13 @@ suite('ContextRing', () => {
   test('clicking a memory file asks the host to open it', async () => {
     renderWithStore(<ContextRing pane={pane(43)} />);
     await userEvent.click(screen.getByLabelText('Context 43% used'));
+    await settle();
     sendFromHost({
       t: 'context-breakdown', id: 'a', result: { ok: true, breakdown: breakdown() },
     });
 
     await userEvent.click(screen.getByRole('button', { name: /CLAUDE\.md/ }));
+    await settle();
 
     assert.deepStrictEqual(posted().at(-1), { t: 'open-file', path: '/repo/CLAUDE.md' });
   });
@@ -89,6 +110,7 @@ suite('ContextRing', () => {
   test('a not-ok reply shows its reason', async () => {
     renderWithStore(<ContextRing pane={pane(43)} />);
     await userEvent.click(screen.getByLabelText('Context 43% used'));
+    await settle();
 
     sendFromHost({
       t: 'context-breakdown', id: 'a',
