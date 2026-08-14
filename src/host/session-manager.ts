@@ -90,12 +90,22 @@ export class SessionManager implements SessionSink {
    * it to the visible ones. Meta, not `live`, is the roster: a session that
    * is not materialized still needs its snapshot to carry the catalog when
    * it is next revealed.
+   *
+   * Skips the direct emit while a session's snapshot fetch is in flight
+   * (`snapshotting.has(id)`) — the same ordering hazard `patch()` guards
+   * against. `visible` is set synchronously at the top of `setVisible()`,
+   * before its `await session.snapshot()`; emitting here during that window
+   * would land `session-invocables` before the `session-snapshot` it
+   * belongs to. `setInvocables` still runs unconditionally, so the pending
+   * snapshot carries the fresh value, and `setVisible`'s live-branch
+   * catch-up re-announces it in a standalone message once the snapshot has
+   * landed — see there.
    */
   private fanOutCatalog(key: string, entries: Invocable[]): void {
     for (const state of this.meta.values()) {
       if (this.keyOf(state) !== key) { continue; }
       this.live.get(state.id)?.setInvocables(entries);
-      if (this.visible.has(state.id)) {
+      if (this.visible.has(state.id) && !this.snapshotting.has(state.id)) {
         this.emit({ t: 'session-invocables', id: state.id, entries });
       }
     }
@@ -175,12 +185,13 @@ export class SessionManager implements SessionSink {
         const snapshot = await session.snapshot();
         if (!this.claimSnapshot(id, seq)) { continue; }
         this.emit({ t: 'session-snapshot', session: snapshot });
-        // A probe that resolved while this session was not yet visible sets
-        // the session's catalog (via fanOutCatalog, which is unconditional
-        // for `live`) but skips the `session-invocables` emit, since
-        // fanOutCatalog only emits to sessions already in `visible` at
-        // resolution time. Catch that case up here on reveal, from cache —
-        // cheap, and the only alternative is re-probing.
+        // Every reveal with a known catalog re-announces it in a standalone
+        // message — whether that catalog was cached long ago or only just
+        // landed (fanOutCatalog withholds its emit for the whole time this
+        // session's snapshot is in flight; see its doc comment). Either way
+        // the webview needs no special case for a pane revealed before its
+        // probe resolved: it always gets a `session-invocables` right after
+        // the `session-snapshot` that already carries the same value inline.
         const cachedEntries = this.catalogSvc.get(this.keyOf(session.state));
         if (cachedEntries) {
           this.emit({ t: 'session-invocables', id, entries: cachedEntries });

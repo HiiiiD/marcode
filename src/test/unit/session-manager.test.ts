@@ -62,7 +62,7 @@ suite('SessionManager', () => {
     const mmanager = new SessionManager(mstore, mproviders, (m) => emitted.push(m));
     await mmanager.init();
     extra.push({ manager: mmanager, dir: mdir });
-    return { manager: mmanager, provider, emitted };
+    return { manager: mmanager, provider, emitted, store: mstore };
   }
 
   test('create adds a session and announces the roster', async () => {
@@ -440,5 +440,54 @@ suite('SessionManager', () => {
 
     assert.deepStrictEqual(freshProvider.listInvocablesCalls, ['/repo']);
     await fresh.dispose();
+  });
+
+  test('a sibling\'s invocables event during an in-flight reveal snapshot does not jump the session-snapshot, and does not double-fire', async () => {
+    const { manager: m, provider, emitted, store: mstore } = await makeManager();
+    provider.invocables = [{ name: 'init' }];
+    const x = await m.create('fake', '/repo'); // sibling, whose run fires the live event
+    const y = await m.create('fake', '/repo'); // the session being revealed
+    await settle();
+    emitted.length = 0;
+
+    // Pause store.tail() so setVisible()'s session.snapshot() for y stalls
+    // mid-flight, mirroring the existing patch-buffering tests above.
+    const realTail = mstore.tail.bind(mstore);
+    let releaseTail: (() => void) | undefined;
+    let tailStarted: (() => void) | undefined;
+    const started = new Promise<void>((resolve) => { tailStarted = resolve; });
+    (mstore as unknown as { tail: typeof mstore.tail }).tail = async (
+      ...args: Parameters<typeof mstore.tail>
+    ) => {
+      tailStarted?.();
+      await new Promise<void>((resolve) => { releaseTail = resolve; });
+      return realTail(...args);
+    };
+
+    try {
+      const visiblePromise = m.setVisible([y.state.id]);
+      await started; // y's snapshot fetch is now in flight
+
+      // x shares y's providerId+cwd and reports a fresh catalog mid-flight —
+      // a live agent discovering skills while y's reveal is still pending.
+      provider.runs[0].emit({ kind: 'invocables', entries: [{ name: 'fresh' }] });
+      await settle();
+
+      releaseTail?.();
+      await visiblePromise;
+    } finally {
+      (mstore as unknown as { tail: typeof mstore.tail }).tail = realTail;
+    }
+
+    const order = emitted.map((msg) => msg.t);
+    const snapIdx = order.indexOf('session-snapshot');
+    const invIdx = order.indexOf('session-invocables');
+    assert.ok(snapIdx >= 0, 'the snapshot must be emitted');
+    assert.ok(invIdx >= 0, 'the invocables message must be emitted');
+    assert.ok(snapIdx < invIdx, 'session-invocables must not arrive before its session-snapshot');
+    assert.strictEqual(
+      order.filter((t) => t === 'session-invocables').length, 1,
+      'the reveal must not double-fire session-invocables',
+    );
   });
 });
