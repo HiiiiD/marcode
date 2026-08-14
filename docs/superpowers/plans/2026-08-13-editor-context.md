@@ -840,23 +840,45 @@ import type { Disposable, EditorSource } from './editor-context-tracker';
 export function createVscodeEditorSource(): EditorSource & { dispose(): void } {
   const subs: vscode.Disposable[] = [];
 
+  /**
+   * Each subscribe call returns a disposable that releases exactly the
+   * subscriptions that call created. Returning a no-op and relying on the
+   * aggregate `dispose()` below would mean `EditorContextTracker.dispose()`
+   * silently unsubscribes nothing — the vscode listeners would keep firing
+   * for the life of the extension, holding the tracker and its closures
+   * alive. A disposable that does not unsubscribe is a lie about ownership.
+   */
+  const track = (...added: vscode.Disposable[]): Disposable => {
+    subs.push(...added);
+    return {
+      dispose: () => {
+        for (const sub of added) {
+          sub.dispose();
+          const i = subs.indexOf(sub);
+          if (i >= 0) { subs.splice(i, 1); }
+        }
+      },
+    };
+  };
+
   return {
     onDidChangeEditor(cb: (snap: EditorSnapshot | null) => void): Disposable {
       const emit = (editor: vscode.TextEditor | undefined) => {
         cb(editor ? snapshot(editor) : null);
       };
-      subs.push(vscode.window.onDidChangeActiveTextEditor(emit));
-      subs.push(vscode.window.onDidChangeTextEditorSelection((e) => emit(e.textEditor)));
+      const disposable = track(
+        vscode.window.onDidChangeActiveTextEditor(emit),
+        vscode.window.onDidChangeTextEditorSelection((e) => emit(e.textEditor)),
+      );
       // Seed from whatever is already open at activation, so the first
       // message of a session carries context without the user touching
       // anything.
       emit(vscode.window.activeTextEditor);
-      return { dispose: () => { /* all subs released by dispose() below */ } };
+      return disposable;
     },
 
     onDidCloseDocument(cb: (fsPath: string) => void): Disposable {
-      subs.push(vscode.workspace.onDidCloseTextDocument((doc) => cb(doc.uri.fsPath)));
-      return { dispose: () => { /* all subs released by dispose() below */ } };
+      return track(vscode.workspace.onDidCloseTextDocument((doc) => cb(doc.uri.fsPath)));
     },
 
     workspaceRoots(): string[] {
