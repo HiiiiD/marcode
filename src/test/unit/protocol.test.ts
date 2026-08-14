@@ -20,6 +20,9 @@ function describeInbound(m: WebviewToHost): string {
     case 'set-model': return 'set-model';
     case 'permission-decision': return 'permission-decision';
     case 'load-more': return 'load-more';
+    case 'request-context': return 'request-context';
+    case 'request-usage': return 'request-usage';
+    case 'open-file': return 'open-file';
     default: return assertNever(m);
   }
 }
@@ -32,6 +35,8 @@ function describeOutbound(m: HostToWebview): string {
     case 'session-prepend': return 'session-prepend';
     case 'session-status': return 'session-status';
     case 'sessions-changed': return 'sessions-changed';
+    case 'context-breakdown': return 'context-breakdown';
+    case 'usage-windows': return 'usage-windows';
     default: return assertNever(m);
   }
 }
@@ -46,6 +51,29 @@ suite('protocol', () => {
     assert.strictEqual(
       describeOutbound({ t: 'session-status', id: 's1', status: 'idle' }),
       'session-status',
+    );
+  });
+
+  test('context and usage replies carry their key alongside a result union', () => {
+    assert.strictEqual(
+      describeOutbound({
+        t: 'context-breakdown', id: 's1',
+        result: {
+          ok: true,
+          breakdown: {
+            systemPercent: 12, memoryPercent: 4, conversationPercent: 27, freePercent: 57,
+            memoryFiles: [],
+          },
+        },
+      }),
+      'context-breakdown',
+    );
+    assert.strictEqual(
+      describeOutbound({
+        t: 'usage-windows', providerId: 'claude',
+        result: { ok: false, reason: 'No active session for this provider' },
+      }),
+      'usage-windows',
     );
   });
 });

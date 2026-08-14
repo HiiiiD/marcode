@@ -1,8 +1,8 @@
 import type {
-  EffortLevel, ModelInfo, PermissionMode, ToolDecision,
+  ContextBreakdown, EffortLevel, ModelInfo, PermissionMode, ToolDecision, UsageWindow,
 } from '../providers/types';
 
-export type { EffortLevel, ModelInfo, PermissionMode, ToolDecision };
+export type { ContextBreakdown, EffortLevel, ModelInfo, PermissionMode, ToolDecision, UsageWindow };
 
 export type SessionId = string;
 export type SessionStatus = 'idle' | 'running' | 'awaiting-approval' | 'error';
@@ -44,6 +44,12 @@ export interface SessionState {
   permissionMode: PermissionMode;
   resumeToken?: string;
   usage: { inputTokens: number; outputTokens: number };
+  /**
+   * Share of the model's context window in use, `100 - freePercent`.
+   * Absent until the first turn ends, or forever for a provider that does
+   * not report a breakdown.
+   */
+  contextPercent?: number;
   archived: boolean;
   createdAt: number;
   updatedAt: number;
@@ -65,6 +71,14 @@ export interface ProviderInfo {
   models: ModelInfo[];
 }
 
+export type ContextResult =
+  | { ok: true; breakdown: ContextBreakdown }
+  | { ok: false; reason: string };
+
+export type UsageResult =
+  | { ok: true; windows: UsageWindow[] }
+  | { ok: false; reason: string };
+
 export interface PaneLayout {
   orientation: 'vertical' | 'horizontal';
   panes: { sessionId: SessionId; size: number }[];
@@ -83,7 +97,10 @@ export type WebviewToHost =
   | { t: 'set-permission-mode'; id: SessionId; mode: PermissionMode }
   | { t: 'set-model'; id: SessionId; model: string }
   | { t: 'permission-decision'; id: SessionId; requestId: string; decision: ToolDecision }
-  | { t: 'load-more'; id: SessionId; beforeItemId: string };
+  | { t: 'load-more'; id: SessionId; beforeItemId: string }
+  | { t: 'request-context'; id: SessionId }
+  | { t: 'request-usage'; providerId: string }
+  | { t: 'open-file'; path: string };
 
 export type HostToWebview =
   | { t: 'hydrate'; sessions: SessionSummary[]; layout: PaneLayout;
@@ -92,4 +109,6 @@ export type HostToWebview =
   | { t: 'session-patch'; id: SessionId; patch: TranscriptPatch }
   | { t: 'session-prepend'; id: SessionId; items: TranscriptItem[]; hasMore: boolean }
   | { t: 'session-status'; id: SessionId; status: SessionStatus }
-  | { t: 'sessions-changed'; sessions: SessionSummary[] };
+  | { t: 'sessions-changed'; sessions: SessionSummary[] }
+  | { t: 'context-breakdown'; id: SessionId; result: ContextResult }
+  | { t: 'usage-windows'; providerId: string; result: UsageResult };
