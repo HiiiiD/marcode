@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { SendHorizontal, Slash, Square } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { InputGroup, InputGroupAddon, InputGroupTextarea } from '@/components/ui/input-group';
@@ -38,9 +38,16 @@ export function Composer({ pane, model }: { pane: PaneState; model: ModelInfo | 
   /** The selected entry's arg hint. Presentation only; never sent. */
   const [ghost, setGhost] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
-  /** Escape closed the menu; only a fresh keystroke or the control reopens it. */
+  /**
+   * Escape, or focus leaving the box, closed the menu. Only a fresh keystroke
+   * or the control reopens it — otherwise a user who dismissed the list would
+   * have it spring back on the next render.
+   */
   const [dismissed, setDismissed] = useState(false);
-  const [forceOpen, setForceOpen] = useState(false);
+  // The control has to hand focus back to the box: every key the menu answers
+  // to is bound on the textarea, so a menu opened by a click that left focus
+  // on the button would be unreachable by keyboard.
+  const box = useRef<HTMLTextAreaElement | null>(null);
   const running = pane.summary.status === 'running'
     || pane.summary.status === 'awaiting-approval';
   const bypassing = pane.summary.permissionMode === 'bypass';
@@ -63,25 +70,52 @@ export function Composer({ pane, model }: { pane: PaneState; model: ModelInfo | 
   // Same session-scoping rationale as `bypassReasonId` above, for the Send
   // button's disabled-while-running reason.
   const sendReasonId = `send-reason-${pane.summary.id}`;
+  // Same session-scoping rationale again, for the `/` control's
+  // disabled-over-a-draft reason.
+  const invocablesReasonId = `invocables-reason-${pane.summary.id}`;
 
   const entries = pane.invocables ?? [];
-  const typedQuery = menuQuery(text);
-  // Two entry points, one menu: the typed `/` query, or the control opening
-  // it unfiltered on an empty box.
-  const query = typedQuery ?? (forceOpen ? '' : undefined);
+  /**
+   * Two entry points, ONE state machine. The control does not have an
+   * "opened by click" flag of its own — it types the `/` for the user and
+   * hands focus back, so from here on the click path and the typed path are
+   * indistinguishable. A separate flag was the earlier shape and it made the
+   * clicked menu keyboard-dead and closed it on the first character typed.
+   */
+  const query = menuQuery(text);
   const menuOpen = entries.length > 0 && query !== undefined && !dismissed;
-  const view = menuOpen ? menuView(entries, query) : { rows: [], overflow: 0 };
+  const view = menuOpen ? menuView(entries, query ?? '') : { rows: [], overflow: 0 };
   const index = Math.min(activeIndex, Math.max(0, view.rows.length - 1));
   // Session-scoped for the same reason as bypassReasonId above: one Composer
   // renders per pane, and `aria-activedescendant` resolves ids document-wide.
   const menuListId = `invocables-${pane.summary.id}`;
+  // The id goes on the TEXTAREA, which is where focus actually is. ARIA only
+  // honours `aria-activedescendant` on the focused element, so a copy on the
+  // listbox alone announces nothing. Undefined while the `No match` row shows:
+  // that row is deliberately not addressable, so there is no id to point at.
+  const activeOptionId = menuOpen && view.rows.length > 0
+    ? `${menuListId}-${index}`
+    : undefined;
+  // Trigger discipline puts the menu at position 0 only, so it genuinely
+  // cannot open over a half-written message. Disabled-with-a-reason rather
+  // than silently clearing the draft — the earlier shape reset the box, which
+  // threw away work — and rather than hiding, which leaves the control
+  // flickering in and out of a row that already wraps.
+  const menuBlocked = text.trim().length > 0;
+
+  const openMenu = () => {
+    setText('/');
+    setGhost('');
+    setActiveIndex(0);
+    setDismissed(false);
+    box.current?.focus();
+  };
 
   const pick = (entry: Invocable) => {
     const { text: next, ghost: hint } = insertionFor(entry);
     setText(next);
     setGhost(hint);
     setActiveIndex(0);
-    setForceOpen(false);
   };
 
   const submit = () => {
@@ -92,7 +126,6 @@ export function Composer({ pane, model }: { pane: PaneState; model: ModelInfo | 
     setText('');
     setGhost('');
     setDismissed(false);
-    setForceOpen(false);
   };
 
   return (
@@ -113,14 +146,20 @@ export function Composer({ pane, model }: { pane: PaneState; model: ModelInfo | 
           </InputGroupAddon>
         )}
         <InputGroupTextarea
+          ref={box}
           value={text}
           onChange={(e) => {
             setText(e.target.value);
             setGhost('');
             setActiveIndex(0);
             setDismissed(false);
-            setForceOpen(false);
           }}
+          // Focus leaving the box closes the list. The menu is an in-flow
+          // block-start addon, so left open it keeps eating vertical space
+          // above the composer after the user has clicked away into the
+          // transcript. This does not fight a mouse pick: the rows call
+          // preventDefault on mousedown, so selecting one never blurs.
+          onBlur={() => setDismissed(true)}
           onKeyDown={(e) => {
             // Only WHILE OPEN does the menu claim keys. `menuKeyAction`
             // decides which; anything it passes on falls through to the
@@ -132,7 +171,7 @@ export function Composer({ pane, model }: { pane: PaneState; model: ModelInfo | 
                 if (action === 'move-down') { setActiveIndex(nextIndex(index, 1, view.rows.length)); }
                 if (action === 'move-up') { setActiveIndex(nextIndex(index, -1, view.rows.length)); }
                 if (action === 'select' && view.rows[index]) { pick(view.rows[index]); }
-                if (action === 'close') { setDismissed(true); setForceOpen(false); }
+                if (action === 'close') { setDismissed(true); }
                 return;
               }
             }
@@ -145,6 +184,7 @@ export function Composer({ pane, model }: { pane: PaneState; model: ModelInfo | 
           aria-label="Message"
           aria-controls={menuOpen ? menuListId : undefined}
           aria-expanded={menuOpen}
+          aria-activedescendant={activeOptionId}
         />
         {/*
           flex-wrap: at pane widths around 300px the effort trigger (w-24),
@@ -171,17 +211,27 @@ export function Composer({ pane, model }: { pane: PaneState; model: ModelInfo | 
               variant="ghost"
               size="icon-xs"
               aria-label="Skills and commands"
-              title="Skills and commands"
-              onClick={() => {
-                setText('');
-                setGhost('');
-                setDismissed(false);
-                setActiveIndex(0);
-                setForceOpen(true);
-              }}
+              // Same disabled-with-a-reason contract as Send and the bypass
+              // option: the explanation is real rendered text behind
+              // `aria-describedby`, never a `title` — a title on a disabled
+              // control is reachable by neither keyboard focus nor most
+              // screen readers. The title stays purely a discoverability aid
+              // for the enabled state.
+              disabled={menuBlocked}
+              aria-describedby={menuBlocked ? invocablesReasonId : undefined}
+              title={menuBlocked ? undefined : 'Skills and commands'}
+              onClick={openMenu}
             >
               <Slash />
             </Button>
+          )}
+          {entries.length > 0 && menuBlocked && (
+            // sr-only for the same reason as the Send reason below: this row
+            // wraps at 300px already and has no room for a sentence, and the
+            // control is visibly disabled.
+            <span id={invocablesReasonId} className="sr-only">
+              Clear the message to browse skills and commands.
+            </span>
           )}
           {ghost && (
             // aria-hidden: it is a hint about what to type next, and the
