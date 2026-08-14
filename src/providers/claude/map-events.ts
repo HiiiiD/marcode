@@ -93,7 +93,29 @@
 // same `redactSecrets()` pass before becoming a `turn-end` event.
 // `redactSecrets` is pure and does no I/O, so calling it here does not
 // violate this file's purity constraint.
-import type { AgentEvent } from '../types';
+//
+//   - Subagent correlation: `parent_tool_use_id: string | null` is present on
+//     `SDKAssistantMessage` (sdk.d.ts:3022) and on the `user` messages that
+//     carry tool results. Non-null means the message came from a subagent,
+//     and its value is the tool_use id of the `Task` call that spawned it —
+//     which is exactly the id our own `tool-start` for that Task already
+//     carries, so no extra correlation event is needed.
+//   - `Options.forwardSubagentText` (sdk.d.ts:1662) defaults to false, and
+//     at that default "only tool_use/tool_result blocks from subagents are
+//     emitted". That default IS the mechanism behind our tool-activity-only
+//     subagent cards; claude-provider.ts must never set it to true. The
+//     text/thinking drop below is a belt-and-braces assertion on top.
+//   - `SDKSystemMessage` (subtype 'init') carries `mcp_servers: { name:
+//     string; status: string }[]` (sdk.d.ts:4610) — name and status only.
+//     `status` is typed as a bare string, hence toServerState()'s fallback.
+//     The richer per-server shape (error, tools[]) comes from
+//     `Query.mcpServerStatus()` (sdk.d.ts:2500), pulled in claude-provider.ts.
+//   - `canUseTool`'s options give `agentID` (the subagent instance id), NOT
+//     the spawning Task's tool_use id, so a permission cannot be nested from
+//     the SDK payload alone. AgentSession derives it instead: the permission
+//     id IS the tool_use id of the call being approved, so it resolves
+//     through the same child map that tool-start populated.
+import type { AgentEvent, McpServerStatus } from '../types';
 import { redactSecrets } from './redact';
 
 interface Block {
@@ -113,26 +135,70 @@ function blocks(msg: unknown): Block[] {
   return Array.isArray(message?.content) ? (message.content as Block[]) : [];
 }
 
+const SERVER_STATES = new Set<McpServerStatus['state']>([
+  'pending', 'connected', 'failed', 'needs-auth', 'disabled',
+]);
+
+/**
+ * `SDKSystemMessage.mcp_servers` types `status` as a bare `string`
+ * (sdk.d.ts:4610), so an unknown value is possible on any SDK bump. Degrade
+ * to 'pending' rather than dropping the server — a server missing from the
+ * strip reads as "not configured", which is a worse lie than "still
+ * starting".
+ */
+function toServerState(raw: unknown): McpServerStatus['state'] {
+  return SERVER_STATES.has(raw as McpServerStatus['state'])
+    ? (raw as McpServerStatus['state'])
+    : 'pending';
+}
+
+function parentIdOf(msg: unknown): string | undefined {
+  const raw = (msg as { parent_tool_use_id?: string | null }).parent_tool_use_id;
+  return typeof raw === 'string' && raw.length > 0 ? raw : undefined;
+}
+
 export function mapEvent(msg: unknown): AgentEvent[] {
   const type = (msg as { type?: string }).type;
 
   if (type === 'system') {
     const subtype = (msg as { subtype?: string }).subtype;
     if (subtype !== 'init') { return []; }
+    const out: AgentEvent[] = [];
     const sessionId = (msg as { session_id?: string }).session_id;
-    return sessionId ? [{ kind: 'session', resumeToken: sessionId }] : [];
+    if (sessionId) { out.push({ kind: 'session', resumeToken: sessionId }); }
+
+    const servers = (msg as { mcp_servers?: unknown }).mcp_servers;
+    if (Array.isArray(servers) && servers.length > 0) {
+      out.push({
+        kind: 'mcp-servers',
+        servers: servers
+          .filter((s): s is { name: string; status?: unknown } =>
+            typeof (s as { name?: unknown }).name === 'string')
+          .map((s) => ({ name: s.name, state: toServerState(s.status) })),
+      });
+    }
+    return out;
   }
 
   if (type === 'assistant') {
     const out: AgentEvent[] = [];
+    const parentId = parentIdOf(msg);
     for (const block of blocks(msg)) {
       if (block.type === 'text' && typeof block.text === 'string') {
+        // Subagent prose is dropped. The SDK's `forwardSubagentText` option
+        // defaults to false, so these blocks should not arrive at all — this
+        // is a defensive assertion, kept so a future default flip or a
+        // second provider cannot silently reintroduce the token volume that
+        // the nested-card design exists to avoid.
+        if (parentId) { continue; }
         out.push({ kind: 'text', delta: block.text });
       } else if (block.type === 'thinking' && typeof block.thinking === 'string') {
+        if (parentId) { continue; }
         out.push({ kind: 'thinking', delta: block.thinking });
       } else if (block.type === 'tool_use' && block.id && block.name) {
         out.push({
           kind: 'tool-start', id: block.id, name: block.name, input: block.input,
+          ...(parentId ? { parentId } : {}),
         });
       }
     }
@@ -141,6 +207,7 @@ export function mapEvent(msg: unknown): AgentEvent[] {
 
   if (type === 'user') {
     const out: AgentEvent[] = [];
+    const parentId = parentIdOf(msg);
     for (const block of blocks(msg)) {
       if (block.type === 'tool_result' && block.tool_use_id) {
         out.push({
@@ -148,6 +215,7 @@ export function mapEvent(msg: unknown): AgentEvent[] {
           id: block.tool_use_id,
           ok: block.is_error !== true,
           output: block.content,
+          ...(parentId ? { parentId } : {}),
         });
       }
     }
