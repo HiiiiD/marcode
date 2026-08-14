@@ -531,7 +531,12 @@ export class SessionManager implements SessionSink {
     // upserting into it — that is what lets a window the account stopped
     // reporting actually disappear. (The old push carried one window at a
     // time and had to upsert; this does not.)
-    const next = windows ?? [];
+    // Ordered before comparing, not just before storing: `prev` comes from
+    // `windowsFor()`, which is already ordered, so an unordered `next` would
+    // make the positional comparison below spurious for a provider that
+    // simply reports the same set in a different order — a false "changed"
+    // from index misalignment alone, not from any window actually moving.
+    const next = windows === undefined ? [] : orderWindows(windows);
     const prev = this.windowsFor(providerId);
     const same = prev.length === next.length && prev.every((w, i) =>
       w.id === next[i]?.id
@@ -544,7 +549,7 @@ export class SessionManager implements SessionSink {
       // subscription-to-API-key switch cannot keep showing stale numbers.
       this.usage.delete(providerId);
     } else {
-      this.usage.set(providerId, new Map(orderWindows(windows).map((w) => [w.id, w])));
+      this.usage.set(providerId, new Map(next.map((w) => [w.id, w])));
     }
     this.emit({ t: 'usage-windows', providerId, windows: this.windowsFor(providerId) });
     this.schedulePersist();

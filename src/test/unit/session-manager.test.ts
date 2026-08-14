@@ -653,6 +653,25 @@ suite('SessionManager', () => {
     assert.strictEqual(emitted.filter((m) => m.t === 'usage-windows').length, before);
   });
 
+  test('an identical set in a different order emits nothing', async () => {
+    const { manager: local, emitted } = await makeManager();
+    local.usageWindows('fake', [
+      { id: 'five-hour', label: 'Session (5h)', usedPercent: 10 },
+      { id: 'seven-day', label: 'Week', usedPercent: 4 },
+    ]);
+    const before = emitted.filter((m) => m.t === 'usage-windows').length;
+
+    // Same two windows, arrival order swapped. windowsFor() always orders
+    // for display, so this must compare as identical rather than emitting
+    // from index misalignment alone.
+    local.usageWindows('fake', [
+      { id: 'seven-day', label: 'Week', usedPercent: 4 },
+      { id: 'five-hour', label: 'Session (5h)', usedPercent: 10 },
+    ]);
+
+    assert.strictEqual(emitted.filter((m) => m.t === 'usage-windows').length, before);
+  });
+
   test('undefined clears the provider entirely and emits the clearance', async () => {
     const { manager: local, emitted } = await makeManager();
     local.usageWindows('fake', [{ id: 'five-hour', label: 'Session (5h)', usedPercent: 10 }]);
