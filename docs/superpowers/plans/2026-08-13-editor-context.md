@@ -10,6 +10,8 @@
 
 **Spec:** [docs/superpowers/specs/2026-08-13-editor-context-design.md](../specs/2026-08-13-editor-context-design.md)
 
+**Baseline:** every quoted snippet and line number in this plan was verified against `0c32be9` ("Feat/webview ux overhaul"). The webview moved substantially in that merge — `InputGroup` in the composer, `TranscriptItemShell` around every item, `useIsNarrow` in `App` — so if HEAD has moved again, re-read each file before applying its step and trust the file over this document.
+
 ## Global Constraints
 
 Everything in the agent-manager plan's Global Constraints still applies. The ones this plan touches directly:
@@ -381,7 +383,7 @@ git commit -m "feat: build an editor context from an editor snapshot"
 - Create: `src/providers/format-editor-context.ts`
 - Modify: `src/providers/types.ts` (the `AgentRun.send` signature)
 - Modify: `src/providers/fake/fake-provider.ts`
-- Modify: `src/providers/claude/claude-provider.ts:163-169`
+- Modify: `src/providers/claude/claude-provider.ts:292-299`
 - Test: `src/test/unit/format-editor-context.test.ts`, `src/test/unit/fake-provider.test.ts`
 
 **Interfaces:**
@@ -498,20 +500,13 @@ function escapeAttr(value: string): string {
 
 - [ ] **Step 4: Widen the `AgentRun.send` signature**
 
-In `src/providers/types.ts`, change the `send` member of `AgentRun`:
+In `src/providers/types.ts`, change the first line of the `AgentRun` interface body — that one line only:
 
 ```ts
-export interface AgentRun {
   send(text: string, context?: EditorContext): void;
-  readonly events: AsyncIterable<AgentEvent>;
-  respondToTool(id: string, decision: ToolDecision): void;
-  setEffort(effort: EffortLevel): void;
-  interrupt(): Promise<void>;
-  dispose(): Promise<void>;
-}
 ```
 
-The parameter is optional, so every existing caller and both existing providers still typecheck.
+`AgentRun` also declares `setModel` alongside `setEffort`; do not retype the interface from memory or you will drop it. The new parameter is optional, so every existing caller and both existing providers still typecheck.
 
 - [ ] **Step 5: Record sends in `FakeProvider`**
 
@@ -522,7 +517,7 @@ In `src/providers/fake/fake-provider.ts`, add the field next to `decisions`:
   readonly sent: { text: string; context?: EditorContext }[] = [];
 ```
 
-and change the returned `send` (currently lines 69-75) to:
+and change the returned `send` (around line 74) to:
 
 ```ts
       send: (text: string, context?: EditorContext) => {
@@ -556,10 +551,11 @@ Append to `src/test/unit/fake-provider.test.ts`, inside its existing top-level `
 
 - [ ] **Step 7: Prepend the block in `ClaudeProvider`**
 
-In `src/providers/claude/claude-provider.ts`, replace the returned `send` (lines 163-169) with:
+In `src/providers/claude/claude-provider.ts`, replace the returned `send` (around line 292) with the version below. **Keep the `ensureStarted()` call** — the provider now constructs its query lazily, on the first send, and dropping that line breaks every session:
 
 ```ts
       send: (text: string, context?: EditorContext) => {
+        ensureStarted();
         // One text block rather than two: the SDK accepts an array, but a
         // single block keeps the turn's shape identical whether or not
         // context is attached, so nothing downstream has to special-case it.
@@ -909,7 +905,7 @@ git commit -m "feat: track the active editor across webview focus loss"
 **Files:**
 - Modify: `src/protocol/messages.ts`
 - Modify: `src/host/agent-session.ts:60-73`
-- Modify: `src/host/session-manager.ts:40-46,77-83`
+- Modify: `src/host/session-manager.ts:60-66,97-103`
 - Test: `src/test/unit/protocol.test.ts`, `src/test/unit/agent-session.test.ts`, `src/test/unit/session-manager.test.ts`
 
 **Interfaces:**
@@ -1085,7 +1081,7 @@ In `src/host/agent-session.ts`, replace `send` (lines 60-73):
   }
 ```
 
-Add the setter next to `setPermissionMode` (line 95):
+Add the setter next to `setPermissionMode` (around line 124):
 
 ```ts
   setIncludeEditorContext(on: boolean): void {
@@ -1099,14 +1095,14 @@ Add `EditorContext` to the existing `import type { ... } from '../providers/type
 
 - [ ] **Step 6: Default the flag in `SessionManager`**
 
-In `src/host/session-manager.ts`, in `create()` (line 78), add the field to the `SessionState` literal:
+In `src/host/session-manager.ts`, in `create()` (around line 98), add the field to the `SessionState` literal:
 
 ```ts
       title: 'Untitled', cwd, status: 'idle', permissionMode: 'default',
       includeEditorContext: true,
 ```
 
-and in `init()` (line 43), default it for rows written before this feature — an `index.json` from an earlier build has no such field, and `undefined` would read as "off":
+and in `init()` (around line 63), default it for rows written before this feature — an `index.json` from an earlier build has no such field, and `undefined` would read as "off":
 
 ```ts
       this.meta.set(state.id, {
@@ -1160,7 +1156,7 @@ git commit -m "feat: carry editor context through the protocol and session state
 ## Task 5: Router and extension wiring
 
 **Files:**
-- Modify: `src/host/message-router.ts:32-124,144-148`
+- Modify: `src/host/message-router.ts:32-129,150-154`
 - Modify: `src/host/panel-view-provider.ts:11-15,29`
 - Modify: `src/extension.ts`
 - Test: `src/test/unit/message-router.test.ts`
@@ -1319,15 +1315,18 @@ Add two cases after `set-permission-mode`:
         return;
 ```
 
-Add both tags to `KNOWN_MESSAGE_TAGS` (line 144) — the guard drops anything not listed, so forgetting this silently disables both messages:
+Add both tags to `KNOWN_MESSAGE_TAGS` (around line 150) — the guard drops anything not listed, so forgetting this silently disables both messages:
 
 ```ts
 const KNOWN_MESSAGE_TAGS = new Set<WebviewToHost['t']>([
   'ready', 'create-session', 'set-visible', 'set-layout', 'close-session',
   'delete-session', 'send', 'interrupt', 'set-effort', 'set-permission-mode',
-  'permission-decision', 'load-more', 'set-include-context', 'reveal-file',
+  'set-model', 'permission-decision', 'load-more',
+  'set-include-context', 'reveal-file',
 ]);
 ```
+
+`set-model` is already in that set — this adds two tags, it does not rewrite the list.
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
@@ -1462,8 +1461,8 @@ git commit -m "feat: attach the tracked editor context to sends"
 - Modify: `src/webview/reducer.ts:13-27,41-58`
 - Create: `src/webview/components/editor-context-chip.tsx`
 - Create: `src/webview/components/editor-context-toggle.tsx`
-- Modify: `src/webview/components/composer.tsx:27-41,56-68`
-- Modify: `src/webview/components/transcript-item.tsx:12-17`
+- Modify: `src/webview/components/composer.tsx:62-63,88`
+- Modify: `src/webview/components/transcript-item.tsx:14-21`
 - Test: `src/test/unit/webview-reducer.test.ts`, `src/test/unit/editor-context-chip.test.ts`, `src/test/dom/composer.test.tsx`, `src/test/dom/transcript-item.test.tsx`
 - Modify: `src/test/fixtures/protocol.ts` (the new required `SessionSummary` field)
 
@@ -1616,7 +1615,7 @@ jsdom does not evaluate container queries, so the label element is always presen
 
 - [ ] **Step 5: Write the failing DOM test for the transcript chip**
 
-Create `src/test/dom/transcript-item.test.tsx`:
+`src/test/dom/transcript-item.test.tsx` already exists — append a second `suite` to it rather than creating the file. It currently drives `renderApp()` + `hydrateWithItems()`; these tests render the component directly under the store, which is equally legitimate and keeps the reveal assertion narrow. Add `userEvent`, `TranscriptItemView`, `posted` and `renderWithStore` to its imports:
 
 ```tsx
 import * as assert from 'assert';
@@ -1825,7 +1824,7 @@ export function EditorContextToggle({ pane }: { pane: PaneState }) {
       aria-label={`${on ? 'Attaching' : 'Not attaching'} editor context: ${ctx.path}`}
       title={`${on ? 'Attaching' : 'Not attaching'} ${contextTitle(ctx)}`}
       onClick={() => post({ t: 'set-include-context', id: pane.summary.id, on: !on })}
-      className={cn('min-w-0 max-w-[14rem]', !on && 'text-muted-foreground')}
+      className={cn('min-w-0 max-w-56', !on && 'text-muted-foreground')}
     >
       <Paperclip aria-hidden="true" />
       <EditorContextLabel ctx={ctx} className="hidden @[17rem]:flex" />
@@ -1837,16 +1836,19 @@ export function EditorContextToggle({ pane }: { pane: PaneState }) {
 
 - [ ] **Step 10: Mount it in the composer**
 
+The composer is built from `InputGroup` / `InputGroupTextarea` / `InputGroupAddon`, and its settings row is an `InputGroupAddon align="block-end"` that already carries `flex-wrap` (read the comment above it — it exists precisely because effort and permission-mode cannot share one row at ~300px). The control joins that row.
+
 In `src/webview/components/composer.tsx`, make the root a query container — every responsive decision inside the composer keys off the pane's own width, not the window's:
 
 ```tsx
-    <div className="@container border-t border-border p-2">
+    <div className="@container p-2">
 ```
 
-and mount the control in the controls row, immediately after the Send/Stop button (line 67), before the effort select:
+Mount the control as the **first** child of the `InputGroupAddon align="block-end"` block, before the effort `Select`:
 
 ```tsx
-        <EditorContextToggle pane={pane} />
+        <InputGroupAddon align="block-end" className="flex-wrap">
+          <EditorContextToggle pane={pane} />
 ```
 
 with the import:
@@ -1855,15 +1857,15 @@ with the import:
 import { EditorContextToggle } from './editor-context-toggle';
 ```
 
-The controls row already reads `className="mt-1 flex items-center gap-2 text-xs"`. Add `flex-wrap` to it so that a long filename on a wide pane wraps the row rather than overflowing it:
+First position, not last: Send and Stop are pinned to the right edge with `ml-auto`, and inserting anything after them breaks that. It also puts the attachment nearest the message it belongs to.
 
-```tsx
-      <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
-```
+**Why a container query rather than `useIsNarrow`.** `src/webview/components/use-is-narrow.ts` exists and its doc comment is explicit that it has exactly one call site — `App`, against the panel root — measuring the *panel*, deliberately, so that `SessionPicker` and `PaneGroup` can never disagree. This control needs the width of *one pane*, which is a different number whenever the panel is split. Adding a second `ResizeObserver` would reintroduce exactly the disagreement that hook was written to remove. The composer already solves its own crowding in CSS (`flex-wrap` on the addon), so a container query continues the local pattern instead of contradicting the global one.
 
 - [ ] **Step 11: Render the chip in the transcript**
 
-In `src/webview/components/transcript-item.tsx`, replace the `user` case (lines 12-17):
+Every item is now wrapped in `TranscriptItemShell`, which owns the role label and timestamp. The chip goes *inside* the shell, above the message body, so it reads as part of the message rather than as a second header.
+
+In `src/webview/components/transcript-item.tsx`, replace the `user` case (around lines 14-21):
 
 ```tsx
     case 'user':
@@ -1878,7 +1880,7 @@ function UserItem({ item }: { item: Extract<TranscriptItem, { role: 'user' }> })
   const ctx = item.context;
 
   return (
-    <div className="my-2 rounded bg-muted px-2 py-1">
+    <TranscriptItemShell role="user" label="You" ts={item.ts}>
       {ctx && (
         <div className="mb-1 flex">
           <EditorContextChip
@@ -1891,11 +1893,15 @@ function UserItem({ item }: { item: Extract<TranscriptItem, { role: 'user' }> })
           />
         </div>
       )}
-      <div className="whitespace-pre-wrap">{item.text}</div>
-    </div>
+      <div className="rounded bg-muted px-2 py-1 wrap-break-word whitespace-pre-wrap">
+        {item.text}
+      </div>
+    </TranscriptItemShell>
   );
 }
 ```
+
+The body's classes are copied verbatim from the case being replaced — `wrap-break-word` matters in a 150px pane. If they have drifted again by the time this runs, take the ones in the file, not the ones here.
 
 with the imports:
 
