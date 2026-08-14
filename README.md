@@ -12,6 +12,69 @@ answered from the UI. Transcripts survive a window reload.
 - Tool-permission requests surfaced as cards in the transcript, answered from the UI.
 - Durable transcripts, paged on demand, that survive a window reload.
 
+## Install
+
+Two ways to run it: a throwaway Extension Development Host for iterating on the code, or a
+packaged `.vsix` installed into your real VS Code.
+
+Both start from a build. `dist/webview.css` is produced by the Tailwind plugin inside
+`esbuild.js`, so any build script covers it — there is no separate CSS step.
+
+```powershell
+yarn install
+```
+
+### Extension Development Host
+
+```powershell
+yarn run compile   # esbuild + check-types + lint
+yarn dev           # launches a separate VS Code with this repo as the extension
+```
+
+Do not press `F5`. VS Code launches the dev host from inside its own extension host, which
+runs as `Code.exe` with `ELECTRON_RUN_AS_NODE=1`; an inheriting window exits immediately
+instead of opening. `yarn dev` runs [`scripts/dev-host.ps1`](scripts/dev-host.ps1), which
+strips every inherited `ELECTRON_*` / `VSCODE_*` variable and starts a fresh instance under
+its own profile in `%TEMP%\hiiiid-devhost`.
+
+To iterate, run `yarn watch` in one terminal (esbuild, `tsc --noEmit` and Tailwind in
+parallel) and `yarn dev` in another. After a rebuild, reload the dev-host window with
+`Ctrl+R`. Because the extension host owns all state and the webview is rehydrated from it,
+a reload is a real test of persistence rather than a reset.
+
+`yarn dev:clean` adds `--disable-extensions`, to rule out interference from other
+extensions.
+
+### Packaged `.vsix`
+
+`package.json` has no `publisher` field yet, and `vsce` refuses to package without one. Add
+any string — a local install does not need a real Marketplace account:
+
+```jsonc
+{
+  "name": "hiiiid-code",
+  "publisher": "hiiiid",
+  ...
+}
+```
+
+Then:
+
+```powershell
+yarn run package              # check-types + lint + production bundle
+npx @vscode/vsce package      # -> hiiiid-code-0.0.1.vsix
+code --install-extension hiiiid-code-0.0.1.vsix
+```
+
+Reload the window afterwards. To remove it: `code --uninstall-extension hiiiid.hiiiid-code`.
+
+[`.vscodeignore`](.vscodeignore) excludes `node_modules/**` but re-includes
+`@anthropic-ai/claude-agent-sdk` and its `win32-x64` native package, so the SDK ships
+inside the `.vsix` — see the platform note below.
+
+Transcripts live under the extension's storage path, which is per profile and per
+workspace. The dev host and an installed `.vsix` therefore keep separate histories.
+
 ## Setup: move the panel to the secondary sidebar
 
 VS Code extensions cannot place a view in the secondary sidebar directly, so this is a
