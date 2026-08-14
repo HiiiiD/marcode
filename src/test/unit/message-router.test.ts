@@ -186,6 +186,9 @@ suite('MessageRouter', () => {
     const id = manager.summaries()[0].id;
     await router.handle({ t: 'set-visible', sessionIds: [id] });
     // Simulate "restored but not live": archive+release without deleting.
+    // Needs a transcript — close() discards an unused session outright.
+    await router.handle({ t: 'send', id, text: 'hello' });
+    await settle();
     await manager.close(id);
     assert.strictEqual(manager.get(id), undefined, 'session must not be live before the mutation');
 
@@ -200,6 +203,8 @@ suite('MessageRouter', () => {
     await router.handle({ t: 'create-session', providerId: 'fake', cwd: '/tmp' });
     const id = manager.summaries()[0].id;
     await router.handle({ t: 'set-visible', sessionIds: [id] });
+    await router.handle({ t: 'send', id, text: 'hello' });
+    await settle();
     await manager.close(id);
     assert.strictEqual(manager.get(id), undefined, 'session must not be live before the mutation');
 

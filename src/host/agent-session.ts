@@ -74,6 +74,12 @@ export class AgentSession {
    * An archived session reports none, because there is no run to ask.
    */
   private mcpServers: McpServerStatus[] = [];
+  /**
+   * How many transcript items this run has appended. Counted here rather
+   * than read back from the store so `isEmpty` stays synchronous and needs
+   * no disk read on the close path.
+   */
+  private appended = 0;
 
   constructor(
     private readonly _state: SessionState,
@@ -92,6 +98,15 @@ export class AgentSession {
   }
 
   get state(): SessionState { return this._state; }
+
+  /**
+   * Nothing has been appended by *this* run. A run revived by
+   * `SessionManager.open()` starts at zero even though the store holds the
+   * earlier transcript, so this is only an answer about the live run — the
+   * manager pairs it with the persisted transcript before concluding a
+   * session is genuinely empty.
+   */
+  get isEmpty(): boolean { return this.appended === 0; }
 
   send(text: string, context?: EditorContext): void {
     if (this._state.title === 'Untitled' && text.trim().length > 0) {
@@ -519,6 +534,7 @@ export class AgentSession {
   }
 
   private appendItem(item: TranscriptItem): void {
+    this.appended++;
     this.store.append(this._state.id, item);
     this._state.updatedAt = Date.now();
     this.sink.patch(this._state.id, { op: 'append', item });
