@@ -62,4 +62,32 @@ suite('FakeProvider', () => {
     assert.deepStrictEqual(ev, { kind: 'turn-end', reason: 'interrupted' });
     await run.dispose();
   });
+
+  test('a run can emit events outside of send()', async () => {
+    const provider = new FakeProvider(() => []);
+    provider.start({ cwd: '/tmp', permissionMode: 'default' });
+    const run = provider.runs[0];
+
+    run.emit({ kind: 'invocables', entries: [{ name: 'init' }] });
+    const first = await run.events[Symbol.asyncIterator]().next();
+
+    assert.deepStrictEqual(first.value, { kind: 'invocables', entries: [{ name: 'init' }] });
+  });
+
+  test('listInvocables answers with the scripted catalog and logs its cwd', async () => {
+    const provider = new FakeProvider(() => []);
+    provider.invocables = [{ name: 'brainstorming', description: 'Design first' }];
+
+    const out = await provider.listInvocables('/repo');
+
+    assert.deepStrictEqual(out, [{ name: 'brainstorming', description: 'Design first' }]);
+    assert.deepStrictEqual(provider.listInvocablesCalls, ['/repo']);
+  });
+
+  test('listInvocables rejects when scripted with an error', async () => {
+    const provider = new FakeProvider(() => []);
+    provider.invocables = new Error('no catalog');
+
+    await assert.rejects(() => provider.listInvocables('/repo'), /no catalog/);
+  });
 });

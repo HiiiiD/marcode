@@ -1,6 +1,6 @@
 import type {
-  AgentEvent, AgentProvider, AgentRun, EffortLevel, ModelInfo, PermissionMode, StartOptions,
-  ToolDecision,
+  AgentEvent, AgentProvider, AgentRun, EffortLevel, Invocable, ModelInfo, PermissionMode,
+  StartOptions, ToolDecision,
 } from '../types';
 
 class EventChannel implements AsyncIterable<AgentEvent> {
@@ -40,6 +40,9 @@ class EventChannel implements AsyncIterable<AgentEvent> {
   }
 }
 
+/** An `AgentRun` a test can push arbitrary events into. */
+export type FakeRun = AgentRun & { emit(event: AgentEvent): void };
+
 export class FakeProvider implements AgentProvider {
   readonly id = 'fake';
   readonly displayName = 'Fake';
@@ -49,6 +52,16 @@ export class FakeProvider implements AgentProvider {
   readonly permissionModes: PermissionMode[] = [];
   /** Records every model passed to setModel, for assertions. */
   readonly models: string[] = [];
+  /**
+   * Every run started by this provider, newest last. A real provider emits
+   * events without the user having sent anything; tests need a handle to
+   * do the same.
+   */
+  readonly runs: FakeRun[] = [];
+  /** Every cwd listInvocables() was called with, in order. */
+  readonly listInvocablesCalls: string[] = [];
+  /** Scripted probe answer: a catalog to resolve with, or an Error to reject with. */
+  invocables: Invocable[] | Error | undefined;
   private sessionCounter = 0;
 
   constructor(private readonly script: (text: string) => AgentEvent[]) {}
@@ -69,7 +82,7 @@ export class FakeProvider implements AgentProvider {
     const resumeToken = `fake-session-${++this.sessionCounter}`;
     let started = false;
 
-    return {
+    const run: FakeRun = {
       events: channel,
       send: (text: string) => {
         if (!started) {
@@ -92,6 +105,15 @@ export class FakeProvider implements AgentProvider {
       setModel: (model: string) => { this.models.push(model); },
       interrupt: async () => { channel.push({ kind: 'turn-end', reason: 'interrupted' }); },
       dispose: async () => { channel.close(); },
+      emit: (event: AgentEvent) => { channel.push(event); },
     };
+    this.runs.push(run);
+    return run;
+  }
+
+  async listInvocables(cwd: string): Promise<Invocable[]> {
+    this.listInvocablesCalls.push(cwd);
+    if (this.invocables instanceof Error) { throw this.invocables; }
+    return this.invocables ?? [];
   }
 }
