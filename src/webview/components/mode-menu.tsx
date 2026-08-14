@@ -14,7 +14,7 @@ import type { ModelInfo, PermissionMode } from "../../protocol/messages";
 import type { PaneState } from "../reducer";
 import { useStore } from "../store";
 import { EffortSlider } from "./effort-slider";
-import { MODE_OF, MODES } from "./permission-modes";
+import { MODE_OF, modesFor } from "./permission-modes";
 
 /**
  * Permission mode and effort in one control. They were two triggers side by
@@ -34,7 +34,9 @@ export function ModeMenu({
   /** The session's provider is unavailable: nothing set here could be honored. */
   disabled?: boolean;
 }) {
-  const { post } = useStore();
+  const { post, state } = useStore();
+  const provider = state.catalog.find((p) => p.id === pane.summary.providerId);
+  const rows = modesFor(provider?.permissionModes);
   const mode = MODE_OF(pane.summary.permissionMode);
   const bypassing = pane.summary.permissionMode === "bypass";
   /**
@@ -101,7 +103,7 @@ export function ModeMenu({
           }
         >
           <DropdownMenuLabel>Permission mode</DropdownMenuLabel>
-          {MODES.map((m) => {
+          {rows.map((m) => {
             const disableBypass = m.value === "bypass" && hasStarted;
             return (
               <DropdownMenuRadioItem

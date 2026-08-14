@@ -8,7 +8,7 @@ import { useId, useState } from "react";
 import type { EffortLevel, PermissionMode, ProviderInfo } from "../../protocol/messages";
 import { findModel, resolveEffort } from "../../shared/model-catalog";
 import { EffortSlider } from "./effort-slider";
-import { MODES } from "./permission-modes";
+import { modesFor } from "./permission-modes";
 import type { CreateSettings } from "./session-create-settings";
 
 /**
@@ -90,6 +90,7 @@ function CreateForm({
   const model = findModel(provider?.models ?? [], modelId) ?? provider?.models[0];
   const scale = model?.effort;
   const level = resolveEffort(model, effort ?? undefined);
+  const rows = modesFor(provider?.permissionModes);
 
   // More than one provider is the only case where naming them earns its
   // vertical space — with one, every group header would say the same word.
@@ -148,7 +149,7 @@ function CreateForm({
       <div className="flex flex-col gap-2">
         <p className="text-xs font-medium text-muted-foreground">Permission mode</p>
         <RadioGroup value={mode} onValueChange={(v) => setMode(v as PermissionMode)}>
-          {MODES.map((m) => (
+          {rows.map((m) => (
             <div
               key={m.value}
               className={cn(
