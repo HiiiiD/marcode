@@ -6,6 +6,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
+import { ContextRing } from './context-ring';
 import { useStore } from '../store';
 import type { PaneState } from '../reducer';
 import type { EffortLevel, ModelInfo, PermissionMode } from '../../protocol/messages';
@@ -200,6 +201,7 @@ export function Composer({ pane, model }: { pane: PaneState; model: ModelInfo | 
               The agent is working. Stop it to send another message.
             </span>
           )}
+          <ContextRing pane={pane} />
         </InputGroupAddon>
       </InputGroup>
     </div>
