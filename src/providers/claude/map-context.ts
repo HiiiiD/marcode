@@ -22,10 +22,6 @@ export interface ContextUsageLike {
   };
 }
 
-function share(tokens: number, max: number): number {
-  return Math.round((tokens / max) * 100);
-}
-
 /**
  * Splits an integer `total` points across `parts` (proportionally to their
  * token weights) so the parts sum to exactly `total` — the largest-remainder
@@ -100,6 +96,14 @@ export function toContextBreakdown(res: ContextUsageLike): ContextBreakdown {
     [systemTokens, memoryTokens, conversationTokens], base, usedPercent,
   );
 
+  // The rows are an allocation *within* the Memory slice, not an independent
+  // tokens/maxTokens calculation. Sharing the slice's denominator is what
+  // stops a single row from rendering larger than the slice it sits under
+  // when the window is clamped or over-full.
+  const filePercents = largestRemainder(
+    res.memoryFiles.map((f) => f.tokens), memoryTokens, memoryPercent,
+  );
+
   return {
     systemPercent,
     memoryPercent,
@@ -107,7 +111,7 @@ export function toContextBreakdown(res: ContextUsageLike): ContextBreakdown {
     freePercent,
     // A file rounding to 0 stays in the list: it is present in the context,
     // and the UI renders 0 as `<1%` rather than dropping the row.
-    memoryFiles: res.memoryFiles.map((f) => ({ path: f.path, percent: share(f.tokens, max) })),
+    memoryFiles: res.memoryFiles.map((f, i) => ({ path: f.path, percent: filePercents[i] })),
   };
 }
 

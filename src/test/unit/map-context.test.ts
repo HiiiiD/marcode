@@ -142,6 +142,35 @@ suite('map-context', () => {
       }
     }
   });
+
+  test('memory rows sum to exactly memoryPercent', () => {
+    const b = toContextBreakdown({
+      totalTokens: 30_000, maxTokens: 100_000,
+      memoryFiles: [
+        { path: '/a', tokens: 3_333 }, { path: '/b', tokens: 3_333 }, { path: '/c', tokens: 3_334 },
+      ],
+    });
+    assert.strictEqual(
+      b.memoryFiles.reduce((sum, f) => sum + f.percent, 0), b.memoryPercent,
+    );
+  });
+
+  test('no row exceeds its slice, even when the context is over-full', () => {
+    const b = toContextBreakdown({
+      totalTokens: 200_000, maxTokens: 100_000,
+      memoryFiles: [{ path: '/big', tokens: 150_000 }],
+    });
+    assert.ok(b.memoryFiles[0].percent <= b.memoryPercent);
+  });
+
+  test('a file too small to round up still gets a row, at 0 — the UI reads it as <1%', () => {
+    const b = toContextBreakdown({
+      totalTokens: 50_000, maxTokens: 100_000,
+      memoryFiles: [{ path: '/big', tokens: 49_000 }, { path: '/tiny', tokens: 1 }],
+    });
+    assert.strictEqual(b.memoryFiles.length, 2);
+    assert.strictEqual(b.memoryFiles[1].percent, 0);
+  });
 });
 
 suite('toUsageWindow', () => {

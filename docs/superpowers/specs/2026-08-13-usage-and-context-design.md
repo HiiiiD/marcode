@@ -68,7 +68,7 @@ export interface ContextBreakdown {
 }
 ```
 
-The four `*Percent` fields sum to 100. `memoryFiles` percentages sum to `memoryPercent`, subject to rounding; the UI never re-derives a total from the rows.
+The four `*Percent` fields sum to 100. `memoryFiles` percentages sum to exactly `memoryPercent`; the UI never re-derives a total from the rows.
 
 Percentages are computed inside the provider. Only the provider knows the model's context window size and the text of its own system prompt, so nothing above `AgentProvider` sees tokens.
 

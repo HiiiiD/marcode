@@ -90,8 +90,9 @@ export interface UsageWindow {
 /**
  * How the model's context window is occupied, as percentages of that window.
  * The four `*Percent` fields sum to 100; `memoryFiles` percentages sum to
- * `memoryPercent` subject to rounding, so consumers must never re-derive a
- * total from the rows. A listed file rounding to 0 means "under 1%", never
+ * exactly `memoryPercent` — they are allocated within that slice, not
+ * re-derived from token counts — so consumers must never re-derive a total
+ * from the rows. A listed file rounding to 0 means "under 1%", never
  * "absent" — the UI renders that case as `<1%`.
  */
 export interface ContextBreakdown {
