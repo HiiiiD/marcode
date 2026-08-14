@@ -55,6 +55,26 @@ suite('map-context', () => {
     });
   });
 
+  test('a near-full window where independently-rounded slices would overshoot still sums to 100', () => {
+    // maxTokens=200, memoryTokens=65 (-> 33), conversationTokens=65 (-> 33),
+    // totalTokens=199 so systemTokens=69 (-> 35): rounding each slice
+    // independently sums to 101. This is a reachable near-full-context
+    // state, not a synthetic edge case.
+    const breakdown = toContextBreakdown({
+      totalTokens: 199,
+      maxTokens: 200,
+      memoryFiles: [{ path: '/repo/CLAUDE.md', type: 'project', tokens: 65 }],
+      messageBreakdown: {
+        toolCallTokens: 65, toolResultTokens: 0, attachmentTokens: 0,
+        assistantMessageTokens: 0, userMessageTokens: 0,
+        redirectedContextTokens: 0, unattributedTokens: 0,
+      },
+    });
+    const sum = breakdown.systemPercent + breakdown.memoryPercent
+      + breakdown.conversationPercent + breakdown.freePercent;
+    assert.strictEqual(sum, 100);
+  });
+
   test('maps the plan windows that report a utilization, in a stable order', () => {
     const windows = toUsageWindows({
       rate_limits_available: true,

@@ -45,8 +45,11 @@ function share(tokens: number, max: number): number {
 /**
  * Tokens enter here and percentages leave: this is the only place in the
  * codebase allowed to reason in tokens for these surfaces. `freePercent` is
- * derived by subtraction rather than from `maxTokens - totalTokens` so the
- * four slices always sum to exactly 100 despite per-slice rounding.
+ * derived by subtraction (`100 - usedPercent`, itself one rounding of the
+ * real occupied share) rather than from `maxTokens - totalTokens`, and
+ * `systemPercent` absorbs whatever rounding slack `memoryPercent` and
+ * `conversationPercent` leave behind, so the four slices always sum to
+ * exactly 100 despite per-slice rounding.
  */
 export function toContextBreakdown(res: ContextUsageLike): ContextBreakdown {
   const max = res.maxTokens;
@@ -64,15 +67,19 @@ export function toContextBreakdown(res: ContextUsageLike): ContextBreakdown {
       + m.assistantMessageTokens + m.userMessageTokens
       + m.redirectedContextTokens + m.unattributedTokens
     : 0;
-  // Whatever the SDK counts in the total but does not attribute to memory
-  // or messages is the system prompt and its tool definitions — the one
-  // slice the spec folds together.
-  const systemTokens = Math.max(0, res.totalTokens - memoryTokens - conversationTokens);
 
-  const systemPercent = share(systemTokens, max);
+  // Rounding each of the three attributed slices independently and then
+  // deriving free by subtraction (the original approach) can push their sum
+  // past 100 — e.g. 33 + 33 + 35 = 101 — which then clamps free to 0 and
+  // leaves the four fields totalling 101. Instead, round the *occupied*
+  // share of the window exactly once, and let system — already defined as
+  // the unattributed remainder — absorb whatever rounding the other two
+  // slices introduce. That keeps the sum at exactly 100 by construction.
+  const usedPercent = share(Math.min(res.totalTokens, max), max);
   const memoryPercent = share(memoryTokens, max);
   const conversationPercent = share(conversationTokens, max);
-  const freePercent = Math.max(0, 100 - systemPercent - memoryPercent - conversationPercent);
+  const systemPercent = Math.max(0, usedPercent - memoryPercent - conversationPercent);
+  const freePercent = 100 - usedPercent;
 
   return {
     systemPercent,
