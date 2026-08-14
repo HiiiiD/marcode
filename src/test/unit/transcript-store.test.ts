@@ -150,6 +150,40 @@ suite('TranscriptStore', () => {
     });
   });
 
+  test('a malformed window element is dropped rather than sunk into an unreadable id', async () => {
+    await fs.writeFile(
+      path.join(dir, 'usage.json'),
+      JSON.stringify({ providers: { fake: [null] } }),
+      'utf8',
+    );
+    assert.deepStrictEqual(await new TranscriptStore(dir).readUsage(), { providers: { fake: [] } });
+
+    await fs.writeFile(
+      path.join(dir, 'usage.json'),
+      JSON.stringify({ providers: { fake: [42] } }),
+      'utf8',
+    );
+    assert.deepStrictEqual(await new TranscriptStore(dir).readUsage(), { providers: { fake: [] } });
+  });
+
+  test('a malformed window element does not take a valid sibling window with it', async () => {
+    await fs.writeFile(
+      path.join(dir, 'usage.json'),
+      JSON.stringify({
+        providers: {
+          fake: [
+            { id: 'five-hour', label: 'Session (5h)', usedPercent: 62 },
+            null,
+          ],
+        },
+      }),
+      'utf8',
+    );
+    assert.deepStrictEqual(await new TranscriptStore(dir).readUsage(), {
+      providers: { fake: [{ id: 'five-hour', label: 'Session (5h)', usedPercent: 62 }] },
+    });
+  });
+
   test('remove deletes the file, clears the cache, and stays gone after a later flush', async () => {
     store.append('s1', item('a', 'one'));
     store.append('s1', item('b', 'two'));

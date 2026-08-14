@@ -20,17 +20,23 @@ const EMPTY_INDEX: StoredIndex = {
 
 /**
  * Narrows a parsed `usage.json` into something `SessionManager.init()` can
- * consume without throwing: `Object.entries(...)` over a non-object, or
- * `.map()` over a non-array window list, are exactly the two ways a
- * structurally-wrong-but-syntactically-valid file (`{"providers": "oops"}`,
- * `{"providers": {"claude": "oops"}}`) reaches `init()` and blows up there
- * instead of here. Checking two levels — `providers` is an object, and each
- * of its values is an array — is deep enough to make that impossible; going
- * further and validating every window's fields would make this a schema
- * validator, and a malformed *window* is display corruption the strip
- * already treats safely (a bad percent just renders oddly), not a crash. A
- * provider entry that fails the array check is dropped rather than failing
- * the whole file, so one corrupt provider does not blank out the others.
+ * consume without throwing. `init()` does exactly two things with this
+ * value: `Object.entries(usage.providers)`, and, per provider,
+ * `windows.map((w) => [w.id, w])` to build a `Map` keyed on `w.id`. Every
+ * check below exists to make one of those two calls safe on *any* file
+ * content, and no further: `providers` must be a non-null object (so
+ * `Object.entries` cannot throw and cannot iterate a string's characters);
+ * each provider's value must be an array (so `.map()` exists); and each
+ * element of that array must be a non-null object with a string `id` (so
+ * `w.id` can be read and used as a Map key without throwing on `null`,
+ * `42`, or an object with no `id`). `label`/`usedPercent`/`resetsAt` are
+ * deliberately NOT checked past that: a malformed value there is display
+ * corruption the strip already renders safely (a bad percent just renders
+ * oddly), not a crash, so validating it would make this a schema validator
+ * rather than a throw-guard. A provider whose value fails the array check,
+ * or an individual window that fails the element check, is dropped rather
+ * than failing the whole file — one corrupt provider or window does not
+ * blank out its siblings.
  */
 function validProviders(parsed: unknown): Record<string, UsageWindow[]> {
   if (typeof parsed !== 'object' || parsed === null) { return {}; }
@@ -38,9 +44,17 @@ function validProviders(parsed: unknown): Record<string, UsageWindow[]> {
   if (typeof providers !== 'object' || providers === null) { return {}; }
   const out: Record<string, UsageWindow[]> = {};
   for (const [providerId, windows] of Object.entries(providers)) {
-    if (Array.isArray(windows)) { out[providerId] = windows as UsageWindow[]; }
+    if (!Array.isArray(windows)) { continue; }
+    out[providerId] = windows.filter(isUsageWindow);
   }
   return out;
+}
+
+function isUsageWindow(value: unknown): value is UsageWindow {
+  return (
+    typeof value === 'object' && value !== null
+    && typeof (value as { id?: unknown }).id === 'string'
+  );
 }
 
 export class TranscriptStore {

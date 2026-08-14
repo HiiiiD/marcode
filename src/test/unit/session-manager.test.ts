@@ -506,6 +506,26 @@ suite('SessionManager', () => {
     await revived.dispose();
   });
 
+  test('init() survives a usage.json whose window elements are malformed, not just its providers', async () => {
+    // `windows.map((w) => [w.id, w])` — the exact line that would throw
+    // trying to read `.id` off `null` — is what this exercises. A `null`
+    // element is dropped; a valid sibling in the same array survives.
+    await fs.writeFile(
+      path.join(dir, 'usage.json'),
+      JSON.stringify({
+        providers: {
+          fake: [null, { id: 'five-hour', label: 'Session (5h)', usedPercent: 62 }],
+        },
+      }),
+      'utf8',
+    );
+
+    const revived = new SessionManager(new TranscriptStore(dir), providers, () => {});
+    await assert.doesNotReject(() => revived.init());
+    assert.deepStrictEqual(revived.usageSnapshot().fake.map((w) => w.id), ['five-hour']);
+    await revived.dispose();
+  });
+
   test('session-mcp reaches a visible session and is withheld from a hidden one', async () => {
     const a = await manager.create('fake', '/tmp');
     const b = await manager.create('fake', '/tmp');
