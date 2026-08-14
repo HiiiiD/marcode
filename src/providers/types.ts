@@ -63,7 +63,7 @@ export type AgentEvent =
   | { kind: 'usage'; inputTokens: number; outputTokens: number };
 
 export interface AgentRun {
-  send(text: string): void;
+  send(text: string, context?: EditorContext): void;
   readonly events: AsyncIterable<AgentEvent>;
   respondToTool(id: string, decision: ToolDecision): void;
   setEffort(effort: EffortLevel): void;

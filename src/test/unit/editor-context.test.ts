@@ -73,23 +73,31 @@ suite('toEditorContext', () => {
       ranges: [
         { startLine: 10, endLine: 12, text: 'a' },
         { startLine: 13, endLine: 14, text: 'b' },
-        { startLine: 30, endLine: 30, text: 'c' },
+        { startLine: 20, endLine: 24, text: 'x' },
+        { startLine: 22, endLine: 26, text: 'y' },
+        { startLine: 40, endLine: 40, text: 'c' },
       ],
     }), [ROOT]);
     assert.deepStrictEqual(ctx?.selection?.ranges, [
       { startLine: 10, endLine: 14, text: 'a\nb' },
-      { startLine: 30, endLine: 30, text: 'c' },
+      { startLine: 20, endLine: 26, text: 'x\ny' },
+      { startLine: 40, endLine: 40, text: 'c' },
     ]);
   });
 
   test('a range past the budget is cut and its end line recomputed', () => {
-    const big = 'x'.repeat(SELECTION_BUDGET + 500);
+    const line = 'a\n';
+    const lineCount = Math.ceil((SELECTION_BUDGET + 500) / line.length);
+    const big = line.repeat(lineCount);
     const ctx = toEditorContext(snap({
-      ranges: [{ startLine: 1, endLine: 900, text: big }],
+      ranges: [{ startLine: 1, endLine: lineCount, text: big }],
     }), [ROOT]);
     assert.strictEqual(ctx?.selection?.ranges.length, 1);
-    assert.strictEqual(ctx?.selection?.ranges[0].text.length, SELECTION_BUDGET);
-    assert.strictEqual(ctx?.selection?.ranges[0].endLine, 1);
+    const cutText = ctx?.selection?.ranges[0].text ?? '';
+    assert.strictEqual(cutText.length, SELECTION_BUDGET);
+    const expectedNewlines = (cutText.match(/\n/g) ?? []).length;
+    assert.ok(expectedNewlines > 0, 'fixture must actually span multiple lines');
+    assert.strictEqual(ctx?.selection?.ranges[0].endLine, 1 + expectedNewlines);
     assert.strictEqual(ctx?.selection?.truncated, true);
   });
 
