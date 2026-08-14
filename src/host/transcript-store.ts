@@ -18,6 +18,31 @@ const EMPTY_INDEX: StoredIndex = {
   layout: { orientation: 'vertical', panes: [] },
 };
 
+/**
+ * Narrows a parsed `usage.json` into something `SessionManager.init()` can
+ * consume without throwing: `Object.entries(...)` over a non-object, or
+ * `.map()` over a non-array window list, are exactly the two ways a
+ * structurally-wrong-but-syntactically-valid file (`{"providers": "oops"}`,
+ * `{"providers": {"claude": "oops"}}`) reaches `init()` and blows up there
+ * instead of here. Checking two levels — `providers` is an object, and each
+ * of its values is an array — is deep enough to make that impossible; going
+ * further and validating every window's fields would make this a schema
+ * validator, and a malformed *window* is display corruption the strip
+ * already treats safely (a bad percent just renders oddly), not a crash. A
+ * provider entry that fails the array check is dropped rather than failing
+ * the whole file, so one corrupt provider does not blank out the others.
+ */
+function validProviders(parsed: unknown): Record<string, UsageWindow[]> {
+  if (typeof parsed !== 'object' || parsed === null) { return {}; }
+  const providers = (parsed as { providers?: unknown }).providers;
+  if (typeof providers !== 'object' || providers === null) { return {}; }
+  const out: Record<string, UsageWindow[]> = {};
+  for (const [providerId, windows] of Object.entries(providers)) {
+    if (Array.isArray(windows)) { out[providerId] = windows as UsageWindow[]; }
+  }
+  return out;
+}
+
 export class TranscriptStore {
   private cache = new Map<SessionId, TranscriptItem[]>();
   private pending = new Map<SessionId, TranscriptItem[]>();
@@ -299,13 +324,18 @@ export class TranscriptStore {
    * it is keyed by provider rather than by session, and it is rewritten on a
    * different cadence from the roster. A corrupt or absent file is an empty
    * set — usage is decoration over a working panel, and refusing to start
-   * because a percentage could not be read would be absurd.
+   * because a percentage could not be read would be absurd. Unlike
+   * `readIndex` (whose corruption is caught a layer up, in `extension.ts`),
+   * this is the one boundary containing that failure — nothing above
+   * `SessionManager.init()` catches a bad `usage.json`, and `init()` must
+   * not throw — so `JSON.parse` succeeding is not enough: the shape has to
+   * be checked too, not just cast past with `as`.
    */
   async readUsage(): Promise<StoredUsage> {
     try {
       const raw = await fs.readFile(path.join(this.rootDir, 'usage.json'), 'utf8');
-      const parsed = JSON.parse(raw) as Partial<StoredUsage>;
-      return { providers: parsed.providers ?? {} };
+      const parsed: unknown = JSON.parse(raw);
+      return { providers: validProviders(parsed) };
     } catch {
       return { providers: {} };
     }

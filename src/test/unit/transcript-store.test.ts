@@ -122,6 +122,34 @@ suite('TranscriptStore', () => {
     assert.deepStrictEqual(await new TranscriptStore(dir).readUsage(), { providers: {} });
   });
 
+  test('valid JSON with the wrong shape also degrades to an empty set', async () => {
+    await fs.writeFile(path.join(dir, 'usage.json'), JSON.stringify({ providers: 'oops' }), 'utf8');
+    assert.deepStrictEqual(await new TranscriptStore(dir).readUsage(), { providers: {} });
+
+    await fs.writeFile(
+      path.join(dir, 'usage.json'),
+      JSON.stringify({ providers: { claude: 'oops' } }),
+      'utf8',
+    );
+    assert.deepStrictEqual(await new TranscriptStore(dir).readUsage(), { providers: {} });
+  });
+
+  test('a corrupt provider entry does not blank out a sibling that is fine', async () => {
+    await fs.writeFile(
+      path.join(dir, 'usage.json'),
+      JSON.stringify({
+        providers: {
+          claude: 'oops',
+          fake: [{ id: 'five-hour', label: 'Session (5h)', usedPercent: 62 }],
+        },
+      }),
+      'utf8',
+    );
+    assert.deepStrictEqual(await new TranscriptStore(dir).readUsage(), {
+      providers: { fake: [{ id: 'five-hour', label: 'Session (5h)', usedPercent: 62 }] },
+    });
+  });
+
   test('remove deletes the file, clears the cache, and stays gone after a later flush', async () => {
     store.append('s1', item('a', 'one'));
     store.append('s1', item('b', 'two'));

@@ -497,6 +497,15 @@ suite('SessionManager', () => {
     assert.deepStrictEqual(revived.usageSnapshot().fake.map((w) => w.id), ['five-hour']);
   });
 
+  test('init() survives a structurally-corrupt usage.json instead of throwing', async () => {
+    await fs.writeFile(path.join(dir, 'usage.json'), JSON.stringify({ providers: 'oops' }), 'utf8');
+
+    const revived = new SessionManager(new TranscriptStore(dir), providers, () => {});
+    await assert.doesNotReject(() => revived.init());
+    assert.deepStrictEqual(revived.usageSnapshot(), {});
+    await revived.dispose();
+  });
+
   test('session-mcp reaches a visible session and is withheld from a hidden one', async () => {
     const a = await manager.create('fake', '/tmp');
     const b = await manager.create('fake', '/tmp');
