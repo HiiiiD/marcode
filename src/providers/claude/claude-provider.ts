@@ -418,13 +418,17 @@ export class ClaudeProvider implements AgentProvider {
       // in. An id the catalog does not list keeps whatever it was given — the
       // CLI is the authority on models this build has never heard of.
       const effort = resolveEffort(findModel(this.listModels(), pendingModel), pendingEffort);
-      // 'ultra' is Codex-only: no Claude model's `effort.levels` ever lists
-      // it (see providers/types.ts), so `resolveEffort` can only return it
-      // here for a Claude model if the catalog itself is wrong — not
-      // something this cast should silently paper over further than the SDK
-      // already would. The SDK's own `EffortLevel` predates 'ultra' and has
-      // no reason to grow it, which is why the widened, shared union needs a
-      // narrowing cast at this boundary rather than the SDK type following it.
+      // The SDK's own `EffortLevel` (sdk.d.ts) predates 'ultra' and has no
+      // reason to grow it, so the cast below bridges our now-wider shared
+      // union to the SDK's narrower one. It is safe when `resolveEffort`
+      // found a row for `pendingModel` above: no Claude model's
+      // `effort.levels` ever lists 'ultra' (see providers/types.ts), so a
+      // known row clamps it away same as any other unsupported value. It is
+      // NOT independently safe for the "catalog does not list this id" branch
+      // documented above, which passes `pendingEffort` through unchanged —
+      // that gap is pre-existing (not introduced by this cast) and is the
+      // documented tradeoff of letting a session the catalog has never seen
+      // resume with whatever effort it was given.
       return {
         cwd: opts.cwd,
         model: pendingModel,
@@ -527,22 +531,43 @@ export class ClaudeProvider implements AgentProvider {
         if (resolve) { approvals.delete(id); resolve(decision); }
       },
       setEffort: (next: EffortLevel) => {
-        pendingEffort = next;
+        // `next` arrives unvalidated: the wire type (`set-effort`'s `effort`
+        // field) carries the shared `EffortLevel` union with nothing tying a
+        // value to a provider or model, and `AgentSession.setEffort` forwards
+        // it verbatim (unlike `AgentSession.setModel`, which reconciles
+        // through `resolveEffort` before assigning). The webview's slider
+        // only offers levels the current model row publishes, so ordinary
+        // use never reaches here with an unsupported value — but that is the
+        // renderer policing a host invariant, and this file, not the
+        // renderer, is the boundary that must not depend on it. Reconciling
+        // here is the same call `buildOptions` makes for construction-time
+        // effort: a Claude model's `effort.levels` never lists 'ultra', so
+        // this clamp is what keeps it from ever reaching the SDK live, not
+        // just at first send().
+        const resolved = resolveEffort(findModel(this.listModels(), pendingModel), next);
+        pendingEffort = resolved;
         if (!queryRef) {
           return; // not yet constructed: pendingEffort above is picked up at construction.
+        }
+        if (resolved === undefined) {
+          // The model has no effort control at all (or the catalog has no
+          // opinion) — nothing to send.
+          return;
         }
         try {
           // Best-effort: an effort change that the SDK rejects (e.g. the model
           // doesn't support it) is not a failed agent turn, so it is not
           // surfaced as a turn-end error — logged only. See the header comment.
-          // Same 'ultra' narrowing as buildOptions above.
-          queryRef.applyFlagSettings({ effortLevel: next as SdkEffortLevel }).catch((reason: unknown) => {
-            console.warn('[hiiiid-code] applyFlagSettings rejected', 'effort=', next, 'reason=', errorMessage(reason));
+          // `resolved` is already narrowed to this model's levels above, so
+          // this cast only bridges our `EffortLevel` type to the SDK's
+          // otherwise-identical one — it is not doing any of the narrowing.
+          queryRef.applyFlagSettings({ effortLevel: resolved as SdkEffortLevel }).catch((reason: unknown) => {
+            console.warn('[hiiiid-code] applyFlagSettings rejected', 'effort=', resolved, 'reason=', errorMessage(reason));
           });
         } catch (err) {
           // A synchronous throw (e.g. the query is already torn down) is
           // exactly as non-fatal as an async rejection above — same reason.
-          console.warn('[hiiiid-code] applyFlagSettings threw', 'effort=', next, 'error=', errorMessage(err));
+          console.warn('[hiiiid-code] applyFlagSettings threw', 'effort=', resolved, 'error=', errorMessage(err));
         }
       },
       setModel: (next: string) => {

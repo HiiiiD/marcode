@@ -28,6 +28,8 @@ function fakeLoadQuery(opts: {
   const calls: { options: Record<string, unknown> }[] = [];
   /** Every model pushed at the *running* query, in order. */
   const setModels: (string | undefined)[] = [];
+  /** Every settings patch pushed at the *running* query via applyFlagSettings, in order. */
+  const flagSettings: Record<string, unknown>[] = [];
   let closed = false;
 
   const queryFn = (params: { prompt: AsyncIterable<unknown>; options: Record<string, unknown> }) => {
@@ -51,7 +53,7 @@ function fakeLoadQuery(opts: {
     })() as AsyncGenerator<never, void> & {
       interrupt: () => Promise<undefined>;
       setPermissionMode: () => Promise<void>;
-      applyFlagSettings: () => Promise<void>;
+      applyFlagSettings: (patch: Record<string, unknown>) => Promise<void>;
       setModel: (model?: string) => Promise<void>;
       close: () => void;
       mcpServerStatus: () => Promise<FakeSdkServerStatus[]>;
@@ -59,7 +61,7 @@ function fakeLoadQuery(opts: {
     };
     gen.interrupt = async () => undefined;
     gen.setPermissionMode = async () => { /* no-op fake */ };
-    gen.applyFlagSettings = async () => { /* no-op fake */ };
+    gen.applyFlagSettings = async (patch: Record<string, unknown>) => { flagSettings.push(patch); };
     gen.setModel = (model?: string) => {
       setModels.push(model);
       return opts.setModel ? opts.setModel(model) : Promise.resolve();
@@ -74,6 +76,7 @@ function fakeLoadQuery(opts: {
     load: async () => queryFn,
     calls,
     setModels,
+    flagSettings,
     isClosed: () => closed,
   };
 }
@@ -350,6 +353,34 @@ suite('ClaudeProvider (lazy start)', () => {
     run.setEffort('high');
     await run.interrupt();
     assert.strictEqual(fake.calls.length, 0);
+    await run.dispose();
+  });
+
+  test('setEffort() clamps a level the running model does not support before forwarding it live', async () => {
+    // 'ultra' is Codex-only — no Claude model's `effort.levels` lists it — but
+    // the wire type is the shared `EffortLevel` union with nothing tying a
+    // value to a provider, and AgentSession.setEffort forwards it verbatim.
+    // The clamp therefore has to happen here, mirroring what buildOptions
+    // already does at construction time, or 'ultra' reaches
+    // Query.applyFlagSettings live, mid-session.
+    const fake = fakeLoadQuery({ models: CATALOG });
+    const provider = new ClaudeProvider(fake.load as never);
+    await provider.fetchModels('/tmp');
+    const run = provider.start({
+      cwd: '/tmp', model: 'claude-opus-5', effort: 'low', permissionMode: 'default',
+    });
+
+    run.send('go');
+    await flushMicrotasks();
+    run.setEffort('ultra');
+    await flushMicrotasks();
+
+    assert.strictEqual(fake.flagSettings.length, 1);
+    assert.notStrictEqual(fake.flagSettings[0].effortLevel, 'ultra', 'must not forward an unsupported level to the SDK');
+    // claude-opus-5's levels are low|medium|high|xhigh|max with 'high' as
+    // default (the CLI's own default) — resolveEffort's fallback for a
+    // requested level the model does not list.
+    assert.strictEqual(fake.flagSettings[0].effortLevel, 'high');
     await run.dispose();
   });
 
