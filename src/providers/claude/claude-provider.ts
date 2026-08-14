@@ -378,6 +378,15 @@ export class ClaudeProvider implements AgentProvider {
         resume: opts.resumeToken,
         permissionMode: PERMISSION_MODE[pendingMode],
         canUseTool,
+        // Adaptive is already the default for every model that supports it,
+        // so the type is not what this is for — `display` is. Left unset, the
+        // CLI emits a `thinking` content block per reasoning turn whose
+        // `thinking` string is empty, and the panel has no way to tell that
+        // apart from a model that did not reason at all. Probed against the
+        // real SDK: bare options give `thinking: ""`, this gives the summary.
+        // Safe on models without adaptive thinking — verified on Haiku, which
+        // takes the same option and returns a summary.
+        thinking: { type: 'adaptive', display: 'summarized' },
         ...(effort !== undefined ? { effort } : {}),
         ...(isBypassMode ? { allowDangerouslySkipPermissions: true } : {}),
       };

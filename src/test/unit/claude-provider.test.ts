@@ -226,6 +226,28 @@ suite('ClaudeProvider (lazy start)', () => {
     await run.dispose();
   });
 
+  test('the query asks for summarized thinking, or the blocks arrive empty', async () => {
+    // Not a preference. Without `display: 'summarized'` the CLI still emits
+    // `thinking` content blocks for every reasoning turn — with `thinking`
+    // set to the empty string. The transcript then has a reasoning event
+    // carrying no reasoning, which is indistinguishable downstream from a
+    // model that did not think at all. Probed against the real SDK before
+    // this was written; see map-events.ts.
+    const fake = fakeLoadQuery();
+    const provider = new ClaudeProvider(fake.load as never);
+    const run = provider.start({
+      cwd: '/tmp', model: 'claude-opus-5', effort: 'high', permissionMode: 'default',
+    });
+
+    run.send('go');
+    await flushMicrotasks();
+
+    assert.deepStrictEqual(fake.calls[0].options.thinking, {
+      type: 'adaptive', display: 'summarized',
+    });
+    await run.dispose();
+  });
+
   test('an effort on a model the catalog does not list is passed through untouched', async () => {
     // No row means no opinion: the CLI is the authority on ids we do not know.
     const fake = fakeLoadQuery();

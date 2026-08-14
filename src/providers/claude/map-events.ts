@@ -210,7 +210,13 @@ export function mapEvent(msg: unknown): AgentEvent[] {
         // the nested-card design exists to avoid.
         if (parentId) { continue; }
         out.push({ kind: 'text', delta: block.text });
-      } else if (block.type === 'thinking' && typeof block.thinking === 'string') {
+      } else if (block.type === 'thinking' && block.thinking) {
+        // Truthy, not `typeof === 'string'`: a thinking block whose content is
+        // withheld still arrives, carrying the empty string. Forwarding it
+        // opens an assistant transcript item that renders nothing, and reads
+        // downstream as "the model reasoned, and this is what it said".
+        // claude-provider asks for `display: 'summarized'` so the content is
+        // normally there; a redacted block can still arrive empty.
         if (parentId) { continue; }
         out.push({ kind: 'thinking', delta: block.thinking });
       } else if (block.type === 'tool_use' && block.id && block.name) {
