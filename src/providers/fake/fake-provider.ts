@@ -1,6 +1,6 @@
 import type {
-  AgentEvent, AgentProvider, AgentRun, EffortLevel, ModelInfo, PermissionMode, StartOptions,
-  ToolDecision,
+  AgentEvent, AgentProvider, AgentRun, ContextBreakdown, EffortLevel, ModelInfo, PermissionMode,
+  StartOptions, ToolDecision, UsageWindow,
 } from '../types';
 
 class EventChannel implements AsyncIterable<AgentEvent> {
@@ -40,6 +40,11 @@ class EventChannel implements AsyncIterable<AgentEvent> {
   }
 }
 
+export interface FakeReports {
+  context?: ContextBreakdown;
+  windows?: UsageWindow[];
+}
+
 export class FakeProvider implements AgentProvider {
   readonly id = 'fake';
   readonly displayName = 'Fake';
@@ -51,7 +56,10 @@ export class FakeProvider implements AgentProvider {
   readonly models: string[] = [];
   private sessionCounter = 0;
 
-  constructor(private readonly script: (text: string) => AgentEvent[]) {}
+  constructor(
+    private readonly script: (text: string) => AgentEvent[],
+    private readonly reports: FakeReports = {},
+  ) {}
 
   listModels(): ModelInfo[] {
     return [
@@ -69,7 +77,7 @@ export class FakeProvider implements AgentProvider {
     const resumeToken = `fake-session-${++this.sessionCounter}`;
     let started = false;
 
-    return {
+    const run: AgentRun = {
       events: channel,
       send: (text: string) => {
         if (!started) {
@@ -93,5 +101,9 @@ export class FakeProvider implements AgentProvider {
       interrupt: async () => { channel.push({ kind: 'turn-end', reason: 'interrupted' }); },
       dispose: async () => { channel.close(); },
     };
+    const { context, windows } = this.reports;
+    if (context) { run.contextBreakdown = async () => context; }
+    if (windows) { run.usageWindows = async () => windows; }
+    return run;
   }
 }
