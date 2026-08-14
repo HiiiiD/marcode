@@ -3,6 +3,7 @@ import { PaneGroup } from './components/pane-group';
 import { SessionPicker } from './components/session-picker';
 import { useIsNarrow } from './components/use-is-narrow';
 import { reconcilePaneLayout, rosterSessionIds } from './components/pane-layout';
+import { UsageStrip } from './components/usage-strip';
 import { useStore } from './store';
 
 export function App() {
@@ -74,6 +75,7 @@ export function App() {
         <>
           <SessionPicker narrow={narrow} />
           <div className="min-h-0 flex-1"><PaneGroup narrow={narrow} /></div>
+          <UsageStrip />
         </>
       ) : (
         <div className="p-3 text-sm text-muted-foreground">Loading…</div>
