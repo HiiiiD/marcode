@@ -97,17 +97,31 @@ export interface ContextBreakdown {
   memoryFiles: { path: string; percent: number }[];
 }
 
+/**
+ * Status of one configured MCP server. Mirrors the SDK's own union
+ * (sdk.d.ts:1083) including 'disabled' — a configured-but-off server is a
+ * different thing from a broken one, and the user needs to tell them apart.
+ */
+export type McpServerStatus = {
+  name: string;
+  state: 'pending' | 'connected' | 'failed' | 'needs-auth' | 'disabled';
+  toolCount?: number;
+  error?: string;
+};
+
 export type AgentEvent =
   | { kind: 'session'; resumeToken: string }
   | { kind: 'text'; delta: string }
   | { kind: 'thinking'; delta: string }
-  | { kind: 'tool-start'; id: string; name: string; input: unknown }
-  | { kind: 'tool-end'; id: string; ok: boolean; output: unknown }
-  | { kind: 'permission'; id: string; name: string; input: unknown }
+  | { kind: 'tool-start'; id: string; name: string; input: unknown; parentId?: string }
+  | { kind: 'tool-end'; id: string; ok: boolean; output: unknown; parentId?: string }
+  | { kind: 'permission'; id: string; name: string; input: unknown; parentId?: string }
   | { kind: 'turn-end'; reason: 'done' | 'interrupted' | 'error'; error?: string }
   | { kind: 'usage'; inputTokens: number; outputTokens: number }
   /** Full replacement list, not a delta. Emitted whenever the provider notices a change. */
-  | { kind: 'invocables'; entries: Invocable[] };
+  | { kind: 'invocables'; entries: Invocable[] }
+  /** Full replacement list, not a delta — same snapshot semantics as `invocables`. */
+  | { kind: 'mcp-servers'; servers: McpServerStatus[] };
 
 export interface AgentRun {
   send(text: string, context?: EditorContext): void;

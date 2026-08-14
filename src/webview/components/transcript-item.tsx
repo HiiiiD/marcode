@@ -1,6 +1,7 @@
 import { EditorContextChip } from './editor-context-chip';
 import { Markdown } from './markdown';
 import { PermissionCard } from './permission-card';
+import { SubagentCard } from './subagent-card';
 import { ToolCard } from './tool-card';
 import { TranscriptItemShell } from './transcript-item-shell';
 import { useStore } from '../store';
@@ -29,7 +30,12 @@ export function TranscriptItemView({
       );
 
     case 'tool':
-      return <ToolCard item={item} />;
+      // A tool item only grows `children` once its subagent actually does
+      // something, so a Task that ran nothing renders as an ordinary tool
+      // card — correct, since there is nothing nested to show.
+      return item.children && item.children.length > 0
+        ? <SubagentCard item={item} sessionId={sessionId} />
+        : <ToolCard item={item} />;
 
     case 'error':
       return (

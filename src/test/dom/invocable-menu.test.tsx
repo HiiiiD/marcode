@@ -16,7 +16,10 @@ const ENTRIES: Invocable[] = [
 const NO_EFFORT = catalog()[0].models[1];
 
 function pane(invocables?: Invocable[]): PaneState {
-  return { summary: summary("a"), items: [], hasMore: false, pending: [], invocables };
+  return {
+    summary: summary("a"), items: [], hasMore: false, pending: [], invocables,
+    mcpServers: [],
+  };
 }
 
 suite("invocable menu", () => {

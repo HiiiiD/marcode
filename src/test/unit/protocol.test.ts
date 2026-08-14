@@ -33,6 +33,7 @@ function describeOutbound(m: HostToWebview): string {
     case 'session-patch': return 'session-patch';
     case 'session-prepend': return 'session-prepend';
     case 'session-status': return 'session-status';
+    case 'session-mcp': return 'session-mcp';
     case 'sessions-changed': return 'sessions-changed';
     case 'session-invocables': return 'session-invocables';
     case 'editor-context': return 'editor-context';
@@ -50,6 +51,17 @@ suite('protocol', () => {
     assert.strictEqual(
       describeOutbound({ t: 'session-status', id: 's1', status: 'idle' }),
       'session-status',
+    );
+  });
+
+  test('session-mcp is an outbound variant carrying a server list', () => {
+    assert.strictEqual(
+      describeOutbound({
+        t: 'session-mcp',
+        id: 's1',
+        servers: [{ name: 'github', state: 'connected', toolCount: 12 }],
+      }),
+      'session-mcp',
     );
   });
 

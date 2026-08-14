@@ -114,4 +114,13 @@ suite('PermissionCard', () => {
 
     screen.getByText('tmp');
   });
+
+  test('an mcp-attributed request shows the server badge next to the bare name', () => {
+    const item = permission({ name: 'create_pr', mcpServer: 'github' });
+    renderWithStore(<PermissionCard item={item} sessionId="a" />);
+    hydrateWith([{ requestId: 'r1', name: 'create_pr', input: item.input }]);
+
+    screen.getByText('github');
+    screen.getByText('Allow create_pr?');
+  });
 });

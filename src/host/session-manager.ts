@@ -3,7 +3,7 @@ import { catalogKey, CatalogService } from './catalog-service';
 import type { StoredIndex, TranscriptStore } from './transcript-store';
 import type { AgentProvider, EffortLevel, Invocable } from '../providers/types';
 import type {
-  HostToWebview, PaneLayout, ProviderInfo, SessionId, SessionState,
+  HostToWebview, McpServerStatus, PaneLayout, ProviderInfo, SessionId, SessionState,
   SessionStatus, SessionSummary, TranscriptPatch,
 } from '../protocol/messages';
 
@@ -218,6 +218,9 @@ export class SessionManager implements SessionSink {
         session: {
           ...state, items, hasMore, pending: [],
           invocables: this.catalogSvc.get(this.keyOf(state)),
+          // An archived session has no run to ask, and a stale snapshot
+          // presented as current would be a lie.
+          mcpServers: [],
         },
       });
       this.drainSnapshotBuffer(id);
@@ -316,6 +319,15 @@ export class SessionManager implements SessionSink {
     // entries back through the same fan-out as its siblings, so there is one
     // path, not two.
     this.catalogSvc.set(this.keyOf(state), entries);
+  }
+
+  mcp(id: SessionId, servers: McpServerStatus[]): void {
+    // Gated on visibility for the same reason patch() is: a background
+    // session's server list is rendered nowhere. Unlike invocables, this is
+    // per-session live state rather than a cwd-keyed catalog, so there is
+    // nothing to cache and no fan-out to siblings.
+    if (!this.visible.has(id)) { return; }
+    this.emit({ t: 'session-mcp', id, servers });
   }
 
   changed(): void {

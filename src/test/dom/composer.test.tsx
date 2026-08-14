@@ -8,8 +8,10 @@ import { catalog, layoutOf, snapshot, summary } from "../fixtures/protocol";
 import { posted, renderApp, renderWithStore, sendFromHost } from "./harness";
 import { hydrate } from "./session-header.test";
 
-function pane(status: SessionStatus = "idle"): PaneState {
-  return { summary: summary("a", { status }), items: [], hasMore: false, pending: [] };
+function pane(status: SessionStatus = 'idle'): PaneState {
+  return {
+    summary: summary('a', { status }), items: [], hasMore: false, pending: [], mcpServers: [],
+  };
 }
 
 /** A pane whose first message has already been sent — hasStarted === true. */
@@ -19,6 +21,7 @@ function startedPane(id: string): PaneState {
     items: [{ id: `i-${id}`, ts: 1, role: "user", text: "go" }],
     hasMore: false,
     pending: [],
+    mcpServers: [],
   };
 }
 
@@ -273,6 +276,7 @@ suite("Composer", () => {
       items: [],
       hasMore: false,
       pending: [],
+      mcpServers: [],
     };
     renderWithStore(<Composer pane={off} model={NO_EFFORT} models={[]} />);
     sendFromHost({ t: "editor-context", ctx: CTX });
