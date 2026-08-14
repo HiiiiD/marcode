@@ -176,6 +176,30 @@ suite('AgentSession subagent nesting', () => {
     await session.dispose();
   });
 
+  test('a permission answered after its parent was force-flushed still persists to the store', async () => {
+    const provider = new FakeProvider(() => [
+      { kind: 'tool-start', id: 'task1', name: 'Task', input: {} },
+      { kind: 'tool-start', id: 'c1', name: 'Bash', input: { command: 'ls' }, parentId: 'task1' },
+      { kind: 'permission', id: 'c1', name: 'Bash', input: { command: 'ls' } },
+      { kind: 'turn-end', reason: 'interrupted' },
+    ]);
+    const session = new AgentSession(baseState(), provider, store, sink);
+    session.send('go');
+    await settle();
+
+    session.respondToPermission('c1', { allow: true });
+    await settle();
+    await session.dispose();
+
+    const fresh = new TranscriptStore(dir);
+    const { items } = await fresh.tail('s1');
+    const tools = toolItems(items);
+    assert.strictEqual(tools.length, 1);
+    const child = tools[0].children?.find((c) => c.role === 'permission');
+    assert.ok(child, 'the child permission item persisted on the parent');
+    assert.strictEqual((child as { state: string }).state, 'allowed');
+  });
+
   test('an mcp tool name is split onto the item at creation', async () => {
     const provider = new FakeProvider(() => [
       { kind: 'tool-start', id: 't1', name: 'mcp__github__create_pr', input: {} },

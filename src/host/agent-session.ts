@@ -412,19 +412,41 @@ export class AgentSession {
   }
 
   /**
-   * Settles an item that lives inside a parent's children buffer. The child
-   * is not in the store yet — it lands there inline when the parent settles
-   * — so this updates the buffer and streams a patch, with no store write.
+   * Settles an item that lives inside a parent's children buffer.
+   *
+   * While the parent tool call is still running, its children are not in
+   * the store yet — they land there inline when the parent settles — so
+   * this just updates the buffer and streams a patch, with no store write.
+   *
+   * But `flushUnsettledParents` can have already settled the parent (e.g.
+   * an interrupt mid-subagent) and cleared the buffer, while a permission
+   * raised inside it is still outstanding and answered later. In that case
+   * the parent's persisted `children` array is the only durable copy, so
+   * this rebuilds the parent item with the child updated in place and
+   * writes it through `replaceItem` — one store write and one patch that
+   * swaps the whole parent, children included.
    */
   private replaceChild(parentRoot: string, item: TranscriptItem): void {
-    const children = this.childrenByParent.get(parentRoot);
-    if (children) {
-      const at = children.findIndex((c) => c.id === item.id);
-      if (at >= 0) { children[at] = item; } else { children.push(item); }
+    const buffered = this.childrenByParent.get(parentRoot);
+    if (buffered) {
+      const at = buffered.findIndex((c) => c.id === item.id);
+      if (at >= 0) { buffered[at] = item; } else { buffered.push(item); }
+      const parentItemId = this.parentItemIdFor(parentRoot);
+      this._state.updatedAt = Date.now();
+      this.sink.patch(this._state.id, { op: 'replace', item, parentItemId });
+      return;
     }
-    const parentItemId = this.parentItemIdFor(parentRoot);
-    this._state.updatedAt = Date.now();
-    this.sink.patch(this._state.id, { op: 'replace', item, parentItemId });
+
+    const parent = this.toolItems.get(parentRoot);
+    if (!parent || parent.role !== 'tool') { return; }
+    const existingChildren = parent.children ?? [];
+    const at = existingChildren.findIndex((c) => c.id === item.id);
+    const children = at >= 0
+      ? existingChildren.map((c, i) => (i === at ? item : c))
+      : [...existingChildren, item];
+    const settledParent: TranscriptItem = { ...parent, children };
+    this.toolItems.set(parentRoot, settledParent);
+    this.replaceItem(settledParent);
   }
 
   /**
