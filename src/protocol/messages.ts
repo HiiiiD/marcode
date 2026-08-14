@@ -115,7 +115,15 @@ export interface PaneLayout {
 
 export type WebviewToHost =
   | { t: 'ready' }
-  | { t: 'create-session'; providerId: string; cwd: string; model?: string; effort?: EffortLevel }
+  /**
+   * `mode` is the permission mode the session starts in. It is optional and
+   * defaults to `'default'` on the host, because a caller that has no
+   * opinion must not be able to start a session in `bypass` by omission —
+   * and `bypass` can only ever be chosen *before* the first message, so
+   * creation is the one point on the wire where it is settable at all.
+   */
+  | { t: 'create-session'; providerId: string; cwd: string; model?: string;
+      effort?: EffortLevel; mode?: PermissionMode }
   | { t: 'set-visible'; sessionIds: SessionId[] }
   | { t: 'set-layout'; layout: PaneLayout }
   | { t: 'close-session'; id: SessionId }

@@ -4,7 +4,7 @@ import type { StoredIndex, TranscriptStore } from './transcript-store';
 import type { AgentProvider, EffortLevel, Invocable } from '../providers/types';
 import { findModel, resolveEffort } from '../shared/model-catalog';
 import type {
-  ContextResult, HostToWebview, McpServerStatus, PaneLayout, ProviderInfo, SessionId,
+  ContextResult, HostToWebview, McpServerStatus, PaneLayout, PermissionMode, ProviderInfo, SessionId,
   SessionState, SessionStatus, SessionSummary, TranscriptPatch, UsageResult,
 } from '../protocol/messages';
 
@@ -151,6 +151,7 @@ export class SessionManager implements SessionSink {
 
   async create(
     providerId: string, cwd: string, model?: string, effort?: EffortLevel,
+    mode: PermissionMode = 'default',
   ): Promise<AgentSession> {
     const provider = this.providers.get(providerId);
     if (!provider) { throw new Error(`Unknown provider: ${providerId}`); }
@@ -162,7 +163,7 @@ export class SessionManager implements SessionSink {
     const now = Date.now();
     const state: SessionState = {
       id: newSessionId(), providerId, model: chosen.id, effort: resolvedEffort,
-      title: 'Untitled', cwd, status: 'idle', permissionMode: 'default',
+      title: 'Untitled', cwd, status: 'idle', permissionMode: mode,
       includeEditorContext: true,
       usage: { inputTokens: 0, outputTokens: 0 },
       archived: false, createdAt: now, updatedAt: now,

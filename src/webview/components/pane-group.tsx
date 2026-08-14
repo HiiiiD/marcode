@@ -1,6 +1,6 @@
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { cn } from "@/lib/utils";
-import { Fragment, useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef } from "react";
 // react-resizable-panels ships ESM-only; a type-only import from a CommonJS
 // module needs an explicit resolution-mode attribute (TS 5.3+) or tsc's
 // per-file CJS/ESM interop check rejects it outright (TS1541) — see the
@@ -21,7 +21,7 @@ interface PaneGroupProps {
 }
 
 export function PaneGroup({ narrow }: PaneGroupProps) {
-  const { state, post } = useStore();
+  const { state, post, focus } = useStore();
 
   // A pane can outlive `delete-session` on the client for a render or two,
   // and its stale `byId` entry is never cleaned up. Render only sessions
@@ -73,7 +73,11 @@ export function PaneGroup({ narrow }: PaneGroupProps) {
   const prevCount = useRef(panes.length);
 
   // With N panes rendered at identical weight there was no indication of
-  // which one a keyboard or pointer user was actually acting in. React's
+  // which one a keyboard or pointer user was actually acting in. It lives in
+  // the store rather than in this component's own state because it is not
+  // only a rendering concern: `+ New` inherits the provider, model, effort
+  // and permission mode of the session the user is working in, and that
+  // control renders in the roster toolbar, outside this tree. React's
   // `onFocusCapture` is backed by the native `focusin` event (unlike plain
   // `focus`, `focusin` bubbles), so one handler per pane catches focus
   // landing anywhere inside it — the header's model Select trigger, the
@@ -83,9 +87,9 @@ export function PaneGroup({ narrow }: PaneGroupProps) {
   // Content rendered into a portal (e.g. an open Select's listbox) is not a
   // DOM descendant of the pane it logically belongs to, so focus moving
   // into a portalled menu does not bubble through this pane's tree and
-  // does not update `activeId` — the pane that opened the menu simply
+  // does not update the focused id — the pane that opened the menu simply
   // stays active, which is the reading a user would want anyway.
-  const [activeId, setActiveId] = useState<string | null>(null);
+  const activeId = state.focusedSessionId;
   useEffect(() => {
     if (panes.length < prevCount.current && document.activeElement === document.body) {
       const target =
@@ -166,7 +170,7 @@ export function PaneGroup({ narrow }: PaneGroupProps) {
                 minSize="15%"
                 collapsible
                 data-active={activeId === pane.sessionId}
-                onFocusCapture={() => setActiveId(pane.sessionId)}
+                onFocusCapture={() => focus(pane.sessionId)}
                 className={cn(
                   "transition-colors",
                   // A ring, not a background: at 300px a filled active pane

@@ -88,6 +88,13 @@ suite('MessageRouter', () => {
     assert.ok(true, 'no exception escaped the router');
   });
 
+  test('create-session carries the requested permission mode through to the session', async () => {
+    await router.handle({
+      t: 'create-session', providerId: 'fake', cwd: '/tmp', mode: 'acceptEdits',
+    });
+    assert.strictEqual(manager.summaries()[0].permissionMode, 'acceptEdits');
+  });
+
   test('ready after a restart materializes and returns persisted session snapshots', async () => {
     await router.handle({ t: 'create-session', providerId: 'fake', cwd: '/tmp' });
     const id = manager.summaries()[0].id;

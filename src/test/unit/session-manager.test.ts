@@ -72,6 +72,16 @@ suite('SessionManager', () => {
     assert.ok(sent.some((m) => m.t === 'sessions-changed'));
   });
 
+  test('create honors a requested permission mode', async () => {
+    const session = await manager.create('fake', '/tmp', undefined, undefined, 'plan');
+    assert.strictEqual(session.state.permissionMode, 'plan');
+  });
+
+  test('create defaults the permission mode when none is requested', async () => {
+    const session = await manager.create('fake', '/tmp');
+    assert.strictEqual(session.state.permissionMode, 'default');
+  });
+
   test('patches reach visible sessions only', async () => {
     const a = await manager.create('fake', '/tmp');
     const b = await manager.create('fake', '/tmp');
