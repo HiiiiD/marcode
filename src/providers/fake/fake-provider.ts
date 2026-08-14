@@ -49,6 +49,13 @@ export type FakeRun = AgentRun & { emit(event: AgentEvent): void };
 export interface FakeReports {
   context?: ContextBreakdown;
   windows?: UsageWindow[];
+  /**
+   * Scripts the "this account has no plan limits at all" answer — the API
+   * key / Bedrock / Vertex case — which is `undefined`, not `[]`. The two
+   * are different instructions to the host: `undefined` clears persisted
+   * windows, `[]` does not.
+   */
+  usageUnavailable?: boolean;
 }
 
 export class FakeProvider implements AgentProvider {
@@ -74,6 +81,8 @@ export class FakeProvider implements AgentProvider {
   invocables: Invocable[] | Error | undefined;
   /** Records every (text, context) pair passed to send, for assertions. */
   readonly sent: { text: string; context?: EditorContext }[] = [];
+  /** Every cwd fetchUsage() was called with, in order. */
+  readonly fetchUsageCalls: string[] = [];
   private sessionCounter = 0;
 
   constructor(
@@ -122,6 +131,8 @@ export class FakeProvider implements AgentProvider {
       interrupt: async () => { channel.push({ kind: 'turn-end', reason: 'interrupted' }); },
       dispose: async () => { channel.close(); },
       emit: (event: AgentEvent) => { channel.push(event); },
+      usageWindows: async (): Promise<UsageWindow[] | undefined> =>
+        (this.reports.usageUnavailable ? undefined : (this.reports.windows ?? [])),
     };
     this.runs.push(run);
     const { context, windows } = this.reports;
@@ -137,5 +148,10 @@ export class FakeProvider implements AgentProvider {
     this.listInvocablesCalls.push(cwd);
     if (this.invocables instanceof Error) { throw this.invocables; }
     return this.invocables ?? [];
+  }
+
+  async fetchUsage(cwd: string): Promise<UsageWindow[] | undefined> {
+    this.fetchUsageCalls.push(cwd);
+    return this.reports.usageUnavailable ? undefined : (this.reports.windows ?? []);
   }
 }
