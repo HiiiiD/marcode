@@ -70,18 +70,22 @@ function ProviderUsage({
   // side are indistinguishable.
   if (!live || live.length === 0) {
     return (
-      <span className="flex shrink-0 items-center gap-3 text-muted-foreground">
-        {showName && <span>{displayName}</span>}
+      <div className="flex min-h-5 flex-wrap items-center gap-x-3 gap-y-0.5 text-muted-foreground">
+        {showName && <span className="shrink-0">{displayName}</span>}
         <span>Plan usage not reported</span>
-      </span>
+      </div>
     );
   }
 
+  // Wraps rather than scrolls. A horizontal scrollbar inside a 24px bar eats
+  // half its height and hides the overflow behind a gesture nobody makes at
+  // this size — the account whose numbers scrolled off is exactly the one the
+  // strip exists to surface. Wrapping costs a row and hides nothing.
   return (
-    <span className="flex shrink-0 items-center gap-3">
-      {showName && <span className="text-muted-foreground">{displayName}</span>}
+    <div className="flex min-h-5 flex-wrap items-center gap-x-3 gap-y-0.5">
+      {showName && <span className="shrink-0 text-muted-foreground">{displayName}</span>}
       {live.map((w) => <WindowChip key={w.id} window={w} />)}
-    </span>
+    </div>
   );
 }
 
@@ -101,8 +105,12 @@ export function UsageStrip() {
   // first pull lands, which is the right trade in a 300-500px sidebar.
   if (reporting.length === 0) { return null; }
 
+  // One row per provider, stacked — not one line that scrolls. Plan limits
+  // belong to accounts, and two accounts side by side in a 300px column is
+  // the case that overflows, not the exception. Height grows only when a
+  // second provider actually reports.
   return (
-    <div className="flex h-6 shrink-0 items-center gap-4 overflow-x-auto overflow-y-hidden border-t border-border px-2 text-xs">
+    <div className="flex shrink-0 flex-col gap-1 border-t border-border px-2 py-1 text-xs">
       {reporting.map((id) => (
         <ProviderUsage
           key={id}
