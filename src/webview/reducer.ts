@@ -1,6 +1,6 @@
 import type {
-  HostToWebview, PaneLayout, PermissionRequest, ProviderInfo, SessionId,
-  SessionSummary, TranscriptItem,
+  ContextResult, HostToWebview, PaneLayout, PermissionRequest, ProviderInfo, SessionId,
+  SessionSummary, TranscriptItem, UsageResult,
 } from '../protocol/messages';
 
 export interface PaneState {
@@ -16,6 +16,10 @@ export interface ClientState {
   layout: PaneLayout;
   catalog: ProviderInfo[];
   byId: Record<SessionId, PaneState>;
+  /** Last reply per session; kept while a refetch is in flight. */
+  contextBySession: Record<SessionId, ContextResult | undefined>;
+  /** Last reply per provider id. */
+  usageByProvider: Record<string, UsageResult | undefined>;
 }
 
 export const initialState: ClientState = {
@@ -24,6 +28,8 @@ export const initialState: ClientState = {
   layout: { orientation: 'vertical', panes: [] },
   catalog: [],
   byId: {},
+  contextBySession: {},
+  usageByProvider: {},
 };
 
 /**
@@ -53,6 +59,7 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
       return {
         ready: true, sessions: msg.sessions, layout: msg.layout,
         catalog: msg.catalog, byId,
+        contextBySession: {}, usageByProvider: {},
       };
     }
 
@@ -72,7 +79,15 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
         if (!pane) { continue; } // no existing pane: nothing to mirror onto, and not created here.
         byId[s.id] = { ...pane, summary: s };
       }
-      return { ...state, sessions: msg.sessions, byId };
+      // A deleted session's cached breakdown would otherwise outlive it for
+      // the life of the webview — the roster is the only signal the client
+      // gets that a session is gone.
+      const alive = new Set(msg.sessions.map((s) => s.id));
+      const contextBySession: Record<SessionId, ContextResult | undefined> = {};
+      for (const [id, result] of Object.entries(state.contextBySession)) {
+        if (alive.has(id)) { contextBySession[id] = result; }
+      }
+      return { ...state, sessions: msg.sessions, byId, contextBySession };
     }
 
     case 'session-snapshot': {
@@ -121,6 +136,18 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
         byId: { ...state.byId, [msg.id]: applyPatch(pane, msg.patch) },
       };
     }
+
+    case 'context-breakdown':
+      return {
+        ...state,
+        contextBySession: { ...state.contextBySession, [msg.id]: msg.result },
+      };
+
+    case 'usage-windows':
+      return {
+        ...state,
+        usageByProvider: { ...state.usageByProvider, [msg.providerId]: msg.result },
+      };
 
     default:
       // The HostToWebview type is closed, but nothing guarantees a runtime value

@@ -160,4 +160,63 @@ suite('webview reducer', () => {
     const next = reduce(initialState, bogus);
     assert.strictEqual(next, initialState);
   });
+
+  test('context-breakdown is stored under its session id', () => {
+    let state = reduce(initialState, { t: 'session-snapshot', session: snapshot('s1') });
+    state = reduce(state, {
+      t: 'context-breakdown', id: 's1',
+      result: {
+        ok: true,
+        breakdown: {
+          systemPercent: 12, memoryPercent: 4, conversationPercent: 27, freePercent: 57,
+          memoryFiles: [],
+        },
+      },
+    });
+
+    const result = state.contextBySession['s1'];
+    if (!result?.ok) { assert.fail('expected a stored ok breakdown'); }
+    assert.strictEqual(result.breakdown.freePercent, 57);
+  });
+
+  test('a not-ok result is stored rather than dropped', () => {
+    const state = reduce(initialState, {
+      t: 'usage-windows', providerId: 'claude',
+      result: { ok: false, reason: 'No active session for this provider' },
+    });
+
+    assert.strictEqual(state.usageByProvider['claude']?.ok, false);
+  });
+
+  test('sessions-changed prunes cached breakdowns for removed sessions', () => {
+    let state = reduce(initialState, { t: 'session-snapshot', session: snapshot('s1') });
+    state = reduce(state, {
+      t: 'context-breakdown', id: 's1',
+      result: { ok: false, reason: 'This session is not running' },
+    });
+    state = reduce(state, { t: 'sessions-changed', sessions: [] });
+
+    assert.strictEqual(state.contextBySession['s1'], undefined);
+  });
+
+  test('sessions-changed updates contextPercent without clearing the cached breakdown', () => {
+    let state = reduce(initialState, { t: 'session-snapshot', session: snapshot('s1') });
+    state = reduce(state, {
+      t: 'context-breakdown', id: 's1',
+      result: {
+        ok: true,
+        breakdown: {
+          systemPercent: 12, memoryPercent: 4, conversationPercent: 27, freePercent: 57,
+          memoryFiles: [],
+        },
+      },
+    });
+    state = reduce(state, {
+      t: 'sessions-changed',
+      sessions: [summary('s1', { contextPercent: 43 })],
+    });
+
+    assert.strictEqual(state.sessions[0].contextPercent, 43);
+    assert.strictEqual(state.contextBySession['s1']?.ok, true);
+  });
 });
