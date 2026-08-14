@@ -2,7 +2,7 @@ import { AgentSession, type SessionSink } from './agent-session';
 import type { StoredIndex, TranscriptStore } from './transcript-store';
 import type { AgentProvider, EffortLevel } from '../providers/types';
 import type {
-  HostToWebview, PaneLayout, ProviderInfo, SessionId, SessionState,
+  HostToWebview, McpServerStatus, PaneLayout, ProviderInfo, SessionId, SessionState,
   SessionStatus, SessionSummary, TranscriptPatch,
 } from '../protocol/messages';
 
@@ -246,6 +246,11 @@ export class SessionManager implements SessionSink {
 
   status(id: SessionId, status: SessionStatus): void {
     this.emit({ t: 'session-status', id, status });
+  }
+
+  mcp(id: SessionId, servers: McpServerStatus[]): void {
+    if (!this.visible.has(id)) { return; }
+    this.emit({ t: 'session-mcp', id, servers });
   }
 
   changed(): void {

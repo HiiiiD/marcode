@@ -25,6 +25,7 @@ class RecordingSink implements SessionSink {
   servers: unknown[] = [];
   patch(id: SessionId, patch: TranscriptPatch) { this.patches.push({ id, patch }); }
   status(_id: SessionId, status: SessionStatus) { this.statuses.push(status); }
+  mcp(_id: SessionId, servers: unknown[]) { this.servers.push(servers); }
   changed() { this.changes++; }
 }
 

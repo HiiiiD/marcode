@@ -112,8 +112,10 @@ class RecordingSink implements SessionSink {
   patches: { id: SessionId; patch: TranscriptPatch }[] = [];
   statuses: SessionStatus[] = [];
   changes = 0;
+  servers: unknown[] = [];
   patch(id: SessionId, patch: TranscriptPatch) { this.patches.push({ id, patch }); }
   status(_id: SessionId, status: SessionStatus) { this.statuses.push(status); }
+  mcp(_id: SessionId, servers: unknown[]) { this.servers.push(servers); }
   changed() { this.changes++; }
 }
 
@@ -348,6 +350,42 @@ suite('AgentSession', () => {
     const snap = await session.snapshot();
     const err = snap.items.find((i) => i.role === 'error');
     assert.strictEqual((err as { message: string }).message, 'setModel failed');
+    await session.dispose();
+  });
+
+  test('an mcp-servers event reaches the sink and the snapshot', async () => {
+    const provider = new FakeProvider(() => [
+      { kind: 'mcp-servers', servers: [
+        { name: 'github', state: 'connected', toolCount: 12 },
+        { name: 'stripe', state: 'failed', error: 'spawn ENOENT' },
+      ] },
+      { kind: 'turn-end', reason: 'done' },
+    ]);
+    const session = new AgentSession(baseState(), provider, store, sink);
+    session.send('go');
+    await settle();
+
+    assert.strictEqual(sink.servers.length, 1, 'one snapshot forwarded');
+    const snap = await session.snapshot();
+    assert.strictEqual(snap.mcpServers.length, 2);
+    assert.strictEqual(snap.mcpServers[0].name, 'github');
+    await session.dispose();
+  });
+
+  test('a later mcp-servers event replaces the previous snapshot wholesale', async () => {
+    const provider = new FakeProvider(() => [
+      { kind: 'mcp-servers', servers: [{ name: 'github', state: 'pending' }] },
+      { kind: 'mcp-servers', servers: [{ name: 'github', state: 'connected', toolCount: 12 }] },
+      { kind: 'turn-end', reason: 'done' },
+    ]);
+    const session = new AgentSession(baseState(), provider, store, sink);
+    session.send('go');
+    await settle();
+
+    const snap = await session.snapshot();
+    assert.strictEqual(snap.mcpServers.length, 1);
+    assert.strictEqual(snap.mcpServers[0].state, 'connected');
+    assert.strictEqual(snap.mcpServers[0].toolCount, 12);
     await session.dispose();
   });
 });

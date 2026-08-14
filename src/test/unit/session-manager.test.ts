@@ -320,4 +320,34 @@ suite('SessionManager', () => {
     assert.strictEqual(revived.state.archived, false);
     assert.strictEqual(manager.get(id), revived);
   });
+
+  test('session-mcp reaches a visible session and is withheld from a hidden one', async () => {
+    const a = await manager.create('fake', '/tmp');
+    const b = await manager.create('fake', '/tmp');
+    await manager.setVisible([a.state.id]);
+    sent.length = 0;
+
+    manager.mcp(a.state.id, [{ name: 'github', state: 'connected', toolCount: 12 }]);
+    manager.mcp(b.state.id, [{ name: 'github', state: 'connected', toolCount: 12 }]);
+
+    const emitted = sent.filter((m) => m.t === 'session-mcp');
+    assert.strictEqual(emitted.length, 1);
+    assert.strictEqual((emitted[0] as { id: string }).id, a.state.id);
+  });
+
+  test('an archived session snapshot reports no mcp servers', async () => {
+    const a = await manager.create('fake', '/tmp');
+    a.send('hello');
+    await settle();
+    const id = a.state.id;
+    await manager.close(id);
+    sent.length = 0;
+
+    await manager.setVisible([id]);
+    const snapshot = sent.find((m) => m.t === 'session-snapshot');
+    assert.ok(snapshot);
+    assert.deepStrictEqual(
+      (snapshot as { session: { mcpServers: unknown[] } }).session.mcpServers, [],
+    );
+  });
 });

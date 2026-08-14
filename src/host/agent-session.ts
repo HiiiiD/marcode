@@ -2,8 +2,8 @@ import type {
   AgentEvent, AgentProvider, AgentRun, EffortLevel, PermissionMode, ToolDecision,
 } from '../providers/types';
 import type {
-  PermissionRequest, SessionId, SessionSnapshot, SessionState, SessionStatus,
-  TranscriptItem, TranscriptPatch,
+  McpServerStatus, PermissionRequest, SessionId, SessionSnapshot, SessionState,
+  SessionStatus, TranscriptItem, TranscriptPatch,
 } from '../protocol/messages';
 import type { TranscriptStore } from './transcript-store';
 import { parseToolName } from './mcp-tool-name';
@@ -11,6 +11,7 @@ import { parseToolName } from './mcp-tool-name';
 export interface SessionSink {
   patch(id: SessionId, patch: TranscriptPatch): void;
   status(id: SessionId, status: SessionStatus): void;
+  mcp(id: SessionId, servers: McpServerStatus[]): void;
   changed(): void;
 }
 
@@ -45,6 +46,11 @@ export class AgentSession {
    * reason.
    */
   private flushChain: Promise<void> = Promise.resolve();
+  /**
+   * Live provider state only — never persisted, never on SessionState.
+   * An archived session reports none, because there is no run to ask.
+   */
+  private mcpServers: McpServerStatus[] = [];
 
   constructor(
     private readonly _state: SessionState,
@@ -180,7 +186,11 @@ export class AgentSession {
   async snapshot(): Promise<SessionSnapshot> {
     await this.scheduleFlush();
     const { items, hasMore } = await this.store.tail(this._state.id);
-    return { ...this._state, items, hasMore, pending: [...this.pending.values()], mcpServers: [] };
+    return {
+      ...this._state, items, hasMore,
+      pending: [...this.pending.values()],
+      mcpServers: this.mcpServers,
+    };
   }
 
   async loadMore(beforeItemId: string) {
@@ -331,6 +341,13 @@ export class AgentSession {
           inputTokens: event.inputTokens, outputTokens: event.outputTokens,
         };
         this.sink.changed();
+        return;
+
+      case 'mcp-servers':
+        // Replace-whole, not a merge: the provider always sends the full
+        // array, so hydrate and live update are the same code path.
+        this.mcpServers = event.servers;
+        this.sink.mcp(this._state.id, event.servers);
         return;
 
       case 'turn-end':
