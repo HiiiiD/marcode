@@ -125,6 +125,13 @@ export type AgentEvent =
   | { kind: 'permission'; id: string; name: string; input: unknown; parentId?: string }
   | { kind: 'turn-end'; reason: 'done' | 'interrupted' | 'error'; error?: string }
   | { kind: 'usage'; inputTokens: number; outputTokens: number }
+  /**
+   * One account/plan usage window moved. Pushed, not polled: the SDK emits
+   * `rate_limit_event` whenever rate-limit info changes, so the host holds
+   * the last value per window rather than asking a live query for it. One
+   * event carries one window — never the whole set.
+   */
+  | { kind: 'usage-window'; window: UsageWindow }
   /** Full replacement list, not a delta. Emitted whenever the provider notices a change. */
   | { kind: 'invocables'; entries: Invocable[] }
   /** Full replacement list, not a delta — same snapshot semantics as `invocables`. */

@@ -134,6 +134,40 @@ const WINDOW_LABELS: { key: 'five_hour' | 'seven_day' | 'seven_day_opus' | 'seve
   { key: 'seven_day_sonnet', id: 'seven-day-sonnet', label: 'Week (Sonnet)' },
 ];
 
+/**
+ * The subset of `SDKRateLimitInfo` (sdk.d.ts:4421) this mapper reads,
+ * declared structurally for the same reason `ContextUsageLike` is. Note
+ * `resetsAt` is epoch ms here — the experimental usage response this module
+ * used to read carried an ISO string instead, which is why nothing parses.
+ */
+export interface RateLimitInfoLike {
+  rateLimitType?: string;
+  utilization?: number;
+  resetsAt?: number;
+}
+
+/**
+ * One `rate_limit_event` describes one window. An event we cannot label
+ * (`overage`, `seven_day_overage_included`, or a type a future SDK adds) or
+ * cannot quantify (no `utilization`) produces nothing: a chip with a guessed
+ * label or an invented percentage is worse than a chip that is not there.
+ */
+export function toUsageWindow(info: RateLimitInfoLike | undefined): UsageWindow | undefined {
+  if (!info) { return undefined; }
+  const row = WINDOW_LABELS.find((w) => w.key === info.rateLimitType);
+  if (!row) { return undefined; }
+  if (typeof info.utilization !== 'number' || !Number.isFinite(info.utilization)) { return undefined; }
+  const at = typeof info.resetsAt === 'number' && Number.isFinite(info.resetsAt)
+    ? info.resetsAt
+    : undefined;
+  return {
+    id: row.id,
+    label: row.label,
+    usedPercent: Math.max(0, Math.min(100, Math.round(info.utilization))),
+    ...(at !== undefined ? { resetsAt: at } : {}),
+  };
+}
+
 function resetsAt(iso: string | null): number | undefined {
   if (!iso) { return undefined; }
   const parsed = Date.parse(iso);

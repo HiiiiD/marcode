@@ -402,14 +402,19 @@ suite('SessionManager', () => {
   });
 
   test('usageWindows resolves a provider through any one live session', async () => {
-    const provider = new FakeProvider(() => [], {
-      windows: [{ id: 'five-hour', label: 'Session (5h)', usedPercent: 62 }],
-    });
+    // FakeReports.windows now arrives as pushed usage-window events (see
+    // fake-provider.test.ts), not through this pull method, so the pull path
+    // is exercised here by stubbing the session directly — same as the
+    // 'tries the next live session' test below does for its refusing session.
+    const provider = new FakeProvider();
     const local = new SessionManager(
       new TranscriptStore(dir), new Map([['fake', provider]]), () => {},
     );
     await local.init();
-    await local.create('fake', '/tmp');
+    const session = await local.create('fake', '/tmp');
+    Object.defineProperty(session, 'usageWindows', {
+      value: async () => [{ id: 'five-hour', label: 'Session (5h)', usedPercent: 62 }],
+    });
 
     const result = await local.usageWindows('fake');
 
@@ -423,18 +428,19 @@ suite('SessionManager', () => {
     // 'This session has not started yet'. If it happens to be first in
     // `live`, the account is not unknown — the next live session of the same
     // provider can still speak for it.
-    const provider = new FakeProvider(() => [], {
-      windows: [{ id: 'five-hour', label: 'Session (5h)', usedPercent: 62 }],
-    });
+    const provider = new FakeProvider();
     const local = new SessionManager(
       new TranscriptStore(dir), new Map([['fake', provider]]), () => {},
     );
     await local.init();
     const first = await local.create('fake', '/tmp');
-    await local.create('fake', '/tmp');
+    const second = await local.create('fake', '/tmp');
     // Only the first session refuses; everything else about it is untouched.
     Object.defineProperty(first, 'usageWindows', {
       value: async () => { throw new Error('This session has not started yet'); },
+    });
+    Object.defineProperty(second, 'usageWindows', {
+      value: async () => [{ id: 'five-hour', label: 'Session (5h)', usedPercent: 62 }],
     });
 
     const result = await local.usageWindows('fake');
