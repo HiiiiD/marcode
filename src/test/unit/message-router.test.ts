@@ -214,4 +214,36 @@ suite('MessageRouter', () => {
     assert.ok(session);
     assert.strictEqual((await session!.snapshot()).model, 'fake-small');
   });
+
+  test('request-context replies with a keyed result', async () => {
+    await router.handle({ t: 'create-session', providerId: 'fake', cwd: '/tmp' });
+    const id = manager.summaries()[0].id;
+    sent.length = 0;
+
+    await router.handle({ t: 'request-context', id });
+
+    const reply = sent.find((m) => m.t === 'context-breakdown') as
+      Extract<HostToWebview, { t: 'context-breakdown' }>;
+    assert.ok(reply);
+    assert.strictEqual(reply.id, id);
+    // The suite's FakeProvider scripts no reports, so this is the not-ok path.
+    assert.strictEqual(reply.result.ok, false);
+  });
+
+  test('request-usage replies with a keyed result', async () => {
+    sent.length = 0;
+    await router.handle({ t: 'request-usage', providerId: 'fake' });
+
+    const reply = sent.find((m) => m.t === 'usage-windows') as
+      Extract<HostToWebview, { t: 'usage-windows' }>;
+    assert.ok(reply);
+    assert.strictEqual(reply.providerId, 'fake');
+    assert.strictEqual(reply.result.ok, false);
+  });
+
+  test('open-file is accepted but not acted on by the router', async () => {
+    sent.length = 0;
+    await router.handle({ t: 'open-file', path: '/repo/CLAUDE.md' });
+    assert.deepStrictEqual(sent, []);
+  });
 });
