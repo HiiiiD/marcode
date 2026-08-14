@@ -57,9 +57,15 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
         };
       }
       return {
-        ...state,
         ready: true, sessions: msg.sessions, layout: msg.layout,
         catalog: msg.catalog, byId,
+        // Explicit, not `...state`: `hydrate` is meant to be a total
+        // rebuild of `ClientState`, not a merge. `editorContext` is
+        // genuinely client-wide (global IDE state a reload doesn't change),
+        // so it is deliberately carried forward here — but spelled out so a
+        // future field added to `ClientState` doesn't silently survive a
+        // reload by accident the way a bare spread would let it.
+        editorContext: state.editorContext,
       };
     }
 

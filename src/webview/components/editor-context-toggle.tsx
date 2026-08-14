@@ -1,7 +1,7 @@
 import { Paperclip } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { EditorContextLabel, chipLabel, contextTitle } from './editor-context-chip';
+import { EditorContextLabel, contextTitle, lineSpan } from './editor-context-chip';
 import { useStore } from '../store';
 import type { PaneState } from '../reducer';
 
@@ -15,9 +15,10 @@ import type { PaneState } from '../reducer';
  *
  * The label is revealed by a container query rather than a viewport one —
  * a pane can be half the sidebar, so the viewport says nothing useful about
- * how much room this control actually has. The accessible name carries the
- * file either way, so collapsing to the icon costs nothing to a screen
- * reader.
+ * how much room this control actually has. The accessible name (`aria-label`,
+ * built from the same path and line span the visible label renders) carries
+ * both the file and the line span either way, so collapsing the visible
+ * label to the icon costs nothing to a screen reader.
  */
 export function EditorContextToggle({ pane }: { pane: PaneState }) {
   const { state, post } = useStore();
@@ -25,12 +26,12 @@ export function EditorContextToggle({ pane }: { pane: PaneState }) {
   if (!ctx) { return null; }
 
   const on = pane.summary.includeEditorContext;
-  // The full path, not `chipLabel` — the accessible name identifies which
+  // The full path, not the basename — the accessible name identifies which
   // file, and a bare basename would collide across same-named files in
-  // different folders. No literal colon in the sentence itself: any colon
-  // that shows up must come from a line span the file actually carries, not
-  // from punctuation glued on here, so the no-selection case reads as one
-  // colon-free sentence.
+  // different folders. `lineSpan` supplies its own leading colon, and only
+  // when there is a real selection to report, so the no-selection case
+  // still reads as one colon-free sentence without any punctuation glued on
+  // here.
   const verb = on ? 'Attaching' : 'Not attaching';
 
   return (
@@ -38,14 +39,13 @@ export function EditorContextToggle({ pane }: { pane: PaneState }) {
       variant={on ? 'secondary' : 'ghost'}
       size="sm"
       aria-pressed={on}
-      aria-label={`${verb} editor context ${ctx.path}`}
+      aria-label={`${verb} editor context ${ctx.path}${lineSpan(ctx)}`}
       title={`${verb} ${contextTitle(ctx)}`}
       onClick={() => post({ t: 'set-include-context', id: pane.summary.id, on: !on })}
       className={cn('min-w-0 max-w-56', !on && 'text-muted-foreground')}
     >
       <Paperclip aria-hidden="true" />
       <EditorContextLabel ctx={ctx} className="hidden @[17rem]:flex" />
-      <span className="sr-only">{chipLabel(ctx)}</span>
     </Button>
   );
 }
