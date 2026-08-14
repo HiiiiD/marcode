@@ -6,9 +6,13 @@
 
 **Architecture:** Two optional methods on `AgentRun` (`contextBreakdown`, `usageWindows`) are the whole provider seam. `ClaudeProvider` implements them over the Agent SDK's `Query.getContextUsage()` and `Query.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET()`; `FakeProvider` implements them from a script. The ring's percentage is pushed on `turn-end` as a new `SessionState` field; the detailed breakdown and the usage windows are pulled on demand through request/response message pairs. Every failure path resolves to `{ ok: false, reason }` — nothing rejects across `postMessage`.
 
-**Tech Stack:** TypeScript, esbuild (node/CJS host + browser/IIFE webview), React 19, Tailwind v4, shadcn on `@base-ui/react` (`Tooltip`, `Popover` to vendor), `@anthropic-ai/claude-agent-sdk`, mocha (unit) + `@vscode/test-cli` (integration).
+**Tech Stack:** TypeScript, esbuild (node/CJS host + browser/IIFE webview), React 19, Tailwind v4, shadcn on `@base-ui/react` (`Tooltip`, `Popover` to vendor), `@anthropic-ai/claude-agent-sdk`, mocha (unit), mocha + jsdom + Testing Library (DOM), `@vscode/test-cli` (integration).
 
 **Spec:** [docs/superpowers/specs/2026-08-13-usage-and-context-design.md](../specs/2026-08-13-usage-and-context-design.md)
+
+**Base commit:** `0c32be9` on `master` (PRs #1–#3 merged: agent panel, DOM tests, webview UX overhaul). This plan was re-checked against that tree — the composer is now `InputGroup`-based, the app shell lives in `src/webview/app.tsx`, `AgentRun` carries `setModel`/`setPermissionMode`, and `set-model` is on the wire. Snippets below match that tree, not the pre-merge one.
+
+**Design brief:** shaped through the `impeccable` skill (Operate mode, extension of the established world — no new tokens, no DESIGN.md change). Its resolved decisions are marked **[brief]** where they constrain a step.
 
 ## Global Constraints
 
@@ -16,12 +20,15 @@
 - **`src/protocol/messages.ts` is types-only.** No runtime code, no `import ... from 'vscode'`.
 - **Nothing under `src/providers/` or `src/protocol/` imports `vscode`.** Neither does `src/host/message-router.ts`.
 - **Errors are state, never exceptions across `postMessage`.** Every new host handler resolves to a result union.
-- **Every protocol message addressed to a session carries an explicit `SessionId`** in the field named `id`, matching the existing messages.
+- **Every protocol message addressed to a session carries an explicit `SessionId`** in the field named `id`.
 - **The wire discriminant is `t`**, not `type` (the spec's snippets are illustrative; the code in this plan is authoritative).
 - **Use shadcn components, never raw HTML controls.** No bare `<button>`; use `Button` or a vendored primitive part. The registry is **Base UI** (`@base-ui/react`), not Radix.
-- **Use short Tailwind utilities** — `bg-muted`, `text-muted-foreground`, `stroke-primary`. No `[var(--…)]` arbitrary values in component code. Dynamic bar widths use an inline `style`, which is not an arbitrary Tailwind value.
+- **Compose classNames with `cn` from `@/lib/utils`** — never template literals or string concatenation.
+- **Prefer short Tailwind utilities** (`bg-muted`, `stroke-primary`) for plain token lookups. Arbitrary values are allowed only for genuine computations (`w-[calc(100vw-2rem)]`), never as a worse spelling of a registered token.
+- **DOM tests drive components through the real `StoreProvider`** (`src/test/dom/harness.tsx`): state arrives as genuine `HostToWebview` messages via `sendFromHost`, assertions read `posted()`. Never mock `useStore` or hand-build a `ClientState`.
+- **Every webview change passes the impeccable detector**: `node C:/Users/Marco/.claude/skills/impeccable/scripts/detect.mjs --json <changed files>`. Exit 2 is a failing check, not a suggestion.
 - **Filenames are kebab-case**, including React components. Component *identifiers* stay PascalCase.
-- **`yarn lint`, `yarn check-types` and `yarn test:unit` must all pass before each commit.**
+- **`yarn lint`, `yarn check-types`, `yarn test:unit` and `yarn test:dom` must all pass before each commit.**
 - **Commit after every task**, conventional-commit prefixes (`feat:`, `fix:`, `test:`, `docs:`).
 
 ---
@@ -44,10 +51,13 @@
 | `src/webview/components/ui/popover.tsx` | **create** | Vendored shadcn Popover |
 | `src/webview/components/ring.tsx` | **create** | Presentational SVG ring, shared by both surfaces |
 | `src/webview/components/context-ring.tsx` | **create** | Ring + tooltip + breakdown popover |
-| `src/webview/components/composer.tsx` | modify | Host the context ring in the toolbar row |
+| `src/webview/components/composer.tsx` | modify | Host the context ring in the block-end addon |
 | `src/webview/components/usage-strip.tsx` | **create** | Panel-level account usage strip |
-| `src/webview/main.tsx` | modify | Render the strip below the pane group |
+| `src/webview/app.tsx` | modify | Render the strip below the pane group |
+| `src/test/fixtures/protocol.ts` | modify | `breakdown()` and `windows()` fixtures |
 | `src/test/unit/map-context.test.ts` | **create** | Mapping tests |
+| `src/test/dom/context-ring.test.tsx` | **create** | Ring + popover through the store |
+| `src/test/dom/usage-strip.test.tsx` | **create** | Strip states through the store |
 | `src/test/unit/*.test.ts` | modify | Provider, protocol, session, manager, router, reducer tests |
 
 ---
@@ -72,8 +82,10 @@ T9 (vendor ui) ─────┴───────────────�
 | 3 | **T3**, **T8** | `src/host/agent-session.ts` vs `src/webview/reducer.ts` |
 | 4 | **T4** | `src/host/session-manager.ts` alone |
 | 5 | **T5**, **T10** | `src/host/message-router.ts` vs webview components |
-| 6 | **T6**, **T11** | `src/host/panel-view-provider.ts` vs `usage-strip.tsx` + `main.tsx` |
-| 7 | **T12** | alone — docs and full verification |
+| 6 | **T6**, **T11** | `src/host/panel-view-provider.ts` vs `usage-strip.tsx` + `app.tsx` |
+| 7 | **T12** | alone — docs, detector, full verification |
+
+T10 and T11 both touch `src/test/fixtures/protocol.ts`; T10 adds the fixtures (Step 1) and T11 consumes them, so run T10 first if the two are not isolated in worktrees.
 
 ---
 
@@ -126,7 +138,7 @@ Append to `src/test/unit/fake-provider.test.ts`, inside the existing `suite('Fak
 - [ ] **Step 2: Run the test to verify it fails**
 
 Run: `yarn test:unit`
-Expected: FAIL — `check-types`/compile rejects the second `FakeProvider` constructor argument and the unknown `contextBreakdown` member.
+Expected: FAIL — compile rejects the second `FakeProvider` constructor argument and the unknown `contextBreakdown` member.
 
 - [ ] **Step 3: Add the types**
 
@@ -149,7 +161,8 @@ export interface UsageWindow {
  * How the model's context window is occupied, as percentages of that window.
  * The four `*Percent` fields sum to 100; `memoryFiles` percentages sum to
  * `memoryPercent` subject to rounding, so consumers must never re-derive a
- * total from the rows.
+ * total from the rows. A listed file rounding to 0 means "under 1%", never
+ * "absent" — the UI renders that case as `<1%`.
  */
 export interface ContextBreakdown {
   /** System prompt and tool definitions, as one slice. */
@@ -162,16 +175,9 @@ export interface ContextBreakdown {
 }
 ```
 
-Then extend `AgentRun`:
+Then add the two optional members to `AgentRun`, after `interrupt()` and before `dispose()`. The interface already carries `setModel` and `setPermissionMode` — leave those exactly as they are:
 
 ```ts
-export interface AgentRun {
-  send(text: string): void;
-  readonly events: AsyncIterable<AgentEvent>;
-  respondToTool(id: string, decision: ToolDecision): void;
-  setEffort(effort: EffortLevel): void;
-  interrupt(): Promise<void>;
-  dispose(): Promise<void>;
   /**
    * Startup context inventory for this conversation. Optional: a provider
    * that cannot report it omits the method entirely rather than resolving
@@ -185,19 +191,11 @@ export interface AgentRun {
    * provider as speaking for that provider's account.
    */
   usageWindows?(): Promise<UsageWindow[]>;
-}
 ```
 
 - [ ] **Step 4: Implement the fake**
 
-In `src/providers/fake/fake-provider.ts`, widen the import and the constructor, and conditionally add the two methods:
-
-```ts
-import type {
-  AgentEvent, AgentProvider, AgentRun, ContextBreakdown, EffortLevel, ModelInfo,
-  StartOptions, ToolDecision, UsageWindow,
-} from '../types';
-```
+In `src/providers/fake/fake-provider.ts`, widen the type import to include `ContextBreakdown` and `UsageWindow`, then add:
 
 ```ts
 export interface FakeReports {
@@ -213,18 +211,9 @@ export interface FakeReports {
   ) {}
 ```
 
-Inside `start()`, build the run as a local and attach the optional members before returning, so an unscripted fake genuinely has no such property (which is what exercises the UI's empty states):
+Inside `start()`, assign the returned object to a local `const run: AgentRun = { … }` (keeping every existing member untouched) and attach the optional ones before returning, so an unscripted fake genuinely has no such property — which is what exercises the UI's empty states:
 
 ```ts
-    const run: AgentRun = {
-      events: channel,
-      send: (text: string) => { /* unchanged */ },
-      respondToTool: (id, decision) => { /* unchanged */ },
-      setEffort: (_effort: EffortLevel) => { /* unchanged */ },
-      interrupt: async () => { channel.push({ kind: 'turn-end', reason: 'interrupted' }); },
-      dispose: async () => { channel.close(); },
-    };
-
     const { context, windows } = this.reports;
     if (context) { run.contextBreakdown = async () => context; }
     if (windows) { run.usageWindows = async () => windows; }
@@ -258,7 +247,7 @@ git commit -m "feat: add context-breakdown and usage-window reporting to the pro
 
 - [ ] **Step 1: Write the failing test**
 
-In `src/test/unit/protocol.test.ts`, add the new cases to both exhaustive switches:
+`src/test/unit/protocol.test.ts` holds two exhaustive switches. Add the new cases to each, leaving the existing ones (including `set-model`) in place:
 
 ```ts
     case 'load-more': return 'load-more';
@@ -285,8 +274,8 @@ And add a test inside `suite('protocol', …)`:
         result: {
           ok: true,
           breakdown: {
-            systemPercent: 12, memoryPercent: 4, conversationPercent: 27,
-            freePercent: 57, memoryFiles: [],
+            systemPercent: 12, memoryPercent: 4, conversationPercent: 27, freePercent: 57,
+            memoryFiles: [],
           },
         },
       }),
@@ -309,22 +298,11 @@ Expected: FAIL — compile errors, the new `t` values are not in `WebviewToHost`
 
 - [ ] **Step 3: Extend the protocol**
 
-In `src/protocol/messages.ts`, widen the type imports and re-exports:
-
-```ts
-import type {
-  ContextBreakdown, EffortLevel, ModelInfo, PermissionMode, ToolDecision, UsageWindow,
-} from '../providers/types';
-
-export type {
-  ContextBreakdown, EffortLevel, ModelInfo, PermissionMode, ToolDecision, UsageWindow,
-};
-```
+In `src/protocol/messages.ts`, widen the type import and re-export to include `ContextBreakdown` and `UsageWindow`.
 
 Add the field to `SessionState`, directly under `usage`:
 
 ```ts
-  usage: { inputTokens: number; outputTokens: number };
   /**
    * Share of the model's context window in use, `100 - freePercent`.
    * Absent until the first turn ends, or forever for a provider that does
@@ -345,7 +323,7 @@ export type UsageResult =
   | { ok: false; reason: string };
 ```
 
-Extend both message unions:
+Extend both message unions (the inbound one already ends with `load-more`, after `set-model`):
 
 ```ts
   | { t: 'load-more'; id: SessionId; beforeItemId: string }
@@ -362,7 +340,7 @@ Extend both message unions:
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
-Run: `yarn test:unit`
+Run: `yarn test:unit && yarn test:dom`
 Expected: PASS.
 
 - [ ] **Step 5: Lint, type-check and commit**
@@ -383,11 +361,11 @@ git commit -m "feat: carry context breakdown and usage windows on the wire"
 
 **Interfaces:**
 - Consumes: `AgentRun.contextBreakdown` / `usageWindows` (Task 1); `SessionState.contextPercent` (Task 2).
-- Produces: `AgentSession.contextBreakdown(): Promise<ContextBreakdown>` and `AgentSession.usageWindows(): Promise<UsageWindow[]>` — both **reject** with a legible `Error` when the run does not implement them; `SessionManager` is what converts that into a result union.
+- Produces: `AgentSession.contextBreakdown(): Promise<ContextBreakdown>` and `AgentSession.usageWindows(): Promise<UsageWindow[]>` — both **reject** with a legible `Error` when the run does not implement them; `SessionManager` converts that into a result union.
 
 - [ ] **Step 1: Write the failing test**
 
-Add to `src/test/unit/agent-session.test.ts`. Match the file's existing setup helpers — read the top of the file first and reuse whatever it already uses to build a session; the assertions below are what matters:
+Read the top of `src/test/unit/agent-session.test.ts` and reuse whatever it already uses to build a session and settle the event pump. Add:
 
 ```ts
   test('turn-end refreshes contextPercent from the run breakdown', async () => {
@@ -417,14 +395,11 @@ Add to `src/test/unit/agent-session.test.ts`. Match the file's existing setup he
 
   test('usageWindows rejects with a legible error when unsupported', async () => {
     const { session } = makeSession(new FakeProvider(() => []));
-    await assert.rejects(
-      () => session.usageWindows(),
-      /does not report plan usage/,
-    );
+    await assert.rejects(() => session.usageWindows(), /does not report plan usage/);
   });
 ```
 
-If the existing file has no `makeSession`/`settle` helper, add these above the suite:
+If the file has no `makeSession`/`settle` helper, add:
 
 ```ts
 async function settle() {
@@ -439,16 +414,7 @@ Expected: FAIL — `session.usageWindows is not a function`, and `contextPercent
 
 - [ ] **Step 3: Implement**
 
-In `src/host/agent-session.ts`, widen the type import:
-
-```ts
-import type {
-  AgentEvent, AgentProvider, AgentRun, ContextBreakdown, EffortLevel, PermissionMode,
-  ToolDecision, UsageWindow,
-} from '../providers/types';
-```
-
-Add the two pass-throughs as public methods, next to `snapshot()`:
+In `src/host/agent-session.ts`, widen the provider-type import with `ContextBreakdown` and `UsageWindow`, then add the two pass-throughs as public methods next to `snapshot()`:
 
 ```ts
   /**
@@ -496,19 +462,14 @@ Add the refresh helper next to `scheduleFlush()`:
   }
 ```
 
-Call it from the successful `turn-end` branch in `handle()`:
+Call it from the successful `turn-end` branch in `handle()` (around line 272), leaving the error branch alone:
 
 ```ts
-      case 'turn-end':
-        this.closeAssistant();
-        if (event.reason === 'error') {
-          this.fail(event.error ?? 'Agent run failed');
         } else {
           this.setStatus('idle');
           void this.scheduleFlush();
           void this.refreshContextPercent();
         }
-        return;
 ```
 
 - [ ] **Step 4: Run the tests to verify they pass**
@@ -538,7 +499,7 @@ git commit -m "feat: refresh a session's context percentage on turn-end"
 
 - [ ] **Step 1: Write the failing test**
 
-Add to `src/test/unit/session-manager.test.ts`, reusing the file's existing `setup`-built `manager` (read the top of the file first; it builds a `SessionManager` over a temp dir and a `FakeProvider`). These tests need a provider that reports, so construct a second manager locally:
+Read the top of `src/test/unit/session-manager.test.ts` for its temp-dir `setup` and its `manager`. Add:
 
 ```ts
   test('contextBreakdown answers ok for a live session with a reporting run', async () => {
@@ -599,16 +560,7 @@ Expected: FAIL — `manager.contextBreakdown is not a function`.
 
 - [ ] **Step 3: Implement**
 
-In `src/host/session-manager.ts`, widen the protocol import:
-
-```ts
-import type {
-  ContextResult, HostToWebview, PaneLayout, ProviderInfo, SessionId, SessionState,
-  SessionStatus, SessionSummary, TranscriptPatch, UsageResult,
-} from '../protocol/messages';
-```
-
-Add both methods after `get(id)`:
+In `src/host/session-manager.ts`, widen the protocol import with `ContextResult` and `UsageResult`, then add both methods after `get(id)` (line ~112):
 
 ```ts
   /**
@@ -730,21 +682,21 @@ In `src/host/message-router.ts`, add three cases to `route()`'s switch, after `l
       }
 
       // PanelViewProvider intercepts this before delegating (it needs the
-      // `vscode` API, which this module must not import — see the class
-      // doc comment). It is listed here, and in KNOWN_MESSAGE_TAGS, so a
-      // stray one is a deliberate no-op rather than a "malformed message"
-      // error log.
+      // `vscode` API, which this module must not import). It is listed here,
+      // and in KNOWN_MESSAGE_TAGS, so a stray one is a deliberate no-op
+      // rather than a "malformed message" error log.
       case 'open-file':
         return;
 ```
 
-And extend the guard's tag set:
+And extend the guard's tag set, keeping `set-model`:
 
 ```ts
 const KNOWN_MESSAGE_TAGS = new Set<WebviewToHost['t']>([
   'ready', 'create-session', 'set-visible', 'set-layout', 'close-session',
   'delete-session', 'send', 'interrupt', 'set-effort', 'set-permission-mode',
-  'permission-decision', 'load-more', 'request-context', 'request-usage', 'open-file',
+  'set-model', 'permission-decision', 'load-more',
+  'request-context', 'request-usage', 'open-file',
 ]);
 ```
 
@@ -772,11 +724,11 @@ git commit -m "feat: route context and usage requests to the session manager"
 - Consumes: `{ t: 'open-file'; path: string }` (Task 2).
 - Produces: nothing other tasks consume.
 
-There is no unit test here: this module imports `vscode` and is exercised by the integration suite in Task 12. Keep the logic to a single guarded branch so there is nothing else to test.
+No unit test: this module imports `vscode`. Keep the logic to one guarded branch so there is nothing else to test.
 
 - [ ] **Step 1: Implement the interception**
 
-In `src/host/panel-view-provider.ts`, replace the `onDidReceiveMessage` handler:
+In `src/host/panel-view-provider.ts`, replace the body of the `onDidReceiveMessage` handler:
 
 ```ts
     view.webview.onDidReceiveMessage(async (raw: WebviewToHost) => {
@@ -815,17 +767,12 @@ Add the method below `post()`:
   }
 ```
 
-- [ ] **Step 2: Type-check and lint**
+- [ ] **Step 2: Type-check, lint and test**
 
-Run: `yarn check-types && yarn lint`
-Expected: both clean.
+Run: `yarn check-types && yarn lint && yarn test:unit`
+Expected: all clean, tests PASS.
 
-- [ ] **Step 3: Verify the unit suite still passes**
-
-Run: `yarn test:unit`
-Expected: PASS (unchanged).
-
-- [ ] **Step 4: Commit**
+- [ ] **Step 3: Commit**
 
 ```bash
 git add src/host/panel-view-provider.ts
@@ -847,8 +794,8 @@ git commit -m "feat: open a memory file from the context popover"
 
 **SDK facts this task relies on** (verified against `node_modules/@anthropic-ai/claude-agent-sdk/sdk.d.ts`):
 
-- `Query.getContextUsage(): Promise<SDKControlGetContextUsageResponse>` — fields used here: `totalTokens`, `maxTokens`, `memoryFiles: { path; type; tokens }[]`, `messageBreakdown?: { toolCallTokens; toolResultTokens; attachmentTokens; assistantMessageTokens; userMessageTokens; redirectedContextTokens; unattributedTokens; … }`.
-- `Query.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET(): Promise<SDKControlGetUsageResponse>` — fields used here: `rate_limits_available: boolean`, `rate_limits: { five_hour?, seven_day?, seven_day_opus?, seven_day_sonnet?, model_scoped?: { display_name; utilization; resets_at }[] } | null`, each window `{ utilization: number | null; resets_at: string | null }`.
+- `Query.getContextUsage(): Promise<SDKControlGetContextUsageResponse>` — fields used: `totalTokens`, `maxTokens`, `memoryFiles: { path; type; tokens }[]`, `messageBreakdown?: { toolCallTokens; toolResultTokens; attachmentTokens; assistantMessageTokens; userMessageTokens; redirectedContextTokens; unattributedTokens; … }`.
+- `Query.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET(): Promise<SDKControlGetUsageResponse>` — fields used: `rate_limits_available: boolean`, `rate_limits: { five_hour?, seven_day?, seven_day_opus?, seven_day_sonnet?, model_scoped?: { display_name; utilization; resets_at }[] } | null`, each window `{ utilization: number | null; resets_at: string | null }`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -893,6 +840,15 @@ suite('map-context', () => {
     assert.strictEqual(sum, 100);
   });
 
+  test('a sub-one-percent memory file keeps its row at 0, for the UI to render as <1%', () => {
+    const breakdown = toContextBreakdown({
+      totalTokens: 300, maxTokens: 200_000,
+      memoryFiles: [{ path: '/repo/AGENTS.md', type: 'project', tokens: 300 }],
+      messageBreakdown: undefined,
+    });
+    assert.deepStrictEqual(breakdown.memoryFiles, [{ path: '/repo/AGENTS.md', percent: 0 }]);
+  });
+
   test('a zero or missing window budget reports everything free', () => {
     const breakdown = toContextBreakdown({
       totalTokens: 10, maxTokens: 0, memoryFiles: [], messageBreakdown: undefined,
@@ -903,7 +859,7 @@ suite('map-context', () => {
     });
   });
 
-  test('maps the plan windows that report a utilization', () => {
+  test('maps the plan windows that report a utilization, in a stable order', () => {
     const windows = toUsageWindows({
       rate_limits_available: true,
       rate_limits: {
@@ -1024,6 +980,8 @@ export function toContextBreakdown(res: ContextUsageLike): ContextBreakdown {
     memoryPercent,
     conversationPercent,
     freePercent,
+    // A file rounding to 0 stays in the list: it is present in the context,
+    // and the UI renders 0 as `<1%` rather than dropping the row.
     memoryFiles: res.memoryFiles.map((f) => ({ path: f.path, percent: share(f.tokens, max) })),
   };
 }
@@ -1054,7 +1012,12 @@ function makeWindow(id: string, label: string, w: RateWindowLike): UsageWindow |
 /**
  * `rate_limits_available` is false for API-key, Bedrock and Vertex sessions,
  * where plan limits simply do not exist. That is an empty list, not an
- * error — the strip renders its "unavailable" line either way.
+ * error — the strip renders "No plan limits" for it, which is a different
+ * sentence from a failure.
+ *
+ * The output order is fixed (session, week, per-model), never sorted by
+ * utilization: a strip that reorders itself between refreshes cannot be
+ * read at a glance.
  */
 export function toUsageWindows(res: UsageLike): UsageWindow[] {
   if (!res.rate_limits_available || !res.rate_limits) { return []; }
@@ -1088,22 +1051,13 @@ Expected: PASS.
 
 - [ ] **Step 5: Wire the mapper into the run**
 
-In `src/providers/claude/claude-provider.ts`, add the import:
+In `src/providers/claude/claude-provider.ts`, add:
 
 ```ts
 import { toContextBreakdown, toUsageWindows, type ContextUsageLike, type UsageLike } from './map-context';
 ```
 
-Widen the `AgentEvent`-side type import to include the two new types:
-
-```ts
-import type {
-  AgentEvent, AgentProvider, AgentRun, ContextBreakdown, EffortLevel, ModelInfo,
-  PermissionMode, StartOptions, ToolDecision, UsageWindow,
-} from '../types';
-```
-
-Add both methods to the returned run object, after `interrupt`:
+Widen the provider-type import with `ContextBreakdown` and `UsageWindow`, then add both methods to the returned run object, after `interrupt`:
 
 ```ts
       contextBreakdown: async (): Promise<ContextBreakdown> => {
@@ -1133,7 +1087,7 @@ Add both methods to the returned run object, after `interrupt`:
 - [ ] **Step 6: Type-check, lint and run the tests**
 
 Run: `yarn check-types && yarn lint && yarn test:unit`
-Expected: all clean, tests PASS.
+Expected: all clean, tests PASS. `src/test/unit/claude-provider.test.ts` already exercises this run object — if it asserts on the run's key set, extend it rather than working around it.
 
 - [ ] **Step 7: Commit**
 
@@ -1156,7 +1110,7 @@ git commit -m "feat: report context breakdown and plan usage from the Claude pro
 
 - [ ] **Step 1: Write the failing test**
 
-Add to `src/test/unit/webview-reducer.test.ts`:
+`src/test/unit/webview-reducer.test.ts` imports `summary` / `snapshot` from `../fixtures/protocol`. Add:
 
 ```ts
   test('context-breakdown is stored under its session id', () => {
@@ -1211,7 +1165,7 @@ Add to `src/test/unit/webview-reducer.test.ts`:
     });
     state = reduce(state, {
       t: 'sessions-changed',
-      sessions: [{ ...summary('s1'), contextPercent: 43 }],
+      sessions: [summary('s1', { contextPercent: 43 })],
     });
 
     assert.strictEqual(state.sessions[0].contextPercent, 43);
@@ -1226,14 +1180,7 @@ Expected: FAIL — `contextBySession` does not exist on `ClientState`.
 
 - [ ] **Step 3: Implement**
 
-In `src/webview/reducer.ts`, widen the import and the state:
-
-```ts
-import type {
-  ContextResult, HostToWebview, PaneLayout, PermissionRequest, ProviderInfo, SessionId,
-  SessionSummary, TranscriptItem, UsageResult,
-} from '../protocol/messages';
-```
+In `src/webview/reducer.ts`, widen the protocol import with `ContextResult` and `UsageResult`, then extend the state:
 
 ```ts
 export interface ClientState {
@@ -1262,11 +1209,9 @@ export const initialState: ClientState = {
 `hydrate` builds a fresh state object, so give it the two empty maps:
 
 ```ts
-      return {
         ready: true, sessions: msg.sessions, layout: msg.layout,
         catalog: msg.catalog, byId,
         contextBySession: {}, usageByProvider: {},
-      };
 ```
 
 Replace the `sessions-changed` case so it also prunes:
@@ -1303,8 +1248,8 @@ And add the two new cases before `default`:
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
-Run: `yarn test:unit`
-Expected: PASS.
+Run: `yarn test:unit && yarn test:dom`
+Expected: PASS. `yarn test:dom` matters here — every DOM test renders through this reducer.
 
 - [ ] **Step 5: Lint, type-check and commit**
 
@@ -1323,10 +1268,10 @@ git commit -m "feat: cache context breakdowns and usage windows in the client st
 - Create: `src/webview/components/ui/popover.tsx`
 
 **Interfaces:**
-- Consumes: `@base-ui/react/tooltip`, `@base-ui/react/popover` (both already installed under `@base-ui/react` ^1.7.0).
-- Produces: `Tooltip`, `TooltipTrigger`, `TooltipContent`; `Popover`, `PopoverTrigger`, `PopoverContent`. All parts accept Base UI's `render` prop, which Task 10 uses to make one element both triggers.
+- Consumes: `@base-ui/react/tooltip`, `@base-ui/react/popover` (installed, `@base-ui/react` ^1.7.0).
+- Produces: `Tooltip`, `TooltipTrigger`, `TooltipContent`; `Popover`, `PopoverTrigger`, `PopoverContent`. All parts accept Base UI's `render` prop, which Tasks 10 and 11 use to make one element carry both roles.
 
-Follow the structure of the existing `src/webview/components/ui/dropdown-menu.tsx`: a thin function per part, `data-slot` attributes, `cn()` for class merging, Portal + Positioner + Popup for the floating parts.
+Follow `src/webview/components/ui/dropdown-menu.tsx`: a thin function per part, `data-slot` attributes, `cn()` for class merging, Portal + Positioner + Popup for floating parts.
 
 - [ ] **Step 1: Write the tooltip**
 
@@ -1428,17 +1373,12 @@ function PopoverContent({
 export { Popover, PopoverContent, PopoverTrigger }
 ```
 
-- [ ] **Step 3: Type-check and lint**
+- [ ] **Step 3: Type-check, lint and build**
 
-Run: `yarn check-types && yarn lint`
-Expected: both clean. If a part name does not resolve, list the real ones with `ls node_modules/@base-ui/react/tooltip` and check `index.parts.d.ts` for the exported aliases — do not swap in a Radix package.
+Run: `yarn check-types && yarn lint && yarn run compile`
+Expected: all clean. If a part name does not resolve, list the real ones with `ls node_modules/@base-ui/react/tooltip` and check `index.parts.d.ts` for the exported aliases — never swap in a Radix package.
 
-- [ ] **Step 4: Build the bundles to confirm Tailwind picks up the new files**
-
-Run: `yarn run compile`
-Expected: succeeds.
-
-- [ ] **Step 5: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
 git add src/webview/components/ui/tooltip.tsx src/webview/components/ui/popover.tsx
@@ -1453,12 +1393,152 @@ git commit -m "feat: vendor the shadcn tooltip and popover primitives"
 - Create: `src/webview/components/ring.tsx`
 - Create: `src/webview/components/context-ring.tsx`
 - Modify: `src/webview/components/composer.tsx`
+- Modify: `src/test/fixtures/protocol.ts`
+- Test: `src/test/dom/context-ring.test.tsx`
 
 **Interfaces:**
 - Consumes: `contextBySession` (Task 8); `Tooltip*` / `Popover*` (Task 9); `SessionState.contextPercent` (Task 2).
-- Produces: `Ring({ percent?: number; size?: number; className?: string })` — reused by Task 11; `ContextRing({ pane }: { pane: PaneState })`.
+- Produces: `Ring({ percent?: number; size?: number; className?: string })` — reused by Task 11; `ContextRing({ pane }: { pane: PaneState })`; fixtures `breakdown(over?)` and `windows(over?)`.
 
-- [ ] **Step 1: Write the shared ring**
+**[brief] decisions this task implements:** 24px hit target around a 14px ring; "Free" renders muted, not accent; a 0% memory row renders `<1%`; an empty memory list renders one muted line; popover width clamps to the pane.
+
+- [ ] **Step 1: Add the shared fixtures**
+
+In `src/test/fixtures/protocol.ts`, append (and widen the type import with `ContextBreakdown` and `UsageWindow`):
+
+```ts
+export function breakdown(over: Partial<ContextBreakdown> = {}): ContextBreakdown {
+  return {
+    systemPercent: 12,
+    memoryPercent: 4,
+    conversationPercent: 27,
+    freePercent: 57,
+    memoryFiles: [{ path: '/repo/CLAUDE.md', percent: 3 }],
+    ...over,
+  };
+}
+
+export function windows(): UsageWindow[] {
+  return [
+    { id: 'five-hour', label: 'Session (5h)', usedPercent: 62, resetsAt: 3_600_000 },
+    { id: 'seven-day', label: 'Week', usedPercent: 18 },
+  ];
+}
+```
+
+- [ ] **Step 2: Write the failing DOM test**
+
+Create `src/test/dom/context-ring.test.tsx`:
+
+```tsx
+import * as assert from 'assert';
+import { screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { ContextRing } from '@/components/context-ring';
+import type { PaneState } from '@/reducer';
+import { breakdown, summary } from '../fixtures/protocol';
+import { posted, renderWithStore, resetHost, sendFromHost } from './harness';
+
+function pane(contextPercent?: number): PaneState {
+  return {
+    summary: summary('a', { contextPercent }),
+    items: [], hasMore: false, pending: [],
+  };
+}
+
+suite('ContextRing', () => {
+  setup(() => { resetHost(); });
+
+  test('labels the ring with the percentage in use', () => {
+    renderWithStore(<ContextRing pane={pane(43)} />);
+    assert.ok(screen.getByLabelText('Context 43% used'));
+  });
+
+  test('labels the ring as unavailable when nothing was reported', () => {
+    renderWithStore(<ContextRing pane={pane()} />);
+    assert.ok(screen.getByLabelText('Context usage unavailable'));
+  });
+
+  test('opening the popover requests the breakdown for that session', async () => {
+    renderWithStore(<ContextRing pane={pane(43)} />);
+
+    await userEvent.click(screen.getByLabelText('Context 43% used'));
+
+    assert.deepStrictEqual(posted().at(-1), { t: 'request-context', id: 'a' });
+  });
+
+  test('renders the slices and memory files once the reply arrives', async () => {
+    renderWithStore(<ContextRing pane={pane(43)} />);
+    await userEvent.click(screen.getByLabelText('Context 43% used'));
+
+    sendFromHost({
+      t: 'context-breakdown', id: 'a', result: { ok: true, breakdown: breakdown() },
+    });
+
+    assert.ok(screen.getByText('System prompt'));
+    assert.ok(screen.getByText('57%'));
+    assert.ok(screen.getByRole('button', { name: /CLAUDE\.md/ }));
+  });
+
+  test('a sub-one-percent memory file reads as <1%, never 0%', async () => {
+    renderWithStore(<ContextRing pane={pane(43)} />);
+    await userEvent.click(screen.getByLabelText('Context 43% used'));
+
+    sendFromHost({
+      t: 'context-breakdown', id: 'a',
+      result: {
+        ok: true,
+        breakdown: breakdown({ memoryFiles: [{ path: '/repo/AGENTS.md', percent: 0 }] }),
+      },
+    });
+
+    assert.ok(screen.getByText('<1%'));
+  });
+
+  test('an empty memory list says so rather than showing a lone row', async () => {
+    renderWithStore(<ContextRing pane={pane(43)} />);
+    await userEvent.click(screen.getByLabelText('Context 43% used'));
+
+    sendFromHost({
+      t: 'context-breakdown', id: 'a',
+      result: { ok: true, breakdown: breakdown({ memoryPercent: 0, memoryFiles: [] }) },
+    });
+
+    assert.ok(screen.getByText('No memory files loaded'));
+  });
+
+  test('clicking a memory file asks the host to open it', async () => {
+    renderWithStore(<ContextRing pane={pane(43)} />);
+    await userEvent.click(screen.getByLabelText('Context 43% used'));
+    sendFromHost({
+      t: 'context-breakdown', id: 'a', result: { ok: true, breakdown: breakdown() },
+    });
+
+    await userEvent.click(screen.getByRole('button', { name: /CLAUDE\.md/ }));
+
+    assert.deepStrictEqual(posted().at(-1), { t: 'open-file', path: '/repo/CLAUDE.md' });
+  });
+
+  test('a not-ok reply shows its reason', async () => {
+    renderWithStore(<ContextRing pane={pane(43)} />);
+    await userEvent.click(screen.getByLabelText('Context 43% used'));
+
+    sendFromHost({
+      t: 'context-breakdown', id: 'a',
+      result: { ok: false, reason: 'This session is not running' },
+    });
+
+    assert.ok(screen.getByText('This session is not running'));
+  });
+});
+```
+
+- [ ] **Step 3: Run the test to verify it fails**
+
+Run: `yarn test:dom`
+Expected: FAIL — `Cannot find module '@/components/context-ring'`.
+
+- [ ] **Step 4: Write the shared ring**
 
 Create `src/webview/components/ring.tsx`:
 
@@ -1513,7 +1593,7 @@ export function Ring({
 }
 ```
 
-- [ ] **Step 2: Write the context ring**
+- [ ] **Step 5: Write the context ring**
 
 Create `src/webview/components/context-ring.tsx`:
 
@@ -1522,31 +1602,32 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { cn } from '@/lib/utils';
 import { Ring } from './ring';
 import { useStore } from '../store';
 import type { PaneState } from '../reducer';
 import type { ContextResult } from '../../protocol/messages';
 
+/** A listed file rounding to 0 is present but tiny — never "nothing". */
+function formatPercent(percent: number): string {
+  return percent === 0 ? '<1%' : `${percent}%`;
+}
+
 function Row({
-  label, percent, indent,
-}: { label: string; percent: number; indent?: boolean }) {
+  label, percent, muted,
+}: { label: string; percent: number; muted?: boolean }) {
   return (
     <div className="flex items-center gap-2 py-0.5">
-      <span
-        className={indent
-          ? 'w-28 shrink-0 truncate pl-3 text-muted-foreground'
-          : 'w-28 shrink-0 truncate'}
-        title={label}
-      >
-        {label}
-      </span>
+      <span className="w-24 shrink-0 truncate" title={label}>{label}</span>
       <span className="h-1.5 min-w-0 flex-1 rounded-full bg-muted">
         <span
-          className="block h-full rounded-full bg-primary"
+          // `Free` is the absence of use: filling its bar with the accent
+          // would say the opposite of what the row means.
+          className={cn('block h-full rounded-full', muted ? 'bg-muted-foreground/40' : 'bg-primary')}
           style={{ width: `${Math.max(0, Math.min(100, percent))}%` }}
         />
       </span>
-      <span className="w-8 shrink-0 text-right tabular-nums">{percent}%</span>
+      <span className="w-9 shrink-0 text-right tabular-nums">{percent}%</span>
     </div>
   );
 }
@@ -1573,25 +1654,26 @@ function Body({
     <div>
       <Row label="System prompt" percent={b.systemPercent} />
       <Row label="Memory" percent={b.memoryPercent} />
-      {b.memoryFiles.map((file) => (
+      {b.memoryFiles.length === 0 ? (
+        <p className="py-0.5 pl-3 text-muted-foreground">No memory files loaded</p>
+      ) : b.memoryFiles.map((file) => (
         <div key={file.path} className="flex items-center gap-2 py-0.5">
           <Button
             variant="link"
             size="xs"
-            className="h-auto w-28 shrink-0 justify-start truncate px-0 pl-3 font-normal"
+            className="h-auto min-w-0 flex-1 justify-start truncate px-0 pl-3 font-normal"
             title={file.path}
             onClick={() => onOpenFile(file.path)}
           >
             {file.path.split(/[\\/]/).pop()}
           </Button>
-          <span className="min-w-0 flex-1" />
-          <span className="w-8 shrink-0 text-right tabular-nums text-muted-foreground">
-            {file.percent}%
+          <span className="w-9 shrink-0 text-right tabular-nums text-muted-foreground">
+            {formatPercent(file.percent)}
           </span>
         </div>
       ))}
       <Row label="Conversation" percent={b.conversationPercent} />
-      <Row label="Free" percent={b.freePercent} />
+      <Row label="Free" percent={b.freePercent} muted />
     </div>
   );
 }
@@ -1612,7 +1694,7 @@ export function ContextRing({ pane }: { pane: PaneState }) {
         setOpen(next);
         // Pulled, not pushed: the inventory is static-ish and must not ride
         // every transcript patch. Refetch on each open so a long-lived
-        // popover-less session never shows a stale list.
+        // session never shows a stale list.
         if (next) { post({ t: 'request-context', id }); }
       }}
     >
@@ -1621,7 +1703,10 @@ export function ContextRing({ pane }: { pane: PaneState }) {
           render={(
             <PopoverTrigger
               aria-label={label}
-              className="ml-auto inline-flex items-center rounded-sm p-1 hover:bg-muted"
+              // size-6, not the ring's own 14px: a 14px target is under the
+              // floor for a control this panel expects to be clickable and
+              // keyboard-reachable.
+              className="ml-1 inline-flex size-6 shrink-0 items-center justify-center rounded-md hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
             />
           )}
         >
@@ -1629,10 +1714,20 @@ export function ContextRing({ pane }: { pane: PaneState }) {
         </TooltipTrigger>
         <TooltipContent>{label}</TooltipContent>
       </Tooltip>
-      <PopoverContent className="w-72 text-xs">
+      {/*
+        A 288px popover cannot fit a 300px pane once the positioner's own
+        offsets are counted, so the width is a computation, not a token:
+        clamp to the panel and cap at the comfortable reading width.
+      */}
+      <PopoverContent className="w-[calc(100vw-2rem)] max-w-72 text-xs">
         <div className="flex items-baseline justify-between border-b border-border pb-1">
           <span className="font-medium">Context</span>
-          <span className="tabular-nums text-muted-foreground">
+          <span
+            className={cn(
+              'tabular-nums text-muted-foreground',
+              percent !== undefined && percent >= 80 && 'text-destructive',
+            )}
+          >
             {percent === undefined ? 'unavailable' : `${percent}% used`}
           </span>
         </div>
@@ -1646,36 +1741,40 @@ export function ContextRing({ pane }: { pane: PaneState }) {
 }
 ```
 
-- [ ] **Step 3: Mount it in the composer**
+- [ ] **Step 6: Mount it in the composer**
 
-In `src/webview/components/composer.tsx`, add the import:
+`src/webview/components/composer.tsx` now uses `InputGroup` with an `InputGroupAddon align="block-end"` that wraps. Add the import:
 
 ```tsx
 import { ContextRing } from './context-ring';
 ```
 
-and place it as the last child of the toolbar row (`<div className="mt-1 flex items-center gap-2 text-xs">`), immediately after the closing `</Select>` of the permission-mode select:
+and render the ring as the **last** child of that addon, after the Send `Button` and the `sendReasonId` span. Send already carries `ml-auto` when idle, so the ring lands immediately to its right at the row's end and wraps with it:
 
 ```tsx
-        <ContextRing pane={pane} />
+          <ContextRing pane={pane} />
 ```
 
-The ring's own `ml-auto` pushes it to the right edge of that row.
+- [ ] **Step 7: Run the tests to verify they pass**
 
-- [ ] **Step 4: Type-check, lint and build**
+Run: `yarn test:dom && yarn test:unit`
+Expected: PASS, including the existing `src/test/dom/composer.test.tsx` and `a11y.test.tsx` — if the a11y suite enumerates the composer's controls, extend its expectations rather than loosening them.
 
-Run: `yarn check-types && yarn lint && yarn run compile`
-Expected: all clean.
+- [ ] **Step 8: Run the impeccable detector**
 
-- [ ] **Step 5: Run the unit suite**
-
-Run: `yarn test:unit`
-Expected: PASS (unchanged — these components are covered by the integration test in Task 12).
-
-- [ ] **Step 6: Commit**
+Run:
 
 ```bash
-git add src/webview/components/ring.tsx src/webview/components/context-ring.tsx src/webview/components/composer.tsx
+node C:/Users/Marco/.claude/skills/impeccable/scripts/detect.mjs --json src/webview/components/context-ring.tsx src/webview/components/ring.tsx src/webview/components/composer.tsx
+```
+
+Expected: exit 0. Exit 2 is a failing check — fix every finding before committing.
+
+- [ ] **Step 9: Type-check, lint, build and commit**
+
+```bash
+yarn check-types && yarn lint && yarn run compile
+git add src/webview/components/ring.tsx src/webview/components/context-ring.tsx src/webview/components/composer.tsx src/test/fixtures/protocol.ts src/test/dom/context-ring.test.tsx
 git commit -m "feat: show context fill and its breakdown from the composer"
 ```
 
@@ -1685,13 +1784,100 @@ git commit -m "feat: show context fill and its breakdown from the composer"
 
 **Files:**
 - Create: `src/webview/components/usage-strip.tsx`
-- Modify: `src/webview/main.tsx`
+- Modify: `src/webview/app.tsx`
+- Test: `src/test/dom/usage-strip.test.tsx`
 
 **Interfaces:**
-- Consumes: `Ring` (Task 10); `usageByProvider` (Task 8); `Tooltip*` (Task 9).
+- Consumes: `Ring` (Task 10); `usageByProvider` (Task 8); `Tooltip*` (Task 9); fixtures `windows()` (Task 10).
 - Produces: `UsageStrip()` — no props, reads everything from the store.
 
-- [ ] **Step 1: Write the strip**
+**[brief] decisions this task implements:** fixed row height so the panel never jolts; `ok` with zero windows says "No plan limits" while a not-ok says its reason; reset times live in the tooltip only; chips are keyboard-focusable; window order is whatever the provider returned, never re-sorted.
+
+- [ ] **Step 1: Write the failing DOM test**
+
+Create `src/test/dom/usage-strip.test.tsx`:
+
+```tsx
+import * as assert from 'assert';
+import { screen } from '@testing-library/react';
+import { UsageStrip } from '@/components/usage-strip';
+import { catalog, layoutOf, snapshot, summary, windows } from '../fixtures/protocol';
+import { posted, renderWithStore, resetHost, sendFromHost } from './harness';
+
+function hydrateOne() {
+  sendFromHost({
+    t: 'hydrate',
+    sessions: [summary('a')],
+    layout: layoutOf('a'),
+    snapshots: [snapshot('a')],
+    catalog: catalog(),
+  });
+}
+
+suite('UsageStrip', () => {
+  setup(() => { resetHost(); });
+
+  test('requests usage for each provider with a session', () => {
+    renderWithStore(<UsageStrip />);
+    hydrateOne();
+
+    assert.ok(posted().some((m) => m.t === 'request-usage' && m.providerId === 'fake'));
+  });
+
+  test('renders one chip per reported window, in the order given', () => {
+    renderWithStore(<UsageStrip />);
+    hydrateOne();
+
+    sendFromHost({
+      t: 'usage-windows', providerId: 'fake', result: { ok: true, windows: windows() },
+    });
+
+    const labels = screen.getAllByRole('img').map((el) => el.getAttribute('aria-label'));
+    assert.deepStrictEqual(labels, ['Session (5h) 62% used', 'Week 18% used']);
+  });
+
+  test('an ok reply with no windows reads as no plan limits, not as an error', () => {
+    renderWithStore(<UsageStrip />);
+    hydrateOne();
+
+    sendFromHost({
+      t: 'usage-windows', providerId: 'fake', result: { ok: true, windows: [] },
+    });
+
+    assert.ok(screen.getByText('No plan limits'));
+  });
+
+  test('a not-ok reply shows its reason', () => {
+    renderWithStore(<UsageStrip />);
+    hydrateOne();
+
+    sendFromHost({
+      t: 'usage-windows', providerId: 'fake',
+      result: { ok: false, reason: 'No active session for this provider' },
+    });
+
+    assert.ok(screen.getByText('No active session for this provider'));
+  });
+
+  test('chips are keyboard-focusable', () => {
+    renderWithStore(<UsageStrip />);
+    hydrateOne();
+    sendFromHost({
+      t: 'usage-windows', providerId: 'fake', result: { ok: true, windows: windows() },
+    });
+
+    const chip = screen.getByLabelText('Session (5h) 62% used');
+    assert.strictEqual(chip.getAttribute('tabindex'), '0');
+  });
+});
+```
+
+- [ ] **Step 2: Run the test to verify it fails**
+
+Run: `yarn test:dom`
+Expected: FAIL — `Cannot find module '@/components/usage-strip'`.
+
+- [ ] **Step 3: Write the strip**
 
 Create `src/webview/components/usage-strip.tsx`:
 
@@ -1720,8 +1906,21 @@ function WindowChip({ window: w }: { window: UsageWindow }) {
   const reset = resetsIn(w.resetsAt, Date.now());
   return (
     <Tooltip>
+      {/*
+        A bare span would make this tooltip mouse-only; the reset time lives
+        nowhere else, so the chip has to be reachable by keyboard. It is not
+        a control — nothing happens on activation — so it is a focusable
+        `img` role rather than a button.
+      */}
       <TooltipTrigger
-        render={<span className="inline-flex items-center gap-1" aria-label={label} />}
+        render={(
+          <span
+            role="img"
+            tabIndex={0}
+            aria-label={label}
+            className="inline-flex items-center gap-1 rounded-sm focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+          />
+        )}
       >
         <Ring percent={w.usedPercent} size={12} />
         <span className="text-muted-foreground">{w.label}</span>
@@ -1735,14 +1934,20 @@ function WindowChip({ window: w }: { window: UsageWindow }) {
 function ProviderUsage({
   displayName, result, showName,
 }: { displayName: string; result: UsageResult | undefined; showName: boolean }) {
+  // Nothing back yet: the row still occupies its height, so the panel does
+  // not jolt when the first reply lands.
   if (!result) { return null; }
-  if (!result.ok || result.windows.length === 0) {
-    return (
-      <span className="text-muted-foreground">
-        Usage unavailable for {displayName}
-      </span>
-    );
+
+  if (!result.ok) {
+    return <span className="truncate text-muted-foreground">{result.reason}</span>;
   }
+
+  // An empty window list is a plan-less session (API key, Bedrock, Vertex),
+  // which is a normal configuration and must not read like a failure.
+  if (result.windows.length === 0) {
+    return <span className="text-muted-foreground">No plan limits</span>;
+  }
+
   return (
     <span className="flex items-center gap-3">
       {showName && <span className="text-muted-foreground">{displayName}</span>}
@@ -1773,94 +1978,73 @@ export function UsageStrip() {
   }, [providerKey, statusKey]);
 
   return (
-    <div className="flex flex-wrap items-center gap-4 border-t border-border px-2 py-1 text-xs">
-      {providerIds.length === 0 ? (
-        <span className="text-muted-foreground">Usage unavailable</span>
-      ) : (
-        providerIds.map((id) => (
-          <ProviderUsage
-            key={id}
-            displayName={state.catalog.find((p) => p.id === id)?.displayName ?? id}
-            result={state.usageByProvider[id]}
-            showName={providerIds.length > 1}
-          />
-        ))
-      )}
+    <div className="flex h-6 shrink-0 items-center gap-4 overflow-hidden border-t border-border px-2 text-xs">
+      {providerIds.map((id) => (
+        <ProviderUsage
+          key={id}
+          displayName={state.catalog.find((p) => p.id === id)?.displayName ?? id}
+          result={state.usageByProvider[id]}
+          showName={providerIds.length > 1}
+        />
+      ))}
     </div>
   );
 }
 ```
 
-- [ ] **Step 2: Mount it below the pane group**
+- [ ] **Step 4: Mount it below the pane group**
 
-In `src/webview/main.tsx`, add the import:
+In `src/webview/app.tsx`, add the import:
 
 ```tsx
 import { UsageStrip } from './components/usage-strip';
 ```
 
-and render it as the last child of the app shell so it pins to the bottom:
+and render it as the last child of the `state.ready` fragment, after the pane-group div — not outside the conditional, since it reads `sessions` and `catalog` that only exist post-hydrate:
 
 ```tsx
-  return (
-    <div className="flex h-screen flex-col">
-      <SessionPicker />
-      <div className="min-h-0 flex-1"><PaneGroup /></div>
-      <UsageStrip />
-    </div>
-  );
+          <SessionPicker narrow={narrow} />
+          <div className="min-h-0 flex-1"><PaneGroup narrow={narrow} /></div>
+          <UsageStrip />
 ```
 
-- [ ] **Step 3: Type-check, lint and build**
+- [ ] **Step 5: Run the tests to verify they pass**
 
-Run: `yarn check-types && yarn lint && yarn run compile`
-Expected: all clean.
+Run: `yarn test:dom && yarn test:unit`
+Expected: PASS, including `app-boot.test.tsx` and `a11y.test.tsx`.
 
-- [ ] **Step 4: Run the unit suite**
+- [ ] **Step 6: Run the impeccable detector**
 
-Run: `yarn test:unit`
-Expected: PASS.
-
-- [ ] **Step 5: Commit**
+Run:
 
 ```bash
-git add src/webview/components/usage-strip.tsx src/webview/main.tsx
+node C:/Users/Marco/.claude/skills/impeccable/scripts/detect.mjs --json src/webview/components/usage-strip.tsx src/webview/app.tsx
+```
+
+Expected: exit 0. Fix every finding before committing.
+
+- [ ] **Step 7: Type-check, lint, build and commit**
+
+```bash
+yarn check-types && yarn lint && yarn run compile
+git add src/webview/components/usage-strip.tsx src/webview/app.tsx src/test/dom/usage-strip.test.tsx
 git commit -m "feat: show account usage windows in a panel-level strip"
 ```
 
 ---
 
-### Task 12: Integration coverage, docs and full verification
+### Task 12: Critique, docs and full verification
 
 **Files:**
-- Modify: `src/test/integration/extension.test.ts`
 - Modify: `CLAUDE.md`
 
 **Interfaces:**
 - Consumes: everything above.
 - Produces: nothing.
 
-- [ ] **Step 1: Read the integration suite**
+- [ ] **Step 1: Update the architecture docs**
 
-Read `src/test/integration/extension.test.ts` in full before adding to it. It runs inside a real extension host; match whatever activation/teardown pattern it already uses.
-
-- [ ] **Step 2: Add a smoke test for the new host surface**
-
-Append a test that drives the host end of the feature — it needs no webview, only the extension's own wiring. Adapt the setup to the file's existing helpers:
-
-```ts
-  test('the panel view renders and the extension activates with the usage surfaces', async () => {
-    const ext = vscode.extensions.getExtension('hiiiid-code');
-    await ext?.activate();
-    assert.ok(ext?.isActive);
-  });
-```
-
-If the file already asserts activation, skip this step rather than duplicating it, and record in the commit message that integration coverage rides on the existing activation test.
-
-- [ ] **Step 3: Update the architecture docs**
-
-In `CLAUDE.md`, add the new modules to the path table, directly after the `src/providers/claude/` row:
+In `CLAUDE.md`, add to the path table, after the `src/providers/claude/` row:
 
 ```markdown
 | `src/providers/claude/map-context.ts` | SDK context/usage responses → `ContextBreakdown` / `UsageWindow[]` |
@@ -1880,7 +2064,13 @@ Add one invariant to the **Invariants** list:
   inside `src/providers/claude/map-context.ts`, which converts them on the way out.
 ```
 
-- [ ] **Step 4: Run the full verification sweep**
+- [ ] **Step 2: Run the impeccable critique and compare against the baseline**
+
+CLAUDE.md requires a `critique` run over `src/webview` before merging a UI branch, compared against the previous run in `.impeccable/critique/` (gitignored — a fresh clone has no baseline until `critique` has run once there).
+
+Invoke the `impeccable` skill with `critique src/webview`, then compare the score to the previous run. Expected: the score goes up, never down. Record the before/after numbers in the commit message.
+
+- [ ] **Step 3: Run the full verification sweep**
 
 Run each and confirm the output before claiming completion:
 
@@ -1888,21 +2078,22 @@ Run each and confirm the output before claiming completion:
 yarn lint
 yarn check-types
 yarn test:unit
+yarn test:dom
 yarn run compile
 ```
 
-Expected: all four succeed with no errors.
+Expected: all five succeed with no errors.
 
-- [ ] **Step 5: Manual check in the dev host**
+- [ ] **Step 4: Manual check in the dev host**
 
 Run: `yarn dev`
 
-Confirm, in the launched window: the composer row shows a ring at its right edge; hovering it shows a tooltip; clicking it opens a popover with System prompt / Memory / Conversation / Free rows; a memory-file row opens that file in an editor tab; the bottom strip shows either usage windows or an "unavailable" line. A `fake`-provider session is expected to show the unavailable states — that is the empty-state path working, not a bug.
+Confirm, in the launched window: the composer's settings row ends in a ring; hovering it shows a tooltip and it is reachable by Tab; clicking opens a popover with System prompt / Memory / Conversation / Free; a memory-file row opens that file in an editor tab; the bottom strip holds its height and shows either windows or a muted line. A `fake`-provider session is expected to show the unavailable states — that is the empty-state path working, not a bug. Drag the panel to ~300px and confirm the popover does not overflow and the addon row wraps cleanly.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
-git add CLAUDE.md src/test/integration/extension.test.ts
+git add CLAUDE.md
 git commit -m "docs: record the usage and context surfaces in the architecture map"
 ```
 
@@ -1910,7 +2101,7 @@ git commit -m "docs: record the usage and context surfaces in the architecture m
 
 ## Self-Review Notes
 
-Spec coverage checked section by section:
+Spec coverage:
 
 | Spec section | Task |
 |---|---|
@@ -1925,7 +2116,10 @@ Spec coverage checked section by section:
 | UI — `usage-strip.tsx` | T11 |
 | UI — reducer maps | T8 |
 | Testing — reducer / router / session-manager / fake profiles | T8 / T5 / T4 / T1 |
-| Testing — integration | T12 |
+| Testing — DOM through the real store | T10, T11 |
+| Testing — integration | covered by the existing activation suite; the new surfaces are covered by DOM tests instead |
 | Staging | Parallelization table |
 
-Two deliberate deviations from the spec text, both recorded in the spec itself before this plan was written: `usageWindows` sits on `AgentRun` rather than `AgentProvider` (the SDK exposes plan limits only from a live `Query`), and the wire discriminant is `t` with the session key named `id`, matching every existing message.
+Deviations from the spec text, both already recorded in the spec: `usageWindows` sits on `AgentRun` rather than `AgentProvider` (the SDK exposes plan limits only from a live `Query`), and the wire discriminant is `t` with the session key named `id`.
+
+Design decisions from the `impeccable` shaping round, all landed in T10/T11: 24px hit target, muted "Free" bar, `<1%` for sub-percent memory files, an explicit empty-memory line, two distinct usage empty states, fixed strip height, tooltip-only reset times, focusable chips, provider-stable window order, and a popover width that clamps to a 300px pane.
