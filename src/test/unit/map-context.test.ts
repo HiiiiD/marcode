@@ -1,5 +1,5 @@
 import * as assert from 'assert';
-import { toContextBreakdown, toUsageWindow, toUsageWindows } from '../../providers/claude/map-context';
+import { toContextBreakdown, toUsageWindow } from '../../providers/claude/map-context';
 
 suite('map-context', () => {
   test('splits the window into system, memory, conversation and free', () => {
@@ -143,33 +143,6 @@ suite('map-context', () => {
     }
   });
 
-  test('maps the plan windows that report a utilization, in a stable order', () => {
-    const windows = toUsageWindows({
-      rate_limits_available: true,
-      rate_limits: {
-        five_hour: { utilization: 62, resets_at: '2026-08-13T18:00:00.000Z' },
-        seven_day: { utilization: 18, resets_at: null },
-        seven_day_opus: { utilization: null, resets_at: null },
-        model_scoped: [{ display_name: 'Fable', utilization: 5, resets_at: null }],
-      },
-    });
-
-    assert.deepStrictEqual(windows, [
-      {
-        id: 'five-hour', label: 'Session (5h)', usedPercent: 62,
-        resetsAt: Date.parse('2026-08-13T18:00:00.000Z'),
-      },
-      { id: 'seven-day', label: 'Week', usedPercent: 18 },
-      { id: 'model:Fable', label: 'Week (Fable)', usedPercent: 5 },
-    ]);
-  });
-
-  test('reports no windows when plan limits do not apply', () => {
-    assert.deepStrictEqual(
-      toUsageWindows({ rate_limits_available: false, rate_limits: null }),
-      [],
-    );
-  });
 });
 
 suite('toUsageWindow', () => {

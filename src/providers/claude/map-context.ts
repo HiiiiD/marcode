@@ -22,22 +22,6 @@ export interface ContextUsageLike {
   };
 }
 
-interface RateWindowLike {
-  utilization: number | null;
-  resets_at: string | null;
-}
-
-export interface UsageLike {
-  rate_limits_available: boolean;
-  rate_limits: {
-    five_hour?: RateWindowLike | null;
-    seven_day?: RateWindowLike | null;
-    seven_day_opus?: RateWindowLike | null;
-    seven_day_sonnet?: RateWindowLike | null;
-    model_scoped?: { display_name: string; utilization: number | null; resets_at: string | null }[];
-  } | null;
-}
-
 function share(tokens: number, max: number): number {
   return Math.round((tokens / max) * 100);
 }
@@ -166,54 +150,4 @@ export function toUsageWindow(info: RateLimitInfoLike | undefined): UsageWindow 
     usedPercent: Math.max(0, Math.min(100, Math.round(info.utilization))),
     ...(at !== undefined ? { resetsAt: at } : {}),
   };
-}
-
-function resetsAt(iso: string | null): number | undefined {
-  if (!iso) { return undefined; }
-  const parsed = Date.parse(iso);
-  return Number.isFinite(parsed) ? parsed : undefined;
-}
-
-function makeWindow(id: string, label: string, w: RateWindowLike): UsageWindow | undefined {
-  if (w.utilization === null || !Number.isFinite(w.utilization)) { return undefined; }
-  const at = resetsAt(w.resets_at);
-  return {
-    id, label,
-    usedPercent: Math.max(0, Math.min(100, Math.round(w.utilization))),
-    ...(at !== undefined ? { resetsAt: at } : {}),
-  };
-}
-
-/**
- * `rate_limits_available` is false for API-key, Bedrock and Vertex sessions,
- * where plan limits simply do not exist. That is an empty list, not an
- * error — the strip renders "No plan limits" for it, which is a different
- * sentence from a failure.
- *
- * The output order is fixed (session, week, per-model), never sorted by
- * utilization: a strip that reorders itself between refreshes cannot be
- * read at a glance.
- */
-export function toUsageWindows(res: UsageLike): UsageWindow[] {
-  if (!res.rate_limits_available || !res.rate_limits) { return []; }
-  const limits = res.rate_limits;
-  const out: UsageWindow[] = [];
-
-  for (const { key, id, label } of WINDOW_LABELS) {
-    const w = limits[key];
-    if (!w) { continue; }
-    const mapped = makeWindow(id, label, w);
-    if (mapped) { out.push(mapped); }
-  }
-
-  for (const scoped of limits.model_scoped ?? []) {
-    const mapped = makeWindow(
-      `model:${scoped.display_name}`,
-      `Week (${scoped.display_name})`,
-      scoped,
-    );
-    if (mapped) { out.push(mapped); }
-  }
-
-  return out;
 }

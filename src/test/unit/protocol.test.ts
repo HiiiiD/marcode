@@ -23,7 +23,6 @@ function describeInbound(m: WebviewToHost): string {
     case 'permission-decision': return 'permission-decision';
     case 'load-more': return 'load-more';
     case 'request-context': return 'request-context';
-    case 'request-usage': return 'request-usage';
     case 'open-file': return 'open-file';
     default: return assertNever(m);
   }
@@ -85,7 +84,7 @@ suite('protocol', () => {
     assert.strictEqual(toWebview.length, 2);
   });
 
-  test('context and usage replies carry their key alongside a result union', () => {
+  test('a context reply carries its session id alongside a result union', () => {
     assert.strictEqual(
       describeOutbound({
         t: 'context-breakdown', id: 's1',
@@ -99,10 +98,13 @@ suite('protocol', () => {
       }),
       'context-breakdown',
     );
+  });
+
+  test('usage-windows carries a provider id and a plain window set, with no result union', () => {
     assert.strictEqual(
       describeOutbound({
         t: 'usage-windows', providerId: 'claude',
-        result: { ok: false, reason: 'No active session for this provider' },
+        windows: [{ id: 'five-hour', label: 'Session (5h)', usedPercent: 62 }],
       }),
       'usage-windows',
     );

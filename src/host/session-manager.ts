@@ -1,11 +1,12 @@
 import { AgentSession, type SessionSink } from './agent-session';
 import { catalogKey, CatalogService } from './catalog-service';
 import type { StoredIndex, TranscriptStore } from './transcript-store';
-import type { AgentProvider, EffortLevel, Invocable } from '../providers/types';
+import type { AgentProvider, EffortLevel, Invocable, UsageWindow } from '../providers/types';
 import { findModel, resolveEffort } from '../shared/model-catalog';
+import { orderWindows } from '../shared/usage-windows';
 import type {
   ContextResult, HostToWebview, McpServerStatus, PaneLayout, ProviderInfo, SessionId,
-  SessionState, SessionStatus, SessionSummary, TranscriptPatch, UsageResult,
+  SessionState, SessionStatus, SessionSummary, TranscriptPatch,
 } from '../protocol/messages';
 
 let counter = 0;
@@ -52,6 +53,14 @@ export class SessionManager implements SessionSink {
   private snapshotting = new Map<SessionId, TranscriptPatch[]>();
   private snapshotSeq = new Map<SessionId, number>();
   private nextSnapshotSeq = 0;
+  /**
+   * providerId -> windowId -> the last window that provider reported.
+   *
+   * Account state, not session state: it is keyed by provider, it outlives
+   * every session, and it deliberately does not live on `SessionState` —
+   * a restored session must not carry a percentage that has since moved.
+   */
+  private usage = new Map<string, Map<string, UsageWindow>>();
   private readonly catalogSvc = new CatalogService(
     (key, entries) => { this.fanOutCatalog(key, entries); },
   );
@@ -196,29 +205,29 @@ export class SessionManager implements SessionSink {
   }
 
   /**
-   * Plan limits belong to the account, not the session, but the Claude
-   * Agent SDK only exposes them from a live `Query` — so any one live
-   * session of this provider is taken to speak for the whole account.
-   *
-   * "Any one" means the loop must survive a session that cannot answer: a
-   * Claude session that has never been sent a message rejects with 'This
-   * session has not started yet', and if that one happens to come first in
-   * `live` the account is not unknown — the next live session of the same
-   * provider may well answer. So a failure is remembered and the loop
-   * continues; only once every live session of the provider has been tried
-   * does the last reason become the not-ok reply.
+   * Every provider's current window set, ordered for display and with
+   * already-reset windows dropped. The pruning happens on read rather than
+   * on a timer: nothing re-renders between reads anyway, and a timer would
+   * be a second clock to keep correct.
    */
-  async usageWindows(providerId: string): Promise<UsageResult> {
-    let reason = 'No active session for this provider';
-    for (const session of this.live.values()) {
-      if (session.state.providerId !== providerId) { continue; }
-      try {
-        return { ok: true, windows: await session.usageWindows() };
-      } catch (err) {
-        reason = err instanceof Error ? err.message : String(err);
-      }
+  usageSnapshot(): Record<string, UsageWindow[]> {
+    const out: Record<string, UsageWindow[]> = {};
+    for (const providerId of this.usage.keys()) {
+      out[providerId] = this.windowsFor(providerId);
     }
-    return { ok: false, reason };
+    return out;
+  }
+
+  private windowsFor(providerId: string): UsageWindow[] {
+    const known = this.usage.get(providerId);
+    if (!known) { return []; }
+    const now = Date.now();
+    // A window whose reset has passed is known to be wrong, and the next
+    // event may be hours away — so it is dropped, not shown at its last
+    // percentage. This is the one case where "last known" is not the truth.
+    return orderWindows(
+      [...known.values()].filter((w) => w.resetsAt === undefined || w.resetsAt > now),
+    );
   }
 
   /**
@@ -399,6 +408,21 @@ export class SessionManager implements SessionSink {
     // entries back through the same fan-out as its siblings, so there is one
     // path, not two.
     this.catalogSvc.set(this.keyOf(state), entries);
+  }
+
+  usageWindow(providerId: string, window: UsageWindow): void {
+    const known = this.usage.get(providerId) ?? new Map<string, UsageWindow>();
+    const prev = known.get(window.id);
+    // Identical repeats are ordinary: the CLI re-announces rate-limit info
+    // on reconnect, and re-broadcasting an unchanged set would re-render the
+    // strip for nothing.
+    if (prev && prev.usedPercent === window.usedPercent && prev.resetsAt === window.resetsAt) {
+      return;
+    }
+    known.set(window.id, window);
+    this.usage.set(providerId, known);
+    this.emit({ t: 'usage-windows', providerId, windows: this.windowsFor(providerId) });
+    this.schedulePersist();
   }
 
   mcp(id: SessionId, servers: McpServerStatus[]): void {

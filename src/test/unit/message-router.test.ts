@@ -230,17 +230,6 @@ suite('MessageRouter', () => {
     assert.strictEqual(reply.result.ok, false);
   });
 
-  test('request-usage replies with a keyed result', async () => {
-    sent.length = 0;
-    await router.handle({ t: 'request-usage', providerId: 'fake' });
-
-    const reply = sent.find((m) => m.t === 'usage-windows') as
-      Extract<HostToWebview, { t: 'usage-windows' }>;
-    assert.ok(reply);
-    assert.strictEqual(reply.providerId, 'fake');
-    assert.strictEqual(reply.result.ok, false);
-  });
-
   test('open-file is accepted but not acted on by the router', async () => {
     sent.length = 0;
     await router.handle({ t: 'open-file', id: 's1', path: '/repo/CLAUDE.md' });

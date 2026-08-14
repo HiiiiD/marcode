@@ -385,13 +385,27 @@ suite('webview reducer', () => {
     assert.strictEqual(after.contextBySession['gone'], undefined);
   });
 
-  test('a not-ok result is stored rather than dropped', () => {
-    const state = reduce(initialState, {
-      t: 'usage-windows', providerId: 'claude',
-      result: { ok: false, reason: 'No active session for this provider' },
+  test('usage-windows replaces a provider entry wholesale', () => {
+    let state = reduce(initialState, {
+      t: 'usage-windows', providerId: 'fake',
+      windows: [{ id: 'five-hour', label: 'Session (5h)', usedPercent: 62 }],
     });
+    state = reduce(state, {
+      t: 'usage-windows', providerId: 'fake',
+      windows: [{ id: 'seven-day', label: 'Week', usedPercent: 18 }],
+    });
+    assert.deepStrictEqual(state.usageByProvider.fake, [
+      { id: 'seven-day', label: 'Week', usedPercent: 18 },
+    ]);
+  });
 
-    assert.strictEqual(state.usageByProvider['claude']?.ok, false);
+  test('an empty set is stored, not ignored — it is how a set clears', () => {
+    let state = reduce(initialState, {
+      t: 'usage-windows', providerId: 'fake',
+      windows: [{ id: 'five-hour', label: 'Session (5h)', usedPercent: 62 }],
+    });
+    state = reduce(state, { t: 'usage-windows', providerId: 'fake', windows: [] });
+    assert.deepStrictEqual(state.usageByProvider.fake, []);
   });
 
   test('sessions-changed prunes cached breakdowns for removed sessions', () => {

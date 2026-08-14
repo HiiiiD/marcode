@@ -28,6 +28,9 @@ class RecordingSink implements SessionSink {
   status(_id: SessionId, status: SessionStatus) { this.statuses.push(status); }
   mcp(_id: SessionId, servers: unknown[]) { this.servers.push(servers); }
   invocables(_id: SessionId, entries: Invocable[]) { this.invocablesLog.push(entries); }
+  // This suite is about tool nesting; usage never arrives here, but the sink
+  // must still satisfy the interface.
+  usageWindow() {}
   changed() { this.changes++; }
 }
 

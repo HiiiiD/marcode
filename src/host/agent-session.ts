@@ -24,6 +24,13 @@ export interface SessionSink {
    * alone.
    */
   invocables(id: SessionId, entries: Invocable[]): void;
+  /**
+   * A running session reported an account usage window. Keyed by provider,
+   * not by session: plan limits belong to the account, and every session of
+   * that provider reports the same numbers. Goes UP to the manager, which
+   * owns the map, exactly like `invocables`.
+   */
+  usageWindow(providerId: string, window: UsageWindow): void;
 }
 
 const TITLE_MAX = 60;
@@ -259,13 +266,6 @@ export class AgentSession {
     return breakdown;
   }
 
-  async usageWindows(): Promise<UsageWindow[]> {
-    if (!this.run.usageWindows) {
-      throw new Error('This provider does not report plan usage');
-    }
-    return this.run.usageWindows();
-  }
-
   /**
    * Whether this session's most recent breakdown listed `path`. The webview
    * can only ask to open a memory file it was shown, so the set it was last
@@ -467,6 +467,10 @@ export class AgentSession {
           inputTokens: event.inputTokens, outputTokens: event.outputTokens,
         };
         this.sink.changed();
+        return;
+
+      case 'usage-window':
+        this.sink.usageWindow(this._state.providerId, event.window);
         return;
 
       case 'mcp-servers':

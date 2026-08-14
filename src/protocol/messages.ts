@@ -104,10 +104,6 @@ export type ContextResult =
   | { ok: true; breakdown: ContextBreakdown }
   | { ok: false; reason: string };
 
-export type UsageResult =
-  | { ok: true; windows: UsageWindow[] }
-  | { ok: false; reason: string };
-
 export interface PaneLayout {
   orientation: 'vertical' | 'horizontal';
   panes: { sessionId: SessionId; size: number }[];
@@ -131,7 +127,6 @@ export type WebviewToHost =
   | { t: 'permission-decision'; id: SessionId; requestId: string; decision: ToolDecision }
   | { t: 'load-more'; id: SessionId; beforeItemId: string }
   | { t: 'request-context'; id: SessionId }
-  | { t: 'request-usage'; providerId: string }
   /**
    * Distinct from `reveal-file`, which opens an editor-context path the host
    * itself produced. `path` here originates in a *provider's* context report,
@@ -162,4 +157,12 @@ export type HostToWebview =
   /** Broadcast, not session-addressed: every composer shows the same editor. */
   | { t: 'editor-context'; ctx: EditorContext | null }
   | { t: 'context-breakdown'; id: SessionId; result: ContextResult }
-  | { t: 'usage-windows'; providerId: string; result: UsageResult };
+  /**
+   * Broadcast, not session-addressed, and not a reply: account usage belongs
+   * to the provider's account, and it is pushed whenever the provider reports
+   * a change. The array is the complete current set for that provider — a
+   * snapshot, never a delta — so the client replaces rather than merges.
+   * There is no not-ok arm: under a push there is no request that can fail,
+   * and "nothing has been reported" is a state, not an error.
+   */
+  | { t: 'usage-windows'; providerId: string; windows: UsageWindow[] };

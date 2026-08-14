@@ -2,7 +2,7 @@ import type {
   ContextResult,
   EditorContext,
   HostToWebview, Invocable, McpServerStatus, PaneLayout, PermissionRequest, ProviderInfo,
-  SessionId, SessionSummary, TranscriptItem, UsageResult,
+  SessionId, SessionSummary, TranscriptItem, UsageWindow,
 } from '../protocol/messages';
 
 export interface PaneState {
@@ -28,8 +28,14 @@ export interface ClientState {
   editorContext: EditorContext | null;
   /** Last reply per session; kept while a refetch is in flight. */
   contextBySession: Record<SessionId, ContextResult | undefined>;
-  /** Last reply per provider id. */
-  usageByProvider: Record<string, UsageResult | undefined>;
+  /**
+   * The window set each provider has reported. Pushed by the host, replaced
+   * wholesale. `undefined` means the host has said nothing about that
+   * provider yet; an empty array means it said "nothing to show". They render
+   * identically — the distinction exists only so this reducer never has to
+   * invent a value.
+   */
+  usageByProvider: Record<string, UsageWindow[] | undefined>;
 }
 
 export const initialState: ClientState = {
@@ -126,7 +132,7 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
     case 'usage-windows':
       return {
         ...state,
-        usageByProvider: { ...state.usageByProvider, [msg.providerId]: msg.result },
+        usageByProvider: { ...state.usageByProvider, [msg.providerId]: msg.windows },
       };
 
     case 'catalog':

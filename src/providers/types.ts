@@ -164,13 +164,6 @@ export interface AgentRun {
    * to a fabricated breakdown.
    */
   contextBreakdown?(): Promise<ContextBreakdown>;
-  /**
-   * Account/plan usage windows visible from this run. Lives on the run
-   * rather than the provider because the Claude Agent SDK exposes plan
-   * limits only from a live `Query`; the host treats any one live run of a
-   * provider as speaking for that provider's account.
-   */
-  usageWindows?(): Promise<UsageWindow[]>;
   dispose(): Promise<void>;
 }
 

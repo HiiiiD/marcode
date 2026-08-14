@@ -401,74 +401,81 @@ suite('SessionManager', () => {
     await local.dispose();
   });
 
-  test('usageWindows resolves a provider through any one live session', async () => {
-    // FakeReports.windows now arrives as pushed usage-window events (see
-    // fake-provider.test.ts), not through this pull method, so the pull path
-    // is exercised here by stubbing the session directly — same as the
-    // 'tries the next live session' test below does for its refusing session.
-    const provider = new FakeProvider();
-    const local = new SessionManager(
-      new TranscriptStore(dir), new Map([['fake', provider]]), () => {},
-    );
-    await local.init();
-    const session = await local.create('fake', '/tmp');
-    Object.defineProperty(session, 'usageWindows', {
-      value: async () => [{ id: 'five-hour', label: 'Session (5h)', usedPercent: 62 }],
+  test('a pushed window is broadcast ungated, ordered, and keyed by provider', async () => {
+    // The session is deliberately NOT made visible: account usage is not a
+    // per-pane concern, so this must go out anyway.
+    const { manager: local, provider, emitted } = await makeManager();
+    await local.create('fake', '/w');
+    const run = provider.runs.at(-1)!;
+    run.emit({ kind: 'usage-window', window: { id: 'seven-day', label: 'Week', usedPercent: 18 } });
+    run.emit({ kind: 'usage-window', window: { id: 'five-hour', label: 'Session (5h)', usedPercent: 62 } });
+    await settle();
+
+    const last = emitted.filter((m) => m.t === 'usage-windows').at(-1);
+    assert.deepStrictEqual(last, {
+      t: 'usage-windows',
+      providerId: 'fake',
+      windows: [
+        { id: 'five-hour', label: 'Session (5h)', usedPercent: 62 },
+        { id: 'seven-day', label: 'Week', usedPercent: 18 },
+      ],
     });
-
-    const result = await local.usageWindows('fake');
-
-    if (!result.ok) { assert.fail(result.reason); }
-    assert.strictEqual(result.windows[0].usedPercent, 62);
-    await local.dispose();
   });
 
-  test('usageWindows tries the next live session when the first cannot answer', async () => {
-    // A Claude session that has never been sent a message rejects with
-    // 'This session has not started yet'. If it happens to be first in
-    // `live`, the account is not unknown — the next live session of the same
-    // provider can still speak for it.
-    const provider = new FakeProvider();
-    const local = new SessionManager(
-      new TranscriptStore(dir), new Map([['fake', provider]]), () => {},
-    );
-    await local.init();
-    const first = await local.create('fake', '/tmp');
-    const second = await local.create('fake', '/tmp');
-    // Only the first session refuses; everything else about it is untouched.
-    Object.defineProperty(first, 'usageWindows', {
-      value: async () => { throw new Error('This session has not started yet'); },
-    });
-    Object.defineProperty(second, 'usageWindows', {
-      value: async () => [{ id: 'five-hour', label: 'Session (5h)', usedPercent: 62 }],
-    });
+  test('a second event for the same window replaces rather than appends', async () => {
+    const { manager: local, provider, emitted } = await makeManager();
+    await local.create('fake', '/w');
+    const run = provider.runs.at(-1)!;
+    run.emit({ kind: 'usage-window', window: { id: 'five-hour', label: 'Session (5h)', usedPercent: 62 } });
+    run.emit({ kind: 'usage-window', window: { id: 'five-hour', label: 'Session (5h)', usedPercent: 71 } });
+    await settle();
 
-    const result = await local.usageWindows('fake');
-
-    if (!result.ok) { assert.fail(result.reason); }
-    assert.strictEqual(result.windows[0].usedPercent, 62);
-    await local.dispose();
+    const last = emitted.filter((m) => m.t === 'usage-windows').at(-1);
+    assert.deepStrictEqual(last!.windows, [
+      { id: 'five-hour', label: 'Session (5h)', usedPercent: 71 },
+    ]);
   });
 
-  test('usageWindows reports the last failure when every live session refuses', async () => {
-    const provider = new FakeProvider(() => []);
-    const local = new SessionManager(
-      new TranscriptStore(dir), new Map([['fake', provider]]), () => {},
-    );
-    await local.init();
-    await local.create('fake', '/tmp');
+  test('an unchanged window emits nothing — the strip must not churn', async () => {
+    const { manager: local, provider, emitted } = await makeManager();
+    await local.create('fake', '/w');
+    const run = provider.runs.at(-1)!;
+    const window = { id: 'five-hour', label: 'Session (5h)', usedPercent: 62 };
+    run.emit({ kind: 'usage-window', window });
+    await settle();
+    const before = emitted.filter((m) => m.t === 'usage-windows').length;
 
-    const result = await local.usageWindows('fake');
-
-    if (result.ok) { assert.fail('an unscripted fake reports no windows'); }
-    assert.match(result.reason, /does not report plan usage/);
-    await local.dispose();
+    run.emit({ kind: 'usage-window', window: { ...window } });
+    await settle();
+    assert.strictEqual(emitted.filter((m) => m.t === 'usage-windows').length, before);
   });
 
-  test('usageWindows answers not-ok when no session of that provider is live', async () => {
-    const result = await manager.usageWindows('claude');
-    if (result.ok) { assert.fail('expected no live session for this provider'); }
-    assert.match(result.reason, /No active session/);
+  test('a window past its reset is dropped rather than shown stale', async () => {
+    const { manager: local, provider } = await makeManager();
+    await local.create('fake', '/w');
+    const run = provider.runs.at(-1)!;
+    run.emit({
+      kind: 'usage-window',
+      window: { id: 'five-hour', label: 'Session (5h)', usedPercent: 62, resetsAt: Date.now() - 1 },
+    });
+    await settle();
+
+    assert.deepStrictEqual(local.usageSnapshot(), { fake: [] });
+  });
+
+  test('two sessions of one provider feed the same account map', async () => {
+    const { manager: local, provider } = await makeManager();
+    await local.create('fake', '/w');
+    const first = provider.runs.at(-1)!;
+    await local.create('fake', '/w');
+    const second = provider.runs.at(-1)!;
+    first.emit({ kind: 'usage-window', window: { id: 'five-hour', label: 'Session (5h)', usedPercent: 62 } });
+    second.emit({ kind: 'usage-window', window: { id: 'seven-day', label: 'Week', usedPercent: 18 } });
+    await settle();
+
+    assert.deepStrictEqual(
+      local.usageSnapshot().fake.map((w) => w.id), ['five-hour', 'seven-day'],
+    );
   });
 
   test('session-mcp reaches a visible session and is withheld from a hidden one', async () => {
