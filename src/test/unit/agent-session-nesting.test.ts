@@ -6,7 +6,7 @@ import { AgentSession, type SessionSink } from '../../host/agent-session';
 import { TranscriptStore } from '../../host/transcript-store';
 import { FakeProvider } from '../../providers/fake/fake-provider';
 import type {
-  SessionId, SessionState, SessionStatus, TranscriptItem, TranscriptPatch,
+  Invocable, SessionId, SessionState, SessionStatus, TranscriptItem, TranscriptPatch,
 } from '../../protocol/messages';
 
 function baseState(): SessionState {
@@ -14,7 +14,7 @@ function baseState(): SessionState {
     id: 's1', providerId: 'fake', model: 'fake-large', effort: 'medium',
     title: 'Untitled', cwd: '/tmp', status: 'idle', permissionMode: 'default',
     usage: { inputTokens: 0, outputTokens: 0 },
-    archived: false, createdAt: 1, updatedAt: 1,
+    archived: false, createdAt: 1, updatedAt: 1, includeEditorContext: true,
   };
 }
 
@@ -23,9 +23,11 @@ class RecordingSink implements SessionSink {
   statuses: SessionStatus[] = [];
   changes = 0;
   servers: unknown[] = [];
+  invocablesLog: Invocable[][] = [];
   patch(id: SessionId, patch: TranscriptPatch) { this.patches.push({ id, patch }); }
   status(_id: SessionId, status: SessionStatus) { this.statuses.push(status); }
   mcp(_id: SessionId, servers: unknown[]) { this.servers.push(servers); }
+  invocables(_id: SessionId, entries: Invocable[]) { this.invocablesLog.push(entries); }
   changed() { this.changes++; }
 }
 

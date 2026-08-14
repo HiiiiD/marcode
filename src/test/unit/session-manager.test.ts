@@ -4,9 +4,9 @@ import * as os from 'os';
 import * as path from 'path';
 import { SessionManager } from '../../host/session-manager';
 import { TranscriptStore } from '../../host/transcript-store';
+import type { HostToWebview, SessionState } from '../../protocol/messages';
 import { FakeProvider } from '../../providers/fake/fake-provider';
 import type { AgentProvider } from '../../providers/types';
-import type { HostToWebview } from '../../protocol/messages';
 
 async function settle() {
   for (let i = 0; i < 10; i++) { await new Promise((r) => setImmediate(r)); }
@@ -18,6 +18,7 @@ suite('SessionManager', () => {
   let sent: HostToWebview[];
   let providers: Map<string, AgentProvider>;
   let manager: SessionManager;
+  let extra: { manager: SessionManager; dir: string }[];
 
   setup(async () => {
     dir = await fs.mkdtemp(path.join(os.tmpdir(), 'hiiiid-manager-'));
@@ -31,12 +32,38 @@ suite('SessionManager', () => {
     ]);
     manager = new SessionManager(store, providers, (m) => sent.push(m));
     await manager.init();
+    extra = [];
   });
 
   teardown(async () => {
     await manager.dispose();
     await fs.rm(dir, { recursive: true, force: true });
+    for (const e of extra) {
+      await e.manager.dispose();
+      await fs.rm(e.dir, { recursive: true, force: true });
+    }
   });
+
+  /**
+   * A standalone manager + FakeProvider pair, isolated in its own temp dir,
+   * for tests that need the concrete FakeProvider (invocables script,
+   * listInvocablesCalls) rather than the AgentProvider-typed `providers` map
+   * from setup(). Cleaned up in teardown alongside the suite-level manager.
+   */
+  async function makeManager() {
+    const mdir = await fs.mkdtemp(path.join(os.tmpdir(), 'hiiiid-manager-'));
+    const mstore = new TranscriptStore(mdir);
+    const provider = new FakeProvider(() => [
+      { kind: 'text', delta: 'ok' },
+      { kind: 'turn-end', reason: 'done' },
+    ]);
+    const mproviders = new Map<string, AgentProvider>([['fake', provider]]);
+    const emitted: HostToWebview[] = [];
+    const mmanager = new SessionManager(mstore, mproviders, (m) => emitted.push(m));
+    await mmanager.init();
+    extra.push({ manager: mmanager, dir: mdir });
+    return { manager: mmanager, provider, emitted, store: mstore };
+  }
 
   test('create adds a session and announces the roster', async () => {
     const session = await manager.create('fake', '/tmp');
@@ -349,5 +376,166 @@ suite('SessionManager', () => {
     assert.deepStrictEqual(
       (snapshot as { session: { mcpServers: unknown[] } }).session.mcpServers, [],
     );
+  });
+
+  test('creating a session probes its cwd and emits the catalog to a visible pane', async () => {
+    const { manager, provider, emitted } = await makeManager();
+    provider.invocables = [{ name: 'init' }];
+
+    const session = await manager.create('fake', '/repo');
+    await manager.setVisible([session.state.id]);
+    await settle();
+
+    assert.deepStrictEqual(
+      emitted.filter((m) => m.t === 'session-invocables'),
+      [{ t: 'session-invocables', id: session.state.id, entries: [{ name: 'init' }] }],
+    );
+  });
+
+  test('a second session on the same cwd reuses the cached catalog', async () => {
+    const { manager, provider } = await makeManager();
+    provider.invocables = [{ name: 'init' }];
+
+    const first = await manager.create('fake', '/repo');
+    await settle();
+    const second = await manager.create('fake', '/repo');
+    await settle();
+
+    assert.deepStrictEqual(provider.listInvocablesCalls, ['/repo']);
+    assert.deepStrictEqual((await first.snapshot()).invocables, [{ name: 'init' }]);
+    assert.deepStrictEqual((await second.snapshot()).invocables, [{ name: 'init' }]);
+  });
+
+  test('a live invocables event refreshes every session on that cwd', async () => {
+    const { manager, provider } = await makeManager();
+    provider.invocables = [{ name: 'stale' }];
+    const first = await manager.create('fake', '/repo');
+    const second = await manager.create('fake', '/repo');
+    await settle();
+
+    // The event arrives on the FIRST session's run; the second must learn it too.
+    provider.runs[0].emit({ kind: 'invocables', entries: [{ name: 'fresh' }] });
+    await settle();
+
+    assert.deepStrictEqual((await first.snapshot()).invocables, [{ name: 'fresh' }]);
+    assert.deepStrictEqual((await second.snapshot()).invocables, [{ name: 'fresh' }]);
+  });
+
+  test('a hidden session gets no session-invocables message', async () => {
+    const { manager, provider, emitted } = await makeManager();
+    provider.invocables = [{ name: 'init' }];
+
+    await manager.create('fake', '/repo');
+    await settle();
+
+    assert.deepStrictEqual(emitted.filter((m) => m.t === 'session-invocables'), []);
+  });
+
+  test('an archived pane is served the cwd catalog from cache', async () => {
+    const { manager, provider, emitted } = await makeManager();
+    provider.invocables = [{ name: 'init' }];
+    const session = await manager.create('fake', '/repo');
+    const id = session.state.id;
+    await settle();
+    await manager.close(id);
+    emitted.length = 0;
+
+    await manager.setVisible([id]);
+    await settle();
+
+    const snap = emitted.find((m) => m.t === 'session-snapshot');
+    assert.deepStrictEqual(snap?.session.invocables, [{ name: 'init' }]);
+  });
+
+  test('revealing an archived session on an unprobed cwd triggers exactly one probe', async () => {
+    // Simulate a window reload: a fresh SessionManager restores the session
+    // from the on-disk index (never live in this manager instance, so its
+    // catalog cache starts empty), then the pane is revealed without ever
+    // going through create()/open().
+    const a = await manager.create('fake', '/repo');
+    const id = a.state.id;
+    await settle();
+    await manager.close(id);
+    await manager.dispose();
+
+    const freshProvider = new FakeProvider(() => []);
+    freshProvider.invocables = [{ name: 'init' }];
+    const freshProviders = new Map<string, AgentProvider>([['fake', freshProvider]]);
+    const freshSent: HostToWebview[] = [];
+    const fresh = new SessionManager(new TranscriptStore(dir), freshProviders, (m) => freshSent.push(m));
+    await fresh.init();
+
+    await fresh.setVisible([id]);
+    await settle();
+
+    assert.deepStrictEqual(freshProvider.listInvocablesCalls, ['/repo']);
+    await fresh.dispose();
+  });
+
+  test('a sibling\'s invocables event during an in-flight reveal snapshot does not jump the session-snapshot, and does not double-fire', async () => {
+    const { manager: m, provider, emitted, store: mstore } = await makeManager();
+    provider.invocables = [{ name: 'init' }];
+    const x = await m.create('fake', '/repo'); // sibling, whose run fires the live event
+    const y = await m.create('fake', '/repo'); // the session being revealed
+    await settle();
+    emitted.length = 0;
+
+    // Pause store.tail() so setVisible()'s session.snapshot() for y stalls
+    // mid-flight, mirroring the existing patch-buffering tests above.
+    const realTail = mstore.tail.bind(mstore);
+    let releaseTail: (() => void) | undefined;
+    let tailStarted: (() => void) | undefined;
+    const started = new Promise<void>((resolve) => { tailStarted = resolve; });
+    (mstore as unknown as { tail: typeof mstore.tail }).tail = async (
+      ...args: Parameters<typeof mstore.tail>
+    ) => {
+      tailStarted?.();
+      await new Promise<void>((resolve) => { releaseTail = resolve; });
+      return realTail(...args);
+    };
+
+    try {
+      const visiblePromise = m.setVisible([y.state.id]);
+      await started; // y's snapshot fetch is now in flight
+
+      // x shares y's providerId+cwd and reports a fresh catalog mid-flight —
+      // a live agent discovering skills while y's reveal is still pending.
+      provider.runs[0].emit({ kind: 'invocables', entries: [{ name: 'fresh' }] });
+      await settle();
+
+      releaseTail?.();
+      await visiblePromise;
+    } finally {
+      (mstore as unknown as { tail: typeof mstore.tail }).tail = realTail;
+    }
+
+    const order = emitted.map((msg) => msg.t);
+    const snapIdx = order.indexOf('session-snapshot');
+    const invIdx = order.indexOf('session-invocables');
+    assert.ok(snapIdx >= 0, 'the snapshot must be emitted');
+    assert.ok(invIdx >= 0, 'the invocables message must be emitted');
+    assert.ok(snapIdx < invIdx, 'session-invocables must not arrive before its session-snapshot');
+    assert.strictEqual(
+      order.filter((t) => t === 'session-invocables').length, 1,
+      'the reveal must not double-fire session-invocables',
+    );
+  });
+  test('a session restored without the flag defaults to attaching context', async () => {
+    const store2 = new TranscriptStore(dir);
+    // Written by a build that predates includeEditorContext.
+    await store2.writeIndex({
+      sessions: [{
+        id: 'legacy', providerId: 'fake', model: 'fake-small', title: 'Old',
+        cwd: '/tmp', status: 'idle', permissionMode: 'default',
+        usage: { inputTokens: 0, outputTokens: 0 },
+        archived: false, createdAt: 1, updatedAt: 1,
+      } as unknown as SessionState],
+      layout: { orientation: 'vertical', panes: [] },
+    });
+
+    const restored = new SessionManager(store2, providers, () => {});
+    await restored.init();
+    assert.strictEqual(restored.summaries()[0].includeEditorContext, true);
+    await restored.dispose();
   });
 });

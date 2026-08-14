@@ -385,4 +385,37 @@ suite('ClaudeProvider mcpServerStatus pull', () => {
 
     assert.deepStrictEqual(events, [], 'a status pull that resolves after dispose() must not be pushed');
   });
+
+  test('listInvocables constructs a query, reads the catalog and closes it', async () => {
+    let closed = false;
+    let constructedCwd: string | undefined;
+    const provider = new ClaudeProvider((async () => (params: { options: { cwd?: string } }) => {
+      constructedCwd = params.options.cwd;
+      return {
+        supportedCommands: async () => [
+          { name: 'init', description: 'Init', argumentHint: '' },
+        ],
+        close: () => { closed = true; },
+        [Symbol.asyncIterator]: () => ({ next: async () => ({ value: undefined, done: true }) }),
+      };
+    }) as never);
+
+    const out = await provider.listInvocables('/repo');
+
+    assert.deepStrictEqual(out, [{ name: 'init', description: 'Init' }]);
+    assert.strictEqual(constructedCwd, '/repo');
+    assert.strictEqual(closed, true, 'the probe query must not outlive the answer');
+  });
+
+  test('listInvocables closes the query even when the catalog read fails', async () => {
+    let closed = false;
+    const provider = new ClaudeProvider((async () => () => ({
+      supportedCommands: async () => { throw new Error('control request failed'); },
+      close: () => { closed = true; },
+      [Symbol.asyncIterator]: () => ({ next: async () => ({ value: undefined, done: true }) }),
+    })) as never);
+
+    await assert.rejects(() => provider.listInvocables('/repo'), /control request failed/);
+    assert.strictEqual(closed, true);
+  });
 });

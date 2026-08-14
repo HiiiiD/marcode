@@ -16,6 +16,22 @@ export interface ModelInfo {
 }
 
 /**
+ * One thing the user can invoke by typing `/name`: a skill or a slash
+ * command. Providers report these as one undifferentiated list — the SDK has
+ * no discriminator — so there is deliberately no `kind` field.
+ */
+export interface Invocable {
+  /** Verbatim from the provider. This is what gets inserted into the composer. */
+  name: string;
+  /** One line, rendered as the row's second line. */
+  description?: string;
+  /** Plugin/namespace prefix derived from a `prefix:leaf` name. Display only. */
+  origin?: string;
+  /** e.g. '[interval] [prompt]'. Rendered as ghost text after insertion. */
+  argHint?: string;
+}
+
+/**
  * What the user is looking at in the editor when they hit send. Carries the
  * file reference always, and the selected text only when there is a
  * selection — the model has file-reading tools, so inlining a whole file on
@@ -102,10 +118,13 @@ export type AgentEvent =
   | { kind: 'permission'; id: string; name: string; input: unknown; parentId?: string }
   | { kind: 'turn-end'; reason: 'done' | 'interrupted' | 'error'; error?: string }
   | { kind: 'usage'; inputTokens: number; outputTokens: number }
+  /** Full replacement list, not a delta. Emitted whenever the provider notices a change. */
+  | { kind: 'invocables'; entries: Invocable[] }
+  /** Full replacement list, not a delta — same snapshot semantics as `invocables`. */
   | { kind: 'mcp-servers'; servers: McpServerStatus[] };
 
 export interface AgentRun {
-  send(text: string): void;
+  send(text: string, context?: EditorContext): void;
   readonly events: AsyncIterable<AgentEvent>;
   respondToTool(id: string, decision: ToolDecision): void;
   setEffort(effort: EffortLevel): void;
@@ -146,4 +165,14 @@ export interface AgentProvider {
   readonly displayName: string;
   listModels(): ModelInfo[];
   start(opts: StartOptions): AgentRun;
+  /**
+   * The catalog for a working directory, with NO session required.
+   *
+   * Optional because a provider may not be able to answer without one. It
+   * exists because the Claude provider constructs its query lazily on the
+   * first send() (only construction can set `bypass`), so the session's own
+   * query cannot answer for a composer that has not been used yet — which is
+   * exactly when the menu is wanted.
+   */
+  listInvocables?(cwd: string): Promise<Invocable[]>;
 }

@@ -1,10 +1,12 @@
 import type {
-  AgentEvent, AgentProvider, AgentRun, EffortLevel, PermissionMode, ToolDecision,
-} from '../providers/types';
-import type {
   McpServerStatus, PermissionRequest, SessionId, SessionSnapshot, SessionState,
   SessionStatus, TranscriptItem, TranscriptPatch,
 } from '../protocol/messages';
+import type {
+  AgentEvent, AgentProvider, AgentRun,
+  EditorContext,
+  EffortLevel, Invocable, PermissionMode, ToolDecision
+} from '../providers/types';
 import type { TranscriptStore } from './transcript-store';
 import { parseToolName } from './mcp-tool-name';
 
@@ -13,6 +15,12 @@ export interface SessionSink {
   status(id: SessionId, status: SessionStatus): void;
   mcp(id: SessionId, servers: McpServerStatus[]): void;
   changed(): void;
+  /**
+   * A running session reported its catalog. Goes UP to the manager, which
+   * owns the per-cwd cache and the fan-out; it is not this session's answer
+   * alone.
+   */
+  invocables(id: SessionId, entries: Invocable[]): void;
 }
 
 const TITLE_MAX = 60;
@@ -47,6 +55,11 @@ export class AgentSession {
    */
   private flushChain: Promise<void> = Promise.resolve();
   /**
+   * The cwd catalog as last told to us by the manager. Held only so
+   * snapshot() can carry it; this session is not its owner.
+   */
+  private invocableEntries: Invocable[] | undefined;
+  /**
    * Live provider state only — never persisted, never on SessionState.
    * An archived session reports none, because there is no run to ask.
    */
@@ -70,16 +83,23 @@ export class AgentSession {
 
   get state(): SessionState { return this._state; }
 
-  send(text: string): void {
+  send(text: string, context?: EditorContext): void {
     if (this._state.title === 'Untitled' && text.trim().length > 0) {
       this._state.title = text.trim().slice(0, TITLE_MAX);
     }
-    const item: TranscriptItem = { id: nextId('u'), ts: Date.now(), role: 'user', text };
+    // Spread the context in only when there is one: a persisted user item
+    // written before this feature has no `context` key at all, and every
+    // consumer already handles its absence. Writing `context: undefined`
+    // would serialize differently for no gain.
+    const item: TranscriptItem = {
+      id: nextId('u'), ts: Date.now(), role: 'user', text,
+      ...(context ? { context } : {}),
+    };
     this.appendItem(item);
     this.closeAssistant();
     this.setStatus('running');
     try {
-      this.run.send(text);
+      this.run.send(text, context);
     } catch (err) {
       this.fail(err instanceof Error ? err.message : String(err));
     }
@@ -146,6 +166,17 @@ export class AgentSession {
     this.sink.changed();
   }
 
+  setInvocables(entries: Invocable[]): void {
+    // Replace wholesale: the catalog is always a full list.
+    this.invocableEntries = entries;
+  }
+  
+  setIncludeEditorContext(on: boolean): void {
+    this._state.includeEditorContext = on;
+    this._state.updatedAt = Date.now();
+    this.sink.changed();
+  }
+
   respondToPermission(requestId: string, decision: ToolDecision): void {
     if (!this.pending.delete(requestId)) { return; }
     try {
@@ -187,8 +218,8 @@ export class AgentSession {
     await this.scheduleFlush();
     const { items, hasMore } = await this.store.tail(this._state.id);
     return {
-      ...this._state, items, hasMore,
-      pending: [...this.pending.values()],
+      ...this._state, items, hasMore, pending: [...this.pending.values()],
+      invocables: this.invocableEntries,
       mcpServers: this.mcpServers,
     };
   }
@@ -338,6 +369,10 @@ export class AgentSession {
         this.setStatus('awaiting-approval');
         return;
       }
+
+      case 'invocables':
+        this.sink.invocables(this._state.id, event.entries);
+        return;
 
       case 'usage':
         this._state.usage = {

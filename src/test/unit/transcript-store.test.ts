@@ -86,7 +86,7 @@ suite('TranscriptStore', () => {
     await store.writeIndex({
       sessions: [{
         id: 's1', providerId: 'fake', model: 'fake-large', title: 'T', cwd: '/tmp',
-        status: 'idle', permissionMode: 'default',
+        status: 'idle', permissionMode: 'default', includeEditorContext: true,
         usage: { inputTokens: 0, outputTokens: 0 },
         archived: false, createdAt: 1, updatedAt: 1,
       }],
