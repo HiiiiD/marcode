@@ -1,6 +1,7 @@
 import { EditorContextChip } from './editor-context-chip';
 import { Markdown } from './markdown';
 import { PermissionCard } from './permission-card';
+import { ReasoningBlock } from './reasoning-block';
 import { SubagentCard } from './subagent-card';
 import { ToolCard } from './tool-card';
 import { TranscriptItemShell } from './transcript-item-shell';
@@ -20,11 +21,7 @@ export function TranscriptItemView({
     case 'assistant':
       return (
         <TranscriptItemShell role="assistant" label="Agent" ts={item.ts}>
-          {item.thinking && (
-            <div className="mb-1 border-l-2 border-border pl-2 text-xs wrap-break-word text-muted-foreground italic">
-              {item.thinking}
-            </div>
-          )}
+          {item.thinking && <ReasoningBlock text={item.thinking} />}
           <Markdown>{item.text}</Markdown>
         </TranscriptItemShell>
       );

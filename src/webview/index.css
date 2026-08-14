@@ -73,6 +73,19 @@
   --radius-sm: calc(var(--radius) - 2px);
   --radius-md: var(--radius);
   --radius-lg: calc(var(--radius) + 2px);
+  /*
+   * The waiting dots. Tailwind's own `animate-pulse` is a 2s cycle, which is
+   * slower than the thing it would be reporting: staggering three dots across
+   * it reads as three dots fading in unison, not as a wave. 1.1s with a 90%
+   * floor holds most of the cycle dim, so the lit dot is the shape the eye
+   * follows rather than a general shimmer.
+   */
+  --animate-working-dot: working-dot 1.1s ease-in-out infinite;
+}
+
+@keyframes working-dot {
+  0%, 90%, 100% { opacity: 0.3; }
+  45% { opacity: 1; }
 }
 
 body {

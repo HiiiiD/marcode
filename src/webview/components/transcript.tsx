@@ -1,11 +1,25 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   MessageScroller, MessageScrollerButton, MessageScrollerContent,
   MessageScrollerItem, MessageScrollerProvider, MessageScrollerViewport,
 } from '@/components/ui/message-scroller';
 import { Button } from '@/components/ui/button';
 import { TranscriptItemView } from './transcript-item';
+import { WorkingRow } from './working-row';
 import type { PaneState } from '../reducer';
+
+/**
+ * Whether the tail of the transcript is already saying "something is
+ * happening" on its own — an assistant item taking deltas, or a tool card
+ * spinning. The working row fills the gaps between those, not the whole turn:
+ * a second indicator running alongside live content is noise, and in a column
+ * this narrow noise costs a line of the answer.
+ */
+function tailIsLive(pane: PaneState): boolean {
+  const last = pane.items[pane.items.length - 1];
+  if (!last) { return false; }
+  return last.role === 'assistant' || (last.role === 'tool' && last.state === 'running');
+}
 
 export function Transcript({
   pane, onLoadMore,
@@ -14,6 +28,12 @@ export function Transcript({
   onLoadMore: (beforeItemId: string) => void;
 }) {
   const first = pane.items[0];
+  const last = pane.items[pane.items.length - 1];
+  const working = pane.summary.status === 'running' && !tailIsLive(pane);
+  // Only reached by a session whose transcript is empty — a brand new session
+  // sending its first message. Every other case has a host timestamp to
+  // measure from, which is the point of `since`.
+  const mountedAt = useRef(Date.now()).current;
 
   // `load-more` is a stateless lookup keyed on beforeItemId, not a consumed
   // cursor — two rapid clicks before the first session-prepend lands would
@@ -62,6 +82,10 @@ export function Transcript({
                 <TranscriptItemView item={item} sessionId={pane.summary.id} />
               </MessageScrollerItem>
             ))}
+            {/* Not a MessageScrollerItem: it is a state of the session, not
+                an entry in it, and registering it as a message would make the
+                scroller treat every appearance as new content to anchor on. */}
+            {working && <WorkingRow since={last?.ts ?? mountedAt} />}
           </MessageScrollerContent>
         </MessageScrollerViewport>
         <MessageScrollerButton />
