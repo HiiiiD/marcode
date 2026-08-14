@@ -1,6 +1,6 @@
 import type {
-  AgentEvent, AgentProvider, AgentRun, EffortLevel, ModelInfo, PermissionMode, StartOptions,
-  ToolDecision,
+  AgentEvent, AgentProvider, AgentRun, EditorContext, EffortLevel, ModelInfo, PermissionMode,
+  StartOptions, ToolDecision,
 } from '../types';
 
 class EventChannel implements AsyncIterable<AgentEvent> {
@@ -49,6 +49,8 @@ export class FakeProvider implements AgentProvider {
   readonly permissionModes: PermissionMode[] = [];
   /** Records every model passed to setModel, for assertions. */
   readonly models: string[] = [];
+  /** Records every (text, context) pair passed to send, for assertions. */
+  readonly sent: { text: string; context?: EditorContext }[] = [];
   private sessionCounter = 0;
 
   constructor(private readonly script: (text: string) => AgentEvent[]) {}
@@ -71,7 +73,8 @@ export class FakeProvider implements AgentProvider {
 
     return {
       events: channel,
-      send: (text: string) => {
+      send: (text: string, context?: EditorContext) => {
+        this.sent.push({ text, context });
         if (!started) {
           started = true;
           channel.push({ kind: 'session', resumeToken });

@@ -115,8 +115,9 @@ import type {
 } from '@anthropic-ai/claude-agent-sdk' with { 'resolution-mode': 'import' };
 import { mapEvent } from './map-events';
 import { redactSecrets } from './redact';
+import { formatEditorContext } from '../format-editor-context';
 import type {
-  AgentEvent, AgentProvider, AgentRun, EffortLevel, ModelInfo, PermissionMode,
+  AgentEvent, AgentProvider, AgentRun, EditorContext, EffortLevel, ModelInfo, PermissionMode,
   StartOptions, ToolDecision,
 } from '../types';
 
@@ -289,11 +290,15 @@ export class ClaudeProvider implements AgentProvider {
 
     return {
       events,
-      send: (text: string) => {
+      send: (text: string, context?: EditorContext) => {
         ensureStarted();
+        // One text block rather than two: the SDK accepts an array, but a
+        // single block keeps the turn's shape identical whether or not
+        // context is attached, so nothing downstream has to special-case it.
+        const body = context ? `${formatEditorContext(context)}\n\n${text}` : text;
         prompts.push({
           type: 'user',
-          message: { role: 'user', content: [{ type: 'text', text }] },
+          message: { role: 'user', content: [{ type: 'text', text: body }] },
           parent_tool_use_id: null,
         });
       },

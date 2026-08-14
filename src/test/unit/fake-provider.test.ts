@@ -62,4 +62,15 @@ suite('FakeProvider', () => {
     assert.deepStrictEqual(ev, { kind: 'turn-end', reason: 'interrupted' });
     await run.dispose();
   });
+
+  test('send records the text and context it was given', () => {
+    const provider = new FakeProvider(() => [{ kind: 'turn-end', reason: 'done' }]);
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+    run.send('plain');
+    run.send('with ctx', { path: 'src/a.ts', languageId: 'typescript' });
+    assert.deepStrictEqual(provider.sent, [
+      { text: 'plain', context: undefined },
+      { text: 'with ctx', context: { path: 'src/a.ts', languageId: 'typescript' } },
+    ]);
+  });
 });
