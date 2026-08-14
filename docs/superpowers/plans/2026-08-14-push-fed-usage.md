@@ -1,5 +1,17 @@
 # Push-Fed Account Usage Implementation Plan
 
+> **Superseded 2026-08-14** by
+> [../specs/2026-08-14-usage-pull-design.md](../specs/2026-08-14-usage-pull-design.md) and
+> [2026-08-14-usage-by-pull.md](2026-08-14-usage-by-pull.md).
+>
+> This plan's push-fed architecture was built on `rate_limit_event`, which does not carry a
+> utilization percentage at steady state — only `status` is required of it. So the strip it
+> produced was permanently blank on a real subscription account, reading
+> `Plan usage not reported` before and after a send. Two further bugs were masked by that:
+> the event's `resetsAt` is epoch seconds, not milliseconds, and its `utilization` is a 0–1
+> fraction rather than 0–100. Usage is now pulled; the event survives only as a signal that
+> a pull is due.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make the panel's account-usage strip a render of windows the provider *pushed*, so it shows real numbers immediately after a window reload instead of an error, and delete the request/reply machinery that made it pull-shaped.

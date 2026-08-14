@@ -59,10 +59,26 @@ export function sendFromHost(...msgs: HostToWebview[]): void {
   });
 }
 
+/**
+ * NEVER hand the returned `container` — or any node queried out of it — to an
+ * assertion as a value:
+ *
+ *     assert.strictEqual(container.querySelector('div'), null);   // NO
+ *     assert.strictEqual(container.querySelector('div') === null, true);   // yes
+ *
+ * A failing `assert` builds its message by running `util.inspect` on the actual
+ * value. A jsdom element reaches its parents, its `ownerDocument` and that
+ * document's `window`, so inspecting a single div walks the whole graph: the
+ * first form above allocated 3.5GB in 4 seconds and took a machine down on
+ * 2026-08-14. It only misbehaves while the test is red — i.e. exactly when you
+ * are running it. Compare booleans, strings or counts. `screen.getByX` is safe;
+ * it throws its own message rather than passing the node to `assert`.
+ */
 export function renderApp(): RenderResult {
   return render(<StoreProvider><App /></StoreProvider>);
 }
 
+/** Same assertion warning as `renderApp` — never assert on a node. */
 export function renderWithStore(ui: ReactNode): RenderResult {
   return render(<StoreProvider>{ui}</StoreProvider>);
 }
