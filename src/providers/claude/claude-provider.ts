@@ -114,10 +114,11 @@ import type {
   CanUseTool, Options, PermissionMode as SdkPermissionMode, Query, SDKUserMessage,
 } from '@anthropic-ai/claude-agent-sdk' with { 'resolution-mode': 'import' };
 import { mapEvent } from './map-events';
+import { toContextBreakdown, toUsageWindows, type ContextUsageLike, type UsageLike } from './map-context';
 import { redactSecrets } from './redact';
 import type {
-  AgentEvent, AgentProvider, AgentRun, EffortLevel, ModelInfo, PermissionMode,
-  StartOptions, ToolDecision,
+  AgentEvent, AgentProvider, AgentRun, ContextBreakdown, EffortLevel, ModelInfo, PermissionMode,
+  StartOptions, ToolDecision, UsageWindow,
 } from '../types';
 
 const MODELS: ModelInfo[] = [
@@ -350,6 +351,28 @@ export class ClaudeProvider implements AgentProvider {
         } catch (err) {
           events.push({ kind: 'turn-end', reason: 'error', error: errorMessage(err) });
         }
+      },
+      contextBreakdown: async (): Promise<ContextBreakdown> => {
+        // queryRef is only assigned once the dynamic import resolves inside
+        // pump(), i.e. after the first send. Before that there is genuinely
+        // nothing to measure.
+        if (!queryRef) { throw new Error('This session has not started yet'); }
+        const res = await queryRef.getContextUsage();
+        return toContextBreakdown(res as unknown as ContextUsageLike);
+      },
+      usageWindows: async (): Promise<UsageWindow[]> => {
+        if (!queryRef) { throw new Error('This session has not started yet'); }
+        // The SDK names this method to discourage reliance and may remove it
+        // in any release, so feature-detect rather than call it blind: an
+        // absent method must degrade to a legible "unavailable", not a
+        // TypeError surfacing as a mystery reason string in the UI.
+        const experimental = (queryRef as unknown as {
+          usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET?: () => Promise<UsageLike>;
+        }).usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET;
+        if (typeof experimental !== 'function') {
+          throw new Error('This provider does not report plan usage');
+        }
+        return toUsageWindows(await experimental.call(queryRef));
       },
       dispose: async () => {
         if (disposed) { return; }
