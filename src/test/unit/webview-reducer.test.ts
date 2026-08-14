@@ -16,6 +16,7 @@ function withSession(id: string) {
     layout: { orientation: 'vertical', panes: [{ sessionId: id, size: 100 }] },
     snapshots: [snapshot(id)],
     catalog: [],
+    unavailable: [],
     usage: {},
   });
 }
@@ -26,6 +27,7 @@ function hydrated() {
     sessions: [],
     layout: { orientation: 'vertical', panes: [] },
     catalog: [],
+    unavailable: [],
     usage: {},
     snapshots: [{
       id: 's1', providerId: 'fake', model: 'fake-large', title: 'T', cwd: '/tmp',
@@ -45,6 +47,7 @@ suite('webview reducer', () => {
       layout: { orientation: 'vertical', panes: [{ sessionId: 's1', size: 100 }] },
       snapshots: [snapshot('s1')],
       catalog: [{ id: 'fake', displayName: 'Fake', models: [] }],
+      unavailable: [],
       usage: {},
     });
 
@@ -57,7 +60,7 @@ suite('webview reducer', () => {
   test('hydrate seeds usageByProvider so a reload paints immediately', () => {
     const state = reduce(initialState, {
       t: 'hydrate', sessions: [], layout: { orientation: 'vertical', panes: [] },
-      snapshots: [], catalog: [],
+      snapshots: [], catalog: [], unavailable: [],
       usage: { fake: [{ id: 'five-hour', label: 'Session (5h)', usedPercent: 62 }] },
     });
     assert.deepStrictEqual(state.usageByProvider.fake, [
@@ -214,6 +217,7 @@ suite('webview reducer', () => {
       layout: { orientation: 'vertical', panes: [] },
       snapshots: [snapshot('s2')],
       catalog: [],
+      unavailable: [],
       usage: {},
     });
     assert.strictEqual(state.focusedSessionId, null);
@@ -348,6 +352,7 @@ suite('webview reducer', () => {
       layout: { orientation: 'vertical', panes: [{ sessionId: 's1', size: 100 }] },
       snapshots: [{ ...snapshot('s1'), invocables: [{ name: 'init' }] }],
       catalog: [],
+      unavailable: [],
       usage: {},
     });
 
@@ -363,10 +368,29 @@ suite('webview reducer', () => {
     assert.strictEqual(cleared.editorContext, null);
   });
 
+  test('catalog carries the providers that cannot be picked, and why', () => {
+    const gone = reduce(initialState, {
+      t: 'catalog', catalog: [],
+      unavailable: [{ id: 'claude', displayName: 'Claude', reason: 'Claude Code CLI not found.' }],
+    });
+    assert.deepStrictEqual(gone.unavailable, [
+      { id: 'claude', displayName: 'Claude', reason: 'Claude Code CLI not found.' },
+    ]);
+
+    const back = reduce(gone, {
+      t: 'catalog',
+      catalog: [{ id: 'claude', displayName: 'Claude', models: [{ id: 'haiku', displayName: 'Haiku 4.5' }] }],
+      unavailable: [],
+    });
+    assert.deepStrictEqual(back.unavailable, [],
+      'a full replacement, like the catalog it travels with');
+  });
+
   test('catalog replaces the provider/model catalog wholesale', () => {
     const seeded = reduce(initialState, {
       t: 'catalog',
       catalog: [{ id: 'claude', displayName: 'Claude', models: [{ id: 'haiku', displayName: 'Haiku 4.5' }] }],
+      unavailable: [],
     });
     const next = reduce(seeded, {
       t: 'catalog',
@@ -374,6 +398,7 @@ suite('webview reducer', () => {
         id: 'claude', displayName: 'Claude',
         models: [{ id: 'claude-fable-5', displayName: 'Fable 5' }],
       }],
+      unavailable: [],
     });
 
     assert.deepStrictEqual(next.catalog, [{

@@ -12,11 +12,39 @@ function hydrate(paneIds: string[], rosterIds = paneIds) {
     layout: layoutOf(...paneIds),
     snapshots: rosterIds.map((id) => snapshot(id)),
     catalog: catalog(),
+    unavailable: [],
     usage: {},
   });
 }
 
 suite('PaneGroup', () => {
+  test('the empty state names the providers that are unavailable, and why', () => {
+    renderApp();
+    sendFromHost({
+      t: 'hydrate',
+      sessions: [], layout: layoutOf(), snapshots: [],
+      catalog: [],
+      unavailable: [{ id: 'claude', displayName: 'Claude', reason: 'Claude Code CLI not found.' }],
+      usage: {},
+    });
+
+    // Without this the panel offers a dead `+ New` and no account of itself.
+    assert.ok(screen.getByText(/no agent provider is available/i));
+    assert.ok(screen.getByText(/Claude Code CLI not found\./));
+  });
+
+  test('the empty state stays a plain invitation while the providers still work', () => {
+    renderApp();
+    sendFromHost({
+      t: 'hydrate',
+      sessions: [], layout: layoutOf(), snapshots: [],
+      catalog: catalog(), unavailable: [], usage: {},
+    });
+
+    assert.ok(screen.getByText(/no sessions yet/i));
+    assert.strictEqual(screen.queryByText(/no agent provider is available/i) === null, true);
+  });
+
   test('renders one labelled panel per layout entry', () => {
     renderApp();
     hydrate(['a', 'b', 'c']);
@@ -68,6 +96,7 @@ suite('PaneGroup', () => {
       layout: layoutOf('a', 'b'),
       snapshots: [snapshot('a'), snapshot('b')],
       catalog: catalog(),
+      unavailable: [],
       usage: {},
     });
 
@@ -194,6 +223,7 @@ suite('PaneGroup', () => {
       layout: layoutOf('a', 'b'),
       snapshots: [snapshot('a', { title: 'Untitled' }), snapshot('b', { title: 'Untitled' })],
       catalog: catalog(),
+      unavailable: [],
       usage: {},
     });
 

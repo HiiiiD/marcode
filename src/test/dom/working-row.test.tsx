@@ -17,6 +17,7 @@ function hydrate(status: SessionStatus, items: TranscriptItem[]) {
     layout: layoutOf('a'),
     snapshots: [snapshot('a', { status, items })],
     catalog: catalog(),
+    unavailable: [],
     usage: {},
   });
 }

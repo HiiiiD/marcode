@@ -12,6 +12,7 @@ function hydrateWith(pending: { requestId: string; name: string; input: unknown 
     layout: layoutOf('a'),
     snapshots: [snapshot('a', { pending })],
     catalog: catalog(),
+    unavailable: [],
     usage: {},
   });
 }

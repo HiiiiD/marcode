@@ -17,6 +17,7 @@ function mountStrip() {
     layout: layoutOf('a'),
     snapshots: [snapshot('a')],
     catalog: catalog(),
+    unavailable: [],
     usage: {},
   });
   return result;
@@ -135,6 +136,7 @@ suite('UsageStrip', () => {
       layout: layoutOf('a'),
       snapshots: [snapshot('a')],
       catalog: [...catalog(), { id: 'other', displayName: 'Other', models: [] }],
+      unavailable: [],
       usage: {},
     });
     sendFromHost({

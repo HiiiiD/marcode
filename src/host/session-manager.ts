@@ -6,7 +6,7 @@ import { findModel, resolveEffort } from '../shared/model-catalog';
 import { orderWindows } from '../shared/usage-windows';
 import type {
   ContextResult, HostToWebview, McpServerStatus, PaneLayout, PermissionMode, ProviderInfo, SessionId,
-  SessionState, SessionStatus, SessionSummary, TranscriptPatch,
+  SessionState, SessionStatus, SessionSummary, TranscriptPatch, UnavailableProvider,
 } from '../protocol/messages';
 
 let counter = 0;
@@ -76,6 +76,15 @@ export class SessionManager implements SessionSink {
    * a restored session must not carry a percentage that has since moved.
    */
   private usage = new Map<string, Map<string, UsageWindow>>();
+  /**
+   * providerId -> why its last model probe failed.
+   *
+   * Not persisted: availability is a fact about this machine right now, and a
+   * reason restored from disk would outlive the install it described. An
+   * entry is written by a failed probe and deleted by a successful one, so it
+   * never states anything the last refresh did not.
+   */
+  private probeFailures = new Map<string, string>();
   private readonly catalogSvc = new CatalogService(
     (key, entries) => { this.fanOutCatalog(key, entries); },
   );
@@ -110,19 +119,43 @@ export class SessionManager implements SessionSink {
     }
   }
 
+  /**
+   * The providers that can actually be picked — those with at least one
+   * model. A provider's model list is its availability: it comes from the
+   * backend, so an empty one means the backend never answered (or answered
+   * that this install can run nothing), and offering it would be offering
+   * something the host cannot honor. See `unavailable()` for the other half.
+   */
   catalog(): ProviderInfo[] {
-    return [...this.providers.values()].map((p) => ({
-      id: p.id, displayName: p.displayName, models: p.listModels(),
-    }));
+    return [...this.providers.values()]
+      .map((p) => ({ id: p.id, displayName: p.displayName, models: p.listModels() }))
+      .filter((p) => p.models.length > 0);
+  }
+
+  /**
+   * The configured providers `catalog()` leaves out, each with the reason its
+   * last probe gave. A provider that has simply not been probed yet is absent
+   * from both — "not yet asked" is not a diagnosis.
+   */
+  unavailable(): UnavailableProvider[] {
+    return [...this.providers.values()]
+      .filter((p) => p.listModels().length === 0 && this.probeFailures.has(p.id))
+      .map((p) => ({
+        id: p.id, displayName: p.displayName, reason: this.probeFailures.get(p.id)!,
+      }));
   }
 
   /**
    * Asks every provider that can answer for its real model catalog, then
    * re-announces `catalog()` once. Fire-and-forget by design, like the
    * invocables probe: models are picker content, and nothing — session
-   * creation least of all — may wait on a CLI handshake for them. Until an
-   * answer lands the provider serves its fallback list, so the picker is
-   * never empty.
+   * creation least of all — may wait on a CLI handshake for them.
+   *
+   * This is also the availability probe. A provider that cannot answer has no
+   * models, so it leaves the catalog and is announced as unavailable with the
+   * reason it gave; one that starts answering rejoins. Calling this again is
+   * therefore the whole mechanism for re-checking an install — which is what
+   * a future "path to the executable" setting would do on change.
    *
    * One emit after all probes settle, not one per provider: the wire message
    * carries the whole catalog, so per-provider emits would just be N
@@ -137,17 +170,23 @@ export class SessionManager implements SessionSink {
       // synchronously (legal against the type) would otherwise throw here
       // in refreshModels' own synchronous body instead of rejecting the
       // per-provider promise this .catch is attached to.
-      .map((p) => Promise.resolve().then(() => p.fetchModels!(cwd)).catch((err: unknown) => {
-        // Errors are state, never exceptions — and the state here is "the
-        // fallback list stands". Still worth a developer-facing trace: a
-        // permanently broken CLI would otherwise be silent.
-        console.warn('[hiiiid-code] session-manager: model probe failed for', p.id, err);
-      }));
+      .map((p) => Promise.resolve().then(() => p.fetchModels!(cwd)).then(
+        // Success clears any recorded failure: a reason that outlives the
+        // failure it describes is a lie about the install.
+        () => { this.probeFailures.delete(p.id); },
+        (err: unknown) => {
+          // Errors are state, never exceptions — and the state here is "this
+          // provider cannot be picked, and here is why". Still worth a
+          // developer-facing trace: the panel shows one line, not a stack.
+          console.warn('[hiiiid-code] session-manager: model probe failed for', p.id, err);
+          this.probeFailures.set(p.id, err instanceof Error ? err.message : String(err));
+        },
+      ));
     if (probes.length === 0) { return; }
 
     await Promise.all(probes);
     if (this.disposed) { return; }
-    this.emit({ t: 'catalog', catalog: this.catalog() });
+    this.emit({ t: 'catalog', catalog: this.catalog(), unavailable: this.unavailable() });
   }
 
   /**
@@ -234,6 +273,16 @@ export class SessionManager implements SessionSink {
     if (!provider) { throw new Error(`Unknown provider: ${providerId}`); }
 
     const models = provider.listModels();
+    // Availability, checked at the one point where it matters. The webview
+    // already hides an unavailable provider, so reaching here means a stale
+    // catalog or a message we did not send ourselves — either way, creating
+    // the session would only produce one that cannot run.
+    if (models.length === 0) {
+      throw new Error(
+        `Provider unavailable: ${providerId}`
+        + (this.probeFailures.has(providerId) ? ` (${this.probeFailures.get(providerId)!})` : ''),
+      );
+    }
     const chosen = findModel(models, model) ?? models[0];
     const resolvedEffort = resolveEffort(chosen, effort);
 

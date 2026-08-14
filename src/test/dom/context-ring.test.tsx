@@ -27,6 +27,7 @@ function mount(contextPercent?: number): void {
     layout: layoutOf('a'),
     snapshots: [snapshot('a', { contextPercent })],
     catalog: catalog(),
+    unavailable: [],
     usage: {},
   });
 }

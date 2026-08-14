@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { InputGroup, InputGroupAddon, InputGroupTextarea } from "@/components/ui/input-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { SendHorizontal, Square } from "lucide-react";
+import { SendHorizontal, Square, TriangleAlert } from "lucide-react";
 import { useRef, useState } from "react";
 import type { Invocable, ModelInfo } from "../../protocol/messages";
 import { interceptFor } from "../lib/intercepts";
@@ -17,10 +17,19 @@ export function Composer({
   pane,
   model,
   models,
+  unavailableReason,
 }: {
   pane: PaneState;
   model: ModelInfo | undefined;
   models: ModelInfo[];
+  /**
+   * Set when this session's provider cannot be run — see
+   * `lib/provider-availability.ts`. The composer goes read-only and says so,
+   * rather than accepting a message the host would refuse. The transcript
+   * above it keeps rendering: the work is still worth reading, and the
+   * session comes back the moment the provider does.
+   */
+  unavailableReason?: string;
 }) {
   const { post } = useStore();
   const [text, setText] = useState("");
@@ -50,6 +59,11 @@ export function Composer({
   // every other pane's disabled control would describe itself using pane
   // one's reason text. Same rationale for every `*ReasonId` below.
   const sendReasonId = `send-reason-${pane.summary.id}`;
+  // One id for every control this state disables, session-scoped like the
+  // rest: the reason is one visible line, so each disabled control points at
+  // the same sentence rather than repeating it sr-only per control.
+  const unavailableReasonId = `provider-reason-${pane.summary.id}`;
+  const readOnly = unavailableReason !== undefined;
   // Same session-scoping rationale again, for the `/` control's
   // disabled-over-a-draft reason.
   const invocablesReasonId = `invocables-reason-${pane.summary.id}`;
@@ -119,6 +133,21 @@ export function Composer({
 
   return (
     <div className="@container p-2">
+      {readOnly && (
+        // Visible, not sr-only, unlike the other disabled-reasons in this
+        // row: those explain a control the user can re-enable in a second
+        // (stop the agent, clear the draft), while this one explains why the
+        // whole composer is inert — with nothing on screen to infer it from.
+        // It sits above the box so it reads before the dead controls, and the
+        // icon keeps it legible when the sentence wraps at 300px.
+        <p
+          id={unavailableReasonId}
+          className="mb-1.5 flex items-start gap-1.5 text-xs text-muted-foreground"
+        >
+          <TriangleAlert className="mt-px size-3.5 shrink-0" aria-hidden />
+          <span>{unavailableReason}</span>
+        </p>
+      )}
       <InputGroup>
         {menuOpen && (
           // A block-start addon, not a popover: the list sits above the box in
@@ -189,6 +218,8 @@ export function Composer({
           }}
           placeholder="Message the agent…"
           aria-label="Message"
+          disabled={readOnly}
+          aria-describedby={readOnly ? unavailableReasonId : undefined}
           aria-controls={menuOpen ? menuListId : undefined}
           aria-expanded={menuOpen}
           aria-activedescendant={activeOptionId}
@@ -252,10 +283,14 @@ export function Composer({
           {/* Permission mode and effort share one trigger: two adjacent
               word-labels spent a third of the row on jargon and still left
               the modes unexplained. See mode-menu.tsx. */}
-          <ModeMenu pane={pane} model={model} />
+          <ModeMenu pane={pane} model={model} disabled={readOnly} />
 
           <Select
             items={models.map((m) => ({ value: m.id, label: m.displayName }))}
+            // The one case where the model control does freeze: with the
+            // provider gone so is its catalog, so there is nothing to switch
+            // to that the host could honor.
+            disabled={readOnly}
             // The row's id, not the session's: a session persisted under a
             // wire id (`claude-opus-5`) is served by the alias row that
             // covers it (`opus`), and a value matching no item leaves the
@@ -270,7 +305,9 @@ export function Composer({
               // Never disabled. `Query.setModel` retargets the live session
               // (see claude-provider.ts), so a switch mid-conversation takes
               // effect on the next turn rather than being silently recorded —
-              // there is nothing to freeze and no reason to explain.
+              // there is nothing to freeze and no reason to explain — except
+              // when the provider itself is unavailable, see `disabled` above.
+              aria-describedby={readOnly ? unavailableReasonId : undefined}
               render={<Button variant={"outline"} />}
             >
               <SelectValue className="truncate" />
@@ -306,7 +343,7 @@ export function Composer({
             // Disabled-with-a-reason rather than unmounted: swapping Send out
             // for Stop makes the row jump and leaves a user who has typed the
             // next instruction with no explanation of where Send went.
-            disabled={running || !text.trim()}
+            disabled={running || readOnly || !text.trim()}
             aria-label="Send"
             // Icon-only control: the hover title is a discoverability aid for
             // sighted mouse/keyboard users, not the accessible name (that's
@@ -322,7 +359,7 @@ export function Composer({
             // disabled element is reachable by neither keyboard focus nor
             // most screen readers, since disabled elements are pulled out of
             // both.
-            aria-describedby={running ? sendReasonId : undefined}
+            aria-describedby={readOnly ? unavailableReasonId : running ? sendReasonId : undefined}
             title={!running && text.trim() ? "Send message" : undefined}
           >
             <SendHorizontal />

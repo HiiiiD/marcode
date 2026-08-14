@@ -2,7 +2,7 @@ import type {
   ContextResult,
   EditorContext,
   HostToWebview, Invocable, McpServerStatus, PaneLayout, PermissionRequest, ProviderInfo,
-  SessionId, SessionSummary, TranscriptItem, UsageWindow,
+  SessionId, SessionSummary, TranscriptItem, UnavailableProvider, UsageWindow,
 } from '../protocol/messages';
 
 export interface PaneState {
@@ -20,6 +20,13 @@ export interface ClientState {
   sessions: SessionSummary[];
   layout: PaneLayout;
   catalog: ProviderInfo[];
+  /**
+   * The configured providers that cannot be picked, and why. Never overlaps
+   * `catalog` — the host partitions them — so "is this provider available?"
+   * is answered by `catalog` alone, and this list only ever supplies the
+   * explanation.
+   */
+  unavailable: UnavailableProvider[];
   byId: Record<SessionId, PaneState>;
   /**
    * Client-wide, not per session: the active editor is global IDE state and
@@ -52,6 +59,7 @@ export const initialState: ClientState = {
   sessions: [],
   layout: { orientation: 'vertical', panes: [] },
   catalog: [],
+  unavailable: [],
   byId: {},
   editorContext: null,
   contextBySession: {},
@@ -94,7 +102,7 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
       }
       return {
         ready: true, sessions: msg.sessions, layout: msg.layout,
-        catalog: msg.catalog, byId,
+        catalog: msg.catalog, unavailable: msg.unavailable, byId,
         // Explicit, not `...state`: `hydrate` is meant to be a total
         // rebuild of `ClientState`, not a merge. `editorContext` is
         // genuinely client-wide (global IDE state a reload doesn't change),
@@ -160,8 +168,10 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
       };
 
     case 'catalog':
-      // Full replacement: the host sends the whole catalog, never a delta.
-      return { ...state, catalog: msg.catalog };
+      // Full replacement: the host sends the whole catalog, never a delta —
+      // and both arrays move together, so an availability change lands as one
+      // message rather than a window where the two could disagree.
+      return { ...state, catalog: msg.catalog, unavailable: msg.unavailable };
 
     case 'editor-context':
       return { ...state, editorContext: msg.ctx };

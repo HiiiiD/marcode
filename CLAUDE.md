@@ -109,6 +109,12 @@ These are not style preferences. Breaking one breaks the design.
   took a developer machine down on 2026-08-14. It only detonates while the test is red,
   which is exactly when you are running it. `screen.getByX` helpers are safe — they throw
   their own message and never hand the node to `assert`.
+- **A provider's model list is its availability.** Models come from the backend,
+  so an empty list means the backend never answered — there is no hardcoded fallback
+  catalog, because listing a model is also a claim that this install can run it.
+  `SessionManager.catalog()` carries only providers with models, `create()` refuses the
+  rest, and `unavailable()` carries them with the reason their last probe gave.
+  Re-probing (`refreshModels`) is the whole mechanism for re-checking an install.
 - **Usage and context surfaces show percentages, never token counts.** Tokens exist only
   inside `src/providers/claude/map-context.ts`, which converts them on the way out.
 - **Plan usage is pulled, never read off `rate_limit_event`.** That event carries no

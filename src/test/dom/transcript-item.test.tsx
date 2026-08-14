@@ -13,6 +13,7 @@ function hydrateWithItems(items: TranscriptItem[]) {
     layout: layoutOf('a'),
     snapshots: [snapshot('a', { items })],
     catalog: catalog(),
+    unavailable: [],
     usage: {},
   });
 }

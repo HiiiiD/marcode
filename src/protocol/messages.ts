@@ -111,6 +111,22 @@ export interface ProviderInfo {
   models: ModelInfo[];
 }
 
+/**
+ * A configured provider the host cannot currently honor — its backend did not
+ * answer, so nothing it could offer would be true.
+ *
+ * It is deliberately NOT a `ProviderInfo` with an empty `models`: the catalog
+ * is the set of things that can be picked, and anything in it is selectable.
+ * These travel alongside it instead, for the one thing they are good for —
+ * telling the user why an expected provider is missing.
+ */
+export interface UnavailableProvider {
+  id: string;
+  displayName: string;
+  /** One line, provider-authored and already redacted. Shown verbatim. */
+  reason: string;
+}
+
 export type ContextResult =
   | { ok: true; breakdown: ContextBreakdown }
   | { ok: false; reason: string };
@@ -159,6 +175,13 @@ export type WebviewToHost =
 export type HostToWebview =
   | { t: 'hydrate'; sessions: SessionSummary[]; layout: PaneLayout;
       snapshots: SessionSnapshot[]; catalog: ProviderInfo[];
+      /**
+       * Providers that cannot be picked, and why. Empty at hydrate on a
+       * healthy install *and* on a broken one — nothing has been probed yet,
+       * so the honest answer is "no catalog, no reasons"; the first `catalog`
+       * message fills both in.
+       */
+      unavailable: UnavailableProvider[];
       /** Per provider, the last window set the host knew. Empty on a fresh install. */
       usage: Record<string, UsageWindow[]> }
   | { t: 'session-snapshot'; session: SessionSnapshot }
@@ -173,8 +196,11 @@ export type HostToWebview =
    * Sent after `hydrate` whenever a provider reports a catalog that differs
    * from the one it could answer with synchronously — model lists come from
    * the backend, so `hydrate` can only carry a provisional list.
+   *
+   * Both arrays are full replacements, never deltas, and they partition the
+   * configured providers: a provider is in exactly one of them.
    */
-  | { t: 'catalog'; catalog: ProviderInfo[] }
+  | { t: 'catalog'; catalog: ProviderInfo[]; unavailable: UnavailableProvider[] }
   /** Broadcast, not session-addressed: every composer shows the same editor. */
   | { t: 'editor-context'; ctx: EditorContext | null }
   | { t: 'context-breakdown'; id: SessionId; result: ContextResult }

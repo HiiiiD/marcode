@@ -11,6 +11,7 @@ export function hydrate(over = {}) {
     layout: layoutOf("a"),
     snapshots: [snapshot("a", over)],
     catalog: catalog(),
+    unavailable: [],
     usage: {},
   });
 }
@@ -23,6 +24,7 @@ function hydrateTwoPanes() {
     layout: layoutOf("a", "b"),
     snapshots: [snapshot("a"), snapshot("b")],
     catalog: catalog(),
+    unavailable: [],
     usage: {},
   });
 }
@@ -117,6 +119,7 @@ suite("SessionHeader status", () => {
       layout: layoutOf("a"),
       snapshots: [snapshot("a")],
       catalog: [...catalog(), { id: "other", displayName: "Other", models: [] }],
+      unavailable: [],
       usage: {},
     });
 

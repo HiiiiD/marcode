@@ -22,6 +22,8 @@ function fakeLoadQuery(opts: {
   /** Stands in for `Query.setModel`. Default records and resolves; a test that
    * wants the failure path supplies one that rejects or throws. */
   setModel?: (model?: string) => Promise<void>;
+  /** What `supportedModels()` answers, for a test that seeds the catalog. */
+  models?: unknown[];
 } = {}) {
   const calls: { options: Record<string, unknown> }[] = [];
   /** Every model pushed at the *running* query, in order. */
@@ -53,6 +55,7 @@ function fakeLoadQuery(opts: {
       setModel: (model?: string) => Promise<void>;
       close: () => void;
       mcpServerStatus: () => Promise<FakeSdkServerStatus[]>;
+      supportedModels: () => Promise<unknown[]>;
     };
     gen.interrupt = async () => undefined;
     gen.setPermissionMode = async () => { /* no-op fake */ };
@@ -63,6 +66,7 @@ function fakeLoadQuery(opts: {
     };
     gen.close = () => { closed = true; stop(); };
     gen.mcpServerStatus = opts.mcpServerStatus ?? (async () => []);
+    gen.supportedModels = async () => opts.models ?? [];
     return gen;
   };
 
@@ -73,6 +77,15 @@ function fakeLoadQuery(opts: {
     isClosed: () => closed,
   };
 }
+
+/** A plausible `supportedModels()` answer: one model with effort, one without. */
+const CATALOG = [
+  {
+    value: 'claude-opus-5', displayName: 'Opus 5', description: '',
+    supportsEffort: true, supportedEffortLevels: ['low', 'medium', 'high', 'xhigh', 'max'],
+  },
+  { value: 'haiku', displayName: 'Haiku 4.5', description: '' },
+];
 
 /** Runs the macrotask queue once — enough for any pending microtask chain (e.g. an async `.then()` chain) to settle. */
 async function flushMacrotask() {
@@ -258,8 +271,12 @@ suite('ClaudeProvider (lazy start)', () => {
     // Belt-and-braces at the wire boundary: the host reconciles effort against
     // the model it is switching to, but a session persisted before a catalog
     // change can still be resumed carrying an effort its model cannot take.
-    const fake = fakeLoadQuery();
+    const fake = fakeLoadQuery({ models: CATALOG });
     const provider = new ClaudeProvider(fake.load as never);
+    // The catalog is what the CLI answered, never a hardcoded list — so a
+    // test about reconciling against it has to probe first, exactly as the
+    // host does before any session can be created against this provider.
+    await provider.fetchModels('/tmp');
     const run = provider.start({
       cwd: '/tmp', model: 'haiku', effort: 'max', permissionMode: 'default',
     });
@@ -267,14 +284,16 @@ suite('ClaudeProvider (lazy start)', () => {
     run.send('go');
     await flushMicrotasks();
 
-    assert.strictEqual(fake.calls.length, 1);
-    assert.strictEqual('effort' in fake.calls[0].options, false, 'haiku has no effort row');
+    // [0] is the probe's own throwaway query; the session's is the last one.
+    const started = fake.calls[fake.calls.length - 1];
+    assert.strictEqual('effort' in started.options, false, 'haiku has no effort row');
     await run.dispose();
   });
 
   test('the query keeps an effort the model does support', async () => {
-    const fake = fakeLoadQuery();
+    const fake = fakeLoadQuery({ models: CATALOG });
     const provider = new ClaudeProvider(fake.load as never);
+    await provider.fetchModels('/tmp');
     const run = provider.start({
       cwd: '/tmp', model: 'claude-opus-5', effort: 'low', permissionMode: 'default',
     });
@@ -282,7 +301,7 @@ suite('ClaudeProvider (lazy start)', () => {
     run.send('go');
     await flushMicrotasks();
 
-    assert.strictEqual(fake.calls[0].options.effort, 'low');
+    assert.strictEqual(fake.calls[fake.calls.length - 1].options.effort, 'low');
     await run.dispose();
   });
 
@@ -651,7 +670,23 @@ suite('ClaudeProvider mcpServerStatus pull', () => {
     })) as never);
   }
 
-  test('fetchModels replaces the fallback list with what the CLI reports', async () => {
+  /** A provider whose probe always fails with `message`. */
+  function providerThatFails(message: string) {
+    return new ClaudeProvider((async () => () => ({
+      supportedModels: async () => { throw new Error(message); },
+      close: () => {},
+      [Symbol.asyncIterator]: () => ({ next: async () => ({ value: undefined, done: true }) }),
+    })) as never);
+  }
+
+  test('listModels is empty until the CLI answers', async () => {
+    assert.deepStrictEqual(
+      providerWithModels([]).listModels(), [],
+      'no install has been probed yet, so there is nothing this provider can honestly offer',
+    );
+  });
+
+  test('fetchModels reports what the CLI says this install can run', async () => {
     let closed = false;
     const provider = providerWithModels([
       {
@@ -660,11 +695,6 @@ suite('ClaudeProvider mcpServerStatus pull', () => {
       },
       { value: 'haiku', displayName: 'Haiku 4.5', description: '' },
     ], () => { closed = true; });
-
-    assert.strictEqual(
-      provider.listModels().some((m) => m.id === 'claude-fable-5'), false,
-      'precondition: the fallback list is what is served before a probe',
-    );
 
     const out = await provider.fetchModels('/repo');
 
@@ -709,13 +739,48 @@ suite('ClaudeProvider mcpServerStatus pull', () => {
     assert.deepStrictEqual(model.effort, { levels: ['low', 'medium'], default: 'medium' });
   });
 
-  test('an empty catalog leaves the fallback list in place', async () => {
+  test('a CLI that lists no models leaves the provider with nothing to offer', async () => {
     const provider = providerWithModels([]);
-    const fallback = provider.listModels();
 
     const out = await provider.fetchModels('/repo');
 
-    assert.deepStrictEqual(out, fallback, 'an empty picker is worse than a stale one');
+    assert.deepStrictEqual(out, [],
+      'an install that can run no model must not be selectable');
+    assert.deepStrictEqual(provider.listModels(), []);
+  });
+
+  test('a failed probe drops the catalog an earlier probe cached', async () => {
+    let fail = false;
+    const provider = new ClaudeProvider((async () => () => ({
+      supportedModels: async () => {
+        if (fail) { throw new Error('spawn ENOENT'); }
+        return [{ value: 'haiku', displayName: 'Haiku 4.5', description: '' }];
+      },
+      close: () => {},
+      [Symbol.asyncIterator]: () => ({ next: async () => ({ value: undefined, done: true }) }),
+    })) as never);
+    await provider.fetchModels('/repo');
+    assert.strictEqual(provider.listModels().length, 1, 'precondition: the first probe answered');
+
+    fail = true;
+    await assert.rejects(() => provider.fetchModels('/repo'));
+
+    assert.deepStrictEqual(provider.listModels(), [],
+      'a binary that stopped working must not keep serving the models it used to run');
+  });
+
+  test('fetchModels rejects with a message about the CLI, not the SDK internals', async () => {
+    const provider = providerThatFails(
+      'Claude Code executable not found at C:\\Users\\x\\claude.exe. '
+      + 'Is options.pathToClaudeCodeExecutable set?',
+    );
+
+    await assert.rejects(() => provider.fetchModels('/repo'), (err: Error) => {
+      assert.match(err.message, /Claude Code CLI not found/);
+      assert.strictEqual(/pathToClaudeCodeExecutable/.test(err.message), false,
+        'the reason reaches the panel, so it names the tool the user installed');
+      return true;
+    });
   });
 
   test('fetchModels closes the query even when the model read fails', async () => {

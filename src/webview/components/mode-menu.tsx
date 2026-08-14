@@ -24,7 +24,16 @@ import { MODE_OF, MODES } from "./permission-modes";
  * effort — the rarer of the two settings — one level down, where it still
  * shows its current level without being opened.
  */
-export function ModeMenu({ pane, model }: { pane: PaneState; model: ModelInfo | undefined }) {
+export function ModeMenu({
+  pane,
+  model,
+  disabled,
+}: {
+  pane: PaneState;
+  model: ModelInfo | undefined;
+  /** The session's provider is unavailable: nothing set here could be honored. */
+  disabled?: boolean;
+}) {
   const { post } = useStore();
   const mode = MODE_OF(pane.summary.permissionMode);
   const bypassing = pane.summary.permissionMode === "bypass";
@@ -65,6 +74,7 @@ export function ModeMenu({ pane, model }: { pane: PaneState; model: ModelInfo | 
           <Button
             variant="outline"
             size="sm"
+            disabled={disabled}
             className={cn(
               "min-w-0",
               // The one place in the composer where color carries meaning:

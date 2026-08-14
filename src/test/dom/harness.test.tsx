@@ -26,6 +26,7 @@ suite('harness', () => {
       layout: layoutOf('a'),
       snapshots: [snapshot('a')],
       catalog: catalog(),
+      unavailable: [],
       usage: {},
     });
 

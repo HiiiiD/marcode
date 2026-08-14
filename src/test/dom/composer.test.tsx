@@ -36,6 +36,7 @@ function hydrateOne() {
     layout: layoutOf("a"),
     snapshots: [snapshot("a")],
     catalog: catalog(),
+    unavailable: [],
     usage: {},
   });
 }
@@ -463,5 +464,65 @@ suite("Composer", () => {
     await userEvent.click(await screen.findByRole("option", { name: "Fake Small" }));
 
     assert.deepStrictEqual(posted().at(-1), { t: "set-model", id: "a", model: "fake-small" });
+  });
+
+  suite("a session whose provider is unavailable", () => {
+    /** The roster after the provider a session was created against went away. */
+    function hydrateWithoutProvider() {
+      sendFromHost({
+        t: "hydrate",
+        sessions: [summary("a")],
+        layout: layoutOf("a"),
+        snapshots: [snapshot("a")],
+        catalog: [],
+        unavailable: [{ id: "fake", displayName: "Fake", reason: "Fake CLI not found." }],
+        usage: {},
+      });
+    }
+
+    test("says why, in the pane, rather than waiting for a failed send", () => {
+      renderApp();
+      hydrateWithoutProvider();
+
+      assert.ok(screen.getByText(/Fake CLI not found\./));
+    });
+
+    test("cannot be typed into or sent to", () => {
+      renderApp();
+      hydrateWithoutProvider();
+
+      const box = screen.getByLabelText("Message") as HTMLTextAreaElement;
+      const send = screen.getByLabelText("Send") as HTMLButtonElement;
+      assert.strictEqual(box.disabled, true);
+      assert.strictEqual(send.disabled, true);
+    });
+
+    test("cannot have its model changed", () => {
+      // Every model row belongs to a provider that cannot run it: the catalog
+      // this session's provider had is exactly what left with it.
+      renderApp();
+      hydrateWithoutProvider();
+
+      assert.strictEqual((screen.getByLabelText("Model") as HTMLButtonElement).disabled, true);
+    });
+
+    test("keeps its transcript readable", () => {
+      // The whole point of read-only over hiding: the work is still worth
+      // reading, and the session comes back the moment the provider does.
+      renderApp();
+      sendFromHost({
+        t: "hydrate",
+        sessions: [summary("a")],
+        layout: layoutOf("a"),
+        snapshots: [snapshot("a", {
+          items: [{ id: "u1", ts: 1, role: "user", text: "refactor the parser" }],
+        })],
+        catalog: [],
+        unavailable: [{ id: "fake", displayName: "Fake", reason: "Fake CLI not found." }],
+        usage: {},
+      });
+
+      assert.ok(screen.getByText("refactor the parser"));
+    });
   });
 });

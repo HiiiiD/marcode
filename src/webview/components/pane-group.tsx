@@ -7,6 +7,7 @@ import { Fragment, useEffect, useRef } from "react";
 // similar note on the value import in the vendored resizable.tsx.
 import type { Layout, LayoutChangedMeta } from "react-resizable-panels" with { "resolution-mode": "import" };
 import { findModel } from "../../shared/model-catalog";
+import { unavailabilityFor } from "../lib/provider-availability";
 import { useStore } from "../store";
 import { Composer } from "./composer";
 import { accessibleTitles, rosterSessionIds, visiblePanes } from "./pane-layout";
@@ -101,6 +102,11 @@ export function PaneGroup({ narrow }: PaneGroupProps) {
     prevCount.current = panes.length;
   }, [panes.length]);
 
+  // Nothing can be created: every configured provider failed its probe (or
+  // none is configured at all). Distinct from "no sessions yet", which is an
+  // invitation — this one is an explanation, since `+ New` is dead either way.
+  const noProviders = state.catalog.length === 0 && state.unavailable.length > 0;
+
   if (panes.length === 0) {
     return (
       <div
@@ -112,11 +118,23 @@ export function PaneGroup({ narrow }: PaneGroupProps) {
         )}
       >
         <p className="text-xs text-muted-foreground">
-          {roster.size === 0
-            ? "No sessions yet. Start one to give an agent something to do."
-            : "No sessions in the split. Pick one from the roster above to show it here."}
+          {noProviders
+            ? "No agent provider is available."
+            : roster.size === 0
+              ? "No sessions yet. Start one to give an agent something to do."
+              : "No sessions in the split. Pick one from the roster above to show it here."}
         </p>
-        {roster.size === 0 && <SessionCreateMenu />}
+        {/* The one place the reasons are worth spelling out in full: `+ New`
+            is disabled here and there is no session on screen to explain it.
+            Rendered per provider, since a panel can be configured with
+            several and only some of them broken. */}
+        {noProviders &&
+          state.unavailable.map((p) => (
+            <p key={p.id} className="text-xs text-muted-foreground">
+              <span className="font-medium text-foreground">{p.displayName}</span> — {p.reason}
+            </p>
+          ))}
+        {roster.size === 0 && !noProviders && <SessionCreateMenu />}
       </div>
     );
   }
@@ -203,7 +221,12 @@ export function PaneGroup({ narrow }: PaneGroupProps) {
                       }
                     />
                   </div>
-                  <Composer pane={paneState} model={model} models={provider?.models ?? []} />
+                  <Composer
+                    pane={paneState}
+                    model={model}
+                    models={provider?.models ?? []}
+                    unavailableReason={unavailabilityFor(state, paneState.summary.providerId)}
+                  />
                 </div>
               </ResizablePanel>
             </Fragment>

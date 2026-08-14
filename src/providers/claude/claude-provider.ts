@@ -131,30 +131,19 @@ import { mapEvent } from './map-events';
 import { redactSecrets } from './redact';
 
 /**
- * What the picker shows before — or instead of — a real answer from the CLI.
+ * The SDK's own failure text, turned into something a panel can show.
  *
- * This is a fallback, not the catalog: the authoritative list comes from
- * `fetchModels()` below, which asks the SDK what *this* install can actually
- * run (models released after this file was written, models an enterprise
- * `availableModels` policy allows, aliases the CLI resolves itself). Hardcoding
- * the catalog is exactly how Fable went missing from the picker.
- *
- * Aliases, not wire ids, on purpose: `claude-haiku-4-5` is NOT a value the CLI
- * knows — it silently becomes a "Custom model" passthrough — whereas `haiku` is
- * the CLI's own alias and resolves to claude-haiku-4-5-20251001. Verified
- * against the SDK's initializationResult.
+ * This message is the provider's unavailability reason: it travels to the
+ * webview and is read by someone deciding what to install, not by someone
+ * debugging our SDK options. So the missing-binary case — the overwhelmingly
+ * common one, since the SDK ships no CLI of its own — names Claude Code
+ * rather than `options.pathToClaudeCodeExecutable`. Everything else is passed
+ * through redacted; an unrecognized failure said plainly beats a guess.
  */
-const FALLBACK_MODELS: ModelInfo[] = [
-  {
-    id: 'claude-opus-5', displayName: 'Opus 5',
-    effort: { levels: ['low', 'medium', 'high', 'xhigh', 'max'], default: 'high' },
-  },
-  {
-    id: 'claude-sonnet-5', displayName: 'Sonnet 5',
-    effort: { levels: ['low', 'medium', 'high', 'xhigh', 'max'], default: 'high' },
-  },
-  { id: 'haiku', displayName: 'Haiku 4.5' },
-];
+function unavailableReason(err: unknown): string {
+  const raw = errorMessage(err);
+  return /executable not found|ENOENT/i.test(raw) ? 'Claude Code CLI not found.' : raw;
+}
 
 /** The subset of the SDK's `ModelInfo` this adapter reads. */
 type SdkModelInfo = {
@@ -262,12 +251,19 @@ export class ClaudeProvider implements AgentProvider {
   readonly id = 'claude';
   readonly displayName = 'Claude';
 
-  /** Last answer from `fetchModels()`; until then the picker shows the fallback. */
-  private models: ModelInfo[] | undefined;
+  /**
+   * The last answer from `fetchModels()`, and the whole of what this provider
+   * knows. Empty until a probe succeeds: there is no hardcoded catalog to
+   * fall back to, because a list of models is also a claim that this install
+   * can run them — and the SDK ships no CLI, so on a machine without Claude
+   * Code that claim is false. A provider with no models is not selectable at
+   * all; see SessionManager.catalog().
+   */
+  private models: ModelInfo[] = [];
 
   constructor(private readonly loadQueryFn: () => Promise<QueryFn> = loadQuery) {}
 
-  listModels(): ModelInfo[] { return this.models ?? FALLBACK_MODELS; }
+  listModels(): ModelInfo[] { return this.models; }
 
   /**
    * The CLI's own model catalog, from the same session-free probe the
@@ -275,15 +271,24 @@ export class ClaudeProvider implements AgentProvider {
    * provider, its settings cascade and any enterprise `availableModels`
    * policy — none of which this extension can know statically.
    *
-   * Rejections propagate: the caller decides the retry policy, and swallowing
-   * here would silently pin the picker to the fallback list forever.
+   * This is also the availability probe: a rejection clears the catalog, so a
+   * binary that stops working (uninstalled, or a configured path pointed
+   * somewhere wrong) takes the provider out of the picker on the next refresh
+   * instead of leaving it selectable against models it can no longer run.
+   *
+   * Rejections propagate — the caller decides the retry policy — but carry
+   * `unavailableReason`'s text, because that message is what the panel shows.
    */
   async fetchModels(cwd: string): Promise<ModelInfo[]> {
-    const models = await this.probe(cwd, (q) => q.supportedModels());
-    // An empty catalog is not an answer worth caching over the fallback —
-    // it would leave the picker with nothing to pick.
-    if (models.length > 0) { this.models = models.map(toModelInfo); }
-    return this.listModels();
+    let models: SdkModelInfo[];
+    try {
+      models = await this.probe(cwd, (q) => q.supportedModels());
+    } catch (err) {
+      this.models = [];
+      throw new Error(unavailableReason(err));
+    }
+    this.models = models.map(toModelInfo);
+    return this.models;
   }
 
   /**

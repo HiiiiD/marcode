@@ -13,6 +13,7 @@ function hydrateAOpen() {
     layout: layoutOf('a'),
     snapshots: [snapshot('a')],
     catalog: catalog(),
+    unavailable: [],
     usage: {},
   });
 }
@@ -168,6 +169,7 @@ suite('SessionPicker', () => {
       layout: layoutOf('a'),
       snapshots: [snapshot('a')],
       catalog: catalog(),
+      unavailable: [],
       usage: {},
     });
 
@@ -235,6 +237,7 @@ suite('SessionPicker', () => {
       layout: { orientation: 'horizontal', panes: [{ sessionId: 'a', size: 50 }, { sessionId: 'b', size: 50 }] },
       snapshots: [snapshot('a'), snapshot('b')],
       catalog: catalog(),
+      unavailable: [],
       usage: {},
     });
 
@@ -266,7 +269,7 @@ suite('SessionPicker', () => {
     renderApp();
     sendFromHost({
       t: 'hydrate', sessions: [], layout: { orientation: 'vertical', panes: [] },
-      snapshots: [], catalog: catalog(), usage: {},
+      snapshots: [], catalog: catalog(), unavailable: [], usage: {},
     });
 
     const emptyState = screen.getByText(/no sessions yet/i).closest('div')!;

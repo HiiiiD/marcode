@@ -942,11 +942,35 @@ suite('SessionManager', () => {
     await m.dispose();
   });
 
-  test('a failed model probe leaves the provider fallback in place and still announces', async () => {
-    const emitted: HostToWebview[] = [];
-    const failing = modelProvider('claude', () => Promise.reject(new Error('no CLI')));
+  /** A provider that can offer nothing until — and unless — a probe succeeds. */
+  function unavailableProvider(id: string, reason: string): AgentProvider {
+    return {
+      id, displayName: id,
+      listModels: () => [],
+      fetchModels: () => Promise.reject(new Error(reason)),
+      start: () => { throw new Error('not used'); },
+    };
+  }
+
+  test('a provider with no models is not in the catalog', async () => {
     const m = new SessionManager(
-      new TranscriptStore(dir), new Map([['claude', failing]]), (msg) => emitted.push(msg),
+      new TranscriptStore(dir),
+      new Map([['claude', unavailableProvider('claude', 'Claude Code CLI not found.')]]),
+      () => {},
+    );
+    await m.init();
+
+    assert.deepStrictEqual(m.catalog(), [],
+      'offering models an install cannot run is worse than offering none');
+    await m.dispose();
+  });
+
+  test('a failed model probe reports the provider as unavailable, with its reason', async () => {
+    const emitted: HostToWebview[] = [];
+    const m = new SessionManager(
+      new TranscriptStore(dir),
+      new Map([['claude', unavailableProvider('claude', 'Claude Code CLI not found.')]]),
+      (msg) => emitted.push(msg),
     );
     await m.init();
 
@@ -954,7 +978,55 @@ suite('SessionManager', () => {
 
     const catalogs = emitted.filter((msg) => msg.t === 'catalog') as
       Extract<HostToWebview, { t: 'catalog' }>[];
-    assert.deepStrictEqual(catalogs[0].catalog[0].models, [{ id: 'stale', displayName: 'Stale' }]);
+    assert.deepStrictEqual(catalogs[0].catalog, []);
+    assert.deepStrictEqual(catalogs[0].unavailable, [
+      { id: 'claude', displayName: 'claude', reason: 'Claude Code CLI not found.' },
+    ]);
+    await m.dispose();
+  });
+
+  test('a provider that starts answering stops being reported as unavailable', async () => {
+    const emitted: HostToWebview[] = [];
+    let fail = true;
+    let models: ModelInfo[] = [];
+    const flaky: AgentProvider = {
+      id: 'claude', displayName: 'Claude',
+      listModels: () => models,
+      fetchModels: async () => {
+        if (fail) { models = []; throw new Error('Claude Code CLI not found.'); }
+        models = [{ id: 'haiku', displayName: 'Haiku 4.5' }];
+        return models;
+      },
+      start: () => { throw new Error('not used'); },
+    };
+    const m = new SessionManager(
+      new TranscriptStore(dir), new Map([['claude', flaky]]), (msg) => emitted.push(msg),
+    );
+    await m.init();
+    await m.refreshModels('/repo');
+
+    fail = false;
+    await m.refreshModels('/repo');
+
+    const catalogs = emitted.filter((msg) => msg.t === 'catalog') as
+      Extract<HostToWebview, { t: 'catalog' }>[];
+    const last = catalogs[catalogs.length - 1];
+    assert.deepStrictEqual(last.unavailable, [],
+      'a reason that outlives its failure is a lie about the install');
+    assert.deepStrictEqual(last.catalog[0].models, [{ id: 'haiku', displayName: 'Haiku 4.5' }]);
+    await m.dispose();
+  });
+
+  test('create refuses a provider with no models', async () => {
+    const m = new SessionManager(
+      new TranscriptStore(dir),
+      new Map([['claude', unavailableProvider('claude', 'Claude Code CLI not found.')]]),
+      () => {},
+    );
+    await m.init();
+
+    await assert.rejects(() => m.create('claude', '/repo'), /unavailable/i);
+    assert.deepStrictEqual(m.summaries(), [], 'a refused creation must leave no roster entry');
     await m.dispose();
   });
 

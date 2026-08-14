@@ -26,6 +26,7 @@ function hydrate(sessions = [summary('a')], providers = catalog()) {
     layout: layoutOf(...sessions.map((s) => s.id)),
     snapshots: sessions.map((s) => snapshot(s.id, s)),
     catalog: providers,
+    unavailable: [],
     usage: {},
   });
 }
@@ -207,6 +208,7 @@ suite('SessionCreateMenu', () => {
       layout: { orientation: 'vertical', panes: [] },
       snapshots: [],
       catalog: [],
+      unavailable: [],
       usage: {},
     });
 

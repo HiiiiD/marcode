@@ -75,12 +75,16 @@ export class MessageRouter {
           layout,
           snapshots,
           catalog: this.manager.catalog(),
+          unavailable: this.manager.unavailable(),
           usage: this.manager.usageSnapshot(),
         });
         this.emit({ t: 'editor-context', ctx: this.editor.current() });
         // Not awaited: hydrate must not wait on a CLI handshake. The catalog
-        // just sent carries each provider's synchronously-known models; the
-        // real one arrives as a `catalog` message when the probes land.
+        // just sent carries each provider's synchronously-known models — for
+        // a backend-answered one, nothing at all until the first probe lands,
+        // which is why the panel's create controls start disabled. The real
+        // catalog, and any unavailability reason, arrive as a `catalog`
+        // message when the probes settle.
         void this.manager.refreshModels(this.defaultCwd);
         void this.manager.refreshUsage(this.defaultCwd);
         return;
