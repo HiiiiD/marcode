@@ -45,6 +45,15 @@ suite('pane-layout visiblePanes', () => {
     const result = visiblePanes(panes, new Set(['a']), new Set(['a', 'b']));
     assert.deepStrictEqual(result.map((p) => p.sessionId), ['a']);
   });
+
+  test('renders a repeated sessionId once — a duplicated key renders the same session twice', () => {
+    const panes = [
+      { sessionId: 'a', size: 40 }, { sessionId: 'b', size: 20 }, { sessionId: 'a', size: 40 },
+    ];
+    const result = visiblePanes(panes, new Set(['a', 'b']), new Set(['a', 'b']));
+    assert.deepStrictEqual(result.map((p) => p.sessionId), ['a', 'b']);
+    assert.strictEqual(result[0].size, 40, 'first entry wins, keeping position and size');
+  });
 });
 
 suite('pane-layout reconcilePaneLayout', () => {
@@ -101,6 +110,17 @@ suite('pane-layout reconcilePaneLayout', () => {
       layoutAfterUncheck, new Set(['a', 'b']), ['a', 'b'], new Set(['a', 'b']),
     );
     assert.strictEqual(result.layout, null, 'reconcile must not re-append the unchecked, already-known session');
+  });
+
+  test('repairs a persisted layout that names the same session twice', () => {
+    const layout = {
+      orientation: 'vertical' as const,
+      panes: [{ sessionId: 'a', size: 50 }, { sessionId: 'a', size: 50 }],
+    };
+    const result = reconcilePaneLayout(layout, new Set(['a']), ['a'], new Set(['a']));
+    assert.ok(result.layout, 'a duplicated layout must be rewritten, not left as-is');
+    assert.deepStrictEqual(result.layout!.panes.map((p) => p.sessionId), ['a']);
+    assert.strictEqual(result.layout!.panes[0].size, 100);
   });
 
   // Fix round 1's "Finding 3" cases here were removed in fix round 2: they

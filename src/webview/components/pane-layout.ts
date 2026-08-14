@@ -67,9 +67,19 @@ export function visiblePanes(
   rosterSessionIds: ReadonlySet<string>,
   snapshotArrivedIds: ReadonlySet<string>,
 ): PaneEntry[] {
-  return panes.filter(
-    (p) => rosterSessionIds.has(p.sessionId) && snapshotArrivedIds.has(p.sessionId),
-  );
+  const seen = new Set<string>();
+  return panes.filter((p) => {
+    if (!rosterSessionIds.has(p.sessionId) || !snapshotArrivedIds.has(p.sessionId)) { return false; }
+    // A layout is persisted state written by whatever client version wrote
+    // it last; nothing on the host validates it. A repeated sessionId
+    // renders the same session twice, which React reports as two children
+    // with the same key and which no user action can undo (hiding the pane
+    // removes both entries at once, so the duplicate survives every reload).
+    // First entry wins, so the pane keeps its position and its size.
+    if (seen.has(p.sessionId)) { return false; }
+    seen.add(p.sessionId);
+    return true;
+  });
 }
 
 export interface ReconcileResult {
@@ -131,10 +141,17 @@ export function reconcilePaneLayout(
   snapshotArrivedIds: string[],
   knownSessionIds: ReadonlySet<string>,
 ): ReconcileResult {
-  const kept = layout.panes
-    .map((p) => p.sessionId)
-    .filter((id) => rosterSessionIds.has(id));
-  const known = new Set(kept);
+  // Deduped as well as roster-filtered: a duplicated sessionId in the
+  // persisted layout is repaired here (the resulting layout differs in
+  // length, so it is posted and persisted clean) rather than only hidden at
+  // render time by `visiblePanes`.
+  const known = new Set<string>();
+  const kept: string[] = [];
+  for (const { sessionId } of layout.panes) {
+    if (!rosterSessionIds.has(sessionId) || known.has(sessionId)) { continue; }
+    known.add(sessionId);
+    kept.push(sessionId);
+  }
   const newlyArrived = snapshotArrivedIds.filter(
     (id) => rosterSessionIds.has(id) && !known.has(id) && !knownSessionIds.has(id),
   );
