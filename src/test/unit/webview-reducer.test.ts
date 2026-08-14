@@ -3,6 +3,22 @@ import type { SessionSummary } from '../../protocol/messages';
 import { initialState, reduce } from '../../webview/reducer';
 import { snapshot, summary } from '../fixtures/protocol';
 
+/**
+ * A state the host could actually produce for one session: a roster entry
+ * and the matching pane. `session-snapshot` alone leaves `sessions` empty,
+ * which the host never does — and the `context-breakdown` rule below keys
+ * off the roster, so tests about it have to start from the real shape.
+ */
+function withSession(id: string) {
+  return reduce(initialState, {
+    t: 'hydrate',
+    sessions: [summary(id)],
+    layout: { orientation: 'vertical', panes: [{ sessionId: id, size: 100 }] },
+    snapshots: [snapshot(id)],
+    catalog: [],
+  });
+}
+
 function hydrated() {
   return reduce(initialState, {
     t: 'hydrate',
@@ -335,5 +351,78 @@ suite('webview reducer', () => {
 
   test('the initial state has no editor context', () => {
     assert.strictEqual(initialState.editorContext, null);
+  });
+
+  test('context-breakdown is stored under its session id', () => {
+    let state = withSession('s1');
+    state = reduce(state, {
+      t: 'context-breakdown', id: 's1',
+      result: {
+        ok: true,
+        breakdown: {
+          systemPercent: 12, memoryPercent: 4, conversationPercent: 27, freePercent: 57,
+          memoryFiles: [],
+        },
+      },
+    });
+
+    const result = state.contextBySession['s1'];
+    if (!result?.ok) { assert.fail('expected a stored ok breakdown'); }
+    assert.strictEqual(result.breakdown.freePercent, 57);
+  });
+
+  test('a context-breakdown for a session the roster does not name is ignored', () => {
+    // `request-context` and its reply are two round trips apart, so a
+    // session deleted in between would otherwise have its breakdown cached
+    // after the `sessions-changed` that should have pruned it.
+    const state = withSession('s1');
+    const after = reduce(state, {
+      t: 'context-breakdown', id: 'gone',
+      result: { ok: false, reason: 'This session is not running' },
+    });
+
+    assert.strictEqual(after, state, 'an unknown session must not even re-create state');
+    assert.strictEqual(after.contextBySession['gone'], undefined);
+  });
+
+  test('a not-ok result is stored rather than dropped', () => {
+    const state = reduce(initialState, {
+      t: 'usage-windows', providerId: 'claude',
+      result: { ok: false, reason: 'No active session for this provider' },
+    });
+
+    assert.strictEqual(state.usageByProvider['claude']?.ok, false);
+  });
+
+  test('sessions-changed prunes cached breakdowns for removed sessions', () => {
+    let state = withSession('s1');
+    state = reduce(state, {
+      t: 'context-breakdown', id: 's1',
+      result: { ok: false, reason: 'This session is not running' },
+    });
+    state = reduce(state, { t: 'sessions-changed', sessions: [] });
+
+    assert.strictEqual(state.contextBySession['s1'], undefined);
+  });
+
+  test('sessions-changed updates contextPercent without clearing the cached breakdown', () => {
+    let state = withSession('s1');
+    state = reduce(state, {
+      t: 'context-breakdown', id: 's1',
+      result: {
+        ok: true,
+        breakdown: {
+          systemPercent: 12, memoryPercent: 4, conversationPercent: 27, freePercent: 57,
+          memoryFiles: [],
+        },
+      },
+    });
+    state = reduce(state, {
+      t: 'sessions-changed',
+      sessions: [summary('s1', { contextPercent: 43 })],
+    });
+
+    assert.strictEqual(state.sessions[0].contextPercent, 43);
+    assert.strictEqual(state.contextBySession['s1']?.ok, true);
   });
 });

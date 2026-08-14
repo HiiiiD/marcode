@@ -8,6 +8,7 @@ import type { EffortLevel, Invocable, ModelInfo, PermissionMode } from "../../pr
 import { insertionFor, menuKeyAction, menuQuery, menuView, nextIndex } from "../lib/invocable-menu";
 import type { PaneState } from "../reducer";
 import { useStore } from "../store";
+import { ContextRing } from "./context-ring";
 import { EditorContextToggle } from "./editor-context-toggle";
 import { InvocableMenu } from "./invocable-menu";
 
@@ -430,6 +431,7 @@ export function Composer({
               The agent is working. Stop it to send another message.
             </span>
           )}
+          <ContextRing pane={pane} />
         </InputGroupAddon>
       </InputGroup>
     </div>

@@ -1,8 +1,10 @@
 import { useEffect, useRef } from 'react';
+import { TooltipProvider } from '@/components/ui/tooltip';
 import { PaneGroup } from './components/pane-group';
 import { SessionPicker } from './components/session-picker';
 import { useIsNarrow } from './components/use-is-narrow';
 import { reconcilePaneLayout, rosterSessionIds } from './components/pane-layout';
+import { UsageStrip } from './components/usage-strip';
 import { useStore } from './store';
 
 export function App() {
@@ -68,16 +70,23 @@ export function App() {
   // src/test/dom/setup.ts) uses it to target only this observer's callback,
   // since react-resizable-panels registers its own `ResizeObserver`s on
   // panel/group elements that expect a different entry shape.
+  //
+  // One `TooltipProvider` at the root, so adjacent tooltips share a delay group:
+  // without it every tooltip runs its own timer and moving between two
+  // usage chips re-incurs the full open delay each time.
   return (
-    <div ref={rootRef} data-narrow-observer className="flex h-screen flex-col">
-      {state.ready ? (
-        <>
-          <SessionPicker narrow={narrow} />
-          <div className="min-h-0 flex-1"><PaneGroup narrow={narrow} /></div>
-        </>
-      ) : (
-        <div className="p-3 text-sm text-muted-foreground">Loading…</div>
-      )}
-    </div>
+    <TooltipProvider>
+      <div ref={rootRef} data-narrow-observer className="flex h-screen flex-col">
+        {state.ready ? (
+          <>
+            <SessionPicker narrow={narrow} />
+            <div className="min-h-0 flex-1"><PaneGroup narrow={narrow} /></div>
+            <UsageStrip />
+          </>
+        ) : (
+          <div className="p-3 text-sm text-muted-foreground">Loading…</div>
+        )}
+      </div>
+    </TooltipProvider>
   );
 }

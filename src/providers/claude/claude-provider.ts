@@ -120,11 +120,16 @@ import { findModel, resolveEffort } from '../../shared/model-catalog';
 import { formatEditorContext } from '../format-editor-context';
 import type {
   AgentEvent, AgentProvider, AgentRun,
+  ContextBreakdown,
   EditorContext,
   EffortLevel, Invocable, ModelInfo, PermissionMode,
-  StartOptions, ToolDecision
+  StartOptions, ToolDecision,
+  UsageWindow,
 } from '../types';
 import { toInvocables } from './map-commands';
+import {
+  toContextBreakdown, toUsageWindows, type ContextUsageLike, type UsageLike,
+} from './map-context';
 import { mapEvent } from './map-events';
 import { redactSecrets } from './redact';
 
@@ -497,6 +502,28 @@ export class ClaudeProvider implements AgentProvider {
           // Synchronous throw, same treatment as the async rejection above.
           console.warn('[hiiiid-code] setPermissionMode threw', 'mode=', mode, 'error=', errorMessage(err));
         }
+      },
+      contextBreakdown: async (): Promise<ContextBreakdown> => {
+        // queryRef is only assigned once the query is constructed, which is
+        // deferred to the first send. Before that there is genuinely nothing
+        // to measure.
+        if (!queryRef) { throw new Error('This session has not started yet'); }
+        const res = await queryRef.getContextUsage();
+        return toContextBreakdown(res as unknown as ContextUsageLike);
+      },
+      usageWindows: async (): Promise<UsageWindow[]> => {
+        if (!queryRef) { throw new Error('This session has not started yet'); }
+        // The SDK names this method to discourage reliance and may remove it
+        // in any release, so feature-detect rather than call it blind: an
+        // absent method must degrade to a legible "unavailable", not a
+        // TypeError surfacing as a mystery reason string in the UI.
+        const experimental = (queryRef as unknown as {
+          usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET?: () => Promise<UsageLike>;
+        }).usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET;
+        if (typeof experimental !== 'function') {
+          throw new Error('This provider does not report plan usage');
+        }
+        return toUsageWindows(await experimental.call(queryRef));
       },
       interrupt: async () => {
         if (!queryRef) { return; } // nothing has ever run: a no-op, not a failure.

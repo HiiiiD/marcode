@@ -1,11 +1,11 @@
 import type {
-  EditorContext, EffortLevel, Invocable, McpServerStatus, ModelInfo, PermissionMode,
-  ToolDecision,
+  ContextBreakdown, EditorContext, EffortLevel, Invocable, McpServerStatus, ModelInfo,
+  PermissionMode, ToolDecision, UsageWindow,
 } from '../providers/types';
 
 export type {
-  EditorContext, EffortLevel, Invocable, McpServerStatus, ModelInfo, PermissionMode,
-  ToolDecision,
+  ContextBreakdown, EditorContext, EffortLevel, Invocable, McpServerStatus, ModelInfo,
+  PermissionMode, ToolDecision, UsageWindow,
 };
 
 export type SessionId = string;
@@ -61,6 +61,12 @@ export interface SessionState {
   includeEditorContext: boolean;
   resumeToken?: string;
   usage: { inputTokens: number; outputTokens: number };
+  /**
+   * Share of the model's context window in use, `100 - freePercent`.
+   * Absent until the first turn ends, or forever for a provider that does
+   * not report a breakdown.
+   */
+  contextPercent?: number;
   archived: boolean;
   createdAt: number;
   updatedAt: number;
@@ -94,6 +100,14 @@ export interface ProviderInfo {
   models: ModelInfo[];
 }
 
+export type ContextResult =
+  | { ok: true; breakdown: ContextBreakdown }
+  | { ok: false; reason: string };
+
+export type UsageResult =
+  | { ok: true; windows: UsageWindow[] }
+  | { ok: false; reason: string };
+
 export interface PaneLayout {
   orientation: 'vertical' | 'horizontal';
   panes: { sessionId: SessionId; size: number }[];
@@ -115,7 +129,18 @@ export type WebviewToHost =
   | { t: 'reveal-file'; path: string; startLine?: number }
   | { t: 'set-model'; id: SessionId; model: string }
   | { t: 'permission-decision'; id: SessionId; requestId: string; decision: ToolDecision }
-  | { t: 'load-more'; id: SessionId; beforeItemId: string };
+  | { t: 'load-more'; id: SessionId; beforeItemId: string }
+  | { t: 'request-context'; id: SessionId }
+  | { t: 'request-usage'; providerId: string }
+  /**
+   * Distinct from `reveal-file`, which opens an editor-context path the host
+   * itself produced. `path` here originates in a *provider's* context report,
+   * so it is carried back with the session that reported it: the host opens
+   * it only if that session's most recent breakdown actually listed it.
+   * Hence the `SessionId`, which also keeps this in line with the "every
+   * session-addressed message carries an explicit id" rule.
+   */
+  | { t: 'open-file'; id: SessionId; path: string };
 
 export type HostToWebview =
   | { t: 'hydrate'; sessions: SessionSummary[]; layout: PaneLayout;
@@ -135,4 +160,6 @@ export type HostToWebview =
    */
   | { t: 'catalog'; catalog: ProviderInfo[] }
   /** Broadcast, not session-addressed: every composer shows the same editor. */
-  | { t: 'editor-context'; ctx: EditorContext | null };
+  | { t: 'editor-context'; ctx: EditorContext | null }
+  | { t: 'context-breakdown'; id: SessionId; result: ContextResult }
+  | { t: 'usage-windows'; providerId: string; result: UsageResult };

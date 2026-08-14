@@ -554,4 +554,39 @@ suite('AgentSession', () => {
     assert.strictEqual(session.state.includeEditorContext, false);
     await session.dispose();
   });
+
+  test('turn-end refreshes contextPercent from the run breakdown', async () => {
+    const provider = new FakeProvider(() => [{ kind: 'turn-end', reason: 'done' }], {
+      context: {
+        systemPercent: 10, memoryPercent: 5, conversationPercent: 25, freePercent: 60,
+        memoryFiles: [],
+      },
+    });
+    const session = new AgentSession(baseState(), provider, store, sink);
+
+    session.send('hello');
+    await settle();
+
+    assert.strictEqual(session.state.contextPercent, 40);
+    await session.dispose();
+  });
+
+  test('a run without contextBreakdown leaves contextPercent undefined', async () => {
+    const provider = new FakeProvider(() => [{ kind: 'turn-end', reason: 'done' }]);
+    const session = new AgentSession(baseState(), provider, store, sink);
+
+    session.send('hello');
+    await settle();
+
+    assert.strictEqual(session.state.contextPercent, undefined);
+    await session.dispose();
+  });
+
+  test('usageWindows rejects with a legible error when unsupported', async () => {
+    const provider = new FakeProvider(() => []);
+    const session = new AgentSession(baseState(), provider, store, sink);
+
+    await assert.rejects(() => session.usageWindows(), /does not report plan usage/);
+    await session.dispose();
+  });
 });

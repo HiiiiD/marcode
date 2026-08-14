@@ -1,5 +1,6 @@
 import type {
-  PaneLayout, ProviderInfo, SessionSnapshot, SessionSummary, TranscriptItem,
+  ContextBreakdown, PaneLayout, ProviderInfo, SessionSnapshot, SessionSummary, TranscriptItem,
+  UsageWindow,
 } from '../../protocol/messages';
 
 export type PermissionItem = Extract<TranscriptItem, { role: 'permission' }>;
@@ -51,6 +52,24 @@ export function catalog(): ProviderInfo[] {
       },
     ],
   }];
+}
+
+export function breakdown(over: Partial<ContextBreakdown> = {}): ContextBreakdown {
+  return {
+    systemPercent: 12,
+    memoryPercent: 4,
+    conversationPercent: 27,
+    freePercent: 57,
+    memoryFiles: [{ path: '/repo/CLAUDE.md', percent: 3 }],
+    ...over,
+  };
+}
+
+export function windows(): UsageWindow[] {
+  return [
+    { id: 'five-hour', label: 'Session (5h)', usedPercent: 62, resetsAt: 3_600_000 },
+    { id: 'seven-day', label: 'Week', usedPercent: 18 },
+  ];
 }
 
 export function permission(over: Partial<PermissionItem> = {}): PermissionItem {

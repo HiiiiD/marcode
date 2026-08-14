@@ -161,6 +161,27 @@ export class MessageRouter {
         this.emit({ t: 'session-prepend', id: msg.id, items, hasMore });
         return;
       }
+
+      case 'request-context': {
+        const result = await this.manager.contextBreakdown(msg.id);
+        this.emit({ t: 'context-breakdown', id: msg.id, result });
+        return;
+      }
+
+      case 'request-usage': {
+        const result = await this.manager.usageWindows(msg.providerId);
+        this.emit({ t: 'usage-windows', providerId: msg.providerId, result });
+        return;
+      }
+
+      // PanelViewProvider intercepts this before delegating (it needs the
+      // `vscode` API, which this module must not import) and is also where
+      // `msg.path` is validated against the memory files `msg.id` reported —
+      // that check stays on the provider/manager side for the same reason.
+      // It is listed here, and in KNOWN_MESSAGE_TAGS, so a stray one is a
+      // deliberate no-op rather than a "malformed message" error log.
+      case 'open-file':
+        return;
     }
   }
 
@@ -186,6 +207,7 @@ const KNOWN_MESSAGE_TAGS = new Set<WebviewToHost['t']>([
   'delete-session', 'send', 'interrupt', 'set-effort', 'set-permission-mode',
   'set-model', 'permission-decision', 'load-more',
   'set-include-context', 'reveal-file',
+  'request-context', 'request-usage', 'open-file',
 ]);
 
 /**

@@ -54,12 +54,15 @@ extension.ts
 | `src/providers/types.ts` | `AgentProvider`, `AgentRun`, `AgentEvent`, `ModelInfo` |
 | `src/providers/fake/fake-provider.ts` | Scripted provider for tests and the walking skeleton |
 | `src/providers/claude/` | Claude Agent SDK adapter and `SDKMessage` → `AgentEvent` mapping |
+| `src/providers/claude/map-context.ts` | SDK context/usage responses → `ContextBreakdown` / `UsageWindow[]` |
 | `src/host/transcript-store.ts` | `index.json` + per-session JSONL; append, load, page |
 | `src/host/agent-session.ts` | One conversation: transcript, status, pending approvals |
 | `src/host/session-manager.ts` | Roster; create/close/delete; patch fan-out to the visible set |
 | `src/host/message-router.ts` | `WebviewToHost` → manager calls. No `vscode` import, so it unit-tests. |
 | `src/host/panel-view-provider.ts` | `WebviewViewProvider`; HTML + nonce; transport |
 | `src/webview/` | Transport, reducer, store, components |
+| `src/webview/components/context-ring.tsx` | Context-fill ring + breakdown popover, mounted in the composer |
+| `src/webview/components/usage-strip.tsx` | Panel-level account usage windows |
 
 **Build:** esbuild produces two bundles — node/CJS for the host, browser/IIFE for the
 webview. TypeScript, React 19, Tailwind v4.
@@ -94,6 +97,8 @@ These are not style preferences. Breaking one breaks the design.
   `HostToWebview` messages via `sendFromHost`; assertions read the messages the webview
   posted back. Never mock `useStore` or hand-build a `ClientState` — a fake provider bypasses
   `reduce` and lets a test pass against a state the host could never produce.
+- **Usage and context surfaces show percentages, never token counts.** Tokens exist only
+  inside `src/providers/claude/map-context.ts`, which converts them on the way out.
 
 ## UI: shadcn is mandatory
 

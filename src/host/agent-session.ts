@@ -4,8 +4,10 @@ import type {
 } from '../protocol/messages';
 import type {
   AgentEvent, AgentProvider, AgentRun,
+  ContextBreakdown,
   EditorContext,
-  EffortLevel, Invocable, PermissionMode, ToolDecision
+  EffortLevel, Invocable, PermissionMode, ToolDecision,
+  UsageWindow,
 } from '../providers/types';
 import { findModel, resolveEffort } from '../shared/model-catalog';
 import type { TranscriptStore } from './transcript-store';
@@ -242,6 +244,64 @@ export class AgentSession {
     this.setStatus(this.pending.size > 0 ? 'awaiting-approval' : 'running');
   }
 
+  /**
+   * Rejects rather than returning a sentinel when the provider does not
+   * implement this: SessionManager is the single place that converts a
+   * failure into the `{ ok: false, reason }` the wire carries, so there is
+   * exactly one shape of "unavailable" reaching the webview.
+   */
+  async contextBreakdown(): Promise<ContextBreakdown> {
+    if (!this.run.contextBreakdown) {
+      throw new Error('This provider does not report context usage');
+    }
+    const breakdown = await this.run.contextBreakdown();
+    this.rememberMemoryFiles(breakdown);
+    return breakdown;
+  }
+
+  async usageWindows(): Promise<UsageWindow[]> {
+    if (!this.run.usageWindows) {
+      throw new Error('This provider does not report plan usage');
+    }
+    return this.run.usageWindows();
+  }
+
+  /**
+   * Whether this session's most recent breakdown listed `path`. The webview
+   * can only ask to open a memory file it was shown, so the set it was last
+   * shown is exactly the set the host will act on — see
+   * SessionManager.canOpenFile.
+   */
+  reportedMemoryFile(path: string): boolean {
+    return this.memoryPaths.has(path);
+  }
+
+  private memoryPaths = new Set<string>();
+
+  private rememberMemoryFiles(breakdown: ContextBreakdown): void {
+    this.memoryPaths = new Set(breakdown.memoryFiles.map((f) => f.path));
+  }
+
+  /**
+   * Best-effort: the ring is decoration over a live conversation, so a
+   * provider that fails to answer must not turn a completed turn into an
+   * error item. Fire-and-forget from handle(), hence the internal catch —
+   * a rejection here would otherwise be an unhandled rejection.
+   */
+  private async refreshContextPercent(): Promise<void> {
+    try {
+      const breakdown = await this.run.contextBreakdown?.();
+      if (!breakdown || this.disposed) { return; }
+      const next = Math.round(100 - breakdown.freePercent);
+      if (this._state.contextPercent === next) { return; }
+      this._state.contextPercent = next;
+      this._state.updatedAt = Date.now();
+      this.sink.changed();
+    } catch {
+      // See the doc comment: an unavailable breakdown is not a failed turn.
+    }
+  }
+
   async snapshot(): Promise<SessionSnapshot> {
     await this.scheduleFlush();
     const { items, hasMore } = await this.store.tail(this._state.id);
@@ -429,6 +489,7 @@ export class AgentSession {
           // otherwise.
           this.setStatus(this.pending.size > 0 ? 'awaiting-approval' : 'idle');
           void this.scheduleFlush();
+          void this.refreshContextPercent();
         }
         return;
     }

@@ -315,6 +315,28 @@ suite('ClaudeProvider (lazy start)', () => {
     );
     await run.dispose();
   });
+
+  test('contextBreakdown()/usageWindows() reject before the first send()', async () => {
+    const fake = fakeLoadQuery();
+    const provider = new ClaudeProvider(fake.load as never);
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+
+    await assert.rejects(() => run.contextBreakdown!(), /has not started yet/);
+    await assert.rejects(() => run.usageWindows!(), /has not started yet/);
+    await run.dispose();
+  });
+
+  test('usageWindows() rejects with a legible message when the provider does not expose the experimental usage method', async () => {
+    const fake = fakeLoadQuery();
+    const provider = new ClaudeProvider(fake.load as never);
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+
+    run.send('go');
+    await flushMicrotasks();
+
+    await assert.rejects(() => run.usageWindows!(), /does not report plan usage/);
+    await run.dispose();
+  });
 });
 
 suite('ClaudeProvider mcpServerStatus pull', () => {
