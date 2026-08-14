@@ -1,7 +1,7 @@
 import { AgentSession, type SessionSink } from './agent-session';
 import { catalogKey, CatalogService } from './catalog-service';
 import type { StoredIndex, TranscriptStore } from './transcript-store';
-import type { AgentProvider, EffortLevel, Invocable, UsageWindow } from '../providers/types';
+import type { AgentProvider, EffortLevel, Invocable, ModelInfo, UsageWindow } from '../providers/types';
 import { findModel, resolveEffort } from '../shared/model-catalog';
 import { orderWindows } from '../shared/usage-windows';
 import type {
@@ -85,6 +85,23 @@ export class SessionManager implements SessionSink {
    * never states anything the last refresh did not.
    */
   private probeFailures = new Map<string, string>();
+  /**
+   * providerId -> the model list its last successful probe returned, restored
+   * from disk at `init()`.
+   *
+   * Unlike `probeFailures` this IS persisted, and the asymmetry is the point.
+   * A restored *failure* would assert something about an install nobody has
+   * checked this launch. A restored *model list* asserts only what the
+   * backend last said, and it buys the thing a cold panel otherwise cannot
+   * have: a working model switcher during the second before the probe lands,
+   * instead of every restored pane coming up read-only because `catalog()`
+   * is still empty.
+   *
+   * Consulted only while a provider's own `listModels()` is empty, and
+   * dropped by `refreshModels` as soon as that probe answers either way — so
+   * it never outlives the first real answer of the session.
+   */
+  private seededModels = new Map<string, ModelInfo[]>();
   private readonly catalogSvc = new CatalogService(
     (key, entries) => { this.fanOutCatalog(key, entries); },
   );
@@ -117,6 +134,15 @@ export class SessionManager implements SessionSink {
     for (const [providerId, windows] of Object.entries(usage.providers)) {
       this.usage.set(providerId, new Map(windows.map((w) => [w.id, w])));
     }
+
+    // A seed for a provider this build no longer configures is harmless and
+    // needs no filtering here: every reader — `modelsFor`, and through it
+    // `catalog()` and `catalogSnapshot()` — iterates `this.providers`, so an
+    // orphan is never read and never rewritten.
+    const catalog = await this.store.readCatalog();
+    for (const [providerId, models] of Object.entries(catalog.providers)) {
+      this.seededModels.set(providerId, models);
+    }
   }
 
   /**
@@ -128,8 +154,33 @@ export class SessionManager implements SessionSink {
    */
   catalog(): ProviderInfo[] {
     return [...this.providers.values()]
-      .map((p) => ({ id: p.id, displayName: p.displayName, models: p.listModels() }))
+      .map((p) => ({ id: p.id, displayName: p.displayName, models: this.modelsFor(p) }))
       .filter((p) => p.models.length > 0);
+  }
+
+  /**
+   * What this provider can offer right now: its own list when it has one,
+   * otherwise the seed restored from disk.
+   *
+   * The order is not interchangeable. A live list is what the backend said
+   * this launch; a seed is what it said last launch. The moment the former
+   * exists the latter is not a fallback but a contradiction — and
+   * `refreshModels` has already deleted it by then, so this only ever reads a
+   * seed no probe has answered for yet.
+   */
+  private modelsFor(p: AgentProvider): ModelInfo[] {
+    const live = p.listModels();
+    return live.length > 0 ? live : this.seededModels.get(p.id) ?? [];
+  }
+
+  /** Every provider's usable model list, for `catalog.json`. */
+  private catalogSnapshot(): Record<string, ModelInfo[]> {
+    const out: Record<string, ModelInfo[]> = {};
+    for (const p of this.providers.values()) {
+      const models = this.modelsFor(p);
+      if (models.length > 0) { out[p.id] = models; }
+    }
+    return out;
   }
 
   /**
@@ -139,7 +190,7 @@ export class SessionManager implements SessionSink {
    */
   unavailable(): UnavailableProvider[] {
     return [...this.providers.values()]
-      .filter((p) => p.listModels().length === 0 && this.probeFailures.has(p.id))
+      .filter((p) => this.modelsFor(p).length === 0 && this.probeFailures.has(p.id))
       .map((p) => ({
         id: p.id, displayName: p.displayName, reason: this.probeFailures.get(p.id)!,
       }));
@@ -173,13 +224,22 @@ export class SessionManager implements SessionSink {
       .map((p) => Promise.resolve().then(() => p.fetchModels!(cwd)).then(
         // Success clears any recorded failure: a reason that outlives the
         // failure it describes is a lie about the install.
-        () => { this.probeFailures.delete(p.id); },
+        // Success clears the seed as well: the provider now has a live list,
+        // and keeping a stand-in for an answer that has arrived is how a
+        // cache starts disagreeing with the thing it caches.
+        () => { this.probeFailures.delete(p.id); this.seededModels.delete(p.id); },
         (err: unknown) => {
           // Errors are state, never exceptions — and the state here is "this
           // provider cannot be picked, and here is why". Still worth a
           // developer-facing trace: the panel shows one line, not a stack.
           console.warn('[hiiiid-code] session-manager: model probe failed for', p.id, err);
           this.probeFailures.set(p.id, err instanceof Error ? err.message : String(err));
+          // Drop the seed for the same reason a stale `probeFailures` entry is
+          // dropped on success: the probe has now answered, and a model list
+          // that outlives the install it came from is a lie the picker would
+          // otherwise keep telling. The provider falls to `unavailable()` with
+          // the real reason.
+          this.seededModels.delete(p.id);
         },
       ));
     if (probes.length === 0) { return; }
@@ -187,6 +247,9 @@ export class SessionManager implements SessionSink {
     await Promise.all(probes);
     if (this.disposed) { return; }
     this.emit({ t: 'catalog', catalog: this.catalog(), unavailable: this.unavailable() });
+    // Record what the backend just said, so the next launch's panel comes up
+    // with a live model switcher instead of waiting on this same probe.
+    this.schedulePersist();
   }
 
   /**
@@ -272,7 +335,13 @@ export class SessionManager implements SessionSink {
     const provider = this.providers.get(providerId);
     if (!provider) { throw new Error(`Unknown provider: ${providerId}`); }
 
-    const models = provider.listModels();
+    // The seed counts here, deliberately: this reads the same list `catalog()`
+    // published, so a provider the panel showed as pickable is pickable. The
+    // alternative — offer it, then refuse it — is a worse failure than the one
+    // this admits, which is a session created against an install whose probe
+    // has not answered yet. That one surfaces as a session in `error` with a
+    // transcript item, which is how every other provider failure surfaces.
+    const models = this.modelsFor(provider);
     // Availability, checked at the one point where it matters. The webview
     // already hides an unavailable provider, so reaching here means a stale
     // catalog or a message we did not send ourselves — either way, creating
@@ -660,6 +729,7 @@ export class SessionManager implements SessionSink {
     // usageSnapshot() prunes reset windows on the way out, so a file written
     // now cannot resurrect one on the next load.
     await this.store.writeUsage({ providers: this.usageSnapshot() });
+    await this.store.writeCatalog({ providers: this.catalogSnapshot() });
     // Deviation from the brief: TranscriptStore.flush() previously was not
     // safe to call concurrently for the same session id from two different
     // call sites. AgentSession serializes *its own* flush() calls through an

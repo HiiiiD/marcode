@@ -116,6 +116,62 @@ suite('TranscriptStore', () => {
     });
   });
 
+  test('the model catalog round-trips through its own file', async () => {
+    const store = new TranscriptStore(dir);
+    await store.writeCatalog({
+      providers: {
+        claude: [
+          { id: 'opus', displayName: 'Opus 5', resolvedModel: 'claude-opus-5' },
+          { id: 'haiku', displayName: 'Haiku 4.5', effort: { levels: ['low', 'high'], default: 'low' } },
+        ],
+      },
+    });
+    assert.deepStrictEqual(await new TranscriptStore(dir).readCatalog(), {
+      providers: {
+        claude: [
+          { id: 'opus', displayName: 'Opus 5', resolvedModel: 'claude-opus-5' },
+          { id: 'haiku', displayName: 'Haiku 4.5', effort: { levels: ['low', 'high'], default: 'low' } },
+        ],
+      },
+    });
+  });
+
+  test('a missing, unreadable or wrongly-shaped catalog file is an empty set, not a throw', async () => {
+    assert.deepStrictEqual(await new TranscriptStore(dir).readCatalog(), { providers: {} });
+
+    await fs.writeFile(path.join(dir, 'catalog.json'), '{ not json', 'utf8');
+    assert.deepStrictEqual(await new TranscriptStore(dir).readCatalog(), { providers: {} });
+
+    await fs.writeFile(path.join(dir, 'catalog.json'), JSON.stringify({ providers: 'oops' }), 'utf8');
+    assert.deepStrictEqual(await new TranscriptStore(dir).readCatalog(), { providers: {} });
+
+    await fs.writeFile(
+      path.join(dir, 'catalog.json'),
+      JSON.stringify({ providers: { claude: 'oops' } }),
+      'utf8',
+    );
+    assert.deepStrictEqual(await new TranscriptStore(dir).readCatalog(), { providers: {} });
+  });
+
+  test('a catalog row that could not be rendered or matched is dropped, not the file', async () => {
+    // `findModel` reads `.id`/`.resolvedModel` and the picker renders
+    // `.displayName`; a row missing either is unusable, but a valid sibling
+    // in the same array must still survive — the same containment
+    // `readUsage` applies to a malformed window.
+    await fs.writeFile(
+      path.join(dir, 'catalog.json'),
+      JSON.stringify({
+        providers: {
+          claude: [null, { id: 'opus' }, { displayName: 'Nameless' }, { id: 'haiku', displayName: 'Haiku 4.5' }],
+        },
+      }),
+      'utf8',
+    );
+    assert.deepStrictEqual(await new TranscriptStore(dir).readCatalog(), {
+      providers: { claude: [{ id: 'haiku', displayName: 'Haiku 4.5' }] },
+    });
+  });
+
   test('a missing or unreadable usage file is an empty set, not a throw', async () => {
     assert.deepStrictEqual(await new TranscriptStore(dir).readUsage(), { providers: {} });
     await fs.writeFile(path.join(dir, 'usage.json'), '{ not json', 'utf8');

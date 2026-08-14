@@ -115,6 +115,14 @@ These are not style preferences. Breaking one breaks the design.
   `SessionManager.catalog()` carries only providers with models, `create()` refuses the
   rest, and `unavailable()` carries them with the reason their last probe gave.
   Re-probing (`refreshModels`) is the whole mechanism for re-checking an install.
+  The one permitted stand-in is `SessionManager.seededModels`, restored from
+  `catalog.json`: the list a provider's **last successful probe** returned, consulted only
+  while its own `listModels()` is still empty. It exists because hydrate ships whatever
+  `catalog()` says at `ready`, and without it every restored pane spends the first second
+  read-only with a dead model switcher. It is a stand-in for an answer, never a substitute
+  for one — `refreshModels` deletes it the moment the probe replies, success or failure, so
+  it cannot survive one real answer. A **failure** is still never persisted: a restored
+  reason would describe an install nobody checked this launch.
 - **Usage and context surfaces show percentages, never token counts.** Tokens exist only
   inside `src/providers/claude/map-context.ts`, which converts them on the way out.
 - **Plan usage is pulled, never read off `rate_limit_event`.** That event carries no
