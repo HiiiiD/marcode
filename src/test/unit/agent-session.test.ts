@@ -124,8 +124,6 @@ class RecordingSink implements SessionSink {
    * (Invocable[][]) the brief's `sink.invocables` would have.
    */
   invocablesLog: Invocable[][] = [];
-  /** Recorded as (providerId, window) pairs — usage is keyed by provider. */
-  usageLog: { providerId: string; window: UsageWindow }[] = [];
   /** Every whole-set pull reported up, in order. */
   usageWindowSets: { providerId: string; windows: UsageWindow[] | undefined }[] = [];
   patch(id: SessionId, patch: TranscriptPatch) { this.patches.push({ id, patch }); }
@@ -133,9 +131,6 @@ class RecordingSink implements SessionSink {
   mcp(_id: SessionId, servers: unknown[]) { this.servers.push(servers); }
   changed() { this.changes++; }
   invocables(_id: SessionId, entries: Invocable[]) { this.invocablesLog.push(entries); }
-  usageWindow(providerId: string, window: UsageWindow) {
-    this.usageLog.push({ providerId, window });
-  }
   usageWindows(providerId: string, windows: UsageWindow[] | undefined) {
     this.usageWindowSets.push({ providerId, windows });
   }
@@ -623,17 +618,6 @@ suite('AgentSession', () => {
     await session.contextBreakdown();
     assert.strictEqual(session.state.contextPercent, 43);
     assert.ok(sink.changes > 0);
-    await session.dispose();
-  });
-
-  test('a usage-window event reaches the sink under this session provider id', async () => {
-    const { provider, sink: localSink, session } = makeSession();
-    const window = { id: 'five-hour', label: 'Session (5h)', usedPercent: 62 };
-
-    provider.runs[0].emit({ kind: 'usage-window', window });
-    await settle();
-
-    assert.deepStrictEqual(localSink.usageLog, [{ providerId: 'fake', window }]);
     await session.dispose();
   });
 

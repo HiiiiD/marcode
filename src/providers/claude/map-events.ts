@@ -116,16 +116,15 @@
 //     through the same child map that tool-start populated.
 //   - `{ type: 'rate_limit_event', rate_limit_info: SDKRateLimitInfo, ... }`
 //     (sdk.d.ts:4408) — pushed by the CLI whenever plan/account usage moves,
-//     unprompted, including once shortly after connect. Mapped via
-//     `toUsageWindow` (map-context.ts) to `{ kind: 'usage-window', window }`.
-//     `rate_limit_info.resetsAt` is epoch ms, NOT the ISO string the old
-//     experimental usage response carried under the same name — do not reuse
-//     `resetsAt()` from map-context.ts's ISO parsing path here. One event
-//     describes one window, never the whole set, so the host accumulates
-//     these over time rather than treating any single event as a snapshot.
+//     unprompted, including once shortly after connect. It carries no
+//     utilization percentage at steady state (only `status` is required,
+//     sdk.d.ts:4421), so it is treated as a bare signal — `{ kind:
+//     'usage-stale' }` — rather than data: it tells the host a pull is
+//     worth making, and `AgentRun.usageWindows()` (backed by the structured
+//     usage response, mapped through `toUsageWindows` in map-context.ts) is
+//     what actually answers with numbers.
 import type { AgentEvent, McpServerStatus } from '../types';
 import { toInvocables } from './map-commands';
-import { toUsageWindow, type RateLimitInfoLike } from './map-context';
 import { redactSecrets } from './redact';
 
 interface Block {
@@ -281,13 +280,14 @@ export function mapEvent(msg: unknown): AgentEvent[] {
   }
 
   if (type === 'rate_limit_event') {
-    // Pushed by the CLI whenever plan usage moves — including once shortly
-    // after connect, which is what lets the strip show real numbers without
-    // anyone having sent a message.
-    const window = toUsageWindow(
-      (msg as { rate_limit_info?: RateLimitInfoLike }).rate_limit_info,
-    );
-    return window ? [{ kind: 'usage-window', window }] : [];
+    // A signal, not data. The CLI pushes this whenever rate-limit info
+    // changes, which is exactly when a pull is worth making — but the
+    // payload carries no utilization at steady state (only `status` is
+    // required, sdk.d.ts:4421), and its `resetsAt` is epoch SECONDS while
+    // its `utilization`, when present at all, is a 0-1 fraction. Both
+    // disagree with the structured response the numbers actually come from.
+    // Reading values off it is what left the strip permanently blank.
+    return [{ kind: 'usage-stale' }];
   }
 
   return [];

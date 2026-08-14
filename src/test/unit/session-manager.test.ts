@@ -579,14 +579,15 @@ suite('SessionManager', () => {
     await local.dispose();
   });
 
-  test('a pushed window is broadcast ungated, ordered, and keyed by provider', async () => {
+  test('a reported set is broadcast ungated, ordered, and keyed by provider', async () => {
     // The session is deliberately NOT made visible: account usage is not a
     // per-pane concern, so this must go out anyway.
-    const { manager: local, provider, emitted } = await makeManager();
+    const { manager: local, emitted } = await makeManager();
     await local.create('fake', '/w');
-    const run = provider.runs.at(-1)!;
-    run.emit({ kind: 'usage-window', window: { id: 'seven-day', label: 'Week', usedPercent: 18 } });
-    run.emit({ kind: 'usage-window', window: { id: 'five-hour', label: 'Session (5h)', usedPercent: 62 } });
+    local.usageWindows('fake', [
+      { id: 'seven-day', label: 'Week', usedPercent: 18 },
+      { id: 'five-hour', label: 'Session (5h)', usedPercent: 62 },
+    ]);
     await settle();
 
     const last = emitted.filter((m) => m.t === 'usage-windows').at(-1);
@@ -598,34 +599,6 @@ suite('SessionManager', () => {
         { id: 'seven-day', label: 'Week', usedPercent: 18 },
       ],
     });
-  });
-
-  test('a second event for the same window replaces rather than appends', async () => {
-    const { manager: local, provider, emitted } = await makeManager();
-    await local.create('fake', '/w');
-    const run = provider.runs.at(-1)!;
-    run.emit({ kind: 'usage-window', window: { id: 'five-hour', label: 'Session (5h)', usedPercent: 62 } });
-    run.emit({ kind: 'usage-window', window: { id: 'five-hour', label: 'Session (5h)', usedPercent: 71 } });
-    await settle();
-
-    const last = emitted.filter((m) => m.t === 'usage-windows').at(-1);
-    assert.deepStrictEqual(last!.windows, [
-      { id: 'five-hour', label: 'Session (5h)', usedPercent: 71 },
-    ]);
-  });
-
-  test('an unchanged window emits nothing — the strip must not churn', async () => {
-    const { manager: local, provider, emitted } = await makeManager();
-    await local.create('fake', '/w');
-    const run = provider.runs.at(-1)!;
-    const window = { id: 'five-hour', label: 'Session (5h)', usedPercent: 62 };
-    run.emit({ kind: 'usage-window', window });
-    await settle();
-    const before = emitted.filter((m) => m.t === 'usage-windows').length;
-
-    run.emit({ kind: 'usage-window', window: { ...window } });
-    await settle();
-    assert.strictEqual(emitted.filter((m) => m.t === 'usage-windows').length, before);
   });
 
   test('a reported set replaces the provider set wholesale', async () => {
@@ -687,44 +660,19 @@ suite('SessionManager', () => {
   });
 
   test('a window past its reset is dropped rather than shown stale', async () => {
-    const { manager: local, provider } = await makeManager();
-    await local.create('fake', '/w');
-    const run = provider.runs.at(-1)!;
-    run.emit({
-      kind: 'usage-window',
-      window: { id: 'five-hour', label: 'Session (5h)', usedPercent: 62, resetsAt: Date.now() - 1 },
-    });
-    await settle();
+    const { manager: local } = await makeManager();
+    local.usageWindows('fake', [
+      { id: 'five-hour', label: 'Session (5h)', usedPercent: 62, resetsAt: Date.now() - 1 },
+    ]);
 
     assert.deepStrictEqual(local.usageSnapshot(), { fake: [] });
   });
 
-  test('two sessions of one provider feed the same account map', async () => {
-    const { manager: local, provider } = await makeManager();
-    await local.create('fake', '/w');
-    const first = provider.runs.at(-1)!;
-    await local.create('fake', '/w');
-    const second = provider.runs.at(-1)!;
-    first.emit({ kind: 'usage-window', window: { id: 'five-hour', label: 'Session (5h)', usedPercent: 62 } });
-    second.emit({ kind: 'usage-window', window: { id: 'seven-day', label: 'Week', usedPercent: 18 } });
-    await settle();
-
-    assert.deepStrictEqual(
-      local.usageSnapshot().fake.map((w) => w.id), ['five-hour', 'seven-day'],
-    );
-  });
-
   test('the window set survives a reload, minus anything already reset', async () => {
-    await manager.create('fake', '/w');
-    const run = provider.runs.at(-1)!;
-    run.emit({
-      kind: 'usage-window',
-      window: { id: 'five-hour', label: 'Session (5h)', usedPercent: 62, resetsAt: Date.now() + 3_600_000 },
-    });
-    run.emit({
-      kind: 'usage-window',
-      window: { id: 'seven-day', label: 'Week', usedPercent: 18, resetsAt: Date.now() - 1 },
-    });
+    manager.usageWindows('fake', [
+      { id: 'five-hour', label: 'Session (5h)', usedPercent: 62, resetsAt: Date.now() + 3_600_000 },
+      { id: 'seven-day', label: 'Week', usedPercent: 18, resetsAt: Date.now() - 1 },
+    ]);
     await settle();
     await manager.dispose();
 

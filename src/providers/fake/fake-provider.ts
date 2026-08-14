@@ -135,12 +135,8 @@ export class FakeProvider implements AgentProvider {
         (this.reports.usageUnavailable ? undefined : (this.reports.windows ?? [])),
     };
     this.runs.push(run);
-    const { context, windows } = this.reports;
+    const { context } = this.reports;
     if (context) { run.contextBreakdown = async () => context; }
-    // Pushed at start, before any send — which is exactly the case the real
-    // provider has to serve after a window reload, and the case the pull
-    // shape could not.
-    for (const window of windows ?? []) { channel.push({ kind: 'usage-window', window }); }
     return run;
   }
 

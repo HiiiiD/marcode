@@ -1,5 +1,5 @@
 import * as assert from 'assert';
-import { toContextBreakdown, toUsageWindow, toUsageWindows, UsageResponseLike } from '../../providers/claude/map-context';
+import { toContextBreakdown, toUsageWindows, UsageResponseLike } from '../../providers/claude/map-context';
 
 suite('map-context', () => {
   test('splits the window into system, memory, conversation and free', () => {
@@ -170,39 +170,6 @@ suite('map-context', () => {
     });
     assert.strictEqual(b.memoryFiles.length, 2);
     assert.strictEqual(b.memoryFiles[1].percent, 0);
-  });
-});
-
-suite('toUsageWindow', () => {
-  test('maps a five-hour event to the table id and label', () => {
-    assert.deepStrictEqual(
-      toUsageWindow({ rateLimitType: 'five_hour', utilization: 62, resetsAt: 1_700_000_000_000 }),
-      { id: 'five-hour', label: 'Session (5h)', usedPercent: 62, resetsAt: 1_700_000_000_000 },
-    );
-  });
-
-  test('rounds and clamps utilization into 0..100', () => {
-    assert.strictEqual(toUsageWindow({ rateLimitType: 'seven_day', utilization: 18.4 })?.usedPercent, 18);
-    assert.strictEqual(toUsageWindow({ rateLimitType: 'seven_day', utilization: 140 })?.usedPercent, 100);
-    assert.strictEqual(toUsageWindow({ rateLimitType: 'seven_day', utilization: -3 })?.usedPercent, 0);
-  });
-
-  test('omits resetsAt rather than carrying a non-finite one', () => {
-    const w = toUsageWindow({ rateLimitType: 'seven_day_opus', utilization: 5, resetsAt: Number.NaN });
-    assert.deepStrictEqual(w, { id: 'seven-day-opus', label: 'Week (Opus)', usedPercent: 5 });
-  });
-
-  test('drops an event with no utilization — there is no percentage to show', () => {
-    assert.strictEqual(toUsageWindow({ rateLimitType: 'five_hour' }), undefined);
-  });
-
-  test('drops an event with no rateLimitType, and the overage types, rather than guessing a label', () => {
-    assert.strictEqual(toUsageWindow({ utilization: 40 }), undefined);
-    assert.strictEqual(toUsageWindow({ rateLimitType: 'overage', utilization: 40 }), undefined);
-    assert.strictEqual(
-      toUsageWindow({ rateLimitType: 'seven_day_overage_included', utilization: 40 }), undefined,
-    );
-    assert.strictEqual(toUsageWindow(undefined), undefined);
   });
 });
 

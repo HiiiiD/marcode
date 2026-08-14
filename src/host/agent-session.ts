@@ -25,13 +25,6 @@ export interface SessionSink {
    */
   invocables(id: SessionId, entries: Invocable[]): void;
   /**
-   * A running session reported an account usage window. Keyed by provider,
-   * not by session: plan limits belong to the account, and every session of
-   * that provider reports the same numbers. Goes UP to the manager, which
-   * owns the map, exactly like `invocables`.
-   */
-  usageWindow(providerId: string, window: UsageWindow): void;
-  /**
    * A session pulled a whole window set for its provider. Keyed by provider,
    * not by session: plan limits belong to the account. A whole set, not one
    * window, because a pull is a snapshot — see SessionManager.usageWindows.
@@ -531,10 +524,6 @@ export class AgentSession {
           inputTokens: event.inputTokens, outputTokens: event.outputTokens,
         };
         this.sink.changed();
-        return;
-
-      case 'usage-window':
-        this.sink.usageWindow(this._state.providerId, event.window);
         return;
 
       case 'usage-stale':

@@ -90,28 +90,6 @@ suite('FakeProvider', () => {
 
     await assert.rejects(() => provider.listInvocables('/repo'), /no catalog/);
   });
-  
-  test('scripted windows arrive as usage-window events before any send', async () => {
-    const provider = new FakeProvider(undefined, {
-      windows: [{ id: 'five-hour', label: 'Session (5h)', usedPercent: 62 }],
-    });
-    const run = provider.start({ cwd: '/w', permissionMode: 'default' });
-    const it = run.events[Symbol.asyncIterator]();
-    assert.deepStrictEqual((await it.next()).value, {
-      kind: 'usage-window',
-      window: { id: 'five-hour', label: 'Session (5h)', usedPercent: 62 },
-    });
-    await run.dispose();
-  });
-
-  test('an unscripted fake emits no usage-window events', async () => {
-    const provider = new FakeProvider();
-    const run = provider.start({ cwd: '/w', permissionMode: 'default' });
-    const events: AgentEvent[] = [];
-    void (async () => { for await (const e of run.events) { events.push(e); } })();
-    await run.dispose();
-    assert.ok(!events.some((e) => e.kind === 'usage-window'));
-  });
 
   test('fetchUsage reports the scripted windows and records the cwd', async () => {
     const windows = [{ id: 'five-hour', label: 'Session (5h)', usedPercent: 40 }];

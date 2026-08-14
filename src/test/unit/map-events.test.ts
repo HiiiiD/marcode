@@ -270,22 +270,23 @@ suite('mapEvent', () => {
 });
 
 suite('rate_limit_event', () => {
-  test('maps to a single usage-window event', () => {
+  test('a rate_limit_event is a stale signal, whatever it carries', () => {
+    // The real payload from a subscription account on 2026-08-14. It carries
+    // no utilization at steady state, which is why nothing reads its values.
     assert.deepStrictEqual(
       mapEvent({
         type: 'rate_limit_event',
-        session_id: 's1',
-        rate_limit_info: { status: 'allowed', rateLimitType: 'five_hour', utilization: 62 },
+        rate_limit_info: {
+          status: 'allowed', resetsAt: 1786727400, rateLimitType: 'five_hour',
+          overageStatus: 'rejected', overageDisabledReason: 'out_of_credits',
+          isUsingOverage: false,
+        },
       }),
-      [{ kind: 'usage-window', window: { id: 'five-hour', label: 'Session (5h)', usedPercent: 62 } }],
+      [{ kind: 'usage-stale' }],
     );
   });
 
-  test('an unlabelable or unquantifiable event maps to nothing', () => {
-    assert.deepStrictEqual(
-      mapEvent({ type: 'rate_limit_event', session_id: 's1', rate_limit_info: { status: 'allowed' } }),
-      [],
-    );
-    assert.deepStrictEqual(mapEvent({ type: 'rate_limit_event', session_id: 's1' }), []);
+  test('a rate_limit_event with no info is still a stale signal', () => {
+    assert.deepStrictEqual(mapEvent({ type: 'rate_limit_event' }), [{ kind: 'usage-stale' }]);
   });
 });

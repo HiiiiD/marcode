@@ -51,11 +51,7 @@ suite('MessageRouter', () => {
 
   test('ready carries the manager\'s current usage snapshot on hydrate', async () => {
     await manager.create('fake', '/tmp');
-    const run = provider.runs.at(-1)!;
-    run.emit({
-      kind: 'usage-window',
-      window: { id: 'five-hour', label: 'Session (5h)', usedPercent: 62 },
-    });
+    manager.usageWindows('fake', [{ id: 'five-hour', label: 'Session (5h)', usedPercent: 62 }]);
     await settle();
 
     await router.handle({ t: 'ready' });

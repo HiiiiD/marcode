@@ -128,13 +128,6 @@ export type AgentEvent =
   | { kind: 'turn-end'; reason: 'done' | 'interrupted' | 'error'; error?: string }
   | { kind: 'usage'; inputTokens: number; outputTokens: number }
   /**
-   * One account/plan usage window moved. Pushed, not polled: the SDK emits
-   * `rate_limit_event` whenever rate-limit info changes, so the host holds
-   * the last value per window rather than asking a live query for it. One
-   * event carries one window — never the whole set.
-   */
-  | { kind: 'usage-window'; window: UsageWindow }
-  /**
    * The provider believes its plan usage has moved and a pull is due.
    *
    * Carries no data on purpose. `rate_limit_event`, which raises this, does

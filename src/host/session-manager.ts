@@ -509,23 +509,6 @@ export class SessionManager implements SessionSink {
     this.catalogSvc.set(this.keyOf(state), entries);
   }
 
-  usageWindow(providerId: string, window: UsageWindow): void {
-    const known = this.usage.get(providerId) ?? new Map<string, UsageWindow>();
-    const prev = known.get(window.id);
-    // Identical repeats are ordinary: the CLI re-announces rate-limit info
-    // on reconnect, and re-broadcasting an unchanged set would re-render the
-    // strip for nothing. `label` is deliberately not compared — it is derived
-    // from `id` through the fixed WINDOW_LABELS table, so two windows with the
-    // same id always carry the same label and it cannot differ on its own.
-    if (prev && prev.usedPercent === window.usedPercent && prev.resetsAt === window.resetsAt) {
-      return;
-    }
-    known.set(window.id, window);
-    this.usage.set(providerId, known);
-    this.emit({ t: 'usage-windows', providerId, windows: this.windowsFor(providerId) });
-    this.schedulePersist();
-  }
-
   usageWindows(providerId: string, windows: UsageWindow[] | undefined): void {
     // A pull is a snapshot, so it REPLACES the provider's map rather than
     // upserting into it — that is what lets a window the account stopped

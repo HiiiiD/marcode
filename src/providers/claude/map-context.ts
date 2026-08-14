@@ -125,49 +125,15 @@ const WINDOW_LABELS: { key: 'five_hour' | 'seven_day' | 'seven_day_opus' | 'seve
 ];
 
 /**
- * The subset of `SDKRateLimitInfo` (sdk.d.ts:4421) this mapper reads,
- * declared structurally for the same reason `ContextUsageLike` is. Note
- * `resetsAt` is epoch ms here — the experimental usage response this module
- * used to read carried an ISO string instead, which is why nothing parses.
- */
-export interface RateLimitInfoLike {
-  rateLimitType?: string;
-  utilization?: number;
-  resetsAt?: number;
-}
-
-/**
- * One `rate_limit_event` describes one window. An event we cannot label
- * (`overage`, `seven_day_overage_included`, or a type a future SDK adds) or
- * cannot quantify (no `utilization`) produces nothing: a chip with a guessed
- * label or an invented percentage is worse than a chip that is not there.
- */
-export function toUsageWindow(info: RateLimitInfoLike | undefined): UsageWindow | undefined {
-  if (!info) { return undefined; }
-  const row = WINDOW_LABELS.find((w) => w.key === info.rateLimitType);
-  if (!row) { return undefined; }
-  if (typeof info.utilization !== 'number' || !Number.isFinite(info.utilization)) { return undefined; }
-  const at = typeof info.resetsAt === 'number' && Number.isFinite(info.resetsAt)
-    ? info.resetsAt
-    : undefined;
-  return {
-    id: row.id,
-    label: row.label,
-    usedPercent: Math.max(0, Math.min(100, Math.round(info.utilization))),
-    ...(at !== undefined ? { resetsAt: at } : {}),
-  };
-}
-
-/**
  * The subset of `SDKControlGetUsageResponse` (sdk.d.ts:3351) this mapper
  * reads, declared structurally for the same reason `ContextUsageLike` is.
  *
- * Two traps, both proven live and both the reason this is a separate mapper
- * from `toUsageWindow`:
- *   - `resets_at` is an ISO 8601 string here. The `rate_limit_event` push
+ * Two traps, both proven live:
+ *   - `resets_at` is an ISO 8601 string here. The `rate_limit_event` signal
  *     carries epoch SECONDS under the same name. Neither is epoch ms.
- *   - `utilization` is already 0-100 here. The push's is a 0-1 fraction.
- *     Scaling this one would render 6200% for a 62% window.
+ *   - `utilization` is already 0-100 here. The signal's, when present at
+ *     all, is a 0-1 fraction. Scaling this one would render 6200% for a 62%
+ *     window.
  */
 export interface UsageResponseLike {
   rate_limits_available?: boolean;
