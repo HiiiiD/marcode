@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { InputGroup, InputGroupAddon, InputGroupTextarea } from "@/components/ui/input-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { SendHorizontal, Slash, Square } from "lucide-react";
+import { SendHorizontal, Square } from "lucide-react";
 import { useRef, useState } from "react";
 import type { EffortLevel, Invocable, ModelInfo, PermissionMode } from "../../protocol/messages";
 import { insertionFor, menuKeyAction, menuQuery, menuView, nextIndex } from "../lib/invocable-menu";
@@ -219,7 +219,7 @@ export function Composer({ pane, model }: { pane: PaneState; model: ModelInfo | 
           */}
           {entries.length > 0 && (
             <Button
-              variant="ghost"
+              variant="outline"
               size="icon-xs"
               aria-label="Skills and commands"
               // Same disabled-with-a-reason contract as Send and the bypass
@@ -233,7 +233,7 @@ export function Composer({ pane, model }: { pane: PaneState; model: ModelInfo | 
               title={menuBlocked ? undefined : "Skills and commands"}
               onClick={openMenu}
             >
-              <Slash />
+              <span>/</span>
             </Button>
           )}
           {entries.length > 0 && menuBlocked && (
