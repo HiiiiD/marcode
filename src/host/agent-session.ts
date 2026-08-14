@@ -271,6 +271,11 @@ export class AgentSession {
     }
     const breakdown = await this.run.contextBreakdown();
     this.rememberMemoryFiles(breakdown);
+    // A live answer supersedes whatever the last turn recorded, so the
+    // cache a reloaded window will read is updated here too. No
+    // `sink.changed()`: this is a pull nobody else is waiting on, and the
+    // next roster change carries it to disk.
+    this._state.lastContext = breakdown;
     return breakdown;
   }
 
@@ -307,9 +312,18 @@ export class AgentSession {
     try {
       const breakdown = await this.run.contextBreakdown?.();
       if (!breakdown || this.disposed) { return; }
+      this.rememberMemoryFiles(breakdown);
       const next = Math.round(100 - breakdown.freePercent);
-      if (this._state.contextPercent === next) { return; }
+      // The percentage can be unchanged while the inventory behind it is
+      // not — one memory file added and another dropped, say — and the
+      // stored breakdown is what a reloaded window answers `request-context`
+      // from. So the guard covers both, and `changed()` (which is what
+      // schedules the write to index.json) fires whenever either moved.
+      const same = this._state.contextPercent === next
+        && JSON.stringify(this._state.lastContext) === JSON.stringify(breakdown);
+      if (same) { return; }
       this._state.contextPercent = next;
+      this._state.lastContext = breakdown;
       this._state.updatedAt = Date.now();
       this.sink.changed();
     } catch {

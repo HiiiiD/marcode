@@ -13,6 +13,21 @@ function newSessionId(): string {
   return `s-${Date.now().toString(36)}-${(counter++).toString(36)}`;
 }
 
+/**
+ * Rejects with `reason` if `work` has not settled within `ms`. The timer is
+ * cleared either way: a pending `setTimeout` would otherwise keep the
+ * extension host's event loop alive past dispose.
+ */
+function withTimeout<T>(work: Promise<T>, ms: number, reason: string): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  const bound = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(reason)), ms);
+  });
+  return Promise.race([work, bound]).finally(() => {
+    if (timer) { clearTimeout(timer); }
+  }) as Promise<T>;
+}
+
 export class SessionManager implements SessionSink {
   private live = new Map<SessionId, AgentSession>();
   private meta = new Map<SessionId, SessionState>();
@@ -60,6 +75,13 @@ export class SessionManager implements SessionSink {
     private readonly store: TranscriptStore,
     private readonly providers: Map<string, AgentProvider>,
     private readonly emit: (msg: HostToWebview) => void,
+    /**
+     * How long a provider gets to answer `contextBreakdown()` before the
+     * popover is told the answer is unavailable. The SDK call is a control
+     * request to a subprocess that can simply never reply; without a bound,
+     * the webview sits in its loading state for the life of the panel.
+     */
+    private readonly contextTimeoutMs = 5000,
   ) {}
 
   async init(): Promise<void> {
@@ -187,11 +209,26 @@ export class SessionManager implements SessionSink {
    * which is a legitimate not-ok rather than a failure.
    */
   async contextBreakdown(id: SessionId): Promise<ContextResult> {
+    // What the last turn recorded, which for a session with no live query
+    // behind it *is* the current context: the conversation cannot have
+    // changed without a send, and a send builds the query.
+    const remembered = this.meta.get(id)?.lastContext;
     const session = this.live.get(id);
-    if (!session) { return { ok: false, reason: 'This session is not running' }; }
+    if (!session) {
+      if (remembered) { return { ok: true, breakdown: remembered }; }
+      return { ok: false, reason: 'This session is not running' };
+    }
     try {
-      return { ok: true, breakdown: await session.contextBreakdown() };
+      return { ok: true, breakdown: await withTimeout(
+        session.contextBreakdown(),
+        this.contextTimeoutMs,
+        'The provider did not report context usage in time',
+      ) };
     } catch (err) {
+      // The common failure here is a Claude session restored across a
+      // reload: its run is constructed lazily on the first send, so there
+      // is no query to measure yet even though the conversation is intact.
+      if (remembered) { return { ok: true, breakdown: remembered }; }
       return { ok: false, reason: err instanceof Error ? err.message : String(err) };
     }
   }
@@ -230,8 +267,15 @@ export class SessionManager implements SessionSink {
    * no live run — or one that has never answered a breakdown — vouches for
    * nothing, so nothing opens.
    */
+  /**
+   * Also honours the persisted breakdown, not just the live session's: a
+   * resumed session answers `request-context` from `lastContext`, and every
+   * memory file in that answer renders as a link. Vouching only for what a
+   * live run reported would leave each of those links inert.
+   */
   canOpenFile(id: SessionId, path: string): boolean {
-    return this.live.get(id)?.reportedMemoryFile(path) ?? false;
+    if (this.live.get(id)?.reportedMemoryFile(path)) { return true; }
+    return this.meta.get(id)?.lastContext?.memoryFiles.some((f) => f.path === path) ?? false;
   }
 
   async open(id: SessionId): Promise<AgentSession> {

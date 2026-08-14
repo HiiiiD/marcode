@@ -1,6 +1,6 @@
 import { Composer } from "@/components/composer";
 import type { PaneState } from "@/reducer";
-import { screen } from "@testing-library/react";
+import { act, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import * as assert from "assert";
 import type { SessionStatus } from "../../protocol/messages";
@@ -39,6 +39,20 @@ function hydrateOne() {
   });
 }
 
+/**
+ * Base UI's Dialog opens through transitions that resolve on timers outliving
+ * `userEvent.type`'s own `act()` scope, so without this flush its state
+ * updates land after the test body returns and React logs a "not wrapped in
+ * act" warning even though the assertions that follow are correct. Same
+ * treatment as the ContextRing suite.
+ */
+async function settle(): Promise<void> {
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+}
+
 suite("Composer", () => {
   test("Enter posts send and clears the textarea", async () => {
     renderWithStore(<Composer pane={pane()} model={NO_EFFORT} models={[]} />);
@@ -48,6 +62,33 @@ suite("Composer", () => {
 
     assert.deepStrictEqual(posted().at(-1), { t: "send", id: "a", text: "hello" });
     assert.strictEqual(box.value, "");
+  });
+
+  test("/context opens the context dialog instead of sending the command", async () => {
+    renderWithStore(<Composer pane={pane()} model={NO_EFFORT} models={[]} />);
+    const box = screen.getByLabelText("Message") as HTMLTextAreaElement;
+
+    await userEvent.type(box, "/context{Enter}");
+    await settle();
+
+    assert.strictEqual(
+      posted().some((m) => m.t === "send"), false,
+      "the agent must never receive a command the panel answers itself",
+    );
+    assert.deepStrictEqual(posted().at(-1), { t: "request-context", id: "a" });
+    assert.ok(screen.getByText("Context"));
+    assert.strictEqual(box.value, "");
+  });
+
+  test("a message that merely mentions /context is still sent", async () => {
+    renderWithStore(<Composer pane={pane()} model={NO_EFFORT} models={[]} />);
+    const box = screen.getByLabelText("Message");
+
+    await userEvent.type(box, "run /context for me{Enter}");
+
+    assert.deepStrictEqual(
+      posted().at(-1), { t: "send", id: "a", text: "run /context for me" },
+    );
   });
 
   test("Shift+Enter inserts a newline and posts nothing", async () => {

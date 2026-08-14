@@ -67,6 +67,17 @@ export interface SessionState {
    * not report a breakdown.
    */
   contextPercent?: number;
+  /**
+   * The breakdown that `contextPercent` was computed from, kept whole so a
+   * session restored after a reload can still answer `request-context`: the
+   * Claude run is constructed lazily on the first `send()`, so a resumed
+   * conversation has no live query to measure until it is used again, and
+   * nothing about the context can change before that send. Host-side state:
+   * it rides the wire because it lives on `SessionState`, but the webview
+   * reads the breakdown only from the `context-breakdown` reply, which is
+   * the one path that knows whether it came from a live query or the cache.
+   */
+  lastContext?: ContextBreakdown;
   archived: boolean;
   createdAt: number;
   updatedAt: number;

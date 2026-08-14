@@ -432,6 +432,91 @@ suite('SessionManager', () => {
     assert.strictEqual(result.ok, false);
   });
 
+  /**
+   * The persisted breakdown, as index.json would hold it after a turn ended
+   * in a previous window. Lives on SessionState, so it survives a reload the
+   * same way `contextPercent` already does.
+   */
+  const remembered = {
+    systemPercent: 12, memoryPercent: 4, conversationPercent: 27, freePercent: 57,
+    memoryFiles: [{ path: '/repo/CLAUDE.md', percent: 3 }],
+  };
+
+  function storedSession(over: Partial<SessionState> = {}): SessionState {
+    return {
+      id: 's1', providerId: 'fake', model: 'fake-1', title: 'Restored',
+      cwd: '/tmp', status: 'idle', permissionMode: 'default',
+      includeEditorContext: true, usage: { inputTokens: 0, outputTokens: 0 },
+      contextPercent: 43, lastContext: remembered,
+      archived: false, createdAt: 1, updatedAt: 1, ...over,
+    };
+  }
+
+  test('contextBreakdown falls back to the last persisted breakdown', async () => {
+    // The run is lazy: a session restored from index.json has no live query
+    // until its next send, so asking the provider fails. The conversation
+    // has not changed since it was written, which makes the recorded
+    // breakdown the current one.
+    const store2 = new TranscriptStore(dir);
+    await store2.writeIndex({
+      sessions: [storedSession()],
+      layout: { orientation: 'vertical', panes: [] },
+    });
+    const local = new SessionManager(
+      store2, new Map([['fake', new FakeProvider(() => [])]]), () => {},
+    );
+    await local.init();
+
+    const result = await local.contextBreakdown('s1');
+
+    if (!result.ok) { assert.fail(result.reason); }
+    assert.deepStrictEqual(result.breakdown, remembered);
+    await local.dispose();
+  });
+
+  test('canOpenFile vouches for a memory file the persisted breakdown listed', async () => {
+    // The popover renders those paths as links, so a breakdown served from
+    // the cache has to be openable — otherwise every link in it is inert.
+    const store2 = new TranscriptStore(dir);
+    await store2.writeIndex({
+      sessions: [storedSession()],
+      layout: { orientation: 'vertical', panes: [] },
+    });
+    const local = new SessionManager(
+      store2, new Map([['fake', new FakeProvider(() => [])]]), () => {},
+    );
+    await local.init();
+
+    assert.strictEqual(local.canOpenFile('s1', '/repo/CLAUDE.md'), true);
+    assert.strictEqual(local.canOpenFile('s1', '/etc/passwd'), false);
+    await local.dispose();
+  });
+
+  test('contextBreakdown answers not-ok when the provider never replies', async () => {
+    // A hung getContextUsage() would otherwise pin the popover in its
+    // loading state for the life of the webview.
+    const base = new FakeProvider(() => []);
+    const provider: AgentProvider = {
+      id: base.id,
+      displayName: base.displayName,
+      listModels: () => base.listModels(),
+      start: (opts) => ({
+        ...base.start(opts),
+        contextBreakdown: () => new Promise<never>(() => {}),
+      }),
+    };
+    const local = new SessionManager(
+      new TranscriptStore(dir), new Map([['fake', provider]]), () => {}, 20,
+    );
+    await local.init();
+    const session = await local.create('fake', '/tmp');
+
+    const result = await local.contextBreakdown(session.state.id);
+
+    assert.strictEqual(result.ok, false);
+    await local.dispose();
+  });
+
   test('canOpenFile vouches only for paths the session itself reported', async () => {
     const provider = new FakeProvider(() => [], {
       context: {

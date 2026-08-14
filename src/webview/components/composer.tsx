@@ -4,6 +4,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { SendHorizontal, Square } from "lucide-react";
 import { useRef, useState } from "react";
 import type { Invocable, ModelInfo } from "../../protocol/messages";
+import { interceptFor } from "../lib/intercepts";
 import { insertionFor, menuKeyAction, menuQuery, menuView, nextIndex } from "../lib/invocable-menu";
 import type { PaneState } from "../reducer";
 import { useStore } from "../store";
@@ -32,6 +33,12 @@ export function Composer({
    * have it spring back on the next render.
    */
   const [dismissed, setDismissed] = useState(false);
+  /**
+   * The context dialog has two doors — the ring beside the Send button and
+   * an intercepted `/context` — so its open state lives here, above both,
+   * rather than inside the ring.
+   */
+  const [contextOpen, setContextOpen] = useState(false);
   // The control has to hand focus back to the box: every key the menu answers
   // to is bound on the textarea, so a menu opened by a click that left focus
   // on the button would be unreachable by keyboard.
@@ -109,8 +116,17 @@ export function Composer({
     if (!trimmed) {
       return;
     }
-    // `ghost` is presentation only — the arg hint is never part of the message.
-    post({ t: "send", id: pane.summary.id, text: trimmed });
+    // A command the panel renders itself never reaches the agent: sending it
+    // would print the same numbers as a wall of transcript text under the
+    // dialog that already shows them. The box is still cleared, so the
+    // command behaves like any other submission.
+    const intercept = interceptFor(trimmed);
+    if (intercept === "context") {
+      setContextOpen(true);
+    } else {
+      // `ghost` is presentation only — the arg hint is never part of the message.
+      post({ t: "send", id: pane.summary.id, text: trimmed });
+    }
     setText("");
     setGhost("");
     setDismissed(false);
@@ -339,7 +355,7 @@ export function Composer({
               The agent is working. Stop it to send another message.
             </span>
           )}
-          <ContextRing pane={pane} />
+          <ContextRing pane={pane} open={contextOpen} onOpenChange={setContextOpen} />
         </InputGroupAddon>
       </InputGroup>
     </div>

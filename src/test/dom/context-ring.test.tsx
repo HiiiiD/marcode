@@ -78,7 +78,7 @@ suite('ContextRing', () => {
     assert.ok(screen.getByLabelText('Context usage unavailable'));
   });
 
-  test('opening the popover requests the breakdown for that session', async () => {
+  test('opening the dialog requests the breakdown for that session', async () => {
     mount(43);
 
     await open('Context 43% used');
