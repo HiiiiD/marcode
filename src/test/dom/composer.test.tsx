@@ -234,4 +234,62 @@ suite('Composer', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Stop' }));
     assert.deepStrictEqual(posted().at(-1), { t: 'interrupt', id: 'a' });
   });
+
+  const CTX = {
+    path: 'src/host/agent-session.ts',
+    languageId: 'typescript',
+    selection: { ranges: [{ startLine: 60, endLine: 73, text: 'x' }], truncated: false },
+  };
+
+  test('no editor context means no control at all', () => {
+    renderWithStore(<Composer pane={pane()} model={NO_EFFORT} />);
+    assert.strictEqual(screen.queryByRole('button', { name: /editor context/i }), null);
+  });
+
+  test('an editor context reveals the control, on and naming the file', () => {
+    renderWithStore(<Composer pane={pane()} model={NO_EFFORT} />);
+    sendFromHost({ t: 'editor-context', ctx: CTX });
+
+    const toggle = screen.getByRole('button', { name: /editor context/i });
+    assert.strictEqual(toggle.getAttribute('aria-pressed'), 'true');
+    // The accessible name carries the file even when the container query has
+    // collapsed the visible label to an icon.
+    assert.ok(/agent-session\.ts/.test(toggle.getAttribute('aria-label') ?? ''));
+  });
+
+  test('clicking the control posts the opposite of the session flag', async () => {
+    renderWithStore(<Composer pane={pane()} model={NO_EFFORT} />);
+    sendFromHost({ t: 'editor-context', ctx: CTX });
+
+    await userEvent.click(screen.getByRole('button', { name: /editor context/i }));
+
+    assert.deepStrictEqual(posted().at(-1), {
+      t: 'set-include-context', id: 'a', on: false,
+    });
+  });
+
+  test('a session with the flag off renders the control unpressed', () => {
+    const off = {
+      summary: summary('a', { includeEditorContext: false }),
+      items: [], hasMore: false, pending: [],
+    };
+    renderWithStore(<Composer pane={off} model={NO_EFFORT} />);
+    sendFromHost({ t: 'editor-context', ctx: CTX });
+
+    const toggle = screen.getByRole('button', { name: /editor context/i });
+    assert.strictEqual(toggle.getAttribute('aria-pressed'), 'false');
+  });
+
+  test('a context with no selection names the file without a line span', () => {
+    renderWithStore(<Composer pane={pane()} model={NO_EFFORT} />);
+    sendFromHost({
+      t: 'editor-context',
+      ctx: { path: 'src/a.ts', languageId: 'typescript' },
+    });
+
+    const toggle = screen.getByRole('button', { name: /editor context/i });
+    const label = toggle.getAttribute('aria-label') ?? '';
+    assert.ok(label.includes('src/a.ts'));
+    assert.ok(!label.includes(':'));
+  });
 });

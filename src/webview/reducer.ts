@@ -1,5 +1,5 @@
 import type {
-  HostToWebview, PaneLayout, PermissionRequest, ProviderInfo, SessionId,
+  EditorContext, HostToWebview, PaneLayout, PermissionRequest, ProviderInfo, SessionId,
   SessionSummary, TranscriptItem,
 } from '../protocol/messages';
 
@@ -16,6 +16,11 @@ export interface ClientState {
   layout: PaneLayout;
   catalog: ProviderInfo[];
   byId: Record<SessionId, PaneState>;
+  /**
+   * Client-wide, not per session: the active editor is global IDE state and
+   * every composer shows the same file.
+   */
+  editorContext: EditorContext | null;
 }
 
 export const initialState: ClientState = {
@@ -24,6 +29,7 @@ export const initialState: ClientState = {
   layout: { orientation: 'vertical', panes: [] },
   catalog: [],
   byId: {},
+  editorContext: null,
 };
 
 /**
@@ -51,6 +57,7 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
         };
       }
       return {
+        ...state,
         ready: true, sessions: msg.sessions, layout: msg.layout,
         catalog: msg.catalog, byId,
       };
@@ -74,6 +81,9 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
       }
       return { ...state, sessions: msg.sessions, byId };
     }
+
+    case 'editor-context':
+      return { ...state, editorContext: msg.ctx };
 
     case 'session-snapshot': {
       const s = msg.session;

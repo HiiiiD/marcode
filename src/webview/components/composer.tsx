@@ -6,6 +6,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
+import { EditorContextToggle } from './editor-context-toggle';
 import { useStore } from '../store';
 import type { PaneState } from '../reducer';
 import type { EffortLevel, ModelInfo, PermissionMode } from '../../protocol/messages';
@@ -60,7 +61,7 @@ export function Composer({ pane, model }: { pane: PaneState; model: ModelInfo | 
   };
 
   return (
-    <div className="p-2">
+    <div className="@container p-2">
       <InputGroup>
         <InputGroupTextarea
           value={text}
@@ -86,6 +87,7 @@ export function Composer({ pane, model }: { pane: PaneState; model: ModelInfo | 
           whichever line it wraps to.
         */}
         <InputGroupAddon align="block-end" className="flex-wrap">
+          <EditorContextToggle pane={pane} />
           {model?.effort && (
             <Select
               items={model.effort.levels.map((level) => ({ value: level, label: level }))}
