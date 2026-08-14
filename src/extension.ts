@@ -63,18 +63,20 @@ export function deactivate() {}
 /**
  * Opens the file behind a transcript chip. `target` is whatever the chip
  * carried: workspace-relative for files inside an open folder, absolute
- * otherwise. A relative path is resolved against the first workspace folder
- * — imperfect in a multi-root workspace, and worth revisiting if that turns
- * out to bite; the context itself does not record which root it came from.
+ * otherwise. An absolute path is opened directly. A relative path does not
+ * record which workspace root it came from, so it is resolved by trying
+ * each root in turn and opening the first one where the file actually
+ * exists (checked cheaply with `vscode.workspace.fs.stat`) — this avoids
+ * silently opening a same-named file under the wrong root in a multi-root
+ * workspace. Falls back to the first root if the file exists under none of
+ * them, so the error path below still gets a sensible URI to report.
  */
 async function revealFile(target: string, startLine?: number): Promise<void> {
   try {
     const roots = vscode.workspace.workspaceFolders ?? [];
     const uri = path.isAbsolute(target)
       ? vscode.Uri.file(target)
-      : roots.length > 0
-        ? vscode.Uri.joinPath(roots[0].uri, target)
-        : vscode.Uri.file(target);
+      : await resolveRelativeTarget(target, roots);
     const doc = await vscode.workspace.openTextDocument(uri);
     const line = Math.max(0, (startLine ?? 1) - 1);
     await vscode.window.showTextDocument(doc, {
@@ -86,4 +88,24 @@ async function revealFile(target: string, startLine?: number): Promise<void> {
     // not worth a user-facing error.
     console.error('[hiiiid-code] could not reveal', target, err);
   }
+}
+
+async function resolveRelativeTarget(
+  target: string, roots: readonly vscode.WorkspaceFolder[],
+): Promise<vscode.Uri> {
+  if (roots.length === 0) { return vscode.Uri.file(target); }
+  for (const root of roots) {
+    const candidate = vscode.Uri.joinPath(root.uri, target);
+    try {
+      await vscode.workspace.fs.stat(candidate);
+      return candidate;
+    } catch {
+      // Not under this root — try the next one.
+    }
+  }
+  // None of the roots have this file (renamed, deleted, or a transcript
+  // restored in a different workspace); fall back to the first root so
+  // openTextDocument fails with a normal "file not found" that the caller
+  // logs, rather than this function throwing early.
+  return vscode.Uri.joinPath(roots[0].uri, target);
 }

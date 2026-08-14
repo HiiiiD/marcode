@@ -254,6 +254,29 @@ suite('MessageRouter', () => {
     await mgr.dispose();
   });
 
+  test('set-include-context persists across a session reload', async () => {
+    const providers = new Map<string, AgentProvider>([
+      ['fake', new FakeProvider(() => [{ kind: 'turn-end', reason: 'done' }])],
+    ]);
+    const mgr = new SessionManager(new TranscriptStore(dir), providers, (m) => sent.push(m));
+    await mgr.init();
+    const r = new MessageRouter(mgr, (m) => sent.push(m), '/tmp');
+
+    const session = await mgr.create('fake', '/tmp');
+    await r.handle({ t: 'set-include-context', id: session.state.id, on: false });
+    assert.strictEqual(session.state.includeEditorContext, false);
+
+    // The manager persists on a debounce; dispose() flushes it before
+    // resolving, the same way "init restores sessions and layout from the
+    // index" (session-manager.test.ts) forces a flush to observe a reload.
+    await mgr.dispose();
+
+    const reloaded = new SessionManager(new TranscriptStore(dir), providers, () => {});
+    await reloaded.init();
+    assert.strictEqual(reloaded.summaries()[0].includeEditorContext, false);
+    await reloaded.dispose();
+  });
+
   test('reveal-file reaches the editor host', async () => {
     const calls: { path: string; startLine?: number }[] = [];
     const r = new MessageRouter(manager, (m) => sent.push(m), '/tmp', {
