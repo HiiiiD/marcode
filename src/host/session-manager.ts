@@ -131,7 +131,13 @@ export class SessionManager implements SessionSink {
   async refreshModels(cwd: string): Promise<void> {
     const probes = [...this.providers.values()]
       .filter((p) => p.fetchModels)
-      .map((p) => p.fetchModels!(cwd).catch((err: unknown) => {
+      // Wrapped in Promise.resolve().then(...) rather than calling
+      // fetchModels(cwd) directly: the interface only promises a Promise
+      // return, not an async function, so a provider that throws
+      // synchronously (legal against the type) would otherwise throw here
+      // in refreshModels' own synchronous body instead of rejecting the
+      // per-provider promise this .catch is attached to.
+      .map((p) => Promise.resolve().then(() => p.fetchModels!(cwd)).catch((err: unknown) => {
         // Errors are state, never exceptions — and the state here is "the
         // fallback list stands". Still worth a developer-facing trace: a
         // permanently broken CLI would otherwise be silent.
@@ -158,7 +164,15 @@ export class SessionManager implements SessionSink {
   async refreshUsage(cwd: string): Promise<void> {
     await Promise.all([...this.providers.values()]
       .filter((p) => p.fetchUsage)
-      .map((p) => p.fetchUsage!(cwd).then(
+      // Wrapped in Promise.resolve().then(...) rather than calling
+      // fetchUsage(cwd) directly: the interface only promises a Promise
+      // return, not an async function, so a provider that throws
+      // synchronously (legal against the type) would otherwise throw here in
+      // refreshUsage's own synchronous body — rejecting refreshUsage() itself
+      // (fire-and-forget from the router, so an unhandled rejection) and
+      // skipping every provider queued after it, instead of being caught by
+      // the .then rejection handler below.
+      .map((p) => Promise.resolve().then(() => p.fetchUsage!(cwd)).then(
         (windows) => { if (!this.disposed) { this.usageWindows(p.id, windows); } },
         (err: unknown) => {
           // Errors are state, never exceptions — and the state here is

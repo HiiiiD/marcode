@@ -6,7 +6,7 @@ import { SessionManager } from '../../host/session-manager';
 import { TranscriptStore } from '../../host/transcript-store';
 import type { HostToWebview, SessionState } from '../../protocol/messages';
 import { FakeProvider } from '../../providers/fake/fake-provider';
-import type { AgentProvider, ModelInfo } from '../../providers/types';
+import type { AgentProvider, ModelInfo, UsageWindow } from '../../providers/types';
 
 async function settle() {
   for (let i = 0; i < 10; i++) { await new Promise((r) => setImmediate(r)); }
@@ -1020,6 +1020,40 @@ suite('SessionManager', () => {
     // Errors are state, never exceptions: a broken CLI leaves the strip as it
     // was, and must never surface as a rejection at activation.
     await assert.doesNotReject(() => m.refreshUsage('/repo'));
+    await m.dispose();
+  });
+
+  test('refreshUsage does not reject when a provider throws synchronously, and a later provider still applies', async () => {
+    // A non-async function that throws before ever returning a promise —
+    // legal against `fetchUsage?(cwd): Promise<UsageWindow[] | undefined>`,
+    // since the interface only promises a Promise return, not an async
+    // function. `async () => { throw }` (used above) can only ever produce a
+    // rejected promise, so it does not exercise this path.
+    const broken: AgentProvider = {
+      id: 'broken', displayName: 'Broken',
+      listModels: () => [],
+      start: () => { throw new Error('not used'); },
+      fetchUsage: (): Promise<UsageWindow[] | undefined> => { throw new Error('CLI is broken'); },
+    };
+    const healthy = new FakeProvider(() => [], {
+      windows: [{ id: 'five-hour', label: 'Session (5h)', usedPercent: 40 }],
+    });
+    const emitted: HostToWebview[] = [];
+    const m = new SessionManager(
+      new TranscriptStore(dir),
+      new Map<string, AgentProvider>([['broken', broken], ['fake', healthy]]),
+      (msg) => emitted.push(msg),
+    );
+    await m.init();
+
+    await assert.doesNotReject(() => m.refreshUsage('/repo'));
+
+    assert.deepStrictEqual(
+      emitted.filter((msg) => msg.t === 'usage-windows').map((msg) =>
+        (msg as Extract<HostToWebview, { t: 'usage-windows' }>).providerId),
+      ['fake'],
+      'the healthy provider queued after the throwing one must still be applied',
+    );
     await m.dispose();
   });
 
