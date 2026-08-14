@@ -48,7 +48,11 @@ export function SubagentCard({ item, sessionId }: { item: ToolItem; sessionId: S
           onClick={() => {
             const next = !expanded;
             setOpen(next);
-            if (!next) { setManuallyCollapsed(true); }
+            // Only a collapse that actually overrides a force-open (i.e. the
+            // card is blocked right now) should suppress future force-opens.
+            // Collapsing an unblocked running card is just tidying up and
+            // must not silence a permission that arrives later.
+            if (!next && summary.blocked) { setManuallyCollapsed(true); }
           }}
           aria-expanded={expanded}
           aria-controls={panelId}

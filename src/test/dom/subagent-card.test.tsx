@@ -2,6 +2,7 @@ import * as assert from 'assert';
 import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { SubagentCard } from '@/components/subagent-card';
+import { StoreProvider } from '@/store';
 import { renderWithStore, resetHost } from './harness';
 import type { TranscriptItem } from '../../protocol/messages';
 
@@ -74,6 +75,28 @@ suite('SubagentCard', () => {
     await userEvent.click(screen.getByRole('button', { expanded: true }));
     assert.ok(screen.getByRole('button', { expanded: false }), 'stays collapsed');
     assert.ok(screen.getByText('Needs you'), 'and keeps reporting the block');
+  });
+
+  test('collapsing an unblocked running card does not suppress a later force-open', async () => {
+    const { rerender } = renderWithStore(
+      <SubagentCard item={subagent([child('c1', 'Read')])} sessionId="s1" />,
+    );
+
+    // Open it, then collapse it again — deliberately, but while nothing is
+    // blocked. This must not behave like collapsing a force-opened card.
+    await userEvent.click(screen.getByRole('button', { expanded: false }));
+    await userEvent.click(screen.getByRole('button', { expanded: true }));
+    assert.ok(screen.getByRole('button', { expanded: false }));
+
+    // A permission now arrives on the same subagent.
+    const blocked = subagent([{
+      id: 'p1', ts: 2, role: 'permission', requestId: 'r1', name: 'Bash',
+      input: { command: 'ls' }, state: 'pending',
+    }]);
+    rerender(<StoreProvider><SubagentCard item={blocked} sessionId="s1" /></StoreProvider>);
+
+    assert.ok(screen.getByRole('button', { expanded: true }), 'force-opened');
+    assert.ok(screen.getByText('Needs you'));
   });
 
   test('the card has no scroll container of its own', async () => {
