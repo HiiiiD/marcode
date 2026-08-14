@@ -10,7 +10,15 @@
 
 **Spec:** [docs/superpowers/specs/2026-08-13-subagents-and-mcp-design.md](../specs/2026-08-13-subagents-and-mcp-design.md)
 
-**Prerequisite:** The v1 plan ([2026-08-13-vscode-agent-manager.md](2026-08-13-vscode-agent-manager.md)) must be complete through Task 14b. At time of writing, Tasks 1–14b are done (96 unit tests green) and only Task 15 (walkthrough, README, packaging — docs only, no code) remains. Task 15 does not block this plan.
+**Prerequisite:** v1 plus the webview UX overhaul (PR #3) are on `master`. This plan was re-verified against that tree on 2026-08-14: the host modules (`agent-session.ts`, `session-manager.ts`, `reducer.ts`, the Claude provider) are unchanged from what Tasks 1–7 assume, but the webview components were substantially rebuilt, so Tasks 8 and 9 were rewritten against what actually shipped.
+
+**Design brief:** shaped through the `impeccable` skill (Operate mode, 300–500px sidebar). Three decisions from that pass bind this plan:
+
+- **This extends the incumbent visual world; it does not replace it.** `TranscriptItemShell`, the shipped `ToolCard`, and `StatusBadge` are inherited idioms, not starting points.
+- **MCP health lives in the roster, not the pane header.** The header already carries eight elements.
+- **A subagent gets its own gutter identity** — the same shell, its own label and rule colour.
+
+**Escalation is already solved and this plan adds nothing above the card.** `statusView` gives `awaiting-approval` the distinct `Needs you`/attention tone, `StatusBadge` announces it over `aria-live`, and `session-picker.tsx:48` renders a roster-level `N needs you`. A nested permission calls `setStatus('awaiting-approval')` exactly like a top-level one (Task 3), so all of that lights up for free. The only new burial risk is a collapsed card, which Task 8's force-open covers.
 
 ## Global Constraints
 
@@ -41,15 +49,19 @@ Everything in the v1 plan's Global Constraints still applies. Repeating the ones
 | `src/providers/claude/map-events.ts` | `parent_tool_use_id` → `parentId`; drop subagent prose; init `mcp_servers` | Modify |
 | `src/providers/claude/claude-provider.ts` | Export `buildOptions`; pull `mcpServerStatus()` | Modify |
 | `src/webview/reducer.ts` | Nested `append`/`replace`; `session-mcp` | Modify |
-| `src/webview/components/subagent-window.ts` | `SUBAGENT_CHILD_WINDOW`, `windowChildren`, `summarizeChildren` | Create |
+| `src/webview/components/subagent-window.ts` | `SUBAGENT_CHILD_WINDOW`, `windowChildren`, `summarizeSubagent` | Create |
 | `src/webview/components/subagent-card.tsx` | The nested card | Create |
-| `src/webview/components/tool-card.tsx` | MCP badge; delegate to `SubagentCard` | Modify |
+| `src/webview/components/transcript-item-shell.tsx` | A `subagent` role in the gutter map | Modify |
+| `src/webview/components/tool-card.tsx` | MCP badge — **badge only, no rewrite** | Modify |
 | `src/webview/components/transcript-item.tsx` | Route tool items with children | Modify |
-| `src/webview/components/mcp-status.ts` | Worst-state rollup | Create |
-| `src/webview/components/mcp-strip.tsx` | The status strip | Create |
-| `src/webview/components/session-header.tsx` | Mount the strip | Modify |
+| `src/webview/components/mcp-status.ts` | Worst-state rollup and cross-pane aggregation | Create |
+| `src/webview/components/session-picker.tsx` | MCP group in the roster dropdown | Modify |
 
-Pure logic lives in `.ts` modules (`mcp-tool-name.ts`, `subagent-window.ts`, `mcp-status.ts`) rather than inside components, following the existing `tool-card-format.ts` / `pane-layout.ts` pattern: the mocha harness requires those directly without pulling in Base UI or the DOM.
+Pure logic lives in `.ts` modules (`mcp-tool-name.ts`, `subagent-window.ts`, `mcp-status.ts`) rather than inside components, following the existing `tool-card-format.ts` / `pane-layout.ts` / `status.ts` pattern: the mocha unit harness requires those directly without pulling in Base UI or the DOM.
+
+**`session-header.tsx` is deliberately not in this table.** It already renders a status badge, an `h2` title, the cwd, the bypass pill, a model `Select`, effort, tokens, an optional provider label, and a close button. Adding a ninth element to the narrowest row in the app is what pushed MCP health into the roster.
+
+**Two components are extended, never rewritten.** `tool-card.tsx` gains exactly one element — the server badge. Its lucide state icon, `sr-only` state name, `aria-expanded`/`aria-controls` pair and `size="sm"` height discipline all shipped in PR #3 and must survive this plan intact. Same for `transcript-item-shell.tsx`, which gains one map entry and nothing else.
 
 ---
 
@@ -60,17 +72,20 @@ T1 (types) ─┬─→ T2 (mcp name) ─→ T3 (nesting) ─→ T4 (mcp plumbin
             │                                                        │
             ├─→ T5 (map-events) ─→ T6 (claude-provider) ─────────────┤
             │                                                        │
-            └─→ T7 (reducer) ─→ T8 (subagent card) ─→ T9 (mcp UI) ───┴─→ done
+            └─→ T7 (reducer) ─┬─→ T8 (subagent card) ────────────────┤
+                              └─→ T9 (mcp roster) ───────────────────┴─→ done
 ```
 
 | Wave | Concurrent | Why they don't collide |
 |---|---|---|
 | 1 | **T1** alone | Everything imports these types |
 | 2 | **T2**, **T5**, **T7** | `src/host/mcp-tool-name.ts` vs `src/providers/claude/` vs `src/webview/reducer.ts` |
-| 3 | **T3**, **T6**, **T8** | `src/host/agent-session.ts` vs `src/providers/claude/` vs `src/webview/components/` |
-| 4 | **T4**, **T9** | `src/host/session-manager.ts` vs `src/webview/components/` |
+| 3 | **T3**, **T6**, **T8**, **T9** | `src/host/agent-session.ts` vs `src/providers/claude/` vs the transcript components vs `session-picker.tsx` |
+| 4 | **T4** alone | `src/host/session-manager.ts` |
 
-T3 depends on T2 (it imports `parseToolName`). T8 depends on T7 only for the shape of a nested item, not for a file.
+T3 depends on T2 (it imports `parseToolName`). T8 and T9 both depend on T7 — T8 for the shape of a nested item, T9 for `PaneState.mcpServers` — but not on each other, which is what moving MCP health out of the pane header bought: T8 owns `subagent-card.tsx`, `tool-card.tsx`, `transcript-item*.tsx`; T9 owns `mcp-status.ts` and `session-picker.tsx`. No shared file.
+
+**T4 can be moved earlier** if you would rather see the roster group with real data: T9 renders from `PaneState.mcpServers`, which stays empty until T4 emits `session-mcp`. Its DOM tests drive that message directly, so T9 is fully testable before T4 lands — it just has nothing to show in a live window.
 
 ---
 
@@ -1710,27 +1725,43 @@ A collapsed row that ticks, an expanded card capped at the last 10 children, and
 **Files:**
 - Create: `src/webview/components/subagent-window.ts`
 - Create: `src/webview/components/subagent-card.tsx`
+- Modify: `src/webview/components/transcript-item-shell.tsx`
 - Modify: `src/webview/components/tool-card.tsx`
 - Modify: `src/webview/components/transcript-item.tsx`
 - Create: `src/test/unit/subagent-window.test.ts`
+- Create: `src/test/dom/subagent-card.test.tsx`
 
 **Interfaces:**
-- Produces: `SUBAGENT_CHILD_WINDOW: number`, `windowChildren(children: TranscriptItem[]): TranscriptItem[]`, `summarizeSubagent(item): { toolCount: number; running: number; blocked: boolean; elapsedMs: number }` from `src/webview/components/subagent-window.ts`.
+- Produces: `SUBAGENT_CHILD_WINDOW: number`, `windowChildren(children: TranscriptItem[]): TranscriptItem[]`, `summarizeSubagent(item: ToolItem, now: number): SubagentSummary`, `formatElapsed(ms: number): string` from `src/webview/components/subagent-window.ts`.
 - Produces: `SubagentCard({ item, sessionId })` from `src/webview/components/subagent-card.tsx`.
+- Consumes: `TranscriptItemShell` with a new `subagent` role; the existing `ToolCard` and `PermissionCard`, unchanged.
 
-- [ ] **Step 1: Write the failing test**
+**Read these three files before editing anything.** This task extends shipped work and the most likely failure mode is reverting it:
+
+- `src/webview/components/transcript-item-shell.tsx` — the gutter idiom every role already uses.
+- `src/webview/components/tool-card.tsx` — lucide state icon, `sr-only` state name, `aria-expanded` + `aria-controls`, `size="sm"` height discipline. **All of it stays.**
+- `src/webview/components/status-badge.tsx` — the attention/failed tone spellings this card borrows.
+
+- [ ] **Step 1: Write the failing unit test**
 
 `src/test/unit/subagent-window.test.ts`:
 
 ```ts
 import * as assert from 'assert';
 import {
-  SUBAGENT_CHILD_WINDOW, summarizeSubagent, windowChildren,
+  SUBAGENT_CHILD_WINDOW, formatElapsed, summarizeSubagent, windowChildren,
 } from '../../webview/components/subagent-window';
 import type { TranscriptItem } from '../../protocol/messages';
 
 function child(id: string, state: 'running' | 'ok' | 'error' = 'ok'): TranscriptItem {
   return { id, ts: 1, role: 'tool', toolId: id, name: 'Read', input: {}, state };
+}
+
+function parent(children: TranscriptItem[], ts = 1000): TranscriptItem {
+  return {
+    id: 't1', ts, role: 'tool', toolId: 'task1', name: 'Task',
+    input: {}, state: 'running', children,
+  };
 }
 
 suite('subagent window', () => {
@@ -1739,8 +1770,9 @@ suite('subagent window', () => {
   });
 
   test('renders every child when there are fewer than the window', () => {
-    const children = [child('a'), child('b')];
-    assert.deepStrictEqual(windowChildren(children).map((c) => c.id), ['a', 'b']);
+    assert.deepStrictEqual(
+      windowChildren([child('a'), child('b')]).map((c) => c.id), ['a', 'b'],
+    );
   });
 
   test('keeps the LAST N so the newest child is always rendered', () => {
@@ -1752,12 +1784,9 @@ suite('subagent window', () => {
   });
 
   test('summary counts tools, running children and elapsed time', () => {
-    const item = {
-      id: 't1', ts: 1000, role: 'tool', toolId: 'task1', name: 'Task', input: {},
-      state: 'running',
-      children: [child('a'), child('b', 'running')],
-    } as TranscriptItem;
-    const summary = summarizeSubagent(item as never, 4000);
+    const summary = summarizeSubagent(
+      parent([child('a'), child('b', 'running')]) as never, 4000,
+    );
     assert.strictEqual(summary.toolCount, 2);
     assert.strictEqual(summary.running, 1);
     assert.strictEqual(summary.elapsedMs, 3000);
@@ -1765,32 +1794,38 @@ suite('subagent window', () => {
   });
 
   test('a pending permission child marks the subagent blocked', () => {
-    const item = {
-      id: 't1', ts: 1, role: 'tool', toolId: 'task1', name: 'Task', input: {},
-      state: 'running',
-      children: [
-        { id: 'p1', ts: 2, role: 'permission', requestId: 'r1', name: 'Bash',
-          input: {}, state: 'pending' },
-      ],
-    } as TranscriptItem;
+    const item = parent([{
+      id: 'p1', ts: 2, role: 'permission', requestId: 'r1', name: 'Bash',
+      input: {}, state: 'pending',
+    }]);
     assert.strictEqual(summarizeSubagent(item as never, 2).blocked, true);
   });
 
   test('a settled permission child does not mark it blocked', () => {
-    const item = {
-      id: 't1', ts: 1, role: 'tool', toolId: 'task1', name: 'Task', input: {},
-      state: 'running',
-      children: [
-        { id: 'p1', ts: 2, role: 'permission', requestId: 'r1', name: 'Bash',
-          input: {}, state: 'allowed' },
-      ],
-    } as TranscriptItem;
+    const item = parent([{
+      id: 'p1', ts: 2, role: 'permission', requestId: 'r1', name: 'Bash',
+      input: {}, state: 'allowed',
+    }]);
     assert.strictEqual(summarizeSubagent(item as never, 2).blocked, false);
+  });
+
+  test('a settled subagent stops counting from its last child, not from now', () => {
+    const settled = {
+      ...parent([child('a')], 1000), state: 'ok' as const,
+    };
+    settled.children![0] = { ...settled.children![0], ts: 3000 };
+    assert.strictEqual(summarizeSubagent(settled as never, 99999).elapsedMs, 2000);
+  });
+
+  test('elapsed reads as minutes and seconds past a minute', () => {
+    assert.strictEqual(formatElapsed(34_000), '34s');
+    assert.strictEqual(formatElapsed(252_000), '4m 12s');
+    assert.strictEqual(formatElapsed(0), '0s');
   });
 });
 ```
 
-A running subagent's elapsed time is measured against `now` (the second argument), so the test passes a fixed `4000` rather than reading the clock — the helper stays pure and the assertion stays deterministic.
+A running subagent measures elapsed against `now` (the second argument), so the tests pass a fixed value rather than reading the clock — the helper stays pure and the assertions stay deterministic.
 
 - [ ] **Step 2: Run the test to verify it fails**
 
@@ -1801,8 +1836,8 @@ Expected: FAIL — cannot find module `../../webview/components/subagent-window`
 
 ```ts
 // Pure helpers for SubagentCard, kept free of React and UI imports so the
-// mocha harness can require them directly — the same split tool-card-format.ts
-// uses.
+// mocha unit harness can require them directly — the same split
+// tool-card-format.ts and status.ts use.
 import type { TranscriptItem } from '../../protocol/messages';
 
 type ToolItem = Extract<TranscriptItem, { role: 'tool' }>;
@@ -1817,7 +1852,7 @@ type ToolItem = Extract<TranscriptItem, { role: 'tool' }>;
  *
  * Because the window is the LAST N, the newest child is always on screen —
  * which is what makes live tailing free, with no scroll container, no
- * follow logic, and no scrolled-up detection.
+ * follow logic and no scrolled-up detection.
  */
 export const SUBAGENT_CHILD_WINDOW = 10;
 
@@ -1853,6 +1888,8 @@ export function summarizeSubagent(item: ToolItem, now: number): SubagentSummary 
       blocked = true;
     }
   }
+  // A settled subagent must stop ticking, and its own item carries no end
+  // timestamp — the last thing it did is the best available end.
   const end = item.state === 'running' ? now : lastTs(children, item.ts);
   return { toolCount, running, blocked, elapsedMs: Math.max(0, end - item.ts) };
 }
@@ -1867,33 +1904,72 @@ function lastTs(children: TranscriptItem[], fallback: number): number {
 export function formatElapsed(ms: number): string {
   const total = Math.floor(ms / 1000);
   const minutes = Math.floor(total / 60);
-  const seconds = total % 60;
-  return minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+  return minutes > 0 ? `${minutes}m ${total % 60}s` : `${total}s`;
+}
+
+/** The word a screen reader gets for a subagent's state. */
+export function subagentStateLabel(item: ToolItem, blocked: boolean): string {
+  if (blocked) { return 'needs you'; }
+  return item.state === 'running' ? 'running' : item.state === 'ok' ? 'done' : 'failed';
+}
+
+/**
+ * The agent type from a `Task` call's input, when it carries one. This is
+ * the identifying fact — "Explore" tells the user what is running, where
+ * "Task" is only SDK vocabulary.
+ */
+export function subagentLabel(item: ToolItem): string {
+  const input = item.input;
+  if (input && typeof input === 'object' && 'subagent_type' in input) {
+    const type = (input as Record<string, unknown>).subagent_type;
+    if (typeof type === 'string' && type.length > 0) { return type; }
+  }
+  return item.name;
 }
 ```
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `yarn test:unit`
-Expected: PASS, 6 tests in the `subagent window` suite.
+Expected: PASS, 8 tests in the `subagent window` suite.
 
-- [ ] **Step 5: Write `src/webview/components/subagent-card.tsx`**
+- [ ] **Step 5: Give a subagent its own gutter in `transcript-item-shell.tsx`**
+
+Add one member to the role union and one entry to the map. Change nothing else in the file.
+
+```ts
+export type TranscriptItemRole = 'user' | 'assistant' | 'tool' | 'permission' | 'subagent' | 'error';
+
+const RULE: Record<TranscriptItemRole, string> = {
+  user: 'border-l-muted-foreground/40',
+  assistant: 'border-l-primary/40',
+  tool: 'border-l-border',
+  // A subagent is a container of tool calls, not one call: a rule the eye
+  // can separate from `tool` while scanning, without introducing a colour
+  // that competes with `permission`/`error` (destructive) or `assistant`
+  // (primary), both of which already mean something urgent here.
+  subagent: 'border-l-muted-foreground',
+  permission: 'border-l-destructive',
+  error: 'border-l-destructive',
+};
+```
+
+- [ ] **Step 6: Write `src/webview/components/subagent-card.tsx`**
 
 ```tsx
 import { useEffect, useState } from 'react';
+import { ChevronDownIcon, ChevronRightIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import { PermissionCard } from './permission-card';
 import { ToolCard } from './tool-card';
+import { TranscriptItemShell } from './transcript-item-shell';
 import {
-  formatElapsed, summarizeSubagent, windowChildren,
+  formatElapsed, subagentLabel, subagentStateLabel, summarizeSubagent, windowChildren,
 } from './subagent-window';
 import type { SessionId, TranscriptItem } from '../../protocol/messages';
 
 type ToolItem = Extract<TranscriptItem, { role: 'tool' }>;
-
-const STATE_LABEL: Record<ToolItem['state'], string> = {
-  running: 'running', ok: 'done', error: 'failed',
-};
 
 export function SubagentCard({ item, sessionId }: { item: ToolItem; sessionId: SessionId }) {
   const [manuallyCollapsed, setManuallyCollapsed] = useState(false);
@@ -1901,8 +1977,9 @@ export function SubagentCard({ item, sessionId }: { item: ToolItem; sessionId: S
   const [now, setNow] = useState(() => Date.now());
 
   // A collapsed card must still tick: a row reading "12 tools · 34s" is not
-  // a hang, and a static "Task" row is. One timer per running card, stopped
-  // the moment it settles.
+  // a hang, and a static row is. One interval per running card, cleared the
+  // moment it settles — a settled card's elapsed comes from its last child,
+  // so nothing needs to re-render after that.
   useEffect(() => {
     if (item.state !== 'running') { return; }
     const timer = setInterval(() => setNow(Date.now()), 1000);
@@ -1914,120 +1991,107 @@ export function SubagentCard({ item, sessionId }: { item: ToolItem; sessionId: S
   const shown = windowChildren(children);
 
   // A blocked subagent forces itself open — an approval buried in a
-  // collapsed row would be strictly worse than a flat transcript, where it
-  // was at least visible. But once the user collapses it deliberately, it
-  // stays collapsed: the header keeps reporting the block, and the card
-  // does not fight them.
+  // collapsed row would be worse than a flat transcript, where it was at
+  // least visible. Once the user collapses it deliberately it stays
+  // collapsed, and the header keeps reporting the block, so the card never
+  // fights them.
   const expanded = open || (summary.blocked && !manuallyCollapsed);
-  const label = item.input && typeof item.input === 'object'
-    && 'subagent_type' in (item.input as Record<string, unknown>)
-    ? String((item.input as Record<string, unknown>).subagent_type)
-    : item.name;
+  const panelId = `subagent-${item.toolId}`;
 
   return (
-    <div
-      className={`my-1 rounded border text-xs ${
-        summary.blocked ? 'border-destructive' : 'border-border'
-      }`}
-    >
-      <Button
-        variant="ghost"
-        onClick={() => {
-          const next = !expanded;
-          setOpen(next);
-          if (!next) { setManuallyCollapsed(true); }
-        }}
-        aria-expanded={expanded}
-        className="flex h-auto w-full items-center justify-start gap-2 px-2 py-1 font-normal"
-      >
-        <span aria-hidden>{expanded ? '▾' : '▸'}</span>
-        <span className="font-medium">{item.name}</span>
-        {label !== item.name && <span className="text-muted-foreground">{label}</span>}
-        <span className="text-muted-foreground">
-          · {summary.toolCount} {summary.toolCount === 1 ? 'tool' : 'tools'}
-        </span>
-        <span className="text-muted-foreground">· {formatElapsed(summary.elapsedMs)}</span>
-        <span className={summary.blocked ? 'text-destructive' : 'text-muted-foreground'}>
-          · {summary.blocked ? 'awaiting approval' : STATE_LABEL[item.state]}
-        </span>
-      </Button>
-
-      {expanded && (
-        <div className="border-t border-border px-2 py-1">
-          {children.length > shown.length && (
-            <div className="pb-1 text-muted-foreground">
-              showing last {shown.length} of {children.length}
-            </div>
+    <TranscriptItemShell role="subagent" label="Subagent" ts={item.ts}>
+      <div className="rounded border border-border text-xs">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => {
+            const next = !expanded;
+            setOpen(next);
+            if (!next) { setManuallyCollapsed(true); }
+          }}
+          aria-expanded={expanded}
+          aria-controls={panelId}
+          // Matches tool-card.tsx: override the size variant's gap/padding
+          // and justification, never its height.
+          className="flex w-full items-center justify-start gap-2 px-2 font-normal"
+        >
+          {expanded ? <ChevronDownIcon aria-hidden /> : <ChevronRightIcon aria-hidden />}
+          <span className="truncate font-medium">{subagentLabel(item)}</span>
+          <span className="shrink-0 text-muted-foreground">
+            {summary.toolCount} {summary.toolCount === 1 ? 'tool' : 'tools'}
+            {' · '}{formatElapsed(summary.elapsedMs)}
+          </span>
+          {/*
+            The visible state is carried by the chevron and, when blocked, by
+            the chip below. Everything else gets a text equivalent here, for
+            the same reason tool-card.tsx does: an icon-only state has no
+            accessible name at all.
+          */}
+          <span className="sr-only">{subagentStateLabel(item, summary.blocked)}</span>
+          {summary.blocked && (
+            // The `attention` tone from status-badge.tsx, spelled the same
+            // way: text plus a quiet fill, never colour alone. A subagent
+            // blocked on the user says the same thing the session badge
+            // says, so it must not look like a different kind of event.
+            <span className="ml-auto shrink-0 rounded-full border border-primary/40 bg-primary/10 px-1.5 py-0.5 font-medium">
+              Needs you
+            </span>
           )}
-          <div className="border-l border-border pl-2">
-            {shown.map((child) =>
-              child.role === 'permission' ? (
-                <PermissionCard key={child.id} item={child} sessionId={sessionId} />
-              ) : child.role === 'tool' ? (
-                <ToolCard key={child.id} item={child} sessionId={sessionId} />
-              ) : null,
+        </Button>
+
+        {expanded && (
+          <div id={panelId} className="border-t border-border px-2 py-1">
+            {children.length > shown.length && (
+              // A statement of fact, not a control. "Show all" would dump
+              // 200 rows into the transcript and undo the bound; the escape
+              // hatch is a future subagent pane, not a button here.
+              <p className="pb-1 text-muted-foreground">
+                showing last {shown.length} of {children.length}
+              </p>
             )}
+            <div className={cn('flex flex-col gap-1')}>
+              {shown.map((child) =>
+                child.role === 'permission' ? (
+                  <PermissionCard key={child.id} item={child} sessionId={sessionId} />
+                ) : child.role === 'tool' ? (
+                  <ToolCard key={child.id} item={child} />
+                ) : null,
+              )}
+            </div>
           </div>
-        </div>
-      )}
-    </div>
+        )}
+      </div>
+    </TranscriptItemShell>
   );
 }
 ```
 
-There is no `overflow` or `max-height` anywhere in this component, deliberately. The pane's `MessageScroller` stays the only scroller, so its anchor and autoscroll behaviour is untouched; the last-N window is what bounds the height instead.
+There is no `overflow`, `max-height` or scroll container anywhere in this component, deliberately. The pane's `MessageScroller` stays the only scroller, so its anchor and autoscroll behaviour is untouched; the last-N window bounds the height instead.
 
 A collapsed card renders no children at all — not hidden with CSS, not rendered. Five collapsed subagents must not cost what five open ones do.
 
-- [ ] **Step 6: Add the MCP badge to `ToolCard` and give it a `sessionId`**
+- [ ] **Step 7: Add the MCP badge to `ToolCard` — one element, nothing else**
 
-Replace `src/webview/components/tool-card.tsx`:
+In `src/webview/components/tool-card.tsx`, insert the badge between the `sr-only` state span and the tool name. Do not touch the icon, the `sr-only` span, the `aria-expanded`/`aria-controls` pair, the `size="sm"` class comment, or the `<pre>`.
 
 ```tsx
-import { useState } from 'react';
-import { Button } from '@/components/ui/button';
-import type { SessionId, TranscriptItem } from '../../protocol/messages';
-import { safeStringify, summarize } from './tool-card-format';
-
-type ToolItem = Extract<TranscriptItem, { role: 'tool' }>;
-
-export function ToolCard({ item }: { item: ToolItem; sessionId?: SessionId }) {
-  const [open, setOpen] = useState(false);
-  const dot = item.state === 'running' ? '○' : item.state === 'ok' ? '●' : '✕';
-
-  return (
-    <div className="my-1 rounded border border-border text-xs">
-      <Button
-        variant="ghost"
-        onClick={() => setOpen((v) => !v)}
-        className="flex h-auto w-full items-center justify-start gap-2 px-2 py-1 font-normal"
-      >
-        <span aria-hidden>{dot}</span>
+        <span className="sr-only">{item.state}</span>
         {item.mcpServer && (
+          // Muted, not colour-per-server: a palette per server would collide
+          // with the status tones already in use and buys nothing when the
+          // name is right beside it. This is a permanent record — the value
+          // is parsed host-side at item creation, so removing the server
+          // later cannot rewrite what already happened.
           <span className="shrink-0 rounded bg-muted px-1 text-muted-foreground">
             {item.mcpServer}
           </span>
         )}
         <span className="font-medium">{item.name}</span>
-        <span className="truncate text-muted-foreground">{summarize(item.input)}</span>
-      </Button>
-      {open && (
-        <pre className="overflow-x-auto border-t border-border px-2 py-1">
-{safeStringify({ input: item.input, output: item.output })}
-        </pre>
-      )}
-    </div>
-  );
-}
 ```
 
-The badge is muted rather than coloured per server: a colour-per-server scheme needs a palette, collides with the status colours already in use, and buys nothing when the name is right beside it.
+- [ ] **Step 8: Route items with children in `transcript-item.tsx`**
 
-`sessionId` is accepted and unused so `SubagentCard` can render tool and permission children through one uniform call shape.
-
-- [ ] **Step 7: Route items with children to `SubagentCard`**
-
-In `src/webview/components/transcript-item.tsx`, add the import and replace the `tool` case:
+Add the import and replace only the `tool` case:
 
 ```tsx
 import { SubagentCard } from './subagent-card';
@@ -2040,47 +2104,166 @@ import { SubagentCard } from './subagent-card';
       // card — correct, since there is nothing nested to show.
       return item.children && item.children.length > 0
         ? <SubagentCard item={item} sessionId={sessionId} />
-        : <ToolCard item={item} sessionId={sessionId} />;
+        : <ToolCard item={item} />;
 ```
 
-- [ ] **Step 8: Build and verify**
+- [ ] **Step 9: Write the DOM test**
 
-Run: `yarn compile`
-Expected: no type errors; `dist/webview.js` rebuilt.
+`src/test/dom/subagent-card.test.tsx`. Read `src/test/dom/transcript-item.test.tsx` first and mirror its setup — state arrives as real `HostToWebview` messages through the real `StoreProvider`, never as a hand-built `ClientState`.
+
+```tsx
+import * as assert from 'assert';
+import { screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { SubagentCard } from '@/components/subagent-card';
+import { renderWithStore, resetHost } from './harness';
+import type { TranscriptItem } from '../../protocol/messages';
+
+type ToolItem = Extract<TranscriptItem, { role: 'tool' }>;
+
+function child(id: string, name: string): TranscriptItem {
+  return { id, ts: 2, role: 'tool', toolId: id, name, input: {}, state: 'ok' };
+}
+
+function subagent(children: TranscriptItem[], over: Partial<ToolItem> = {}): ToolItem {
+  return {
+    id: 't1', ts: 1000, role: 'tool', toolId: 'task1', name: 'Task',
+    input: { subagent_type: 'Explore' }, state: 'running', children, ...over,
+  } as ToolItem;
+}
+
+suite('SubagentCard', () => {
+  setup(() => { resetHost(); });
+
+  test('collapsed by default, and renders none of its children', async () => {
+    renderWithStore(<SubagentCard item={subagent([child('c1', 'Read')])} sessionId="s1" />);
+
+    const toggle = screen.getByRole('button', { expanded: false });
+    assert.ok(toggle.textContent?.includes('Explore'), 'names the agent type, not "Task"');
+    assert.ok(toggle.textContent?.includes('1 tool'));
+    assert.strictEqual(screen.queryByText('Read'), null, 'no child is rendered while collapsed');
+  });
+
+  test('expanding reveals the children through the shipped ToolCard', async () => {
+    renderWithStore(<SubagentCard item={subagent([child('c1', 'Read')])} sessionId="s1" />);
+    await userEvent.click(screen.getByRole('button', { expanded: false }));
+
+    const panel = document.getElementById('subagent-task1');
+    assert.ok(panel);
+    assert.ok(within(panel!).getByText('Read'));
+  });
+
+  test('caps the rendered children at ten and says so', async () => {
+    const children = Array.from({ length: 25 }, (_, i) => child(`c${i}`, `Tool${i}`));
+    renderWithStore(<SubagentCard item={subagent(children)} sessionId="s1" />);
+    await userEvent.click(screen.getByRole('button', { expanded: false }));
+
+    assert.ok(screen.getByText('showing last 10 of 25'));
+    assert.ok(screen.getByText('Tool24'), 'the newest child is rendered');
+    assert.strictEqual(screen.queryByText('Tool14'), null, 'the eleventh-from-last is not');
+    assert.strictEqual(
+      screen.queryByRole('button', { name: /show all/i }), null,
+      'no overflow control',
+    );
+  });
+
+  test('a pending permission child forces the card open and is announced', () => {
+    const item = subagent([{
+      id: 'p1', ts: 2, role: 'permission', requestId: 'r1', name: 'Bash',
+      input: { command: 'ls' }, state: 'pending',
+    }]);
+    renderWithStore(<SubagentCard item={item} sessionId="s1" />);
+
+    assert.ok(screen.getByRole('button', { expanded: true }), 'force-opened');
+    assert.ok(screen.getByText('Needs you'));
+  });
+
+  test('a deliberate collapse sticks even while still blocked', async () => {
+    const item = subagent([{
+      id: 'p1', ts: 2, role: 'permission', requestId: 'r1', name: 'Bash',
+      input: { command: 'ls' }, state: 'pending',
+    }]);
+    renderWithStore(<SubagentCard item={item} sessionId="s1" />);
+
+    await userEvent.click(screen.getByRole('button', { expanded: true }));
+    assert.ok(screen.getByRole('button', { expanded: false }), 'stays collapsed');
+    assert.ok(screen.getByText('Needs you'), 'and keeps reporting the block');
+  });
+
+  test('the card has no scroll container of its own', async () => {
+    const children = Array.from({ length: 25 }, (_, i) => child(`c${i}`, `Tool${i}`));
+    const { container } = renderWithStore(
+      <SubagentCard item={subagent(children)} sessionId="s1" />,
+    );
+    await userEvent.click(screen.getByRole('button', { expanded: false }));
+
+    for (const el of container.querySelectorAll('*')) {
+      const cls = el.className;
+      if (typeof cls !== 'string') { continue; }
+      assert.ok(
+        !/overflow-(y-|x-)?(auto|scroll)|max-h-/.test(cls),
+        `nested scrolling would break the pane's MessageScroller: ${cls}`,
+      );
+    }
+  });
+});
+```
+
+The last test is the one worth keeping: the bounded window exists precisely so that no nested scroller is needed, and a well-meaning later edit adding `max-h-48 overflow-auto` would silently undo the whole design decision.
+
+- [ ] **Step 10: Run everything, including the design detector**
 
 Run: `yarn test:unit`
 Expected: PASS.
 
-- [ ] **Step 9: Commit**
+Run: `yarn test:dom`
+Expected: PASS, 6 new `SubagentCard` tests plus the existing DOM suite.
+
+Run: `yarn check-types && yarn lint`
+Expected: no output, no errors.
+
+Run the mechanical detector over the changed UI, as CLAUDE.md requires:
 
 ```bash
-git add src/webview/components src/test/unit/subagent-window.test.ts
+node C:/Users/Marco/.claude/skills/impeccable/scripts/detect.mjs --json \
+  src/webview/components/subagent-card.tsx \
+  src/webview/components/tool-card.tsx \
+  src/webview/components/transcript-item.tsx \
+  src/webview/components/transcript-item-shell.tsx
+```
+
+Expected: exit 0. Exit 2 means findings, which is a failing check and not a suggestion.
+
+- [ ] **Step 11: Commit**
+
+```bash
+git add src/webview/components src/test/unit/subagent-window.test.ts src/test/dom/subagent-card.test.tsx
 git commit -m "feat: render subagent activity as a live, bounded nested card"
 ```
 
 ---
 
-## Task 9: MCP status strip
+## Task 9: MCP health in the roster
 
-The last piece: per-session server health in the pane chrome.
+Server health is a workspace-level fact, so it is reported once in the roster rather than repeated in every pane header.
 
 **Files:**
 - Create: `src/webview/components/mcp-status.ts`
-- Create: `src/webview/components/mcp-strip.tsx`
-- Modify: `src/webview/components/session-header.tsx`
+- Modify: `src/webview/components/session-picker.tsx`
 - Create: `src/test/unit/mcp-status.test.ts`
+- Create: `src/test/dom/session-picker-mcp.test.tsx`
 
 **Interfaces:**
-- Produces: `worstState(servers: McpServerStatus[]): McpServerStatus['state'] | undefined` from `src/webview/components/mcp-status.ts`.
-- Produces: `McpStrip({ servers })` from `src/webview/components/mcp-strip.tsx`.
+- Produces: `worstState(servers: McpServerStatus[]): McpServerStatus['state'] | undefined`, `isUnhealthy(state: McpServerStatus['state']): boolean`, `aggregateServers(byId: Record<SessionId, { mcpServers: McpServerStatus[] }>): McpServerStatus[]` from `src/webview/components/mcp-status.ts`.
+- Consumes: `PaneState.mcpServers` (Task 7).
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Write the failing unit test**
 
 `src/test/unit/mcp-status.test.ts`:
 
 ```ts
 import * as assert from 'assert';
-import { worstState } from '../../webview/components/mcp-status';
+import { aggregateServers, isUnhealthy, worstState } from '../../webview/components/mcp-status';
 
 suite('mcp status rollup', () => {
   test('no servers means no state to report', () => {
@@ -2093,15 +2276,12 @@ suite('mcp status rollup', () => {
     ]), 'connected');
   });
 
-  test('one failed server outranks connected ones', () => {
+  test('failed outranks connected, pending and needs-auth', () => {
     assert.strictEqual(worstState([
-      { name: 'a', state: 'connected' }, { name: 'b', state: 'failed' },
-    ]), 'failed');
-  });
-
-  test('failed outranks needs-auth', () => {
-    assert.strictEqual(worstState([
-      { name: 'a', state: 'needs-auth' }, { name: 'b', state: 'failed' },
+      { name: 'a', state: 'connected' },
+      { name: 'b', state: 'pending' },
+      { name: 'c', state: 'needs-auth' },
+      { name: 'd', state: 'failed' },
     ]), 'failed');
   });
 
@@ -2117,6 +2297,51 @@ suite('mcp status rollup', () => {
     assert.strictEqual(worstState([
       { name: 'a', state: 'connected' }, { name: 'b', state: 'disabled' },
     ]), 'connected');
+    assert.strictEqual(isUnhealthy('disabled'), false);
+    assert.strictEqual(isUnhealthy('pending'), false);
+    assert.strictEqual(isUnhealthy('connected'), false);
+    assert.strictEqual(isUnhealthy('failed'), true);
+    assert.strictEqual(isUnhealthy('needs-auth'), true);
+  });
+
+  test('aggregation dedupes by name and keeps the worst report', () => {
+    const merged = aggregateServers({
+      s1: { mcpServers: [
+        { name: 'github', state: 'connected', toolCount: 12 },
+        { name: 'stripe', state: 'connected' },
+      ] },
+      s2: { mcpServers: [
+        { name: 'github', state: 'failed', error: 'spawn ENOENT' },
+      ] },
+    });
+    assert.strictEqual(merged.length, 2);
+    const github = merged.find((s) => s.name === 'github');
+    assert.strictEqual(github?.state, 'failed');
+    assert.strictEqual(github?.error, 'spawn ENOENT');
+  });
+
+  test('aggregation keeps a tool count the worse report lacks', () => {
+    const merged = aggregateServers({
+      s1: { mcpServers: [{ name: 'github', state: 'connected', toolCount: 12 }] },
+      s2: { mcpServers: [{ name: 'github', state: 'pending' }] },
+    });
+    assert.strictEqual(merged[0].state, 'pending');
+    assert.strictEqual(merged[0].toolCount, 12);
+  });
+
+  test('aggregation is sorted worst-first, then by name', () => {
+    const merged = aggregateServers({
+      s1: { mcpServers: [
+        { name: 'zulip', state: 'connected' },
+        { name: 'alpha', state: 'connected' },
+        { name: 'stripe', state: 'failed' },
+      ] },
+    });
+    assert.deepStrictEqual(merged.map((s) => s.name), ['stripe', 'alpha', 'zulip']);
+  });
+
+  test('no panes means nothing to report', () => {
+    assert.deepStrictEqual(aggregateServers({}), []);
   });
 });
 ```
@@ -2129,15 +2354,15 @@ Expected: FAIL — cannot find module `../../webview/components/mcp-status`.
 - [ ] **Step 3: Write `src/webview/components/mcp-status.ts`**
 
 ```ts
-import type { McpServerStatus } from '../../protocol/messages';
+// Pure rollup helpers for the roster's MCP group — no React, no UI imports,
+// so the mocha unit harness requires them directly.
+import type { McpServerStatus, SessionId } from '../../protocol/messages';
 
 /**
- * Severity order, worst last. The collapsed strip shows a single dot taking
- * the worst state across every server, so one failed server is visible
- * without expanding anything.
+ * Severity order, worst last.
  *
- * 'disabled' ranks below 'connected': a server the user turned off is not a
- * problem, and colouring it like one trains people to ignore the dot.
+ * `disabled` ranks below `connected`: a server the user turned off is not a
+ * problem, and colouring it like one trains people to ignore the signal.
  */
 const RANK: Record<McpServerStatus['state'], number> = {
   disabled: 0,
@@ -2156,136 +2381,271 @@ export function worstState(
   }
   return worst;
 }
+
+/**
+ * Worth interrupting the roster trigger for.
+ *
+ * `pending` is excluded deliberately: every server is pending for the first
+ * moment of every session, and a warning that always fires at startup is a
+ * warning nobody reads.
+ */
+export function isUnhealthy(state: McpServerStatus['state']): boolean {
+  return state === 'failed' || state === 'needs-auth';
+}
+
+/**
+ * One list across every pane currently in the split, deduped by server name.
+ *
+ * Sessions share the workspace's MCP configuration, so the same server
+ * appearing under two sessions is one server. When two sessions disagree,
+ * the worse report wins — a server that failed for one session is a real
+ * problem even if another session got it up. Fields the worse report lacks
+ * (a tool count it never learned because it never connected) are carried
+ * over from the better one.
+ *
+ * Only panes appear here because status only flows for visible sessions;
+ * the roster labels the group accordingly rather than implying it has
+ * surveyed sessions it has never opened.
+ */
+export function aggregateServers(
+  byId: Record<SessionId, { mcpServers: McpServerStatus[] }>,
+): McpServerStatus[] {
+  const merged = new Map<string, McpServerStatus>();
+  for (const pane of Object.values(byId)) {
+    for (const server of pane.mcpServers ?? []) {
+      const existing = merged.get(server.name);
+      if (!existing) { merged.set(server.name, { ...server }); continue; }
+      const worse = RANK[server.state] > RANK[existing.state] ? server : existing;
+      const other = worse === server ? existing : server;
+      merged.set(server.name, {
+        ...worse,
+        toolCount: worse.toolCount ?? other.toolCount,
+        error: worse.error ?? other.error,
+      });
+    }
+  }
+  return [...merged.values()].sort(
+    (a, b) => RANK[b.state] - RANK[a.state] || a.name.localeCompare(b.name),
+  );
+}
 ```
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `yarn test:unit`
-Expected: PASS, 6 tests in `mcp status rollup`.
+Expected: PASS, 9 tests in `mcp status rollup`.
 
-- [ ] **Step 5: Write `src/webview/components/mcp-strip.tsx`**
+- [ ] **Step 5: Add the MCP group to `session-picker.tsx`**
+
+Read the file first. It already imports `DropdownMenuGroup`, `DropdownMenuLabel` and `DropdownMenuSeparator`, and already computes `needing` for the trigger.
+
+Add the imports:
 
 ```tsx
-import { useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { worstState } from './mcp-status';
-import type { McpServerStatus } from '../../protocol/messages';
+import { PlugZapIcon } from 'lucide-react';
+import { aggregateServers, isUnhealthy, worstState } from './mcp-status';
+```
 
-const DOT: Record<McpServerStatus['state'], string> = {
-  connected: 'bg-primary',
-  pending: 'bg-muted-foreground animate-pulse',
-  disabled: 'bg-muted-foreground',
-  'needs-auth': 'bg-destructive',
-  failed: 'bg-destructive',
-};
+Compute alongside `needing`:
 
-export function McpStrip({ servers }: { servers: McpServerStatus[] }) {
-  const [open, setOpen] = useState(false);
+```tsx
+  const servers = aggregateServers(state.byId);
   const worst = worstState(servers);
+  const serversNeedAttention = worst !== undefined && isUnhealthy(worst);
+```
 
-  // Absent entirely when a session has no MCP servers — no empty state for
-  // the common case. An archived session reports none, because there is no
-  // run to ask; its tool cards keep their server badges regardless, which
-  // is where the historical record lives.
-  if (worst === undefined) { return null; }
+In the trigger, the `ml-auto` slot belongs to `needs you` — a blocked agent outranks a broken server, and only one of the two may claim it:
 
-  return (
-    <div className="text-xs">
-      <Button
-        variant="ghost"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-        aria-label={`${servers.length} MCP servers`}
-        className="flex h-auto items-center gap-1 px-1 py-0.5 font-normal"
-      >
-        <span className={`h-2 w-2 shrink-0 rounded-full ${DOT[worst]}`} aria-hidden />
-        <span className="text-muted-foreground">{servers.length} MCP</span>
-      </Button>
+```tsx
+          {needing > 0 ? (
+            <span className="ml-auto text-primary">
+              {needing} needs you
+            </span>
+          ) : serversNeedAttention && (
+            // Only when something is actually wrong. Every server is
+            // `pending` at startup and connected thereafter, so a permanent
+            // health chip would spend the narrowest row in the app on a
+            // value that is almost always "fine".
+            <span className="ml-auto text-destructive">
+              MCP: {worst === 'needs-auth' ? 'needs auth' : 'failed'}
+            </span>
+          )}
+```
 
-      {open && (
-        <ul className="border-t border-border px-2 py-1">
-          {servers.map((server) => (
-            <li key={server.name} className="flex items-baseline gap-2 py-0.5">
-              <span
-                className={`h-2 w-2 shrink-0 translate-y-px rounded-full ${DOT[server.state]}`}
-                aria-hidden
-              />
-              <span className="font-medium">{server.name}</span>
-              <span className="text-muted-foreground">{server.state}</span>
-              {server.toolCount !== undefined && (
-                <span className="text-muted-foreground">
-                  · {server.toolCount} {server.toolCount === 1 ? 'tool' : 'tools'}
-                </span>
-              )}
-              {server.state === 'needs-auth' && (
-                // No button here on purpose: the extension host cannot run
-                // an OAuth flow, so the honest action is a terminal one. A
-                // button that pretended otherwise would be worse than none.
-                <span className="text-muted-foreground">
-                  · authorize in a terminal, then reopen this session
-                </span>
-              )}
-              {server.error && (
-                <span className="truncate text-destructive" title={server.error}>
-                  · {server.error}
-                </span>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
+At the end of `DropdownMenuContent`, after the archived group:
+
+```tsx
+          {servers.length > 0 && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuGroup>
+                <DropdownMenuLabel>MCP servers (open sessions)</DropdownMenuLabel>
+                {servers.map((server) => (
+                  <DropdownMenuItem key={server.name} disabled className="flex-col items-start gap-0.5">
+                    <span className="flex w-full items-center gap-2">
+                      <PlugZapIcon aria-hidden />
+                      <span className="truncate font-medium">{server.name}</span>
+                      <span className={cn(
+                        'ml-auto shrink-0',
+                        isUnhealthy(server.state) ? 'text-destructive' : 'text-muted-foreground',
+                      )}>
+                        {server.state === 'needs-auth' ? 'needs auth' : server.state}
+                      </span>
+                    </span>
+                    {server.toolCount !== undefined && (
+                      <span className="text-muted-foreground">
+                        {server.toolCount} {server.toolCount === 1 ? 'tool' : 'tools'}
+                      </span>
+                    )}
+                    {server.state === 'needs-auth' && (
+                      // No button: the extension host cannot run an OAuth
+                      // flow, so a control here would be a lie. The honest
+                      // action is a terminal one.
+                      <span className="text-muted-foreground">
+                        Authorize in a terminal, then reopen the session.
+                      </span>
+                    )}
+                    {server.error && (
+                      <span className="wrap-break-word text-destructive">{server.error}</span>
+                    )}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuGroup>
+            </>
+          )}
+```
+
+The rows are `disabled` because there is nothing to activate — they are a report, not a menu of actions. The group label says *open sessions* rather than implying the panel has surveyed sessions it has never opened.
+
+`cn` must be imported from `@/lib/utils` if the file does not already import it.
+
+- [ ] **Step 6: Write the DOM test**
+
+`src/test/dom/session-picker-mcp.test.tsx`. Mirror `src/test/dom/session-picker.test.tsx` — read it first, and drive state through real `HostToWebview` messages.
+
+```tsx
+import * as assert from 'assert';
+import { screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { renderApp, resetHost, sendFromHost } from './harness';
+import type { SessionSnapshot } from '../../protocol/messages';
+
+function snapshot(over: Partial<SessionSnapshot> = {}): SessionSnapshot {
+  return {
+    id: 's1', providerId: 'claude', model: 'claude-opus-5', title: 'hiiiid-code',
+    cwd: '/work/hiiiid-code', status: 'idle', permissionMode: 'default',
+    usage: { inputTokens: 0, outputTokens: 0 },
+    archived: false, createdAt: 1, updatedAt: 1,
+    items: [], hasMore: false, pending: [], mcpServers: [], ...over,
+  };
 }
+
+function hydrate(snap: SessionSnapshot) {
+  sendFromHost({
+    t: 'hydrate',
+    sessions: [snap],
+    layout: { orientation: 'vertical', panes: [{ sessionId: snap.id, size: 100 }] },
+    catalog: [{ id: 'claude', displayName: 'Claude', models: [] }],
+    snapshots: [snap],
+  });
+}
+
+suite('roster MCP group', () => {
+  setup(() => { resetHost(); });
+
+  test('no group and no trigger warning when there are no servers', async () => {
+    renderApp();
+    hydrate(snapshot());
+
+    assert.strictEqual(screen.queryByText(/MCP:/), null);
+    await userEvent.click(screen.getByRole('button', { name: /in split/i }));
+    assert.strictEqual(screen.queryByText(/MCP servers/i), null);
+  });
+
+  test('healthy servers are listed but do not warn on the trigger', async () => {
+    renderApp();
+    hydrate(snapshot());
+    sendFromHost({
+      t: 'session-mcp', id: 's1',
+      servers: [{ name: 'github', state: 'connected', toolCount: 12 }],
+    });
+
+    assert.strictEqual(screen.queryByText(/MCP:/), null, 'silent when healthy');
+    await userEvent.click(screen.getByRole('button', { name: /in split/i }));
+    assert.ok(screen.getByText('github'));
+    assert.ok(screen.getByText('12 tools'));
+  });
+
+  test('a failed server warns on the trigger and explains itself in the list', async () => {
+    renderApp();
+    hydrate(snapshot());
+    sendFromHost({
+      t: 'session-mcp', id: 's1',
+      servers: [{ name: 'stripe', state: 'failed', error: 'spawn ENOENT' }],
+    });
+
+    assert.ok(screen.getByText('MCP: failed'));
+    await userEvent.click(screen.getByRole('button', { name: /in split/i }));
+    assert.ok(screen.getByText('spawn ENOENT'));
+  });
+
+  test('needs-auth offers no button, because the host cannot run OAuth', async () => {
+    renderApp();
+    hydrate(snapshot());
+    sendFromHost({
+      t: 'session-mcp', id: 's1', servers: [{ name: 'drive', state: 'needs-auth' }],
+    });
+
+    await userEvent.click(screen.getByRole('button', { name: /in split/i }));
+    assert.ok(screen.getByText(/Authorize in a terminal/i));
+    assert.strictEqual(screen.queryByRole('button', { name: /authorize/i }), null);
+  });
+
+  test('a blocked agent outranks a broken server in the trigger slot', async () => {
+    renderApp();
+    hydrate(snapshot({ status: 'awaiting-approval' }));
+    sendFromHost({
+      t: 'session-mcp', id: 's1', servers: [{ name: 'stripe', state: 'failed' }],
+    });
+
+    assert.ok(screen.getByText('1 needs you'));
+    assert.strictEqual(screen.queryByText('MCP: failed'), null);
+  });
+});
 ```
 
-- [ ] **Step 6: Mount the strip in the pane chrome**
+- [ ] **Step 7: Run everything, including the detector**
 
-In `src/webview/components/session-header.tsx`, add the import:
-
-```tsx
-import { McpStrip } from './mcp-strip';
-```
-
-Place it between the model label and the close button, inside the header's flex row:
-
-```tsx
-      <span className="ml-auto shrink-0 text-muted-foreground">
-        {modelLabel}{s.effort ? ` · ${s.effort}` : ''}
-      </span>
-      <McpStrip servers={pane.mcpServers} />
-```
-
-`McpStrip` returns `null` when the list is empty, so the header layout is unchanged for a session with no MCP servers.
-
-- [ ] **Step 7: Build and verify**
-
-Run: `yarn compile`
-Expected: no type errors.
-
-Run: `yarn test:unit`
+Run: `yarn test:unit && yarn test:dom`
 Expected: PASS.
 
-Run: `yarn lint`
-Expected: no errors.
+Run: `yarn check-types && yarn lint && yarn compile`
+Expected: no output, no errors.
+
+```bash
+node C:/Users/Marco/.claude/skills/impeccable/scripts/detect.mjs --json \
+  src/webview/components/session-picker.tsx
+```
+
+Expected: exit 0.
 
 - [ ] **Step 8: Manually verify against a real run**
 
-Press F5 to launch the Extension Development Host, open the panel, and run a prompt that dispatches a subagent (for example: "use the Explore agent to find every file that imports react"). Confirm:
+Press F5, open the panel, and run a prompt that dispatches a subagent (for example: "use the Explore agent to find every file that imports react"). Confirm:
 
-1. The `Task` row appears collapsed and its tool count and elapsed time tick upward while it runs.
-2. Expanding it shows indented child tool cards, and a subagent with more than ten children shows `showing last 10 of N`.
+1. The subagent row appears collapsed under a `SUBAGENT` gutter label, and its tool count and elapsed tick upward while it runs.
+2. Expanding shows child tool cards, and a subagent with more than ten children shows `showing last 10 of 25`.
 3. The transcript has exactly one scrollbar — the pane's. The card itself never scrolls.
-4. If any MCP server is configured, the header shows an `N MCP` chip that expands to a per-server list.
-5. Collapsing the panel mid-run and reopening it restores the card with its children intact.
+4. With an MCP server configured, the roster dropdown lists it; with one broken, the trigger reads `MCP: failed`.
+5. Collapsing the panel mid-run and reopening restores the card with its children intact.
 
-Point 3 is the one to actually look at: a nested scroll container appearing here means the bounded window was bypassed.
+Point 3 is the one to actually look at: a nested scroll container here means the bounded window was bypassed.
 
 - [ ] **Step 9: Commit**
 
 ```bash
-git add src/webview/components src/test/unit/mcp-status.test.ts
-git commit -m "feat: show per-session MCP server health in the pane header"
+git add src/webview/components src/test/unit/mcp-status.test.ts src/test/dom/session-picker-mcp.test.tsx
+git commit -m "feat: report MCP server health in the session roster"
 ```
 
 ---

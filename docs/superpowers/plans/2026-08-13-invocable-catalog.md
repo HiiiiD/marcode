@@ -2,89 +2,112 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Surface a live session's skills and slash commands as a `/` autocomplete menu in the composer and a chrome strip listing what is available.
+**Goal:** One `/` autocomplete menu in the composer listing every skill and slash command available in the session's working directory, working from the moment the session exists — before its first message.
 
-**Architecture:** The provider pushes a full-replacement `invocables` snapshot event across the existing `AgentEvent` seam. `AgentSession` holds the latest snapshot in memory (never persisted) and forwards it through `SessionSink`; `SessionManager` gates it on pane visibility exactly as it gates transcript patches. The webview stores it per pane and renders it through two thin components over one pure logic module.
+**Architecture:** The catalog belongs to a working directory, not a session. A host-side `CatalogService` probes each `providerId + cwd` at most once through a new optional `AgentProvider.listInvocables(cwd)`, caches the answer in memory, and fans it out to every session on that key. A live `invocables` event from any running session refreshes the same entry. The webview stores it per pane and renders one menu over one pure logic module.
 
-**Tech Stack:** TypeScript, esbuild (CJS extension host + IIFE webview bundle), React 19, Tailwind v4, vendored shadcn/ui primitives, Mocha (`--ui tdd`) for unit tests, `@anthropic-ai/claude-agent-sdk` 0.3.228.
+**Tech Stack:** TypeScript, esbuild (CJS host + IIFE webview), React 19, Tailwind v4, vendored shadcn/ui primitives on Base UI, lucide-react, Mocha `--ui tdd` run from source through `tsx/cjs` (`yarn test:unit`), Mocha + jsdom + Testing Library (`yarn test:dom`), `@anthropic-ai/claude-agent-sdk` 0.3.228.
 
 **Spec:** [docs/superpowers/specs/2026-08-13-invocable-catalog-design.md](../specs/2026-08-13-invocable-catalog-design.md)
 
 ## Global Constraints
 
-- **No new dependencies.** Not for fuzzy matching, not for virtualization, not for testing. The 50-row cap exists so no windowing library is needed.
-- **No persistence.** The catalog never reaches `TranscriptStore`, `StoredIndex`, or `SessionState`. No migration, no version field.
-- **`@anthropic-ai/claude-agent-sdk` is ESM-only** and this bundle is CJS: reach runtime values through `await import(...)` and types through `import type ... with { 'resolution-mode': 'import' }`. See the header of `src/providers/claude/claude-provider.ts`.
-- **Provider names cross the seam verbatim.** The host never validates a name, never rewrites it, never resolves collisions. `origin` is derived for display only; `name` is what gets inserted.
-- **Unit tests must not need VS Code, the network, or the SDK.** Everything runs against `FakeProvider` or plain functions under `yarn test:unit`.
-- **Code style:** two-space indent, single quotes, semicolons, `curly` and `eqeqeq` enforced (`eslint.config.mjs`). Lines wrap near 100 columns. Non-obvious decisions get a comment explaining *why*, matching the density of the surrounding files.
-- **Verify before claiming done:** `yarn test:unit` and `yarn check-types` must both pass before each commit.
-- **`INVOCABLE_MENU_WINDOW = 50`** is the single named constant governing rendered menu rows.
+- **No new dependencies.** Not for fuzzy matching, not for virtualization, not for positioning. The 50-row cap exists so no windowing library is needed; `InputGroupAddon align="block-start"` exists so no popover positioning is needed.
+- **No persistence.** The catalog never reaches `TranscriptStore`, `StoredIndex`, or `SessionState`. A window reload re-probes.
+- **Nothing under `src/providers/`, `src/protocol/`, or `src/host/message-router.ts` imports `vscode`.** `CatalogService` is host code but must stay `vscode`-free so it unit-tests.
+- **Every protocol message addressed to a session carries an explicit `SessionId`**, even though the catalog is keyed by cwd. The wire has no implicit current session.
+- **Errors are state, never exceptions.** A failed probe caches nothing, surfaces nothing, and is retried by the next session on that cwd.
+- **shadcn only.** No raw `<button>`/`<input>`/`<textarea>` in feature code; compose classNames with `cn` from `@/lib/utils`, never template literals.
+- **Filenames kebab-case**, component identifiers PascalCase.
+- **DOM tests drive components through the real `StoreProvider`**, with state delivered as genuine `HostToWebview` messages via `sendFromHost` and assertions reading `posted()`. Never mock `useStore`, never hand-build a `ClientState`.
+- **`INVOCABLE_MENU_WINDOW = 50`** is the single named constant governing rendered rows.
+- **Verify before claiming done:** `yarn check-types`, `yarn lint`, `yarn test:unit`, `yarn test:dom` all pass before each commit.
+- **After any change under `src/webview/components/`, run the impeccable detector** over the changed files: `node C:/Users/Marco/.claude/skills/impeccable/scripts/detect.mjs --json <files>`. Exit 0 is required.
+
+## What changed since the first draft of this plan
+
+Read this before starting: the codebase moved under the earlier version.
+
+1. **The Claude query is constructed lazily, on first `send()`** ([claude-provider.ts](../../../src/providers/claude/claude-provider.ts)), because only construction can set `bypass`. `Query.supportedCommands()` therefore cannot answer for a session that has not sent anything — hence the probe in Task 2.
+2. **A DOM test harness exists** (`src/test/dom/`). UI work is tested, not hand-verified.
+3. **Tests run from source** through `tsx/cjs`. There is no `out/` build step for tests.
+4. **The composer was rebuilt** on `InputGroup` / `InputGroupTextarea` / `InputGroupAddon` with lucide icons, and its addon row already `flex-wrap`s at 300px.
+5. **The header count pill is cut.** The menu is the only surface.
 
 ---
 
-### Task 1: Seam types and a FakeProvider that can emit
+### Task 1: Seam types and provider capability
 
 **Files:**
 - Modify: `src/providers/types.ts`
-- Modify: `src/providers/fake/fake-provider.ts:42-90`
-- Modify: `src/protocol/messages.ts:1-5`, `:54-60`, `:87-94`
+- Modify: `src/providers/fake/fake-provider.ts`
+- Modify: `src/protocol/messages.ts`
 - Test: `src/test/unit/fake-provider.test.ts`
 
 **Interfaces:**
 - Consumes: nothing.
 - Produces:
-  - `Invocable` — `{ name: string; description?: string; origin?: string; argHint?: string }`, exported from `src/providers/types.ts` and re-exported from `src/protocol/messages.ts`.
+  - `Invocable` — `{ name: string; description?: string; origin?: string; argHint?: string }` in `src/providers/types.ts`, re-exported from `src/protocol/messages.ts`.
   - `AgentEvent` variant `{ kind: 'invocables'; entries: Invocable[] }`.
+  - `AgentProvider.listInvocables?(cwd: string): Promise<Invocable[]>`.
   - `SessionSnapshot.invocables?: Invocable[]`.
   - `HostToWebview` variant `{ t: 'session-invocables'; id: SessionId; entries: Invocable[] }`.
-  - `FakeProvider.runs: FakeRun[]`, where `FakeRun = AgentRun & { emit(event: AgentEvent): void }` — lets a test push any event without going through `send()`.
+  - `FakeProvider.runs: FakeRun[]` where `FakeRun = AgentRun & { emit(event: AgentEvent): void }`.
+  - `FakeProvider.invocables: Invocable[] | Error | undefined` and `FakeProvider.listInvocablesCalls: string[]` — the scripted probe answer and its call log.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Write the failing tests**
 
-Append to `src/test/unit/fake-provider.test.ts`:
+Add to `src/test/unit/fake-provider.test.ts`:
 
 ```ts
 test('a run can emit events outside of send()', async () => {
   const provider = new FakeProvider(() => []);
-  const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+  provider.start({ cwd: '/tmp', permissionMode: 'default' });
+  const run = provider.runs[0];
 
-  run.emit({
-    kind: 'invocables',
-    entries: [{ name: 'brainstorming', description: 'Turn ideas into designs' }],
-  });
+  run.emit({ kind: 'invocables', entries: [{ name: 'init' }] });
+  const first = await run.events[Symbol.asyncIterator]().next();
 
-  const iterator = run.events[Symbol.asyncIterator]();
-  const first = await iterator.next();
+  assert.deepStrictEqual(first.value, { kind: 'invocables', entries: [{ name: 'init' }] });
+});
 
-  assert.deepStrictEqual(first.value, {
-    kind: 'invocables',
-    entries: [{ name: 'brainstorming', description: 'Turn ideas into designs' }],
-  });
-  assert.strictEqual(provider.runs.length, 1);
-  assert.strictEqual(provider.runs[0], run);
+test('listInvocables answers with the scripted catalog and logs its cwd', async () => {
+  const provider = new FakeProvider(() => []);
+  provider.invocables = [{ name: 'brainstorming', description: 'Design first' }];
+
+  const out = await provider.listInvocables('/repo');
+
+  assert.deepStrictEqual(out, [{ name: 'brainstorming', description: 'Design first' }]);
+  assert.deepStrictEqual(provider.listInvocablesCalls, ['/repo']);
+});
+
+test('listInvocables rejects when scripted with an error', async () => {
+  const provider = new FakeProvider(() => []);
+  provider.invocables = new Error('no catalog');
+
+  await assert.rejects(() => provider.listInvocables('/repo'), /no catalog/);
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [ ] **Step 2: Run tests to verify they fail**
 
-Run: `yarn compile-tests && npx mocha --ui tdd out/test/unit/fake-provider.test.js -g "emit events outside"`
-Expected: FAIL — `run.emit is not a function` (and a type error from `yarn check-types` on the same call).
+Run: `yarn test:unit --grep "invocables"`
+Expected: FAIL — `run.emit is not a function`, `provider.listInvocables is not a function`.
 
-- [ ] **Step 3: Add the `Invocable` type and the event variant**
+- [ ] **Step 3: Add the type and the two seam members**
 
 In `src/providers/types.ts`, after `ModelInfo`:
 
 ```ts
 /**
  * One thing the user can invoke by typing `/name`: a skill or a slash
- * command. Providers report these as one undifferentiated list — see the
- * spec's SDK spike — so there is deliberately no `kind` field.
+ * command. Providers report these as one undifferentiated list — the SDK has
+ * no discriminator — so there is deliberately no `kind` field.
  */
 export interface Invocable {
   /** Verbatim from the provider. This is what gets inserted into the composer. */
   name: string;
-  /** One line, rendered as the menu subtitle. */
+  /** One line, rendered as the row's second line. */
   description?: string;
   /** Plugin/namespace prefix derived from a `prefix:leaf` name. Display only. */
   origin?: string;
@@ -93,19 +116,38 @@ export interface Invocable {
 }
 ```
 
-Extend `AgentEvent` with a final variant:
+Extend `AgentEvent`:
 
 ```ts
   | { kind: 'usage'; inputTokens: number; outputTokens: number }
-  /** Full replacement list, not a delta. Emitted at init and on any change. */
+  /** Full replacement list, not a delta. Emitted whenever the provider notices a change. */
   | { kind: 'invocables'; entries: Invocable[] };
+```
+
+Extend `AgentProvider`:
+
+```ts
+export interface AgentProvider {
+  readonly id: string;
+  readonly displayName: string;
+  listModels(): ModelInfo[];
+  start(opts: StartOptions): AgentRun;
+  /**
+   * The catalog for a working directory, with NO session required.
+   *
+   * Optional because a provider may not be able to answer without one. It
+   * exists because the Claude provider constructs its query lazily on the
+   * first send() (only construction can set `bypass`), so the session's own
+   * query cannot answer for a composer that has not been used yet — which is
+   * exactly when the menu is wanted.
+   */
+  listInvocables?(cwd: string): Promise<Invocable[]>;
+}
 ```
 
 - [ ] **Step 4: Widen the protocol**
 
-In `src/protocol/messages.ts`, add `Invocable` to the type import from `../providers/types` and to the `export type { ... }` re-export on line 5.
-
-Add the snapshot field to `SessionSnapshot`:
+In `src/protocol/messages.ts`: add `Invocable` to the type import from `../providers/types` and to the re-export; add the snapshot field and the host message.
 
 ```ts
 export interface SessionSnapshot extends SessionState {
@@ -115,22 +157,20 @@ export interface SessionSnapshot extends SessionState {
   hasMore: boolean;
   pending: PermissionRequest[];
   /**
-   * Live-run state only: absent for an archived session, and absent for a
-   * live one whose provider has not reported yet. Never persisted.
+   * The cwd's catalog, when the host has one. In-memory host state: absent
+   * before the probe resolves, and absent forever if it failed.
    */
   invocables?: Invocable[];
 }
 ```
 
-Add the host message variant to `HostToWebview`:
-
 ```ts
   | { t: 'session-invocables'; id: SessionId; entries: Invocable[] }
 ```
 
-- [ ] **Step 5: Give FakeProvider an emit hook**
+- [ ] **Step 5: Script the fake provider**
 
-In `src/providers/fake/fake-provider.ts`, replace the class body's `start` and add the run type:
+In `src/providers/fake/fake-provider.ts`:
 
 ```ts
 /** An `AgentRun` a test can push arbitrary events into. */
@@ -143,51 +183,28 @@ export class FakeProvider implements AgentProvider {
   readonly decisions = new Map<string, ToolDecision>();
   /**
    * Every run started by this provider, newest last. A real provider emits
-   * events (an `invocables` snapshot, an MCP status) without the user having
-   * sent anything; tests need a handle to do the same.
+   * events without the user having sent anything; tests need a handle to
+   * do the same.
    */
   readonly runs: FakeRun[] = [];
+  /** Every cwd listInvocables() was called with, in order. */
+  readonly listInvocablesCalls: string[] = [];
+  /** Scripted probe answer: a catalog to resolve with, or an Error to reject with. */
+  invocables: Invocable[] | Error | undefined;
   private sessionCounter = 0;
 ```
 
-and in `start`, build the object, register it, and return it:
+Add the method:
 
 ```ts
-  start(_opts: StartOptions): AgentRun {
-    const channel = new EventChannel();
-    const resumeToken = `fake-session-${++this.sessionCounter}`;
-    let started = false;
-
-    const run: FakeRun = {
-      events: channel,
-      emit: (event: AgentEvent) => { channel.push(event); },
-      send: (text: string) => {
-        if (!started) {
-          started = true;
-          channel.push({ kind: 'session', resumeToken });
-        }
-        for (const ev of this.script(text)) { channel.push(ev); }
-      },
-      respondToTool: (id, decision) => {
-        this.decisions.set(id, decision);
-        // A real provider resolves the tool and completes the turn once the
-        // decision lands. Without a follow-up event here, AgentSession sets
-        // status to 'running' when pending.size reaches 0 (see
-        // respondToPermission) and nothing ever arrives after that for the
-        // fake provider — the status dot is stuck at 'running' forever.
-        channel.push({ kind: 'turn-end', reason: 'done' });
-      },
-      setEffort: (_effort: EffortLevel) => { /* recorded by tests via lastEffort if needed */ },
-      interrupt: async () => { channel.push({ kind: 'turn-end', reason: 'interrupted' }); },
-      dispose: async () => { channel.close(); },
-    };
-
-    this.runs.push(run);
-    return run;
+  async listInvocables(cwd: string): Promise<Invocable[]> {
+    this.listInvocablesCalls.push(cwd);
+    if (this.invocables instanceof Error) { throw this.invocables; }
+    return this.invocables ?? [];
   }
 ```
 
-The declared return type stays `AgentRun` so the class still satisfies `AgentProvider`; tests reach `emit` through `provider.runs`.
+In `start()`, build the run as a `FakeRun` with `emit: (event) => { channel.push(event); }`, push it onto `this.runs`, and return it. Keep every existing behaviour — the `turn-end` pushed from `respondToTool` and its comment stay exactly as they are.
 
 - [ ] **Step 6: Run tests to verify they pass**
 
@@ -197,292 +214,498 @@ Expected: PASS, including every pre-existing test.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add src/providers/types.ts src/providers/fake/fake-provider.ts src/protocol/messages.ts src/test/unit/fake-provider.test.ts
-git commit -m "feat: add the invocable seam type and a FakeProvider emit hook"
+git add src/providers src/protocol/messages.ts src/test/unit/fake-provider.test.ts
+git commit -m "feat: add the invocable seam type and provider catalog capability"
 ```
 
 ---
 
-### Task 2: AgentSession holds and forwards the snapshot
+### Task 2: CatalogService — probe once per cwd, cache, fan out
 
 **Files:**
-- Modify: `src/host/agent-session.ts:1-56`, `:134-138`, `:172-247`
-- Test: `src/test/unit/agent-session.test.ts`
+- Create: `src/host/catalog-service.ts`
+- Create: `src/test/unit/catalog-service.test.ts`
 
 **Interfaces:**
-- Consumes: `Invocable`, the `invocables` `AgentEvent` variant, `FakeProvider.runs` (Task 1).
+- Consumes: `AgentProvider.listInvocables`, `Invocable` (Task 1).
 - Produces:
-  - `SessionSink.invocables(id: SessionId, entries: Invocable[]): void` — a new required method on the sink interface.
-  - `AgentSession.snapshot()` returns `invocables` when the provider has reported.
+  - `catalogKey(providerId: string, cwd: string): string`
+  - `class CatalogService`
+    - `constructor(onEntries: (key: string, entries: Invocable[]) => void)`
+    - `get(key: string): Invocable[] | undefined`
+    - `set(key: string, entries: Invocable[]): void` — records a live event and notifies
+    - `ensure(key: string, provider: AgentProvider, cwd: string): void` — fire-and-forget probe, at most once per key
+
+This is the task the whole feature turns on: it is what makes a menu exist before a first message, and it holds every caching rule in one `vscode`-free, fully testable place.
 
 - [ ] **Step 1: Write the failing tests**
 
-Add to `src/test/unit/agent-session.test.ts` (follow the file's existing harness for building a session and its recording sink — extend that sink with an `invocables` recorder rather than inventing a second one):
+Create `src/test/unit/catalog-service.test.ts`:
 
 ```ts
-test('an invocables event reaches the sink and the snapshot', async () => {
-  const { session, provider, sink } = makeSession();
-  const entries = [
-    { name: 'brainstorming', description: 'Turn ideas into designs' },
-    { name: 'init', argHint: '[path]' },
-  ];
+import * as assert from 'assert';
+import { CatalogService, catalogKey } from '../../host/catalog-service';
+import { FakeProvider } from '../../providers/fake/fake-provider';
+import type { Invocable } from '../../providers/types';
 
-  provider.runs[0].emit({ kind: 'invocables', entries });
-  await settle();
-
-  assert.deepStrictEqual(sink.invocables, [entries]);
-  const snap = await session.snapshot();
-  assert.deepStrictEqual(snap.invocables, entries);
-});
-
-test('a later snapshot replaces the earlier one wholesale', async () => {
-  const { session, provider } = makeSession();
-
-  provider.runs[0].emit({ kind: 'invocables', entries: [{ name: 'a' }, { name: 'b' }] });
-  provider.runs[0].emit({ kind: 'invocables', entries: [{ name: 'c' }] });
-  await settle();
-
-  const snap = await session.snapshot();
-  assert.deepStrictEqual(snap.invocables, [{ name: 'c' }]);
-});
-
-test('a session with no invocables event has no invocables in its snapshot', async () => {
-  const { session } = makeSession();
-
-  const snap = await session.snapshot();
-  assert.strictEqual(snap.invocables, undefined);
-});
-
-test('an empty array is reported, and is distinct from never reporting', async () => {
-  const { session, provider } = makeSession();
-
-  provider.runs[0].emit({ kind: 'invocables', entries: [] });
-  await settle();
-
-  const snap = await session.snapshot();
-  assert.deepStrictEqual(snap.invocables, []);
-});
-```
-
-If the existing file has no `settle()` helper, add one — the event pump is async, so assertions need a turn of the microtask queue:
-
-```ts
-/** The event pump is async; let it drain before asserting. */
+/** The probe is fire-and-forget; let its promise chain drain before asserting. */
 function settle(): Promise<void> {
   return new Promise((resolve) => { setTimeout(resolve, 0); });
 }
+
+function recorder() {
+  const seen: { key: string; entries: Invocable[] }[] = [];
+  return { seen, onEntries: (key: string, entries: Invocable[]) => { seen.push({ key, entries }); } };
+}
+
+suite('CatalogService', () => {
+  test('probes once per key and caches the answer', async () => {
+    const { seen, onEntries } = recorder();
+    const service = new CatalogService(onEntries);
+    const provider = new FakeProvider(() => []);
+    provider.invocables = [{ name: 'init' }];
+    const key = catalogKey('fake', '/repo');
+
+    service.ensure(key, provider, '/repo');
+    service.ensure(key, provider, '/repo');
+    await settle();
+    service.ensure(key, provider, '/repo');
+    await settle();
+
+    assert.deepStrictEqual(provider.listInvocablesCalls, ['/repo']);
+    assert.deepStrictEqual(service.get(key), [{ name: 'init' }]);
+    assert.strictEqual(seen.length, 1);
+  });
+
+  test('a different cwd is a different key and probes again', async () => {
+    const { onEntries } = recorder();
+    const service = new CatalogService(onEntries);
+    const provider = new FakeProvider(() => []);
+    provider.invocables = [{ name: 'init' }];
+
+    service.ensure(catalogKey('fake', '/a'), provider, '/a');
+    service.ensure(catalogKey('fake', '/b'), provider, '/b');
+    await settle();
+
+    assert.deepStrictEqual(provider.listInvocablesCalls, ['/a', '/b']);
+  });
+
+  test('an empty catalog is a real answer and is cached', async () => {
+    const { seen, onEntries } = recorder();
+    const service = new CatalogService(onEntries);
+    const provider = new FakeProvider(() => []);
+    provider.invocables = [];
+    const key = catalogKey('fake', '/repo');
+
+    service.ensure(key, provider, '/repo');
+    await settle();
+    service.ensure(key, provider, '/repo');
+    await settle();
+
+    assert.deepStrictEqual(service.get(key), []);
+    assert.deepStrictEqual(provider.listInvocablesCalls, ['/repo']);
+    assert.strictEqual(seen.length, 1);
+  });
+
+  test('a failed probe caches nothing, notifies nothing, and is retried', async () => {
+    const { seen, onEntries } = recorder();
+    const service = new CatalogService(onEntries);
+    const provider = new FakeProvider(() => []);
+    provider.invocables = new Error('nope');
+    const key = catalogKey('fake', '/repo');
+
+    service.ensure(key, provider, '/repo');
+    await settle();
+
+    assert.strictEqual(service.get(key), undefined);
+    assert.strictEqual(seen.length, 0);
+
+    provider.invocables = [{ name: 'init' }];
+    service.ensure(key, provider, '/repo');
+    await settle();
+
+    assert.deepStrictEqual(provider.listInvocablesCalls, ['/repo', '/repo']);
+    assert.deepStrictEqual(service.get(key), [{ name: 'init' }]);
+  });
+
+  test('a provider without listInvocables is not an error', async () => {
+    const { seen, onEntries } = recorder();
+    const service = new CatalogService(onEntries);
+    const provider = new FakeProvider(() => []);
+    delete (provider as { listInvocables?: unknown }).listInvocables;
+    const key = catalogKey('fake', '/repo');
+
+    service.ensure(key, provider, '/repo');
+    await settle();
+
+    assert.strictEqual(service.get(key), undefined);
+    assert.strictEqual(seen.length, 0);
+  });
+
+  test('set() records a live event and notifies', () => {
+    const { seen, onEntries } = recorder();
+    const service = new CatalogService(onEntries);
+    const key = catalogKey('fake', '/repo');
+
+    service.set(key, [{ name: 'fresh' }]);
+
+    assert.deepStrictEqual(service.get(key), [{ name: 'fresh' }]);
+    assert.deepStrictEqual(seen, [{ key, entries: [{ name: 'fresh' }] }]);
+  });
+
+  test('a key survives a cwd containing the separator', () => {
+    assert.notStrictEqual(catalogKey('fake', 'a'), catalogKey('fak', 'ea'));
+  });
+});
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `yarn compile-tests && npx mocha --ui tdd out/test/unit/agent-session.test.js -g "invocables"`
-Expected: FAIL — `sink.invocables` is undefined and `snap.invocables` is undefined.
+Run: `yarn test:unit --grep "CatalogService"`
+Expected: FAIL — `Cannot find module '../../host/catalog-service'`.
 
-- [ ] **Step 3: Extend the sink and hold the snapshot**
+- [ ] **Step 3: Write the service**
 
-In `src/host/agent-session.ts`, add to the `SessionSink` interface:
+Create `src/host/catalog-service.ts`:
 
 ```ts
+import type { AgentProvider, Invocable } from '../providers/types';
+
+/**
+ * A catalog belongs to a working directory, not a session: skills resolve
+ * from the filesystem and the user's config, so two sessions on the same repo
+ * see the same list. The provider id is part of the key because two providers
+ * in the same directory are two different catalogs.
+ *
+ * '\u0000' as the separator: it cannot appear in a path or a provider id, so
+ * no pair of inputs can collide by concatenation.
+ */
+export function catalogKey(providerId: string, cwd: string): string {
+  return `${providerId}\u0000${cwd}`;
+}
+
+export class CatalogService {
+  private readonly cache = new Map<string, Invocable[]>();
+  private readonly inflight = new Set<string>();
+
   /**
-   * The session's latest full invocable list. Live-run state: it is never
-   * persisted, so this is the only way it reaches the webview mid-run.
+   * @param onEntries Called whenever a key acquires or replaces its catalog.
+   *   The manager fans this out to every session sharing the key.
    */
-  invocables(id: SessionId, entries: Invocable[]): void;
-```
+  constructor(private readonly onEntries: (key: string, entries: Invocable[]) => void) {}
 
-Add the field beside the other in-memory run state:
-
-```ts
-  /**
-   * Last `invocables` snapshot from the provider. `undefined` means "not
-   * reported", which is deliberately distinct from `[]` ("none available") —
-   * see the spec. Never written to the transcript.
-   */
-  private invocableEntries: Invocable[] | undefined;
-```
-
-Handle the event in `handle()`, before the `turn-end` case:
-
-```ts
-      case 'invocables':
-        // Replace wholesale: the provider sends the full list every time,
-        // so there is nothing to merge and no ordering to preserve.
-        this.invocableEntries = event.entries;
-        this.sink.invocables(this._state.id, event.entries);
-        return;
-```
-
-Include it in `snapshot()`:
-
-```ts
-  async snapshot(): Promise<SessionSnapshot> {
-    await this.scheduleFlush();
-    const { items, hasMore } = await this.store.tail(this._state.id);
-    return {
-      ...this._state, items, hasMore,
-      pending: [...this.pending.values()],
-      invocables: this.invocableEntries,
-    };
+  get(key: string): Invocable[] | undefined {
+    return this.cache.get(key);
   }
-```
 
-Import `Invocable` from `../providers/types` alongside the existing type imports.
+  /** Records a catalog learned from a live session's `invocables` event. */
+  set(key: string, entries: Invocable[]): void {
+    this.cache.set(key, entries);
+    this.onEntries(key, entries);
+  }
+
+  /**
+   * Probes this key's catalog unless it is already known or in flight.
+   * Fire-and-forget by design: no caller waits on a catalog, and a session
+   * must never be delayed by one.
+   */
+  ensure(key: string, provider: AgentProvider, cwd: string): void {
+    if (this.cache.has(key) || this.inflight.has(key)) { return; }
+    if (!provider.listInvocables) { return; }
+
+    this.inflight.add(key);
+    void provider.listInvocables(cwd)
+      .then((entries) => { this.set(key, entries); })
+      .catch(() => {
+        // Errors are state, never exceptions — and here the state is simply
+        // "no catalog". Nothing is cached, so the next session created on
+        // this cwd retries. A catalog that will not load leaves the composer
+        // as plain text; there is nothing the user could act on.
+      })
+      .finally(() => { this.inflight.delete(key); });
+  }
+}
+```
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `yarn test:unit && yarn check-types`
-Expected: PASS. `SessionManager` will fail type-checking until Task 3 — if `check-types` reports `Property 'invocables' is missing` on `SessionManager`, do Task 3's Step 3 now and commit both together rather than leaving a broken build.
+Run: `yarn test:unit && yarn check-types && yarn lint`
+Expected: PASS, all 7 new tests included.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/host/agent-session.ts src/test/unit/agent-session.test.ts
-git commit -m "feat: hold and forward the provider's invocable snapshot"
+git add src/host/catalog-service.ts src/test/unit/catalog-service.test.ts
+git commit -m "feat: cache each working directory's invocable catalog"
 ```
 
 ---
 
-### Task 3: SessionManager routes it to visible panes
+### Task 3: Wire the catalog through session and manager
 
 **Files:**
-- Modify: `src/host/session-manager.ts:14-38`, `:111-149`, `:195-211`
-- Test: `src/test/unit/session-manager.test.ts`
+- Modify: `src/host/agent-session.ts`
+- Modify: `src/host/session-manager.ts`
+- Test: `src/test/unit/agent-session.test.ts`, `src/test/unit/session-manager.test.ts`
 
 **Interfaces:**
-- Consumes: `SessionSink.invocables` (Task 2), `HostToWebview` variant `session-invocables` (Task 1).
-- Produces: `SessionManager.invocables(id, entries)` emitting `{ t: 'session-invocables', id, entries }` for visible sessions only, buffered across an in-flight snapshot.
+- Consumes: `CatalogService`, `catalogKey` (Task 2); the `invocables` event and `session-invocables` message (Task 1).
+- Produces:
+  - `SessionSink.invocables(id: SessionId, entries: Invocable[]): void` — a session reporting a catalog **upward**, so the manager can cache and fan out.
+  - `AgentSession.setInvocables(entries: Invocable[]): void` — the manager pushing a catalog **down** into a session, for its snapshot.
+  - `AgentSession.snapshot()` includes `invocables`.
+
+The two directions are deliberately different methods. A single one would recurse: a session reporting an event would be told the same entries back by the fan-out it triggered.
 
 - [ ] **Step 1: Write the failing tests**
 
-Add to `src/test/unit/session-manager.test.ts`, following the file's existing harness (a manager over a temp-dir `TranscriptStore`, a `FakeProvider`, and an array collecting emitted `HostToWebview` messages):
+In `src/test/unit/agent-session.test.ts` (extend the file's existing recording sink with an `invocables` array):
 
 ```ts
-test('invocables reach a visible session', async () => {
-  const { manager, provider, emitted } = await makeManager();
-  const session = await manager.create('fake', '/tmp');
-  await manager.setVisible([session.state.id]);
-  emitted.length = 0;
+test('an invocables event is reported to the sink', async () => {
+  const { provider, sink } = makeSession();
 
   provider.runs[0].emit({ kind: 'invocables', entries: [{ name: 'init' }] });
   await settle();
 
-  assert.deepStrictEqual(emitted, [{
-    t: 'session-invocables', id: session.state.id, entries: [{ name: 'init' }],
-  }]);
+  assert.deepStrictEqual(sink.invocables, [[{ name: 'init' }]]);
 });
 
-test('invocables for a hidden session are dropped', async () => {
-  const { manager, provider, emitted } = await makeManager();
-  await manager.create('fake', '/tmp');
-  emitted.length = 0;
+test('setInvocables lands in the snapshot and replaces wholesale', async () => {
+  const { session } = makeSession();
 
-  provider.runs[0].emit({ kind: 'invocables', entries: [{ name: 'init' }] });
+  session.setInvocables([{ name: 'a' }, { name: 'b' }]);
+  session.setInvocables([{ name: 'c' }]);
+
+  assert.deepStrictEqual((await session.snapshot()).invocables, [{ name: 'c' }]);
+});
+
+test('a session told nothing has no invocables in its snapshot', async () => {
+  const { session } = makeSession();
+
+  assert.strictEqual((await session.snapshot()).invocables, undefined);
+});
+```
+
+In `src/test/unit/session-manager.test.ts`:
+
+```ts
+test('creating a session probes its cwd and emits the catalog to a visible pane', async () => {
+  const { manager, provider, emitted } = await makeManager();
+  provider.invocables = [{ name: 'init' }];
+
+  const session = await manager.create('fake', '/repo');
+  await manager.setVisible([session.state.id]);
+  await settle();
+
+  assert.deepStrictEqual(
+    emitted.filter((m) => m.t === 'session-invocables'),
+    [{ t: 'session-invocables', id: session.state.id, entries: [{ name: 'init' }] }],
+  );
+});
+
+test('a second session on the same cwd reuses the cached catalog', async () => {
+  const { manager, provider } = await makeManager();
+  provider.invocables = [{ name: 'init' }];
+
+  const first = await manager.create('fake', '/repo');
+  await settle();
+  const second = await manager.create('fake', '/repo');
+  await settle();
+
+  assert.deepStrictEqual(provider.listInvocablesCalls, ['/repo']);
+  assert.deepStrictEqual((await first.snapshot()).invocables, [{ name: 'init' }]);
+  assert.deepStrictEqual((await second.snapshot()).invocables, [{ name: 'init' }]);
+});
+
+test('a live invocables event refreshes every session on that cwd', async () => {
+  const { manager, provider } = await makeManager();
+  provider.invocables = [{ name: 'stale' }];
+  const first = await manager.create('fake', '/repo');
+  const second = await manager.create('fake', '/repo');
+  await settle();
+
+  // The event arrives on the FIRST session's run; the second must learn it too.
+  provider.runs[0].emit({ kind: 'invocables', entries: [{ name: 'fresh' }] });
+  await settle();
+
+  assert.deepStrictEqual((await first.snapshot()).invocables, [{ name: 'fresh' }]);
+  assert.deepStrictEqual((await second.snapshot()).invocables, [{ name: 'fresh' }]);
+});
+
+test('a hidden session gets no session-invocables message', async () => {
+  const { manager, provider, emitted } = await makeManager();
+  provider.invocables = [{ name: 'init' }];
+
+  await manager.create('fake', '/repo');
   await settle();
 
   assert.deepStrictEqual(emitted.filter((m) => m.t === 'session-invocables'), []);
 });
 
-test('invocables arriving during a snapshot fetch are emitted after it', async () => {
+test('an archived pane is served the cwd catalog from cache', async () => {
   const { manager, provider, emitted } = await makeManager();
-  const session = await manager.create('fake', '/tmp');
+  provider.invocables = [{ name: 'init' }];
+  const session = await manager.create('fake', '/repo');
+  const id = session.state.id;
+  await settle();
+  await manager.close(id);
   emitted.length = 0;
 
-  // Do not await: emit while the snapshot fetch is in flight.
-  const visible = manager.setVisible([session.state.id]);
-  provider.runs[0].emit({ kind: 'invocables', entries: [{ name: 'late' }] });
-  await visible;
+  await manager.setVisible([id]);
   await settle();
 
-  const tags = emitted.map((m) => m.t);
-  assert.ok(tags.indexOf('session-snapshot') < tags.indexOf('session-invocables'),
-    'the snapshot must precede the invocables message');
+  const snap = emitted.find((m) => m.t === 'session-snapshot');
+  assert.deepStrictEqual(snap?.session.invocables, [{ name: 'init' }]);
 });
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `yarn compile-tests && npx mocha --ui tdd out/test/unit/session-manager.test.js -g "invocables"`
-Expected: FAIL — `manager.invocables is not a function`.
+Run: `yarn test:unit --grep "invocables|catalog"`
+Expected: FAIL — `session.setInvocables is not a function`, no `session-invocables` emitted.
 
-- [ ] **Step 3: Implement the sink method**
+- [ ] **Step 3: Extend AgentSession**
 
-Add the buffer field beside `snapshotting` in `src/host/session-manager.ts`:
+In `src/host/agent-session.ts`, add to `SessionSink`:
 
 ```ts
   /**
-   * Latest invocables that arrived for an id while its snapshot fetch was in
-   * flight. The in-flight snapshot samples `AgentSession`'s field at an
-   * unpredictable point relative to this event, so emitting immediately could
-   * land before the snapshot (and be clobbered by it), while dropping could
-   * lose a change the snapshot was built too early to include. Keep only the
-   * latest — the event is a full replacement, so an older one is worthless.
+   * A running session reported its catalog. Goes UP to the manager, which
+   * owns the per-cwd cache and the fan-out; it is not this session's answer
+   * alone.
    */
-  private pendingInvocables = new Map<SessionId, Invocable[]>();
+  invocables(id: SessionId, entries: Invocable[]): void;
 ```
 
-Add the method beside `patch()` in the `SessionSink` section:
+Add the field, the setter, and the event case:
+
+```ts
+  /**
+   * The cwd catalog as last told to us by the manager. Held only so
+   * snapshot() can carry it; this session is not its owner.
+   */
+  private invocableEntries: Invocable[] | undefined;
+```
+
+```ts
+  setInvocables(entries: Invocable[]): void {
+    // Replace wholesale: the catalog is always a full list.
+    this.invocableEntries = entries;
+  }
+```
+
+```ts
+      case 'invocables':
+        this.sink.invocables(this._state.id, event.entries);
+        return;
+```
+
+and include it in `snapshot()`'s returned object as `invocables: this.invocableEntries`.
+
+Note `setInvocables` does not emit. The manager emits, because it is the only one that knows which sessions share the key and which of them are visible.
+
+- [ ] **Step 4: Extend SessionManager**
+
+In `src/host/session-manager.ts`:
+
+```ts
+  private readonly catalog = new CatalogService(
+    (key, entries) => { this.fanOutCatalog(key, entries); },
+  );
+```
+
+Add a key helper and the fan-out:
+
+```ts
+  private keyOf(state: SessionState): string {
+    return catalogKey(state.providerId, state.cwd);
+  }
+
+  /**
+   * Pushes a catalog to every session on this key — live or not — and emits
+   * it to the visible ones. Meta, not `live`, is the roster: a session that
+   * is not materialized still needs its snapshot to carry the catalog when
+   * it is next revealed.
+   */
+  private fanOutCatalog(key: string, entries: Invocable[]): void {
+    for (const state of this.meta.values()) {
+      if (this.keyOf(state) !== key) { continue; }
+      this.live.get(state.id)?.setInvocables(entries);
+      if (this.visible.has(state.id)) {
+        this.emit({ t: 'session-invocables', id: state.id, entries });
+      }
+    }
+  }
+```
+
+Call `ensure` wherever a session becomes live, in `create()` and `open()`, after the session is registered in `this.meta`/`this.live` — order matters, because `ensure` can resolve synchronously-enough that the fan-out must already find the session:
+
+```ts
+    this.catalog.ensure(this.keyOf(state), provider, state.cwd);
+```
+
+Seed a newly created or opened session from the cache, so a second session on a known cwd needs no round trip:
+
+```ts
+    const cached = this.catalog.get(this.keyOf(state));
+    if (cached) { session.setInvocables(cached); }
+```
+
+Implement the sink method — a session reporting upward:
 
 ```ts
   invocables(id: SessionId, entries: Invocable[]): void {
-    if (!this.visible.has(id)) { return; }
-    if (this.snapshotting.has(id)) {
-      this.pendingInvocables.set(id, entries);
-      return;
-    }
-    this.emit({ t: 'session-invocables', id, entries });
+    const state = this.meta.get(id);
+    if (!state) { return; }
+    // Cache under the cwd key and fan out. The reporting session gets the
+    // entries back through the same fan-out as its siblings, so there is one
+    // path, not two.
+    this.catalog.set(this.keyOf(state), entries);
   }
 ```
 
-Drain it in `drainSnapshotBuffer`, after the patches so the ordering matches how the events arrived:
+In `setVisible()`, carry the catalog on the disk-served snapshot for a non-live session:
 
 ```ts
-  /** Emits any patches that arrived for `id` while its snapshot was in flight. */
-  private drainSnapshotBuffer(id: SessionId): void {
-    const buffered = this.snapshotting.get(id);
-    this.snapshotting.delete(id);
-    if (buffered) {
-      for (const patch of buffered) {
-        this.emit({ t: 'session-patch', id, patch });
-      }
-    }
-    const entries = this.pendingInvocables.get(id);
-    this.pendingInvocables.delete(id);
-    if (entries) {
-      this.emit({ t: 'session-invocables', id, entries });
-    }
-  }
+      const { items, hasMore } = await this.store.tail(id);
+      this.emit({
+        t: 'session-snapshot',
+        session: {
+          ...state, items, hasMore, pending: [],
+          invocables: this.catalog.get(this.keyOf(state)),
+        },
+      });
 ```
 
-Note the restructure: the early `return` on `!buffered` in the current code would skip the invocables drain, so it becomes an `if` block.
+Import `CatalogService` and `catalogKey` from `./catalog-service`, and `Invocable` from `../providers/types`.
 
-Import `Invocable` from `../providers/types`.
+- [ ] **Step 5: Run tests to verify they pass**
 
-- [ ] **Step 4: Run tests to verify they pass**
-
-Run: `yarn test:unit && yarn check-types`
+Run: `yarn test:unit && yarn check-types && yarn lint`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add src/host/session-manager.ts src/test/unit/session-manager.test.ts
-git commit -m "feat: route invocable snapshots to visible panes"
+git add src/host src/test/unit/agent-session.test.ts src/test/unit/session-manager.test.ts
+git commit -m "feat: fan a working directory's catalog out to its sessions"
 ```
 
 ---
 
-### Task 4: Claude provider reports the catalog
+### Task 4: Claude provider — probe and live refresh
 
 **Files:**
 - Create: `src/providers/claude/map-commands.ts`
 - Create: `src/test/unit/map-commands.test.ts`
-- Modify: `src/providers/claude/map-events.ts:106-114`
-- Modify: `src/providers/claude/claude-provider.ts:146-159`
-- Test: `src/test/unit/map-events.test.ts`
+- Modify: `src/providers/claude/map-events.ts`
+- Modify: `src/providers/claude/claude-provider.ts`
+- Test: `src/test/unit/map-events.test.ts`, `src/test/unit/claude-provider.test.ts` (create if the repo has no provider test yet)
 
 **Interfaces:**
 - Consumes: `Invocable` (Task 1).
-- Produces: `toInvocables(commands: unknown): Invocable[]` from `src/providers/claude/map-commands.ts`.
+- Produces: `toInvocables(commands: unknown): Invocable[]` from `src/providers/claude/map-commands.ts`; `ClaudeProvider.listInvocables(cwd)`.
 
 **SDK facts** (verified 2026-08-13 against `@anthropic-ai/claude-agent-sdk@0.3.228` by reading `node_modules/@anthropic-ai/claude-agent-sdk/sdk.d.ts`):
 
@@ -494,13 +717,14 @@ type SlashCommand = {
   aliases?: string[];    // ignored — see the spec
 };
 Query.supportedCommands(): Promise<SlashCommand[]>;
+Query.close(): void;
 type SDKCommandsChangedMessage = {
   type: 'system'; subtype: 'commands_changed'; commands: SlashCommand[];
   uuid: UUID; session_id: string;
 };
 ```
 
-- [ ] **Step 1: Write the failing tests**
+- [ ] **Step 1: Write the failing mapper tests**
 
 Create `src/test/unit/map-commands.test.ts`:
 
@@ -595,7 +819,7 @@ test('other system subtypes still map to nothing', () => {
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `yarn compile-tests && npx mocha --ui tdd out/test/unit/map-commands.test.js out/test/unit/map-events.test.js`
+Run: `yarn test:unit --grep "map-commands|commands_changed"`
 Expected: FAIL — `Cannot find module '../../providers/claude/map-commands'`.
 
 - [ ] **Step 3: Write the mapper**
@@ -671,7 +895,10 @@ In `src/providers/claude/map-events.ts`, replace the `system` branch:
     if (subtype === 'commands_changed') {
       // A full replacement list, which is exactly our snapshot contract —
       // no diffing, and an empty array is a legitimate "none available".
-      return [{ kind: 'invocables', entries: toInvocables((msg as { commands?: unknown }).commands) }];
+      return [{
+        kind: 'invocables',
+        entries: toInvocables((msg as { commands?: unknown }).commands),
+      }];
     }
     if (subtype !== 'init') { return []; }
     const sessionId = (msg as { session_id?: string }).session_id;
@@ -679,37 +906,99 @@ In `src/providers/claude/map-events.ts`, replace the `system` branch:
   }
 ```
 
-Add `import { toInvocables } from './map-commands';` beside the existing imports.
+Add `import { toInvocables } from './map-commands';`.
 
-- [ ] **Step 5: Fetch the initial list**
+- [ ] **Step 5: Write the probe test**
 
-In `src/providers/claude/claude-provider.ts`, inside the `pump` IIFE, right after `queryRef = session;`:
+The provider already isolates query construction behind an injectable `QueryFn` (`new ClaudeProvider(fakeLoadQuery)`), which is what makes this testable without a subprocess. Add to `src/test/unit/claude-provider.test.ts`, following the file's existing fake-query harness if one is present:
 
 ```ts
-        queryRef = session;
-        // The initial catalog is a pull, not a push. Fire it without
-        // awaiting so a slow control response cannot delay the message loop,
-        // and swallow a rejection: a catalog that fails to load leaves the
-        // snapshot unreported (strip hidden, composer still plain text) and
-        // must never take the session down with it. Later changes arrive on
-        // their own as `commands_changed` system messages.
-        void session.supportedCommands()
-          .then((commands) => { events.push({ kind: 'invocables', entries: toInvocables(commands) }); })
-          .catch(() => { /* see above */ });
+test('listInvocables constructs a query, reads the catalog and closes it', async () => {
+  let closed = false;
+  let constructedCwd: string | undefined;
+  const provider = new ClaudeProvider(async () => (params) => {
+    constructedCwd = params.options.cwd;
+    return {
+      supportedCommands: async () => [
+        { name: 'init', description: 'Init', argumentHint: '' },
+      ],
+      close: () => { closed = true; },
+      [Symbol.asyncIterator]: () => ({ next: async () => ({ value: undefined, done: true }) }),
+    } as unknown as Query;
+  });
+
+  const out = await provider.listInvocables('/repo');
+
+  assert.deepStrictEqual(out, [{ name: 'init', description: 'Init' }]);
+  assert.strictEqual(constructedCwd, '/repo');
+  assert.strictEqual(closed, true, 'the probe query must not outlive the answer');
+});
+
+test('listInvocables closes the query even when the catalog read fails', async () => {
+  let closed = false;
+  const provider = new ClaudeProvider(async () => () => ({
+    supportedCommands: async () => { throw new Error('control request failed'); },
+    close: () => { closed = true; },
+    [Symbol.asyncIterator]: () => ({ next: async () => ({ value: undefined, done: true }) }),
+  } as unknown as Query));
+
+  await assert.rejects(() => provider.listInvocables('/repo'), /control request failed/);
+  assert.strictEqual(closed, true);
+});
 ```
 
-Add `import { toInvocables } from './map-commands';` beside the `mapEvent` import.
+- [ ] **Step 6: Implement the probe**
 
-- [ ] **Step 6: Run tests to verify they pass**
+In `src/providers/claude/claude-provider.ts`, add the method to `ClaudeProvider`:
+
+```ts
+  /**
+   * The cwd's catalog, with no session. Constructs a throwaway query over a
+   * prompt stream that never yields, asks it for the command list, and closes
+   * it. Nothing is ever sent, so there is no turn, no tokens and no agent
+   * work — only the CLI's init handshake.
+   *
+   * This exists because the session's own query is constructed lazily on the
+   * first send() (only construction can set `bypass`), and the menu has to
+   * work before that first message — creating a session in order to run a
+   * slash command is the primary case, not an edge one.
+   *
+   * Rejections propagate: CatalogService decides the retry policy, and
+   * swallowing here would hide a permanently broken CLI behind an empty menu.
+   */
+  async listInvocables(cwd: string): Promise<Invocable[]> {
+    const query = await this.loadQueryFn();
+    // A channel that is closed immediately: the query needs an async iterable
+    // for `prompt`, and this one ends without ever yielding a message.
+    const prompts = new Channel<SDKUserMessage>();
+    prompts.close();
+    const probe = query({ prompt: prompts, options: { cwd } });
+    try {
+      return toInvocables(await probe.supportedCommands());
+    } finally {
+      // finally, not a success-path close: a failed control request must not
+      // leak a CLI subprocess for the life of the window.
+      try {
+        probe.close();
+      } catch {
+        // Best-effort: the probe is being discarded regardless.
+      }
+    }
+  }
+```
+
+Add `toInvocables` to the imports and `Invocable` to the type imports from `../types`.
+
+- [ ] **Step 7: Run tests to verify they pass**
 
 Run: `yarn test:unit && yarn check-types && yarn lint`
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
-git add src/providers/claude src/test/unit/map-commands.test.ts src/test/unit/map-events.test.ts
-git commit -m "feat: report the Claude session's skills and slash commands"
+git add src/providers/claude src/test/unit
+git commit -m "feat: probe a working directory's skills and slash commands"
 ```
 
 ---
@@ -717,7 +1006,7 @@ git commit -m "feat: report the Claude session's skills and slash commands"
 ### Task 5: Webview reducer stores the catalog per pane
 
 **Files:**
-- Modify: `src/webview/reducer.ts:1-27`, `:41-71`
+- Modify: `src/webview/reducer.ts`
 - Test: `src/test/unit/webview-reducer.test.ts`
 
 **Interfaces:**
@@ -756,21 +1045,27 @@ test('session-invocables for an unknown pane is a no-op', () => {
   assert.deepStrictEqual(state.byId, {});
 });
 
-test('a pane with no invocables reported has none', () => {
-  const state = reduce(initialState, { t: 'session-snapshot', session: snapshot('s1') });
+test('hydrate carries invocables onto each pane', () => {
+  const state = reduce(initialState, {
+    t: 'hydrate',
+    sessions: [summary('s1')],
+    layout: { orientation: 'vertical', panes: [{ sessionId: 's1', size: 100 }] },
+    snapshots: [{ ...snapshot('s1'), invocables: [{ name: 'init' }] }],
+    catalog: [],
+  });
 
-  assert.strictEqual(state.byId['s1'].invocables, undefined);
+  assert.deepStrictEqual(state.byId['s1'].invocables, [{ name: 'init' }]);
 });
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `yarn compile-tests && npx mocha --ui tdd out/test/unit/webview-reducer.test.js -g "invocable"`
-Expected: FAIL — `state.byId['s1'].invocables` is undefined where a list is expected.
+Run: `yarn test:unit --grep "invocables"`
+Expected: FAIL — the pane has no `invocables`.
 
 - [ ] **Step 3: Extend the reducer**
 
-In `src/webview/reducer.ts`, add `Invocable` to the type import and to `PaneState`:
+Add `Invocable` to the type import and to `PaneState`:
 
 ```ts
 export interface PaneState {
@@ -778,30 +1073,12 @@ export interface PaneState {
   items: TranscriptItem[];
   hasMore: boolean;
   pending: PermissionRequest[];
-  /** Live-run only: absent for an archived pane or before the provider reports. */
+  /** The cwd's catalog. Absent until the host has one; see the spec's States. */
   invocables?: Invocable[];
 }
 ```
 
-Carry it through both snapshot paths — in `hydrate`:
-
-```ts
-        byId[s.id] = {
-          summary: s, items: s.items, hasMore: s.hasMore, pending: s.pending,
-          invocables: s.invocables,
-        };
-```
-
-and in `session-snapshot`:
-
-```ts
-          [s.id]: {
-            summary: s, items: s.items, hasMore: s.hasMore, pending: s.pending,
-            invocables: s.invocables,
-          },
-```
-
-Add the new case before `default`:
+Carry `invocables: s.invocables` through both the `hydrate` and `session-snapshot` pane constructions, and add the case before `default`:
 
 ```ts
     case 'session-invocables': {
@@ -844,10 +1121,10 @@ git commit -m "feat: store the invocable catalog per pane"
   - `menuView(entries: Invocable[], query: string): { rows: Invocable[]; overflow: number }`
   - `insertionFor(entry: Invocable): { text: string; ghost: string }`
   - `truncateName(name: string, max?: number): string`
-  - `groupByOrigin(entries: Invocable[]): { origin: string; entries: Invocable[] }[]`
-  - `menuKeyAction(key: string): 'move-up' | 'move-down' | 'select' | 'close' | 'pass'`
+  - `menuKeyAction(key: string): MenuKeyAction`
+  - `nextIndex(current: number, delta: number, length: number): number`
 
-This task is where every behavioural rule lives. Task 7's components stay thin enough that nothing untested hides in them — the unit suite has no DOM, so logic that leaks into JSX cannot be covered.
+Every behavioural rule lives here so the component in Task 7 stays a renderer. There is deliberately **no grouping function**: rows are flat in provider order (see the spec's UI section), and the origin badge carries what a group heading would have said.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -856,13 +1133,13 @@ Create `src/test/unit/invocable-menu.test.ts`:
 ```ts
 import * as assert from 'assert';
 import {
-  INVOCABLE_MENU_WINDOW, filterInvocables, groupByOrigin, insertionFor,
-  menuKeyAction, menuQuery, menuView, truncateName,
+  INVOCABLE_MENU_WINDOW, filterInvocables, insertionFor, menuKeyAction,
+  menuQuery, menuView, nextIndex, truncateName,
 } from '../../webview/lib/invocable-menu';
 import type { Invocable } from '../../protocol/messages';
 
 const ENTRIES: Invocable[] = [
-  { name: 'brainstorming', description: 'Turn ideas into designs', origin: undefined },
+  { name: 'brainstorming', description: 'Turn ideas into designs' },
   { name: 'superpowers:writing-plans', description: 'Plan before code', origin: 'superpowers' },
   { name: 'init', description: 'Brainstorming-adjacent bootstrap' },
   { name: 'loop', description: 'Run on an interval', argHint: '[interval] [prompt]' },
@@ -878,7 +1155,8 @@ suite('invocable menu', () => {
   });
 
   test('the menu closes once arguments begin', () => {
-    // A space means the user is typing arguments, not choosing an entry.
+    // A space means the user is typing arguments, not choosing an entry —
+    // and the composer needs Enter back at that point.
     assert.strictEqual(menuQuery('/loop '), undefined);
     assert.strictEqual(menuQuery('/loop 5m'), undefined);
     assert.strictEqual(menuQuery('/loop\n'), undefined);
@@ -891,9 +1169,7 @@ suite('invocable menu', () => {
   });
 
   test('an earlier match position ranks first, then alphabetical', () => {
-    const entries: Invocable[] = [
-      { name: 'xxplan' }, { name: 'planner' }, { name: 'plan-b' },
-    ];
+    const entries: Invocable[] = [{ name: 'xxplan' }, { name: 'planner' }, { name: 'plan-b' }];
     const out = filterInvocables(entries, 'plan');
 
     assert.deepStrictEqual(out.map((e) => e.name), ['plan-b', 'planner', 'xxplan']);
@@ -905,7 +1181,7 @@ suite('invocable menu', () => {
     assert.deepStrictEqual(out.map((e) => e.name), ['superpowers:writing-plans']);
   });
 
-  test('an empty query returns everything, order preserved', () => {
+  test('an empty query returns everything in provider order', () => {
     const out = filterInvocables(ENTRIES, '');
 
     assert.deepStrictEqual(out.map((e) => e.name), ENTRIES.map((e) => e.name));
@@ -957,24 +1233,6 @@ suite('invocable menu', () => {
     assert.strictEqual(truncateName('init', 24), 'init');
   });
 
-  test('grouping is by origin, alphabetical, with Other last', () => {
-    const groups = groupByOrigin([
-      { name: 'zed:a', origin: 'zed' },
-      { name: 'init' },
-      { name: 'alpha:b', origin: 'alpha' },
-      { name: 'zed:c', origin: 'zed' },
-    ]);
-
-    assert.deepStrictEqual(groups.map((g) => g.origin), ['alpha', 'zed', 'Other']);
-    assert.deepStrictEqual(groups[1].entries.map((e) => e.name), ['zed:a', 'zed:c']);
-  });
-
-  test('grouping omits Other when every entry has an origin', () => {
-    const groups = groupByOrigin([{ name: 'a:b', origin: 'a' }]);
-
-    assert.deepStrictEqual(groups.map((g) => g.origin), ['a']);
-  });
-
   test('the menu claims only its own keys', () => {
     assert.strictEqual(menuKeyAction('ArrowDown'), 'move-down');
     assert.strictEqual(menuKeyAction('ArrowUp'), 'move-up');
@@ -984,12 +1242,19 @@ suite('invocable menu', () => {
     assert.strictEqual(menuKeyAction('a'), 'pass');
     assert.strictEqual(menuKeyAction('Backspace'), 'pass');
   });
+
+  test('the highlight wraps at both ends', () => {
+    assert.strictEqual(nextIndex(0, 1, 3), 1);
+    assert.strictEqual(nextIndex(2, 1, 3), 0);
+    assert.strictEqual(nextIndex(0, -1, 3), 2);
+    assert.strictEqual(nextIndex(0, 1, 0), 0);
+  });
 });
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `yarn compile-tests && npx mocha --ui tdd out/test/unit/invocable-menu.test.js`
+Run: `yarn test:unit --grep "invocable menu"`
 Expected: FAIL — `Cannot find module '../../webview/lib/invocable-menu'`.
 
 - [ ] **Step 3: Write the module**
@@ -1000,7 +1265,7 @@ Create `src/webview/lib/invocable-menu.ts`:
 import type { Invocable } from '../../protocol/messages';
 
 /**
- * Rows rendered at most. Bounded DOM instead of a windowing library — the
+ * Rows rendered at most. Bounded DOM instead of a windowing library — this
  * project vendors its UI primitives and takes no new dependencies. Typing
  * narrows below this immediately, so it only ever governs the first view.
  */
@@ -1060,7 +1325,7 @@ export function menuView(
 /**
  * What selecting an entry does. `text` replaces the composer contents;
  * `ghost` is presentation-only and must never be appended to the message —
- * see the composer's submit path.
+ * see the composer's submit path and its DOM test.
  */
 export function insertionFor(entry: Invocable): { text: string; ghost: string } {
   return { text: `/${entry.name} `, ghost: entry.argHint ?? '' };
@@ -1076,32 +1341,6 @@ export function truncateName(name: string, max = 34): string {
   const head = Math.ceil(keep / 2);
   const tail = keep - head;
   return `${name.slice(0, head)}…${name.slice(name.length - tail)}`;
-}
-
-const OTHER = 'Other';
-
-/**
- * Groups for the strip: one per origin, alphabetically, with unqualified
- * entries last under `Other`. Origin is the only grouping the provider can
- * support (there is no skill/command discriminator — see the spec).
- */
-export function groupByOrigin(
-  entries: Invocable[],
-): { origin: string; entries: Invocable[] }[] {
-  const groups = new Map<string, Invocable[]>();
-  for (const entry of entries) {
-    const key = entry.origin ?? OTHER;
-    const bucket = groups.get(key);
-    if (bucket) { bucket.push(entry); } else { groups.set(key, [entry]); }
-  }
-
-  const named = [...groups.entries()]
-    .filter(([origin]) => origin !== OTHER)
-    .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([origin, list]) => ({ origin, entries: list }));
-
-  const other = groups.get(OTHER);
-  return other ? [...named, { origin: OTHER, entries: other }] : named;
 }
 
 export type MenuKeyAction = 'move-up' | 'move-down' | 'select' | 'close' | 'pass';
@@ -1120,6 +1359,12 @@ export function menuKeyAction(key: string): MenuKeyAction {
     default: return 'pass';
   }
 }
+
+/** Wrapping highlight movement. Returns 0 for an empty list rather than -1. */
+export function nextIndex(current: number, delta: number, length: number): number {
+  if (length <= 0) { return 0; }
+  return (current + delta + length) % length;
+}
 ```
 
 - [ ] **Step 4: Run tests to verify they pass**
@@ -1131,71 +1376,225 @@ Expected: PASS, all 15 new tests included.
 
 ```bash
 git add src/webview/lib/invocable-menu.ts src/test/unit/invocable-menu.test.ts
-git commit -m "feat: add invocable menu filtering, grouping and key logic"
+git commit -m "feat: add invocable menu filtering, insertion and key logic"
 ```
 
 ---
 
-### Task 7: Menu and strip in the UI
+### Task 7: The menu in the composer
 
 **Files:**
 - Create: `src/webview/components/invocable-menu.tsx`
-- Create: `src/webview/components/invocable-strip.tsx`
-- Modify: `src/webview/components/composer.tsx:27-107`
-- Modify: `src/webview/components/session-header.tsx:13-25`
-- Modify: `src/webview/components/pane-group.tsx:95-108`
+- Create: `src/test/dom/invocable-menu.test.tsx`
+- Modify: `src/webview/components/composer.tsx`
 
 **Interfaces:**
-- Consumes: everything from Task 6, `PaneState.invocables` (Task 5).
-- Produces: `<InvocableMenu>` and `<InvocableStrip>`; `Composer` gains no new props (it already receives `pane`).
+- Consumes: everything from Task 6; `PaneState.invocables` (Task 5).
+- Produces: `<InvocableMenu rows overflow activeIndex listId onPick>`; `Composer` gains no new props.
 
-There is no DOM test harness in this project, so this task adds **no new logic** — every rule it applies already has a test in Task 6. Verification is manual, in the Extension Development Host.
+**Design contract** (from the spec's UI section — do not improvise around it):
 
-- [ ] **Step 1: Write the menu component**
+- Two entry points, one menu: typing `/` at position 0, or a `/ commands` control on the composer's addon row.
+- Rows are two lines: name (with right-aligned origin badge) over a one-line clamped description.
+- Flat, provider order. No grouping.
+- Menu renders **above** the textarea, inside `<InputGroupAddon align="block-start">` — no popover, no portal, no positioning maths.
+- No catalog → no control, and `/` does nothing.
+- No match → exactly one muted `No match` row.
+- `role="listbox"` with `aria-activedescendant`; the highlight is a fill *plus* the standard focus treatment, never colour alone.
+- The control must be icon-scale: the addon row already `flex-wrap`s at 300px, and a labelled button would force a third line.
+
+- [ ] **Step 1: Write the failing DOM tests**
+
+Create `src/test/dom/invocable-menu.test.tsx`, following the conventions in `src/test/dom/composer.test.tsx` (real `StoreProvider`, state via `sendFromHost`, assertions over `posted()`):
+
+```tsx
+import * as assert from 'assert';
+import { screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { Composer } from '@/components/composer';
+import type { PaneState } from '@/reducer';
+import type { Invocable } from '../../protocol/messages';
+import { catalog, summary } from '../fixtures/protocol';
+import { posted, renderWithStore, resetHost } from './harness';
+
+const ENTRIES: Invocable[] = [
+  { name: 'brainstorming', description: 'Turn ideas into designs' },
+  { name: 'superpowers:writing-plans', description: 'Plan before code', origin: 'superpowers' },
+  { name: 'loop', description: 'Run on an interval', argHint: '[interval] [prompt]' },
+];
+
+const NO_EFFORT = catalog()[0].models[1];
+
+function pane(invocables?: Invocable[]): PaneState {
+  return { summary: summary('a'), items: [], hasMore: false, pending: [], invocables };
+}
+
+suite('invocable menu', () => {
+  test('typing / opens the menu and a name filters it', async () => {
+    renderWithStore(<Composer pane={pane(ENTRIES)} model={NO_EFFORT} />);
+    const box = screen.getByLabelText('Message');
+
+    await userEvent.type(box, '/bra');
+
+    const options = screen.getAllByRole('option');
+    assert.strictEqual(options.length, 1);
+    assert.ok(options[0].textContent?.includes('brainstorming'));
+  });
+
+  test('a slash that is not at position 0 opens nothing', async () => {
+    renderWithStore(<Composer pane={pane(ENTRIES)} model={NO_EFFORT} />);
+
+    await userEvent.type(screen.getByLabelText('Message'), 'see src/foo');
+
+    assert.strictEqual(screen.queryByRole('listbox'), null);
+  });
+
+  test('a space closes the menu and Enter sends again', async () => {
+    resetHost();
+    renderWithStore(<Composer pane={pane(ENTRIES)} model={NO_EFFORT} />);
+    const box = screen.getByLabelText('Message');
+
+    await userEvent.type(box, '/loop 5m');
+    assert.strictEqual(screen.queryByRole('listbox'), null);
+
+    await userEvent.type(box, '{Enter}');
+    const sends = posted().filter((m) => m.t === 'send');
+    assert.deepStrictEqual(sends.map((m) => (m as { text: string }).text), ['/loop 5m']);
+  });
+
+  test('arrows move the active option and Enter inserts it', async () => {
+    renderWithStore(<Composer pane={pane(ENTRIES)} model={NO_EFFORT} />);
+    const box = screen.getByLabelText('Message') as HTMLTextAreaElement;
+
+    await userEvent.type(box, '/');
+    await userEvent.keyboard('{ArrowDown}');
+
+    const list = screen.getByRole('listbox');
+    const activeId = list.getAttribute('aria-activedescendant');
+    assert.strictEqual(document.getElementById(activeId ?? '')?.textContent?.includes(
+      'superpowers:writing-plans',
+    ), true);
+
+    await userEvent.keyboard('{Enter}');
+    assert.strictEqual(box.value, '/superpowers:writing-plans ');
+  });
+
+  test('Escape closes the menu and leaves the typed text alone', async () => {
+    renderWithStore(<Composer pane={pane(ENTRIES)} model={NO_EFFORT} />);
+    const box = screen.getByLabelText('Message') as HTMLTextAreaElement;
+
+    await userEvent.type(box, '/bra');
+    await userEvent.keyboard('{Escape}');
+
+    assert.strictEqual(screen.queryByRole('listbox'), null);
+    assert.strictEqual(box.value, '/bra');
+  });
+
+  test('the arg hint is shown but never sent', async () => {
+    resetHost();
+    renderWithStore(<Composer pane={pane(ENTRIES)} model={NO_EFFORT} />);
+    const box = screen.getByLabelText('Message') as HTMLTextAreaElement;
+
+    await userEvent.type(box, '/loop');
+    await userEvent.keyboard('{Enter}');
+    assert.ok(screen.getByText('[interval] [prompt]'));
+
+    await userEvent.type(box, '5m{Enter}');
+    const sends = posted().filter((m) => m.t === 'send');
+    assert.deepStrictEqual(sends.map((m) => (m as { text: string }).text), ['/loop 5m']);
+  });
+
+  test('a query matching nothing renders one No match row', async () => {
+    renderWithStore(<Composer pane={pane(ENTRIES)} model={NO_EFFORT} />);
+
+    await userEvent.type(screen.getByLabelText('Message'), '/zzzz');
+
+    assert.strictEqual(screen.getAllByRole('option').length, 1);
+    assert.ok(screen.getByText('No match'));
+  });
+
+  test('a pane with no catalog has no control and an inert slash', async () => {
+    renderWithStore(<Composer pane={pane()} model={NO_EFFORT} />);
+
+    assert.strictEqual(screen.queryByLabelText('Skills and commands'), null);
+    await userEvent.type(screen.getByLabelText('Message'), '/');
+    assert.strictEqual(screen.queryByRole('listbox'), null);
+  });
+
+  test('the control opens the full list unfiltered', async () => {
+    renderWithStore(<Composer pane={pane(ENTRIES)} model={NO_EFFORT} />);
+
+    await userEvent.click(screen.getByLabelText('Skills and commands'));
+
+    assert.strictEqual(screen.getAllByRole('option').length, ENTRIES.length);
+  });
+});
+```
+
+- [ ] **Step 2: Run tests to verify they fail**
+
+Run: `yarn test:dom --grep "invocable menu"`
+Expected: FAIL — no listbox is ever rendered.
+
+- [ ] **Step 3: Write the menu component**
 
 Create `src/webview/components/invocable-menu.tsx`:
 
 ```tsx
+import { cn } from '@/lib/utils';
 import { truncateName } from '../lib/invocable-menu';
 import type { Invocable } from '../../protocol/messages';
 
-export function InvocableMenu({ rows, overflow, active, onPick }: {
+export function InvocableMenu({ rows, overflow, activeIndex, listId, onPick }: {
   rows: Invocable[];
   overflow: number;
-  active: number;
+  activeIndex: number;
+  /** Prefix for row ids, so `aria-activedescendant` resolves per pane. */
+  listId: string;
   onPick: (entry: Invocable) => void;
 }) {
-  if (rows.length === 0) { return null; }
+  const empty = rows.length === 0;
 
   return (
     <div
       role="listbox"
       aria-label="Skills and commands"
-      className="mb-1 max-h-64 overflow-y-auto rounded border border-border bg-popover text-xs"
+      id={listId}
+      aria-activedescendant={empty ? undefined : `${listId}-${activeIndex}`}
+      className="max-h-64 w-full overflow-y-auto"
     >
+      {empty && (
+        // A row, not an empty box: a menu that vanishes mid-keystroke hands
+        // Enter back to the composer without the user seeing why.
+        <div role="option" aria-selected={false} className="px-2 py-1 text-muted-foreground">
+          No match
+        </div>
+      )}
       {rows.map((entry, i) => (
-        <button
+        <div
           key={entry.name}
-          type="button"
+          id={`${listId}-${i}`}
           role="option"
-          aria-selected={i === active}
+          aria-selected={i === activeIndex}
           title={entry.name}
-          // onMouseDown, not onClick: the composer textarea must not lose
-          // focus before the pick is applied, or the menu closes on blur
-          // and the click never lands.
+          // onMouseDown, not onClick: the textarea must not lose focus before
+          // the pick lands, or the menu closes on blur and the click is lost.
           onMouseDown={(e) => { e.preventDefault(); onPick(entry); }}
-          className={`flex w-full items-baseline gap-2 px-2 py-1 text-left ${
-            i === active ? 'bg-accent' : ''
-          }`}
+          className={cn(
+            'cursor-pointer px-2 py-1',
+            i === activeIndex && 'bg-accent text-accent-foreground',
+          )}
         >
-          <span className="font-medium">{truncateName(entry.name)}</span>
+          <div className="flex items-baseline gap-2">
+            <span className="truncate font-medium">{truncateName(entry.name)}</span>
+            {entry.origin && (
+              <span className="ml-auto shrink-0 text-muted-foreground">{entry.origin}</span>
+            )}
+          </div>
           {entry.description && (
-            <span className="truncate text-muted-foreground">{entry.description}</span>
+            <div className="truncate text-muted-foreground">{entry.description}</div>
           )}
-          {entry.origin && (
-            <span className="ml-auto shrink-0 text-muted-foreground">{entry.origin}</span>
-          )}
-        </button>
+        </div>
       ))}
       {overflow > 0 && (
         <div className="px-2 py-1 text-muted-foreground">+{overflow} more</div>
@@ -1205,217 +1604,195 @@ export function InvocableMenu({ rows, overflow, active, onPick }: {
 }
 ```
 
-- [ ] **Step 2: Wire the menu into the composer**
+- [ ] **Step 4: Wire it into the composer**
 
-In `src/webview/components/composer.tsx`, add state and handlers. The full changed region:
+In `src/webview/components/composer.tsx`, add state:
 
 ```tsx
-export function Composer({ pane, model }: { pane: PaneState; model: ModelInfo | undefined }) {
-  const { post } = useStore();
-  const [text, setText] = useState('');
   const [ghost, setGhost] = useState('');
-  const [active, setActive] = useState(0);
+  const [activeIndex, setActiveIndex] = useState(0);
   const [dismissed, setDismissed] = useState(false);
-  const running = pane.summary.status === 'running'
-    || pane.summary.status === 'awaiting-approval';
+  const [forceOpen, setForceOpen] = useState(false);
 
   const entries = pane.invocables ?? [];
-  const query = menuQuery(text);
-  const open = query !== undefined && !dismissed && entries.length > 0;
-  const view = open ? menuView(entries, query) : { rows: [], overflow: 0 };
-  const index = Math.min(active, Math.max(0, view.rows.length - 1));
+  const typedQuery = menuQuery(text);
+  // Two entry points, one menu: the typed `/` query, or the control opening
+  // it unfiltered on an empty box.
+  const query = typedQuery ?? (forceOpen ? '' : undefined);
+  const menuOpen = entries.length > 0 && query !== undefined && !dismissed;
+  const view = menuOpen ? menuView(entries, query) : { rows: [], overflow: 0 };
+  const index = Math.min(activeIndex, Math.max(0, view.rows.length - 1));
+  // Session-scoped for the same reason as bypassReasonId above: one Composer
+  // renders per pane, and `aria-activedescendant` resolves ids document-wide.
+  const menuListId = `invocables-${pane.summary.id}`;
+```
 
+Selection and submit:
+
+```tsx
   const pick = (entry: Invocable) => {
     const { text: next, ghost: hint } = insertionFor(entry);
     setText(next);
     setGhost(hint);
-    setActive(0);
+    setActiveIndex(0);
+    setForceOpen(false);
   };
 
   const submit = () => {
     const trimmed = text.trim();
     if (!trimmed) { return; }
-    // `ghost` is presentation only — the arg hint must never be sent.
+    // `ghost` is presentation only — the arg hint is never part of the message.
     post({ t: 'send', id: pane.summary.id, text: trimmed });
     setText('');
     setGhost('');
     setDismissed(false);
+    setForceOpen(false);
   };
+```
 
-  return (
-    <div className="border-t border-border p-2">
-      {open && (
-        <InvocableMenu
-          rows={view.rows}
-          overflow={view.overflow}
-          active={index}
-          onPick={pick}
-        />
-      )}
-      <div className="relative">
-        <Textarea
+Render the menu as a block-start addon, so it sits above the textarea with no positioning code:
+
+```tsx
+      <InputGroup>
+        {menuOpen && (
+          <InputGroupAddon align="block-start" className="p-0">
+            <InvocableMenu
+              rows={view.rows}
+              overflow={view.overflow}
+              activeIndex={index}
+              listId={menuListId}
+              onPick={pick}
+            />
+          </InputGroupAddon>
+        )}
+        <InputGroupTextarea
           value={text}
           onChange={(e) => {
             setText(e.target.value);
             setGhost('');
-            setActive(0);
-            // Re-opening is by retyping `/` from empty, so a dismissal only
-            // lasts as long as the current query.
+            setActiveIndex(0);
             setDismissed(false);
+            setForceOpen(false);
           }}
           onKeyDown={(e) => {
-            if (open) {
+            if (menuOpen) {
               const action = menuKeyAction(e.key);
               if (action !== 'pass') {
                 e.preventDefault();
-                if (action === 'move-down') { setActive(index + 1 >= view.rows.length ? 0 : index + 1); }
-                if (action === 'move-up') { setActive(index - 1 < 0 ? view.rows.length - 1 : index - 1); }
-                if (action === 'select') { pick(view.rows[index]); }
-                if (action === 'close') { setDismissed(true); }
+                if (action === 'move-down') { setActiveIndex(nextIndex(index, 1, view.rows.length)); }
+                if (action === 'move-up') { setActiveIndex(nextIndex(index, -1, view.rows.length)); }
+                if (action === 'select' && view.rows[index]) { pick(view.rows[index]); }
+                if (action === 'close') { setDismissed(true); setForceOpen(false); }
                 return;
               }
             }
             if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault();
-              submit();
+              if (!running) { submit(); }
             }
           }}
-          rows={3}
           placeholder="Message the agent…"
           aria-label="Message"
-          className="resize-none text-sm"
+          aria-controls={menuOpen ? menuListId : undefined}
+          aria-expanded={menuOpen}
         />
-        {ghost && (
-          <span
-            aria-hidden
-            className="pointer-events-none absolute left-2 top-2 text-sm text-muted-foreground"
-          >
-            <span className="invisible">{text}</span>{ghost}
-          </span>
-        )}
-      </div>
 ```
 
-The rest of the component (the button row, effort select, permission-mode select) is unchanged, plus the extra closing `</div>` for the new `relative` wrapper.
-
-Add the imports:
+Render the ghost hint and the control in the existing `block-end` addon, before the effort select:
 
 ```tsx
+          {ghost && (
+            <span className="text-muted-foreground" aria-hidden>{ghost}</span>
+          )}
+          {entries.length > 0 && (
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              aria-label="Skills and commands"
+              title="Skills and commands"
+              onClick={() => {
+                setText('');
+                setGhost('');
+                setDismissed(false);
+                setActiveIndex(0);
+                setForceOpen(true);
+              }}
+            >
+              <Slash />
+            </Button>
+          )}
+```
+
+Imports to add:
+
+```tsx
+import { SendHorizontal, Slash, Square } from 'lucide-react';
 import { InvocableMenu } from './invocable-menu';
-import { insertionFor, menuKeyAction, menuQuery, menuView } from '../lib/invocable-menu';
+import {
+  insertionFor, menuKeyAction, menuQuery, menuView, nextIndex,
+} from '../lib/invocable-menu';
 import type { EffortLevel, Invocable, ModelInfo, PermissionMode } from '../../protocol/messages';
 ```
 
-Three rules this encodes, each already covered by Task 6's tests: the menu never opens without entries; `menuKeyAction` returning `pass` releases every other key back to the composer, so Enter still sends; and `submit` sends `text` only.
+- [ ] **Step 5: Run every check**
 
-- [ ] **Step 3: Write the strip component**
+Run: `yarn test:dom && yarn test:unit && yarn check-types && yarn lint`
+Expected: PASS, including the pre-existing composer DOM suite — the Enter-sends and disabled-Send behaviours must be untouched.
 
-Create `src/webview/components/invocable-strip.tsx`:
+- [ ] **Step 6: Run the impeccable detector**
 
-```tsx
-import { useState } from 'react';
-import { groupByOrigin, truncateName } from '../lib/invocable-menu';
-import type { Invocable } from '../../protocol/messages';
+Run: `node C:/Users/Marco/.claude/skills/impeccable/scripts/detect.mjs --json src/webview/components/invocable-menu.tsx src/webview/components/composer.tsx`
+Expected: exit 0. A non-zero exit is a failing check, not a suggestion — fix what it reports and rerun.
 
-export function InvocableStrip({ entries }: { entries: Invocable[] }) {
-  const [open, setOpen] = useState(false);
-  // Absent, not empty: an archived session and a live one with nothing
-  // available both render no strip at all.
-  if (entries.length === 0) { return null; }
-
-  return (
-    <div className="relative shrink-0">
-      <button
-        type="button"
-        aria-expanded={open}
-        onClick={() => setOpen(!open)}
-        className="text-muted-foreground hover:text-foreground"
-      >
-        {entries.length} commands
-      </button>
-      {open && (
-        <div className="absolute right-0 z-10 mt-1 max-h-80 w-72 overflow-y-auto rounded border border-border bg-popover p-1">
-          {groupByOrigin(entries).map((group) => (
-            <div key={group.origin}>
-              <div className="px-1 py-0.5 font-medium text-muted-foreground">{group.origin}</div>
-              {group.entries.map((entry) => (
-                <div key={entry.name} className="flex items-baseline gap-2 px-1 py-0.5" title={entry.name}>
-                  <span>{truncateName(entry.name, 28)}</span>
-                  {entry.description && (
-                    <span className="truncate text-muted-foreground">{entry.description}</span>
-                  )}
-                </div>
-              ))}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-```
-
-- [ ] **Step 4: Mount the strip in the session header**
-
-In `src/webview/components/session-header.tsx`, take the pane's catalog and render the strip before the model label:
-
-```tsx
-      <span className="ml-auto shrink-0 text-muted-foreground">
-        {modelLabel}{s.effort ? ` · ${s.effort}` : ''}
-      </span>
-      <InvocableStrip entries={pane.invocables ?? []} />
-```
-
-Add `import { InvocableStrip } from './invocable-strip';`. `pane` is already a prop; nothing in `pane-group.tsx` changes unless the header's prop list does — verify it compiles and leave it untouched if so.
-
-- [ ] **Step 5: Verify the build and the lint**
-
-Run: `yarn check-types && yarn lint && yarn test:unit`
-Expected: PASS.
-
-- [ ] **Step 6: Verify by hand in the Extension Development Host**
+- [ ] **Step 7: Verify by hand in the Extension Development Host**
 
 Run: `yarn dev`
 
-Check, with a Claude session open:
-1. The header shows an `N commands` pill; clicking it lists groups with plugin names and `Other`.
-2. Typing `/` opens the menu; typing `bra` narrows it; Escape closes it and leaves `/bra` in the box.
-3. Arrow keys move the highlight; Enter inserts `/name ` and shows the arg hint as dim ghost text.
-4. Typing after selection clears the ghost; sending delivers the message without the hint text.
-5. With the menu closed, Enter still sends.
-6. An archived session (closed, then re-shown from the roster) shows no pill and `/` opens nothing.
+With a session on a repo that has skills:
+1. The `/` control is present in the composer's addon row on a **brand-new session, before any message** — this is the whole point of the probe.
+2. Typing `/` opens the menu above the box; typing narrows it; two-line rows are legible at a 300px pane width.
+3. Arrows move, Enter inserts `/name `, the arg hint appears beside the controls and is gone from the sent message.
+4. Escape closes and leaves the text; Enter then sends.
+5. Narrow the pane to ~300px: the addon row must not gain a third wrapped line.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
-git add src/webview/components src/webview/lib
-git commit -m "feat: show skills and commands in the composer menu and header strip"
+git add src/webview src/test/dom/invocable-menu.test.tsx
+git commit -m "feat: invoke skills and slash commands from the composer"
 ```
 
 ---
 
 ## Verification
 
-After Task 7, the whole feature is exercised by:
-
 ```bash
-yarn check-types && yarn lint && yarn test:unit
+yarn check-types && yarn lint && yarn test:unit && yarn test:dom
+node C:/Users/Marco/.claude/skills/impeccable/scripts/detect.mjs --json src/webview/components/invocable-menu.tsx src/webview/components/composer.tsx
 ```
 
-Spec requirements and where they are verified:
+Spec requirements and where each is verified:
 
 | Spec section | Verified by |
 |---|---|
-| Snapshot event, replace-whole | Task 2 (`a later snapshot replaces the earlier one wholesale`), Task 5 |
-| Empty vs unknown | Task 2 (`an empty array is reported…`), Task 5 |
-| Live-only lifecycle, hydrate replay | Task 2 (snapshot carries it), Task 3 (visibility gating, snapshot ordering) |
+| Snapshot event, replace-whole | Task 3 (`setInvocables … replaces wholesale`), Task 5 |
+| Probe, one per cwd, cached | Task 2 (`probes once per key`, `different cwd`) |
+| Probe failure caches nothing, retries | Task 2 (`a failed probe …`) |
+| Works before the first message | Task 3 (`creating a session probes its cwd …`), Task 7 Step 7.1 |
+| Fan-out to siblings on a cwd | Task 3 (`a live invocables event refreshes every session`) |
+| Archived pane served from cache | Task 3 (`an archived pane is served the cwd catalog`) |
+| Empty vs unknown | Task 2 (`an empty catalog is a real answer`) |
 | No persistence | No `TranscriptStore` change in any task |
 | Origin derivation | Task 4 (`map-commands` origin tests) |
 | Claude mapping, `argumentHint: ''` | Task 4 |
 | `commands_changed` | Task 4 (`map-events` tests) |
+| Probe closes its query, even on failure | Task 4 (`listInvocables … closes it`, `… even when the catalog read fails`) |
 | Filtering and ranking | Task 6 |
-| Trigger discipline, key claiming | Task 6 (`menuQuery`, `menuKeyAction`) |
-| Insertion and ghost text | Task 6 (`insertionFor`), Task 7 Step 6 manual check |
+| Trigger discipline, key claiming | Task 6 (`menuQuery`, `menuKeyAction`), Task 7 (`a space closes the menu and Enter sends again`) |
+| Insertion and ghost text | Task 6 (`insertionFor`), Task 7 (`the arg hint is shown but never sent`) |
 | 50-row cap | Task 6 (`the view caps rows…`) |
-| Middle truncation | Task 6 |
-| Strip grouping, pill count, absent when empty | Task 6 (`groupByOrigin`), Task 7 Step 6 manual check |
+| `No match` row | Task 7 (`a query matching nothing renders one No match row`) |
+| Two entry points | Task 7 (`the control opens the full list unfiltered`) |
+| No catalog → no control, inert `/` | Task 7 (`a pane with no catalog …`) |
+| listbox semantics, `aria-activedescendant` | Task 7 (`arrows move the active option`) |
+| No chrome strip | No task creates one |
