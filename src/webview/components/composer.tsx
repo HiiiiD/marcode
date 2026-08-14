@@ -164,7 +164,15 @@ export function Composer({ pane, model }: { pane: PaneState; model: ModelInfo | 
             // Only WHILE OPEN does the menu claim keys. `menuKeyAction`
             // decides which; anything it passes on falls through to the
             // composer's own Enter binding below, unchanged.
-            if (menuOpen) {
+            // An IME composition-confirm keydown reports key === 'Enter' with
+            // isComposing === true. That Enter belongs to the composition,
+            // not the menu — claiming it here (Chromium fires it even though
+            // the composer's own Enter binding below already guards on
+            // isComposing) would insert a row instead of committing the IME
+            // text, so it is treated as 'pass' regardless of what
+            // menuKeyAction says.
+            const composingEnter = e.key === 'Enter' && e.nativeEvent.isComposing;
+            if (menuOpen && !composingEnter) {
               const action = menuKeyAction(e.key);
               if (action !== 'pass') {
                 e.preventDefault();

@@ -44,12 +44,22 @@ export class CatalogService {
 
     this.inflight.add(key);
     void provider.listInvocables(cwd)
-      .then((entries) => { this.set(key, entries); })
-      .catch(() => {
+      .then((entries) => {
+        // A live `commands_changed` event can land — and call `set()` —
+        // while this probe is still in flight. That event is always fresher
+        // than a probe that started before it, so once the key is cached the
+        // probe's own answer must not overwrite it.
+        if (this.cache.has(key)) { return; }
+        this.set(key, entries);
+      })
+      .catch((err) => {
         // Errors are state, never exceptions — and here the state is simply
         // "no catalog". Nothing is cached, so the next session created on
         // this cwd retries. A catalog that will not load leaves the composer
-        // as plain text; there is nothing the user could act on.
+        // as plain text; there is nothing the user could act on. Still worth
+        // a developer-facing trace, since otherwise a permanently broken CLI
+        // is silent.
+        console.warn('[hiiiid-code] catalog-service: probe failed for', key, err);
       })
       .finally(() => { this.inflight.delete(key); });
   }

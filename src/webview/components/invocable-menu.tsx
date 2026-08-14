@@ -37,7 +37,11 @@ export function InvocableMenu({ rows, overflow, activeIndex, listId, onPick }: {
   }, [activeIndex]);
 
   return (
-    <div className="flex w-full min-w-0 flex-col">
+    // onMouseDown here, not just on each row: without it, a mousedown on the
+    // `+N more` line, the listbox's own padding, or this container's edge
+    // blurs the textarea before a click ever reaches a row's handler, which
+    // closes the menu out from under the user.
+    <div className="flex w-full min-w-0 flex-col" onMouseDown={(e) => e.preventDefault()}>
       <div
         role="listbox"
         aria-label="Skills and commands"
@@ -65,7 +69,13 @@ export function InvocableMenu({ rows, overflow, activeIndex, listId, onPick }: {
         )}
         {rows.map((entry, i) => (
           <div
-            key={entry.name}
+            // Positional, not `entry.name`: names cross the host/webview seam
+            // verbatim and are never deduped there, so two entries — a user
+            // skill and a plugin skill sharing a name, say — would collide on
+            // a name-only key. A duplicate key produces a React warning and
+            // can leave `scrollIntoView` targeting the wrong row's ref after
+            // a filter change re-keys the list.
+            key={`${i}-${entry.name}`}
             ref={i === activeIndex ? activeRow : undefined}
             id={`${listId}-${i}`}
             role="option"

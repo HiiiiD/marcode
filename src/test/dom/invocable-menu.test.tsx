@@ -253,4 +253,92 @@ suite('invocable menu', () => {
     assert.strictEqual(screen.queryByRole('listbox'), null);
     assert.strictEqual(screen.getByLabelText('Message').getAttribute('aria-expanded'), 'false');
   });
+
+  /**
+   * In Chromium, the keydown that confirms an IME composition reports
+   * key === 'Enter' with isComposing === true. With the menu open, that
+   * Enter belongs to the composition, not to picking a row — the menu must
+   * let it fall through untouched rather than inserting the active entry.
+   */
+  test('a composing Enter is not claimed by the menu', async () => {
+    renderWithStore(<Composer pane={pane(ENTRIES)} model={NO_EFFORT} />);
+    const box = screen.getByLabelText('Message') as HTMLTextAreaElement;
+
+    await userEvent.type(box, '/bra');
+    assert.ok(screen.getByRole('listbox'));
+
+    fireEvent.keyDown(box, { key: 'Enter', isComposing: true });
+
+    assert.strictEqual(box.value, '/bra', 'a composing Enter must not insert the active row');
+    assert.ok(screen.getByRole('listbox'), 'the menu must still be open');
+  });
+
+  /**
+   * Two entries sharing a name are legitimate — the seam never dedupes, and
+   * `origin` exists precisely to tell them apart. A name-only React key would
+   * warn and could leave `scrollIntoView` pointed at the wrong ref once the
+   * list re-keys after a filter change.
+   */
+  test('duplicate-named entries both render and the second one scrolls into view', async () => {
+    const dup: Invocable[] = [
+      { name: 'review', description: 'User review', origin: 'user' },
+      { name: 'review', description: 'Plugin review', origin: 'superpowers' },
+    ];
+    renderWithStore(<Composer pane={pane(dup)} model={NO_EFFORT} />);
+    const box = screen.getByLabelText('Message') as HTMLTextAreaElement;
+
+    await userEvent.type(box, '/review');
+
+    const options = screen.getAllByRole('option');
+    assert.strictEqual(options.length, 2);
+    assert.ok(options[0].textContent?.includes('User review'));
+    assert.ok(options[1].textContent?.includes('Plugin review'));
+
+    const calls: Element[] = [];
+    const original = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = function record(this: Element): void {
+      calls.push(this);
+    } as typeof original;
+
+    try {
+      await userEvent.keyboard('{ArrowDown}');
+    } finally {
+      Element.prototype.scrollIntoView = original;
+    }
+
+    assert.strictEqual(calls.at(-1), screen.getAllByRole('option')[1]);
+  });
+
+  /**
+   * Rows call preventDefault on mousedown, but the `+N more` line, the
+   * listbox's padding and this container's own edge did not — a mousedown
+   * there blurred the textarea before it ever reached a row and closed the
+   * menu out from under the user.
+   */
+  /**
+   * A browser blurs the focused element on mousedown against a non-focusable
+   * target unless that mousedown's default is prevented — that's the
+   * mechanism the composer's onBlur-closes-the-menu handler rides on. jsdom
+   * does not simulate that default action, so the meaningful assertion is
+   * that the mousedown's default really is prevented, on the overflow line
+   * specifically (not just on a row).
+   */
+  test('mousedown on the overflow line does not blur the textarea', async () => {
+    const many: Invocable[] = Array.from({ length: 60 }, (_, i) => ({ name: `skill-${i}` }));
+    renderWithStore(<Composer pane={pane(many)} model={NO_EFFORT} />);
+    const box = screen.getByLabelText('Message');
+
+    await userEvent.type(box, '/');
+    assert.ok(screen.getByRole('listbox'));
+
+    const overflow = screen.getByText(/more — keep typing to narrow/);
+    const event = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
+    overflow.dispatchEvent(event);
+
+    assert.strictEqual(
+      event.defaultPrevented, true,
+      'a mousedown on the overflow line must have its default prevented, or it would blur the textarea and close the menu',
+    );
+    assert.ok(screen.getByRole('listbox'), 'the menu must still be open');
+  });
 });

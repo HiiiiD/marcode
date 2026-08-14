@@ -115,4 +115,33 @@ suite('CatalogService', () => {
   test('a key survives a cwd containing the separator', () => {
     assert.notStrictEqual(catalogKey('fake', 'a'), catalogKey('fak', 'ea'));
   });
+
+  test('a live set() while a probe is in flight wins over the probe\'s stale answer', async () => {
+    const { seen, onEntries } = recorder();
+    const service = new CatalogService(onEntries);
+    const key = catalogKey('fake', '/repo');
+
+    let resolveProbe: (entries: Invocable[]) => void = () => {};
+    const provider: AgentProvider = {
+      id: 'fake',
+      displayName: 'Fake',
+      listModels: () => [],
+      start: () => { throw new Error('not used in this test'); },
+      listInvocables: () => new Promise((resolve) => { resolveProbe = resolve; }),
+    };
+
+    service.ensure(key, provider, '/repo');
+
+    // A live `commands_changed` event lands while the probe is still
+    // in flight, and caches the fresher list.
+    service.set(key, [{ name: 'fresh' }]);
+
+    // The probe now resolves with what it fetched before that live event —
+    // stale by the time it lands.
+    resolveProbe([{ name: 'stale' }]);
+    await settle();
+
+    assert.deepStrictEqual(service.get(key), [{ name: 'fresh' }]);
+    assert.deepStrictEqual(seen, [{ key, entries: [{ name: 'fresh' }] }]);
+  });
 });
