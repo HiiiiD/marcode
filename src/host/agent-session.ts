@@ -6,6 +6,7 @@ import type {
   TranscriptItem, TranscriptPatch,
 } from '../protocol/messages';
 import type { TranscriptStore } from './transcript-store';
+import { parseToolName } from './mcp-tool-name';
 
 export interface SessionSink {
   patch(id: SessionId, patch: TranscriptPatch): void;
@@ -25,6 +26,12 @@ export class AgentSession {
   private openAssistantId: string | undefined;
   private toolItems = new Map<string, TranscriptItem>();
   private permissionItems = new Map<string, TranscriptItem>();
+  /** Provider tool id -> the buffered children of that (parent) tool call. */
+  private childrenByParent = new Map<string, TranscriptItem[]>();
+  /** Provider tool id of a child -> the provider tool id of its parent. */
+  private childOf = new Map<string, string>();
+  /** Permission request id -> the provider tool id of the subagent it nests under. */
+  private permissionChildOf = new Map<string, string>();
   private pumping: Promise<void>;
   private disposed = false;
   /**
@@ -146,7 +153,9 @@ export class AgentSession {
       const existing = this.permissionItems.get(requestId);
       if (existing && existing.role === 'permission') {
         const settled: TranscriptItem = { ...existing, state: 'denied', reason: message };
-        this.replaceItem(settled);
+        const parentRoot = this.permissionChildOf.get(requestId);
+        if (parentRoot) { this.replaceChild(parentRoot, settled); }
+        else { this.replaceItem(settled); }
         this.permissionItems.set(requestId, settled);
       }
       this.fail(message);
@@ -160,7 +169,9 @@ export class AgentSession {
         state: decision.allow ? 'allowed' : 'denied',
         reason: decision.allow ? undefined : decision.reason,
       };
-      this.replaceItem(settled);
+      const parentRoot = this.permissionChildOf.get(requestId);
+      if (parentRoot) { this.replaceChild(parentRoot, settled); }
+      else { this.replaceItem(settled); }
       this.permissionItems.set(requestId, settled);
     }
     this.setStatus(this.pending.size > 0 ? 'awaiting-approval' : 'running');
@@ -226,11 +237,32 @@ export class AgentSession {
       }
 
       case 'tool-start': {
+        const parsed = parseToolName(event.name);
         const item: TranscriptItem = {
           id: nextId('t'), ts: Date.now(), role: 'tool',
-          toolId: event.id, name: event.name, input: event.input, state: 'running',
+          toolId: event.id, name: parsed.name, input: event.input, state: 'running',
+          ...(parsed.mcpServer ? { mcpServer: parsed.mcpServer } : {}),
         };
         this.toolItems.set(event.id, item);
+
+        const parentItemId = event.parentId
+          ? this.parentItemIdFor(event.parentId)
+          : undefined;
+        if (event.parentId && parentItemId) {
+          const root = this.resolveParent(event.parentId);
+          this.childOf.set(event.id, root);
+          const children = this.childrenByParent.get(root) ?? [];
+          children.push(item);
+          this.childrenByParent.set(root, children);
+          // Deliberately no closeAssistant() here: a subagent's tool
+          // activity interleaves with the parent's prose, and splitting the
+          // open assistant item on every child would shred one reply into
+          // a dozen bubbles.
+          this.sink.patch(this._state.id, { op: 'append', item, parentItemId });
+          this._state.updatedAt = Date.now();
+          return;
+        }
+
         this.closeAssistant();
         this.appendItem(item);
         return;
@@ -239,25 +271,57 @@ export class AgentSession {
       case 'tool-end': {
         const existing = this.toolItems.get(event.id);
         if (!existing || existing.role !== 'tool') { return; }
+        const children = this.childrenByParent.get(event.id);
         const settled: TranscriptItem = {
-          ...existing, state: event.ok ? 'ok' : 'error', output: event.output,
+          ...existing,
+          state: event.ok ? 'ok' : 'error',
+          output: event.output,
+          ...(children ? { children: [...children] } : {}),
         };
         this.toolItems.set(event.id, settled);
+
+        const parentRoot = this.childOf.get(event.id);
+        if (parentRoot) {
+          this.replaceChild(parentRoot, settled);
+          return;
+        }
+        this.childrenByParent.delete(event.id);
         this.replaceItem(settled);
         return;
       }
 
       case 'permission': {
+        // The permission id is the tool-use id of the call being approved,
+        // so a permission raised inside a subagent resolves through the
+        // same child map its tool-start populated. Providers that report a
+        // parent explicitly are honoured first.
+        const parentSource = event.parentId ?? this.childOf.get(event.id);
+        const parentItemId = parentSource
+          ? this.parentItemIdFor(parentSource)
+          : undefined;
+
         const item: TranscriptItem = {
           id: nextId('p'), ts: Date.now(), role: 'permission',
-          requestId: event.id, name: event.name, input: event.input, state: 'pending',
+          requestId: event.id, name: parseToolName(event.name).name,
+          input: event.input, state: 'pending',
         };
         this.permissionItems.set(event.id, item);
         this.pending.set(event.id, {
           requestId: event.id, name: event.name, input: event.input,
         });
-        this.closeAssistant();
-        this.appendItem(item);
+
+        if (parentSource && parentItemId) {
+          const root = this.resolveParent(parentSource);
+          const children = this.childrenByParent.get(root) ?? [];
+          children.push(item);
+          this.childrenByParent.set(root, children);
+          this.permissionChildOf.set(event.id, root);
+          this.sink.patch(this._state.id, { op: 'append', item, parentItemId });
+          this._state.updatedAt = Date.now();
+        } else {
+          this.closeAssistant();
+          this.appendItem(item);
+        }
         this.setStatus('awaiting-approval');
         return;
       }
@@ -271,10 +335,16 @@ export class AgentSession {
 
       case 'turn-end':
         this.closeAssistant();
+        this.flushUnsettledParents();
         if (event.reason === 'error') {
           this.fail(event.error ?? 'Agent run failed');
         } else {
-          this.setStatus('idle');
+          // A permission raised earlier in the same event batch (e.g. inside
+          // a subagent) can still be outstanding when turn-end arrives —
+          // unconditionally going idle here would strand its card as the
+          // only sign anything is waiting, with the status dot claiming
+          // otherwise.
+          this.setStatus(this.pending.size > 0 ? 'awaiting-approval' : 'idle');
           void this.scheduleFlush();
         }
         return;
@@ -314,6 +384,68 @@ export class AgentSession {
     this.store.replace(this._state.id, item);
     this._state.updatedAt = Date.now();
     this.sink.patch(this._state.id, { op: 'replace', item });
+  }
+
+  /**
+   * Resolves a reported parent to the top-level tool call it belongs under.
+   *
+   * Claude subagents cannot spawn subagents, so a reported grandchild means
+   * a provider we did not anticipate. Walking up to the nearest depth-1
+   * ancestor flattens it rather than growing the data model into a tree.
+   * The iteration cap keeps a malformed cycle from hanging the pump.
+   */
+  private resolveParent(parentId: string): string {
+    let current = parentId;
+    for (let hops = 0; hops < 8; hops++) {
+      const next = this.childOf.get(current);
+      if (next === undefined) { return current; }
+      current = next;
+    }
+    return current;
+  }
+
+  /** The transcript item id of a resolved parent, if we ever saw its tool-start. */
+  private parentItemIdFor(parentId: string): string | undefined {
+    const root = this.resolveParent(parentId);
+    const item = this.toolItems.get(root);
+    return item && item.role === 'tool' ? item.id : undefined;
+  }
+
+  /**
+   * Settles an item that lives inside a parent's children buffer. The child
+   * is not in the store yet — it lands there inline when the parent settles
+   * — so this updates the buffer and streams a patch, with no store write.
+   */
+  private replaceChild(parentRoot: string, item: TranscriptItem): void {
+    const children = this.childrenByParent.get(parentRoot);
+    if (children) {
+      const at = children.findIndex((c) => c.id === item.id);
+      if (at >= 0) { children[at] = item; } else { children.push(item); }
+    }
+    const parentItemId = this.parentItemIdFor(parentRoot);
+    this._state.updatedAt = Date.now();
+    this.sink.patch(this._state.id, { op: 'replace', item, parentItemId });
+  }
+
+  /**
+   * Settles any parent tool call still running when the turn ended.
+   *
+   * Interrupt, provider crash, or a turn ending mid-Task means the parent's
+   * `tool-end` never arrives, so its buffered children would be dropped on
+   * the floor — discarding, on disk, subagent work the user watched happen
+   * on screen.
+   */
+  private flushUnsettledParents(): void {
+    for (const [parentId, children] of this.childrenByParent) {
+      const existing = this.toolItems.get(parentId);
+      if (!existing || existing.role !== 'tool' || existing.state !== 'running') { continue; }
+      const settled: TranscriptItem = {
+        ...existing, state: 'error', children: [...children],
+      };
+      this.toolItems.set(parentId, settled);
+      this.replaceItem(settled);
+    }
+    this.childrenByParent.clear();
   }
 
   private pendingAssistant: { text?: string; thinking?: string } | undefined;
