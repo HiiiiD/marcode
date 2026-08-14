@@ -180,9 +180,14 @@ export function PaneGroup({ narrow }: PaneGroupProps) {
                   activeId === pane.sessionId && "ring-1 ring-ring/40 ring-inset",
                 )}
               >
+                {/* No `key` on the header or the composer: the Fragment
+                    above is already keyed by sessionId, so the whole subtree
+                    remounts when a pane changes session. Keying them
+                    individually gave two siblings of the same children list
+                    the same key ("Encountered two children with the same key,
+                    s-…"), which lets React drop one of them. */}
                 <div className="flex h-full flex-col">
                   <SessionHeader
-                    key={paneState.summary.id}
                     pane={paneState}
                     accessibleTitle={names.get(paneState.summary.id)!}
                   />
@@ -198,7 +203,7 @@ export function PaneGroup({ narrow }: PaneGroupProps) {
                       }
                     />
                   </div>
-                  <Composer key={paneState.summary.id} pane={paneState} model={model} models={provider?.models ?? []} />
+                  <Composer pane={paneState} model={model} models={provider?.models ?? []} />
                 </div>
               </ResizablePanel>
             </Fragment>
