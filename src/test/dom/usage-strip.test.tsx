@@ -5,11 +5,12 @@ import { catalog, layoutOf, snapshot, summary, windows } from '../fixtures/proto
 import { posted, renderWithStore, resetHost, sendFromHost } from './harness';
 
 /**
- * The strip only lists providers that have sessions, so every test needs a
- * roster before it has anything to render.
+ * The strip follows usage, not the roster, but every test still needs a
+ * hydrated store — the catalog supplies display names and `usageByProvider`
+ * starts empty either way.
  */
 function mountStrip() {
-  renderWithStore(<UsageStrip />);
+  const result = renderWithStore(<UsageStrip />);
   sendFromHost({
     t: 'hydrate',
     sessions: [summary('a')],
@@ -18,6 +19,22 @@ function mountStrip() {
     catalog: catalog(),
     usage: {},
   });
+  return result;
+}
+
+/**
+ * Whether the strip rendered anything at all, as a boolean.
+ *
+ * Deliberately NOT `assert.strictEqual(container.querySelector('div'), null)`.
+ * A failing `assert` builds its message by running `util.inspect` on the
+ * actual value, and a jsdom element reaches its parents, its ownerDocument
+ * and that document's window — so inspecting one div walks the whole graph.
+ * That assertion, in its failing state, allocated 3.5GB in 4 seconds and took
+ * the machine down. Booleans and strings are the only safe things to hand an
+ * assertion here. See CLAUDE.md's DOM-test invariant.
+ */
+function rendered(container: HTMLElement): boolean {
+  return container.querySelector('div') !== null;
 }
 
 suite('UsageStrip', () => {
@@ -42,16 +59,14 @@ suite('UsageStrip', () => {
     assert.deepStrictEqual(posted().map((m) => m.t), ['ready']);
   });
 
-  test('a window past its reset is not rendered — the host prunes on read, so a stale copy would linger here', () => {
-    mountStrip();
-
+  test('an expired-only provider drops out of the strip', () => {
+    const { container } = mountStrip();
     sendFromHost({
       t: 'usage-windows', providerId: 'fake',
       windows: [{ id: 'five-hour', label: 'Session (5h)', usedPercent: 62, resetsAt: Date.now() - 1 }],
     });
 
-    assert.strictEqual(screen.queryByLabelText('Session (5h) 62% used'), null);
-    assert.ok(screen.getByText('Plan usage not reported'));
+    assert.strictEqual(rendered(container), false);
   });
 
   test('an expired window is dropped without taking its unexpired siblings with it', () => {
@@ -69,18 +84,17 @@ suite('UsageStrip', () => {
     assert.deepStrictEqual(labels, ['Week 18% used']);
   });
 
-  test('a provider with nothing reported reads as not-reported, not as an error or as "no limits"', () => {
-    mountStrip();
-
-    assert.ok(screen.getByText('Plan usage not reported'));
+  test('the strip unmounts entirely when nothing reports', () => {
+    const { container } = mountStrip();
+    assert.strictEqual(rendered(container), false);
   });
 
-  test('an empty set reads the same as nothing reported — the push cannot tell them apart', () => {
-    mountStrip();
+  test('an empty set reads the same as nothing reported — the strip stays unmounted', () => {
+    const { container } = mountStrip();
 
     sendFromHost({ t: 'usage-windows', providerId: 'fake', windows: [] });
 
-    assert.ok(screen.getByText('Plan usage not reported'));
+    assert.strictEqual(rendered(container), false);
   });
 
   test('chips are keyboard-focusable', () => {
@@ -91,20 +105,48 @@ suite('UsageStrip', () => {
     assert.strictEqual(chip.getAttribute('tabindex'), '0');
   });
 
-  test('with several providers in the roster, an unreported one still names itself in the quiet state', () => {
+  test('a provider with usage but no session is shown', () => {
+    const { container } = mountStrip();
+    sendFromHost({
+      t: 'usage-windows', providerId: 'other',
+      windows: [{ id: 'seven-day', label: 'Week', usedPercent: 18, resetsAt: Date.now() + 60_000 }],
+    });
+
+    // Usage belongs to the account, not to an open conversation. A second
+    // subscription is real whether or not a session for it is open right now.
+    assert.ok(screen.getByLabelText('Week 18% used'));
+    assert.strictEqual(rendered(container), true);
+  });
+
+  test('a provider with a session but no usage is absent', () => {
+    const { container } = mountStrip();   // seeds a 'fake' session, no windows
+
+    assert.strictEqual(screen.queryByText(/Plan usage not reported/), null);
+    // An API-key provider can never report. A permanent row it can never fill
+    // is noise no action clears, so the strip does not render one.
+    assert.strictEqual(container.textContent, '');
+  });
+
+  test('two reporting providers are each labelled', () => {
     renderWithStore(<UsageStrip />);
     sendFromHost({
       t: 'hydrate',
-      sessions: [summary('a'), summary('b', { providerId: 'other' })],
-      layout: layoutOf('a', 'b'),
-      snapshots: [snapshot('a'), snapshot('b', { providerId: 'other' })],
+      sessions: [summary('a')],
+      layout: layoutOf('a'),
+      snapshots: [snapshot('a')],
       catalog: [...catalog(), { id: 'other', displayName: 'Other', models: [] }],
       usage: {},
     });
+    sendFromHost({
+      t: 'usage-windows', providerId: 'fake',
+      windows: [{ id: 'five-hour', label: 'Session (5h)', usedPercent: 10, resetsAt: Date.now() + 60_000 }],
+    });
+    sendFromHost({
+      t: 'usage-windows', providerId: 'other',
+      windows: [{ id: 'seven-day', label: 'Week', usedPercent: 20, resetsAt: Date.now() + 60_000 }],
+    });
 
-    assert.deepStrictEqual(
-      screen.getAllByText('Plan usage not reported').map((el) => el.parentElement?.textContent),
-      ['FakePlan usage not reported', 'OtherPlan usage not reported'],
-    );
+    assert.ok(screen.getByText('Fake'));
+    assert.ok(screen.getByText('Other'));
   });
 });

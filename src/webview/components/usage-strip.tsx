@@ -87,18 +87,28 @@ function ProviderUsage({
 
 export function UsageStrip() {
   const { state } = useStore();
-  // Providers that actually have sessions — the catalog can list one the
-  // user has never opened, and the strip is about this panel's accounts.
-  const providerIds = [...new Set(state.sessions.map((s) => s.providerId))];
+  // Providers that have actually reported, NOT providers that have sessions.
+  // Usage belongs to the account: a second subscription is worth showing with
+  // no session open for it, and a provider on an API key can never report at
+  // all — a row for that one would be permanent noise no user action clears.
+  const now = Date.now();
+  const reporting = Object.entries(state.usageByProvider)
+    .filter(([, windows]) => windows?.some((w) => w.resetsAt === undefined || w.resetsAt > now))
+    .map(([id]) => id);
+
+  // Unmounted, not empty: an empty bordered bar is permanent chrome for a
+  // state that never has content. The panel's bottom edge shifts when the
+  // first pull lands, which is the right trade in a 300-500px sidebar.
+  if (reporting.length === 0) { return null; }
 
   return (
     <div className="flex h-6 shrink-0 items-center gap-4 overflow-x-auto overflow-y-hidden border-t border-border px-2 text-xs">
-      {providerIds.map((id) => (
+      {reporting.map((id) => (
         <ProviderUsage
           key={id}
           displayName={state.catalog.find((p) => p.id === id)?.displayName ?? id}
           windows={state.usageByProvider[id]}
-          showName={providerIds.length > 1}
+          showName={reporting.length > 1}
         />
       ))}
     </div>
