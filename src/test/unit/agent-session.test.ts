@@ -8,7 +8,9 @@ import { FakeProvider } from '../../providers/fake/fake-provider';
 import type {
   AgentEvent, AgentProvider, AgentRun, ModelInfo, StartOptions, ToolDecision,
 } from '../../providers/types';
-import type { SessionId, SessionState, SessionStatus, TranscriptPatch } from '../../protocol/messages';
+import type {
+  Invocable, SessionId, SessionState, SessionStatus, TranscriptPatch,
+} from '../../protocol/messages';
 
 /** Minimal pushable async-iterable, mirroring FakeProvider's internal channel. */
 class EventChannel implements AsyncIterable<AgentEvent> {
@@ -112,9 +114,18 @@ class RecordingSink implements SessionSink {
   patches: { id: SessionId; patch: TranscriptPatch }[] = [];
   statuses: SessionStatus[] = [];
   changes = 0;
+  /**
+   * Deviation from the brief: SessionSink.invocables is a *method*
+   * (id, entries) => void, so a same-named array field cannot coexist on
+   * this class and still satisfy the interface. Recorded as
+   * `invocablesLog` instead; the assertions read the same shape
+   * (Invocable[][]) the brief's `sink.invocables` would have.
+   */
+  invocablesLog: Invocable[][] = [];
   patch(id: SessionId, patch: TranscriptPatch) { this.patches.push({ id, patch }); }
   status(_id: SessionId, status: SessionStatus) { this.statuses.push(status); }
   changed() { this.changes++; }
+  invocables(_id: SessionId, entries: Invocable[]) { this.invocablesLog.push(entries); }
 }
 
 async function settle() {
@@ -133,6 +144,13 @@ suite('AgentSession', () => {
   });
 
   teardown(async () => { await fs.rm(dir, { recursive: true, force: true }); });
+
+  function makeSession(script: (text: string) => AgentEvent[] = () => []) {
+    const provider = new FakeProvider(script);
+    const localSink = new RecordingSink();
+    const session = new AgentSession(baseState(), provider, store, localSink);
+    return { provider, sink: localSink, session };
+  }
 
   test('coalesces text deltas into one assistant item', async () => {
     const provider = new FakeProvider(() => [
@@ -349,5 +367,29 @@ suite('AgentSession', () => {
     const err = snap.items.find((i) => i.role === 'error');
     assert.strictEqual((err as { message: string }).message, 'setModel failed');
     await session.dispose();
+  });
+
+  test('an invocables event is reported to the sink', async () => {
+    const { provider, sink } = makeSession();
+
+    provider.runs[0].emit({ kind: 'invocables', entries: [{ name: 'init' }] });
+    await settle();
+
+    assert.deepStrictEqual(sink.invocablesLog, [[{ name: 'init' }]]);
+  });
+
+  test('setInvocables lands in the snapshot and replaces wholesale', async () => {
+    const { session } = makeSession();
+
+    session.setInvocables([{ name: 'a' }, { name: 'b' }]);
+    session.setInvocables([{ name: 'c' }]);
+
+    assert.deepStrictEqual((await session.snapshot()).invocables, [{ name: 'c' }]);
+  });
+
+  test('a session told nothing has no invocables in its snapshot', async () => {
+    const { session } = makeSession();
+
+    assert.strictEqual((await session.snapshot()).invocables, undefined);
   });
 });
