@@ -1,31 +1,16 @@
 import { Button } from "@/components/ui/button";
 import { InputGroup, InputGroupAddon, InputGroupTextarea } from "@/components/ui/input-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { cn } from "@/lib/utils";
 import { SendHorizontal, Square } from "lucide-react";
 import { useRef, useState } from "react";
-import type { EffortLevel, Invocable, ModelInfo, PermissionMode } from "../../protocol/messages";
+import type { Invocable, ModelInfo } from "../../protocol/messages";
 import { insertionFor, menuKeyAction, menuQuery, menuView, nextIndex } from "../lib/invocable-menu";
 import type { PaneState } from "../reducer";
 import { useStore } from "../store";
 import { ContextRing } from "./context-ring";
 import { EditorContextToggle } from "./editor-context-toggle";
 import { InvocableMenu } from "./invocable-menu";
-
-const MODE_LABEL: Record<PermissionMode, string> = {
-  default: "ask",
-  acceptEdits: "auto-edits",
-  plan: "plan",
-  dontAsk: "deny",
-  bypass: "bypass",
-};
-
-/**
- * The `items` prop is what lets the trigger render the *label* of the selected
- * option. Without it Base UI's SelectValue falls back to the raw value, so the
- * trigger would read "acceptEdits" rather than "auto-edits".
- */
-const MODE_ITEMS = (Object.keys(MODE_LABEL) as PermissionMode[]).map((value) => ({ value, label: MODE_LABEL[value] }));
+import { ModeMenu } from "./mode-menu";
 
 export function Composer({
   pane,
@@ -52,25 +37,19 @@ export function Composer({
   // on the button would be unreachable by keyboard.
   const box = useRef<HTMLTextAreaElement | null>(null);
   const running = pane.summary.status === "running" || pane.summary.status === "awaiting-approval";
-  const bypassing = pane.summary.permissionMode === "bypass";
   /**
-   * The Claude provider can only honor 'bypass' at query construction —
-   * which now happens lazily, on the session's first send() — so this must
-   * track the same "has a first message been sent yet" condition the
-   * provider itself uses, not an approximation of it. `pane.items` is the
-   * session's transcript; AgentSession.send() always appends a user item
-   * before ever calling the provider, so "any items" and "sent the first
-   * message" are the same fact told from two sides of the wire.
+   * The model is fixed at query construction, which happens lazily on the
+   * session's first send(). `pane.items` is the session's transcript, and
+   * AgentSession.send() always appends a user item before ever calling the
+   * provider, so "any items" and "sent the first message" are the same fact
+   * told from two sides of the wire.
    */
   const hasStarted = pane.items.length > 0;
   // Session-scoped, not a bare literal: Composer renders once per pane, so a
   // fixed id would collide across panes — `getElementById`, which is what
   // `aria-describedby` resolves against, returns only the first match, and
-  // every other pane's disabled bypass option would describe itself using
-  // pane one's reason text.
-  const bypassReasonId = `bypass-reason-${pane.summary.id}`;
-  // Same session-scoping rationale as `bypassReasonId` above, for the Send
-  // button's disabled-while-running reason.
+  // every other pane's disabled control would describe itself using pane
+  // one's reason text. Same rationale for every `*ReasonId` below.
   const sendReasonId = `send-reason-${pane.summary.id}`;
   // Same session-scoping rationale again, for the `/` control's
   // disabled-over-a-draft reason.
@@ -214,13 +193,13 @@ export function Composer({
           aria-activedescendant={activeOptionId}
         />
         {/*
-          flex-wrap: at pane widths around 300px the effort trigger (w-24),
-          the permission-mode trigger (w-28) and one or two buttons cannot
-          share a single row with any breathing room. Wrapping lets settings
-          fall to a second line rather than shrinking the triggers (their
-          labels — "medium", "auto-edits" — are already tight) or hiding
-          overflow behind a horizontal scrollbar a narrow split-pane user is
-          unlikely to notice. Each wrapped line keeps its own `ml-auto`
+          flex-wrap: at pane widths around 300px the mode trigger, the model
+          trigger and one or two buttons cannot share a single row with any
+          breathing room. Wrapping lets settings fall to a second line rather
+          than shrinking the triggers (their labels — "Auto-edit", a model
+          name — are already tight) or hiding overflow behind a horizontal
+          scrollbar a narrow split-pane user is unlikely to notice. Each
+          wrapped line keeps its own `ml-auto`
           grouping, so the action button still lands at the right edge of
           whichever line it wraps to.
         */}
@@ -269,81 +248,10 @@ export function Composer({
             </span>
           )}
           <EditorContextToggle pane={pane} />
-          {model?.effort && (
-            <Select
-              items={model.effort.levels.map((level) => ({ value: level, label: level }))}
-              value={pane.summary.effort ?? model.effort.default}
-              onValueChange={(value) =>
-                post({
-                  t: "set-effort",
-                  id: pane.summary.id,
-                  effort: value as EffortLevel,
-                })
-              }
-            >
-              <SelectTrigger size="sm" className="w-24 border-0" aria-label="Effort">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {model.effort.levels.map((level) => (
-                  <SelectItem key={level} value={level}>
-                    {level}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-
-          <Select
-            items={MODE_ITEMS}
-            value={pane.summary.permissionMode}
-            onValueChange={(value) =>
-              post({
-                t: "set-permission-mode",
-                id: pane.summary.id,
-                mode: value as PermissionMode,
-              })
-            }
-          >
-            <SelectTrigger
-              size="sm"
-              className={cn(
-                "w-28 border-0",
-                bypassing && "border border-destructive text-destructive dark:border-destructive/50",
-              )}
-              aria-label="Permission mode"
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {MODE_ITEMS.map((item) => {
-                const disableBypass = item.value === "bypass" && hasStarted;
-                return (
-                  <SelectItem
-                    key={item.value}
-                    value={item.value}
-                    disabled={disableBypass}
-                    // Disabled-with-a-reason, not a silently-absent option —
-                    // a user who used bypass earlier in this same session
-                    // should be able to tell why it is greyed out now rather
-                    // than wonder if it vanished. `aria-describedby` pointing
-                    // at real, rendered text rather than a `title`: a title
-                    // on a disabled control is reachable by neither keyboard
-                    // focus nor most screen readers, since disabled elements
-                    // are pulled out of both.
-                    aria-describedby={disableBypass ? bypassReasonId : undefined}
-                  >
-                    {item.label}
-                  </SelectItem>
-                );
-              })}
-              {hasStarted && (
-                <p id={bypassReasonId} className="px-1.5 py-1 text-[0.65rem] text-muted-foreground">
-                  Bypass can only be chosen before the first message is sent.
-                </p>
-              )}
-            </SelectContent>
-          </Select>
+          {/* Permission mode and effort share one trigger: two adjacent
+              word-labels spent a third of the row on jargon and still left
+              the modes unexplained. See mode-menu.tsx. */}
+          <ModeMenu pane={pane} model={model} />
 
           <Select
             items={models.map((m) => ({ value: m.id, label: m.displayName }))}

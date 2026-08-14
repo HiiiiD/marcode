@@ -85,18 +85,71 @@ suite("Composer", () => {
     screen.getByRole("button", { name: "Stop" });
   });
 
-  test("a model without effort renders no Effort control", () => {
+  test("a model without effort offers no Effort row in the mode menu", async () => {
     renderWithStore(<Composer pane={pane()} model={NO_EFFORT} models={[]} />);
-    assert.strictEqual(screen.queryByLabelText("Effort"), null);
+
+    await userEvent.click(screen.getByLabelText("Permission mode"));
+    await screen.findByRole("menuitemradio", { name: /Ask/ });
+    assert.strictEqual(screen.queryByRole("menuitem", { name: /Effort/ }), null);
   });
 
-  test("choosing an effort level posts set-effort", async () => {
+  test("the Effort row names the current level, in its text and its accessible name", async () => {
     renderWithStore(<Composer pane={pane()} model={WITH_EFFORT} models={[]} />);
 
-    await userEvent.click(screen.getByLabelText("Effort"));
-    await userEvent.click(await screen.findByRole("option", { name: "high" }));
+    await userEvent.click(screen.getByLabelText("Permission mode"));
+    const row = await screen.findByRole("menuitem", { name: /Effort/ });
+    assert.ok(
+      /medium/.test(row.textContent ?? ""),
+      `the row must name the level, got ${JSON.stringify(row.textContent)}`,
+    );
+    // The dots are aria-hidden, so the value has to reach assistive tech
+    // through the name — an item announcing "Effort" alone leaves a screen-
+    // reader user arrowing blind.
+    assert.ok(/medium/.test(row.getAttribute("aria-label") ?? ""));
+  });
+
+  test("an arrow key on the Effort row steps the level and posts set-effort", async () => {
+    renderWithStore(<Composer pane={pane()} model={WITH_EFFORT} models={[]} />);
+
+    await userEvent.click(screen.getByLabelText("Permission mode"));
+    const row = await screen.findByRole("menuitem", { name: /Effort/ });
+    row.focus();
+    await userEvent.keyboard("{ArrowRight}");
 
     assert.deepStrictEqual(posted().at(-1), { t: "set-effort", id: "a", effort: "high" });
+  });
+
+  test("the Effort row does not close the menu when it is used", async () => {
+    renderWithStore(<Composer pane={pane()} model={WITH_EFFORT} models={[]} />);
+
+    await userEvent.click(screen.getByLabelText("Permission mode"));
+    const row = await screen.findByRole("menuitem", { name: /Effort/ });
+    await userEvent.click(row);
+
+    assert.ok(
+      screen.queryByRole("menuitem", { name: /Effort/ }),
+      "setting a level must leave the menu open so the change is visible",
+    );
+  });
+
+  test("each mode carries a description, not just a label", async () => {
+    renderWithStore(<Composer pane={pane()} model={NO_EFFORT} models={[]} />);
+
+    await userEvent.click(screen.getByLabelText("Permission mode"));
+    const plan = await screen.findByRole("menuitemradio", { name: /Plan/ });
+    assert.ok(
+      /Nothing on disk is changed/.test(plan.textContent ?? ""),
+      "a bare label leaves the five modes indistinguishable to anyone who has not learned the set",
+    );
+  });
+
+  test("picking a mode posts set-permission-mode", async () => {
+    renderWithStore(<Composer pane={pane()} model={NO_EFFORT} models={[]} />);
+
+    await userEvent.click(screen.getByLabelText("Permission mode"));
+    await userEvent.click(await screen.findByRole("menuitemradio", { name: /Plan/ }));
+
+    assert.deepStrictEqual(posted().at(-1), { t: "set-permission-mode", id: "a", mode: "plan" });
   });
 
   /**
@@ -119,46 +172,38 @@ suite("Composer", () => {
     const triggers = screen.getAllByLabelText("Permission mode");
     assert.strictEqual(triggers.length, 2);
 
+    // Read each id while its own menu is open: the popup is portaled and
+    // unmounts on close, so the reason text only exists to resolve against
+    // for as long as the option that points at it does.
     await userEvent.click(triggers[0]);
-    const optionA = await screen.findByRole("option", { name: /bypass/i });
+    const optionA = await screen.findByRole("menuitemradio", { name: /bypass/i });
     const describedByA = optionA.getAttribute("aria-describedby");
+    assert.ok(describedByA);
+    assert.ok(document.getElementById(describedByA)?.textContent?.includes("Bypass can only be chosen"));
     await userEvent.keyboard("{Escape}");
 
     await userEvent.click(triggers[1]);
-    const optionB = await screen.findByRole("option", { name: /bypass/i });
+    const optionB = await screen.findByRole("menuitemradio", { name: /bypass/i });
     const describedByB = optionB.getAttribute("aria-describedby");
-
-    assert.ok(describedByA);
     assert.ok(describedByB);
+    assert.ok(document.getElementById(describedByB)?.textContent?.includes("Bypass can only be chosen"));
+
     assert.notStrictEqual(describedByA, describedByB, "each pane must own a distinct reason id");
-    assert.ok(document.getElementById(describedByA!)?.textContent?.includes("Bypass can only be chosen"));
-    assert.ok(document.getElementById(describedByB!)?.textContent?.includes("Bypass can only be chosen"));
   });
 
-  test("the effort and mode selects use the sm size variant, not a hand-written height", () => {
+  test("the composer settings share one height, from their size variants", () => {
     renderApp();
     hydrateOne();
 
-    for (const label of ["Effort", "Permission mode"]) {
-      const trigger = screen.getByLabelText(label);
-      assert.strictEqual(
-        trigger.getAttribute("data-size"),
-        "sm",
-        `${label} must set size="sm"; a hand-written h-7 loses to data-[size=default]:h-8`,
-      );
-      // Not \bh-\d: SelectTrigger's own base classes always carry both
-      // `data-[size=default]:h-8` and `data-[size=sm]:h-7` as compound,
-      // variant-qualified tokens (CSS picks the active one via the
-      // data-size attribute) — a bare \b boundary matches "h-8"/"h-7"
-      // inside those regardless of what we authored. A hand-written height
-      // is always a space-separated, unqualified token instead. Also covers
-      // `h-auto`, not just `h-<digit>` — the same hand-written-over-a-size-
-      // variant defect tool-card.tsx and transcript.tsx once had.
-      assert.ok(
-        !/(?:^|\s)h-(?:\d|auto)/.test(trigger.className),
-        `${label} must not hand-write a height over the size variant`,
-      );
-    }
+    // The mode menu is a Button, whose `sm` variant writes an unqualified
+    // `h-7`. `cn` is twMerge, so a hand-written height would REPLACE that
+    // token rather than sit beside it — asserting the variant's own class
+    // survived is what catches an override.
+    const mode = screen.getByLabelText("Permission mode");
+    assert.ok(
+      /(?:^|\s)h-7(?:\s|$)/.test(mode.className),
+      'the mode trigger must keep Button size="sm"; a hand-written height replaces it under twMerge',
+    );
   });
 
   test("Send sits inside the input group, after the settings", () => {
