@@ -2,6 +2,25 @@
 
 Show, per session, how full the model's context window is and what the startup context contains; show, per provider, how much of each account usage window is spent. Percentages only — no token counts anywhere in the UI.
 
+> **Amended 2026-08-14.** The account-usage half was originally specified as a pull:
+> the webview asked, the host forwarded to a live run, the run called the SDK's
+> experimental usage method. That shape shipped and was wrong. `ClaudeProvider` builds its
+> `Query` lazily on the first `send()`, so after a window reload every session is restored
+> but unstarted, the first answer is an error, and nothing retries — the strip read as
+> broken until the user typed a message.
+>
+> The replacement is a push. `SDKRateLimitEvent` is a first-class member of the SDK's
+> `SDKMessage` union, carries exactly the two fields the strip renders, and arrives through
+> the event stream the provider already maps. It is not experimental, unlike
+> `Query.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET()`, which this design
+> abandons. A probe `Query` built at panel open was considered and rejected: it spawns a CLI
+> subprocess for a user who may never send a message.
+>
+> The sections below are written in the amended shape. **The context half is unchanged** —
+> `Query.getContextUsage()` carries no experimental warning and is inherently per-session,
+> so the ring, the popover and `request-context` / `context-breakdown` stay exactly as
+> first specified.
+
 ## Problem
 
 A session gives no signal about how close it is to the context limit, and none about what was loaded before the first message. The user cannot tell whether `CLAUDE.md` was picked up, whether a global memory file is contributing, or how much room is left before the conversation is compacted. Account usage against plan limits is equally invisible: the only way to learn a window is exhausted is to hit it.
@@ -53,32 +72,37 @@ The four `*Percent` fields sum to 100. `memoryFiles` percentages sum to `memoryP
 
 Percentages are computed inside the provider. Only the provider knows the model's context window size and the text of its own system prompt, so nothing above `AgentProvider` sees tokens.
 
-Provider surface, both members optional and both on `AgentRun`:
+Provider surface — one optional method for context, and one event for usage:
 
 ```ts
 export interface AgentRun {
   // …existing
   /** Startup context inventory for this conversation. */
   contextBreakdown?(): Promise<ContextBreakdown>;
-  /** Account usage windows visible from this run. */
-  usageWindows?(): Promise<UsageWindow[]>;
 }
+
+// In the AgentEvent union:
+| { kind: 'usage-window'; window: UsageWindow }
 ```
 
-`contextBreakdown` sits on the run because memory resolution depends on the session's `cwd`. `usageWindows` sits there too because the Claude Agent SDK exposes plan limits only from a live `Query` — there is no provider-level entry point. Account limits are nonetheless a property of the *account*, not the session, so the host asks any one live run of a provider and treats the answer as that provider's. A provider with no live run answers `{ ok: false }`.
+`contextBreakdown` sits on the run because memory resolution depends on the session's `cwd`.
+
+Usage does not sit on the run at all. Account limits are a property of the *account*, and the provider emits one `usage-window` event per window whenever that window's utilization changes. A provider that never emits them (a `FakeProvider` profile, or a Claude session on an API key, Bedrock or Vertex) simply produces no windows, which is a state the strip renders rather than an error. There is no `AgentRun.usageWindows`, no request, and no reply — the host holds the last window it was told about and the webview renders it.
 
 ### Where the numbers come from (Claude)
 
 `@anthropic-ai/claude-agent-sdk` supplies both directly:
 
 - `Query.getContextUsage()` → `SDKControlGetContextUsageResponse`: `categories[]`, `totalTokens`, `maxTokens`, `percentage`, `memoryFiles[{ path, type, tokens }]`, `systemPromptSections[]`, `messageBreakdown`. `ContextBreakdown` is derived from it — memory from `memoryFiles`, conversation from `messageBreakdown`, system as the remainder of `totalTokens`, free from `maxTokens`.
-- `Query.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET()` → `rate_limits.{ five_hour, seven_day, seven_day_opus, … }`, each `{ utilization: 0-100 | null, resets_at: ISO | null }`, plus `rate_limits_available: false` for API-key, Bedrock and Vertex sessions.
+- `SDKRateLimitEvent` (`sdk.d.ts:4408`, verified against `@anthropic-ai/claude-agent-sdk@0.3.228`) → `{ type: 'rate_limit_event'; rate_limit_info: SDKRateLimitInfo; session_id }`, emitted whenever rate-limit info changes. `SDKRateLimitInfo` carries `rateLimitType?: 'five_hour' | 'seven_day' | 'seven_day_opus' | 'seven_day_sonnet' | 'seven_day_overage_included' | 'overage'`, `utilization?: number` (0–100), `resetsAt?: number` (epoch ms), plus overage and status fields this feature does not read.
 
-The usage method is explicitly experimental and named to discourage reliance, so it is feature-detected at the call site and any throw or absence degrades to `{ ok: false }` rather than propagating.
+Each event describes **one** window, not a set. `map-events.ts` maps it to a `usage-window` `AgentEvent` using the id and label table already in `map-context.ts`; an event whose `rateLimitType` is absent, whose `utilization` is absent, or whose type has no entry in that table is dropped rather than rendered under a guessed label. The overage windows are out of scope for the same reason the overage fields are.
+
+`toUsageWindows` and its experimental-response mapper are deleted. `toContextBreakdown` and the id/label table stay.
 
 ## Protocol
 
-`src/protocol/messages.ts` re-exports both types and gains one state field and five messages.
+`src/protocol/messages.ts` re-exports both types and gains one state field and four messages.
 
 ```ts
 export type { UsageWindow, ContextBreakdown };
@@ -92,7 +116,6 @@ Webview → host:
 
 ```ts
 | { t: 'request-context'; id: SessionId }
-| { t: 'request-usage'; providerId: string }
 | { t: 'open-file'; path: string }
 ```
 
@@ -102,12 +125,12 @@ Host → webview:
 | { t: 'context-breakdown'; id: SessionId;
     result: { ok: true; breakdown: ContextBreakdown }
           | { ok: false; reason: string } }
-| { t: 'usage-windows'; providerId: string;
-    result: { ok: true; windows: UsageWindow[] }
-          | { ok: false; reason: string } }
+| { t: 'usage-windows'; providerId: string; windows: UsageWindow[] }
 ```
 
-Both replies carry their key, so a late reply for a closed session or a switched provider is discardable by the reducer rather than mis-applied.
+`context-breakdown` is a reply and carries its key, so a late reply for a closed session is discardable by the reducer rather than mis-applied.
+
+`usage-windows` is not a reply. It is the host announcing the full, ordered window set it currently knows for a provider — a snapshot, never a delta, so the webview replaces rather than merges. It has no `ok: false` arm: under a push there is no request that can fail, and "we have not been told anything" is a state, not an error. `hydrate` carries the same map for every provider the host knows, so a reload paints real numbers before any session runs.
 
 ## Flow
 
@@ -115,7 +138,13 @@ Both replies carry their key, so a late reply for a closed session or a switched
 
 **Popover — pulled.** Opening the popover posts `request-context`. `MessageRouter` forwards to `SessionManager.contextBreakdown(id)`, which awaits the run and replies once. The host caches nothing; the webview keeps the last reply per session and renders it while a refetch is in flight.
 
-**Usage strip — pulled, refreshed.** Posts `request-usage` per distinct provider on mount, and again after any session's `turn-end`. The webview debounces to at most one request per provider every few seconds. `SessionManager` resolves the provider to any one live session and asks its run.
+**Usage strip — pushed.** A `usage-window` event reaches `AgentSession`, which hands the window to its sink. `SessionManager` keeps the latest window per `(providerId, window.id)`, orders the set by the provider's own label table, and emits `usage-windows` to the webview ungated — the same way `sessions-changed` goes out, because account usage is not a per-pane concern.
+
+The map is persisted beside `index.json` in its own file. It is account data, not session data, so it does not belong on `SessionState`, and a restored session must not carry a percentage that has since moved.
+
+A persisted window is true "as of the last event": utilization only changes when the plan is used, so last-known is the truth until the next event arrives. The one exception is reset — a window whose `resetsAt` has passed is dropped on load and on emit rather than shown at a stale percentage, since after a reset the number is known to be wrong and the next event may be hours away.
+
+The webview holds no timers and runs no effects for this. The strip is a render of `usageByProvider`.
 
 **`open-file`** is the only new call into the `vscode` API (`window.showTextDocument`). It is handled in `PanelViewProvider`, not `MessageRouter`, so the router keeps its no-`vscode` invariant and stays unit-testable. The router therefore ignores `open-file`; `PanelViewProvider` intercepts it before delegating.
 
@@ -154,7 +183,11 @@ One row pinned to the bottom of the panel, below the pane grid. Each window rend
 ◕ Session (5h) 62%    ◔ Weekly 18% · resets in 3d
 ```
 
-Rings share the tooltip and colour rules of the context ring. When the roster spans several providers the strip groups windows by provider, labelled with `displayName`. A provider reporting no windows contributes a muted `Usage unavailable for this provider`; the strip is always present, so the panel's layout does not shift.
+Rings share the tooltip and colour rules of the context ring. When the roster spans several providers the strip groups windows by provider, labelled with `displayName`.
+
+A provider with no known windows gets one quiet muted line. Under a push there is exactly one such case and it must be worded honestly for both audiences it covers: an account that has not yet run a turn in this install, and an API-key/Bedrock/Vertex session that will never report plan limits at all. The push carries no signal that separates them — the second is indistinguishable from the first until an event that never comes — so the copy must not assert either. It says what is true of both: nothing has been reported. Neither the old `No plan limits` (which asserts the account has none) nor the old failure line survives; the error state is gone with the request.
+
+The strip is always present and keeps its fixed height, so the panel's layout does not shift when the first event lands.
 
 ### Reducer
 
@@ -162,22 +195,25 @@ Rings share the tooltip and colour rules of the context ring. When the roster sp
 
 ```ts
 contextBySession: Record<SessionId, ContextResult | undefined>;
-usageByProvider: Record<string, UsageResult | undefined>;
+usageByProvider: Record<string, UsageWindow[] | undefined>;
 ```
 
 A `context-breakdown` for an unknown session is ignored. Deleting a session deletes its entry. `contextPercent` rides in on `sessions-changed` and updates the ring without touching a cached breakdown.
+
+`usage-windows` replaces the entry for its provider outright, including with an empty array. `undefined` means the host has said nothing about that provider; the two are the same on screen, and the distinction exists only so the reducer never has to invent a value. `hydrate` seeds the whole map at once.
 
 ## Testing
 
 Unit, under `yarn test:unit`:
 
-- `reducer.test.ts` — replies stored under the right key; `ok: false` stored rather than dropped; a reply for a deleted session ignored; `contextPercent` updates independently of a cached breakdown.
-- `message-router.test.ts` — `request-context` and `request-usage` reach the manager with the right identifiers; a throwing provider method produces `{ ok: false }` and never a rejection; `open-file` is not handled by the router.
-- `session-manager` — `turn-end` recomputes `contextPercent`; a run without `contextBreakdown` leaves it `undefined` and emits no extra patches.
+- `reducer.test.ts` — a `context-breakdown` is stored under the right key, `ok: false` stored rather than dropped, a reply for a deleted session ignored, `contextPercent` updates independently of a cached breakdown; `usage-windows` replaces a provider's entry (including with an empty array) and `hydrate` seeds the map.
+- `message-router.test.ts` — `request-context` reaches the manager with the right identifier; a throwing provider method produces `{ ok: false }` and never a rejection; `open-file` is not handled by the router.
+- `map-events.test.ts` — a `rate_limit_event` maps to one `usage-window` with the table's id and label; events missing `rateLimitType` or `utilization`, and the overage types, produce nothing.
+- `session-manager` — a `usage-window` event lands in the map under its provider, a second event for the same window id replaces rather than appends, the emitted set is ordered by the label table and goes out ungated, a window past its `resetsAt` is dropped, and the map survives a reload through the persisted sibling file; `turn-end` recomputes `contextPercent`; a run without `contextBreakdown` leaves it `undefined` and emits no extra patches.
 
-`FakeProvider` gains scripted windows and a scripted breakdown so both surfaces work in development and integration without an API key. A second scripted profile implements neither method, which is what exercises the empty states.
+`FakeProvider` gains scripted `usage-window` events and a scripted breakdown so both surfaces work in development without an API key. A second scripted profile emits neither, which is what exercises the empty states.
 
-Integration, under `@vscode/test-cli`: the panel loads, the ring renders, the popover opens against the fake breakdown, and clicking a memory path opens that document.
+**Integration coverage is deliberately not automated.** The original spec asked for a `@vscode/test-cli` test — panel loads, ring renders, popover opens against the fake breakdown, clicking a memory path opens that document — and the plan that executed it retired that requirement in its own self-review, which was a process fault: a plan should not silently discharge an obligation its own spec set. Recorded here instead as an explicit decision taken 2026-08-14: the maintainer verifies these surfaces by hand in a dev host (`yarn dev`, which scripts `FakeProvider` with a populated breakdown and windows). The obligation is discharged, not forgotten. `PanelViewProvider.openFile` consequently has no automated coverage at any level, which is the known cost of this choice.
 
 ## Staging
 
