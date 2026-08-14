@@ -9,7 +9,8 @@ import type {
 } from '../../protocol/messages';
 import { FakeProvider } from '../../providers/fake/fake-provider';
 import type {
-  AgentEvent, AgentProvider, AgentRun, ModelInfo, StartOptions, ToolDecision, UsageWindow,
+  AgentEvent, AgentProvider, AgentRun, ModelInfo, PermissionModeInfo, StartOptions, ToolDecision,
+  UsageWindow,
 } from '../../providers/types';
 
 /** Minimal pushable async-iterable, mirroring FakeProvider's internal channel. */
@@ -72,6 +73,13 @@ class ThrowingProvider implements AgentProvider {
   constructor(private readonly opts: ThrowingProviderOptions) {}
 
   listModels(): ModelInfo[] { return []; }
+
+  listPermissionModes(): PermissionModeInfo[] {
+    return [
+      { id: 'default' }, { id: 'acceptEdits' }, { id: 'auto' },
+      { id: 'plan' }, { id: 'dontAsk' }, { id: 'bypass' },
+    ];
+  }
 
   start(_opts: StartOptions): AgentRun {
     const channel = new EventChannel();

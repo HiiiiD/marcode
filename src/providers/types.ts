@@ -9,6 +9,25 @@ export type EffortLevel = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
  */
 export type PermissionMode = 'default' | 'acceptEdits' | 'auto' | 'plan' | 'dontAsk' | 'bypass';
 
+/**
+ * One permission mode a provider actually offers.
+ *
+ * `PermissionMode` stays a closed union — this is the `EffortLevel`
+ * precedent, where the union is fixed and each model publishes the subset it
+ * takes. A provider that cannot honor a mode must not offer it: Codex under
+ * `workspace-write` never raises an approval for an in-workspace edit, so a
+ * Codex `acceptEdits` would be a second name for `default`.
+ */
+export interface PermissionModeInfo {
+  id: PermissionMode;
+  /**
+   * Provider-specific one-liner, overriding the shared description in the
+   * picker. The same id enforces differently per provider, so the id alone is
+   * not always enough for the user to choose safely.
+   */
+  description?: string;
+}
+
 export interface ModelInfo {
   id: string;
   displayName: string;
@@ -197,6 +216,14 @@ export interface AgentProvider {
    * whether a failed probe is worth retrying.
    */
   fetchModels?(cwd: string): Promise<ModelInfo[]>;
+  /**
+   * The modes this provider can actually honor.
+   *
+   * Sync, like `listModels`: session creation and the roster read it inline.
+   * MUST include 'default' — creation falls back to it in message-router,
+   * and `resolvePermissionMode` resolves to it.
+   */
+  listPermissionModes(): PermissionModeInfo[];
   /**
    * Account/plan usage for a working directory, with NO session required.
    *

@@ -536,6 +536,7 @@ suite('SessionManager', () => {
       id: base.id,
       displayName: base.displayName,
       listModels: () => base.listModels(),
+      listPermissionModes: () => base.listPermissionModes(),
       start: (opts) => ({
         ...base.start(opts),
         contextBreakdown: () => new Promise<never>(() => {}),
@@ -914,6 +915,7 @@ suite('SessionManager', () => {
     return {
       id, displayName: id,
       listModels: () => models,
+      listPermissionModes: () => [],
       fetchModels: async (cwd: string) => {
         if (onFetch) { await onFetch(); }
         models = [{ id: `fresh-${cwd}`, displayName: 'Fresh' }];
@@ -938,6 +940,7 @@ suite('SessionManager', () => {
     assert.deepStrictEqual(catalogs[0].catalog, [{
       id: 'claude', displayName: 'claude',
       models: [{ id: 'fresh-/repo', displayName: 'Fresh' }],
+      permissionModes: [],
     }]);
     await m.dispose();
   });
@@ -947,6 +950,7 @@ suite('SessionManager', () => {
     return {
       id, displayName: id,
       listModels: () => [],
+      listPermissionModes: () => [],
       fetchModels: () => Promise.reject(new Error(reason)),
       start: () => { throw new Error('not used'); },
     };
@@ -1003,6 +1007,7 @@ suite('SessionManager', () => {
 
     assert.deepStrictEqual(m.catalog(), [{
       id: 'claude', displayName: 'claude', models: [{ id: 'opus', displayName: 'Opus 5' }],
+      permissionModes: [],
     }]);
     await m.dispose();
   });
@@ -1020,6 +1025,7 @@ suite('SessionManager', () => {
 
     assert.deepStrictEqual(m.catalog(), [{
       id: 'claude', displayName: 'claude', models: [{ id: 'fresh-/repo', displayName: 'Fresh' }],
+      permissionModes: [],
     }], 'the live list is the truth; the seed was only ever a stand-in for it');
     await m.dispose();
   });
@@ -1068,6 +1074,7 @@ suite('SessionManager', () => {
     const flaky: AgentProvider = {
       id: 'claude', displayName: 'Claude',
       listModels: () => models,
+      listPermissionModes: () => [],
       fetchModels: async () => {
         if (fail) { models = []; throw new Error('Claude Code CLI not found.'); }
         models = [{ id: 'haiku', displayName: 'Haiku 4.5' }];
@@ -1113,6 +1120,7 @@ suite('SessionManager', () => {
         { id: 'opus', displayName: 'Opus', resolvedModel: 'claude-opus-5',
           effort: { levels: ['low', 'high'], default: 'high' } },
       ],
+      listPermissionModes: () => [],
       // create() materializes an AgentSession, which starts a run — delegate
       // to the FakeProvider rather than reimplementing AgentRun here.
       start: (opts) => new FakeProvider(() => []).start(opts),
@@ -1180,6 +1188,7 @@ suite('SessionManager', () => {
     const broken: AgentProvider = {
       id: 'broken', displayName: 'Broken',
       listModels: () => [],
+      listPermissionModes: () => [],
       start: () => { throw new Error('not used'); },
       fetchUsage: (): Promise<UsageWindow[] | undefined> => { throw new Error('CLI is broken'); },
     };

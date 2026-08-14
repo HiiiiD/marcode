@@ -46,7 +46,7 @@ suite('webview reducer', () => {
       sessions: [summary('s1')],
       layout: { orientation: 'vertical', panes: [{ sessionId: 's1', size: 100 }] },
       snapshots: [snapshot('s1')],
-      catalog: [{ id: 'fake', displayName: 'Fake', models: [] }],
+      catalog: [{ id: 'fake', displayName: 'Fake', models: [], permissionModes: [] }],
       unavailable: [],
       usage: {},
     });
@@ -379,7 +379,10 @@ suite('webview reducer', () => {
 
     const back = reduce(gone, {
       t: 'catalog',
-      catalog: [{ id: 'claude', displayName: 'Claude', models: [{ id: 'haiku', displayName: 'Haiku 4.5' }] }],
+      catalog: [{
+        id: 'claude', displayName: 'Claude',
+        models: [{ id: 'haiku', displayName: 'Haiku 4.5' }], permissionModes: [],
+      }],
       unavailable: [],
     });
     assert.deepStrictEqual(back.unavailable, [],
@@ -389,7 +392,10 @@ suite('webview reducer', () => {
   test('catalog replaces the provider/model catalog wholesale', () => {
     const seeded = reduce(initialState, {
       t: 'catalog',
-      catalog: [{ id: 'claude', displayName: 'Claude', models: [{ id: 'haiku', displayName: 'Haiku 4.5' }] }],
+      catalog: [{
+        id: 'claude', displayName: 'Claude',
+        models: [{ id: 'haiku', displayName: 'Haiku 4.5' }], permissionModes: [],
+      }],
       unavailable: [],
     });
     const next = reduce(seeded, {
@@ -397,6 +403,7 @@ suite('webview reducer', () => {
       catalog: [{
         id: 'claude', displayName: 'Claude',
         models: [{ id: 'claude-fable-5', displayName: 'Fable 5' }],
+        permissionModes: [],
       }],
       unavailable: [],
     });
@@ -404,6 +411,7 @@ suite('webview reducer', () => {
     assert.deepStrictEqual(next.catalog, [{
       id: 'claude', displayName: 'Claude',
       models: [{ id: 'claude-fable-5', displayName: 'Fable 5' }],
+      permissionModes: [],
     }]);
   });
 

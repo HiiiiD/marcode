@@ -19,7 +19,7 @@ function hydrate(snap: SessionSnapshot) {
     t: 'hydrate',
     sessions: [snap],
     layout: { orientation: 'vertical', panes: [{ sessionId: snap.id, size: 100 }] },
-    catalog: [{ id: 'claude', displayName: 'Claude', models: [] }],
+    catalog: [{ id: 'claude', displayName: 'Claude', models: [], permissionModes: [] }],
     snapshots: [snap],
     unavailable: [],
     usage: {},

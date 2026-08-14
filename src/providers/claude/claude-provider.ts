@@ -122,7 +122,7 @@ import type {
   AgentEvent, AgentProvider, AgentRun,
   ContextBreakdown,
   EditorContext,
-  EffortLevel, Invocable, ModelInfo, PermissionMode,
+  EffortLevel, Invocable, ModelInfo, PermissionMode, PermissionModeInfo,
   StartOptions, ToolDecision, UsageWindow,
 } from '../types';
 import { toInvocables } from './map-commands';
@@ -354,6 +354,17 @@ export class ClaudeProvider implements AgentProvider {
         // Best-effort: the probe is being discarded regardless.
       }
     }
+  }
+
+  /**
+   * All six. The union was drawn from Claude's own mode set, so this provider
+   * is the one case where declaring a subset would be declaring nothing.
+   */
+  listPermissionModes(): PermissionModeInfo[] {
+    return [
+      { id: 'default' }, { id: 'acceptEdits' }, { id: 'auto' },
+      { id: 'plan' }, { id: 'dontAsk' }, { id: 'bypass' },
+    ];
   }
 
   start(opts: StartOptions): AgentRun {

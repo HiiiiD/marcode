@@ -154,7 +154,12 @@ export class SessionManager implements SessionSink {
    */
   catalog(): ProviderInfo[] {
     return [...this.providers.values()]
-      .map((p) => ({ id: p.id, displayName: p.displayName, models: this.modelsFor(p) }))
+      .map((p) => ({
+        id: p.id,
+        displayName: p.displayName,
+        models: this.modelsFor(p),
+        permissionModes: p.listPermissionModes(),
+      }))
       .filter((p) => p.models.length > 0);
   }
 

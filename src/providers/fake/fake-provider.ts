@@ -2,7 +2,7 @@ import type {
   AgentEvent, AgentProvider, AgentRun,
   ContextBreakdown,
   EditorContext,
-  EffortLevel, Invocable, ModelInfo, PermissionMode,
+  EffortLevel, Invocable, ModelInfo, PermissionMode, PermissionModeInfo,
   StartOptions, ToolDecision,
   UsageWindow
 } from '../types';
@@ -98,6 +98,14 @@ export class FakeProvider implements AgentProvider {
         effort: { levels: ['low', 'medium', 'high'], default: 'medium' },
       },
       { id: 'fake-small', displayName: 'Fake Small' },
+    ];
+  }
+
+  /** Every mode, so existing tests keep exercising the full picker. */
+  listPermissionModes(): PermissionModeInfo[] {
+    return [
+      { id: 'default' }, { id: 'acceptEdits' }, { id: 'auto' },
+      { id: 'plan' }, { id: 'dontAsk' }, { id: 'bypass' },
     ];
   }
 

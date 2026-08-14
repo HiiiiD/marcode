@@ -1,11 +1,11 @@
 import type {
   ContextBreakdown, EditorContext, EffortLevel, Invocable, McpServerStatus, ModelInfo,
-  PermissionMode, ToolDecision, UsageWindow,
+  PermissionMode, PermissionModeInfo, ToolDecision, UsageWindow,
 } from '../providers/types';
 
 export type {
   ContextBreakdown, EditorContext, EffortLevel, Invocable, McpServerStatus, ModelInfo,
-  PermissionMode, ToolDecision, UsageWindow,
+  PermissionMode, PermissionModeInfo, ToolDecision, UsageWindow,
 };
 
 export type SessionId = string;
@@ -109,6 +109,13 @@ export interface ProviderInfo {
   id: string;
   displayName: string;
   models: ModelInfo[];
+  /**
+   * The modes this provider offers. Rides the existing `hydrate` and
+   * `catalog` messages because it lives on `ProviderInfo` — a mode set that
+   * arrived out of step with the catalog it belongs to would let the picker
+   * offer one provider's modes for another's session.
+   */
+  permissionModes: PermissionModeInfo[];
 }
 
 /**
