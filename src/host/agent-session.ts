@@ -24,6 +24,13 @@ export interface SessionSink {
    * alone.
    */
   invocables(id: SessionId, entries: Invocable[]): void;
+  /**
+   * A running session reported an account usage window. Keyed by provider,
+   * not by session: plan limits belong to the account, and every session of
+   * that provider reports the same numbers. Goes UP to the manager, which
+   * owns the map, exactly like `invocables`.
+   */
+  usageWindow(providerId: string, window: UsageWindow): void;
 }
 
 const TITLE_MAX = 60;
@@ -270,20 +277,13 @@ export class AgentSession {
       throw new Error('This provider does not report context usage');
     }
     const breakdown = await this.run.contextBreakdown();
-    this.rememberMemoryFiles(breakdown);
-    // A live answer supersedes whatever the last turn recorded, so the
-    // cache a reloaded window will read is updated here too. No
-    // `sink.changed()`: this is a pull nobody else is waiting on, and the
-    // next roster change carries it to disk.
-    this._state.lastContext = breakdown;
+    // A live answer supersedes whatever the last turn recorded, so the cache
+    // a reloaded window will read is updated from it — and so is the pushed
+    // percentage, because the ring, its danger threshold and the popover
+    // header must all be the same measurement. A destructive 86% ring beside
+    // a "50% used" header is two numbers claiming to be one thing.
+    this.applyContextPercent(breakdown);
     return breakdown;
-  }
-
-  async usageWindows(): Promise<UsageWindow[]> {
-    if (!this.run.usageWindows) {
-      throw new Error('This provider does not report plan usage');
-    }
-    return this.run.usageWindows();
   }
 
   /**
@@ -311,24 +311,35 @@ export class AgentSession {
   private async refreshContextPercent(): Promise<void> {
     try {
       const breakdown = await this.run.contextBreakdown?.();
-      if (!breakdown || this.disposed) { return; }
-      this.rememberMemoryFiles(breakdown);
-      const next = Math.round(100 - breakdown.freePercent);
-      // The percentage can be unchanged while the inventory behind it is
-      // not — one memory file added and another dropped, say — and the
-      // stored breakdown is what a reloaded window answers `request-context`
-      // from. So the guard covers both, and `changed()` (which is what
-      // schedules the write to index.json) fires whenever either moved.
-      const same = this._state.contextPercent === next
-        && JSON.stringify(this._state.lastContext) === JSON.stringify(breakdown);
-      if (same) { return; }
-      this._state.contextPercent = next;
-      this._state.lastContext = breakdown;
-      this._state.updatedAt = Date.now();
-      this.sink.changed();
+      if (!breakdown) { return; }
+      this.applyContextPercent(breakdown);
     } catch {
       // See the doc comment: an unavailable breakdown is not a failed turn.
     }
+  }
+
+  /**
+   * The one place `contextPercent` and `lastContext` are written, so the
+   * ring, its danger threshold and the popover header — everything
+   * downstream of those fields — are always the same measurement as of the
+   * breakdown that produced it.
+   */
+  private applyContextPercent(breakdown: ContextBreakdown): void {
+    if (this.disposed) { return; }
+    this.rememberMemoryFiles(breakdown);
+    const next = Math.round(100 - breakdown.freePercent);
+    // The percentage can be unchanged while the inventory behind it is not —
+    // one memory file added and another dropped, say — and the stored
+    // breakdown is what a reloaded window answers `request-context` from. So
+    // the guard covers both, and `changed()` (which is what schedules the
+    // write to index.json) fires whenever either moved.
+    const same = this._state.contextPercent === next
+      && JSON.stringify(this._state.lastContext) === JSON.stringify(breakdown);
+    if (same) { return; }
+    this._state.contextPercent = next;
+    this._state.lastContext = breakdown;
+    this._state.updatedAt = Date.now();
+    this.sink.changed();
   }
 
   async snapshot(): Promise<SessionSnapshot> {
@@ -496,6 +507,10 @@ export class AgentSession {
           inputTokens: event.inputTokens, outputTokens: event.outputTokens,
         };
         this.sink.changed();
+        return;
+
+      case 'usage-window':
+        this.sink.usageWindow(this._state.providerId, event.window);
         return;
 
       case 'mcp-servers':

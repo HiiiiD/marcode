@@ -114,8 +114,18 @@
 //     the SDK payload alone. AgentSession derives it instead: the permission
 //     id IS the tool_use id of the call being approved, so it resolves
 //     through the same child map that tool-start populated.
+//   - `{ type: 'rate_limit_event', rate_limit_info: SDKRateLimitInfo, ... }`
+//     (sdk.d.ts:4408) — pushed by the CLI whenever plan/account usage moves,
+//     unprompted, including once shortly after connect. Mapped via
+//     `toUsageWindow` (map-context.ts) to `{ kind: 'usage-window', window }`.
+//     `rate_limit_info.resetsAt` is epoch ms, NOT the ISO string the old
+//     experimental usage response carried under the same name — do not reuse
+//     `resetsAt()` from map-context.ts's ISO parsing path here. One event
+//     describes one window, never the whole set, so the host accumulates
+//     these over time rather than treating any single event as a snapshot.
 import type { AgentEvent, McpServerStatus } from '../types';
 import { toInvocables } from './map-commands';
+import { toUsageWindow, type RateLimitInfoLike } from './map-context';
 import { redactSecrets } from './redact';
 
 interface Block {
@@ -262,6 +272,16 @@ export function mapEvent(msg: unknown): AgentEvent[] {
       : (terminalReason || stopReason || subtype);
     out.push({ kind: 'turn-end', reason: 'error', error: redactSecrets(detail || 'Agent error') });
     return out;
+  }
+
+  if (type === 'rate_limit_event') {
+    // Pushed by the CLI whenever plan usage moves — including once shortly
+    // after connect, which is what lets the strip show real numbers without
+    // anyone having sent a message.
+    const window = toUsageWindow(
+      (msg as { rate_limit_info?: RateLimitInfoLike }).rate_limit_info,
+    );
+    return window ? [{ kind: 'usage-window', window }] : [];
   }
 
   return [];

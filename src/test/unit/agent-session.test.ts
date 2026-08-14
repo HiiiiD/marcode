@@ -9,7 +9,7 @@ import type {
 } from '../../protocol/messages';
 import { FakeProvider } from '../../providers/fake/fake-provider';
 import type {
-  AgentEvent, AgentProvider, AgentRun, ModelInfo, StartOptions, ToolDecision,
+  AgentEvent, AgentProvider, AgentRun, ModelInfo, StartOptions, ToolDecision, UsageWindow,
 } from '../../providers/types';
 
 /** Minimal pushable async-iterable, mirroring FakeProvider's internal channel. */
@@ -124,11 +124,16 @@ class RecordingSink implements SessionSink {
    * (Invocable[][]) the brief's `sink.invocables` would have.
    */
   invocablesLog: Invocable[][] = [];
+  /** Recorded as (providerId, window) pairs — usage is keyed by provider. */
+  usageLog: { providerId: string; window: UsageWindow }[] = [];
   patch(id: SessionId, patch: TranscriptPatch) { this.patches.push({ id, patch }); }
   status(_id: SessionId, status: SessionStatus) { this.statuses.push(status); }
   mcp(_id: SessionId, servers: unknown[]) { this.servers.push(servers); }
   changed() { this.changes++; }
   invocables(_id: SessionId, entries: Invocable[]) { this.invocablesLog.push(entries); }
+  usageWindow(providerId: string, window: UsageWindow) {
+    this.usageLog.push({ providerId, window });
+  }
 }
 
 async function settle() {
@@ -602,11 +607,28 @@ suite('AgentSession', () => {
     await session.dispose();
   });
 
-  test('usageWindows rejects with a legible error when unsupported', async () => {
-    const provider = new FakeProvider(() => []);
+  test('serving a breakdown refreshes contextPercent from the same measurement', async () => {
+    const provider = new FakeProvider(undefined, {
+      context: {
+        systemPercent: 12, memoryPercent: 4, conversationPercent: 27, freePercent: 57,
+        memoryFiles: [],
+      },
+    });
     const session = new AgentSession(baseState(), provider, store, sink);
+    await session.contextBreakdown();
+    assert.strictEqual(session.state.contextPercent, 43);
+    assert.ok(sink.changes > 0);
+    await session.dispose();
+  });
 
-    await assert.rejects(() => session.usageWindows(), /does not report plan usage/);
+  test('a usage-window event reaches the sink under this session provider id', async () => {
+    const { provider, sink: localSink, session } = makeSession();
+    const window = { id: 'five-hour', label: 'Session (5h)', usedPercent: 62 };
+
+    provider.runs[0].emit({ kind: 'usage-window', window });
+    await settle();
+
+    assert.deepStrictEqual(localSink.usageLog, [{ providerId: 'fake', window }]);
     await session.dispose();
   });
 });

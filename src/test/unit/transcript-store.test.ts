@@ -106,6 +106,103 @@ suite('TranscriptStore', () => {
     assert.deepStrictEqual(index.layout, { orientation: 'vertical', panes: [] });
   });
 
+  test('usage round-trips through its own file', async () => {
+    const store = new TranscriptStore(dir);
+    await store.writeUsage({
+      providers: { claude: [{ id: 'five-hour', label: 'Session (5h)', usedPercent: 62 }] },
+    });
+    assert.deepStrictEqual(await new TranscriptStore(dir).readUsage(), {
+      providers: { claude: [{ id: 'five-hour', label: 'Session (5h)', usedPercent: 62 }] },
+    });
+  });
+
+  test('a missing or unreadable usage file is an empty set, not a throw', async () => {
+    assert.deepStrictEqual(await new TranscriptStore(dir).readUsage(), { providers: {} });
+    await fs.writeFile(path.join(dir, 'usage.json'), '{ not json', 'utf8');
+    assert.deepStrictEqual(await new TranscriptStore(dir).readUsage(), { providers: {} });
+  });
+
+  test('valid JSON with the wrong shape also degrades to an empty set', async () => {
+    await fs.writeFile(path.join(dir, 'usage.json'), JSON.stringify({ providers: 'oops' }), 'utf8');
+    assert.deepStrictEqual(await new TranscriptStore(dir).readUsage(), { providers: {} });
+
+    await fs.writeFile(
+      path.join(dir, 'usage.json'),
+      JSON.stringify({ providers: { claude: 'oops' } }),
+      'utf8',
+    );
+    assert.deepStrictEqual(await new TranscriptStore(dir).readUsage(), { providers: {} });
+  });
+
+  test('a corrupt provider entry does not blank out a sibling that is fine', async () => {
+    await fs.writeFile(
+      path.join(dir, 'usage.json'),
+      JSON.stringify({
+        providers: {
+          claude: 'oops',
+          fake: [{ id: 'five-hour', label: 'Session (5h)', usedPercent: 62 }],
+        },
+      }),
+      'utf8',
+    );
+    assert.deepStrictEqual(await new TranscriptStore(dir).readUsage(), {
+      providers: { fake: [{ id: 'five-hour', label: 'Session (5h)', usedPercent: 62 }] },
+    });
+  });
+
+  test('a malformed window element is dropped rather than sunk into an unreadable id', async () => {
+    await fs.writeFile(
+      path.join(dir, 'usage.json'),
+      JSON.stringify({ providers: { fake: [null] } }),
+      'utf8',
+    );
+    assert.deepStrictEqual(await new TranscriptStore(dir).readUsage(), { providers: { fake: [] } });
+
+    await fs.writeFile(
+      path.join(dir, 'usage.json'),
+      JSON.stringify({ providers: { fake: [42] } }),
+      'utf8',
+    );
+    assert.deepStrictEqual(await new TranscriptStore(dir).readUsage(), { providers: { fake: [] } });
+  });
+
+  test('a malformed window element does not take a valid sibling window with it', async () => {
+    await fs.writeFile(
+      path.join(dir, 'usage.json'),
+      JSON.stringify({
+        providers: {
+          fake: [
+            { id: 'five-hour', label: 'Session (5h)', usedPercent: 62 },
+            null,
+          ],
+        },
+      }),
+      'utf8',
+    );
+    assert.deepStrictEqual(await new TranscriptStore(dir).readUsage(), {
+      providers: { fake: [{ id: 'five-hour', label: 'Session (5h)', usedPercent: 62 }] },
+    });
+  });
+
+  test('a window with an object label or usedPercent is dropped — both render as React children', async () => {
+    await fs.writeFile(
+      path.join(dir, 'usage.json'),
+      JSON.stringify({
+        providers: {
+          fake: [
+            { id: 'bad-label', label: { oops: true }, usedPercent: 62 },
+            { id: 'bad-percent', label: 'Session (5h)', usedPercent: [62] },
+            { id: 'five-hour', label: 'Session (5h)', usedPercent: 62 },
+          ],
+        },
+      }),
+      'utf8',
+    );
+    assert.deepStrictEqual(await new TranscriptStore(dir).readUsage(), {
+      providers: { fake: [{ id: 'five-hour', label: 'Session (5h)', usedPercent: 62 }] },
+    });
+  });
+
   test('remove deletes the file, clears the cache, and stays gone after a later flush', async () => {
     store.append('s1', item('a', 'one'));
     store.append('s1', item('b', 'two'));

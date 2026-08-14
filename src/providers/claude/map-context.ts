@@ -22,26 +22,6 @@ export interface ContextUsageLike {
   };
 }
 
-interface RateWindowLike {
-  utilization: number | null;
-  resets_at: string | null;
-}
-
-export interface UsageLike {
-  rate_limits_available: boolean;
-  rate_limits: {
-    five_hour?: RateWindowLike | null;
-    seven_day?: RateWindowLike | null;
-    seven_day_opus?: RateWindowLike | null;
-    seven_day_sonnet?: RateWindowLike | null;
-    model_scoped?: { display_name: string; utilization: number | null; resets_at: string | null }[];
-  } | null;
-}
-
-function share(tokens: number, max: number): number {
-  return Math.round((tokens / max) * 100);
-}
-
 /**
  * Splits an integer `total` points across `parts` (proportionally to their
  * token weights) so the parts sum to exactly `total` — the largest-remainder
@@ -52,8 +32,10 @@ function share(tokens: number, max: number): number {
  * direction depending on which way the roundings happen to lean. Assigning
  * every part its floor and then handing the leftover points, one each, to
  * the parts with the largest fractional remainder is exact by construction
- * and needs no clamp. Ties break by array order (`parts` is always passed
- * as `[system, memory, conversation]`), so the output is deterministic.
+ * and needs no clamp. Ties break by array order — stable for any caller,
+ * whether that is the fixed three-slice `[system, memory, conversation]`
+ * call or the per-file, arbitrary-length `memoryFiles` call — so the output
+ * is deterministic.
  */
 function largestRemainder(weights: number[], base: number, total: number): number[] {
   if (base <= 0) { return weights.map(() => 0); }
@@ -116,6 +98,14 @@ export function toContextBreakdown(res: ContextUsageLike): ContextBreakdown {
     [systemTokens, memoryTokens, conversationTokens], base, usedPercent,
   );
 
+  // The rows are an allocation *within* the Memory slice, not an independent
+  // tokens/maxTokens calculation. Sharing the slice's denominator is what
+  // stops a single row from rendering larger than the slice it sits under
+  // when the window is clamped or over-full.
+  const filePercents = largestRemainder(
+    res.memoryFiles.map((f) => f.tokens), memoryTokens, memoryPercent,
+  );
+
   return {
     systemPercent,
     memoryPercent,
@@ -123,7 +113,7 @@ export function toContextBreakdown(res: ContextUsageLike): ContextBreakdown {
     freePercent,
     // A file rounding to 0 stays in the list: it is present in the context,
     // and the UI renders 0 as `<1%` rather than dropping the row.
-    memoryFiles: res.memoryFiles.map((f) => ({ path: f.path, percent: share(f.tokens, max) })),
+    memoryFiles: res.memoryFiles.map((f, i) => ({ path: f.path, percent: filePercents[i] })),
   };
 }
 
@@ -134,52 +124,36 @@ const WINDOW_LABELS: { key: 'five_hour' | 'seven_day' | 'seven_day_opus' | 'seve
   { key: 'seven_day_sonnet', id: 'seven-day-sonnet', label: 'Week (Sonnet)' },
 ];
 
-function resetsAt(iso: string | null): number | undefined {
-  if (!iso) { return undefined; }
-  const parsed = Date.parse(iso);
-  return Number.isFinite(parsed) ? parsed : undefined;
-}
-
-function makeWindow(id: string, label: string, w: RateWindowLike): UsageWindow | undefined {
-  if (w.utilization === null || !Number.isFinite(w.utilization)) { return undefined; }
-  const at = resetsAt(w.resets_at);
-  return {
-    id, label,
-    usedPercent: Math.max(0, Math.min(100, Math.round(w.utilization))),
-    ...(at !== undefined ? { resetsAt: at } : {}),
-  };
+/**
+ * The subset of `SDKRateLimitInfo` (sdk.d.ts:4421) this mapper reads,
+ * declared structurally for the same reason `ContextUsageLike` is. Note
+ * `resetsAt` is epoch ms here — the experimental usage response this module
+ * used to read carried an ISO string instead, which is why nothing parses.
+ */
+export interface RateLimitInfoLike {
+  rateLimitType?: string;
+  utilization?: number;
+  resetsAt?: number;
 }
 
 /**
- * `rate_limits_available` is false for API-key, Bedrock and Vertex sessions,
- * where plan limits simply do not exist. That is an empty list, not an
- * error — the strip renders "No plan limits" for it, which is a different
- * sentence from a failure.
- *
- * The output order is fixed (session, week, per-model), never sorted by
- * utilization: a strip that reorders itself between refreshes cannot be
- * read at a glance.
+ * One `rate_limit_event` describes one window. An event we cannot label
+ * (`overage`, `seven_day_overage_included`, or a type a future SDK adds) or
+ * cannot quantify (no `utilization`) produces nothing: a chip with a guessed
+ * label or an invented percentage is worse than a chip that is not there.
  */
-export function toUsageWindows(res: UsageLike): UsageWindow[] {
-  if (!res.rate_limits_available || !res.rate_limits) { return []; }
-  const limits = res.rate_limits;
-  const out: UsageWindow[] = [];
-
-  for (const { key, id, label } of WINDOW_LABELS) {
-    const w = limits[key];
-    if (!w) { continue; }
-    const mapped = makeWindow(id, label, w);
-    if (mapped) { out.push(mapped); }
-  }
-
-  for (const scoped of limits.model_scoped ?? []) {
-    const mapped = makeWindow(
-      `model:${scoped.display_name}`,
-      `Week (${scoped.display_name})`,
-      scoped,
-    );
-    if (mapped) { out.push(mapped); }
-  }
-
-  return out;
+export function toUsageWindow(info: RateLimitInfoLike | undefined): UsageWindow | undefined {
+  if (!info) { return undefined; }
+  const row = WINDOW_LABELS.find((w) => w.key === info.rateLimitType);
+  if (!row) { return undefined; }
+  if (typeof info.utilization !== 'number' || !Number.isFinite(info.utilization)) { return undefined; }
+  const at = typeof info.resetsAt === 'number' && Number.isFinite(info.resetsAt)
+    ? info.resetsAt
+    : undefined;
+  return {
+    id: row.id,
+    label: row.label,
+    usedPercent: Math.max(0, Math.min(100, Math.round(info.utilization))),
+    ...(at !== undefined ? { resetsAt: at } : {}),
+  };
 }

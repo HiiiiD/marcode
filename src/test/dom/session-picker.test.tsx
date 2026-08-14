@@ -13,6 +13,7 @@ function hydrateAOpen() {
     layout: layoutOf('a'),
     snapshots: [snapshot('a')],
     catalog: catalog(),
+    usage: {},
   });
 }
 
@@ -167,6 +168,7 @@ suite('SessionPicker', () => {
       layout: layoutOf('a'),
       snapshots: [snapshot('a')],
       catalog: catalog(),
+      usage: {},
     });
 
     await userEvent.click(screen.getByText(/1 of 2 in split/i));
@@ -233,6 +235,7 @@ suite('SessionPicker', () => {
       layout: { orientation: 'horizontal', panes: [{ sessionId: 'a', size: 50 }, { sessionId: 'b', size: 50 }] },
       snapshots: [snapshot('a'), snapshot('b')],
       catalog: catalog(),
+      usage: {},
     });
 
     // App owns the single ResizeObserver both SessionPicker and PaneGroup
@@ -263,7 +266,7 @@ suite('SessionPicker', () => {
     renderApp();
     sendFromHost({
       t: 'hydrate', sessions: [], layout: { orientation: 'vertical', panes: [] },
-      snapshots: [], catalog: catalog(),
+      snapshots: [], catalog: catalog(), usage: {},
     });
 
     const emptyState = screen.getByText(/no sessions yet/i).closest('div')!;

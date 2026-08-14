@@ -16,6 +16,7 @@ function withSession(id: string) {
     layout: { orientation: 'vertical', panes: [{ sessionId: id, size: 100 }] },
     snapshots: [snapshot(id)],
     catalog: [],
+    usage: {},
   });
 }
 
@@ -25,6 +26,7 @@ function hydrated() {
     sessions: [],
     layout: { orientation: 'vertical', panes: [] },
     catalog: [],
+    usage: {},
     snapshots: [{
       id: 's1', providerId: 'fake', model: 'fake-large', title: 'T', cwd: '/tmp',
       status: 'idle', permissionMode: 'default',
@@ -43,12 +45,24 @@ suite('webview reducer', () => {
       layout: { orientation: 'vertical', panes: [{ sessionId: 's1', size: 100 }] },
       snapshots: [snapshot('s1')],
       catalog: [{ id: 'fake', displayName: 'Fake', models: [] }],
+      usage: {},
     });
 
     assert.strictEqual(next.ready, true);
     assert.strictEqual(next.sessions.length, 1);
     assert.strictEqual(next.layout.panes.length, 1);
     assert.ok(next.byId['s1']);
+  });
+
+  test('hydrate seeds usageByProvider so a reload paints immediately', () => {
+    const state = reduce(initialState, {
+      t: 'hydrate', sessions: [], layout: { orientation: 'vertical', panes: [] },
+      snapshots: [], catalog: [],
+      usage: { fake: [{ id: 'five-hour', label: 'Session (5h)', usedPercent: 62 }] },
+    });
+    assert.deepStrictEqual(state.usageByProvider.fake, [
+      { id: 'five-hour', label: 'Session (5h)', usedPercent: 62 },
+    ]);
   });
 
   test('append patch adds an item', () => {
@@ -200,6 +214,7 @@ suite('webview reducer', () => {
       layout: { orientation: 'vertical', panes: [] },
       snapshots: [snapshot('s2')],
       catalog: [],
+      usage: {},
     });
     assert.strictEqual(state.focusedSessionId, null);
   });
@@ -333,6 +348,7 @@ suite('webview reducer', () => {
       layout: { orientation: 'vertical', panes: [{ sessionId: 's1', size: 100 }] },
       snapshots: [{ ...snapshot('s1'), invocables: [{ name: 'init' }] }],
       catalog: [],
+      usage: {},
     });
 
     assert.deepStrictEqual(state.byId['s1'].invocables, [{ name: 'init' }]);
@@ -402,13 +418,27 @@ suite('webview reducer', () => {
     assert.strictEqual(after.contextBySession['gone'], undefined);
   });
 
-  test('a not-ok result is stored rather than dropped', () => {
-    const state = reduce(initialState, {
-      t: 'usage-windows', providerId: 'claude',
-      result: { ok: false, reason: 'No active session for this provider' },
+  test('usage-windows replaces a provider entry wholesale', () => {
+    let state = reduce(initialState, {
+      t: 'usage-windows', providerId: 'fake',
+      windows: [{ id: 'five-hour', label: 'Session (5h)', usedPercent: 62 }],
     });
+    state = reduce(state, {
+      t: 'usage-windows', providerId: 'fake',
+      windows: [{ id: 'seven-day', label: 'Week', usedPercent: 18 }],
+    });
+    assert.deepStrictEqual(state.usageByProvider.fake, [
+      { id: 'seven-day', label: 'Week', usedPercent: 18 },
+    ]);
+  });
 
-    assert.strictEqual(state.usageByProvider['claude']?.ok, false);
+  test('an empty set is stored, not ignored — it is how a set clears', () => {
+    let state = reduce(initialState, {
+      t: 'usage-windows', providerId: 'fake',
+      windows: [{ id: 'five-hour', label: 'Session (5h)', usedPercent: 62 }],
+    });
+    state = reduce(state, { t: 'usage-windows', providerId: 'fake', windows: [] });
+    assert.deepStrictEqual(state.usageByProvider.fake, []);
   });
 
   test('sessions-changed prunes cached breakdowns for removed sessions', () => {

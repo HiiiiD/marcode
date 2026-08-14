@@ -26,6 +26,7 @@ function hydrate(sessions = [summary('a')], providers = catalog()) {
     layout: layoutOf(...sessions.map((s) => s.id)),
     snapshots: sessions.map((s) => snapshot(s.id, s)),
     catalog: providers,
+    usage: {},
   });
 }
 
@@ -206,6 +207,7 @@ suite('SessionCreateMenu', () => {
       layout: { orientation: 'vertical', panes: [] },
       snapshots: [],
       catalog: [],
+      usage: {},
     });
 
     // Two of each control exist here: the roster's persistent pair and the

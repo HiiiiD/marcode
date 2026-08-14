@@ -67,7 +67,9 @@ export function breakdown(over: Partial<ContextBreakdown> = {}): ContextBreakdow
 
 export function windows(): UsageWindow[] {
   return [
-    { id: 'five-hour', label: 'Session (5h)', usedPercent: 62, resetsAt: 3_600_000 },
+    // Absolute epoch ms, not a duration: an unexpired window is the ordinary
+    // case, and the strip drops any window whose reset has already passed.
+    { id: 'five-hour', label: 'Session (5h)', usedPercent: 62, resetsAt: Date.now() + 3_600_000 },
     { id: 'seven-day', label: 'Week', usedPercent: 18 },
   ];
 }

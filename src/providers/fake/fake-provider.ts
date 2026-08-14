@@ -77,7 +77,7 @@ export class FakeProvider implements AgentProvider {
   private sessionCounter = 0;
 
   constructor(
-    private readonly script: (text: string) => AgentEvent[],
+    private readonly script: (text: string) => AgentEvent[] = () => [],
     private readonly reports: FakeReports = {},
   ) {}
 
@@ -126,7 +126,10 @@ export class FakeProvider implements AgentProvider {
     this.runs.push(run);
     const { context, windows } = this.reports;
     if (context) { run.contextBreakdown = async () => context; }
-    if (windows) { run.usageWindows = async () => windows; }
+    // Pushed at start, before any send — which is exactly the case the real
+    // provider has to serve after a window reload, and the case the pull
+    // shape could not.
+    for (const window of windows ?? []) { channel.push({ kind: 'usage-window', window }); }
     return run;
   }
 

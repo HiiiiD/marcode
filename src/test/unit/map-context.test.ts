@@ -1,5 +1,5 @@
 import * as assert from 'assert';
-import { toContextBreakdown, toUsageWindows } from '../../providers/claude/map-context';
+import { toContextBreakdown, toUsageWindow } from '../../providers/claude/map-context';
 
 suite('map-context', () => {
   test('splits the window into system, memory, conversation and free', () => {
@@ -143,31 +143,65 @@ suite('map-context', () => {
     }
   });
 
-  test('maps the plan windows that report a utilization, in a stable order', () => {
-    const windows = toUsageWindows({
-      rate_limits_available: true,
-      rate_limits: {
-        five_hour: { utilization: 62, resets_at: '2026-08-13T18:00:00.000Z' },
-        seven_day: { utilization: 18, resets_at: null },
-        seven_day_opus: { utilization: null, resets_at: null },
-        model_scoped: [{ display_name: 'Fable', utilization: 5, resets_at: null }],
-      },
+  test('memory rows sum to exactly memoryPercent', () => {
+    const b = toContextBreakdown({
+      totalTokens: 30_000, maxTokens: 100_000,
+      memoryFiles: [
+        { path: '/a', tokens: 3_333 }, { path: '/b', tokens: 3_333 }, { path: '/c', tokens: 3_334 },
+      ],
     });
-
-    assert.deepStrictEqual(windows, [
-      {
-        id: 'five-hour', label: 'Session (5h)', usedPercent: 62,
-        resetsAt: Date.parse('2026-08-13T18:00:00.000Z'),
-      },
-      { id: 'seven-day', label: 'Week', usedPercent: 18 },
-      { id: 'model:Fable', label: 'Week (Fable)', usedPercent: 5 },
-    ]);
+    assert.strictEqual(
+      b.memoryFiles.reduce((sum, f) => sum + f.percent, 0), b.memoryPercent,
+    );
   });
 
-  test('reports no windows when plan limits do not apply', () => {
+  test('no row exceeds its slice, even when the context is over-full', () => {
+    const b = toContextBreakdown({
+      totalTokens: 200_000, maxTokens: 100_000,
+      memoryFiles: [{ path: '/big', tokens: 150_000 }],
+    });
+    assert.ok(b.memoryFiles[0].percent <= b.memoryPercent);
+  });
+
+  test('a file too small to round up still gets a row, at 0 — the UI reads it as <1%', () => {
+    const b = toContextBreakdown({
+      totalTokens: 50_000, maxTokens: 100_000,
+      memoryFiles: [{ path: '/big', tokens: 49_000 }, { path: '/tiny', tokens: 1 }],
+    });
+    assert.strictEqual(b.memoryFiles.length, 2);
+    assert.strictEqual(b.memoryFiles[1].percent, 0);
+  });
+});
+
+suite('toUsageWindow', () => {
+  test('maps a five-hour event to the table id and label', () => {
     assert.deepStrictEqual(
-      toUsageWindows({ rate_limits_available: false, rate_limits: null }),
-      [],
+      toUsageWindow({ rateLimitType: 'five_hour', utilization: 62, resetsAt: 1_700_000_000_000 }),
+      { id: 'five-hour', label: 'Session (5h)', usedPercent: 62, resetsAt: 1_700_000_000_000 },
     );
+  });
+
+  test('rounds and clamps utilization into 0..100', () => {
+    assert.strictEqual(toUsageWindow({ rateLimitType: 'seven_day', utilization: 18.4 })?.usedPercent, 18);
+    assert.strictEqual(toUsageWindow({ rateLimitType: 'seven_day', utilization: 140 })?.usedPercent, 100);
+    assert.strictEqual(toUsageWindow({ rateLimitType: 'seven_day', utilization: -3 })?.usedPercent, 0);
+  });
+
+  test('omits resetsAt rather than carrying a non-finite one', () => {
+    const w = toUsageWindow({ rateLimitType: 'seven_day_opus', utilization: 5, resetsAt: Number.NaN });
+    assert.deepStrictEqual(w, { id: 'seven-day-opus', label: 'Week (Opus)', usedPercent: 5 });
+  });
+
+  test('drops an event with no utilization — there is no percentage to show', () => {
+    assert.strictEqual(toUsageWindow({ rateLimitType: 'five_hour' }), undefined);
+  });
+
+  test('drops an event with no rateLimitType, and the overage types, rather than guessing a label', () => {
+    assert.strictEqual(toUsageWindow({ utilization: 40 }), undefined);
+    assert.strictEqual(toUsageWindow({ rateLimitType: 'overage', utilization: 40 }), undefined);
+    assert.strictEqual(
+      toUsageWindow({ rateLimitType: 'seven_day_overage_included', utilization: 40 }), undefined,
+    );
+    assert.strictEqual(toUsageWindow(undefined), undefined);
   });
 });

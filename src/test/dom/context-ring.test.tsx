@@ -27,6 +27,7 @@ function mount(contextPercent?: number): void {
     layout: layoutOf('a'),
     snapshots: [snapshot('a', { contextPercent })],
     catalog: catalog(),
+    usage: {},
   });
 }
 
@@ -191,21 +192,28 @@ suite('ContextRing', () => {
     assert.deepStrictEqual(names, ['/repo/CLAUDE.md', '/home/.claude/CLAUDE.md']);
   });
 
-  test('the header quotes the breakdown once it has landed, not the pushed ring', async () => {
-    mount(43);
-    await open('Context 43% used');
+  test('the header, the ring label and the danger label agree on one number', async () => {
+    mount(86);
+    await open('Context 86% used');
 
+    // On the wire, a breakdown reply and the sessions-changed that refreshes
+    // contextPercent from that same fetch may not land in the same tick — so
+    // the header must keep quoting the pushed number even while a breakdown
+    // implying a different total is already on screen underneath it. If the
+    // header derived its own number from the rows again, this would show
+    // "50% used" beside a ring still labelled 86%.
     sendFromHost({
       t: 'context-breakdown', id: 'a',
       result: {
         ok: true,
         breakdown: breakdown({
-          systemPercent: 20, memoryPercent: 10, conversationPercent: 30, freePercent: 40,
+          systemPercent: 20, memoryPercent: 6, conversationPercent: 24, freePercent: 50,
         }),
       },
     });
 
-    assert.ok(screen.getByText('60% used'), 'the header must agree with the body below it');
+    assert.ok(screen.getByText('86% used'), 'the header must agree with the ring, not the rows');
+    assert.ok(screen.getByLabelText('Context 86% used'));
   });
 
   test('an out-of-range percentage clamps the label as well as the bar', async () => {

@@ -91,8 +91,9 @@ export interface UsageWindow {
 /**
  * How the model's context window is occupied, as percentages of that window.
  * The four `*Percent` fields sum to 100; `memoryFiles` percentages sum to
- * `memoryPercent` subject to rounding, so consumers must never re-derive a
- * total from the rows. A listed file rounding to 0 means "under 1%", never
+ * exactly `memoryPercent` — they are allocated within that slice, not
+ * re-derived from token counts — so consumers must never re-derive a total
+ * from the rows. A listed file rounding to 0 means "under 1%", never
  * "absent" — the UI renders that case as `<1%`.
  */
 export interface ContextBreakdown {
@@ -126,6 +127,13 @@ export type AgentEvent =
   | { kind: 'permission'; id: string; name: string; input: unknown; parentId?: string }
   | { kind: 'turn-end'; reason: 'done' | 'interrupted' | 'error'; error?: string }
   | { kind: 'usage'; inputTokens: number; outputTokens: number }
+  /**
+   * One account/plan usage window moved. Pushed, not polled: the SDK emits
+   * `rate_limit_event` whenever rate-limit info changes, so the host holds
+   * the last value per window rather than asking a live query for it. One
+   * event carries one window — never the whole set.
+   */
+  | { kind: 'usage-window'; window: UsageWindow }
   /** Full replacement list, not a delta. Emitted whenever the provider notices a change. */
   | { kind: 'invocables'; entries: Invocable[] }
   /** Full replacement list, not a delta — same snapshot semantics as `invocables`. */
@@ -158,13 +166,6 @@ export interface AgentRun {
    * to a fabricated breakdown.
    */
   contextBreakdown?(): Promise<ContextBreakdown>;
-  /**
-   * Account/plan usage windows visible from this run. Lives on the run
-   * rather than the provider because the Claude Agent SDK exposes plan
-   * limits only from a live `Query`; the host treats any one live run of a
-   * provider as speaking for that provider's account.
-   */
-  usageWindows?(): Promise<UsageWindow[]>;
   dispose(): Promise<void>;
 }
 

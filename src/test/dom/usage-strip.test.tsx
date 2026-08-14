@@ -4,116 +4,107 @@ import { UsageStrip } from '@/components/usage-strip';
 import { catalog, layoutOf, snapshot, summary, windows } from '../fixtures/protocol';
 import { posted, renderWithStore, resetHost, sendFromHost } from './harness';
 
-function hydrateOne() {
+/**
+ * The strip only lists providers that have sessions, so every test needs a
+ * roster before it has anything to render.
+ */
+function mountStrip() {
+  renderWithStore(<UsageStrip />);
   sendFromHost({
     t: 'hydrate',
     sessions: [summary('a')],
     layout: layoutOf('a'),
     snapshots: [snapshot('a')],
     catalog: catalog(),
+    usage: {},
   });
 }
 
 suite('UsageStrip', () => {
   setup(() => { resetHost(); });
 
-  test('requests usage for each provider with a session', () => {
-    renderWithStore(<UsageStrip />);
-    hydrateOne();
+  test('renders the windows the host pushed, in the order given', () => {
+    mountStrip();
 
-    assert.ok(posted().some((m) => m.t === 'request-usage' && m.providerId === 'fake'));
-  });
-
-  /**
-   * The primary path after every window reload. This component's effect runs
-   * before `App`'s, so the first `request-usage` is posted at or before
-   * `set-visible` — and sessions restored from `index.json` are not live
-   * until `set-visible` has opened them, so the host legitimately answers
-   * "No active session for this provider". The correction has to come from
-   * the strip itself; nothing else will ask again until the user sends a
-   * message. `sessions-changed` is the signal, and it carries no changed
-   * summary field when a restored session is opened (idle stays idle), which
-   * is exactly why the earlier `id:status` key never re-fired.
-   */
-  test('asks again once the roster changes after a not-ok reply', () => {
-    renderWithStore(<UsageStrip />);
-    hydrateOne();
-    sendFromHost({
-      t: 'usage-windows', providerId: 'fake',
-      result: { ok: false, reason: 'No active session for this provider' },
-    });
-
-    const before = posted().filter((m) => m.t === 'request-usage').length;
-    sendFromHost({ t: 'sessions-changed', sessions: [summary('a')] });
-
-    const after = posted().filter(
-      (m) => m.t === 'request-usage' && m.providerId === 'fake',
-    ).length;
-    assert.strictEqual(after, before + 1, 'the not-ok reply must be re-asked, exactly once');
-  });
-
-  test('does not keep re-asking while the same not-ok reply is cached', () => {
-    renderWithStore(<UsageStrip />);
-    hydrateOne();
-    sendFromHost({
-      t: 'usage-windows', providerId: 'fake',
-      result: { ok: false, reason: 'No active session for this provider' },
-    });
-    sendFromHost({ t: 'sessions-changed', sessions: [summary('a')] });
-
-    const after = posted().filter((m) => m.t === 'request-usage').length;
-    sendFromHost({ t: 'sessions-changed', sessions: [summary('a')] });
-    sendFromHost({ t: 'sessions-changed', sessions: [summary('a')] });
-
-    assert.strictEqual(
-      posted().filter((m) => m.t === 'request-usage').length, after,
-      'a roster change with no new reply is throttled, not re-asked',
-    );
-  });
-
-  test('renders one chip per reported window, in the order given', () => {
-    renderWithStore(<UsageStrip />);
-    hydrateOne();
-
-    sendFromHost({
-      t: 'usage-windows', providerId: 'fake', result: { ok: true, windows: windows() },
-    });
+    sendFromHost({ t: 'usage-windows', providerId: 'fake', windows: windows() });
 
     const labels = screen.getAllByRole('img').map((el) => el.getAttribute('aria-label'));
     assert.deepStrictEqual(labels, ['Session (5h) 62% used', 'Week 18% used']);
   });
 
-  test('an ok reply with no windows reads as no plan limits, not as an error', () => {
-    renderWithStore(<UsageStrip />);
-    hydrateOne();
+  test('the strip posts nothing — it is a render, not a request', () => {
+    mountStrip();
 
-    sendFromHost({
-      t: 'usage-windows', providerId: 'fake', result: { ok: true, windows: [] },
-    });
+    sendFromHost({ t: 'usage-windows', providerId: 'fake', windows: windows() });
 
-    assert.ok(screen.getByText('No plan limits'));
+    // Exact, not a filter: `ready` is all `StoreProvider` posts on mount, so
+    // anything else in this list is the strip having grown an effect again.
+    assert.deepStrictEqual(posted().map((m) => m.t), ['ready']);
   });
 
-  test('a not-ok reply shows its reason', () => {
-    renderWithStore(<UsageStrip />);
-    hydrateOne();
+  test('a window past its reset is not rendered — the host prunes on read, so a stale copy would linger here', () => {
+    mountStrip();
 
     sendFromHost({
       t: 'usage-windows', providerId: 'fake',
-      result: { ok: false, reason: 'No active session for this provider' },
+      windows: [{ id: 'five-hour', label: 'Session (5h)', usedPercent: 62, resetsAt: Date.now() - 1 }],
     });
 
-    assert.ok(screen.getByText('No active session for this provider'));
+    assert.strictEqual(screen.queryByLabelText('Session (5h) 62% used'), null);
+    assert.ok(screen.getByText('Plan usage not reported'));
+  });
+
+  test('an expired window is dropped without taking its unexpired siblings with it', () => {
+    mountStrip();
+
+    sendFromHost({
+      t: 'usage-windows', providerId: 'fake',
+      windows: [
+        { id: 'five-hour', label: 'Session (5h)', usedPercent: 62, resetsAt: Date.now() - 1 },
+        { id: 'seven-day', label: 'Week', usedPercent: 18 },
+      ],
+    });
+
+    const labels = screen.getAllByRole('img').map((el) => el.getAttribute('aria-label'));
+    assert.deepStrictEqual(labels, ['Week 18% used']);
+  });
+
+  test('a provider with nothing reported reads as not-reported, not as an error or as "no limits"', () => {
+    mountStrip();
+
+    assert.ok(screen.getByText('Plan usage not reported'));
+  });
+
+  test('an empty set reads the same as nothing reported — the push cannot tell them apart', () => {
+    mountStrip();
+
+    sendFromHost({ t: 'usage-windows', providerId: 'fake', windows: [] });
+
+    assert.ok(screen.getByText('Plan usage not reported'));
   });
 
   test('chips are keyboard-focusable', () => {
-    renderWithStore(<UsageStrip />);
-    hydrateOne();
-    sendFromHost({
-      t: 'usage-windows', providerId: 'fake', result: { ok: true, windows: windows() },
-    });
+    mountStrip();
+    sendFromHost({ t: 'usage-windows', providerId: 'fake', windows: windows() });
 
     const chip = screen.getByLabelText('Session (5h) 62% used');
     assert.strictEqual(chip.getAttribute('tabindex'), '0');
+  });
+
+  test('with several providers in the roster, an unreported one still names itself in the quiet state', () => {
+    renderWithStore(<UsageStrip />);
+    sendFromHost({
+      t: 'hydrate',
+      sessions: [summary('a'), summary('b', { providerId: 'other' })],
+      layout: layoutOf('a', 'b'),
+      snapshots: [snapshot('a'), snapshot('b', { providerId: 'other' })],
+      catalog: [...catalog(), { id: 'other', displayName: 'Other', models: [] }],
+      usage: {},
+    });
+
+    assert.deepStrictEqual(
+      screen.getAllByText('Plan usage not reported').map((el) => el.parentElement?.textContent),
+      ['FakePlan usage not reported', 'OtherPlan usage not reported'],
+    );
   });
 });

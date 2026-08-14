@@ -54,7 +54,8 @@ extension.ts
 | `src/providers/types.ts` | `AgentProvider`, `AgentRun`, `AgentEvent`, `ModelInfo` |
 | `src/providers/fake/fake-provider.ts` | Scripted provider for tests and the walking skeleton |
 | `src/providers/claude/` | Claude Agent SDK adapter and `SDKMessage` → `AgentEvent` mapping |
-| `src/providers/claude/map-context.ts` | SDK context/usage responses → `ContextBreakdown` / `UsageWindow[]` |
+| `src/providers/claude/map-context.ts` | SDK context response → `ContextBreakdown`; one `rate_limit_event` → one `UsageWindow` |
+| `src/shared/usage-windows.ts` | Fixed display order for usage windows; shared so neither provider nor host owns the other's table |
 | `src/host/transcript-store.ts` | `index.json` + per-session JSONL; append, load, page |
 | `src/host/agent-session.ts` | One conversation: transcript, status, pending approvals |
 | `src/host/session-manager.ts` | Roster; create/close/delete; patch fan-out to the visible set |

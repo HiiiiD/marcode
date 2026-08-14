@@ -75,6 +75,7 @@ export class MessageRouter {
           layout,
           snapshots,
           catalog: this.manager.catalog(),
+          usage: this.manager.usageSnapshot(),
         });
         this.emit({ t: 'editor-context', ctx: this.editor.current() });
         // Not awaited: hydrate must not wait on a CLI handshake. The catalog
@@ -168,12 +169,6 @@ export class MessageRouter {
         return;
       }
 
-      case 'request-usage': {
-        const result = await this.manager.usageWindows(msg.providerId);
-        this.emit({ t: 'usage-windows', providerId: msg.providerId, result });
-        return;
-      }
-
       // PanelViewProvider intercepts this before delegating (it needs the
       // `vscode` API, which this module must not import) and is also where
       // `msg.path` is validated against the memory files `msg.id` reported —
@@ -207,7 +202,7 @@ const KNOWN_MESSAGE_TAGS = new Set<WebviewToHost['t']>([
   'delete-session', 'send', 'interrupt', 'set-effort', 'set-permission-mode',
   'set-model', 'permission-decision', 'load-more',
   'set-include-context', 'reveal-file',
-  'request-context', 'request-usage', 'open-file',
+  'request-context', 'open-file',
 ]);
 
 /**

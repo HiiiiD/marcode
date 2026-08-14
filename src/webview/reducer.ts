@@ -2,7 +2,7 @@ import type {
   ContextResult,
   EditorContext,
   HostToWebview, Invocable, McpServerStatus, PaneLayout, PermissionRequest, ProviderInfo,
-  SessionId, SessionSummary, TranscriptItem, UsageResult,
+  SessionId, SessionSummary, TranscriptItem, UsageWindow,
 } from '../protocol/messages';
 
 export interface PaneState {
@@ -28,8 +28,14 @@ export interface ClientState {
   editorContext: EditorContext | null;
   /** Last reply per session; kept while a refetch is in flight. */
   contextBySession: Record<SessionId, ContextResult | undefined>;
-  /** Last reply per provider id. */
-  usageByProvider: Record<string, UsageResult | undefined>;
+  /**
+   * The window set each provider has reported. Pushed by the host, replaced
+   * wholesale. `undefined` means the host has said nothing about that
+   * provider yet; an empty array means it said "nothing to show". They render
+   * identically — the distinction exists only so this reducer never has to
+   * invent a value.
+   */
+  usageByProvider: Record<string, UsageWindow[] | undefined>;
   /**
    * The session whose pane last held focus — client-local, never sent to the
    * host and never persisted. It answers "which session is the user actually
@@ -94,9 +100,12 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
         // genuinely client-wide (global IDE state a reload doesn't change),
         // so it is deliberately carried forward here — but spelled out so a
         // future field added to `ClientState` doesn't silently survive a
-        // reload by accident the way a bare spread would let it.
+        // reload by accident the way a bare spread would let it. `usage` is
+        // the opposite case: it is host state (the account's last known
+        // window set), not client state, so it is always taken fresh from
+        // the message rather than carried forward like `editorContext`.
         editorContext: state.editorContext,
-        contextBySession: {}, usageByProvider: {},
+        contextBySession: {}, usageByProvider: msg.usage,
         // Not carried forward: focus is a fact about the rendered panes, and
         // hydrate rebuilds them. A stale id would let `+ New` inherit from a
         // session this hydrate may not even contain.
@@ -147,7 +156,7 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
     case 'usage-windows':
       return {
         ...state,
-        usageByProvider: { ...state.usageByProvider, [msg.providerId]: msg.result },
+        usageByProvider: { ...state.usageByProvider, [msg.providerId]: msg.windows },
       };
 
     case 'catalog':

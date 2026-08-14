@@ -24,7 +24,7 @@ export async function activate(context: vscode.ExtensionContext) {
     // Scripted so both the context ring and the usage strip have something
     // to render in the dev host. Obviously synthetic, and deliberately
     // scripted *here* rather than defaulted inside FakeProvider — the unit
-    // tests depend on an unscripted fake genuinely omitting those methods.
+    // tests depend on an unscripted fake genuinely omitting `contextBreakdown`.
     // The two memory files share a basename on purpose: that is the case
     // the popover's rows have to stay distinguishable in.
     {

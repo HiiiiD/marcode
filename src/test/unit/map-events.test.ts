@@ -254,3 +254,24 @@ suite('mapEvent', () => {
     assert.deepStrictEqual(mapEvent({ type: 'system', subtype: 'status', session_id: 's' } as never), []);
   });
 });
+
+suite('rate_limit_event', () => {
+  test('maps to a single usage-window event', () => {
+    assert.deepStrictEqual(
+      mapEvent({
+        type: 'rate_limit_event',
+        session_id: 's1',
+        rate_limit_info: { status: 'allowed', rateLimitType: 'five_hour', utilization: 62 },
+      }),
+      [{ kind: 'usage-window', window: { id: 'five-hour', label: 'Session (5h)', usedPercent: 62 } }],
+    );
+  });
+
+  test('an unlabelable or unquantifiable event maps to nothing', () => {
+    assert.deepStrictEqual(
+      mapEvent({ type: 'rate_limit_event', session_id: 's1', rate_limit_info: { status: 'allowed' } }),
+      [],
+    );
+    assert.deepStrictEqual(mapEvent({ type: 'rate_limit_event', session_id: 's1' }), []);
+  });
+});

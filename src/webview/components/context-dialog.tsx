@@ -211,12 +211,14 @@ export function ContextDialog({
   const { state, post } = useStore();
   const id = pane.summary.id;
   const result = state.contextBySession[id];
-  // The ring is pushed at turn-end; the breakdown is pulled on open. Once a
-  // reply has landed it is the fresher of the two, so the header quotes it —
-  // otherwise the header and the body it sits above can disagree by a turn.
-  const headerPercent = result?.ok
-    ? clampPercent(100 - result.breakdown.freePercent)
-    : pane.summary.contextPercent;
+  // The same pushed value the ring and its danger state read, not a second
+  // number derived from the pulled breakdown below. Serving a breakdown
+  // refreshes `contextPercent` from that same fetch (see
+  // AgentSession.contextBreakdown), so this is never staler than the body it
+  // sits above — and there is one number in play rather than two that can
+  // disagree, which is how a destructive 86% ring ended up beside a
+  // "50% used" header.
+  const headerPercent = pane.summary.contextPercent;
 
   // Pulled, not pushed: the inventory is static-ish and must not ride every
   // transcript patch. Refetched on each open so a long-lived session never

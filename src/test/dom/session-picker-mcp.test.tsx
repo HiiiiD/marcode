@@ -21,6 +21,7 @@ function hydrate(snap: SessionSnapshot) {
     layout: { orientation: 'vertical', panes: [{ sessionId: snap.id, size: 100 }] },
     catalog: [{ id: 'claude', displayName: 'Claude', models: [] }],
     snapshots: [snap],
+    usage: {},
   });
 }
 
