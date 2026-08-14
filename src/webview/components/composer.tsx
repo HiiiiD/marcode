@@ -1,14 +1,20 @@
 import { useState } from 'react';
-import { SendHorizontal, Square } from 'lucide-react';
+import { SendHorizontal, Slash, Square } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { InputGroup, InputGroupAddon, InputGroupTextarea } from '@/components/ui/input-group';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
+import { InvocableMenu } from './invocable-menu';
+import {
+  insertionFor, menuKeyAction, menuQuery, menuView, nextIndex,
+} from '../lib/invocable-menu';
 import { useStore } from '../store';
 import type { PaneState } from '../reducer';
-import type { EffortLevel, ModelInfo, PermissionMode } from '../../protocol/messages';
+import type {
+  EffortLevel, Invocable, ModelInfo, PermissionMode,
+} from '../../protocol/messages';
 
 const MODE_LABEL: Record<PermissionMode, string> = {
   default: 'ask',
@@ -29,6 +35,12 @@ const MODE_ITEMS = (Object.keys(MODE_LABEL) as PermissionMode[])
 export function Composer({ pane, model }: { pane: PaneState; model: ModelInfo | undefined }) {
   const { post } = useStore();
   const [text, setText] = useState('');
+  /** The selected entry's arg hint. Presentation only; never sent. */
+  const [ghost, setGhost] = useState('');
+  const [activeIndex, setActiveIndex] = useState(0);
+  /** Escape closed the menu; only a fresh keystroke or the control reopens it. */
+  const [dismissed, setDismissed] = useState(false);
+  const [forceOpen, setForceOpen] = useState(false);
   const running = pane.summary.status === 'running'
     || pane.summary.status === 'awaiting-approval';
   const bypassing = pane.summary.permissionMode === 'bypass';
@@ -52,20 +64,78 @@ export function Composer({ pane, model }: { pane: PaneState; model: ModelInfo | 
   // button's disabled-while-running reason.
   const sendReasonId = `send-reason-${pane.summary.id}`;
 
+  const entries = pane.invocables ?? [];
+  const typedQuery = menuQuery(text);
+  // Two entry points, one menu: the typed `/` query, or the control opening
+  // it unfiltered on an empty box.
+  const query = typedQuery ?? (forceOpen ? '' : undefined);
+  const menuOpen = entries.length > 0 && query !== undefined && !dismissed;
+  const view = menuOpen ? menuView(entries, query) : { rows: [], overflow: 0 };
+  const index = Math.min(activeIndex, Math.max(0, view.rows.length - 1));
+  // Session-scoped for the same reason as bypassReasonId above: one Composer
+  // renders per pane, and `aria-activedescendant` resolves ids document-wide.
+  const menuListId = `invocables-${pane.summary.id}`;
+
+  const pick = (entry: Invocable) => {
+    const { text: next, ghost: hint } = insertionFor(entry);
+    setText(next);
+    setGhost(hint);
+    setActiveIndex(0);
+    setForceOpen(false);
+  };
+
   const submit = () => {
     const trimmed = text.trim();
     if (!trimmed) { return; }
+    // `ghost` is presentation only — the arg hint is never part of the message.
     post({ t: 'send', id: pane.summary.id, text: trimmed });
     setText('');
+    setGhost('');
+    setDismissed(false);
+    setForceOpen(false);
   };
 
   return (
     <div className="p-2">
       <InputGroup>
+        {menuOpen && (
+          // A block-start addon, not a popover: the list sits above the box in
+          // normal flow, so there is no positioning maths, no portal, and
+          // nothing to clip inside a narrow pane's scroll container.
+          <InputGroupAddon align="block-start" className="p-1">
+            <InvocableMenu
+              rows={view.rows}
+              overflow={view.overflow}
+              activeIndex={index}
+              listId={menuListId}
+              onPick={pick}
+            />
+          </InputGroupAddon>
+        )}
         <InputGroupTextarea
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => {
+            setText(e.target.value);
+            setGhost('');
+            setActiveIndex(0);
+            setDismissed(false);
+            setForceOpen(false);
+          }}
           onKeyDown={(e) => {
+            // Only WHILE OPEN does the menu claim keys. `menuKeyAction`
+            // decides which; anything it passes on falls through to the
+            // composer's own Enter binding below, unchanged.
+            if (menuOpen) {
+              const action = menuKeyAction(e.key);
+              if (action !== 'pass') {
+                e.preventDefault();
+                if (action === 'move-down') { setActiveIndex(nextIndex(index, 1, view.rows.length)); }
+                if (action === 'move-up') { setActiveIndex(nextIndex(index, -1, view.rows.length)); }
+                if (action === 'select' && view.rows[index]) { pick(view.rows[index]); }
+                if (action === 'close') { setDismissed(true); setForceOpen(false); }
+                return;
+              }
+            }
             if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault();
               if (!running) { submit(); }
@@ -73,6 +143,8 @@ export function Composer({ pane, model }: { pane: PaneState; model: ModelInfo | 
           }}
           placeholder="Message the agent…"
           aria-label="Message"
+          aria-controls={menuOpen ? menuListId : undefined}
+          aria-expanded={menuOpen}
         />
         {/*
           flex-wrap: at pane widths around 300px the effort trigger (w-24),
@@ -86,6 +158,39 @@ export function Composer({ pane, model }: { pane: PaneState; model: ModelInfo | 
           whichever line it wraps to.
         */}
         <InputGroupAddon align="block-end" className="flex-wrap">
+          {/*
+            First in the row, ahead of the ghost hint, so the control keeps a
+            fixed position: the hint is transient, and a control that slides
+            sideways whenever an arg hint appears costs the user the muscle
+            memory that makes an icon-only affordance usable at all. Icon
+            scale, matching Stop and Send — a labelled button would push this
+            wrapping row onto a third line at 300px.
+          */}
+          {entries.length > 0 && (
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              aria-label="Skills and commands"
+              title="Skills and commands"
+              onClick={() => {
+                setText('');
+                setGhost('');
+                setDismissed(false);
+                setActiveIndex(0);
+                setForceOpen(true);
+              }}
+            >
+              <Slash />
+            </Button>
+          )}
+          {ghost && (
+            // aria-hidden: it is a hint about what to type next, and the
+            // textarea it annotates already holds the inserted name. A live
+            // region here would announce the same thing twice.
+            <span className="truncate text-xs text-muted-foreground" aria-hidden>
+              {ghost}
+            </span>
+          )}
           {model?.effort && (
             <Select
               items={model.effort.levels.map((level) => ({ value: level, label: level }))}
