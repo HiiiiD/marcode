@@ -108,6 +108,32 @@ suite("Composer", () => {
     assert.ok(/medium/.test(row.getAttribute("aria-label") ?? ""));
   });
 
+  /**
+   * The readout follows an `ml-auto` track, so a value that renders wider
+   * than the last one pulls the dots leftward out from under the pointer
+   * setting them — high → medium jumped for exactly that reason. The fix is
+   * to reserve the widest name by rendering every level stacked in one grid
+   * cell and hiding the inactive ones, which jsdom cannot measure but can
+   * confirm the mechanism of. Asserting the width in `ch` was the earlier,
+   * wrong shape: `ch` is the advance of "0", not of "medium".
+   */
+  test("the Effort readout reserves the widest level in the scale", async () => {
+    renderWithStore(<Composer pane={pane()} model={WITH_EFFORT} models={[]} />);
+
+    await userEvent.click(screen.getByLabelText("Permission mode"));
+    const row = await screen.findByRole("menuitem", { name: /Effort/ });
+
+    for (const level of WITH_EFFORT.effort!.levels) {
+      const rendered = [...row.querySelectorAll("span")].filter((s) => s.textContent === level);
+      assert.ok(rendered.length > 0, `${level} must be rendered so the readout box can reserve its width`);
+      assert.strictEqual(
+        rendered.some((s) => s.className.includes("invisible")),
+        level !== "medium",
+        `only the active level is visible; ${level} is ${level === "medium" ? "active" : "reserved"}`,
+      );
+    }
+  });
+
   test("an arrow key on the Effort row steps the level and posts set-effort", async () => {
     renderWithStore(<Composer pane={pane()} model={WITH_EFFORT} models={[]} />);
 

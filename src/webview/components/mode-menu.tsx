@@ -79,6 +79,16 @@ function EffortSlider({
   onChange: (level: EffortLevel) => void;
 }) {
   const track = useRef<HTMLSpanElement | null>(null);
+  /**
+   * The track's box as it was when the drag started. Measuring per move
+   * would read the layout the CURRENT value produced, so any width change
+   * downstream of the value moves the dots out from under a pointer that
+   * never left the row. Sizing the readout to its widest level (below)
+   * already stops that shift, but a drag is the one interaction that cannot
+   * survive being wrong even once, and one measurement per gesture is also
+   * simply cheaper than one per move.
+   */
+  const dragBox = useRef<DOMRect | null>(null);
   const active = levels.indexOf(value);
 
   const step = (delta: number) => {
@@ -96,7 +106,7 @@ function EffortSlider({
    * of each end dot's cell snaps to it.
    */
   const setFromX = (clientX: number) => {
-    const box = track.current?.getBoundingClientRect();
+    const box = dragBox.current ?? track.current?.getBoundingClientRect();
     if (!box || box.width === 0) {
       return;
     }
@@ -144,6 +154,7 @@ function EffortSlider({
         // 8px, which is a target no one can hit in a sidebar.
         className="ml-auto flex cursor-pointer items-center gap-1.5 py-2"
         onPointerDown={(e) => {
+          dragBox.current = e.currentTarget.getBoundingClientRect();
           e.currentTarget.setPointerCapture(e.pointerId);
           setFromX(e.clientX);
         }}
@@ -153,6 +164,15 @@ function EffortSlider({
           if (e.buttons & 1) {
             setFromX(e.clientX);
           }
+        }}
+        onPointerUp={() => {
+          dragBox.current = null;
+        }}
+        // Capture is released for us when the pointer is lost, but the
+        // cached box has to go with it — a stale one would survive into the
+        // next gesture and be measured against a row that has since moved.
+        onPointerCancel={() => {
+          dragBox.current = null;
         }}
         aria-hidden
       >
@@ -168,18 +188,32 @@ function EffortSlider({
         ))}
       </span>
       {/*
-        Sized from the longest name in THIS model's scale, not a fixed
-        width: the levels come from the provider's catalog row, so a model
-        can ship any names and any number of them. A fixed width either
-        truncates the long ones or leaves a gap after the short ones, and
-        anything auto-sized makes the row jump sideways as the value
-        changes under a drag.
+        Every level stacked in ONE grid cell, with the inactive ones merely
+        invisible: the box is then exactly as wide as this model's widest
+        name, measured by the browser in the real font. It has to be
+        reserved rather than fitted — the readout follows an `ml-auto`
+        track, so a value that renders wider than the last one drags the
+        dots leftward out from under the pointer that is setting them, which
+        is why high → medium jumped.
+
+        Reserved by measurement, not by arithmetic: `ch` is the advance of
+        "0", so `6ch` is not the width of "medium" in a proportional face,
+        and the levels come from the provider's catalog row anyway — a model
+        can ship any names, in any number, at any length.
       */}
-      <span
-        className="text-right text-xs text-muted-foreground"
-        style={{ minWidth: `${Math.max(...levels.map((l) => l.length))}ch` }}
-      >
-        {value}
+      <span className="grid justify-items-end">
+        {levels.map((level) => (
+          <span
+            key={level}
+            aria-hidden={level !== value}
+            className={cn(
+              "col-start-1 row-start-1 text-xs text-muted-foreground",
+              level !== value && "invisible",
+            )}
+          >
+            {level}
+          </span>
+        ))}
       </span>
     </DropdownMenuItem>
   );
