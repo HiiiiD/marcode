@@ -55,6 +55,20 @@ suite('map-context', () => {
     });
   });
 
+  test('an unknown window budget keeps the memory rows it cannot size', () => {
+    // Dropping them renders "No memory files loaded", which says something
+    // false about the session — the files were loaded; it is the
+    // denominator that is missing.
+    const breakdown = toContextBreakdown({
+      totalTokens: 10, maxTokens: 0,
+      memoryFiles: [{ path: '/repo/CLAUDE.md', type: 'project', tokens: 10 }],
+      messageBreakdown: undefined,
+    });
+
+    assert.strictEqual(breakdown.freePercent, 100);
+    assert.deepStrictEqual(breakdown.memoryFiles, [{ path: '/repo/CLAUDE.md', percent: 0 }]);
+  });
+
   test('a near-full window where independently-rounded slices would overshoot still sums to 100', () => {
     // maxTokens=200, memoryTokens=65 (-> 33), conversationTokens=65 (-> 33),
     // totalTokens=199 so systemTokens=69 (-> 35): rounding each slice

@@ -98,10 +98,15 @@ export function toContextBreakdown(res: ContextUsageLike): ContextBreakdown {
   const systemTokens = Math.max(0, res.totalTokens - memoryTokens - conversationTokens);
   const base = systemTokens + memoryTokens + conversationTokens;
 
+  // No usable window size (or nothing attributed yet): every share is
+  // unknown, which is 0 rather than a guess. The memory *rows* survive it
+  // though — the files were loaded whatever the arithmetic says, and
+  // dropping them would render "No memory files loaded", which is a claim
+  // about the session rather than about the missing denominator.
   if (!Number.isFinite(max) || max <= 0 || base <= 0) {
     return {
       systemPercent: 0, memoryPercent: 0, conversationPercent: 0, freePercent: 100,
-      memoryFiles: [],
+      memoryFiles: res.memoryFiles.map((f) => ({ path: f.path, percent: 0 })),
     };
   }
 

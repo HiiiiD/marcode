@@ -137,11 +137,18 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
       };
     }
 
-    case 'context-breakdown':
+    case 'context-breakdown': {
+      // A reply for a session the roster does not name is ignored, not
+      // stored: `request-context` and its answer are two round trips apart,
+      // so a session deleted in between would otherwise get its breakdown
+      // cached *after* the `sessions-changed` that was supposed to prune it,
+      // and nothing would remove it until the next roster change.
+      if (!state.sessions.some((s) => s.id === msg.id)) { return state; }
       return {
         ...state,
         contextBySession: { ...state.contextBySession, [msg.id]: msg.result },
       };
+    }
 
     case 'usage-windows':
       return {

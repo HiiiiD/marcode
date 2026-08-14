@@ -24,6 +24,53 @@ suite('UsageStrip', () => {
     assert.ok(posted().some((m) => m.t === 'request-usage' && m.providerId === 'fake'));
   });
 
+  /**
+   * The primary path after every window reload. This component's effect runs
+   * before `App`'s, so the first `request-usage` is posted at or before
+   * `set-visible` — and sessions restored from `index.json` are not live
+   * until `set-visible` has opened them, so the host legitimately answers
+   * "No active session for this provider". The correction has to come from
+   * the strip itself; nothing else will ask again until the user sends a
+   * message. `sessions-changed` is the signal, and it carries no changed
+   * summary field when a restored session is opened (idle stays idle), which
+   * is exactly why the earlier `id:status` key never re-fired.
+   */
+  test('asks again once the roster changes after a not-ok reply', () => {
+    renderWithStore(<UsageStrip />);
+    hydrateOne();
+    sendFromHost({
+      t: 'usage-windows', providerId: 'fake',
+      result: { ok: false, reason: 'No active session for this provider' },
+    });
+
+    const before = posted().filter((m) => m.t === 'request-usage').length;
+    sendFromHost({ t: 'sessions-changed', sessions: [summary('a')] });
+
+    const after = posted().filter(
+      (m) => m.t === 'request-usage' && m.providerId === 'fake',
+    ).length;
+    assert.strictEqual(after, before + 1, 'the not-ok reply must be re-asked, exactly once');
+  });
+
+  test('does not keep re-asking while the same not-ok reply is cached', () => {
+    renderWithStore(<UsageStrip />);
+    hydrateOne();
+    sendFromHost({
+      t: 'usage-windows', providerId: 'fake',
+      result: { ok: false, reason: 'No active session for this provider' },
+    });
+    sendFromHost({ t: 'sessions-changed', sessions: [summary('a')] });
+
+    const after = posted().filter((m) => m.t === 'request-usage').length;
+    sendFromHost({ t: 'sessions-changed', sessions: [summary('a')] });
+    sendFromHost({ t: 'sessions-changed', sessions: [summary('a')] });
+
+    assert.strictEqual(
+      posted().filter((m) => m.t === 'request-usage').length, after,
+      'a roster change with no new reply is throttled, not re-asked',
+    );
+  });
+
   test('renders one chip per reported window, in the order given', () => {
     renderWithStore(<UsageStrip />);
     hydrateOne();

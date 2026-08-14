@@ -130,17 +130,38 @@ export class SessionManager implements SessionSink {
    * Plan limits belong to the account, not the session, but the Claude
    * Agent SDK only exposes them from a live `Query` — so any one live
    * session of this provider is taken to speak for the whole account.
+   *
+   * "Any one" means the loop must survive a session that cannot answer: a
+   * Claude session that has never been sent a message rejects with 'This
+   * session has not started yet', and if that one happens to come first in
+   * `live` the account is not unknown — the next live session of the same
+   * provider may well answer. So a failure is remembered and the loop
+   * continues; only once every live session of the provider has been tried
+   * does the last reason become the not-ok reply.
    */
   async usageWindows(providerId: string): Promise<UsageResult> {
+    let reason = 'No active session for this provider';
     for (const session of this.live.values()) {
       if (session.state.providerId !== providerId) { continue; }
       try {
         return { ok: true, windows: await session.usageWindows() };
       } catch (err) {
-        return { ok: false, reason: err instanceof Error ? err.message : String(err) };
+        reason = err instanceof Error ? err.message : String(err);
       }
     }
-    return { ok: false, reason: 'No active session for this provider' };
+    return { ok: false, reason };
+  }
+
+  /**
+   * Whether `path` is one the session itself reported as a loaded memory
+   * file. `open-file` arrives over `postMessage` carrying a path that
+   * originated in provider-reported data; without this the host would open
+   * any file on disk a buggy or compromised provider named. A session with
+   * no live run — or one that has never answered a breakdown — vouches for
+   * nothing, so nothing opens.
+   */
+  canOpenFile(id: SessionId, path: string): boolean {
+    return this.live.get(id)?.reportedMemoryFile(path) ?? false;
   }
 
   async open(id: SessionId): Promise<AgentSession> {

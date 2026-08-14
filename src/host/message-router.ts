@@ -141,9 +141,11 @@ export class MessageRouter {
       }
 
       // PanelViewProvider intercepts this before delegating (it needs the
-      // `vscode` API, which this module must not import). It is listed here,
-      // and in KNOWN_MESSAGE_TAGS, so a stray one is a deliberate no-op
-      // rather than a "malformed message" error log.
+      // `vscode` API, which this module must not import) and is also where
+      // `msg.path` is validated against the memory files `msg.id` reported —
+      // that check stays on the provider/manager side for the same reason.
+      // It is listed here, and in KNOWN_MESSAGE_TAGS, so a stray one is a
+      // deliberate no-op rather than a "malformed message" error log.
       case 'open-file':
         return;
     }

@@ -177,7 +177,25 @@ export class AgentSession {
     if (!this.run.contextBreakdown) {
       throw new Error('This provider does not report context usage');
     }
-    return this.run.contextBreakdown();
+    const breakdown = await this.run.contextBreakdown();
+    this.rememberMemoryFiles(breakdown);
+    return breakdown;
+  }
+
+  /**
+   * Whether this session's most recent breakdown listed `path`. The webview
+   * can only ask to open a memory file it was shown, so the set it was last
+   * shown is exactly the set the host will act on — see
+   * SessionManager.canOpenFile.
+   */
+  reportedMemoryFile(path: string): boolean {
+    return this.memoryPaths.has(path);
+  }
+
+  private memoryPaths = new Set<string>();
+
+  private rememberMemoryFiles(breakdown: ContextBreakdown): void {
+    this.memoryPaths = new Set(breakdown.memoryFiles.map((f) => f.path));
   }
 
   async usageWindows(): Promise<UsageWindow[]> {

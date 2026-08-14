@@ -243,7 +243,7 @@ suite('MessageRouter', () => {
 
   test('open-file is accepted but not acted on by the router', async () => {
     sent.length = 0;
-    await router.handle({ t: 'open-file', path: '/repo/CLAUDE.md' });
+    await router.handle({ t: 'open-file', id: 's1', path: '/repo/CLAUDE.md' });
     assert.deepStrictEqual(sent, []);
   });
 });

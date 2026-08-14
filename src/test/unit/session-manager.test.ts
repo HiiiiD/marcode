@@ -348,6 +348,32 @@ suite('SessionManager', () => {
     assert.strictEqual(result.ok, false);
   });
 
+  test('canOpenFile vouches only for paths the session itself reported', async () => {
+    const provider = new FakeProvider(() => [], {
+      context: {
+        systemPercent: 12, memoryPercent: 4, conversationPercent: 27, freePercent: 57,
+        memoryFiles: [{ path: '/repo/CLAUDE.md', percent: 3 }],
+      },
+    });
+    const local = new SessionManager(
+      new TranscriptStore(dir), new Map([['fake', provider]]), () => {},
+    );
+    await local.init();
+    const id = (await local.create('fake', '/tmp')).state.id;
+
+    assert.strictEqual(
+      local.canOpenFile(id, '/repo/CLAUDE.md'), false,
+      'a session that has reported nothing vouches for nothing',
+    );
+
+    await local.contextBreakdown(id);
+
+    assert.strictEqual(local.canOpenFile(id, '/repo/CLAUDE.md'), true);
+    assert.strictEqual(local.canOpenFile(id, '/etc/passwd'), false);
+    assert.strictEqual(local.canOpenFile('nope', '/repo/CLAUDE.md'), false);
+    await local.dispose();
+  });
+
   test('usageWindows resolves a provider through any one live session', async () => {
     const provider = new FakeProvider(() => [], {
       windows: [{ id: 'five-hour', label: 'Session (5h)', usedPercent: 62 }],
@@ -362,6 +388,47 @@ suite('SessionManager', () => {
 
     if (!result.ok) { assert.fail(result.reason); }
     assert.strictEqual(result.windows[0].usedPercent, 62);
+    await local.dispose();
+  });
+
+  test('usageWindows tries the next live session when the first cannot answer', async () => {
+    // A Claude session that has never been sent a message rejects with
+    // 'This session has not started yet'. If it happens to be first in
+    // `live`, the account is not unknown — the next live session of the same
+    // provider can still speak for it.
+    const provider = new FakeProvider(() => [], {
+      windows: [{ id: 'five-hour', label: 'Session (5h)', usedPercent: 62 }],
+    });
+    const local = new SessionManager(
+      new TranscriptStore(dir), new Map([['fake', provider]]), () => {},
+    );
+    await local.init();
+    const first = await local.create('fake', '/tmp');
+    await local.create('fake', '/tmp');
+    // Only the first session refuses; everything else about it is untouched.
+    Object.defineProperty(first, 'usageWindows', {
+      value: async () => { throw new Error('This session has not started yet'); },
+    });
+
+    const result = await local.usageWindows('fake');
+
+    if (!result.ok) { assert.fail(result.reason); }
+    assert.strictEqual(result.windows[0].usedPercent, 62);
+    await local.dispose();
+  });
+
+  test('usageWindows reports the last failure when every live session refuses', async () => {
+    const provider = new FakeProvider(() => []);
+    const local = new SessionManager(
+      new TranscriptStore(dir), new Map([['fake', provider]]), () => {},
+    );
+    await local.init();
+    await local.create('fake', '/tmp');
+
+    const result = await local.usageWindows('fake');
+
+    if (result.ok) { assert.fail('an unscripted fake reports no windows'); }
+    assert.match(result.reason, /does not report plan usage/);
     await local.dispose();
   });
 

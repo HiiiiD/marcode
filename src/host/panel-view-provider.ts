@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto';
 import * as vscode from 'vscode';
 import { MessageRouter } from './message-router';
 import type { SessionManager } from './session-manager';
-import type { HostToWebview, WebviewToHost } from '../protocol/messages';
+import type { HostToWebview, SessionId, WebviewToHost } from '../protocol/messages';
 
 export class PanelViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'hiiiid-code.panel';
@@ -23,8 +23,19 @@ export class PanelViewProvider implements vscode.WebviewViewProvider {
    * name a file that has since moved or that this window cannot read. A
    * failed open is logged, never surfaced as an error dialog — the user
    * asked to peek at a memory file, not to run a command.
+   *
+   * The path is checked against the memory-file set the named session most
+   * recently reported before anything is opened. `Uri.file` already pins
+   * the scheme, so this is not about command escalation; it is that a path
+   * arriving over `postMessage` has no relationship to anything the host
+   * has seen, and a buggy or compromised provider must not be able to get
+   * an arbitrary file on disk opened in an editor.
    */
-  private async openFile(path: string): Promise<void> {
+  private async openFile(id: SessionId, path: string): Promise<void> {
+    if (!this.manager.canOpenFile(id, path)) {
+      console.error('[hiiiid-code] refusing to open a path this session never reported', path);
+      return;
+    }
     try {
       const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(path));
       await vscode.window.showTextDocument(doc, { preview: true });
@@ -49,7 +60,7 @@ export class PanelViewProvider implements vscode.WebviewViewProvider {
         // extension host). Intercept it here rather than widening the
         // router's dependencies.
         if (raw?.t === 'open-file') {
-          await this.openFile(raw.path);
+          await this.openFile(raw.id, raw.path);
           return;
         }
         await router.handle(raw);

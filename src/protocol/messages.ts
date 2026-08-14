@@ -100,7 +100,14 @@ export type WebviewToHost =
   | { t: 'load-more'; id: SessionId; beforeItemId: string }
   | { t: 'request-context'; id: SessionId }
   | { t: 'request-usage'; providerId: string }
-  | { t: 'open-file'; path: string };
+  /**
+   * `path` originates in a provider's context report, so it is carried back
+   * with the session that reported it: the host opens it only if that
+   * session's most recent breakdown actually listed it. Hence the
+   * `SessionId`, which also keeps this in line with the "every
+   * session-addressed message carries an explicit id" rule.
+   */
+  | { t: 'open-file'; id: SessionId; path: string };
 
 export type HostToWebview =
   | { t: 'hydrate'; sessions: SessionSummary[]; layout: PaneLayout;

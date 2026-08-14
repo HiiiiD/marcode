@@ -14,9 +14,33 @@ export async function activate(context: vscode.ExtensionContext) {
   // so Claude — the real provider — is registered first.
   const providers = new Map<string, AgentProvider>();
   providers.set('claude', new ClaudeProvider());
-  providers.set('fake', new FakeProvider((text) => (text.includes('rm')
-    ? [{ kind: 'permission', id: `p-${Date.now()}`, name: 'Bash', input: { command: text } }]
-    : [{ kind: 'text', delta: 'ok' }, { kind: 'turn-end', reason: 'done' }])));
+  providers.set('fake', new FakeProvider(
+    (text) => (text.includes('rm')
+      ? [{ kind: 'permission', id: `p-${Date.now()}`, name: 'Bash', input: { command: text } }]
+      : [{ kind: 'text', delta: 'ok' }, { kind: 'turn-end', reason: 'done' }]),
+    // Scripted so both the context ring and the usage strip have something
+    // to render in the dev host. Obviously synthetic, and deliberately
+    // scripted *here* rather than defaulted inside FakeProvider — the unit
+    // tests depend on an unscripted fake genuinely omitting those methods.
+    // The two memory files share a basename on purpose: that is the case
+    // the popover's rows have to stay distinguishable in.
+    {
+      context: {
+        systemPercent: 12,
+        memoryPercent: 5,
+        conversationPercent: 26,
+        freePercent: 57,
+        memoryFiles: [
+          { path: '/fake/workspace/CLAUDE.md', percent: 4 },
+          { path: '/fake/home/.claude/CLAUDE.md', percent: 1 },
+        ],
+      },
+      windows: [
+        { id: 'five-hour', label: 'Session (5h)', usedPercent: 62, resetsAt: Date.now() + 2 * 3_600_000 },
+        { id: 'seven-day', label: 'Week', usedPercent: 18, resetsAt: Date.now() + 3 * 86_400_000 },
+      ],
+    },
+  ));
 
   let provider: PanelViewProvider;
   const manager = new SessionManager(store, providers, (msg) => provider.post(msg));

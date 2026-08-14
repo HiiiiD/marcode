@@ -50,12 +50,20 @@ function WindowChip({ window: w }: { window: UsageWindow }) {
 function ProviderUsage({
   displayName, result, showName,
 }: { displayName: string; result: UsageResult | undefined; showName: boolean }) {
-  // Nothing back yet: the row still occupies its height, so the panel does
-  // not jolt when the first reply lands.
+  // Nothing back yet: this contributes nothing, and the strip's own fixed
+  // `h-6` holds the space open, so the panel does not jolt when the first
+  // reply lands.
   if (!result) { return null; }
 
   if (!result.ok) {
-    return <span className="truncate text-muted-foreground">{result.reason}</span>;
+    // The reason is the string a user sees most (it is what an account with
+    // no live session reads), and it is long enough to truncate in a 300px
+    // panel — so it gets the same hover affordance the chips have.
+    return (
+      <span className="truncate text-muted-foreground" title={result.reason}>
+        {result.reason}
+      </span>
+    );
   }
 
   // An empty window list is a plan-less session (API key, Bedrock, Vertex),
@@ -65,7 +73,7 @@ function ProviderUsage({
   }
 
   return (
-    <span className="flex items-center gap-3">
+    <span className="flex shrink-0 items-center gap-3">
       {showName && <span className="text-muted-foreground">{displayName}</span>}
       {result.windows.map((w) => <WindowChip key={w.id} window={w} />)}
     </span>
@@ -83,18 +91,70 @@ export function UsageStrip() {
   // turn-end" means on the client side.
   const statusKey = state.sessions.map((s) => `${s.id}:${s.status}`).join(',');
   const lastRequestedRef = useRef<Record<string, number>>({});
+  const pendingRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  /**
+   * The exact not-ok result each provider has already been re-asked about.
+   * Identity, not a boolean: every reply is a fresh object, so this retries
+   * once per not-ok reply and can never turn into a request-per-render loop.
+   */
+  const retriedRef = useRef<Record<string, UsageResult>>({});
+
+  // A deferred request must not outlive the strip.
+  useEffect(() => () => {
+    for (const timer of Object.values(pendingRef.current)) { clearTimeout(timer); }
+    pendingRef.current = {};
+  }, []);
 
   useEffect(() => {
-    const now = Date.now();
-    for (const id of providerIds) {
-      if (now - (lastRequestedRef.current[id] ?? 0) < REFRESH_MS) { continue; }
-      lastRequestedRef.current[id] = now;
+    const send = (id: string) => {
+      lastRequestedRef.current[id] = Date.now();
       post({ t: 'request-usage', providerId: id });
+    };
+
+    // A provider whose last session was deleted has nothing left to ask
+    // about; its deferred request would post for a provider no longer in
+    // the roster.
+    for (const [id, timer] of Object.entries(pendingRef.current)) {
+      if (providerIds.includes(id)) { continue; }
+      clearTimeout(timer);
+      delete pendingRef.current[id];
     }
-  }, [providerKey, statusKey]);
+
+    for (const id of providerIds) {
+      // Sessions restored from `index.json` are not live until `set-visible`
+      // has materialized them, and this component's effect runs before the
+      // one in `App` that posts it — so the first reply after every reload is
+      // legitimately "No active session for this provider". `sessions-changed`
+      // is the only signal the client gets that the roster's liveness may
+      // have moved, and it changes no summary *field* when a restored session
+      // is opened (idle stays idle) — hence the dependency on the identity of
+      // `state.sessions` rather than a key derived from it. Ask again, once
+      // per not-ok reply, so that first answer is corrected as soon as the
+      // sessions behind it are live rather than at the next user message.
+      const cached = state.usageByProvider[id];
+      if (cached && !cached.ok && retriedRef.current[id] !== cached) {
+        retriedRef.current[id] = cached;
+        const deferred = pendingRef.current[id];
+        if (deferred) { clearTimeout(deferred); delete pendingRef.current[id]; }
+        send(id);
+        continue;
+      }
+
+      const wait = REFRESH_MS - (Date.now() - (lastRequestedRef.current[id] ?? 0));
+      if (wait <= 0) { send(id); continue; }
+      // Trailing edge. A request suppressed by the window is deferred, never
+      // dropped — dropping it is what left the strip showing a stale reply —
+      // and the one timer per provider collapses a burst into a single ask.
+      if (pendingRef.current[id]) { continue; }
+      pendingRef.current[id] = setTimeout(() => {
+        delete pendingRef.current[id];
+        send(id);
+      }, wait);
+    }
+  }, [providerKey, statusKey, state.sessions]);
 
   return (
-    <div className="flex h-6 shrink-0 items-center gap-4 overflow-hidden border-t border-border px-2 text-xs">
+    <div className="flex h-6 shrink-0 items-center gap-4 overflow-x-auto overflow-y-hidden border-t border-border px-2 text-xs">
       {providerIds.map((id) => (
         <ProviderUsage
           key={id}
