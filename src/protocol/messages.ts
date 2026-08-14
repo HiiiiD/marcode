@@ -1,8 +1,8 @@
 import type {
-  EffortLevel, ModelInfo, PermissionMode, ToolDecision,
+  EffortLevel, McpServerStatus, ModelInfo, PermissionMode, ToolDecision,
 } from '../providers/types';
 
-export type { EffortLevel, ModelInfo, PermissionMode, ToolDecision };
+export type { EffortLevel, McpServerStatus, ModelInfo, PermissionMode, ToolDecision };
 
 export type SessionId = string;
 export type SessionStatus = 'idle' | 'running' | 'awaiting-approval' | 'error';
@@ -15,6 +15,15 @@ export type TranscriptItem =
   | (ItemBase & {
       role: 'tool'; toolId: string; name: string; input: unknown;
       state: 'running' | 'ok' | 'error'; output?: unknown;
+      /**
+       * A subagent's tool activity. Depth 1 only — a child never has
+       * children of its own. Absent for the overwhelming majority of tool
+       * calls, and absent on every item v1 wrote, which is why adding it
+       * needs no migration.
+       */
+      children?: TranscriptItem[];
+      /** Parsed from an `mcp__<server>__<tool>` name; `name` holds the bare tool. */
+      mcpServer?: string;
     })
   | (ItemBase & {
       role: 'permission'; requestId: string; name: string; input: unknown;
@@ -23,9 +32,9 @@ export type TranscriptItem =
   | (ItemBase & { role: 'error'; message: string });
 
 export type TranscriptPatch =
-  | { op: 'append'; item: TranscriptItem }
+  | { op: 'append'; item: TranscriptItem; parentItemId?: string }
   | { op: 'delta'; itemId: string; field: 'text' | 'thinking'; delta: string }
-  | { op: 'replace'; item: TranscriptItem };
+  | { op: 'replace'; item: TranscriptItem; parentItemId?: string };
 
 export interface PermissionRequest {
   requestId: string;
@@ -57,6 +66,13 @@ export interface SessionSnapshot extends SessionState {
   /** More history available before items[0]. */
   hasMore: boolean;
   pending: PermissionRequest[];
+  /**
+   * Live provider state, not persisted. Always [] for an archived session —
+   * there is no run to ask, and a stale snapshot presented as current would
+   * be a lie. Deliberately NOT on SessionState, which is what index.json
+   * stores.
+   */
+  mcpServers: McpServerStatus[];
 }
 
 export interface ProviderInfo {
@@ -92,4 +108,5 @@ export type HostToWebview =
   | { t: 'session-patch'; id: SessionId; patch: TranscriptPatch }
   | { t: 'session-prepend'; id: SessionId; items: TranscriptItem[]; hasMore: boolean }
   | { t: 'session-status'; id: SessionId; status: SessionStatus }
+  | { t: 'session-mcp'; id: SessionId; servers: McpServerStatus[] }
   | { t: 'sessions-changed'; sessions: SessionSummary[] };
