@@ -214,6 +214,7 @@ export class AgentSession {
       // Best-effort: nothing left to report a failure into once disposed.
     }
     await this.pumping;
+    this.flushUnsettledParents();
     await this.scheduleFlush();
   }
 
@@ -310,10 +311,12 @@ export class AgentSession {
           ? this.parentItemIdFor(parentSource)
           : undefined;
 
+        const parsedName = parseToolName(event.name);
         const item: TranscriptItem = {
           id: nextId('p'), ts: Date.now(), role: 'permission',
-          requestId: event.id, name: parseToolName(event.name).name,
+          requestId: event.id, name: parsedName.name,
           input: event.input, state: 'pending',
+          ...(parsedName.mcpServer ? { mcpServer: parsedName.mcpServer } : {}),
         };
         this.permissionItems.set(event.id, item);
         this.pending.set(event.id, {

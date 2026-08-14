@@ -201,6 +201,28 @@ suite('AgentSession subagent nesting', () => {
     assert.strictEqual((child as { state: string }).state, 'allowed');
   });
 
+  test('disposing a session mid-subagent still flushes its buffered children', async () => {
+    const provider = new FakeProvider(() => [
+      { kind: 'tool-start', id: 'task1', name: 'Task', input: {} },
+      { kind: 'tool-start', id: 'c1', name: 'Read', input: {}, parentId: 'task1' },
+      { kind: 'tool-end', id: 'c1', ok: true, output: 'contents', parentId: 'task1' },
+      // Deliberately no turn-end: the provider is closed out from under the
+      // running Task, the way a pane being closed mid-subagent looks.
+    ]);
+    const session = new AgentSession(baseState(), provider, store, sink);
+    session.send('go');
+    await settle();
+    await session.dispose();
+
+    const fresh = new TranscriptStore(dir);
+    const { items } = await fresh.tail('s1');
+    const tools = toolItems(items);
+    assert.strictEqual(tools.length, 1, 'the parent is persisted');
+    assert.strictEqual(tools[0].state, 'error');
+    assert.strictEqual(tools[0].children?.length, 1, 'its child was not discarded');
+    assert.strictEqual((tools[0].children![0] as { name: string }).name, 'Read');
+  });
+
   test('an mcp tool name is split onto the item at creation', async () => {
     const provider = new FakeProvider(() => [
       { kind: 'tool-start', id: 't1', name: 'mcp__github__create_pr', input: {} },
