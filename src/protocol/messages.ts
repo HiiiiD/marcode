@@ -127,5 +127,12 @@ export type HostToWebview =
   | { t: 'sessions-changed'; sessions: SessionSummary[] }
   | { t: 'session-invocables'; id: SessionId; entries: Invocable[] }
   | { t: 'session-mcp'; id: SessionId; servers: McpServerStatus[] }
+  /**
+   * Broadcast, not session-addressed: the provider/model catalog is global.
+   * Sent after `hydrate` whenever a provider reports a catalog that differs
+   * from the one it could answer with synchronously — model lists come from
+   * the backend, so `hydrate` can only carry a provisional list.
+   */
+  | { t: 'catalog'; catalog: ProviderInfo[] }
   /** Broadcast, not session-addressed: every composer shows the same editor. */
   | { t: 'editor-context'; ctx: EditorContext | null };

@@ -418,4 +418,75 @@ suite('ClaudeProvider mcpServerStatus pull', () => {
     await assert.rejects(() => provider.listInvocables('/repo'), /control request failed/);
     assert.strictEqual(closed, true);
   });
+
+  /** A provider whose probe answers `supportedModels()` with `models`. */
+  function providerWithModels(models: unknown[], onClose?: () => void) {
+    return new ClaudeProvider((async () => () => ({
+      supportedModels: async () => models,
+      close: () => { onClose?.(); },
+      [Symbol.asyncIterator]: () => ({ next: async () => ({ value: undefined, done: true }) }),
+    })) as never);
+  }
+
+  test('fetchModels replaces the fallback list with what the CLI reports', async () => {
+    let closed = false;
+    const provider = providerWithModels([
+      {
+        value: 'claude-fable-5', displayName: 'Fable 5', description: '',
+        supportsEffort: true, supportedEffortLevels: ['low', 'medium', 'high', 'xhigh', 'max'],
+      },
+      { value: 'haiku', displayName: 'Haiku 4.5', description: '' },
+    ], () => { closed = true; });
+
+    assert.strictEqual(
+      provider.listModels().some((m) => m.id === 'claude-fable-5'), false,
+      'precondition: the fallback list is what is served before a probe',
+    );
+
+    const out = await provider.fetchModels('/repo');
+
+    assert.deepStrictEqual(out, [
+      {
+        id: 'claude-fable-5', displayName: 'Fable 5',
+        effort: { levels: ['low', 'medium', 'high', 'xhigh', 'max'], default: 'high' },
+      },
+      { id: 'haiku', displayName: 'Haiku 4.5', effort: undefined },
+    ]);
+    assert.deepStrictEqual(provider.listModels(), out, 'the answer must stick');
+    assert.strictEqual(closed, true, 'the probe query must not outlive the answer');
+  });
+
+  test('fetchModels defaults effort to the deepest level a model offers when it has no high', async () => {
+    const provider = providerWithModels([
+      {
+        value: 'terse', displayName: 'Terse', description: '',
+        supportsEffort: true, supportedEffortLevels: ['low', 'medium'],
+      },
+    ]);
+
+    const [model] = await provider.fetchModels('/repo');
+
+    assert.deepStrictEqual(model.effort, { levels: ['low', 'medium'], default: 'medium' });
+  });
+
+  test('an empty catalog leaves the fallback list in place', async () => {
+    const provider = providerWithModels([]);
+    const fallback = provider.listModels();
+
+    const out = await provider.fetchModels('/repo');
+
+    assert.deepStrictEqual(out, fallback, 'an empty picker is worse than a stale one');
+  });
+
+  test('fetchModels closes the query even when the model read fails', async () => {
+    let closed = false;
+    const provider = new ClaudeProvider((async () => () => ({
+      supportedModels: async () => { throw new Error('control request failed'); },
+      close: () => { closed = true; },
+      [Symbol.asyncIterator]: () => ({ next: async () => ({ value: undefined, done: true }) }),
+    })) as never);
+
+    await assert.rejects(() => provider.fetchModels('/repo'), /control request failed/);
+    assert.strictEqual(closed, true);
+  });
 });

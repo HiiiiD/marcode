@@ -94,6 +94,10 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
       return { ...state, sessions: msg.sessions, byId };
     }
 
+    case 'catalog':
+      // Full replacement: the host sends the whole catalog, never a delta.
+      return { ...state, catalog: msg.catalog };
+
     case 'editor-context':
       return { ...state, editorContext: msg.ctx };
 

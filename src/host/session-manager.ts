@@ -79,6 +79,34 @@ export class SessionManager implements SessionSink {
     }));
   }
 
+  /**
+   * Asks every provider that can answer for its real model catalog, then
+   * re-announces `catalog()` once. Fire-and-forget by design, like the
+   * invocables probe: models are picker content, and nothing — session
+   * creation least of all — may wait on a CLI handshake for them. Until an
+   * answer lands the provider serves its fallback list, so the picker is
+   * never empty.
+   *
+   * One emit after all probes settle, not one per provider: the wire message
+   * carries the whole catalog, so per-provider emits would just be N
+   * successive whole-catalog replacements.
+   */
+  async refreshModels(cwd: string): Promise<void> {
+    const probes = [...this.providers.values()]
+      .filter((p) => p.fetchModels)
+      .map((p) => p.fetchModels!(cwd).catch((err: unknown) => {
+        // Errors are state, never exceptions — and the state here is "the
+        // fallback list stands". Still worth a developer-facing trace: a
+        // permanently broken CLI would otherwise be silent.
+        console.warn('[hiiiid-code] session-manager: model probe failed for', p.id, err);
+      }));
+    if (probes.length === 0) { return; }
+
+    await Promise.all(probes);
+    if (this.disposed) { return; }
+    this.emit({ t: 'catalog', catalog: this.catalog() });
+  }
+
   summaries(): SessionSummary[] {
     return [...this.meta.values()].sort((a, b) => b.updatedAt - a.updatedAt);
   }

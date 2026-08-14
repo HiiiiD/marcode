@@ -6,7 +6,7 @@ import { SessionManager } from '../../host/session-manager';
 import { TranscriptStore } from '../../host/transcript-store';
 import type { HostToWebview, SessionState } from '../../protocol/messages';
 import { FakeProvider } from '../../providers/fake/fake-provider';
-import type { AgentProvider } from '../../providers/types';
+import type { AgentProvider, ModelInfo } from '../../providers/types';
 
 async function settle() {
   for (let i = 0; i < 10; i++) { await new Promise((r) => setImmediate(r)); }
@@ -537,5 +537,69 @@ suite('SessionManager', () => {
     await restored.init();
     assert.strictEqual(restored.summaries()[0].includeEditorContext, true);
     await restored.dispose();
+  });
+
+  /**
+   * A provider whose model list is only correct after `fetchModels` — the
+   * shape of every real backend, where the catalog lives in the CLI.
+   */
+  function modelProvider(id: string, onFetch?: () => Promise<never>): AgentProvider {
+    let models: ModelInfo[] = [{ id: 'stale', displayName: 'Stale' }];
+    return {
+      id, displayName: id,
+      listModels: () => models,
+      fetchModels: async (cwd: string) => {
+        if (onFetch) { await onFetch(); }
+        models = [{ id: `fresh-${cwd}`, displayName: 'Fresh' }];
+        return models;
+      },
+      start: () => { throw new Error('not used'); },
+    };
+  }
+
+  test('refreshModels probes the providers and re-announces the catalog', async () => {
+    const emitted: HostToWebview[] = [];
+    const m = new SessionManager(
+      new TranscriptStore(dir), new Map([['claude', modelProvider('claude')]]), (msg) => emitted.push(msg),
+    );
+    await m.init();
+
+    await m.refreshModels('/repo');
+
+    const catalogs = emitted.filter((msg) => msg.t === 'catalog') as
+      Extract<HostToWebview, { t: 'catalog' }>[];
+    assert.strictEqual(catalogs.length, 1, 'one emit for the whole catalog, not one per provider');
+    assert.deepStrictEqual(catalogs[0].catalog, [{
+      id: 'claude', displayName: 'claude',
+      models: [{ id: 'fresh-/repo', displayName: 'Fresh' }],
+    }]);
+    await m.dispose();
+  });
+
+  test('a failed model probe leaves the provider fallback in place and still announces', async () => {
+    const emitted: HostToWebview[] = [];
+    const failing = modelProvider('claude', () => Promise.reject(new Error('no CLI')));
+    const m = new SessionManager(
+      new TranscriptStore(dir), new Map([['claude', failing]]), (msg) => emitted.push(msg),
+    );
+    await m.init();
+
+    await assert.doesNotReject(() => m.refreshModels('/repo'));
+
+    const catalogs = emitted.filter((msg) => msg.t === 'catalog') as
+      Extract<HostToWebview, { t: 'catalog' }>[];
+    assert.deepStrictEqual(catalogs[0].catalog[0].models, [{ id: 'stale', displayName: 'Stale' }]);
+    await m.dispose();
+  });
+
+  test('refreshModels emits nothing when no provider can answer', async () => {
+    const emitted: HostToWebview[] = [];
+    const m = new SessionManager(new TranscriptStore(dir), providers, (msg) => emitted.push(msg));
+    await m.init();
+
+    await m.refreshModels('/repo');
+
+    assert.deepStrictEqual(emitted.filter((msg) => msg.t === 'catalog'), []);
+    await m.dispose();
   });
 });

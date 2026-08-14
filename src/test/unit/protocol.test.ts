@@ -37,6 +37,7 @@ function describeOutbound(m: HostToWebview): string {
     case 'sessions-changed': return 'sessions-changed';
     case 'session-invocables': return 'session-invocables';
     case 'editor-context': return 'editor-context';
+    case 'catalog': return 'catalog';
     default: return assertNever(m);
   }
 }

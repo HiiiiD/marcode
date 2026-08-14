@@ -77,6 +77,10 @@ export class MessageRouter {
           catalog: this.manager.catalog(),
         });
         this.emit({ t: 'editor-context', ctx: this.editor.current() });
+        // Not awaited: hydrate must not wait on a CLI handshake. The catalog
+        // just sent carries each provider's synchronously-known models; the
+        // real one arrives as a `catalog` message when the probes land.
+        void this.manager.refreshModels(this.defaultCwd);
         return;
       }
 

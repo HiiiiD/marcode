@@ -314,6 +314,25 @@ suite('webview reducer', () => {
     assert.strictEqual(cleared.editorContext, null);
   });
 
+  test('catalog replaces the provider/model catalog wholesale', () => {
+    const seeded = reduce(initialState, {
+      t: 'catalog',
+      catalog: [{ id: 'claude', displayName: 'Claude', models: [{ id: 'haiku', displayName: 'Haiku 4.5' }] }],
+    });
+    const next = reduce(seeded, {
+      t: 'catalog',
+      catalog: [{
+        id: 'claude', displayName: 'Claude',
+        models: [{ id: 'claude-fable-5', displayName: 'Fable 5' }],
+      }],
+    });
+
+    assert.deepStrictEqual(next.catalog, [{
+      id: 'claude', displayName: 'Claude',
+      models: [{ id: 'claude-fable-5', displayName: 'Fable 5' }],
+    }]);
+  });
+
   test('the initial state has no editor context', () => {
     assert.strictEqual(initialState.editorContext, null);
   });

@@ -163,7 +163,20 @@ export interface AgentRun {
 export interface AgentProvider {
   readonly id: string;
   readonly displayName: string;
+  /**
+   * What is known about this provider's models *right now* — a cache, not a
+   * source of truth. Synchronous because session creation and the roster read
+   * it inline; providers that can discover their real catalog implement
+   * `fetchModels` and let this return whatever the last fetch produced.
+   */
   listModels(): ModelInfo[];
+  /**
+   * Asks the backend for its real model catalog and updates what
+   * `listModels()` returns. Optional: a provider whose models are genuinely
+   * fixed (the fake one) omits it. Rejections propagate — the caller decides
+   * whether a failed probe is worth retrying.
+   */
+  fetchModels?(cwd: string): Promise<ModelInfo[]>;
   start(opts: StartOptions): AgentRun;
   /**
    * The catalog for a working directory, with NO session required.

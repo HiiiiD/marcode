@@ -127,7 +127,21 @@ import { toInvocables } from './map-commands';
 import { mapEvent } from './map-events';
 import { redactSecrets } from './redact';
 
-const MODELS: ModelInfo[] = [
+/**
+ * What the picker shows before — or instead of — a real answer from the CLI.
+ *
+ * This is a fallback, not the catalog: the authoritative list comes from
+ * `fetchModels()` below, which asks the SDK what *this* install can actually
+ * run (models released after this file was written, models an enterprise
+ * `availableModels` policy allows, aliases the CLI resolves itself). Hardcoding
+ * the catalog is exactly how Fable went missing from the picker.
+ *
+ * Aliases, not wire ids, on purpose: `claude-haiku-4-5` is NOT a value the CLI
+ * knows — it silently becomes a "Custom model" passthrough — whereas `haiku` is
+ * the CLI's own alias and resolves to claude-haiku-4-5-20251001. Verified
+ * against the SDK's initializationResult.
+ */
+const FALLBACK_MODELS: ModelInfo[] = [
   {
     id: 'claude-opus-5', displayName: 'Opus 5',
     effort: { levels: ['low', 'medium', 'high', 'xhigh', 'max'], default: 'high' },
@@ -136,11 +150,29 @@ const MODELS: ModelInfo[] = [
     id: 'claude-sonnet-5', displayName: 'Sonnet 5',
     effort: { levels: ['low', 'medium', 'high', 'xhigh', 'max'], default: 'high' },
   },
-  // `claude-haiku-4-5` is NOT a value the CLI knows: it silently becomes a
-  // "Custom model" passthrough. `haiku` is the CLI's own alias, and resolves to
-  // claude-haiku-4-5-20251001. Verified against the SDK's initializationResult.
   { id: 'haiku', displayName: 'Haiku 4.5' },
 ];
+
+/** The subset of the SDK's `ModelInfo` this adapter reads. */
+type SdkModelInfo = {
+  value: string;
+  displayName: string;
+  supportsEffort?: boolean;
+  supportedEffortLevels?: EffortLevel[];
+};
+
+/**
+ * The SDK reports which effort levels a model accepts but not which one it
+ * defaults to, so pick 'high' when it is on offer (the CLI's own default) and
+ * otherwise the deepest level the model has.
+ */
+function toModelInfo(m: SdkModelInfo): ModelInfo {
+  const levels = m.supportedEffortLevels ?? [];
+  const effort = m.supportsEffort && levels.length > 0
+    ? { levels, default: levels.includes('high') ? 'high' as const : levels[levels.length - 1] }
+    : undefined;
+  return { id: m.value, displayName: m.displayName, effort };
+}
 
 /**
  * Ours -> the SDK's real `PermissionMode` union (verified against the
@@ -219,15 +251,33 @@ export class ClaudeProvider implements AgentProvider {
   readonly id = 'claude';
   readonly displayName = 'Claude';
 
+  /** Last answer from `fetchModels()`; until then the picker shows the fallback. */
+  private models: ModelInfo[] | undefined;
+
   constructor(private readonly loadQueryFn: () => Promise<QueryFn> = loadQuery) {}
 
-  listModels(): ModelInfo[] { return MODELS; }
+  listModels(): ModelInfo[] { return this.models ?? FALLBACK_MODELS; }
 
   /**
-   * The cwd's catalog, with no session. Constructs a throwaway query over a
-   * prompt stream that never yields, asks it for the command list, and closes
-   * it. Nothing is ever sent, so there is no turn, no tokens and no agent
-   * work — only the CLI's init handshake.
+   * The CLI's own model catalog, from the same session-free probe the
+   * invocables list uses. What a given install can run is decided by its
+   * provider, its settings cascade and any enterprise `availableModels`
+   * policy — none of which this extension can know statically.
+   *
+   * Rejections propagate: the caller decides the retry policy, and swallowing
+   * here would silently pin the picker to the fallback list forever.
+   */
+  async fetchModels(cwd: string): Promise<ModelInfo[]> {
+    const models = await this.probe(cwd, (q) => q.supportedModels());
+    // An empty catalog is not an answer worth caching over the fallback —
+    // it would leave the picker with nothing to pick.
+    if (models.length > 0) { this.models = models.map(toModelInfo); }
+    return this.listModels();
+  }
+
+  /**
+   * The cwd's catalog, with no session. Nothing is ever sent, so there is no
+   * turn, no tokens and no agent work — only the CLI's init handshake.
    *
    * This exists because the session's own query is constructed lazily on the
    * first send() (only construction can set `bypass`), and the menu has to
@@ -238,6 +288,16 @@ export class ClaudeProvider implements AgentProvider {
    * swallowing here would hide a permanently broken CLI behind an empty menu.
    */
   async listInvocables(cwd: string): Promise<Invocable[]> {
+    return toInvocables(await this.probe(cwd, (q) => q.supportedCommands()));
+  }
+
+  /**
+   * Runs one control request against a throwaway query over a prompt stream
+   * that never yields, and closes it. Shared by every session-free lookup:
+   * each one is a CLI subprocess, and the close must not depend on the
+   * request succeeding.
+   */
+  private async probe<T>(cwd: string, ask: (query: Query) => Promise<T>): Promise<T> {
     const query = await this.loadQueryFn();
     // A channel that is closed immediately: the query needs an async iterable
     // for `prompt`, and this one ends without ever yielding a message.
@@ -245,7 +305,7 @@ export class ClaudeProvider implements AgentProvider {
     prompts.close();
     const probe = query({ prompt: prompts, options: { cwd } });
     try {
-      return toInvocables(await probe.supportedCommands());
+      return await ask(probe);
     } finally {
       // finally, not a success-path close: a failed control request must not
       // leak a CLI subprocess for the life of the window.
