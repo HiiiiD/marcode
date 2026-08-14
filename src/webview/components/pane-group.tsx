@@ -1,21 +1,17 @@
-import {
-  Fragment, useEffect, useRef, useState,
-} from 'react';
-import {
-  ResizableHandle, ResizablePanel, ResizablePanelGroup,
-} from '@/components/ui/resizable';
-import { cn } from '@/lib/utils';
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
+import { cn } from "@/lib/utils";
+import { Fragment, useEffect, useRef, useState } from "react";
 // react-resizable-panels ships ESM-only; a type-only import from a CommonJS
 // module needs an explicit resolution-mode attribute (TS 5.3+) or tsc's
 // per-file CJS/ESM interop check rejects it outright (TS1541) — see the
 // similar note on the value import in the vendored resizable.tsx.
-import type { Layout, LayoutChangedMeta } from 'react-resizable-panels' with { 'resolution-mode': 'import' };
-import { SessionHeader } from './session-header';
-import { Transcript } from './transcript';
-import { Composer } from './composer';
-import { accessibleTitles, rosterSessionIds, visiblePanes } from './pane-layout';
-import { SessionCreateMenu } from './session-create-menu';
-import { useStore } from '../store';
+import type { Layout, LayoutChangedMeta } from "react-resizable-panels" with { "resolution-mode": "import" };
+import { useStore } from "../store";
+import { Composer } from "./composer";
+import { accessibleTitles, rosterSessionIds, visiblePanes } from "./pane-layout";
+import { SessionCreateMenu } from "./session-create-menu";
+import { SessionHeader } from "./session-header";
+import { Transcript } from "./transcript";
 
 interface PaneGroupProps {
   /** Whether the panel is too narrow to split side by side. Measured once,
@@ -35,14 +31,12 @@ export function PaneGroup({ narrow }: PaneGroupProps) {
   const roster = rosterSessionIds(state.sessions);
   const snapshotArrived = new Set(Object.keys(state.byId));
   const panes = visiblePanes(state.layout.panes, roster, snapshotArrived);
-  const orientation = narrow ? 'vertical' : state.layout.orientation;
+  const orientation = narrow ? "vertical" : state.layout.orientation;
   // Disambiguates title-derived accessible names (close button, resize
   // handles) when two or more visible panes share a title — most commonly
   // two freshly created sessions, both still 'Untitled'. See
   // accessibleTitles' doc comment in pane-layout.ts.
-  const names = accessibleTitles(
-    panes.map((p) => ({ id: p.sessionId, title: state.byId[p.sessionId].summary.title })),
-  );
+  const names = accessibleTitles(panes.map((p) => ({ id: p.sessionId, title: state.byId[p.sessionId].summary.title })));
 
   // Hiding a pane or deleting its session unmounts the pane. If the element
   // that held focus (e.g. the pane's own "Hide … from the split" button)
@@ -93,9 +87,10 @@ export function PaneGroup({ narrow }: PaneGroupProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
   useEffect(() => {
     if (panes.length < prevCount.current && document.activeElement === document.body) {
-      const target = rootRef.current?.querySelector<HTMLElement>('[data-slot="input-group-textarea"]')
-        ?? rootRef.current?.querySelector<HTMLElement>('[data-slot="button"]')
-        ?? rootRef.current;
+      const target =
+        rootRef.current?.querySelector<HTMLElement>('[data-slot="input-group-textarea"]') ??
+        rootRef.current?.querySelector<HTMLElement>('[data-slot="button"]') ??
+        rootRef.current;
       target?.focus();
     }
     prevCount.current = panes.length;
@@ -107,14 +102,14 @@ export function PaneGroup({ narrow }: PaneGroupProps) {
         ref={rootRef}
         tabIndex={-1}
         className={cn(
-          'flex h-full flex-col items-center justify-center gap-2 p-4 text-center outline-none',
-          'focus-visible:ring-2 focus-visible:ring-ring',
+          "flex h-full flex-col items-center justify-center gap-2 p-4 text-center outline-none",
+          "focus-visible:ring-2 focus-visible:ring-ring",
         )}
       >
         <p className="text-xs text-muted-foreground">
           {roster.size === 0
-            ? 'No sessions yet. Start one to give an agent something to do.'
-            : 'No sessions in the split. Pick one from the roster above to show it here.'}
+            ? "No sessions yet. Start one to give an agent something to do."
+            : "No sessions in the split. Pick one from the roster above to show it here."}
         </p>
         {roster.size === 0 && <SessionCreateMenu />}
       </div>
@@ -125,7 +120,7 @@ export function PaneGroup({ narrow }: PaneGroupProps) {
     <div
       ref={rootRef}
       tabIndex={-1}
-      className={cn('h-full outline-none', 'focus-visible:ring-2 focus-visible:ring-ring')}
+      className={cn("h-full outline-none", "focus-visible:ring-2 focus-visible:ring-ring")}
     >
       <ResizablePanelGroup
         orientation={orientation}
@@ -139,9 +134,11 @@ export function PaneGroup({ narrow }: PaneGroupProps) {
         // was user-driven; skip the non-interactive call it also makes on
         // mount, since that one only echoes the layout already in state.
         onLayoutChanged={(layout: Layout, meta: LayoutChangedMeta) => {
-          if (!meta.isUserInteraction) { return; }
+          if (!meta.isUserInteraction) {
+            return;
+          }
           post({
-            t: 'set-layout',
+            t: "set-layout",
             layout: {
               orientation: state.layout.orientation,
               panes: panes.map((p) => ({ sessionId: p.sessionId, size: layout[p.sessionId] ?? p.size })),
@@ -170,30 +167,33 @@ export function PaneGroup({ narrow }: PaneGroupProps) {
                 data-active={activeId === pane.sessionId}
                 onFocusCapture={() => setActiveId(pane.sessionId)}
                 className={cn(
-                  'transition-colors',
+                  "transition-colors",
                   // A ring, not a background: at 300px a filled active pane
                   // would compete with the permission card, which must stay
                   // the loudest thing on screen — it's the only transcript
                   // item demanding an action.
-                  activeId === pane.sessionId && 'ring-1 ring-ring/40 ring-inset',
+                  activeId === pane.sessionId && "ring-1 ring-ring/40 ring-inset",
                 )}
               >
                 <div className="flex h-full flex-col">
                   <SessionHeader
                     key={paneState.summary.id}
                     pane={paneState}
-                    models={provider?.models ?? []}
                     accessibleTitle={names.get(paneState.summary.id)!}
                   />
                   <div className="min-h-0 flex-1">
                     <Transcript
                       pane={paneState}
-                      onLoadMore={(beforeItemId) => post({
-                        t: 'load-more', id: pane.sessionId, beforeItemId,
-                      })}
+                      onLoadMore={(beforeItemId) =>
+                        post({
+                          t: "load-more",
+                          id: pane.sessionId,
+                          beforeItemId,
+                        })
+                      }
                     />
                   </div>
-                  <Composer key={paneState.summary.id} pane={paneState} model={model} />
+                  <Composer key={paneState.summary.id} pane={paneState} model={model} models={provider?.models ?? []} />
                 </div>
               </ResizablePanel>
             </Fragment>
