@@ -4,6 +4,21 @@ import type {
 } from '../../protocol/messages';
 
 export type PermissionItem = Extract<TranscriptItem, { role: 'permission' }>;
+export type ToolItem = Extract<TranscriptItem, { role: 'tool' }>;
+
+export function tool(over: Partial<ToolItem> = {}): ToolItem {
+  return {
+    id: 'i1',
+    ts: 1,
+    role: 'tool',
+    toolId: 't1',
+    name: 'Bash',
+    input: { command: 'yarn test:unit' },
+    state: 'ok',
+    output: 'ok',
+    ...over,
+  };
+}
 
 export function summary(id: string, over: Partial<SessionSummary> = {}): SessionSummary {
   return {

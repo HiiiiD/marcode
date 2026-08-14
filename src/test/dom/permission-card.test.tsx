@@ -104,9 +104,12 @@ suite('PermissionCard', () => {
     renderWithStore(<PermissionCard item={item} sessionId="a" />);
     hydrateWith([{ requestId: 'r1', name: 'Edit', input: item.input }]);
 
+    // The path is a control now, not a line of the diff — same treatment the
+    // completed tool card gives it, so approving and reviewing look alike.
+    screen.getByText('/tmp/a.txt');
     const pre = document.querySelector('pre');
     assert.notStrictEqual(pre, null);
-    assert.strictEqual(pre!.textContent, '--- /tmp/a.txt- one+ two');
+    assert.strictEqual(pre!.textContent, '-one+two');
   });
 
   test('the live card shows the session folder next to the tool name', () => {

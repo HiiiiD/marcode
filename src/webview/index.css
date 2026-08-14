@@ -62,6 +62,14 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  /*
+   * Commands, paths, patterns and tool output are code, so they take the
+   * editor's own font rather than the UI font — the same distinction VS Code
+   * makes between its chrome and its buffers. `--vscode-editor-font-family`
+   * is always set in a webview; the stack behind it is the fallback for a
+   * jsdom test render, where no VS Code variable exists at all.
+   */
+  --font-mono: var(--vscode-editor-font-family, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
   --radius-sm: calc(var(--radius) - 2px);
   --radius-md: var(--radius);
   --radius-lg: calc(var(--radius) + 2px);

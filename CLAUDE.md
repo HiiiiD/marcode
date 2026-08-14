@@ -64,6 +64,8 @@ extension.ts
 | `src/webview/` | Transport, reducer, store, components |
 | `src/webview/components/context-ring.tsx` | Context-fill ring + breakdown popover, mounted in the composer |
 | `src/webview/components/usage-strip.tsx` | Panel-level account usage windows |
+| `src/webview/components/tool-render.ts` | `(name, input, output)` → one-line header + typed blocks. Pure; no React. |
+| `src/webview/components/tool-body.tsx` | Renders those blocks — command, diff, path, todos, clamped output |
 
 **Build:** esbuild produces two bundles — node/CJS for the host, browser/IIFE for the
 webview. TypeScript, React 19, Tailwind v4.

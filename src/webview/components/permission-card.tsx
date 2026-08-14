@@ -1,33 +1,13 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
 import { useStore } from '../store';
 import { folderName } from '../format';
 import type { SessionId, TranscriptItem } from '../../protocol/messages';
-import { safeStringify } from './tool-card-format';
+import { ToolBody } from './tool-body';
+import { describeInput } from './tool-render';
 import { TranscriptItemShell } from './transcript-item-shell';
 
 type PermissionItem = Extract<TranscriptItem, { role: 'permission' }>;
-
-function diffPreview(input: unknown): string | undefined {
-  if (typeof input !== 'object' || input === null) { return undefined; }
-  const record = input as Record<string, unknown>;
-  const path = typeof record.file_path === 'string' ? record.file_path : undefined;
-  if (!path) { return undefined; }
-  const oldText = typeof record.old_string === 'string' ? record.old_string : undefined;
-  const newText = typeof record.new_string === 'string' ? record.new_string
-    : typeof record.content === 'string' ? record.content : undefined;
-  if (oldText === undefined && newText === undefined) { return undefined; }
-
-  const lines = [`--- ${path}`];
-  if (oldText !== undefined) {
-    lines.push(...oldText.split('\n').map((l) => `- ${l}`));
-  }
-  if (newText !== undefined) {
-    lines.push(...newText.split('\n').map((l) => `+ ${l}`));
-  }
-  return lines.join('\n');
-}
 
 export function PermissionCard({
   item, sessionId,
@@ -36,7 +16,10 @@ export function PermissionCard({
   sessionId: SessionId;
 }) {
   const { state, post } = useStore();
-  const diff = diffPreview(item.input);
+  // The same description layer the transcript's tool cards use, so a request
+  // looks the way the completed call will look — a shell command reads as a
+  // command in both places, an edit reads as the same diff.
+  const request = describeInput(item.name, item.input);
   const cwd = state.byId[sessionId]?.summary.cwd ?? '';
   // `respondToPermission` is exactly-once on the host and silently drops a
   // second response for the same requestId. Without local state, both
@@ -55,9 +38,9 @@ export function PermissionCard({
         {item.reason && <div className="text-xs text-muted-foreground">{item.reason}</div>}
         <details className="text-xs">
           <summary className="cursor-default text-muted-foreground">What was requested</summary>
-          <pre className="mt-1 max-h-48 overflow-auto rounded bg-muted p-1 wrap-break-word whitespace-pre-wrap">
-{diff ?? safeStringify(item.input)}
-          </pre>
+          <div className="mt-1">
+            <ToolBody blocks={request} />
+          </div>
         </details>
       </TranscriptItemShell>
     );
@@ -84,9 +67,9 @@ export function PermissionCard({
           )}
           <span>{item.name} — no longer awaiting a response</span>
         </div>
-        <pre className="mb-2 max-h-48 overflow-auto rounded bg-muted p-1 wrap-break-word whitespace-pre-wrap">
-{diff ?? safeStringify(item.input)}
-        </pre>
+        <div className="mb-2">
+          <ToolBody blocks={request} />
+        </div>
         <div className="flex gap-2">
           <Button size="sm" disabled aria-label={`Deny ${item.name} (unavailable)`}>Deny</Button>
           <Button variant="outline" size="sm" disabled aria-label={`Allow ${item.name} (unavailable)`}>Allow</Button>
@@ -120,19 +103,9 @@ export function PermissionCard({
         <span className="font-medium">Allow {item.name}?</span>
         <span className="truncate text-muted-foreground" title={cwd}>{folderName(cwd)}</span>
       </div>
-      <pre className="mb-2 max-h-48 overflow-auto rounded bg-muted p-1 wrap-break-word whitespace-pre-wrap">
-        {(diff ?? safeStringify(item.input)).split('\n').map((line, i) => (
-          <div
-            key={i}
-            className={cn(
-              line.startsWith('+') && 'text-(--vscode-gitDecoration-addedResourceForeground)',
-              line.startsWith('-') && 'text-(--vscode-gitDecoration-deletedResourceForeground)',
-            )}
-          >
-            {line}
-          </div>
-        ))}
-      </pre>
+      <div className="mb-2">
+        <ToolBody blocks={request} />
+      </div>
       {/* Deny is the safe, reversible-feeling choice: it comes first in DOM
           and tab order, and Allow — the consequential, irreversible-feeling
           action — is deliberately not styled with solid-primary emphasis,
