@@ -309,6 +309,23 @@ suite("Composer", () => {
     assert.deepStrictEqual(posted().at(-1), { t: "set-model", id: "a", model: "fake-small" });
   });
 
+  test("a session persisted on a wire id shows the alias row's label, not the raw id", () => {
+    const alias = { id: "opus", displayName: "Opus (1M context)", resolvedModel: "claude-opus-5" };
+    renderWithStore(
+      <Composer
+        pane={{ ...pane(), summary: summary("a", { model: "claude-opus-5" }) }}
+        model={alias}
+        models={[alias]}
+      />,
+    );
+
+    const trigger = screen.getByLabelText("Model");
+    assert.ok(
+      /Opus \(1M context\)/.test(trigger.textContent ?? ""),
+      `expected the row label, got ${JSON.stringify(trigger.textContent)}`,
+    );
+  });
+
   test("the model control is disabled once the session has started, with a reason for assistive tech", () => {
     renderApp();
     hydrate({ items: [{ id: "u1", ts: 1, role: "user", text: "hi" }] });

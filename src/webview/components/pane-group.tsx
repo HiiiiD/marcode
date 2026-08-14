@@ -6,6 +6,7 @@ import { Fragment, useEffect, useRef, useState } from "react";
 // per-file CJS/ESM interop check rejects it outright (TS1541) — see the
 // similar note on the value import in the vendored resizable.tsx.
 import type { Layout, LayoutChangedMeta } from "react-resizable-panels" with { "resolution-mode": "import" };
+import { findModel } from "../../shared/model-catalog";
 import { useStore } from "../store";
 import { Composer } from "./composer";
 import { accessibleTitles, rosterSessionIds, visiblePanes } from "./pane-layout";
@@ -149,7 +150,7 @@ export function PaneGroup({ narrow }: PaneGroupProps) {
         {panes.map((pane, index) => {
           const paneState = state.byId[pane.sessionId];
           const provider = state.catalog.find((p) => p.id === paneState.summary.providerId);
-          const model = provider?.models.find((m) => m.id === paneState.summary.model);
+          const model = findModel(provider?.models ?? [], paneState.summary.model);
           return (
             <Fragment key={pane.sessionId}>
               {index > 0 && (

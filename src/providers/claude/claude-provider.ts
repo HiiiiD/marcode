@@ -157,6 +157,7 @@ const FALLBACK_MODELS: ModelInfo[] = [
 type SdkModelInfo = {
   value: string;
   displayName: string;
+  resolvedModel?: string;
   supportsEffort?: boolean;
   supportedEffortLevels?: EffortLevel[];
 };
@@ -171,7 +172,13 @@ function toModelInfo(m: SdkModelInfo): ModelInfo {
   const effort = m.supportsEffort && levels.length > 0
     ? { levels, default: levels.includes('high') ? 'high' as const : levels[levels.length - 1] }
     : undefined;
-  return { id: m.value, displayName: m.displayName, effort };
+  return {
+    id: m.value, displayName: m.displayName,
+    ...(m.resolvedModel !== undefined && m.resolvedModel !== m.value
+      ? { resolvedModel: m.resolvedModel }
+      : {}),
+    effort,
+  };
 }
 
 /**

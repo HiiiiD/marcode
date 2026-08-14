@@ -346,7 +346,11 @@ export function Composer({
 
           <Select
             items={models.map((m) => ({ value: m.id, label: m.displayName }))}
-            value={pane.summary.model}
+            // The row's id, not the session's: a session persisted under a
+            // wire id (`claude-opus-5`) is served by the alias row that
+            // covers it (`opus`), and a value matching no item leaves the
+            // trigger rendering the raw id instead of the label.
+            value={model?.id ?? pane.summary.model}
             onValueChange={(value) => post({ t: "set-model", id: pane.summary.id, model: value as string })}
           >
             <SelectTrigger
@@ -366,7 +370,12 @@ export function Composer({
             >
               <SelectValue className="truncate" />
             </SelectTrigger>
-            <SelectContent>
+            {/* The popup defaults to the trigger's width with the overflow
+                hidden, and this trigger shrinks to fit a 300px sidebar — so
+                a name like "Default (recommended)" gets cut mid-word. Size
+                to the content instead, floored at the trigger and capped at
+                what the viewport actually has. */}
+            <SelectContent className="w-auto min-w-(--anchor-width) max-w-(--available-width)">
               {models.map((m) => (
                 <SelectItem key={m.id} value={m.id}>
                   {m.displayName}

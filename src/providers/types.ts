@@ -11,6 +11,13 @@ export type PermissionMode = 'default' | 'acceptEdits' | 'plan' | 'dontAsk' | 'b
 export interface ModelInfo {
   id: string;
   displayName: string;
+  /**
+   * The canonical wire id this row resolves to, when the row is an alias
+   * (`opus` -> `claude-opus-5`). Absent when `id` is already canonical. This
+   * is what lets a session persisted under a wire id find the alias row that
+   * covers it — see `findModel` in src/shared/model-catalog.ts.
+   */
+  resolvedModel?: string;
   /** Absent when the model has no effort control. */
   effort?: { levels: EffortLevel[]; default: EffortLevel };
 }

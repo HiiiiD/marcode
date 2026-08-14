@@ -456,6 +456,23 @@ suite('ClaudeProvider mcpServerStatus pull', () => {
     assert.strictEqual(closed, true, 'the probe query must not outlive the answer');
   });
 
+  test('fetchModels carries the wire id an alias row resolves to, and drops it when redundant', async () => {
+    const provider = providerWithModels([
+      { value: 'opus', displayName: 'Opus', description: '', resolvedModel: 'claude-opus-5' },
+      {
+        value: 'claude-sonnet-5', displayName: 'Sonnet', description: '',
+        resolvedModel: 'claude-sonnet-5',
+      },
+    ]);
+
+    const [alias, exact] = await provider.fetchModels('/repo');
+
+    assert.strictEqual(alias.resolvedModel, 'claude-opus-5',
+      'a session persisted on the wire id has to be able to find this row');
+    assert.strictEqual('resolvedModel' in exact, false,
+      'a row that resolves to its own id has nothing to reconcile');
+  });
+
   test('fetchModels defaults effort to the deepest level a model offers when it has no high', async () => {
     const provider = providerWithModels([
       {

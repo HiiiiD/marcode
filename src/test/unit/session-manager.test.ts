@@ -592,6 +592,30 @@ suite('SessionManager', () => {
     await m.dispose();
   });
 
+  test('create resolves a requested wire id onto the alias row covering it', async () => {
+    const aliasProvider: AgentProvider = {
+      id: 'claude', displayName: 'Claude',
+      listModels: () => [
+        { id: 'opus', displayName: 'Opus', resolvedModel: 'claude-opus-5',
+          effort: { levels: ['low', 'high'], default: 'high' } },
+      ],
+      // create() materializes an AgentSession, which starts a run — delegate
+      // to the FakeProvider rather than reimplementing AgentRun here.
+      start: (opts) => new FakeProvider(() => []).start(opts),
+    };
+    const m = new SessionManager(
+      new TranscriptStore(dir), new Map([['claude', aliasProvider]]), () => {},
+    );
+    await m.init();
+
+    const session = await m.create('claude', '/repo', 'claude-opus-5', 'low');
+
+    assert.strictEqual(session.state.model, 'opus',
+      'a session pinned to a wire id must land on the row the picker renders');
+    assert.strictEqual(session.state.effort, 'low');
+    await m.dispose();
+  });
+
   test('refreshModels emits nothing when no provider can answer', async () => {
     const emitted: HostToWebview[] = [];
     const m = new SessionManager(new TranscriptStore(dir), providers, (msg) => emitted.push(msg));
