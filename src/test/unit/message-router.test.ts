@@ -214,4 +214,70 @@ suite('MessageRouter', () => {
     assert.ok(session);
     assert.strictEqual((await session!.snapshot()).model, 'fake-small');
   });
+
+  test('send attaches the tracked context when the session opts in', async () => {
+    const ctx = { path: 'src/a.ts', languageId: 'typescript' };
+    const fake = new FakeProvider(() => [{ kind: 'turn-end', reason: 'done' }]);
+    const providers = new Map<string, AgentProvider>([['fake', fake]]);
+    const mgr = new SessionManager(new TranscriptStore(dir), providers, (m) => sent.push(m));
+    await mgr.init();
+    const r = new MessageRouter(mgr, (m) => sent.push(m), '/tmp', {
+      current: () => ctx,
+      reveal: () => {},
+    });
+
+    const session = await mgr.create('fake', '/tmp');
+    await r.handle({ t: 'send', id: session.state.id, text: 'hi' });
+    await settle();
+
+    assert.deepStrictEqual(fake.sent[0], { text: 'hi', context: ctx });
+    await mgr.dispose();
+  });
+
+  test('send attaches nothing when the session has opted out', async () => {
+    const fake = new FakeProvider(() => [{ kind: 'turn-end', reason: 'done' }]);
+    const providers = new Map<string, AgentProvider>([['fake', fake]]);
+    const mgr = new SessionManager(new TranscriptStore(dir), providers, (m) => sent.push(m));
+    await mgr.init();
+    const r = new MessageRouter(mgr, (m) => sent.push(m), '/tmp', {
+      current: () => ({ path: 'src/a.ts', languageId: 'typescript' }),
+      reveal: () => {},
+    });
+
+    const session = await mgr.create('fake', '/tmp');
+    await r.handle({ t: 'set-include-context', id: session.state.id, on: false });
+    await r.handle({ t: 'send', id: session.state.id, text: 'hi' });
+    await settle();
+
+    assert.deepStrictEqual(fake.sent[0], { text: 'hi', context: undefined });
+    assert.strictEqual(session.state.includeEditorContext, false);
+    await mgr.dispose();
+  });
+
+  test('reveal-file reaches the editor host', async () => {
+    const calls: { path: string; startLine?: number }[] = [];
+    const r = new MessageRouter(manager, (m) => sent.push(m), '/tmp', {
+      current: () => null,
+      reveal: (path, startLine) => calls.push({ path, startLine }),
+    });
+
+    await r.handle({ t: 'reveal-file', path: 'src/a.ts', startLine: 12 });
+
+    assert.deepStrictEqual(calls, [{ path: 'src/a.ts', startLine: 12 }]);
+  });
+
+  test('ready emits the current editor context', async () => {
+    const ctx = { path: 'src/a.ts', languageId: 'typescript' };
+    const r = new MessageRouter(manager, (m) => sent.push(m), '/tmp', {
+      current: () => ctx,
+      reveal: () => {},
+    });
+
+    await r.handle({ t: 'ready' });
+
+    const msg = sent.find((m) => m.t === 'editor-context') as
+      Extract<HostToWebview, { t: 'editor-context' }>;
+    assert.ok(msg);
+    assert.deepStrictEqual(msg.ctx, ctx);
+  });
 });

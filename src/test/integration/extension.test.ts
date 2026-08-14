@@ -1,6 +1,7 @@
 import * as assert from 'assert';
 import * as vscode from 'vscode';
 import { PanelViewProvider } from '../../host/panel-view-provider';
+import type { EditorContextHost } from '../../host/message-router';
 import type { SessionManager } from '../../host/session-manager';
 
 suite('extension', () => {
@@ -32,22 +33,23 @@ suite('PanelViewProvider CSP', () => {
   // render() never touches the manager; these tests exercise only HTML
   // generation, so an untyped stub is sufficient.
   const managerStub = {} as unknown as SessionManager;
+  const editorStub: EditorContextHost = { current: () => null, reveal: () => {} };
 
   test('CSP contains default-src none', () => {
-    const provider = new PanelViewProvider(extensionUri, managerStub, '/tmp');
+    const provider = new PanelViewProvider(extensionUri, managerStub, '/tmp', editorStub);
     const html = provider.render(makeWebviewStub());
     assert.match(html, /default-src 'none'/);
   });
 
   test('CSP does not contain unsafe-inline or unsafe-eval', () => {
-    const provider = new PanelViewProvider(extensionUri, managerStub, '/tmp');
+    const provider = new PanelViewProvider(extensionUri, managerStub, '/tmp', editorStub);
     const html = provider.render(makeWebviewStub());
     assert.ok(!html.includes('unsafe-inline'), 'CSP should not contain unsafe-inline');
     assert.ok(!html.includes('unsafe-eval'), 'CSP should not contain unsafe-eval');
   });
 
   test('nonce in the CSP meta tag matches the nonce on the script tag', () => {
-    const provider = new PanelViewProvider(extensionUri, managerStub, '/tmp');
+    const provider = new PanelViewProvider(extensionUri, managerStub, '/tmp', editorStub);
     const html = provider.render(makeWebviewStub());
 
     const cspMatch = html.match(/Content-Security-Policy" content="[^"]*script-src 'nonce-([^']+)'/);
@@ -59,7 +61,7 @@ suite('PanelViewProvider CSP', () => {
   });
 
   test('two separate renders produce different nonces', () => {
-    const provider = new PanelViewProvider(extensionUri, managerStub, '/tmp');
+    const provider = new PanelViewProvider(extensionUri, managerStub, '/tmp', editorStub);
     const first = provider.render(makeWebviewStub());
     const second = provider.render(makeWebviewStub());
 
