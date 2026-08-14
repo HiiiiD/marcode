@@ -194,6 +194,53 @@ suite('ClaudeProvider (lazy start)', () => {
     await run.dispose();
   });
 
+  test('the query omits effort when the catalog says the model has no effort control', async () => {
+    // Belt-and-braces at the wire boundary: the host reconciles effort against
+    // the model it is switching to, but a session persisted before a catalog
+    // change can still be resumed carrying an effort its model cannot take.
+    const fake = fakeLoadQuery();
+    const provider = new ClaudeProvider(fake.load as never);
+    const run = provider.start({
+      cwd: '/tmp', model: 'haiku', effort: 'max', permissionMode: 'default',
+    });
+
+    run.send('go');
+    await flushMicrotasks();
+
+    assert.strictEqual(fake.calls.length, 1);
+    assert.strictEqual('effort' in fake.calls[0].options, false, 'haiku has no effort row');
+    await run.dispose();
+  });
+
+  test('the query keeps an effort the model does support', async () => {
+    const fake = fakeLoadQuery();
+    const provider = new ClaudeProvider(fake.load as never);
+    const run = provider.start({
+      cwd: '/tmp', model: 'claude-opus-5', effort: 'low', permissionMode: 'default',
+    });
+
+    run.send('go');
+    await flushMicrotasks();
+
+    assert.strictEqual(fake.calls[0].options.effort, 'low');
+    await run.dispose();
+  });
+
+  test('an effort on a model the catalog does not list is passed through untouched', async () => {
+    // No row means no opinion: the CLI is the authority on ids we do not know.
+    const fake = fakeLoadQuery();
+    const provider = new ClaudeProvider(fake.load as never);
+    const run = provider.start({
+      cwd: '/tmp', model: 'some-future-model', effort: 'max', permissionMode: 'default',
+    });
+
+    run.send('go');
+    await flushMicrotasks();
+
+    assert.strictEqual(fake.calls[0].options.effort, 'max');
+    await run.dispose();
+  });
+
   test('setEffort()/interrupt() before send() do not construct a query either', async () => {
     const fake = fakeLoadQuery();
     const provider = new ClaudeProvider(fake.load as never);

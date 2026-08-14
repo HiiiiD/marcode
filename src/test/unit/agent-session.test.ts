@@ -375,6 +375,70 @@ suite('AgentSession', () => {
     await session.dispose();
   });
 
+  test('setModel() to a model with no effort control drops the effort', async () => {
+    const provider = new FakeProvider(() => []);
+    const session = new AgentSession(baseState(), provider, store, sink);
+
+    session.setModel('fake-small');
+
+    assert.strictEqual(session.state.effort, undefined);
+    assert.strictEqual((await session.snapshot()).effort, undefined);
+    await session.dispose();
+  });
+
+  test('setModel() clamps an effort the new model does not offer to its default', async () => {
+    const provider = new FakeProvider(() => []);
+    const session = new AgentSession(
+      { ...baseState(), model: 'fake-small', effort: 'max' }, provider, store, sink,
+    );
+
+    session.setModel('fake-large');
+
+    assert.strictEqual(session.state.effort, 'medium', 'fake-large offers low/medium/high');
+    await session.dispose();
+  });
+
+  test('setModel() before the first send pushes the reconciled effort to the run', async () => {
+    // The provider builds its query on the first send(), from whatever effort
+    // it was last told — so a pre-send reconciliation has to reach it, or the
+    // query starts on an effort the chosen model cannot take.
+    const provider = new FakeProvider(() => []);
+    const session = new AgentSession(baseState(), provider, store, sink);
+
+    session.setModel('fake-small');
+
+    assert.deepStrictEqual(provider.efforts, [], 'no effort to send: fake-small has none');
+
+    session.setModel('fake-large');
+    assert.deepStrictEqual(provider.efforts, ['medium']);
+    await session.dispose();
+  });
+
+  test('setModel() after the first send does not push effort at the running query', async () => {
+    // The model change itself is already a no-op on a running query, so
+    // applying its effort would change the effort of the *old* model.
+    const provider = new FakeProvider(() => [{ kind: 'turn-end', reason: 'done' }]);
+    const session = new AgentSession(baseState(), provider, store, sink);
+
+    session.send('go');
+    await settle();
+    session.setModel('fake-small');
+
+    assert.strictEqual(session.state.effort, undefined, 'state still records the choice');
+    assert.deepStrictEqual(provider.efforts, []);
+    await session.dispose();
+  });
+
+  test('setModel() on a provider reporting no catalog keeps the current effort', async () => {
+    const provider = new ThrowingProvider({});
+    const session = new AgentSession(baseState(), provider, store, sink);
+
+    session.setModel('mystery');
+
+    assert.strictEqual(session.state.effort, 'medium');
+    await session.dispose();
+  });
+
   test('setModel() on a throwing provider does not throw and settles the session into error', async () => {
     const provider = new ThrowingProvider({ throwOnSetModel: true });
     const session = new AgentSession(baseState(), provider, store, sink);

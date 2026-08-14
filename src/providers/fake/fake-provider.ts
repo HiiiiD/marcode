@@ -60,6 +60,8 @@ export class FakeProvider implements AgentProvider {
   readonly permissionModes: PermissionMode[] = [];
   /** Records every model passed to setModel, for assertions. */
   readonly models: string[] = [];
+  /** Records every level passed to setEffort, for assertions. */
+  readonly efforts: EffortLevel[] = [];
   /**
    * Every run started by this provider, newest last. A real provider emits
    * events without the user having sent anything; tests need a handle to
@@ -114,7 +116,7 @@ export class FakeProvider implements AgentProvider {
         // fake provider — the status dot is stuck at 'running' forever.
         channel.push({ kind: 'turn-end', reason: 'done' });
       },
-      setEffort: (_effort: EffortLevel) => { /* recorded by tests via lastEffort if needed */ },
+      setEffort: (effort: EffortLevel) => { this.efforts.push(effort); },
       setPermissionMode: (mode: PermissionMode) => { this.permissionModes.push(mode); },
       setModel: (model: string) => { this.models.push(model); },
       interrupt: async () => { channel.push({ kind: 'turn-end', reason: 'interrupted' }); },

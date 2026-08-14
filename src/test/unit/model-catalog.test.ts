@@ -1,6 +1,6 @@
 import * as assert from 'assert';
 import type { ModelInfo } from '../../providers/types';
-import { findModel } from '../../shared/model-catalog';
+import { findModel, resolveEffort } from '../../shared/model-catalog';
 
 const MODELS: ModelInfo[] = [
   { id: 'default', displayName: 'Default (recommended)', resolvedModel: 'claude-opus-5' },
@@ -37,5 +37,37 @@ suite('findModel', () => {
     assert.strictEqual(findModel(MODELS, 'gpt-9'), undefined);
     assert.strictEqual(findModel(MODELS, undefined), undefined);
     assert.strictEqual(findModel([], 'fable'), undefined);
+  });
+});
+
+const WITH_EFFORT: ModelInfo = {
+  id: 'opus', displayName: 'Opus',
+  effort: { levels: ['low', 'medium', 'high'], default: 'medium' },
+};
+const WITHOUT_EFFORT: ModelInfo = { id: 'haiku', displayName: 'Haiku' };
+
+suite('resolveEffort', () => {
+  test('keeps a level the model supports', () => {
+    assert.strictEqual(resolveEffort(WITH_EFFORT, 'low'), 'low');
+  });
+
+  test('falls back to the model default for a level it does not offer', () => {
+    assert.strictEqual(resolveEffort(WITH_EFFORT, 'max'), 'medium');
+  });
+
+  test('falls back to the model default when nothing is requested', () => {
+    assert.strictEqual(resolveEffort(WITH_EFFORT, undefined), 'medium');
+  });
+
+  test('a model with no effort control resolves to no effort at all', () => {
+    assert.strictEqual(resolveEffort(WITHOUT_EFFORT, 'high'), undefined);
+    assert.strictEqual(resolveEffort(WITHOUT_EFFORT, undefined), undefined);
+  });
+
+  test('an unknown row leaves the requested level untouched', () => {
+    // No row means no opinion — a catalog that has not loaded yet, or a
+    // provider that reports none, must not silently wipe a real choice.
+    assert.strictEqual(resolveEffort(undefined, 'high'), 'high');
+    assert.strictEqual(resolveEffort(undefined, undefined), undefined);
   });
 });

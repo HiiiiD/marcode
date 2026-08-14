@@ -116,6 +116,7 @@ import type {
   PermissionMode as SdkPermissionMode,
   SDKUserMessage,
 } from '@anthropic-ai/claude-agent-sdk' with { 'resolution-mode': 'import' };
+import { findModel, resolveEffort } from '../../shared/model-catalog';
 import { formatEditorContext } from '../format-editor-context';
 import type {
   AgentEvent, AgentProvider, AgentRun,
@@ -359,18 +360,25 @@ export class ClaudeProvider implements AgentProvider {
         : { behavior: 'deny', message: decision.reason ?? 'Denied by user' };
     };
 
-    function buildOptions(): Options {
+    const buildOptions = (): Options => {
       const isBypassMode = pendingMode === 'bypass';
+      // Effort is reconciled here as well as in the host (AgentSession.setModel)
+      // because this is where it actually reaches the CLI: a session persisted
+      // before a catalog change can be resumed carrying an effort its model no
+      // longer takes, and that value never passes through a setter on the way
+      // in. An id the catalog does not list keeps whatever it was given — the
+      // CLI is the authority on models this build has never heard of.
+      const effort = resolveEffort(findModel(this.listModels(), pendingModel), pendingEffort);
       return {
         cwd: opts.cwd,
         model: pendingModel,
         resume: opts.resumeToken,
         permissionMode: PERMISSION_MODE[pendingMode],
         canUseTool,
-        ...(pendingEffort !== undefined ? { effort: pendingEffort } : {}),
+        ...(effort !== undefined ? { effort } : {}),
         ...(isBypassMode ? { allowDangerouslySkipPermissions: true } : {}),
       };
-    }
+    };
 
     // Constructs the SDK query exactly once, on the first send(). Never
     // called from interrupt()/setEffort()/setPermissionMode()/dispose() —

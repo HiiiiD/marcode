@@ -1,4 +1,4 @@
-import type { ModelInfo } from '../providers/types';
+import type { EffortLevel, ModelInfo } from '../providers/types';
 
 /**
  * The catalog row covering `id`, or undefined.
@@ -22,4 +22,28 @@ import type { ModelInfo } from '../providers/types';
 export function findModel(models: ModelInfo[], id: string | undefined): ModelInfo | undefined {
   if (id === undefined) { return undefined; }
   return models.find((m) => m.id === id) ?? models.find((m) => m.resolvedModel === id);
+}
+
+/**
+ * The effort a session on `model` should actually be running at, given what
+ * it was asking for.
+ *
+ * Effort is a property of the model, not of the session: a model with no
+ * effort control takes none at all, and one that has it only accepts the
+ * levels it publishes. Every place a session's model is chosen — creation,
+ * and a switch before the first message — has to reconcile the two, or a
+ * session ends up carrying an effort its model cannot take (and the composer,
+ * which hangs its control off the model row, shows no way to fix it).
+ *
+ * An absent row means no opinion, not "no effort": a catalog that has not
+ * loaded yet, or an id only the backend knows, must not wipe a real choice.
+ */
+export function resolveEffort(
+  model: ModelInfo | undefined, requested: EffortLevel | undefined,
+): EffortLevel | undefined {
+  if (!model) { return requested; }
+  if (!model.effort) { return undefined; }
+  return requested && model.effort.levels.includes(requested)
+    ? requested
+    : model.effort.default;
 }

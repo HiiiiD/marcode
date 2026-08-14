@@ -2,7 +2,7 @@ import { AgentSession, type SessionSink } from './agent-session';
 import { catalogKey, CatalogService } from './catalog-service';
 import type { StoredIndex, TranscriptStore } from './transcript-store';
 import type { AgentProvider, EffortLevel, Invocable } from '../providers/types';
-import { findModel } from '../shared/model-catalog';
+import { findModel, resolveEffort } from '../shared/model-catalog';
 import type {
   HostToWebview, McpServerStatus, PaneLayout, ProviderInfo, SessionId, SessionState,
   SessionStatus, SessionSummary, TranscriptPatch,
@@ -157,9 +157,7 @@ export class SessionManager implements SessionSink {
 
     const models = provider.listModels();
     const chosen = findModel(models, model) ?? models[0];
-    const resolvedEffort = chosen.effort
-      ? (effort && chosen.effort.levels.includes(effort) ? effort : chosen.effort.default)
-      : undefined;
+    const resolvedEffort = resolveEffort(chosen, effort);
 
     const now = Date.now();
     const state: SessionState = {
