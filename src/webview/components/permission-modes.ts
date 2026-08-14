@@ -1,4 +1,4 @@
-import { FilePen, Hand, Map, ShieldBan, Zap, type LucideIcon } from "lucide-react";
+import { FilePen, Hand, Map, ShieldBan, Sparkles, Zap, type LucideIcon } from "lucide-react";
 import type { PermissionMode } from "../../protocol/messages";
 
 /**
@@ -25,6 +25,12 @@ export const MODES: {
     label: "Auto-edit",
     description: "File edits apply on their own. Everything else still asks.",
     icon: FilePen,
+  },
+  {
+    value: "auto",
+    label: "Auto",
+    description: "The agent judges each call and only asks about the risky ones.",
+    icon: Sparkles,
   },
   {
     value: "plan",

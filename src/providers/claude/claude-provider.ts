@@ -195,6 +195,7 @@ function toModelInfo(m: SdkModelInfo): ModelInfo {
 const PERMISSION_MODE: Record<PermissionMode, SdkPermissionMode> = {
   default: 'default',
   acceptEdits: 'acceptEdits',
+  auto: 'auto',
   plan: 'plan',
   dontAsk: 'dontAsk',
   bypass: 'bypassPermissions',
