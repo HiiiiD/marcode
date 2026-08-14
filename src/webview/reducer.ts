@@ -36,6 +36,15 @@ export interface ClientState {
    * invent a value.
    */
   usageByProvider: Record<string, UsageWindow[] | undefined>;
+  /**
+   * The session whose pane last held focus — client-local, never sent to the
+   * host and never persisted. It answers "which session is the user actually
+   * working in", which is what a new session inherits its provider, model,
+   * effort and permission mode from, and what the split renders its active
+   * ring on. `null` until something in a pane has been focused, which is the
+   * honest answer on a fresh load: nothing has been worked in yet.
+   */
+  focusedSessionId: SessionId | null;
 }
 
 export const initialState: ClientState = {
@@ -47,6 +56,7 @@ export const initialState: ClientState = {
   editorContext: null,
   contextBySession: {},
   usageByProvider: {},
+  focusedSessionId: null,
 };
 
 /**
@@ -59,12 +69,19 @@ export const initialState: ClientState = {
  * persisting exactly the value computed here, so there's nothing to
  * reconcile against later.
  */
-export type ClientAction = HostToWebview | { t: 'local-layout'; layout: PaneLayout };
+export type ClientAction =
+  | HostToWebview
+  | { t: 'local-layout'; layout: PaneLayout }
+  /** Focus landed somewhere inside `id`'s pane. Client-local; see `focusedSessionId`. */
+  | { t: 'local-focus'; id: SessionId };
 
 export function reduce(state: ClientState, msg: ClientAction): ClientState {
   switch (msg.t) {
     case 'local-layout':
       return { ...state, layout: msg.layout };
+
+    case 'local-focus':
+      return state.focusedSessionId === msg.id ? state : { ...state, focusedSessionId: msg.id };
 
     case 'hydrate': {
       const byId: Record<SessionId, PaneState> = {};
@@ -89,6 +106,10 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
         // the message rather than carried forward like `editorContext`.
         editorContext: state.editorContext,
         contextBySession: {}, usageByProvider: msg.usage,
+        // Not carried forward: focus is a fact about the rendered panes, and
+        // hydrate rebuilds them. A stale id would let `+ New` inherit from a
+        // session this hydrate may not even contain.
+        focusedSessionId: null,
       };
     }
 

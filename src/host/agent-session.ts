@@ -81,6 +81,12 @@ export class AgentSession {
    * An archived session reports none, because there is no run to ask.
    */
   private mcpServers: McpServerStatus[] = [];
+  /**
+   * How many transcript items this run has appended. Counted here rather
+   * than read back from the store so `isEmpty` stays synchronous and needs
+   * no disk read on the close path.
+   */
+  private appended = 0;
 
   constructor(
     private readonly _state: SessionState,
@@ -99,6 +105,15 @@ export class AgentSession {
   }
 
   get state(): SessionState { return this._state; }
+
+  /**
+   * Nothing has been appended by *this* run. A run revived by
+   * `SessionManager.open()` starts at zero even though the store holds the
+   * earlier transcript, so this is only an answer about the live run — the
+   * manager pairs it with the persisted transcript before concluding a
+   * session is genuinely empty.
+   */
+  get isEmpty(): boolean { return this.appended === 0; }
 
   send(text: string, context?: EditorContext): void {
     if (this._state.title === 'Untitled' && text.trim().length > 0) {
@@ -262,12 +277,11 @@ export class AgentSession {
       throw new Error('This provider does not report context usage');
     }
     const breakdown = await this.run.contextBreakdown();
-    this.rememberMemoryFiles(breakdown);
-    // The ring, its danger threshold and the popover header must all be the
-    // same measurement — a destructive 86% ring beside a "50% used" header is
-    // two numbers claiming to be one thing. We have just paid for a fresh
-    // breakdown, so the pushed value is updated from it here rather than left
-    // to drift until the next turn-end.
+    // A live answer supersedes whatever the last turn recorded, so the cache
+    // a reloaded window will read is updated from it — and so is the pushed
+    // percentage, because the ring, its danger threshold and the popover
+    // header must all be the same measurement. A destructive 86% ring beside
+    // a "50% used" header is two numbers claiming to be one thing.
     this.applyContextPercent(breakdown);
     return breakdown;
   }
@@ -305,15 +319,25 @@ export class AgentSession {
   }
 
   /**
-   * The one place `contextPercent` is written, so the ring, its danger
-   * threshold and the popover header — everything downstream of that field —
-   * are always the same measurement as of the breakdown that produced it.
+   * The one place `contextPercent` and `lastContext` are written, so the
+   * ring, its danger threshold and the popover header — everything
+   * downstream of those fields — are always the same measurement as of the
+   * breakdown that produced it.
    */
   private applyContextPercent(breakdown: ContextBreakdown): void {
     if (this.disposed) { return; }
+    this.rememberMemoryFiles(breakdown);
     const next = Math.round(100 - breakdown.freePercent);
-    if (this._state.contextPercent === next) { return; }
+    // The percentage can be unchanged while the inventory behind it is not —
+    // one memory file added and another dropped, say — and the stored
+    // breakdown is what a reloaded window answers `request-context` from. So
+    // the guard covers both, and `changed()` (which is what schedules the
+    // write to index.json) fires whenever either moved.
+    const same = this._state.contextPercent === next
+      && JSON.stringify(this._state.lastContext) === JSON.stringify(breakdown);
+    if (same) { return; }
     this._state.contextPercent = next;
+    this._state.lastContext = breakdown;
     this._state.updatedAt = Date.now();
     this.sink.changed();
   }
@@ -539,6 +563,7 @@ export class AgentSession {
   }
 
   private appendItem(item: TranscriptItem): void {
+    this.appended++;
     this.store.append(this._state.id, item);
     this._state.updatedAt = Date.now();
     this.sink.patch(this._state.id, { op: 'append', item });

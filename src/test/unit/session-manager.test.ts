@@ -72,6 +72,16 @@ suite('SessionManager', () => {
     assert.ok(sent.some((m) => m.t === 'sessions-changed'));
   });
 
+  test('create honors a requested permission mode', async () => {
+    const session = await manager.create('fake', '/tmp', undefined, undefined, 'plan');
+    assert.strictEqual(session.state.permissionMode, 'plan');
+  });
+
+  test('create defaults the permission mode when none is requested', async () => {
+    const session = await manager.create('fake', '/tmp');
+    assert.strictEqual(session.state.permissionMode, 'default');
+  });
+
   test('patches reach visible sessions only', async () => {
     const a = await manager.create('fake', '/tmp');
     const b = await manager.create('fake', '/tmp');
@@ -155,6 +165,12 @@ suite('SessionManager', () => {
     // not be emitted after the newer call has replayed its buffered patches.
     const a = await manager.create('fake', '/tmp');
     const id = a.state.id;
+    // Used, not fresh: this test unchecks the session mid-reveal, and an
+    // unused one is discarded outright on hide (see 'hiding an unused
+    // session discards it'). The buffering semantics under test are the
+    // same either way.
+    a.send('warm up');
+    await settle();
     sent.length = 0;
 
     const realTail = store.tail.bind(store);
@@ -214,6 +230,10 @@ suite('SessionManager', () => {
     // snapshot and drain fetch #3's buffer — the clobber, via ABA.
     const a = await manager.create('fake', '/tmp');
     const id = a.state.id;
+    // See the re-entrant test above: hiding an unused session discards it,
+    // so this one is given a transcript before it is unchecked.
+    a.send('warm up');
+    await settle();
     sent.length = 0;
 
     const realTail = store.tail.bind(store);
@@ -338,9 +358,82 @@ suite('SessionManager', () => {
     await fresh.dispose();
   });
 
+  test('close discards an untitled session with an empty transcript', async () => {
+    const a = await manager.create('fake', '/tmp');
+    const id = a.state.id;
+
+    await manager.close(id);
+
+    assert.strictEqual(manager.get(id), undefined, 'discarded session is not live');
+    assert.strictEqual(
+      manager.summaries().find((s) => s.id === id), undefined,
+      'an unused session must leave the roster, not linger as an archived row',
+    );
+  });
+
+  test('hiding an unused session discards it, like close does', async () => {
+    // The pane header's X and the roster checkbox only post set-layout /
+    // set-visible — never close-session — so the discard rule has to hold
+    // here too or the roster fills with 'Untitled' rows.
+    const id = (await manager.create('fake', '/tmp')).state.id;
+    await manager.setVisible([id]);
+
+    await manager.setVisible([]);
+
+    assert.strictEqual(manager.get(id), undefined, 'hidden unused session is not live');
+    assert.strictEqual(manager.summaries().find((s) => s.id === id), undefined);
+  });
+
+  test('hiding a used session only hides it', async () => {
+    const a = await manager.create('fake', '/tmp');
+    const id = a.state.id;
+    await manager.setVisible([id]);
+    a.send('hello');
+    await settle();
+
+    await manager.setVisible([]);
+
+    assert.strictEqual(manager.summaries().find((s) => s.id === id)?.archived, false,
+      'a session with a transcript stays in the roster, unarchived');
+  });
+
+  test('close keeps a session whose only item is an error, despite the Untitled title', async () => {
+    // The title is only stamped by send(), so a session that failed before
+    // any message still reads 'Untitled' — but its error item is the only
+    // record of what went wrong.
+    const { manager: m, provider } = await makeManager();
+    const id = (await m.create('fake', '/tmp')).state.id;
+    provider.runs[0].emit({ kind: 'turn-end', reason: 'error', error: 'boom' });
+    await settle();
+
+    await m.close(id);
+
+    assert.strictEqual(m.summaries().find((s) => s.id === id)?.archived, true);
+  });
+
+  test('close keeps a session revived by open(), whose items live only on disk', async () => {
+    // open() builds a fresh run whose own item count starts at zero, so the
+    // decision must consult the persisted transcript too.
+    const a = await manager.create('fake', '/tmp');
+    const id = a.state.id;
+    a.send('hello');
+    await settle();
+    await manager.close(id);
+    await manager.open(id);
+
+    await manager.close(id);
+
+    assert.ok(
+      manager.summaries().find((s) => s.id === id),
+      'a session with a stored transcript must survive close, however it was revived',
+    );
+  });
+
   test('open revives an archived session as live', async () => {
     const a = await manager.create('fake', '/tmp');
     const id = a.state.id;
+    a.send('hello');
+    await settle();
     await manager.close(id);
 
     const revived = await manager.open(id);
@@ -373,6 +466,91 @@ suite('SessionManager', () => {
   test('contextBreakdown answers not-ok for an unknown session', async () => {
     const result = await manager.contextBreakdown('nope');
     assert.strictEqual(result.ok, false);
+  });
+
+  /**
+   * The persisted breakdown, as index.json would hold it after a turn ended
+   * in a previous window. Lives on SessionState, so it survives a reload the
+   * same way `contextPercent` already does.
+   */
+  const remembered = {
+    systemPercent: 12, memoryPercent: 4, conversationPercent: 27, freePercent: 57,
+    memoryFiles: [{ path: '/repo/CLAUDE.md', percent: 3 }],
+  };
+
+  function storedSession(over: Partial<SessionState> = {}): SessionState {
+    return {
+      id: 's1', providerId: 'fake', model: 'fake-1', title: 'Restored',
+      cwd: '/tmp', status: 'idle', permissionMode: 'default',
+      includeEditorContext: true, usage: { inputTokens: 0, outputTokens: 0 },
+      contextPercent: 43, lastContext: remembered,
+      archived: false, createdAt: 1, updatedAt: 1, ...over,
+    };
+  }
+
+  test('contextBreakdown falls back to the last persisted breakdown', async () => {
+    // The run is lazy: a session restored from index.json has no live query
+    // until its next send, so asking the provider fails. The conversation
+    // has not changed since it was written, which makes the recorded
+    // breakdown the current one.
+    const store2 = new TranscriptStore(dir);
+    await store2.writeIndex({
+      sessions: [storedSession()],
+      layout: { orientation: 'vertical', panes: [] },
+    });
+    const local = new SessionManager(
+      store2, new Map([['fake', new FakeProvider(() => [])]]), () => {},
+    );
+    await local.init();
+
+    const result = await local.contextBreakdown('s1');
+
+    if (!result.ok) { assert.fail(result.reason); }
+    assert.deepStrictEqual(result.breakdown, remembered);
+    await local.dispose();
+  });
+
+  test('canOpenFile vouches for a memory file the persisted breakdown listed', async () => {
+    // The popover renders those paths as links, so a breakdown served from
+    // the cache has to be openable — otherwise every link in it is inert.
+    const store2 = new TranscriptStore(dir);
+    await store2.writeIndex({
+      sessions: [storedSession()],
+      layout: { orientation: 'vertical', panes: [] },
+    });
+    const local = new SessionManager(
+      store2, new Map([['fake', new FakeProvider(() => [])]]), () => {},
+    );
+    await local.init();
+
+    assert.strictEqual(local.canOpenFile('s1', '/repo/CLAUDE.md'), true);
+    assert.strictEqual(local.canOpenFile('s1', '/etc/passwd'), false);
+    await local.dispose();
+  });
+
+  test('contextBreakdown answers not-ok when the provider never replies', async () => {
+    // A hung getContextUsage() would otherwise pin the popover in its
+    // loading state for the life of the webview.
+    const base = new FakeProvider(() => []);
+    const provider: AgentProvider = {
+      id: base.id,
+      displayName: base.displayName,
+      listModels: () => base.listModels(),
+      start: (opts) => ({
+        ...base.start(opts),
+        contextBreakdown: () => new Promise<never>(() => {}),
+      }),
+    };
+    const local = new SessionManager(
+      new TranscriptStore(dir), new Map([['fake', provider]]), () => {}, 20,
+    );
+    await local.init();
+    const session = await local.create('fake', '/tmp');
+
+    const result = await local.contextBreakdown(session.state.id);
+
+    assert.strictEqual(result.ok, false);
+    await local.dispose();
   });
 
   test('canOpenFile vouches only for paths the session itself reported', async () => {
@@ -614,6 +792,9 @@ suite('SessionManager', () => {
     provider.invocables = [{ name: 'init' }];
     const session = await manager.create('fake', '/repo');
     const id = session.state.id;
+    // An unused session is discarded by close() rather than archived, so
+    // give it a transcript before archiving it.
+    session.send('hello');
     await settle();
     await manager.close(id);
     emitted.length = 0;
@@ -632,6 +813,7 @@ suite('SessionManager', () => {
     // going through create()/open().
     const a = await manager.create('fake', '/repo');
     const id = a.state.id;
+    a.send('hello');
     await settle();
     await manager.close(id);
     await manager.dispose();

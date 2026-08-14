@@ -201,6 +201,24 @@ suite('webview reducer', () => {
     assert.deepStrictEqual(next.layout.panes, [{ sessionId: 's1', size: 100 }]);
   });
 
+  test('local-focus records which session the user is working in', () => {
+    const next = reduce(withSession('s1'), { t: 'local-focus', id: 's1' });
+    assert.strictEqual(next.focusedSessionId, 's1');
+  });
+
+  test('hydrate clears a focus carried over from the previous render', () => {
+    let state = reduce(withSession('s1'), { t: 'local-focus', id: 's1' });
+    state = reduce(state, {
+      t: 'hydrate',
+      sessions: [summary('s2')],
+      layout: { orientation: 'vertical', panes: [] },
+      snapshots: [snapshot('s2')],
+      catalog: [],
+      usage: {},
+    });
+    assert.strictEqual(state.focusedSessionId, null);
+  });
+
   test('an out-of-contract message is a no-op that returns the same state object', () => {
     const bogus = { t: 'not-a-real-variant' } as unknown as Parameters<typeof reduce>[1];
     const next = reduce(initialState, bogus);

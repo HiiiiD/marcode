@@ -67,6 +67,17 @@ export interface SessionState {
    * not report a breakdown.
    */
   contextPercent?: number;
+  /**
+   * The breakdown that `contextPercent` was computed from, kept whole so a
+   * session restored after a reload can still answer `request-context`: the
+   * Claude run is constructed lazily on the first `send()`, so a resumed
+   * conversation has no live query to measure until it is used again, and
+   * nothing about the context can change before that send. Host-side state:
+   * it rides the wire because it lives on `SessionState`, but the webview
+   * reads the breakdown only from the `context-breakdown` reply, which is
+   * the one path that knows whether it came from a live query or the cache.
+   */
+  lastContext?: ContextBreakdown;
   archived: boolean;
   createdAt: number;
   updatedAt: number;
@@ -111,7 +122,15 @@ export interface PaneLayout {
 
 export type WebviewToHost =
   | { t: 'ready' }
-  | { t: 'create-session'; providerId: string; cwd: string; model?: string; effort?: EffortLevel }
+  /**
+   * `mode` is the permission mode the session starts in. It is optional and
+   * defaults to `'default'` on the host, because a caller that has no
+   * opinion must not be able to start a session in `bypass` by omission —
+   * and `bypass` can only ever be chosen *before* the first message, so
+   * creation is the one point on the wire where it is settable at all.
+   */
+  | { t: 'create-session'; providerId: string; cwd: string; model?: string;
+      effort?: EffortLevel; mode?: PermissionMode }
   | { t: 'set-visible'; sessionIds: SessionId[] }
   | { t: 'set-layout'; layout: PaneLayout }
   | { t: 'close-session'; id: SessionId }

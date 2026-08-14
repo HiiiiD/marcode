@@ -576,6 +576,26 @@ suite('AgentSession', () => {
     await session.dispose();
   });
 
+  test('turn-end remembers the whole breakdown, not only the percentage', async () => {
+    // A session restored after a window reload has a fresh run with no live
+    // query behind it, so the breakdown can only come from what the last
+    // turn recorded — see SessionManager.contextBreakdown's cached path.
+    const reported = {
+      systemPercent: 10, memoryPercent: 5, conversationPercent: 25, freePercent: 60,
+      memoryFiles: [{ path: '/repo/CLAUDE.md', percent: 5 }],
+    };
+    const provider = new FakeProvider(() => [{ kind: 'turn-end', reason: 'done' }], {
+      context: reported,
+    });
+    const session = new AgentSession(baseState(), provider, store, sink);
+
+    session.send('hello');
+    await settle();
+
+    assert.deepStrictEqual(session.state.lastContext, reported);
+    await session.dispose();
+  });
+
   test('a run without contextBreakdown leaves contextPercent undefined', async () => {
     const provider = new FakeProvider(() => [{ kind: 'turn-end', reason: 'done' }]);
     const session = new AgentSession(baseState(), provider, store, sink);

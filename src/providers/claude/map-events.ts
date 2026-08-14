@@ -15,13 +15,12 @@
 //
 // `PermissionMode` (the real union, verbatim from the .d.ts):
 //   'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'dontAsk' | 'auto'
-//   Every member of our own union — 'default' | 'acceptEdits' | 'plan' |
+//   Every member of our own union — 'default' | 'acceptEdits' | 'auto' | 'plan' |
 //   'dontAsk' | 'bypass' — has a real counterpart ('bypass' -> 'bypassPermissions',
-//   the rest are identical spellings). Nothing to drop from
-//   src/providers/types.ts, PERMISSION_MODE, or composer.tsx: the plan's fear
-//   that 'acceptEdits' might not exist was unfounded for this SDK version.
-//   The SDK's extra 'auto' member (model-classifier permission mode) has no
-//   equivalent in our UI and is simply never produced by PERMISSION_MODE.
+//   the rest are identical spellings), and our union now covers the SDK's in
+//   full. Nothing to drop from src/providers/types.ts, PERMISSION_MODE, or
+//   composer.tsx: the plan's fear that 'acceptEdits' might not exist was
+//   unfounded for this SDK version.
 //
 // `SDKMessage` is a large discriminated union (35+ variants: system/*,
 // assistant, user, result/*, task/*, hook/*, etc). We only map the variants

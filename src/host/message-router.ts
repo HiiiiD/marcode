@@ -87,7 +87,7 @@ export class MessageRouter {
 
       case 'create-session': {
         const session = await this.manager.create(
-          msg.providerId, msg.cwd || this.defaultCwd, msg.model, msg.effort,
+          msg.providerId, msg.cwd || this.defaultCwd, msg.model, msg.effort, msg.mode,
         );
         this.emit({ t: 'session-snapshot', session: await session.snapshot() });
         return;

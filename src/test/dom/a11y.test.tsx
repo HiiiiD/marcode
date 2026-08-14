@@ -59,7 +59,7 @@ suite('accessibility sweep', () => {
     });
 
     await userEvent.click(screen.getByLabelText('Permission mode'));
-    const bypass = await screen.findByRole('option', { name: /bypass/i });
+    const bypass = await screen.findByRole('menuitemradio', { name: /bypass/i });
     assert.ok(
       bypass.getAttribute('aria-describedby'),
       'a title on a disabled option is not reliably announced',

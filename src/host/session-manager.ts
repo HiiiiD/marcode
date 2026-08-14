@@ -5,13 +5,28 @@ import type { AgentProvider, EffortLevel, Invocable, UsageWindow } from '../prov
 import { findModel, resolveEffort } from '../shared/model-catalog';
 import { orderWindows } from '../shared/usage-windows';
 import type {
-  ContextResult, HostToWebview, McpServerStatus, PaneLayout, ProviderInfo, SessionId,
+  ContextResult, HostToWebview, McpServerStatus, PaneLayout, PermissionMode, ProviderInfo, SessionId,
   SessionState, SessionStatus, SessionSummary, TranscriptPatch,
 } from '../protocol/messages';
 
 let counter = 0;
 function newSessionId(): string {
   return `s-${Date.now().toString(36)}-${(counter++).toString(36)}`;
+}
+
+/**
+ * Rejects with `reason` if `work` has not settled within `ms`. The timer is
+ * cleared either way: a pending `setTimeout` would otherwise keep the
+ * extension host's event loop alive past dispose.
+ */
+function withTimeout<T>(work: Promise<T>, ms: number, reason: string): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  const bound = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(reason)), ms);
+  });
+  return Promise.race([work, bound]).finally(() => {
+    if (timer) { clearTimeout(timer); }
+  }) as Promise<T>;
 }
 
 export class SessionManager implements SessionSink {
@@ -69,6 +84,13 @@ export class SessionManager implements SessionSink {
     private readonly store: TranscriptStore,
     private readonly providers: Map<string, AgentProvider>,
     private readonly emit: (msg: HostToWebview) => void,
+    /**
+     * How long a provider gets to answer `contextBreakdown()` before the
+     * popover is told the answer is unavailable. The SDK call is a control
+     * request to a subprocess that can simply never reply; without a bound,
+     * the webview sits in its loading state for the life of the panel.
+     */
+    private readonly contextTimeoutMs = 5000,
   ) {}
 
   async init(): Promise<void> {
@@ -165,6 +187,7 @@ export class SessionManager implements SessionSink {
 
   async create(
     providerId: string, cwd: string, model?: string, effort?: EffortLevel,
+    mode: PermissionMode = 'default',
   ): Promise<AgentSession> {
     const provider = this.providers.get(providerId);
     if (!provider) { throw new Error(`Unknown provider: ${providerId}`); }
@@ -176,7 +199,7 @@ export class SessionManager implements SessionSink {
     const now = Date.now();
     const state: SessionState = {
       id: newSessionId(), providerId, model: chosen.id, effort: resolvedEffort,
-      title: 'Untitled', cwd, status: 'idle', permissionMode: 'default',
+      title: 'Untitled', cwd, status: 'idle', permissionMode: mode,
       includeEditorContext: true,
       usage: { inputTokens: 0, outputTokens: 0 },
       archived: false, createdAt: now, updatedAt: now,
@@ -200,11 +223,26 @@ export class SessionManager implements SessionSink {
    * which is a legitimate not-ok rather than a failure.
    */
   async contextBreakdown(id: SessionId): Promise<ContextResult> {
+    // What the last turn recorded, which for a session with no live query
+    // behind it *is* the current context: the conversation cannot have
+    // changed without a send, and a send builds the query.
+    const remembered = this.meta.get(id)?.lastContext;
     const session = this.live.get(id);
-    if (!session) { return { ok: false, reason: 'This session is not running' }; }
+    if (!session) {
+      if (remembered) { return { ok: true, breakdown: remembered }; }
+      return { ok: false, reason: 'This session is not running' };
+    }
     try {
-      return { ok: true, breakdown: await session.contextBreakdown() };
+      return { ok: true, breakdown: await withTimeout(
+        session.contextBreakdown(),
+        this.contextTimeoutMs,
+        'The provider did not report context usage in time',
+      ) };
     } catch (err) {
+      // The common failure here is a Claude session restored across a
+      // reload: its run is constructed lazily on the first send, so there
+      // is no query to measure yet even though the conversation is intact.
+      if (remembered) { return { ok: true, breakdown: remembered }; }
       return { ok: false, reason: err instanceof Error ? err.message : String(err) };
     }
   }
@@ -243,8 +281,15 @@ export class SessionManager implements SessionSink {
    * no live run — or one that has never answered a breakdown — vouches for
    * nothing, so nothing opens.
    */
+  /**
+   * Also honours the persisted breakdown, not just the live session's: a
+   * resumed session answers `request-context` from `lastContext`, and every
+   * memory file in that answer renders as a link. Vouching only for what a
+   * live run reported would leave each of those links inert.
+   */
   canOpenFile(id: SessionId, path: string): boolean {
-    return this.live.get(id)?.reportedMemoryFile(path) ?? false;
+    if (this.live.get(id)?.reportedMemoryFile(path)) { return true; }
+    return this.meta.get(id)?.lastContext?.memoryFiles.some((f) => f.path === path) ?? false;
   }
 
   async open(id: SessionId): Promise<AgentSession> {
@@ -270,6 +315,12 @@ export class SessionManager implements SessionSink {
   async setVisible(ids: SessionId[]): Promise<void> {
     const next = new Set(ids);
     const added = ids.filter((id) => !this.visible.has(id));
+    // Captured before `visible` is replaced: hiding a pane is the *other*
+    // way an unused session stops being shown (the pane header's X and the
+    // roster checkbox both post set-layout/set-visible, never close-session),
+    // and without this the roster accumulates 'Untitled' rows that only the
+    // row's overflow menu can ever remove. Same discard rule as close().
+    const removed = [...this.visible].filter((id) => !next.has(id));
     this.visible = next;
 
     for (const id of added) {
@@ -319,6 +370,19 @@ export class SessionManager implements SessionSink {
       });
       this.drainSnapshotBuffer(id);
     }
+
+    // After the reveals, not before: `remove()` fans out a roster change,
+    // and a hidden-and-discarded session must not race the snapshot the
+    // newly revealed one is waiting on.
+    for (const id of removed) {
+      // A session with a snapshot still in flight is mid-reveal, not
+      // abandoned — an uncheck/re-check in the roster passes through here
+      // while the first fetch is outstanding. Leave it alone rather than
+      // reading a transcript the in-flight fetch is already reading.
+      if (this.snapshotting.has(id)) { continue; }
+      const state = this.meta.get(id);
+      if (state && await this.isDiscardable(id, state)) { await this.remove(id); }
+    }
   }
 
   /**
@@ -349,7 +413,37 @@ export class SessionManager implements SessionSink {
     }
   }
 
+  /**
+   * Closing a session that was never used discards it outright instead of
+   * archiving it: an untitled session with an empty transcript carries
+   * nothing to come back to, and archiving it would leave the roster
+   * accumulating placeholder rows that can only ever be deleted by hand.
+   *
+   * "Never used" is title *and* transcript, not either alone. The title is
+   * only stamped by the first `send()`, so `'Untitled'` alone would also
+   * match a session whose sole item is a startup error — worth keeping, it
+   * is the only record of why the session failed. Conversely the transcript
+   * alone would be empty for a live-revived session whose items are all on
+   * disk, hence the store read on the non-live path.
+   */
+  private async isDiscardable(id: SessionId, state: SessionState): Promise<boolean> {
+    if (state.title !== 'Untitled') { return false; }
+    const session = this.live.get(id);
+    if (session && !session.isEmpty) { return false; }
+    const { items, hasMore } = await this.store.tail(id, 1);
+    return !hasMore && items.length === 0;
+  }
+
   async close(id: SessionId): Promise<void> {
+    const state = this.meta.get(id);
+    if (state && await this.isDiscardable(id, state)) {
+      await this.remove(id);
+      return;
+    }
+    await this.archive(id);
+  }
+
+  private async archive(id: SessionId): Promise<void> {
     const session = this.live.get(id);
     if (session) {
       await session.dispose();
@@ -366,7 +460,7 @@ export class SessionManager implements SessionSink {
   }
 
   async remove(id: SessionId): Promise<void> {
-    await this.close(id);
+    await this.archive(id);
     this.meta.delete(id);
     await this.store.remove(id);
     this.paneLayout = {
