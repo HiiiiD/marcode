@@ -28,14 +28,19 @@ export function Transcript({
   }, [first?.id, pane.hasMore]);
 
   return (
-    <MessageScrollerProvider
-      autoScroll
-      defaultScrollPosition="last-anchor"
-      scrollPreviousItemPeek={64}
-    >
+    // Chat-shaped, not document-shaped: the latest item is pinned to the
+    // bottom edge and history grows upward off the top. `end` rather than
+    // `last-anchor` — anchoring parks the newest user message at the *top* of
+    // the viewport and streams the reply beneath it, which reads as a document
+    // scrolling past, not a conversation.
+    <MessageScrollerProvider autoScroll defaultScrollPosition="end">
       <MessageScroller className="h-full">
         <MessageScrollerViewport className="px-2" preserveScrollOnPrepend>
-          <MessageScrollerContent className="gap-2">
+          {/* `justify-end` only bites while the content is shorter than the
+              viewport (Content is `min-h-full`): a two-message session sits on
+              the composer instead of stranding itself at the top with dead
+              space below. Once it overflows, the rule is inert. */}
+          <MessageScrollerContent className="justify-end gap-2">
             {pane.hasMore && first && (
               <Button
                 variant="outline"
@@ -53,11 +58,7 @@ export function Transcript({
               </Button>
             )}
             {pane.items.map((item) => (
-              <MessageScrollerItem
-                key={item.id}
-                messageId={item.id}
-                scrollAnchor={item.role === 'user'}
-              >
+              <MessageScrollerItem key={item.id} messageId={item.id}>
                 <TranscriptItemView item={item} sessionId={pane.summary.id} />
               </MessageScrollerItem>
             ))}
