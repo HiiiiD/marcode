@@ -277,38 +277,49 @@ stay state.
 
 ## Availability
 
-`ProviderInfo` gains `unavailable?: { reason: string }`.
+**No new mechanism.** The host already has one, and it is the right one:
+`refreshModels` doubles as the availability probe. A provider whose
+`fetchModels` rejects is dropped from `catalog()`, appears in `unavailable()`
+carrying the reason it gave, and rejoins the moment it answers again.
+`UnavailableProvider` already rides the `hydrate` and `catalog` messages, the
+reducer already keeps it, and `ModeMenu` already takes a `disabled` prop
+documented as "the session's provider is unavailable".
 
-**The provider is always registered**, even with no binary present.
-`SessionManager.catalog()` is what the webview uses to label a session's
-provider and resolve its model row; an unregistered provider leaves any
-persisted Codex session rendering a raw id with no label. `listModels()`
-therefore keeps a small static fallback list even when the process cannot
-start, purely so those labels resolve.
+So Codex needs to do exactly one thing: **reject `fetchModels` with a
+human-readable, already-redacted one-liner.**
 
-| Case | Detection | Result |
+| Case | Detection | Rejection message |
 |---|---|---|
-| Binary not found | PATH probe, `hiiiidCode.codex.path` override | `unavailable`, disabled row in the create dialog |
-| Not logged in | `account/read` (`requiresOpenaiAuth`) at activation | `unavailable`, reason names `codex login` |
-| `initialize` failed | handshake | `unavailable` |
-| Version out of range | `codex --version` | degraded but running, visible reason |
+| Binary not found | PATH probe, `hiiiidCode.codex.path` override | "Codex CLI not found. Install it, or set hiiiidCode.codex.path." |
+| Not logged in | `account/read` (`requiresOpenaiAuth`) | "Not signed in to Codex. Run `codex login`." |
+| `initialize` failed | handshake | the handshake error, redacted |
+| Version out of range | `codex --version` | resolves, not rejects — degraded but usable |
+
+Note the last row: an old CLI still returns models, so it stays *pickable*.
+Only a version we cannot speak to at all rejects.
+
+`SessionManager` already records the reason, already clears it on recovery,
+and already drops the persisted model seed alongside it so a stale list
+cannot outlive the install it described. None of that is re-implemented.
+
+Re-probe has no polling, and needs no new plumbing either: `refreshModels(cwd)`
+*is* the re-probe. Triggers are activation, an explicit Retry in the UI, and a
+change to `hiiiidCode.codex.path` — the last of which the existing code
+comments already anticipate.
 
 A `hiiiidCode.codex.login` command opens a terminal running `codex login` —
 that is the whole fix, and the user is already in the IDE.
-
-Re-probe has no polling. Three triggers: activation, an explicit Retry on the
-disabled dialog row, and a change to `hiiiidCode.codex.path`.
 
 **An unavailable provider never blocks reading history.** A persisted Codex
 session on a machine without Codex — settings sync, a shared repo, an
 uninstall — still renders its transcript, pages, and deletes. Only the
 composer is disabled, carrying the provider's reason. A missing binary must
-not cost the user their record of what happened.
+not cost the user their record of what happened. The persisted `catalog.json`
+seed keeps model labels resolving for those sessions until a probe answers
+either way.
 
-`refreshModels` and `refreshUsage` skip unavailable providers, and a failed
-probe stays caught by the existing per-provider `.catch` in
-`session-manager.ts`. One dead provider must never stall or blank out
-another.
+One dead provider must never stall or blank out another: that is already
+guaranteed by the per-provider `.catch` in `refreshModels` and `refreshUsage`.
 
 ## Version skew
 
@@ -358,18 +369,22 @@ and assert every method-name string we use still exists in `ClientRequest` and
 `ServerNotification`. This is the closest thing to the version negotiation the
 handshake does not offer.
 
-### `resetsAt` must be measured, not assumed
+### `resetsAt` was measured, not assumed
 
-`RateLimitWindow.resetsAt` is a bare `number | null` with no documented unit.
-CLAUDE.md already records that the Claude provider mixes epoch-seconds with
-ISO strings, and 0–1 fractions with 0–100 percentages, and that mixing the two
-scales is a live bug class.
+`RateLimitWindow.resetsAt` is a bare `number | null` with no documented unit,
+and CLAUDE.md records that mixing scales is a live bug class here — the Claude
+provider carries epoch seconds on one path and ISO strings on the other.
 
-The unit is determined empirically during implementation and locked in a
-`map-usage` test. It is not inferred from the type.
+So it was measured rather than inferred. `account/rateLimits/read` on
+codex-cli 0.147.0 returned `resetsAt: 1787337648` against a wall clock of
+`1786736436` seconds on 2026-08-14 — 6.96 days out on a 10080-minute window.
+**Epoch seconds.** `UsageWindow.resetsAt` is epoch milliseconds, so the
+adapter converts, and a test pins the conversion.
 
-`RateLimitWindow.usedPercent` is already a percentage, so the "usage surfaces
-show percentages, never token counts" invariant holds without conversion.
+Also observed on that account: `primary` is the weekly window and `secondary`
+is `null`, which is why an absent window is omitted rather than rendered as
+0%. `usedPercent` is already a percentage, so the "usage surfaces show
+percentages, never token counts" invariant holds without conversion.
 
 ## Deferred: host classifier
 
@@ -399,24 +414,53 @@ without touching the Codex adapter.
 Everything else is additive under `src/providers/codex/`.
 
 - `providers/types.ts` — `PermissionModeInfo`, `AgentProvider.listPermissionModes()`
-- `protocol/messages.ts` — `ProviderInfo.permissionModes`, `ProviderInfo.unavailable`
+- `protocol/messages.ts` — `ProviderInfo.permissionModes`
 - `shared/permission-catalog.ts` — new, `resolvePermissionMode`
-- `host/session-manager.ts` — carry both fields into `catalog()`; skip
-  unavailable providers in `refreshModels` / `refreshUsage`
+- `host/session-manager.ts` — carry `permissionModes` into `catalog()`
+- `webview/components/permission-modes.ts` — `MODES` filtered by what the
+  session's provider declares; provider description overrides the shared one
 - `webview/components/mode-menu.tsx`, `session-create-dialog.tsx` — iterate
-  declared modes; render the disabled/unavailable row
+  the declared list instead of all of `MODES`
 - `webview/components/tool-render.ts` — a Codex arm
 - `extension.ts` — register the provider; `hiiiidCode.codex.path` setting,
   `hiiiidCode.codex.login` command
 
+Availability needs **no host change at all** — see Availability above.
+
 No transcript migration: no persisted shape changes.
+
+## Effort levels
+
+`ReasoningEffort` is an open `string` in the protocol, and each model
+publishes its own `supportedReasoningEfforts`. A live `model/list` on
+codex-cli 0.147.0:
+
+| Model | Scale | Default |
+|---|---|---|
+| gpt-5.6-sol *(default)*, gpt-5.6-terra | low, medium, high, xhigh, max, **ultra** | low / medium |
+| gpt-5.6-luna | low, medium, high, xhigh, max | medium |
+| gpt-5.5, gpt-5.4, gpt-5.4-mini | low, medium, high, xhigh | medium |
+
+`ultra` — "Maximum reasoning with automatic task delegation" — is the only
+value outside `EffortLevel`, and there is no `minimal`.
+
+**So the union gains `'ultra'` rather than the adapter filtering it away.**
+Filtering would silently drop the top level of Codex's newest models, which is
+a worse outcome than one more union member. Levels are already declared per
+model, so Claude's models simply never list it and their sliders are
+unchanged.
+
+The adapter still skips a level it does not recognize: the union is closed and
+shared with every provider, so a value added by a future Codex release must
+not widen the slider for everyone by accident.
 
 ## Open questions
 
-None blocking. Two items are deliberately settled *during* implementation
-rather than in this spec, both recorded above with the mechanism that pins
-them down:
+None blocking. One item is deliberately settled *during* implementation:
 
-- The unit of `RateLimitWindow.resetsAt` — measured, then locked in a test.
 - The tested CLI version range — established once the adapter runs against a
   real thread.
+
+The two that were open at design time are now measured and recorded above:
+`resetsAt` is epoch seconds, and the effort scales are the table in Effort
+Levels.
