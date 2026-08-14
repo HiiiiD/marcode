@@ -1,83 +1,60 @@
-import { useState } from 'react';
-import { PlusIcon } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
-  DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { useStore } from '../store';
-import type { EffortLevel } from '../../protocol/messages';
+import { Button } from "@/components/ui/button";
+import { ButtonGroup } from "@/components/ui/button-group";
+import { ChevronDownIcon, PlusIcon } from "lucide-react";
+import { useState } from "react";
+import { useStore } from "../store";
+import { SessionCreateDialog } from "./session-create-dialog";
+import { createMessage, inheritedSettings } from "./session-create-settings";
 
 /**
- * `create-session` has carried `model` and `effort` since the protocol was
- * written, and SessionManager.create resolves them (falling back to
- * `models[0]` and the model's default effort). The UI simply never sent them,
- * so every session silently took the first model. `cwd` stays `''` on purpose:
- * MessageRouter reads that as "use the workspace root", which is what a
- * single-root workspace wants and what `+ New` should keep meaning.
+ * Two controls in one group: the session you almost always want, and the
+ * one you occasionally don't.
+ *
+ * `+ New` asks nothing — it copies the provider, model, effort and
+ * permission mode of the session the user is working in and creates. The
+ * caret opens the full form. This replaced a menu that made every creation
+ * cost two clicks and a read, to answer questions whose answer was already
+ * on screen.
  */
 export function SessionCreateMenu() {
   const { state, post } = useStore();
-  const provider = state.catalog[0];
-  const [modelId, setModelId] = useState<string | null>(null);
-  const [effort, setEffort] = useState<EffortLevel | null>(null);
-
-  const model = provider?.models.find((m) => m.id === modelId) ?? provider?.models[0];
-  const chosenEffort: EffortLevel | undefined = effort ?? model?.effort?.default;
-
-  const create = () => {
-    if (!provider || !model) { return; }
-    post({
-      t: 'create-session',
-      providerId: provider.id,
-      cwd: '',
-      model: model.id,
-      ...(model.effort ? { effort: chosenEffort } : {}),
-    });
-    setModelId(null);
-    setEffort(null);
-  };
+  const [open, setOpen] = useState(false);
+  const settings = inheritedSettings(state);
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        render={<Button size="sm" className="shrink-0" disabled={!provider} />}
-        aria-label="New session"
-      >
-        <PlusIcon aria-hidden />
-        New
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-56">
-        <DropdownMenuRadioGroup
-          value={model?.id}
-          onValueChange={(id: string) => { setModelId(id); setEffort(null); }}
+    <>
+      <ButtonGroup className="shrink-0">
+        <Button
+          size="sm"
+          aria-label="New session"
+          disabled={!settings}
+          onClick={() => settings && post(createMessage(settings))}
         >
-          <DropdownMenuLabel>Model</DropdownMenuLabel>
-          {provider?.models.map((m) => (
-            <DropdownMenuRadioItem key={m.id} value={m.id}>
-              {m.displayName}
-            </DropdownMenuRadioItem>
-          ))}
-        </DropdownMenuRadioGroup>
-
-        {model?.effort && (
-          <DropdownMenuRadioGroup
-            value={chosenEffort ?? undefined}
-            onValueChange={setEffort}
-          >
-            <DropdownMenuLabel>Effort</DropdownMenuLabel>
-            {model.effort.levels.map((level) => (
-              <DropdownMenuRadioItem key={level} value={level}>
-                {level}
-              </DropdownMenuRadioItem>
-            ))}
-          </DropdownMenuRadioGroup>
-        )}
-
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={create}>Create session</DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+          <PlusIcon aria-hidden />
+          New
+        </Button>
+        <Button
+          size="sm"
+          aria-label="New session with options"
+          title="New session with options"
+          disabled={!settings}
+          onClick={() => setOpen(true)}
+        >
+          <ChevronDownIcon aria-hidden />
+        </Button>
+      </ButtonGroup>
+      {settings && (
+        <SessionCreateDialog
+          open={open}
+          onOpenChange={setOpen}
+          catalog={state.catalog}
+          initial={settings}
+          onCreate={(chosen) => {
+            post(createMessage(chosen));
+            setOpen(false);
+          }}
+        />
+      )}
+    </>
   );
 }

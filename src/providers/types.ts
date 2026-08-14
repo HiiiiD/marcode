@@ -2,11 +2,12 @@ export type EffortLevel = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 /**
  * 'default'     — prompt on anything that falls through to a prompt
  * 'acceptEdits' — auto-accept file edits, still prompt for everything else
+ * 'auto'        — a model classifier decides which calls are safe; the rest prompt
  * 'plan'        — read-only planning
  * 'dontAsk'     — deny anything not already permitted
  * 'bypass'      — allow everything
  */
-export type PermissionMode = 'default' | 'acceptEdits' | 'plan' | 'dontAsk' | 'bypass';
+export type PermissionMode = 'default' | 'acceptEdits' | 'auto' | 'plan' | 'dontAsk' | 'bypass';
 
 export interface ModelInfo {
   id: string;

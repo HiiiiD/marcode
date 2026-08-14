@@ -3,11 +3,16 @@ import {
 } from 'react';
 import { initialState, reduce, type ClientState } from './reducer';
 import { onHostMessage, postToHost } from './vscode-api';
-import type { WebviewToHost } from '../protocol/messages';
+import type { SessionId, WebviewToHost } from '../protocol/messages';
 
 interface StoreValue {
   state: ClientState;
   post: (msg: WebviewToHost) => void;
+  /**
+   * Record that the user is working in `id`. Client-local — nothing is
+   * posted, because the host has no use for which pane has focus.
+   */
+  focus: (id: SessionId) => void;
 }
 
 const StoreContext = createContext<StoreValue | undefined>(undefined);
@@ -31,8 +36,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const focus = (id: SessionId) => dispatch({ t: 'local-focus', id });
+
   return (
-    <StoreContext.Provider value={{ state, post }}>
+    <StoreContext.Provider value={{ state, post, focus }}>
       {children}
     </StoreContext.Provider>
   );
