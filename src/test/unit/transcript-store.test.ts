@@ -106,6 +106,22 @@ suite('TranscriptStore', () => {
     assert.deepStrictEqual(index.layout, { orientation: 'vertical', panes: [] });
   });
 
+  test('usage round-trips through its own file', async () => {
+    const store = new TranscriptStore(dir);
+    await store.writeUsage({
+      providers: { claude: [{ id: 'five-hour', label: 'Session (5h)', usedPercent: 62 }] },
+    });
+    assert.deepStrictEqual(await new TranscriptStore(dir).readUsage(), {
+      providers: { claude: [{ id: 'five-hour', label: 'Session (5h)', usedPercent: 62 }] },
+    });
+  });
+
+  test('a missing or unreadable usage file is an empty set, not a throw', async () => {
+    assert.deepStrictEqual(await new TranscriptStore(dir).readUsage(), { providers: {} });
+    await fs.writeFile(path.join(dir, 'usage.json'), '{ not json', 'utf8');
+    assert.deepStrictEqual(await new TranscriptStore(dir).readUsage(), { providers: {} });
+  });
+
   test('remove deletes the file, clears the cache, and stays gone after a later flush', async () => {
     store.append('s1', item('a', 'one'));
     store.append('s1', item('b', 'two'));

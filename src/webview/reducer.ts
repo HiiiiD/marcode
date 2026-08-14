@@ -83,9 +83,12 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
         // genuinely client-wide (global IDE state a reload doesn't change),
         // so it is deliberately carried forward here — but spelled out so a
         // future field added to `ClientState` doesn't silently survive a
-        // reload by accident the way a bare spread would let it.
+        // reload by accident the way a bare spread would let it. `usage` is
+        // the opposite case: it is host state (the account's last known
+        // window set), not client state, so it is always taken fresh from
+        // the message rather than carried forward like `editorContext`.
         editorContext: state.editorContext,
-        contextBySession: {}, usageByProvider: {},
+        contextBySession: {}, usageByProvider: msg.usage,
       };
     }
 

@@ -1,10 +1,16 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import type { PaneLayout, SessionId, SessionState, TranscriptItem } from '../protocol/messages';
+import type { UsageWindow } from '../providers/types';
 
 export interface StoredIndex {
   sessions: SessionState[];
   layout: PaneLayout;
+}
+
+export interface StoredUsage {
+  /** providerId -> that provider's last known window set. */
+  providers: Record<string, UsageWindow[]>;
 }
 
 const EMPTY_INDEX: StoredIndex = {
@@ -284,6 +290,32 @@ export class TranscriptStore {
     await fs.writeFile(
       path.join(this.rootDir, 'index.json'),
       JSON.stringify(index, null, 2),
+      'utf8',
+    );
+  }
+
+  /**
+   * Its own file rather than a field on `index.json`: this is account data,
+   * it is keyed by provider rather than by session, and it is rewritten on a
+   * different cadence from the roster. A corrupt or absent file is an empty
+   * set — usage is decoration over a working panel, and refusing to start
+   * because a percentage could not be read would be absurd.
+   */
+  async readUsage(): Promise<StoredUsage> {
+    try {
+      const raw = await fs.readFile(path.join(this.rootDir, 'usage.json'), 'utf8');
+      const parsed = JSON.parse(raw) as Partial<StoredUsage>;
+      return { providers: parsed.providers ?? {} };
+    } catch {
+      return { providers: {} };
+    }
+  }
+
+  async writeUsage(usage: StoredUsage): Promise<void> {
+    await fs.mkdir(this.rootDir, { recursive: true });
+    await fs.writeFile(
+      path.join(this.rootDir, 'usage.json'),
+      JSON.stringify(usage, null, 2),
       'utf8',
     );
   }

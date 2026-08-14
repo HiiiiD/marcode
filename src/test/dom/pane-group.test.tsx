@@ -12,6 +12,7 @@ function hydrate(paneIds: string[], rosterIds = paneIds) {
     layout: layoutOf(...paneIds),
     snapshots: rosterIds.map((id) => snapshot(id)),
     catalog: catalog(),
+    usage: {},
   });
 }
 
@@ -67,6 +68,7 @@ suite('PaneGroup', () => {
       layout: layoutOf('a', 'b'),
       snapshots: [snapshot('a'), snapshot('b')],
       catalog: catalog(),
+      usage: {},
     });
 
     screen.getByLabelText('Session: Session a');
@@ -192,6 +194,7 @@ suite('PaneGroup', () => {
       layout: layoutOf('a', 'b'),
       snapshots: [snapshot('a', { title: 'Untitled' }), snapshot('b', { title: 'Untitled' })],
       catalog: catalog(),
+      usage: {},
     });
 
     const closeA = screen.getByLabelText(/Hide Untitled \(a\) from the split/);

@@ -139,7 +139,9 @@ export type WebviewToHost =
 
 export type HostToWebview =
   | { t: 'hydrate'; sessions: SessionSummary[]; layout: PaneLayout;
-      snapshots: SessionSnapshot[]; catalog: ProviderInfo[] }
+      snapshots: SessionSnapshot[]; catalog: ProviderInfo[];
+      /** Per provider, the last window set the host knew. Empty on a fresh install. */
+      usage: Record<string, UsageWindow[]> }
   | { t: 'session-snapshot'; session: SessionSnapshot }
   | { t: 'session-patch'; id: SessionId; patch: TranscriptPatch }
   | { t: 'session-prepend'; id: SessionId; items: TranscriptItem[]; hasMore: boolean }

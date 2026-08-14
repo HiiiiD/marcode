@@ -17,6 +17,7 @@ suite('SessionManager', () => {
   let store: TranscriptStore;
   let sent: HostToWebview[];
   let providers: Map<string, AgentProvider>;
+  let provider: FakeProvider;
   let manager: SessionManager;
   let extra: { manager: SessionManager; dir: string }[];
 
@@ -24,12 +25,11 @@ suite('SessionManager', () => {
     dir = await fs.mkdtemp(path.join(os.tmpdir(), 'hiiiid-manager-'));
     store = new TranscriptStore(dir);
     sent = [];
-    providers = new Map<string, AgentProvider>([
-      ['fake', new FakeProvider(() => [
-        { kind: 'text', delta: 'ok' },
-        { kind: 'turn-end', reason: 'done' },
-      ])],
+    provider = new FakeProvider(() => [
+      { kind: 'text', delta: 'ok' },
+      { kind: 'turn-end', reason: 'done' },
     ]);
+    providers = new Map<string, AgentProvider>([['fake', provider]]);
     manager = new SessionManager(store, providers, (m) => sent.push(m));
     await manager.init();
     extra = [];
@@ -476,6 +476,25 @@ suite('SessionManager', () => {
     assert.deepStrictEqual(
       local.usageSnapshot().fake.map((w) => w.id), ['five-hour', 'seven-day'],
     );
+  });
+
+  test('the window set survives a reload, minus anything already reset', async () => {
+    await manager.create('fake', '/w');
+    const run = provider.runs.at(-1)!;
+    run.emit({
+      kind: 'usage-window',
+      window: { id: 'five-hour', label: 'Session (5h)', usedPercent: 62, resetsAt: Date.now() + 3_600_000 },
+    });
+    run.emit({
+      kind: 'usage-window',
+      window: { id: 'seven-day', label: 'Week', usedPercent: 18, resetsAt: Date.now() - 1 },
+    });
+    await settle();
+    await manager.dispose();
+
+    const revived = new SessionManager(new TranscriptStore(dir), providers, () => {});
+    await revived.init();
+    assert.deepStrictEqual(revived.usageSnapshot().fake.map((w) => w.id), ['five-hour']);
   });
 
   test('session-mcp reaches a visible session and is withheld from a hidden one', async () => {

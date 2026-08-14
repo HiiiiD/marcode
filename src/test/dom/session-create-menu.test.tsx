@@ -11,6 +11,7 @@ function hydrate() {
     layout: layoutOf('a'),
     snapshots: [snapshot('a')],
     catalog: catalog(),
+    usage: {},
   });
 }
 
@@ -72,6 +73,7 @@ suite('SessionCreateMenu', () => {
       layout: { orientation: 'vertical', panes: [] },
       snapshots: [],
       catalog: [],
+      usage: {},
     });
 
     // Two "New session" triggers exist here: the roster's persistent one and

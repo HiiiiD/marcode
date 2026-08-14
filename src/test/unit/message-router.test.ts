@@ -16,18 +16,18 @@ async function settle() {
 suite('MessageRouter', () => {
   let dir: string;
   let sent: HostToWebview[];
+  let provider: FakeProvider;
   let manager: SessionManager;
   let router: MessageRouter;
 
   setup(async () => {
     dir = await fs.mkdtemp(path.join(os.tmpdir(), 'hiiiid-router-'));
     sent = [];
-    const providers = new Map<string, AgentProvider>([
-      ['fake', new FakeProvider(() => [
-        { kind: 'text', delta: 'ok' },
-        { kind: 'turn-end', reason: 'done' },
-      ])],
+    provider = new FakeProvider(() => [
+      { kind: 'text', delta: 'ok' },
+      { kind: 'turn-end', reason: 'done' },
     ]);
+    const providers = new Map<string, AgentProvider>([['fake', provider]]);
     manager = new SessionManager(new TranscriptStore(dir), providers, (m) => sent.push(m));
     await manager.init();
     router = new MessageRouter(manager, (m) => sent.push(m), '/tmp');
@@ -46,6 +46,24 @@ suite('MessageRouter', () => {
     assert.strictEqual(hydrate.catalog.length, 1);
     assert.strictEqual(hydrate.catalog[0].id, 'fake');
     assert.deepStrictEqual(hydrate.sessions, []);
+    assert.deepStrictEqual(hydrate.usage, {});
+  });
+
+  test('ready carries the manager\'s current usage snapshot on hydrate', async () => {
+    await manager.create('fake', '/tmp');
+    const run = provider.runs.at(-1)!;
+    run.emit({
+      kind: 'usage-window',
+      window: { id: 'five-hour', label: 'Session (5h)', usedPercent: 62 },
+    });
+    await settle();
+
+    await router.handle({ t: 'ready' });
+    const hydrate = sent.find((m) => m.t === 'hydrate') as
+      Extract<HostToWebview, { t: 'hydrate' }>;
+    assert.deepStrictEqual(hydrate.usage, {
+      fake: [{ id: 'five-hour', label: 'Session (5h)', usedPercent: 62 }],
+    });
   });
 
   test('create-session then send drives a turn', async () => {

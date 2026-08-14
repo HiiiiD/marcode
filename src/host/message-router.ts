@@ -75,6 +75,7 @@ export class MessageRouter {
           layout,
           snapshots,
           catalog: this.manager.catalog(),
+          usage: this.manager.usageSnapshot(),
         });
         this.emit({ t: 'editor-context', ctx: this.editor.current() });
         // Not awaited: hydrate must not wait on a CLI handshake. The catalog

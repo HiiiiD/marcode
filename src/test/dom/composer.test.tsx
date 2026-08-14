@@ -36,6 +36,7 @@ function hydrateOne() {
     layout: layoutOf("a"),
     snapshots: [snapshot("a")],
     catalog: catalog(),
+    usage: {},
   });
 }
 

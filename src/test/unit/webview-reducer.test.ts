@@ -16,6 +16,7 @@ function withSession(id: string) {
     layout: { orientation: 'vertical', panes: [{ sessionId: id, size: 100 }] },
     snapshots: [snapshot(id)],
     catalog: [],
+    usage: {},
   });
 }
 
@@ -25,6 +26,7 @@ function hydrated() {
     sessions: [],
     layout: { orientation: 'vertical', panes: [] },
     catalog: [],
+    usage: {},
     snapshots: [{
       id: 's1', providerId: 'fake', model: 'fake-large', title: 'T', cwd: '/tmp',
       status: 'idle', permissionMode: 'default',
@@ -43,12 +45,24 @@ suite('webview reducer', () => {
       layout: { orientation: 'vertical', panes: [{ sessionId: 's1', size: 100 }] },
       snapshots: [snapshot('s1')],
       catalog: [{ id: 'fake', displayName: 'Fake', models: [] }],
+      usage: {},
     });
 
     assert.strictEqual(next.ready, true);
     assert.strictEqual(next.sessions.length, 1);
     assert.strictEqual(next.layout.panes.length, 1);
     assert.ok(next.byId['s1']);
+  });
+
+  test('hydrate seeds usageByProvider so a reload paints immediately', () => {
+    const state = reduce(initialState, {
+      t: 'hydrate', sessions: [], layout: { orientation: 'vertical', panes: [] },
+      snapshots: [], catalog: [],
+      usage: { fake: [{ id: 'five-hour', label: 'Session (5h)', usedPercent: 62 }] },
+    });
+    assert.deepStrictEqual(state.usageByProvider.fake, [
+      { id: 'five-hour', label: 'Session (5h)', usedPercent: 62 },
+    ]);
   });
 
   test('append patch adds an item', () => {
@@ -316,6 +330,7 @@ suite('webview reducer', () => {
       layout: { orientation: 'vertical', panes: [{ sessionId: 's1', size: 100 }] },
       snapshots: [{ ...snapshot('s1'), invocables: [{ name: 'init' }] }],
       catalog: [],
+      usage: {},
     });
 
     assert.deepStrictEqual(state.byId['s1'].invocables, [{ name: 'init' }]);

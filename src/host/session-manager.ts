@@ -81,6 +81,11 @@ export class SessionManager implements SessionSink {
       });
     }
     this.paneLayout = index.layout;
+
+    const usage = await this.store.readUsage();
+    for (const [providerId, windows] of Object.entries(usage.providers)) {
+      this.usage.set(providerId, new Map(windows.map((w) => [w.id, w])));
+    }
   }
 
   catalog(): ProviderInfo[] {
@@ -456,6 +461,9 @@ export class SessionManager implements SessionSink {
       layout: this.paneLayout,
     };
     await this.store.writeIndex(index);
+    // usageSnapshot() prunes reset windows on the way out, so a file written
+    // now cannot resurrect one on the next load.
+    await this.store.writeUsage({ providers: this.usageSnapshot() });
     // Deviation from the brief: TranscriptStore.flush() previously was not
     // safe to call concurrently for the same session id from two different
     // call sites. AgentSession serializes *its own* flush() calls through an

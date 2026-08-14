@@ -26,6 +26,7 @@ suite('harness', () => {
       layout: layoutOf('a'),
       snapshots: [snapshot('a')],
       catalog: catalog(),
+      usage: {},
     });
 
     // No await: the assertion runs on the same tick as the dispatch.

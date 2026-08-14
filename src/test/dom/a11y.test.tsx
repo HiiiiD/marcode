@@ -12,6 +12,7 @@ function hydrateTwoPanes() {
     layout: layoutOf('a', 'b'),
     snapshots: [snapshot('a'), snapshot('b')],
     catalog: catalog(),
+    usage: {},
   });
 }
 
@@ -23,6 +24,7 @@ function hydrateOne() {
     layout: layoutOf('a'),
     snapshots: [snapshot('a')],
     catalog: catalog(),
+    usage: {},
   });
 }
 

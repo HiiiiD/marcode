@@ -10,6 +10,7 @@ function hydrate(ids: string[]) {
     layout: layoutOf(...ids),
     snapshots: ids.map((id) => snapshot(id)),
     catalog: catalog(),
+    usage: {},
   });
 }
 
