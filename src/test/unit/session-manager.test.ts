@@ -348,9 +348,56 @@ suite('SessionManager', () => {
     await fresh.dispose();
   });
 
+  test('close discards an untitled session with an empty transcript', async () => {
+    const a = await manager.create('fake', '/tmp');
+    const id = a.state.id;
+
+    await manager.close(id);
+
+    assert.strictEqual(manager.get(id), undefined, 'discarded session is not live');
+    assert.strictEqual(
+      manager.summaries().find((s) => s.id === id), undefined,
+      'an unused session must leave the roster, not linger as an archived row',
+    );
+  });
+
+  test('close keeps a session whose only item is an error, despite the Untitled title', async () => {
+    // The title is only stamped by send(), so a session that failed before
+    // any message still reads 'Untitled' — but its error item is the only
+    // record of what went wrong.
+    const { manager: m, provider } = await makeManager();
+    const id = (await m.create('fake', '/tmp')).state.id;
+    provider.runs[0].emit({ kind: 'turn-end', reason: 'error', error: 'boom' });
+    await settle();
+
+    await m.close(id);
+
+    assert.strictEqual(m.summaries().find((s) => s.id === id)?.archived, true);
+  });
+
+  test('close keeps a session revived by open(), whose items live only on disk', async () => {
+    // open() builds a fresh run whose own item count starts at zero, so the
+    // decision must consult the persisted transcript too.
+    const a = await manager.create('fake', '/tmp');
+    const id = a.state.id;
+    a.send('hello');
+    await settle();
+    await manager.close(id);
+    await manager.open(id);
+
+    await manager.close(id);
+
+    assert.ok(
+      manager.summaries().find((s) => s.id === id),
+      'a session with a stored transcript must survive close, however it was revived',
+    );
+  });
+
   test('open revives an archived session as live', async () => {
     const a = await manager.create('fake', '/tmp');
     const id = a.state.id;
+    a.send('hello');
+    await settle();
     await manager.close(id);
 
     const revived = await manager.open(id);
@@ -563,6 +610,9 @@ suite('SessionManager', () => {
     provider.invocables = [{ name: 'init' }];
     const session = await manager.create('fake', '/repo');
     const id = session.state.id;
+    // An unused session is discarded by close() rather than archived, so
+    // give it a transcript before archiving it.
+    session.send('hello');
     await settle();
     await manager.close(id);
     emitted.length = 0;
@@ -581,6 +631,7 @@ suite('SessionManager', () => {
     // going through create()/open().
     const a = await manager.create('fake', '/repo');
     const id = a.state.id;
+    a.send('hello');
     await settle();
     await manager.close(id);
     await manager.dispose();

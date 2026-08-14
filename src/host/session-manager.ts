@@ -336,7 +336,37 @@ export class SessionManager implements SessionSink {
     }
   }
 
+  /**
+   * Closing a session that was never used discards it outright instead of
+   * archiving it: an untitled session with an empty transcript carries
+   * nothing to come back to, and archiving it would leave the roster
+   * accumulating placeholder rows that can only ever be deleted by hand.
+   *
+   * "Never used" is title *and* transcript, not either alone. The title is
+   * only stamped by the first `send()`, so `'Untitled'` alone would also
+   * match a session whose sole item is a startup error — worth keeping, it
+   * is the only record of why the session failed. Conversely the transcript
+   * alone would be empty for a live-revived session whose items are all on
+   * disk, hence the store read on the non-live path.
+   */
+  private async isDiscardable(id: SessionId, state: SessionState): Promise<boolean> {
+    if (state.title !== 'Untitled') { return false; }
+    const session = this.live.get(id);
+    if (session && !session.isEmpty) { return false; }
+    const { items, hasMore } = await this.store.tail(id, 1);
+    return !hasMore && items.length === 0;
+  }
+
   async close(id: SessionId): Promise<void> {
+    const state = this.meta.get(id);
+    if (state && await this.isDiscardable(id, state)) {
+      await this.remove(id);
+      return;
+    }
+    await this.archive(id);
+  }
+
+  private async archive(id: SessionId): Promise<void> {
     const session = this.live.get(id);
     if (session) {
       await session.dispose();
@@ -353,7 +383,7 @@ export class SessionManager implements SessionSink {
   }
 
   async remove(id: SessionId): Promise<void> {
-    await this.close(id);
+    await this.archive(id);
     this.meta.delete(id);
     await this.store.remove(id);
     this.paneLayout = {
