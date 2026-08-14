@@ -301,6 +301,12 @@ export class SessionManager implements SessionSink {
   async setVisible(ids: SessionId[]): Promise<void> {
     const next = new Set(ids);
     const added = ids.filter((id) => !this.visible.has(id));
+    // Captured before `visible` is replaced: hiding a pane is the *other*
+    // way an unused session stops being shown (the pane header's X and the
+    // roster checkbox both post set-layout/set-visible, never close-session),
+    // and without this the roster accumulates 'Untitled' rows that only the
+    // row's overflow menu can ever remove. Same discard rule as close().
+    const removed = [...this.visible].filter((id) => !next.has(id));
     this.visible = next;
 
     for (const id of added) {
@@ -349,6 +355,19 @@ export class SessionManager implements SessionSink {
         },
       });
       this.drainSnapshotBuffer(id);
+    }
+
+    // After the reveals, not before: `remove()` fans out a roster change,
+    // and a hidden-and-discarded session must not race the snapshot the
+    // newly revealed one is waiting on.
+    for (const id of removed) {
+      // A session with a snapshot still in flight is mid-reveal, not
+      // abandoned — an uncheck/re-check in the roster passes through here
+      // while the first fetch is outstanding. Leave it alone rather than
+      // reading a transcript the in-flight fetch is already reading.
+      if (this.snapshotting.has(id)) { continue; }
+      const state = this.meta.get(id);
+      if (state && await this.isDiscardable(id, state)) { await this.remove(id); }
     }
   }
 

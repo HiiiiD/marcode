@@ -165,6 +165,12 @@ suite('SessionManager', () => {
     // not be emitted after the newer call has replayed its buffered patches.
     const a = await manager.create('fake', '/tmp');
     const id = a.state.id;
+    // Used, not fresh: this test unchecks the session mid-reveal, and an
+    // unused one is discarded outright on hide (see 'hiding an unused
+    // session discards it'). The buffering semantics under test are the
+    // same either way.
+    a.send('warm up');
+    await settle();
     sent.length = 0;
 
     const realTail = store.tail.bind(store);
@@ -224,6 +230,10 @@ suite('SessionManager', () => {
     // snapshot and drain fetch #3's buffer — the clobber, via ABA.
     const a = await manager.create('fake', '/tmp');
     const id = a.state.id;
+    // See the re-entrant test above: hiding an unused session discards it,
+    // so this one is given a transcript before it is unchecked.
+    a.send('warm up');
+    await settle();
     sent.length = 0;
 
     const realTail = store.tail.bind(store);
@@ -359,6 +369,32 @@ suite('SessionManager', () => {
       manager.summaries().find((s) => s.id === id), undefined,
       'an unused session must leave the roster, not linger as an archived row',
     );
+  });
+
+  test('hiding an unused session discards it, like close does', async () => {
+    // The pane header's X and the roster checkbox only post set-layout /
+    // set-visible — never close-session — so the discard rule has to hold
+    // here too or the roster fills with 'Untitled' rows.
+    const id = (await manager.create('fake', '/tmp')).state.id;
+    await manager.setVisible([id]);
+
+    await manager.setVisible([]);
+
+    assert.strictEqual(manager.get(id), undefined, 'hidden unused session is not live');
+    assert.strictEqual(manager.summaries().find((s) => s.id === id), undefined);
+  });
+
+  test('hiding a used session only hides it', async () => {
+    const a = await manager.create('fake', '/tmp');
+    const id = a.state.id;
+    await manager.setVisible([id]);
+    a.send('hello');
+    await settle();
+
+    await manager.setVisible([]);
+
+    assert.strictEqual(manager.summaries().find((s) => s.id === id)?.archived, false,
+      'a session with a transcript stays in the roster, unarchived');
   });
 
   test('close keeps a session whose only item is an error, despite the Untitled title', async () => {
