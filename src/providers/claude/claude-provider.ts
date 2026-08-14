@@ -276,6 +276,41 @@ export class ClaudeProvider implements AgentProvider {
           const constructedOptions = buildOptions();
           const session = query({ prompt: prompts, options: constructedOptions });
           queryRef = session;
+          // The init message already produced a name+status snapshot via
+          // map-events. This pull supersedes it with the full shape — error
+          // text and a real tool count. Fire-and-forget: a failure here means
+          // the strip keeps the coarser init data, which is a degraded strip
+          // rather than a failed turn, so it must never surface as a
+          // turn-end error and must never produce an unhandled rejection.
+          // `mcpServerStatus()` is wrapped in try/catch, not just `.catch()`
+          // on its result, because a call itself can throw synchronously
+          // (e.g. an already-torn-down transport) — same reasoning as
+          // setEffort/setPermissionMode below. A synchronous throw here, left
+          // unguarded, would propagate out of this try and abort the pump
+          // before it ever reaches the `for await` below, turning a merely
+          // degraded strip into a fully failed turn.
+          try {
+            session.mcpServerStatus().then(
+              (servers) => {
+                if (disposed || servers.length === 0) { return; }
+                events.push({
+                  kind: 'mcp-servers',
+                  servers: servers.map((s) => ({
+                    name: s.name,
+                    state: s.status === 'connected' || s.status === 'failed'
+                      || s.status === 'needs-auth' || s.status === 'pending'
+                      || s.status === 'disabled' ? s.status : 'pending',
+                    ...(s.tools ? { toolCount: s.tools.length } : {}),
+                    ...(s.error ? { error: redactSecrets(s.error) } : {}),
+                  })),
+                });
+              },
+              () => { /* see comment above: degraded strip, not a failed turn */ },
+            ).catch(() => { /* belt-and-braces: .then's rejection handler itself must not throw async */ });
+          } catch {
+            // See comment above: a synchronous throw from the call itself is
+            // exactly as non-fatal as an async rejection.
+          }
           for await (const msg of session) {
             for (const event of mapEvent(msg)) { events.push(event); }
           }
