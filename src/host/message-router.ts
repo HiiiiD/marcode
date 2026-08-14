@@ -80,11 +80,13 @@ export class MessageRouter {
         });
         this.emit({ t: 'editor-context', ctx: this.editor.current() });
         // Not awaited: hydrate must not wait on a CLI handshake. The catalog
-        // just sent carries each provider's synchronously-known models — for
-        // a backend-answered one, nothing at all until the first probe lands,
-        // which is why the panel's create controls start disabled. The real
-        // catalog, and any unavailability reason, arrive as a `catalog`
-        // message when the probes settle.
+        // just sent carries each provider's synchronously-known models, or —
+        // for a backend-answered one, which knows nothing until its first
+        // probe lands — the list its last successful probe left on disk. That
+        // seed is why a restored panel comes up with a live model switcher
+        // rather than a read-only pane. The authoritative catalog, and any
+        // unavailability reason, replace it in a `catalog` message when the
+        // probes settle; see SessionManager.seededModels.
         void this.manager.refreshModels(this.defaultCwd);
         void this.manager.refreshUsage(this.defaultCwd);
         return;

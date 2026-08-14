@@ -985,6 +985,82 @@ suite('SessionManager', () => {
     await m.dispose();
   });
 
+  test('a persisted model list seeds the catalog before any probe answers', async () => {
+    // The reason this exists: hydrate ships whatever `catalog()` says at the
+    // moment the webview says `ready`, and a backend-answered provider knows
+    // nothing until its probe lands. Without a seed every restored pane spends
+    // that first second with a dead model switcher.
+    await new TranscriptStore(dir).writeCatalog({
+      providers: { claude: [{ id: 'opus', displayName: 'Opus 5' }] },
+    });
+
+    const m = new SessionManager(
+      new TranscriptStore(dir),
+      new Map([['claude', unavailableProvider('claude', 'Claude Code CLI not found.')]]),
+      () => {},
+    );
+    await m.init();
+
+    assert.deepStrictEqual(m.catalog(), [{
+      id: 'claude', displayName: 'claude', models: [{ id: 'opus', displayName: 'Opus 5' }],
+    }]);
+    await m.dispose();
+  });
+
+  test('a successful probe replaces the seed with what the backend actually said', async () => {
+    await new TranscriptStore(dir).writeCatalog({
+      providers: { claude: [{ id: 'opus', displayName: 'Opus 5' }] },
+    });
+
+    const m = new SessionManager(
+      new TranscriptStore(dir), new Map([['claude', modelProvider('claude')]]), () => {},
+    );
+    await m.init();
+    await m.refreshModels('/repo');
+
+    assert.deepStrictEqual(m.catalog(), [{
+      id: 'claude', displayName: 'claude', models: [{ id: 'fresh-/repo', displayName: 'Fresh' }],
+    }], 'the live list is the truth; the seed was only ever a stand-in for it');
+    await m.dispose();
+  });
+
+  test('a failed probe drops the seed and reports the provider unavailable', async () => {
+    // A seed that outlives the install it describes is the same lie a stale
+    // `probeFailures` entry would be. Once the probe has actually answered,
+    // its answer is the only thing that speaks.
+    await new TranscriptStore(dir).writeCatalog({
+      providers: { claude: [{ id: 'opus', displayName: 'Opus 5' }] },
+    });
+
+    const m = new SessionManager(
+      new TranscriptStore(dir),
+      new Map([['claude', unavailableProvider('claude', 'Claude Code CLI not found.')]]),
+      () => {},
+    );
+    await m.init();
+    await m.refreshModels('/repo');
+
+    assert.deepStrictEqual(m.catalog(), []);
+    assert.deepStrictEqual(m.unavailable(), [
+      { id: 'claude', displayName: 'claude', reason: 'Claude Code CLI not found.' },
+    ]);
+    await m.dispose();
+  });
+
+  test('the probed catalog is persisted, so the next launch seeds from it', async () => {
+    const m = new SessionManager(
+      new TranscriptStore(dir), new Map([['claude', modelProvider('claude')]]), () => {},
+    );
+    await m.init();
+    await m.refreshModels('/repo');
+    await settle();
+    await m.dispose();
+
+    assert.deepStrictEqual(await new TranscriptStore(dir).readCatalog(), {
+      providers: { claude: [{ id: 'fresh-/repo', displayName: 'Fresh' }] },
+    });
+  });
+
   test('a provider that starts answering stops being reported as unavailable', async () => {
     const emitted: HostToWebview[] = [];
     let fail = true;
