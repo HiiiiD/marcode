@@ -82,6 +82,7 @@ export class MessageRouter {
         // just sent carries each provider's synchronously-known models; the
         // real one arrives as a `catalog` message when the probes land.
         void this.manager.refreshModels(this.defaultCwd);
+        void this.manager.refreshUsage(this.defaultCwd);
         return;
       }
 

@@ -62,6 +62,13 @@ suite('MessageRouter', () => {
     });
   });
 
+  test('ready kicks off a usage refresh alongside the model refresh', async () => {
+    await router.handle({ t: 'ready' });
+    await settle();
+
+    assert.deepStrictEqual(provider.fetchUsageCalls, ['/tmp']);
+  });
+
   test('create-session then send drives a turn', async () => {
     await router.handle({ t: 'create-session', providerId: 'fake', cwd: '/tmp' });
     const id = manager.summaries()[0].id;

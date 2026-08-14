@@ -144,6 +144,33 @@ export class SessionManager implements SessionSink {
     this.emit({ t: 'catalog', catalog: this.catalog() });
   }
 
+  /**
+   * Asks every provider that can answer for its account's plan usage, with
+   * no session required. Fire-and-forget by design, exactly like
+   * refreshModels: this is what puts real percentages in the strip at
+   * activation, and nothing — least of all panel startup — may wait on a CLI
+   * handshake for decoration.
+   *
+   * One emit per provider rather than one at the end, unlike refreshModels:
+   * the wire message is per-provider, so there is no whole-set message to
+   * batch into, and a fast provider should not wait behind a slow one.
+   */
+  async refreshUsage(cwd: string): Promise<void> {
+    await Promise.all([...this.providers.values()]
+      .filter((p) => p.fetchUsage)
+      .map((p) => p.fetchUsage!(cwd).then(
+        (windows) => { if (!this.disposed) { this.usageWindows(p.id, windows); } },
+        (err: unknown) => {
+          // Errors are state, never exceptions — and the state here is
+          // "whatever the last pull or the persisted file said still
+          // stands". Worth a developer-facing trace: a permanently broken
+          // CLI would otherwise be indistinguishable from an account that
+          // genuinely has no plan limits.
+          console.warn('[hiiiid-code] session-manager: usage probe failed for', p.id, err);
+        },
+      )));
+  }
+
   summaries(): SessionSummary[] {
     return [...this.meta.values()].sort((a, b) => b.updatedAt - a.updatedAt);
   }

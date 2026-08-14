@@ -992,4 +992,46 @@ suite('SessionManager', () => {
     assert.deepStrictEqual(emitted.filter((msg) => msg.t === 'catalog'), []);
     await m.dispose();
   });
+
+  test('refreshUsage probes every provider that can answer and emits per provider', async () => {
+    const emitted: HostToWebview[] = [];
+    const p = new FakeProvider(() => [], {
+      windows: [{ id: 'five-hour', label: 'Session (5h)', usedPercent: 40 }],
+    });
+    const m = new SessionManager(new TranscriptStore(dir), new Map([['fake', p]]), (msg) => emitted.push(msg));
+    await m.init();
+
+    await m.refreshUsage('/repo');
+
+    assert.deepStrictEqual(
+      emitted.filter((msg) => msg.t === 'usage-windows').map((msg) =>
+        (msg as Extract<HostToWebview, { t: 'usage-windows' }>).providerId),
+      ['fake'],
+    );
+    await m.dispose();
+  });
+
+  test('refreshUsage does not reject when a provider probe fails', async () => {
+    const p = new FakeProvider(() => []);
+    p.fetchUsage = async () => { throw new Error('CLI is broken'); };
+    const m = new SessionManager(new TranscriptStore(dir), new Map([['fake', p]]), () => {});
+    await m.init();
+
+    // Errors are state, never exceptions: a broken CLI leaves the strip as it
+    // was, and must never surface as a rejection at activation.
+    await assert.doesNotReject(() => m.refreshUsage('/repo'));
+    await m.dispose();
+  });
+
+  test('refreshUsage emits nothing when no provider can answer', async () => {
+    const p = new FakeProvider(() => []);
+    delete (p as { fetchUsage?: unknown }).fetchUsage;
+    const emitted: HostToWebview[] = [];
+    const m = new SessionManager(new TranscriptStore(dir), new Map([['fake', p]]), (msg) => emitted.push(msg));
+    await m.init();
+
+    await m.refreshUsage('/repo');
+    assert.deepStrictEqual(emitted.filter((msg) => msg.t === 'usage-windows'), []);
+    await m.dispose();
+  });
 });
