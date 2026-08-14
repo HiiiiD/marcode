@@ -13,3 +13,5 @@ node_modules
 .dev-host-profile/
 
 .impeccable
+
+.claude

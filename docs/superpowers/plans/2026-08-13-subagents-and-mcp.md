@@ -2663,10 +2663,21 @@ Checked against the spec:
 - **`mcpServer` parsed once host-side** — Task 2 + Task 3.
 - **MCP status live-only, absent when archived** — Task 4; `mcpServers` lives on `SessionSnapshot` and `PaneState`, never on `SessionState`, so it cannot reach `index.json`.
 - **`'disabled'` in the union** — Task 1, ranked below `connected` in Task 9.
-- **Bounded child window of 10, no nested scroll, no windowing library** — Task 8.
-- **No overflow affordance** — Task 8 renders `showing last 10 of N` as plain text with no control.
+- **Bounded child window of 10, no nested scroll, no windowing library** — Task 8, with a DOM test that fails if any descendant gains an `overflow-*` or `max-h-*` class.
+- **No overflow affordance** — Task 8 renders `showing last 10 of N` as plain text with no control, asserted by a DOM test.
 
-Two places where this plan deliberately departs from the spec's letter:
+Checked against the `impeccable` design brief (2026-08-14, Operate mode):
+
+- **Extends the incumbent world, never replaces it** — Task 8 adds one entry to `TranscriptItemShell`'s `RULE` map and one element to `ToolCard`. The pre-overhaul rewrite of `tool-card.tsx` that an earlier draft of this plan carried is withdrawn; it would have deleted the lucide state icon, the `sr-only` accessible name, the `aria-expanded`/`aria-controls` pair and `wrap-break-word`.
+- **MCP health in the roster, not the pane header** — Task 9. The header already carries nine elements.
+- **A blocked agent outranks a broken server** — Task 9 gives the trigger's `ml-auto` slot to `needs you` and shows the MCP warning only when that slot is free.
+- **Health is an exception report** — Task 9 warns on the trigger only for `failed`/`needs-auth`; `pending` is excluded because every server is pending at startup.
+- **Text, never colour alone** — the blocked chip in Task 8 and every state in Task 9 carry a word; icon-only states get an `sr-only` equivalent.
+- **DOM tests through the real `StoreProvider`** — Tasks 8 and 9 each add one, driven by genuine `HostToWebview` messages via `sendFromHost`, per CLAUDE.md.
+- **The mechanical detector runs on the changed components** — Task 8 Step 10 and Task 9 Step 7. Exit 2 is a failing check, not a suggestion.
+
+Three places where this plan deliberately departs from the spec's letter:
 
 1. **`parseToolName` does not require exactly three `__`-separated segments.** The spec says a name that "does not split into three parts" is left alone; that rule would mangle a legitimate `mcp__github__list__repos`. The plan splits on the first separator after the prefix and treats the remainder as the tool name.
 2. **Permission `parentId` is derived, not read from the SDK.** The spec assumed the provider reports it. `canUseTool` supplies `agentID` (the subagent instance) rather than the spawning `Task`'s tool-use id, so `AgentSession` resolves it from the child map instead — the permission id is the tool-use id of the call being approved. The `parentId` field stays on the event for providers that can supply it directly, and an unresolvable permission degrades to top-level.
+3. **There is no per-pane MCP status strip.** The spec put one in the pane chrome, collapsed to a dot and a count. That was written against a header carrying three elements; the header shipped in PR #3 carries nine, and the strip would have been the tenth. Health moved to the roster instead, where it is reported once for the whole split rather than repeated per pane. The spec's rules survive the move intact — absent when there are no servers, absent for an archived session, no authorize button, and the historical record staying on the tool-card badges.
