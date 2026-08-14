@@ -8,25 +8,46 @@ import type { Disposable, EditorSource } from './editor-context-tracker';
  * the editor gutter shows.
  */
 export function createVscodeEditorSource(): EditorSource & { dispose(): void } {
-  const subs: vscode.Disposable[] = [];
+  // Each entry disposes exactly once, however it is reached: through the
+  // per-subscription Disposable returned to a caller, or through this
+  // source's own aggregate dispose(). Guarding here means the two can race
+  // or run in either order without a double-dispose of the underlying
+  // vscode.Disposable.
+  const subs = new Set<Disposable>();
+
+  const track = (real: vscode.Disposable): Disposable => {
+    let done = false;
+    const guarded: Disposable = {
+      dispose: () => {
+        if (done) { return; }
+        done = true;
+        subs.delete(guarded);
+        real.dispose();
+      },
+    };
+    subs.add(guarded);
+    return guarded;
+  };
 
   return {
     onDidChangeEditor(cb: (snap: EditorSnapshot | null) => void): Disposable {
       const emit = (editor: vscode.TextEditor | undefined) => {
         cb(editor ? snapshot(editor) : null);
       };
-      subs.push(vscode.window.onDidChangeActiveTextEditor(emit));
-      subs.push(vscode.window.onDidChangeTextEditorSelection((e) => emit(e.textEditor)));
+      const local = [
+        track(vscode.window.onDidChangeActiveTextEditor(emit)),
+        track(vscode.window.onDidChangeTextEditorSelection((e) => emit(e.textEditor))),
+      ];
       // Seed from whatever is already open at activation, so the first
       // message of a session carries context without the user touching
       // anything.
       emit(vscode.window.activeTextEditor);
-      return { dispose: () => { /* all subs released by dispose() below */ } };
+      return { dispose: () => { for (const sub of local) { sub.dispose(); } } };
     },
 
     onDidCloseDocument(cb: (fsPath: string) => void): Disposable {
-      subs.push(vscode.workspace.onDidCloseTextDocument((doc) => cb(doc.uri.fsPath)));
-      return { dispose: () => { /* all subs released by dispose() below */ } };
+      const local = [track(vscode.workspace.onDidCloseTextDocument((doc) => cb(doc.uri.fsPath)))];
+      return { dispose: () => { for (const sub of local) { sub.dispose(); } } };
     },
 
     workspaceRoots(): string[] {
@@ -34,8 +55,7 @@ export function createVscodeEditorSource(): EditorSource & { dispose(): void } {
     },
 
     dispose(): void {
-      for (const sub of subs) { sub.dispose(); }
-      subs.length = 0;
+      for (const sub of [...subs]) { sub.dispose(); }
     },
   };
 }

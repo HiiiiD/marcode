@@ -7,23 +7,27 @@ import type { EditorContext } from '../../providers/types';
 const ROOT = path.resolve('/work/repo');
 
 class FakeSource implements EditorSource {
-  private editorCb: ((snap: EditorSnapshot | null) => void) | undefined;
-  private closeCb: ((fsPath: string) => void) | undefined;
+  private editorCbs = new Set<(snap: EditorSnapshot | null) => void>();
+  private closeCbs = new Set<(fsPath: string) => void>();
 
   onDidChangeEditor(cb: (snap: EditorSnapshot | null) => void) {
-    this.editorCb = cb;
-    return { dispose: () => { this.editorCb = undefined; } };
+    this.editorCbs.add(cb);
+    return { dispose: () => { this.editorCbs.delete(cb); } };
   }
 
   onDidCloseDocument(cb: (fsPath: string) => void) {
-    this.closeCb = cb;
-    return { dispose: () => { this.closeCb = undefined; } };
+    this.closeCbs.add(cb);
+    return { dispose: () => { this.closeCbs.delete(cb); } };
   }
 
   workspaceRoots(): string[] { return [ROOT]; }
 
-  emitEditor(snap: EditorSnapshot | null): void { this.editorCb?.(snap); }
-  emitClose(fsPath: string): void { this.closeCb?.(fsPath); }
+  emitEditor(snap: EditorSnapshot | null): void { for (const cb of this.editorCbs) { cb(snap); } }
+  emitClose(fsPath: string): void { for (const cb of this.closeCbs) { cb(fsPath); } }
+
+  /** Live subscriber count, so a test can prove the subscription was actually
+   * released — not merely that an internal flag swallowed the callback. */
+  get subscriberCount(): number { return this.editorCbs.size + this.closeCbs.size; }
 }
 
 function snap(over: Partial<EditorSnapshot> = {}): EditorSnapshot {
@@ -107,6 +111,14 @@ suite('EditorContextTracker', () => {
 
   test('dispose stops delivery', () => {
     tracker.dispose();
+    source.emitEditor(snap());
+    assert.strictEqual(seen.length, 0);
+  });
+
+  test('dispose releases the underlying subscriptions', () => {
+    assert.strictEqual(source.subscriberCount, 2);
+    tracker.dispose();
+    assert.strictEqual(source.subscriberCount, 0);
     source.emitEditor(snap());
     assert.strictEqual(seen.length, 0);
   });
