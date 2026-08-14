@@ -27,6 +27,16 @@ export function ToolCard({ item }: { item: ToolItem }) {
       >
         <StateIcon aria-hidden className={cn(item.state === 'running' && 'animate-spin')} />
         <span className="sr-only">{item.state}</span>
+        {item.mcpServer && (
+          // Muted, not colour-per-server: a palette per server would collide
+          // with the status tones already in use and buys nothing when the
+          // name is right beside it. This is a permanent record — the value
+          // is parsed host-side at item creation, so removing the server
+          // later cannot rewrite what already happened.
+          <span className="shrink-0 rounded bg-muted px-1 text-muted-foreground">
+            {item.mcpServer}
+          </span>
+        )}
         <span className="font-medium">{item.name}</span>
         <span className="truncate text-muted-foreground">{summarize(item.input)}</span>
       </Button>
