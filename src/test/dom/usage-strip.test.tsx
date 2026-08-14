@@ -34,9 +34,38 @@ suite('UsageStrip', () => {
   test('the strip posts nothing — it is a render, not a request', () => {
     mountStrip();
 
-    sendFromHost({ t: 'usage-windows', providerId: 'fake', windows: [] });
+    sendFromHost({ t: 'usage-windows', providerId: 'fake', windows: windows() });
 
-    assert.ok(!posted().some((m) => m.t.startsWith('request-')));
+    // Exact, not a filter: `ready` is all `StoreProvider` posts on mount, so
+    // anything else in this list is the strip having grown an effect again.
+    assert.deepStrictEqual(posted().map((m) => m.t), ['ready']);
+  });
+
+  test('a window past its reset is not rendered — the host prunes on read, so a stale copy would linger here', () => {
+    mountStrip();
+
+    sendFromHost({
+      t: 'usage-windows', providerId: 'fake',
+      windows: [{ id: 'five-hour', label: 'Session (5h)', usedPercent: 62, resetsAt: Date.now() - 1 }],
+    });
+
+    assert.strictEqual(screen.queryByLabelText('Session (5h) 62% used'), null);
+    assert.ok(screen.getByText('Plan usage not reported'));
+  });
+
+  test('an expired window is dropped without taking its unexpired siblings with it', () => {
+    mountStrip();
+
+    sendFromHost({
+      t: 'usage-windows', providerId: 'fake',
+      windows: [
+        { id: 'five-hour', label: 'Session (5h)', usedPercent: 62, resetsAt: Date.now() - 1 },
+        { id: 'seven-day', label: 'Week', usedPercent: 18 },
+      ],
+    });
+
+    const labels = screen.getAllByRole('img').map((el) => el.getAttribute('aria-label'));
+    assert.deepStrictEqual(labels, ['Week 18% used']);
   });
 
   test('a provider with nothing reported reads as not-reported, not as an error or as "no limits"', () => {

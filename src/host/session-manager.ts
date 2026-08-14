@@ -415,7 +415,9 @@ export class SessionManager implements SessionSink {
     const prev = known.get(window.id);
     // Identical repeats are ordinary: the CLI re-announces rate-limit info
     // on reconnect, and re-broadcasting an unchanged set would re-render the
-    // strip for nothing.
+    // strip for nothing. `label` is deliberately not compared — it is derived
+    // from `id` through the fixed WINDOW_LABELS table, so two windows with the
+    // same id always carry the same label and it cannot differ on its own.
     if (prev && prev.usedPercent === window.usedPercent && prev.resetsAt === window.resetsAt) {
       return;
     }

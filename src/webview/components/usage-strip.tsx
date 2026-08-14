@@ -47,19 +47,30 @@ function WindowChip({ window: w }: { window: UsageWindow }) {
 function ProviderUsage({
   displayName, windows, showName,
 }: { displayName: string; windows: UsageWindow[] | undefined; showName: boolean }) {
-  // One quiet state covers two situations the push cannot tell apart: an
-  // account that has not reported yet, and a session that never will (an API
-  // key, Bedrock or Vertex, where plan limits do not exist). Asserting either
-  // one would be a claim we cannot support, so the copy says only what is
-  // true of both.
-  if (!windows || windows.length === 0) {
+  // The host prunes expired windows on read, but the client holds its own
+  // copy until the next broadcast — and broadcasts ride on provider events,
+  // which may be hours apart. So a window can pass its reset with nothing
+  // arriving to correct it, and the same `resetsAt > now` filter has to run
+  // here or the chip keeps showing a percentage the host itself considers
+  // wrong. Evaluated per render rather than on a timer: every render already
+  // reads the clock for `resetsIn`, and a second clock is a second thing to
+  // keep correct.
+  const now = Date.now();
+  const live = windows?.filter((w) => w.resetsAt === undefined || w.resetsAt > now);
+
+  // One quiet state covers three situations the push cannot tell apart: an
+  // account that has not reported yet, a session that never will (an API key,
+  // Bedrock or Vertex, where plan limits do not exist), and one whose windows
+  // have all expired unrefreshed. Asserting any one of them would be a claim
+  // we cannot support, so the copy says only what is true of all three.
+  if (!live || live.length === 0) {
     return <span className="text-muted-foreground">Plan usage not reported</span>;
   }
 
   return (
     <span className="flex shrink-0 items-center gap-3">
       {showName && <span className="text-muted-foreground">{displayName}</span>}
-      {windows.map((w) => <WindowChip key={w.id} window={w} />)}
+      {live.map((w) => <WindowChip key={w.id} window={w} />)}
     </span>
   );
 }

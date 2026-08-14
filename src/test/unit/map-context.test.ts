@@ -142,7 +142,6 @@ suite('map-context', () => {
       }
     }
   });
-
 });
 
 suite('toUsageWindow', () => {
