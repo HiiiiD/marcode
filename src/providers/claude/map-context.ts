@@ -32,8 +32,10 @@ export interface ContextUsageLike {
  * direction depending on which way the roundings happen to lean. Assigning
  * every part its floor and then handing the leftover points, one each, to
  * the parts with the largest fractional remainder is exact by construction
- * and needs no clamp. Ties break by array order (`parts` is always passed
- * as `[system, memory, conversation]`), so the output is deterministic.
+ * and needs no clamp. Ties break by array order — stable for any caller,
+ * whether that is the fixed three-slice `[system, memory, conversation]`
+ * call or the per-file, arbitrary-length `memoryFiles` call — so the output
+ * is deterministic.
  */
 function largestRemainder(weights: number[], base: number, total: number): number[] {
   if (base <= 0) { return weights.map(() => 0); }
