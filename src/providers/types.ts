@@ -147,11 +147,14 @@ export interface AgentRun {
   respondToTool(id: string, decision: ToolDecision): void;
   setEffort(effort: EffortLevel): void;
   /**
-   * Changes the model. The SDK fixes the model at query construction, so
-   * this only ever takes effect when called before the first `send()` —
-   * there is no live seam to migrate a running query onto a new model.
-   * Fire-and-forget by design, same as the other setters: callers must
-   * never see this reject.
+   * Changes the model of the *running* session, not just recorded state —
+   * the same live-retarget contract as `setPermissionMode`. Called before the
+   * first `send()` it shapes the query that gets built; called after, it
+   * retargets the existing one, and a turn already in flight finishes on the
+   * model it started with.
+   *
+   * Fire-and-forget by design, same as the other setters: callers must never
+   * see this reject.
    */
   setModel(model: string): void;
   /**

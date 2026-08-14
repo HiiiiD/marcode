@@ -419,18 +419,21 @@ suite('AgentSession', () => {
     await session.dispose();
   });
 
-  test('setModel() after the first send does not push effort at the running query', async () => {
-    // The model change itself is already a no-op on a running query, so
-    // applying its effort would change the effort of the *old* model.
+  test('setModel() after the first send pushes the reconciled effort too', async () => {
+    // The model change retargets the live query, so its effort has to travel
+    // with it: leaving the old level in place runs the new model at a level it
+    // may not even offer.
     const provider = new FakeProvider(() => [{ kind: 'turn-end', reason: 'done' }]);
-    const session = new AgentSession(baseState(), provider, store, sink);
+    const session = new AgentSession(
+      { ...baseState(), model: 'fake-small', effort: undefined }, provider, store, sink,
+    );
 
     session.send('go');
     await settle();
-    session.setModel('fake-small');
+    session.setModel('fake-large');
 
-    assert.strictEqual(session.state.effort, undefined, 'state still records the choice');
-    assert.deepStrictEqual(provider.efforts, []);
+    assert.strictEqual(session.state.effort, 'medium');
+    assert.deepStrictEqual(provider.efforts, ['medium']);
     await session.dispose();
   });
 

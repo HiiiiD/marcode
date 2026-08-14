@@ -17,8 +17,15 @@ type FakeSdkServerStatus = {
  * without touching the real @anthropic-ai/claude-agent-sdk package or
  * spawning a CLI subprocess.
  */
-function fakeLoadQuery(opts: { mcpServerStatus?: () => Promise<FakeSdkServerStatus[]> } = {}) {
+function fakeLoadQuery(opts: {
+  mcpServerStatus?: () => Promise<FakeSdkServerStatus[]>;
+  /** Stands in for `Query.setModel`. Default records and resolves; a test that
+   * wants the failure path supplies one that rejects or throws. */
+  setModel?: (model?: string) => Promise<void>;
+} = {}) {
   const calls: { options: Record<string, unknown> }[] = [];
+  /** Every model pushed at the *running* query, in order. */
+  const setModels: (string | undefined)[] = [];
   let closed = false;
 
   const queryFn = (params: { prompt: AsyncIterable<unknown>; options: Record<string, unknown> }) => {
@@ -43,12 +50,17 @@ function fakeLoadQuery(opts: { mcpServerStatus?: () => Promise<FakeSdkServerStat
       interrupt: () => Promise<undefined>;
       setPermissionMode: () => Promise<void>;
       applyFlagSettings: () => Promise<void>;
+      setModel: (model?: string) => Promise<void>;
       close: () => void;
       mcpServerStatus: () => Promise<FakeSdkServerStatus[]>;
     };
     gen.interrupt = async () => undefined;
     gen.setPermissionMode = async () => { /* no-op fake */ };
     gen.applyFlagSettings = async () => { /* no-op fake */ };
+    gen.setModel = (model?: string) => {
+      setModels.push(model);
+      return opts.setModel ? opts.setModel(model) : Promise.resolve();
+    };
     gen.close = () => { closed = true; stop(); };
     gen.mcpServerStatus = opts.mcpServerStatus ?? (async () => []);
     return gen;
@@ -57,6 +69,7 @@ function fakeLoadQuery(opts: { mcpServerStatus?: () => Promise<FakeSdkServerStat
   return {
     load: async () => queryFn,
     calls,
+    setModels,
     isClosed: () => closed,
   };
 }
@@ -179,7 +192,7 @@ suite('ClaudeProvider (lazy start)', () => {
     await run.dispose();
   });
 
-  test('setModel() after the first send is recorded but does not rebuild the running query', async () => {
+  test('setModel() after the first send pushes the model at the running query', async () => {
     const fake = fakeLoadQuery();
     const provider = new ClaudeProvider(fake.load as never);
     const run = provider.start({ cwd: '/tmp', model: 'opus', permissionMode: 'default' });
@@ -190,7 +203,54 @@ suite('ClaudeProvider (lazy start)', () => {
     await flushMicrotasks();
 
     assert.strictEqual(fake.calls.length, 1, 'setModel() must not construct a second query');
-    assert.strictEqual(fake.calls[0].options.model, 'opus', 'the already-running query keeps its model');
+    assert.deepStrictEqual(fake.setModels, ['haiku'], 'the live query is told about the switch');
+    assert.strictEqual(
+      fake.calls[0].options.model, 'opus',
+      'the construction-time options are history; the switch travels over the control channel',
+    );
+    await run.dispose();
+  });
+
+  test('setModel() before the first send does not touch a query that does not exist yet', async () => {
+    const fake = fakeLoadQuery();
+    const provider = new ClaudeProvider(fake.load as never);
+    const run = provider.start({ cwd: '/tmp', model: 'opus', permissionMode: 'default' });
+
+    run.setModel('haiku');
+    await flushMicrotasks();
+
+    assert.strictEqual(fake.calls.length, 0, 'a model change must not spawn a subprocess');
+    assert.deepStrictEqual(fake.setModels, []);
+    await run.dispose();
+  });
+
+  test('a rejecting setModel() is logged, not surfaced as a failed turn', async () => {
+    // Same best-effort contract as setEffort/setPermissionMode: a control-channel
+    // refusal is a degraded setting, not a broken conversation, so nothing may
+    // reach `events` and nothing may reject at the caller.
+    const fake = fakeLoadQuery({ setModel: () => Promise.reject(new Error('nope')) });
+    const provider = new ClaudeProvider(fake.load as never);
+    const run = provider.start({ cwd: '/tmp', model: 'opus', permissionMode: 'default' });
+
+    run.send('go');
+    await flushMicrotasks();
+    assert.doesNotThrow(() => run.setModel('haiku'));
+    await flushMacrotask();
+
+    const events = await drainAvailableEvents(run);
+    assert.strictEqual(events.some((e) => e.kind === 'turn-end'), false);
+    await run.dispose();
+  });
+
+  test('a synchronously throwing setModel() does not throw at the caller', async () => {
+    const fake = fakeLoadQuery({ setModel: () => { throw new Error('torn down'); } });
+    const provider = new ClaudeProvider(fake.load as never);
+    const run = provider.start({ cwd: '/tmp', model: 'opus', permissionMode: 'default' });
+
+    run.send('go');
+    await flushMicrotasks();
+
+    assert.doesNotThrow(() => run.setModel('haiku'));
     await run.dispose();
   });
 

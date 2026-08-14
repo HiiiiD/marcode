@@ -53,13 +53,6 @@ export class AgentSession {
   private pumping: Promise<void>;
   private disposed = false;
   /**
-   * Whether anything has been sent on this run. The provider builds its query
-   * on the first send(), which is the line between "a setting still shapes
-   * the query" and "the query is running and no longer takes it" — see
-   * setModel().
-   */
-  private hasSent = false;
-  /**
    * TranscriptStore.flush() is not safe to call concurrently for the same
    * session id — two overlapping calls can both observe the same pending
    * queue before either clears it, duplicating writes. We only ever flush
@@ -129,7 +122,6 @@ export class AgentSession {
     this.appendItem(item);
     this.closeAssistant();
     this.setStatus('running');
-    this.hasSent = true;
     try {
       this.run.send(text, context);
     } catch (err) {
@@ -158,26 +150,19 @@ export class AgentSession {
   }
 
   /**
-   * Records the choice as state either way — even after the first message,
-   * once the SDK can no longer honor it live — the same as the other
-   * setters. Whether it takes effect is a provider concern (see
-   * AgentRun.setModel); this method has no way to tell the difference
-   * between "took effect" and "recorded, ignored by the running query", and
-   * doesn't need to: the UI itself disables the control once a change would
-   * be a no-op.
+   * Valid at any point in the conversation, not only before the first
+   * message: `AgentRun.setModel` retargets the live run, so this is a real
+   * switch rather than a recording. A turn already in flight finishes on the
+   * model it started with.
    *
    * Effort travels with the model, because it belongs to the model and not
    * to the session (see resolveEffort): switching to a model with no effort
    * control drops the level entirely, and switching to one that offers a
    * different set clamps to its default. Without this a session created on
-   * Opus and switched to Haiku before its first message would build its
-   * query with an effort Haiku cannot take, while the composer — which hangs
-   * the effort control off the model row — showed no control to fix it with.
-   *
-   * The reconciled level only reaches the run before the first send: that is
-   * the only point where a model change takes effect at all, so afterwards
-   * pushing effort would apply the new model's level to a query still
-   * running the old one.
+   * Opus and switched to Haiku would run Haiku at an effort it cannot take,
+   * while the composer — which hangs the effort control off the model row —
+   * showed no control to fix it with. The reconciled level goes to the run on
+   * both sides of the first send, for the same reason the model itself does.
    */
   setModel(model: string): void {
     const previousEffort = this._state.effort;
@@ -187,7 +172,7 @@ export class AgentSession {
     this._state.updatedAt = Date.now();
     try {
       this.run.setModel(model);
-      if (!this.hasSent && effort !== undefined && effort !== previousEffort) {
+      if (effort !== undefined && effort !== previousEffort) {
         this.run.setEffort(effort);
       }
     } catch (err) {

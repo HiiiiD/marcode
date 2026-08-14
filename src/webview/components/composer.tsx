@@ -44,14 +44,6 @@ export function Composer({
   // on the button would be unreachable by keyboard.
   const box = useRef<HTMLTextAreaElement | null>(null);
   const running = pane.summary.status === "running" || pane.summary.status === "awaiting-approval";
-  /**
-   * The model is fixed at query construction, which happens lazily on the
-   * session's first send(). `pane.items` is the session's transcript, and
-   * AgentSession.send() always appends a user item before ever calling the
-   * provider, so "any items" and "sent the first message" are the same fact
-   * told from two sides of the wire.
-   */
-  const hasStarted = pane.items.length > 0;
   // Session-scoped, not a bare literal: Composer renders once per pane, so a
   // fixed id would collide across panes — `getElementById`, which is what
   // `aria-describedby` resolves against, returns only the first match, and
@@ -88,13 +80,6 @@ export function Composer({
   // threw away work — and rather than hiding, which leaves the control
   // flickering in and out of a row that already wraps.
   const menuBlocked = text.trim().length > 0;
-
-  // Session-scoped, not a bare literal: SessionHeader renders once per pane,
-  // so a fixed id would collide across panes — `getElementById`, which is
-  // what `aria-describedby` resolves against, returns only the first match,
-  // and every other pane's disabled model control would describe itself
-  // using pane one's reason text.
-  const modelReasonId = `model-reason-${pane.summary.id}`;
 
   const openMenu = () => {
     setText("/");
@@ -282,15 +267,10 @@ export function Composer({
               size="sm"
               className="min-w-0 shrink truncate ml-auto"
               aria-label="Model"
-              disabled={hasStarted}
-              // Disabled-with-a-reason, not a silently-frozen label: matches
-              // the composer's disabled bypass option and the roster picker's
-              // disabled split-direction button. `aria-describedby` pointing
-              // at real, rendered (if visually hidden) text — a `title` on a
-              // disabled control is reachable by neither keyboard focus nor
-              // most screen readers, since disabled elements are pulled out
-              // of both.
-              aria-describedby={hasStarted ? modelReasonId : undefined}
+              // Never disabled. `Query.setModel` retargets the live session
+              // (see claude-provider.ts), so a switch mid-conversation takes
+              // effect on the next turn rather than being silently recorded —
+              // there is nothing to freeze and no reason to explain.
               render={<Button variant={"outline"} />}
             >
               <SelectValue className="truncate" />

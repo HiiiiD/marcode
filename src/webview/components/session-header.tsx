@@ -20,23 +20,6 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
   const { state, post } = useStore();
   const s = pane.summary;
   const total = s.usage.inputTokens + s.usage.outputTokens;
-  /**
-   * The SDK fixes the model at query construction (see claude-provider.ts's
-   * pendingModel), which happens lazily on the session's first send() — the
-   * same "has a first message been sent yet" condition the composer's
-   * bypass gate tracks, told from the same fact (pane.items is the
-   * transcript; AgentSession.send() always appends a user item first).
-   * Once that's true, a model change would be recorded but never take
-   * effect on this run, so the control is disabled rather than silently
-   * no-opping.
-   */
-  const hasStarted = pane.items.length > 0;
-  // Session-scoped, not a bare literal: SessionHeader renders once per pane,
-  // so a fixed id would collide across panes — `getElementById`, which is
-  // what `aria-describedby` resolves against, returns only the first match,
-  // and every other pane's disabled model control would describe itself
-  // using pane one's reason text.
-  const modelReasonId = `model-reason-${s.id}`;
   // Shown only when there's more than one provider to distinguish between —
   // with a single backend configured, naming it on every pane is noise.
   const providerLabel = state.catalog.find((p) => p.id === s.providerId)?.displayName;
@@ -83,14 +66,6 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
         {s.permissionMode === "bypass" && "Bypassing permissions"}
       </span>
       <span className="ml-auto flex min-w-0 items-center text-muted-foreground">
-        {hasStarted && (
-          // sr-only rather than visible: the header has no room for a
-          // sentence next to the status badge, title and cwd, and the
-          // control is already visibly disabled.
-          <span id={modelReasonId} className="sr-only">
-            The model can only be chosen before the first message is sent.
-          </span>
-        )}
         {state.catalog.length > 1 && providerLabel && (
           <span className="text-muted-foreground">
             <span>&nbsp;</span>

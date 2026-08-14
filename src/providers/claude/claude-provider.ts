@@ -364,14 +364,12 @@ export class ClaudeProvider implements AgentProvider {
     // setEffort() below whenever that hasn't happened yet.
     let pendingMode: PermissionMode = opts.permissionMode;
     let pendingEffort = opts.effort;
-    // Same closure-var treatment as pendingMode/pendingEffort above, but
-    // there is no live counterpart once the query exists: the SDK reads
-    // `Options.model` only at query construction and has no
-    // `Query.setModel`-shaped seam to migrate a running query onto a new
-    // model. A change before the first send() is picked up by
-    // buildOptions() below; a change after it is simply recorded and never
-    // takes effect on this run — which is why the UI disables the model
-    // control once the session has started.
+    // Same closure-var treatment as pendingMode/pendingEffort above, and the
+    // same two-sided story: `Options.model` is read only at construction, so a
+    // change before the first send() is picked up by buildOptions() below,
+    // while a change after it goes over `Query.setModel` — a real control-channel
+    // seam, not a recording. Both paths take effect, which is why the model
+    // control stays enabled for the life of the session.
     let pendingModel = opts.model;
     let pump: Promise<void> = Promise.resolve();
     // Resolves once ensureStarted()'s construction settles (queryRef assigned,
@@ -524,10 +522,24 @@ export class ClaudeProvider implements AgentProvider {
       },
       setModel: (next: string) => {
         pendingModel = next;
-        // No applyFlagSettings equivalent: the SDK fixes the model at query
-        // construction. Before the first send() there is no query yet, so the
-        // line above is the whole change. After it, the new model applies to
-        // the next session — which is why the UI disables this mid-conversation.
+        if (!queryRef) {
+          return; // not yet constructed: pendingModel above is picked up at construction.
+        }
+        try {
+          // `Options.model` is read once, at construction — but `Query.setModel`
+          // is a control-channel seam that retargets the *live* session, so a
+          // mid-conversation switch is real rather than merely recorded. A turn
+          // already in flight finishes on the old model; the next one uses this.
+          //
+          // Best-effort, same contract as setEffort/setPermissionMode: a model
+          // the CLI refuses is a degraded setting, not a failed agent turn.
+          queryRef.setModel(next).catch((reason: unknown) => {
+            console.warn('[hiiiid-code] setModel rejected', 'model=', next, 'reason=', errorMessage(reason));
+          });
+        } catch (err) {
+          // Synchronous throw, same treatment as the async rejection above.
+          console.warn('[hiiiid-code] setModel threw', 'model=', next, 'error=', errorMessage(err));
+        }
       },
       setPermissionMode: (mode: PermissionMode) => {
         pendingMode = mode;

@@ -14,7 +14,7 @@ function pane(status: SessionStatus = 'idle'): PaneState {
   };
 }
 
-/** A pane whose first message has already been sent — hasStarted === true. */
+/** A pane whose first message has already been sent. */
 function startedPane(id: string): PaneState {
   return {
     summary: summary(id),
@@ -439,15 +439,29 @@ suite("Composer", () => {
     );
   });
 
-  test("the model control is disabled once the session has started, with a reason for assistive tech", () => {
+  test("the model control stays enabled once the session has started", () => {
+    // `Query.setModel` retargets the live run, so a mid-conversation switch is
+    // real — the control has no reason to freeze after the first message, and
+    // no disabled-reason text to carry.
     renderApp();
     hydrate({ items: [{ id: "u1", ts: 1, role: "user", text: "hi" }] });
     const model = screen.getByLabelText("Model") as HTMLButtonElement;
-    assert.strictEqual(model.disabled, true);
-    const describedBy = model.getAttribute("aria-describedby");
-    assert.ok(describedBy, "a disabled control must not rely on a title attribute for its reason");
-    const reason = document.getElementById(describedBy!);
-    assert.ok(reason, "the aria-describedby target must be real, rendered text");
-    assert.ok(/before the first message/i.test(reason!.textContent ?? ""));
+    assert.strictEqual(model.disabled, false);
+    assert.strictEqual(model.getAttribute("aria-describedby"), null);
+  });
+
+  test("switching the model mid-conversation posts set-model", async () => {
+    renderWithStore(
+      <Composer
+        pane={startedPane("a")}
+        model={NO_EFFORT}
+        models={[{ displayName: "Fake Small", id: "fake-small" }]}
+      />,
+    );
+
+    await userEvent.click(screen.getByLabelText("Model"));
+    await userEvent.click(await screen.findByRole("option", { name: "Fake Small" }));
+
+    assert.deepStrictEqual(posted().at(-1), { t: "set-model", id: "a", model: "fake-small" });
   });
 });
