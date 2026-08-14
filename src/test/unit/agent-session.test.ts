@@ -124,15 +124,15 @@ class RecordingSink implements SessionSink {
    * (Invocable[][]) the brief's `sink.invocables` would have.
    */
   invocablesLog: Invocable[][] = [];
-  /** Recorded as (providerId, window) pairs — usage is keyed by provider. */
-  usageLog: { providerId: string; window: UsageWindow }[] = [];
+  /** Every whole-set pull reported up, in order. */
+  usageWindowSets: { providerId: string; windows: UsageWindow[] | undefined }[] = [];
   patch(id: SessionId, patch: TranscriptPatch) { this.patches.push({ id, patch }); }
   status(_id: SessionId, status: SessionStatus) { this.statuses.push(status); }
   mcp(_id: SessionId, servers: unknown[]) { this.servers.push(servers); }
   changed() { this.changes++; }
   invocables(_id: SessionId, entries: Invocable[]) { this.invocablesLog.push(entries); }
-  usageWindow(providerId: string, window: UsageWindow) {
-    this.usageLog.push({ providerId, window });
+  usageWindows(providerId: string, windows: UsageWindow[] | undefined) {
+    this.usageWindowSets.push({ providerId, windows });
   }
 }
 
@@ -621,14 +621,58 @@ suite('AgentSession', () => {
     await session.dispose();
   });
 
-  test('a usage-window event reaches the sink under this session provider id', async () => {
-    const { provider, sink: localSink, session } = makeSession();
-    const window = { id: 'five-hour', label: 'Session (5h)', usedPercent: 62 };
+  test('a usage-stale event pulls the window set and reports it up', async () => {
+    const windows = [{ id: 'five-hour', label: 'Session (5h)', usedPercent: 55 }];
+    const provider = new FakeProvider(() => [], { windows });
+    const localSink = new RecordingSink();
+    const session = new AgentSession(baseState(), provider, store, localSink);
 
-    provider.runs[0].emit({ kind: 'usage-window', window });
+    provider.runs[0].emit({ kind: 'usage-stale' });
     await settle();
 
-    assert.deepStrictEqual(localSink.usageLog, [{ providerId: 'fake', window }]);
+    assert.deepStrictEqual(localSink.usageWindowSets, [{ providerId: 'fake', windows }]);
+    await session.dispose();
+  });
+
+  test('turn end pulls the window set', async () => {
+    const windows = [{ id: 'seven-day', label: 'Week', usedPercent: 7 }];
+    const provider = new FakeProvider(() => [], { windows });
+    const localSink = new RecordingSink();
+    const session = new AgentSession(baseState(), provider, store, localSink);
+
+    provider.runs[0].emit({ kind: 'turn-end', reason: 'done' });
+    await settle();
+
+    assert.deepStrictEqual(localSink.usageWindowSets, [{ providerId: 'fake', windows }]);
+    await session.dispose();
+  });
+
+  test('a failing usage pull does not fail the turn', async () => {
+    const provider = new FakeProvider(() => []);
+    const localSink = new RecordingSink();
+    const session = new AgentSession(baseState(), provider, store, localSink);
+    provider.runs[0].usageWindows = async () => { throw new Error('nope'); };
+
+    provider.runs[0].emit({ kind: 'turn-end', reason: 'done' });
+    await settle();
+
+    // The strip is decoration over a live conversation. An unavailable pull is
+    // a degraded strip, never an error item and never a status change.
+    assert.strictEqual(session.state.status, 'idle');
+    assert.deepStrictEqual(localSink.usageWindowSets, []);
+    await session.dispose();
+  });
+
+  test('a provider that cannot report usage is simply never reported for', async () => {
+    const provider = new FakeProvider(() => []);
+    const localSink = new RecordingSink();
+    const session = new AgentSession(baseState(), provider, store, localSink);
+    provider.runs[0].usageWindows = undefined;
+
+    provider.runs[0].emit({ kind: 'usage-stale' });
+    await settle();
+
+    assert.deepStrictEqual(localSink.usageWindowSets, []);
     await session.dispose();
   });
 });

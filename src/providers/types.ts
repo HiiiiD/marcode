@@ -128,12 +128,14 @@ export type AgentEvent =
   | { kind: 'turn-end'; reason: 'done' | 'interrupted' | 'error'; error?: string }
   | { kind: 'usage'; inputTokens: number; outputTokens: number }
   /**
-   * One account/plan usage window moved. Pushed, not polled: the SDK emits
-   * `rate_limit_event` whenever rate-limit info changes, so the host holds
-   * the last value per window rather than asking a live query for it. One
-   * event carries one window — never the whole set.
+   * The provider believes its plan usage has moved and a pull is due.
+   *
+   * Carries no data on purpose. `rate_limit_event`, which raises this, does
+   * not populate a utilization percentage at steady state — reading values
+   * off it is what made the strip permanently blank. The numbers come from
+   * `AgentRun.usageWindows()`.
    */
-  | { kind: 'usage-window'; window: UsageWindow }
+  | { kind: 'usage-stale' }
   /** Full replacement list, not a delta. Emitted whenever the provider notices a change. */
   | { kind: 'invocables'; entries: Invocable[] }
   /** Full replacement list, not a delta — same snapshot semantics as `invocables`. */
@@ -166,6 +168,12 @@ export interface AgentRun {
    * to a fabricated breakdown.
    */
   contextBreakdown?(): Promise<ContextBreakdown>;
+  /**
+   * Same contract as `AgentProvider.fetchUsage`, answered on this run's live
+   * query — so the two live triggers (a `usage-stale` event, and turn end)
+   * cost one control request each and never a new subprocess.
+   */
+  usageWindows?(): Promise<UsageWindow[] | undefined>;
   dispose(): Promise<void>;
 }
 
@@ -186,6 +194,19 @@ export interface AgentProvider {
    * whether a failed probe is worth retrying.
    */
   fetchModels?(cwd: string): Promise<ModelInfo[]>;
+  /**
+   * Account/plan usage for a working directory, with NO session required.
+   *
+   * Optional: a provider whose backend has no plan limits (or cannot be
+   * asked without a session) omits it entirely, and is then absent from the
+   * usage strip rather than showing an empty row.
+   *
+   * `undefined` is a positive answer — this account has no plan limits at
+   * all — and clears any persisted windows for the provider. `[]` means
+   * limits apply but nothing is known yet, and clears nothing. Rejections
+   * propagate; the caller decides retry policy.
+   */
+  fetchUsage?(cwd: string): Promise<UsageWindow[] | undefined>;
   start(opts: StartOptions): AgentRun;
   /**
    * The catalog for a working directory, with NO session required.

@@ -54,7 +54,7 @@ extension.ts
 | `src/providers/types.ts` | `AgentProvider`, `AgentRun`, `AgentEvent`, `ModelInfo` |
 | `src/providers/fake/fake-provider.ts` | Scripted provider for tests and the walking skeleton |
 | `src/providers/claude/` | Claude Agent SDK adapter and `SDKMessage` → `AgentEvent` mapping |
-| `src/providers/claude/map-context.ts` | SDK context response → `ContextBreakdown`; one `rate_limit_event` → one `UsageWindow` |
+| `src/providers/claude/map-context.ts` | SDK context response → `ContextBreakdown`; structured usage response → `UsageWindow[]` |
 | `src/shared/usage-windows.ts` | Fixed display order for usage windows; shared so neither provider nor host owns the other's table |
 | `src/host/transcript-store.ts` | `index.json` + per-session JSONL; append, load, page |
 | `src/host/agent-session.ts` | One conversation: transcript, status, pending approvals |
@@ -100,8 +100,23 @@ These are not style preferences. Breaking one breaks the design.
   `HostToWebview` messages via `sendFromHost`; assertions read the messages the webview
   posted back. Never mock `useStore` or hand-build a `ClientState` — a fake provider bypasses
   `reduce` and lets a test pass against a state the host could never produce.
+- **Never pass a DOM node to an assertion.** Compare a boolean, a string, or a count —
+  `assert.strictEqual(container.querySelector('div') === null, true)`, never
+  `assert.strictEqual(container.querySelector('div'), null)`. A failing `assert` builds its
+  message with `util.inspect` on the actual value, and a jsdom element reaches its parents,
+  its `ownerDocument` and that document's `window`, so inspecting one div walks the entire
+  graph. This is not a slow leak: the node-valued form allocated **3.5GB in 4 seconds** and
+  took a developer machine down on 2026-08-14. It only detonates while the test is red,
+  which is exactly when you are running it. `screen.getByX` helpers are safe — they throw
+  their own message and never hand the node to `assert`.
 - **Usage and context surfaces show percentages, never token counts.** Tokens exist only
   inside `src/providers/claude/map-context.ts`, which converts them on the way out.
+- **Plan usage is pulled, never read off `rate_limit_event`.** That event carries no
+  utilization at steady state — only `status` is required — so a strip built on it renders
+  nothing. It is a signal that a pull is due. Numbers come from `AgentProvider.fetchUsage`
+  (no session needed, used at activation) or `AgentRun.usageWindows` (the live query). Its
+  `resetsAt` is epoch **seconds** and its `utilization`, when present, is a **0–1 fraction**;
+  the structured response uses ISO strings and **0–100**. Do not mix the two scales.
 
 ## UI: shadcn is mandatory
 

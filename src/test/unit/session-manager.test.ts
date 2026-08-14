@@ -6,7 +6,7 @@ import { SessionManager } from '../../host/session-manager';
 import { TranscriptStore } from '../../host/transcript-store';
 import type { HostToWebview, SessionState } from '../../protocol/messages';
 import { FakeProvider } from '../../providers/fake/fake-provider';
-import type { AgentProvider, ModelInfo } from '../../providers/types';
+import type { AgentProvider, ModelInfo, UsageWindow } from '../../providers/types';
 
 async function settle() {
   for (let i = 0; i < 10; i++) { await new Promise((r) => setImmediate(r)); }
@@ -579,14 +579,15 @@ suite('SessionManager', () => {
     await local.dispose();
   });
 
-  test('a pushed window is broadcast ungated, ordered, and keyed by provider', async () => {
+  test('a reported set is broadcast ungated, ordered, and keyed by provider', async () => {
     // The session is deliberately NOT made visible: account usage is not a
     // per-pane concern, so this must go out anyway.
-    const { manager: local, provider, emitted } = await makeManager();
+    const { manager: local, emitted } = await makeManager();
     await local.create('fake', '/w');
-    const run = provider.runs.at(-1)!;
-    run.emit({ kind: 'usage-window', window: { id: 'seven-day', label: 'Week', usedPercent: 18 } });
-    run.emit({ kind: 'usage-window', window: { id: 'five-hour', label: 'Session (5h)', usedPercent: 62 } });
+    local.usageWindows('fake', [
+      { id: 'seven-day', label: 'Week', usedPercent: 18 },
+      { id: 'five-hour', label: 'Session (5h)', usedPercent: 62 },
+    ]);
     await settle();
 
     const last = emitted.filter((m) => m.t === 'usage-windows').at(-1);
@@ -600,73 +601,78 @@ suite('SessionManager', () => {
     });
   });
 
-  test('a second event for the same window replaces rather than appends', async () => {
-    const { manager: local, provider, emitted } = await makeManager();
-    await local.create('fake', '/w');
-    const run = provider.runs.at(-1)!;
-    run.emit({ kind: 'usage-window', window: { id: 'five-hour', label: 'Session (5h)', usedPercent: 62 } });
-    run.emit({ kind: 'usage-window', window: { id: 'five-hour', label: 'Session (5h)', usedPercent: 71 } });
-    await settle();
-
-    const last = emitted.filter((m) => m.t === 'usage-windows').at(-1);
-    assert.deepStrictEqual(last!.windows, [
-      { id: 'five-hour', label: 'Session (5h)', usedPercent: 71 },
+  test('a reported set replaces the provider set wholesale', async () => {
+    const { manager: local } = await makeManager();
+    local.usageWindows('fake', [
+      { id: 'five-hour', label: 'Session (5h)', usedPercent: 10 },
+      { id: 'seven-day', label: 'Week', usedPercent: 4 },
     ]);
+    local.usageWindows('fake', [{ id: 'five-hour', label: 'Session (5h)', usedPercent: 12 }]);
+
+    // Replacement, not upsert: a window the account stopped reporting must be
+    // able to disappear. An upsert would strand 'seven-day' forever.
+    assert.deepStrictEqual(local.usageSnapshot().fake.map((w) => w.id), ['five-hour']);
   });
 
-  test('an unchanged window emits nothing — the strip must not churn', async () => {
-    const { manager: local, provider, emitted } = await makeManager();
-    await local.create('fake', '/w');
-    const run = provider.runs.at(-1)!;
-    const window = { id: 'five-hour', label: 'Session (5h)', usedPercent: 62 };
-    run.emit({ kind: 'usage-window', window });
-    await settle();
+  test('an identical set emits nothing', async () => {
+    const { manager: local, emitted } = await makeManager();
+    const windows = [{ id: 'five-hour', label: 'Session (5h)', usedPercent: 10 }];
+    local.usageWindows('fake', windows);
     const before = emitted.filter((m) => m.t === 'usage-windows').length;
+    local.usageWindows('fake', [...windows]);
 
-    run.emit({ kind: 'usage-window', window: { ...window } });
-    await settle();
+    // The CLI re-announces on reconnect; re-rendering the strip for an
+    // unchanged set is work for nothing.
     assert.strictEqual(emitted.filter((m) => m.t === 'usage-windows').length, before);
   });
 
+  test('an identical set in a different order emits nothing', async () => {
+    const { manager: local, emitted } = await makeManager();
+    local.usageWindows('fake', [
+      { id: 'five-hour', label: 'Session (5h)', usedPercent: 10 },
+      { id: 'seven-day', label: 'Week', usedPercent: 4 },
+    ]);
+    const before = emitted.filter((m) => m.t === 'usage-windows').length;
+
+    // Same two windows, arrival order swapped. windowsFor() always orders
+    // for display, so this must compare as identical rather than emitting
+    // from index misalignment alone.
+    local.usageWindows('fake', [
+      { id: 'seven-day', label: 'Week', usedPercent: 4 },
+      { id: 'five-hour', label: 'Session (5h)', usedPercent: 10 },
+    ]);
+
+    assert.strictEqual(emitted.filter((m) => m.t === 'usage-windows').length, before);
+  });
+
+  test('undefined clears the provider entirely and emits the clearance', async () => {
+    const { manager: local, emitted } = await makeManager();
+    local.usageWindows('fake', [{ id: 'five-hour', label: 'Session (5h)', usedPercent: 10 }]);
+    local.usageWindows('fake', undefined);
+
+    // An account that moved from a subscription to an API key must not keep
+    // showing its last subscription numbers forever.
+    assert.deepStrictEqual(local.usageSnapshot(), {});
+    assert.deepStrictEqual(
+      emitted.filter((m) => m.t === 'usage-windows').at(-1),
+      { t: 'usage-windows', providerId: 'fake', windows: [] },
+    );
+  });
+
   test('a window past its reset is dropped rather than shown stale', async () => {
-    const { manager: local, provider } = await makeManager();
-    await local.create('fake', '/w');
-    const run = provider.runs.at(-1)!;
-    run.emit({
-      kind: 'usage-window',
-      window: { id: 'five-hour', label: 'Session (5h)', usedPercent: 62, resetsAt: Date.now() - 1 },
-    });
-    await settle();
+    const { manager: local } = await makeManager();
+    local.usageWindows('fake', [
+      { id: 'five-hour', label: 'Session (5h)', usedPercent: 62, resetsAt: Date.now() - 1 },
+    ]);
 
     assert.deepStrictEqual(local.usageSnapshot(), { fake: [] });
   });
 
-  test('two sessions of one provider feed the same account map', async () => {
-    const { manager: local, provider } = await makeManager();
-    await local.create('fake', '/w');
-    const first = provider.runs.at(-1)!;
-    await local.create('fake', '/w');
-    const second = provider.runs.at(-1)!;
-    first.emit({ kind: 'usage-window', window: { id: 'five-hour', label: 'Session (5h)', usedPercent: 62 } });
-    second.emit({ kind: 'usage-window', window: { id: 'seven-day', label: 'Week', usedPercent: 18 } });
-    await settle();
-
-    assert.deepStrictEqual(
-      local.usageSnapshot().fake.map((w) => w.id), ['five-hour', 'seven-day'],
-    );
-  });
-
   test('the window set survives a reload, minus anything already reset', async () => {
-    await manager.create('fake', '/w');
-    const run = provider.runs.at(-1)!;
-    run.emit({
-      kind: 'usage-window',
-      window: { id: 'five-hour', label: 'Session (5h)', usedPercent: 62, resetsAt: Date.now() + 3_600_000 },
-    });
-    run.emit({
-      kind: 'usage-window',
-      window: { id: 'seven-day', label: 'Week', usedPercent: 18, resetsAt: Date.now() - 1 },
-    });
+    manager.usageWindows('fake', [
+      { id: 'five-hour', label: 'Session (5h)', usedPercent: 62, resetsAt: Date.now() + 3_600_000 },
+      { id: 'seven-day', label: 'Week', usedPercent: 18, resetsAt: Date.now() - 1 },
+    ]);
     await settle();
     await manager.dispose();
 
@@ -984,6 +990,82 @@ suite('SessionManager', () => {
     await m.refreshModels('/repo');
 
     assert.deepStrictEqual(emitted.filter((msg) => msg.t === 'catalog'), []);
+    await m.dispose();
+  });
+
+  test('refreshUsage probes every provider that can answer and emits per provider', async () => {
+    const emitted: HostToWebview[] = [];
+    const p = new FakeProvider(() => [], {
+      windows: [{ id: 'five-hour', label: 'Session (5h)', usedPercent: 40 }],
+    });
+    const m = new SessionManager(new TranscriptStore(dir), new Map([['fake', p]]), (msg) => emitted.push(msg));
+    await m.init();
+
+    await m.refreshUsage('/repo');
+
+    assert.deepStrictEqual(
+      emitted.filter((msg) => msg.t === 'usage-windows').map((msg) =>
+        (msg as Extract<HostToWebview, { t: 'usage-windows' }>).providerId),
+      ['fake'],
+    );
+    await m.dispose();
+  });
+
+  test('refreshUsage does not reject when a provider probe fails', async () => {
+    const p = new FakeProvider(() => []);
+    p.fetchUsage = async () => { throw new Error('CLI is broken'); };
+    const m = new SessionManager(new TranscriptStore(dir), new Map([['fake', p]]), () => {});
+    await m.init();
+
+    // Errors are state, never exceptions: a broken CLI leaves the strip as it
+    // was, and must never surface as a rejection at activation.
+    await assert.doesNotReject(() => m.refreshUsage('/repo'));
+    await m.dispose();
+  });
+
+  test('refreshUsage does not reject when a provider throws synchronously, and a later provider still applies', async () => {
+    // A non-async function that throws before ever returning a promise —
+    // legal against `fetchUsage?(cwd): Promise<UsageWindow[] | undefined>`,
+    // since the interface only promises a Promise return, not an async
+    // function. `async () => { throw }` (used above) can only ever produce a
+    // rejected promise, so it does not exercise this path.
+    const broken: AgentProvider = {
+      id: 'broken', displayName: 'Broken',
+      listModels: () => [],
+      start: () => { throw new Error('not used'); },
+      fetchUsage: (): Promise<UsageWindow[] | undefined> => { throw new Error('CLI is broken'); },
+    };
+    const healthy = new FakeProvider(() => [], {
+      windows: [{ id: 'five-hour', label: 'Session (5h)', usedPercent: 40 }],
+    });
+    const emitted: HostToWebview[] = [];
+    const m = new SessionManager(
+      new TranscriptStore(dir),
+      new Map<string, AgentProvider>([['broken', broken], ['fake', healthy]]),
+      (msg) => emitted.push(msg),
+    );
+    await m.init();
+
+    await assert.doesNotReject(() => m.refreshUsage('/repo'));
+
+    assert.deepStrictEqual(
+      emitted.filter((msg) => msg.t === 'usage-windows').map((msg) =>
+        (msg as Extract<HostToWebview, { t: 'usage-windows' }>).providerId),
+      ['fake'],
+      'the healthy provider queued after the throwing one must still be applied',
+    );
+    await m.dispose();
+  });
+
+  test('refreshUsage emits nothing when no provider can answer', async () => {
+    const p = new FakeProvider(() => []);
+    delete (p as { fetchUsage?: unknown }).fetchUsage;
+    const emitted: HostToWebview[] = [];
+    const m = new SessionManager(new TranscriptStore(dir), new Map([['fake', p]]), (msg) => emitted.push(msg));
+    await m.init();
+
+    await m.refreshUsage('/repo');
+    assert.deepStrictEqual(emitted.filter((msg) => msg.t === 'usage-windows'), []);
     await m.dispose();
   });
 });

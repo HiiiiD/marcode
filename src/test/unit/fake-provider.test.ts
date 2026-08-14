@@ -90,26 +90,31 @@ suite('FakeProvider', () => {
 
     await assert.rejects(() => provider.listInvocables('/repo'), /no catalog/);
   });
-  
-  test('scripted windows arrive as usage-window events before any send', async () => {
-    const provider = new FakeProvider(undefined, {
-      windows: [{ id: 'five-hour', label: 'Session (5h)', usedPercent: 62 }],
-    });
-    const run = provider.start({ cwd: '/w', permissionMode: 'default' });
-    const it = run.events[Symbol.asyncIterator]();
-    assert.deepStrictEqual((await it.next()).value, {
-      kind: 'usage-window',
-      window: { id: 'five-hour', label: 'Session (5h)', usedPercent: 62 },
-    });
-    await run.dispose();
+
+  test('fetchUsage reports the scripted windows and records the cwd', async () => {
+    const windows = [{ id: 'five-hour', label: 'Session (5h)', usedPercent: 40 }];
+    const provider = new FakeProvider(() => [], { windows });
+
+    assert.deepStrictEqual(await provider.fetchUsage('/repo'), windows);
+    assert.deepStrictEqual(provider.fetchUsageCalls, ['/repo']);
   });
 
-  test('an unscripted fake emits no usage-window events', async () => {
-    const provider = new FakeProvider();
-    const run = provider.start({ cwd: '/w', permissionMode: 'default' });
-    const events: AgentEvent[] = [];
-    void (async () => { for await (const e of run.events) { events.push(e); } })();
-    await run.dispose();
-    assert.ok(!events.some((e) => e.kind === 'usage-window'));
+  test('fetchUsage reports undefined when scripted as having no plan limits', async () => {
+    const provider = new FakeProvider(() => [], { usageUnavailable: true });
+    assert.strictEqual(await provider.fetchUsage('/repo'), undefined);
+  });
+
+  test('fetchUsage reports an empty array when nothing is scripted', async () => {
+    // Distinct from usageUnavailable: limits exist, nothing is known yet.
+    const provider = new FakeProvider(() => []);
+    assert.deepStrictEqual(await provider.fetchUsage('/repo'), []);
+  });
+
+  test('a run answers usageWindows with the same scripted set', async () => {
+    const windows = [{ id: 'seven-day', label: 'Week', usedPercent: 12 }];
+    const provider = new FakeProvider(() => [], { windows });
+    const run = provider.start({ cwd: '/repo' } as never);
+
+    assert.deepStrictEqual(await run.usageWindows?.(), windows);
   });
 });

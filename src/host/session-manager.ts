@@ -131,7 +131,13 @@ export class SessionManager implements SessionSink {
   async refreshModels(cwd: string): Promise<void> {
     const probes = [...this.providers.values()]
       .filter((p) => p.fetchModels)
-      .map((p) => p.fetchModels!(cwd).catch((err: unknown) => {
+      // Wrapped in Promise.resolve().then(...) rather than calling
+      // fetchModels(cwd) directly: the interface only promises a Promise
+      // return, not an async function, so a provider that throws
+      // synchronously (legal against the type) would otherwise throw here
+      // in refreshModels' own synchronous body instead of rejecting the
+      // per-provider promise this .catch is attached to.
+      .map((p) => Promise.resolve().then(() => p.fetchModels!(cwd)).catch((err: unknown) => {
         // Errors are state, never exceptions — and the state here is "the
         // fallback list stands". Still worth a developer-facing trace: a
         // permanently broken CLI would otherwise be silent.
@@ -142,6 +148,41 @@ export class SessionManager implements SessionSink {
     await Promise.all(probes);
     if (this.disposed) { return; }
     this.emit({ t: 'catalog', catalog: this.catalog() });
+  }
+
+  /**
+   * Asks every provider that can answer for its account's plan usage, with
+   * no session required. Fire-and-forget by design, exactly like
+   * refreshModels: this is what puts real percentages in the strip at
+   * activation, and nothing — least of all panel startup — may wait on a CLI
+   * handshake for decoration.
+   *
+   * One emit per provider rather than one at the end, unlike refreshModels:
+   * the wire message is per-provider, so there is no whole-set message to
+   * batch into, and a fast provider should not wait behind a slow one.
+   */
+  async refreshUsage(cwd: string): Promise<void> {
+    await Promise.all([...this.providers.values()]
+      .filter((p) => p.fetchUsage)
+      // Wrapped in Promise.resolve().then(...) rather than calling
+      // fetchUsage(cwd) directly: the interface only promises a Promise
+      // return, not an async function, so a provider that throws
+      // synchronously (legal against the type) would otherwise throw here in
+      // refreshUsage's own synchronous body — rejecting refreshUsage() itself
+      // (fire-and-forget from the router, so an unhandled rejection) and
+      // skipping every provider queued after it, instead of being caught by
+      // the .then rejection handler below.
+      .map((p) => Promise.resolve().then(() => p.fetchUsage!(cwd)).then(
+        (windows) => { if (!this.disposed) { this.usageWindows(p.id, windows); } },
+        (err: unknown) => {
+          // Errors are state, never exceptions — and the state here is
+          // "whatever the last pull or the persisted file said still
+          // stands". Worth a developer-facing trace: a permanently broken
+          // CLI would otherwise be indistinguishable from an account that
+          // genuinely has no plan limits.
+          console.warn('[hiiiid-code] session-manager: usage probe failed for', p.id, err);
+        },
+      )));
   }
 
   summaries(): SessionSummary[] {
@@ -509,19 +550,31 @@ export class SessionManager implements SessionSink {
     this.catalogSvc.set(this.keyOf(state), entries);
   }
 
-  usageWindow(providerId: string, window: UsageWindow): void {
-    const known = this.usage.get(providerId) ?? new Map<string, UsageWindow>();
-    const prev = known.get(window.id);
-    // Identical repeats are ordinary: the CLI re-announces rate-limit info
-    // on reconnect, and re-broadcasting an unchanged set would re-render the
-    // strip for nothing. `label` is deliberately not compared — it is derived
-    // from `id` through the fixed WINDOW_LABELS table, so two windows with the
-    // same id always carry the same label and it cannot differ on its own.
-    if (prev && prev.usedPercent === window.usedPercent && prev.resetsAt === window.resetsAt) {
-      return;
+  usageWindows(providerId: string, windows: UsageWindow[] | undefined): void {
+    // A pull is a snapshot, so it REPLACES the provider's map rather than
+    // upserting into it — that is what lets a window the account stopped
+    // reporting actually disappear. (The old push carried one window at a
+    // time and had to upsert; this does not.)
+    // Ordered before comparing, not just before storing: `prev` comes from
+    // `windowsFor()`, which is already ordered, so an unordered `next` would
+    // make the positional comparison below spurious for a provider that
+    // simply reports the same set in a different order — a false "changed"
+    // from index misalignment alone, not from any window actually moving.
+    const next = windows === undefined ? [] : orderWindows(windows);
+    const prev = this.windowsFor(providerId);
+    const same = prev.length === next.length && prev.every((w, i) =>
+      w.id === next[i]?.id
+      && w.usedPercent === next[i]?.usedPercent
+      && w.resetsAt === next[i]?.resetsAt);
+    if (same && (windows !== undefined || !this.usage.has(providerId))) { return; }
+
+    if (windows === undefined) {
+      // A positive "this account has no plan limits". Drop the provider so a
+      // subscription-to-API-key switch cannot keep showing stale numbers.
+      this.usage.delete(providerId);
+    } else {
+      this.usage.set(providerId, new Map(next.map((w) => [w.id, w])));
     }
-    known.set(window.id, window);
-    this.usage.set(providerId, known);
     this.emit({ t: 'usage-windows', providerId, windows: this.windowsFor(providerId) });
     this.schedulePersist();
   }

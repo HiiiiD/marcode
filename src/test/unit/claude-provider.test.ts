@@ -226,6 +226,28 @@ suite('ClaudeProvider (lazy start)', () => {
     await run.dispose();
   });
 
+  test('the query asks for summarized thinking, or the blocks arrive empty', async () => {
+    // Not a preference. Without `display: 'summarized'` the CLI still emits
+    // `thinking` content blocks for every reasoning turn — with `thinking`
+    // set to the empty string. The transcript then has a reasoning event
+    // carrying no reasoning, which is indistinguishable downstream from a
+    // model that did not think at all. Probed against the real SDK before
+    // this was written; see map-events.ts.
+    const fake = fakeLoadQuery();
+    const provider = new ClaudeProvider(fake.load as never);
+    const run = provider.start({
+      cwd: '/tmp', model: 'claude-opus-5', effort: 'high', permissionMode: 'default',
+    });
+
+    run.send('go');
+    await flushMicrotasks();
+
+    assert.deepStrictEqual(fake.calls[0].options.thinking, {
+      type: 'adaptive', display: 'summarized',
+    });
+    await run.dispose();
+  });
+
   test('an effort on a model the catalog does not list is passed through untouched', async () => {
     // No row means no opinion: the CLI is the authority on ids we do not know.
     const fake = fakeLoadQuery();
@@ -323,6 +345,91 @@ suite('ClaudeProvider (lazy start)', () => {
 
     await assert.rejects(() => run.contextBreakdown!(), /has not started yet/);
     await run.dispose();
+  });
+});
+
+suite('ClaudeProvider usage pull', () => {
+  test('fetchUsage issues the get_usage control request on a throwaway query', async () => {
+    let closed = false;
+    const provider = new ClaudeProvider(async () => (() => ({
+      usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET: async () => ({
+        rate_limits_available: true,
+        rate_limits: { five_hour: { utilization: 62, resets_at: '2026-08-14T17:10:00Z' } },
+      }),
+      close: () => { closed = true; },
+    })) as never);
+
+    const windows = await provider.fetchUsage('/repo');
+
+    assert.deepStrictEqual(windows, [{
+      id: 'five-hour', label: 'Session (5h)', usedPercent: 62,
+      resetsAt: Date.parse('2026-08-14T17:10:00Z'),
+    }]);
+    assert.strictEqual(closed, true, 'the throwaway query must be closed');
+  });
+
+  test('fetchUsage closes the throwaway query even when the request rejects', async () => {
+    let closed = false;
+    const provider = new ClaudeProvider(async () => (() => ({
+      usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET: async () => {
+        throw new Error('control request failed');
+      },
+      close: () => { closed = true; },
+    })) as never);
+
+    await assert.rejects(() => provider.fetchUsage('/repo'));
+    // A rejection that leaked the subprocess would leak one per activation,
+    // for the life of the window.
+    assert.strictEqual(closed, true);
+  });
+
+  test('fetchUsage reports undefined when the account has no plan limits', async () => {
+    const provider = new ClaudeProvider(async () => (() => ({
+      usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET: async () => ({
+        rate_limits_available: false, rate_limits: null,
+      }),
+      close: () => {},
+    })) as never);
+
+    assert.strictEqual(await provider.fetchUsage('/repo'), undefined);
+  });
+
+  test('usageWindows answers on the live query without constructing a second one', async () => {
+    let constructed = 0;
+    const provider = new ClaudeProvider(async () => ((() => {
+      constructed += 1;
+      return {
+        [Symbol.asyncIterator]: async function* () { /* never yields */ },
+        usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET: async () => ({
+          rate_limits_available: true,
+          rate_limits: { seven_day: { utilization: 18, resets_at: null } },
+        }),
+        close: () => {},
+      };
+    }) as never));
+
+    const run = provider.start({ cwd: '/repo' } as never);
+    run.send('hello');            // lazy start: this is what builds the query
+    const windows = await run.usageWindows?.();
+
+    assert.deepStrictEqual(windows?.map((w) => w.id), ['seven-day']);
+    assert.strictEqual(constructed, 1, 'must reuse the session query, not probe');
+  });
+
+  test('usageWindows before the first send resolves undefined rather than spawning', async () => {
+    let constructed = 0;
+    const provider = new ClaudeProvider(async () => ((() => {
+      constructed += 1;
+      return { close: () => {} };
+    }) as never));
+
+    const run = provider.start({ cwd: '/repo' } as never);
+
+    // Lazy start is deliberate — a usage pull must not be the thing that
+    // spawns a CLI for a session the user never sent to. The activation probe
+    // already covers this case.
+    assert.strictEqual(await run.usageWindows?.(), undefined);
+    assert.strictEqual(constructed, 0);
   });
 });
 

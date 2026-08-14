@@ -70,35 +70,53 @@ function ProviderUsage({
   // side are indistinguishable.
   if (!live || live.length === 0) {
     return (
-      <span className="flex shrink-0 items-center gap-3 text-muted-foreground">
-        {showName && <span>{displayName}</span>}
+      <div className="flex min-h-5 flex-wrap items-center gap-x-3 gap-y-0.5 text-muted-foreground">
+        {showName && <span className="shrink-0">{displayName}</span>}
         <span>Plan usage not reported</span>
-      </span>
+      </div>
     );
   }
 
+  // Wraps rather than scrolls. A horizontal scrollbar inside a 24px bar eats
+  // half its height and hides the overflow behind a gesture nobody makes at
+  // this size — the account whose numbers scrolled off is exactly the one the
+  // strip exists to surface. Wrapping costs a row and hides nothing.
   return (
-    <span className="flex shrink-0 items-center gap-3">
-      {showName && <span className="text-muted-foreground">{displayName}</span>}
+    <div className="flex min-h-5 flex-wrap items-center gap-x-3 gap-y-0.5">
+      {showName && <span className="shrink-0 text-muted-foreground">{displayName}</span>}
       {live.map((w) => <WindowChip key={w.id} window={w} />)}
-    </span>
+    </div>
   );
 }
 
 export function UsageStrip() {
   const { state } = useStore();
-  // Providers that actually have sessions — the catalog can list one the
-  // user has never opened, and the strip is about this panel's accounts.
-  const providerIds = [...new Set(state.sessions.map((s) => s.providerId))];
+  // Providers that have actually reported, NOT providers that have sessions.
+  // Usage belongs to the account: a second subscription is worth showing with
+  // no session open for it, and a provider on an API key can never report at
+  // all — a row for that one would be permanent noise no user action clears.
+  const now = Date.now();
+  const reporting = Object.entries(state.usageByProvider)
+    .filter(([, windows]) => windows?.some((w) => w.resetsAt === undefined || w.resetsAt > now))
+    .map(([id]) => id);
 
+  // Unmounted, not empty: an empty bordered bar is permanent chrome for a
+  // state that never has content. The panel's bottom edge shifts when the
+  // first pull lands, which is the right trade in a 300-500px sidebar.
+  if (reporting.length === 0) { return null; }
+
+  // One row per provider, stacked — not one line that scrolls. Plan limits
+  // belong to accounts, and two accounts side by side in a 300px column is
+  // the case that overflows, not the exception. Height grows only when a
+  // second provider actually reports.
   return (
-    <div className="flex h-6 shrink-0 items-center gap-4 overflow-x-auto overflow-y-hidden border-t border-border px-2 text-xs">
-      {providerIds.map((id) => (
+    <div className="flex shrink-0 flex-col gap-1 border-t border-border px-2 py-1 text-xs">
+      {reporting.map((id) => (
         <ProviderUsage
           key={id}
           displayName={state.catalog.find((p) => p.id === id)?.displayName ?? id}
           windows={state.usageByProvider[id]}
-          showName={providerIds.length > 1}
+          showName={reporting.length > 1}
         />
       ))}
     </div>

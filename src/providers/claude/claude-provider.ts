@@ -123,10 +123,10 @@ import type {
   ContextBreakdown,
   EditorContext,
   EffortLevel, Invocable, ModelInfo, PermissionMode,
-  StartOptions, ToolDecision,
+  StartOptions, ToolDecision, UsageWindow,
 } from '../types';
 import { toInvocables } from './map-commands';
-import { toContextBreakdown, type ContextUsageLike } from './map-context';
+import { toContextBreakdown, toUsageWindows, type ContextUsageLike, type UsageResponseLike } from './map-context';
 import { mapEvent } from './map-events';
 import { redactSecrets } from './redact';
 
@@ -303,6 +303,29 @@ export class ClaudeProvider implements AgentProvider {
   }
 
   /**
+   * Account plan usage for a working directory, with NO session required —
+   * this is what lets the strip show real numbers at activation, before any
+   * session exists and before anything is sent.
+   *
+   * `usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET` is the
+   * `get_usage` control request (sdk.d.ts:2521). The name is what it is;
+   * this is the only place in the codebase that spells it, and it is what
+   * Anthropic's own VS Code extension calls for the same data. The response
+   * is read through `UsageResponseLike`, so a renamed or added field
+   * degrades to "no windows" instead of throwing.
+   *
+   * Rejections propagate: SessionManager decides retry policy, and
+   * swallowing here would hide a permanently broken CLI behind an empty
+   * strip that looks exactly like "you have no plan limits".
+   */
+  async fetchUsage(cwd: string): Promise<UsageWindow[] | undefined> {
+    return toUsageWindows(await this.probe(
+      cwd,
+      (q) => q.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET(),
+    ) as UsageResponseLike);
+  }
+
+  /**
    * Runs one control request against a throwaway query over a prompt stream
    * that never yields, and closes it. Shared by every session-free lookup:
    * each one is a CLI subprocess, and the close must not depend on the
@@ -351,6 +374,14 @@ export class ClaudeProvider implements AgentProvider {
     // control once the session has started.
     let pendingModel = opts.model;
     let pump: Promise<void> = Promise.resolve();
+    // Resolves once ensureStarted()'s construction settles (queryRef assigned,
+    // or construction failed) — NOT when the whole turn finishes. This is
+    // what lets usageWindows() below, called right after the send() that
+    // triggers construction, await the *same* in-flight query rather than
+    // reading queryRef synchronously (a real race: the query isn't assigned
+    // until a microtask after send() returns) or starting a second one.
+    let resolveQueryReady: ((query: Query | undefined) => void) | undefined;
+    const queryReady = new Promise<Query | undefined>((resolve) => { resolveQueryReady = resolve; });
 
     const canUseTool: CanUseTool = async (toolName, input, options) => {
       const id = options.toolUseID;
@@ -378,6 +409,15 @@ export class ClaudeProvider implements AgentProvider {
         resume: opts.resumeToken,
         permissionMode: PERMISSION_MODE[pendingMode],
         canUseTool,
+        // Adaptive is already the default for every model that supports it,
+        // so the type is not what this is for — `display` is. Left unset, the
+        // CLI emits a `thinking` content block per reasoning turn whose
+        // `thinking` string is empty, and the panel has no way to tell that
+        // apart from a model that did not reason at all. Probed against the
+        // real SDK: bare options give `thinking: ""`, this gives the summary.
+        // Safe on models without adaptive thinking — verified on Haiku, which
+        // takes the same option and returns a summary.
+        thinking: { type: 'adaptive', display: 'summarized' },
         ...(effort !== undefined ? { effort } : {}),
         ...(isBypassMode ? { allowDangerouslySkipPermissions: true } : {}),
       };
@@ -395,6 +435,7 @@ export class ClaudeProvider implements AgentProvider {
           const constructedOptions = buildOptions();
           const session = query({ prompt: prompts, options: constructedOptions });
           queryRef = session;
+          resolveQueryReady?.(session);
           // The init message already produced a name+status snapshot via
           // map-events. This pull supersedes it with the full shape — error
           // text and a real tool count. Fire-and-forget: a failure here means
@@ -435,6 +476,10 @@ export class ClaudeProvider implements AgentProvider {
           }
         } catch (err) {
           events.push({ kind: 'turn-end', reason: 'error', error: errorMessage(err) });
+          // Unblocks a usageWindows() call that is awaiting this exact
+          // construction — resolving to undefined so it degrades to "no
+          // windows" rather than hanging on a query that will never exist.
+          resolveQueryReady?.(undefined);
         } finally {
           events.close();
         }
@@ -500,6 +545,24 @@ export class ClaudeProvider implements AgentProvider {
           // Synchronous throw, same treatment as the async rejection above.
           console.warn('[hiiiid-code] setPermissionMode threw', 'mode=', mode, 'error=', errorMessage(err));
         }
+      },
+      usageWindows: async (): Promise<UsageWindow[] | undefined> => {
+        // Deliberately does NOT call ensureStarted(): a usage pull must never
+        // be the thing that spawns a CLI subprocess for a session nobody has
+        // sent to. Before the first send there is no query to ask, and the
+        // activation probe already covers that case.
+        if (!started || disposed) { return undefined; }
+        // A send() just before this call has already kicked off
+        // construction, but queryRef isn't assigned until a microtask later
+        // (loadQueryFn() is itself async) — so a synchronous queryRef check
+        // here would race that in-flight construction and lose it every
+        // time. Await the same construction rather than reading queryRef
+        // synchronously or starting a second one.
+        const query = queryRef ?? await queryReady;
+        if (!query || disposed) { return undefined; }
+        return toUsageWindows(
+          await query.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET() as UsageResponseLike,
+        );
       },
       contextBreakdown: async (): Promise<ContextBreakdown> => {
         // queryRef is only assigned once the query is constructed, which is

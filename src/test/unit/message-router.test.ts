@@ -51,11 +51,7 @@ suite('MessageRouter', () => {
 
   test('ready carries the manager\'s current usage snapshot on hydrate', async () => {
     await manager.create('fake', '/tmp');
-    const run = provider.runs.at(-1)!;
-    run.emit({
-      kind: 'usage-window',
-      window: { id: 'five-hour', label: 'Session (5h)', usedPercent: 62 },
-    });
+    manager.usageWindows('fake', [{ id: 'five-hour', label: 'Session (5h)', usedPercent: 62 }]);
     await settle();
 
     await router.handle({ t: 'ready' });
@@ -64,6 +60,13 @@ suite('MessageRouter', () => {
     assert.deepStrictEqual(hydrate.usage, {
       fake: [{ id: 'five-hour', label: 'Session (5h)', usedPercent: 62 }],
     });
+  });
+
+  test('ready kicks off a usage refresh alongside the model refresh', async () => {
+    await router.handle({ t: 'ready' });
+    await settle();
+
+    assert.deepStrictEqual(provider.fetchUsageCalls, ['/tmp']);
   });
 
   test('create-session then send drives a turn', async () => {

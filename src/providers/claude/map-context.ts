@@ -125,35 +125,54 @@ const WINDOW_LABELS: { key: 'five_hour' | 'seven_day' | 'seven_day_opus' | 'seve
 ];
 
 /**
- * The subset of `SDKRateLimitInfo` (sdk.d.ts:4421) this mapper reads,
- * declared structurally for the same reason `ContextUsageLike` is. Note
- * `resetsAt` is epoch ms here — the experimental usage response this module
- * used to read carried an ISO string instead, which is why nothing parses.
+ * The subset of `SDKControlGetUsageResponse` (sdk.d.ts:3351) this mapper
+ * reads, declared structurally for the same reason `ContextUsageLike` is.
+ *
+ * Two traps, both proven live:
+ *   - `resets_at` is an ISO 8601 string here. The `rate_limit_event` signal
+ *     carries epoch SECONDS under the same name. Neither is epoch ms.
+ *   - `utilization` is already 0-100 here. The signal's, when present at
+ *     all, is a 0-1 fraction. Scaling this one would render 6200% for a 62%
+ *     window.
  */
-export interface RateLimitInfoLike {
-  rateLimitType?: string;
-  utilization?: number;
-  resetsAt?: number;
+export interface UsageResponseLike {
+  rate_limits_available?: boolean;
+  rate_limits?: Partial<Record<
+    'five_hour' | 'seven_day' | 'seven_day_opus' | 'seven_day_sonnet',
+    { utilization?: number | null; resets_at?: string | null } | null
+  >> | null;
 }
 
 /**
- * One `rate_limit_event` describes one window. An event we cannot label
- * (`overage`, `seven_day_overage_included`, or a type a future SDK adds) or
- * cannot quantify (no `utilization`) produces nothing: a chip with a guessed
- * label or an invented percentage is worse than a chip that is not there.
+ * The structured usage response as an ordered window list.
+ *
+ * `undefined` is a positive answer — the account has no plan limits at all
+ * (API key, Bedrock, Vertex, or a missing profile scope) — and callers clear
+ * persisted state on it. `[]` means limits apply but nothing is known yet,
+ * and clears nothing. A window the response cannot quantify is dropped
+ * rather than rendered at a guessed percentage.
  */
-export function toUsageWindow(info: RateLimitInfoLike | undefined): UsageWindow | undefined {
-  if (!info) { return undefined; }
-  const row = WINDOW_LABELS.find((w) => w.key === info.rateLimitType);
-  if (!row) { return undefined; }
-  if (typeof info.utilization !== 'number' || !Number.isFinite(info.utilization)) { return undefined; }
-  const at = typeof info.resetsAt === 'number' && Number.isFinite(info.resetsAt)
-    ? info.resetsAt
-    : undefined;
-  return {
-    id: row.id,
-    label: row.label,
-    usedPercent: Math.max(0, Math.min(100, Math.round(info.utilization))),
-    ...(at !== undefined ? { resetsAt: at } : {}),
-  };
+export function toUsageWindows(res: UsageResponseLike | undefined): UsageWindow[] | undefined {
+  if (!res || res.rate_limits_available !== true) { return undefined; }
+  const limits = res.rate_limits;
+  if (!limits) { return []; }
+
+  const out: UsageWindow[] = [];
+  // Driven by WINDOW_LABELS rather than by the response's own keys, so a key
+  // this table has never heard of (seven_day_oauth_apps, and whatever a
+  // future SDK adds) is ignored instead of rendered with a guessed label.
+  for (const row of WINDOW_LABELS) {
+    const window = limits[row.key];
+    if (!window) { continue; }
+    const { utilization } = window;
+    if (typeof utilization !== 'number' || !Number.isFinite(utilization)) { continue; }
+    const parsed = window.resets_at ? Date.parse(window.resets_at) : NaN;
+    out.push({
+      id: row.id,
+      label: row.label,
+      usedPercent: Math.max(0, Math.min(100, Math.round(utilization))),
+      ...(Number.isFinite(parsed) ? { resetsAt: parsed } : {}),
+    });
+  }
+  return out;
 }

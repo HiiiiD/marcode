@@ -1,5 +1,5 @@
 import * as assert from 'assert';
-import { toContextBreakdown, toUsageWindow } from '../../providers/claude/map-context';
+import { toContextBreakdown, toUsageWindows, UsageResponseLike } from '../../providers/claude/map-context';
 
 suite('map-context', () => {
   test('splits the window into system, memory, conversation and free', () => {
@@ -173,35 +173,98 @@ suite('map-context', () => {
   });
 });
 
-suite('toUsageWindow', () => {
-  test('maps a five-hour event to the table id and label', () => {
-    assert.deepStrictEqual(
-      toUsageWindow({ rateLimitType: 'five_hour', utilization: 62, resetsAt: 1_700_000_000_000 }),
-      { id: 'five-hour', label: 'Session (5h)', usedPercent: 62, resetsAt: 1_700_000_000_000 },
-    );
+suite('toUsageWindows', () => {
+  test('maps a window, keeping utilization on its own 0-100 scale', () => {
+    const out = toUsageWindows({
+      rate_limits_available: true,
+      rate_limits: { five_hour: { utilization: 62, resets_at: '2026-08-14T17:10:00Z' } },
+    });
+    assert.deepStrictEqual(out, [{
+      id: 'five-hour',
+      label: 'Session (5h)',
+      usedPercent: 62,
+      resetsAt: Date.parse('2026-08-14T17:10:00Z'),
+    }]);
   });
 
-  test('rounds and clamps utilization into 0..100', () => {
-    assert.strictEqual(toUsageWindow({ rateLimitType: 'seven_day', utilization: 18.4 })?.usedPercent, 18);
-    assert.strictEqual(toUsageWindow({ rateLimitType: 'seven_day', utilization: 140 })?.usedPercent, 100);
-    assert.strictEqual(toUsageWindow({ rateLimitType: 'seven_day', utilization: -3 })?.usedPercent, 0);
+  test('resets_at parses to epoch milliseconds, not seconds', () => {
+    const out = toUsageWindows({
+      rate_limits_available: true,
+      rate_limits: { five_hour: { utilization: 10, resets_at: '2026-08-14T17:10:00Z' } },
+    });
+    // 1786727400000, not 1786727400 — a seconds value would be filtered as
+    // already-reset by both windowsFor() and ProviderUsage.
+    assert.strictEqual(out?.[0].resetsAt, 1786727400000);
   });
 
-  test('omits resetsAt rather than carrying a non-finite one', () => {
-    const w = toUsageWindow({ rateLimitType: 'seven_day_opus', utilization: 5, resetsAt: Number.NaN });
-    assert.deepStrictEqual(w, { id: 'seven-day-opus', label: 'Week (Opus)', usedPercent: 5 });
-  });
-
-  test('drops an event with no utilization — there is no percentage to show', () => {
-    assert.strictEqual(toUsageWindow({ rateLimitType: 'five_hour' }), undefined);
-  });
-
-  test('drops an event with no rateLimitType, and the overage types, rather than guessing a label', () => {
-    assert.strictEqual(toUsageWindow({ utilization: 40 }), undefined);
-    assert.strictEqual(toUsageWindow({ rateLimitType: 'overage', utilization: 40 }), undefined);
+  test('rate_limits_available false is undefined, not an empty array', () => {
+    // Distinct meanings: undefined is "this account has no plan limits at
+    // all" (API key, Bedrock, Vertex) and clears persisted windows; [] is
+    // "limits exist, nothing known yet" and does not.
     assert.strictEqual(
-      toUsageWindow({ rateLimitType: 'seven_day_overage_included', utilization: 40 }), undefined,
+      toUsageWindows({ rate_limits_available: false, rate_limits: null }),
+      undefined,
     );
-    assert.strictEqual(toUsageWindow(undefined), undefined);
+  });
+
+  test('available but null rate_limits is an empty array', () => {
+    assert.deepStrictEqual(
+      toUsageWindows({ rate_limits_available: true, rate_limits: null }),
+      [],
+    );
+  });
+
+  test('a null utilization drops that window but keeps its siblings', () => {
+    const out = toUsageWindows({
+      rate_limits_available: true,
+      rate_limits: {
+        five_hour: { utilization: null, resets_at: '2026-08-14T17:10:00Z' },
+        seven_day: { utilization: 18, resets_at: '2026-08-20T00:00:00Z' },
+      },
+    });
+    assert.deepStrictEqual(out?.map((w) => w.id), ['seven-day']);
+  });
+
+  test('a null resets_at yields a window with no reset time', () => {
+    const out = toUsageWindows({
+      rate_limits_available: true,
+      rate_limits: { seven_day: { utilization: 5, resets_at: null } },
+    });
+    assert.strictEqual(out?.[0].resetsAt, undefined);
+    assert.strictEqual(out?.[0].usedPercent, 5);
+  });
+
+  test('an unparseable resets_at yields a window with no reset time', () => {
+    const out = toUsageWindows({
+      rate_limits_available: true,
+      rate_limits: { seven_day: { utilization: 5, resets_at: 'not-a-date' } },
+    });
+    assert.strictEqual(out?.[0].resetsAt, undefined);
+  });
+
+  test('unlabelled keys are ignored rather than guessed at', () => {
+    const out = toUsageWindows({
+      rate_limits_available: true,
+      rate_limits: {
+        five_hour: { utilization: 3, resets_at: null },
+        seven_day_oauth_apps: { utilization: 99, resets_at: null },
+      } as UsageResponseLike['rate_limits'],
+    });
+    assert.deepStrictEqual(out?.map((w) => w.id), ['five-hour']);
+  });
+
+  test('utilization is clamped to 0-100 and rounded once', () => {
+    const out = toUsageWindows({
+      rate_limits_available: true,
+      rate_limits: {
+        five_hour: { utilization: 62.6, resets_at: null },
+        seven_day: { utilization: 140, resets_at: null },
+      },
+    });
+    assert.deepStrictEqual(out?.map((w) => w.usedPercent), [63, 100]);
+  });
+
+  test('an absent response is undefined', () => {
+    assert.strictEqual(toUsageWindows(undefined), undefined);
   });
 });

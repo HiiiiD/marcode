@@ -32,6 +32,20 @@ suite('mapEvent', () => {
     assert.deepStrictEqual(events, [{ kind: 'thinking', delta: 'pondering' }]);
   });
 
+  test('a thinking block with no content is dropped, not forwarded as an empty delta', () => {
+    // The shape the CLI emits when thinking runs but its content is withheld
+    // (no `display: 'summarized'`, or a redacted block). Forwarding it opens
+    // an assistant transcript item that renders as nothing at all.
+    const events = mapEvent({
+      type: 'assistant',
+      message: { content: [
+        { type: 'thinking', thinking: '', signature: 'sig' },
+        { type: 'text', text: '36' },
+      ] },
+    } as never);
+    assert.deepStrictEqual(events, [{ kind: 'text', delta: '36' }]);
+  });
+
   test('assistant tool_use blocks become tool-start events', () => {
     const events = mapEvent({
       type: 'assistant',
@@ -256,22 +270,23 @@ suite('mapEvent', () => {
 });
 
 suite('rate_limit_event', () => {
-  test('maps to a single usage-window event', () => {
+  test('a rate_limit_event is a stale signal, whatever it carries', () => {
+    // The real payload from a subscription account on 2026-08-14. It carries
+    // no utilization at steady state, which is why nothing reads its values.
     assert.deepStrictEqual(
       mapEvent({
         type: 'rate_limit_event',
-        session_id: 's1',
-        rate_limit_info: { status: 'allowed', rateLimitType: 'five_hour', utilization: 62 },
+        rate_limit_info: {
+          status: 'allowed', resetsAt: 1786727400, rateLimitType: 'five_hour',
+          overageStatus: 'rejected', overageDisabledReason: 'out_of_credits',
+          isUsingOverage: false,
+        },
       }),
-      [{ kind: 'usage-window', window: { id: 'five-hour', label: 'Session (5h)', usedPercent: 62 } }],
+      [{ kind: 'usage-stale' }],
     );
   });
 
-  test('an unlabelable or unquantifiable event maps to nothing', () => {
-    assert.deepStrictEqual(
-      mapEvent({ type: 'rate_limit_event', session_id: 's1', rate_limit_info: { status: 'allowed' } }),
-      [],
-    );
-    assert.deepStrictEqual(mapEvent({ type: 'rate_limit_event', session_id: 's1' }), []);
+  test('a rate_limit_event with no info is still a stale signal', () => {
+    assert.deepStrictEqual(mapEvent({ type: 'rate_limit_event' }), [{ kind: 'usage-stale' }]);
   });
 });
