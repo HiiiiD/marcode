@@ -157,7 +157,7 @@ export class SessionManager implements SessionSink {
       if (!this.claimSnapshot(id, seq)) { continue; }
       this.emit({
         t: 'session-snapshot',
-        session: { ...state, items, hasMore, pending: [] },
+        session: { ...state, items, hasMore, pending: [], mcpServers: [] },
       });
       this.drainSnapshotBuffer(id);
     }

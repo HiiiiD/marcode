@@ -22,7 +22,7 @@ export function summary(id: string, over: Partial<SessionSummary> = {}): Session
 }
 
 export function snapshot(id: string, over: Partial<SessionSnapshot> = {}): SessionSnapshot {
-  return { ...summary(id), items: [], hasMore: false, pending: [], ...over };
+  return { ...summary(id), items: [], hasMore: false, pending: [], mcpServers: [], ...over };
 }
 
 export function layoutOf(...ids: string[]): PaneLayout {

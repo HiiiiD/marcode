@@ -169,7 +169,7 @@ export class AgentSession {
   async snapshot(): Promise<SessionSnapshot> {
     await this.scheduleFlush();
     const { items, hasMore } = await this.store.tail(this._state.id);
-    return { ...this._state, items, hasMore, pending: [...this.pending.values()] };
+    return { ...this._state, items, hasMore, pending: [...this.pending.values()], mcpServers: [] };
   }
 
   async loadMore(beforeItemId: string) {
