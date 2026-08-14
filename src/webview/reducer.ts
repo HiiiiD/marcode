@@ -1,5 +1,5 @@
 import type {
-  HostToWebview, PaneLayout, PermissionRequest, ProviderInfo, SessionId,
+  HostToWebview, McpServerStatus, PaneLayout, PermissionRequest, ProviderInfo, SessionId,
   SessionSummary, TranscriptItem,
 } from '../protocol/messages';
 
@@ -8,6 +8,7 @@ export interface PaneState {
   items: TranscriptItem[];
   hasMore: boolean;
   pending: PermissionRequest[];
+  mcpServers: McpServerStatus[];
 }
 
 export interface ClientState {
@@ -48,6 +49,7 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
       for (const s of msg.snapshots) {
         byId[s.id] = {
           summary: s, items: s.items, hasMore: s.hasMore, pending: s.pending,
+          mcpServers: s.mcpServers ?? [],
         };
       }
       return {
@@ -81,7 +83,10 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
         ...state,
         byId: {
           ...state.byId,
-          [s.id]: { summary: s, items: s.items, hasMore: s.hasMore, pending: s.pending },
+          [s.id]: {
+            summary: s, items: s.items, hasMore: s.hasMore, pending: s.pending,
+            mcpServers: s.mcpServers ?? [],
+          },
         },
       };
     }
@@ -122,6 +127,15 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
       };
     }
 
+    case 'session-mcp': {
+      const pane = state.byId[msg.id];
+      if (!pane) { return state; }
+      return {
+        ...state,
+        byId: { ...state.byId, [msg.id]: { ...pane, mcpServers: msg.servers } },
+      };
+    }
+
     default:
       // The HostToWebview type is closed, but nothing guarantees a runtime value
       // matches it (a host that shipped a new variant before this bundle updated,
@@ -135,25 +149,40 @@ type Patch = Extract<HostToWebview, { t: 'session-patch' }>['patch'];
 
 function applyPatch(pane: PaneState, patch: Patch): PaneState {
   switch (patch.op) {
-    case 'append':
-      return {
-        ...pane,
-        items: [...pane.items, patch.item],
-        pending: patch.item.role === 'permission' && patch.item.state === 'pending'
-          ? [...pane.pending, {
-              requestId: patch.item.requestId,
-              name: patch.item.name,
-              input: patch.item.input,
-            }]
-          : pane.pending,
-      };
+    case 'append': {
+      const pending = patch.item.role === 'permission' && patch.item.state === 'pending'
+        ? [...pane.pending, {
+            requestId: patch.item.requestId,
+            name: patch.item.name,
+            input: patch.item.input,
+          }]
+        : pane.pending;
+
+      // A nested append targets a parent already in the loaded window: the
+      // parent's tool-start is appended before its subagent can emit
+      // anything, so no orphan buffer is needed. If the parent genuinely is
+      // not here, promote the child to top-level rather than dropping it —
+      // losing nesting degrades rendering; dropping hides real work.
+      if (patch.parentItemId) {
+        const nested = withChild(pane.items, patch.parentItemId, patch.item);
+        if (nested) { return { ...pane, items: nested, pending }; }
+      }
+
+      return { ...pane, items: [...pane.items, patch.item], pending };
+    }
 
     case 'replace': {
       const replaced = patch.item;
-      const items = pane.items.map((i) => (i.id === replaced.id ? replaced : i));
       const pending = replaced.role === 'permission' && replaced.state !== 'pending'
         ? pane.pending.filter((p) => p.requestId !== replaced.requestId)
         : pane.pending;
+
+      if (patch.parentItemId) {
+        const nested = withChild(pane.items, patch.parentItemId, replaced);
+        if (nested) { return { ...pane, items: nested, pending }; }
+      }
+
+      const items = pane.items.map((i) => (i.id === replaced.id ? replaced : i));
       return { ...pane, items, pending };
     }
 
@@ -165,4 +194,28 @@ function applyPatch(pane: PaneState, patch: Patch): PaneState {
       return { ...pane, items };
     }
   }
+}
+
+/**
+ * Inserts or replaces `child` inside `parentItemId`'s children, immutably.
+ * Returns undefined when the parent is not in the loaded window, which is
+ * the caller's signal to fall back to a top-level append.
+ */
+function withChild(
+  items: TranscriptItem[],
+  parentItemId: string,
+  child: TranscriptItem,
+): TranscriptItem[] | undefined {
+  let found = false;
+  const next = items.map((item) => {
+    if (item.id !== parentItemId || item.role !== 'tool') { return item; }
+    found = true;
+    const children = item.children ?? [];
+    const at = children.findIndex((c) => c.id === child.id);
+    const updated = at >= 0
+      ? children.map((c, i) => (i === at ? child : c))
+      : [...children, child];
+    return { ...item, children: updated };
+  });
+  return found ? next : undefined;
 }

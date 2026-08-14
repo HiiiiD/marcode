@@ -10,7 +10,9 @@ import {
 } from './harness';
 
 function pane(status: SessionStatus = 'idle'): PaneState {
-  return { summary: summary('a', { status }), items: [], hasMore: false, pending: [] };
+  return {
+    summary: summary('a', { status }), items: [], hasMore: false, pending: [], mcpServers: [],
+  };
 }
 
 /** A pane whose first message has already been sent — hasStarted === true. */
@@ -20,6 +22,7 @@ function startedPane(id: string): PaneState {
     items: [{ id: `i-${id}`, ts: 1, role: 'user', text: 'go' }],
     hasMore: false,
     pending: [],
+    mcpServers: [],
   };
 }
 

@@ -3,6 +3,22 @@ import { initialState, reduce } from '../../webview/reducer';
 import type { SessionSummary } from '../../protocol/messages';
 import { snapshot, summary } from '../fixtures/protocol';
 
+function hydrated() {
+  return reduce(initialState, {
+    t: 'hydrate',
+    sessions: [],
+    layout: { orientation: 'vertical', panes: [] },
+    catalog: [],
+    snapshots: [{
+      id: 's1', providerId: 'fake', model: 'fake-large', title: 'T', cwd: '/tmp',
+      status: 'idle', permissionMode: 'default',
+      usage: { inputTokens: 0, outputTokens: 0 },
+      archived: false, createdAt: 1, updatedAt: 1,
+      items: [], hasMore: false, pending: [], mcpServers: [],
+    }],
+  });
+}
+
 suite('webview reducer', () => {
   test('hydrate populates sessions, layout, catalog and panes', () => {
     const next = reduce(initialState, {
@@ -159,5 +175,94 @@ suite('webview reducer', () => {
     const bogus = { t: 'not-a-real-variant' } as unknown as Parameters<typeof reduce>[1];
     const next = reduce(initialState, bogus);
     assert.strictEqual(next, initialState);
+  });
+
+  test('an append with parentItemId nests under the parent tool item', () => {
+    const parent = {
+      id: 't1', ts: 1, role: 'tool' as const, toolId: 'task1', name: 'Task',
+      input: {}, state: 'running' as const,
+    };
+    const child = {
+      id: 't2', ts: 2, role: 'tool' as const, toolId: 'c1', name: 'Read',
+      input: {}, state: 'running' as const,
+    };
+    let state = reduce(hydrated(), { t: 'session-patch', id: 's1', patch: { op: 'append', item: parent } });
+    state = reduce(state, {
+      t: 'session-patch', id: 's1', patch: { op: 'append', item: child, parentItemId: 't1' },
+    });
+
+    const items = state.byId['s1'].items;
+    assert.strictEqual(items.length, 1, 'the child is not a top-level item');
+    assert.strictEqual((items[0] as { children?: unknown[] }).children?.length, 1);
+  });
+
+  test('a replace with parentItemId settles the child in place', () => {
+    const parent = {
+      id: 't1', ts: 1, role: 'tool' as const, toolId: 'task1', name: 'Task',
+      input: {}, state: 'running' as const,
+    };
+    const child = {
+      id: 't2', ts: 2, role: 'tool' as const, toolId: 'c1', name: 'Read',
+      input: {}, state: 'running' as const,
+    };
+    let state = reduce(hydrated(), { t: 'session-patch', id: 's1', patch: { op: 'append', item: parent } });
+    state = reduce(state, {
+      t: 'session-patch', id: 's1', patch: { op: 'append', item: child, parentItemId: 't1' },
+    });
+    state = reduce(state, {
+      t: 'session-patch', id: 's1',
+      patch: { op: 'replace', item: { ...child, state: 'ok' as const }, parentItemId: 't1' },
+    });
+
+    const children = (state.byId['s1'].items[0] as { children: { state: string }[] }).children;
+    assert.strictEqual(children.length, 1, 'settled in place, not appended again');
+    assert.strictEqual(children[0].state, 'ok');
+  });
+
+  test('a child whose parent is not in the loaded window is promoted to top-level', () => {
+    const child = {
+      id: 't2', ts: 2, role: 'tool' as const, toolId: 'c1', name: 'Read',
+      input: {}, state: 'running' as const,
+    };
+    const state = reduce(hydrated(), {
+      t: 'session-patch', id: 's1', patch: { op: 'append', item: child, parentItemId: 'gone' },
+    });
+    assert.strictEqual(state.byId['s1'].items.length, 1);
+    assert.strictEqual(state.byId['s1'].items[0].id, 't2');
+  });
+
+  test('a nested pending permission still reaches the pane pending list', () => {
+    const parent = {
+      id: 't1', ts: 1, role: 'tool' as const, toolId: 'task1', name: 'Task',
+      input: {}, state: 'running' as const,
+    };
+    const perm = {
+      id: 'p1', ts: 2, role: 'permission' as const, requestId: 'r1', name: 'Bash',
+      input: {}, state: 'pending' as const,
+    };
+    let state = reduce(hydrated(), { t: 'session-patch', id: 's1', patch: { op: 'append', item: parent } });
+    state = reduce(state, {
+      t: 'session-patch', id: 's1', patch: { op: 'append', item: perm, parentItemId: 't1' },
+    });
+    assert.strictEqual(state.byId['s1'].pending.length, 1);
+  });
+
+  test('session-mcp replaces the pane server list wholesale', () => {
+    let state = reduce(hydrated(), {
+      t: 'session-mcp', id: 's1', servers: [{ name: 'github', state: 'pending' }],
+    });
+    state = reduce(state, {
+      t: 'session-mcp', id: 's1',
+      servers: [{ name: 'github', state: 'connected', toolCount: 12 }],
+    });
+    assert.deepStrictEqual(state.byId['s1'].mcpServers, [
+      { name: 'github', state: 'connected', toolCount: 12 },
+    ]);
+  });
+
+  test('session-mcp for an unknown session is ignored', () => {
+    const before = hydrated();
+    const after = reduce(before, { t: 'session-mcp', id: 'nope', servers: [] });
+    assert.strictEqual(after, before);
   });
 });
