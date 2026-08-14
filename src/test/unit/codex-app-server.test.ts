@@ -97,4 +97,33 @@ suite('AppServer', () => {
     server.close('second');
     assert.strictEqual(closes, 1);
   });
+
+  test('two complete frames arriving in a single chunk both dispatch, in order', () => {
+    const { server } = stub();
+    const seen: string[] = [];
+    server.onNotification((method) => { seen.push(method); });
+    server.ingest('{"method":"turn/started","params":{}}\n{"method":"turn/completed","params":{}}\n');
+    assert.deepStrictEqual(seen, ['turn/started', 'turn/completed']);
+  });
+
+  test('a chunk ending exactly on a newline loses nothing into the next chunk', () => {
+    const { server } = stub();
+    const seen: string[] = [];
+    server.onNotification((method) => { seen.push(method); });
+    server.ingest('{"method":"turn/started","params":{}}\n');
+    server.ingest('{"method":"turn/completed","params":{}}\n');
+    assert.deepStrictEqual(seen, ['turn/started', 'turn/completed']);
+  });
+
+  test('a stdin write failure rejects the in-flight request instead of throwing', async () => {
+    const stdin = new PassThrough();
+    const stdout = new PassThrough();
+    stdin.write = () => { throw new Error('EPIPE'); };
+    const server = new AppServer({ stdin, stdout, kill: () => {} });
+    let closes = 0;
+    server.onClose(() => { closes += 1; });
+    const pending = server.request('model/list', {});
+    await assert.rejects(pending, /EPIPE/);
+    assert.strictEqual(closes, 1);
+  });
 });

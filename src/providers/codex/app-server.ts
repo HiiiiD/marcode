@@ -33,6 +33,15 @@ export class AppServer {
   constructor(private readonly child: Duplex) {
     child.stdout.on('data', (chunk: Buffer) => { this.ingest(chunk.toString()); });
     child.stdout.on('close', () => { this.close('app-server closed its output'); });
+    // A pipe error is otherwise an unhandled 'error' event — Node's default
+    // behavior for that is to throw, which would crash the extension host
+    // rather than land on a session as an error item.
+    child.stdout.on('error', (err: Error) => {
+      this.close(`app-server stdout error: ${err.message}`);
+    });
+    child.stdin.on('error', (err: Error) => {
+      this.close(`app-server stdin error: ${err.message}`);
+    });
   }
 
   onNotification(cb: (method: string, params: unknown) => void): void { this.notify = cb; }
@@ -107,8 +116,21 @@ export class AppServer {
     }
   }
 
+  /**
+   * A synchronous throw from `stdin.write` (e.g. writing to an already-dead
+   * pipe) must not escape to the caller of `request`/`respond` — that would
+   * turn "errors are state" into an actual thrown exception. Route it into
+   * the same `close` path a stdin 'error' event takes, so every in-flight
+   * request rejects with one usable message instead of one call throwing
+   * while the rest hang.
+   */
   private write(frame: unknown): void {
-    this.child.stdin.write(`${JSON.stringify(frame)}\n`);
+    try {
+      this.child.stdin.write(`${JSON.stringify(frame)}\n`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.close(`app-server stdin write failed: ${message}`);
+    }
   }
 
   /**
