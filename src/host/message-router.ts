@@ -1,11 +1,26 @@
 import type { SessionManager } from './session-manager';
-import type { HostToWebview, SessionSnapshot, WebviewToHost } from '../protocol/messages';
+import type {
+  EditorContext, HostToWebview, SessionSnapshot, WebviewToHost,
+} from '../protocol/messages';
+
+/**
+ * The router must stay free of `vscode` (it has unit tests that run outside
+ * the extension host), so everything needing the real editor API arrives
+ * through this. `src/extension.ts` supplies the real implementation.
+ */
+export interface EditorContextHost {
+  current(): EditorContext | null;
+  reveal(path: string, startLine?: number): void;
+}
+
+const NO_EDITOR: EditorContextHost = { current: () => null, reveal: () => {} };
 
 export class MessageRouter {
   constructor(
     private readonly manager: SessionManager,
     private readonly emit: (msg: HostToWebview) => void,
     private readonly defaultCwd: string,
+    private readonly editor: EditorContextHost = NO_EDITOR,
   ) {}
 
   /**
@@ -61,6 +76,11 @@ export class MessageRouter {
           snapshots,
           catalog: this.manager.catalog(),
         });
+        this.emit({ t: 'editor-context', ctx: this.editor.current() });
+        // Not awaited: hydrate must not wait on a CLI handshake. The catalog
+        // just sent carries each provider's synchronously-known models; the
+        // real one arrives as a `catalog` message when the probes land.
+        void this.manager.refreshModels(this.defaultCwd);
         return;
       }
 
@@ -90,7 +110,11 @@ export class MessageRouter {
 
       case 'send': {
         const session = this.manager.get(msg.id) ?? await this.reopen(msg.id);
-        session?.send(msg.text);
+        if (!session) { return; }
+        const context = session.state.includeEditorContext
+          ? this.editor.current() ?? undefined
+          : undefined;
+        session.send(msg.text, context);
         return;
       }
 
@@ -115,6 +139,16 @@ export class MessageRouter {
         session?.setModel(msg.model);
         return;
       }
+
+      case 'set-include-context': {
+        const session = this.manager.get(msg.id) ?? await this.reopen(msg.id);
+        session?.setIncludeEditorContext(msg.on);
+        return;
+      }
+
+      case 'reveal-file':
+        this.editor.reveal(msg.path, msg.startLine);
+        return;
 
       case 'permission-decision':
         this.manager.get(msg.id)?.respondToPermission(msg.requestId, msg.decision);
@@ -172,6 +206,7 @@ const KNOWN_MESSAGE_TAGS = new Set<WebviewToHost['t']>([
   'ready', 'create-session', 'set-visible', 'set-layout', 'close-session',
   'delete-session', 'send', 'interrupt', 'set-effort', 'set-permission-mode',
   'set-model', 'permission-decision', 'load-more',
+  'set-include-context', 'reveal-file',
   'request-context', 'request-usage', 'open-file',
 ]);
 

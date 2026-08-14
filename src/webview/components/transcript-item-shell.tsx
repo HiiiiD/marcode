@@ -1,12 +1,17 @@
 import type { ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 
-export type TranscriptItemRole = 'user' | 'assistant' | 'tool' | 'permission' | 'error';
+export type TranscriptItemRole = 'user' | 'assistant' | 'tool' | 'permission' | 'subagent' | 'error';
 
 const RULE: Record<TranscriptItemRole, string> = {
   user: 'border-l-muted-foreground/40',
   assistant: 'border-l-primary/40',
   tool: 'border-l-border',
+  // A subagent is a container of tool calls, not one call: a rule the eye
+  // can separate from `tool` while scanning, without introducing a colour
+  // that competes with `permission`/`error` (destructive) or `assistant`
+  // (primary), both of which already mean something urgent here.
+  subagent: 'border-l-muted-foreground',
   permission: 'border-l-destructive',
   error: 'border-l-destructive',
 };

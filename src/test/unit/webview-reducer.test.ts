@@ -1,6 +1,6 @@
 import * as assert from 'assert';
-import { initialState, reduce } from '../../webview/reducer';
 import type { SessionSummary } from '../../protocol/messages';
+import { initialState, reduce } from '../../webview/reducer';
 import { snapshot, summary } from '../fixtures/protocol';
 
 /**
@@ -16,6 +16,22 @@ function withSession(id: string) {
     layout: { orientation: 'vertical', panes: [{ sessionId: id, size: 100 }] },
     snapshots: [snapshot(id)],
     catalog: [],
+  });
+}
+
+function hydrated() {
+  return reduce(initialState, {
+    t: 'hydrate',
+    sessions: [],
+    layout: { orientation: 'vertical', panes: [] },
+    catalog: [],
+    snapshots: [{
+      id: 's1', providerId: 'fake', model: 'fake-large', title: 'T', cwd: '/tmp',
+      status: 'idle', permissionMode: 'default',
+      usage: { inputTokens: 0, outputTokens: 0 },
+      archived: false, createdAt: 1, updatedAt: 1, includeEditorContext: true,
+      items: [], hasMore: false, pending: [], mcpServers: [],
+    }],
   });
 }
 
@@ -175,6 +191,166 @@ suite('webview reducer', () => {
     const bogus = { t: 'not-a-real-variant' } as unknown as Parameters<typeof reduce>[1];
     const next = reduce(initialState, bogus);
     assert.strictEqual(next, initialState);
+  });
+
+  test('an append with parentItemId nests under the parent tool item', () => {
+    const parent = {
+      id: 't1', ts: 1, role: 'tool' as const, toolId: 'task1', name: 'Task',
+      input: {}, state: 'running' as const,
+    };
+    const child = {
+      id: 't2', ts: 2, role: 'tool' as const, toolId: 'c1', name: 'Read',
+      input: {}, state: 'running' as const,
+    };
+    let state = reduce(hydrated(), { t: 'session-patch', id: 's1', patch: { op: 'append', item: parent } });
+    state = reduce(state, {
+      t: 'session-patch', id: 's1', patch: { op: 'append', item: child, parentItemId: 't1' },
+    });
+
+    const items = state.byId['s1'].items;
+    assert.strictEqual(items.length, 1, 'the child is not a top-level item');
+    assert.strictEqual((items[0] as { children?: unknown[] }).children?.length, 1);
+  });
+
+  test('a replace with parentItemId settles the child in place', () => {
+    const parent = {
+      id: 't1', ts: 1, role: 'tool' as const, toolId: 'task1', name: 'Task',
+      input: {}, state: 'running' as const,
+    };
+    const child = {
+      id: 't2', ts: 2, role: 'tool' as const, toolId: 'c1', name: 'Read',
+      input: {}, state: 'running' as const,
+    };
+    let state = reduce(hydrated(), { t: 'session-patch', id: 's1', patch: { op: 'append', item: parent } });
+    state = reduce(state, {
+      t: 'session-patch', id: 's1', patch: { op: 'append', item: child, parentItemId: 't1' },
+    });
+    state = reduce(state, {
+      t: 'session-patch', id: 's1',
+      patch: { op: 'replace', item: { ...child, state: 'ok' as const }, parentItemId: 't1' },
+    });
+
+    const children = (state.byId['s1'].items[0] as { children: { state: string }[] }).children;
+    assert.strictEqual(children.length, 1, 'settled in place, not appended again');
+    assert.strictEqual(children[0].state, 'ok');
+  });
+
+  test('a child whose parent is not in the loaded window is promoted to top-level', () => {
+    const child = {
+      id: 't2', ts: 2, role: 'tool' as const, toolId: 'c1', name: 'Read',
+      input: {}, state: 'running' as const,
+    };
+    const state = reduce(hydrated(), {
+      t: 'session-patch', id: 's1', patch: { op: 'append', item: child, parentItemId: 'gone' },
+    });
+    assert.strictEqual(state.byId['s1'].items.length, 1);
+    assert.strictEqual(state.byId['s1'].items[0].id, 't2');
+  });
+
+  test('a nested pending permission still reaches the pane pending list', () => {
+    const parent = {
+      id: 't1', ts: 1, role: 'tool' as const, toolId: 'task1', name: 'Task',
+      input: {}, state: 'running' as const,
+    };
+    const perm = {
+      id: 'p1', ts: 2, role: 'permission' as const, requestId: 'r1', name: 'Bash',
+      input: {}, state: 'pending' as const,
+    };
+    let state = reduce(hydrated(), { t: 'session-patch', id: 's1', patch: { op: 'append', item: parent } });
+    state = reduce(state, {
+      t: 'session-patch', id: 's1', patch: { op: 'append', item: perm, parentItemId: 't1' },
+    });
+    assert.strictEqual(state.byId['s1'].pending.length, 1);
+  });
+
+  test('session-mcp replaces the pane server list wholesale', () => {
+    let state = reduce(hydrated(), {
+      t: 'session-mcp', id: 's1', servers: [{ name: 'github', state: 'pending' }],
+    });
+    state = reduce(state, {
+      t: 'session-mcp', id: 's1',
+      servers: [{ name: 'github', state: 'connected', toolCount: 12 }],
+    });
+    assert.deepStrictEqual(state.byId['s1'].mcpServers, [
+      { name: 'github', state: 'connected', toolCount: 12 },
+    ]);
+  });
+
+  test('session-mcp for an unknown session is ignored', () => {
+    const before = hydrated();
+    const after = reduce(before, { t: 'session-mcp', id: 'nope', servers: [] });
+    assert.strictEqual(after, before);
+  });
+
+  test('a snapshot carries invocables onto the pane', () => {
+    const state = reduce(initialState, {
+      t: 'session-snapshot',
+      session: { ...snapshot('s1'), invocables: [{ name: 'init' }] },
+    });
+
+    assert.deepStrictEqual(state.byId['s1'].invocables, [{ name: 'init' }]);
+  });
+
+  test('session-invocables replaces the pane list wholesale', () => {
+    let state = reduce(initialState, {
+      t: 'session-snapshot',
+      session: { ...snapshot('s1'), invocables: [{ name: 'a' }, { name: 'b' }] },
+    });
+    state = reduce(state, { t: 'session-invocables', id: 's1', entries: [{ name: 'c' }] });
+
+    assert.deepStrictEqual(state.byId['s1'].invocables, [{ name: 'c' }]);
+  });
+
+  test('session-invocables for an unknown pane is a no-op', () => {
+    const state = reduce(initialState, {
+      t: 'session-invocables', id: 'nope', entries: [{ name: 'a' }],
+    });
+
+    assert.deepStrictEqual(state.byId, {});
+  });
+
+  test('hydrate carries invocables onto each pane', () => {
+    const state = reduce(initialState, {
+      t: 'hydrate',
+      sessions: [summary('s1')],
+      layout: { orientation: 'vertical', panes: [{ sessionId: 's1', size: 100 }] },
+      snapshots: [{ ...snapshot('s1'), invocables: [{ name: 'init' }] }],
+      catalog: [],
+    });
+
+    assert.deepStrictEqual(state.byId['s1'].invocables, [{ name: 'init' }]);
+  });
+  
+  test('editor-context replaces the client-wide context', () => {
+    const ctx = { path: 'src/a.ts', languageId: 'typescript' };
+    const next = reduce(initialState, { t: 'editor-context', ctx });
+    assert.deepStrictEqual(next.editorContext, ctx);
+
+    const cleared = reduce(next, { t: 'editor-context', ctx: null });
+    assert.strictEqual(cleared.editorContext, null);
+  });
+
+  test('catalog replaces the provider/model catalog wholesale', () => {
+    const seeded = reduce(initialState, {
+      t: 'catalog',
+      catalog: [{ id: 'claude', displayName: 'Claude', models: [{ id: 'haiku', displayName: 'Haiku 4.5' }] }],
+    });
+    const next = reduce(seeded, {
+      t: 'catalog',
+      catalog: [{
+        id: 'claude', displayName: 'Claude',
+        models: [{ id: 'claude-fable-5', displayName: 'Fable 5' }],
+      }],
+    });
+
+    assert.deepStrictEqual(next.catalog, [{
+      id: 'claude', displayName: 'Claude',
+      models: [{ id: 'claude-fable-5', displayName: 'Fable 5' }],
+    }]);
+  });
+
+  test('the initial state has no editor context', () => {
+    assert.strictEqual(initialState.editorContext, null);
   });
 
   test('context-breakdown is stored under its session id', () => {

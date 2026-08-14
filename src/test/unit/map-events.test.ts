@@ -130,4 +130,127 @@ suite('mapEvent', () => {
   test('unrecognised messages produce no events', () => {
     assert.deepStrictEqual(mapEvent({ type: 'stream_event' } as never), []);
   });
+
+  test('a subagent tool_use carries its parent tool id', () => {
+    const events = mapEvent({
+      type: 'assistant',
+      parent_tool_use_id: 'task1',
+      message: { content: [
+        { type: 'tool_use', id: 'c1', name: 'Read', input: { path: 'a.ts' } },
+      ] },
+    } as never);
+    assert.deepStrictEqual(events, [
+      { kind: 'tool-start', id: 'c1', name: 'Read', input: { path: 'a.ts' }, parentId: 'task1' },
+    ]);
+  });
+
+  test('subagent text and thinking are dropped, tool activity is kept', () => {
+    const events = mapEvent({
+      type: 'assistant',
+      parent_tool_use_id: 'task1',
+      message: { content: [
+        { type: 'text', text: 'let me look' },
+        { type: 'thinking', thinking: 'hmm', signature: 'x' },
+        { type: 'tool_use', id: 'c1', name: 'Grep', input: {} },
+      ] },
+    } as never);
+    assert.deepStrictEqual(events, [
+      { kind: 'tool-start', id: 'c1', name: 'Grep', input: {}, parentId: 'task1' },
+    ]);
+  });
+
+  test('top-level text and thinking are still emitted', () => {
+    const events = mapEvent({
+      type: 'assistant',
+      parent_tool_use_id: null,
+      message: { content: [
+        { type: 'text', text: 'hello' },
+        { type: 'thinking', thinking: 'hmm', signature: 'x' },
+      ] },
+    } as never);
+    assert.deepStrictEqual(events, [
+      { kind: 'text', delta: 'hello' },
+      { kind: 'thinking', delta: 'hmm' },
+    ]);
+  });
+
+  test('a subagent tool_result carries its parent tool id', () => {
+    const events = mapEvent({
+      type: 'user',
+      parent_tool_use_id: 'task1',
+      message: { content: [
+        { type: 'tool_result', tool_use_id: 'c1', content: 'ok' },
+      ] },
+    } as never);
+    assert.deepStrictEqual(events, [
+      { kind: 'tool-end', id: 'c1', ok: true, output: 'ok', parentId: 'task1' },
+    ]);
+  });
+
+  test('a top-level tool_result has no parentId key at all', () => {
+    const [event] = mapEvent({
+      type: 'user',
+      parent_tool_use_id: null,
+      message: { content: [{ type: 'tool_result', tool_use_id: 't1', content: 'ok' }] },
+    } as never);
+    assert.strictEqual('parentId' in (event as object), false);
+  });
+
+  test('the init message yields both a session and an mcp-servers event', () => {
+    const events = mapEvent({
+      type: 'system',
+      subtype: 'init',
+      session_id: 'sess-1',
+      mcp_servers: [
+        { name: 'github', status: 'connected' },
+        { name: 'stripe', status: 'failed' },
+      ],
+    } as never);
+    assert.deepStrictEqual(events, [
+      { kind: 'session', resumeToken: 'sess-1' },
+      { kind: 'mcp-servers', servers: [
+        { name: 'github', state: 'connected' },
+        { name: 'stripe', state: 'failed' },
+      ] },
+    ]);
+  });
+
+  test('an unrecognized server status degrades to pending rather than being dropped', () => {
+    const events = mapEvent({
+      type: 'system', subtype: 'init', session_id: 's',
+      mcp_servers: [{ name: 'weird', status: 'reticulating' }],
+    } as never);
+    assert.deepStrictEqual(events[1], {
+      kind: 'mcp-servers', servers: [{ name: 'weird', state: 'pending' }],
+    });
+  });
+
+  test('an init message with no mcp servers emits no mcp-servers event', () => {
+    const events = mapEvent({ type: 'system', subtype: 'init', session_id: 's' } as never);
+    assert.deepStrictEqual(events, [{ kind: 'session', resumeToken: 's' }]);
+  });
+
+  test('a commands_changed message becomes an invocables event', () => {
+    const out = mapEvent({
+      type: 'system', subtype: 'commands_changed',
+      commands: [{ name: 'init', description: 'Init', argumentHint: '' }],
+      uuid: 'u', session_id: 's',
+    } as never);
+
+    assert.deepStrictEqual(out, [
+      { kind: 'invocables', entries: [{ name: 'init', description: 'Init' }] },
+    ]);
+  });
+
+  test('a commands_changed message with an empty list emits an empty snapshot', () => {
+    const out = mapEvent({
+      type: 'system', subtype: 'commands_changed', commands: [], uuid: 'u', session_id: 's',
+    } as never);
+
+    assert.deepStrictEqual(out, [{ kind: 'invocables', entries: [] }]);
+  });
+
+  test('other system subtypes still map to nothing', () => {
+    assert.deepStrictEqual(mapEvent({ type: 'system', subtype: 'status', session_id: 's' } as never), []);
+  });
 });

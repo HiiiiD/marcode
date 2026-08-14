@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import * as vscode from 'vscode';
-import { MessageRouter } from './message-router';
+import { MessageRouter, type EditorContextHost } from './message-router';
 import type { SessionManager } from './session-manager';
 import type { HostToWebview, SessionId, WebviewToHost } from '../protocol/messages';
 
@@ -12,6 +12,7 @@ export class PanelViewProvider implements vscode.WebviewViewProvider {
     private readonly extensionUri: vscode.Uri,
     private readonly manager: SessionManager,
     private readonly defaultCwd: string,
+    private readonly editor: EditorContextHost,
   ) {}
 
   post(msg: HostToWebview): void {
@@ -52,7 +53,9 @@ export class PanelViewProvider implements vscode.WebviewViewProvider {
     };
     view.webview.html = this.render(view.webview);
 
-    const router = new MessageRouter(this.manager, (m) => this.post(m), this.defaultCwd);
+    const router = new MessageRouter(
+      this.manager, (m) => this.post(m), this.defaultCwd, this.editor,
+    );
     view.webview.onDidReceiveMessage(async (raw: WebviewToHost) => {
       try {
         // `open-file` is the one message needing the `vscode` API, which

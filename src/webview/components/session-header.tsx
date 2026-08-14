@@ -1,19 +1,14 @@
-import { XIcon } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/components/ui/select';
-import { cn } from '@/lib/utils';
-import { evenlySizedPanes } from './pane-layout';
-import { StatusBadge } from './status-badge';
-import { useStore } from '../store';
-import { folderName, formatTokens } from '../format';
-import type { PaneState } from '../reducer';
-import type { ModelInfo } from '../../protocol/messages';
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+import { XIcon } from "lucide-react";
+import { folderName } from "../format";
+import type { PaneState } from "../reducer";
+import { useStore } from "../store";
+import { evenlySizedPanes } from "./pane-layout";
+import { StatusBadge } from "./status-badge";
 
 interface SessionHeaderProps {
   pane: PaneState;
-  models: ModelInfo[];
   /** The name this pane's title-derived controls (the close button) should
    * announce — the plain title, or the title plus the session id when
    * another visible pane shares it. See `accessibleTitles` in
@@ -21,7 +16,7 @@ interface SessionHeaderProps {
   accessibleTitle: string;
 }
 
-export function SessionHeader({ pane, models, accessibleTitle }: SessionHeaderProps) {
+export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
   const { state, post } = useStore();
   const s = pane.summary;
   const total = s.usage.inputTokens + s.usage.outputTokens;
@@ -55,7 +50,9 @@ export function SessionHeader({ pane, models, accessibleTitle }: SessionHeaderPr
         keyboard/screen-reader user document structure to navigate the split
         by, where previously there were zero headings anywhere in the webview.
       */}
-      <h2 className="truncate font-medium" title={s.title}>{s.title}</h2>
+      <h2 className="truncate font-medium" title={s.title}>
+        {s.title}
+      </h2>
       <span className="truncate text-muted-foreground" title={s.cwd}>
         {folderName(s.cwd)}
       </span>
@@ -76,43 +73,16 @@ export function SessionHeader({ pane, models, accessibleTitle }: SessionHeaderPr
       <span
         role="status"
         className={cn(
-          'shrink-0 rounded-full text-[0.7rem] font-medium',
-          s.permissionMode === 'bypass' && [
-            'border border-destructive/40 bg-destructive/10 px-1.5 py-0.5',
-            'text-destructive dark:bg-destructive/20',
+          "shrink-0 rounded-full text-[0.7rem] font-medium",
+          s.permissionMode === "bypass" && [
+            "border border-destructive/40 bg-destructive/10 px-1.5 py-0.5",
+            "text-destructive dark:bg-destructive/20",
           ],
         )}
       >
-        {s.permissionMode === 'bypass' && 'Bypassing permissions'}
+        {s.permissionMode === "bypass" && "Bypassing permissions"}
       </span>
       <span className="ml-auto flex min-w-0 items-center text-muted-foreground">
-        <Select
-          items={models.map((m) => ({ value: m.id, label: m.displayName }))}
-          value={s.model}
-          onValueChange={(value) => post({ t: 'set-model', id: s.id, model: value as string })}
-        >
-          <SelectTrigger
-            size="sm"
-            className="min-w-0 shrink truncate border-0 bg-transparent p-0 text-muted-foreground"
-            aria-label="Model"
-            disabled={hasStarted}
-            // Disabled-with-a-reason, not a silently-frozen label: matches
-            // the composer's disabled bypass option and the roster picker's
-            // disabled split-direction button. `aria-describedby` pointing
-            // at real, rendered (if visually hidden) text — a `title` on a
-            // disabled control is reachable by neither keyboard focus nor
-            // most screen readers, since disabled elements are pulled out
-            // of both.
-            aria-describedby={hasStarted ? modelReasonId : undefined}
-          >
-            <SelectValue className="truncate" />
-          </SelectTrigger>
-          <SelectContent>
-            {models.map((m) => (
-              <SelectItem key={m.id} value={m.id}>{m.displayName}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
         {hasStarted && (
           // sr-only rather than visible: the header has no room for a
           // sentence next to the status badge, title and cwd, and the
@@ -121,14 +91,13 @@ export function SessionHeader({ pane, models, accessibleTitle }: SessionHeaderPr
             The model can only be chosen before the first message is sent.
           </span>
         )}
-        {s.effort ? ` · ${s.effort}` : ''}
-        {total > 0 && (
-          <>
-            {' · '}
-            <span>{formatTokens(total)} tokens</span>
-          </>
+        {state.catalog.length > 1 && providerLabel && (
+          <span className="text-muted-foreground">
+            <span>&nbsp;</span>
+            {/* <span>{` · ${providerLabel}`}</span> */}
+            <span>{providerLabel}</span>
+          </span>
         )}
-        {state.catalog.length > 1 && providerLabel && ` · ${providerLabel}`}
       </span>
       <Button
         variant="ghost"
@@ -139,10 +108,8 @@ export function SessionHeader({ pane, models, accessibleTitle }: SessionHeaderPr
           // row in the roster, and posts the same message, so the two entry
           // points cannot drift. Archiving is a deliberate choice and lives
           // in the roster row's actions menu, under its own word.
-          const remaining = state.layout.panes
-            .map((p) => p.sessionId)
-            .filter((id) => id !== s.id);
-          post({ t: 'set-layout', layout: evenlySizedPanes(remaining, state.layout.orientation) });
+          const remaining = state.layout.panes.map((p) => p.sessionId).filter((id) => id !== s.id);
+          post({ t: "set-layout", layout: evenlySizedPanes(remaining, state.layout.orientation) });
         }}
         className="shrink-0"
       >

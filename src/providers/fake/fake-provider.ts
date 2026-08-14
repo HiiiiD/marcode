@@ -1,6 +1,10 @@
 import type {
-  AgentEvent, AgentProvider, AgentRun, ContextBreakdown, EffortLevel, ModelInfo, PermissionMode,
-  StartOptions, ToolDecision, UsageWindow,
+  AgentEvent, AgentProvider, AgentRun,
+  ContextBreakdown,
+  EditorContext,
+  EffortLevel, Invocable, ModelInfo, PermissionMode,
+  StartOptions, ToolDecision,
+  UsageWindow
 } from '../types';
 
 class EventChannel implements AsyncIterable<AgentEvent> {
@@ -40,6 +44,8 @@ class EventChannel implements AsyncIterable<AgentEvent> {
   }
 }
 
+/** An `AgentRun` a test can push arbitrary events into. */
+export type FakeRun = AgentRun & { emit(event: AgentEvent): void };
 export interface FakeReports {
   context?: ContextBreakdown;
   windows?: UsageWindow[];
@@ -54,6 +60,20 @@ export class FakeProvider implements AgentProvider {
   readonly permissionModes: PermissionMode[] = [];
   /** Records every model passed to setModel, for assertions. */
   readonly models: string[] = [];
+  /** Records every level passed to setEffort, for assertions. */
+  readonly efforts: EffortLevel[] = [];
+  /**
+   * Every run started by this provider, newest last. A real provider emits
+   * events without the user having sent anything; tests need a handle to
+   * do the same.
+   */
+  readonly runs: FakeRun[] = [];
+  /** Every cwd listInvocables() was called with, in order. */
+  readonly listInvocablesCalls: string[] = [];
+  /** Scripted probe answer: a catalog to resolve with, or an Error to reject with. */
+  invocables: Invocable[] | Error | undefined;
+  /** Records every (text, context) pair passed to send, for assertions. */
+  readonly sent: { text: string; context?: EditorContext }[] = [];
   private sessionCounter = 0;
 
   constructor(
@@ -77,9 +97,10 @@ export class FakeProvider implements AgentProvider {
     const resumeToken = `fake-session-${++this.sessionCounter}`;
     let started = false;
 
-    const run: AgentRun = {
+    const run: FakeRun = {
       events: channel,
-      send: (text: string) => {
+      send: (text: string, context?: EditorContext) => {
+        this.sent.push({ text, context });
         if (!started) {
           started = true;
           channel.push({ kind: 'session', resumeToken });
@@ -95,15 +116,23 @@ export class FakeProvider implements AgentProvider {
         // fake provider — the status dot is stuck at 'running' forever.
         channel.push({ kind: 'turn-end', reason: 'done' });
       },
-      setEffort: (_effort: EffortLevel) => { /* recorded by tests via lastEffort if needed */ },
+      setEffort: (effort: EffortLevel) => { this.efforts.push(effort); },
       setPermissionMode: (mode: PermissionMode) => { this.permissionModes.push(mode); },
       setModel: (model: string) => { this.models.push(model); },
       interrupt: async () => { channel.push({ kind: 'turn-end', reason: 'interrupted' }); },
       dispose: async () => { channel.close(); },
+      emit: (event: AgentEvent) => { channel.push(event); },
     };
+    this.runs.push(run);
     const { context, windows } = this.reports;
     if (context) { run.contextBreakdown = async () => context; }
     if (windows) { run.usageWindows = async () => windows; }
     return run;
+  }
+
+  async listInvocables(cwd: string): Promise<Invocable[]> {
+    this.listInvocablesCalls.push(cwd);
+    if (this.invocables instanceof Error) { throw this.invocables; }
+    return this.invocables ?? [];
   }
 }

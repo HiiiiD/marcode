@@ -4,11 +4,13 @@ import * as os from 'os';
 import * as path from 'path';
 import { AgentSession, type SessionSink } from '../../host/agent-session';
 import { TranscriptStore } from '../../host/transcript-store';
+import type {
+  Invocable, SessionId, SessionState, SessionStatus, TranscriptPatch,
+} from '../../protocol/messages';
 import { FakeProvider } from '../../providers/fake/fake-provider';
 import type {
   AgentEvent, AgentProvider, AgentRun, ModelInfo, StartOptions, ToolDecision,
 } from '../../providers/types';
-import type { SessionId, SessionState, SessionStatus, TranscriptPatch } from '../../protocol/messages';
 
 /** Minimal pushable async-iterable, mirroring FakeProvider's internal channel. */
 class EventChannel implements AsyncIterable<AgentEvent> {
@@ -103,6 +105,7 @@ function baseState(): SessionState {
   return {
     id: 's1', providerId: 'fake', model: 'fake-large', effort: 'medium',
     title: 'Untitled', cwd: '/tmp', status: 'idle', permissionMode: 'default',
+    includeEditorContext: true,
     usage: { inputTokens: 0, outputTokens: 0 },
     archived: false, createdAt: 1, updatedAt: 1,
   };
@@ -112,9 +115,20 @@ class RecordingSink implements SessionSink {
   patches: { id: SessionId; patch: TranscriptPatch }[] = [];
   statuses: SessionStatus[] = [];
   changes = 0;
+  servers: unknown[] = [];
+  /**
+   * Deviation from the brief: SessionSink.invocables is a *method*
+   * (id, entries) => void, so a same-named array field cannot coexist on
+   * this class and still satisfy the interface. Recorded as
+   * `invocablesLog` instead; the assertions read the same shape
+   * (Invocable[][]) the brief's `sink.invocables` would have.
+   */
+  invocablesLog: Invocable[][] = [];
   patch(id: SessionId, patch: TranscriptPatch) { this.patches.push({ id, patch }); }
   status(_id: SessionId, status: SessionStatus) { this.statuses.push(status); }
+  mcp(_id: SessionId, servers: unknown[]) { this.servers.push(servers); }
   changed() { this.changes++; }
+  invocables(_id: SessionId, entries: Invocable[]) { this.invocablesLog.push(entries); }
 }
 
 async function settle() {
@@ -133,6 +147,13 @@ suite('AgentSession', () => {
   });
 
   teardown(async () => { await fs.rm(dir, { recursive: true, force: true }); });
+
+  function makeSession(script: (text: string) => AgentEvent[] = () => []) {
+    const provider = new FakeProvider(script);
+    const localSink = new RecordingSink();
+    const session = new AgentSession(baseState(), provider, store, localSink);
+    return { provider, sink: localSink, session };
+  }
 
   test('coalesces text deltas into one assistant item', async () => {
     const provider = new FakeProvider(() => [
@@ -187,6 +208,21 @@ suite('AgentSession', () => {
     assert.strictEqual(snap.pending.length, 0);
     const perm = snap.items.find((i) => i.role === 'permission');
     assert.strictEqual((perm as { state: string }).state, 'allowed');
+    await session.dispose();
+  });
+
+  test('an mcp-named permission event carries the bare name and the parsed server', async () => {
+    const provider = new FakeProvider(() => [
+      { kind: 'permission', id: 'r1', name: 'mcp__github__create_pr', input: {} },
+    ]);
+    const session = new AgentSession(baseState(), provider, store, sink);
+    session.send('open a pr');
+    await settle();
+
+    const snap = await session.snapshot();
+    const perm = snap.items.find((i) => i.role === 'permission');
+    assert.strictEqual((perm as { name: string }).name, 'create_pr');
+    assert.strictEqual((perm as { mcpServer?: string }).mcpServer, 'github');
     await session.dispose();
   });
 
@@ -339,6 +375,70 @@ suite('AgentSession', () => {
     await session.dispose();
   });
 
+  test('setModel() to a model with no effort control drops the effort', async () => {
+    const provider = new FakeProvider(() => []);
+    const session = new AgentSession(baseState(), provider, store, sink);
+
+    session.setModel('fake-small');
+
+    assert.strictEqual(session.state.effort, undefined);
+    assert.strictEqual((await session.snapshot()).effort, undefined);
+    await session.dispose();
+  });
+
+  test('setModel() clamps an effort the new model does not offer to its default', async () => {
+    const provider = new FakeProvider(() => []);
+    const session = new AgentSession(
+      { ...baseState(), model: 'fake-small', effort: 'max' }, provider, store, sink,
+    );
+
+    session.setModel('fake-large');
+
+    assert.strictEqual(session.state.effort, 'medium', 'fake-large offers low/medium/high');
+    await session.dispose();
+  });
+
+  test('setModel() before the first send pushes the reconciled effort to the run', async () => {
+    // The provider builds its query on the first send(), from whatever effort
+    // it was last told — so a pre-send reconciliation has to reach it, or the
+    // query starts on an effort the chosen model cannot take.
+    const provider = new FakeProvider(() => []);
+    const session = new AgentSession(baseState(), provider, store, sink);
+
+    session.setModel('fake-small');
+
+    assert.deepStrictEqual(provider.efforts, [], 'no effort to send: fake-small has none');
+
+    session.setModel('fake-large');
+    assert.deepStrictEqual(provider.efforts, ['medium']);
+    await session.dispose();
+  });
+
+  test('setModel() after the first send does not push effort at the running query', async () => {
+    // The model change itself is already a no-op on a running query, so
+    // applying its effort would change the effort of the *old* model.
+    const provider = new FakeProvider(() => [{ kind: 'turn-end', reason: 'done' }]);
+    const session = new AgentSession(baseState(), provider, store, sink);
+
+    session.send('go');
+    await settle();
+    session.setModel('fake-small');
+
+    assert.strictEqual(session.state.effort, undefined, 'state still records the choice');
+    assert.deepStrictEqual(provider.efforts, []);
+    await session.dispose();
+  });
+
+  test('setModel() on a provider reporting no catalog keeps the current effort', async () => {
+    const provider = new ThrowingProvider({});
+    const session = new AgentSession(baseState(), provider, store, sink);
+
+    session.setModel('mystery');
+
+    assert.strictEqual(session.state.effort, 'medium');
+    await session.dispose();
+  });
+
   test('setModel() on a throwing provider does not throw and settles the session into error', async () => {
     const provider = new ThrowingProvider({ throwOnSetModel: true });
     const session = new AgentSession(baseState(), provider, store, sink);
@@ -348,6 +448,110 @@ suite('AgentSession', () => {
     const snap = await session.snapshot();
     const err = snap.items.find((i) => i.role === 'error');
     assert.strictEqual((err as { message: string }).message, 'setModel failed');
+    await session.dispose();
+  });
+
+  test('an mcp-servers event reaches the sink and the snapshot', async () => {
+    const provider = new FakeProvider(() => [
+      { kind: 'mcp-servers', servers: [
+        { name: 'github', state: 'connected', toolCount: 12 },
+        { name: 'stripe', state: 'failed', error: 'spawn ENOENT' },
+      ] },
+      { kind: 'turn-end', reason: 'done' },
+    ]);
+    const session = new AgentSession(baseState(), provider, store, sink);
+    session.send('go');
+    await settle();
+
+    assert.strictEqual(sink.servers.length, 1, 'one snapshot forwarded');
+    const snap = await session.snapshot();
+    assert.strictEqual(snap.mcpServers.length, 2);
+    assert.strictEqual(snap.mcpServers[0].name, 'github');
+    await session.dispose();
+  });
+
+  test('a later mcp-servers event replaces the previous snapshot wholesale', async () => {
+    const provider = new FakeProvider(() => [
+      { kind: 'mcp-servers', servers: [{ name: 'github', state: 'pending' }] },
+      { kind: 'mcp-servers', servers: [{ name: 'github', state: 'connected', toolCount: 12 }] },
+      { kind: 'turn-end', reason: 'done' },
+    ]);
+    const session = new AgentSession(baseState(), provider, store, sink);
+    session.send('go');
+    await settle();
+
+    const snap = await session.snapshot();
+    assert.strictEqual(snap.mcpServers.length, 1);
+    assert.strictEqual(snap.mcpServers[0].state, 'connected');
+    assert.strictEqual(snap.mcpServers[0].toolCount, 12);
+    await session.dispose();
+  });
+
+  test('an invocables event is reported to the sink', async () => {
+    const { provider, sink } = makeSession();
+
+    provider.runs[0].emit({ kind: 'invocables', entries: [{ name: 'init' }] });
+    await settle();
+
+    assert.deepStrictEqual(sink.invocablesLog, [[{ name: 'init' }]]);
+  });
+
+  test('setInvocables lands in the snapshot and replaces wholesale', async () => {
+    const { session } = makeSession();
+
+    session.setInvocables([{ name: 'a' }, { name: 'b' }]);
+    session.setInvocables([{ name: 'c' }]);
+
+    assert.deepStrictEqual((await session.snapshot()).invocables, [{ name: 'c' }]);
+  });
+
+  test('a session told nothing has no invocables in its snapshot', async () => {
+    const { session } = makeSession();
+
+    assert.strictEqual((await session.snapshot()).invocables, undefined);
+
+  });
+  test('send stores the context on the user item and forwards it to the run', async () => {
+    const provider = new FakeProvider(() => [{ kind: 'turn-end', reason: 'done' }]);
+    const session = new AgentSession(baseState(), provider, store, sink);
+    const ctx = {
+      path: 'src/a.ts',
+      languageId: 'typescript',
+      selection: { ranges: [{ startLine: 1, endLine: 2, text: 'x' }], truncated: false },
+    };
+
+    session.send('look at this', ctx);
+    await settle();
+
+    assert.deepStrictEqual(provider.sent[0], { text: 'look at this', context: ctx });
+    const snapshot = await session.snapshot();
+    const user = snapshot.items.find((i) => i.role === 'user');
+    assert.ok(user && user.role === 'user');
+    assert.deepStrictEqual(user.context, ctx);
+    await session.dispose();
+  });
+
+  test('send without a context leaves the user item unchanged', async () => {
+    const provider = new FakeProvider(() => [{ kind: 'turn-end', reason: 'done' }]);
+    const session = new AgentSession(baseState(), provider, store, sink);
+
+    session.send('plain');
+    await settle();
+
+    const snapshot = await session.snapshot();
+    const user = snapshot.items.find((i) => i.role === 'user');
+    assert.ok(user && user.role === 'user');
+    // Persisted transcripts written before this feature have no `context`;
+    // a send with none must produce exactly that shape, not `context: null`.
+    assert.strictEqual('context' in user, false);
+    await session.dispose();
+  });
+
+  test('setIncludeEditorContext flips the persisted flag', async () => {
+    const session = new AgentSession(baseState(), new FakeProvider(() => []), store, sink);
+    assert.strictEqual(session.state.includeEditorContext, true);
+    session.setIncludeEditorContext(false);
+    assert.strictEqual(session.state.includeEditorContext, false);
     await session.dispose();
   });
 

@@ -1,7 +1,10 @@
+import { EditorContextChip } from './editor-context-chip';
 import { Markdown } from './markdown';
 import { PermissionCard } from './permission-card';
+import { SubagentCard } from './subagent-card';
 import { ToolCard } from './tool-card';
 import { TranscriptItemShell } from './transcript-item-shell';
+import { useStore } from '../store';
 import type { SessionId, TranscriptItem } from '../../protocol/messages';
 
 export function TranscriptItemView({
@@ -12,13 +15,7 @@ export function TranscriptItemView({
 }) {
   switch (item.role) {
     case 'user':
-      return (
-        <TranscriptItemShell role="user" label="You" ts={item.ts}>
-          <div className="rounded bg-muted px-2 py-1 wrap-break-word whitespace-pre-wrap">
-            {item.text}
-          </div>
-        </TranscriptItemShell>
-      );
+      return <UserItem item={item} />;
 
     case 'assistant':
       return (
@@ -33,7 +30,12 @@ export function TranscriptItemView({
       );
 
     case 'tool':
-      return <ToolCard item={item} />;
+      // A tool item only grows `children` once its subagent actually does
+      // something, so a Task that ran nothing renders as an ordinary tool
+      // card — correct, since there is nothing nested to show.
+      return item.children && item.children.length > 0
+        ? <SubagentCard item={item} sessionId={sessionId} />
+        : <ToolCard item={item} />;
 
     case 'error':
       return (
@@ -58,4 +60,29 @@ export function TranscriptItemView({
         <div className="my-0 text-xs text-muted-foreground">Unsupported item</div>
       );
   }
+}
+
+function UserItem({ item }: { item: Extract<TranscriptItem, { role: 'user' }> }) {
+  const { post } = useStore();
+  const ctx = item.context;
+
+  return (
+    <TranscriptItemShell role="user" label="You" ts={item.ts}>
+      {ctx && (
+        <div className="mb-1 flex">
+          <EditorContextChip
+            ctx={ctx}
+            onClick={() => post({
+              t: 'reveal-file',
+              path: ctx.path,
+              startLine: ctx.selection?.ranges[0]?.startLine,
+            })}
+          />
+        </div>
+      )}
+      <div className="rounded bg-muted px-2 py-1 wrap-break-word whitespace-pre-wrap">
+        {item.text}
+      </div>
+    </TranscriptItemShell>
+  );
 }

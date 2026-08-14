@@ -1,9 +1,11 @@
-import { ColumnsIcon, RowsIcon } from 'lucide-react';
+import { ColumnsIcon, PlugZapIcon, RowsIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem,
   DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { cn } from '@/lib/utils';
+import { aggregateServers, isUnhealthy, worstState } from './mcp-status';
 import { evenlySizedPanes } from './pane-layout';
 import { SessionCreateMenu } from './session-create-menu';
 import { SessionRow } from './session-row';
@@ -22,6 +24,9 @@ export function SessionPicker({ narrow }: SessionPickerProps) {
   const open = new Set(state.layout.panes.map((p) => p.sessionId));
   const horizontal = state.layout.orientation === 'horizontal';
   const needing = state.sessions.filter((s) => statusView(s.status).needsUser).length;
+  const servers = aggregateServers(state.byId);
+  const worst = worstState(servers);
+  const serversNeedAttention = worst !== undefined && isUnhealthy(worst);
 
   const setPanes = (ids: SessionId[]) => {
     post({ t: 'set-layout', layout: evenlySizedPanes(ids, state.layout.orientation) });
@@ -43,9 +48,17 @@ export function SessionPicker({ narrow }: SessionPickerProps) {
         >
           <ColumnsIcon aria-hidden />
           {open.size} of {state.sessions.length} in split
-          {needing > 0 && (
+          {needing > 0 ? (
             <span className="ml-auto text-primary">
               {needing} needs you
+            </span>
+          ) : serversNeedAttention && (
+            // Only when something is actually wrong. Every server is
+            // `pending` at startup and connected thereafter, so a permanent
+            // health chip would spend the narrowest row in the app on a
+            // value that is almost always "fine".
+            <span className="ml-auto text-destructive">
+              MCP: {worst === 'needs-auth' ? 'needs auth' : 'failed'}
             </span>
           )}
         </DropdownMenuTrigger>
@@ -70,6 +83,44 @@ export function SessionPicker({ narrow }: SessionPickerProps) {
                 <DropdownMenuLabel>{`Archived (${archived.length})`}</DropdownMenuLabel>
                 {archived.map((s) => (
                   <SessionRow key={s.id} session={s} open={open.has(s.id)} onToggle={() => toggle(s.id)} />
+                ))}
+              </DropdownMenuGroup>
+            </>
+          )}
+          {servers.length > 0 && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuGroup>
+                <DropdownMenuLabel>MCP servers (open sessions)</DropdownMenuLabel>
+                {servers.map((server) => (
+                  <DropdownMenuItem key={server.name} disabled className="flex-col items-start gap-0.5">
+                    <span className="flex w-full items-center gap-2">
+                      <PlugZapIcon aria-hidden />
+                      <span className="truncate font-medium">{server.name}</span>
+                      <span className={cn(
+                        'ml-auto shrink-0',
+                        isUnhealthy(server.state) ? 'text-destructive' : 'text-muted-foreground',
+                      )}>
+                        {server.state === 'needs-auth' ? 'needs auth' : server.state}
+                      </span>
+                    </span>
+                    {server.toolCount !== undefined && (
+                      <span className="text-muted-foreground">
+                        {server.toolCount} {server.toolCount === 1 ? 'tool' : 'tools'}
+                      </span>
+                    )}
+                    {server.state === 'needs-auth' && (
+                      // No button: the extension host cannot run an OAuth
+                      // flow, so a control here would be a lie. The honest
+                      // action is a terminal one.
+                      <span className="text-muted-foreground">
+                        Authorize in a terminal, then reopen the session.
+                      </span>
+                    )}
+                    {server.error && (
+                      <span className="wrap-break-word text-destructive">{server.error}</span>
+                    )}
+                  </DropdownMenuItem>
                 ))}
               </DropdownMenuGroup>
             </>

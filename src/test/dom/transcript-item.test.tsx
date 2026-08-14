@@ -1,7 +1,9 @@
 import * as assert from 'assert';
 import { screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { TranscriptItemView } from '@/components/transcript-item';
 import { catalog, layoutOf, snapshot, summary } from '../fixtures/protocol';
-import { renderApp, sendFromHost } from './harness';
+import { posted, renderApp, renderWithStore, sendFromHost } from './harness';
 import type { TranscriptItem } from '../../protocol/messages';
 
 function hydrateWithItems(items: TranscriptItem[]) {
@@ -51,5 +53,53 @@ suite('TranscriptItemView', () => {
 
     const el = screen.getByText(/boom/);
     assert.ok(/max-h-\d/.test(el.className) || /max-h-\d/.test(el.parentElement!.className));
+  });
+});
+
+const WITH_CONTEXT: TranscriptItem = {
+  id: 'u1', ts: 1, role: 'user', text: 'fix the send path',
+  context: {
+    path: 'src/host/agent-session.ts',
+    languageId: 'typescript',
+    selection: { ranges: [{ startLine: 60, endLine: 73, text: 'x' }], truncated: false },
+  },
+};
+
+const PLAIN: TranscriptItem = { id: 'u2', ts: 2, role: 'user', text: 'plain' };
+
+suite('TranscriptItemView user context', () => {
+  test('a message sent without context shows no chip', () => {
+    renderWithStore(<TranscriptItemView item={PLAIN} sessionId="a" />);
+    assert.strictEqual(screen.queryByRole('button', { name: /agent-session/ }), null);
+    assert.ok(screen.getByText('plain'));
+  });
+
+  test('a message sent with context shows the chip it carried', () => {
+    renderWithStore(<TranscriptItemView item={WITH_CONTEXT} sessionId="a" />);
+    assert.ok(screen.getByRole('button', { name: /agent-session\.ts:60-73/ }));
+  });
+
+  test('clicking the chip asks the host to reveal the first selected line', async () => {
+    renderWithStore(<TranscriptItemView item={WITH_CONTEXT} sessionId="a" />);
+
+    await userEvent.click(screen.getByRole('button', { name: /agent-session\.ts:60-73/ }));
+
+    assert.deepStrictEqual(posted().at(-1), {
+      t: 'reveal-file', path: 'src/host/agent-session.ts', startLine: 60,
+    });
+  });
+
+  test('a file-reference chip reveals the file with no line', async () => {
+    const fileOnly: TranscriptItem = {
+      id: 'u3', ts: 3, role: 'user', text: 'look',
+      context: { path: 'src/a.ts', languageId: 'typescript' },
+    };
+    renderWithStore(<TranscriptItemView item={fileOnly} sessionId="a" />);
+
+    await userEvent.click(screen.getByRole('button', { name: /a\.ts/ }));
+
+    assert.deepStrictEqual(posted().at(-1), {
+      t: 'reveal-file', path: 'src/a.ts', startLine: undefined,
+    });
   });
 });

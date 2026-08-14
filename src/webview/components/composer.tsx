@@ -1,22 +1,23 @@
-import { useState } from 'react';
-import { SendHorizontal, Square } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { InputGroup, InputGroupAddon, InputGroupTextarea } from '@/components/ui/input-group';
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/components/ui/select';
-import { cn } from '@/lib/utils';
-import { ContextRing } from './context-ring';
-import { useStore } from '../store';
-import type { PaneState } from '../reducer';
-import type { EffortLevel, ModelInfo, PermissionMode } from '../../protocol/messages';
+import { Button } from "@/components/ui/button";
+import { InputGroup, InputGroupAddon, InputGroupTextarea } from "@/components/ui/input-group";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { cn } from "@/lib/utils";
+import { SendHorizontal, Square } from "lucide-react";
+import { useRef, useState } from "react";
+import type { EffortLevel, Invocable, ModelInfo, PermissionMode } from "../../protocol/messages";
+import { insertionFor, menuKeyAction, menuQuery, menuView, nextIndex } from "../lib/invocable-menu";
+import type { PaneState } from "../reducer";
+import { useStore } from "../store";
+import { ContextRing } from "./context-ring";
+import { EditorContextToggle } from "./editor-context-toggle";
+import { InvocableMenu } from "./invocable-menu";
 
 const MODE_LABEL: Record<PermissionMode, string> = {
-  default: 'ask',
-  acceptEdits: 'auto-edits',
-  plan: 'plan',
-  dontAsk: 'deny',
-  bypass: 'bypass',
+  default: "ask",
+  acceptEdits: "auto-edits",
+  plan: "plan",
+  dontAsk: "deny",
+  bypass: "bypass",
 };
 
 /**
@@ -24,15 +25,34 @@ const MODE_LABEL: Record<PermissionMode, string> = {
  * option. Without it Base UI's SelectValue falls back to the raw value, so the
  * trigger would read "acceptEdits" rather than "auto-edits".
  */
-const MODE_ITEMS = (Object.keys(MODE_LABEL) as PermissionMode[])
-  .map((value) => ({ value, label: MODE_LABEL[value] }));
+const MODE_ITEMS = (Object.keys(MODE_LABEL) as PermissionMode[]).map((value) => ({ value, label: MODE_LABEL[value] }));
 
-export function Composer({ pane, model }: { pane: PaneState; model: ModelInfo | undefined }) {
+export function Composer({
+  pane,
+  model,
+  models,
+}: {
+  pane: PaneState;
+  model: ModelInfo | undefined;
+  models: ModelInfo[];
+}) {
   const { post } = useStore();
-  const [text, setText] = useState('');
-  const running = pane.summary.status === 'running'
-    || pane.summary.status === 'awaiting-approval';
-  const bypassing = pane.summary.permissionMode === 'bypass';
+  const [text, setText] = useState("");
+  /** The selected entry's arg hint. Presentation only; never sent. */
+  const [ghost, setGhost] = useState("");
+  const [activeIndex, setActiveIndex] = useState(0);
+  /**
+   * Escape, or focus leaving the box, closed the menu. Only a fresh keystroke
+   * or the control reopens it — otherwise a user who dismissed the list would
+   * have it spring back on the next render.
+   */
+  const [dismissed, setDismissed] = useState(false);
+  // The control has to hand focus back to the box: every key the menu answers
+  // to is bound on the textarea, so a menu opened by a click that left focus
+  // on the button would be unreachable by keyboard.
+  const box = useRef<HTMLTextAreaElement | null>(null);
+  const running = pane.summary.status === "running" || pane.summary.status === "awaiting-approval";
+  const bypassing = pane.summary.permissionMode === "bypass";
   /**
    * The Claude provider can only honor 'bypass' at query construction —
    * which now happens lazily, on the session's first send() — so this must
@@ -52,28 +72,146 @@ export function Composer({ pane, model }: { pane: PaneState; model: ModelInfo | 
   // Same session-scoping rationale as `bypassReasonId` above, for the Send
   // button's disabled-while-running reason.
   const sendReasonId = `send-reason-${pane.summary.id}`;
+  // Same session-scoping rationale again, for the `/` control's
+  // disabled-over-a-draft reason.
+  const invocablesReasonId = `invocables-reason-${pane.summary.id}`;
+
+  const entries = pane.invocables ?? [];
+  /**
+   * Two entry points, ONE state machine. The control does not have an
+   * "opened by click" flag of its own — it types the `/` for the user and
+   * hands focus back, so from here on the click path and the typed path are
+   * indistinguishable. A separate flag was the earlier shape and it made the
+   * clicked menu keyboard-dead and closed it on the first character typed.
+   */
+  const query = menuQuery(text);
+  const menuOpen = entries.length > 0 && query !== undefined && !dismissed;
+  const view = menuOpen ? menuView(entries, query ?? "") : { rows: [], overflow: 0 };
+  const index = Math.min(activeIndex, Math.max(0, view.rows.length - 1));
+  // Session-scoped for the same reason as bypassReasonId above: one Composer
+  // renders per pane, and `aria-activedescendant` resolves ids document-wide.
+  const menuListId = `invocables-${pane.summary.id}`;
+  // The id goes on the TEXTAREA, which is where focus actually is. ARIA only
+  // honours `aria-activedescendant` on the focused element, so a copy on the
+  // listbox alone announces nothing. Undefined while the `No match` row shows:
+  // that row is deliberately not addressable, so there is no id to point at.
+  const activeOptionId = menuOpen && view.rows.length > 0 ? `${menuListId}-${index}` : undefined;
+  // Trigger discipline puts the menu at position 0 only, so it genuinely
+  // cannot open over a half-written message. Disabled-with-a-reason rather
+  // than silently clearing the draft — the earlier shape reset the box, which
+  // threw away work — and rather than hiding, which leaves the control
+  // flickering in and out of a row that already wraps.
+  const menuBlocked = text.trim().length > 0;
+
+  // Session-scoped, not a bare literal: SessionHeader renders once per pane,
+  // so a fixed id would collide across panes — `getElementById`, which is
+  // what `aria-describedby` resolves against, returns only the first match,
+  // and every other pane's disabled model control would describe itself
+  // using pane one's reason text.
+  const modelReasonId = `model-reason-${pane.summary.id}`;
+
+  const openMenu = () => {
+    setText("/");
+    setGhost("");
+    setActiveIndex(0);
+    setDismissed(false);
+    box.current?.focus();
+  };
+
+  const pick = (entry: Invocable) => {
+    const { text: next, ghost: hint } = insertionFor(entry);
+    setText(next);
+    setGhost(hint);
+    setActiveIndex(0);
+  };
 
   const submit = () => {
     const trimmed = text.trim();
-    if (!trimmed) { return; }
-    post({ t: 'send', id: pane.summary.id, text: trimmed });
-    setText('');
+    if (!trimmed) {
+      return;
+    }
+    // `ghost` is presentation only — the arg hint is never part of the message.
+    post({ t: "send", id: pane.summary.id, text: trimmed });
+    setText("");
+    setGhost("");
+    setDismissed(false);
   };
 
   return (
-    <div className="p-2">
+    <div className="@container p-2">
       <InputGroup>
+        {menuOpen && (
+          // A block-start addon, not a popover: the list sits above the box in
+          // normal flow, so there is no positioning maths, no portal, and
+          // nothing to clip inside a narrow pane's scroll container.
+          <InputGroupAddon align="block-start" className="p-1">
+            <InvocableMenu
+              rows={view.rows}
+              overflow={view.overflow}
+              activeIndex={index}
+              listId={menuListId}
+              onPick={pick}
+            />
+          </InputGroupAddon>
+        )}
         <InputGroupTextarea
+          ref={box}
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => {
+            setText(e.target.value);
+            setGhost("");
+            setActiveIndex(0);
+            setDismissed(false);
+          }}
+          // Focus leaving the box closes the list. The menu is an in-flow
+          // block-start addon, so left open it keeps eating vertical space
+          // above the composer after the user has clicked away into the
+          // transcript. This does not fight a mouse pick: the rows call
+          // preventDefault on mousedown, so selecting one never blurs.
+          onBlur={() => setDismissed(true)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+            // Only WHILE OPEN does the menu claim keys. `menuKeyAction`
+            // decides which; anything it passes on falls through to the
+            // composer's own Enter binding below, unchanged.
+            // An IME composition-confirm keydown reports key === 'Enter' with
+            // isComposing === true. That Enter belongs to the composition,
+            // not the menu — claiming it here (Chromium fires it even though
+            // the composer's own Enter binding below already guards on
+            // isComposing) would insert a row instead of committing the IME
+            // text, so it is treated as 'pass' regardless of what
+            // menuKeyAction says.
+            const composingEnter = e.key === "Enter" && e.nativeEvent.isComposing;
+            if (menuOpen && !composingEnter) {
+              const action = menuKeyAction(e.key);
+              if (action !== "pass") {
+                e.preventDefault();
+                if (action === "move-down") {
+                  setActiveIndex(nextIndex(index, 1, view.rows.length));
+                }
+                if (action === "move-up") {
+                  setActiveIndex(nextIndex(index, -1, view.rows.length));
+                }
+                if (action === "select" && view.rows[index]) {
+                  pick(view.rows[index]);
+                }
+                if (action === "close") {
+                  setDismissed(true);
+                }
+                return;
+              }
+            }
+            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault();
-              if (!running) { submit(); }
+              if (!running) {
+                submit();
+              }
             }
           }}
           placeholder="Message the agent…"
           aria-label="Message"
+          aria-controls={menuOpen ? menuListId : undefined}
+          aria-expanded={menuOpen}
+          aria-activedescendant={activeOptionId}
         />
         {/*
           flex-wrap: at pane widths around 300px the effort trigger (w-24),
@@ -87,20 +225,70 @@ export function Composer({ pane, model }: { pane: PaneState; model: ModelInfo | 
           whichever line it wraps to.
         */}
         <InputGroupAddon align="block-end" className="flex-wrap">
+          {/*
+            First in the row, ahead of the ghost hint, so the control keeps a
+            fixed position: the hint is transient, and a control that slides
+            sideways whenever an arg hint appears costs the user the muscle
+            memory that makes an icon-only affordance usable at all. Icon
+            scale, matching Stop and Send — a labelled button would push this
+            wrapping row onto a third line at 300px.
+          */}
+          {entries.length > 0 && (
+            <Button
+              variant="outline"
+              size="icon-xs"
+              aria-label="Skills and commands"
+              // Same disabled-with-a-reason contract as Send and the bypass
+              // option: the explanation is real rendered text behind
+              // `aria-describedby`, never a `title` — a title on a disabled
+              // control is reachable by neither keyboard focus nor most
+              // screen readers. The title stays purely a discoverability aid
+              // for the enabled state.
+              disabled={menuBlocked}
+              aria-describedby={menuBlocked ? invocablesReasonId : undefined}
+              title={menuBlocked ? undefined : "Skills and commands"}
+              onClick={openMenu}
+            >
+              <span>/</span>
+            </Button>
+          )}
+          {entries.length > 0 && menuBlocked && (
+            // sr-only for the same reason as the Send reason below: this row
+            // wraps at 300px already and has no room for a sentence, and the
+            // control is visibly disabled.
+            <span id={invocablesReasonId} className="sr-only">
+              Clear the message to browse skills and commands.
+            </span>
+          )}
+          {ghost && (
+            // aria-hidden: it is a hint about what to type next, and the
+            // textarea it annotates already holds the inserted name. A live
+            // region here would announce the same thing twice.
+            <span className="truncate text-xs text-muted-foreground" aria-hidden>
+              {ghost}
+            </span>
+          )}
+          <EditorContextToggle pane={pane} />
           {model?.effort && (
             <Select
               items={model.effort.levels.map((level) => ({ value: level, label: level }))}
               value={pane.summary.effort ?? model.effort.default}
-              onValueChange={(value) => post({
-                t: 'set-effort', id: pane.summary.id, effort: value as EffortLevel,
-              })}
+              onValueChange={(value) =>
+                post({
+                  t: "set-effort",
+                  id: pane.summary.id,
+                  effort: value as EffortLevel,
+                })
+              }
             >
               <SelectTrigger size="sm" className="w-24 border-0" aria-label="Effort">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 {model.effort.levels.map((level) => (
-                  <SelectItem key={level} value={level}>{level}</SelectItem>
+                  <SelectItem key={level} value={level}>
+                    {level}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -109,15 +297,19 @@ export function Composer({ pane, model }: { pane: PaneState; model: ModelInfo | 
           <Select
             items={MODE_ITEMS}
             value={pane.summary.permissionMode}
-            onValueChange={(value) => post({
-              t: 'set-permission-mode', id: pane.summary.id, mode: value as PermissionMode,
-            })}
+            onValueChange={(value) =>
+              post({
+                t: "set-permission-mode",
+                id: pane.summary.id,
+                mode: value as PermissionMode,
+              })
+            }
           >
             <SelectTrigger
               size="sm"
               className={cn(
-                'w-28 border-0',
-                bypassing && 'border border-destructive text-destructive dark:border-destructive/50',
+                "w-28 border-0",
+                bypassing && "border border-destructive text-destructive dark:border-destructive/50",
               )}
               aria-label="Permission mode"
             >
@@ -125,7 +317,7 @@ export function Composer({ pane, model }: { pane: PaneState; model: ModelInfo | 
             </SelectTrigger>
             <SelectContent>
               {MODE_ITEMS.map((item) => {
-                const disableBypass = item.value === 'bypass' && hasStarted;
+                const disableBypass = item.value === "bypass" && hasStarted;
                 return (
                   <SelectItem
                     key={item.value}
@@ -153,12 +345,51 @@ export function Composer({ pane, model }: { pane: PaneState; model: ModelInfo | 
             </SelectContent>
           </Select>
 
+          <Select
+            items={models.map((m) => ({ value: m.id, label: m.displayName }))}
+            // The row's id, not the session's: a session persisted under a
+            // wire id (`claude-opus-5`) is served by the alias row that
+            // covers it (`opus`), and a value matching no item leaves the
+            // trigger rendering the raw id instead of the label.
+            value={model?.id ?? pane.summary.model}
+            onValueChange={(value) => post({ t: "set-model", id: pane.summary.id, model: value as string })}
+          >
+            <SelectTrigger
+              size="sm"
+              className="min-w-0 shrink truncate ml-auto"
+              aria-label="Model"
+              disabled={hasStarted}
+              // Disabled-with-a-reason, not a silently-frozen label: matches
+              // the composer's disabled bypass option and the roster picker's
+              // disabled split-direction button. `aria-describedby` pointing
+              // at real, rendered (if visually hidden) text — a `title` on a
+              // disabled control is reachable by neither keyboard focus nor
+              // most screen readers, since disabled elements are pulled out
+              // of both.
+              aria-describedby={hasStarted ? modelReasonId : undefined}
+              render={<Button variant={"outline"} />}
+            >
+              <SelectValue className="truncate" />
+            </SelectTrigger>
+            {/* The popup defaults to the trigger's width with the overflow
+                hidden, and this trigger shrinks to fit a 300px sidebar — so
+                a name like "Default (recommended)" gets cut mid-word. Size
+                to the content instead, floored at the trigger and capped at
+                what the viewport actually has. */}
+            <SelectContent className="w-auto min-w-(--anchor-width) max-w-(--available-width)">
+              {models.map((m) => (
+                <SelectItem key={m.id} value={m.id}>
+                  {m.displayName}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
           {running && (
             <Button
               variant="outline"
               size="icon-xs"
-              className="ml-auto"
-              onClick={() => post({ t: 'interrupt', id: pane.summary.id })}
+              onClick={() => post({ t: "interrupt", id: pane.summary.id })}
               aria-label="Stop"
               title="Stop the agent"
             >
@@ -166,8 +397,7 @@ export function Composer({ pane, model }: { pane: PaneState; model: ModelInfo | 
             </Button>
           )}
           <Button
-            size="icon-xs"
-            className={cn(!running && 'ml-auto')}
+            size="icon-sm"
             onClick={submit}
             // Disabled-with-a-reason rather than unmounted: swapping Send out
             // for Stop makes the row jump and leaves a user who has typed the
@@ -189,7 +419,7 @@ export function Composer({ pane, model }: { pane: PaneState; model: ModelInfo | 
             // most screen readers, since disabled elements are pulled out of
             // both.
             aria-describedby={running ? sendReasonId : undefined}
-            title={!running && text.trim() ? 'Send message' : undefined}
+            title={!running && text.trim() ? "Send message" : undefined}
           >
             <SendHorizontal />
           </Button>

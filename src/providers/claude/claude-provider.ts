@@ -111,17 +111,43 @@
 // in this file is correct either way, but it may mean the "only at
 // construction" constraint documented here is narrower than the SDK requires.
 import type {
-  CanUseTool, Options, PermissionMode as SdkPermissionMode, Query, SDKUserMessage,
+  CanUseTool, Options,
+  Query,
+  PermissionMode as SdkPermissionMode,
+  SDKUserMessage,
 } from '@anthropic-ai/claude-agent-sdk' with { 'resolution-mode': 'import' };
-import { mapEvent } from './map-events';
-import { toContextBreakdown, toUsageWindows, type ContextUsageLike, type UsageLike } from './map-context';
-import { redactSecrets } from './redact';
+import { findModel, resolveEffort } from '../../shared/model-catalog';
+import { formatEditorContext } from '../format-editor-context';
 import type {
-  AgentEvent, AgentProvider, AgentRun, ContextBreakdown, EffortLevel, ModelInfo, PermissionMode,
-  StartOptions, ToolDecision, UsageWindow,
+  AgentEvent, AgentProvider, AgentRun,
+  ContextBreakdown,
+  EditorContext,
+  EffortLevel, Invocable, ModelInfo, PermissionMode,
+  StartOptions, ToolDecision,
+  UsageWindow,
 } from '../types';
+import { toInvocables } from './map-commands';
+import {
+  toContextBreakdown, toUsageWindows, type ContextUsageLike, type UsageLike,
+} from './map-context';
+import { mapEvent } from './map-events';
+import { redactSecrets } from './redact';
 
-const MODELS: ModelInfo[] = [
+/**
+ * What the picker shows before — or instead of — a real answer from the CLI.
+ *
+ * This is a fallback, not the catalog: the authoritative list comes from
+ * `fetchModels()` below, which asks the SDK what *this* install can actually
+ * run (models released after this file was written, models an enterprise
+ * `availableModels` policy allows, aliases the CLI resolves itself). Hardcoding
+ * the catalog is exactly how Fable went missing from the picker.
+ *
+ * Aliases, not wire ids, on purpose: `claude-haiku-4-5` is NOT a value the CLI
+ * knows — it silently becomes a "Custom model" passthrough — whereas `haiku` is
+ * the CLI's own alias and resolves to claude-haiku-4-5-20251001. Verified
+ * against the SDK's initializationResult.
+ */
+const FALLBACK_MODELS: ModelInfo[] = [
   {
     id: 'claude-opus-5', displayName: 'Opus 5',
     effort: { levels: ['low', 'medium', 'high', 'xhigh', 'max'], default: 'high' },
@@ -130,11 +156,36 @@ const MODELS: ModelInfo[] = [
     id: 'claude-sonnet-5', displayName: 'Sonnet 5',
     effort: { levels: ['low', 'medium', 'high', 'xhigh', 'max'], default: 'high' },
   },
-  // `claude-haiku-4-5` is NOT a value the CLI knows: it silently becomes a
-  // "Custom model" passthrough. `haiku` is the CLI's own alias, and resolves to
-  // claude-haiku-4-5-20251001. Verified against the SDK's initializationResult.
   { id: 'haiku', displayName: 'Haiku 4.5' },
 ];
+
+/** The subset of the SDK's `ModelInfo` this adapter reads. */
+type SdkModelInfo = {
+  value: string;
+  displayName: string;
+  resolvedModel?: string;
+  supportsEffort?: boolean;
+  supportedEffortLevels?: EffortLevel[];
+};
+
+/**
+ * The SDK reports which effort levels a model accepts but not which one it
+ * defaults to, so pick 'high' when it is on offer (the CLI's own default) and
+ * otherwise the deepest level the model has.
+ */
+function toModelInfo(m: SdkModelInfo): ModelInfo {
+  const levels = m.supportedEffortLevels ?? [];
+  const effort = m.supportsEffort && levels.length > 0
+    ? { levels, default: levels.includes('high') ? 'high' as const : levels[levels.length - 1] }
+    : undefined;
+  return {
+    id: m.value, displayName: m.displayName,
+    ...(m.resolvedModel !== undefined && m.resolvedModel !== m.value
+      ? { resolvedModel: m.resolvedModel }
+      : {}),
+    effort,
+  };
+}
 
 /**
  * Ours -> the SDK's real `PermissionMode` union (verified against the
@@ -213,9 +264,71 @@ export class ClaudeProvider implements AgentProvider {
   readonly id = 'claude';
   readonly displayName = 'Claude';
 
+  /** Last answer from `fetchModels()`; until then the picker shows the fallback. */
+  private models: ModelInfo[] | undefined;
+
   constructor(private readonly loadQueryFn: () => Promise<QueryFn> = loadQuery) {}
 
-  listModels(): ModelInfo[] { return MODELS; }
+  listModels(): ModelInfo[] { return this.models ?? FALLBACK_MODELS; }
+
+  /**
+   * The CLI's own model catalog, from the same session-free probe the
+   * invocables list uses. What a given install can run is decided by its
+   * provider, its settings cascade and any enterprise `availableModels`
+   * policy — none of which this extension can know statically.
+   *
+   * Rejections propagate: the caller decides the retry policy, and swallowing
+   * here would silently pin the picker to the fallback list forever.
+   */
+  async fetchModels(cwd: string): Promise<ModelInfo[]> {
+    const models = await this.probe(cwd, (q) => q.supportedModels());
+    // An empty catalog is not an answer worth caching over the fallback —
+    // it would leave the picker with nothing to pick.
+    if (models.length > 0) { this.models = models.map(toModelInfo); }
+    return this.listModels();
+  }
+
+  /**
+   * The cwd's catalog, with no session. Nothing is ever sent, so there is no
+   * turn, no tokens and no agent work — only the CLI's init handshake.
+   *
+   * This exists because the session's own query is constructed lazily on the
+   * first send() (only construction can set `bypass`), and the menu has to
+   * work before that first message — creating a session in order to run a
+   * slash command is the primary case, not an edge one.
+   *
+   * Rejections propagate: CatalogService decides the retry policy, and
+   * swallowing here would hide a permanently broken CLI behind an empty menu.
+   */
+  async listInvocables(cwd: string): Promise<Invocable[]> {
+    return toInvocables(await this.probe(cwd, (q) => q.supportedCommands()));
+  }
+
+  /**
+   * Runs one control request against a throwaway query over a prompt stream
+   * that never yields, and closes it. Shared by every session-free lookup:
+   * each one is a CLI subprocess, and the close must not depend on the
+   * request succeeding.
+   */
+  private async probe<T>(cwd: string, ask: (query: Query) => Promise<T>): Promise<T> {
+    const query = await this.loadQueryFn();
+    // A channel that is closed immediately: the query needs an async iterable
+    // for `prompt`, and this one ends without ever yielding a message.
+    const prompts = new Channel<SDKUserMessage>();
+    prompts.close();
+    const probe = query({ prompt: prompts, options: { cwd } });
+    try {
+      return await ask(probe);
+    } finally {
+      // finally, not a success-path close: a failed control request must not
+      // leak a CLI subprocess for the life of the window.
+      try {
+        probe.close();
+      } catch {
+        // Best-effort: the probe is being discarded regardless.
+      }
+    }
+  }
 
   start(opts: StartOptions): AgentRun {
     const events = new Channel<AgentEvent>();
@@ -252,18 +365,25 @@ export class ClaudeProvider implements AgentProvider {
         : { behavior: 'deny', message: decision.reason ?? 'Denied by user' };
     };
 
-    function buildOptions(): Options {
+    const buildOptions = (): Options => {
       const isBypassMode = pendingMode === 'bypass';
+      // Effort is reconciled here as well as in the host (AgentSession.setModel)
+      // because this is where it actually reaches the CLI: a session persisted
+      // before a catalog change can be resumed carrying an effort its model no
+      // longer takes, and that value never passes through a setter on the way
+      // in. An id the catalog does not list keeps whatever it was given — the
+      // CLI is the authority on models this build has never heard of.
+      const effort = resolveEffort(findModel(this.listModels(), pendingModel), pendingEffort);
       return {
         cwd: opts.cwd,
         model: pendingModel,
         resume: opts.resumeToken,
         permissionMode: PERMISSION_MODE[pendingMode],
         canUseTool,
-        ...(pendingEffort !== undefined ? { effort: pendingEffort } : {}),
+        ...(effort !== undefined ? { effort } : {}),
         ...(isBypassMode ? { allowDangerouslySkipPermissions: true } : {}),
       };
-    }
+    };
 
     // Constructs the SDK query exactly once, on the first send(). Never
     // called from interrupt()/setEffort()/setPermissionMode()/dispose() —
@@ -277,6 +397,41 @@ export class ClaudeProvider implements AgentProvider {
           const constructedOptions = buildOptions();
           const session = query({ prompt: prompts, options: constructedOptions });
           queryRef = session;
+          // The init message already produced a name+status snapshot via
+          // map-events. This pull supersedes it with the full shape — error
+          // text and a real tool count. Fire-and-forget: a failure here means
+          // the strip keeps the coarser init data, which is a degraded strip
+          // rather than a failed turn, so it must never surface as a
+          // turn-end error and must never produce an unhandled rejection.
+          // `mcpServerStatus()` is wrapped in try/catch, not just `.catch()`
+          // on its result, because a call itself can throw synchronously
+          // (e.g. an already-torn-down transport) — same reasoning as
+          // setEffort/setPermissionMode below. A synchronous throw here, left
+          // unguarded, would propagate out of this try and abort the pump
+          // before it ever reaches the `for await` below, turning a merely
+          // degraded strip into a fully failed turn.
+          try {
+            session.mcpServerStatus().then(
+              (servers) => {
+                if (disposed || servers.length === 0) { return; }
+                events.push({
+                  kind: 'mcp-servers',
+                  servers: servers.map((s) => ({
+                    name: s.name,
+                    state: s.status === 'connected' || s.status === 'failed'
+                      || s.status === 'needs-auth' || s.status === 'pending'
+                      || s.status === 'disabled' ? s.status : 'pending',
+                    ...(s.tools ? { toolCount: s.tools.length } : {}),
+                    ...(s.error ? { error: redactSecrets(s.error) } : {}),
+                  })),
+                });
+              },
+              () => { /* see comment above: degraded strip, not a failed turn */ },
+            ).catch(() => { /* belt-and-braces: .then's rejection handler itself must not throw async */ });
+          } catch {
+            // See comment above: a synchronous throw from the call itself is
+            // exactly as non-fatal as an async rejection.
+          }
           for await (const msg of session) {
             for (const event of mapEvent(msg)) { events.push(event); }
           }
@@ -290,11 +445,15 @@ export class ClaudeProvider implements AgentProvider {
 
     return {
       events,
-      send: (text: string) => {
+      send: (text: string, context?: EditorContext) => {
         ensureStarted();
+        // One text block rather than two: the SDK accepts an array, but a
+        // single block keeps the turn's shape identical whether or not
+        // context is attached, so nothing downstream has to special-case it.
+        const body = context ? `${formatEditorContext(context)}\n\n${text}` : text;
         prompts.push({
           type: 'user',
-          message: { role: 'user', content: [{ type: 'text', text }] },
+          message: { role: 'user', content: [{ type: 'text', text: body }] },
           parent_tool_use_id: null,
         });
       },
@@ -344,18 +503,10 @@ export class ClaudeProvider implements AgentProvider {
           console.warn('[hiiiid-code] setPermissionMode threw', 'mode=', mode, 'error=', errorMessage(err));
         }
       },
-      interrupt: async () => {
-        if (!queryRef) { return; } // nothing has ever run: a no-op, not a failure.
-        try {
-          await queryRef.interrupt();
-        } catch (err) {
-          events.push({ kind: 'turn-end', reason: 'error', error: errorMessage(err) });
-        }
-      },
       contextBreakdown: async (): Promise<ContextBreakdown> => {
-        // queryRef is only assigned once the dynamic import resolves inside
-        // pump(), i.e. after the first send. Before that there is genuinely
-        // nothing to measure.
+        // queryRef is only assigned once the query is constructed, which is
+        // deferred to the first send. Before that there is genuinely nothing
+        // to measure.
         if (!queryRef) { throw new Error('This session has not started yet'); }
         const res = await queryRef.getContextUsage();
         return toContextBreakdown(res as unknown as ContextUsageLike);
@@ -373,6 +524,14 @@ export class ClaudeProvider implements AgentProvider {
           throw new Error('This provider does not report plan usage');
         }
         return toUsageWindows(await experimental.call(queryRef));
+      },
+      interrupt: async () => {
+        if (!queryRef) { return; } // nothing has ever run: a no-op, not a failure.
+        try {
+          await queryRef.interrupt();
+        } catch (err) {
+          events.push({ kind: 'turn-end', reason: 'error', error: errorMessage(err) });
+        }
       },
       dispose: async () => {
         if (disposed) { return; }

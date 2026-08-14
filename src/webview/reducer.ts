@@ -1,6 +1,8 @@
 import type {
-  ContextResult, HostToWebview, PaneLayout, PermissionRequest, ProviderInfo, SessionId,
-  SessionSummary, TranscriptItem, UsageResult,
+  ContextResult,
+  EditorContext,
+  HostToWebview, Invocable, McpServerStatus, PaneLayout, PermissionRequest, ProviderInfo,
+  SessionId, SessionSummary, TranscriptItem, UsageResult,
 } from '../protocol/messages';
 
 export interface PaneState {
@@ -8,6 +10,9 @@ export interface PaneState {
   items: TranscriptItem[];
   hasMore: boolean;
   pending: PermissionRequest[];
+  /** The cwd's catalog. Absent until the host has one; see the spec's States. */
+  invocables?: Invocable[];
+  mcpServers: McpServerStatus[];
 }
 
 export interface ClientState {
@@ -16,6 +21,11 @@ export interface ClientState {
   layout: PaneLayout;
   catalog: ProviderInfo[];
   byId: Record<SessionId, PaneState>;
+  /**
+   * Client-wide, not per session: the active editor is global IDE state and
+   * every composer shows the same file.
+   */
+  editorContext: EditorContext | null;
   /** Last reply per session; kept while a refetch is in flight. */
   contextBySession: Record<SessionId, ContextResult | undefined>;
   /** Last reply per provider id. */
@@ -28,6 +38,7 @@ export const initialState: ClientState = {
   layout: { orientation: 'vertical', panes: [] },
   catalog: [],
   byId: {},
+  editorContext: null,
   contextBySession: {},
   usageByProvider: {},
 };
@@ -54,11 +65,20 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
       for (const s of msg.snapshots) {
         byId[s.id] = {
           summary: s, items: s.items, hasMore: s.hasMore, pending: s.pending,
+          invocables: s.invocables,
+          mcpServers: s.mcpServers ?? [],
         };
       }
       return {
         ready: true, sessions: msg.sessions, layout: msg.layout,
         catalog: msg.catalog, byId,
+        // Explicit, not `...state`: `hydrate` is meant to be a total
+        // rebuild of `ClientState`, not a merge. `editorContext` is
+        // genuinely client-wide (global IDE state a reload doesn't change),
+        // so it is deliberately carried forward here — but spelled out so a
+        // future field added to `ClientState` doesn't silently survive a
+        // reload by accident the way a bare spread would let it.
+        editorContext: state.editorContext,
         contextBySession: {}, usageByProvider: {},
       };
     }
@@ -90,14 +110,54 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
       return { ...state, sessions: msg.sessions, byId, contextBySession };
     }
 
+    case 'context-breakdown': {
+      // A reply for a session the roster does not name is ignored, not
+      // stored: `request-context` and its answer are two round trips apart,
+      // so a session deleted in between would otherwise get its breakdown
+      // cached *after* the `sessions-changed` that was supposed to prune it,
+      // and nothing would remove it until the next roster change.
+      if (!state.sessions.some((s) => s.id === msg.id)) { return state; }
+      return {
+        ...state,
+        contextBySession: { ...state.contextBySession, [msg.id]: msg.result },
+      };
+    }
+
+    case 'usage-windows':
+      return {
+        ...state,
+        usageByProvider: { ...state.usageByProvider, [msg.providerId]: msg.result },
+      };
+
+    case 'catalog':
+      // Full replacement: the host sends the whole catalog, never a delta.
+      return { ...state, catalog: msg.catalog };
+
+    case 'editor-context':
+      return { ...state, editorContext: msg.ctx };
+
     case 'session-snapshot': {
       const s = msg.session;
       return {
         ...state,
         byId: {
           ...state.byId,
-          [s.id]: { summary: s, items: s.items, hasMore: s.hasMore, pending: s.pending },
+          [s.id]: {
+            summary: s, items: s.items, hasMore: s.hasMore, pending: s.pending,
+            invocables: s.invocables,
+            mcpServers: s.mcpServers ?? [],
+          },
         },
+      };
+    }
+
+    case 'session-invocables': {
+      const pane = state.byId[msg.id];
+      if (!pane) { return state; }
+      // Full replacement, matching the seam: no merge, no ordering to keep.
+      return {
+        ...state,
+        byId: { ...state.byId, [msg.id]: { ...pane, invocables: msg.entries } },
       };
     }
 
@@ -137,24 +197,14 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
       };
     }
 
-    case 'context-breakdown': {
-      // A reply for a session the roster does not name is ignored, not
-      // stored: `request-context` and its answer are two round trips apart,
-      // so a session deleted in between would otherwise get its breakdown
-      // cached *after* the `sessions-changed` that was supposed to prune it,
-      // and nothing would remove it until the next roster change.
-      if (!state.sessions.some((s) => s.id === msg.id)) { return state; }
+    case 'session-mcp': {
+      const pane = state.byId[msg.id];
+      if (!pane) { return state; }
       return {
         ...state,
-        contextBySession: { ...state.contextBySession, [msg.id]: msg.result },
+        byId: { ...state.byId, [msg.id]: { ...pane, mcpServers: msg.servers } },
       };
     }
-
-    case 'usage-windows':
-      return {
-        ...state,
-        usageByProvider: { ...state.usageByProvider, [msg.providerId]: msg.result },
-      };
 
     default:
       // The HostToWebview type is closed, but nothing guarantees a runtime value
@@ -169,25 +219,40 @@ type Patch = Extract<HostToWebview, { t: 'session-patch' }>['patch'];
 
 function applyPatch(pane: PaneState, patch: Patch): PaneState {
   switch (patch.op) {
-    case 'append':
-      return {
-        ...pane,
-        items: [...pane.items, patch.item],
-        pending: patch.item.role === 'permission' && patch.item.state === 'pending'
-          ? [...pane.pending, {
-              requestId: patch.item.requestId,
-              name: patch.item.name,
-              input: patch.item.input,
-            }]
-          : pane.pending,
-      };
+    case 'append': {
+      const pending = patch.item.role === 'permission' && patch.item.state === 'pending'
+        ? [...pane.pending, {
+            requestId: patch.item.requestId,
+            name: patch.item.name,
+            input: patch.item.input,
+          }]
+        : pane.pending;
+
+      // A nested append targets a parent already in the loaded window: the
+      // parent's tool-start is appended before its subagent can emit
+      // anything, so no orphan buffer is needed. If the parent genuinely is
+      // not here, promote the child to top-level rather than dropping it —
+      // losing nesting degrades rendering; dropping hides real work.
+      if (patch.parentItemId) {
+        const nested = withChild(pane.items, patch.parentItemId, patch.item);
+        if (nested) { return { ...pane, items: nested, pending }; }
+      }
+
+      return { ...pane, items: [...pane.items, patch.item], pending };
+    }
 
     case 'replace': {
       const replaced = patch.item;
-      const items = pane.items.map((i) => (i.id === replaced.id ? replaced : i));
       const pending = replaced.role === 'permission' && replaced.state !== 'pending'
         ? pane.pending.filter((p) => p.requestId !== replaced.requestId)
         : pane.pending;
+
+      if (patch.parentItemId) {
+        const nested = withChild(pane.items, patch.parentItemId, replaced);
+        if (nested) { return { ...pane, items: nested, pending }; }
+      }
+
+      const items = pane.items.map((i) => (i.id === replaced.id ? replaced : i));
       return { ...pane, items, pending };
     }
 
@@ -199,4 +264,28 @@ function applyPatch(pane: PaneState, patch: Patch): PaneState {
       return { ...pane, items };
     }
   }
+}
+
+/**
+ * Inserts or replaces `child` inside `parentItemId`'s children, immutably.
+ * Returns undefined when the parent is not in the loaded window, which is
+ * the caller's signal to fall back to a top-level append.
+ */
+function withChild(
+  items: TranscriptItem[],
+  parentItemId: string,
+  child: TranscriptItem,
+): TranscriptItem[] | undefined {
+  let found = false;
+  const next = items.map((item) => {
+    if (item.id !== parentItemId || item.role !== 'tool') { return item; }
+    found = true;
+    const children = item.children ?? [];
+    const at = children.findIndex((c) => c.id === child.id);
+    const updated = at >= 0
+      ? children.map((c, i) => (i === at ? child : c))
+      : [...children, child];
+    return { ...item, children: updated };
+  });
+  return found ? next : undefined;
 }
