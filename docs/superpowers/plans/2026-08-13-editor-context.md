@@ -1843,14 +1843,17 @@ export function EditorContextToggle({ pane }: { pane: PaneState }) {
       variant={on ? 'secondary' : 'ghost'}
       size="sm"
       aria-pressed={on}
-      aria-label={`${on ? 'Attaching' : 'Not attaching'} editor context: ${ctx.path}`}
+      // No colon before the path: a colon in this label must be earned by a
+      // line span, or it reads as punctuation the file name does not have.
+      // The span is appended here rather than carried in an sr-only child —
+      // aria-label overrides element contents, so such a child is never read.
+      aria-label={`${on ? 'Attaching' : 'Not attaching'} editor context ${ctx.path}${lineSpan(ctx)}`}
       title={`${on ? 'Attaching' : 'Not attaching'} ${contextTitle(ctx)}`}
       onClick={() => post({ t: 'set-include-context', id: pane.summary.id, on: !on })}
       className={cn('min-w-0 max-w-56', !on && 'text-muted-foreground')}
     >
       <Paperclip aria-hidden="true" />
       <EditorContextLabel ctx={ctx} className="hidden @[17rem]:flex" />
-      <span className="sr-only">{chipLabel(ctx)}</span>
     </Button>
   );
 }
