@@ -160,4 +160,43 @@ suite('webview reducer', () => {
     const next = reduce(initialState, bogus);
     assert.strictEqual(next, initialState);
   });
+
+  test('a snapshot carries invocables onto the pane', () => {
+    const state = reduce(initialState, {
+      t: 'session-snapshot',
+      session: { ...snapshot('s1'), invocables: [{ name: 'init' }] },
+    });
+
+    assert.deepStrictEqual(state.byId['s1'].invocables, [{ name: 'init' }]);
+  });
+
+  test('session-invocables replaces the pane list wholesale', () => {
+    let state = reduce(initialState, {
+      t: 'session-snapshot',
+      session: { ...snapshot('s1'), invocables: [{ name: 'a' }, { name: 'b' }] },
+    });
+    state = reduce(state, { t: 'session-invocables', id: 's1', entries: [{ name: 'c' }] });
+
+    assert.deepStrictEqual(state.byId['s1'].invocables, [{ name: 'c' }]);
+  });
+
+  test('session-invocables for an unknown pane is a no-op', () => {
+    const state = reduce(initialState, {
+      t: 'session-invocables', id: 'nope', entries: [{ name: 'a' }],
+    });
+
+    assert.deepStrictEqual(state.byId, {});
+  });
+
+  test('hydrate carries invocables onto each pane', () => {
+    const state = reduce(initialState, {
+      t: 'hydrate',
+      sessions: [summary('s1')],
+      layout: { orientation: 'vertical', panes: [{ sessionId: 's1', size: 100 }] },
+      snapshots: [{ ...snapshot('s1'), invocables: [{ name: 'init' }] }],
+      catalog: [],
+    });
+
+    assert.deepStrictEqual(state.byId['s1'].invocables, [{ name: 'init' }]);
+  });
 });
