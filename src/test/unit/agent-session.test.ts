@@ -587,6 +587,20 @@ suite('AgentSession', () => {
     await session.dispose();
   });
 
+  test('serving a breakdown refreshes contextPercent from the same measurement', async () => {
+    const provider = new FakeProvider(undefined, {
+      context: {
+        systemPercent: 12, memoryPercent: 4, conversationPercent: 27, freePercent: 57,
+        memoryFiles: [],
+      },
+    });
+    const session = new AgentSession(baseState(), provider, store, sink);
+    await session.contextBreakdown();
+    assert.strictEqual(session.state.contextPercent, 43);
+    assert.ok(sink.changes > 0);
+    await session.dispose();
+  });
+
   test('a usage-window event reaches the sink under this session provider id', async () => {
     const { provider, sink: localSink, session } = makeSession();
     const window = { id: 'five-hour', label: 'Session (5h)', usedPercent: 62 };

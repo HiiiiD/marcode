@@ -149,10 +149,6 @@ export function ContextRing({ pane }: { pane: PaneState }) {
     ? 'Context usage unavailable'
     : `Context ${percent}% used`;
   const result = state.contextBySession[id];
-  // The ring is pushed at turn-end; the breakdown is pulled on open. Once a
-  // reply has landed it is the fresher of the two, so the header quotes it —
-  // otherwise the header and the body it sits above can disagree by a turn.
-  const headerPercent = result?.ok ? clampPercent(100 - result.breakdown.freePercent) : percent;
   const danger = percent !== undefined && percent >= DANGER_PERCENT;
 
   return (
@@ -203,13 +199,16 @@ export function ContextRing({ pane }: { pane: PaneState }) {
       <PopoverContent className="w-[calc(100vw-2rem)] max-w-72 text-xs">
         <div className="flex items-baseline justify-between border-b border-border pb-1">
           <span className="font-medium">Context</span>
-          <span
-            className={cn(
-              'tabular-nums text-muted-foreground',
-              headerPercent !== undefined && headerPercent >= DANGER_PERCENT && 'text-destructive',
-            )}
-          >
-            {headerPercent === undefined ? 'unavailable' : `${headerPercent}% used`}
+          {/*
+            Reads `percent` — the same pushed value the ring and its danger
+            state use — rather than deriving its own number from the pulled
+            breakdown below. The host refreshes `contextPercent` from the
+            same fetch that serves the breakdown (see
+            AgentSession.contextBreakdown), so this is never staler than the
+            rows it sits above, and there is exactly one number in play.
+          */}
+          <span className={cn('tabular-nums text-muted-foreground', danger && 'text-destructive')}>
+            {percent === undefined ? 'unavailable' : `${percent}% used`}
           </span>
         </div>
         <Body

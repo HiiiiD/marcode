@@ -263,6 +263,12 @@ export class AgentSession {
     }
     const breakdown = await this.run.contextBreakdown();
     this.rememberMemoryFiles(breakdown);
+    // The ring, its danger threshold and the popover header must all be the
+    // same measurement — a destructive 86% ring beside a "50% used" header is
+    // two numbers claiming to be one thing. We have just paid for a fresh
+    // breakdown, so the pushed value is updated from it here rather than left
+    // to drift until the next turn-end.
+    this.applyContextPercent(breakdown);
     return breakdown;
   }
 
@@ -291,15 +297,25 @@ export class AgentSession {
   private async refreshContextPercent(): Promise<void> {
     try {
       const breakdown = await this.run.contextBreakdown?.();
-      if (!breakdown || this.disposed) { return; }
-      const next = Math.round(100 - breakdown.freePercent);
-      if (this._state.contextPercent === next) { return; }
-      this._state.contextPercent = next;
-      this._state.updatedAt = Date.now();
-      this.sink.changed();
+      if (!breakdown) { return; }
+      this.applyContextPercent(breakdown);
     } catch {
       // See the doc comment: an unavailable breakdown is not a failed turn.
     }
+  }
+
+  /**
+   * The one place `contextPercent` is written, so the ring, its danger
+   * threshold and the popover header — everything downstream of that field —
+   * are always the same measurement as of the breakdown that produced it.
+   */
+  private applyContextPercent(breakdown: ContextBreakdown): void {
+    if (this.disposed) { return; }
+    const next = Math.round(100 - breakdown.freePercent);
+    if (this._state.contextPercent === next) { return; }
+    this._state.contextPercent = next;
+    this._state.updatedAt = Date.now();
+    this.sink.changed();
   }
 
   async snapshot(): Promise<SessionSnapshot> {
