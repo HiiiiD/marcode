@@ -1,8 +1,6 @@
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { XIcon } from "lucide-react";
-import type { ModelInfo } from "../../protocol/messages";
 import { folderName } from "../format";
 import type { PaneState } from "../reducer";
 import { useStore } from "../store";
@@ -11,7 +9,6 @@ import { StatusBadge } from "./status-badge";
 
 interface SessionHeaderProps {
   pane: PaneState;
-  models: ModelInfo[];
   /** The name this pane's title-derived controls (the close button) should
    * announce — the plain title, or the title plus the session id when
    * another visible pane shares it. See `accessibleTitles` in
@@ -19,7 +16,7 @@ interface SessionHeaderProps {
   accessibleTitle: string;
 }
 
-export function SessionHeader({ pane, models, accessibleTitle }: SessionHeaderProps) {
+export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
   const { state, post } = useStore();
   const s = pane.summary;
   const total = s.usage.inputTokens + s.usage.outputTokens;
@@ -86,35 +83,6 @@ export function SessionHeader({ pane, models, accessibleTitle }: SessionHeaderPr
         {s.permissionMode === "bypass" && "Bypassing permissions"}
       </span>
       <span className="ml-auto flex min-w-0 items-center text-muted-foreground">
-        <Select
-          items={models.map((m) => ({ value: m.id, label: m.displayName }))}
-          value={s.model}
-          onValueChange={(value) => post({ t: "set-model", id: s.id, model: value as string })}
-        >
-          <SelectTrigger
-            size="sm"
-            className="min-w-0 shrink truncate border-0 bg-transparent p-0 text-muted-foreground"
-            aria-label="Model"
-            disabled={hasStarted}
-            // Disabled-with-a-reason, not a silently-frozen label: matches
-            // the composer's disabled bypass option and the roster picker's
-            // disabled split-direction button. `aria-describedby` pointing
-            // at real, rendered (if visually hidden) text — a `title` on a
-            // disabled control is reachable by neither keyboard focus nor
-            // most screen readers, since disabled elements are pulled out
-            // of both.
-            aria-describedby={hasStarted ? modelReasonId : undefined}
-          >
-            <SelectValue className="truncate" />
-          </SelectTrigger>
-          <SelectContent>
-            {models.map((m) => (
-              <SelectItem key={m.id} value={m.id}>
-                {m.displayName}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
         {hasStarted && (
           // sr-only rather than visible: the header has no room for a
           // sentence next to the status badge, title and cwd, and the
@@ -124,11 +92,11 @@ export function SessionHeader({ pane, models, accessibleTitle }: SessionHeaderPr
           </span>
         )}
         {state.catalog.length > 1 && providerLabel && (
-          <Button render={<span />} nativeButton={false} variant={"ghost"} size={"sm"}>
+          <span className="text-muted-foreground">
             <span>&nbsp;</span>
             {/* <span>{` · ${providerLabel}`}</span> */}
             <span>{providerLabel}</span>
-          </Button>
+          </span>
         )}
       </span>
       <Button

@@ -26,7 +26,15 @@ const MODE_LABEL: Record<PermissionMode, string> = {
  */
 const MODE_ITEMS = (Object.keys(MODE_LABEL) as PermissionMode[]).map((value) => ({ value, label: MODE_LABEL[value] }));
 
-export function Composer({ pane, model }: { pane: PaneState; model: ModelInfo | undefined }) {
+export function Composer({
+  pane,
+  model,
+  models,
+}: {
+  pane: PaneState;
+  model: ModelInfo | undefined;
+  models: ModelInfo[];
+}) {
   const { post } = useStore();
   const [text, setText] = useState("");
   /** The selected entry's arg hint. Presentation only; never sent. */
@@ -93,6 +101,13 @@ export function Composer({ pane, model }: { pane: PaneState; model: ModelInfo | 
   // threw away work — and rather than hiding, which leaves the control
   // flickering in and out of a row that already wraps.
   const menuBlocked = text.trim().length > 0;
+
+  // Session-scoped, not a bare literal: SessionHeader renders once per pane,
+  // so a fixed id would collide across panes — `getElementById`, which is
+  // what `aria-describedby` resolves against, returns only the first match,
+  // and every other pane's disabled model control would describe itself
+  // using pane one's reason text.
+  const modelReasonId = `model-reason-${pane.summary.id}`;
 
   const openMenu = () => {
     setText("/");
@@ -329,11 +344,41 @@ export function Composer({ pane, model }: { pane: PaneState; model: ModelInfo | 
             </SelectContent>
           </Select>
 
+          <Select
+            items={models.map((m) => ({ value: m.id, label: m.displayName }))}
+            value={pane.summary.model}
+            onValueChange={(value) => post({ t: "set-model", id: pane.summary.id, model: value as string })}
+          >
+            <SelectTrigger
+              size="sm"
+              className="min-w-0 shrink truncate ml-auto"
+              aria-label="Model"
+              disabled={hasStarted}
+              // Disabled-with-a-reason, not a silently-frozen label: matches
+              // the composer's disabled bypass option and the roster picker's
+              // disabled split-direction button. `aria-describedby` pointing
+              // at real, rendered (if visually hidden) text — a `title` on a
+              // disabled control is reachable by neither keyboard focus nor
+              // most screen readers, since disabled elements are pulled out
+              // of both.
+              aria-describedby={hasStarted ? modelReasonId : undefined}
+              render={<Button variant={"outline"} />}
+            >
+              <SelectValue className="truncate" />
+            </SelectTrigger>
+            <SelectContent>
+              {models.map((m) => (
+                <SelectItem key={m.id} value={m.id}>
+                  {m.displayName}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
           {running && (
             <Button
               variant="outline"
               size="icon-xs"
-              className="ml-auto"
               onClick={() => post({ t: "interrupt", id: pane.summary.id })}
               aria-label="Stop"
               title="Stop the agent"
@@ -342,8 +387,7 @@ export function Composer({ pane, model }: { pane: PaneState; model: ModelInfo | 
             </Button>
           )}
           <Button
-            size="icon-xs"
-            className={cn(!running && "ml-auto")}
+            size="icon-sm"
             onClick={submit}
             // Disabled-with-a-reason rather than unmounted: swapping Send out
             // for Stop makes the row jump and leaves a user who has typed the
