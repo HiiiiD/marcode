@@ -1,6 +1,6 @@
 import * as assert from 'assert';
-import { initialState, reduce } from '../../webview/reducer';
 import type { SessionSummary } from '../../protocol/messages';
+import { initialState, reduce } from '../../webview/reducer';
 import { snapshot, summary } from '../fixtures/protocol';
 
 suite('webview reducer', () => {
@@ -198,5 +198,18 @@ suite('webview reducer', () => {
     });
 
     assert.deepStrictEqual(state.byId['s1'].invocables, [{ name: 'init' }]);
+  });
+  
+  test('editor-context replaces the client-wide context', () => {
+    const ctx = { path: 'src/a.ts', languageId: 'typescript' };
+    const next = reduce(initialState, { t: 'editor-context', ctx });
+    assert.deepStrictEqual(next.editorContext, ctx);
+
+    const cleared = reduce(next, { t: 'editor-context', ctx: null });
+    assert.strictEqual(cleared.editorContext, null);
+  });
+
+  test('the initial state has no editor context', () => {
+    assert.strictEqual(initialState.editorContext, null);
   });
 });

@@ -90,4 +90,33 @@ suite('FakeProvider', () => {
 
     await assert.rejects(() => provider.listInvocables('/repo'), /no catalog/);
   });
+  
+  test('reports a scripted context breakdown and usage windows', async () => {
+    const provider = new FakeProvider(() => [{ kind: 'turn-end', reason: 'done' }], {
+      context: {
+        systemPercent: 12, memoryPercent: 4, conversationPercent: 27, freePercent: 57,
+        memoryFiles: [{ path: '/repo/CLAUDE.md', percent: 3 }],
+      },
+      windows: [{ id: 'five-hour', label: 'Session (5h)', usedPercent: 62, resetsAt: 1000 }],
+    });
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+
+    assert.deepStrictEqual(await run.contextBreakdown!(), {
+      systemPercent: 12, memoryPercent: 4, conversationPercent: 27, freePercent: 57,
+      memoryFiles: [{ path: '/repo/CLAUDE.md', percent: 3 }],
+    });
+    assert.deepStrictEqual(await run.usageWindows!(), [
+      { id: 'five-hour', label: 'Session (5h)', usedPercent: 62, resetsAt: 1000 },
+    ]);
+    await run.dispose();
+  });
+
+  test('omits both reporting methods when nothing is scripted', async () => {
+    const provider = new FakeProvider(() => [{ kind: 'turn-end', reason: 'done' }]);
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+
+    assert.strictEqual(run.contextBreakdown, undefined);
+    assert.strictEqual(run.usageWindows, undefined);
+    await run.dispose();
+  });
 });

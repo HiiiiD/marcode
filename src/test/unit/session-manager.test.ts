@@ -4,9 +4,9 @@ import * as os from 'os';
 import * as path from 'path';
 import { SessionManager } from '../../host/session-manager';
 import { TranscriptStore } from '../../host/transcript-store';
+import type { HostToWebview, SessionState } from '../../protocol/messages';
 import { FakeProvider } from '../../providers/fake/fake-provider';
 import type { AgentProvider } from '../../providers/types';
-import type { HostToWebview } from '../../protocol/messages';
 
 async function settle() {
   for (let i = 0; i < 10; i++) { await new Promise((r) => setImmediate(r)); }
@@ -489,5 +489,23 @@ suite('SessionManager', () => {
       order.filter((t) => t === 'session-invocables').length, 1,
       'the reveal must not double-fire session-invocables',
     );
+  });
+  test('a session restored without the flag defaults to attaching context', async () => {
+    const store2 = new TranscriptStore(dir);
+    // Written by a build that predates includeEditorContext.
+    await store2.writeIndex({
+      sessions: [{
+        id: 'legacy', providerId: 'fake', model: 'fake-small', title: 'Old',
+        cwd: '/tmp', status: 'idle', permissionMode: 'default',
+        usage: { inputTokens: 0, outputTokens: 0 },
+        archived: false, createdAt: 1, updatedAt: 1,
+      } as unknown as SessionState],
+      layout: { orientation: 'vertical', panes: [] },
+    });
+
+    const restored = new SessionManager(store2, providers, () => {});
+    await restored.init();
+    assert.strictEqual(restored.summaries()[0].includeEditorContext, true);
+    await restored.dispose();
   });
 });

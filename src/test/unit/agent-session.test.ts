@@ -4,13 +4,13 @@ import * as os from 'os';
 import * as path from 'path';
 import { AgentSession, type SessionSink } from '../../host/agent-session';
 import { TranscriptStore } from '../../host/transcript-store';
+import type {
+  Invocable, SessionId, SessionState, SessionStatus, TranscriptPatch,
+} from '../../protocol/messages';
 import { FakeProvider } from '../../providers/fake/fake-provider';
 import type {
   AgentEvent, AgentProvider, AgentRun, ModelInfo, StartOptions, ToolDecision,
 } from '../../providers/types';
-import type {
-  Invocable, SessionId, SessionState, SessionStatus, TranscriptPatch,
-} from '../../protocol/messages';
 
 /** Minimal pushable async-iterable, mirroring FakeProvider's internal channel. */
 class EventChannel implements AsyncIterable<AgentEvent> {
@@ -105,6 +105,7 @@ function baseState(): SessionState {
   return {
     id: 's1', providerId: 'fake', model: 'fake-large', effort: 'medium',
     title: 'Untitled', cwd: '/tmp', status: 'idle', permissionMode: 'default',
+    includeEditorContext: true,
     usage: { inputTokens: 0, outputTokens: 0 },
     archived: false, createdAt: 1, updatedAt: 1,
   };
@@ -391,5 +392,49 @@ suite('AgentSession', () => {
     const { session } = makeSession();
 
     assert.strictEqual((await session.snapshot()).invocables, undefined);
+
+  });
+  test('send stores the context on the user item and forwards it to the run', async () => {
+    const provider = new FakeProvider(() => [{ kind: 'turn-end', reason: 'done' }]);
+    const session = new AgentSession(baseState(), provider, store, sink);
+    const ctx = {
+      path: 'src/a.ts',
+      languageId: 'typescript',
+      selection: { ranges: [{ startLine: 1, endLine: 2, text: 'x' }], truncated: false },
+    };
+
+    session.send('look at this', ctx);
+    await settle();
+
+    assert.deepStrictEqual(provider.sent[0], { text: 'look at this', context: ctx });
+    const snapshot = await session.snapshot();
+    const user = snapshot.items.find((i) => i.role === 'user');
+    assert.ok(user && user.role === 'user');
+    assert.deepStrictEqual(user.context, ctx);
+    await session.dispose();
+  });
+
+  test('send without a context leaves the user item unchanged', async () => {
+    const provider = new FakeProvider(() => [{ kind: 'turn-end', reason: 'done' }]);
+    const session = new AgentSession(baseState(), provider, store, sink);
+
+    session.send('plain');
+    await settle();
+
+    const snapshot = await session.snapshot();
+    const user = snapshot.items.find((i) => i.role === 'user');
+    assert.ok(user && user.role === 'user');
+    // Persisted transcripts written before this feature have no `context`;
+    // a send with none must produce exactly that shape, not `context: null`.
+    assert.strictEqual('context' in user, false);
+    await session.dispose();
+  });
+
+  test('setIncludeEditorContext flips the persisted flag', async () => {
+    const session = new AgentSession(baseState(), new FakeProvider(() => []), store, sink);
+    assert.strictEqual(session.state.includeEditorContext, true);
+    session.setIncludeEditorContext(false);
+    assert.strictEqual(session.state.includeEditorContext, false);
+    await session.dispose();
   });
 });

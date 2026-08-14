@@ -1,10 +1,12 @@
 import type {
-  AgentEvent, AgentProvider, AgentRun, EffortLevel, Invocable, PermissionMode, ToolDecision,
-} from '../providers/types';
-import type {
   PermissionRequest, SessionId, SessionSnapshot, SessionState, SessionStatus,
   TranscriptItem, TranscriptPatch,
 } from '../protocol/messages';
+import type {
+  AgentEvent, AgentProvider, AgentRun,
+  EditorContext,
+  EffortLevel, Invocable, PermissionMode, ToolDecision
+} from '../providers/types';
 import type { TranscriptStore } from './transcript-store';
 
 export interface SessionSink {
@@ -68,16 +70,23 @@ export class AgentSession {
 
   get state(): SessionState { return this._state; }
 
-  send(text: string): void {
+  send(text: string, context?: EditorContext): void {
     if (this._state.title === 'Untitled' && text.trim().length > 0) {
       this._state.title = text.trim().slice(0, TITLE_MAX);
     }
-    const item: TranscriptItem = { id: nextId('u'), ts: Date.now(), role: 'user', text };
+    // Spread the context in only when there is one: a persisted user item
+    // written before this feature has no `context` key at all, and every
+    // consumer already handles its absence. Writing `context: undefined`
+    // would serialize differently for no gain.
+    const item: TranscriptItem = {
+      id: nextId('u'), ts: Date.now(), role: 'user', text,
+      ...(context ? { context } : {}),
+    };
     this.appendItem(item);
     this.closeAssistant();
     this.setStatus('running');
     try {
-      this.run.send(text);
+      this.run.send(text, context);
     } catch (err) {
       this.fail(err instanceof Error ? err.message : String(err));
     }
@@ -147,6 +156,12 @@ export class AgentSession {
   setInvocables(entries: Invocable[]): void {
     // Replace wholesale: the catalog is always a full list.
     this.invocableEntries = entries;
+  }
+  
+  setIncludeEditorContext(on: boolean): void {
+    this._state.includeEditorContext = on;
+    this._state.updatedAt = Date.now();
+    this.sink.changed();
   }
 
   respondToPermission(requestId: string, decision: ToolDecision): void {

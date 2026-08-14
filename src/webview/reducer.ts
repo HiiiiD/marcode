@@ -1,6 +1,7 @@
 import type {
+  EditorContext,
   HostToWebview, Invocable, PaneLayout, PermissionRequest, ProviderInfo, SessionId,
-  SessionSummary, TranscriptItem,
+  SessionSummary, TranscriptItem
 } from '../protocol/messages';
 
 export interface PaneState {
@@ -18,6 +19,11 @@ export interface ClientState {
   layout: PaneLayout;
   catalog: ProviderInfo[];
   byId: Record<SessionId, PaneState>;
+  /**
+   * Client-wide, not per session: the active editor is global IDE state and
+   * every composer shows the same file.
+   */
+  editorContext: EditorContext | null;
 }
 
 export const initialState: ClientState = {
@@ -26,6 +32,7 @@ export const initialState: ClientState = {
   layout: { orientation: 'vertical', panes: [] },
   catalog: [],
   byId: {},
+  editorContext: null,
 };
 
 /**
@@ -56,6 +63,13 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
       return {
         ready: true, sessions: msg.sessions, layout: msg.layout,
         catalog: msg.catalog, byId,
+        // Explicit, not `...state`: `hydrate` is meant to be a total
+        // rebuild of `ClientState`, not a merge. `editorContext` is
+        // genuinely client-wide (global IDE state a reload doesn't change),
+        // so it is deliberately carried forward here — but spelled out so a
+        // future field added to `ClientState` doesn't silently survive a
+        // reload by accident the way a bare spread would let it.
+        editorContext: state.editorContext,
       };
     }
 
@@ -77,6 +91,9 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
       }
       return { ...state, sessions: msg.sessions, byId };
     }
+
+    case 'editor-context':
+      return { ...state, editorContext: msg.ctx };
 
     case 'session-snapshot': {
       const s = msg.session;

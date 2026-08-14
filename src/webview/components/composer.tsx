@@ -1,27 +1,22 @@
-import { useRef, useState } from 'react';
-import { SendHorizontal, Slash, Square } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { InputGroup, InputGroupAddon, InputGroupTextarea } from '@/components/ui/input-group';
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/components/ui/select';
-import { cn } from '@/lib/utils';
-import { InvocableMenu } from './invocable-menu';
-import {
-  insertionFor, menuKeyAction, menuQuery, menuView, nextIndex,
-} from '../lib/invocable-menu';
-import { useStore } from '../store';
-import type { PaneState } from '../reducer';
-import type {
-  EffortLevel, Invocable, ModelInfo, PermissionMode,
-} from '../../protocol/messages';
+import { Button } from "@/components/ui/button";
+import { InputGroup, InputGroupAddon, InputGroupTextarea } from "@/components/ui/input-group";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { cn } from "@/lib/utils";
+import { SendHorizontal, Slash, Square } from "lucide-react";
+import { useRef, useState } from "react";
+import type { EffortLevel, Invocable, ModelInfo, PermissionMode } from "../../protocol/messages";
+import { insertionFor, menuKeyAction, menuQuery, menuView, nextIndex } from "../lib/invocable-menu";
+import type { PaneState } from "../reducer";
+import { useStore } from "../store";
+import { EditorContextToggle } from "./editor-context-toggle";
+import { InvocableMenu } from "./invocable-menu";
 
 const MODE_LABEL: Record<PermissionMode, string> = {
-  default: 'ask',
-  acceptEdits: 'auto-edits',
-  plan: 'plan',
-  dontAsk: 'deny',
-  bypass: 'bypass',
+  default: "ask",
+  acceptEdits: "auto-edits",
+  plan: "plan",
+  dontAsk: "deny",
+  bypass: "bypass",
 };
 
 /**
@@ -29,14 +24,13 @@ const MODE_LABEL: Record<PermissionMode, string> = {
  * option. Without it Base UI's SelectValue falls back to the raw value, so the
  * trigger would read "acceptEdits" rather than "auto-edits".
  */
-const MODE_ITEMS = (Object.keys(MODE_LABEL) as PermissionMode[])
-  .map((value) => ({ value, label: MODE_LABEL[value] }));
+const MODE_ITEMS = (Object.keys(MODE_LABEL) as PermissionMode[]).map((value) => ({ value, label: MODE_LABEL[value] }));
 
 export function Composer({ pane, model }: { pane: PaneState; model: ModelInfo | undefined }) {
   const { post } = useStore();
-  const [text, setText] = useState('');
+  const [text, setText] = useState("");
   /** The selected entry's arg hint. Presentation only; never sent. */
-  const [ghost, setGhost] = useState('');
+  const [ghost, setGhost] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
   /**
    * Escape, or focus leaving the box, closed the menu. Only a fresh keystroke
@@ -48,9 +42,8 @@ export function Composer({ pane, model }: { pane: PaneState; model: ModelInfo | 
   // to is bound on the textarea, so a menu opened by a click that left focus
   // on the button would be unreachable by keyboard.
   const box = useRef<HTMLTextAreaElement | null>(null);
-  const running = pane.summary.status === 'running'
-    || pane.summary.status === 'awaiting-approval';
-  const bypassing = pane.summary.permissionMode === 'bypass';
+  const running = pane.summary.status === "running" || pane.summary.status === "awaiting-approval";
+  const bypassing = pane.summary.permissionMode === "bypass";
   /**
    * The Claude provider can only honor 'bypass' at query construction —
    * which now happens lazily, on the session's first send() — so this must
@@ -84,7 +77,7 @@ export function Composer({ pane, model }: { pane: PaneState; model: ModelInfo | 
    */
   const query = menuQuery(text);
   const menuOpen = entries.length > 0 && query !== undefined && !dismissed;
-  const view = menuOpen ? menuView(entries, query ?? '') : { rows: [], overflow: 0 };
+  const view = menuOpen ? menuView(entries, query ?? "") : { rows: [], overflow: 0 };
   const index = Math.min(activeIndex, Math.max(0, view.rows.length - 1));
   // Session-scoped for the same reason as bypassReasonId above: one Composer
   // renders per pane, and `aria-activedescendant` resolves ids document-wide.
@@ -93,9 +86,7 @@ export function Composer({ pane, model }: { pane: PaneState; model: ModelInfo | 
   // honours `aria-activedescendant` on the focused element, so a copy on the
   // listbox alone announces nothing. Undefined while the `No match` row shows:
   // that row is deliberately not addressable, so there is no id to point at.
-  const activeOptionId = menuOpen && view.rows.length > 0
-    ? `${menuListId}-${index}`
-    : undefined;
+  const activeOptionId = menuOpen && view.rows.length > 0 ? `${menuListId}-${index}` : undefined;
   // Trigger discipline puts the menu at position 0 only, so it genuinely
   // cannot open over a half-written message. Disabled-with-a-reason rather
   // than silently clearing the draft — the earlier shape reset the box, which
@@ -104,8 +95,8 @@ export function Composer({ pane, model }: { pane: PaneState; model: ModelInfo | 
   const menuBlocked = text.trim().length > 0;
 
   const openMenu = () => {
-    setText('/');
-    setGhost('');
+    setText("/");
+    setGhost("");
     setActiveIndex(0);
     setDismissed(false);
     box.current?.focus();
@@ -120,16 +111,18 @@ export function Composer({ pane, model }: { pane: PaneState; model: ModelInfo | 
 
   const submit = () => {
     const trimmed = text.trim();
-    if (!trimmed) { return; }
+    if (!trimmed) {
+      return;
+    }
     // `ghost` is presentation only — the arg hint is never part of the message.
-    post({ t: 'send', id: pane.summary.id, text: trimmed });
-    setText('');
-    setGhost('');
+    post({ t: "send", id: pane.summary.id, text: trimmed });
+    setText("");
+    setGhost("");
     setDismissed(false);
   };
 
   return (
-    <div className="p-2">
+    <div className="@container p-2">
       <InputGroup>
         {menuOpen && (
           // A block-start addon, not a popover: the list sits above the box in
@@ -150,7 +143,7 @@ export function Composer({ pane, model }: { pane: PaneState; model: ModelInfo | 
           value={text}
           onChange={(e) => {
             setText(e.target.value);
-            setGhost('');
+            setGhost("");
             setActiveIndex(0);
             setDismissed(false);
           }}
@@ -171,21 +164,31 @@ export function Composer({ pane, model }: { pane: PaneState; model: ModelInfo | 
             // isComposing) would insert a row instead of committing the IME
             // text, so it is treated as 'pass' regardless of what
             // menuKeyAction says.
-            const composingEnter = e.key === 'Enter' && e.nativeEvent.isComposing;
+            const composingEnter = e.key === "Enter" && e.nativeEvent.isComposing;
             if (menuOpen && !composingEnter) {
               const action = menuKeyAction(e.key);
-              if (action !== 'pass') {
+              if (action !== "pass") {
                 e.preventDefault();
-                if (action === 'move-down') { setActiveIndex(nextIndex(index, 1, view.rows.length)); }
-                if (action === 'move-up') { setActiveIndex(nextIndex(index, -1, view.rows.length)); }
-                if (action === 'select' && view.rows[index]) { pick(view.rows[index]); }
-                if (action === 'close') { setDismissed(true); }
+                if (action === "move-down") {
+                  setActiveIndex(nextIndex(index, 1, view.rows.length));
+                }
+                if (action === "move-up") {
+                  setActiveIndex(nextIndex(index, -1, view.rows.length));
+                }
+                if (action === "select" && view.rows[index]) {
+                  pick(view.rows[index]);
+                }
+                if (action === "close") {
+                  setDismissed(true);
+                }
                 return;
               }
             }
-            if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault();
-              if (!running) { submit(); }
+              if (!running) {
+                submit();
+              }
             }
           }}
           placeholder="Message the agent…"
@@ -227,7 +230,7 @@ export function Composer({ pane, model }: { pane: PaneState; model: ModelInfo | 
               // for the enabled state.
               disabled={menuBlocked}
               aria-describedby={menuBlocked ? invocablesReasonId : undefined}
-              title={menuBlocked ? undefined : 'Skills and commands'}
+              title={menuBlocked ? undefined : "Skills and commands"}
               onClick={openMenu}
             >
               <Slash />
@@ -249,20 +252,27 @@ export function Composer({ pane, model }: { pane: PaneState; model: ModelInfo | 
               {ghost}
             </span>
           )}
+          <EditorContextToggle pane={pane} />
           {model?.effort && (
             <Select
               items={model.effort.levels.map((level) => ({ value: level, label: level }))}
               value={pane.summary.effort ?? model.effort.default}
-              onValueChange={(value) => post({
-                t: 'set-effort', id: pane.summary.id, effort: value as EffortLevel,
-              })}
+              onValueChange={(value) =>
+                post({
+                  t: "set-effort",
+                  id: pane.summary.id,
+                  effort: value as EffortLevel,
+                })
+              }
             >
               <SelectTrigger size="sm" className="w-24 border-0" aria-label="Effort">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 {model.effort.levels.map((level) => (
-                  <SelectItem key={level} value={level}>{level}</SelectItem>
+                  <SelectItem key={level} value={level}>
+                    {level}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -271,15 +281,19 @@ export function Composer({ pane, model }: { pane: PaneState; model: ModelInfo | 
           <Select
             items={MODE_ITEMS}
             value={pane.summary.permissionMode}
-            onValueChange={(value) => post({
-              t: 'set-permission-mode', id: pane.summary.id, mode: value as PermissionMode,
-            })}
+            onValueChange={(value) =>
+              post({
+                t: "set-permission-mode",
+                id: pane.summary.id,
+                mode: value as PermissionMode,
+              })
+            }
           >
             <SelectTrigger
               size="sm"
               className={cn(
-                'w-28 border-0',
-                bypassing && 'border border-destructive text-destructive dark:border-destructive/50',
+                "w-28 border-0",
+                bypassing && "border border-destructive text-destructive dark:border-destructive/50",
               )}
               aria-label="Permission mode"
             >
@@ -287,7 +301,7 @@ export function Composer({ pane, model }: { pane: PaneState; model: ModelInfo | 
             </SelectTrigger>
             <SelectContent>
               {MODE_ITEMS.map((item) => {
-                const disableBypass = item.value === 'bypass' && hasStarted;
+                const disableBypass = item.value === "bypass" && hasStarted;
                 return (
                   <SelectItem
                     key={item.value}
@@ -320,7 +334,7 @@ export function Composer({ pane, model }: { pane: PaneState; model: ModelInfo | 
               variant="outline"
               size="icon-xs"
               className="ml-auto"
-              onClick={() => post({ t: 'interrupt', id: pane.summary.id })}
+              onClick={() => post({ t: "interrupt", id: pane.summary.id })}
               aria-label="Stop"
               title="Stop the agent"
             >
@@ -329,7 +343,7 @@ export function Composer({ pane, model }: { pane: PaneState; model: ModelInfo | 
           )}
           <Button
             size="icon-xs"
-            className={cn(!running && 'ml-auto')}
+            className={cn(!running && "ml-auto")}
             onClick={submit}
             // Disabled-with-a-reason rather than unmounted: swapping Send out
             // for Stop makes the row jump and leaves a user who has typed the
@@ -351,7 +365,7 @@ export function Composer({ pane, model }: { pane: PaneState; model: ModelInfo | 
             // most screen readers, since disabled elements are pulled out of
             // both.
             aria-describedby={running ? sendReasonId : undefined}
-            title={!running && text.trim() ? 'Send message' : undefined}
+            title={!running && text.trim() ? "Send message" : undefined}
           >
             <SendHorizontal />
           </Button>

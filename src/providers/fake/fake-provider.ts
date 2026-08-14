@@ -1,6 +1,10 @@
 import type {
-  AgentEvent, AgentProvider, AgentRun, EffortLevel, Invocable, ModelInfo, PermissionMode,
+  AgentEvent, AgentProvider, AgentRun,
+  ContextBreakdown,
+  EditorContext,
+  EffortLevel, Invocable, ModelInfo, PermissionMode,
   StartOptions, ToolDecision,
+  UsageWindow
 } from '../types';
 
 class EventChannel implements AsyncIterable<AgentEvent> {
@@ -42,6 +46,10 @@ class EventChannel implements AsyncIterable<AgentEvent> {
 
 /** An `AgentRun` a test can push arbitrary events into. */
 export type FakeRun = AgentRun & { emit(event: AgentEvent): void };
+export interface FakeReports {
+  context?: ContextBreakdown;
+  windows?: UsageWindow[];
+}
 
 export class FakeProvider implements AgentProvider {
   readonly id = 'fake';
@@ -62,9 +70,14 @@ export class FakeProvider implements AgentProvider {
   readonly listInvocablesCalls: string[] = [];
   /** Scripted probe answer: a catalog to resolve with, or an Error to reject with. */
   invocables: Invocable[] | Error | undefined;
+  /** Records every (text, context) pair passed to send, for assertions. */
+  readonly sent: { text: string; context?: EditorContext }[] = [];
   private sessionCounter = 0;
 
-  constructor(private readonly script: (text: string) => AgentEvent[]) {}
+  constructor(
+    private readonly script: (text: string) => AgentEvent[],
+    private readonly reports: FakeReports = {},
+  ) {}
 
   listModels(): ModelInfo[] {
     return [
@@ -84,7 +97,8 @@ export class FakeProvider implements AgentProvider {
 
     const run: FakeRun = {
       events: channel,
-      send: (text: string) => {
+      send: (text: string, context?: EditorContext) => {
+        this.sent.push({ text, context });
         if (!started) {
           started = true;
           channel.push({ kind: 'session', resumeToken });
@@ -108,6 +122,9 @@ export class FakeProvider implements AgentProvider {
       emit: (event: AgentEvent) => { channel.push(event); },
     };
     this.runs.push(run);
+    const { context, windows } = this.reports;
+    if (context) { run.contextBreakdown = async () => context; }
+    if (windows) { run.usageWindows = async () => windows; }
     return run;
   }
 

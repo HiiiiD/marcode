@@ -64,7 +64,11 @@ export class SessionManager implements SessionSink {
   async init(): Promise<void> {
     const index = await this.store.readIndex();
     for (const state of index.sessions) {
-      this.meta.set(state.id, { ...state, status: 'idle' });
+      this.meta.set(state.id, {
+        ...state,
+        status: 'idle',
+        includeEditorContext: state.includeEditorContext ?? true,
+      });
     }
     this.paneLayout = index.layout;
   }
@@ -132,6 +136,7 @@ export class SessionManager implements SessionSink {
     const state: SessionState = {
       id: newSessionId(), providerId, model: chosen.id, effort: resolvedEffort,
       title: 'Untitled', cwd, status: 'idle', permissionMode: 'default',
+      includeEditorContext: true,
       usage: { inputTokens: 0, outputTokens: 0 },
       archived: false, createdAt: now, updatedAt: now,
     };

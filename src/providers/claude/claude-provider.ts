@@ -111,15 +111,21 @@
 // in this file is correct either way, but it may mean the "only at
 // construction" constraint documented here is narrower than the SDK requires.
 import type {
-  CanUseTool, Options, PermissionMode as SdkPermissionMode, Query, SDKUserMessage,
+  CanUseTool, Options,
+  Query,
+  PermissionMode as SdkPermissionMode,
+  SDKUserMessage,
 } from '@anthropic-ai/claude-agent-sdk' with { 'resolution-mode': 'import' };
+import { formatEditorContext } from '../format-editor-context';
+import type {
+  AgentEvent, AgentProvider, AgentRun,
+  EditorContext,
+  EffortLevel, Invocable, ModelInfo, PermissionMode,
+  StartOptions, ToolDecision
+} from '../types';
 import { toInvocables } from './map-commands';
 import { mapEvent } from './map-events';
 import { redactSecrets } from './redact';
-import type {
-  AgentEvent, AgentProvider, AgentRun, EffortLevel, Invocable, ModelInfo, PermissionMode,
-  StartOptions, ToolDecision,
-} from '../types';
 
 const MODELS: ModelInfo[] = [
   {
@@ -324,11 +330,15 @@ export class ClaudeProvider implements AgentProvider {
 
     return {
       events,
-      send: (text: string) => {
+      send: (text: string, context?: EditorContext) => {
         ensureStarted();
+        // One text block rather than two: the SDK accepts an array, but a
+        // single block keeps the turn's shape identical whether or not
+        // context is attached, so nothing downstream has to special-case it.
+        const body = context ? `${formatEditorContext(context)}\n\n${text}` : text;
         prompts.push({
           type: 'user',
-          message: { role: 'user', content: [{ type: 'text', text }] },
+          message: { role: 'user', content: [{ type: 'text', text: body }] },
           parent_tool_use_id: null,
         });
       },
