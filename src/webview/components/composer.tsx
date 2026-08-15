@@ -113,11 +113,22 @@ export function Composer({
   const menuBlocked = text.trim().length > 0;
 
   const refHit = mentionQuery(text, caret);
+  /**
+   * Only what is on screen is referable. The roster outlives the split — a
+   * closed pane leaves its session alive — so the whole roster would grow the
+   * menu with every session ever opened, and offer sources the user cannot
+   * read to check what they are attaching.
+   */
+  const onScreen = new Set(state.layout.panes.map((p) => p.sessionId));
   // One array per source, concatenated. File tagging arrives as one more
   // source here and changes nothing else.
   const refRows = refHit
     ? filterMentions(
-      sessionMentions(state.sessions, pane.summary.id, handoffSettings !== undefined),
+      sessionMentions(
+        state.sessions.filter((s) => onScreen.has(s.id)),
+        pane.summary.id,
+        handoffSettings !== undefined,
+      ),
       refHit.query,
     )
     : [];

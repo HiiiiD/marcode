@@ -1,7 +1,7 @@
 import * as assert from 'assert';
 import { fireEvent, screen } from '@testing-library/react';
 import { posted, renderApp, resetHost, sendFromHost } from './harness';
-import type { SessionSummary } from '../../protocol/messages';
+import type { ProviderInfo, SessionSummary } from '../../protocol/messages';
 // The host's own composer, not a hand-written copy of its output: `composePrompt`
 // and the webview's `splitComposed` have to agree character for character, and
 // a convention that only lives in a test fixture is one nobody checks. The
@@ -17,32 +17,88 @@ function summary(id: string, title: string): SessionSummary {
   };
 }
 
+const CATALOG: ProviderInfo[] = [{
+  id: 'fake', displayName: 'Fake',
+  models: [{ id: 'm', displayName: 'M' }],
+  permissionModes: [{ id: 'default' }],
+}];
+
+function snapshotOf(s: SessionSummary) {
+  return { ...s, items: [], hasMore: false, pending: [], mcpServers: [] };
+}
+
+/**
+ * Both sessions in the roster AND both on screen: a session is referable only
+ * while it has a pane, so a fixture that leaves the second one hidden is
+ * testing the empty menu.
+ */
 function hydrateTwoSessions(): void {
   const a = summary('s-1', 'agent one');
   const b = summary('s-2', 'refactor store');
   sendFromHost({
     t: 'hydrate',
     sessions: [a, b],
-    layout: { orientation: 'vertical', panes: [{ sessionId: 's-1', size: 1 }] },
-    snapshots: [{ ...a, items: [], hasMore: false, pending: [], mcpServers: [] }],
-    catalog: [{
-      id: 'fake', displayName: 'Fake',
-      models: [{ id: 'm', displayName: 'M' }],
-      permissionModes: [{ id: 'default' }],
-    }],
+    layout: {
+      orientation: 'vertical',
+      panes: [{ sessionId: 's-1', size: 1 }, { sessionId: 's-2', size: 1 }],
+    },
+    snapshots: [snapshotOf(a), snapshotOf(b)],
+    catalog: CATALOG,
     unavailable: [],
     usage: {},
   });
 }
 
+/** The same roster with only the first session on screen. */
+function hydrateOneVisible(): void {
+  const a = summary('s-1', 'agent one');
+  const b = summary('s-2', 'refactor store');
+  sendFromHost({
+    t: 'hydrate',
+    sessions: [a, b],
+    layout: { orientation: 'vertical', panes: [{ sessionId: 's-1', size: 1 }] },
+    snapshots: [snapshotOf(a)],
+    catalog: CATALOG,
+    unavailable: [],
+    usage: {},
+  });
+}
+
+/**
+ * The first pane's textarea. Every pane renders one, so the label is not
+ * unique once more than one session is on screen — and the suite always types
+ * into the first.
+ */
+function messageBox(): HTMLElement {
+  return screen.getAllByLabelText('Message')[0];
+}
+
 suite('session handoff', () => {
   setup(() => resetHost());
+
+  /**
+   * The roster outlives the split: closing a pane leaves the session alive and
+   * referable-in-principle, but a reference the user cannot see the source of
+   * is one they cannot check, and the menu would grow with every session ever
+   * opened. Only what is on screen is offered.
+   */
+  test('a session with no pane is not offered', () => {
+    renderApp();
+    hydrateOneVisible();
+
+    fireEvent.change(messageBox(), { target: { value: '@' } });
+
+    assert.strictEqual(screen.queryByText('refactor store') === null, true);
+    assert.strictEqual(screen.queryByText('Sessions') === null, true);
+    // The handoff action is not a session reference, so it stays.
+    assert.strictEqual(screen.getAllByText('handoff').length, 1);
+  });
 
   test('typing @ opens the menu with the other session', () => {
     renderApp();
     hydrateTwoSessions();
 
-    const box = screen.getByLabelText('Message');
+    const box = messageBox();
     fireEvent.change(box, { target: { value: '@' } });
 
     assert.strictEqual(screen.getAllByText('refactor store').length > 0, true);
@@ -53,7 +109,7 @@ suite('session handoff', () => {
     renderApp();
     hydrateTwoSessions();
 
-    const box = screen.getByLabelText('Message');
+    const box = messageBox();
     fireEvent.change(box, { target: { value: 'Do @refac' } });
     fireEvent.keyDown(box, { key: 'Enter' });
 
@@ -80,7 +136,7 @@ suite('session handoff', () => {
     renderApp();
     hydrateTwoSessions();
 
-    const box = screen.getByLabelText('Message');
+    const box = messageBox();
     fireEvent.change(box, { target: { value: 'Do @refac' } });
     fireEvent.keyDown(box, { key: 'Enter' });
     fireEvent.keyDown(box, { key: 'Enter' });
@@ -100,7 +156,7 @@ suite('session handoff', () => {
     renderApp();
     hydrateTwoSessions();
 
-    const box = screen.getByLabelText('Message');
+    const box = messageBox();
     fireEvent.change(box, { target: { value: 'please ping @notasession' } });
     fireEvent.keyDown(box, { key: 'Enter' });
 
@@ -113,7 +169,7 @@ suite('session handoff', () => {
     renderApp();
     hydrateTwoSessions();
 
-    const box = screen.getByLabelText('Message');
+    const box = messageBox();
     fireEvent.change(box, { target: { value: '@' } });
     assert.strictEqual(screen.queryByRole('listbox') === null, false);
 
@@ -127,7 +183,7 @@ suite('session handoff', () => {
     renderApp();
     hydrateTwoSessions();
 
-    const box = screen.getByLabelText('Message');
+    const box = messageBox();
     fireEvent.change(box, { target: { value: 'Do @refac' } });
     fireEvent.keyDown(box, { key: 'Enter' });
     fireEvent.change(box, { target: { value: 'Do it myself' } });
@@ -142,7 +198,7 @@ suite('session handoff', () => {
     renderApp();
     hydrateTwoSessions();
 
-    const box = screen.getByLabelText('Message');
+    const box = messageBox();
     assert.strictEqual(box.getAttribute('aria-expanded'), 'false');
 
     fireEvent.change(box, { target: { value: '@' } });
@@ -158,7 +214,7 @@ suite('session handoff', () => {
     renderApp();
     hydrateTwoSessions();
 
-    fireEvent.change(screen.getByLabelText('Message'), { target: { value: '@' } });
+    fireEvent.change(messageBox(), { target: { value: '@' } });
 
     // The heading is on screen and is NOT one of the addressable rows: three
     // options (one action, two kinds for the other session), no more.
@@ -180,7 +236,7 @@ suite('session handoff', () => {
     renderApp();
     hydrateTwoSessions();
 
-    const box = screen.getByLabelText('Message');
+    const box = messageBox();
     fireEvent.change(box, { target: { value: '@nothinglikethis' } });
 
     screen.getByText('No match');
@@ -195,7 +251,7 @@ suite('session handoff', () => {
     renderApp();
     hydrateTwoSessions();
 
-    fireEvent.change(screen.getByLabelText('Message'), { target: { value: '@' } });
+    fireEvent.change(messageBox(), { target: { value: '@' } });
 
     const list = screen.getByRole('listbox');
     assert.strictEqual((list.getAttribute('aria-label') ?? '').length > 0, true);
@@ -207,7 +263,7 @@ suite('session handoff', () => {
     renderApp();
     hydrateTwoSessions();
 
-    const box = screen.getByLabelText('Message');
+    const box = messageBox();
     fireEvent.change(box, { target: { value: '@hand' } });
     fireEvent.keyDown(box, { key: 'Enter' });
 
@@ -226,7 +282,7 @@ suite('session handoff', () => {
     renderApp();
     hydrateTwoSessions();
 
-    const box = screen.getByLabelText('Message');
+    const box = messageBox();
     fireEvent.change(box, { target: { value: '@hand' } });
     fireEvent.keyDown(box, { key: 'Enter' });
     fireEvent.change(screen.getByLabelText('First message'), { target: { value: 'go' } });
