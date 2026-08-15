@@ -44,8 +44,8 @@ function lineFor(item: TranscriptItem): string | undefined {
     case 'user': return `USER: ${item.text}`;
     case 'assistant': return item.text.trim() ? `ASSISTANT: ${item.text}` : undefined;
     case 'tool': return `TOOL (${item.state}): ${describe(item.tool)}`;
-    // A permission is an interaction with the panel, not conversation content,
-    // and an error describes a run that no longer exists.
+    // A permission or a relocation offer is an interaction with the panel, not
+    // conversation content, and an error describes a run that no longer exists.
     default: return undefined;
   }
 }

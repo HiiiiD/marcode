@@ -29,6 +29,17 @@ export type TranscriptItem =
       role: 'permission'; requestId: string; tool: ToolCall;
       state: 'pending' | 'allowed' | 'denied'; reason?: string;
     })
+  /**
+   * An offer to follow an agent into a worktree it just created. Durable,
+   * unlike a permission request: nothing is blocked on the answer, so it
+   * survives a reload and stays meaningful when answered later. Answered
+   * items render as their outcome, so the transcript reads as a record of
+   * where the work happened.
+   */
+  | (ItemBase & {
+      role: 'relocation'; path: string;
+      state: 'pending' | 'moved' | 'stayed';
+    })
   | (ItemBase & { role: 'error'; message: string });
 
 export type TranscriptPatch =
@@ -172,7 +183,8 @@ export type WebviewToHost =
    * Hence the `SessionId`, which also keeps this in line with the "every
    * session-addressed message carries an explicit id" rule.
    */
-  | { t: 'open-file'; id: SessionId; path: string };
+  | { t: 'open-file'; id: SessionId; path: string }
+  | { t: 'answer-relocation'; id: SessionId; itemId: string; move: boolean };
 
 export type HostToWebview =
   | { t: 'hydrate'; sessions: SessionSummary[]; layout: PaneLayout;

@@ -46,6 +46,11 @@ export function TranscriptItemView({
     case 'permission':
       return <PermissionCard item={item} sessionId={sessionId} />;
 
+    case 'relocation':
+      // The card lands in a later task; until then the item is durable and
+      // inert, so it renders nothing rather than a placeholder.
+      return null;
+
     default:
       // The TranscriptItem type is closed, but nothing guarantees a runtime
       // value matches it (schema drift between an older webview bundle and a

@@ -24,6 +24,7 @@ function describeInbound(m: WebviewToHost): string {
     case 'load-more': return 'load-more';
     case 'request-context': return 'request-context';
     case 'open-file': return 'open-file';
+    case 'answer-relocation': return 'answer-relocation';
     default: return assertNever(m);
   }
 }
