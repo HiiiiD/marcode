@@ -1,6 +1,6 @@
-import type { AgentEvent } from '../types';
+import type { AgentEvent, McpServerStatus } from '../types';
 import type { RequestId } from './app-server';
-import type { ThreadItem } from './wire';
+import type { McpServerStatusUpdatedNotification, McpServerStartupState, ThreadItem } from './wire';
 
 /** Item kinds that render as a tool row. Everything else is not a tool. */
 const TOOL_KINDS = new Set([
@@ -60,6 +60,12 @@ export function mapNotification(method: string, params: unknown): AgentEvent[] {
       if (e.willRetry) { return []; }
       return [{ kind: 'turn-end', reason: 'error', error: e.error?.message ?? 'Codex error' }];
     }
+    case 'mcpServer/startupStatus/updated': {
+      const status = mcpServerStatusOf(p as unknown as McpServerStatusUpdatedNotification);
+      // Single-server, not a roster — see `mcpServerStatusOf`. `CodexRun`
+      // accumulates these by name before anything downstream sees them.
+      return status ? [{ kind: 'mcp-servers', servers: [status] }] : [];
+    }
     case 'account/rateLimits/updated':
       // Documented as a sparse rolling update: a signal that a pull is due,
       // never the numbers themselves.
@@ -77,6 +83,47 @@ export function mapNotification(method: string, params: unknown): AgentEvent[] {
     default:
       return [];
   }
+}
+
+/**
+ * Codex's four startup states to the panel's five.
+ *
+ * `starting`/`ready`/`failed` line up directly. The two that do not:
+ *
+ * - `needs-auth` has no state of its own on the wire — it is `failed` plus
+ *   `failureReason: 'reauthenticationRequired'`, the one member that enum
+ *   has. Collapsing it into a plain `failed` would tell a user to debug a
+ *   server that only wants a login.
+ * - `disabled` likewise has no state of its own. `cancelled` is the closest
+ *   honest reading — a server whose startup was called off is configured but
+ *   not running, which is exactly what `disabled` says, and the distinction
+ *   the panel draws is "configured-but-off vs broken". It is a mapping, not
+ *   a field Codex sends; if a future CLI adds a real disabled state this is
+ *   the line to revisit.
+ */
+const MCP_STATES: Record<McpServerStartupState, McpServerStatus['state']> = {
+  starting: 'pending',
+  ready: 'connected',
+  failed: 'failed',
+  cancelled: 'disabled',
+};
+
+/**
+ * One `mcpServer/startupStatus/updated` notification to one server's status,
+ * or undefined if it names no server.
+ *
+ * Pure and single-server by design: the notification reports one server at a
+ * time, while the `mcp-servers` event is a full-replacement list. Holding the
+ * roster is `CodexRun`'s job, not a mapper's.
+ */
+export function mcpServerStatusOf(
+  n: McpServerStatusUpdatedNotification | undefined,
+): McpServerStatus | undefined {
+  if (!n?.name) { return undefined; }
+  const state = n.failureReason === 'reauthenticationRequired'
+    ? 'needs-auth'
+    : MCP_STATES[n.status] ?? 'pending';
+  return { name: n.name, state, ...(n.error ? { error: n.error } : {}) };
 }
 
 function startOf(item: ThreadItem | undefined): AgentEvent[] {

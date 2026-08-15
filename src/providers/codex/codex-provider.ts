@@ -5,6 +5,7 @@ import type {
 import { AppServer, type Duplex, type RequestId } from './app-server';
 import { CodexRun, type CodexConnection } from './codex-run';
 import { CODEX_MODES, effortLevelsOf } from './map-settings';
+import { toInvocables } from './map-skills';
 import { toUsageWindows } from './map-usage';
 import type {
   AccountReadResponse, CodexModel, ModelListResponse, RateLimitsReadResponse, SkillsListResponse,
@@ -258,43 +259,32 @@ export class CodexProvider implements AgentProvider {
    * `account/rateLimits/read` is process-global, same as the Claude
    * provider's usage probe. Rejections propagate: `SessionManager` decides
    * the retry policy.
+   *
+   * `cwd` is accepted (every probe in this class takes one) and NOT sent: the
+   * request declares `params: undefined`, a serde unit. Sending `{ cwd }` is
+   * not tolerated the way an unknown *field* would be — measured live on
+   * codex-cli 0.147.0 it fails outright with `Invalid request: invalid type:
+   * map, expected unit`, so `fetchUsage` rejected every time and the usage
+   * strip never populated at activation. Same fix as `account/read` and
+   * `model/list` above.
    */
-  async fetchUsage(cwd: string): Promise<UsageWindow[] | undefined> {
+  async fetchUsage(_cwd: string): Promise<UsageWindow[] | undefined> {
     const server = await this.connection();
-    const response = await server.request<RateLimitsReadResponse>('account/rateLimits/read', { cwd });
+    const response = await server.request<RateLimitsReadResponse>('account/rateLimits/read', {});
     return toUsageWindows(response.rateLimits);
   }
 
   /**
    * The cwd's skill catalog, with no thread.
    *
-   * `skills/list` is keyed by `cwds` (plural, an array — `SkillsListParams`)
-   * and nests its answer one level deeper than every other list request
-   * here: `data` is one `SkillsListEntry` per requested cwd, each carrying
-   * that cwd's own `skills`, not a flat list. This flattens across entries
-   * (only one is ever requested, but the shape allows more), drops any
-   * skill the server itself marked `enabled: false` — a disabled skill must
-   * not be offered for `/name` invocation — and prefers `shortDescription`
-   * over the full `description` for the menu row, since that field exists
-   * specifically for compact display. Parsing stays tolerant (missing
-   * arrays default to empty) the same way `mapNotification` treats an
-   * unrecognized shape as zero results rather than a thrown error.
+   * `skills/list` is keyed by `cwds` (plural, an array — `SkillsListParams`).
+   * The response mapping lives in map-skills.ts because `CodexRun` needs the
+   * same one when it re-pulls after a `skills/changed` invalidation.
    */
   async listInvocables(cwd: string): Promise<Invocable[]> {
     const server = await this.connection();
     const response = await server.request<SkillsListResponse>('skills/list', { cwds: [cwd] });
-    return (response.data ?? [])
-      .flatMap((entry) => entry.skills ?? [])
-      // Explicit `false` only: a field this parser doesn't recognize (or a
-      // future CLI that drops it entirely — this protocol carries no
-      // version) must not silently empty the user's `/`-menu the way a
-      // truthy check on a missing value would.
-      .filter((skill) => skill.enabled !== false)
-      .map((skill) => ({
-        name: skill.name,
-        description: skill.shortDescription ?? skill.description,
-        origin: skill.scope,
-      }));
+    return toInvocables(response);
   }
 
   /**

@@ -1,13 +1,18 @@
 import { formatEditorContext } from '../format-editor-context';
 import type {
-  AgentEvent, AgentRun, ContextBreakdown, EditorContext,
-  EffortLevel, PermissionMode, StartOptions, ToolDecision, UsageWindow,
+  AgentEvent, AgentRun, ContextBreakdown, EditorContext, EffortLevel, McpServerStatus,
+  PermissionMode, StartOptions, ToolDecision, UsageWindow,
 } from '../types';
 import type { RequestId } from './app-server';
 import { approvalEventOf, DECLINED_INPUT_METHODS, mapNotification } from './map-events';
 import { codexSettings, sandboxPolicyOf } from './map-settings';
+import { toInvocables } from './map-skills';
 import { toContextBreakdown, toUsageWindows } from './map-usage';
-import type { RateLimitSnapshot, ReviewDecision, ThreadTokenUsage } from './wire';
+import type {
+  FileChangeApprovalDecision, McpServerElicitationRequestResponse,
+  PermissionsRequestApprovalResponse, RateLimitsReadResponse, SkillsListResponse,
+  ThreadTokenUsage, ToolRequestUserInputResponse,
+} from './wire';
 
 /**
  * The subset of `AppServer` this class needs.
@@ -115,8 +120,42 @@ export class CodexRun implements AgentRun {
   private startPromise: Promise<string | undefined> | undefined;
   private disposed = false;
 
-  /** JSON-RPC id (as received) for every outstanding `permission` event, keyed by its string id. */
-  private readonly pendingApprovals = new Map<string, RequestId>();
+  /**
+   * Set by `onClose` — the connection this run was started on is gone.
+   *
+   * Distinct from `disposed`, and load-bearing: `setBinPath` tears the shared
+   * process down unconditionally, without disposing the runs on it. A run
+   * that kept issuing requests afterwards would go through
+   * `ThreadView.request`, which calls `connection()` and so SPAWNS A FRESH
+   * PROCESS — then drives it with a thread id that only existed in the dead
+   * one, and pushes every resulting error into an already-closed channel
+   * where nobody can see it. `dead` is the guard on every outbound path.
+   */
+  private connectionClosed = false;
+
+  /** No request may leave this run once either of these is true. */
+  private get dead(): boolean { return this.disposed || this.connectionClosed; }
+
+  /**
+   * Every outstanding `permission` event, keyed by its string id.
+   *
+   * The originating `method` is kept alongside the JSON-RPC id because the
+   * three approval requests take three *different* response shapes — see
+   * `respondToTool`. Answering a fileChange request with a command decision
+   * (or either with the legacy v1 `ReviewDecision`) is silently rejected by
+   * the server and the tool never runs.
+   */
+  private readonly pendingApprovals = new Map<string, { rpcId: RequestId; method: string }>();
+
+  /**
+   * Every MCP server this thread has heard a startup status for, by name.
+   *
+   * `mcpServer/startupStatus/updated` reports one server at a time, while the
+   * `mcp-servers` event is a full-replacement list (`AgentSession` assigns it
+   * wholesale). Emitting a single-element list per notification would leave
+   * the strip showing only whichever server reported last.
+   */
+  private readonly mcpServers = new Map<string, McpServerStatus>();
 
   /**
    * The last-known context occupancy. `contextBreakdown` (below) is attached
@@ -168,7 +207,15 @@ export class CodexRun implements AgentRun {
       if (method === 'thread/tokenUsage/updated') {
         this.captureContextUsage((params as { tokenUsage?: ThreadTokenUsage } | undefined)?.tokenUsage);
       }
-      for (const event of mapNotification(method, params)) { this.events.push(event); }
+      if (method === 'skills/changed') {
+        // A pure invalidation signal — `SkillsChangedNotification` is
+        // `Record<string, never>`, i.e. an empty object, so there is nothing
+        // for a mapper to map. The refreshed list has to be pulled.
+        void this.refreshInvocables();
+      }
+      for (const event of mapNotification(method, params)) {
+        this.events.push(event.kind === 'mcp-servers' ? this.mergeMcpServers(event.servers) : event);
+      }
     });
 
     server.onServerRequest((method, id, params) => {
@@ -176,6 +223,16 @@ export class CodexRun implements AgentRun {
       if (p.threadId !== undefined && p.threadId !== this._threadId) { return; }
 
       if (DECLINED_INPUT_METHODS.includes(method)) {
+        // Each of these has its own required-field response shape — `{}`
+        // fails deserialization server-side, which leaves the blocking
+        // request unanswered and hangs the turn, i.e. exactly what this
+        // branch exists to prevent.
+        const refusal: ToolRequestUserInputResponse | McpServerElicitationRequestResponse
+          = method === 'item/tool/requestUserInput'
+            // A map, so an empty one is structurally valid and says
+            // "answered none of the questions".
+            ? { answers: {} }
+            : { action: 'decline', content: null, _meta: null };
         // v1 cannot render a typed-input request, but an unanswered blocking
         // one hangs the turn — so it is declined immediately, and the
         // transcript says so rather than failing silently.
@@ -185,18 +242,19 @@ export class CodexRun implements AgentRun {
           kind: 'tool-end', id: toolId, ok: false,
           output: 'The panel cannot answer this request yet.',
         });
-        this.server.respond(id, {});
+        this.server.respond(id, refusal);
         return;
       }
 
       const approval = approvalEventOf(method, id, params);
       if (approval && approval.kind === 'permission') {
-        this.pendingApprovals.set(approval.id, id);
+        this.pendingApprovals.set(approval.id, { rpcId: id, method });
         this.events.push(approval);
       }
     });
 
     server.onClose((reason) => {
+      this.connectionClosed = true;
       this.events.push({ kind: 'turn-end', reason: 'error', error: reason });
       this.events.close();
     });
@@ -241,11 +299,16 @@ export class CodexRun implements AgentRun {
 
   private async startThread(): Promise<string | undefined> {
     const settings = codexSettings(this.mode);
+    // No `effort` here: neither `ThreadStartParams` nor `ThreadResumeParams`
+    // declares one (verified against the codex-cli 0.147.0 bindings). serde
+    // ignores unknown fields, so sending it was inert rather than fatal —
+    // which is exactly why it had to go: a field that looks like it works and
+    // does nothing is worse than no field. Effort reaches the model on the
+    // first `turn/start`, which does declare it (see `send`).
     const base = {
       ...settings,
       cwd: this.opts.cwd,
       model: this.model,
-      effort: this.effort,
     };
     try {
       const result = this.opts.resumeToken
@@ -269,7 +332,7 @@ export class CodexRun implements AgentRun {
     // attached.
     const body = context ? `${formatEditorContext(context)}\n\n${text}` : text;
     this.ensureStarted().then((threadId) => {
-      if (this.disposed || !threadId) { return; }
+      if (this.dead || !threadId) { return; }
       const settings = codexSettings(this.mode);
       this.server.request('turn/start', {
         threadId,
@@ -298,14 +361,78 @@ export class CodexRun implements AgentRun {
     });
   }
 
+  /**
+   * Answers one parked approval in the shape its own request declared.
+   *
+   * The three `item/*\/requestApproval` requests do NOT share a response
+   * type, which is why `pendingApprovals` remembers the method:
+   *
+   * - `commandExecution` and `fileChange` each take `{ decision }`, from
+   *   their own v2 enum. Both spell yes/no `accept`/`decline` — NOT the
+   *   legacy v1 `'approved'`/`{denied:{rejection}}`, which belongs to the
+   *   `execCommandApproval`/`applyPatchApproval` requests this client never
+   *   uses. Measured live on codex-cli 0.147.0: `{decision:'approved'}` left
+   *   the command unrun and the agent reported that its "required approval
+   *   mechanism failed"; `{decision:'accept'}` ran it.
+   * - `permissions` has no `decision` field at all — it asks which extra
+   *   permissions to grant and for how long, not yes/no. There is no
+   *   `decline` member to send. The nearest honest refusal the type can
+   *   express is an EMPTY grant (both fields of `GrantedPermissionProfile`
+   *   are optional) at the narrower `'turn'` scope: grant nothing, for this
+   *   turn only. That is what a denial means, and it is also what an
+   *   "allow" from our card would have to send, since a `ToolDecision`
+   *   carries no permission set to widen with — so the answer is the same
+   *   either way and the card cannot actually grant anything. Rendering a
+   *   real grant UI is the fix; guessing a payload is not.
+   *
+   * `decision.reason` has nowhere to go in any of these — no v2 decision
+   * carries free text. It stays in the transcript, where the user wrote it.
+   */
   respondToTool(id: string, decision: ToolDecision): void {
-    const rpcId = this.pendingApprovals.get(id);
-    if (rpcId === undefined) { return; }
+    const pending = this.pendingApprovals.get(id);
+    if (!pending) { return; }
     this.pendingApprovals.delete(id);
-    const result: ReviewDecision = decision.allow
-      ? 'approved'
-      : { denied: { rejection: decision.reason ?? 'Denied from the panel' } };
-    this.server.respond(rpcId, { decision: result });
+    if (pending.method === 'item/permissions/requestApproval') {
+      const result: PermissionsRequestApprovalResponse = { permissions: {}, scope: 'turn' };
+      this.server.respond(pending.rpcId, result);
+      return;
+    }
+    // One shared spelling across both remaining methods — the two enums
+    // agree on these members — but typed against the narrower of the two so
+    // a future divergence fails here rather than on the wire.
+    const result: FileChangeApprovalDecision = decision.allow ? 'accept' : 'decline';
+    this.server.respond(pending.rpcId, { decision: result });
+  }
+
+  /**
+   * Folds one server's status into the roster and returns the whole of it.
+   *
+   * See `mcpServers` for why: the notification is per-server, the event is a
+   * full replacement.
+   */
+  private mergeMcpServers(servers: McpServerStatus[]): AgentEvent {
+    for (const server of servers) { this.mcpServers.set(server.name, server); }
+    return { kind: 'mcp-servers', servers: [...this.mcpServers.values()] };
+  }
+
+  /**
+   * Re-pulls the skill catalog after a `skills/changed` invalidation.
+   *
+   * Never rejects: a failed refresh leaves the `/`-menu showing the last
+   * list that worked, which is strictly better than emptying it. Guarded on
+   * `disposed` for the same reason `usageWindows` is — see there.
+   */
+  private async refreshInvocables(): Promise<void> {
+    if (this.dead) { return; }
+    try {
+      const response = await this.server.request<SkillsListResponse>(
+        'skills/list', { cwds: [this.opts.cwd] },
+      );
+      if (this.dead) { return; }
+      this.events.push({ kind: 'invocables', entries: toInvocables(response) });
+    } catch {
+      // Best-effort, as above.
+    }
   }
 
   /**
@@ -353,10 +480,20 @@ export class CodexRun implements AgentRun {
    * request, so it needs no thread and works even before the first `send()`.
    */
   async usageWindows(): Promise<UsageWindow[] | undefined> {
-    if (this.disposed) { return undefined; }
+    // `dead`, not `disposed`: a run whose connection was torn down by
+    // `setBinPath` would otherwise respawn a process just to ask this. See
+    // `connectionClosed`.
+    if (this.dead) { return undefined; }
     try {
-      const snapshot = await this.server.request<RateLimitSnapshot>('account/rateLimits/read', {});
-      return toUsageWindows(snapshot);
+      // The snapshot is NESTED under `rateLimits` (`GetAccountRateLimitsResponse`),
+      // not returned bare — reading it as a `RateLimitSnapshot` finds no
+      // `primary`/`secondary` and silently yields an empty strip. Params are
+      // `{}`: the request declares a serde unit, and `{ cwd }` is a hard
+      // protocol error.
+      const response = await this.server.request<RateLimitsReadResponse>(
+        'account/rateLimits/read', {},
+      );
+      return toUsageWindows(response?.rateLimits);
     } catch {
       return undefined;
     }
@@ -367,9 +504,17 @@ export class CodexRun implements AgentRun {
     if (this.disposed) { return; }
     this.disposed = true;
     // Left-over approvals get an explicit denial rather than hanging forever
-    // on a session that is going away.
-    for (const [, rpcId] of this.pendingApprovals) {
-      this.server.respond(rpcId, { decision: { denied: { rejection: 'Session closed' } } });
+    // on a session that is going away — in each request's own response shape,
+    // same as `respondToTool`. A v1 `{denied:{rejection}}` here is not a
+    // denial at all: it fails to deserialize and the request stays parked.
+    for (const [, pending] of this.pendingApprovals) {
+      if (pending.method === 'item/permissions/requestApproval') {
+        const empty: PermissionsRequestApprovalResponse = { permissions: {}, scope: 'turn' };
+        this.server.respond(pending.rpcId, empty);
+      } else {
+        const declined: FileChangeApprovalDecision = 'decline';
+        this.server.respond(pending.rpcId, { decision: declined });
+      }
     }
     this.pendingApprovals.clear();
     if (this._threadId) {

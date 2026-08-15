@@ -7,6 +7,17 @@
  * runtime. `src/test/unit/codex-smoke.test.ts` automates the method-name half
  * of that check.
  *
+ * THAT SKEW CHECK COVERS METHOD **NAMES** ONLY. It asks the live binary
+ * whether each method we send still exists; it never sends a real payload or
+ * inspects a real response, so **payload-shape drift is invisible to it**.
+ * Three shipped bugs came through that gap on 0.147.0 — `{ cwd }` sent to a
+ * `params: undefined` request, a v1 `ReviewDecision` sent to a v2 approval,
+ * and a response read one level too shallow — each of which the name check
+ * passed cleanly. Shapes are held instead by the unit suites, which assert
+ * the exact params we put on the wire and the exact responses we parse
+ * (`codex-provider.test.ts`, `codex-run.test.ts`). Change a type here and a
+ * test there must move with it.
+ *
  * Verified against codex-cli 0.147.0.
  */
 
@@ -86,11 +97,97 @@ export type ThreadItem =
   // unknown item is ignored rather than thrown.
   | { type: string; id: string };
 
-export type ReviewDecision =
-  | 'approved'
-  | 'approved_for_session'
-  | 'abort'
-  | { denied: { rejection: string } };
+/**
+ * The v2 approval decisions — verified against the codex-cli 0.147.0
+ * generated bindings (`CommandExecutionApprovalDecision`,
+ * `FileChangeApprovalDecision`).
+ *
+ * These replace the v1 `ReviewDecision` (`'approved'` / `{denied:{rejection}}`),
+ * which belongs to the legacy `execCommandApproval`/`applyPatchApproval`
+ * requests this client does not use. Sending a v1 value to an
+ * `item/*\/requestApproval` request is not a no-op: measured live on 0.147.0,
+ * `{decision:'approved'}` left the command unrun and the agent reported that
+ * "the workspace blocked the shell write because its required approval
+ * mechanism failed". `{decision:'accept'}` runs it.
+ *
+ * The amendment-carrying command variants
+ * (`acceptWithExecpolicyAmendment`/`applyNetworkPolicyAmendment`) are
+ * deliberately unmodelled: a `ToolDecision` is a yes/no and cannot express an
+ * exec-policy or network-policy amendment.
+ */
+export type CommandExecutionApprovalDecision =
+  | 'accept' | 'acceptForSession' | 'decline' | 'cancel';
+export type FileChangeApprovalDecision =
+  | 'accept' | 'acceptForSession' | 'decline' | 'cancel';
+
+export interface CommandExecutionRequestApprovalResponse {
+  decision: CommandExecutionApprovalDecision;
+}
+export interface FileChangeRequestApprovalResponse {
+  decision: FileChangeApprovalDecision;
+}
+
+/**
+ * `item/permissions/requestApproval`'s response — verified against the
+ * codex-cli 0.147.0 generated bindings (`PermissionsRequestApprovalResponse`).
+ *
+ * Note what is NOT here: a `decision` field. This request does not ask
+ * yes/no, it asks *which* additional permissions to grant and for how long,
+ * so there is no "decline" member to send. Both fields of
+ * `GrantedPermissionProfile` are optional, which makes an empty profile —
+ * grant nothing — the one honest refusal the type can express; `'turn'` is
+ * the narrower of the two scopes. See `CodexRun.respondToTool`.
+ */
+export interface GrantedPermissionProfile {
+  network?: unknown;
+  fileSystem?: unknown;
+}
+export type PermissionGrantScope = 'turn' | 'session';
+export interface PermissionsRequestApprovalResponse {
+  permissions: GrantedPermissionProfile;
+  scope: PermissionGrantScope;
+  strictAutoReview?: boolean;
+}
+
+/**
+ * The two typed-input server requests this panel cannot render, and the
+ * responses that decline them — verified against the codex-cli 0.147.0
+ * generated bindings (`ToolRequestUserInputResponse`,
+ * `McpServerElicitationRequestResponse`).
+ *
+ * Both have required fields, so `{}` fails deserialization server-side and
+ * the blocking request goes unanswered — the exact hang the decline exists to
+ * prevent. `answers` is a map, so an empty one is structurally valid and
+ * means "answered nothing".
+ */
+export interface ToolRequestUserInputAnswer { answers: string[] }
+export interface ToolRequestUserInputResponse {
+  answers: Record<string, ToolRequestUserInputAnswer>;
+}
+export type McpServerElicitationAction = 'accept' | 'decline' | 'cancel';
+export interface McpServerElicitationRequestResponse {
+  action: McpServerElicitationAction;
+  /** Nullable by design: decline/cancel responses carry no content. */
+  content: unknown | null;
+  _meta: unknown | null;
+}
+
+/**
+ * `mcpServer/startupStatus/updated`'s params — verified against the
+ * codex-cli 0.147.0 generated bindings (`McpServerStatusUpdatedNotification`).
+ *
+ * One server per notification, not a roster: the panel's `mcp-servers` event
+ * is a full-replacement list, so `CodexRun` accumulates these by `name`.
+ */
+export type McpServerStartupState = 'starting' | 'ready' | 'failed' | 'cancelled';
+export type McpServerStartupFailureReason = 'reauthenticationRequired';
+export interface McpServerStatusUpdatedNotification {
+  threadId: string | null;
+  name: string;
+  status: McpServerStartupState;
+  error: string | null;
+  failureReason: McpServerStartupFailureReason | null;
+}
 
 /** `InitializeResponse` — verified against codex-cli 0.147.0. Carries no protocol version. */
 export interface InitializeResponse {
@@ -124,6 +221,19 @@ export interface ModelListResponse {
   nextCursor: string | null;
 }
 
+/**
+ * `account/rateLimits/read`'s response — verified against the codex-cli
+ * 0.147.0 generated bindings (`GetAccountRateLimitsResponse`).
+ *
+ * The snapshot is nested under `rateLimits`, not returned bare: typing this
+ * request as a `RateLimitSnapshot` parses `.primary`/`.secondary` off the
+ * envelope, finds nothing, and yields an empty window list. The request
+ * itself declares `params: undefined` (a serde unit) — send `{}`, never
+ * `{ cwd }`, which errors with `invalid type: map, expected unit`.
+ *
+ * `rateLimitsByLimitId`/`rateLimitResetCredits` are deliberately unmodelled:
+ * the strip renders the single-bucket view only.
+ */
 export interface RateLimitsReadResponse {
   rateLimits: RateLimitSnapshot;
 }
