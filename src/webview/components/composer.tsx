@@ -20,6 +20,8 @@ import { EditorContextToggle } from "./editor-context-toggle";
 import { InvocableMenu } from "./invocable-menu";
 import { ModeMenu } from "./mode-menu";
 import { RefMenu } from "./ref-menu";
+import { SessionCreateDialog } from "./session-create-dialog";
+import { createMessage, settingsFor } from "./session-create-settings";
 
 export function Composer({
   pane,
@@ -81,6 +83,8 @@ export function Composer({
   // Same session-scoping rationale again, for the `/` control's
   // disabled-over-a-draft reason.
   const invocablesReasonId = `invocables-reason-${pane.summary.id}`;
+
+  const handoffSettings = settingsFor(state, pane.summary.id);
 
   const entries = pane.invocables ?? [];
   /**
@@ -456,6 +460,23 @@ export function Composer({
           <ContextRing pane={pane} open={contextOpen} onOpenChange={setContextOpen} />
         </InputGroupAddon>
       </InputGroup>
+      {handoffSettings && (
+        <SessionCreateDialog
+          open={handoffOpen}
+          onOpenChange={setHandoffOpen}
+          catalog={state.catalog}
+          initial={handoffSettings}
+          seedable
+          onCreate={(chosen, seed) => {
+            const carried = sessionRefsOf(pruneMentions(seed ?? "", refs));
+            post(createMessage(chosen, {
+              text: seed ?? "",
+              refs: carried,
+            }));
+            setHandoffOpen(false);
+          }}
+        />
+      )}
     </div>
   );
 }

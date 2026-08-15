@@ -93,4 +93,39 @@ suite('session handoff', () => {
     const active = box.getAttribute('aria-activedescendant');
     assert.strictEqual(typeof active === 'string' && active.startsWith(controls!), true);
   });
+
+  test('picking handoff opens the create dialog and posts a seed', () => {
+    renderApp();
+    hydrateTwoSessions();
+
+    const box = screen.getByLabelText('Message');
+    fireEvent.change(box, { target: { value: '@hand' } });
+    fireEvent.keyDown(box, { key: 'Enter' });
+
+    const seed = screen.getByLabelText('First message');
+    fireEvent.change(seed, { target: { value: 'Execute the plan in docs/x.md' } });
+    fireEvent.click(screen.getByText('Create and send'));
+
+    const creates = posted().filter((m) => m.t === 'create-session');
+    assert.strictEqual(creates.length, 1);
+    const sent = creates[0] as { seed?: { text: string; refs: unknown[] } };
+    assert.strictEqual(sent.seed?.text, 'Execute the plan in docs/x.md');
+    assert.strictEqual(sent.seed?.refs.length, 0);
+  });
+
+  test('the handoff dialog inherits the source session provider and model', () => {
+    renderApp();
+    hydrateTwoSessions();
+
+    const box = screen.getByLabelText('Message');
+    fireEvent.change(box, { target: { value: '@hand' } });
+    fireEvent.keyDown(box, { key: 'Enter' });
+    fireEvent.change(screen.getByLabelText('First message'), { target: { value: 'go' } });
+    fireEvent.click(screen.getByText('Create and send'));
+
+    const creates = posted().filter((m) => m.t === 'create-session');
+    const sent = creates[0] as { providerId: string; model: string };
+    assert.strictEqual(sent.providerId, 'fake');
+    assert.strictEqual(sent.model, 'm');
+  });
 });
