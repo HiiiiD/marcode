@@ -377,6 +377,25 @@ suite('MessageRouter', () => {
     assert.deepStrictEqual(calls, ['ask:s-1', 'do:s-1']);
   });
 
+  test('both stale-tree messages survive the wire guard and reach the manager', async () => {
+    // Same trap again, and worse here: neither message carries a SessionId, so
+    // a tag missing from KNOWN_MESSAGE_TAGS would leave the sweep silently
+    // dead with nothing in any transcript to show for it.
+    const calls: string[] = [];
+    manager.requestStaleTrees = async () => { calls.push('ask'); };
+    manager.removeStaleTree = async (path: string) => { calls.push(`remove:${path}`); };
+
+    await router.handle({ t: 'request-stale-trees' });
+    await router.handle({ t: 'remove-stale-tree', path: '/repo/trees/feat-x' });
+
+    assert.deepStrictEqual(calls, ['ask', 'remove:/repo/trees/feat-x']);
+  });
+
+  test('a rejecting stale-tree removal is caught rather than becoming an unhandled rejection', async () => {
+    manager.removeStaleTree = async () => { throw new Error('git exploded'); };
+    await router.handle({ t: 'remove-stale-tree', path: '/repo/trees/feat-x' });
+  });
+
   test('a rejecting bring-back is caught rather than becoming an unhandled rejection', async () => {
     // Awaited, not `void`ed: this one shells out to git and touches the
     // filesystem, where EPERM/EBUSY are routine on Windows.

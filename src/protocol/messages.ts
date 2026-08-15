@@ -163,6 +163,30 @@ export type BringBackPlan =
   | { ok: true; branch: string; worktree: string; mainRoot: string }
   | { ok: false; reason: string; isWorktree: boolean };
 
+/**
+ * One linked worktree the panel knows about, and whether it can be swept away.
+ *
+ * "Knows about" is the union of every directory a session is sitting in and
+ * every directory a session still holds a resume token for — the two ways a
+ * tree ends up outliving the work that created it. `sessionId` is the session
+ * *currently* in it; its absence is what makes a row stale rather than in use,
+ * and it is why the sweep exists at all: a tree nobody occupies has no pane
+ * header to offer the bring-back door from.
+ *
+ * `reason` is `bringBackPlan`'s refusal, carried verbatim. Removal here is the
+ * same operation with the same preconditions, so a second set of safety checks
+ * would only be a second set of things to disagree.
+ */
+export interface StaleTree {
+  path: string;
+  branch?: string;
+  clean: boolean;
+  /** The session sitting in this directory now, or absent when none is. */
+  sessionId?: SessionId;
+  /** Absent when it can be removed; the one line refusing it otherwise. */
+  reason?: string;
+}
+
 export interface PaneLayout {
   orientation: 'vertical' | 'horizontal';
   panes: { sessionId: SessionId; size: number }[];
@@ -214,7 +238,20 @@ export type WebviewToHost =
    * have been open for minutes, and the plan it displayed is a description of
    * a past state, never an authorization.
    */
-  | { t: 'bring-back'; id: SessionId };
+  | { t: 'bring-back'; id: SessionId }
+  /**
+   * "Which working trees does this panel still touch?" Read-only, and
+   * deliberately not session-addressed: the answer spans every session's
+   * directories at once, and the rows that matter most are the ones no
+   * session is in.
+   */
+  | { t: 'request-stale-trees' }
+  /**
+   * "Sweep this one." Addressed by path rather than by session for the same
+   * reason. The host re-plans before acting and refuses through the refreshed
+   * sweep, exactly as `bring-back` re-plans and refuses through a fresh plan.
+   */
+  | { t: 'remove-stale-tree'; path: string };
 
 export type HostToWebview =
   | { t: 'hydrate'; sessions: SessionSummary[]; layout: PaneLayout;
@@ -263,4 +300,12 @@ export type HostToWebview =
    * or by trying, and the dialog that is still on screen should show it either
    * way rather than sitting on the plan that has just been overtaken.
    */
-  | { t: 'bring-back-plan'; id: SessionId; plan: BringBackPlan };
+  | { t: 'bring-back-plan'; id: SessionId; plan: BringBackPlan }
+  /**
+   * The answer to `request-stale-trees`, and also what a `remove-stale-tree`
+   * replies with — success and refusal are the same shape here, because the
+   * refusal *is* a row: the tree is still listed, still dirty, and the reason
+   * it could not go is the line it now carries. A complete replacement, never
+   * a delta.
+   */
+  | { t: 'stale-trees'; trees: StaleTree[] };

@@ -1,4 +1,5 @@
-import { ColumnsIcon, PlugZapIcon, RowsIcon } from 'lucide-react';
+import { ColumnsIcon, FolderGit2Icon, PlugZapIcon, RowsIcon } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem,
@@ -9,6 +10,7 @@ import { aggregateServers, isUnhealthy, worstState } from './mcp-status';
 import { evenlySizedPanes } from './pane-layout';
 import { SessionCreateMenu } from './session-create-menu';
 import { SessionRow } from './session-row';
+import { StaleTreesDialog } from './stale-trees';
 import { useStore } from '../store';
 import { statusView } from '../status';
 import type { SessionId } from '../../protocol/messages';
@@ -39,6 +41,18 @@ export function SessionPicker({ narrow }: SessionPickerProps) {
 
   const live = state.sessions.filter((s) => !s.archived);
   const archived = state.sessions.filter((s) => s.archived);
+
+  const [treesOpen, setTreesOpen] = useState(false);
+  // Asked once per set of directories the roster occupies, and never for an
+  // empty roster: with no session there is nothing that could have left a
+  // tree behind, and the sweep shells out to git per directory. The entry
+  // point below is mounted only once an answer names one — an item that is
+  // empty nine times out of ten teaches the user it is empty.
+  const cwdKey = JSON.stringify(state.sessions.map((s) => s.cwd));
+  useEffect(() => {
+    if (cwdKey === '[]') { return; }
+    post({ t: 'request-stale-trees' });
+  }, [cwdKey, post]);
 
   return (
     <div className="flex items-center gap-2 border-b border-border px-2 py-1 text-xs">
@@ -125,8 +139,19 @@ export function SessionPicker({ narrow }: SessionPickerProps) {
               </DropdownMenuGroup>
             </>
           )}
+          {state.staleTrees.length > 0 && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => { setTreesOpen(true); }}>
+                <FolderGit2Icon aria-hidden />
+                Working trees ({state.staleTrees.length})
+              </DropdownMenuItem>
+            </>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
+
+      <StaleTreesDialog open={treesOpen} onOpenChange={setTreesOpen} />
 
       <Button
         variant="outline"

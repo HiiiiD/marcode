@@ -1,16 +1,18 @@
+import { resolve } from 'node:path';
 import { AgentSession, type SessionSink } from './agent-session';
 import { catalogKey, CatalogService } from './catalog-service';
-import { bringBack as runBringBack, bringBackPlan } from './git-worktree';
+import { bringBack as runBringBack, bringBackPlan, samePath, treeStatus } from './git-worktree';
 import { buildSeed } from './replay';
 import { TRANSCRIPT_VERSION, type StoredIndex, type TranscriptStore } from './transcript-store';
 import type { AgentProvider, EffortLevel, Invocable, ModelInfo, UsageWindow } from '../providers/types';
 import { findModel, resolveEffort } from '../shared/model-catalog';
 import { resolvePermissionMode } from '../shared/permission-catalog';
-import { threadKey } from '../shared/thread-key';
+import { threadKey, threadKeyCwd } from '../shared/thread-key';
 import { orderWindows } from '../shared/usage-windows';
 import type {
   ContextResult, HostToWebview, McpServerStatus, PaneLayout, PermissionMode, ProviderInfo, SessionId,
-  SessionState, SessionStatus, SessionSummary, TranscriptItem, TranscriptPatch, UnavailableProvider,
+  SessionState, SessionStatus, SessionSummary, StaleTree, TranscriptItem, TranscriptPatch,
+  UnavailableProvider,
 } from '../protocol/messages';
 
 let counter = 0;
@@ -562,6 +564,183 @@ export class SessionManager implements SessionSink {
     await session.noteError(reason);
     if (this.disposed) { return; }
     this.emit({ t: 'bring-back-plan', id, plan: { ok: false, reason, isWorktree } });
+  }
+
+  /**
+   * Every linked working tree this panel still touches.
+   *
+   * The bring-back door lives in a pane header, which means it only exists
+   * while a session is *in* the tree. A session that moved on — or a panel
+   * restored after the session that made the tree was deleted — leaves
+   * directories on disk nothing in the UI can reach. This sweep is how they
+   * are reachable again, so its candidates are both ways a tree gets
+   * remembered: the directory a session sits in, and the directories it still
+   * holds resume tokens for.
+   *
+   * Only linked worktrees become rows. A path that is not a repository has
+   * nothing to sweep, and the main tree is where a branch comes back *to* —
+   * a row for it could only ever refuse. Refusals themselves are
+   * `bringBackPlan`'s, verbatim: removal here is that same operation, and a
+   * second set of preconditions would only be a second set of things to
+   * disagree.
+   */
+  async staleTrees(): Promise<StaleTree[]> {
+    const rows: StaleTree[] = [];
+    for (const dir of this.knownDirectories()) {
+      const status = await treeStatus(dir);
+      if (!status.isRepo || !status.isWorktree) { continue; }
+      // Two remembered paths can resolve to one tree — a session's cwd and a
+      // token key for a subdirectory of it, say. One tree, one row.
+      if (rows.some((row) => samePath(row.path, status.root))) { continue; }
+      const plan = await bringBackPlan(status.root);
+      rows.push({
+        path: status.root,
+        branch: status.branch,
+        clean: status.clean,
+        sessionId: this.occupantOf(status.root),
+        reason: plan.ok ? undefined : plan.reason,
+      });
+    }
+    return rows.sort((a, b) => a.path.localeCompare(b.path));
+  }
+
+  /** Read-only, like `requestBringBack`: safe to ask whenever the panel wants. */
+  async requestStaleTrees(): Promise<void> {
+    const trees = await this.staleTrees();
+    if (this.disposed) { return; }
+    this.emit({ t: 'stale-trees', trees });
+  }
+
+  /**
+   * Sweeps one tree away, and answers with the refreshed sweep either way.
+   *
+   * Two branches, one behaviour. An **occupied** tree is the pane header's
+   * bring-back reached through a different door, so it delegates to
+   * `bringBack` rather than reimplementing the move: the session has to end
+   * up somewhere, and there is only one code path that moves a session. An
+   * **unowned** tree runs the same plan-then-act pair directly, because there
+   * is no session to move and none to write an error item to.
+   *
+   * Which makes the refreshed sweep the refusal surface: a row that is still
+   * listed, still dirty, carrying the line that stopped it. Never rejects —
+   * this is answered straight off the wire, where errors are state.
+   */
+  async removeStaleTree(path: string): Promise<void> {
+    // The sweep is the authority on which directories this panel may touch.
+    // `path` arrives over `postMessage`; a path the sweep does not list is
+    // one no session ever named, and it is not ours to delete.
+    const target = (await this.staleTrees())
+      .find((row) => samePath(row.path, resolve(path)));
+    if (!target) { await this.requestStaleTrees(); return; }
+
+    let failure: string | undefined;
+    if (target.sessionId !== undefined) {
+      const id = target.sessionId;
+      const before = this.meta.get(id)?.cwd;
+      // A session restored from `index.json` has no live run until something
+      // asks for one — the same materialization `MessageRouter` does before a
+      // send. `bringBack` needs a live session to dispose and rebuild.
+      await this.open(id).catch(() => undefined);
+      await this.bringBack(id);
+      const after = this.meta.get(id)?.cwd;
+      // `bringBack` moves the session if and only if the directory is gone,
+      // so its cwd is the one signal that says whether to forget the tree.
+      if (before !== undefined && after !== undefined
+        && !samePath(resolve(before), resolve(after))) {
+        this.forgetTree(target.path, after);
+      }
+    } else {
+      // Re-planned here, never taken from the row: the sweep the user clicked
+      // may have been on screen for minutes, and what it showed is a
+      // description of a past state rather than an authorization.
+      const plan = await bringBackPlan(target.path);
+      if (!plan.ok) {
+        failure = plan.reason;
+      } else {
+        const result = await runBringBack(plan);
+        if (!result.ok) { failure = result.reason ?? 'The worktree could not be removed.'; }
+        if (result.removed) { this.forgetTree(target.path, plan.mainRoot); }
+      }
+    }
+
+    const trees = await this.staleTrees();
+    // A git step can refuse where the plan said yes — a locked worktree is
+    // clean by `status --porcelain`, so the fresh row would otherwise come
+    // back looking removable and say nothing about the attempt that failed.
+    if (failure !== undefined) {
+      for (const row of trees) {
+        if (samePath(row.path, target.path) && row.reason === undefined) { row.reason = failure; }
+      }
+    }
+    if (this.disposed) { return; }
+    this.emit({ t: 'stale-trees', trees });
+  }
+
+  /**
+   * Every directory the roster remembers, deduplicated, in the platform's own
+   * spelling.
+   *
+   * `threadKeyCwd` rather than a split on the colon: a `'global'`-scope key
+   * is a bare provider id and names no directory at all, and reading one as a
+   * path would put a row called `codex` in the sweep.
+   */
+  private knownDirectories(): string[] {
+    const byKey = new Map<string, string>();
+    const add = (dir: string) => {
+      const full = resolve(dir);
+      const key = process.platform === 'win32' ? full.toLowerCase() : full;
+      if (!byKey.has(key)) { byKey.set(key, full); }
+    };
+    for (const state of this.meta.values()) {
+      add(state.cwd);
+      for (const key of Object.keys(state.resumeTokens)) {
+        const dir = threadKeyCwd(key, this.providers.keys());
+        if (dir !== undefined) { add(dir); }
+      }
+    }
+    return [...byKey.values()];
+  }
+
+  /**
+   * The session sitting in `root` right now, if any. Archived sessions are
+   * not occupants: one is closed, and resurrecting it into the roster because
+   * the user swept a directory would be a surprise. Its cwd and tokens are
+   * still repaired by `forgetTree` when the tree goes.
+   */
+  private occupantOf(root: string): SessionId | undefined {
+    for (const state of this.meta.values()) {
+      if (state.archived) { continue; }
+      if (samePath(resolve(state.cwd), root)) { return state.id; }
+    }
+    return undefined;
+  }
+
+  /**
+   * Erases a removed directory from the roster: no session may still resume
+   * into it, and none may still claim to be in it.
+   *
+   * Paths get reused, which is the whole reason the tokens go — a future
+   * worktree created at the same path would otherwise inherit a conversation
+   * it never had. The cwd repair covers the sessions `bringBack` did not
+   * carry: an archived one, or one whose token merely named the tree.
+   */
+  private forgetTree(removed: string, mainRoot: string): void {
+    let touched = false;
+    for (const state of this.meta.values()) {
+      for (const key of Object.keys(state.resumeTokens)) {
+        const dir = threadKeyCwd(key, this.providers.keys());
+        if (dir !== undefined && samePath(resolve(dir), removed)) {
+          delete state.resumeTokens[key];
+          touched = true;
+        }
+      }
+      if (samePath(resolve(state.cwd), removed)) {
+        state.cwd = mainRoot;
+        state.updatedAt = Date.now();
+        touched = true;
+      }
+    }
+    if (touched) { this.changed(); }
   }
 
   /**

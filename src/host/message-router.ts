@@ -177,6 +177,17 @@ export class MessageRouter {
         await this.manager.bringBack(msg.id);
         return;
 
+      // Awaited for the same reason, and neither carries a SessionId: the
+      // sweep is panel-wide, and the rows that matter most are the ones no
+      // session is in.
+      case 'request-stale-trees':
+        await this.manager.requestStaleTrees();
+        return;
+
+      case 'remove-stale-tree':
+        await this.manager.removeStaleTree(msg.path);
+        return;
+
       case 'permission-decision':
         this.manager.get(msg.id)?.respondToPermission(msg.requestId, msg.decision);
         return;
@@ -230,6 +241,7 @@ const KNOWN_MESSAGE_TAGS = new Set<WebviewToHost['t']>([
   'set-include-context', 'reveal-file',
   'request-context', 'open-file',
   'request-bring-back', 'bring-back',
+  'request-stale-trees', 'remove-stale-tree',
 ]);
 
 /**

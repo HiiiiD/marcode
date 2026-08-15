@@ -3,7 +3,7 @@ import type {
   ContextResult,
   EditorContext,
   HostToWebview, Invocable, McpServerStatus, PaneLayout, PermissionRequest, ProviderInfo,
-  SessionId, SessionSummary, TranscriptItem, UnavailableProvider, UsageWindow,
+  SessionId, SessionSummary, StaleTree, TranscriptItem, UnavailableProvider, UsageWindow,
 } from '../protocol/messages';
 
 export interface PaneState {
@@ -52,6 +52,14 @@ export interface ClientState {
    */
   usageByProvider: Record<string, UsageWindow[] | undefined>;
   /**
+   * Every working tree the host's last sweep found, in the order it sent
+   * them. Panel-wide rather than per session, because the rows that matter
+   * are the ones no session is in. Empty until something has asked — which is
+   * not the same as "there are none", and is why the entry point is mounted
+   * only once a non-empty answer has arrived.
+   */
+  staleTrees: StaleTree[];
+  /**
    * The session whose pane last held focus — client-local, never sent to the
    * host and never persisted. It answers "which session is the user actually
    * working in", which is what a new session inherits its provider, model,
@@ -73,6 +81,7 @@ export const initialState: ClientState = {
   contextBySession: {},
   bringBackBySession: {},
   usageByProvider: {},
+  staleTrees: [],
   focusedSessionId: null,
 };
 
@@ -126,6 +135,10 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
         // git state at one instant, and a reload is exactly the event after
         // which nothing in the client may still claim to know that.
         contextBySession: {}, bringBackBySession: {}, usageByProvider: msg.usage,
+        // Cleared for the same reason the plans are: a sweep describes the
+        // disk at one instant, and a reload is exactly the event after which
+        // nothing in the client may still claim to know it.
+        staleTrees: [],
         // Not carried forward: focus is a fact about the rendered panes, and
         // hydrate rebuilds them. A stale id would let `+ New` inherit from a
         // session this hydrate may not even contain.
@@ -189,6 +202,11 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
         contextBySession: { ...state.contextBySession, [msg.id]: msg.result },
       };
     }
+
+    case 'stale-trees':
+      // Wholesale, never merged: the sweep is the complete answer, and a
+      // removal's outcome is a row that is no longer in it.
+      return { ...state, staleTrees: msg.trees };
 
     case 'usage-windows':
       return {

@@ -70,8 +70,15 @@ function normalize(gitPath: string): string {
   return resolve(gitPath.trim());
 }
 
-/** Windows path comparison is case-insensitive; POSIX is not. */
-function samePath(a: string, b: string): boolean {
+/**
+ * Windows path comparison is case-insensitive; POSIX is not.
+ *
+ * Exported because the stale-tree sweep compares the paths this module hands
+ * back (`TreeStatus.root`, always `resolve`d) against the ones sessions carry,
+ * and a second spelling of this rule elsewhere is a second thing to get wrong
+ * on one platform only. Both arguments are expected to be absolute already.
+ */
+export function samePath(a: string, b: string): boolean {
   return process.platform === 'win32'
     ? a.toLowerCase() === b.toLowerCase()
     : a === b;

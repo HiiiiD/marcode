@@ -453,6 +453,30 @@ suite('webview reducer', () => {
     assert.strictEqual(after.contextBySession['gone'], undefined);
   });
 
+  test('the stale-tree sweep replaces the previous one wholesale', () => {
+    let state = reduce(initialState, {
+      t: 'stale-trees',
+      trees: [{ path: '/repo/trees/a', branch: 'a', clean: true }],
+    });
+    assert.strictEqual(state.staleTrees.length, 1);
+    // The sweep answers a removal too, so the shrunk list IS the outcome: a
+    // merge would keep the row the user just swept away on screen forever.
+    state = reduce(state, { t: 'stale-trees', trees: [] });
+    assert.strictEqual(state.staleTrees.length, 0);
+  });
+
+  test('a reload knows nothing about the disk until it has looked again', () => {
+    const swept = reduce(initialState, {
+      t: 'stale-trees',
+      trees: [{ path: '/repo/trees/a', branch: 'a', clean: true }],
+    });
+    const after = reduce(swept, {
+      t: 'hydrate', sessions: [], layout: { orientation: 'vertical', panes: [] },
+      snapshots: [], catalog: [], unavailable: [], usage: {},
+    });
+    assert.strictEqual(after.staleTrees.length, 0);
+  });
+
   test('usage-windows replaces a provider entry wholesale', () => {
     let state = reduce(initialState, {
       t: 'usage-windows', providerId: 'fake',
