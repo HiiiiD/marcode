@@ -64,11 +64,21 @@ export function toUsageWindows(snapshot: RateLimitSnapshot): UsageWindow[] {
  *
  * `freePercent` is computed as the remainder rather than independently, so
  * the four fields sum to exactly 100 as the interface requires.
+ *
+ * Occupancy is read off `last`, never `total`. `total` is Codex's running sum
+ * over every turn in the thread, so it grows without bound while the window
+ * itself does not: measured on codex-cli 0.147.0 on 2026-08-15, three
+ * one-letter turns against a 258400-token window reported `total.totalTokens`
+ * 14974 → 32061 → 49165 while `last.totalTokens` sat at 14974 → 17087 → 17104.
+ * Dividing `total` by the window therefore reports a context that only ever
+ * climbs and reaches 100% after a handful of messages. `last` is the tokens
+ * the most recent request actually carried — the whole prior history plus
+ * this turn — which is what occupies the window right now.
  */
 export function toContextBreakdown(usage: ThreadTokenUsage): ContextBreakdown | undefined {
   const window = usage.modelContextWindow;
   if (!window || window <= 0) { return undefined; }
-  const used = Math.min(100, Math.round((usage.total.totalTokens / window) * 100));
+  const used = Math.min(100, Math.round((usage.last.totalTokens / window) * 100));
   return {
     systemPercent: 0,
     memoryPercent: 0,
