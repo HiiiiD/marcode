@@ -27,7 +27,13 @@ function stubChild() {
  */
 const AUTO_DEFAULTS: Record<string, unknown> = {
   initialize: { userAgent: 'codex', codexHome: '/home/codex', platformFamily: 'unix', platformOs: 'linux' },
-  'account/read': { account: null, requiresOpenaiAuth: false },
+  // The realistic signed-in shape (measured against a live ChatGPT Plus
+  // account, codex-cli 0.147.0): `requiresOpenaiAuth: true` right alongside
+  // a populated `account`. Defaulting to this (rather than a signed-out
+  // shape) is deliberate — a test that doesn't care about auth should sail
+  // through to whatever it's actually probing, the same way a real signed-in
+  // install does.
+  'account/read': { account: { type: 'chatgpt', email: 'dev@example.com', planType: 'plus' }, requiresOpenaiAuth: true },
 };
 
 /**
@@ -114,10 +120,35 @@ suite('CodexProvider', () => {
   test('an unauthenticated account rejects with the login instruction', async () => {
     const { provider, respondTo } = providerWithStub();
     const probe = provider.fetchModels('/repo');
-    // No `authMethod` field: the verified `GetAccountResponse` shape doesn't
-    // have one — `requiresOpenaiAuth: true` alone is "not signed in".
+    // A genuinely signed-out account: `account` itself is null/absent. This
+    // is the real signal — see the next test for why `requiresOpenaiAuth`
+    // alone cannot be it.
     await respondTo('account/read', { account: null, requiresOpenaiAuth: true });
     await assert.rejects(probe, /codex login/);
+  });
+
+  test('a signed-in ChatGPT account is not reported as signed out', async () => {
+    // The regression this pins: `requiresOpenaiAuth` describes whether this
+    // provider requires OpenAI auth AT ALL, not whether it is missing — a
+    // live, signed-in ChatGPT Plus account on codex-cli 0.147.0 returns
+    // `requiresOpenaiAuth: true` right alongside a populated `account`.
+    // Treating that combination as "not signed in" made fetchModels reject
+    // for every ChatGPT-auth user, unconditionally.
+    const { provider, respondTo } = providerWithStub();
+    const probe = provider.fetchModels('/repo');
+    await respondTo('account/read', {
+      account: { type: 'chatgpt', email: 'dev@example.com', planType: 'plus' },
+      requiresOpenaiAuth: true,
+    });
+    await respondTo('model/list', {
+      data: [{
+        id: 'gpt-5-codex', displayName: 'GPT-5 Codex', hidden: false,
+        supportedReasoningEfforts: [], defaultReasoningEffort: 'high',
+      }],
+      nextCursor: null,
+    });
+    const models = await probe;
+    assert.deepStrictEqual(models.map((m) => m.id), ['gpt-5-codex']);
   });
 
   test('a rejected handshake still kills the spawned child', async () => {

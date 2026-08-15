@@ -90,8 +90,17 @@ export interface InitializeResponse {
 
 /**
  * `account/read`'s response — verified against the codex-cli 0.147.0
- * generated bindings (`GetAccountResponse`). There is no `authMethod` field:
- * `requiresOpenaiAuth: true` alone is "not signed in".
+ * generated bindings (`GetAccountResponse`). There is no `authMethod` field.
+ *
+ * `requiresOpenaiAuth` does NOT mean "not signed in" — it describes whether
+ * this provider requires OpenAI auth at all, and stays `true` for a
+ * genuinely signed-in account. Measured against a live, signed-in ChatGPT
+ * Plus account on codex-cli 0.147.0:
+ * `{ account: { type: 'chatgpt', email, planType: 'plus' }, requiresOpenaiAuth: true }`.
+ * The signed-out signal is `account` itself: null/absent is "not signed in";
+ * a populated `account` is signed in regardless of `requiresOpenaiAuth`. See
+ * codex-provider.ts's `fetchModels` and `src/test/unit/codex-smoke.test.ts`'s
+ * `probeAuth()`, which the check here mirrors.
  */
 export interface AccountReadResponse {
   account: { type: string; email?: string; planType?: string } | null;

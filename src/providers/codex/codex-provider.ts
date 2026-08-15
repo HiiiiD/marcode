@@ -234,7 +234,13 @@ export class CodexProvider implements AgentProvider {
     try {
       const server = await this.connection();
       const account = await server.request<AccountReadResponse>('account/read', {});
-      if (account.requiresOpenaiAuth) {
+      // `requiresOpenaiAuth` describes whether this provider requires OpenAI
+      // auth AT ALL, not whether it is currently missing — measured against
+      // a live, signed-in ChatGPT Plus account on codex-cli 0.147.0, it
+      // comes back `true` right alongside a populated `account`. The signal
+      // this class actually wants is `account` itself: null/absent is what
+      // "not signed in" means. See wire.ts's AccountReadResponse doc.
+      if (!account.account) {
         throw new Error('Not signed in to Codex. Run `codex login`.');
       }
       const catalog = await server.request<ModelListResponse>('model/list', {});
