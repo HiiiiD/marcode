@@ -67,6 +67,39 @@ suite('SessionManager', () => {
     return { manager: mmanager, provider, emitted, store: mstore };
   }
 
+  test('a session reporting shell-profile noise reaches the host callback', async () => {
+    // The manager is `vscode`-free, so the advice has to leave through an
+    // injected callback — `extension.ts` is what turns it into a notification.
+    const noise = 'Set-PSReadLineOption: '
+      + 'C:\\Users\\dev\\Documents\\PowerShell\\Microsoft.PowerShell_profile.ps1:23\n'
+      + 'Handle is invalid.\n';
+    const ndir = await fs.mkdtemp(path.join(os.tmpdir(), 'hiiiid-manager-'));
+    const nprovider = new FakeProvider(() => [
+      { kind: 'tool-start', id: 't1', tool: { kind: 'command', label: 'Shell', command: 'ls' } },
+      { kind: 'tool-end', id: 't1', ok: true, output: { kind: 'text', text: noise } },
+      { kind: 'turn-end', reason: 'done' },
+    ]);
+    const reported: string[] = [];
+    const nmanager = new SessionManager(
+      new TranscriptStore(ndir),
+      new Map<string, AgentProvider>([['fake', nprovider]]),
+      () => {},
+      5000,
+      (profile) => reported.push(profile),
+    );
+    await nmanager.init();
+    extra.push({ manager: nmanager, dir: ndir });
+
+    const session = await nmanager.create('fake', '/tmp');
+    session.send('ls');
+    for (let i = 0; i < 10; i++) { await new Promise((r) => setImmediate(r)); }
+
+    assert.deepStrictEqual(
+      reported,
+      ['C:\\Users\\dev\\Documents\\PowerShell\\Microsoft.PowerShell_profile.ps1'],
+    );
+  });
+
   test('create adds a session and announces the roster', async () => {
     const session = await manager.create('fake', '/tmp');
     assert.strictEqual(manager.summaries().length, 1);

@@ -10,6 +10,7 @@ import type {
   UsageWindow,
 } from '../providers/types';
 import { findModel, resolveEffort } from '../shared/model-catalog';
+import { profileNoiseIn } from './profile-noise';
 import type { TranscriptStore } from './transcript-store';
 
 export interface SessionSink {
@@ -29,6 +30,16 @@ export interface SessionSink {
    * window, because a pull is a snapshot — see SessionManager.usageWindows.
    */
   usageWindows(providerId: string, windows: UsageWindow[] | undefined): void;
+  /**
+   * A shell command came back carrying a PowerShell profile's own load
+   * failure. Optional: a sink that has nowhere to put the advice may ignore
+   * it, and every existing sink stays valid without one.
+   *
+   * Reported at most once per session — the profile loads for every command,
+   * so the condition repeats even though the news does not. See
+   * `host/profile-noise.ts` for why the extension cannot fix it from here.
+   */
+  shellNoise?(profile: string): void;
 }
 
 const TITLE_MAX = 60;
@@ -99,6 +110,8 @@ export class AgentSession {
    * no disk read on the close path.
    */
   private appended = 0;
+  /** A profile failure has already been reported up; every later one is the same news. */
+  private shellNoiseReported = false;
 
   constructor(
     private readonly _state: SessionState,
@@ -117,6 +130,24 @@ export class AgentSession {
   }
 
   get state(): SessionState { return this._state; }
+
+  /**
+   * Tells the sink, once, that this session's shell is loading a profile that
+   * fails under Codex's redirected `pwsh -Command` wrapper.
+   *
+   * Gated on `kind: 'command'` deliberately: the same frame appearing in a
+   * `file-read` is an agent looking at a profile, which says nothing about the
+   * shell this session actually runs in.
+   */
+  private reportShellNoise(item: ToolItem): void {
+    if (this.shellNoiseReported || item.tool.kind !== 'command') { return; }
+    const output = item.output;
+    if (output?.kind !== 'text') { return; }
+    const profile = profileNoiseIn(output.text);
+    if (!profile) { return; }
+    this.shellNoiseReported = true;
+    this.sink.shellNoise?.(profile);
+  }
 
   /**
    * Nothing has been appended by *this* run. A run revived by
@@ -473,6 +504,7 @@ export class AgentSession {
           ...(children ? { children: [...children] } : {}),
         };
         this.toolItems.set(event.id, settled);
+        this.reportShellNoise(settled);
 
         const parentRoot = this.childOf.get(event.id);
         if (parentRoot) {

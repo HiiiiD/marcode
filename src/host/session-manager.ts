@@ -118,6 +118,13 @@ export class SessionManager implements SessionSink {
      * the webview sits in its loading state for the life of the panel.
      */
     private readonly contextTimeoutMs = 5000,
+    /**
+     * A session's shell reported a PowerShell profile that fails to load under
+     * Codex's `pwsh -Command` wrapper. Injected because the advice is a VS Code
+     * notification and this class imports no `vscode`; the default no-op keeps
+     * every existing construction site valid.
+     */
+    private readonly onShellNoise: (profile: string) => void = () => {},
   ) {}
 
   async init(): Promise<void> {
@@ -672,6 +679,15 @@ export class SessionManager implements SessionSink {
 
   status(id: SessionId, status: SessionStatus): void {
     this.emit({ t: 'session-status', id, status });
+  }
+
+  /**
+   * Straight through, no dedupe: each session already reports its own profile
+   * failure once, and whether a *window* should say it more than once is the
+   * host's call, not the roster's.
+   */
+  shellNoise(profile: string): void {
+    this.onShellNoise(profile);
   }
 
   invocables(id: SessionId, entries: Invocable[]): void {
