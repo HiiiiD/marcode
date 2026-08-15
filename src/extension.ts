@@ -1,5 +1,7 @@
+import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
+import { defaultCwdOf } from './host/default-cwd';
 import { EditorContextTracker } from './host/editor-context-tracker';
 import { PanelViewProvider } from './host/panel-view-provider';
 import { SessionManager } from './host/session-manager';
@@ -63,7 +65,22 @@ export async function activate(context: vscode.ExtensionContext) {
   let provider: PanelViewProvider;
   const manager = new SessionManager(store, providers, (msg) => provider.post(msg));
 
-  const defaultCwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd();
+  // Never `process.cwd()` — for an extension host that is VS Code's own
+  // install directory, and a session inherits it silently. See
+  // `host/default-cwd.ts`.
+  const resolvedCwd = defaultCwdOf(
+    vscode.workspace.workspaceFolders?.map((f) => f.uri.fsPath),
+    os.homedir(),
+  );
+  const defaultCwd = resolvedCwd.cwd;
+  if (resolvedCwd.fallback) {
+    // Visible, not silent: the alternative is an agent quietly reading and
+    // writing somewhere the user never chose.
+    void vscode.window.showWarningMessage(
+      `No folder is open, so agent sessions will run in ${defaultCwd}. `
+        + 'Open a folder to run them in your project.',
+    );
+  }
 
   const editorSource = createVscodeEditorSource();
   const tracker = new EditorContextTracker(editorSource);
