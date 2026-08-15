@@ -1,5 +1,6 @@
 import { AgentSession, type SessionSink } from './agent-session';
 import { catalogKey, CatalogService } from './catalog-service';
+import { bringBack as runBringBack, bringBackPlan } from './git-worktree';
 import { buildSeed } from './replay';
 import { TRANSCRIPT_VERSION, type StoredIndex, type TranscriptStore } from './transcript-store';
 import type { AgentProvider, EffortLevel, Invocable, ModelInfo, UsageWindow } from '../providers/types';
@@ -427,17 +428,46 @@ export class SessionManager implements SessionSink {
     await session.replaceRelocation(settled);
     if (!move) { return; }
 
+    await this.moveTo(id, session, state, item.path);
+  }
+
+  /**
+   * The move itself: dispose the run, repoint `cwd`, rebuild. Shared by the
+   * relocation offer and by bringing a branch back, because there is only one
+   * way a session changes directory and two code paths doing it their own way
+   * is how the two would drift.
+   *
+   * `forgetThreadAt` is the directory the session is *leaving* when that
+   * directory is about to stop existing. Its resume token is dropped so a
+   * future worktree created at the same path cannot resume this conversation
+   * — the token is keyed by path, and paths get reused.
+   */
+  private async moveTo(
+    id: SessionId, session: AgentSession, state: SessionState, to: string,
+    forgetThreadAt?: string,
+  ): Promise<void> {
     const provider = this.providers.get(state.providerId);
     if (!provider) { return; }
 
     await session.dispose();
     this.live.delete(id);
-    state.cwd = item.path;
+    state.cwd = to;
     state.updatedAt = Date.now();
+
+    if (forgetThreadAt !== undefined) {
+      const stale = threadKey(provider.id, provider.threadScope, forgetThreadAt);
+      // Never for a provider whose threads are global: its key does not
+      // mention the directory, so `stale` IS the key the session is about to
+      // resume from, and dropping it would throw away a live conversation to
+      // protect against a path that plays no part in it.
+      if (stale !== threadKey(provider.id, provider.threadScope, to)) {
+        delete state.resumeTokens[stale];
+      }
+    }
 
     // Read after the dispose above, never before: dispose flushes, so this is
     // the first point at which the store holds the whole conversation —
-    // including the offer we just settled.
+    // including any offer we just settled.
     const key = threadKey(provider.id, provider.threadScope, state.cwd);
     const seed = state.resumeTokens[key]
       ? undefined
@@ -452,6 +482,86 @@ export class SessionManager implements SessionSink {
     if (this.visible.has(id)) {
       this.emit({ t: 'session-snapshot', session: await moved.snapshot() });
     }
+  }
+
+  /**
+   * Answers "could this session's branch come home?" without touching
+   * anything. Read-only, so it is safe to ask on every pane mount — which is
+   * exactly what the panel does, because the entry point may only appear for
+   * a session that is actually sitting in a linked worktree.
+   */
+  async requestBringBack(id: SessionId): Promise<void> {
+    const state = this.meta.get(id);
+    if (!state) { return; }
+    const plan = await bringBackPlan(state.cwd);
+    if (this.disposed) { return; }
+    this.emit({ t: 'bring-back-plan', id, plan });
+  }
+
+  /**
+   * Removes the session's worktree and checks its branch out in the main tree,
+   * then follows it there. The only genuinely destructive thing in this
+   * feature, so its refusals are the feature:
+   *
+   *  - **The plan is recomputed here**, never taken from the dialog. That
+   *    dialog may have been open for minutes; what it displayed is a
+   *    description of a past state, not an authorization.
+   *  - **Git first, cwd second.** A refused git step leaves the session
+   *    exactly where it was, with an `error` item saying why — there is no
+   *    window in which `cwd` names a directory that no longer exists.
+   *  - The one exception is a checkout that fails *after* the removal
+   *    succeeded. The directory is already gone by then, so staying is not
+   *    one of the options; the session moves and the error item carries the
+   *    half-done state and what is left to do by hand.
+   *
+   * Never rejects. Answered straight off the wire, where errors are state.
+   */
+  async bringBack(id: SessionId): Promise<void> {
+    const state = this.meta.get(id);
+    const session = this.live.get(id);
+    if (!state || !session) { return; }
+
+    const plan = await bringBackPlan(state.cwd);
+    if (!plan.ok) {
+      await this.refuseBringBack(id, session, plan.reason, plan.isWorktree);
+      return;
+    }
+    // A turn in flight finishes in the tree it started in — the same rule
+    // `relocate` keeps, and here it also stops git from deleting a directory
+    // a running agent is working in.
+    if (state.status !== 'idle') {
+      await this.refuseBringBack(
+        id, session,
+        'This session is mid-turn. Its worktree can come back once the turn finishes.',
+        true,
+      );
+      return;
+    }
+
+    const result = await runBringBack(plan);
+    if (!result.ok) {
+      // Verbatim: git-worktree writes one line per failure, and the
+      // removed-but-not-checked-out one names the half-done state precisely.
+      // Anything generic here would throw that away.
+      await this.refuseBringBack(id, session, result.reason ?? 'The bring-back failed.', true);
+      if (result.removed) { await this.moveTo(id, session, state, plan.mainRoot, plan.worktree); }
+      return;
+    }
+
+    await this.moveTo(id, session, state, plan.mainRoot, plan.worktree);
+  }
+
+  /**
+   * A refusal is two things: a durable record in the transcript, and a fresh
+   * plan for whatever dialog is still on screen so it stops showing the
+   * now-overtaken one. Neither is an exception.
+   */
+  private async refuseBringBack(
+    id: SessionId, session: AgentSession, reason: string, isWorktree: boolean,
+  ): Promise<void> {
+    await session.noteError(reason);
+    if (this.disposed) { return; }
+    this.emit({ t: 'bring-back-plan', id, plan: { ok: false, reason, isWorktree } });
   }
 
   /**

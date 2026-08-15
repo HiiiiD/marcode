@@ -144,6 +144,25 @@ export type ContextResult =
   | { ok: true; breakdown: ContextBreakdown }
   | { ok: false; reason: string };
 
+/**
+ * Whether a worktree's branch can be moved back into its main working tree,
+ * and — when it cannot — the one line that says why.
+ *
+ * `isWorktree` rides the refusal because the two kinds of "no" are not the
+ * same product state. "This is not a linked worktree" means there is nothing
+ * to offer and the UI must not show a door at all; "the main tree is dirty"
+ * means the door is right but the moment is wrong, and the user needs to read
+ * the reason. Without the flag the panel would have to parse prose to tell
+ * them apart.
+ *
+ * Declared here rather than in `src/host/git-worktree.ts` (which produces it)
+ * because it crosses the wire: this is the one module both bundles import,
+ * and the webview must never reach into the host's git layer for a type.
+ */
+export type BringBackPlan =
+  | { ok: true; branch: string; worktree: string; mainRoot: string }
+  | { ok: false; reason: string; isWorktree: boolean };
+
 export interface PaneLayout {
   orientation: 'vertical' | 'horizontal';
   panes: { sessionId: SessionId; size: number }[];
@@ -184,7 +203,18 @@ export type WebviewToHost =
    * session-addressed message carries an explicit id" rule.
    */
   | { t: 'open-file'; id: SessionId; path: string }
-  | { t: 'answer-relocation'; id: SessionId; itemId: string; move: boolean };
+  | { t: 'answer-relocation'; id: SessionId; itemId: string; move: boolean }
+  /**
+   * "Could this session's branch come home?" — a question, with no side
+   * effects beyond reading git. Answered by `bring-back-plan`.
+   */
+  | { t: 'request-bring-back'; id: SessionId }
+  /**
+   * "Do it." The host re-plans before acting: the dialog that posted this may
+   * have been open for minutes, and the plan it displayed is a description of
+   * a past state, never an authorization.
+   */
+  | { t: 'bring-back'; id: SessionId };
 
 export type HostToWebview =
   | { t: 'hydrate'; sessions: SessionSummary[]; layout: PaneLayout;
@@ -226,4 +256,11 @@ export type HostToWebview =
    * There is no not-ok arm: under a push there is no request that can fail,
    * and "nothing has been reported" is a state, not an error.
    */
-  | { t: 'usage-windows'; providerId: string; windows: UsageWindow[] };
+  | { t: 'usage-windows'; providerId: string; windows: UsageWindow[] }
+  /**
+   * The answer to `request-bring-back`, and also what a *failed* `bring-back`
+   * replies with — a refusal is the same shape whether it was found by asking
+   * or by trying, and the dialog that is still on screen should show it either
+   * way rather than sitting on the plan that has just been overtaken.
+   */
+  | { t: 'bring-back-plan'; id: SessionId; plan: BringBackPlan };

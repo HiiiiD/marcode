@@ -363,6 +363,27 @@ suite('MessageRouter', () => {
     assert.strictEqual(reached, true);
   });
 
+  test('both bring-back messages survive the wire guard and reach the manager', async () => {
+    // Same trap as `answer-relocation` above, twice over: two new inbound arms
+    // mean two new entries in KNOWN_MESSAGE_TAGS, and a missing one is dropped
+    // at runtime while every type check still passes.
+    const calls: string[] = [];
+    manager.requestBringBack = async (id) => { calls.push(`ask:${id}`); };
+    manager.bringBack = async (id) => { calls.push(`do:${id}`); };
+
+    await router.handle({ t: 'request-bring-back', id: 's-1' });
+    await router.handle({ t: 'bring-back', id: 's-1' });
+
+    assert.deepStrictEqual(calls, ['ask:s-1', 'do:s-1']);
+  });
+
+  test('a rejecting bring-back is caught rather than becoming an unhandled rejection', async () => {
+    // Awaited, not `void`ed: this one shells out to git and touches the
+    // filesystem, where EPERM/EBUSY are routine on Windows.
+    manager.bringBack = async () => { throw new Error('git exploded'); };
+    await router.handle({ t: 'bring-back', id: 's-1' });
+  });
+
   test('ready emits the current editor context', async () => {
     const ctx = { path: 'src/a.ts', languageId: 'typescript' };
     const r = new MessageRouter(manager, (m) => sent.push(m), '/tmp', {

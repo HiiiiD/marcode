@@ -17,6 +17,7 @@
 import { execFile } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
 import { promisify } from 'node:util';
+import type { BringBackPlan } from '../protocol/messages';
 
 const execFileAsync = promisify(execFile);
 
@@ -29,9 +30,10 @@ export interface TreeStatus {
   mainRoot?: string;
 }
 
-export type BringBackPlan =
-  | { ok: true; branch: string; worktree: string; mainRoot: string }
-  | { ok: false; reason: string };
+// The plan crosses the wire, so it is declared in the protocol and re-exported
+// here for the callers that only know this module. Type-only in both
+// directions: nothing runtime moves between the two.
+export type { BringBackPlan };
 
 interface GitResult {
   ok: boolean;
@@ -109,34 +111,42 @@ export async function treeStatus(dir: string): Promise<TreeStatus> {
 export async function bringBackPlan(worktreeDir: string): Promise<BringBackPlan> {
   const tree = await treeStatus(worktreeDir);
   if (!tree.isRepo) {
-    return { ok: false, reason: `${worktreeDir} is not a git repository.` };
+    return {
+      ok: false, isWorktree: false,
+      reason: `${worktreeDir} is not a git repository.`,
+    };
   }
   if (!tree.isWorktree || tree.mainRoot === undefined) {
     return {
-      ok: false,
+      ok: false, isWorktree: false,
       reason: 'This directory is the main working tree, not a linked worktree, so there is nothing to bring back.',
     };
   }
+  // Everything below this line IS a linked worktree, so every refusal is a
+  // "not now", not a "not here" — see `BringBackPlan.isWorktree`.
   if (tree.branch === undefined) {
     return {
-      ok: false,
+      ok: false, isWorktree: true,
       reason: 'The worktree has a detached HEAD, so there is no branch to bring back. Check a branch out there first.',
     };
   }
   if (!tree.clean) {
     return {
-      ok: false,
+      ok: false, isWorktree: true,
       reason: 'The worktree has uncommitted changes. Commit or discard them before bringing the branch back.',
     };
   }
 
   const main = await treeStatus(tree.mainRoot);
   if (!main.isRepo) {
-    return { ok: false, reason: `The main working tree at ${tree.mainRoot} could not be read.` };
+    return {
+      ok: false, isWorktree: true,
+      reason: `The main working tree at ${tree.mainRoot} could not be read.`,
+    };
   }
   if (!main.clean) {
     return {
-      ok: false,
+      ok: false, isWorktree: true,
       reason: `The main working tree at ${main.root} has uncommitted changes. Commit or discard them first.`,
     };
   }
@@ -148,22 +158,32 @@ export async function bringBackPlan(worktreeDir: string): Promise<BringBackPlan>
  * Removal first, then checkout. The order is forced by git: the same branch
  * cannot be checked out in two trees at once, so the branch is only free to
  * enter the main root after its worktree is gone.
+ *
+ * `removed` reports how far it got, because the two failures are different
+ * situations on disk. A refused removal changed nothing. A failed checkout did
+ * — the directory is gone — and a caller holding a session pointed at it needs
+ * to know that leaving it there is no longer an option.
  */
 export async function bringBack(
   plan: BringBackPlan & { ok: true },
-): Promise<{ ok: boolean; reason?: string }> {
+): Promise<{ ok: boolean; reason?: string; removed: boolean }> {
   const removed = await git(plan.mainRoot, ['worktree', 'remove', plan.worktree]);
   if (!removed.ok) {
-    return { ok: false, reason: `Could not remove the worktree: ${removed.err || 'git failed'}` };
+    return {
+      ok: false, removed: false,
+      reason: `Could not remove the worktree: ${removed.err || 'git failed'}`,
+    };
   }
 
   const checkedOut = await git(plan.mainRoot, ['checkout', plan.branch]);
   if (!checkedOut.ok) {
     return {
-      ok: false,
-      reason: `The worktree was removed, but ${plan.branch} could not be checked out: ${checkedOut.err || 'git failed'}`,
+      ok: false, removed: true,
+      reason: `The worktree at ${plan.worktree} was removed, but ${plan.branch} could not be`
+        + ` checked out in ${plan.mainRoot}: ${checkedOut.err || 'git failed'}.`
+        + ` The branch still exists — check it out there by hand.`,
     };
   }
 
-  return { ok: true };
+  return { ok: true, removed: true };
 }

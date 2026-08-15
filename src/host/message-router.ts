@@ -166,6 +166,17 @@ export class MessageRouter {
         await this.manager.relocate(msg.id, msg.itemId, msg.move);
         return;
 
+      // Both awaited for the same reason as `answer-relocation`: they shell
+      // out to git and touch the filesystem, and a `void` here would put a
+      // rejection outside `handle()`'s catch-all.
+      case 'request-bring-back':
+        await this.manager.requestBringBack(msg.id);
+        return;
+
+      case 'bring-back':
+        await this.manager.bringBack(msg.id);
+        return;
+
       case 'permission-decision':
         this.manager.get(msg.id)?.respondToPermission(msg.requestId, msg.decision);
         return;
@@ -218,6 +229,7 @@ const KNOWN_MESSAGE_TAGS = new Set<WebviewToHost['t']>([
   'set-model', 'permission-decision', 'load-more', 'answer-relocation',
   'set-include-context', 'reveal-file',
   'request-context', 'open-file',
+  'request-bring-back', 'bring-back',
 ]);
 
 /**

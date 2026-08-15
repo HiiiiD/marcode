@@ -25,6 +25,8 @@ function describeInbound(m: WebviewToHost): string {
     case 'request-context': return 'request-context';
     case 'open-file': return 'open-file';
     case 'answer-relocation': return 'answer-relocation';
+    case 'request-bring-back': return 'request-bring-back';
+    case 'bring-back': return 'bring-back';
     default: return assertNever(m);
   }
 }
@@ -43,6 +45,7 @@ function describeOutbound(m: HostToWebview): string {
     case 'catalog': return 'catalog';
     case 'context-breakdown': return 'context-breakdown';
     case 'usage-windows': return 'usage-windows';
+    case 'bring-back-plan': return 'bring-back-plan';
     default: return assertNever(m);
   }
 }
@@ -108,6 +111,28 @@ suite('protocol', () => {
         windows: [{ id: 'five-hour', label: 'Session (5h)', usedPercent: 62 }],
       }),
       'usage-windows',
+    );
+  });
+
+  test('a refused bring-back says whether the door should exist at all', () => {
+    const toHost: WebviewToHost[] = [
+      { t: 'request-bring-back', id: 's1' },
+      { t: 'bring-back', id: 's1' },
+    ];
+    assert.strictEqual(toHost.length, 2);
+    assert.strictEqual(
+      describeOutbound({
+        t: 'bring-back-plan', id: 's1',
+        plan: { ok: false, reason: 'not a worktree', isWorktree: false },
+      }),
+      'bring-back-plan',
+    );
+    assert.strictEqual(
+      describeOutbound({
+        t: 'bring-back-plan', id: 's1',
+        plan: { ok: true, branch: 'feat-x', worktree: '/t/feat-x', mainRoot: '/repo' },
+      }),
+      'bring-back-plan',
     );
   });
 

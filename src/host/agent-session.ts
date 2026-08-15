@@ -616,6 +616,19 @@ export class AgentSession {
     await this.scheduleFlush();
   }
 
+  /**
+   * Records something that failed *around* the conversation rather than in it
+   * — a refused bring-back, say. Deliberately not `fail()`: the status is
+   * untouched, because the session itself is intact and an `error` badge would
+   * claim the provider had died. The transcript item is the whole record, and
+   * it is flushed eagerly so it survives even if the manager goes on to
+   * dispose and rebuild this session.
+   */
+  async noteError(message: string): Promise<void> {
+    this.appendItem({ id: nextId('e'), ts: Date.now(), role: 'error', message });
+    await this.scheduleFlush();
+  }
+
   private fail(message: string): void {
     this.appendItem({ id: nextId('e'), ts: Date.now(), role: 'error', message });
     this.setStatus('error');

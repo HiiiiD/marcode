@@ -1,4 +1,5 @@
 import type {
+  BringBackPlan,
   ContextResult,
   EditorContext,
   HostToWebview, Invocable, McpServerStatus, PaneLayout, PermissionRequest, ProviderInfo,
@@ -36,6 +37,13 @@ export interface ClientState {
   /** Last reply per session; kept while a refetch is in flight. */
   contextBySession: Record<SessionId, ContextResult | undefined>;
   /**
+   * The last bring-back plan the host answered with, per session. `undefined`
+   * means nobody has asked yet — which is not the same as "no", and is why the
+   * pane header shows no door until an answer arrives rather than showing one
+   * and taking it away.
+   */
+  bringBackBySession: Record<SessionId, BringBackPlan | undefined>;
+  /**
    * The window set each provider has reported. Pushed by the host, replaced
    * wholesale. `undefined` means the host has said nothing about that
    * provider yet; an empty array means it said "nothing to show". They render
@@ -63,6 +71,7 @@ export const initialState: ClientState = {
   byId: {},
   editorContext: null,
   contextBySession: {},
+  bringBackBySession: {},
   usageByProvider: {},
   focusedSessionId: null,
 };
@@ -113,7 +122,10 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
         // window set), not client state, so it is always taken fresh from
         // the message rather than carried forward like `editorContext`.
         editorContext: state.editorContext,
-        contextBySession: {}, usageByProvider: msg.usage,
+        // Both cleared, not carried: a plan is a statement about a directory's
+        // git state at one instant, and a reload is exactly the event after
+        // which nothing in the client may still claim to know that.
+        contextBySession: {}, bringBackBySession: {}, usageByProvider: msg.usage,
         // Not carried forward: focus is a fact about the rendered panes, and
         // hydrate rebuilds them. A stale id would let `+ New` inherit from a
         // session this hydrate may not even contain.
@@ -145,7 +157,24 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
       for (const [id, result] of Object.entries(state.contextBySession)) {
         if (alive.has(id)) { contextBySession[id] = result; }
       }
-      return { ...state, sessions: msg.sessions, byId, contextBySession };
+      // Pruned on the same signal and for the same reason: a plan naming a
+      // worktree would otherwise outlive the session that was sitting in it.
+      const bringBackBySession: Record<SessionId, BringBackPlan | undefined> = {};
+      for (const [id, plan] of Object.entries(state.bringBackBySession)) {
+        if (alive.has(id)) { bringBackBySession[id] = plan; }
+      }
+      return { ...state, sessions: msg.sessions, byId, contextBySession, bringBackBySession };
+    }
+
+    case 'bring-back-plan': {
+      // Same guard as `context-breakdown`: the question and its answer are two
+      // round trips apart, so a session deleted in between must not have a
+      // plan cached *after* the `sessions-changed` that pruned it.
+      if (!state.sessions.some((s) => s.id === msg.id)) { return state; }
+      return {
+        ...state,
+        bringBackBySession: { ...state.bringBackBySession, [msg.id]: msg.plan },
+      };
     }
 
     case 'context-breakdown': {
