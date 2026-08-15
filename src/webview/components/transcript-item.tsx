@@ -3,6 +3,7 @@ import { EditorContextChip } from './editor-context-chip';
 import { Markdown } from './markdown';
 import { PermissionCard } from './permission-card';
 import { ReasoningBlock } from './reasoning-block';
+import { RelocationCard } from './relocation-card';
 import { SubagentCard } from './subagent-card';
 import { ToolCard } from './tool-card';
 import { TranscriptItemShell } from './transcript-item-shell';
@@ -46,6 +47,9 @@ export function TranscriptItemView({
 
     case 'permission':
       return <PermissionCard item={item} sessionId={sessionId} />;
+
+    case 'relocation':
+      return <RelocationCard item={item} sessionId={sessionId} />;
 
     default:
       // The TranscriptItem type is closed, but nothing guarantees a runtime

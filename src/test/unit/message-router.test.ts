@@ -343,6 +343,66 @@ suite('MessageRouter', () => {
     assert.deepStrictEqual(calls, [{ path: 'src/a.ts', startLine: 12 }]);
   });
 
+  test('answer-relocation reaches the manager with the session, item and choice', async () => {
+    const calls: [string, string, boolean][] = [];
+    manager.relocate = async (id, itemId, move) => { calls.push([id, itemId, move]); };
+
+    await router.handle({ t: 'answer-relocation', id: 's-1', itemId: 'r1', move: true });
+    await router.handle({ t: 'answer-relocation', id: 's-1', itemId: 'r2', move: false });
+
+    assert.deepStrictEqual(calls, [['s-1', 'r1', true], ['s-1', 'r2', false]]);
+  });
+
+  test('answer-relocation is not dropped as a malformed message', async () => {
+    // The wire guard is a hand-maintained tag set, not the union: a new arm
+    // that is added to `WebviewToHost` but not to KNOWN_MESSAGE_TAGS type-checks
+    // everywhere and is silently discarded at runtime.
+    let reached = false;
+    manager.relocate = async () => { reached = true; };
+    await router.handle({ t: 'answer-relocation', id: 's-1', itemId: 'r1', move: true });
+    assert.strictEqual(reached, true);
+  });
+
+  test('both bring-back messages survive the wire guard and reach the manager', async () => {
+    // Same trap as `answer-relocation` above, twice over: two new inbound arms
+    // mean two new entries in KNOWN_MESSAGE_TAGS, and a missing one is dropped
+    // at runtime while every type check still passes.
+    const calls: string[] = [];
+    manager.requestBringBack = async (id) => { calls.push(`ask:${id}`); };
+    manager.bringBack = async (id) => { calls.push(`do:${id}`); };
+
+    await router.handle({ t: 'request-bring-back', id: 's-1' });
+    await router.handle({ t: 'bring-back', id: 's-1' });
+
+    assert.deepStrictEqual(calls, ['ask:s-1', 'do:s-1']);
+  });
+
+  test('both stale-tree messages survive the wire guard and reach the manager', async () => {
+    // Same trap again, and worse here: neither message carries a SessionId, so
+    // a tag missing from KNOWN_MESSAGE_TAGS would leave the sweep silently
+    // dead with nothing in any transcript to show for it.
+    const calls: string[] = [];
+    manager.requestStaleTrees = async () => { calls.push('ask'); };
+    manager.removeStaleTree = async (path: string) => { calls.push(`remove:${path}`); };
+
+    await router.handle({ t: 'request-stale-trees' });
+    await router.handle({ t: 'remove-stale-tree', path: '/repo/trees/feat-x' });
+
+    assert.deepStrictEqual(calls, ['ask', 'remove:/repo/trees/feat-x']);
+  });
+
+  test('a rejecting stale-tree removal is caught rather than becoming an unhandled rejection', async () => {
+    manager.removeStaleTree = async () => { throw new Error('git exploded'); };
+    await router.handle({ t: 'remove-stale-tree', path: '/repo/trees/feat-x' });
+  });
+
+  test('a rejecting bring-back is caught rather than becoming an unhandled rejection', async () => {
+    // Awaited, not `void`ed: this one shells out to git and touches the
+    // filesystem, where EPERM/EBUSY are routine on Windows.
+    manager.bringBack = async () => { throw new Error('git exploded'); };
+    await router.handle({ t: 'bring-back', id: 's-1' });
+  });
+
   test('ready emits the current editor context', async () => {
     const ctx = { path: 'src/a.ts', languageId: 'typescript' };
     const r = new MessageRouter(manager, (m) => sent.push(m), '/tmp', {

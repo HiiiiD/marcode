@@ -265,6 +265,23 @@ suite('SessionPicker', () => {
     );
   });
 
+  // The trigger names one concept — what is in the split. Working trees are
+  // a fourth, and the destructive one; they get their own control in the row
+  // rather than an ungrouped item filed under a word about layout.
+  test('the roster menu does not carry working-tree management', async () => {
+    renderApp();
+    hydrateAOpen();
+    sendFromHost({
+      t: 'stale-trees',
+      trees: [{ path: '/repo/trees/old-thing', branch: 'old-thing', clean: true }],
+    });
+
+    screen.getByRole('button', { name: /^Working trees \(1\)/ });
+    await userEvent.click(screen.getByText(/1 of 2 in split/i));
+    await screen.findByRole('menu');
+    assert.strictEqual(screen.queryByRole('menuitem', { name: /Working trees/ }) === null, true);
+  });
+
   test('the empty state offers the way out', () => {
     renderApp();
     sendFromHost({

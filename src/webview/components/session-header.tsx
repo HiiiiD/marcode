@@ -1,9 +1,14 @@
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-import { XIcon } from "lucide-react";
+import { MoreHorizontalIcon, XIcon } from "lucide-react";
 import { folderName } from "../format";
 import type { PaneState } from "../reducer";
 import { useStore } from "../store";
+import { BringBackDialog } from "./bring-back-dialog";
 import { evenlySizedPanes } from "./pane-layout";
 import { StatusBadge } from "./status-badge";
 
@@ -23,6 +28,23 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
   // Shown only when there's more than one provider to distinguish between —
   // with a single backend configured, naming it on every pane is noise.
   const providerLabel = state.catalog.find((p) => p.id === s.providerId)?.displayName;
+  const [bringBackOpen, setBringBackOpen] = useState(false);
+
+  // Asked once per directory, on mount and on every move. It is a read-only
+  // git probe, and it is the only way the panel can know whether this session
+  // is sitting in a linked worktree — nothing on `SessionState` says so, and
+  // nothing should: it is a fact about the disk right now, not about the
+  // session, and a persisted copy would describe a tree nobody has checked.
+  const cwd = s.cwd;
+  const id = s.id;
+  useEffect(() => { post({ t: "request-bring-back", id }); }, [id, cwd, post]);
+
+  // No door until the host has answered, and none at all when the answer is
+  // "this is not a linked worktree" — an action that can only ever refuse is
+  // worse than an absent one. Every other refusal keeps the door: those are
+  // "not now", and the dialog is where the user reads why.
+  const plan = state.bringBackBySession[id];
+  const canBringBack = plan !== undefined && (plan.ok || plan.isWorktree);
 
   return (
     <div className="flex items-center gap-2 border-b border-border px-2 py-1 text-xs">
@@ -74,6 +96,37 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
           </span>
         )}
       </span>
+      {/*
+        Mounted only when there is something in it. An overflow menu on every
+        pane whose single item is absent nine times out of ten is a control
+        that teaches the user it is empty; this one appears exactly when the
+        session is in a worktree, which is also when it means something.
+      */}
+      {canBringBack && (
+        <>
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={<Button variant="ghost" size="icon-xs" className="shrink-0" />}
+              aria-label={`More actions for ${accessibleTitle}`}
+            >
+              <MoreHorizontalIcon aria-hidden />
+            </DropdownMenuTrigger>
+            {/* `w-auto`, overriding the menu's default `w-(--anchor-width)`:
+                anchored to a 24px icon button, `min-w-32` is all that stops
+                the item from being narrower than the phrase it has to be read
+                by, and 128px still wraps it. Same fix as StaleTrees' row menu. */}
+            <DropdownMenuContent className="w-auto">
+              {/* The ellipsis is the promise that this opens a confirmation
+                  rather than deleting a directory on the way up from the
+                  click — the same contract the roster's `Delete…` keeps. */}
+              <DropdownMenuItem onClick={() => setBringBackOpen(true)}>
+                Bring branch back…
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <BringBackDialog pane={pane} open={bringBackOpen} onOpenChange={setBringBackOpen} />
+        </>
+      )}
       <Button
         variant="ghost"
         size="icon-xs"

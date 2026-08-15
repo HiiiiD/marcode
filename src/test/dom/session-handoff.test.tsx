@@ -12,6 +12,7 @@ function summary(id: string, title: string): SessionSummary {
   return {
     id, providerId: 'fake', model: 'm', title, cwd: '/w',
     status: 'idle', permissionMode: 'default', includeEditorContext: true,
+    resumeTokens: {},
     usage: { inputTokens: 0, outputTokens: 0 },
     archived: false, createdAt: 1, updatedAt: 1,
   };

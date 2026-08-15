@@ -1,7 +1,9 @@
+import { resolve } from 'node:path';
 import type {
   McpServerStatus, PermissionRequest, SessionId, SessionRef, SessionSnapshot, SessionState,
   SessionStatus, TranscriptItem, TranscriptPatch,
 } from '../protocol/messages';
+import type { ToolCall } from '../providers/canonical/tool-call';
 import type {
   AgentEvent, AgentProvider, AgentRun,
   ContextBreakdown,
@@ -10,8 +12,10 @@ import type {
   UsageWindow,
 } from '../providers/types';
 import { findModel, resolveEffort } from '../shared/model-catalog';
+import { threadKey } from '../shared/thread-key';
 import { profileNoiseIn } from './profile-noise';
 import type { TranscriptStore } from './transcript-store';
+import { detectWorktreeAdd } from './worktree-detect';
 
 export interface SessionSink {
   patch(id: SessionId, patch: TranscriptPatch): void;
@@ -43,6 +47,22 @@ export interface SessionSink {
 }
 
 const TITLE_MAX = 60;
+
+/**
+ * Whether two absolute paths name the same directory.
+ *
+ * Both sides must already be `resolve`d: the session's `cwd` is whatever the
+ * creator supplied, so comparing a resolved candidate against a raw `cwd`
+ * makes `/repo` and `C:\repo` look like different trees. Case is folded on
+ * win32 only, where the filesystem is case-insensitive and `C:\Repo` is the
+ * same directory as `C:\repo`; folding it elsewhere would merge two paths that
+ * genuinely differ.
+ */
+function samePath(a: string, b: string): boolean {
+  return process.platform === 'win32'
+    ? a.toLowerCase() === b.toLowerCase()
+    : a === b;
+}
 
 type ToolItem = Extract<TranscriptItem, { role: 'tool' }>;
 
@@ -118,13 +138,21 @@ export class AgentSession {
     private readonly provider: AgentProvider,
     private readonly store: TranscriptStore,
     private readonly sink: SessionSink,
+    /**
+     * Prepended to the first send of a thread with no history of this
+     * conversation. Spent once, then cleared — a second send continues a
+     * thread that now remembers.
+     */
+    private seed?: string,
   ) {
     this.run = provider.start({
       cwd: _state.cwd,
       model: _state.model,
       effort: _state.effort,
       permissionMode: _state.permissionMode,
-      resumeToken: _state.resumeToken,
+      resumeToken: _state.resumeTokens[
+        threadKey(provider.id, provider.threadScope, _state.cwd)
+      ],
     });
     this.pumping = this.pump();
   }
@@ -159,6 +187,12 @@ export class AgentSession {
   get isEmpty(): boolean { return this.appended === 0; }
 
   /**
+   * The replay still waiting to be spent, if any. Exists for tests and for
+   * `SessionManager`, which is the only thing that ever supplies one.
+   */
+  get pendingSeedText(): string | undefined { return this.seed; }
+
+  /**
    * The assistant item currently being streamed into, if any.
    *
    * Exposed for reference resolution: an in-flight answer must never be what
@@ -166,18 +200,12 @@ export class AgentSession {
    */
   get openItemId(): string | undefined { return this.openAssistantId; }
 
-  /**
-   * An error that belongs in this session's transcript without ending it.
-   *
-   * Deliberately not `fail()`: an unresolvable reference means one message
-   * could not be sent, not that the conversation is broken. Moving the
-   * session to `error` would claim otherwise, and the roster would show a
-   * dead session the user could still happily type into.
-   */
-  noteError(message: string): void {
-    this.appendItem({ id: nextId('e'), ts: Date.now(), role: 'error', message });
-    void this.scheduleFlush();
-  }
+  // `noteError` arrived on both sides of this merge — handoff needed it for an
+  // unresolvable reference, relocation for a refused bring-back. One
+  // definition survives, below, and it is the awaited one: bring-back disposes
+  // and rebuilds the session immediately after noting, so a fire-and-forget
+  // flush could lose the item to the rebuild. Handoff's callers do not await
+  // it, which is harmless — `scheduleFlush` never rejects.
 
   send(text: string, context?: EditorContext, refs?: SessionRef[]): void {
     if (this._state.title === 'Untitled' && text.trim().length > 0) {
@@ -191,8 +219,14 @@ export class AgentSession {
     this.appendItem(item);
     this.closeAssistant();
     this.setStatus('running');
+    // The transcript item above deliberately recorded `text`, never
+    // `outgoing`: a seed is context handed to the provider, not something the
+    // user wrote, and writing it into the transcript would both duplicate the
+    // history it summarizes and put words in the user's mouth.
+    const outgoing = this.seed ? `${this.seed}\n\n---\n\n${text}` : text;
+    this.seed = undefined;
     try {
-      this.run.send(text, context);
+      this.run.send(outgoing, context);
     } catch (err) {
       this.fail(err instanceof Error ? err.message : String(err));
     }
@@ -459,7 +493,9 @@ export class AgentSession {
   private handle(event: AgentEvent): void {
     switch (event.kind) {
       case 'session':
-        this._state.resumeToken = event.resumeToken;
+        this._state.resumeTokens[
+          threadKey(this.provider.id, this.provider.threadScope, this._state.cwd)
+        ] = event.resumeToken;
         this.sink.changed();
         return;
 
@@ -527,10 +563,15 @@ export class AgentSession {
         const parentRoot = this.childOf.get(event.id);
         if (parentRoot) {
           this.replaceChild(parentRoot, settled);
+          // Deliberately no relocation offer here. A subagent's worktree is a
+          // side quest — it has no claim on where the parent conversation
+          // lives — and a fan-out of subagents doing tree work would post one
+          // card each, all but one of them noise.
           return;
         }
         this.childrenByParent.delete(event.id);
         this.replaceItem(settled);
+        this.offerRelocation(settled.tool, event.ok);
         return;
       }
 
@@ -607,6 +648,49 @@ export class AgentSession {
         }
         return;
     }
+  }
+
+  /**
+   * Offers to follow the agent into a worktree it just created. The path is
+   * resolved against this session's cwd because the agent's command was run
+   * there, and a relative path in the transcript would be meaningless to the
+   * host.
+   */
+  private offerRelocation(tool: ToolCall, ok: boolean): void {
+    const found = detectWorktreeAdd(tool, ok);
+    if (found === undefined) { return; }
+    const path = resolve(this._state.cwd, found);
+    if (samePath(path, resolve(this._state.cwd))) { return; }
+    this.appendItem({
+      id: nextId('r'), ts: Date.now(), role: 'relocation', path, state: 'pending',
+    });
+    void this.scheduleFlush();
+  }
+
+  /**
+   * Settles a relocation offer in place. The manager owns the decision — it
+   * is the only thing that can actually move a session — so this is a thin
+   * seam rather than a method with a policy of its own. Flushed eagerly
+   * because the very next thing the manager does on a move is dispose this
+   * session and rebuild it, and an unflushed replace would be read back as
+   * still pending.
+   */
+  async replaceRelocation(item: TranscriptItem): Promise<void> {
+    this.replaceItem(item);
+    await this.scheduleFlush();
+  }
+
+  /**
+   * Records something that failed *around* the conversation rather than in it
+   * — a refused bring-back, say. Deliberately not `fail()`: the status is
+   * untouched, because the session itself is intact and an `error` badge would
+   * claim the provider had died. The transcript item is the whole record, and
+   * it is flushed eagerly so it survives even if the manager goes on to
+   * dispose and rebuild this session.
+   */
+  async noteError(message: string): Promise<void> {
+    this.appendItem({ id: nextId('e'), ts: Date.now(), role: 'error', message });
+    await this.scheduleFlush();
   }
 
   private fail(message: string): void {

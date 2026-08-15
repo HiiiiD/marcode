@@ -50,6 +50,26 @@ export type TranscriptItem =
       role: 'permission'; requestId: string; tool: ToolCall;
       state: 'pending' | 'allowed' | 'denied'; reason?: string;
     })
+  /**
+   * An offer to follow an agent into a worktree it just created. Durable,
+   * unlike a permission request: nothing is blocked on the answer, so it
+   * survives a reload and stays meaningful when answered later. Answered
+   * items render as their outcome, so the transcript reads as a record of
+   * where the work happened.
+   *
+   * `queued` is the answer "move" given while a turn was still in flight —
+   * the common case, since the offer is raised from a tool result *inside* a
+   * turn. The move waits for idle, and the wait is state like everything
+   * else: without it the card would go on asking a question the user has
+   * already answered. It is the one state that describes something held in
+   * host memory rather than on disk, so `SessionManager` returns any `queued`
+   * item whose queue entry did not survive back to `pending` when the
+   * transcript is read back.
+   */
+  | (ItemBase & {
+      role: 'relocation'; path: string;
+      state: 'pending' | 'queued' | 'moved' | 'stayed';
+    })
   | (ItemBase & { role: 'error'; message: string });
 
 export type TranscriptPatch =
@@ -70,7 +90,12 @@ export interface SessionState {
   permissionMode: PermissionMode;
   /** Whether sends from this session attach the editor context. Sticky. */
   includeEditorContext: boolean;
-  resumeToken?: string;
+  /**
+   * One resume token per provider thread, keyed by `threadKey()`. A session
+   * that has run in several working trees holds several, so returning to one
+   * it has already used is a native resume rather than a replay.
+   */
+  resumeTokens: Record<string, string>;
   usage: { inputTokens: number; outputTokens: number };
   /**
    * Share of the model's context window in use, `100 - freePercent`.
@@ -149,6 +174,49 @@ export type ContextResult =
   | { ok: true; breakdown: ContextBreakdown }
   | { ok: false; reason: string };
 
+/**
+ * Whether a worktree's branch can be moved back into its main working tree,
+ * and — when it cannot — the one line that says why.
+ *
+ * `isWorktree` rides the refusal because the two kinds of "no" are not the
+ * same product state. "This is not a linked worktree" means there is nothing
+ * to offer and the UI must not show a door at all; "the main tree is dirty"
+ * means the door is right but the moment is wrong, and the user needs to read
+ * the reason. Without the flag the panel would have to parse prose to tell
+ * them apart.
+ *
+ * Declared here rather than in `src/host/git-worktree.ts` (which produces it)
+ * because it crosses the wire: this is the one module both bundles import,
+ * and the webview must never reach into the host's git layer for a type.
+ */
+export type BringBackPlan =
+  | { ok: true; branch: string; worktree: string; mainRoot: string }
+  | { ok: false; reason: string; isWorktree: boolean };
+
+/**
+ * One linked worktree the panel knows about, and whether it can be swept away.
+ *
+ * "Knows about" is the union of every directory a session is sitting in and
+ * every directory a session still holds a resume token for — the two ways a
+ * tree ends up outliving the work that created it. `sessionId` is the session
+ * *currently* in it; its absence is what makes a row stale rather than in use,
+ * and it is why the sweep exists at all: a tree nobody occupies has no pane
+ * header to offer the bring-back door from.
+ *
+ * `reason` is `bringBackPlan`'s refusal, carried verbatim. Removal here is the
+ * same operation with the same preconditions, so a second set of safety checks
+ * would only be a second set of things to disagree.
+ */
+export interface StaleTree {
+  path: string;
+  branch?: string;
+  clean: boolean;
+  /** The session sitting in this directory now, or absent when none is. */
+  sessionId?: SessionId;
+  /** Absent when it can be removed; the one line refusing it otherwise. */
+  reason?: string;
+}
+
 export interface PaneLayout {
   orientation: 'vertical' | 'horizontal';
   panes: { sessionId: SessionId; size: number }[];
@@ -196,7 +264,40 @@ export type WebviewToHost =
    * Hence the `SessionId`, which also keeps this in line with the "every
    * session-addressed message carries an explicit id" rule.
    */
-  | { t: 'open-file'; id: SessionId; path: string };
+  | { t: 'open-file'; id: SessionId; path: string }
+  | { t: 'answer-relocation'; id: SessionId; itemId: string; move: boolean }
+  /**
+   * "Not any more." Calls off a move that is waiting for the turn to finish
+   * and puts the offer back to `pending`. Deliberately not `answer-relocation`
+   * with `move: false`: that is Stay, an answer, and it settles the item
+   * forever. This one un-answers it — a deferred action the user cannot call
+   * off is worse than no deferral at all.
+   */
+  | { t: 'cancel-relocation'; id: SessionId; itemId: string }
+  /**
+   * "Could this session's branch come home?" — a question, with no side
+   * effects beyond reading git. Answered by `bring-back-plan`.
+   */
+  | { t: 'request-bring-back'; id: SessionId }
+  /**
+   * "Do it." The host re-plans before acting: the dialog that posted this may
+   * have been open for minutes, and the plan it displayed is a description of
+   * a past state, never an authorization.
+   */
+  | { t: 'bring-back'; id: SessionId }
+  /**
+   * "Which working trees does this panel still touch?" Read-only, and
+   * deliberately not session-addressed: the answer spans every session's
+   * directories at once, and the rows that matter most are the ones no
+   * session is in.
+   */
+  | { t: 'request-stale-trees' }
+  /**
+   * "Sweep this one." Addressed by path rather than by session for the same
+   * reason. The host re-plans before acting and refuses through the refreshed
+   * sweep, exactly as `bring-back` re-plans and refuses through a fresh plan.
+   */
+  | { t: 'remove-stale-tree'; path: string };
 
 export type HostToWebview =
   | { t: 'hydrate'; sessions: SessionSummary[]; layout: PaneLayout;
@@ -238,4 +339,19 @@ export type HostToWebview =
    * There is no not-ok arm: under a push there is no request that can fail,
    * and "nothing has been reported" is a state, not an error.
    */
-  | { t: 'usage-windows'; providerId: string; windows: UsageWindow[] };
+  | { t: 'usage-windows'; providerId: string; windows: UsageWindow[] }
+  /**
+   * The answer to `request-bring-back`, and also what a *failed* `bring-back`
+   * replies with — a refusal is the same shape whether it was found by asking
+   * or by trying, and the dialog that is still on screen should show it either
+   * way rather than sitting on the plan that has just been overtaken.
+   */
+  | { t: 'bring-back-plan'; id: SessionId; plan: BringBackPlan }
+  /**
+   * The answer to `request-stale-trees`, and also what a `remove-stale-tree`
+   * replies with — success and refusal are the same shape here, because the
+   * refusal *is* a row: the tree is still listed, still dirty, and the reason
+   * it could not go is the line it now carries. A complete replacement, never
+   * a delta.
+   */
+  | { t: 'stale-trees'; trees: StaleTree[] };

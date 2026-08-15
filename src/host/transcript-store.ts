@@ -357,6 +357,28 @@ export class TranscriptStore {
     return { items: items.slice(start, at), hasMore: start > 0 };
   }
 
+  /**
+   * One item by id, wherever it currently lives.
+   *
+   * The pending queue is consulted *first* and separately from the loaded
+   * items, because an item appended since the last flush may not be in the
+   * cache at all: `append()` only pushes into `cache` when that session is
+   * already loaded, so for a session nobody has read yet the queue is the
+   * only copy, and `ensureLoaded()` would happily read the file, miss it, and
+   * cache a list it is not in. Loaded items come second and already have any
+   * outstanding `replacements` applied, so a settled item wins over the
+   * on-disk original.
+   *
+   * Deliberately not a flush: this is called to answer a question, and a
+   * question must not be able to fail with EPERM.
+   */
+  async find(id: SessionId, itemId: string): Promise<TranscriptItem | undefined> {
+    const queued = this.pending.get(id)?.find((i) => i.id === itemId);
+    if (queued) { return this.replacements.get(id)?.get(itemId) ?? queued; }
+    const items = await this.ensureLoaded(id);
+    return items.find((i) => i.id === itemId);
+  }
+
   async remove(id: SessionId): Promise<void> {
     await this.serialize(id, async () => {
       this.cache.delete(id);

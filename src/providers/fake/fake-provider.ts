@@ -3,7 +3,7 @@ import type {
   ContextBreakdown,
   EditorContext,
   EffortLevel, Invocable, ModelInfo, PermissionMode, PermissionModeInfo,
-  StartOptions, ToolDecision,
+  StartOptions, ThreadScope, ToolDecision,
   UsageWindow
 } from '../types';
 
@@ -61,6 +61,7 @@ export interface FakeReports {
 export class FakeProvider implements AgentProvider {
   readonly id = 'fake';
   readonly displayName = 'Fake';
+  readonly threadScope: ThreadScope = 'cwd';
   /** Records every decision passed to respondToTool, for assertions. */
   readonly decisions = new Map<string, ToolDecision>();
   /** Records every mode passed to setPermissionMode, for assertions. */
@@ -83,7 +84,12 @@ export class FakeProvider implements AgentProvider {
   readonly sent: { text: string; context?: EditorContext }[] = [];
   /** Every cwd fetchUsage() was called with, in order. */
   readonly fetchUsageCalls: string[] = [];
+  /** Every options object start() was called with, in order. */
+  readonly starts: StartOptions[] = [];
   private sessionCounter = 0;
+
+  /** The options the most recent run was started with, for assertions. */
+  get lastStart(): StartOptions | undefined { return this.starts[this.starts.length - 1]; }
 
   constructor(
     private readonly script: (text: string) => AgentEvent[] = () => [],
@@ -109,7 +115,8 @@ export class FakeProvider implements AgentProvider {
     ];
   }
 
-  start(_opts: StartOptions): AgentRun {
+  start(opts: StartOptions): AgentRun {
+    this.starts.push(opts);
     const channel = new EventChannel();
     const resumeToken = `fake-session-${++this.sessionCounter}`;
     let started = false;

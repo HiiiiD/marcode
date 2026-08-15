@@ -9,8 +9,8 @@ import type {
 } from '../../protocol/messages';
 import { FakeProvider } from '../../providers/fake/fake-provider';
 import type {
-  AgentEvent, AgentProvider, AgentRun, ModelInfo, PermissionModeInfo, StartOptions, ToolDecision,
-  UsageWindow,
+  AgentEvent, AgentProvider, AgentRun, ModelInfo, PermissionModeInfo, StartOptions, ThreadScope,
+  ToolDecision, UsageWindow,
 } from '../../providers/types';
 
 /** Minimal pushable async-iterable, mirroring FakeProvider's internal channel. */
@@ -69,6 +69,7 @@ interface ThrowingProviderOptions {
 class ThrowingProvider implements AgentProvider {
   readonly id = 'throwing';
   readonly displayName = 'Throwing';
+  readonly threadScope: ThreadScope = 'cwd';
 
   constructor(private readonly opts: ThrowingProviderOptions) {}
 
@@ -114,6 +115,7 @@ function baseState(): SessionState {
     id: 's1', providerId: 'fake', model: 'fake-large', effort: 'medium',
     title: 'Untitled', cwd: '/tmp', status: 'idle', permissionMode: 'default',
     includeEditorContext: true,
+    resumeTokens: {},
     usage: { inputTokens: 0, outputTokens: 0 },
     archived: false, createdAt: 1, updatedAt: 1,
   };
@@ -426,7 +428,7 @@ suite('AgentSession', () => {
     session.send('hi');
     await settle();
 
-    assert.strictEqual(session.state.resumeToken, 'fake-session-1');
+    assert.strictEqual(session.state.resumeTokens['fake:/tmp'], 'fake-session-1');
     await session.dispose();
   });
 

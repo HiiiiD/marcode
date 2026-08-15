@@ -1,5 +1,5 @@
 import {
-  createContext, useContext, useEffect, useReducer, type ReactNode,
+  createContext, useCallback, useContext, useEffect, useReducer, type ReactNode,
 } from 'react';
 import { initialState, reduce, type ClientState } from './reducer';
 import { onHostMessage, postToHost } from './vscode-api';
@@ -26,7 +26,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return off;
   }, []);
 
-  const post = (msg: WebviewToHost) => {
+  // Stable across renders, and that stability is load-bearing rather than an
+  // optimization: `post` is a dependency of every "ask the host once" effect
+  // in the panel (the pane header's worktree probe, the context dialog's
+  // fetch), and a fresh identity on each render re-runs all of them on every
+  // unrelated state change — one git subprocess per pane per keystroke-ish
+  // re-render. `dispatch` is already stable, so there is nothing to close over
+  // that can go stale.
+  const post = useCallback((msg: WebviewToHost) => {
     postToHost(msg);
     // See the `local-layout` doc comment in reducer.ts: the host never
     // echoes `set-layout` back, so apply it here too or newly
@@ -34,7 +41,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (msg.t === 'set-layout') {
       dispatch({ t: 'local-layout', layout: msg.layout });
     }
-  };
+  }, []);
 
   const focus = (id: SessionId) => dispatch({ t: 'local-focus', id });
 

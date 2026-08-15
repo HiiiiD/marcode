@@ -1,6 +1,6 @@
 import { spawn as spawnChildProcess } from 'node:child_process';
 import type {
-  AgentProvider, AgentRun, Invocable, ModelInfo, PermissionModeInfo, StartOptions, UsageWindow,
+  AgentProvider, AgentRun, Invocable, ModelInfo, PermissionModeInfo, StartOptions, ThreadScope, UsageWindow,
 } from '../types';
 import { AppServer, type Duplex, type RequestId } from './app-server';
 import { CodexRun, type CodexConnection } from './codex-run';
@@ -101,6 +101,21 @@ class ThreadView implements CodexConnection {
 export class CodexProvider implements AgentProvider {
   readonly id = 'codex';
   readonly displayName = 'Codex';
+  /**
+   * Measured, not assumed: a thread started in one directory and resumed from
+   * another kept its conversation, against codex-cli 0.147.0. Threads are
+   * keyed by id inside the app-server and `cwd` is only a per-thread start
+   * parameter, so nothing about the history is filed under a directory the
+   * way Claude's `~/.claude/projects/<slug>` is.
+   *
+   * The measurement is `src/test/unit/relocation-smoke.test.ts`, which asserts
+   * this value against what it observes — so if a future CLI files history per
+   * directory, that test fails rather than this comment quietly going stale.
+   *
+   * Consequence: relocating a Codex session is a native resume and spends no
+   * tokens on replay.
+   */
+  readonly threadScope: ThreadScope = 'global';
 
   /**
    * The last answer from `fetchModels()`, and the whole of what this
@@ -132,8 +147,26 @@ export class CodexProvider implements AgentProvider {
    */
   private binPath: string | undefined;
 
-  constructor(private readonly opts: { binPath?: string; spawn?: (bin: string) => Duplex } = {}) {
+  /**
+   * The pending zero-refcount teardown, if one is armed. See
+   * `scheduleTeardown` for why the kill is not immediate.
+   */
+  private teardownTimer: NodeJS.Timeout | undefined;
+
+  /**
+   * How long the shared process survives its last run, so a dispose that is
+   * immediately followed by a new `start()` reuses it. Configurable purely so
+   * tests need not wait out the real grace period.
+   */
+  private readonly teardownGraceMs: number;
+
+  constructor(private readonly opts: {
+    binPath?: string;
+    spawn?: (bin: string) => Duplex;
+    teardownGraceMs?: number;
+  } = {}) {
     this.binPath = opts.binPath;
+    this.teardownGraceMs = opts.teardownGraceMs ?? 5000;
   }
 
   listModels(): ModelInfo[] { return this.models; }
@@ -298,6 +331,10 @@ export class CodexProvider implements AgentProvider {
    * synchronously inside `connect()`'s pre-`await` prologue.
    */
   start(opts: StartOptions): AgentRun {
+    // Claims the process back from a teardown armed by a dispose moments ago
+    // — which is exactly the shape of a relocation, and the whole reason the
+    // grace period exists.
+    this.cancelTeardown();
     this.connection().catch(() => {
       // A connect failure surfaces to the run itself, the first time it
       // tries to use the connection (its own request() calls reject) — not
@@ -307,8 +344,40 @@ export class CodexProvider implements AgentProvider {
     this.views.add(view);
     return new CodexRun(view, opts, () => {
       this.views.delete(view);
-      if (this.views.size === 0) { this.teardown(); }
+      if (this.views.size === 0) { this.scheduleTeardown(); }
     });
+  }
+
+  /**
+   * Arms a teardown for once the ref count has stayed at zero for the grace
+   * period.
+   *
+   * Relocation is dispose-then-reconstruct, so moving the only Codex session
+   * drops this provider's ref count to zero and picks it straight back up.
+   * Killing on the way down would respawn a large Rust binary and re-run its
+   * handshake between two adjacent statements, for nothing. Anything that
+   * attaches inside the window keeps the process it was already going to use.
+   *
+   * Unref'd: a pending grace timer must never be the reason the extension
+   * host's event loop stays alive after everything else has been disposed.
+   */
+  private scheduleTeardown(): void {
+    if (this.teardownTimer) { return; }
+    this.teardownTimer = setTimeout(() => {
+      this.teardownTimer = undefined;
+      // Re-checked rather than trusted: `cancelTeardown` clears the timer on
+      // every path that reclaims the process, but a check here costs nothing
+      // and makes the kill unconditionally correct.
+      if (this.views.size > 0) { return; }
+      this.teardown();
+    }, this.teardownGraceMs);
+    this.teardownTimer.unref?.();
+  }
+
+  private cancelTeardown(): void {
+    if (!this.teardownTimer) { return; }
+    clearTimeout(this.teardownTimer);
+    this.teardownTimer = undefined;
   }
 
   /**
@@ -328,6 +397,9 @@ export class CodexProvider implements AgentProvider {
    */
   setBinPath(binPath: string | undefined): void {
     this.binPath = binPath;
+    // No grace here, and the armed one (if any) is dropped: it was going to
+    // kill a process that is now the wrong process anyway.
+    this.cancelTeardown();
     this.teardown();
   }
 

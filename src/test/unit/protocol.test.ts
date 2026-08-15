@@ -1,5 +1,7 @@
 import * as assert from 'assert';
-import type { HostToWebview, TranscriptItem, WebviewToHost } from '../../protocol/messages';
+import type {
+  HostToWebview, StaleTree, TranscriptItem, WebviewToHost,
+} from '../../protocol/messages';
 
 function assertNever(x: never): never {
   throw new Error(`unhandled: ${JSON.stringify(x)}`);
@@ -24,6 +26,12 @@ function describeInbound(m: WebviewToHost): string {
     case 'load-more': return 'load-more';
     case 'request-context': return 'request-context';
     case 'open-file': return 'open-file';
+    case 'answer-relocation': return 'answer-relocation';
+    case 'cancel-relocation': return 'cancel-relocation';
+    case 'request-bring-back': return 'request-bring-back';
+    case 'bring-back': return 'bring-back';
+    case 'request-stale-trees': return 'request-stale-trees';
+    case 'remove-stale-tree': return 'remove-stale-tree';
     default: return assertNever(m);
   }
 }
@@ -42,6 +50,8 @@ function describeOutbound(m: HostToWebview): string {
     case 'catalog': return 'catalog';
     case 'context-breakdown': return 'context-breakdown';
     case 'usage-windows': return 'usage-windows';
+    case 'bring-back-plan': return 'bring-back-plan';
+    case 'stale-trees': return 'stale-trees';
     default: return assertNever(m);
   }
 }
@@ -108,6 +118,45 @@ suite('protocol', () => {
       }),
       'usage-windows',
     );
+  });
+
+  test('a refused bring-back says whether the door should exist at all', () => {
+    const toHost: WebviewToHost[] = [
+      { t: 'request-bring-back', id: 's1' },
+      { t: 'bring-back', id: 's1' },
+    ];
+    assert.strictEqual(toHost.length, 2);
+    assert.strictEqual(
+      describeOutbound({
+        t: 'bring-back-plan', id: 's1',
+        plan: { ok: false, reason: 'not a worktree', isWorktree: false },
+      }),
+      'bring-back-plan',
+    );
+    assert.strictEqual(
+      describeOutbound({
+        t: 'bring-back-plan', id: 's1',
+        plan: { ok: true, branch: 'feat-x', worktree: '/t/feat-x', mainRoot: '/repo' },
+      }),
+      'bring-back-plan',
+    );
+  });
+
+  test('the stale-tree sweep is panel-wide, and a row says who owns it', () => {
+    // Neither inbound message carries a SessionId, and that is the point:
+    // the sweep spans every session's directories at once, and a directory
+    // nobody is sitting in has no session to address it to.
+    const toHost: WebviewToHost[] = [
+      { t: 'request-stale-trees' },
+      { t: 'remove-stale-tree', path: '/repo/trees/feat-x' },
+    ];
+    assert.strictEqual(toHost.length, 2);
+    const trees: StaleTree[] = [
+      { path: '/repo/trees/feat-x', branch: 'feat-x', clean: true, sessionId: 's1' },
+      { path: '/repo/trees/old', branch: 'old', clean: false, reason: 'uncommitted changes' },
+    ];
+    assert.strictEqual(trees[1].sessionId === undefined, true);
+    assert.strictEqual(describeOutbound({ t: 'stale-trees', trees }), 'stale-trees');
   });
 
   test('a user item can carry an editor context', () => {

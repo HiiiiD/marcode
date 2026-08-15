@@ -367,20 +367,46 @@ runs before the branch merges.
 
 ## Open questions
 
-**Does a fresh thread accept a prepended seed cleanly?** Expected yes — it is an
-ordinary first message — but it has never been done here, and the smoke test in
-measure 2 is what answers it.
+**Does a fresh thread accept a prepended seed cleanly?** **Answered: yes.**
+Measured 2026-08-15 against codex-cli 0.147.0 (`relocation-smoke.test.ts`, first
+case): a session was given a subject in a repository root, moved into a real
+linked worktree, and asked in the new tree what it had been working on. It
+answered "We were working on the SUNFLOWER file-format parser for `.sun`
+files." A seed is an ordinary first message and the agent treats it as
+conversation, not as instructions.
 
 **Does a round trip preserve the original thread?** Moving root → worktree →
 root should resume the root thread untouched, since nothing deletes it. Believed
 rather than verified; the same smoke test covers it.
 
-**Is Codex `threadScope: 'global'`?** Its threads are keyed by `threadId` and
-`cwd` is a per-thread start parameter, which suggests a token resolves anywhere.
-Unverified, so it ships as `'cwd'` — the safe direction, costing tokens rather
-than correctness. Promoting it needs one measurement: start a thread in one
-directory, `thread/resume` it from another, confirm the conversation is intact.
-Worth doing, because `'global'` makes every Codex relocation free.
+**Is Codex `threadScope: 'global'`?** **Answered: yes.** Measured 2026-08-15
+against codex-cli 0.147.0 (`relocation-smoke.test.ts`, second case): a thread
+started in one directory and resumed from another kept its conversation, with a
+same-directory control in the same test so a broken resume can never be read as
+a scope result. `CodexProvider.threadScope` is `'global'`, and the test asserts
+that declaration against what it observes — if a future CLI files history per
+directory, the test fails rather than the value quietly going stale.
+
+Consequence: relocating a Codex session is a native resume and spends nothing on
+replay. The replay path remains load-bearing for Claude, whose history really is
+filed under `~/.claude/projects/<slug>`.
+
+The first attempt could not measure this at all, and the reason is worth
+keeping: *no* `thread/resume` produced a turn, not even in the directory the
+thread was born in. `thread/start` answers `{ thread: { id, … } }` rather than
+`{ threadId }`, and `CodexRun.startThread` survived that only because the
+separate `thread/started` notification resolved the id; `thread/resume` sends no
+such notification, so `ensureStarted()` never resolved and the turn was dropped
+silently. Fixed on master in `3bcfbd9`, which also closed a worse bug the same
+mismatch caused — `thread/started` names its thread under `thread.id`, so the
+provider's fan-out handed every live run every other session's start and two
+Codex sessions in one window ended up sharing a thread. The scope became
+measurable only after that landed.
+
+So it stays `'cwd'` — the safe direction, costing tokens rather than
+correctness. The test is a guard as well as a measurement: it asserts
+`threadScope === 'global'` matches what the binary actually did, so whoever
+fixes the resume path gets the answer for free.
 
 ## Out of scope
 

@@ -206,6 +206,43 @@ export class MessageRouter {
         this.editor.reveal(msg.path, msg.startLine);
         return;
 
+      // Awaited rather than fire-and-forget: `relocate` disposes and rebuilds
+      // a session, and a rejection escaping a `void` here would be an
+      // unhandled rejection at the `webview.onDidReceiveMessage` callback.
+      // Awaiting puts it inside `handle()`'s catch-all, like every other case.
+      case 'answer-relocation':
+        await this.manager.relocate(msg.id, msg.itemId, msg.move);
+        return;
+
+      // Awaited for the same reason, though this one only rewrites a
+      // transcript item: it is the same catch-all that keeps a store write
+      // failing on disk from escaping as an unhandled rejection.
+      case 'cancel-relocation':
+        await this.manager.cancelRelocation(msg.id, msg.itemId);
+        return;
+
+      // Both awaited for the same reason as `answer-relocation`: they shell
+      // out to git and touch the filesystem, and a `void` here would put a
+      // rejection outside `handle()`'s catch-all.
+      case 'request-bring-back':
+        await this.manager.requestBringBack(msg.id);
+        return;
+
+      case 'bring-back':
+        await this.manager.bringBack(msg.id);
+        return;
+
+      // Awaited for the same reason, and neither carries a SessionId: the
+      // sweep is panel-wide, and the rows that matter most are the ones no
+      // session is in.
+      case 'request-stale-trees':
+        await this.manager.requestStaleTrees();
+        return;
+
+      case 'remove-stale-tree':
+        await this.manager.removeStaleTree(msg.path);
+        return;
+
       case 'permission-decision':
         this.manager.get(msg.id)?.respondToPermission(msg.requestId, msg.decision);
         return;
@@ -256,8 +293,11 @@ const KNOWN_MESSAGE_TAGS = new Set<WebviewToHost['t']>([
   'ready', 'create-session', 'set-visible', 'set-layout', 'close-session',
   'delete-session', 'send', 'interrupt', 'set-effort', 'set-permission-mode',
   'set-model', 'permission-decision', 'load-more',
+  'answer-relocation', 'cancel-relocation',
   'set-include-context', 'reveal-file',
   'request-context', 'open-file',
+  'request-bring-back', 'bring-back',
+  'request-stale-trees', 'remove-stale-tree',
 ]);
 
 /**

@@ -537,7 +537,8 @@ suite('SessionManager', () => {
     return {
       id: 's1', providerId: 'fake', model: 'fake-1', title: 'Restored',
       cwd: '/tmp', status: 'idle', permissionMode: 'default',
-      includeEditorContext: true, usage: { inputTokens: 0, outputTokens: 0 },
+      includeEditorContext: true, resumeTokens: {},
+      usage: { inputTokens: 0, outputTokens: 0 },
       contextPercent: 43, lastContext: remembered,
       archived: false, createdAt: 1, updatedAt: 1, ...over,
     };
@@ -592,6 +593,7 @@ suite('SessionManager', () => {
     const provider: AgentProvider = {
       id: base.id,
       displayName: base.displayName,
+      threadScope: 'cwd',
       listModels: () => base.listModels(),
       listPermissionModes: () => base.listPermissionModes(),
       start: (opts) => ({
@@ -964,6 +966,30 @@ suite('SessionManager', () => {
     await restored.dispose();
   });
 
+  test('a session restored without resumeTokens opens with an empty map', async () => {
+    const store2 = new TranscriptStore(dir);
+    // Written at the current version by a build that predates resumeTokens.
+    // The version guard does not discard it, so opening it must not read a
+    // key off undefined — and its first `session` event must not write to one.
+    await store2.writeIndex({
+      version: 2,
+      sessions: [{
+        id: 'pre-tokens', providerId: 'fake', model: 'fake-small', title: 'Old',
+        cwd: '/tmp', status: 'idle', permissionMode: 'default',
+        includeEditorContext: true,
+        usage: { inputTokens: 0, outputTokens: 0 },
+        archived: false, createdAt: 1, updatedAt: 1,
+      } as unknown as SessionState],
+      layout: { orientation: 'vertical', panes: [] },
+    });
+
+    const restored = new SessionManager(store2, providers, () => {});
+    await restored.init();
+    const session = await restored.open('pre-tokens');
+    assert.deepStrictEqual(session.state.resumeTokens, {});
+    await restored.dispose();
+  });
+
   /**
    * A provider whose model list is only correct after `fetchModels` — the
    * shape of every real backend, where the catalog lives in the CLI.
@@ -971,7 +997,7 @@ suite('SessionManager', () => {
   function modelProvider(id: string, onFetch?: () => Promise<never>): AgentProvider {
     let models: ModelInfo[] = [{ id: 'stale', displayName: 'Stale' }];
     return {
-      id, displayName: id,
+      id, displayName: id, threadScope: 'cwd',
       listModels: () => models,
       listPermissionModes: () => [],
       fetchModels: async (cwd: string) => {
@@ -1006,7 +1032,7 @@ suite('SessionManager', () => {
   /** A provider that can offer nothing until — and unless — a probe succeeds. */
   function unavailableProvider(id: string, reason: string): AgentProvider {
     return {
-      id, displayName: id,
+      id, displayName: id, threadScope: 'cwd',
       listModels: () => [],
       listPermissionModes: () => [],
       fetchModels: () => Promise.reject(new Error(reason)),
@@ -1130,7 +1156,7 @@ suite('SessionManager', () => {
     let fail = true;
     let models: ModelInfo[] = [];
     const flaky: AgentProvider = {
-      id: 'claude', displayName: 'Claude',
+      id: 'claude', displayName: 'Claude', threadScope: 'cwd',
       listModels: () => models,
       listPermissionModes: () => [],
       fetchModels: async () => {
@@ -1173,7 +1199,7 @@ suite('SessionManager', () => {
 
   test('create resolves a requested wire id onto the alias row covering it', async () => {
     const aliasProvider: AgentProvider = {
-      id: 'claude', displayName: 'Claude',
+      id: 'claude', displayName: 'Claude', threadScope: 'cwd',
       listModels: () => [
         { id: 'opus', displayName: 'Opus', resolvedModel: 'claude-opus-5',
           effort: { levels: ['low', 'high'], default: 'high' } },
@@ -1244,7 +1270,7 @@ suite('SessionManager', () => {
     // function. `async () => { throw }` (used above) can only ever produce a
     // rejected promise, so it does not exercise this path.
     const broken: AgentProvider = {
-      id: 'broken', displayName: 'Broken',
+      id: 'broken', displayName: 'Broken', threadScope: 'cwd',
       listModels: () => [],
       listPermissionModes: () => [],
       start: () => { throw new Error('not used'); },

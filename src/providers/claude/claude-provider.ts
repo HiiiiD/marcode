@@ -124,7 +124,7 @@ import type {
   ContextBreakdown,
   EditorContext,
   EffortLevel, Invocable, ModelInfo, PermissionMode, PermissionModeInfo,
-  StartOptions, ToolDecision, UsageWindow,
+  StartOptions, ThreadScope, ToolDecision, UsageWindow,
 } from '../types';
 import { toInvocables } from './map-commands';
 import { toContextBreakdown, toUsageWindows, type ContextUsageLike, type UsageResponseLike } from './map-context';
@@ -252,6 +252,7 @@ function errorMessage(err: unknown): string {
 export class ClaudeProvider implements AgentProvider {
   readonly id = 'claude';
   readonly displayName = 'Claude';
+  readonly threadScope: ThreadScope = 'cwd';
 
   /**
    * The last answer from `fetchModels()`, and the whole of what this provider

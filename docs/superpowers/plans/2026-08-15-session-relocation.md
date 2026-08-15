@@ -40,6 +40,35 @@ for git.
 - `yarn lint`, `yarn check-types` and `yarn run compile` must pass before every
   commit.
 - Conventional-commit prefixes. No `Co-Authored-By` trailer.
+- **`yarn test:unit` is transpile-only** (`tsx/cjs` erases types without
+  checking them). A test that asserts only about types passes against a type
+  that does not exist. Red-first for a type-level test means `yarn check-types`,
+  never the test runner.
+- **Adding any `WebviewToHost` or `HostToWebview` arm trips
+  `src/test/unit/protocol.test.ts`**, whose `assertNever` guard is the only
+  exhaustive dispatch over those unions. Extend it in the same task. The webview
+  reducer narrows with `role === 'x'` and has no exhaustive switch, so it needs
+  nothing.
+- **A new inbound message ALSO needs its tag in `KNOWN_MESSAGE_TAGS` in
+  `src/host/message-router.ts`.** This is a hand-maintained runtime `Set`
+  checked before the switch: a tag missing from it is silently dropped as
+  malformed while every type check passes. Nothing catches this but a test that
+  actually posts the message. Tasks adding several messages must add several
+  tags.
+- **Route with `await`, not `void`.** Handlers that touch the filesystem can
+  reject (EPERM/EBUSY are routine on Windows); `await` puts them inside
+  `handle()`'s catch-all, while `void` produces an unhandled rejection at the
+  `onDidReceiveMessage` callback.
+- **The transcript's role switch lives in
+  `src/webview/components/transcript-item.tsx`**, not `transcript.tsx`.
+- **`yarn test:dom --grep X` does not work here.** The extra argument breaks
+  mocha's loader and throws `ERR_UNKNOWN_FILE_EXTENSION` regardless of the
+  code's state, so it can never be read as red-first evidence. Run the whole DOM
+  suite and grep its output.
+- **The DOM harness helpers are** `renderApp()`, `renderWithStore(ui)`,
+  `sendFromHost(...msgs)`, `posted()` and `resetHost()`, with `userEvent.click`
+  for interaction. Any other helper name in this plan's test code is
+  illustrative — adapt to the harness.
 
 **Milestones.** Tasks 1–8 deliver relocation end to end and are independently
 shippable. Tasks 9–11 add bringing a branch back and the stale-tree sweep; they
@@ -323,7 +352,7 @@ Expected: FAIL — `Cannot find module '../../host/replay'`
 import type { ToolCall, TranscriptItem } from '../protocol/messages';
 
 const PREAMBLE = [
-  'The following is a record of work that has ALREADY HAPPENED in this',
+  'The following is a record of work that has already happened in this',
   'conversation, before it moved to this directory. It is context, not a task.',
   'Do not redo any of it. Continue from where it leaves off.',
 ].join(' ');
@@ -378,7 +407,14 @@ export function buildSeed(items: TranscriptItem[], budgetChars = DEFAULT_BUDGET)
 
   if (kept.length === lines.length) { return `${header}${kept.join('\n')}`; }
 
-  const withNotice = `${header}${OMITTED}\n${kept.join('\n')}`;
+  // The notice costs bytes the loop above did not reserve, so pay for it by
+  // dropping further oldest lines. Trimming the string instead would cut the
+  // tail — the newest turns, which are exactly the ones worth keeping.
+  let withNotice = `${header}${OMITTED}\n${kept.join('\n')}`;
+  while (withNotice.length > budgetChars && kept.length > 0) {
+    kept.shift();
+    withNotice = `${header}${OMITTED}\n${kept.join('\n')}`;
+  }
   // A single oversized line can still overrun; the budget is a hard ceiling.
   return withNotice.length <= budgetChars
     ? withNotice
@@ -726,7 +762,10 @@ the `tool-end` case (after `this.replaceItem(settled)`):
         return;
 ```
 
-Do the same on the child branch, before its `return`. Then add the method:
+Do **not** do the same on the child branch. Decided 2026-08-15: only top-level
+calls raise an offer. A subagent's worktree is a side quest with no claim on
+where the parent conversation lives, and a fan-out of subagents doing tree work
+would post one card each. Then add the method:
 
 ```ts
   /**
@@ -1038,8 +1077,10 @@ unless the session's status is `idle`.
 
 - [ ] **Step 4: Render it from the transcript**
 
-Replace the placeholder `case 'relocation':` added in Task 4 with a
-`<RelocationCard sessionId={...} item={item} />`.
+Replace the placeholder `case 'relocation':` added in Task 4 — it is at
+`src/webview/components/transcript-item.tsx:49` and currently returns `null` —
+with a `<RelocationCard sessionId={sessionId} item={item} />`, matching how the
+neighbouring `case 'permission':` passes `item` and `sessionId`.
 
 - [ ] **Step 5: Run test to verify it passes**
 
@@ -1302,15 +1343,30 @@ suite('SessionManager.bringBack', () => {
   });
 
   test('a failed git step leaves an error item and no move', async () => {
-    const { manager, session } = await sessionInWorktree('feat-x', { breakGit: true });
+    // Task 9 established the only failure mode that actually works: dirty the
+    // worktree AFTER planning, so `git worktree remove` genuinely refuses.
+    // Deleting the tree directory behind git's back does NOT fail — git drops
+    // the administrative entry and exits 0, and the checkout then succeeds.
+    const { manager, session, tree } = await sessionInWorktree('feat-x');
+    await writeFile(join(tree, 'dirty.txt'), 'x');
     const before = session.state.cwd;
     await manager.bringBack(session.state.id);
     assert.strictEqual(manager.get(session.state.id)!.state.cwd, before);
-    const items = await manager.snapshotItems(session.state.id);
+    const items = await readItems(session.state.id);
     assert.strictEqual(items.some((i) => i.role === 'error'), true);
   });
 });
 ```
+
+Read the transcript through `store.tail(id, 500)` rather than adding a
+`snapshotItems` method to the manager for a test's convenience — Task 8 set
+that precedent.
+
+Fixture requirements carry over from Task 9, and they are not optional on
+Windows: `fs.realpath` the mkdtemp result; `git init -b main` with repo-local
+`user.email`, `user.name` and `commit.gpgsign=false`; one initial commit so HEAD
+exists; `this.timeout(60_000)` on the suite; and `fs.rm(..., { maxRetries: 3 })`
+in teardown. Real git costs about 5s per suite of this size.
 
 - [ ] **Step 2: Run test to verify it fails**
 
