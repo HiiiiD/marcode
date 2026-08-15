@@ -11,7 +11,7 @@ import { toContextBreakdown, toUsageWindows } from './map-usage';
 import type {
   FileChangeApprovalDecision, McpServerElicitationRequestResponse,
   PermissionsRequestApprovalResponse, RateLimitsReadResponse, SkillsListResponse,
-  ThreadTokenUsage, ToolRequestUserInputResponse,
+  ThreadResponse, ThreadTokenUsage, ToolRequestUserInputResponse,
 } from './wire';
 
 /**
@@ -99,18 +99,6 @@ export class CodexRun implements AgentRun {
   /** Public getter, no setter — the `readonly` half of the interface's promise. */
   get threadId(): string | undefined { return this._threadId; }
 
-  /**
-   * Resolves once the id is known, however it becomes known — a
-   * `thread/start`/`thread/resume` response that already carries it, or the
-   * `thread/started` notification when it does not. `send()`'s `turn/start`
-   * awaits this rather than reading `_threadId` synchronously, since the two
-   * sources can race.
-   */
-  private resolveThreadId!: (id: string | undefined) => void;
-  private readonly threadIdReady = new Promise<string | undefined>((resolve) => {
-    this.resolveThreadId = resolve;
-  });
-
   /** Mutable, live settings — what `send()` starts with, and what a setter retargets. */
   private mode: PermissionMode;
   private model: string | undefined;
@@ -189,21 +177,13 @@ export class CodexRun implements AgentRun {
     this.effort = opts.effort;
 
     server.onNotification((method, params) => {
-      const p = (params ?? {}) as { threadId?: string };
       // A notification that names no thread at all (e.g.
       // `account/rateLimits/updated`) is process-global, not thread-scoped —
       // it must pass through regardless of whether this run has started.
-      // `thread/started` is the one *thread-scoped* notification let through
-      // even when it names a thread other than this run's current one, since
-      // it is what establishes that id in the first place. Everything else
-      // naming a different thread is dropped. Mirrors the identical guard on
-      // `onServerRequest` below.
-      if (method !== 'thread/started' && p.threadId !== undefined && p.threadId !== this._threadId) { return; }
+      // Anything naming a different thread is dropped. Mirrors the identical
+      // guard on `onServerRequest` below.
+      if (!this.namesThisThread(method, params)) { return; }
 
-      if (method === 'thread/started') {
-        const id = (params as { thread?: { id?: string } } | undefined)?.thread?.id;
-        this.setThreadId(id);
-      }
       if (method === 'thread/tokenUsage/updated') {
         this.captureContextUsage((params as { tokenUsage?: ThreadTokenUsage } | undefined)?.tokenUsage);
       }
@@ -266,7 +246,25 @@ export class CodexRun implements AgentRun {
   private setThreadId(id: string | undefined): void {
     if (!id || this._threadId) { return; }
     this._threadId = id;
-    this.resolveThreadId(id);
+  }
+
+  /**
+   * Whether an incoming notification belongs to this run.
+   *
+   * The provider fans every frame out to every live run (see
+   * codex-provider.ts), so this is the only thing keeping one Codex session's
+   * traffic out of another's transcript. `thread/started` needs its own
+   * reading because it names its thread under `thread.id` rather than
+   * `threadId` — the generic lookup finds nothing there, which used to let a
+   * stranger's start reach every run and overwrite its resume token with a
+   * thread it had never talked to. It is no longer how this run learns its
+   * own id either: the `thread/start`/`thread/resume` response is (see
+   * `startThread`), which is what makes a guard this strict possible.
+   */
+  private namesThisThread(method: string, params: unknown): boolean {
+    const p = (params ?? {}) as { threadId?: string; thread?: { id?: string } };
+    const named = method === 'thread/started' ? p.thread?.id : p.threadId;
+    return named === undefined || named === this._threadId;
   }
 
   /**
@@ -314,15 +312,28 @@ export class CodexRun implements AgentRun {
       model: this.model,
     };
     try {
+      // Both requests answer with the whole `Thread` under `thread` — there
+      // is no bare `threadId` on either response (measured on codex-cli
+      // 0.147.0). Reading one found `undefined`, and the id then had to come
+      // from the `thread/started` notification, which `thread/start` emits
+      // and `thread/resume` DOES NOT: every resumed session waited forever
+      // for a notification that was never coming, never sent its
+      // `turn/start`, and showed "Working…" with no error and no way out.
+      // The response is now the single source, so both paths behave the same.
       const result = this.opts.resumeToken
-        ? await this.server.request<{ threadId?: string }>(
+        ? await this.server.request<ThreadResponse>(
           'thread/resume', { threadId: this.opts.resumeToken, ...base },
         )
-        : await this.server.request<{ threadId?: string }>('thread/start', base);
-      this.setThreadId(result?.threadId);
-      // Already resolved if the response (or a race-won notification) carried
-      // the id above; otherwise this waits for `thread/started`.
-      return await this.threadIdReady;
+        : await this.server.request<ThreadResponse>('thread/start', base);
+      const id = result?.thread?.id;
+      if (!id) { throw new Error('Codex started a thread without an id.'); }
+      this.setThreadId(id);
+      // Emitted here rather than left to `thread/started` for the same
+      // reason: a resumed thread never gets that notification, and a session
+      // whose resume token is never recorded is one that starts from nothing
+      // after the next reload.
+      this.events.push({ kind: 'session', resumeToken: id });
+      return this._threadId;
     } catch (err) {
       this.events.push({ kind: 'turn-end', reason: 'error', error: errorMessage(err) });
       return undefined;

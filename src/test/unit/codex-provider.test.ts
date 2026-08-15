@@ -337,7 +337,7 @@ suite('CodexProvider', () => {
     const { provider, respondTo, killCount } = providerWithStub();
     const run = provider.start({ cwd: '/a', permissionMode: 'default' });
     run.send('hi');
-    await respondTo('thread/start', { threadId: 'th_1' });
+    await respondTo('thread/start', { thread: { id: 'th_1' } });
 
     const events: Array<{ kind: string; reason?: string }> = [];
     void (async () => {
@@ -375,9 +375,9 @@ suite('CodexProvider', () => {
     })();
 
     first.send('hi');
-    await respondTo('thread/start', { threadId: 'th_1' });
+    await respondTo('thread/start', { thread: { id: 'th_1' } });
     second.send('hi');
-    await respondTo('thread/start', { threadId: 'th_2' });
+    await respondTo('thread/start', { thread: { id: 'th_2' } });
 
     send({ method: 'item/agentMessage/delta', params: { threadId: 'th_1', delta: 'to-first' } });
     send({ method: 'item/agentMessage/delta', params: { threadId: 'th_2', delta: 'to-second' } });
