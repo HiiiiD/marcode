@@ -40,6 +40,17 @@ for git.
 - `yarn lint`, `yarn check-types` and `yarn run compile` must pass before every
   commit.
 - Conventional-commit prefixes. No `Co-Authored-By` trailer.
+- **`yarn test:unit` is transpile-only** (`tsx/cjs` erases types without
+  checking them). A test that asserts only about types passes against a type
+  that does not exist. Red-first for a type-level test means `yarn check-types`,
+  never the test runner.
+- **Adding any `WebviewToHost` or `HostToWebview` arm trips
+  `src/test/unit/protocol.test.ts`**, whose `assertNever` guard is the only
+  exhaustive dispatch over those unions. Extend it in the same task. The webview
+  reducer narrows with `role === 'x'` and has no exhaustive switch, so it needs
+  nothing.
+- **The transcript's role switch lives in
+  `src/webview/components/transcript-item.tsx`**, not `transcript.tsx`.
 
 **Milestones.** Tasks 1–8 deliver relocation end to end and are independently
 shippable. Tasks 9–11 add bringing a branch back and the stale-tree sweep; they
@@ -1045,8 +1056,10 @@ unless the session's status is `idle`.
 
 - [ ] **Step 4: Render it from the transcript**
 
-Replace the placeholder `case 'relocation':` added in Task 4 with a
-`<RelocationCard sessionId={...} item={item} />`.
+Replace the placeholder `case 'relocation':` added in Task 4 — it is at
+`src/webview/components/transcript-item.tsx:49` and currently returns `null` —
+with a `<RelocationCard sessionId={sessionId} item={item} />`, matching how the
+neighbouring `case 'permission':` passes `item` and `sessionId`.
 
 - [ ] **Step 5: Run test to verify it passes**
 
