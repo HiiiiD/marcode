@@ -202,7 +202,7 @@ suite('AgentSession', () => {
 
   test('a permission event parks the session and respondToPermission settles it', async () => {
     const provider = new FakeProvider(() => [
-      { kind: 'permission', id: 'r1', name: 'Bash', input: { command: 'ls' } },
+      { kind: 'permission', id: 'r1', tool: { kind: 'command', label: 'Bash', command: 'ls' } },
     ]);
     const session = new AgentSession(baseState(), provider, store, sink);
     session.send('list files');
@@ -224,9 +224,16 @@ suite('AgentSession', () => {
     await session.dispose();
   });
 
-  test('an mcp-named permission event carries the bare name and the parsed server', async () => {
+  // Splitting an `mcp__<server>__<tool>` name is now the provider
+  // classifier's job (see `parseMcpName` in providers/canonical/tool-call.ts
+  // and each provider's own map-tools.ts), not AgentSession's — the host no
+  // longer parses tool names at all. This exercises the equivalent behavior
+  // one layer up: a `permission` event already carrying a classified `mcp`
+  // call is persisted on the item exactly as the provider built it.
+  test('an mcp-classified permission event is persisted on the item as the provider built it', async () => {
+    const mcp = { kind: 'mcp' as const, label: 'create_pr', server: 'github', tool: 'create_pr' };
     const provider = new FakeProvider(() => [
-      { kind: 'permission', id: 'r1', name: 'mcp__github__create_pr', input: {} },
+      { kind: 'permission', id: 'r1', tool: mcp },
     ]);
     const session = new AgentSession(baseState(), provider, store, sink);
     session.send('open a pr');
@@ -234,17 +241,13 @@ suite('AgentSession', () => {
 
     const snap = await session.snapshot();
     const perm = snap.items.find((i) => i.role === 'permission');
-    assert.strictEqual((perm as { name: string }).name, 'create_pr');
-    assert.strictEqual((perm as { mcpServer?: string }).mcpServer, 'github');
+    assert.deepStrictEqual((perm as { tool: unknown }).tool, mcp);
     await session.dispose();
   });
 
   test('a tool item carries the canonical call the provider sent', async () => {
     const provider = new FakeProvider(() => [
-      {
-        kind: 'tool-start', id: 't1', name: 'Bash', input: { command: 'ls' },
-        tool: { kind: 'command', label: 'Bash', command: 'ls' },
-      },
+      { kind: 'tool-start', id: 't1', tool: { kind: 'command', label: 'Bash', command: 'ls' } },
       { kind: 'turn-end', reason: 'done' },
     ]);
     const session = new AgentSession(baseState(), provider, store, sink);
@@ -253,14 +256,14 @@ suite('AgentSession', () => {
 
     const snap = await session.snapshot();
     const item = snap.items.find((i) => i.role === 'tool');
-    assert.strictEqual(item?.role === 'tool' && item.tool?.kind, 'command');
+    assert.strictEqual(item?.role === 'tool' && item.tool.kind, 'command');
     await session.dispose();
   });
 
   test('tool-start then tool-end replaces the tool item in place', async () => {
     const provider = new FakeProvider(() => [
-      { kind: 'tool-start', id: 't1', name: 'Read', input: { path: 'a.ts' } },
-      { kind: 'tool-end', id: 't1', ok: true, output: 'contents' },
+      { kind: 'tool-start', id: 't1', tool: { kind: 'file-read', label: 'Read', path: 'a.ts' } },
+      { kind: 'tool-end', id: 't1', ok: true, output: { kind: 'text', text: 'contents' } },
       { kind: 'turn-end', reason: 'done' },
     ]);
     const session = new AgentSession(baseState(), provider, store, sink);
@@ -275,14 +278,17 @@ suite('AgentSession', () => {
     await session.dispose();
   });
 
-  test('a tool-end that carries input revises the arguments the card renders', async () => {
+  test('a tool-end that carries a tool revises the call the card renders', async () => {
     // Codex's `webSearch` item starts with an empty `query` and only carries
     // the real one on completion, so a provider must be able to correct the
     // arguments it reported at start. Captured live from codex-cli 0.147.0:
     // item/started `{query:''}`, item/completed `{query:'site:nodejs.org …'}`.
     const provider = new FakeProvider(() => [
-      { kind: 'tool-start', id: 't1', name: 'webSearch', input: { query: '' } },
-      { kind: 'tool-end', id: 't1', ok: true, output: 'results', input: { query: 'node lts' } },
+      { kind: 'tool-start', id: 't1', tool: { kind: 'web', label: 'Web search', query: '' } },
+      {
+        kind: 'tool-end', id: 't1', ok: true, output: { kind: 'text', text: 'results' },
+        tool: { kind: 'web', label: 'Web search', query: 'node lts' },
+      },
       { kind: 'turn-end', reason: 'done' },
     ]);
     const session = new AgentSession(baseState(), provider, store, sink);
@@ -291,14 +297,17 @@ suite('AgentSession', () => {
 
     const snap = await session.snapshot();
     const tool = snap.items.find((i) => i.role === 'tool');
-    assert.deepStrictEqual((tool as { input: unknown }).input, { query: 'node lts' });
+    assert.deepStrictEqual(
+      (tool as { tool: unknown }).tool,
+      { kind: 'web', label: 'Web search', query: 'node lts' },
+    );
     await session.dispose();
   });
 
-  test('a tool-end without input keeps the arguments from tool-start', async () => {
+  test('a tool-end without a tool keeps the call from tool-start', async () => {
     const provider = new FakeProvider(() => [
-      { kind: 'tool-start', id: 't1', name: 'Read', input: { path: 'a.ts' } },
-      { kind: 'tool-end', id: 't1', ok: true, output: 'contents' },
+      { kind: 'tool-start', id: 't1', tool: { kind: 'file-read', label: 'Read', path: 'a.ts' } },
+      { kind: 'tool-end', id: 't1', ok: true, output: { kind: 'text', text: 'contents' } },
       { kind: 'turn-end', reason: 'done' },
     ]);
     const session = new AgentSession(baseState(), provider, store, sink);
@@ -307,7 +316,10 @@ suite('AgentSession', () => {
 
     const snap = await session.snapshot();
     const tool = snap.items.find((i) => i.role === 'tool');
-    assert.deepStrictEqual((tool as { input: unknown }).input, { path: 'a.ts' });
+    assert.deepStrictEqual(
+      (tool as { tool: unknown }).tool,
+      { kind: 'file-read', label: 'Read', path: 'a.ts' },
+    );
     await session.dispose();
   });
 
@@ -328,7 +340,7 @@ suite('AgentSession', () => {
 
   test('dispose denies outstanding permissions so the provider can unwind', async () => {
     const provider = new FakeProvider(() => [
-      { kind: 'permission', id: 'r1', name: 'Bash', input: {} },
+      { kind: 'permission', id: 'r1', tool: { kind: 'command', label: 'Bash', command: 'ls' } },
     ]);
     const session = new AgentSession(baseState(), provider, store, sink);
     session.send('go');
@@ -366,7 +378,9 @@ suite('AgentSession', () => {
   test('respondToPermission() on a throwing provider denies the item and clears it from pending', async () => {
     const provider = new ThrowingProvider({
       throwOnRespond: true,
-      script: () => [{ kind: 'permission', id: 'r1', name: 'Bash', input: {} }],
+      script: () => [{
+        kind: 'permission', id: 'r1', tool: { kind: 'command', label: 'Bash', command: 'ls' },
+      }],
     });
     const session = new AgentSession(baseState(), provider, store, sink);
     session.send('list files');

@@ -84,7 +84,6 @@ export function subagentStateLabel(item: ToolItem, blocked: boolean): string {
  */
 export function subagentLabel(item: ToolItem): string {
   const tool = item.tool;
-  if (!tool) { return item.name; }
   return tool.kind === 'subagent'
     ? (tool.agent ?? tool.target ?? tool.label)
     : tool.label;

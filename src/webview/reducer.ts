@@ -261,11 +261,7 @@ function applyPatch(pane: PaneState, patch: Patch): PaneState {
   switch (patch.op) {
     case 'append': {
       const pending = patch.item.role === 'permission' && patch.item.state === 'pending'
-        ? [...pane.pending, {
-            requestId: patch.item.requestId,
-            name: patch.item.name,
-            input: patch.item.input,
-          }]
+        ? [...pane.pending, { requestId: patch.item.requestId, tool: patch.item.tool }]
         : pane.pending;
 
       // A nested append targets a parent already in the loaded window: the

@@ -11,7 +11,6 @@ import type {
 } from '../providers/types';
 import { findModel, resolveEffort } from '../shared/model-catalog';
 import type { TranscriptStore } from './transcript-store';
-import { parseToolName } from './mcp-tool-name';
 
 export interface SessionSink {
   patch(id: SessionId, patch: TranscriptPatch): void;
@@ -409,12 +408,9 @@ export class AgentSession {
       }
 
       case 'tool-start': {
-        const parsed = parseToolName(event.name);
         const item: TranscriptItem = {
           id: nextId('t'), ts: Date.now(), role: 'tool',
-          toolId: event.id, name: parsed.name, input: event.input, state: 'running',
-          ...(parsed.mcpServer ? { mcpServer: parsed.mcpServer } : {}),
-          ...(event.tool ? { tool: event.tool } : {}),
+          toolId: event.id, tool: event.tool, state: 'running',
         };
         this.toolItems.set(event.id, item);
 
@@ -451,10 +447,8 @@ export class AgentSession {
           output: event.output,
           // A provider that only learns the real arguments on completion says
           // so by sending them again — see `AgentEvent`'s `tool-end`. Absent,
-          // the tool-start arguments stand.
-          ...(event.input !== undefined ? { input: event.input } : {}),
+          // the tool-start call stands.
           ...(event.tool ? { tool: event.tool } : {}),
-          ...(event.toolOutput ? { toolOutput: event.toolOutput } : {}),
           ...(children ? { children: [...children] } : {}),
         };
         this.toolItems.set(event.id, settled);
@@ -479,19 +473,12 @@ export class AgentSession {
           ? this.parentItemIdFor(parentSource)
           : undefined;
 
-        const parsedName = parseToolName(event.name);
         const item: TranscriptItem = {
           id: nextId('p'), ts: Date.now(), role: 'permission',
-          requestId: event.id, name: parsedName.name,
-          input: event.input, state: 'pending',
-          ...(parsedName.mcpServer ? { mcpServer: parsedName.mcpServer } : {}),
-          ...(event.tool ? { tool: event.tool } : {}),
+          requestId: event.id, tool: event.tool, state: 'pending',
         };
         this.permissionItems.set(event.id, item);
-        this.pending.set(event.id, {
-          requestId: event.id, name: event.name, input: event.input,
-          ...(event.tool ? { tool: event.tool } : {}),
-        });
+        this.pending.set(event.id, { requestId: event.id, tool: event.tool });
 
         if (parentSource && parentItemId) {
           const root = this.resolveParent(parentSource);

@@ -96,7 +96,7 @@ export interface StartOptions {
 }
 
 export type ToolDecision =
-  | { allow: true; updatedInput?: unknown }
+  | { allow: true }
   | { allow: false; reason?: string };
 
 /** One account/plan usage window, as a percentage. Never a token count. */
@@ -145,19 +145,17 @@ export type AgentEvent =
   | { kind: 'session'; resumeToken: string }
   | { kind: 'text'; delta: string }
   | { kind: 'thinking'; delta: string }
-  | { kind: 'tool-start'; id: string; name: string; input: unknown; parentId?: string;
-      tool?: ToolCall }
+  | { kind: 'tool-start'; id: string; tool: ToolCall; parentId?: string }
   /**
-   * `input`, when present, REPLACES what `tool-start` reported. A backend may
+   * `tool`, when present, REPLACES what tool-start reported. A backend may
    * only learn a call's real arguments when it finishes — Codex's `webSearch`
-   * item carries `query: ''` while running and the actual search only on
+   * carries `query: ''` while running and the actual search only on
    * completion — and a card that renders the start-time arguments forever
-   * would show a search with no query. Omit it and the arguments stand.
+   * would show a search with no query. Omit it and the call stands.
    */
-  | { kind: 'tool-end'; id: string; ok: boolean; output: unknown; input?: unknown; parentId?: string;
-      tool?: ToolCall; toolOutput?: ToolOutput }
-  | { kind: 'permission'; id: string; name: string; input: unknown; parentId?: string;
-      tool?: ToolCall }
+  | { kind: 'tool-end'; id: string; ok: boolean; output: ToolOutput;
+      tool?: ToolCall; parentId?: string }
+  | { kind: 'permission'; id: string; tool: ToolCall; parentId?: string }
   | { kind: 'turn-end'; reason: 'done' | 'interrupted' | 'error'; error?: string }
   | { kind: 'usage'; inputTokens: number; outputTokens: number }
   /**

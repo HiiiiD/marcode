@@ -517,6 +517,7 @@ suite('SessionManager', () => {
     // breakdown the current one.
     const store2 = new TranscriptStore(dir);
     await store2.writeIndex({
+      version: 2,
       sessions: [storedSession()],
       layout: { orientation: 'vertical', panes: [] },
     });
@@ -537,6 +538,7 @@ suite('SessionManager', () => {
     // the cache has to be openable — otherwise every link in it is inert.
     const store2 = new TranscriptStore(dir);
     await store2.writeIndex({
+      version: 2,
       sessions: [storedSession()],
       layout: { orientation: 'vertical', panes: [] },
     });
@@ -913,6 +915,7 @@ suite('SessionManager', () => {
     const store2 = new TranscriptStore(dir);
     // Written by a build that predates includeEditorContext.
     await store2.writeIndex({
+      version: 2,
       sessions: [{
         id: 'legacy', providerId: 'fake', model: 'fake-small', title: 'Old',
         cwd: '/tmp', status: 'idle', permissionMode: 'default',

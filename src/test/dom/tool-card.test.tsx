@@ -22,7 +22,7 @@ suite('ToolCard', () => {
   test('expanding shows the command and the result under separate headings', async () => {
     renderWithStore(<ToolCard item={tool({
       tool: { kind: 'command', label: 'Bash', command: 'yarn test:unit' },
-      toolOutput: { kind: 'text', text: '14 passing' },
+      output: { kind: 'text', text: '14 passing' },
     })} />);
     await expand();
 
@@ -38,7 +38,7 @@ suite('ToolCard', () => {
     renderWithStore(<ToolCard item={tool({
       tool: { kind: 'command', label: 'Bash', command: 'yarn test:unit' },
       state: 'error',
-      toolOutput: { kind: 'text', text: 'ENOENT' },
+      output: { kind: 'text', text: 'ENOENT' },
     })} />);
 
     screen.getByText('failed');
@@ -51,7 +51,7 @@ suite('ToolCard', () => {
     renderWithStore(<ToolCard item={tool({
       tool: { kind: 'command', label: 'Bash', command: 'yarn test:unit' },
       state: 'running',
-      toolOutput: undefined,
+      output: undefined,
     })} />);
     await expand();
 
@@ -63,7 +63,7 @@ suite('ToolCard', () => {
     const output = Array.from({ length: 100 }, (_, i) => `line ${i}`).join('\n');
     renderWithStore(<ToolCard item={tool({
       tool: { kind: 'command', label: 'Bash', command: 'yarn test:unit' },
-      toolOutput: { kind: 'text', text: output },
+      output: { kind: 'text', text: output },
     })} />);
     await expand();
 
@@ -77,13 +77,11 @@ suite('ToolCard', () => {
 
   test('an edit renders a diff, and its path opens the file', async () => {
     const item = tool({
-      name: 'Edit',
-      input: { file_path: '/repo/src/a.ts', old_string: 'one', new_string: 'two' },
       tool: {
         kind: 'file-edit', label: 'Edit',
         files: [{ path: '/repo/src/a.ts', op: 'modify', edits: [{ before: 'one', after: 'two' }] }],
       },
-      toolOutput: { kind: 'text', text: 'ok' },
+      output: { kind: 'text', text: 'ok' },
     });
     renderWithStore(<ToolCard item={item} />);
     await expand();
@@ -98,9 +96,8 @@ suite('ToolCard', () => {
 
   test('an mcp call names its tool and shows its server badge in the collapsed row', () => {
     const item = tool({
-      name: 'create_pr', mcpServer: 'github', input: { title: 'x', body: 'y' },
       tool: { kind: 'mcp', label: 'create_pr', server: 'github', tool: 'create_pr' },
-      toolOutput: { kind: 'text', text: 'done' },
+      output: { kind: 'text', text: 'done' },
     });
     renderWithStore(<ToolCard item={item} />);
 
@@ -108,10 +105,15 @@ suite('ToolCard', () => {
     screen.getByText('create_pr');
   });
 
+  // Exercises a genuine `other`-kind call — the fallback a provider's
+  // classifier reaches for when nothing more specific fits — rather than the
+  // shim that used to stand in for a missing `tool` field.
   test('an unserializable argument renders instead of throwing during a turn', () => {
     const circular: Record<string, unknown> = {};
     circular.self = circular;
-    renderWithStore(<ToolCard item={tool({ name: 'create_pr', input: circular })} />);
+    renderWithStore(<ToolCard item={tool({
+      tool: { kind: 'other', label: 'create_pr', raw: circular },
+    })} />);
 
     screen.getByText('create_pr');
   });

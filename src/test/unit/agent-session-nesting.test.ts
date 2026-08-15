@@ -6,7 +6,7 @@ import { AgentSession, type SessionSink } from '../../host/agent-session';
 import { TranscriptStore } from '../../host/transcript-store';
 import { FakeProvider } from '../../providers/fake/fake-provider';
 import type {
-  Invocable, SessionId, SessionState, SessionStatus, TranscriptItem, TranscriptPatch,
+  Invocable, SessionId, SessionState, SessionStatus, ToolCall, TranscriptItem, TranscriptPatch,
 } from '../../protocol/messages';
 
 function baseState(): SessionState {
@@ -42,6 +42,11 @@ function toolItems(items: TranscriptItem[]) {
   return items.filter((i): i is Extract<TranscriptItem, { role: 'tool' }> => i.role === 'tool');
 }
 
+const TASK: ToolCall = { kind: 'subagent', label: 'Task', action: 'spawn', agent: 'Explore' };
+const READ: ToolCall = { kind: 'file-read', label: 'Read', path: 'a.ts' };
+const GREP: ToolCall = { kind: 'search', label: 'Grep', pattern: 'x', mode: 'content' };
+const BASH: ToolCall = { kind: 'command', label: 'Bash', command: 'ls' };
+
 suite('AgentSession subagent nesting', () => {
   let dir: string;
   let store: TranscriptStore;
@@ -57,10 +62,10 @@ suite('AgentSession subagent nesting', () => {
 
   test('a child tool nests under its parent instead of appearing top-level', async () => {
     const provider = new FakeProvider(() => [
-      { kind: 'tool-start', id: 'task1', name: 'Task', input: { subagent_type: 'Explore' } },
-      { kind: 'tool-start', id: 'c1', name: 'Read', input: { path: 'a.ts' }, parentId: 'task1' },
-      { kind: 'tool-end', id: 'c1', ok: true, output: 'contents', parentId: 'task1' },
-      { kind: 'tool-end', id: 'task1', ok: true, output: 'found it' },
+      { kind: 'tool-start', id: 'task1', tool: TASK },
+      { kind: 'tool-start', id: 'c1', tool: READ, parentId: 'task1' },
+      { kind: 'tool-end', id: 'c1', ok: true, output: { kind: 'text', text: 'contents' }, parentId: 'task1' },
+      { kind: 'tool-end', id: 'task1', ok: true, output: { kind: 'text', text: 'found it' } },
       { kind: 'turn-end', reason: 'done' },
     ]);
     const session = new AgentSession(baseState(), provider, store, sink);
@@ -70,18 +75,18 @@ suite('AgentSession subagent nesting', () => {
     const snap = await session.snapshot();
     const tools = toolItems(snap.items);
     assert.strictEqual(tools.length, 1, 'only the parent is a top-level item');
-    assert.strictEqual(tools[0].name, 'Task');
+    assert.strictEqual(tools[0].tool.label, 'Task');
     assert.strictEqual(tools[0].state, 'ok');
     assert.strictEqual(tools[0].children?.length, 1);
-    assert.strictEqual((tools[0].children![0] as { name: string }).name, 'Read');
+    assert.strictEqual((tools[0].children![0] as Extract<TranscriptItem, { role: 'tool' }>).tool.label, 'Read');
     assert.strictEqual((tools[0].children![0] as { state: string }).state, 'ok');
     await session.dispose();
   });
 
   test('child patches carry parentItemId so the webview can nest them', async () => {
     const provider = new FakeProvider(() => [
-      { kind: 'tool-start', id: 'task1', name: 'Task', input: {} },
-      { kind: 'tool-start', id: 'c1', name: 'Grep', input: {}, parentId: 'task1' },
+      { kind: 'tool-start', id: 'task1', tool: TASK },
+      { kind: 'tool-start', id: 'c1', tool: GREP, parentId: 'task1' },
       { kind: 'turn-end', reason: 'done' },
     ]);
     const session = new AgentSession(baseState(), provider, store, sink);
@@ -91,8 +96,8 @@ suite('AgentSession subagent nesting', () => {
     const appends = sink.patches
       .map((p) => p.patch)
       .filter((p): p is Extract<TranscriptPatch, { op: 'append' }> => p.op === 'append');
-    const parent = appends.find((p) => p.item.role === 'tool' && p.item.name === 'Task');
-    const child = appends.find((p) => p.item.role === 'tool' && p.item.name === 'Grep');
+    const parent = appends.find((p) => p.item.role === 'tool' && p.item.tool.label === 'Task');
+    const child = appends.find((p) => p.item.role === 'tool' && p.item.tool.label === 'Grep');
     assert.ok(parent && child);
     assert.strictEqual(parent!.parentItemId, undefined);
     assert.strictEqual(child!.parentItemId, parent!.item.id);
@@ -101,9 +106,9 @@ suite('AgentSession subagent nesting', () => {
 
   test('nesting is capped at depth 1 — a grandchild flattens to the top parent', async () => {
     const provider = new FakeProvider(() => [
-      { kind: 'tool-start', id: 'task1', name: 'Task', input: {} },
-      { kind: 'tool-start', id: 'c1', name: 'Task', input: {}, parentId: 'task1' },
-      { kind: 'tool-start', id: 'g1', name: 'Read', input: {}, parentId: 'c1' },
+      { kind: 'tool-start', id: 'task1', tool: TASK },
+      { kind: 'tool-start', id: 'c1', tool: TASK, parentId: 'task1' },
+      { kind: 'tool-start', id: 'g1', tool: READ, parentId: 'c1' },
       { kind: 'turn-end', reason: 'done' },
     ]);
     const session = new AgentSession(baseState(), provider, store, sink);
@@ -114,8 +119,10 @@ suite('AgentSession subagent nesting', () => {
     const tools = toolItems(snap.items);
     assert.strictEqual(tools.length, 1);
     assert.strictEqual(tools[0].children?.length, 2, 'grandchild flattened alongside the child');
-    const names = tools[0].children!.map((c) => (c as { name: string }).name);
-    assert.deepStrictEqual(names, ['Task', 'Read']);
+    const labels = tools[0].children!.map(
+      (c) => (c as Extract<TranscriptItem, { role: 'tool' }>).tool.label,
+    );
+    assert.deepStrictEqual(labels, ['Task', 'Read']);
     for (const child of tools[0].children!) {
       assert.strictEqual((child as { children?: unknown }).children, undefined);
     }
@@ -124,7 +131,7 @@ suite('AgentSession subagent nesting', () => {
 
   test('a child whose parent was never seen is promoted to top-level', async () => {
     const provider = new FakeProvider(() => [
-      { kind: 'tool-start', id: 'c1', name: 'Read', input: {}, parentId: 'ghost' },
+      { kind: 'tool-start', id: 'c1', tool: READ, parentId: 'ghost' },
       { kind: 'turn-end', reason: 'done' },
     ]);
     const session = new AgentSession(baseState(), provider, store, sink);
@@ -134,15 +141,15 @@ suite('AgentSession subagent nesting', () => {
     const snap = await session.snapshot();
     const tools = toolItems(snap.items);
     assert.strictEqual(tools.length, 1);
-    assert.strictEqual(tools[0].name, 'Read');
+    assert.strictEqual(tools[0].tool.label, 'Read');
     assert.strictEqual(tools[0].children, undefined);
     await session.dispose();
   });
 
   test('an abandoned subagent is still written, with its children and an error state', async () => {
     const provider = new FakeProvider(() => [
-      { kind: 'tool-start', id: 'task1', name: 'Task', input: {} },
-      { kind: 'tool-start', id: 'c1', name: 'Read', input: {}, parentId: 'task1' },
+      { kind: 'tool-start', id: 'task1', tool: TASK },
+      { kind: 'tool-start', id: 'c1', tool: READ, parentId: 'task1' },
       { kind: 'turn-end', reason: 'interrupted' },
     ]);
     const session = new AgentSession(baseState(), provider, store, sink);
@@ -160,9 +167,9 @@ suite('AgentSession subagent nesting', () => {
 
   test('a permission raised inside a subagent nests under it', async () => {
     const provider = new FakeProvider(() => [
-      { kind: 'tool-start', id: 'task1', name: 'Task', input: {} },
-      { kind: 'tool-start', id: 'c1', name: 'Bash', input: { command: 'ls' }, parentId: 'task1' },
-      { kind: 'permission', id: 'c1', name: 'Bash', input: { command: 'ls' } },
+      { kind: 'tool-start', id: 'task1', tool: TASK },
+      { kind: 'tool-start', id: 'c1', tool: BASH, parentId: 'task1' },
+      { kind: 'permission', id: 'c1', tool: BASH },
       { kind: 'turn-end', reason: 'done' },
     ]);
     const session = new AgentSession(baseState(), provider, store, sink);
@@ -184,9 +191,9 @@ suite('AgentSession subagent nesting', () => {
 
   test('a permission answered after its parent was force-flushed still persists to the store', async () => {
     const provider = new FakeProvider(() => [
-      { kind: 'tool-start', id: 'task1', name: 'Task', input: {} },
-      { kind: 'tool-start', id: 'c1', name: 'Bash', input: { command: 'ls' }, parentId: 'task1' },
-      { kind: 'permission', id: 'c1', name: 'Bash', input: { command: 'ls' } },
+      { kind: 'tool-start', id: 'task1', tool: TASK },
+      { kind: 'tool-start', id: 'c1', tool: BASH, parentId: 'task1' },
+      { kind: 'permission', id: 'c1', tool: BASH },
       { kind: 'turn-end', reason: 'interrupted' },
     ]);
     const session = new AgentSession(baseState(), provider, store, sink);
@@ -208,9 +215,9 @@ suite('AgentSession subagent nesting', () => {
 
   test('disposing a session mid-subagent still flushes its buffered children', async () => {
     const provider = new FakeProvider(() => [
-      { kind: 'tool-start', id: 'task1', name: 'Task', input: {} },
-      { kind: 'tool-start', id: 'c1', name: 'Read', input: {}, parentId: 'task1' },
-      { kind: 'tool-end', id: 'c1', ok: true, output: 'contents', parentId: 'task1' },
+      { kind: 'tool-start', id: 'task1', tool: TASK },
+      { kind: 'tool-start', id: 'c1', tool: READ, parentId: 'task1' },
+      { kind: 'tool-end', id: 'c1', ok: true, output: { kind: 'text', text: 'contents' }, parentId: 'task1' },
       // Deliberately no turn-end: the provider is closed out from under the
       // running Task, the way a pane being closed mid-subagent looks.
     ]);
@@ -225,12 +232,21 @@ suite('AgentSession subagent nesting', () => {
     assert.strictEqual(tools.length, 1, 'the parent is persisted');
     assert.strictEqual(tools[0].state, 'error');
     assert.strictEqual(tools[0].children?.length, 1, 'its child was not discarded');
-    assert.strictEqual((tools[0].children![0] as { name: string }).name, 'Read');
+    assert.strictEqual(
+      (tools[0].children![0] as Extract<TranscriptItem, { role: 'tool' }>).tool.label, 'Read',
+    );
   });
 
-  test('an mcp tool name is split onto the item at creation', async () => {
+  // Splitting an `mcp__<server>__<tool>` name is now the provider
+  // classifier's job (see providers/canonical/tool-call.ts's `parseMcpName`
+  // and each provider's own map-tools.ts), not AgentSession's — the host no
+  // longer parses tool names at all. This exercises the equivalent behavior
+  // one layer up: a `tool-start` already carrying a classified `mcp` call is
+  // persisted on the item exactly as the provider built it.
+  test('an mcp-classified call is persisted on the item as the provider built it', async () => {
+    const mcp: ToolCall = { kind: 'mcp', label: 'create_pr', server: 'github', tool: 'create_pr' };
     const provider = new FakeProvider(() => [
-      { kind: 'tool-start', id: 't1', name: 'mcp__github__create_pr', input: {} },
+      { kind: 'tool-start', id: 't1', tool: mcp },
       { kind: 'turn-end', reason: 'done' },
     ]);
     const session = new AgentSession(baseState(), provider, store, sink);
@@ -239,15 +255,14 @@ suite('AgentSession subagent nesting', () => {
 
     const snap = await session.snapshot();
     const tools = toolItems(snap.items);
-    assert.strictEqual(tools[0].name, 'create_pr');
-    assert.strictEqual(tools[0].mcpServer, 'github');
+    assert.deepStrictEqual(tools[0].tool, mcp);
     await session.dispose();
   });
 
   test('a plain tool call still produces no children field at all', async () => {
     const provider = new FakeProvider(() => [
-      { kind: 'tool-start', id: 't1', name: 'Read', input: {} },
-      { kind: 'tool-end', id: 't1', ok: true, output: 'x' },
+      { kind: 'tool-start', id: 't1', tool: READ },
+      { kind: 'tool-end', id: 't1', ok: true, output: { kind: 'text', text: 'x' } },
       { kind: 'turn-end', reason: 'done' },
     ]);
     const session = new AgentSession(baseState(), provider, store, sink);
@@ -257,7 +272,6 @@ suite('AgentSession subagent nesting', () => {
     const snap = await session.snapshot();
     const tools = toolItems(snap.items);
     assert.strictEqual(tools[0].children, undefined);
-    assert.strictEqual(tools[0].mcpServer, undefined);
     await session.dispose();
   });
 });

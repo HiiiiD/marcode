@@ -29,7 +29,7 @@ suite('FakeProvider', () => {
 
   test('respondToTool resolves a pending permission', async () => {
     const provider = new FakeProvider(() => [
-      { kind: 'permission', id: 'p1', name: 'Bash', input: { command: 'ls' } },
+      { kind: 'permission', id: 'p1', tool: { kind: 'command', label: 'Bash', command: 'ls' } },
     ]);
     const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
     run.send('run ls');

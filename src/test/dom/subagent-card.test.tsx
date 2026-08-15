@@ -9,13 +9,15 @@ import type { TranscriptItem } from '../../protocol/messages';
 type ToolItem = Extract<TranscriptItem, { role: 'tool' }>;
 
 function child(id: string, name: string): TranscriptItem {
-  return { id, ts: 2, role: 'tool', toolId: id, name, input: {}, state: 'ok' };
+  return {
+    id, ts: 2, role: 'tool', toolId: id,
+    tool: { kind: 'other', label: name, raw: {} }, state: 'ok',
+  };
 }
 
 function subagent(children: TranscriptItem[], over: Partial<ToolItem> = {}): ToolItem {
   return {
-    id: 't1', ts: 1000, role: 'tool', toolId: 'task1', name: 'Task',
-    input: { subagent_type: 'Explore' },
+    id: 't1', ts: 1000, role: 'tool', toolId: 'task1',
     tool: { kind: 'subagent', label: 'Task', action: 'spawn', agent: 'Explore' },
     state: 'running', children, ...over,
   } as ToolItem;
@@ -58,8 +60,8 @@ suite('SubagentCard', () => {
 
   test('a pending permission child forces the card open and is announced', () => {
     const item = subagent([{
-      id: 'p1', ts: 2, role: 'permission', requestId: 'r1', name: 'Bash',
-      input: { command: 'ls' }, state: 'pending',
+      id: 'p1', ts: 2, role: 'permission', requestId: 'r1',
+      tool: { kind: 'command', label: 'Bash', command: 'ls' }, state: 'pending',
     }]);
     renderWithStore(<SubagentCard item={item} sessionId="s1" />);
 
@@ -69,8 +71,8 @@ suite('SubagentCard', () => {
 
   test('a deliberate collapse sticks even while still blocked', async () => {
     const item = subagent([{
-      id: 'p1', ts: 2, role: 'permission', requestId: 'r1', name: 'Bash',
-      input: { command: 'ls' }, state: 'pending',
+      id: 'p1', ts: 2, role: 'permission', requestId: 'r1',
+      tool: { kind: 'command', label: 'Bash', command: 'ls' }, state: 'pending',
     }]);
     renderWithStore(<SubagentCard item={item} sessionId="s1" />);
 
@@ -92,8 +94,8 @@ suite('SubagentCard', () => {
 
     // A permission now arrives on the same subagent.
     const blocked = subagent([{
-      id: 'p1', ts: 2, role: 'permission', requestId: 'r1', name: 'Bash',
-      input: { command: 'ls' }, state: 'pending',
+      id: 'p1', ts: 2, role: 'permission', requestId: 'r1',
+      tool: { kind: 'command', label: 'Bash', command: 'ls' }, state: 'pending',
     }]);
     rerender(<StoreProvider><SubagentCard item={blocked} sessionId="s1" /></StoreProvider>);
 

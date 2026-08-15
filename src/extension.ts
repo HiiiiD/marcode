@@ -36,7 +36,10 @@ export async function activate(context: vscode.ExtensionContext) {
   providers.set('codex', codexProvider);
   providers.set('fake', new FakeProvider(
     (text) => (text.includes('rm')
-      ? [{ kind: 'permission', id: `p-${Date.now()}`, name: 'Bash', input: { command: text } }]
+      ? [{
+          kind: 'permission', id: `p-${Date.now()}`,
+          tool: { kind: 'command', label: 'Bash', command: text },
+        }]
       : [{ kind: 'text', delta: 'ok' }, { kind: 'turn-end', reason: 'done' }]),
     // Scripted so both the context ring and the usage strip have something
     // to render in the dev host. Obviously synthetic, and deliberately

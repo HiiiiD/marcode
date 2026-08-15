@@ -97,8 +97,8 @@ suite('webview reducer', () => {
     state = reduce(state, {
       t: 'session-patch', id: 's1',
       patch: { op: 'append', item: {
-        id: 't1', ts: 1, role: 'tool', toolId: 'x', name: 'Read',
-        input: {}, state: 'running',
+        id: 't1', ts: 1, role: 'tool', toolId: 'x',
+        tool: { kind: 'file-read', label: 'Read', path: '/tmp/a.ts' }, state: 'running',
       } },
     });
     state = reduce(state, {
@@ -108,8 +108,9 @@ suite('webview reducer', () => {
     state = reduce(state, {
       t: 'session-patch', id: 's1',
       patch: { op: 'replace', item: {
-        id: 't1', ts: 1, role: 'tool', toolId: 'x', name: 'Read',
-        input: {}, state: 'ok', output: 'done',
+        id: 't1', ts: 1, role: 'tool', toolId: 'x',
+        tool: { kind: 'file-read', label: 'Read', path: '/tmp/a.ts' },
+        state: 'ok', output: { kind: 'text', text: 'done' },
       } },
     });
 
@@ -231,12 +232,12 @@ suite('webview reducer', () => {
 
   test('an append with parentItemId nests under the parent tool item', () => {
     const parent = {
-      id: 't1', ts: 1, role: 'tool' as const, toolId: 'task1', name: 'Task',
-      input: {}, state: 'running' as const,
+      id: 't1', ts: 1, role: 'tool' as const, toolId: 'task1',
+      tool: { kind: 'subagent' as const, label: 'Task', action: 'spawn' as const }, state: 'running' as const,
     };
     const child = {
-      id: 't2', ts: 2, role: 'tool' as const, toolId: 'c1', name: 'Read',
-      input: {}, state: 'running' as const,
+      id: 't2', ts: 2, role: 'tool' as const, toolId: 'c1',
+      tool: { kind: 'file-read' as const, label: 'Read', path: '/tmp/a.ts' }, state: 'running' as const,
     };
     let state = reduce(hydrated(), { t: 'session-patch', id: 's1', patch: { op: 'append', item: parent } });
     state = reduce(state, {
@@ -250,12 +251,12 @@ suite('webview reducer', () => {
 
   test('a replace with parentItemId settles the child in place', () => {
     const parent = {
-      id: 't1', ts: 1, role: 'tool' as const, toolId: 'task1', name: 'Task',
-      input: {}, state: 'running' as const,
+      id: 't1', ts: 1, role: 'tool' as const, toolId: 'task1',
+      tool: { kind: 'subagent' as const, label: 'Task', action: 'spawn' as const }, state: 'running' as const,
     };
     const child = {
-      id: 't2', ts: 2, role: 'tool' as const, toolId: 'c1', name: 'Read',
-      input: {}, state: 'running' as const,
+      id: 't2', ts: 2, role: 'tool' as const, toolId: 'c1',
+      tool: { kind: 'file-read' as const, label: 'Read', path: '/tmp/a.ts' }, state: 'running' as const,
     };
     let state = reduce(hydrated(), { t: 'session-patch', id: 's1', patch: { op: 'append', item: parent } });
     state = reduce(state, {
@@ -273,8 +274,8 @@ suite('webview reducer', () => {
 
   test('a child whose parent is not in the loaded window is promoted to top-level', () => {
     const child = {
-      id: 't2', ts: 2, role: 'tool' as const, toolId: 'c1', name: 'Read',
-      input: {}, state: 'running' as const,
+      id: 't2', ts: 2, role: 'tool' as const, toolId: 'c1',
+      tool: { kind: 'file-read' as const, label: 'Read', path: '/tmp/a.ts' }, state: 'running' as const,
     };
     const state = reduce(hydrated(), {
       t: 'session-patch', id: 's1', patch: { op: 'append', item: child, parentItemId: 'gone' },
@@ -285,12 +286,12 @@ suite('webview reducer', () => {
 
   test('a nested pending permission still reaches the pane pending list', () => {
     const parent = {
-      id: 't1', ts: 1, role: 'tool' as const, toolId: 'task1', name: 'Task',
-      input: {}, state: 'running' as const,
+      id: 't1', ts: 1, role: 'tool' as const, toolId: 'task1',
+      tool: { kind: 'subagent' as const, label: 'Task', action: 'spawn' as const }, state: 'running' as const,
     };
     const perm = {
-      id: 'p1', ts: 2, role: 'permission' as const, requestId: 'r1', name: 'Bash',
-      input: {}, state: 'pending' as const,
+      id: 'p1', ts: 2, role: 'permission' as const, requestId: 'r1',
+      tool: { kind: 'command' as const, label: 'Bash', command: 'ls' }, state: 'pending' as const,
     };
     let state = reduce(hydrated(), { t: 'session-patch', id: 's1', patch: { op: 'append', item: parent } });
     state = reduce(state, {

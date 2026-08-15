@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { useStore } from '../store';
 import { folderName } from '../format';
-import type { SessionId, ToolCall, TranscriptItem } from '../../protocol/messages';
+import type { SessionId, TranscriptItem } from '../../protocol/messages';
 import { ToolBody } from './tool-body';
 import { describeInput } from './tool-render';
 import { TranscriptItemShell } from './transcript-item-shell';
@@ -16,9 +16,7 @@ export function PermissionCard({
   sessionId: SessionId;
 }) {
   const { state, post } = useStore();
-  // Transitional while `tool` is still optional on the wire — deleted in the
-  // task that makes it required.
-  const tool: ToolCall = item.tool ?? { kind: 'other', label: item.name, raw: item.input };
+  const tool = item.tool;
   const server = tool.kind === 'mcp' ? tool.server : undefined;
   // The same description layer the transcript's tool cards use, so a request
   // looks the way the completed call will look — a shell command reads as a

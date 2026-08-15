@@ -12,10 +12,9 @@ export function tool(over: Partial<ToolItem> = {}): ToolItem {
     ts: 1,
     role: 'tool',
     toolId: 't1',
-    name: 'Bash',
-    input: { command: 'yarn test:unit' },
+    tool: { kind: 'command', label: 'Bash', command: 'yarn test:unit' },
     state: 'ok',
-    output: 'ok',
+    output: { kind: 'text', text: 'ok' },
     ...over,
   };
 }
@@ -96,8 +95,10 @@ export function permission(over: Partial<PermissionItem> = {}): PermissionItem {
     ts: 1,
     role: 'permission',
     requestId: 'r1',
-    name: 'Write',
-    input: { file_path: '/tmp/a.txt', content: 'hi' },
+    tool: {
+      kind: 'file-edit', label: 'Write',
+      files: [{ path: '/tmp/a.txt', op: 'create', edits: [{ after: 'hi' }] }],
+    },
     state: 'pending',
     ...over,
   };

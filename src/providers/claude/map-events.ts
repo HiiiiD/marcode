@@ -221,7 +221,7 @@ export function mapEvent(msg: unknown): AgentEvent[] {
         out.push({ kind: 'thinking', delta: block.thinking });
       } else if (block.type === 'tool_use' && block.id && block.name) {
         out.push({
-          kind: 'tool-start', id: block.id, name: block.name, input: block.input,
+          kind: 'tool-start', id: block.id,
           tool: toToolCall(block.name, block.input),
           ...(parentId ? { parentId } : {}),
         });
@@ -239,8 +239,7 @@ export function mapEvent(msg: unknown): AgentEvent[] {
           kind: 'tool-end',
           id: block.tool_use_id,
           ok: block.is_error !== true,
-          output: block.content,
-          toolOutput: toToolOutput(block.content),
+          output: toToolOutput(block.content),
           ...(parentId ? { parentId } : {}),
         });
       }

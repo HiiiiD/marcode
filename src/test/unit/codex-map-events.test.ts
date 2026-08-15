@@ -32,8 +32,7 @@ suite('mapNotification', () => {
       item: { type: 'commandExecution', id: 'it_1', command: 'ls -la', cwd: '/repo' },
     });
     assert.deepStrictEqual(events, [{
-      kind: 'tool-start', id: 'it_1', name: 'commandExecution',
-      input: { command: 'ls -la', cwd: '/repo' },
+      kind: 'tool-start', id: 'it_1',
       tool: { kind: 'command', label: 'Shell', command: 'ls -la', cwd: '/repo' },
     }]);
   });
@@ -110,13 +109,17 @@ suite('mapNotification', () => {
       },
     });
     assert.deepStrictEqual(events, [{
-      kind: 'tool-start', id: 'exec-1', name: 'commandExecution',
-      input: { command: REAL_ACTION_COMMAND, cwd: 'C:\\tmp\\probe' },
+      kind: 'tool-start', id: 'exec-1',
       tool: { kind: 'command', label: 'Shell', command: REAL_ACTION_COMMAND, cwd: 'C:\\tmp\\probe' },
     }]);
   });
 
-  test('a plugin-resolved command carries pluginId and scriptPath through', () => {
+  // The canonical `ToolCall` for a command has no pluginId/scriptPath
+  // fields — that identity lived only in the legacy `input` field this task
+  // deletes, and no later task has added a canonical home for it yet. This
+  // exercises what survives: the classified call itself is unaffected by
+  // whether the item carries plugin provenance.
+  test('a plugin-resolved command classifies the same as an ordinary one', () => {
     const events = mapNotification('item/started', {
       item: {
         type: 'commandExecution', id: 'exec-3', command: 'raw', cwd: '/repo',
@@ -124,14 +127,7 @@ suite('mapNotification', () => {
       },
     });
     assert.deepStrictEqual(events, [{
-      kind: 'tool-start', id: 'exec-3', name: 'commandExecution',
-      input: {
-        command: 'raw', cwd: '/repo',
-        pluginId: 'openai-curated-remote/superpowers', scriptPath: 'skills/using-superpowers/SKILL.md',
-      },
-      // The canonical `ToolCall` has no pluginId/scriptPath fields — only
-      // the legacy `input` carries them, until a later task decides whether
-      // the canonical shape needs them too.
+      kind: 'tool-start', id: 'exec-3',
       tool: { kind: 'command', label: 'Shell', command: 'raw', cwd: '/repo' },
     }]);
   });
@@ -144,8 +140,8 @@ suite('mapNotification', () => {
       item: { type: 'commandExecution', id: 'exec-4', command: 'ls', cwd: '/repo', pluginId: null, scriptPath: null },
     });
     assert.deepStrictEqual(
-      event.kind === 'tool-start' ? event.input : undefined,
-      { command: 'ls', cwd: '/repo' },
+      event.kind === 'tool-start' ? event.tool : undefined,
+      { kind: 'command', label: 'Shell', command: 'ls', cwd: '/repo' },
     );
   });
 
@@ -154,8 +150,8 @@ suite('mapNotification', () => {
       item: { type: 'commandExecution', id: 'exec-2', command: 'ls -la', cwd: '/repo', commandActions: [] },
     });
     assert.deepStrictEqual(
-      event.kind === 'tool-start' ? event.input : undefined,
-      { command: 'ls -la', cwd: '/repo' },
+      event.kind === 'tool-start' ? event.tool : undefined,
+      { kind: 'command', label: 'Shell', command: 'ls -la', cwd: '/repo' },
     );
   });
 
@@ -166,7 +162,8 @@ suite('mapNotification', () => {
       item: { type: 'webSearch', id: 'ws-1', query: '', action: null, results: null },
     });
     assert.deepStrictEqual(
-      start.kind === 'tool-start' ? start.input : undefined, { query: '' },
+      start.kind === 'tool-start' ? start.tool : undefined,
+      { kind: 'web', label: 'Web search' },
     );
 
     const [end] = mapNotification('item/completed', {
@@ -178,7 +175,8 @@ suite('mapNotification', () => {
     });
     assert.strictEqual(end.kind, 'tool-end');
     assert.deepStrictEqual(
-      end.kind === 'tool-end' ? end.input : undefined, { query: 'node lts version' },
+      end.kind === 'tool-end' ? end.tool : undefined,
+      { kind: 'web', label: 'Web search', query: 'node lts version' },
     );
   });
 
@@ -192,9 +190,9 @@ suite('mapNotification', () => {
         ],
       },
     });
-    assert.strictEqual(
+    assert.deepStrictEqual(
       end.kind === 'tool-end' ? end.output : undefined,
-      'Node.js\nhttps://nodejs.org/en\n\nReleases\nhttps://nodejs.org/rel',
+      { kind: 'text', text: 'Node.js\nhttps://nodejs.org/en\n\nReleases\nhttps://nodejs.org/rel' },
     );
   });
 
@@ -203,8 +201,8 @@ suite('mapNotification', () => {
       item: { type: 'mcpToolCall', id: 'm1', server: 'github', tool: 'list_prs', arguments: {} },
     });
     assert.deepStrictEqual(
-      start.kind === 'tool-start' ? start.input : undefined,
-      { server: 'github', toolName: 'list_prs' },
+      start.kind === 'tool-start' ? start.tool : undefined,
+      { kind: 'mcp', label: 'list_prs', server: 'github', tool: 'list_prs' },
     );
   });
 
@@ -212,12 +210,12 @@ suite('mapNotification', () => {
     const [start] = mapNotification('item/started', {
       item: { type: 'dynamicToolCall', id: 'd1', namespace: null, tool: 'custom_tool', arguments: {} },
     });
-    assert.deepStrictEqual(
-      start.kind === 'tool-start' ? start.input : undefined, { toolName: 'custom_tool' },
+    assert.strictEqual(
+      start.kind === 'tool-start' ? start.tool.label : undefined, 'custom_tool',
     );
   });
 
-  test('a completed file change carries its per-file diffs', () => {
+  test('a completed file change carries its per-file diffs on the call, not the output', () => {
     const [event] = mapNotification('item/completed', {
       item: {
         type: 'fileChange', id: 'it_5', status: 'completed',
@@ -228,10 +226,13 @@ suite('mapNotification', () => {
       },
     });
     assert.strictEqual(event.kind, 'tool-end');
-    // The mapper must pass the typed array through rather than the whole item,
-    // so the renderer receives something it can narrow.
-    const output = event.kind === 'tool-end' ? event.output as { changes: unknown[] } : undefined;
-    assert.strictEqual(output?.changes.length, 2);
+    if (event.kind !== 'tool-end') { return; }
+    // A fileChange's diffs belong to the call, not to its result — the
+    // completed item revises the ToolCall and leaves nothing for the output
+    // to carry.
+    assert.strictEqual(event.tool?.kind, 'file-edit');
+    assert.strictEqual(event.tool?.kind === 'file-edit' ? event.tool.files.length : 0, 2);
+    assert.deepStrictEqual(event.output, { kind: 'none' });
   });
 
   test('an agent message item completing is not a tool', () => {
@@ -301,8 +302,7 @@ suite('approvalEventOf', () => {
     assert.deepStrictEqual(
       approvalEventOf('item/commandExecution/requestApproval', 11,
         { itemId: 'it_1', command: 'rm -rf build', cwd: '/repo', reason: 'writes outside workspace' }),
-      { kind: 'permission', id: '11', name: 'commandExecution',
-        input: { command: 'rm -rf build', cwd: '/repo', reason: 'writes outside workspace' },
+      { kind: 'permission', id: '11',
         tool: {
           kind: 'command', label: 'Shell', command: 'rm -rf build', cwd: '/repo',
           note: 'writes outside workspace',
@@ -320,7 +320,7 @@ suite('approvalEventOf', () => {
       commandActions: [{ type: 'unknown', command: 'rm -rf build' }],
     });
     assert.deepStrictEqual(
-      event?.kind === 'permission' ? (event.input as { command: unknown }).command : undefined,
+      event?.kind === 'permission' && event.tool.kind === 'command' ? event.tool.command : undefined,
       'rm -rf build',
     );
   });
@@ -328,8 +328,7 @@ suite('approvalEventOf', () => {
   test('a file change approval becomes a permission request', () => {
     assert.deepStrictEqual(
       approvalEventOf('item/fileChange/requestApproval', 12, { itemId: 'it_2', grantRoot: '/repo' }),
-      { kind: 'permission', id: '12', name: 'fileChange',
-        input: { itemId: 'it_2', grantRoot: '/repo' },
+      { kind: 'permission', id: '12',
         tool: { kind: 'file-edit', label: 'Edit', files: [] } },
     );
   });
@@ -364,7 +363,7 @@ suite('codex map-events canonical tool', () => {
     if (event.kind !== 'tool-end') { return; }
     assert.deepStrictEqual(event.tool,
       { kind: 'web', label: 'Web search', query: 'effect schema' });
-    assert.deepStrictEqual(event.toolOutput,
+    assert.deepStrictEqual(event.output,
       { kind: 'text', text: 'T\nhttps://x.dev' });
   });
 });
