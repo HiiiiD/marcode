@@ -36,6 +36,23 @@ export interface SessionSink {
 }
 
 const TITLE_MAX = 60;
+
+/**
+ * Whether two absolute paths name the same directory.
+ *
+ * Both sides must already be `resolve`d: the session's `cwd` is whatever the
+ * creator supplied, so comparing a resolved candidate against a raw `cwd`
+ * makes `/repo` and `C:\repo` look like different trees. Case is folded on
+ * win32 only, where the filesystem is case-insensitive and `C:\Repo` is the
+ * same directory as `C:\repo`; folding it elsewhere would merge two paths that
+ * genuinely differ.
+ */
+function samePath(a: string, b: string): boolean {
+  return process.platform === 'win32'
+    ? a.toLowerCase() === b.toLowerCase()
+    : a === b;
+}
+
 let counter = 0;
 function nextId(prefix: string): string {
   return `${prefix}-${Date.now().toString(36)}-${(counter++).toString(36)}`;
@@ -558,7 +575,7 @@ export class AgentSession {
     const found = detectWorktreeAdd(tool, ok);
     if (found === undefined) { return; }
     const path = resolve(this._state.cwd, found);
-    if (path === this._state.cwd) { return; }
+    if (samePath(path, resolve(this._state.cwd))) { return; }
     this.appendItem({
       id: nextId('r'), ts: Date.now(), role: 'relocation', path, state: 'pending',
     });

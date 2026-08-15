@@ -84,6 +84,33 @@ suite('AgentSession relocation offer', () => {
     assert.strictEqual(offers[0].role === 'relocation' && offers[0].path.endsWith('a'), true);
   });
 
+  test('appends nothing when the tree resolves to where the session already is', async () => {
+    const { session, patches, emit } = await makeSession();
+    emit({ kind: 'tool-start', id: 'x1',
+      tool: { kind: 'command', label: 'Bash', command: 'git worktree add .' } });
+    emit({ kind: 'tool-end', id: 'x1', ok: true, output: { kind: 'none' } });
+    await settle();
+    await session.snapshot();
+
+    assert.strictEqual(patches.some((p) => p.item?.role === 'relocation'), false);
+  });
+
+  test('treats a case-differing path as the same tree on Windows', async function () {
+    // On win32 the filesystem is case-insensitive, so `C:\Repo` and `C:\repo`
+    // are one directory and offering to "move" between them is an offer to go
+    // nowhere. On a case-sensitive filesystem they are genuinely different.
+    if (process.platform !== 'win32') { this.skip(); }
+    const { session, patches, emit } = await makeSession();
+    const shouted = session.state.cwd.toUpperCase();
+    emit({ kind: 'tool-start', id: 'x1',
+      tool: { kind: 'command', label: 'Bash', command: `git worktree add ${shouted}` } });
+    emit({ kind: 'tool-end', id: 'x1', ok: true, output: { kind: 'none' } });
+    await settle();
+    await session.snapshot();
+
+    assert.strictEqual(patches.some((p) => p.item?.role === 'relocation'), false);
+  });
+
   test('appends nothing when the command failed', async () => {
     const { session, patches, emit } = await makeSession();
     emit({ kind: 'tool-start', id: 'x1',
