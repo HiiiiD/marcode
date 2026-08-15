@@ -1,13 +1,15 @@
 import { AgentSession, type SessionSink } from './agent-session';
 import { catalogKey, CatalogService } from './catalog-service';
+import { buildSeed } from './replay';
 import { TRANSCRIPT_VERSION, type StoredIndex, type TranscriptStore } from './transcript-store';
 import type { AgentProvider, EffortLevel, Invocable, ModelInfo, UsageWindow } from '../providers/types';
 import { findModel, resolveEffort } from '../shared/model-catalog';
 import { resolvePermissionMode } from '../shared/permission-catalog';
+import { threadKey } from '../shared/thread-key';
 import { orderWindows } from '../shared/usage-windows';
 import type {
   ContextResult, HostToWebview, McpServerStatus, PaneLayout, PermissionMode, ProviderInfo, SessionId,
-  SessionState, SessionStatus, SessionSummary, TranscriptPatch, UnavailableProvider,
+  SessionState, SessionStatus, SessionSummary, TranscriptItem, TranscriptPatch, UnavailableProvider,
 } from '../protocol/messages';
 
 let counter = 0;
@@ -397,6 +399,60 @@ export class SessionManager implements SessionSink {
   }
 
   get(id: SessionId): AgentSession | undefined { return this.live.get(id); }
+
+  /**
+   * Answers a pending relocation offer.
+   *
+   * A move is `archive()` -> `open()` with one field changed, which is why it
+   * introduces almost no lifecycle: dispose the run, repoint `cwd`, and
+   * rebuild. Whether the new thread resumes or is seeded is decided by
+   * `threadKey` — the provider declares whether its tokens travel.
+   *
+   * Never rejects for a decision that simply cannot be honored: an unknown
+   * session, an already-answered item and a turn in flight are all no-ops,
+   * because this is answered straight off the wire where errors are state.
+   */
+  async relocate(id: SessionId, itemId: string, move: boolean): Promise<void> {
+    const state = this.meta.get(id);
+    const session = this.live.get(id);
+    if (!state || !session) { return; }
+    // A turn in flight finishes on the tree it started in. The card disables
+    // its buttons for the same reason; this is the host-side guard.
+    if (move && state.status !== 'idle') { return; }
+
+    const item = await this.store.find(id, itemId);
+    if (!item || item.role !== 'relocation' || item.state !== 'pending') { return; }
+
+    const settled: TranscriptItem = { ...item, state: move ? 'moved' : 'stayed' };
+    await session.replaceRelocation(settled);
+    if (!move) { return; }
+
+    const provider = this.providers.get(state.providerId);
+    if (!provider) { return; }
+
+    await session.dispose();
+    this.live.delete(id);
+    state.cwd = item.path;
+    state.updatedAt = Date.now();
+
+    // Read after the dispose above, never before: dispose flushes, so this is
+    // the first point at which the store holds the whole conversation —
+    // including the offer we just settled.
+    const key = threadKey(provider.id, provider.threadScope, state.cwd);
+    const seed = state.resumeTokens[key]
+      ? undefined
+      : buildSeed((await this.store.tail(id, 200)).items);
+
+    const moved = new AgentSession(state, provider, this.store, this, seed);
+    this.live.set(id, moved);
+    const cached = this.catalogSvc.get(this.keyOf(state));
+    if (cached) { moved.setInvocables(cached); }
+    this.catalogSvc.ensure(this.keyOf(state), provider, state.cwd);
+    this.changed();
+    if (this.visible.has(id)) {
+      this.emit({ t: 'session-snapshot', session: await moved.snapshot() });
+    }
+  }
 
   /**
    * Never rejects: this is answered straight onto the wire, where "errors

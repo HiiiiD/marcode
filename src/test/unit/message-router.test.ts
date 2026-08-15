@@ -343,6 +343,26 @@ suite('MessageRouter', () => {
     assert.deepStrictEqual(calls, [{ path: 'src/a.ts', startLine: 12 }]);
   });
 
+  test('answer-relocation reaches the manager with the session, item and choice', async () => {
+    const calls: [string, string, boolean][] = [];
+    manager.relocate = async (id, itemId, move) => { calls.push([id, itemId, move]); };
+
+    await router.handle({ t: 'answer-relocation', id: 's-1', itemId: 'r1', move: true });
+    await router.handle({ t: 'answer-relocation', id: 's-1', itemId: 'r2', move: false });
+
+    assert.deepStrictEqual(calls, [['s-1', 'r1', true], ['s-1', 'r2', false]]);
+  });
+
+  test('answer-relocation is not dropped as a malformed message', async () => {
+    // The wire guard is a hand-maintained tag set, not the union: a new arm
+    // that is added to `WebviewToHost` but not to KNOWN_MESSAGE_TAGS type-checks
+    // everywhere and is silently discarded at runtime.
+    let reached = false;
+    manager.relocate = async () => { reached = true; };
+    await router.handle({ t: 'answer-relocation', id: 's-1', itemId: 'r1', move: true });
+    assert.strictEqual(reached, true);
+  });
+
   test('ready emits the current editor context', async () => {
     const ctx = { path: 'src/a.ts', languageId: 'typescript' };
     const r = new MessageRouter(manager, (m) => sent.push(m), '/tmp', {

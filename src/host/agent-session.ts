@@ -105,6 +105,12 @@ export class AgentSession {
     private readonly provider: AgentProvider,
     private readonly store: TranscriptStore,
     private readonly sink: SessionSink,
+    /**
+     * Prepended to the first send of a thread with no history of this
+     * conversation. Spent once, then cleared — a second send continues a
+     * thread that now remembers.
+     */
+    private seed?: string,
   ) {
     this.run = provider.start({
       cwd: _state.cwd,
@@ -129,6 +135,12 @@ export class AgentSession {
    */
   get isEmpty(): boolean { return this.appended === 0; }
 
+  /**
+   * The replay still waiting to be spent, if any. Exists for tests and for
+   * `SessionManager`, which is the only thing that ever supplies one.
+   */
+  get pendingSeedText(): string | undefined { return this.seed; }
+
   send(text: string, context?: EditorContext): void {
     if (this._state.title === 'Untitled' && text.trim().length > 0) {
       this._state.title = text.trim().slice(0, TITLE_MAX);
@@ -144,8 +156,14 @@ export class AgentSession {
     this.appendItem(item);
     this.closeAssistant();
     this.setStatus('running');
+    // The transcript item above deliberately recorded `text`, never
+    // `outgoing`: a seed is context handed to the provider, not something the
+    // user wrote, and writing it into the transcript would both duplicate the
+    // history it summarizes and put words in the user's mouth.
+    const outgoing = this.seed ? `${this.seed}\n\n---\n\n${text}` : text;
+    this.seed = undefined;
     try {
-      this.run.send(text, context);
+      this.run.send(outgoing, context);
     } catch (err) {
       this.fail(err instanceof Error ? err.message : String(err));
     }
@@ -583,6 +601,19 @@ export class AgentSession {
       id: nextId('r'), ts: Date.now(), role: 'relocation', path, state: 'pending',
     });
     void this.scheduleFlush();
+  }
+
+  /**
+   * Settles a relocation offer in place. The manager owns the decision — it
+   * is the only thing that can actually move a session — so this is a thin
+   * seam rather than a method with a policy of its own. Flushed eagerly
+   * because the very next thing the manager does on a move is dispose this
+   * session and rebuild it, and an unflushed replace would be read back as
+   * still pending.
+   */
+  async replaceRelocation(item: TranscriptItem): Promise<void> {
+    this.replaceItem(item);
+    await this.scheduleFlush();
   }
 
   private fail(message: string): void {

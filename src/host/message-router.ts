@@ -158,6 +158,14 @@ export class MessageRouter {
         this.editor.reveal(msg.path, msg.startLine);
         return;
 
+      // Awaited rather than fire-and-forget: `relocate` disposes and rebuilds
+      // a session, and a rejection escaping a `void` here would be an
+      // unhandled rejection at the `webview.onDidReceiveMessage` callback.
+      // Awaiting puts it inside `handle()`'s catch-all, like every other case.
+      case 'answer-relocation':
+        await this.manager.relocate(msg.id, msg.itemId, msg.move);
+        return;
+
       case 'permission-decision':
         this.manager.get(msg.id)?.respondToPermission(msg.requestId, msg.decision);
         return;
@@ -207,7 +215,7 @@ export class MessageRouter {
 const KNOWN_MESSAGE_TAGS = new Set<WebviewToHost['t']>([
   'ready', 'create-session', 'set-visible', 'set-layout', 'close-session',
   'delete-session', 'send', 'interrupt', 'set-effort', 'set-permission-mode',
-  'set-model', 'permission-decision', 'load-more',
+  'set-model', 'permission-decision', 'load-more', 'answer-relocation',
   'set-include-context', 'reveal-file',
   'request-context', 'open-file',
 ]);

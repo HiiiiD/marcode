@@ -5,6 +5,9 @@ import { CodexProvider } from '../../providers/codex/codex-provider';
 /** Lets a microtask chain (a `.then`, an `await` inside an async fn) settle. */
 const tick = (): Promise<void> => new Promise((r) => setImmediate(r));
 
+/** Waits out a real timer — the teardown grace period is one. */
+const sleep = (ms: number): Promise<void> => new Promise((r) => { setTimeout(r, ms); });
+
 /** A stub child: no binary, no auth, no network. Same shape as codex-app-server.test.ts's. */
 function stubChild() {
   const stdin = new PassThrough();
@@ -74,9 +77,9 @@ const EXPECTED_PARAMS: Record<string, unknown> = {
  * — is checked against `EXPECTED_PARAMS` first, so a wrong payload fails the
  * test that happens to be running rather than the next live turn.
  */
-function providerWithStub() {
+function providerWithStub(opts: { teardownGraceMs?: number } = {}) {
   const child = stubChild();
-  const provider = new CodexProvider({ spawn: () => child });
+  const provider = new CodexProvider({ spawn: () => child, ...opts });
   const answered = new Set<unknown>();
 
   function checkParams(frame: { method: string; params?: unknown }): void {
@@ -264,13 +267,39 @@ suite('CodexProvider', () => {
   });
 
   test('the process is torn down when the last run is disposed', async () => {
-    const { provider, killed } = providerWithStub();
+    const { provider, killed } = providerWithStub({ teardownGraceMs: 1 });
     const first = provider.start({ cwd: '/a', permissionMode: 'default' });
     const second = provider.start({ cwd: '/b', permissionMode: 'default' });
     await first.dispose();
     assert.strictEqual(killed(), false);
     await second.dispose();
+    // The kill is deferred by the grace period below, never immediate.
+    assert.strictEqual(killed(), false);
+    await sleep(10);
     assert.strictEqual(killed(), true);
+  });
+
+  test('a dispose immediately followed by a start keeps the same process', async () => {
+    // Relocation is dispose-then-reconstruct. With no grace period, moving
+    // the only Codex session kills the shared app-server and respawns a large
+    // Rust binary between two adjacent statements.
+    let spawns = 0;
+    const child = stubChild();
+    const provider = new CodexProvider({
+      spawn: () => { spawns += 1; return child; },
+      teardownGraceMs: 20,
+    });
+    const before = provider.start({ cwd: '/a', permissionMode: 'default' });
+    await before.dispose();
+    const after = provider.start({ cwd: '/b', permissionMode: 'default' });
+
+    assert.strictEqual(spawns, 1);
+    // And the armed teardown is dropped rather than merely outrun: the new
+    // run owns the process once the window has elapsed.
+    await sleep(60);
+    assert.strictEqual(child.killed(), false);
+    assert.strictEqual(spawns, 1);
+    await after.dispose();
   });
 
   test('listInvocables flattens skills across cwd entries, skips only explicitly-disabled rows, and maps scope to origin', async () => {

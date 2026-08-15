@@ -84,7 +84,12 @@ export class FakeProvider implements AgentProvider {
   readonly sent: { text: string; context?: EditorContext }[] = [];
   /** Every cwd fetchUsage() was called with, in order. */
   readonly fetchUsageCalls: string[] = [];
+  /** Every options object start() was called with, in order. */
+  readonly starts: StartOptions[] = [];
   private sessionCounter = 0;
+
+  /** The options the most recent run was started with, for assertions. */
+  get lastStart(): StartOptions | undefined { return this.starts[this.starts.length - 1]; }
 
   constructor(
     private readonly script: (text: string) => AgentEvent[] = () => [],
@@ -110,7 +115,8 @@ export class FakeProvider implements AgentProvider {
     ];
   }
 
-  start(_opts: StartOptions): AgentRun {
+  start(opts: StartOptions): AgentRun {
+    this.starts.push(opts);
     const channel = new EventChannel();
     const resumeToken = `fake-session-${++this.sessionCounter}`;
     let started = false;
