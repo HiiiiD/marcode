@@ -125,6 +125,7 @@
 //     what actually answers with numbers.
 import type { AgentEvent, McpServerStatus } from '../types';
 import { toInvocables } from './map-commands';
+import { toToolCall, toToolOutput } from './map-tools';
 import { redactSecrets } from './redact';
 
 interface Block {
@@ -221,6 +222,7 @@ export function mapEvent(msg: unknown): AgentEvent[] {
       } else if (block.type === 'tool_use' && block.id && block.name) {
         out.push({
           kind: 'tool-start', id: block.id, name: block.name, input: block.input,
+          tool: toToolCall(block.name, block.input),
           ...(parentId ? { parentId } : {}),
         });
       }
@@ -238,6 +240,7 @@ export function mapEvent(msg: unknown): AgentEvent[] {
           id: block.tool_use_id,
           ok: block.is_error !== true,
           output: block.content,
+          toolOutput: toToolOutput(block.content),
           ...(parentId ? { parentId } : {}),
         });
       }

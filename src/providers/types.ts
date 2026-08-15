@@ -1,3 +1,7 @@
+import type { ToolCall, ToolOutput } from './canonical/tool-call';
+
+export type { ToolCall, ToolOutput } from './canonical/tool-call';
+
 export type EffortLevel = 'low' | 'medium' | 'high' | 'xhigh' | 'max' | 'ultra';
 /**
  * 'default'     — prompt on anything that falls through to a prompt
@@ -141,7 +145,8 @@ export type AgentEvent =
   | { kind: 'session'; resumeToken: string }
   | { kind: 'text'; delta: string }
   | { kind: 'thinking'; delta: string }
-  | { kind: 'tool-start'; id: string; name: string; input: unknown; parentId?: string }
+  | { kind: 'tool-start'; id: string; name: string; input: unknown; parentId?: string;
+      tool?: ToolCall }
   /**
    * `input`, when present, REPLACES what `tool-start` reported. A backend may
    * only learn a call's real arguments when it finishes — Codex's `webSearch`
@@ -149,8 +154,10 @@ export type AgentEvent =
    * completion — and a card that renders the start-time arguments forever
    * would show a search with no query. Omit it and the arguments stand.
    */
-  | { kind: 'tool-end'; id: string; ok: boolean; output: unknown; input?: unknown; parentId?: string }
-  | { kind: 'permission'; id: string; name: string; input: unknown; parentId?: string }
+  | { kind: 'tool-end'; id: string; ok: boolean; output: unknown; input?: unknown; parentId?: string;
+      tool?: ToolCall; toolOutput?: ToolOutput }
+  | { kind: 'permission'; id: string; name: string; input: unknown; parentId?: string;
+      tool?: ToolCall }
   | { kind: 'turn-end'; reason: 'done' | 'interrupted' | 'error'; error?: string }
   | { kind: 'usage'; inputTokens: number; outputTokens: number }
   /**

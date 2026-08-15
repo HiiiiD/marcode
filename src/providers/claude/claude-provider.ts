@@ -129,6 +129,7 @@ import type {
 import { toInvocables } from './map-commands';
 import { toContextBreakdown, toUsageWindows, type ContextUsageLike, type UsageResponseLike } from './map-context';
 import { mapEvent } from './map-events';
+import { toToolCall } from './map-tools';
 import { redactSecrets } from './redact';
 
 /**
@@ -400,7 +401,7 @@ export class ClaudeProvider implements AgentProvider {
 
     const canUseTool: CanUseTool = async (toolName, input, options) => {
       const id = options.toolUseID;
-      events.push({ kind: 'permission', id, name: toolName, input });
+      events.push({ kind: 'permission', id, name: toolName, input, tool: toToolCall(toolName, input) });
       const decision = await new Promise<ToolDecision>((resolve) => {
         approvals.set(id, resolve);
       });

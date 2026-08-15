@@ -1,11 +1,11 @@
 import type {
   ContextBreakdown, EditorContext, EffortLevel, Invocable, McpServerStatus, ModelInfo,
-  PermissionMode, PermissionModeInfo, ToolDecision, UsageWindow,
+  PermissionMode, PermissionModeInfo, ToolCall, ToolDecision, ToolOutput, UsageWindow,
 } from '../providers/types';
 
 export type {
   ContextBreakdown, EditorContext, EffortLevel, Invocable, McpServerStatus, ModelInfo,
-  PermissionMode, PermissionModeInfo, ToolDecision, UsageWindow,
+  PermissionMode, PermissionModeInfo, ToolCall, ToolDecision, ToolOutput, UsageWindow,
 };
 
 export type SessionId = string;
@@ -28,12 +28,14 @@ export type TranscriptItem =
       children?: TranscriptItem[];
       /** Parsed from an `mcp__<server>__<tool>` name; `name` holds the bare tool. */
       mcpServer?: string;
+      tool?: ToolCall; toolOutput?: ToolOutput;
     })
   | (ItemBase & {
       role: 'permission'; requestId: string; name: string; input: unknown;
       state: 'pending' | 'allowed' | 'denied'; reason?: string;
       /** Parsed from an `mcp__<server>__<tool>` name; `name` holds the bare tool. */
       mcpServer?: string;
+      tool?: ToolCall;
     })
   | (ItemBase & { role: 'error'; message: string });
 
@@ -46,6 +48,7 @@ export interface PermissionRequest {
   requestId: string;
   name: string;
   input: unknown;
+  tool?: ToolCall;
 }
 
 export interface SessionState {

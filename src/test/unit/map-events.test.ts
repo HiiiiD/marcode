@@ -54,7 +54,10 @@ suite('mapEvent', () => {
       ] },
     } as never);
     assert.deepStrictEqual(events, [
-      { kind: 'tool-start', id: 'toolu_1', name: 'Read', input: { file_path: 'a.ts' } },
+      {
+        kind: 'tool-start', id: 'toolu_1', name: 'Read', input: { file_path: 'a.ts' },
+        tool: { kind: 'file-read', label: 'Read', path: 'a.ts' },
+      },
     ]);
   });
 
@@ -66,7 +69,10 @@ suite('mapEvent', () => {
       ] },
     } as never);
     assert.deepStrictEqual(events, [
-      { kind: 'tool-end', id: 'toolu_1', ok: true, output: 'ok' },
+      {
+        kind: 'tool-end', id: 'toolu_1', ok: true, output: 'ok',
+        toolOutput: { kind: 'text', text: 'ok' },
+      },
     ]);
   });
 
@@ -78,7 +84,10 @@ suite('mapEvent', () => {
       ] },
     } as never);
     assert.deepStrictEqual(events, [
-      { kind: 'tool-end', id: 'toolu_1', ok: false, output: 'boom' },
+      {
+        kind: 'tool-end', id: 'toolu_1', ok: false, output: 'boom',
+        toolOutput: { kind: 'text', text: 'boom' },
+      },
     ]);
   });
 
@@ -154,7 +163,10 @@ suite('mapEvent', () => {
       ] },
     } as never);
     assert.deepStrictEqual(events, [
-      { kind: 'tool-start', id: 'c1', name: 'Read', input: { path: 'a.ts' }, parentId: 'task1' },
+      {
+        kind: 'tool-start', id: 'c1', name: 'Read', input: { path: 'a.ts' }, parentId: 'task1',
+        tool: { kind: 'file-read', label: 'Read', path: '' },
+      },
     ]);
   });
 
@@ -169,7 +181,10 @@ suite('mapEvent', () => {
       ] },
     } as never);
     assert.deepStrictEqual(events, [
-      { kind: 'tool-start', id: 'c1', name: 'Grep', input: {}, parentId: 'task1' },
+      {
+        kind: 'tool-start', id: 'c1', name: 'Grep', input: {}, parentId: 'task1',
+        tool: { kind: 'search', label: 'Grep', pattern: '', mode: 'content' },
+      },
     ]);
   });
 
@@ -197,7 +212,10 @@ suite('mapEvent', () => {
       ] },
     } as never);
     assert.deepStrictEqual(events, [
-      { kind: 'tool-end', id: 'c1', ok: true, output: 'ok', parentId: 'task1' },
+      {
+        kind: 'tool-end', id: 'c1', ok: true, output: 'ok', parentId: 'task1',
+        toolOutput: { kind: 'text', text: 'ok' },
+      },
     ]);
   });
 

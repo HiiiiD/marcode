@@ -239,6 +239,24 @@ suite('AgentSession', () => {
     await session.dispose();
   });
 
+  test('a tool item carries the canonical call the provider sent', async () => {
+    const provider = new FakeProvider(() => [
+      {
+        kind: 'tool-start', id: 't1', name: 'Bash', input: { command: 'ls' },
+        tool: { kind: 'command', label: 'Bash', command: 'ls' },
+      },
+      { kind: 'turn-end', reason: 'done' },
+    ]);
+    const session = new AgentSession(baseState(), provider, store, sink);
+    session.send('list files');
+    await settle();
+
+    const snap = await session.snapshot();
+    const item = snap.items.find((i) => i.role === 'tool');
+    assert.strictEqual(item?.role === 'tool' && item.tool?.kind, 'command');
+    await session.dispose();
+  });
+
   test('tool-start then tool-end replaces the tool item in place', async () => {
     const provider = new FakeProvider(() => [
       { kind: 'tool-start', id: 't1', name: 'Read', input: { path: 'a.ts' } },

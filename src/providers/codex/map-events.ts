@@ -1,5 +1,6 @@
 import type { AgentEvent, McpServerStatus } from '../types';
 import type { RequestId } from './app-server';
+import { approvalToolCall, displayCommand, toToolCall, toToolOutput } from './map-tools';
 import type {
   CommandAction, McpServerStatusUpdatedNotification, McpServerStartupState, ThreadItem,
 } from './wire';
@@ -130,7 +131,10 @@ export function mcpServerStatusOf(
 
 function startOf(item: ThreadItem | undefined): AgentEvent[] {
   if (!item || !TOOL_KINDS.has(item.type)) { return []; }
-  return [{ kind: 'tool-start', id: item.id, name: item.type, input: inputOf(item) }];
+  return [{
+    kind: 'tool-start', id: item.id, name: item.type, input: inputOf(item),
+    tool: toToolCall(item),
+  }];
 }
 
 /**
@@ -146,29 +150,8 @@ function endOf(item: ThreadItem | undefined): AgentEvent[] {
   return [{
     kind: 'tool-end', id: item.id, ok: succeeded(item),
     output: outputOf(item), input: inputOf(item),
+    tool: toToolCall(item), toolOutput: toToolOutput(item),
   }];
-}
-
-/**
- * The command to *show* for a `commandExecution`.
- *
- * `ThreadItem.command` is the escaped invocation Codex spawns — on Windows,
- * `"C:\\Program Files\\PowerShell\\7\\pwsh.exe" -Command "…"` with every
- * backslash doubled, which renders as a JSON-looking blob in a 300px header.
- * `commandActions` is the same call as Codex itself parsed it, and is
- * documented as being "for friendly display". The raw invocation is the
- * fallback, never the preference: a command with nothing parsed out of it is
- * still better shown than hidden.
- */
-function displayCommand(command: string, actions: CommandAction[] | undefined): string {
-  const parsed = (actions ?? [])
-    .map((a) => a?.command)
-    .filter((c): c is string => typeof c === 'string' && c.length > 0);
-  // One shell command can decompose into several actions (a pipeline). They
-  // are joined by newline rather than a made-up operator — the header is a
-  // single truncated line either way, and the expanded `$` block shows them
-  // stacked without claiming a `&&` that was never written.
-  return parsed.length > 0 ? parsed.join('\n') : command;
 }
 
 /** The fields worth showing in the tool header, per kind. */
@@ -274,9 +257,10 @@ export function approvalEventOf(
   const name = APPROVAL_METHODS[method];
   if (!name) { return undefined; }
   const p = (params ?? {}) as Record<string, unknown>;
+  const tool = approvalToolCall(method, params);
   if (name === 'commandExecution') {
     return {
-      kind: 'permission', id: String(id), name,
+      kind: 'permission', id: String(id), name, tool,
       input: {
         // Same escaped-vs-parsed split as `item/started` — see
         // `displayCommand`. The approval card must read what the tool card
@@ -290,5 +274,5 @@ export function approvalEventOf(
       },
     };
   }
-  return { kind: 'permission', id: String(id), name, input: p };
+  return { kind: 'permission', id: String(id), name, input: p, tool };
 }

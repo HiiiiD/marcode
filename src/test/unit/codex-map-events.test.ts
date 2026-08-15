@@ -34,6 +34,7 @@ suite('mapNotification', () => {
     assert.deepStrictEqual(events, [{
       kind: 'tool-start', id: 'it_1', name: 'commandExecution',
       input: { command: 'ls -la', cwd: '/repo' },
+      tool: { kind: 'command', label: 'Shell', command: 'ls -la', cwd: '/repo' },
     }]);
   });
 
@@ -111,6 +112,7 @@ suite('mapNotification', () => {
     assert.deepStrictEqual(events, [{
       kind: 'tool-start', id: 'exec-1', name: 'commandExecution',
       input: { command: REAL_ACTION_COMMAND, cwd: 'C:\\tmp\\probe' },
+      tool: { kind: 'command', label: 'Shell', command: REAL_ACTION_COMMAND, cwd: 'C:\\tmp\\probe' },
     }]);
   });
 
@@ -127,6 +129,10 @@ suite('mapNotification', () => {
         command: 'raw', cwd: '/repo',
         pluginId: 'openai-curated-remote/superpowers', scriptPath: 'skills/using-superpowers/SKILL.md',
       },
+      // The canonical `ToolCall` has no pluginId/scriptPath fields — only
+      // the legacy `input` carries them, until a later task decides whether
+      // the canonical shape needs them too.
+      tool: { kind: 'command', label: 'Shell', command: 'raw', cwd: '/repo' },
     }]);
   });
 
@@ -296,7 +302,11 @@ suite('approvalEventOf', () => {
       approvalEventOf('item/commandExecution/requestApproval', 11,
         { itemId: 'it_1', command: 'rm -rf build', cwd: '/repo', reason: 'writes outside workspace' }),
       { kind: 'permission', id: '11', name: 'commandExecution',
-        input: { command: 'rm -rf build', cwd: '/repo', reason: 'writes outside workspace' } },
+        input: { command: 'rm -rf build', cwd: '/repo', reason: 'writes outside workspace' },
+        tool: {
+          kind: 'command', label: 'Shell', command: 'rm -rf build', cwd: '/repo',
+          note: 'writes outside workspace',
+        } },
     );
   });
 
@@ -319,11 +329,42 @@ suite('approvalEventOf', () => {
     assert.deepStrictEqual(
       approvalEventOf('item/fileChange/requestApproval', 12, { itemId: 'it_2', grantRoot: '/repo' }),
       { kind: 'permission', id: '12', name: 'fileChange',
-        input: { itemId: 'it_2', grantRoot: '/repo' } },
+        input: { itemId: 'it_2', grantRoot: '/repo' },
+        tool: { kind: 'file-edit', label: 'Edit', files: [] } },
     );
   });
 
   test('an unrelated server request produces no permission', () => {
     assert.strictEqual(approvalEventOf('attestation/generate', 13, {}), undefined);
+  });
+});
+
+suite('codex map-events canonical tool', () => {
+  test('item/started carries a canonical command call', () => {
+    const events = mapNotification('item/started', {
+      item: { type: 'commandExecution', id: 'i1', command: 'ls', cwd: 'E:/x' },
+    });
+    assert.strictEqual(events.length, 1);
+    const event = events[0];
+    assert.strictEqual(event.kind, 'tool-start');
+    assert.deepStrictEqual(event.kind === 'tool-start' ? event.tool : undefined, {
+      kind: 'command', label: 'Shell', command: 'ls', cwd: 'E:/x',
+    });
+  });
+
+  test('item/completed revises the call and carries a canonical output', () => {
+    const events = mapNotification('item/completed', {
+      item: {
+        type: 'webSearch', id: 'i2', query: 'effect schema',
+        results: [{ title: 'T', url: 'https://x.dev' }],
+      },
+    });
+    const event = events[0];
+    assert.strictEqual(event.kind, 'tool-end');
+    if (event.kind !== 'tool-end') { return; }
+    assert.deepStrictEqual(event.tool,
+      { kind: 'web', label: 'Web search', query: 'effect schema' });
+    assert.deepStrictEqual(event.toolOutput,
+      { kind: 'text', text: 'T\nhttps://x.dev' });
   });
 });

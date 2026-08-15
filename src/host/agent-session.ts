@@ -414,6 +414,7 @@ export class AgentSession {
           id: nextId('t'), ts: Date.now(), role: 'tool',
           toolId: event.id, name: parsed.name, input: event.input, state: 'running',
           ...(parsed.mcpServer ? { mcpServer: parsed.mcpServer } : {}),
+          ...(event.tool ? { tool: event.tool } : {}),
         };
         this.toolItems.set(event.id, item);
 
@@ -452,6 +453,8 @@ export class AgentSession {
           // so by sending them again — see `AgentEvent`'s `tool-end`. Absent,
           // the tool-start arguments stand.
           ...(event.input !== undefined ? { input: event.input } : {}),
+          ...(event.tool ? { tool: event.tool } : {}),
+          ...(event.toolOutput ? { toolOutput: event.toolOutput } : {}),
           ...(children ? { children: [...children] } : {}),
         };
         this.toolItems.set(event.id, settled);
@@ -482,10 +485,12 @@ export class AgentSession {
           requestId: event.id, name: parsedName.name,
           input: event.input, state: 'pending',
           ...(parsedName.mcpServer ? { mcpServer: parsedName.mcpServer } : {}),
+          ...(event.tool ? { tool: event.tool } : {}),
         };
         this.permissionItems.set(event.id, item);
         this.pending.set(event.id, {
           requestId: event.id, name: event.name, input: event.input,
+          ...(event.tool ? { tool: event.tool } : {}),
         });
 
         if (parentSource && parentItemId) {
