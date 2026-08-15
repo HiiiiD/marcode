@@ -127,6 +127,12 @@ export class SessionManager implements SessionSink {
         ...state,
         status: 'idle',
         includeEditorContext: state.includeEditorContext ?? true,
+        // An index written before this field existed still passes the version
+        // guard — `TRANSCRIPT_VERSION` did not move for it — so a restored
+        // session can reach `AgentSession` with no map at all, and the keyed
+        // read in its constructor would throw on undefined. Empty is also the
+        // exact truth: a session with no recorded threads has no tokens.
+        resumeTokens: state.resumeTokens ?? {},
       });
     }
     this.paneLayout = index.layout;

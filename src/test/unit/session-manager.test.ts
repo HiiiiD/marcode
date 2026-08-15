@@ -933,6 +933,30 @@ suite('SessionManager', () => {
     await restored.dispose();
   });
 
+  test('a session restored without resumeTokens opens with an empty map', async () => {
+    const store2 = new TranscriptStore(dir);
+    // Written at the current version by a build that predates resumeTokens.
+    // The version guard does not discard it, so opening it must not read a
+    // key off undefined — and its first `session` event must not write to one.
+    await store2.writeIndex({
+      version: 2,
+      sessions: [{
+        id: 'pre-tokens', providerId: 'fake', model: 'fake-small', title: 'Old',
+        cwd: '/tmp', status: 'idle', permissionMode: 'default',
+        includeEditorContext: true,
+        usage: { inputTokens: 0, outputTokens: 0 },
+        archived: false, createdAt: 1, updatedAt: 1,
+      } as unknown as SessionState],
+      layout: { orientation: 'vertical', panes: [] },
+    });
+
+    const restored = new SessionManager(store2, providers, () => {});
+    await restored.init();
+    const session = await restored.open('pre-tokens');
+    assert.deepStrictEqual(session.state.resumeTokens, {});
+    await restored.dispose();
+  });
+
   /**
    * A provider whose model list is only correct after `fetchModels` — the
    * shape of every real backend, where the catalog lives in the CLI.
