@@ -36,6 +36,9 @@ Verified against `codex-cli 0.147.0`. All protocol claims here were read from
   amendments. Each needs a third button on the permission card.
 - Rendering `item/tool/requestUserInput` and `mcpServer/elicitation/request`.
   Both are input requests, not yes/no; see Declined Requests.
+- Overriding a guardian denial. See Guardian denials — the payload
+  `thread/approveGuardianDeniedAction` expects could not be established from
+  the bindings, and every guardian type is marked unstable.
 - A host-side approval classifier. See Deferred: Host Classifier.
 - `turn/steer` (sending into a running turn). Codex supports it; nothing in
   the panel exposes it yet.
@@ -216,12 +219,31 @@ trail, the shape is an additive optional `autoApproval?: { riskLevel,
 rationale }` on the tool item — the same way `children` and `mcpServer` were
 added, with no migration.
 
-### Guardian denials
+### Guardian denials — deferred out of v1
 
-A denial gets a permission card of the existing shape (allow / deny). The
-provider routes the answer to `thread/approveGuardianDeniedAction` — which
-takes the serialized assessment event back — instead of to a `ReviewDecision`.
-Internal to `codex-run.ts`. No protocol change.
+The original design gave a denial a permission card of the existing shape,
+with the answer routed to `thread/approveGuardianDeniedAction` instead of to a
+`ReviewDecision`.
+
+**This is not implemented, and the deferral is deliberate.** Two things could
+not be established without guessing:
+
+1. `thread/approveGuardianDeniedAction` takes a *serialized
+   `GuardianAssessmentEvent`* as an opaque `JsonValue`. The
+   `item/autoApprovalReview/completed` notification carries `reviewId`,
+   `review` and `action` — not, evidently, that event. Where a client is meant
+   to obtain it is not determinable from the generated bindings, and every
+   guardian type is marked `[UNSTABLE] expected to change soon`.
+2. Verifying it end-to-end means provoking a real guardian denial, which means
+   deliberately running a risky action under `auto` against a live account.
+
+Building the override blind would mean shipping a button that posts a payload
+we have never seen accepted. The honest v1 behavior is that a guardian denial
+stands: the action is denied, the transcript shows it, and the user's recourse
+is to switch modes and retry. That is a missing affordance, not a broken one.
+
+Revisit when the guardian payloads stabilize — at which point the flow above
+is still the right shape.
 
 ## Event mapping
 
