@@ -237,10 +237,13 @@ export class CodexRun implements AgentRun {
         // one hangs the turn — so it is declined immediately, and the
         // transcript says so rather than failing silently.
         const toolId = String(id);
-        this.events.push({ kind: 'tool-start', id: toolId, name: method, input: params });
+        this.events.push({
+          kind: 'tool-start', id: toolId,
+          tool: { kind: 'other', label: method, raw: params },
+        });
         this.events.push({
           kind: 'tool-end', id: toolId, ok: false,
-          output: 'The panel cannot answer this request yet.',
+          output: { kind: 'text', text: 'The panel cannot answer this request yet.' },
         });
         this.server.respond(id, refusal);
         return;

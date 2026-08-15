@@ -1,6 +1,9 @@
 import * as assert from 'assert';
 import { FakeProvider } from '../../providers/fake/fake-provider';
+import { SAMPLE_TOOL_CALLS } from '../../providers/fake/sample-tools';
 import type { AgentEvent } from '../../providers/types';
+import { describeInput, describeTool } from '../../webview/components/tool-render';
+import type { ToolCall } from '../../protocol/messages';
 
 async function drain(run: { events: AsyncIterable<AgentEvent> }, count: number) {
   const out: AgentEvent[] = [];
@@ -29,7 +32,7 @@ suite('FakeProvider', () => {
 
   test('respondToTool resolves a pending permission', async () => {
     const provider = new FakeProvider(() => [
-      { kind: 'permission', id: 'p1', name: 'Bash', input: { command: 'ls' } },
+      { kind: 'permission', id: 'p1', tool: { kind: 'command', label: 'Bash', command: 'ls' } },
     ]);
     const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
     run.send('run ls');
@@ -116,5 +119,18 @@ suite('FakeProvider', () => {
     const run = provider.start({ cwd: '/repo' } as never);
 
     assert.deepStrictEqual(await run.usageWindows?.(), windows);
+  });
+
+  test('every canonical kind has a fixture that renders a header', () => {
+    const kinds: ToolCall['kind'][] = [
+      'command', 'file-edit', 'file-read', 'search', 'web',
+      'todos', 'plan', 'subagent', 'mcp', 'other',
+    ];
+    for (const kind of kinds) {
+      const call = SAMPLE_TOOL_CALLS[kind];
+      assert.strictEqual(call.kind, kind);
+      assert.ok(describeTool(call).verb.length > 0, `${kind} has no verb`);
+      assert.ok(Array.isArray(describeInput(call)), `${kind} has no blocks`);
+    }
   });
 });

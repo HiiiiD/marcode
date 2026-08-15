@@ -1,11 +1,11 @@
 import type {
-  ContextBreakdown, EditorContext, EffortLevel, Invocable, McpServerStatus, ModelInfo,
-  PermissionMode, PermissionModeInfo, ToolDecision, UsageWindow,
+  ContextBreakdown, EditorContext, EffortLevel, FileEdit, Invocable, McpServerStatus, ModelInfo,
+  PermissionMode, PermissionModeInfo, TodoStatus, ToolCall, ToolDecision, ToolOutput, UsageWindow,
 } from '../providers/types';
 
 export type {
-  ContextBreakdown, EditorContext, EffortLevel, Invocable, McpServerStatus, ModelInfo,
-  PermissionMode, PermissionModeInfo, ToolDecision, UsageWindow,
+  ContextBreakdown, EditorContext, EffortLevel, FileEdit, Invocable, McpServerStatus, ModelInfo,
+  PermissionMode, PermissionModeInfo, TodoStatus, ToolCall, ToolDecision, ToolOutput, UsageWindow,
 };
 
 export type SessionId = string;
@@ -17,23 +17,17 @@ export type TranscriptItem =
   | (ItemBase & { role: 'user'; text: string; context?: EditorContext })
   | (ItemBase & { role: 'assistant'; text: string; thinking?: string })
   | (ItemBase & {
-      role: 'tool'; toolId: string; name: string; input: unknown;
-      state: 'running' | 'ok' | 'error'; output?: unknown;
+      role: 'tool'; toolId: string; tool: ToolCall;
+      state: 'running' | 'ok' | 'error'; output?: ToolOutput;
       /**
-       * A subagent's tool activity. Depth 1 only — a child never has
-       * children of its own. Absent for the overwhelming majority of tool
-       * calls, and absent on every item v1 wrote, which is why adding it
-       * needs no migration.
+       * A subagent's tool activity. Depth 1 only — a child never has children
+       * of its own.
        */
       children?: TranscriptItem[];
-      /** Parsed from an `mcp__<server>__<tool>` name; `name` holds the bare tool. */
-      mcpServer?: string;
     })
   | (ItemBase & {
-      role: 'permission'; requestId: string; name: string; input: unknown;
+      role: 'permission'; requestId: string; tool: ToolCall;
       state: 'pending' | 'allowed' | 'denied'; reason?: string;
-      /** Parsed from an `mcp__<server>__<tool>` name; `name` holds the bare tool. */
-      mcpServer?: string;
     })
   | (ItemBase & { role: 'error'; message: string });
 
@@ -42,11 +36,7 @@ export type TranscriptPatch =
   | { op: 'delta'; itemId: string; field: 'text' | 'thinking'; delta: string }
   | { op: 'replace'; item: TranscriptItem; parentItemId?: string };
 
-export interface PermissionRequest {
-  requestId: string;
-  name: string;
-  input: unknown;
-}
+export interface PermissionRequest { requestId: string; tool: ToolCall }
 
 export interface SessionState {
   id: SessionId;

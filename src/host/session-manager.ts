@@ -1,6 +1,6 @@
 import { AgentSession, type SessionSink } from './agent-session';
 import { catalogKey, CatalogService } from './catalog-service';
-import type { StoredIndex, TranscriptStore } from './transcript-store';
+import { TRANSCRIPT_VERSION, type StoredIndex, type TranscriptStore } from './transcript-store';
 import type { AgentProvider, EffortLevel, Invocable, ModelInfo, UsageWindow } from '../providers/types';
 import { findModel, resolveEffort } from '../shared/model-catalog';
 import { resolvePermissionMode } from '../shared/permission-catalog';
@@ -737,6 +737,7 @@ export class SessionManager implements SessionSink {
 
   private async persist(): Promise<void> {
     const index: StoredIndex = {
+      version: TRANSCRIPT_VERSION,
       sessions: [...this.meta.values()],
       layout: this.paneLayout,
     };

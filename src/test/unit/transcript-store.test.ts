@@ -60,13 +60,13 @@ suite('TranscriptStore', () => {
   test('replace updates an item in place and survives reload', async () => {
     store.append('s1', {
       id: 'p1', ts: 1, role: 'permission', requestId: 'r1',
-      name: 'Bash', input: {}, state: 'pending',
+      tool: { kind: 'command', label: 'Bash', command: 'ls' }, state: 'pending',
     });
     await store.flush();
 
     store.replace('s1', {
       id: 'p1', ts: 1, role: 'permission', requestId: 'r1',
-      name: 'Bash', input: {}, state: 'allowed',
+      tool: { kind: 'command', label: 'Bash', command: 'ls' }, state: 'allowed',
     });
     await store.flush();
 
@@ -84,6 +84,7 @@ suite('TranscriptStore', () => {
 
   test('index round-trips', async () => {
     await store.writeIndex({
+      version: 2,
       sessions: [{
         id: 's1', providerId: 'fake', model: 'fake-large', title: 'T', cwd: '/tmp',
         status: 'idle', permissionMode: 'default', includeEditorContext: true,
@@ -104,6 +105,52 @@ suite('TranscriptStore', () => {
     const index = await store.readIndex();
     assert.deepStrictEqual(index.sessions, []);
     assert.deepStrictEqual(index.layout, { orientation: 'vertical', panes: [] });
+  });
+
+  test('an index written by an older format is discarded whole', async () => {
+    await fs.writeFile(path.join(dir, 'index.json'), JSON.stringify({
+      sessions: [{ id: 's1', providerId: 'fake', model: 'm', title: 't', cwd: '/x' }],
+      layout: { orientation: 'vertical', panes: [{ sessionId: 's1', size: 1 }] },
+    }), 'utf8');
+
+    const store = new TranscriptStore(dir);
+    const index = await store.readIndex();
+    assert.strictEqual(index.sessions.length, 0);
+    assert.strictEqual(index.layout.panes.length, 0);
+  });
+
+  test('two discarded reads never share the same sessions array or layout object', async () => {
+    // Every install with a pre-v2 index.json hits the version-discard branch
+    // on first read. If it handed back a shared module-level object, mutating
+    // one caller's result would corrupt every other caller's "empty" index.
+    await fs.writeFile(path.join(dir, 'index.json'), JSON.stringify({
+      version: 1, sessions: [], layout: { orientation: 'vertical', panes: [] },
+    }), 'utf8');
+
+    const first = await store.readIndex();
+    first.sessions.push({ id: 'intruder', providerId: 'fake', model: 'm', title: 't', cwd: '/x' } as never);
+    first.layout.panes.push({ sessionId: 'intruder', size: 1 });
+
+    const second = await store.readIndex();
+    assert.deepStrictEqual(second.sessions, []);
+    assert.deepStrictEqual(second.layout, { orientation: 'vertical', panes: [] });
+  });
+
+  test('two reads of a fresh (missing) index also get independent objects', async () => {
+    const first = await store.readIndex();
+    first.sessions.push({ id: 'intruder', providerId: 'fake', model: 'm', title: 't', cwd: '/x' } as never);
+
+    const second = await store.readIndex();
+    assert.deepStrictEqual(second.sessions, []);
+  });
+
+  test('an index at the current version round-trips', async () => {
+    const store = new TranscriptStore(dir);
+    await store.writeIndex({
+      version: 2, sessions: [], layout: { orientation: 'vertical', panes: [] },
+    });
+    const index = await store.readIndex();
+    assert.strictEqual(index.version, 2);
   });
 
   test('usage round-trips through its own file', async () => {
@@ -386,7 +433,7 @@ suite('TranscriptStore', () => {
   test('a replace() landing during flush()\'s rewrite is not discarded', async () => {
     const perm = (state: 'pending' | 'allowed' | 'denied'): TranscriptItem => ({
       id: 'p1', ts: 1, role: 'permission', requestId: 'r1',
-      name: 'Bash', input: {}, state,
+      tool: { kind: 'command', label: 'Bash', command: 'ls' }, state,
     });
 
     store.append('s1', perm('pending'));

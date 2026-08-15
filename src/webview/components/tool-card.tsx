@@ -28,7 +28,9 @@ const GLYPHS: Record<ToolGlyph, typeof TerminalIcon> = {
 
 export function ToolCard({ item }: { item: ToolItem }) {
   const [open, setOpen] = useState(false);
-  const header = describeTool(item.name, item.input);
+  const tool = item.tool;
+  const server = tool.kind === 'mcp' ? tool.server : undefined;
+  const header = describeTool(tool);
   // A settled check mark on every row is noise in a column this narrow: the
   // transcript is a log of things that already happened, so success is the
   // default reading. Only the two states that change what the user should do
@@ -37,8 +39,8 @@ export function ToolCard({ item }: { item: ToolItem }) {
   const Glyph = item.state === 'running' ? Loader2Icon : GLYPHS[header.glyph];
   const Chevron = open ? ChevronDownIcon : ChevronRightIcon;
 
-  const input = describeInput(item.name, item.input);
-  const output = describeOutput(item.name, item.output, item.state);
+  const input = describeInput(tool);
+  const output = describeOutput(tool.kind, item.output, item.state);
 
   return (
     <div className="my-0 rounded border border-border text-xs">
@@ -62,14 +64,12 @@ export function ToolCard({ item }: { item: ToolItem }) {
           )}
         />
         <span className="sr-only">{item.state}</span>
-        {item.mcpServer && (
+        {server && (
           // Muted, not colour-per-server: a palette per server would collide
           // with the status tones already in use and buys nothing when the
-          // name is right beside it. This is a permanent record — the value
-          // is parsed host-side at item creation, so removing the server
-          // later cannot rewrite what already happened.
+          // name is right beside it.
           <span className="shrink-0 rounded bg-muted px-1 text-muted-foreground">
-            {item.mcpServer}
+            {server}
           </span>
         )}
         <span className="shrink-0 font-medium">{header.verb}</span>

@@ -5,13 +5,16 @@ import {
 import type { TranscriptItem } from '../../protocol/messages';
 
 function child(id: string, state: 'running' | 'ok' | 'error' = 'ok'): TranscriptItem {
-  return { id, ts: 1, role: 'tool', toolId: id, name: 'Read', input: {}, state };
+  return {
+    id, ts: 1, role: 'tool', toolId: id,
+    tool: { kind: 'file-read', label: 'Read', path: 'a.ts' }, state,
+  };
 }
 
 function parent(children: TranscriptItem[], ts = 1000): TranscriptItem {
   return {
-    id: 't1', ts, role: 'tool', toolId: 'task1', name: 'Task',
-    input: {}, state: 'running', children,
+    id: 't1', ts, role: 'tool', toolId: 'task1',
+    tool: { kind: 'subagent', label: 'Task', action: 'spawn' }, state: 'running', children,
   };
 }
 
@@ -46,16 +49,16 @@ suite('subagent window', () => {
 
   test('a pending permission child marks the subagent blocked', () => {
     const item = parent([{
-      id: 'p1', ts: 2, role: 'permission', requestId: 'r1', name: 'Bash',
-      input: {}, state: 'pending',
+      id: 'p1', ts: 2, role: 'permission', requestId: 'r1',
+      tool: { kind: 'command', label: 'Bash', command: 'ls' }, state: 'pending',
     }]);
     assert.strictEqual(summarizeSubagent(item as never, 2).blocked, true);
   });
 
   test('a settled permission child does not mark it blocked', () => {
     const item = parent([{
-      id: 'p1', ts: 2, role: 'permission', requestId: 'r1', name: 'Bash',
-      input: {}, state: 'allowed',
+      id: 'p1', ts: 2, role: 'permission', requestId: 'r1',
+      tool: { kind: 'command', label: 'Bash', command: 'ls' }, state: 'allowed',
     }]);
     assert.strictEqual(summarizeSubagent(item as never, 2).blocked, false);
   });

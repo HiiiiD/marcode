@@ -2,10 +2,11 @@ import * as assert from 'assert';
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { PermissionCard } from '@/components/permission-card';
+import type { ToolCall } from '../../protocol/messages';
 import { catalog, layoutOf, permission, snapshot, summary } from '../fixtures/protocol';
 import { posted, renderWithStore, sendFromHost } from './harness';
 
-function hydrateWith(pending: { requestId: string; name: string; input: unknown }[]) {
+function hydrateWith(pending: { requestId: string; tool: ToolCall }[]) {
   sendFromHost({
     t: 'hydrate',
     sessions: [summary('a')],
@@ -17,7 +18,7 @@ function hydrateWith(pending: { requestId: string; name: string; input: unknown 
   });
 }
 
-const LIVE = [{ requestId: 'r1', name: 'Write', input: { file_path: '/tmp/a.txt' } }];
+const LIVE = [{ requestId: 'r1', tool: permission().tool }];
 
 suite('PermissionCard', () => {
   test('a live pending request renders enabled Allow and Deny', () => {
@@ -98,12 +99,13 @@ suite('PermissionCard', () => {
   });
 
   test('an edit-shaped input renders a diff preview', () => {
-    const item = permission({
-      name: 'Edit',
-      input: { file_path: '/tmp/a.txt', old_string: 'one', new_string: 'two' },
-    });
+    const tool: ToolCall = {
+      kind: 'file-edit', label: 'Edit',
+      files: [{ path: '/tmp/a.txt', op: 'modify', edits: [{ before: 'one', after: 'two' }] }],
+    };
+    const item = permission({ tool });
     renderWithStore(<PermissionCard item={item} sessionId="a" />);
-    hydrateWith([{ requestId: 'r1', name: 'Edit', input: item.input }]);
+    hydrateWith([{ requestId: 'r1', tool }]);
 
     // The path is a control now, not a line of the diff — same treatment the
     // completed tool card gives it, so approving and reviewing look alike.
@@ -121,11 +123,12 @@ suite('PermissionCard', () => {
   });
 
   test('an mcp-attributed request shows the server badge next to the bare name', () => {
-    const item = permission({ name: 'create_pr', mcpServer: 'github' });
+    const tool: ToolCall = { kind: 'mcp', label: 'create_pr', server: 'github', tool: 'create_pr' };
+    const item = permission({ tool });
     renderWithStore(<PermissionCard item={item} sessionId="a" />);
-    hydrateWith([{ requestId: 'r1', name: 'create_pr', input: item.input }]);
+    hydrateWith([{ requestId: 'r1', tool }]);
 
-    screen.getByText('github');
+    assert.ok(screen.getAllByText('github').length > 0);
     screen.getByText('Allow create_pr?');
   });
 });
