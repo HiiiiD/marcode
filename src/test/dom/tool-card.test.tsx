@@ -167,8 +167,8 @@ suite('ToolCard', () => {
     screen.getByText('github');
     // The server must not also appear glued onto the primary — that was the
     // duplication this header was fixed to drop.
-    assert.strictEqual(screen.queryByText('github · create_issue'), null);
-    assert.strictEqual(screen.queryByText(/create_issue.*·/), null);
+    assert.strictEqual(screen.queryByText('github · create_issue') === null, true);
+    assert.strictEqual(screen.queryByText(/create_issue.*·/) === null, true);
   });
 
   test('an other card shows its label and falls back to its raw JSON', async () => {
