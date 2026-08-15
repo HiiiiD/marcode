@@ -1,7 +1,9 @@
+import { resolve } from 'node:path';
 import type {
   McpServerStatus, PermissionRequest, SessionId, SessionSnapshot, SessionState,
   SessionStatus, TranscriptItem, TranscriptPatch,
 } from '../protocol/messages';
+import type { ToolCall } from '../providers/canonical/tool-call';
 import type {
   AgentEvent, AgentProvider, AgentRun,
   ContextBreakdown,
@@ -12,6 +14,7 @@ import type {
 import { findModel, resolveEffort } from '../shared/model-catalog';
 import { threadKey } from '../shared/thread-key';
 import type { TranscriptStore } from './transcript-store';
+import { detectWorktreeAdd } from './worktree-detect';
 
 export interface SessionSink {
   patch(id: SessionId, patch: TranscriptPatch): void;
@@ -461,10 +464,12 @@ export class AgentSession {
         const parentRoot = this.childOf.get(event.id);
         if (parentRoot) {
           this.replaceChild(parentRoot, settled);
+          this.offerRelocation(settled.tool, event.ok);
           return;
         }
         this.childrenByParent.delete(event.id);
         this.replaceItem(settled);
+        this.offerRelocation(settled.tool, event.ok);
         return;
       }
 
@@ -541,6 +546,23 @@ export class AgentSession {
         }
         return;
     }
+  }
+
+  /**
+   * Offers to follow the agent into a worktree it just created. The path is
+   * resolved against this session's cwd because the agent's command was run
+   * there, and a relative path in the transcript would be meaningless to the
+   * host.
+   */
+  private offerRelocation(tool: ToolCall, ok: boolean): void {
+    const found = detectWorktreeAdd(tool, ok);
+    if (found === undefined) { return; }
+    const path = resolve(this._state.cwd, found);
+    if (path === this._state.cwd) { return; }
+    this.appendItem({
+      id: nextId('r'), ts: Date.now(), role: 'relocation', path, state: 'pending',
+    });
+    void this.scheduleFlush();
   }
 
   private fail(message: string): void {
