@@ -101,16 +101,29 @@ function UserItem({ item }: { item: Extract<TranscriptItem, { role: 'user' }> })
  * cover — disclosure semantics, not a control, with no vendored equivalent.
  * The payload is only mounted once opened, so a still-collapsed chip never
  * puts thousands of lines of somebody else's output in the DOM.
+ *
+ * `open` is controlled from React state rather than left to the browser's
+ * own toggling: a browser fires `toggle` as a queued task, one tick after
+ * the click that caused it, so a handler hung off `onToggle` mounts the
+ * payload a beat late. Handling the summary's `click` directly — and
+ * preventing its default action, since that default *is* the native
+ * toggle — keeps the open/closed state and the mount happening in the same
+ * update, with the same keyboard and screen-reader behaviour a native
+ * `<details>` gives for free (summary is a default button-role element, so
+ * Enter/Space already dispatch `click`).
  */
 function SourceBlock({ heading, text }: { heading: string; text: string }) {
   const [open, setOpen] = useState(false);
 
   return (
-    <details
-      className="mt-1.5"
-      onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)}
-    >
-      <summary className="cursor-pointer text-xs text-muted-foreground">
+    <details className="mt-1.5" open={open}>
+      <summary
+        className="cursor-pointer text-xs text-muted-foreground"
+        onClick={(e) => {
+          e.preventDefault();
+          setOpen((o) => !o);
+        }}
+      >
         {heading}
       </summary>
       {open && (

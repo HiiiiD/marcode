@@ -129,7 +129,7 @@ suite('session handoff', () => {
     assert.strictEqual(sent.model, 'm');
   });
 
-  test('a user item with refs renders a collapsed source chip', () => {
+  test('a user item with refs shows only the prose, with the payload behind a chip', () => {
     renderApp();
     hydrateTwoSessions();
 
@@ -145,8 +145,36 @@ suite('session handoff', () => {
       },
     });
 
-    assert.strictEqual(screen.getAllByText(/plan from refactor store/).length > 0, true);
-    // Collapsed: the payload body is not in the document until it is opened.
+    // Exact matcher: this only passes if the block was lifted OUT of the
+    // prose. Un-split, the node's textContent is the whole composed string
+    // and this throws. That is what makes the test discriminate.
+    screen.getByText('Do it');
+
+    // The chip is present and the payload is not, until it is opened.
+    const chip = screen.getByText('plan from refactor store');
     assert.strictEqual(screen.queryByText('step one') === null, true);
+
+    fireEvent.click(chip);
+    screen.getByText('step one');
+  });
+
+  test('a user item whose text lacks the expected block degrades to plain prose', () => {
+    renderApp();
+    hydrateTwoSessions();
+
+    sendFromHost({
+      t: 'session-patch', id: 's-1',
+      patch: {
+        op: 'append',
+        item: {
+          id: 'u2', ts: 2, role: 'user',
+          text: 'Just prose, no block here',
+          refs: [{ sessionId: 's-2', kind: 'plan', title: 'refactor store' }],
+        },
+      },
+    });
+
+    screen.getByText('Just prose, no block here');
+    assert.strictEqual(screen.queryByText('plan from refactor store') === null, true);
   });
 });
