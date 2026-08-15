@@ -21,7 +21,7 @@ const asRecord = (v: unknown): Rec =>
 const str = (v: unknown): string | undefined =>
   typeof v === 'string' && v.length > 0 ? v : undefined;
 
-function compact<T extends object>(value: T): T {
+function compact<const T extends object>(value: T): T {
   for (const key of Object.keys(value)) {
     if ((value as Rec)[key] === undefined) { delete (value as Rec)[key]; }
   }
@@ -78,7 +78,7 @@ export function toToolCall(item: ThreadItem): ToolCall | undefined {
     case 'commandExecution': {
       const c = item as Extract<ThreadItem, { type: 'commandExecution' }>;
       return compact({
-        kind: 'command' as const, label: 'Shell',
+        kind: 'command', label: 'Shell',
         command: displayCommand(c.command, c.commandActions),
         cwd: str(c.cwd),
       });
@@ -86,28 +86,28 @@ export function toToolCall(item: ThreadItem): ToolCall | undefined {
 
     case 'fileChange': {
       const f = item as Extract<ThreadItem, { type: 'fileChange' }>;
-      return { kind: 'file-edit' as const, label: 'Edit', files: fileEdits(f.changes) };
+      return { kind: 'file-edit', label: 'Edit', files: fileEdits(f.changes) };
     }
 
     case 'mcpToolCall': {
       const m = item as Extract<ThreadItem, { type: 'mcpToolCall' }>;
       const tool = str(m.tool) ?? '';
-      return { kind: 'mcp' as const, label: tool || m.server, server: m.server, tool };
+      return { kind: 'mcp', label: tool || m.server, server: m.server, tool };
     }
 
     case 'webSearch': {
       const w = item as Extract<ThreadItem, { type: 'webSearch' }>;
-      return compact({ kind: 'web' as const, label: 'Web search', query: str(w.query) });
+      return compact({ kind: 'web', label: 'Web search', query: str(w.query) });
     }
 
     case 'plan': {
       const p = item as Extract<ThreadItem, { type: 'plan' }>;
-      return { kind: 'plan' as const, label: 'Plan', text: p.text };
+      return { kind: 'plan', label: 'Plan', text: p.text };
     }
 
     case 'dynamicToolCall': {
       const d = item as Extract<ThreadItem, { type: 'dynamicToolCall' }>;
-      return { kind: 'other' as const, label: str(d.tool) ?? 'Tool', raw: item };
+      return { kind: 'other', label: str(d.tool) ?? 'Tool', raw: item };
     }
 
     // Every other item kind is deliberately not a tool. Parsing stays
@@ -163,7 +163,7 @@ export function approvalToolCall(method: string, params: unknown): ToolCall | un
 
   if (kind === 'command') {
     return compact({
-      kind: 'command' as const, label: 'Shell',
+      kind: 'command', label: 'Shell',
       command: displayCommand(
         typeof p.command === 'string' ? p.command : '',
         p.commandActions as CommandAction[] | undefined,
@@ -174,14 +174,14 @@ export function approvalToolCall(method: string, params: unknown): ToolCall | un
   }
 
   if (kind === 'file-change') {
-    return { kind: 'file-edit' as const, label: 'Edit', files: fileEdits(p.changes) };
+    return { kind: 'file-edit', label: 'Edit', files: fileEdits(p.changes) };
   }
 
   const fields: Field[] = [];
   const reason = str(p.reason);
   if (reason) { fields.push({ label: 'reason', value: reason }); }
   return compact({
-    kind: 'other' as const, label: 'Permission',
+    kind: 'other', label: 'Permission',
     fields: fields.length > 0 ? fields : undefined,
     raw: params,
   });
