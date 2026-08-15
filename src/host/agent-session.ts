@@ -1,6 +1,6 @@
 import { resolve } from 'node:path';
 import type {
-  McpServerStatus, PermissionRequest, SessionId, SessionSnapshot, SessionState,
+  McpServerStatus, PermissionRequest, SessionId, SessionRef, SessionSnapshot, SessionState,
   SessionStatus, TranscriptItem, TranscriptPatch,
 } from '../protocol/messages';
 import type { ToolCall } from '../providers/canonical/tool-call';
@@ -192,17 +192,29 @@ export class AgentSession {
    */
   get pendingSeedText(): string | undefined { return this.seed; }
 
-  send(text: string, context?: EditorContext): void {
+  /**
+   * The assistant item currently being streamed into, if any.
+   *
+   * Exposed for reference resolution: an in-flight answer must never be what
+   * a handoff pulls, and this is the only place that knows which item it is.
+   */
+  get openItemId(): string | undefined { return this.openAssistantId; }
+
+  // `noteError` arrived on both sides of this merge — handoff needed it for an
+  // unresolvable reference, relocation for a refused bring-back. One
+  // definition survives, below, and it is the awaited one: bring-back disposes
+  // and rebuilds the session immediately after noting, so a fire-and-forget
+  // flush could lose the item to the rebuild. Handoff's callers do not await
+  // it, which is harmless — `scheduleFlush` never rejects.
+
+  send(text: string, context?: EditorContext, refs?: SessionRef[]): void {
     if (this._state.title === 'Untitled' && text.trim().length > 0) {
       this._state.title = text.trim().slice(0, TITLE_MAX);
     }
-    // Spread the context in only when there is one: a persisted user item
-    // written before this feature has no `context` key at all, and every
-    // consumer already handles its absence. Writing `context: undefined`
-    // would serialize differently for no gain.
     const item: TranscriptItem = {
       id: nextId('u'), ts: Date.now(), role: 'user', text,
       ...(context ? { context } : {}),
+      ...(refs && refs.length > 0 ? { refs } : {}),
     };
     this.appendItem(item);
     this.closeAssistant();

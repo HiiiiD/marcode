@@ -11,10 +11,31 @@ export type {
 export type SessionId = string;
 export type SessionStatus = 'idle' | 'running' | 'awaiting-approval' | 'error';
 
+export type RefKind = 'message' | 'plan';
+
+/**
+ * A reference from one session's message to another session's output.
+ *
+ * `title` travels with the ref rather than being looked up: a transcript item
+ * outlives the session it references, and a chip that renders "unknown
+ * session" once the source is deleted records less than the one that kept the
+ * name it had when the handoff happened.
+ */
+export interface SessionRef { sessionId: SessionId; kind: RefKind; title: string }
+
 interface ItemBase { id: string; ts: number }
 
 export type TranscriptItem =
-  | (ItemBase & { role: 'user'; text: string; context?: EditorContext })
+  | (ItemBase & {
+      role: 'user'; text: string;
+      context?: EditorContext;
+      /**
+       * Sessions this message pulled from. Metadata about the message that
+       * the message text cannot carry, exactly like `context` above — `text`
+       * is already the fully-composed prompt the provider received.
+       */
+      refs?: SessionRef[];
+    })
   | (ItemBase & { role: 'assistant'; text: string; thinking?: string })
   | (ItemBase & {
       role: 'tool'; toolId: string; tool: ToolCall;
@@ -211,12 +232,20 @@ export type WebviewToHost =
    * creation is the one point on the wire where it is settable at all.
    */
   | { t: 'create-session'; providerId: string; cwd: string; model?: string;
-      effort?: EffortLevel; mode?: PermissionMode }
+      effort?: EffortLevel; mode?: PermissionMode;
+      /**
+       * The new session's first message, sent immediately after creation.
+       * Carried on creation rather than posted as a follow-up `send` because
+       * the webview does not know the new session's id until the host has
+       * made it — a two-step version would have to wait for the snapshot and
+       * would lose the seed if the panel reloaded in between.
+       */
+      seed?: { text: string; refs: SessionRef[] } }
   | { t: 'set-visible'; sessionIds: SessionId[] }
   | { t: 'set-layout'; layout: PaneLayout }
   | { t: 'close-session'; id: SessionId }
   | { t: 'delete-session'; id: SessionId }
-  | { t: 'send'; id: SessionId; text: string }
+  | { t: 'send'; id: SessionId; text: string; refs?: SessionRef[] }
   | { t: 'interrupt'; id: SessionId }
   | { t: 'set-effort'; id: SessionId; effort: EffortLevel }
   | { t: 'set-permission-mode'; id: SessionId; mode: PermissionMode }
