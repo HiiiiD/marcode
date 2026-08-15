@@ -169,6 +169,33 @@ export function describeTool(name: string, input: unknown): ToolHeader {
         ?? `${todos.length} ${todos.length === 1 ? 'item' : 'items'}`, false);
     }
 
+    // Codex tool kinds below. Names are the raw `ThreadItem.type` string from
+    // map-events.ts, so no PascalCase translation happens for these.
+
+    case 'commandexecution':
+      return header('terminal', str(record.command), true);
+
+    case 'filechange': {
+      const paths = fileChangePaths(record.changes);
+      const primary = paths.length === 1
+        ? shortPath(paths[0])
+        : paths.length > 1 ? `${paths.length} files` : undefined;
+      return header('file-pen', primary, true);
+    }
+
+    case 'mcptoolcall': {
+      const server = str(record.server);
+      const toolName = str(record.toolName);
+      const primary = server && toolName ? `${server} · ${toolName}` : server ?? toolName;
+      return header('wrench', primary, false);
+    }
+
+    case 'dynamictoolcall':
+      return header('wrench', str(record.toolName), false);
+
+    case 'plan':
+      return header('list-todo', str(record.text) ?? 'Plan', false);
+
     default: {
       // Not a tool we render bespoke. A single string argument is still worth
       // showing verbatim; anything else falls back to the JSON preview the
@@ -183,6 +210,23 @@ export function describeTool(name: string, input: unknown): ToolHeader {
 function pathOf(record: Rec): string | undefined {
   const path = str(record.file_path) ?? str(record.notebook_path) ?? str(record.path);
   return path ? shortPath(path) : undefined;
+}
+
+/**
+ * Best-effort path list out of a Codex `fileChange` item's `changes` field.
+ * That field is typed `unknown` upstream (map-events.ts / wire.ts) — Codex
+ * has not published its shape here yet — so this only recognizes the two
+ * plausible container shapes (an array of `{ path }` entries, or an object
+ * keyed by path) and returns nothing rather than guessing further.
+ */
+function fileChangePaths(changes: unknown): string[] {
+  if (Array.isArray(changes)) {
+    return changes.map((c) => str(asRecord(c).path)).filter((p): p is string => p !== undefined);
+  }
+  if (typeof changes === 'object' && changes !== null) {
+    return Object.keys(changes as Rec);
+  }
+  return [];
 }
 
 function hostOf(url: string | undefined): string | undefined {
@@ -281,6 +325,27 @@ export function describeInput(name: string, input: unknown): ToolBlock[] {
       if (items.length > 0) { blocks.push({ kind: 'todos', items }); }
       break;
     }
+
+    case 'commandexecution': {
+      const command = str(record.command);
+      if (command) { blocks.push({ kind: 'command', text: command }); }
+      const cwd = str(record.cwd);
+      if (cwd) { blocks.push({ kind: 'path', path: cwd }); }
+      break;
+    }
+
+    case 'mcptoolcall': {
+      const server = str(record.server);
+      if (server) { blocks.push({ kind: 'field', label: 'server', value: server }); }
+      const toolName = str(record.toolName);
+      if (toolName) { blocks.push({ kind: 'field', label: 'tool', value: toolName }); }
+      break;
+    }
+
+    // fileChange, dynamicToolCall and plan carry no fixed input shape worth a
+    // bespoke block (`changes` in particular is typed `unknown` upstream —
+    // see map-events.ts). They fall through to the JSON preview below, same
+    // as any tool this panel has never heard of.
 
     default: {
       // An MCP tool, or one this panel has never heard of. An empty object

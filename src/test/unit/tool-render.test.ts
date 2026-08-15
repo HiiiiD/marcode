@@ -237,6 +237,64 @@ suite('describeOutput', () => {
   });
 });
 
+suite('describeTool: codex', () => {
+  test('a command execution leads with the command, not its JSON', () => {
+    const header = describeTool('commandExecution', { command: 'yarn test', cwd: '/repo' });
+    assert.strictEqual(header.glyph, 'terminal');
+    assert.strictEqual(header.primary, 'yarn test');
+    assert.strictEqual(header.mono, true);
+  });
+
+  test('an mcp tool call names the server and the tool', () => {
+    const header = describeTool('mcpToolCall', { server: 'github', toolName: 'list_prs' });
+    assert.strictEqual(header.primary.includes('github'), true);
+    assert.strictEqual(header.primary.includes('list_prs'), true);
+  });
+
+  test('a file change leads with the changed path', () => {
+    const header = describeTool('fileChange', { changes: [{ path: '/a/b.ts' }] });
+    assert.strictEqual(header.glyph, 'file-pen');
+    assert.strictEqual(header.primary, '/a/b.ts');
+  });
+
+  test('a dynamic tool call leads with the tool name', () => {
+    assert.strictEqual(describeTool('dynamicToolCall', { toolName: 'custom_tool' }).primary, 'custom_tool');
+  });
+
+  test('a plan leads with its own label', () => {
+    const header = describeTool('plan', { text: 'Ship the feature' });
+    assert.strictEqual(header.glyph, 'list-todo');
+    assert.strictEqual(header.primary, 'Ship the feature');
+  });
+
+  test('a codex web search reuses the same header as the Claude tool', () => {
+    assert.strictEqual(describeTool('webSearch', { query: 'vscode api' }).primary, 'vscode api');
+  });
+});
+
+suite('describeInput blocks: codex', () => {
+  test('a command execution becomes a command and its working directory', () => {
+    assert.deepStrictEqual(describeInput('commandExecution', { command: 'ls', cwd: '/repo' }), [
+      { kind: 'command', text: 'ls' },
+      { kind: 'path', path: '/repo' },
+    ]);
+  });
+
+  test('an mcp tool call names its server and tool as fields', () => {
+    assert.deepStrictEqual(describeInput('mcpToolCall', { server: 'github', toolName: 'list_prs' }), [
+      { kind: 'field', label: 'server', value: 'github' },
+      { kind: 'field', label: 'tool', value: 'list_prs' },
+    ]);
+  });
+});
+
+suite('describeOutput: codex', () => {
+  test('command output renders as an output-toned lines block', () => {
+    const blocks = describeOutput('commandExecution', 'a\nb', 'ok');
+    assert.strictEqual(blocks.some((b) => b.kind === 'lines' && b.tone === 'output'), true);
+  });
+});
+
 suite('shortPath and diffLines', () => {
   test('a path of two or fewer segments is left alone', () => {
     assert.strictEqual(shortPath('/tmp/a.txt'), '/tmp/a.txt');
