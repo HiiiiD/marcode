@@ -1283,4 +1283,52 @@ suite('SessionManager', () => {
     assert.deepStrictEqual(emitted.filter((msg) => msg.t === 'usage-windows'), []);
     await m.dispose();
   });
+
+  test('resolveRefs returns the source session\'s last assistant message', async () => {
+    const session = await manager.create('fake', dir);
+    session.send('hello');
+    await settle();
+
+    const { blocks, missing } = await manager.resolveRefs([
+      { sessionId: session.state.id, kind: 'message', title: 'agent-1' },
+    ]);
+
+    assert.strictEqual(missing.length, 0);
+    assert.strictEqual(blocks.length, 1);
+    assert.strictEqual(blocks[0].title, 'agent-1');
+    assert.strictEqual(blocks[0].kind, 'message');
+    assert.strictEqual(blocks[0].text, 'ok');
+  });
+
+  test('resolveRefs reports a ref it cannot satisfy', async () => {
+    const session = await manager.create('fake', dir);
+
+    const { blocks, missing } = await manager.resolveRefs([
+      { sessionId: session.state.id, kind: 'message', title: 'agent-1' },
+    ]);
+
+    assert.strictEqual(blocks.length, 0);
+    assert.strictEqual(missing.length, 1);
+    assert.strictEqual(missing[0].title, 'agent-1');
+  });
+
+  test('resolveRefs reports a ref to a session that does not exist', async () => {
+    const { blocks, missing } = await manager.resolveRefs([
+      { sessionId: 'nope', kind: 'message', title: 'ghost' },
+    ]);
+
+    assert.strictEqual(blocks.length, 0);
+    assert.strictEqual(missing.length, 1);
+  });
+
+  test('noteError appends an error item without ending the session', async () => {
+    const session = await manager.create('fake', dir);
+    session.noteError('could not resolve');
+    await settle();
+
+    const snapshot = await session.snapshot();
+    const errors = snapshot.items.filter((i) => i.role === 'error');
+    assert.strictEqual(errors.length, 1);
+    assert.strictEqual(session.state.status, 'idle');
+  });
 });

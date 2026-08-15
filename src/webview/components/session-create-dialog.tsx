@@ -3,6 +3,7 @@ import {
   Dialog, DialogClose, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { useId, useState } from "react";
 import type { EffortLevel, PermissionMode, ProviderInfo } from "../../protocol/messages";
@@ -33,6 +34,7 @@ export function SessionCreateDialog({
   onOpenChange,
   catalog,
   initial,
+  seedable,
   onCreate,
 }: {
   open: boolean;
@@ -40,7 +42,9 @@ export function SessionCreateDialog({
   catalog: ProviderInfo[];
   /** What `+ New` would have created. The form opens on it. */
   initial: CreateSettings;
-  onCreate: (settings: CreateSettings) => void;
+  /** True for the handoff dialog: adds the first-message field and relabels. */
+  seedable?: boolean;
+  onCreate: (settings: CreateSettings, seed?: string) => void;
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -50,7 +54,7 @@ export function SessionCreateDialog({
           sidebar that they always are. */}
       <DialogContent className="flex max-h-[85vh] flex-col gap-3 overflow-hidden">
         <DialogHeader className="shrink-0">
-          <DialogTitle>New session</DialogTitle>
+          <DialogTitle>{seedable ? "Hand off to a new session" : "New session"}</DialogTitle>
         </DialogHeader>
         {/* Keyed on the settings it opens with, so reopening starts from
             whatever `+ New` would do NOW rather than from the edits of
@@ -60,6 +64,7 @@ export function SessionCreateDialog({
             key={valueOf(initial.providerId, initial.model) + initial.mode}
             catalog={catalog}
             initial={initial}
+            seedable={seedable}
             onCreate={onCreate}
           />
         )}
@@ -71,14 +76,17 @@ export function SessionCreateDialog({
 function CreateForm({
   catalog,
   initial,
+  seedable,
   onCreate,
 }: {
   catalog: ProviderInfo[];
   initial: CreateSettings;
-  onCreate: (settings: CreateSettings) => void;
+  seedable?: boolean;
+  onCreate: (settings: CreateSettings, seed?: string) => void;
 }) {
   const [picked, setPicked] = useState(valueOf(initial.providerId, initial.model));
   const [mode, setMode] = useState<PermissionMode>(initial.mode);
+  const [seedText, setSeedText] = useState("");
   /**
    * `null` means "whatever this model's default is", which is what a freshly
    * picked model has to mean: effort levels belong to the model, so a level
@@ -116,6 +124,21 @@ function CreateForm({
           margins put the scrollbar on the popup's edge rather than inside its
           padding. */}
       <div className="-mx-4 flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4">
+        {seedable && (
+          <div className="flex flex-col gap-2">
+            <label htmlFor={`${ids}-seed`} className="text-xs font-medium text-muted-foreground">
+              First message
+            </label>
+            <Textarea
+              id={`${ids}-seed`}
+              value={seedText}
+              onChange={(e) => setSeedText(e.target.value)}
+              placeholder="Execute the plan in docs/superpowers/plans/…"
+              className="min-h-16"
+            />
+          </div>
+        )}
+
         <div className="flex flex-col gap-2">
           <p className="text-xs font-medium text-muted-foreground">Model</p>
           <RadioGroup value={picked} onValueChange={(v) => { setPicked(String(v)); setEffort(null); }}>
@@ -200,7 +223,7 @@ function CreateForm({
         <DialogClose render={<Button variant="outline" size="sm" />}>Cancel</DialogClose>
         <Button
           size="sm"
-          disabled={!provider || !model}
+          disabled={!provider || !model || (seedable && !seedText.trim())}
           onClick={() => {
             if (!provider || !model) { return; }
             onCreate({
@@ -208,10 +231,10 @@ function CreateForm({
               model: model.id,
               ...(level ? { effort: level } : {}),
               mode: effectiveMode,
-            });
+            }, seedable ? seedText.trim() : undefined);
           }}
         >
-          Create session
+          {seedable ? "Create and send" : "Create session"}
         </Button>
       </DialogFooter>
     </>
