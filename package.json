@@ -30,6 +30,22 @@
         }
       ]
     },
+    "configuration": {
+      "title": "HiiiiD Code",
+      "properties": {
+        "hiiiidCode.codex.path": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the Codex CLI. Leave empty to use `codex` from PATH."
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "hiiiidCode.codex.login",
+        "title": "HiiiiD Code: Sign in to Codex"
+      }
+    ],
     "walkthroughs": [
       {
         "id": "hiiiid-code.setup",
@@ -67,7 +83,8 @@
     "test:unit": "mocha --ui tdd --require tsx/cjs \"src/test/unit/**/*.test.ts\"",
     "test:dom": "mocha --ui tdd --require tsx/cjs --require global-jsdom/register --require src/test/dom/setup.ts \"src/test/dom/**/*.test.tsx\"",
     "dev": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev-host.ps1",
-    "dev:clean": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev-host.ps1 -Clean"
+    "dev:clean": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev-host.ps1 -Clean",
+    "codex:bindings": "codex app-server generate-ts --out .codex-bindings"
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.116.0",

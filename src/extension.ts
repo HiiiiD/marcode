@@ -6,8 +6,21 @@ import { SessionManager } from './host/session-manager';
 import { TranscriptStore } from './host/transcript-store';
 import { createVscodeEditorSource } from './host/vscode-editor-source';
 import { ClaudeProvider } from './providers/claude/claude-provider';
+import { CodexProvider } from './providers/codex/codex-provider';
 import { FakeProvider } from './providers/fake/fake-provider';
 import type { AgentProvider } from './providers/types';
+
+/**
+ * `hiiiidCode.codex.path` defaults to `""` (see package.json) so the
+ * settings UI shows an empty field, but CodexProvider's own default only
+ * kicks in for `undefined` — passing through `""` would spawn `''` and
+ * make Codex unavailable out of the box. Empty (or unset) means "use codex
+ * from PATH", so it is normalized to `undefined` here at the boundary.
+ */
+function codexBinPath(): string | undefined {
+  const configured = vscode.workspace.getConfiguration('hiiiidCode').get<string>('codex.path');
+  return configured ? configured : undefined;
+}
 
 export async function activate(context: vscode.ExtensionContext) {
   const rootDir = context.storageUri?.fsPath ?? context.globalStorageUri.fsPath;
@@ -17,6 +30,7 @@ export async function activate(context: vscode.ExtensionContext) {
   // so Claude — the real provider — is registered first.
   const providers = new Map<string, AgentProvider>();
   providers.set('claude', new ClaudeProvider());
+  providers.set('codex', new CodexProvider({ binPath: codexBinPath() }));
   providers.set('fake', new FakeProvider(
     (text) => (text.includes('rm')
       ? [{ kind: 'permission', id: `p-${Date.now()}`, name: 'Bash', input: { command: text } }]
@@ -69,6 +83,19 @@ export async function activate(context: vscode.ExtensionContext) {
     vscode.window.registerWebviewViewProvider(PanelViewProvider.viewType, provider),
     { dispose: () => { void manager.dispose(); } },
     { dispose: () => { contextSub.dispose(); tracker.dispose(); editorSource.dispose(); } },
+    vscode.commands.registerCommand('hiiiidCode.codex.login', () => {
+      // `codex login` opens a browser flow and needs a real TTY, so this
+      // hands the user a terminal rather than trying to drive it.
+      const terminal = vscode.window.createTerminal('Codex login');
+      terminal.show();
+      terminal.sendText('codex login');
+    }),
+    // A changed path is a different install: re-probe, which is also how the
+    // provider recovers from 'unavailable'. refreshModels already IS the
+    // availability probe — see session-manager.
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration('hiiiidCode.codex.path')) { void manager.refreshModels(defaultCwd); }
+    }),
   );
 
   try {
