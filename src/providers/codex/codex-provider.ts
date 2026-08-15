@@ -269,7 +269,11 @@ export class CodexProvider implements AgentProvider {
     const response = await server.request<SkillsListResponse>('skills/list', { cwds: [cwd] });
     return (response.data ?? [])
       .flatMap((entry) => entry.skills ?? [])
-      .filter((skill) => skill.enabled)
+      // Explicit `false` only: a field this parser doesn't recognize (or a
+      // future CLI that drops it entirely — this protocol carries no
+      // version) must not silently empty the user's `/`-menu the way a
+      // truthy check on a missing value would.
+      .filter((skill) => skill.enabled !== false)
       .map((skill) => ({
         name: skill.name,
         description: skill.shortDescription ?? skill.description,

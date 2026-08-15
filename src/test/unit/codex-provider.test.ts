@@ -164,7 +164,7 @@ suite('CodexProvider', () => {
     assert.strictEqual(killed(), true);
   });
 
-  test('listInvocables flattens skills across cwd entries, skips disabled rows, and maps scope to origin', async () => {
+  test('listInvocables flattens skills across cwd entries, skips only explicitly-disabled rows, and maps scope to origin', async () => {
     const { provider, respondTo } = providerWithStub();
     const probe = provider.listInvocables('/repo');
     await respondTo('skills/list', {
@@ -180,6 +180,13 @@ suite('CodexProvider', () => {
               name: 'retired', description: 'No longer offered',
               path: '/repo/.codex/skills/retired.md', scope: 'project', enabled: false,
             },
+            // No `enabled` field at all — must still be offered. Only an
+            // explicit `false` suppresses a skill; a missing field is not
+            // the same fact and a truthy check would conflate the two.
+            {
+              name: 'unmarked', description: 'Never says either way',
+              path: '/repo/.codex/skills/unmarked.md', scope: 'project',
+            } as never,
           ],
           errors: [],
         },
@@ -198,6 +205,7 @@ suite('CodexProvider', () => {
     const invocables = await probe;
     assert.deepStrictEqual(invocables, [
       { name: 'plan', description: 'Plan', origin: 'project' },
+      { name: 'unmarked', description: 'Never says either way', origin: 'project' },
       { name: 'brainstorm', description: 'Explore options before building', origin: 'user' },
     ]);
   });
