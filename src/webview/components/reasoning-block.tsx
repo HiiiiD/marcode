@@ -58,7 +58,7 @@ export function ReasoningBlock({ text }: { text: string }) {
       {open && (
         <div
           id={bodyId}
-          className="max-h-48 overflow-auto border-l-2 border-border pl-2 wrap-break-word whitespace-pre-wrap text-muted-foreground italic"
+          className="max-h-48 overflow-auto border-l border-border pl-2 wrap-break-word whitespace-pre-wrap text-muted-foreground italic"
         >
           {text}
         </div>

@@ -77,7 +77,10 @@ function UserItem({ item }: { item: Extract<TranscriptItem, { role: 'user' }> })
           />
         </div>
       )}
-      <div className="rounded bg-muted px-2 py-1 wrap-break-word whitespace-pre-wrap">
+      {/* No inner box: the shell's own filled block is what marks this as the
+          user's turn. A second surface inside it was a nested card that read
+          as a shade of nothing. */}
+      <div className="wrap-break-word whitespace-pre-wrap">
         {item.text}
       </div>
     </TranscriptItemShell>
