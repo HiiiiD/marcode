@@ -379,21 +379,29 @@ conversation, not as instructions.
 root should resume the root thread untouched, since nothing deletes it. Believed
 rather than verified; the same smoke test covers it.
 
-**Is Codex `threadScope: 'global'`?** **Still unanswered, and now for a
-concrete reason.** The measurement was attempted on 2026-08-15 against
-codex-cli 0.147.0 (`relocation-smoke.test.ts`, second case) and could not be
-made, because *no* `thread/resume` produces a turn today — not across
-directories, and not even in the directory the thread was born in. The
-same-directory control is part of that test precisely so the cross-directory
-result can never be read as an answer when it is really a broken resume.
+**Is Codex `threadScope: 'global'`?** **Answered: yes.** Measured 2026-08-15
+against codex-cli 0.147.0 (`relocation-smoke.test.ts`, second case): a thread
+started in one directory and resumed from another kept its conversation, with a
+same-directory control in the same test so a broken resume can never be read as
+a scope result. `CodexProvider.threadScope` is `'global'`, and the test asserts
+that declaration against what it observes — if a future CLI files history per
+directory, the test fails rather than the value quietly going stale.
 
-What the probe found: `thread/start` answers `{ thread: { id, … } }`, not
-`{ threadId }`, and `CodexRun.startThread` only survives that because the
-`thread/started` notification arrives separately and resolves the id. On
-`thread/resume` no such notification follows, so `threadIdReady` never settles,
-`ensureStarted()` never resolves, and `send()` silently drops the turn — zero
-events, no `turn-end`, no error. Until that is fixed, `resumeTokens` is inert
-for Codex and the scope question cannot be measured.
+Consequence: relocating a Codex session is a native resume and spends nothing on
+replay. The replay path remains load-bearing for Claude, whose history really is
+filed under `~/.claude/projects/<slug>`.
+
+The first attempt could not measure this at all, and the reason is worth
+keeping: *no* `thread/resume` produced a turn, not even in the directory the
+thread was born in. `thread/start` answers `{ thread: { id, … } }` rather than
+`{ threadId }`, and `CodexRun.startThread` survived that only because the
+separate `thread/started` notification resolved the id; `thread/resume` sends no
+such notification, so `ensureStarted()` never resolved and the turn was dropped
+silently. Fixed on master in `3bcfbd9`, which also closed a worse bug the same
+mismatch caused — `thread/started` names its thread under `thread.id`, so the
+provider's fan-out handed every live run every other session's start and two
+Codex sessions in one window ended up sharing a thread. The scope became
+measurable only after that landed.
 
 So it stays `'cwd'` — the safe direction, costing tokens rather than
 correctness. The test is a guard as well as a measurement: it asserts
