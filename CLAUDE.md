@@ -123,8 +123,14 @@ These are not style preferences. Breaking one breaks the design.
   for one — `refreshModels` deletes it the moment the probe replies, success or failure, so
   it cannot survive one real answer. A **failure** is still never persisted: a restored
   reason would describe an install nobody checked this launch.
-- **Usage and context surfaces show percentages, never token counts.** Tokens exist only
-  inside `src/providers/claude/map-context.ts`, which converts them on the way out.
+- **Usage and context surfaces read in percentages.** Every *share* — the ring, the
+  slices, the usage windows, each memory file — is a percentage, and a token count may
+  never stand in for one. The single exception is the context dialog's window line
+  (`usedTokens` / `windowTokens` on `ContextBreakdown`): a percentage cannot say which
+  window it is a percentage of, and 17% of 258k and 17% of 1M are the same reading of very
+  different sessions. It is quoted once, as the bar's caption, and providers report both
+  fields or neither. Everywhere else tokens stay inside the mappers
+  (`src/providers/claude/map-context.ts`, `src/providers/codex/map-usage.ts`).
 - **Plan usage is pulled, never read off `rate_limit_event`.** That event carries no
   utilization at steady state — only `status` is required — so a strip built on it renders
   nothing. It is a signal that a pull is due. Numbers come from `AgentProvider.fetchUsage`

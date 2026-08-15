@@ -89,6 +89,8 @@ export function toContextBreakdown(res: ContextUsageLike): ContextBreakdown {
     return {
       systemPercent: 0, memoryPercent: 0, conversationPercent: 0, freePercent: 100,
       memoryFiles: res.memoryFiles.map((f) => ({ path: f.path, percent: 0 })),
+      // No usable window: the numerator is real but the denominator is not,
+      // and half a fraction is worse than none. Both fields stay absent.
     };
   }
 
@@ -114,6 +116,12 @@ export function toContextBreakdown(res: ContextUsageLike): ContextBreakdown {
     // A file rounding to 0 stays in the list: it is present in the context,
     // and the UI renders 0 as `<1%` rather than dropping the row.
     memoryFiles: res.memoryFiles.map((f, i) => ({ path: f.path, percent: filePercents[i] })),
+    // `base`, not `res.totalTokens`: the percentages above are all shares of
+    // `base`, so quoting a different numerator here would put a token count
+    // on screen that the bar beside it disagrees with. Clamped to the window
+    // for the same reason `usedPercent` is.
+    usedTokens: Math.min(base, max),
+    windowTokens: max,
   };
 }
 

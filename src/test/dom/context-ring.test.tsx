@@ -101,6 +101,34 @@ suite('ContextRing', () => {
     assert.ok(screen.getByRole('button', { name: /CLAUDE\.md/ }));
   });
 
+  test('names the window in tokens, so 17% of 258k is not read as 17% of 1M', async () => {
+    mount(17);
+    await open('Context 17% used');
+
+    sendFromHost({
+      t: 'context-breakdown', id: 'a',
+      result: {
+        ok: true,
+        breakdown: breakdown({ usedTokens: 45_225, windowTokens: 258_400 }),
+      },
+    });
+
+    assert.ok(screen.getByText('45.2k of 258k tokens'));
+  });
+
+  test('a provider that cannot name its window shows no token line at all', async () => {
+    // Half a fraction is worse than none: a numerator beside a guessed
+    // denominator is a claim about a window nobody reported.
+    mount(17);
+    await open('Context 17% used');
+
+    sendFromHost({
+      t: 'context-breakdown', id: 'a', result: { ok: true, breakdown: breakdown() },
+    });
+
+    assert.strictEqual(screen.queryByText(/tokens$/) === null, true);
+  });
+
   test('a sub-one-percent memory file reads as <1%, never 0%', async () => {
     mount(43);
     await open('Context 43% used');

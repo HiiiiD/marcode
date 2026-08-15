@@ -62,6 +62,7 @@ suite('toContextBreakdown', () => {
     assert.deepStrictEqual(breakdown, {
       systemPercent: 0, memoryPercent: 0, conversationPercent: 25, freePercent: 75,
       memoryFiles: [],
+      usedTokens: 50_000, windowTokens: 200_000,
     });
   });
 
@@ -93,6 +94,21 @@ suite('toContextBreakdown', () => {
     const sum = breakdown.systemPercent + breakdown.memoryPercent
       + breakdown.conversationPercent + breakdown.freePercent;
     assert.strictEqual(sum, 100);
+  });
+
+  test('carries the window and its occupancy in tokens', () => {
+    // A percentage cannot say which window it is a percentage of, and the
+    // model behind a session can change that denominator without changing
+    // anything else on screen.
+    const breakdown = toContextBreakdown({
+      total: { totalTokens: 49_165, inputTokens: 49_150, cachedInputTokens: 36_096,
+               outputTokens: 15, reasoningOutputTokens: 0 },
+      last: { totalTokens: 17_104, inputTokens: 17_099, cachedInputTokens: 11_008,
+              outputTokens: 5, reasoningOutputTokens: 0 },
+      modelContextWindow: 258_400,
+    })!;
+    assert.strictEqual(breakdown.usedTokens, 17_104);
+    assert.strictEqual(breakdown.windowTokens, 258_400);
   });
 
   test('no context window means no breakdown at all', () => {
