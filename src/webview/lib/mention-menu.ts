@@ -1,18 +1,3 @@
-import type { SessionRef } from '../../protocol/messages';
-
-/**
- * What picking a row means. Discriminated so the menu machinery can stay
- * ignorant of it: a new source adds an arm here and its own module, and
- * nothing in this file changes.
- *
- * The file arm is deliberately absent — tagging a file in the session's cwd
- * is a planned source, not a built one, and an unused arm would be a claim
- * the menu cannot honour yet.
- */
-export type MentionPayload =
-  | { kind: 'session-ref'; ref: SessionRef }
-  | { kind: 'action'; action: 'handoff' };
-
 /**
  * One row in the `@` menu, contributed by a source module.
  *
@@ -21,15 +6,20 @@ export type MentionPayload =
  * `refactor-store:plan`, a file source would contribute its path. It is also
  * what `filterMentions` searches alongside the label, which is what makes a
  * path-shaped token searchable by path with no change to this module.
+ *
+ * `P` is the payload type this source contributes. The machinery is generic
+ * over it so a new source can add a new payload arm beside this one without
+ * touching the menu, and functions that narrow the payload move to that
+ * source's module.
  */
-export interface MentionOption {
+export interface MentionOption<P> {
   id: string;
   label: string;
   hint: string;
   /** Heading this row belongs under. Sources supply their own. */
   group: string;
   baseToken: string;
-  payload: MentionPayload;
+  payload: P;
 }
 
 /**
@@ -37,7 +27,7 @@ export interface MentionOption {
  * is the literal text in the box; it never reaches the wire — it exists so a
  * user who deletes the token deletes the mention with it (see pruneMentions).
  */
-export interface PendingMention { token: string; payload: MentionPayload }
+export interface PendingMention<P> { token: string; payload: P }
 
 /**
  * The active `@` query and where it starts, or `undefined` for "no menu".
@@ -60,7 +50,7 @@ export function mentionQuery(
 }
 
 /** Rows matching `query` on either their label or their base token. */
-export function filterMentions(options: MentionOption[], query: string): MentionOption[] {
+export function filterMentions<P>(options: MentionOption<P>[], query: string): MentionOption<P>[] {
   if (query.length === 0) { return options; }
   const needle = query.toLowerCase();
   return options.filter((o) =>
@@ -74,7 +64,7 @@ export function filterMentions(options: MentionOption[], query: string): Mention
  * two directories can hold the same filename — and a duplicate would make
  * `pruneMentions` unable to tell which mention the user deleted.
  */
-export function tokenFor(option: MentionOption, taken: string[]): string {
+export function tokenFor<P>(option: MentionOption<P>, taken: string[]): string {
   const base = `@${option.baseToken}`;
   if (!taken.includes(base)) { return base; }
   for (let n = 2; ; n++) {
@@ -94,19 +84,6 @@ export function spliceMention(
 }
 
 /** The mentions whose tokens are still present in the text. */
-export function pruneMentions(text: string, pending: PendingMention[]): PendingMention[] {
+export function pruneMentions<P>(text: string, pending: PendingMention<P>[]): PendingMention<P>[] {
   return pending.filter((p) => text.includes(p.token));
-}
-
-/**
- * The session references among `pending`, in order.
- *
- * The composer sends `SessionRef[]` on the wire, and only some payload kinds
- * are references — an action row is a gesture, not a reference, and a future
- * file row will carry a path rather than a session id.
- */
-export function sessionRefsOf(pending: PendingMention[]): SessionRef[] {
-  return pending
-    .filter((p) => p.payload.kind === 'session-ref')
-    .map((p) => (p.payload as { kind: 'session-ref'; ref: SessionRef }).ref);
 }

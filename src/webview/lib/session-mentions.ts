@@ -1,5 +1,14 @@
-import type { RefKind, SessionId, SessionSummary } from '../../protocol/messages';
-import type { MentionOption } from './mention-menu';
+import type { RefKind, SessionId, SessionRef, SessionSummary } from '../../protocol/messages';
+import type { MentionOption, PendingMention } from './mention-menu';
+
+/**
+ * What a row from this source means. Lives here, not in the menu machinery:
+ * a source owns its own payload, which is what lets another source be added
+ * beside this one without the machinery learning about either.
+ */
+export type SessionMentionPayload =
+  | { kind: 'session-ref'; ref: SessionRef }
+  | { kind: 'action'; action: 'handoff' };
 
 const KINDS: { kind: RefKind; hint: string }[] = [
   { kind: 'message', hint: 'last reply' },
@@ -28,8 +37,8 @@ function slug(title: string): string {
  */
 export function sessionMentions(
   sessions: SessionSummary[], selfId: SessionId,
-): MentionOption[] {
-  const options: MentionOption[] = [{
+): MentionOption<SessionMentionPayload>[] {
+  const options: MentionOption<SessionMentionPayload>[] = [{
     id: 'handoff',
     label: 'handoff',
     hint: 'start a new session from this one',
@@ -52,4 +61,24 @@ export function sessionMentions(
     }
   }
   return options;
+}
+
+/**
+ * The session references among `pending`, in order.
+ *
+ * The composer sends `SessionRef[]` on the wire, and only some payload kinds
+ * are references — an action row is a gesture, not a reference.
+ *
+ * The predicate is doing real work: a plain boolean filter does not narrow
+ * the mapped element, which is what forced an unchecked cast here before. With
+ * the predicate the compiler keeps the filter and the projection in step, so a
+ * payload arm added later cannot silently fall through as `undefined`.
+ */
+export function sessionRefsOf(
+  pending: PendingMention<SessionMentionPayload>[],
+): SessionRef[] {
+  return pending
+    .filter((p): p is PendingMention<{ kind: 'session-ref'; ref: SessionRef }> =>
+      p.payload.kind === 'session-ref')
+    .map((p) => p.payload.ref);
 }

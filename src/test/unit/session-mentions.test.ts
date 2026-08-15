@@ -1,6 +1,7 @@
 import * as assert from 'assert';
-import { sessionMentions } from '../../webview/lib/session-mentions';
+import { sessionMentions, sessionRefsOf, type SessionMentionPayload } from '../../webview/lib/session-mentions';
 import type { SessionSummary } from '../../protocol/messages';
+import type { PendingMention } from '../../webview/lib/mention-menu';
 
 function summary(id: string, title: string): SessionSummary {
   return {
@@ -15,9 +16,12 @@ suite('session mentions', () => {
   test('offers handoff first, then one row per kind per other session', () => {
     const rows = sessionMentions([summary('s-1', 'me'), summary('s-2', 'refactor store')], 's-1');
     assert.strictEqual(rows[0].payload.kind, 'action');
+    assert.strictEqual(rows[0].group, 'Actions');
     assert.strictEqual(rows.length, 3);
     assert.strictEqual(rows.filter((r) =>
       r.payload.kind === 'session-ref' && r.payload.ref.sessionId === 's-2').length, 2);
+    const sessionRow = rows.find((r) => r.payload.kind === 'session-ref');
+    assert.strictEqual(sessionRow?.group, 'Sessions');
   });
 
   test('omits the session doing the referencing', () => {
@@ -48,5 +52,17 @@ suite('session mentions', () => {
     const rows = sessionMentions([summary('s-1', 'me'), summary('s-2', '!!!')], 's-1');
     const plan = rows.find((r) => r.baseToken.endsWith(':plan'));
     assert.strictEqual(plan?.baseToken, 'session:plan');
+  });
+
+  test('sessionRefsOf keeps only the session-ref payloads, in order', () => {
+    const pending: PendingMention<SessionMentionPayload>[] = [
+      { token: '@a:plan', payload: { kind: 'session-ref', ref: { sessionId: 's-2', kind: 'plan', title: 'a' } } },
+      { token: '@handoff', payload: { kind: 'action', action: 'handoff' } },
+      { token: '@b:message', payload: { kind: 'session-ref', ref: { sessionId: 's-3', kind: 'message', title: 'b' } } },
+    ];
+    const refs = sessionRefsOf(pending);
+    assert.strictEqual(refs.length, 2);
+    assert.strictEqual(refs[0].sessionId, 's-2');
+    assert.strictEqual(refs[1].sessionId, 's-3');
   });
 });

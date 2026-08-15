@@ -1,13 +1,13 @@
 import * as assert from 'assert';
 import {
-  filterMentions, pruneMentions, mentionQuery, sessionRefsOf, spliceMention, tokenFor,
+  filterMentions, pruneMentions, mentionQuery, spliceMention, tokenFor,
   type MentionOption, type PendingMention,
 } from '../../webview/lib/mention-menu';
 
-function option(baseToken: string, label: string, group = 'Sessions'): MentionOption {
+function option(baseToken: string, label: string, group = 'Sessions'): MentionOption<{ tag: string }> {
   return {
     id: baseToken, label, hint: '', group, baseToken,
-    payload: { kind: 'session-ref', ref: { sessionId: 's-2', kind: 'plan', title: label } },
+    payload: { tag: 'test' },
   };
 }
 
@@ -46,6 +46,13 @@ suite('mention menu', () => {
     assert.strictEqual(filterMentions(options, '').length, 3);
   });
 
+  test('group headings come from the source', () => {
+    const action = option('handoff', 'handoff', 'Actions');
+    assert.strictEqual(action.group, 'Actions');
+    const session = option('refactor-store:plan', 'refactor store', 'Sessions');
+    assert.strictEqual(session.group, 'Sessions');
+  });
+
   test('tokenFor prefixes the base token and disambiguates a collision', () => {
     const o = option('refactor-store:plan', 'refactor store');
     assert.strictEqual(tokenFor(o, []), '@refactor-store:plan');
@@ -63,23 +70,11 @@ suite('mention menu', () => {
   });
 
   test('pruneMentions drops a mention whose token the user deleted', () => {
-    const pending: PendingMention[] = [
-      { token: '@a:plan', payload: { kind: 'session-ref', ref: { sessionId: 's-2', kind: 'plan', title: 'a' } } },
-      { token: '@b:message', payload: { kind: 'session-ref', ref: { sessionId: 's-3', kind: 'message', title: 'b' } } },
+    const pending: PendingMention<{ id: string }>[] = [
+      { token: '@a', payload: { id: 'a' } },
+      { token: '@b', payload: { id: 'b' } },
     ];
-    assert.strictEqual(pruneMentions('only @a:plan survives', pending).length, 1);
+    assert.strictEqual(pruneMentions('only @a survives', pending).length, 1);
     assert.strictEqual(pruneMentions('neither', pending).length, 0);
-  });
-
-  test('sessionRefsOf keeps only the session-ref payloads, in order', () => {
-    const pending: PendingMention[] = [
-      { token: '@a:plan', payload: { kind: 'session-ref', ref: { sessionId: 's-2', kind: 'plan', title: 'a' } } },
-      { token: '@handoff', payload: { kind: 'action', action: 'handoff' } },
-      { token: '@b:message', payload: { kind: 'session-ref', ref: { sessionId: 's-3', kind: 'message', title: 'b' } } },
-    ];
-    const refs = sessionRefsOf(pending);
-    assert.strictEqual(refs.length, 2);
-    assert.strictEqual(refs[0].sessionId, 's-2');
-    assert.strictEqual(refs[1].sessionId, 's-3');
   });
 });

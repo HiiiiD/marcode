@@ -1103,13 +1103,13 @@ import type { MentionOption } from '../lib/mention-menu';
  * menu on blur, and a click that blurred the textarea first would unmount the
  * row before its handler ran.
  */
-export function RefMenu({
+export function RefMenu<P>({
   rows, activeIndex, listId, onPick,
 }: {
-  rows: MentionOption[];
+  rows: MentionOption<P>[];
   activeIndex: number;
   listId: string;
-  onPick: (option: MentionOption) => void;
+  onPick: (option: MentionOption<P>) => void;
 }) {
   if (rows.length === 0) {
     return (
@@ -1148,10 +1148,12 @@ Add imports:
 
 ```tsx
 import {
-  filterMentions, mentionQuery, pruneMentions, sessionRefsOf, spliceMention, tokenFor,
+  filterMentions, mentionQuery, pruneMentions, spliceMention, tokenFor,
   type MentionOption, type PendingMention,
 } from "../lib/mention-menu";
-import { sessionMentions } from "../lib/session-mentions";
+import {
+  sessionMentions, sessionRefsOf, type SessionMentionPayload,
+} from "../lib/session-mentions";
 import { RefMenu } from "./ref-menu";
 ```
 
@@ -1159,7 +1161,7 @@ Add state beside the existing `text`/`ghost` state:
 
 ```tsx
   const { state } = useStore();
-  const [refs, setRefs] = useState<PendingMention[]>([]);
+  const [refs, setRefs] = useState<PendingMention<SessionMentionPayload>[]>([]);
   const [caret, setCaret] = useState(0);
   const [refDismissed, setRefDismissed] = useState(false);
 ```
@@ -1186,7 +1188,7 @@ Add the derived menu state below the existing `menuOpen`/`view` block:
 Add the picker:
 
 ```tsx
-  const pickRef = (option: MentionOption) => {
+  const pickRef = (option: MentionOption<SessionMentionPayload>) => {
     if (!refHit) { return; }
     if (option.payload.kind === 'action') {
       // An action row inserts no token: it opens a dialog instead of
