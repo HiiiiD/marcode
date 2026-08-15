@@ -61,7 +61,7 @@ export function toToolCall(name: string, input: unknown): ToolCall {
 
   const mcp = parseMcpName(name);
   if (mcp) {
-    return { kind: 'mcp', label: mcp.tool, server: mcp.server, tool: mcp.tool, args: input };
+    return { kind: 'mcp', label: mcp.tool, server: mcp.server, tool: mcp.tool };
   }
 
   switch (name) {
@@ -172,7 +172,24 @@ export function toToolOutput(content: unknown): ToolOutput {
   if (content === null || content === undefined) { return { kind: 'none' }; }
 
   if (typeof content === 'string') {
-    return content.length > 0 ? { kind: 'text', text: content } : { kind: 'none' };
+    if (content.length === 0) { return { kind: 'none' }; }
+    // SendMessage's result is JSON-stringified into this same string field —
+    // there is no tool name at this call site to gate on (`tool_result`
+    // carries none), so the envelope is recognized by shape instead. Narrow
+    // deliberately: only a `{success, message}` object with a *string*
+    // `message` is unwrapped, so an unrelated JSON string that happens to
+    // parse (any array, a bare number, an object missing either key) falls
+    // straight through to today's behavior rather than being guessed at.
+    try {
+      const parsed: unknown = JSON.parse(content);
+      const record = asRecord(parsed);
+      if ('success' in record && typeof record.message === 'string') {
+        return { kind: 'text', text: record.message };
+      }
+    } catch {
+      // Not JSON — an ordinary text result, handled below.
+    }
+    return { kind: 'text', text: content };
   }
 
   if (Array.isArray(content)) {

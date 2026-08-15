@@ -114,12 +114,10 @@ suite('mapNotification', () => {
     }]);
   });
 
-  // The canonical `ToolCall` for a command has no pluginId/scriptPath
-  // fields — that identity lived only in the legacy `input` field this task
-  // deletes, and no later task has added a canonical home for it yet. This
-  // exercises what survives: the classified call itself is unaffected by
-  // whether the item carries plugin provenance.
-  test('a plugin-resolved command classifies the same as an ordinary one', () => {
+  // The canonical `ToolCall` for a command carries `skill`, resolved from
+  // `pluginId`/`scriptPath` the same way the pre-canonical renderer did —
+  // see `skillNameOf` in `map-tools.ts`.
+  test('a plugin-resolved command carries the skill it resolved to', () => {
     const events = mapNotification('item/started', {
       item: {
         type: 'commandExecution', id: 'exec-3', command: 'raw', cwd: '/repo',
@@ -128,7 +126,10 @@ suite('mapNotification', () => {
     });
     assert.deepStrictEqual(events, [{
       kind: 'tool-start', id: 'exec-3',
-      tool: { kind: 'command', label: 'Shell', command: 'raw', cwd: '/repo' },
+      tool: {
+        kind: 'command', label: 'Shell', command: 'raw', cwd: '/repo',
+        skill: 'using-superpowers',
+      },
     }]);
   });
 

@@ -8,7 +8,7 @@
 // on a tool's name.
 
 import { safeStringify } from './tool-card-format';
-import type { FileEdit, ToolCall, ToolOutput } from '../../protocol/messages';
+import type { FileEdit, TodoStatus, ToolCall, ToolOutput } from '../../protocol/messages';
 
 /** Which lucide glyph the card draws. Resolved to a component in tool-body.tsx. */
 export type ToolGlyph =
@@ -19,7 +19,9 @@ export interface ToolHeader {
   glyph: ToolGlyph;
   /**
    * The tool's own name — familiarity beats a translated verb here — except
-   * where the "name" is not a name a user has ever seen. See `LABELS`.
+   * for a Codex skill invocation, where the skill's own name leads instead
+   * (see `describeTool`'s `command` arm). Every other kind's `verb` is
+   * exactly the `label` its provider's `map-tools.ts` classified it with.
    */
   verb: string;
   /** The one argument worth a sidebar's width. Empty when there isn't one. */
@@ -45,8 +47,6 @@ export type ToolBlock =
   /** Free text shown in the editor font, clamped by the card. */
   | { kind: 'lines'; text: string; tone: 'output' | 'error' | 'code' }
   | { kind: 'json'; text: string };
-
-export type TodoStatus = 'pending' | 'in_progress' | 'completed';
 
 /** Last two path segments — a bare basename loses the only disambiguator at 300px. */
 export function shortPath(path: string): string {
@@ -87,7 +87,13 @@ function header(glyph: ToolGlyph, verb: string, primary: string, mono: boolean):
 export function describeTool(tool: ToolCall): ToolHeader {
   switch (tool.kind) {
     case 'command':
-      return header('terminal', tool.label, tool.command, true);
+      // A Codex command resolved to a trusted plugin script leads with the
+      // skill's own identity, not the pwsh wrapper that actually ran — same
+      // reasoning as `subagent_type` for the Agent tool, below. The raw
+      // command is still one click away in `describeInput`.
+      return tool.skill
+        ? header('bot', tool.label, tool.skill, false)
+        : header('terminal', tool.label, tool.command, true);
 
     case 'file-edit': {
       const glyph = tool.files.length > 0 && tool.files.every((f) => f.op === 'create')
@@ -128,9 +134,10 @@ export function describeTool(tool: ToolCall): ToolHeader {
       );
 
     case 'mcp':
-      return header('wrench', tool.label,
-        tool.server && tool.tool ? `${tool.server} · ${tool.tool}` : tool.server || tool.tool,
-        false);
+      // The server already has its own chip in `tool-card.tsx`, inches to the
+      // left — repeating it here read as `[wrench] github Call tool github ·
+      // list_repos` at 300px. The tool name alone is the primary.
+      return header('wrench', tool.label, tool.tool, false);
 
     case 'other':
       return header('wrench', tool.label, tool.fields?.[0]?.value ?? '', false);
@@ -139,6 +146,11 @@ export function describeTool(tool: ToolCall): ToolHeader {
 
 function editBlocks(file: FileEdit): ToolBlock[] {
   const blocks: ToolBlock[] = [{ kind: 'path', path: file.path }];
+  // A `create` is what the glyph already says (file-plus), and `modify` is
+  // the assumed default everywhere else in this card — but a `delete` with
+  // no diff body left renders as a pen glyph over an empty box, visually
+  // identical to a no-op modify, unless it is named here.
+  if (file.op !== 'modify') { blocks.push({ kind: 'field', label: 'op', value: file.op }); }
   const lines: string[] = [];
   for (const edit of file.edits ?? []) {
     if (edit.before !== undefined) {
@@ -163,6 +175,9 @@ export function describeInput(tool: ToolCall): ToolBlock[] {
 
   switch (tool.kind) {
     case 'command':
+      // The skill identity leads in the header, but the raw command that
+      // actually ran must still be reachable here, not hidden behind it.
+      if (tool.skill) { blocks.push({ kind: 'field', label: 'skill', value: tool.skill }); }
       if (tool.note) { blocks.push({ kind: 'note', text: tool.note }); }
       if (tool.command) { blocks.push({ kind: 'command', text: tool.command }); }
       if (tool.cwd) { blocks.push({ kind: 'path', path: tool.cwd }); }

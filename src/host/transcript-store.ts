@@ -28,11 +28,11 @@ export interface StoredCatalog {
   providers: Record<string, ModelInfo[]>;
 }
 
-const EMPTY_INDEX: StoredIndex = {
+const emptyIndex = (): StoredIndex => ({
   version: TRANSCRIPT_VERSION,
   sessions: [],
   layout: { orientation: 'vertical', panes: [] },
-};
+});
 
 /**
  * Narrows a parsed `usage.json` into something `SessionManager.init()` can
@@ -378,14 +378,14 @@ export class TranscriptStore {
     try {
       const raw = await fs.readFile(path.join(this.rootDir, 'index.json'), 'utf8');
       const parsed = JSON.parse(raw) as Partial<StoredIndex>;
-      if (parsed.version !== TRANSCRIPT_VERSION) { return { ...EMPTY_INDEX }; }
+      if (parsed.version !== TRANSCRIPT_VERSION) { return emptyIndex(); }
       return {
         version: TRANSCRIPT_VERSION,
         sessions: parsed.sessions ?? [],
-        layout: parsed.layout ?? EMPTY_INDEX.layout,
+        layout: parsed.layout ?? emptyIndex().layout,
       };
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === 'ENOENT') { return { ...EMPTY_INDEX }; }
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') { return emptyIndex(); }
       throw err;
     }
   }

@@ -99,12 +99,12 @@ suite('claude toToolCall', () => {
     });
   });
 
-  test('an mcp__ name becomes an mcp call carrying its arguments', () => {
+  test('an mcp__ name becomes an mcp call, carrying no raw arguments', () => {
     const call = toToolCall('mcp__github__create_issue', { title: 'bug' });
     assert.deepStrictEqual(call, {
-      kind: 'mcp', label: 'create_issue', server: 'github',
-      tool: 'create_issue', args: { title: 'bug' },
+      kind: 'mcp', label: 'create_issue', server: 'github', tool: 'create_issue',
     });
+    assert.strictEqual('args' in call, false);
   });
 
   test('an unknown tool falls through to other with its raw input', () => {
@@ -143,5 +143,31 @@ suite('claude toToolOutput', () => {
   test('null and empty string are none', () => {
     assert.deepStrictEqual(toToolOutput(null), { kind: 'none' });
     assert.deepStrictEqual(toToolOutput(''), { kind: 'none' });
+  });
+
+  test('a SendMessage-style envelope unwraps to its message', () => {
+    const content = JSON.stringify({ success: true, message: 'Agent agent-1 resumed from transcript' });
+    assert.deepStrictEqual(toToolOutput(content), {
+      kind: 'text', text: 'Agent agent-1 resumed from transcript',
+    });
+  });
+
+  test('a success envelope with a non-string message is left as escaped JSON text', () => {
+    const content = JSON.stringify({ success: true, message: { nested: true } });
+    assert.deepStrictEqual(toToolOutput(content), { kind: 'text', text: content });
+  });
+
+  test('a JSON object missing "success" is left as escaped JSON text', () => {
+    const content = JSON.stringify({ message: 'no success key' });
+    assert.deepStrictEqual(toToolOutput(content), { kind: 'text', text: content });
+  });
+
+  test('an unrelated JSON string (an array) is left exactly as-is', () => {
+    const content = JSON.stringify([1, 2, 3]);
+    assert.deepStrictEqual(toToolOutput(content), { kind: 'text', text: content });
+  });
+
+  test('a non-JSON string never throws and passes through unchanged', () => {
+    assert.deepStrictEqual(toToolOutput('not json {'), { kind: 'text', text: 'not json {' });
   });
 });

@@ -119,6 +119,31 @@ suite('TranscriptStore', () => {
     assert.strictEqual(index.layout.panes.length, 0);
   });
 
+  test('two discarded reads never share the same sessions array or layout object', async () => {
+    // Every install with a pre-v2 index.json hits the version-discard branch
+    // on first read. If it handed back a shared module-level object, mutating
+    // one caller's result would corrupt every other caller's "empty" index.
+    await fs.writeFile(path.join(dir, 'index.json'), JSON.stringify({
+      version: 1, sessions: [], layout: { orientation: 'vertical', panes: [] },
+    }), 'utf8');
+
+    const first = await store.readIndex();
+    first.sessions.push({ id: 'intruder', providerId: 'fake', model: 'm', title: 't', cwd: '/x' } as never);
+    first.layout.panes.push({ sessionId: 'intruder', size: 1 });
+
+    const second = await store.readIndex();
+    assert.deepStrictEqual(second.sessions, []);
+    assert.deepStrictEqual(second.layout, { orientation: 'vertical', panes: [] });
+  });
+
+  test('two reads of a fresh (missing) index also get independent objects', async () => {
+    const first = await store.readIndex();
+    first.sessions.push({ id: 'intruder', providerId: 'fake', model: 'm', title: 't', cwd: '/x' } as never);
+
+    const second = await store.readIndex();
+    assert.deepStrictEqual(second.sessions, []);
+  });
+
   test('an index at the current version round-trips', async () => {
     const store = new TranscriptStore(dir);
     await store.writeIndex({

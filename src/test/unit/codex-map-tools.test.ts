@@ -42,6 +42,31 @@ suite('codex toToolCall', () => {
     });
   });
 
+  test('a plugin-resolved command carries the skill it resolved to', () => {
+    const item = {
+      type: 'commandExecution', id: 'i1', command: 'raw', cwd: '/repo',
+      pluginId: 'openai-curated-remote/superpowers', scriptPath: 'skills/using-superpowers/SKILL.md',
+    } as unknown as ThreadItem;
+    assert.deepStrictEqual(toToolCall(item), {
+      kind: 'command', label: 'Shell', command: 'raw', cwd: '/repo',
+      skill: 'using-superpowers',
+    });
+  });
+
+  test('a command with no scriptPath falls back to the pluginId, and no skill at all is absent', () => {
+    const withPlugin = {
+      type: 'commandExecution', id: 'i1', command: 'raw', pluginId: 'my-plugin', scriptPath: null,
+    } as unknown as ThreadItem;
+    assert.strictEqual(
+      (toToolCall(withPlugin) as { skill?: string }).skill, 'my-plugin',
+    );
+
+    const ordinary = {
+      type: 'commandExecution', id: 'i1', command: 'ls', pluginId: null, scriptPath: null,
+    } as unknown as ThreadItem;
+    assert.strictEqual('skill' in (toToolCall(ordinary) as object), false);
+  });
+
   test('mcpToolCall reads `tool`, not `toolName`', () => {
     const item = {
       type: 'mcpToolCall', id: 'i3', server: 'github', tool: 'create_issue',
@@ -99,6 +124,27 @@ suite('codex toToolOutput', () => {
     assert.deepStrictEqual(toToolOutput(item), {
       kind: 'text', text: 'T\nhttps://x.dev',
     });
+  });
+
+  test('an mcpToolCall with no result at all is none', () => {
+    const item = { type: 'mcpToolCall', id: 'i4', server: 'github', tool: 'list_prs' } as unknown as ThreadItem;
+    assert.deepStrictEqual(toToolOutput(item), { kind: 'none' });
+  });
+
+  test('an mcpToolCall unwraps an Anthropic-style content array to text', () => {
+    const item = {
+      type: 'mcpToolCall', id: 'i5', server: 'github', tool: 'list_prs',
+      result: [{ type: 'text', text: 'PR #1' }, { type: 'text', text: 'PR #2' }],
+    } as unknown as ThreadItem;
+    assert.deepStrictEqual(toToolOutput(item), { kind: 'text', text: 'PR #1\nPR #2' });
+  });
+
+  test('an mcpToolCall with any other result shape is a JSON dump', () => {
+    const item = {
+      type: 'mcpToolCall', id: 'i6', server: 'github', tool: 'list_prs',
+      result: { count: 2 },
+    } as unknown as ThreadItem;
+    assert.deepStrictEqual(toToolOutput(item), { kind: 'json', value: { count: 2 } });
   });
 });
 

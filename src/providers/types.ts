@@ -1,6 +1,6 @@
 import type { ToolCall, ToolOutput } from './canonical/tool-call';
 
-export type { FileEdit, ToolCall, ToolOutput } from './canonical/tool-call';
+export type { FileEdit, TodoStatus, ToolCall, ToolOutput } from './canonical/tool-call';
 
 export type EffortLevel = 'low' | 'medium' | 'high' | 'xhigh' | 'max' | 'ultra';
 /**

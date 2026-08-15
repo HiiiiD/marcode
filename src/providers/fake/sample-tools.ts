@@ -1,6 +1,6 @@
-// One representative call per canonical kind. Pushed through `FakeRun.emit`
-// by the DOM tests and by a dev session, so every arm of the renderer is
-// exercised without a live backend.
+// One representative call per canonical kind, used by the DOM tests and by
+// `fake-provider.test.ts`'s exhaustiveness check, so every arm of the
+// renderer is exercised without a live backend.
 
 import type { ToolCall } from '../canonical/tool-call';
 

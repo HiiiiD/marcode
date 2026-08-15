@@ -69,11 +69,29 @@ suite('describeTool', () => {
     }).glyph, 'bot');
   });
 
-  test('an mcp call shows server and tool', () => {
+  test('an mcp call shows only the tool — the server has its own chip beside it', () => {
     const header = describeTool({
       kind: 'mcp', label: 'create_issue', server: 'github', tool: 'create_issue',
     });
-    assert.strictEqual(header.primary, 'github · create_issue');
+    assert.strictEqual(header.primary, 'create_issue');
+  });
+
+  test('a plugin-resolved command leads with its skill name and the bot glyph', () => {
+    const header = describeTool({
+      kind: 'command', label: 'Shell', command: 'pwsh -Command x', skill: 'using-superpowers',
+    });
+    assert.deepStrictEqual(
+      { glyph: header.glyph, primary: header.primary, verb: header.verb },
+      { glyph: 'bot', primary: 'using-superpowers', verb: 'Shell' },
+    );
+  });
+
+  test('an ordinary command with no skill keeps the terminal glyph and its own command', () => {
+    const header = describeTool({ kind: 'command', label: 'Shell', command: 'ls' });
+    assert.deepStrictEqual(
+      { glyph: header.glyph, primary: header.primary },
+      { glyph: 'terminal', primary: 'ls' },
+    );
   });
 
   test('a long primary carries a full value for the title attribute', () => {
@@ -96,6 +114,35 @@ suite('describeInput', () => {
       { kind: 'field', label: 'timeout', value: '30s' },
       { kind: 'field', label: 'mode', value: 'background' },
     ]);
+  });
+
+  test('a skill field surfaces the raw command below the skill-led header', () => {
+    const blocks = describeInput({
+      kind: 'command', label: 'Shell', command: 'pwsh -Command x', skill: 'using-superpowers',
+    });
+    assert.deepStrictEqual(blocks, [
+      { kind: 'field', label: 'skill', value: 'using-superpowers' },
+      { kind: 'command', text: 'pwsh -Command x' },
+    ]);
+  });
+
+  test('a delete op is named — a deleted file has no diff body left to distinguish it', () => {
+    const blocks = describeInput({
+      kind: 'file-edit', label: 'Edit',
+      files: [{ path: '/a.ts', op: 'delete' }],
+    });
+    assert.deepStrictEqual(blocks, [
+      { kind: 'path', path: '/a.ts' },
+      { kind: 'field', label: 'op', value: 'delete' },
+    ]);
+  });
+
+  test('a modify op is not named — it is the assumed default everywhere else', () => {
+    const blocks = describeInput({
+      kind: 'file-edit', label: 'Edit',
+      files: [{ path: '/a.ts', op: 'modify', edits: [{ before: 'a', after: 'b' }] }],
+    });
+    assert.strictEqual(blocks.some((b) => b.kind === 'field' && b.label === 'op'), false);
   });
 
   test('a before/after edit becomes -/+ diff lines under its path', () => {
@@ -123,12 +170,15 @@ suite('describeInput', () => {
     ]);
   });
 
-  test('a header-only diff yields no empty diff block', () => {
+  test('a header-only diff yields no empty diff block, but does name the rename op', () => {
     const blocks = describeInput({
       kind: 'file-edit', label: 'Edit',
       files: [{ path: '/a.ts', op: 'rename', unifiedDiff: '--- a/a.ts\n+++ b/b.ts\n' }],
     });
-    assert.deepStrictEqual(blocks, [{ kind: 'path', path: '/a.ts' }]);
+    assert.deepStrictEqual(blocks, [
+      { kind: 'path', path: '/a.ts' },
+      { kind: 'field', label: 'op', value: 'rename' },
+    ]);
   });
 
   test('a deleted line starting with -- and an added line starting with ++ survive stripping', () => {
@@ -189,10 +239,9 @@ suite('describeInput', () => {
     ]);
   });
 
-  test('an mcp call with args shows only its server and tool fields, never raw JSON', () => {
+  test('an mcp call shows only its server and tool fields, never raw JSON', () => {
     const blocks = describeInput({
       kind: 'mcp', label: 'create_issue', server: 'github', tool: 'create_issue',
-      args: { title: 'x', body: 'y' },
     });
     assert.deepStrictEqual(blocks, [
       { kind: 'field', label: 'server', value: 'github' },

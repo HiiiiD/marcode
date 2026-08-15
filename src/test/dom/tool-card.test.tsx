@@ -103,7 +103,7 @@ suite('ToolCard', () => {
     renderWithStore(<ToolCard item={item} />);
 
     screen.getByText('github');
-    screen.getByText('create_pr');
+    assert.strictEqual(screen.getAllByText('create_pr').length, 2);
   });
 
   // Exercises a genuine `other`-kind call — the fallback a provider's
@@ -162,13 +162,23 @@ suite('ToolCard', () => {
     screen.getByText('Explore');
   });
 
-  test('an mcp card shows the server and tool', () => {
+  test('an mcp card shows the server chip and the tool alone as the primary', () => {
     renderWithStore(<ToolCard item={tool({ tool: SAMPLE_TOOL_CALLS['mcp'] })} />);
-    screen.getByText('github · create_issue');
+    screen.getByText('github');
+    // The server must not also appear glued onto the primary — that was the
+    // duplication this header was fixed to drop.
+    assert.strictEqual(screen.queryByText('github · create_issue'), null);
+    assert.strictEqual(screen.queryByText(/create_issue.*·/), null);
   });
 
-  test('an other card shows its label', () => {
+  test('an other card shows its label and falls back to its raw JSON', async () => {
     renderWithStore(<ToolCard item={tool({ tool: SAMPLE_TOOL_CALLS['other'] })} />);
     screen.getByText('Bananas');
+
+    await expand();
+    // `raw: { peeled: true }` is the fixture's own payload — only the
+    // `other` arm falls back to a JSON dump, so this fails if `describeTool`
+    // ever stops routing 'other' calls there.
+    screen.getByText('"peeled": true', { exact: false });
   });
 });

@@ -51,6 +51,29 @@ export function displayCommand(command: string, actions: CommandAction[] | undef
   return parsed.length > 0 ? parsed.join('\n') : command;
 }
 
+/**
+ * `scriptPath` is plugin-relative, e.g. `skills/using-superpowers/SKILL.md`;
+ * the segment right after `skills/` is the skill's own directory name, which
+ * is the one thing a reader recognizes (it is what they typed to invoke it).
+ * A script with no `skills/` segment — some other plugin-bundled script —
+ * falls back to its containing directory, then to the bare filename, then to
+ * `pluginId` as the last resort naming *something* trusted rather than
+ * nothing. One resolved script names one skill; a command that happens to
+ * touch several files still only carries one `scriptPath`, and this
+ * deliberately does not try to enumerate the others — the fields don't
+ * support that claim.
+ */
+function skillNameOf(pluginId: string | undefined, scriptPath: string | undefined): string | undefined {
+  if (scriptPath) {
+    const parts = scriptPath.split(/[\\/]/).filter(Boolean);
+    const skillsIdx = parts.indexOf('skills');
+    if (skillsIdx !== -1 && parts[skillsIdx + 1]) { return parts[skillsIdx + 1]; }
+    if (parts.length >= 2) { return parts[parts.length - 2]; }
+    if (parts.length === 1) { return parts[0]; }
+  }
+  return pluginId;
+}
+
 /** Codex's open `FileUpdateChange.kind` string to the canonical op. */
 function toOp(kind: unknown): FileEdit['op'] {
   switch (kind) {
@@ -81,6 +104,7 @@ export function toToolCall(item: ThreadItem): ToolCall | undefined {
         kind: 'command', label: 'Shell',
         command: displayCommand(c.command, c.commandActions),
         cwd: str(c.cwd),
+        skill: skillNameOf(str(c.pluginId), str(c.scriptPath)),
       });
     }
 
@@ -146,6 +170,22 @@ export function toToolOutput(item: ThreadItem): ToolOutput {
   // A fileChange's diffs belong to the call, not to its result: the completed
   // item revises the ToolCall, and there is nothing left to show here.
   if (item.type === 'fileChange') { return { kind: 'none' }; }
+
+  if (item.type === 'mcpToolCall') {
+    const m = item as Extract<ThreadItem, { type: 'mcpToolCall' }>;
+    if (m.result === undefined) { return { kind: 'none' }; }
+    // An Anthropic-style content array, unwrapped the same way the Claude
+    // adapter does — a raw JSON dump of a `content[].text` array is a screen
+    // of escaped JSON in a sidebar for a shape that is really just text.
+    if (Array.isArray(m.result)) {
+      const text = m.result
+        .map((block) => str(asRecord(block).text))
+        .filter((part): part is string => part !== undefined)
+        .join('\n');
+      if (text.length > 0) { return { kind: 'text', text }; }
+    }
+    return { kind: 'json', value: m.result };
+  }
 
   return { kind: 'none' };
 }

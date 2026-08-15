@@ -33,7 +33,7 @@ export interface FileEdit {
  */
 export type ToolCall =
   | { kind: 'command'; label: string; command: string; cwd?: string;
-      background?: boolean; timeoutMs?: number; note?: string }
+      background?: boolean; timeoutMs?: number; note?: string; skill?: string }
   | { kind: 'file-edit'; label: string; files: FileEdit[] }
   | { kind: 'file-read'; label: string; path: string;
       range?: { offset: number; limit?: number }; pages?: string }
@@ -45,7 +45,7 @@ export type ToolCall =
   | { kind: 'subagent'; label: string; action: 'spawn' | 'message' | 'collect';
       agent?: string; model?: string; isolation?: string; target?: string;
       summary?: string; prompt?: string; fields?: Field[] }
-  | { kind: 'mcp'; label: string; server: string; tool: string; args?: unknown }
+  | { kind: 'mcp'; label: string; server: string; tool: string }
   | { kind: 'other'; label: string; fields?: Field[]; raw: unknown };
 
 /**
