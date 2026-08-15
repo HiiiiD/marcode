@@ -79,3 +79,50 @@ export type ReviewDecision =
   | 'approved_for_session'
   | 'abort'
   | { denied: { rejection: string } };
+
+/** `InitializeResponse` — verified against codex-cli 0.147.0. Carries no protocol version. */
+export interface InitializeResponse {
+  userAgent: string;
+  codexHome: string;
+  platformFamily: string;
+  platformOs: string;
+}
+
+/**
+ * `account/read`'s response. `authMethod` is absent from the summary this
+ * subset was drawn from but present on the wire (see codex-provider.ts's
+ * unauthenticated-account test, which sends it): null/absent alongside
+ * `requiresOpenaiAuth: true` is what actually means "not signed in" — an
+ * account mid-refresh can carry `requiresOpenaiAuth: true` with a method
+ * already on file, and that case must not be reported as logged out.
+ */
+export interface AccountReadResponse {
+  account: { type: string; email?: string; planType?: string } | null;
+  requiresOpenaiAuth: boolean;
+  authMethod?: string | null;
+}
+
+export interface ModelListResponse {
+  data: CodexModel[];
+  nextCursor: string | null;
+}
+
+export interface RateLimitsReadResponse {
+  rateLimits: RateLimitSnapshot;
+}
+
+/**
+ * `skills/list`'s response shape is unverified — no fixture or captured
+ * frame for it exists anywhere in this codebase yet, unlike every other type
+ * in this file. Modelled on the same `{ data: [...] }` envelope `model/list`
+ * uses, since that is this protocol's established list shape, but treat this
+ * one as a guess until it is checked against a real `codex app-server`.
+ */
+export interface SkillInfo {
+  name: string;
+  description?: string;
+}
+
+export interface SkillsListResponse {
+  data: SkillInfo[];
+}

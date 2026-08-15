@@ -3,11 +3,35 @@ import type {
   AgentEvent, AgentRun, ContextBreakdown, EditorContext,
   EffortLevel, PermissionMode, StartOptions, ToolDecision, UsageWindow,
 } from '../types';
-import type { AppServer, RequestId } from './app-server';
+import type { RequestId } from './app-server';
 import { approvalEventOf, DECLINED_INPUT_METHODS, mapNotification } from './map-events';
 import { codexSettings, sandboxPolicyOf } from './map-settings';
 import { toContextBreakdown, toUsageWindows } from './map-usage';
 import type { RateLimitSnapshot, ReviewDecision, ThreadTokenUsage } from './wire';
+
+/**
+ * The subset of `AppServer` this class needs.
+ *
+ * `AppServer`'s `onNotification`/`onServerRequest`/`onClose` are single-slot
+ * setters — last caller wins — and one process (one `AppServer`) serves every
+ * Codex session. Passing the literal `AppServer` to two `CodexRun`s would let
+ * the second registration steal the first run's callbacks. `CodexProvider`
+ * fixes this by handing each run a private view onto the shared connection
+ * (see codex-provider.ts) instead of the connection itself: `request`/
+ * `respond` pass straight through, while the three `on*` setters are local to
+ * the view, and the provider broadcasts every incoming frame to every live
+ * view. Widening this type from `AppServer` to this duck-typed interface is
+ * what makes that possible — a real `AppServer` still satisfies it
+ * structurally, so passing one directly (as every existing test here does)
+ * keeps working unchanged.
+ */
+export interface CodexConnection {
+  request<T>(method: string, params: unknown): Promise<T>;
+  respond(id: RequestId, result: unknown): void;
+  onNotification(cb: (method: string, params: unknown) => void): void;
+  onServerRequest(cb: (method: string, id: RequestId, params: unknown) => void): void;
+  onClose(cb: (reason: string) => void): void;
+}
 
 /** Same async-iterable pattern as `FakeProvider`'s — the house idiom for an `AgentRun.events`. */
 class EventChannel implements AsyncIterable<AgentEvent> {
@@ -107,7 +131,20 @@ export class CodexRun implements AgentRun {
   private lastContextBreakdown: ContextBreakdown | undefined;
   contextBreakdown?: () => Promise<ContextBreakdown>;
 
-  constructor(private readonly server: AppServer, private readonly opts: StartOptions) {
+  constructor(
+    private readonly server: CodexConnection,
+    private readonly opts: StartOptions,
+    /**
+     * Fired once, at the end of `dispose()` — never earlier, so the provider
+     * only sees this run as gone once its own cleanup (declining pending
+     * approvals, unsubscribing, closing `events`) has actually happened.
+     * This is `CodexProvider`'s ref-counting hook: it drops this run's view
+     * and tears the shared process down once nothing is left using it.
+     * Optional and unused by every existing caller/test, which construct
+     * `CodexRun` directly against a single-run connection.
+     */
+    private readonly onDispose?: () => void,
+  ) {
     this.mode = opts.permissionMode;
     this.model = opts.model;
     this.effort = opts.effort;
@@ -343,5 +380,6 @@ export class CodexRun implements AgentRun {
       }
     }
     this.events.close();
+    this.onDispose?.();
   }
 }
