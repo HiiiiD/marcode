@@ -128,4 +128,25 @@ suite('session handoff', () => {
     assert.strictEqual(sent.providerId, 'fake');
     assert.strictEqual(sent.model, 'm');
   });
+
+  test('a user item with refs renders a collapsed source chip', () => {
+    renderApp();
+    hydrateTwoSessions();
+
+    sendFromHost({
+      t: 'session-patch', id: 's-1',
+      patch: {
+        op: 'append',
+        item: {
+          id: 'u1', ts: 1, role: 'user',
+          text: 'Do it\n\n--- plan from refactor store ---\nstep one\n--- end plan from refactor store ---',
+          refs: [{ sessionId: 's-2', kind: 'plan', title: 'refactor store' }],
+        },
+      },
+    });
+
+    assert.strictEqual(screen.getAllByText(/plan from refactor store/).length > 0, true);
+    // Collapsed: the payload body is not in the document until it is opened.
+    assert.strictEqual(screen.queryByText('step one') === null, true);
+  });
 });

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { EditorContextChip } from './editor-context-chip';
 import { Markdown } from './markdown';
 import { PermissionCard } from './permission-card';
@@ -6,7 +7,7 @@ import { SubagentCard } from './subagent-card';
 import { ToolCard } from './tool-card';
 import { TranscriptItemShell } from './transcript-item-shell';
 import { useStore } from '../store';
-import type { SessionId, TranscriptItem } from '../../protocol/messages';
+import type { SessionId, SessionRef, TranscriptItem } from '../../protocol/messages';
 
 export function TranscriptItemView({
   item, sessionId,
@@ -62,6 +63,11 @@ export function TranscriptItemView({
 function UserItem({ item }: { item: Extract<TranscriptItem, { role: 'user' }> }) {
   const { post } = useStore();
   const ctx = item.context;
+  // The item's `text` is the composed prompt, blocks included — it has to be,
+  // since it is exactly what the provider received. For display the blocks are
+  // lifted back out and shown as collapsed chips, so a handoff reads as one
+  // sentence plus a source rather than as a wall of somebody else's output.
+  const { prose, blocks } = splitComposed(item.text, item.refs ?? []);
 
   return (
     <TranscriptItemShell role="user" label="You" ts={item.ts}>
@@ -81,8 +87,66 @@ function UserItem({ item }: { item: Extract<TranscriptItem, { role: 'user' }> })
           user's turn. A second surface inside it was a nested card that read
           as a shade of nothing. */}
       <div className="wrap-break-word whitespace-pre-wrap">
-        {item.text}
+        {prose}
       </div>
+      {blocks.map((block) => (
+        <SourceBlock key={block.heading} heading={block.heading} text={block.text} />
+      ))}
     </TranscriptItemShell>
   );
+}
+
+/**
+ * `<details>`/`<summary>` are the one exception the shadcn rule doesn't
+ * cover — disclosure semantics, not a control, with no vendored equivalent.
+ * The payload is only mounted once opened, so a still-collapsed chip never
+ * puts thousands of lines of somebody else's output in the DOM.
+ */
+function SourceBlock({ heading, text }: { heading: string; text: string }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <details
+      className="mt-1.5"
+      onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)}
+    >
+      <summary className="cursor-pointer text-xs text-muted-foreground">
+        {heading}
+      </summary>
+      {open && (
+        <div className="mt-1 wrap-break-word whitespace-pre-wrap text-xs text-muted-foreground">
+          {text}
+        </div>
+      )}
+    </details>
+  );
+}
+
+/**
+ * Lifts the fenced blocks `composePrompt` appended back out of the text.
+ *
+ * Keyed off `refs` rather than pattern-matching every `---` line: a user whose
+ * own prose contains a matching line must not have it swallowed, and the refs
+ * say exactly which headings to look for.
+ */
+function splitComposed(text: string, refs: SessionRef[]): {
+  prose: string;
+  blocks: { heading: string; text: string }[];
+} {
+  const blocks: { heading: string; text: string }[] = [];
+  let prose = text;
+
+  for (const ref of refs) {
+    const heading = `${ref.kind} from ${ref.title}`;
+    const open = `--- ${heading} ---\n`;
+    const close = `\n--- end ${heading} ---`;
+    const start = prose.indexOf(open);
+    if (start < 0) { continue; }
+    const end = prose.indexOf(close, start);
+    if (end < 0) { continue; }
+    blocks.push({ heading, text: prose.slice(start + open.length, end) });
+    prose = (prose.slice(0, start) + prose.slice(end + close.length)).trimEnd();
+  }
+
+  return { prose, blocks };
 }
