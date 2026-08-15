@@ -171,6 +171,12 @@ export class CodexProvider implements AgentProvider {
         },
       });
     } catch (err) {
+      // Symmetric with the spawn-failure branch above: a rejected handshake
+      // leaves a live child behind unless it is disposed here — otherwise
+      // nothing ever holds it, the next start()/fetch* spawns a fresh one,
+      // and every repeated failure leaks one more `codex app-server`
+      // process for the life of the window.
+      server.dispose();
       this.connectionPromise = undefined;
       this.serverInstance = undefined;
       throw err;
@@ -198,8 +204,14 @@ export class CodexProvider implements AgentProvider {
   /**
    * The CLI's own model catalog, from a session-free probe over the shared
    * connection: `account/read` first (a signed-out account has no models
-   * worth listing), then `model/list`, filtered to what Codex itself does
-   * not mark `hidden`.
+   * worth listing), then `model/list`. Neither request is cwd-scoped — both
+   * are process/account-global, per the verified `GetAccountParams`/
+   * `ModelListParams` shapes — so `cwd` is accepted here only because every
+   * other probe in this class takes one; it is not sent on the wire.
+   *
+   * `model/list` defaults `includeHidden` to `false` server-side, so the
+   * `.filter` below is belt-and-braces, not compensating for a server that
+   * actually sends hidden rows by default.
    *
    * This is also the availability probe: a rejection clears the cache, so an
    * install that stops working takes the provider out of the picker on the
@@ -208,14 +220,14 @@ export class CodexProvider implements AgentProvider {
    * developer, so it says what to do about it: install/configure Codex, or
    * run `codex login`.
    */
-  async fetchModels(cwd: string): Promise<ModelInfo[]> {
+  async fetchModels(_cwd: string): Promise<ModelInfo[]> {
     try {
       const server = await this.connection();
-      const account = await server.request<AccountReadResponse>('account/read', { cwd });
-      if (account.requiresOpenaiAuth && !account.authMethod) {
+      const account = await server.request<AccountReadResponse>('account/read', {});
+      if (account.requiresOpenaiAuth) {
         throw new Error('Not signed in to Codex. Run `codex login`.');
       }
-      const catalog = await server.request<ModelListResponse>('model/list', { cwd });
+      const catalog = await server.request<ModelListResponse>('model/list', {});
       const models = catalog.data.filter((m) => !m.hidden).map(toModelInfo);
       this.models = models;
       return models;
@@ -238,15 +250,31 @@ export class CodexProvider implements AgentProvider {
   }
 
   /**
-   * The cwd's skill catalog, with no thread. `skills/list`'s response shape
-   * is unverified against a real `app-server` (see wire.ts) — parsed
-   * tolerantly, same policy as `mapNotification`: a missing `data` array
-   * degrades to an empty catalog rather than throwing.
+   * The cwd's skill catalog, with no thread.
+   *
+   * `skills/list` is keyed by `cwds` (plural, an array — `SkillsListParams`)
+   * and nests its answer one level deeper than every other list request
+   * here: `data` is one `SkillsListEntry` per requested cwd, each carrying
+   * that cwd's own `skills`, not a flat list. This flattens across entries
+   * (only one is ever requested, but the shape allows more), drops any
+   * skill the server itself marked `enabled: false` — a disabled skill must
+   * not be offered for `/name` invocation — and prefers `shortDescription`
+   * over the full `description` for the menu row, since that field exists
+   * specifically for compact display. Parsing stays tolerant (missing
+   * arrays default to empty) the same way `mapNotification` treats an
+   * unrecognized shape as zero results rather than a thrown error.
    */
   async listInvocables(cwd: string): Promise<Invocable[]> {
     const server = await this.connection();
-    const response = await server.request<SkillsListResponse>('skills/list', { cwd });
-    return (response.data ?? []).map((skill) => ({ name: skill.name, description: skill.description }));
+    const response = await server.request<SkillsListResponse>('skills/list', { cwds: [cwd] });
+    return (response.data ?? [])
+      .flatMap((entry) => entry.skills ?? [])
+      .filter((skill) => skill.enabled)
+      .map((skill) => ({
+        name: skill.name,
+        description: skill.shortDescription ?? skill.description,
+        origin: skill.scope,
+      }));
   }
 
   /**

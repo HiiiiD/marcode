@@ -89,17 +89,13 @@ export interface InitializeResponse {
 }
 
 /**
- * `account/read`'s response. `authMethod` is absent from the summary this
- * subset was drawn from but present on the wire (see codex-provider.ts's
- * unauthenticated-account test, which sends it): null/absent alongside
- * `requiresOpenaiAuth: true` is what actually means "not signed in" — an
- * account mid-refresh can carry `requiresOpenaiAuth: true` with a method
- * already on file, and that case must not be reported as logged out.
+ * `account/read`'s response — verified against the codex-cli 0.147.0
+ * generated bindings (`GetAccountResponse`). There is no `authMethod` field:
+ * `requiresOpenaiAuth: true` alone is "not signed in".
  */
 export interface AccountReadResponse {
   account: { type: string; email?: string; planType?: string } | null;
   requiresOpenaiAuth: boolean;
-  authMethod?: string | null;
 }
 
 export interface ModelListResponse {
@@ -112,17 +108,29 @@ export interface RateLimitsReadResponse {
 }
 
 /**
- * `skills/list`'s response shape is unverified — no fixture or captured
- * frame for it exists anywhere in this codebase yet, unlike every other type
- * in this file. Modelled on the same `{ data: [...] }` envelope `model/list`
- * uses, since that is this protocol's established list shape, but treat this
- * one as a guess until it is checked against a real `codex app-server`.
+ * `skills/list`'s response — verified against the codex-cli 0.147.0
+ * generated bindings. The request is keyed by `cwds` (plural, an array —
+ * `SkillsListParams`), and the response nests skills one level under each
+ * cwd rather than returning a flat list: `data` is one `SkillsListEntry` per
+ * requested cwd, each carrying that cwd's own `skills` (and any `errors`
+ * encountered loading them, which this client does not surface separately).
  */
-export interface SkillInfo {
+export interface SkillMetadata {
   name: string;
   description?: string;
+  /** Preferred over `description` for display when present — see map in codex-provider.ts. */
+  shortDescription?: string;
+  path: string;
+  scope: string;
+  enabled: boolean;
+}
+
+export interface SkillsListEntry {
+  cwd: string;
+  skills: SkillMetadata[];
+  errors: unknown[];
 }
 
 export interface SkillsListResponse {
-  data: SkillInfo[];
+  data: SkillsListEntry[];
 }

@@ -11,10 +11,13 @@ function stubChild() {
   const stdout = new PassThrough();
   const written: string[] = [];
   stdin.on('data', (chunk: Buffer) => { written.push(chunk.toString()); });
-  let killed = false;
+  let killCount = 0;
   const send = (msg: unknown) => { stdout.write(`${JSON.stringify(msg)}\n`); };
   const sent = () => written.join('').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l));
-  return { stdin, stdout, kill: () => { killed = true; }, send, sent, killed: () => killed };
+  return {
+    stdin, stdout, kill: () => { killCount += 1; }, send, sent,
+    killed: () => killCount > 0, killCount: () => killCount,
+  };
 }
 
 /**
@@ -55,7 +58,10 @@ function providerWithStub() {
     throw new Error(`respondTo('${method}') timed out waiting for a matching request`);
   }
 
-  return { provider, respondTo, send: child.send, killed: child.killed };
+  return {
+    provider, respondTo, send: child.send, sent: child.sent,
+    killed: child.killed, killCount: child.killCount,
+  };
 }
 
 suite('CodexProvider', () => {
@@ -108,8 +114,24 @@ suite('CodexProvider', () => {
   test('an unauthenticated account rejects with the login instruction', async () => {
     const { provider, respondTo } = providerWithStub();
     const probe = provider.fetchModels('/repo');
-    await respondTo('account/read', { requiresOpenaiAuth: true, authMethod: null });
+    // No `authMethod` field: the verified `GetAccountResponse` shape doesn't
+    // have one — `requiresOpenaiAuth: true` alone is "not signed in".
+    await respondTo('account/read', { account: null, requiresOpenaiAuth: true });
     await assert.rejects(probe, /codex login/);
+  });
+
+  test('a rejected handshake still kills the spawned child', async () => {
+    // Symmetric with the spawn-failure case above: if `initialize` itself is
+    // refused, nothing else holds the already-spawned child — leaving it
+    // alive here means every failed handshake leaks one more process.
+    const { provider, send, sent, killCount } = providerWithStub();
+    const probe = provider.fetchModels('/repo');
+    await tick();
+    const init = sent().find((f) => f.method === 'initialize');
+    assert.ok(init, 'expected an initialize request to have been sent');
+    send({ id: init.id, error: { message: 'handshake refused' } });
+    await assert.rejects(probe);
+    assert.strictEqual(killCount(), 1);
   });
 
   test('fetchUsage reads the account snapshot without a thread', async () => {
@@ -140,6 +162,44 @@ suite('CodexProvider', () => {
     assert.strictEqual(killed(), false);
     await second.dispose();
     assert.strictEqual(killed(), true);
+  });
+
+  test('listInvocables flattens skills across cwd entries, skips disabled rows, and maps scope to origin', async () => {
+    const { provider, respondTo } = providerWithStub();
+    const probe = provider.listInvocables('/repo');
+    await respondTo('skills/list', {
+      data: [
+        {
+          cwd: '/repo',
+          skills: [
+            {
+              name: 'plan', description: 'Plan the work in detail', shortDescription: 'Plan',
+              path: '/repo/.codex/skills/plan.md', scope: 'project', enabled: true,
+            },
+            {
+              name: 'retired', description: 'No longer offered',
+              path: '/repo/.codex/skills/retired.md', scope: 'project', enabled: false,
+            },
+          ],
+          errors: [],
+        },
+        {
+          cwd: '/home/.codex',
+          skills: [
+            {
+              name: 'brainstorm', description: 'Explore options before building',
+              path: '/home/.codex/skills/brainstorm.md', scope: 'user', enabled: true,
+            },
+          ],
+          errors: [],
+        },
+      ],
+    });
+    const invocables = await probe;
+    assert.deepStrictEqual(invocables, [
+      { name: 'plan', description: 'Plan', origin: 'project' },
+      { name: 'brainstorm', description: 'Explore options before building', origin: 'user' },
+    ]);
   });
 
   // Not in the brief's list, but load-bearing: AppServer's onNotification/
