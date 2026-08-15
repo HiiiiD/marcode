@@ -82,8 +82,9 @@ resumeToken: string                        // before
 resumeTokens: Record<string, string>       // after — key from threadKey()
 ```
 
-`index.json` readers tolerate the old scalar and migrate it under the current
-key on load, so sessions written by earlier builds survive the upgrade.
+Whether a migration is needed depends on ordering, and is settled in
+Sequencing below: after the canonical tool layer's `version: 2` break there
+are no older sessions left to migrate, and the field simply starts as a map.
 
 ### Thread scope is declared by the provider
 
@@ -162,8 +163,16 @@ string`:
 
 - User messages verbatim. They are the intent and are never compressed.
 - Assistant final text kept. Deltas and thinking dropped — already coalesced.
-- Tool calls reduced to name, key arguments, outcome. Full outputs dropped: they
-  are the bulk of the bytes and the agent can re-read files itself.
+- Tool calls reduced from their canonical `ToolCall` to kind, `label` and the
+  few fields that carry meaning — the command, the paths touched, the pattern
+  searched. Full outputs dropped: they are the bulk of the bytes and the agent
+  can re-read files itself.
+
+  Reading canonical calls rather than provider vocabulary is what makes a seed
+  portable. A Codex transcript summarized from raw wire types would hand Claude
+  the words `commandExecution` and `fileChange`, which no user or model has read
+  anywhere. This is the cross-provider case the thread key exists for, so the
+  projection must be provider-neutral at the source.
 - Framed explicitly as narration of what has already happened, not as
   instructions. Without that framing the agent re-executes the plan.
 
@@ -185,12 +194,19 @@ and must be stated in the UI rather than hidden.
 
 ### Detection
 
-`src/host/worktree-detect.ts` is pure — `(toolName, input, ok) => string |
-undefined` — with no `vscode` import, so it unit-tests. It reads `tool-start` /
-`tool-end` events, which every provider emits, so detection is provider-agnostic
-rather than Claude-specific.
+`src/host/worktree-detect.ts` is pure — `(tool: ToolCall, ok: boolean) => string
+| undefined` — with no `vscode` import, so it unit-tests.
 
-It recognises `git worktree add` in a shell command and returns the resolved
+It takes the canonical `ToolCall` from
+[the canonical tool layer](2026-08-15-canonical-tool-layer-design.md), not a raw
+name and input, and matches only `kind: 'command'`. That spec removes `name` and
+`input` from the wire, so a detector reading them could not compile. The gain is
+more than compliance: `ToolCall.command` is already normalized across providers —
+including Codex's preference for `displayCommand`'s parsed actions over the
+escaped invocation — so provider-agnostic detection becomes structural rather
+than a coincidence of both adapters emitting shell strings.
+
+It recognises `git worktree add` in that command and returns the resolved
 absolute path. It is deliberately narrow: it does not chase scripts, aliases or
 `jj`. A missed detection costs nothing that is not already lost today; a wrong
 detection would relocate a session into a directory nobody asked for. When it
@@ -283,19 +299,43 @@ state, never exceptions; nothing rejects across `postMessage`.
 `src/host/git-worktree.ts` owns the shelling out. It imports `child_process` and
 never `vscode`, so it unit-tests against a real temporary repository.
 
+## Sequencing
+
+**The canonical tool layer lands first.** This design depends on it in three
+places, and reversing the order means writing code against fields that are about
+to be deleted.
+
+1. **Detection is typed by it.** `worktree-detect` reads `ToolCall`, which does
+   not exist until that spec ships. Written first, it would read `name` and
+   `input` and then be rewritten.
+2. **It removes the migration.** `StoredIndex` gains `version: 2` and
+   `readIndex()` returns `EMPTY_INDEX` for anything else, so no session
+   predating it survives to be migrated. `resumeTokens` starts as a map on a
+   clean slate, and the tolerant-reader path is never written. Landing this
+   first would mean shipping a migration that the very next change discards.
+3. **It makes replay portable.** The projection summarizes canonical calls
+   rather than provider vocabulary, which is what lets a Codex-produced
+   transcript seed a Claude thread.
+
+The relocation card is a new transcript-item role, additive to the item union
+that spec rewrites. Authoring it afterwards means editing that union once.
+
 ## Testing
 
 **Pure units** (`yarn test:unit`):
 
-- `worktree-detect` — a table of real command lines: `-b`, `--detach`, path
-  before and after a commitish, quoted paths with spaces, Windows separators,
-  `&&` chains. Negatives (`git worktree list`, `git worktree remove`) assert
-  `undefined`, as does ambiguous input.
+- `worktree-detect` — `ToolCall` values in, path or `undefined` out. A table of
+  real command lines carried on `kind: 'command'`: `-b`, `--detach`, path before
+  and after a commitish, quoted paths with spaces, Windows separators, `&&`
+  chains. Negatives (`git worktree list`, `git worktree remove`) assert
+  `undefined`, as does ambiguous input, as does every non-`command` kind.
 - `replay` — ordering preserved, user messages verbatim, tool outputs dropped,
   budget respected, narration framing present. Degenerate cases: empty
   transcript, and one oversized message that alone exceeds the budget.
-- `resumeTokens` migration — an `index.json` carrying the old scalar loads under
-  the current key; the new format round-trips.
+- `resumeTokens` — the map round-trips through `index.json`, and `threadKey`
+  returns a directory-qualified key under `'cwd'` scope and a bare provider id
+  under `'global'`. No legacy-scalar test: per Sequencing there is no legacy
+  index to read.
 - `git-worktree` — against a real temporary repository built in the scratchpad.
   Clean tree, dirty tree, branch checked out elsewhere, not a repository,
   detached HEAD. Each asserts the refusal *reason*, not merely that it refused.
