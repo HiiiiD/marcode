@@ -6,12 +6,20 @@ import { useRef, useState } from "react";
 import type { Invocable, ModelInfo } from "../../protocol/messages";
 import { interceptFor } from "../lib/intercepts";
 import { insertionFor, menuKeyAction, menuQuery, menuView, nextIndex } from "../lib/invocable-menu";
+import {
+  filterMentions, mentionQuery, pruneMentions, spliceMention, tokenFor,
+  type MentionOption, type PendingMention,
+} from "../lib/mention-menu";
+import {
+  sessionMentions, sessionRefsOf, type SessionMentionPayload,
+} from "../lib/session-mentions";
 import type { PaneState } from "../reducer";
 import { useStore } from "../store";
 import { ContextRing } from "./context-ring";
 import { EditorContextToggle } from "./editor-context-toggle";
 import { InvocableMenu } from "./invocable-menu";
 import { ModeMenu } from "./mode-menu";
+import { RefMenu } from "./ref-menu";
 
 export function Composer({
   pane,
@@ -31,7 +39,7 @@ export function Composer({
    */
   unavailableReason?: string;
 }) {
-  const { post } = useStore();
+  const { state, post } = useStore();
   const [text, setText] = useState("");
   /** The selected entry's arg hint. Presentation only; never sent. */
   const [ghost, setGhost] = useState("");
@@ -42,6 +50,12 @@ export function Composer({
    * have it spring back on the next render.
    */
   const [dismissed, setDismissed] = useState(false);
+  const [refs, setRefs] = useState<PendingMention<SessionMentionPayload>[]>([]);
+  const [caret, setCaret] = useState(0);
+  const [refDismissed, setRefDismissed] = useState(false);
+  // `setHandoffOpen` arrives in Task 7's dialog; declared now so `pickRef`'s
+  // action branch has somewhere to signal it opened.
+  const [handoffOpen, setHandoffOpen] = useState(false);
   /**
    * The context dialog has two doors — the ring beside the Send button and
    * an intercepted `/context` — so its open state lives here, above both,
@@ -95,6 +109,19 @@ export function Composer({
   // flickering in and out of a row that already wraps.
   const menuBlocked = text.trim().length > 0;
 
+  const refHit = refDismissed ? undefined : mentionQuery(text, caret);
+  // One array per source, concatenated. File tagging arrives as one more
+  // source here and changes nothing else.
+  const refRows = refHit
+    ? filterMentions(sessionMentions(state.sessions, pane.summary.id), refHit.query)
+    : [];
+  // The two menus never share the screen: `/` only triggers on an empty box at
+  // position 0, `@` only on a word boundary, and `menuOpen` wins if both ever
+  // manage to be true.
+  const refOpen = refHit !== undefined && !menuOpen;
+  const refListId = `session-refs-${pane.summary.id}`;
+  const refIndex = Math.min(activeIndex, Math.max(0, refRows.length - 1));
+
   const openMenu = () => {
     setText("/");
     setGhost("");
@@ -107,6 +134,24 @@ export function Composer({
     const { text: next, ghost: hint } = insertionFor(entry);
     setText(next);
     setGhost(hint);
+    setActiveIndex(0);
+  };
+
+  const pickRef = (option: MentionOption<SessionMentionPayload>) => {
+    if (!refHit) { return; }
+    if (option.payload.kind === 'action') {
+      // An action row inserts no token: it opens a dialog instead of
+      // referencing anything. Strip the query the user typed to get there.
+      setText(spliceMention(text, refHit.start, caret, '').text);
+      setHandoffOpen(true);
+      setRefDismissed(true);
+      return;
+    }
+    const token = tokenFor(option, refs.map((r) => r.token));
+    const next = spliceMention(text, refHit.start, caret, token);
+    setText(next.text);
+    setCaret(next.caret);
+    setRefs([...refs, { token, payload: option.payload }]);
     setActiveIndex(0);
   };
 
@@ -124,11 +169,17 @@ export function Composer({
       setContextOpen(true);
     } else {
       // `ghost` is presentation only — the arg hint is never part of the message.
-      post({ t: "send", id: pane.summary.id, text: trimmed });
+      const carried = sessionRefsOf(pruneMentions(trimmed, refs));
+      post({
+        t: "send", id: pane.summary.id, text: trimmed,
+        ...(carried.length > 0 ? { refs: carried } : {}),
+      });
     }
     setText("");
     setGhost("");
+    setRefs([]);
     setDismissed(false);
+    setRefDismissed(false);
   };
 
   return (
@@ -163,14 +214,27 @@ export function Composer({
             />
           </InputGroupAddon>
         )}
+        {refOpen && (
+          <InputGroupAddon align="block-start" className="p-1">
+            <RefMenu
+              rows={refRows}
+              activeIndex={refIndex}
+              listId={refListId}
+              onPick={pickRef}
+            />
+          </InputGroupAddon>
+        )}
         <InputGroupTextarea
           ref={box}
           value={text}
           onChange={(e) => {
             setText(e.target.value);
+            setCaret(e.target.selectionStart ?? e.target.value.length);
+            setRefs((current) => pruneMentions(e.target.value, current));
             setGhost("");
             setActiveIndex(0);
             setDismissed(false);
+            setRefDismissed(false);
           }}
           // Focus leaving the box closes the list. The menu is an in-flow
           // block-start addon, so left open it keeps eating vertical space
@@ -190,6 +254,17 @@ export function Composer({
             // text, so it is treated as 'pass' regardless of what
             // menuKeyAction says.
             const composingEnter = e.key === "Enter" && e.nativeEvent.isComposing;
+            if (refOpen && !composingEnter) {
+              const action = menuKeyAction(e.key);
+              if (action !== "pass") {
+                e.preventDefault();
+                if (action === "move-down") { setActiveIndex(nextIndex(refIndex, 1, refRows.length)); }
+                if (action === "move-up") { setActiveIndex(nextIndex(refIndex, -1, refRows.length)); }
+                if (action === "select" && refRows[refIndex]) { pickRef(refRows[refIndex]); }
+                if (action === "close") { setRefDismissed(true); }
+                return;
+              }
+            }
             if (menuOpen && !composingEnter) {
               const action = menuKeyAction(e.key);
               if (action !== "pass") {
