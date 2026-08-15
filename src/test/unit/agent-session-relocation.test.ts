@@ -111,6 +111,22 @@ suite('AgentSession relocation offer', () => {
     assert.strictEqual(patches.some((p) => p.item?.role === 'relocation'), false);
   });
 
+  test('appends nothing for a worktree a subagent created', async () => {
+    // A subagent's tree is a side quest: a research agent that makes a scratch
+    // worktree, reads it and reports back has no claim on where the parent
+    // conversation lives, and a fan-out of them would post one card each.
+    const { session, patches, emit } = await makeSession();
+    emit({ kind: 'tool-start', id: 'a1',
+      tool: { kind: 'subagent', label: 'Agent', action: 'spawn', agent: 'explore' } });
+    emit({ kind: 'tool-start', id: 'x1', parentId: 'a1',
+      tool: { kind: 'command', label: 'Bash', command: 'git worktree add ../t/scratch -b s' } });
+    emit({ kind: 'tool-end', id: 'x1', parentId: 'a1', ok: true, output: { kind: 'none' } });
+    await settle();
+    await session.snapshot();
+
+    assert.strictEqual(patches.some((p) => p.item?.role === 'relocation'), false);
+  });
+
   test('appends nothing when the command failed', async () => {
     const { session, patches, emit } = await makeSession();
     emit({ kind: 'tool-start', id: 'x1',

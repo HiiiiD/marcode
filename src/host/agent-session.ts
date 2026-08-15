@@ -481,7 +481,10 @@ export class AgentSession {
         const parentRoot = this.childOf.get(event.id);
         if (parentRoot) {
           this.replaceChild(parentRoot, settled);
-          this.offerRelocation(settled.tool, event.ok);
+          // Deliberately no relocation offer here. A subagent's worktree is a
+          // side quest — it has no claim on where the parent conversation
+          // lives — and a fan-out of subagents doing tree work would post one
+          // card each, all but one of them noise.
           return;
         }
         this.childrenByParent.delete(event.id);
