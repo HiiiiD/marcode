@@ -133,14 +133,51 @@ suite('CodexRun', () => {
     assert.strictEqual(events().some((e) => e.kind === 'tool-start'), true);
   });
 
-  test('a mode change retargets the live thread', async () => {
+  test('a mode change retargets the live thread on its next turn', async () => {
+    // Codex has no in-place patch for a thread's settings — the live
+    // override primitive is the next `turn/start`, which is what this
+    // asserts against rather than a `thread/metadata/update` frame (that
+    // request carries only `threadId`/`gitInfo` and cannot express a mode).
     const { server, sent } = stub();
     const run = await started(server, 'th_1');
     run.setPermissionMode('bypass');
+    run.send('again');
     await tick();
-    const update = sent().at(-1);
-    assert.strictEqual(update.params.approvalPolicy, 'never');
-    assert.deepStrictEqual(update.params.sandboxPolicy, { type: 'dangerFullAccess' });
+    const turn = sent().filter((f) => f.method === 'turn/start').at(-1);
+    assert.strictEqual(turn.params.approvalPolicy, 'never');
+    assert.deepStrictEqual(turn.params.sandboxPolicy, { type: 'dangerFullAccess' });
+  });
+
+  test('a model change reaches the next turn/start', async () => {
+    const { server, sent } = stub();
+    const run = await started(server, 'th_1');
+    run.setModel('gpt-5.6-sol');
+    run.send('again');
+    await tick();
+    const turn = sent().filter((f) => f.method === 'turn/start').at(-1);
+    assert.strictEqual(turn.params.model, 'gpt-5.6-sol');
+  });
+
+  test('an effort change reaches the next turn/start', async () => {
+    const { server, sent } = stub();
+    const run = await started(server, 'th_1');
+    run.setEffort('xhigh');
+    run.send('again');
+    await tick();
+    const turn = sent().filter((f) => f.method === 'turn/start').at(-1);
+    assert.strictEqual(turn.params.effort, 'xhigh');
+  });
+
+  test('an account-global notification reaches a started run', async () => {
+    // account/rateLimits/updated carries no threadId at all — it must pass
+    // the thread filter regardless of whether this run has started, since it
+    // is the only trigger for a live mid-session usage pull.
+    const { server, send } = stub();
+    const run = await started(server, 'th_1');
+    const events = collect(run);
+    send({ method: 'account/rateLimits/updated', params: {} });
+    await tick();
+    assert.strictEqual(events().some((e) => e.kind === 'usage-stale'), true);
   });
 
   test('a failing setter does not reject at the caller', async () => {

@@ -114,12 +114,15 @@ export class CodexRun implements AgentRun {
 
     server.onNotification((method, params) => {
       const p = (params ?? {}) as { threadId?: string };
-      // `thread/started` is the one notification allowed through before (or
-      // regardless of) this run's own id, since it is what establishes that
-      // id in the first place. Everything else is dropped once it names a
-      // thread that is not this one — including "no id yet", since a run
-      // that has not started has nothing to match against.
-      if (method !== 'thread/started' && p.threadId !== this._threadId) { return; }
+      // A notification that names no thread at all (e.g.
+      // `account/rateLimits/updated`) is process-global, not thread-scoped —
+      // it must pass through regardless of whether this run has started.
+      // `thread/started` is the one *thread-scoped* notification let through
+      // even when it names a thread other than this run's current one, since
+      // it is what establishes that id in the first place. Everything else
+      // naming a different thread is dropped. Mirrors the identical guard on
+      // `onServerRequest` below.
+      if (method !== 'thread/started' && p.threadId !== undefined && p.threadId !== this._threadId) { return; }
 
       if (method === 'thread/started') {
         const id = (params as { thread?: { id?: string } } | undefined)?.thread?.id;
@@ -230,9 +233,25 @@ export class CodexRun implements AgentRun {
     const body = context ? `${formatEditorContext(context)}\n\n${text}` : text;
     this.ensureStarted().then((threadId) => {
       if (this.disposed || !threadId) { return; }
+      const settings = codexSettings(this.mode);
       this.server.request('turn/start', {
         threadId,
         input: [{ type: 'text', text: body, text_elements: [] }],
+        // Codex has no in-place "patch the live thread" request —
+        // `ThreadMetadataUpdateParams` carries only `threadId` and
+        // `gitInfo`, nothing settings-shaped. Every field below is
+        // documented on `TurnStartParams` as "Override … for this turn and
+        // subsequent turns", which is Codex's actual live-retarget
+        // primitive: the *next* turn is where a `setPermissionMode` /
+        // `setModel` / `setEffort` call (below) actually takes effect, read
+        // fresh off `this.mode`/`this.model`/`this.effort` every time. A
+        // turn already in flight keeps whatever `turn/start` it was sent
+        // with — Codex, not this class, is what makes that true.
+        approvalPolicy: settings.approvalPolicy,
+        approvalsReviewer: settings.approvalsReviewer,
+        sandboxPolicy: sandboxPolicyOf(this.mode),
+        model: this.model,
+        effort: this.effort,
       }).catch((err: unknown) => {
         this.events.push({ kind: 'turn-end', reason: 'error', error: errorMessage(err) });
       });
@@ -253,61 +272,31 @@ export class CodexRun implements AgentRun {
   }
 
   /**
-   * Fire-and-forget by design, like `setModel`/`setEffort` below: callers
-   * must never see this reject. Before the first `send()`, `this.mode` above
-   * is all there is — it is what `startThread()` reads when it eventually
-   * runs. After, the live thread is retargeted via `thread/metadata/update`,
-   * carrying both settings shapes Codex actually reads: `sandbox` at
-   * `thread/start` time is the bare `SandboxMode` enum, but a live update
-   * (like `turn/start`) takes the `SandboxPolicy` struct — see
-   * `sandboxPolicyOf`'s own comment.
+   * `void`-returning, like `setModel`/`setEffort` below — but unlike the
+   * Claude provider's setters, this one has no separate live-retarget
+   * request to fire and nothing that can reject: Codex has no in-place patch
+   * for a thread's settings (`ThreadMetadataUpdateParams` carries only
+   * `threadId` and `gitInfo` — verified against the generated bindings for
+   * codex-cli 0.147.0; there is no `thread/settings/update` request,
+   * `thread/settings/updated` is a server→client notification). Recording
+   * the new mode here is the entire effect: `send()` reads `this.mode` fresh
+   * on every `turn/start`, which is Codex's actual live-override primitive
+   * (`TurnStartParams`' settings fields are each documented "Override … for
+   * this turn and subsequent turns"). A turn already in flight finishes on
+   * what it started with; the next `send()` picks this up.
    */
   setPermissionMode(mode: PermissionMode): void {
     this.mode = mode;
-    if (!this._threadId) { return; }
-    const settings = codexSettings(mode);
-    try {
-      this.server.request('thread/metadata/update', {
-        threadId: this._threadId,
-        approvalPolicy: settings.approvalPolicy,
-        sandboxPolicy: sandboxPolicyOf(mode),
-        approvalsReviewer: settings.approvalsReviewer,
-      }).catch((err: unknown) => {
-        console.warn('[hiiiid-code] codex setPermissionMode rejected', 'mode=', mode, 'reason=', errorMessage(err));
-      });
-    } catch (err) {
-      // A synchronous throw (e.g. the connection is already torn down) is
-      // exactly as non-fatal as the async rejection above.
-      console.warn('[hiiiid-code] codex setPermissionMode threw', 'mode=', mode, 'error=', errorMessage(err));
-    }
   }
 
-  /** Same fire-and-forget contract as `setPermissionMode`. */
+  /** Same contract as `setPermissionMode` — recorded, applied on the next `turn/start`. */
   setModel(model: string): void {
     this.model = model;
-    if (!this._threadId) { return; }
-    try {
-      this.server.request('thread/metadata/update', { threadId: this._threadId, model })
-        .catch((err: unknown) => {
-          console.warn('[hiiiid-code] codex setModel rejected', 'model=', model, 'reason=', errorMessage(err));
-        });
-    } catch (err) {
-      console.warn('[hiiiid-code] codex setModel threw', 'model=', model, 'error=', errorMessage(err));
-    }
   }
 
-  /** Same fire-and-forget contract as `setPermissionMode`. */
+  /** Same contract as `setPermissionMode` — recorded, applied on the next `turn/start`. */
   setEffort(effort: EffortLevel): void {
     this.effort = effort;
-    if (!this._threadId) { return; }
-    try {
-      this.server.request('thread/metadata/update', { threadId: this._threadId, effort })
-        .catch((err: unknown) => {
-          console.warn('[hiiiid-code] codex setEffort rejected', 'effort=', effort, 'reason=', errorMessage(err));
-        });
-    } catch (err) {
-      console.warn('[hiiiid-code] codex setEffort threw', 'effort=', effort, 'error=', errorMessage(err));
-    }
   }
 
   async interrupt(): Promise<void> {
