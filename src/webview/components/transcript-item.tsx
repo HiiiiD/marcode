@@ -89,8 +89,12 @@ function UserItem({ item }: { item: Extract<TranscriptItem, { role: 'user' }> })
       <div className="wrap-break-word whitespace-pre-wrap">
         {prose}
       </div>
-      {blocks.map((block) => (
-        <SourceBlock key={block.heading} heading={block.heading} text={block.text} />
+      {blocks.map((block, i) => (
+        // Positional, not the heading alone: a heading is `kind from title`
+        // and every session starts titled `Untitled`, so two references to
+        // same-kind sources collide on a heading-only key — React warns, and
+        // `SourceBlock`'s open state can reconcile onto the wrong block.
+        <SourceBlock key={`${i}-${block.heading}`} heading={block.heading} text={block.text} />
       ))}
     </TranscriptItemShell>
   );
