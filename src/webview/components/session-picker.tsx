@@ -139,18 +139,32 @@ export function SessionPicker({ narrow }: SessionPickerProps) {
               </DropdownMenuGroup>
             </>
           )}
-          {state.staleTrees.length > 0 && (
-            <>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => { setTreesOpen(true); }}>
-                <FolderGit2Icon aria-hidden />
-                Working trees ({state.staleTrees.length})
-              </DropdownMenuItem>
-            </>
-          )}
         </DropdownMenuContent>
       </DropdownMenu>
 
+      {/*
+        Its own control, not an item in the menu above. That trigger says "in
+        split" and the menu already answers three other questions; filing
+        destructive filesystem management as a fourth, ungrouped entry inside
+        it hides the one action in this panel that deletes a directory behind
+        a word about layout. Mounted only when the sweep is non-empty, for the
+        same reason the pane header's bring-back door is.
+      */}
+      {state.staleTrees.length > 0 && (
+        <Button
+          variant="outline"
+          size="icon-sm"
+          className="shrink-0"
+          aria-label={`Working trees (${state.staleTrees.length}): review and remove the worktrees this panel still touches`}
+          onClick={() => { setTreesOpen(true); }}
+        >
+          <FolderGit2Icon aria-hidden />
+        </Button>
+      )}
+
+      {/* Mounted whether or not the button is: the last removal empties the
+          sweep, and the dialog that is still open is where the user reads
+          that it happened. Unmounting it here would close it instead. */}
       <StaleTreesDialog open={treesOpen} onOpenChange={setTreesOpen} />
 
       <Button
