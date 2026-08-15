@@ -11,10 +11,31 @@ export type {
 export type SessionId = string;
 export type SessionStatus = 'idle' | 'running' | 'awaiting-approval' | 'error';
 
+export type RefKind = 'message' | 'plan';
+
+/**
+ * A reference from one session's message to another session's output.
+ *
+ * `title` travels with the ref rather than being looked up: a transcript item
+ * outlives the session it references, and a chip that renders "unknown
+ * session" once the source is deleted records less than the one that kept the
+ * name it had when the handoff happened.
+ */
+export interface SessionRef { sessionId: SessionId; kind: RefKind; title: string }
+
 interface ItemBase { id: string; ts: number }
 
 export type TranscriptItem =
-  | (ItemBase & { role: 'user'; text: string; context?: EditorContext })
+  | (ItemBase & {
+      role: 'user'; text: string;
+      context?: EditorContext;
+      /**
+       * Sessions this message pulled from. Metadata about the message that
+       * the message text cannot carry, exactly like `context` above — `text`
+       * is already the fully-composed prompt the provider received.
+       */
+      refs?: SessionRef[];
+    })
   | (ItemBase & { role: 'assistant'; text: string; thinking?: string })
   | (ItemBase & {
       role: 'tool'; toolId: string; tool: ToolCall;
