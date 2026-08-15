@@ -1,6 +1,8 @@
 import type { AgentEvent, McpServerStatus } from '../types';
 import type { RequestId } from './app-server';
-import type { McpServerStatusUpdatedNotification, McpServerStartupState, ThreadItem } from './wire';
+import type {
+  CommandAction, McpServerStatusUpdatedNotification, McpServerStartupState, ThreadItem,
+} from './wire';
 
 /** Item kinds that render as a tool row. Everything else is not a tool. */
 const TOOL_KINDS = new Set([
@@ -131,9 +133,42 @@ function startOf(item: ThreadItem | undefined): AgentEvent[] {
   return [{ kind: 'tool-start', id: item.id, name: item.type, input: inputOf(item) }];
 }
 
+/**
+ * A completed item carries the *authoritative* arguments, which are not always
+ * the ones it started with: a `webSearch` reports `query: ''` at
+ * `item/started` and only fills it in on completion (measured on codex-cli
+ * 0.147.0). Re-emitting `inputOf` on the end event is what lets the card
+ * finally say what was searched — `AgentSession` overwrites the item's input
+ * when a `tool-end` carries one.
+ */
 function endOf(item: ThreadItem | undefined): AgentEvent[] {
   if (!item || !TOOL_KINDS.has(item.type)) { return []; }
-  return [{ kind: 'tool-end', id: item.id, ok: succeeded(item), output: outputOf(item) }];
+  return [{
+    kind: 'tool-end', id: item.id, ok: succeeded(item),
+    output: outputOf(item), input: inputOf(item),
+  }];
+}
+
+/**
+ * The command to *show* for a `commandExecution`.
+ *
+ * `ThreadItem.command` is the escaped invocation Codex spawns — on Windows,
+ * `"C:\\Program Files\\PowerShell\\7\\pwsh.exe" -Command "…"` with every
+ * backslash doubled, which renders as a JSON-looking blob in a 300px header.
+ * `commandActions` is the same call as Codex itself parsed it, and is
+ * documented as being "for friendly display". The raw invocation is the
+ * fallback, never the preference: a command with nothing parsed out of it is
+ * still better shown than hidden.
+ */
+function displayCommand(command: string, actions: CommandAction[] | undefined): string {
+  const parsed = (actions ?? [])
+    .map((a) => a?.command)
+    .filter((c): c is string => typeof c === 'string' && c.length > 0);
+  // One shell command can decompose into several actions (a pipeline). They
+  // are joined by newline rather than a made-up operator — the header is a
+  // single truncated line either way, and the expanded `$` block shows them
+  // stacked without claiming a `&&` that was never written.
+  return parsed.length > 0 ? parsed.join('\n') : command;
 }
 
 /** The fields worth showing in the tool header, per kind. */
@@ -141,11 +176,19 @@ function inputOf(item: ThreadItem): unknown {
   switch (item.type) {
     case 'commandExecution': {
       const c = item as Extract<ThreadItem, { type: 'commandExecution' }>;
-      return { command: c.command, cwd: c.cwd };
+      return { command: displayCommand(c.command, c.commandActions), cwd: c.cwd };
     }
     case 'mcpToolCall': {
       const m = item as Extract<ThreadItem, { type: 'mcpToolCall' }>;
-      return { server: m.server, toolName: m.toolName };
+      return { server: m.server, toolName: m.tool };
+    }
+    case 'dynamicToolCall': {
+      const d = item as Extract<ThreadItem, { type: 'dynamicToolCall' }>;
+      return { toolName: d.tool };
+    }
+    case 'webSearch': {
+      const w = item as Extract<ThreadItem, { type: 'webSearch' }>;
+      return { query: w.query ?? '' };
     }
     default:
       return item;
@@ -158,6 +201,19 @@ function outputOf(item: ThreadItem): unknown {
     // Buffered, not streamed: `item/commandExecution/outputDelta` exists, but
     // AgentEvent has no tool-output-delta, so this matches Claude's behavior.
     return c.aggregatedOutput ?? '';
+  }
+  if (item.type === 'webSearch') {
+    // `results` is opaque JSON by design upstream, so this reads only the two
+    // fields every result type has carried and drops the rest — a raw dump of
+    // ten search hits is a screen of escaped JSON in a sidebar.
+    const w = item as Extract<ThreadItem, { type: 'webSearch' }>;
+    return (w.results ?? [])
+      .map((raw) => {
+        const r = (raw ?? {}) as { title?: unknown; url?: unknown };
+        return [r.title, r.url].filter((v): v is string => typeof v === 'string' && v.length > 0).join('\n');
+      })
+      .filter((entry) => entry.length > 0)
+      .join('\n\n');
   }
   if (item.type === 'fileChange') {
     const f = item as Extract<ThreadItem, { type: 'fileChange' }>;
@@ -199,7 +255,17 @@ export function approvalEventOf(
   if (name === 'commandExecution') {
     return {
       kind: 'permission', id: String(id), name,
-      input: { command: p.command, cwd: p.cwd, reason: p.reason },
+      input: {
+        // Same escaped-vs-parsed split as `item/started` — see
+        // `displayCommand`. The approval card must read what the tool card
+        // reads, or the user approves one spelling and sees another.
+        command: displayCommand(
+          typeof p.command === 'string' ? p.command : '',
+          p.commandActions as CommandAction[] | undefined,
+        ),
+        cwd: p.cwd,
+        reason: p.reason,
+      },
     };
   }
   return { kind: 'permission', id: String(id), name, input: p };

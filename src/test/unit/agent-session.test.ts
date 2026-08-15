@@ -257,6 +257,42 @@ suite('AgentSession', () => {
     await session.dispose();
   });
 
+  test('a tool-end that carries input revises the arguments the card renders', async () => {
+    // Codex's `webSearch` item starts with an empty `query` and only carries
+    // the real one on completion, so a provider must be able to correct the
+    // arguments it reported at start. Captured live from codex-cli 0.147.0:
+    // item/started `{query:''}`, item/completed `{query:'site:nodejs.org …'}`.
+    const provider = new FakeProvider(() => [
+      { kind: 'tool-start', id: 't1', name: 'webSearch', input: { query: '' } },
+      { kind: 'tool-end', id: 't1', ok: true, output: 'results', input: { query: 'node lts' } },
+      { kind: 'turn-end', reason: 'done' },
+    ]);
+    const session = new AgentSession(baseState(), provider, store, sink);
+    session.send('search');
+    await settle();
+
+    const snap = await session.snapshot();
+    const tool = snap.items.find((i) => i.role === 'tool');
+    assert.deepStrictEqual((tool as { input: unknown }).input, { query: 'node lts' });
+    await session.dispose();
+  });
+
+  test('a tool-end without input keeps the arguments from tool-start', async () => {
+    const provider = new FakeProvider(() => [
+      { kind: 'tool-start', id: 't1', name: 'Read', input: { path: 'a.ts' } },
+      { kind: 'tool-end', id: 't1', ok: true, output: 'contents' },
+      { kind: 'turn-end', reason: 'done' },
+    ]);
+    const session = new AgentSession(baseState(), provider, store, sink);
+    session.send('read');
+    await settle();
+
+    const snap = await session.snapshot();
+    const tool = snap.items.find((i) => i.role === 'tool');
+    assert.deepStrictEqual((tool as { input: unknown }).input, { path: 'a.ts' });
+    await session.dispose();
+  });
+
   test('turn-end with error moves the session to error and appends an error item', async () => {
     const provider = new FakeProvider(() => [
       { kind: 'turn-end', reason: 'error', error: 'spawn failed' },

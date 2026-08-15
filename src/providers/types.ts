@@ -142,7 +142,14 @@ export type AgentEvent =
   | { kind: 'text'; delta: string }
   | { kind: 'thinking'; delta: string }
   | { kind: 'tool-start'; id: string; name: string; input: unknown; parentId?: string }
-  | { kind: 'tool-end'; id: string; ok: boolean; output: unknown; parentId?: string }
+  /**
+   * `input`, when present, REPLACES what `tool-start` reported. A backend may
+   * only learn a call's real arguments when it finishes — Codex's `webSearch`
+   * item carries `query: ''` while running and the actual search only on
+   * completion — and a card that renders the start-time arguments forever
+   * would show a search with no query. Omit it and the arguments stand.
+   */
+  | { kind: 'tool-end'; id: string; ok: boolean; output: unknown; input?: unknown; parentId?: string }
   | { kind: 'permission'; id: string; name: string; input: unknown; parentId?: string }
   | { kind: 'turn-end'; reason: 'done' | 'interrupted' | 'error'; error?: string }
   | { kind: 'usage'; inputTokens: number; outputTokens: number }

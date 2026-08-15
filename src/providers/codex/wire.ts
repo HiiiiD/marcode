@@ -82,16 +82,43 @@ export interface FileUpdateChange {
   diff: string;
 }
 
+/**
+ * One command Codex parsed out of a shell invocation.
+ *
+ * Documented upstream as "a best-effort parsing of the command to understand
+ * the action(s) it will perform … because a single shell command may be
+ * composed of many commands piped together", and on the approval params as
+ * "best-effort parsed command actions **for friendly display**". That last
+ * phrase is the whole reason this type exists here: `ThreadItem.command` is
+ * the escaped invocation Codex actually spawns, not something to show a user.
+ */
+export interface CommandAction {
+  /** `'read' | 'listFiles' | 'search' | 'unknown'` upstream; kept open. */
+  type?: string;
+  command: string;
+}
+
 export type ThreadItem =
   | { type: 'agentMessage'; id: string; text: string }
   | { type: 'reasoning'; id: string; summary: string[]; content: string[] }
+  // `command` is SHELL-ESCAPED, not display text — measured on codex-cli
+  // 0.147.0, a `pwsh` call arrives as
+  // `"C:\\Program Files\\PowerShell\\7\\pwsh.exe" -Command "…"` with every
+  // backslash doubled. `commandActions` is the readable form. See
+  // `CommandAction`.
   | { type: 'commandExecution'; id: string; command: string; cwd: string;
+      commandActions?: CommandAction[];
       status?: string; aggregatedOutput?: string; exitCode?: number | null }
   | { type: 'fileChange'; id: string; status?: string; changes?: FileUpdateChange[] }
-  | { type: 'mcpToolCall'; id: string; server: string; toolName: string;
+  // `tool`, NOT `toolName` — verified against the codex-cli 0.147.0 generated
+  // `v2/ThreadItem.ts`. Reading `toolName` here yields undefined and drops the
+  // only identifying half of the header.
+  | { type: 'mcpToolCall'; id: string; server: string; tool?: string;
       status?: string; result?: unknown }
-  | { type: 'webSearch'; id: string; query?: string }
-  | { type: 'dynamicToolCall'; id: string; toolName?: string; status?: string }
+  // `query` is `''` at `item/started` and only carries the real search on
+  // `item/completed` — which is why the tool-end event revises the input.
+  | { type: 'webSearch'; id: string; query?: string; results?: unknown[] }
+  | { type: 'dynamicToolCall'; id: string; tool?: string; status?: string }
   | { type: 'plan'; id: string; text: string }
   // Every other kind is deliberately unmodelled: parsing is tolerant, and an
   // unknown item is ignored rather than thrown.
