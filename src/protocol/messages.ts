@@ -169,7 +169,7 @@ export type WebviewToHost =
   | { t: 'set-layout'; layout: PaneLayout }
   | { t: 'close-session'; id: SessionId }
   | { t: 'delete-session'; id: SessionId }
-  | { t: 'send'; id: SessionId; text: string }
+  | { t: 'send'; id: SessionId; text: string; refs?: SessionRef[] }
   | { t: 'interrupt'; id: SessionId }
   | { t: 'set-effort'; id: SessionId; effort: EffortLevel }
   | { t: 'set-permission-mode'; id: SessionId; mode: PermissionMode }

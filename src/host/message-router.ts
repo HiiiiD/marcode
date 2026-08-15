@@ -2,6 +2,7 @@ import type { SessionManager } from './session-manager';
 import type {
   EditorContext, HostToWebview, SessionSnapshot, WebviewToHost,
 } from '../protocol/messages';
+import { composePrompt } from './session-refs';
 
 /**
  * The router must stay free of `vscode` (it has unit tests that run outside
@@ -122,7 +123,26 @@ export class MessageRouter {
         const context = session.state.includeEditorContext
           ? this.editor.current() ?? undefined
           : undefined;
-        session.send(msg.text, context);
+
+        const refs = msg.refs ?? [];
+        if (refs.length === 0) {
+          session.send(msg.text, context);
+          return;
+        }
+
+        const { blocks, missing } = await this.manager.resolveRefs(refs);
+        // All or nothing. A prompt that says "implement the plan above" with
+        // no plan above is an invitation to invent one, which is worse than
+        // not sending at all.
+        if (missing.length > 0) {
+          const names = missing.map((r) => `${r.title} (${r.kind})`).join(', ');
+          session.noteError(
+            `Nothing to hand off from ${names}. `
+            + 'That session has not produced one yet.',
+          );
+          return;
+        }
+        session.send(composePrompt(msg.text, blocks), context, refs);
         return;
       }
 

@@ -357,4 +357,51 @@ suite('MessageRouter', () => {
     assert.ok(msg);
     assert.deepStrictEqual(msg.ctx, ctx);
   });
+
+  test('send with a ref composes the payload into the prompt', async () => {
+    const source = await manager.create('fake', dir);
+    source.send('plan it');
+    await settle();
+    const target = await manager.create('fake', dir);
+
+    await router.handle({
+      t: 'send', id: target.state.id, text: 'Do @agent-1 message',
+      refs: [{ sessionId: source.state.id, kind: 'message', title: 'agent-1' }],
+    });
+    await settle();
+
+    const items = (await target.snapshot()).items;
+    const user = items.find((i) => i.role === 'user');
+    assert.strictEqual(user?.role === 'user' && user.text.includes('Do @agent-1 message'), true);
+    assert.strictEqual(user?.role === 'user' && user.text.includes('--- message from agent-1 ---'), true);
+    assert.strictEqual(user?.role === 'user' && user.refs?.length, 1);
+  });
+
+  test('send with an unresolvable ref sends nothing and records why', async () => {
+    const target = await manager.create('fake', dir);
+
+    await router.handle({
+      t: 'send', id: target.state.id, text: 'Do @ghost message',
+      refs: [{ sessionId: 'nope', kind: 'message', title: 'ghost' }],
+    });
+    await settle();
+
+    const items = (await target.snapshot()).items;
+    assert.strictEqual(items.some((i) => i.role === 'user'), false);
+    const error = items.find((i) => i.role === 'error');
+    assert.strictEqual(error?.role === 'error' && error.message.includes('ghost'), true);
+    assert.strictEqual(target.state.status, 'idle');
+  });
+
+  test('send without refs is unchanged', async () => {
+    const target = await manager.create('fake', dir);
+
+    await router.handle({ t: 'send', id: target.state.id, text: 'plain' });
+    await settle();
+
+    const items = (await target.snapshot()).items;
+    const user = items.find((i) => i.role === 'user');
+    assert.strictEqual(user?.role === 'user' && user.text, 'plain');
+    assert.strictEqual(user?.role === 'user' && user.refs, undefined);
+  });
 });
