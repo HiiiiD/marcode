@@ -138,10 +138,81 @@ suite('SessionManager.relocate', () => {
     await manager.relocate(session.state.id, 'r1', true);
     assert.strictEqual(manager.get(session.state.id)!.state.cwd, before);
 
-    // Deferred, not settled: a queue that does not survive a reload must not
-    // leave behind an item claiming an outcome that never happened.
+    // Deferred, and the deferral is *state*: the item says so, so the card
+    // can stop asking a question the user already answered. It is not
+    // settled — nothing has moved — and `reconcileQueuedMoves` is what stops
+    // it outliving the in-memory queue.
     const item = await store.find(session.state.id, 'r1');
+    assert.strictEqual(item?.role === 'relocation' && item.state, 'queued');
+  });
+
+  test('cancelling a queued move returns the item to pending', async () => {
+    const { manager, session, store } = await withPendingOffer('/repo/../t/a', 'running');
+    const id = session.state.id;
+    const before = session.state.cwd;
+    await manager.relocate(id, 'r1', true);
+    await manager.cancelRelocation(id, 'r1');
+
+    // Back to the question, not to an outcome: the user called the move off,
+    // which is not the same as answering Stay.
+    const item = await store.find(id, 'r1');
     assert.strictEqual(item?.role === 'relocation' && item.state, 'pending');
+
+    goIdle(manager, session);
+    await settle();
+    assert.strictEqual(manager.get(id)!.state.cwd, before);
+    assert.strictEqual(moved(manager, session), false);
+  });
+
+  test('cancelling an offer that is not queued changes nothing', async () => {
+    const { manager, session, store } = await withPendingOffer('/repo/../t/a');
+    await manager.relocate(session.state.id, 'r1', false);
+    await manager.cancelRelocation(session.state.id, 'r1');
+
+    // A settled item is a record, and cancel must not reopen it.
+    const item = await store.find(session.state.id, 'r1');
+    assert.strictEqual(item?.role === 'relocation' && item.state, 'stayed');
+  });
+
+  test('a queued item whose queue entry is gone comes back as pending', async () => {
+    const { manager, session, store, target } = await withPendingOffer('/repo/../t/a', 'running');
+    const id = session.state.id;
+    await manager.relocate(id, 'r1', true);
+
+    // A reload: the index and the transcript survive on disk, the queue does
+    // not. Everything below is a second host over the same rootDir.
+    const dir = dirs[dirs.length - 1];
+    await manager.dispose();
+    managers.pop();
+
+    const store2 = new TranscriptStore(dir);
+    const emitted: HostToWebview[] = [];
+    const providers = new Map<string, AgentProvider>([
+      ['fake', new FakeProvider(() => [{ kind: 'turn-end', reason: 'done' }])],
+    ]);
+    const revived = new SessionManager(store2, providers, (m) => emitted.push(m));
+    managers.push(revived);
+    await revived.init();
+    await revived.setVisible([id]);
+
+    const item = await store2.find(id, 'r1');
+    assert.strictEqual(item?.role === 'relocation' && item.state, 'pending');
+    assert.strictEqual(item?.role === 'relocation' && item.path, target);
+
+    // And the snapshot the pane was actually given says the same thing —
+    // reconciling only the store would leave the reload rendering a move
+    // nothing is left to perform.
+    const snap = emitted.find((m) => m.t === 'session-snapshot');
+    const shown = snap?.t === 'session-snapshot'
+      ? snap.session.items.find((i) => i.id === 'r1') : undefined;
+    assert.strictEqual(shown?.role === 'relocation' && shown.state, 'pending');
+
+    // And nothing revived the queue: reaching idle performs no move.
+    revived.status(id, 'idle');
+    await settle();
+    const after = await store2.find(id, 'r1');
+    assert.strictEqual(after?.role === 'relocation' && after.state, 'pending');
+    assert.strictEqual(revived.summaries().find((s) => s.id === id)!.cwd, session.state.cwd);
   });
 
   test('performs the queued move when the session goes idle', async () => {

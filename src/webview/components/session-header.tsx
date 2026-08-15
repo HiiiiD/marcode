@@ -111,7 +111,11 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
             >
               <MoreHorizontalIcon aria-hidden />
             </DropdownMenuTrigger>
-            <DropdownMenuContent>
+            {/* `w-auto`, overriding the menu's default `w-(--anchor-width)`:
+                anchored to a 24px icon button, `min-w-32` is all that stops
+                the item from being narrower than the phrase it has to be read
+                by, and 128px still wraps it. Same fix as StaleTrees' row menu. */}
+            <DropdownMenuContent className="w-auto">
               {/* The ellipsis is the promise that this opens a confirmation
                   rather than deleting a directory on the way up from the
                   click — the same contract the roster's `Delete…` keeps. */}

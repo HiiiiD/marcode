@@ -166,6 +166,13 @@ export class MessageRouter {
         await this.manager.relocate(msg.id, msg.itemId, msg.move);
         return;
 
+      // Awaited for the same reason, though this one only rewrites a
+      // transcript item: it is the same catch-all that keeps a store write
+      // failing on disk from escaping as an unhandled rejection.
+      case 'cancel-relocation':
+        await this.manager.cancelRelocation(msg.id, msg.itemId);
+        return;
+
       // Both awaited for the same reason as `answer-relocation`: they shell
       // out to git and touch the filesystem, and a `void` here would put a
       // rejection outside `handle()`'s catch-all.
@@ -237,7 +244,8 @@ export class MessageRouter {
 const KNOWN_MESSAGE_TAGS = new Set<WebviewToHost['t']>([
   'ready', 'create-session', 'set-visible', 'set-layout', 'close-session',
   'delete-session', 'send', 'interrupt', 'set-effort', 'set-permission-mode',
-  'set-model', 'permission-decision', 'load-more', 'answer-relocation',
+  'set-model', 'permission-decision', 'load-more',
+  'answer-relocation', 'cancel-relocation',
   'set-include-context', 'reveal-file',
   'request-context', 'open-file',
   'request-bring-back', 'bring-back',

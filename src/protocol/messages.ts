@@ -35,10 +35,19 @@ export type TranscriptItem =
    * survives a reload and stays meaningful when answered later. Answered
    * items render as their outcome, so the transcript reads as a record of
    * where the work happened.
+   *
+   * `queued` is the answer "move" given while a turn was still in flight —
+   * the common case, since the offer is raised from a tool result *inside* a
+   * turn. The move waits for idle, and the wait is state like everything
+   * else: without it the card would go on asking a question the user has
+   * already answered. It is the one state that describes something held in
+   * host memory rather than on disk, so `SessionManager` returns any `queued`
+   * item whose queue entry did not survive back to `pending` when the
+   * transcript is read back.
    */
   | (ItemBase & {
       role: 'relocation'; path: string;
-      state: 'pending' | 'moved' | 'stayed';
+      state: 'pending' | 'queued' | 'moved' | 'stayed';
     })
   | (ItemBase & { role: 'error'; message: string });
 
@@ -228,6 +237,14 @@ export type WebviewToHost =
    */
   | { t: 'open-file'; id: SessionId; path: string }
   | { t: 'answer-relocation'; id: SessionId; itemId: string; move: boolean }
+  /**
+   * "Not any more." Calls off a move that is waiting for the turn to finish
+   * and puts the offer back to `pending`. Deliberately not `answer-relocation`
+   * with `move: false`: that is Stay, an answer, and it settles the item
+   * forever. This one un-answers it — a deferred action the user cannot call
+   * off is worse than no deferral at all.
+   */
+  | { t: 'cancel-relocation'; id: SessionId; itemId: string }
   /**
    * "Could this session's branch come home?" — a question, with no side
    * effects beyond reading git. Answered by `bring-back-plan`.

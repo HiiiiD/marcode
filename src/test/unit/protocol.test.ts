@@ -27,6 +27,7 @@ function describeInbound(m: WebviewToHost): string {
     case 'request-context': return 'request-context';
     case 'open-file': return 'open-file';
     case 'answer-relocation': return 'answer-relocation';
+    case 'cancel-relocation': return 'cancel-relocation';
     case 'request-bring-back': return 'request-bring-back';
     case 'bring-back': return 'bring-back';
     case 'request-stale-trees': return 'request-stale-trees';

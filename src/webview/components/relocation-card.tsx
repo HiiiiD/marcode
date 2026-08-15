@@ -27,7 +27,43 @@ export function RelocationCard({
   // that would settle it here has to round-trip. Without local state both
   // buttons stay live in the meantime and a double-click gets no feedback —
   // the same reasoning as PermissionCard's `answered`.
-  const [answered, setAnswered] = useState(false);
+  //
+  // Stored as *the state that was answered*, not a bare boolean: a queued move
+  // is answered twice (Move, then possibly Cancel), and a boolean set by the
+  // first click would arrive at the queued row with its cancel already dead.
+  // Comparing against the current state re-arms the row the moment the host's
+  // patch lands, and only then.
+  const [answeredIn, setAnsweredIn] = useState<RelocationItem['state'] | null>(null);
+  const answered = answeredIn === item.state;
+
+  if (item.state === 'queued') {
+    return (
+      <TranscriptItemShell role="tool" label="Worktree" ts={item.ts}>
+        {/* Settled in tone, not in fact: the question is answered, so this is
+            a one-line record like `moved`/`stayed` rather than a card — but it
+            says when the move happens and keeps the one control that can still
+            change the outcome. */}
+        <div className="flex items-baseline gap-2 text-xs text-muted-foreground">
+          <span className="truncate" title={item.path}>
+            Moving to {name} when this turn ends
+          </span>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-auto shrink-0 px-1 py-0 text-xs"
+            disabled={answered}
+            onClick={() => {
+              setAnsweredIn('queued');
+              post({ t: 'cancel-relocation', id: sessionId, itemId: item.id });
+            }}
+            aria-label={`Cancel the queued move to ${name}`}
+          >
+            Cancel
+          </Button>
+        </div>
+      </TranscriptItemShell>
+    );
+  }
 
   if (item.state !== 'pending') {
     return (
@@ -40,7 +76,7 @@ export function RelocationCard({
   }
 
   const answer = (move: boolean) => {
-    setAnswered(true);
+    setAnsweredIn('pending');
     post({ t: 'answer-relocation', id: sessionId, itemId: item.id, move });
   };
 

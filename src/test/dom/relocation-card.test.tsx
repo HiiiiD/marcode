@@ -105,6 +105,40 @@ suite('RelocationCard', () => {
     screen.getByText('Stayed');
   });
 
+  test('a queued item names its destination and offers no second answer', () => {
+    renderWithStore(<RelocationCard item={relocation({ state: 'queued' })} sessionId="a" />);
+    hydrateWith([]);
+
+    // Settled-but-live: the question is answered, so the two answer buttons
+    // are gone, but the row still says what is about to happen and when.
+    screen.getByText('Moving to feat-x when this turn ends');
+    assert.strictEqual(screen.queryByLabelText('Move this session to feat-x') === null, true);
+    assert.strictEqual(screen.queryByLabelText('Stay in the current directory') === null, true);
+    assert.strictEqual(
+      (screen.getByLabelText('Cancel the queued move to feat-x') as HTMLButtonElement).disabled,
+      false,
+    );
+  });
+
+  test('cancelling a queued move posts cancel-relocation', async () => {
+    renderWithStore(
+      <RelocationCard item={relocation({ id: 'r7', state: 'queued' })} sessionId="a" />);
+    hydrateWith([]);
+
+    await userEvent.click(screen.getByLabelText('Cancel the queued move to feat-x'));
+
+    assert.deepStrictEqual(posted().at(-1), {
+      t: 'cancel-relocation', id: 'a', itemId: 'r7',
+    });
+  });
+
+  test('the transcript renders a queued item through the card', () => {
+    renderApp();
+    hydrateWith([relocation({ state: 'queued' })]);
+
+    screen.getByLabelText('Cancel the queued move to feat-x');
+  });
+
   test('the transcript renders a relocation item through the card', () => {
     renderApp();
     hydrateWith([relocation()]);

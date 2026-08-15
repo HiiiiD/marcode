@@ -11,8 +11,8 @@ import { threadKey, threadKeyCwd } from '../shared/thread-key';
 import { orderWindows } from '../shared/usage-windows';
 import type {
   ContextResult, HostToWebview, McpServerStatus, PaneLayout, PermissionMode, ProviderInfo, SessionId,
-  SessionState, SessionStatus, SessionSummary, StaleTree, TranscriptItem, TranscriptPatch,
-  UnavailableProvider,
+  SessionSnapshot, SessionState, SessionStatus, SessionSummary, StaleTree, TranscriptItem,
+  TranscriptPatch, UnavailableProvider,
 } from '../protocol/messages';
 
 let counter = 0;
@@ -49,10 +49,14 @@ export class SessionManager implements SessionSink {
    * Deliberately in memory only, and deliberately at most one per session. The
    * offer is raised from a `tool-end` mid-turn, so "running" is the common
    * case, not the exception; dropping the click there is how the feature used
-   * to fail silently. The transcript item stays `pending` the whole time it
-   * sits here, because this map does not survive a window reload and a
-   * persisted "queued" state would outlive the thing it describes. After a
-   * reload the offer is simply still open.
+   * to fail silently.
+   *
+   * The item it points at is marked `queued`, because the host owns the state
+   * and the webview renders it: a deferral nobody can see is a card left
+   * asking a question under two dead buttons for the length of a turn. That
+   * this map does not survive a reload is not a reason to hide it — it is a
+   * reason to reconcile it, which `emitSnapshot` does the next time the
+   * transcript is handed to a pane.
    */
   private queuedMoves = new Map<SessionId, string>();
   /**
@@ -447,18 +451,101 @@ export class SessionManager implements SessionSink {
     if (!item || item.role !== 'relocation' || item.state !== 'pending') { return; }
 
     // A turn in flight finishes on the tree it started in, so the move waits
-    // for idle rather than being dropped. The item stays `pending` until it
-    // actually performs — see `queuedMoves`.
+    // for idle rather than being dropped. The item is marked `queued` BEFORE
+    // the entry goes in the map: the replacement is what the webview sees,
+    // and a queue entry with no visible counterpart is exactly the silent
+    // deferral this branch used to be.
     if (move && state.status !== 'idle') {
+      await session.replaceRelocation({ ...item, state: 'queued' });
       this.queuedMoves.set(id, itemId);
       return;
     }
 
+    await this.settleRelocation(id, session, state, item, move);
+  }
+
+  /**
+   * Calls off a queued move and reopens the offer.
+   *
+   * Only ever `queued` -> `pending`: an item that already settled is a record
+   * of where the work went, and cancel must not rewrite history. Like
+   * `relocate`, this is answered straight off the wire, so every miss is a
+   * no-op rather than a rejection.
+   */
+  async cancelRelocation(id: SessionId, itemId: string): Promise<void> {
+    const session = this.live.get(id);
+    if (!session) { return; }
+
+    const item = await this.store.find(id, itemId);
+    if (!item || item.role !== 'relocation' || item.state !== 'queued') { return; }
+
+    // Keyed check, not a blind delete: the map holds at most one entry per
+    // session, and cancelling a stale item (one left `queued` by a reload)
+    // must not throw away a move the user queued since.
+    if (this.queuedMoves.get(id) === itemId) { this.queuedMoves.delete(id); }
+    await session.replaceRelocation({ ...item, state: 'pending' });
+  }
+
+  /**
+   * Writes the outcome and, for a move, performs it. Shared by the immediate
+   * answer and by the queued one so there is a single place that decides what
+   * an answered offer looks like.
+   */
+  private async settleRelocation(
+    id: SessionId, session: AgentSession, state: SessionState,
+    item: Extract<TranscriptItem, { role: 'relocation' }>, move: boolean,
+  ): Promise<void> {
     const settled: TranscriptItem = { ...item, state: move ? 'moved' : 'stayed' };
     await session.replaceRelocation(settled);
     if (!move) { return; }
 
     await this.moveTo(id, session, state, item.path);
+  }
+
+  /**
+   * The one place a whole transcript is handed to the webview, and therefore
+   * the one place a stale `queued` offer has to be caught.
+   *
+   * `queuedMoves` lives in memory; the transcript lives on disk. A reload
+   * leaves items promising a move nothing is left to perform, and a promise
+   * the host cannot keep is worse than the question it replaced. Every
+   * materialization ends here — `setVisible`'s live branch (`snapshot()`), its
+   * archived branch (`store.tail`), and the rebuild `moveTo` emits — so
+   * reconciling on the way out covers all of them at once. Hydrate's own
+   * `open()` + `snapshot()` needs no separate hook: the webview posts
+   * `set-visible` for every restored pane, and `SessionManager.visible` starts
+   * empty after a reload, so each of those panes passes through here.
+   *
+   * Deliberately over the items already read rather than a fresh store scan:
+   * a reveal is on the critical path of showing a pane, and a second read of
+   * the same transcript to answer a question the first read already answered
+   * is a cost paid on every reveal for a case that arises once per reload.
+   */
+  private emitSnapshot(id: SessionId, snapshot: SessionSnapshot): void {
+    const queued = this.queuedMoves.get(id);
+    let items = snapshot.items;
+    let reopenedAny = false;
+    for (const [at, item] of items.entries()) {
+      if (item.role !== 'relocation' || item.state !== 'queued') { continue; }
+      if (item.id === queued) { continue; }
+      const reopened: TranscriptItem = { ...item, state: 'pending' };
+      // The store too, not just the copy going out: `load-more` pages
+      // straight out of it, and so does the next launch.
+      this.store.replace(id, reopened);
+      if (items === snapshot.items) { items = [...items]; }
+      items[at] = reopened;
+      reopenedAny = true;
+    }
+    this.emit({
+      t: 'session-snapshot',
+      session: reopenedAny ? { ...snapshot, items } : snapshot,
+    });
+    // An archived session has no AgentSession to schedule a flush, so the
+    // correction is pushed to disk here. Fire-and-forget and swallowed: this
+    // is called from a sink-adjacent path, the emit above has already told the
+    // pane the truth, and a failed write only means the next reveal
+    // reconciles the same item again.
+    if (reopenedAny) { void this.store.flush(id).catch(() => {}); }
   }
 
   /**
@@ -510,7 +597,7 @@ export class SessionManager implements SessionSink {
     this.catalogSvc.ensure(this.keyOf(state), provider, state.cwd);
     this.changed();
     if (this.visible.has(id)) {
-      this.emit({ t: 'session-snapshot', session: await moved.snapshot() });
+      this.emitSnapshot(id, await moved.snapshot());
     }
   }
 
@@ -888,7 +975,7 @@ export class SessionManager implements SessionSink {
       if (session) {
         const snapshot = await session.snapshot();
         if (!this.claimSnapshot(id, seq)) { continue; }
-        this.emit({ t: 'session-snapshot', session: snapshot });
+        this.emitSnapshot(id, snapshot);
         // Every reveal with a known catalog re-announces it in a standalone
         // message — whether that catalog was cached long ago or only just
         // landed (fanOutCatalog withholds its emit for the whole time this
@@ -912,15 +999,12 @@ export class SessionManager implements SessionSink {
       if (provider) { this.catalogSvc.ensure(this.keyOf(state), provider, state.cwd); }
       const { items, hasMore } = await this.store.tail(id);
       if (!this.claimSnapshot(id, seq)) { continue; }
-      this.emit({
-        t: 'session-snapshot',
-        session: {
-          ...state, items, hasMore, pending: [],
-          invocables: this.catalogSvc.get(this.keyOf(state)),
-          // An archived session has no run to ask, and a stale snapshot
-          // presented as current would be a lie.
-          mcpServers: [],
-        },
+      this.emitSnapshot(id, {
+        ...state, items, hasMore, pending: [],
+        invocables: this.catalogSvc.get(this.keyOf(state)),
+        // An archived session has no run to ask, and a stale snapshot
+        // presented as current would be a lie.
+        mcpServers: [],
       });
       this.drainSnapshotBuffer(id);
     }
@@ -1075,10 +1159,27 @@ export class SessionManager implements SessionSink {
     if (itemId === undefined) { return; }
     this.queuedMoves.delete(id);
     if (this.disposed || !this.live.has(id)) { return; }
-    void this.relocate(id, itemId, true).catch(() => {
-      // Errors are state. `relocate` already records what it can in the
-      // transcript; there is nothing to throw at from an event pump.
+    void this.performQueuedMove(id, itemId).catch(() => {
+      // Errors are state. The move records what it can in the transcript;
+      // there is nothing to throw at from an event pump.
     });
+  }
+
+  /**
+   * The deferred half of `relocate`. Not `relocate` itself: that one only
+   * accepts a `pending` offer, and the item this performs is `queued` — the
+   * mark it was given when the click arrived. Re-reading it here rather than
+   * trusting the map is what makes a cancel between the click and idle stick.
+   */
+  private async performQueuedMove(id: SessionId, itemId: string): Promise<void> {
+    const state = this.meta.get(id);
+    const session = this.live.get(id);
+    if (!state || !session) { return; }
+
+    const item = await this.store.find(id, itemId);
+    if (!item || item.role !== 'relocation' || item.state !== 'queued') { return; }
+
+    await this.settleRelocation(id, session, state, item, true);
   }
 
   /**
