@@ -210,6 +210,41 @@ suite('CodexProvider', () => {
     ]);
   });
 
+  test('setBinPath changes what the next connect() spawns', () => {
+    const spawnedBins: string[] = [];
+    const provider = new CodexProvider({
+      binPath: 'codex-old',
+      spawn: (bin) => { spawnedBins.push(bin); return stubChild(); },
+    });
+    provider.start({ cwd: '/a', permissionMode: 'default' });
+    assert.deepStrictEqual(spawnedBins, ['codex-old']);
+
+    provider.setBinPath('codex-new');
+    provider.start({ cwd: '/a', permissionMode: 'default' });
+    assert.deepStrictEqual(spawnedBins, ['codex-old', 'codex-new']);
+  });
+
+  test('setBinPath tears down a live connection even with an active run, and that run ends in error rather than an unhandled rejection', async () => {
+    const { provider, respondTo, killCount } = providerWithStub();
+    const run = provider.start({ cwd: '/a', permissionMode: 'default' });
+    run.send('hi');
+    await respondTo('thread/start', { threadId: 'th_1' });
+
+    const events: Array<{ kind: string; reason?: string }> = [];
+    void (async () => {
+      for await (const e of run.events) { events.push(e as { kind: string; reason?: string }); }
+    })();
+
+    // A declared-wrong binary must kill the process outright, unlike the
+    // ref-counted teardown a run's own dispose() triggers.
+    provider.setBinPath('codex-new');
+    await tick();
+
+    assert.strictEqual(killCount(), 1);
+    assert.ok(events.some((e) => e.kind === 'turn-end' && e.reason === 'error'),
+      'expected the active run to end with a turn-end/error event, not hang or throw');
+  });
+
   // Not in the brief's list, but load-bearing: AppServer's onNotification/
   // onServerRequest/onClose are single-slot setters (last caller wins), and
   // one process serves every Codex session. If each CodexRun registered

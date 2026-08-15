@@ -123,7 +123,17 @@ export class CodexProvider implements AgentProvider {
    */
   private serverInstance: AppServer | undefined;
 
-  constructor(private readonly opts: { binPath?: string; spawn?: (bin: string) => Duplex } = {}) {}
+  /**
+   * Mutable so `setBinPath` can change it after construction. `opts.binPath`
+   * seeds it but is never read again after the constructor — every other
+   * read goes through this field, which is what lets a config change reach
+   * a process that is already running.
+   */
+  private binPath: string | undefined;
+
+  constructor(private readonly opts: { binPath?: string; spawn?: (bin: string) => Duplex } = {}) {
+    this.binPath = opts.binPath;
+  }
 
   listModels(): ModelInfo[] { return this.models; }
 
@@ -149,7 +159,7 @@ export class CodexProvider implements AgentProvider {
   }
 
   private async connect(): Promise<AppServer> {
-    const bin = this.opts.binPath ?? 'codex';
+    const bin = this.binPath ?? 'codex';
     let child: Duplex;
     try {
       child = (this.opts.spawn ?? defaultSpawn)(bin);
@@ -305,7 +315,27 @@ export class CodexProvider implements AgentProvider {
     });
   }
 
-  /** Kills the shared process once its last run has gone. */
+  /**
+   * Updates the binary path a *future* `connect()` will spawn, and drops
+   * any process already running against the old one — a cached
+   * `connectionPromise`/`serverInstance` pinned to the previous binary
+   * would otherwise silently outlive the setting that named it, and
+   * `refreshModels`'s re-probe (the mechanism this exists to serve — see
+   * `session-manager.ts`) would just retry the same stale spawn.
+   *
+   * Disposal here is unconditional, unlike the ref-counted `teardown()` a
+   * run's own `dispose()` triggers: a user who changes the binary has
+   * declared the running one wrong, and continuing to run sessions against
+   * it is worse than ending them. Any `ThreadView` still attached hears
+   * `onClose` from this and turns it into `turn-end: error` (see
+   * `CodexRun`) — the honest outcome, not one to suppress.
+   */
+  setBinPath(binPath: string | undefined): void {
+    this.binPath = binPath;
+    this.teardown();
+  }
+
+  /** Kills the shared process — via `start()`'s ref-count reaching zero, or via `setBinPath`. */
   private teardown(): void {
     const server = this.serverInstance;
     this.connectionPromise = undefined;

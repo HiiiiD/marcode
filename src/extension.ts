@@ -30,7 +30,8 @@ export async function activate(context: vscode.ExtensionContext) {
   // so Claude — the real provider — is registered first.
   const providers = new Map<string, AgentProvider>();
   providers.set('claude', new ClaudeProvider());
-  providers.set('codex', new CodexProvider({ binPath: codexBinPath() }));
+  const codexProvider = new CodexProvider({ binPath: codexBinPath() });
+  providers.set('codex', codexProvider);
   providers.set('fake', new FakeProvider(
     (text) => (text.includes('rm')
       ? [{ kind: 'permission', id: `p-${Date.now()}`, name: 'Bash', input: { command: text } }]
@@ -90,11 +91,21 @@ export async function activate(context: vscode.ExtensionContext) {
       terminal.show();
       terminal.sendText('codex login');
     }),
-    // A changed path is a different install: re-probe, which is also how the
-    // provider recovers from 'unavailable'. refreshModels already IS the
-    // availability probe — see session-manager.
+    // A changed path is a different install: point the provider at it, then
+    // re-probe — which is also how the provider recovers from 'unavailable'.
+    // refreshModels already IS the availability probe — see session-manager.
+    // setBinPath must run first: it is what makes the re-probe actually use
+    // the new path, rather than retrying the stale one connect() already
+    // cached. It also kills the process running against the old binary,
+    // which ends any Codex session currently in flight — a user who
+    // changes the binary has declared the running one wrong, so those
+    // sessions land in 'error' with a transcript item (CodexRun's onClose
+    // handling), not silently on the old process.
     vscode.workspace.onDidChangeConfiguration((e) => {
-      if (e.affectsConfiguration('hiiiidCode.codex.path')) { void manager.refreshModels(defaultCwd); }
+      if (e.affectsConfiguration('hiiiidCode.codex.path')) {
+        codexProvider.setBinPath(codexBinPath());
+        void manager.refreshModels(defaultCwd);
+      }
     }),
   );
 
