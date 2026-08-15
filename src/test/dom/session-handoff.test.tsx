@@ -77,4 +77,20 @@ suite('session handoff', () => {
     const sent = sends[0] as { refs?: unknown[] };
     assert.strictEqual(sent.refs, undefined);
   });
+
+  test('the composer announces the ref menu to assistive tech', () => {
+    renderApp();
+    hydrateTwoSessions();
+
+    const box = screen.getByLabelText('Message');
+    assert.strictEqual(box.getAttribute('aria-expanded'), 'false');
+
+    fireEvent.change(box, { target: { value: '@' } });
+
+    assert.strictEqual(box.getAttribute('aria-expanded'), 'true');
+    const controls = box.getAttribute('aria-controls');
+    assert.strictEqual(typeof controls === 'string' && controls.length > 0, true);
+    const active = box.getAttribute('aria-activedescendant');
+    assert.strictEqual(typeof active === 'string' && active.startsWith(controls!), true);
+  });
 });

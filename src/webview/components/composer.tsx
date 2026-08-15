@@ -121,6 +121,12 @@ export function Composer({
   const refOpen = refHit !== undefined && !menuOpen;
   const refListId = `session-refs-${pane.summary.id}`;
   const refIndex = Math.min(activeIndex, Math.max(0, refRows.length - 1));
+  // Same contract as activeOptionId above: the id goes on the TEXTAREA,
+  // because ARIA only honours aria-activedescendant on the focused element,
+  // and it is undefined when the list has no addressable row.
+  const activeRefOptionId = refOpen && refRows.length > 0
+    ? `${refListId}-${refIndex}`
+    : undefined;
 
   const openMenu = () => {
     setText("/");
@@ -295,9 +301,9 @@ export function Composer({
           aria-label="Message"
           disabled={readOnly}
           aria-describedby={readOnly ? unavailableReasonId : undefined}
-          aria-controls={menuOpen ? menuListId : undefined}
-          aria-expanded={menuOpen}
-          aria-activedescendant={activeOptionId}
+          aria-controls={menuOpen ? menuListId : refOpen ? refListId : undefined}
+          aria-expanded={menuOpen || refOpen}
+          aria-activedescendant={activeOptionId ?? activeRefOptionId}
         />
         {/*
           flex-wrap: at pane widths around 300px the mode trigger, the model
