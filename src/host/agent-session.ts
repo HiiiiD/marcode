@@ -1,5 +1,5 @@
 import type {
-  McpServerStatus, PermissionRequest, SessionId, SessionSnapshot, SessionState,
+  McpServerStatus, PermissionRequest, SessionId, SessionRef, SessionSnapshot, SessionState,
   SessionStatus, TranscriptItem, TranscriptPatch,
 } from '../protocol/messages';
 import type {
@@ -158,17 +158,35 @@ export class AgentSession {
    */
   get isEmpty(): boolean { return this.appended === 0; }
 
-  send(text: string, context?: EditorContext): void {
+  /**
+   * The assistant item currently being streamed into, if any.
+   *
+   * Exposed for reference resolution: an in-flight answer must never be what
+   * a handoff pulls, and this is the only place that knows which item it is.
+   */
+  get openItemId(): string | undefined { return this.openAssistantId; }
+
+  /**
+   * An error that belongs in this session's transcript without ending it.
+   *
+   * Deliberately not `fail()`: an unresolvable reference means one message
+   * could not be sent, not that the conversation is broken. Moving the
+   * session to `error` would claim otherwise, and the roster would show a
+   * dead session the user could still happily type into.
+   */
+  noteError(message: string): void {
+    this.appendItem({ id: nextId('e'), ts: Date.now(), role: 'error', message });
+    void this.scheduleFlush();
+  }
+
+  send(text: string, context?: EditorContext, refs?: SessionRef[]): void {
     if (this._state.title === 'Untitled' && text.trim().length > 0) {
       this._state.title = text.trim().slice(0, TITLE_MAX);
     }
-    // Spread the context in only when there is one: a persisted user item
-    // written before this feature has no `context` key at all, and every
-    // consumer already handles its absence. Writing `context: undefined`
-    // would serialize differently for no gain.
     const item: TranscriptItem = {
       id: nextId('u'), ts: Date.now(), role: 'user', text,
       ...(context ? { context } : {}),
+      ...(refs && refs.length > 0 ? { refs } : {}),
     };
     this.appendItem(item);
     this.closeAssistant();

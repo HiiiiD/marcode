@@ -1,5 +1,6 @@
 import { AgentSession, type SessionSink } from './agent-session';
 import { catalogKey, CatalogService } from './catalog-service';
+import { findPayload, type ResolvedBlock } from './session-refs';
 import { TRANSCRIPT_VERSION, type StoredIndex, type TranscriptStore } from './transcript-store';
 import type { AgentProvider, EffortLevel, Invocable, ModelInfo, UsageWindow } from '../providers/types';
 import { findModel, resolveEffort } from '../shared/model-catalog';
@@ -7,7 +8,7 @@ import { resolvePermissionMode } from '../shared/permission-catalog';
 import { orderWindows } from '../shared/usage-windows';
 import type {
   ContextResult, HostToWebview, McpServerStatus, PaneLayout, PermissionMode, ProviderInfo, SessionId,
-  SessionState, SessionStatus, SessionSummary, TranscriptPatch, UnavailableProvider,
+  SessionRef, SessionState, SessionStatus, SessionSummary, TranscriptPatch, UnavailableProvider,
 } from '../protocol/messages';
 
 let counter = 0;
@@ -426,6 +427,38 @@ export class SessionManager implements SessionSink {
       if (remembered) { return { ok: true, breakdown: remembered }; }
       return { ok: false, reason: err instanceof Error ? err.message : String(err) };
     }
+  }
+
+  /**
+   * Resolves each reference against the session it names.
+   *
+   * Never rejects and never throws: this is answered onto the wire, where
+   * errors are state. A ref naming a deleted session, or one whose source has
+   * produced nothing of that kind yet, comes back in `missing` for the caller
+   * to report into the receiving transcript.
+   *
+   * A live session is asked through `snapshot()`, which flushes its pending
+   * writes first — without that, a payload from a turn that ended moments ago
+   * would still be sitting in the store's queue and resolve as absent.
+   */
+  async resolveRefs(
+    refs: SessionRef[],
+  ): Promise<{ blocks: ResolvedBlock[]; missing: SessionRef[] }> {
+    const blocks: ResolvedBlock[] = [];
+    const missing: SessionRef[] = [];
+
+    for (const ref of refs) {
+      if (!this.meta.has(ref.sessionId)) { missing.push(ref); continue; }
+      const live = this.live.get(ref.sessionId);
+      const items = live
+        ? (await live.snapshot()).items
+        : (await this.store.tail(ref.sessionId)).items;
+      const text = findPayload(items, ref.kind, live?.openItemId);
+      if (text === undefined) { missing.push(ref); continue; }
+      blocks.push({ title: ref.title, kind: ref.kind, text });
+    }
+
+    return { blocks, missing };
   }
 
   /**
