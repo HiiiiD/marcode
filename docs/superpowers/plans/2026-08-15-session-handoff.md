@@ -39,11 +39,13 @@ The spec says an unresolvable ref produces an error item in the receiving sessio
 
 **Created:**
 - `src/host/session-refs.ts` — pure payload extraction and prompt composition. No `vscode`, no I/O.
-- `src/webview/lib/session-ref-menu.ts` — caret-aware `@` query, option list, token splicing, ref pruning. Pure.
+- `src/webview/lib/mention-menu.ts` — caret-aware `@` query, filtering, token uniquification, splicing, pruning. Source-agnostic and pure.
+- `src/webview/lib/session-mentions.ts` — the rows sessions contribute to that menu. One source among several; file tagging will arrive as a sibling module.
 - `src/webview/components/ref-menu.tsx` — the `@` menu rows.
 - `src/webview/lib/use-ref-menu.ts` — the hook binding the two together, shared by the composer and the create dialog.
 - `src/test/unit/session-refs.test.ts`
-- `src/test/unit/session-ref-menu.test.ts`
+- `src/test/unit/mention-menu.test.ts`
+- `src/test/unit/session-mentions.test.ts`
 - `src/test/dom/session-handoff.test.tsx`
 
 **Modified:**
@@ -737,6 +739,13 @@ git commit -m "feat: seed a new session with a handoff message"
 
 ### Task 5: The `@` menu library
 
+> **Superseded in part by Task 5b.** Task 5 shipped as written below. A
+> requirement then arrived — the same `@` menu will soon tag files in the
+> session's cwd — and Task 5b splits this module into source-agnostic
+> machinery (`mention-menu.ts`) plus a session source
+> (`session-mentions.ts`). Tasks 6 and 7 are written against the **5b** API.
+> The section below is kept as the record of what Task 5 built.
+
 **Files:**
 - Create: `src/webview/lib/session-ref-menu.ts`
 - Test: `src/test/unit/session-ref-menu.test.ts`
@@ -1083,11 +1092,12 @@ Create `src/webview/components/ref-menu.tsx`, mirroring the structure of the exi
 
 ```tsx
 import { cn } from '@/lib/utils';
-import type { RefOption } from '../lib/session-ref-menu';
+import type { MentionOption } from '../lib/mention-menu';
 
 /**
  * The `@` menu rows. Presentation only — every decision about what is in the
- * list, and what picking one does, lives in `lib/session-ref-menu.ts`.
+ * list, and what picking one does, lives in `lib/mention-menu.ts` and its
+ * source modules.
  *
  * `onMouseDown` with `preventDefault`, not `onClick`: the composer closes the
  * menu on blur, and a click that blurred the textarea first would unmount the
@@ -1096,10 +1106,10 @@ import type { RefOption } from '../lib/session-ref-menu';
 export function RefMenu({
   rows, activeIndex, listId, onPick,
 }: {
-  rows: RefOption[];
+  rows: MentionOption[];
   activeIndex: number;
   listId: string;
-  onPick: (option: RefOption) => void;
+  onPick: (option: MentionOption) => void;
 }) {
   if (rows.length === 0) {
     return (
@@ -1138,9 +1148,10 @@ Add imports:
 
 ```tsx
 import {
-  filterRefOptions, pruneRefs, refOptions, refQuery, spliceRef, tokenFor,
-  type PendingRef, type RefOption,
-} from "../lib/session-ref-menu";
+  filterMentions, mentionQuery, pruneMentions, sessionRefsOf, spliceMention, tokenFor,
+  type MentionOption, type PendingMention,
+} from "../lib/mention-menu";
+import { sessionMentions } from "../lib/session-mentions";
 import { RefMenu } from "./ref-menu";
 ```
 
@@ -1148,7 +1159,7 @@ Add state beside the existing `text`/`ghost` state:
 
 ```tsx
   const { state } = useStore();
-  const [refs, setRefs] = useState<PendingRef[]>([]);
+  const [refs, setRefs] = useState<PendingMention[]>([]);
   const [caret, setCaret] = useState(0);
   const [refDismissed, setRefDismissed] = useState(false);
 ```
@@ -1158,9 +1169,11 @@ Add state beside the existing `text`/`ghost` state:
 Add the derived menu state below the existing `menuOpen`/`view` block:
 
 ```tsx
-  const refHit = refDismissed ? undefined : refQuery(text, caret);
+  const refHit = refDismissed ? undefined : mentionQuery(text, caret);
+  // One array per source, concatenated. File tagging arrives as one more
+  // source here and changes nothing else.
   const refRows = refHit
-    ? filterRefOptions(refOptions(state.sessions, pane.summary.id), refHit.query)
+    ? filterMentions(sessionMentions(state.sessions, pane.summary.id), refHit.query)
     : [];
   // The two menus never share the screen: `/` only triggers on an empty box at
   // position 0, `@` only on a word boundary, and `menuOpen` wins if both ever
@@ -1173,24 +1186,21 @@ Add the derived menu state below the existing `menuOpen`/`view` block:
 Add the picker:
 
 ```tsx
-  const pickRef = (option: RefOption) => {
+  const pickRef = (option: MentionOption) => {
     if (!refHit) { return; }
-    if (option.kind === 'handoff') {
-      // The token is never inserted for handoff: it opens a dialog instead of
+    if (option.payload.kind === 'action') {
+      // An action row inserts no token: it opens a dialog instead of
       // referencing anything. Strip the query the user typed to get there.
-      setText(spliceRef(text, refHit.start, caret, '').text);
+      setText(spliceMention(text, refHit.start, caret, '').text);
       setHandoffOpen(true);
       setRefDismissed(true);
       return;
     }
     const token = tokenFor(option, refs.map((r) => r.token));
-    const next = spliceRef(text, refHit.start, caret, token);
+    const next = spliceMention(text, refHit.start, caret, token);
     setText(next.text);
     setCaret(next.caret);
-    setRefs([...refs, {
-      token,
-      ref: { sessionId: option.sessionId!, kind: option.kind, title: option.label },
-    }]);
+    setRefs([...refs, { token, payload: option.payload }]);
     setActiveIndex(0);
   };
 ```
@@ -1203,7 +1213,7 @@ In the textarea's `onChange`, keep the caret and prune in step:
           onChange={(e) => {
             setText(e.target.value);
             setCaret(e.target.selectionStart ?? e.target.value.length);
-            setRefs((current) => pruneRefs(e.target.value, current));
+            setRefs((current) => pruneMentions(e.target.value, current));
             setGhost("");
             setActiveIndex(0);
             setDismissed(false);
@@ -1246,10 +1256,10 @@ Send the refs in `submit`, and clear them:
 
 ```tsx
     } else {
-      const carried = pruneRefs(trimmed, refs);
+      const carried = sessionRefsOf(pruneMentions(trimmed, refs));
       post({
         t: "send", id: pane.summary.id, text: trimmed,
-        ...(carried.length > 0 ? { refs: carried.map((r) => r.ref) } : {}),
+        ...(carried.length > 0 ? { refs: carried } : {}),
       });
     }
     setText("");
@@ -1292,7 +1302,7 @@ git commit -m "feat: reference another session from the composer"
 - Test: `src/test/dom/session-handoff.test.tsx`
 
 **Interfaces:**
-- Consumes: `RefOption` with `kind: 'handoff'` from Task 5; `seed` on `create-session` from Task 4.
+- Consumes: `MentionOption` whose `payload.kind === 'action'` from Task 5b; `seed` on `create-session` from Task 4.
 - Produces:
   - `settingsFor(state: ClientState, sessionId: SessionId | null | undefined): CreateSettings | undefined`
   - `SessionCreateDialog` gains `seedable?: boolean`; `onCreate: (settings: CreateSettings, seed?: string) => void`
@@ -1498,7 +1508,7 @@ Derive the settings and render the dialog after the closing `</InputGroup>`:
           initial={handoffSettings}
           seedable
           onCreate={(chosen, seed) => {
-            const carried = pruneRefs(seed ?? "", refs);
+            const carried = sessionRefsOf(pruneMentions(seed ?? "", refs));
             post(createMessage(chosen, {
               text: seed ?? "",
               refs: carried.map((r) => r.ref),
@@ -1744,6 +1754,6 @@ git commit -m "fix: <what the verification turned up>"
 
 Not implemented, and correctly so — the spec lists these under "Deliberately not in this design": per-item hand-off buttons, a `diff` payload, whole-transcript payload, an agent-callable handoff tool.
 
-**Type consistency:** `RefKind`, `SessionRef`, `ResolvedBlock`, `PendingRef` and `RefOption` are each defined once (Tasks 1 and 5) and referenced by those names throughout. `findPayload`, `composePrompt`, `resolveRefs`, `noteError`, `openItemId`, `settingsFor` and `createMessage` keep the same signatures everywhere they appear.
+**Type consistency:** `RefKind`, `SessionRef`, `ResolvedBlock`, `PendingMention` and `MentionOption` are each defined once (Tasks 1 and 5b) and referenced by those names throughout. `findPayload`, `composePrompt`, `resolveRefs`, `noteError`, `openItemId`, `settingsFor` and `createMessage` keep the same signatures everywhere they appear.
 
 **One thing to watch during execution:** Task 6 changes `const { post } = useStore()` to `const { state, post } = useStore()` in the composer. If a later task's diff reintroduces the single-destructure form, `state` goes undefined and the `@` menu silently lists nothing.
