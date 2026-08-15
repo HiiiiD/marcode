@@ -229,11 +229,10 @@ function pathOf(record: Rec): string | undefined {
 }
 
 /**
- * Best-effort path list out of a Codex `fileChange` item's `changes` field.
- * That field is typed `unknown` upstream (map-events.ts / wire.ts) — Codex
- * has not published its shape here yet — so this only recognizes the two
- * plausible container shapes (an array of `{ path }` entries, or an object
- * keyed by path) and returns nothing rather than guessing further.
+ * Path list out of a Codex `fileChange` item's `changes` field. `changes` is
+ * typed `FileUpdateChange[]` upstream (wire.ts), but this still narrows
+ * defensively — it also accepts an object keyed by path — since a tool
+ * result crosses a JSON-RPC boundary and is worth treating as untrusted.
  */
 function fileChangePaths(changes: unknown): string[] {
   if (Array.isArray(changes)) {
@@ -397,10 +396,11 @@ export function describeInput(name: string, input: unknown): ToolBlock[] {
       break;
     }
 
-    // fileChange, dynamicToolCall and plan carry no fixed input shape worth a
-    // bespoke block (`changes` in particular is typed `unknown` upstream —
-    // see map-events.ts). They fall through to the JSON preview below, same
-    // as any tool this panel has never heard of.
+    // fileChange, dynamicToolCall and plan carry no fixed *input* shape worth
+    // a bespoke block — fileChange's `changes` is rendered from the *output*
+    // side instead (describeOutput's `filechange` branch, below). They fall
+    // through to the JSON preview here, same as any tool this panel has
+    // never heard of.
 
     default: {
       // An MCP tool, or one this panel has never heard of. An empty object
@@ -438,15 +438,26 @@ export function diffLines(input: unknown): string[] | undefined {
  * Strips a unified diff's `---`/`+++` file headers and `@@` hunk headers,
  * keeping only the body lines — already prefixed with `' '`/`'+'`/`'-'` by
  * the unified-diff format itself, which is exactly what the `diff` block
- * wants. Blank lines (typically a trailing one from the source string) are
- * dropped too: a real context line is never truly empty, since the format
- * always gives it a leading space.
+ * wants.
+ *
+ * This has to be positional, not prefix-matching: a deleted or added line
+ * can itself start with `--`/`++` (CSS custom properties — `-color-primary`
+ * with the diff's own `-`/`+` glued on reads as `--color-primary` — SQL/Lua
+ * `--` comments, C-style `++i`), so a bare `startsWith('---')` over every
+ * line drops real content. `---`/`+++` only ever appear in the file header,
+ * before the first `@@` hunk header; once a hunk has started, every
+ * remaining line is body, and only further `@@` lines are stripped.
  */
 function diffBodyLines(diff: string): string[] {
-  return diff
-    .split('\n')
-    .filter((line) => line.length > 0)
-    .filter((line) => !line.startsWith('---') && !line.startsWith('+++') && !line.startsWith('@@'));
+  const body: string[] = [];
+  let seenHunk = false;
+  for (const line of diff.split('\n')) {
+    if (line.length === 0) { continue; } // typically a trailing newline, never real content
+    if (line.startsWith('@@')) { seenHunk = true; continue; }
+    if (!seenHunk && (line.startsWith('---') || line.startsWith('+++'))) { continue; }
+    body.push(line);
+  }
+  return body;
 }
 
 /**

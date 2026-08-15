@@ -332,6 +332,44 @@ suite('describeOutput: codex', () => {
   test('an absent changes array does not throw and yields no diff or path blocks', () => {
     assert.deepStrictEqual(describeOutput('fileChange', {}, 'ok'), [{ kind: 'note', text: 'No file changes.' }]);
   });
+
+  test('a deleted line that itself starts with -- survives with its own - prefix', () => {
+    // Real content: `-color-primary` with the diff's own `-` glued on reads
+    // as `--color-primary`, which a prefix-matching header strip would drop.
+    const diff = '--- a/index.css\n+++ b/index.css\n@@ -1,2 +1,2 @@\n-  --color-primary: red;\n context';
+    const blocks = describeOutput('fileChange', {
+      changes: [{ path: '/index.css', kind: 'update', diff }],
+    }, 'ok');
+    const diffBlock = blocks.find((b) => b.kind === 'diff');
+    const lines = diffBlock && diffBlock.kind === 'diff' ? diffBlock.lines : [];
+    assert.strictEqual(lines.includes('-  --color-primary: red;'), true);
+  });
+
+  test('an added line that itself starts with ++ survives with its own + prefix', () => {
+    const diff = '--- a/index.css\n+++ b/index.css\n@@ -1 +1,2 @@\n context\n+  ++counter: 1;';
+    const blocks = describeOutput('fileChange', {
+      changes: [{ path: '/index.css', kind: 'update', diff }],
+    }, 'ok');
+    const diffBlock = blocks.find((b) => b.kind === 'diff');
+    const lines = diffBlock && diffBlock.kind === 'diff' ? diffBlock.lines : [];
+    assert.strictEqual(lines.includes('+  ++counter: 1;'), true);
+  });
+
+  test('a body line starting with -- in a later hunk of a multi-hunk diff also survives', () => {
+    const diff = [
+      '--- a/style.css', '+++ b/style.css',
+      '@@ -1,2 +1,2 @@', ' a', ' b',
+      '@@ -10,2 +10,2 @@', '-  --radius-md: 4px;', '+  --radius-md: 8px;',
+    ].join('\n');
+    const blocks = describeOutput('fileChange', {
+      changes: [{ path: '/style.css', kind: 'update', diff }],
+    }, 'ok');
+    const diffBlock = blocks.find((b) => b.kind === 'diff');
+    const lines = diffBlock && diffBlock.kind === 'diff' ? diffBlock.lines : [];
+    assert.strictEqual(lines.includes('-  --radius-md: 4px;'), true);
+    assert.strictEqual(lines.includes('+  --radius-md: 8px;'), true);
+    assert.strictEqual(lines.some((l) => l.startsWith('@@')), false);
+  });
 });
 
 // The three tools that drive a subagent fleet. Payloads below are copied from
