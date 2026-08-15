@@ -323,6 +323,71 @@ suite('AgentSession', () => {
     await session.dispose();
   });
 
+  test('turn-end settles a tool call whose tool-end never arrived', async () => {
+    // Measured against codex-cli 0.147.0: a provider that drops a `tool-end`
+    // — a crash, an interrupt, a notification the adapter did not recognize
+    // — used to leave the card spinning "Running…" forever, with the status
+    // dot already back to idle.
+    const provider = new FakeProvider(() => [
+      { kind: 'tool-start', id: 't1', tool: { kind: 'command', label: 'Shell', command: 'ls' } },
+      { kind: 'turn-end', reason: 'done' },
+    ]);
+    const session = new AgentSession(baseState(), provider, store, sink);
+    session.send('list files');
+    await settle();
+
+    const snap = await session.snapshot();
+    const tool = snap.items.find((i) => i.role === 'tool');
+    assert.strictEqual((tool as { state: string }).state, 'error');
+    assert.deepStrictEqual(
+      (tool as { output?: unknown }).output,
+      { kind: 'text', text: 'The agent ended this turn without reporting a result.' },
+    );
+    await session.dispose();
+  });
+
+  test('turn-end leaves an unsettled tool call its own output when it has one', async () => {
+    const provider = new FakeProvider(() => [
+      { kind: 'tool-start', id: 't1', tool: { kind: 'command', label: 'Shell', command: 'ls' } },
+      { kind: 'tool-end', id: 't1', ok: true, output: { kind: 'text', text: 'a.ts' } },
+      { kind: 'turn-end', reason: 'done' },
+    ]);
+    const session = new AgentSession(baseState(), provider, store, sink);
+    session.send('list files');
+    await settle();
+
+    const snap = await session.snapshot();
+    const tool = snap.items.find((i) => i.role === 'tool');
+    assert.strictEqual((tool as { state: string }).state, 'ok');
+    assert.deepStrictEqual(
+      (tool as { output?: unknown }).output,
+      { kind: 'text', text: 'a.ts' },
+    );
+    await session.dispose();
+  });
+
+  test('turn-end settles an unsettled child inside its parent', async () => {
+    const provider = new FakeProvider(() => [
+      { kind: 'tool-start', id: 'p1', tool: { kind: 'other', label: 'Task', raw: {} } },
+      {
+        kind: 'tool-start', id: 'c1', parentId: 'p1',
+        tool: { kind: 'command', label: 'Shell', command: 'ls' },
+      },
+      { kind: 'turn-end', reason: 'done' },
+    ]);
+    const session = new AgentSession(baseState(), provider, store, sink);
+    session.send('go');
+    await settle();
+
+    const snap = await session.snapshot();
+    const parent = snap.items.find((i) => i.role === 'tool');
+    assert.strictEqual((parent as { state: string }).state, 'error');
+    const children = (parent as { children?: { state?: string }[] }).children ?? [];
+    assert.strictEqual(children.length, 1);
+    assert.strictEqual(children[0].state, 'error');
+    await session.dispose();
+  });
+
   test('turn-end with error moves the session to error and appends an error item', async () => {
     const provider = new FakeProvider(() => [
       { kind: 'turn-end', reason: 'error', error: 'spawn failed' },

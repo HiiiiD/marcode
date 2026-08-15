@@ -127,6 +127,24 @@ export interface ContextBreakdown {
   freePercent: number;
   /** Absolute paths, with each file's share of the window. */
   memoryFiles: { path: string; percent: number }[];
+  /**
+   * The window's size in tokens, and how many of them are occupied.
+   *
+   * Every *share* on this interface is a percentage — that is what the slices
+   * and the ring are for, and a percentage is what a supervisor reads at a
+   * glance. These two exist because a percentage cannot answer "which window
+   * am I on": 17% of 258k and 17% of 1M are the same reading of very
+   * different sessions, and the model behind a session can change the
+   * denominator without changing anything on screen. They are the
+   * denominator and its numerator, quoted once, not a second unit for the
+   * breakdown to be re-read in.
+   *
+   * Both optional and reported together: a provider that cannot name its
+   * window omits both rather than pairing a real numerator with a guessed
+   * denominator.
+   */
+  usedTokens?: number;
+  windowTokens?: number;
 }
 
 /**

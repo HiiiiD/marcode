@@ -78,12 +78,15 @@ export function toUsageWindows(snapshot: RateLimitSnapshot): UsageWindow[] {
 export function toContextBreakdown(usage: ThreadTokenUsage): ContextBreakdown | undefined {
   const window = usage.modelContextWindow;
   if (!window || window <= 0) { return undefined; }
-  const used = Math.min(100, Math.round((usage.last.totalTokens / window) * 100));
+  const tokens = usage.last.totalTokens;
+  const used = Math.min(100, Math.round((tokens / window) * 100));
   return {
     systemPercent: 0,
     memoryPercent: 0,
     conversationPercent: used,
     freePercent: 100 - used,
     memoryFiles: [],
+    usedTokens: tokens,
+    windowTokens: window,
   };
 }
