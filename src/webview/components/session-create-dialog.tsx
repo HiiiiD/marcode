@@ -44,8 +44,12 @@ export function SessionCreateDialog({
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[85vh] gap-3 overflow-y-auto">
-        <DialogHeader>
+      {/* Flex column, not the default grid, so the scroll lives on the form's
+          body alone: a dialog that scrolls as one unit takes Create and Cancel
+          off screen with it, and the model list is long enough in a 300px
+          sidebar that they always are. */}
+      <DialogContent className="flex max-h-[85vh] flex-col gap-3 overflow-hidden">
+        <DialogHeader className="shrink-0">
           <DialogTitle>New session</DialogTitle>
         </DialogHeader>
         {/* Keyed on the settings it opens with, so reopening starts from
@@ -107,86 +111,92 @@ function CreateForm({
 
   return (
     <>
-      <div className="flex flex-col gap-2">
-        <p className="text-xs font-medium text-muted-foreground">Model</p>
-        <RadioGroup value={picked} onValueChange={(v) => { setPicked(String(v)); setEffort(null); }}>
-          {catalog.map((p) => (
-            <div key={p.id} role="group" aria-label={p.displayName} className="flex flex-col gap-1">
-              {named && (
-                <p className="px-0.5 text-[0.65rem] tracking-wide text-muted-foreground uppercase">
-                  {p.displayName}
-                </p>
-              )}
-              {p.models.map((m) => (
-                <label
-                  key={m.id}
-                  className={cn(
-                    "flex cursor-pointer items-center gap-2 rounded-md px-1.5 py-1.5",
-                    "hover:bg-accent hover:text-accent-foreground",
-                  )}
-                >
-                  <RadioGroupItem value={valueOf(p.id, m.id)} />
-                  <span className="min-w-0 truncate">{m.displayName}</span>
-                </label>
-              ))}
-            </div>
-          ))}
-        </RadioGroup>
-      </div>
+      {/* `min-h-0` or the flex item refuses to shrink below its content and
+          the popup grows past `max-h` instead of scrolling here. The negative
+          margins put the scrollbar on the popup's edge rather than inside its
+          padding. */}
+      <div className="-mx-4 flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4">
+        <div className="flex flex-col gap-2">
+          <p className="text-xs font-medium text-muted-foreground">Model</p>
+          <RadioGroup value={picked} onValueChange={(v) => { setPicked(String(v)); setEffort(null); }}>
+            {catalog.map((p) => (
+              <div key={p.id} role="group" aria-label={p.displayName} className="flex flex-col gap-1">
+                {named && (
+                  <p className="px-0.5 text-[0.65rem] tracking-wide text-muted-foreground uppercase">
+                    {p.displayName}
+                  </p>
+                )}
+                {p.models.map((m) => (
+                  <label
+                    key={m.id}
+                    className={cn(
+                      "flex cursor-pointer items-center gap-2 rounded-md px-1.5 py-1.5",
+                      "hover:bg-accent hover:text-accent-foreground",
+                    )}
+                  >
+                    <RadioGroupItem value={valueOf(p.id, m.id)} />
+                    <span className="min-w-0 truncate">{m.displayName}</span>
+                  </label>
+                ))}
+              </div>
+            ))}
+          </RadioGroup>
+        </div>
 
-      {scale && level && scale.levels.length > 0 && (
-        <EffortSlider
-          levels={scale.levels}
-          value={level}
-          onChange={setEffort}
-          // Focusable in its own right here: no menu owns roving focus in a
-          // dialog, so the row has to be reachable by Tab or the arrow keys
-          // it listens for can never be delivered to it.
-          render={(props) => (
-            <div
-              tabIndex={0}
-              className={cn(
-                "flex items-center gap-3 rounded-md px-1.5 outline-none",
-                "focus-visible:ring-3 focus-visible:ring-ring/50",
-              )}
-              {...props}
-            />
-          )}
-        />
-      )}
+        {scale && level && scale.levels.length > 0 && (
+          <EffortSlider
+            levels={scale.levels}
+            value={level}
+            onChange={setEffort}
+            // Focusable in its own right here: no menu owns roving focus in a
+            // dialog, so the row has to be reachable by Tab or the arrow keys
+            // it listens for can never be delivered to it.
+            render={(props) => (
+              <div
+                tabIndex={0}
+                className={cn(
+                  "flex items-center gap-3 rounded-md px-1.5 outline-none",
+                  "focus-visible:ring-3 focus-visible:ring-ring/50",
+                )}
+                {...props}
+              />
+            )}
+          />
+        )}
 
-      <div className="flex flex-col gap-2">
-        <p className="text-xs font-medium text-muted-foreground">Permission mode</p>
-        <RadioGroup value={effectiveMode} onValueChange={(v) => setMode(v as PermissionMode)}>
-          {rows.map((m) => (
-            <div
-              key={m.value}
-              className={cn(
-                "flex flex-col gap-0.5 rounded-md px-1.5 py-1.5",
-                "hover:bg-accent hover:text-accent-foreground",
-              )}
-            >
-              {/* The sentence is a description, not part of the name: a
-                  radio announcing itself as "Plan Read and propose. Nothing
-                  on disk is changed." buries the one word being chosen
-                  between. `aria-describedby` says it after the name. */}
-              <label className="flex cursor-pointer items-center gap-2 font-medium">
-                <RadioGroupItem value={m.value} aria-describedby={`${ids}-${m.value}`} />
-                <m.icon className="size-3.5 text-muted-foreground" aria-hidden />
-                {m.label}
-              </label>
-              <span
-                id={`${ids}-${m.value}`}
-                className="pl-6 text-xs leading-snug text-muted-foreground"
+        <div className="flex flex-col gap-2">
+          <p className="text-xs font-medium text-muted-foreground">Permission mode</p>
+          <RadioGroup value={effectiveMode} onValueChange={(v) => setMode(v as PermissionMode)}>
+            {rows.map((m) => (
+              <div
+                key={m.value}
+                className={cn(
+                  "flex flex-col gap-0.5 rounded-md px-1.5 py-1.5",
+                  "hover:bg-accent hover:text-accent-foreground",
+                )}
               >
-                {m.description}
-              </span>
-            </div>
-          ))}
-        </RadioGroup>
+                {/* The sentence is a description, not part of the name: a
+                    radio announcing itself as "Plan Read and propose. Nothing
+                    on disk is changed." buries the one word being chosen
+                    between. `aria-describedby` says it after the name. */}
+                <label className="flex cursor-pointer items-center gap-2 font-medium">
+                  <RadioGroupItem value={m.value} aria-describedby={`${ids}-${m.value}`} />
+                  <m.icon className="size-3.5 text-muted-foreground" aria-hidden />
+                  {m.label}
+                </label>
+                <span
+                  id={`${ids}-${m.value}`}
+                  className="pl-6 text-xs leading-snug text-muted-foreground"
+                >
+                  {m.description}
+                </span>
+              </div>
+            ))}
+          </RadioGroup>
+        </div>
       </div>
 
-      <DialogFooter>
+      <DialogFooter className="shrink-0">
         <DialogClose render={<Button variant="outline" size="sm" />}>Cancel</DialogClose>
         <Button
           size="sm"
