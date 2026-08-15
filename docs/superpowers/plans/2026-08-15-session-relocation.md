@@ -744,7 +744,10 @@ the `tool-end` case (after `this.replaceItem(settled)`):
         return;
 ```
 
-Do the same on the child branch, before its `return`. Then add the method:
+Do **not** do the same on the child branch. Decided 2026-08-15: only top-level
+calls raise an offer. A subagent's worktree is a side quest with no claim on
+where the parent conversation lives, and a fan-out of subagents doing tree work
+would post one card each. Then add the method:
 
 ```ts
   /**
