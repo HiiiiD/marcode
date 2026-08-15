@@ -89,6 +89,7 @@ suite('CatalogService', () => {
     const bare: AgentProvider = {
       id: 'bare',
       displayName: 'Bare',
+      threadScope: 'cwd',
       listModels: () => [],
       listPermissionModes: () => [],
       start: () => { throw new Error('not used in this test'); },
@@ -126,6 +127,7 @@ suite('CatalogService', () => {
     const provider: AgentProvider = {
       id: 'fake',
       displayName: 'Fake',
+      threadScope: 'cwd',
       listModels: () => [],
       listPermissionModes: () => [],
       start: () => { throw new Error('not used in this test'); },

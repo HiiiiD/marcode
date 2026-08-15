@@ -10,6 +10,7 @@ import type {
   UsageWindow,
 } from '../providers/types';
 import { findModel, resolveEffort } from '../shared/model-catalog';
+import { threadKey } from '../shared/thread-key';
 import type { TranscriptStore } from './transcript-store';
 
 export interface SessionSink {
@@ -90,7 +91,9 @@ export class AgentSession {
       model: _state.model,
       effort: _state.effort,
       permissionMode: _state.permissionMode,
-      resumeToken: _state.resumeToken,
+      resumeToken: _state.resumeTokens[
+        threadKey(provider.id, provider.threadScope, _state.cwd)
+      ],
     });
     this.pumping = this.pump();
   }
@@ -389,7 +392,9 @@ export class AgentSession {
   private handle(event: AgentEvent): void {
     switch (event.kind) {
       case 'session':
-        this._state.resumeToken = event.resumeToken;
+        this._state.resumeTokens[
+          threadKey(this.provider.id, this.provider.threadScope, this._state.cwd)
+        ] = event.resumeToken;
         this.sink.changed();
         return;
 

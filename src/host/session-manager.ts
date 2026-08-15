@@ -375,6 +375,7 @@ export class SessionManager implements SessionSink {
       id: newSessionId(), providerId, model: chosen.id, effort: resolvedEffort,
       title: 'Untitled', cwd, status: 'idle', permissionMode: resolvedMode,
       includeEditorContext: true,
+      resumeTokens: {},
       usage: { inputTokens: 0, outputTokens: 0 },
       archived: false, createdAt: now, updatedAt: now,
     };

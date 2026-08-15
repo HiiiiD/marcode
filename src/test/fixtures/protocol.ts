@@ -29,6 +29,7 @@ export function summary(id: string, over: Partial<SessionSummary> = {}): Session
     status: 'idle',
     permissionMode: 'default',
     includeEditorContext: true,
+    resumeTokens: {},
     usage: { inputTokens: 0, outputTokens: 0 },
     archived: false,
     createdAt: 1,

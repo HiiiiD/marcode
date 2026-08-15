@@ -1,6 +1,6 @@
 import { spawn as spawnChildProcess } from 'node:child_process';
 import type {
-  AgentProvider, AgentRun, Invocable, ModelInfo, PermissionModeInfo, StartOptions, UsageWindow,
+  AgentProvider, AgentRun, Invocable, ModelInfo, PermissionModeInfo, StartOptions, ThreadScope, UsageWindow,
 } from '../types';
 import { AppServer, type Duplex, type RequestId } from './app-server';
 import { CodexRun, type CodexConnection } from './codex-run';
@@ -101,6 +101,8 @@ class ThreadView implements CodexConnection {
 export class CodexProvider implements AgentProvider {
   readonly id = 'codex';
   readonly displayName = 'Codex';
+  // 'cwd' until Task 11 measures otherwise — see the spec's Open Questions.
+  readonly threadScope: ThreadScope = 'cwd';
 
   /**
    * The last answer from `fetchModels()`, and the whole of what this

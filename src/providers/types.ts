@@ -211,9 +211,26 @@ export interface AgentRun {
   dispose(): Promise<void>;
 }
 
+/**
+ * Whether a resume token is valid only in the directory that produced it.
+ *
+ * 'cwd'    — history is stored per working directory (Claude:
+ *            ~/.claude/projects/<slug>). Crossing directories needs a new
+ *            thread, seeded by replay.
+ * 'global' — a token resolves anywhere (Codex: threads keyed by threadId).
+ *            Crossing directories is a native resume and costs nothing.
+ *
+ * Declaring 'cwd' when the truth is 'global' costs tokens. Declaring 'global'
+ * when the truth is 'cwd' costs correctness: the resume silently finds
+ * nothing and the agent comes up blank behind a full transcript. 'cwd' is the
+ * safe default and 'global' must be measured before it is claimed.
+ */
+export type ThreadScope = 'cwd' | 'global';
+
 export interface AgentProvider {
   readonly id: string;
   readonly displayName: string;
+  readonly threadScope: ThreadScope;
   /**
    * What is known about this provider's models *right now* — a cache, not a
    * source of truth. Synchronous because session creation and the roster read

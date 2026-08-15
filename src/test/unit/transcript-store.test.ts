@@ -88,6 +88,7 @@ suite('TranscriptStore', () => {
       sessions: [{
         id: 's1', providerId: 'fake', model: 'fake-large', title: 'T', cwd: '/tmp',
         status: 'idle', permissionMode: 'default', includeEditorContext: true,
+        resumeTokens: {},
         usage: { inputTokens: 0, outputTokens: 0 },
         archived: false, createdAt: 1, updatedAt: 1,
       }],

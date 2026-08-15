@@ -3,7 +3,7 @@ import type {
   ContextBreakdown,
   EditorContext,
   EffortLevel, Invocable, ModelInfo, PermissionMode, PermissionModeInfo,
-  StartOptions, ToolDecision,
+  StartOptions, ThreadScope, ToolDecision,
   UsageWindow
 } from '../types';
 
@@ -61,6 +61,7 @@ export interface FakeReports {
 export class FakeProvider implements AgentProvider {
   readonly id = 'fake';
   readonly displayName = 'Fake';
+  readonly threadScope: ThreadScope = 'cwd';
   /** Records every decision passed to respondToTool, for assertions. */
   readonly decisions = new Map<string, ToolDecision>();
   /** Records every mode passed to setPermissionMode, for assertions. */

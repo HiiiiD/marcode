@@ -49,7 +49,12 @@ export interface SessionState {
   permissionMode: PermissionMode;
   /** Whether sends from this session attach the editor context. Sticky. */
   includeEditorContext: boolean;
-  resumeToken?: string;
+  /**
+   * One resume token per provider thread, keyed by `threadKey()`. A session
+   * that has run in several working trees holds several, so returning to one
+   * it has already used is a native resume rather than a replay.
+   */
+  resumeTokens: Record<string, string>;
   usage: { inputTokens: number; outputTokens: number };
   /**
    * Share of the model's context window in use, `100 - freePercent`.

@@ -504,7 +504,8 @@ suite('SessionManager', () => {
     return {
       id: 's1', providerId: 'fake', model: 'fake-1', title: 'Restored',
       cwd: '/tmp', status: 'idle', permissionMode: 'default',
-      includeEditorContext: true, usage: { inputTokens: 0, outputTokens: 0 },
+      includeEditorContext: true, resumeTokens: {},
+      usage: { inputTokens: 0, outputTokens: 0 },
       contextPercent: 43, lastContext: remembered,
       archived: false, createdAt: 1, updatedAt: 1, ...over,
     };
@@ -559,6 +560,7 @@ suite('SessionManager', () => {
     const provider: AgentProvider = {
       id: base.id,
       displayName: base.displayName,
+      threadScope: 'cwd',
       listModels: () => base.listModels(),
       listPermissionModes: () => base.listPermissionModes(),
       start: (opts) => ({
@@ -938,7 +940,7 @@ suite('SessionManager', () => {
   function modelProvider(id: string, onFetch?: () => Promise<never>): AgentProvider {
     let models: ModelInfo[] = [{ id: 'stale', displayName: 'Stale' }];
     return {
-      id, displayName: id,
+      id, displayName: id, threadScope: 'cwd',
       listModels: () => models,
       listPermissionModes: () => [],
       fetchModels: async (cwd: string) => {
@@ -973,7 +975,7 @@ suite('SessionManager', () => {
   /** A provider that can offer nothing until — and unless — a probe succeeds. */
   function unavailableProvider(id: string, reason: string): AgentProvider {
     return {
-      id, displayName: id,
+      id, displayName: id, threadScope: 'cwd',
       listModels: () => [],
       listPermissionModes: () => [],
       fetchModels: () => Promise.reject(new Error(reason)),
@@ -1097,7 +1099,7 @@ suite('SessionManager', () => {
     let fail = true;
     let models: ModelInfo[] = [];
     const flaky: AgentProvider = {
-      id: 'claude', displayName: 'Claude',
+      id: 'claude', displayName: 'Claude', threadScope: 'cwd',
       listModels: () => models,
       listPermissionModes: () => [],
       fetchModels: async () => {
@@ -1140,7 +1142,7 @@ suite('SessionManager', () => {
 
   test('create resolves a requested wire id onto the alias row covering it', async () => {
     const aliasProvider: AgentProvider = {
-      id: 'claude', displayName: 'Claude',
+      id: 'claude', displayName: 'Claude', threadScope: 'cwd',
       listModels: () => [
         { id: 'opus', displayName: 'Opus', resolvedModel: 'claude-opus-5',
           effort: { levels: ['low', 'high'], default: 'high' } },
@@ -1211,7 +1213,7 @@ suite('SessionManager', () => {
     // function. `async () => { throw }` (used above) can only ever produce a
     // rejected promise, so it does not exercise this path.
     const broken: AgentProvider = {
-      id: 'broken', displayName: 'Broken',
+      id: 'broken', displayName: 'Broken', threadScope: 'cwd',
       listModels: () => [],
       listPermissionModes: () => [],
       start: () => { throw new Error('not used'); },

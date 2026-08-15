@@ -8,7 +8,7 @@ function snapshot(over: Partial<SessionSnapshot> = {}): SessionSnapshot {
   return {
     id: 's1', providerId: 'claude', model: 'claude-opus-5', title: 'hiiiid-code',
     cwd: '/work/hiiiid-code', status: 'idle', permissionMode: 'default',
-    usage: { inputTokens: 0, outputTokens: 0 },
+    usage: { inputTokens: 0, outputTokens: 0 }, resumeTokens: {},
     archived: false, createdAt: 1, updatedAt: 1, includeEditorContext: true,
     items: [], hasMore: false, pending: [], mcpServers: [], ...over,
   };
