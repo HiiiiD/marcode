@@ -59,12 +59,24 @@ export interface ThreadTokenUsage {
   modelContextWindow: number | null;
 }
 
+/**
+ * One touched file inside a `fileChange` item — verified against codex-cli
+ * 0.147.0. `diff` is a FULL unified diff, `---`/`+++` file headers and `@@`
+ * hunk headers included, not just the changed body lines.
+ */
+export interface FileUpdateChange {
+  path: string;
+  /** 'add' | 'delete' | 'update' in practice; kept open, the renderer does not branch on it. */
+  kind: string;
+  diff: string;
+}
+
 export type ThreadItem =
   | { type: 'agentMessage'; id: string; text: string }
   | { type: 'reasoning'; id: string; summary: string[]; content: string[] }
   | { type: 'commandExecution'; id: string; command: string; cwd: string;
       status?: string; aggregatedOutput?: string; exitCode?: number | null }
-  | { type: 'fileChange'; id: string; status?: string; changes?: unknown }
+  | { type: 'fileChange'; id: string; status?: string; changes?: FileUpdateChange[] }
   | { type: 'mcpToolCall'; id: string; server: string; toolName: string;
       status?: string; result?: unknown }
   | { type: 'webSearch'; id: string; query?: string }

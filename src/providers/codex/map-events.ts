@@ -112,6 +112,12 @@ function outputOf(item: ThreadItem): unknown {
     // AgentEvent has no tool-output-delta, so this matches Claude's behavior.
     return c.aggregatedOutput ?? '';
   }
+  if (item.type === 'fileChange') {
+    const f = item as Extract<ThreadItem, { type: 'fileChange' }>;
+    // A typed array, not the whole item — the renderer narrows this shape in
+    // tool-render.ts rather than guessing at an opaque record.
+    return { changes: f.changes ?? [] };
+  }
   return item;
 }
 

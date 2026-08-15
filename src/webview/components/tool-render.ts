@@ -12,7 +12,7 @@ import { safeStringify } from './tool-card-format';
 /** Which lucide glyph the card draws. Resolved to a component in tool-body.tsx. */
 export type ToolGlyph =
   | 'terminal' | 'file-pen' | 'file-plus' | 'file-text' | 'search'
-  | 'folder-search' | 'globe' | 'list-todo' | 'wrench';
+  | 'folder-search' | 'globe' | 'list-todo' | 'bot' | 'send' | 'wrench';
 
 export interface ToolHeader {
   glyph: ToolGlyph;
@@ -168,6 +168,22 @@ export function describeTool(name: string, input: unknown): ToolHeader {
       return header('list-todo', str(active?.activeForm) ?? str(active?.content)
         ?? `${todos.length} ${todos.length === 1 ? 'item' : 'items'}`, false);
     }
+
+    // The subagent family. `Agent` is the current name and `Task` the older
+    // one; both carry `subagent_type`, which is the identifying fact — "Explore"
+    // says what is running where the tool's own name is only SDK vocabulary.
+    case 'agent':
+    case 'task':
+      return header('bot', str(record.subagent_type) ?? str(record.name)
+        ?? str(record.description), false);
+
+    // `to` is an opaque agent id, so the model-written `summary` is the only
+    // part of a SendMessage a reader can act on.
+    case 'sendmessage':
+      return header('send', str(record.summary) ?? str(record.to) ?? str(record.recipient), false);
+
+    case 'taskoutput':
+      return header('bot', str(record.task_id), true);
 
     // Codex tool kinds below. Names are the raw `ThreadItem.type` string from
     // map-events.ts, so no PascalCase translation happens for these.
@@ -342,6 +358,45 @@ export function describeInput(name: string, input: unknown): ToolBlock[] {
       break;
     }
 
+    case 'agent':
+    case 'task': {
+      if (note) { blocks.push({ kind: 'note', text: note }); }
+      const agent = str(record.subagent_type);
+      if (agent) { blocks.push({ kind: 'field', label: 'agent', value: agent }); }
+      const model = str(record.model);
+      if (model) { blocks.push({ kind: 'field', label: 'model', value: model }); }
+      const isolation = str(record.isolation);
+      if (isolation) { blocks.push({ kind: 'field', label: 'isolation', value: isolation }); }
+      // The brief is the whole point of the card — a subagent's transcript is
+      // not in this panel, so this is the only place its instructions appear.
+      const prompt = str(record.prompt);
+      if (prompt) { blocks.push({ kind: 'lines', text: prompt, tone: 'output' }); }
+      break;
+    }
+
+    case 'sendmessage': {
+      const to = str(record.to) ?? str(record.recipient);
+      if (to) { blocks.push({ kind: 'field', label: 'to', value: to }); }
+      const summary = str(record.summary);
+      if (summary) { blocks.push({ kind: 'note', text: summary }); }
+      const message = str(record.message) ?? str(record.content);
+      if (message) { blocks.push({ kind: 'lines', text: message, tone: 'output' }); }
+      break;
+    }
+
+    case 'taskoutput': {
+      const taskId = str(record.task_id);
+      if (taskId) { blocks.push({ kind: 'field', label: 'task', value: taskId }); }
+      // Blocking is what distinguishes a collect-now call from a peek, and it
+      // explains a card that sits running for ten minutes.
+      if (record.block === true) {
+        blocks.push({ kind: 'field', label: 'wait', value: 'until done' });
+      }
+      const timeout = num(record.timeout);
+      if (timeout) { blocks.push({ kind: 'field', label: 'timeout', value: `${timeout / 1000}s` }); }
+      break;
+    }
+
     // fileChange, dynamicToolCall and plan carry no fixed input shape worth a
     // bespoke block (`changes` in particular is typed `unknown` upstream —
     // see map-events.ts). They fall through to the JSON preview below, same
@@ -379,11 +434,55 @@ export function diffLines(input: unknown): string[] | undefined {
   return lines;
 }
 
+/**
+ * Strips a unified diff's `---`/`+++` file headers and `@@` hunk headers,
+ * keeping only the body lines — already prefixed with `' '`/`'+'`/`'-'` by
+ * the unified-diff format itself, which is exactly what the `diff` block
+ * wants. Blank lines (typically a trailing one from the source string) are
+ * dropped too: a real context line is never truly empty, since the format
+ * always gives it a leading space.
+ */
+function diffBodyLines(diff: string): string[] {
+  return diff
+    .split('\n')
+    .filter((line) => line.length > 0)
+    .filter((line) => !line.startsWith('---') && !line.startsWith('+++') && !line.startsWith('@@'));
+}
+
+/**
+ * A Codex `fileChange` result: one `path` + `diff` block pair per touched
+ * file, mirroring how the Claude arm pairs them for `edit` / `write`.
+ * `changes` is an array typed upstream by map-events.ts; still narrowed
+ * defensively since a tool result crosses a JSON-RPC boundary.
+ */
+function fileChangeBlocks(output: unknown): ToolBlock[] {
+  const changes = asRecord(output).changes;
+  const blocks: ToolBlock[] = [];
+  if (Array.isArray(changes)) {
+    for (const raw of changes) {
+      const change = asRecord(raw);
+      const path = str(change.path);
+      if (path) { blocks.push({ kind: 'path', path }); }
+      const diff = str(change.diff);
+      if (diff) {
+        const lines = diffBodyLines(diff);
+        // A rename- or mode-only change has headers and no body left after
+        // stripping them; an empty diff block would show an empty bordered
+        // box with nothing in it.
+        if (lines.length > 0) { blocks.push({ kind: 'diff', lines }); }
+      }
+    }
+  }
+  return blocks.length > 0 ? blocks : [{ kind: 'note', text: 'No file changes.' }];
+}
+
 /** The result side of the expanded card. */
 export function describeOutput(
   name: string, output: unknown, state: 'running' | 'ok' | 'error',
 ): ToolBlock[] {
   if (state === 'running') { return []; }
+
+  if (state === 'ok' && key(name) === 'filechange') { return fileChangeBlocks(output); }
 
   const text = outputText(output);
   if (text.trim().length === 0) {
@@ -395,6 +494,25 @@ export function describeOutput(
   if (state === 'error') { return [{ kind: 'lines', text, tone: 'error' }]; }
 
   const k = key(name);
+
+  // SendMessage answers with a JSON envelope — `{"success":true,"message":
+  // "Agent \"…\" had no active task; resumed from transcript…"}` — whose only
+  // readable part is `message`. Left alone it renders as a line of escaped
+  // JSON, which is the noisiest possible way to say "queued".
+  if (k === 'sendmessage') {
+    const note = str(asRecord(parseJson(text)).message);
+    if (note) { return [{ kind: 'note', text: note }]; }
+  }
+
   const tone = k === 'read' || k === 'glob' || k === 'grep' ? 'code' : 'output';
   return [{ kind: 'lines', text, tone }];
+}
+
+/** `JSON.parse` that returns `undefined` instead of throwing on a non-JSON result. */
+function parseJson(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return undefined;
+  }
 }

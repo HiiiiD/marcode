@@ -53,6 +53,23 @@ suite('mapNotification', () => {
     assert.strictEqual(event.kind === 'tool-end' && event.ok, false);
   });
 
+  test('a completed file change carries its per-file diffs', () => {
+    const [event] = mapNotification('item/completed', {
+      item: {
+        type: 'fileChange', id: 'it_5', status: 'completed',
+        changes: [
+          { path: '/repo/a.ts', kind: 'update', diff: '--- a/a.ts\n+++ b/a.ts\n@@ -1,2 +1,2 @@\n-old\n+new\n context' },
+          { path: '/repo/b.ts', kind: 'add', diff: '--- /dev/null\n+++ b/b.ts\n@@ -0,0 +1 @@\n+added' },
+        ],
+      },
+    });
+    assert.strictEqual(event.kind, 'tool-end');
+    // The mapper must pass the typed array through rather than the whole item,
+    // so the renderer receives something it can narrow.
+    const output = event.kind === 'tool-end' ? event.output as { changes: unknown[] } : undefined;
+    assert.strictEqual(output?.changes.length, 2);
+  });
+
   test('an agent message item completing is not a tool', () => {
     // The text already arrived as deltas; emitting a tool row for it would
     // double the assistant's turn in the transcript.

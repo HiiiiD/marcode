@@ -293,6 +293,148 @@ suite('describeOutput: codex', () => {
     const blocks = describeOutput('commandExecution', 'a\nb', 'ok');
     assert.strictEqual(blocks.some((b) => b.kind === 'lines' && b.tone === 'output'), true);
   });
+
+  test('a file change renders one path and one diff block per file', () => {
+    const blocks = describeOutput('fileChange', {
+      changes: [
+        { path: '/a.ts', kind: 'update', diff: '--- a/a.ts\n+++ b/a.ts\n@@ -1,2 +1,2 @@\n-old\n+new\n context' },
+        { path: '/b.ts', kind: 'add', diff: '--- /dev/null\n+++ b/b.ts\n@@ -0,0 +1 @@\n+added' },
+      ],
+    }, 'ok');
+    assert.strictEqual(blocks.filter((b) => b.kind === 'path').length, 2);
+    assert.strictEqual(blocks.filter((b) => b.kind === 'diff').length, 2);
+  });
+
+  test('unified diff headers and hunk markers are stripped from the body', () => {
+    const blocks = describeOutput('fileChange', {
+      changes: [
+        { path: '/a.ts', kind: 'update', diff: '--- a/a.ts\n+++ b/a.ts\n@@ -1,2 +1,2 @@\n-old\n+new\n context' },
+      ],
+    }, 'ok');
+    const diffBlock = blocks.find((b) => b.kind === 'diff');
+    const lines = diffBlock && diffBlock.kind === 'diff' ? diffBlock.lines : [];
+    assert.strictEqual(lines.some((l) => l.startsWith('---') || l.startsWith('+++')), false);
+    assert.strictEqual(lines.some((l) => l.startsWith('@@')), false);
+    assert.strictEqual(lines.includes('-old'), true);
+    assert.strictEqual(lines.includes('+new'), true);
+  });
+
+  test('a diff with no body lines yields no empty diff block', () => {
+    const blocks = describeOutput('fileChange', {
+      changes: [
+        { path: '/renamed.ts', kind: 'update', diff: '--- a/old.ts\n+++ b/renamed.ts\n' },
+      ],
+    }, 'ok');
+    assert.strictEqual(blocks.some((b) => b.kind === 'path'), true);
+    assert.strictEqual(blocks.some((b) => b.kind === 'diff'), false);
+  });
+
+  test('an absent changes array does not throw and yields no diff or path blocks', () => {
+    assert.deepStrictEqual(describeOutput('fileChange', {}, 'ok'), [{ kind: 'note', text: 'No file changes.' }]);
+  });
+});
+
+// The three tools that drive a subagent fleet. Payloads below are copied from
+// real transcripts under ~/.claude/projects rather than invented: `SendMessage`
+// takes `to`/`summary`/`message` (not the `agent_id`/`prompt` pair a reader
+// might assume), and its result is a JSON envelope, not prose.
+suite('the Agent / SendMessage / TaskOutput family', () => {
+  test('a spawned agent leads with its type, not the word Agent', () => {
+    const header = describeTool('Agent', {
+      description: 'Review the diff', prompt: 'Read every changed file…', subagent_type: 'Explore',
+    });
+    assert.strictEqual(header.glyph, 'bot');
+    assert.strictEqual(header.primary, 'Explore');
+    assert.strictEqual(header.mono, false);
+  });
+
+  test('an untyped agent falls back to its name, then to its description', () => {
+    assert.strictEqual(describeTool('Agent', { name: 'task-7', prompt: 'x' }).primary, 'task-7');
+    assert.strictEqual(describeTool('Agent', { description: 'Fix it', prompt: 'x' }).primary, 'Fix it');
+  });
+
+  test('Task is the same tool as Agent under its older name', () => {
+    assert.strictEqual(describeTool('Task', { subagent_type: 'Plan' }).primary, 'Plan');
+  });
+
+  test('a message to an agent leads with its summary — the id means nothing to a reader', () => {
+    const header = describeTool('SendMessage', {
+      to: 'aa124f004ce1e2bea', summary: 'Fix round 2: hydrate reopens closed sessions',
+      message: 'Fix round 2 of 5. All four round-1 findings verified ADDRESSED…',
+    });
+    assert.strictEqual(header.glyph, 'send');
+    assert.strictEqual(header.primary, 'Fix round 2: hydrate reopens closed sessions');
+  });
+
+  test('an unsummarized message falls back to the recipient', () => {
+    assert.strictEqual(
+      describeTool('SendMessage', { to: 'aa124f004ce1e2bea', message: 'go' }).primary,
+      'aa124f004ce1e2bea',
+    );
+  });
+
+  test('a task output leads with the id it is collecting, in the editor font', () => {
+    const header = describeTool('TaskOutput', {
+      task_id: 'a21af635b3b176c93', block: true, timeout: 600000,
+    });
+    assert.strictEqual(header.glyph, 'bot');
+    assert.strictEqual(header.primary, 'a21af635b3b176c93');
+    assert.strictEqual(header.mono, true);
+  });
+
+  test('an agent body carries the brief it was actually given', () => {
+    assert.deepStrictEqual(describeInput('Agent', {
+      description: 'Review the diff', prompt: 'Read every changed file.',
+      subagent_type: 'Explore', isolation: 'worktree',
+    }), [
+      { kind: 'note', text: 'Review the diff' },
+      { kind: 'field', label: 'agent', value: 'Explore' },
+      { kind: 'field', label: 'isolation', value: 'worktree' },
+      { kind: 'lines', text: 'Read every changed file.', tone: 'output' },
+    ]);
+  });
+
+  test('a message body shows the recipient and the message itself', () => {
+    assert.deepStrictEqual(describeInput('SendMessage', {
+      to: 'aa124f004ce1e2bea', summary: 'Round 3', message: 'Fix round 3 of 5.',
+    }), [
+      { kind: 'field', label: 'to', value: 'aa124f004ce1e2bea' },
+      { kind: 'note', text: 'Round 3' },
+      { kind: 'lines', text: 'Fix round 3 of 5.', tone: 'output' },
+    ]);
+  });
+
+  test('a task output body says whether it is blocking, and for how long', () => {
+    assert.deepStrictEqual(describeInput('TaskOutput', {
+      task_id: 'a0473e1345b5c9162', block: true, timeout: 600000,
+    }), [
+      { kind: 'field', label: 'task', value: 'a0473e1345b5c9162' },
+      { kind: 'field', label: 'wait', value: 'until done' },
+      { kind: 'field', label: 'timeout', value: '600s' },
+    ]);
+  });
+
+  test('a send result is unwrapped from its JSON envelope', () => {
+    const blocks = describeOutput('SendMessage', JSON.stringify({
+      success: true, message: 'Message queued for delivery to aa124f004ce1e2bea.',
+      pin: { id: 'aa124f004ce1e2bea', ref: 'a0b813' },
+    }), 'ok');
+    assert.deepStrictEqual(blocks, [
+      { kind: 'note', text: 'Message queued for delivery to aa124f004ce1e2bea.' },
+    ]);
+  });
+
+  test('a send result that is not the expected envelope is shown verbatim', () => {
+    assert.deepStrictEqual(
+      describeOutput('SendMessage', 'delivered', 'ok'),
+      [{ kind: 'lines', text: 'delivered', tone: 'output' }],
+    );
+  });
+
+  test('a failed send keeps the error tone rather than being unwrapped', () => {
+    const blocks = describeOutput('SendMessage', JSON.stringify({ message: 'No such agent.' }), 'error');
+    assert.deepStrictEqual(blocks, [{ kind: 'lines', text: '{"message":"No such agent."}', tone: 'error' }]);
+  });
 });
 
 suite('shortPath and diffLines', () => {
