@@ -53,6 +53,41 @@ suite('mapNotification', () => {
     assert.strictEqual(event.kind === 'tool-end' && event.ok, false);
   });
 
+  test('stderr output with a zero exit code is still success', () => {
+    // Measured live on codex-cli 0.147.0: a command whose PowerShell profile
+    // wrote warnings to stderr still completed with status 'completed' and
+    // exitCode 0. Stderr text alone must never flip the badge.
+    const [event] = mapNotification('item/completed', {
+      item: {
+        type: 'commandExecution', id: 'it_1', command: 'pwsh -Command x', cwd: '/r',
+        status: 'completed', exitCode: 0, aggregatedOutput: 'some stderr warning\n',
+      },
+    });
+    assert.strictEqual(event.kind === 'tool-end' && event.ok, true);
+  });
+
+  test('a declined command is a failed tool even with no exit code', () => {
+    // `CommandExecutionStatus` includes 'declined' (an approval the user
+    // turned down) with `exitCode: null` — the command never ran. Reading a
+    // missing exit code as success here would show a declined command as if
+    // it succeeded.
+    const [event] = mapNotification('item/completed', {
+      item: { type: 'commandExecution', id: 'it_1', command: 'rm -rf x', cwd: '/r', status: 'declined', exitCode: null },
+    });
+    assert.strictEqual(event.kind === 'tool-end' && event.ok, false);
+  });
+
+  test('a failed command with no exit code is still a failed tool', () => {
+    // A command that never spawned (e.g. a resolution error) can report
+    // status 'failed' with a null exitCode — status must not be shadowed by
+    // the "missing signal = success" fallback that exists for the ordinary
+    // completed-with-no-exit-code case.
+    const [event] = mapNotification('item/completed', {
+      item: { type: 'commandExecution', id: 'it_1', command: 'x', cwd: '/r', status: 'failed', exitCode: null },
+    });
+    assert.strictEqual(event.kind === 'tool-end' && event.ok, false);
+  });
+
   // The three payloads below are verbatim from codex-cli 0.147.0, captured off
   // a real `app-server` turn on 2026-08-15. `command` is the SHELL-ESCAPED
   // invocation Codex actually spawns — backslashes doubled, the agent's own
@@ -77,6 +112,35 @@ suite('mapNotification', () => {
       kind: 'tool-start', id: 'exec-1', name: 'commandExecution',
       input: { command: REAL_ACTION_COMMAND, cwd: 'C:\\tmp\\probe' },
     }]);
+  });
+
+  test('a plugin-resolved command carries pluginId and scriptPath through', () => {
+    const events = mapNotification('item/started', {
+      item: {
+        type: 'commandExecution', id: 'exec-3', command: 'raw', cwd: '/repo',
+        pluginId: 'openai-curated-remote/superpowers', scriptPath: 'skills/using-superpowers/SKILL.md',
+      },
+    });
+    assert.deepStrictEqual(events, [{
+      kind: 'tool-start', id: 'exec-3', name: 'commandExecution',
+      input: {
+        command: 'raw', cwd: '/repo',
+        pluginId: 'openai-curated-remote/superpowers', scriptPath: 'skills/using-superpowers/SKILL.md',
+      },
+    }]);
+  });
+
+  test('an ordinary command carries no pluginId/scriptPath at all', () => {
+    // Measured live: even a command whose only purpose was reading a
+    // plugin's own SKILL.md via a plain `Get-Content` resolved neither field
+    // — they must not appear as `null`/undefined keys, only be absent.
+    const [event] = mapNotification('item/started', {
+      item: { type: 'commandExecution', id: 'exec-4', command: 'ls', cwd: '/repo', pluginId: null, scriptPath: null },
+    });
+    assert.deepStrictEqual(
+      event.kind === 'tool-start' ? event.input : undefined,
+      { command: 'ls', cwd: '/repo' },
+    );
   });
 
   test('a command with no parsed actions still shows the command it ran', () => {

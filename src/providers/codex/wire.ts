@@ -108,6 +108,18 @@ export type ThreadItem =
   // `CommandAction`.
   | { type: 'commandExecution'; id: string; command: string; cwd: string;
       commandActions?: CommandAction[];
+      // Verified against the codex-cli 0.147.0 generated `v2/ThreadItem.ts`.
+      // Both are null for the overwhelming majority of commands — an
+      // ordinary shell invocation, or a model reading a plugin's own
+      // SKILL.md through a generic `Get-Content`/`cat` call, resolves
+      // neither (measured live: even a command whose only purpose was
+      // reading `…\superpowers\…\SKILL.md` carried `pluginId: null,
+      // scriptPath: null`). They populate only when the command IS a
+      // trusted plugin script Codex recognizes and ran directly — a
+      // narrower case than "a command that happens to touch a plugin's
+      // files". `scriptPath` is plugin-relative, e.g.
+      // `skills/using-superpowers/SKILL.md`.
+      pluginId?: string | null; scriptPath?: string | null;
       status?: string; aggregatedOutput?: string; exitCode?: number | null }
   | { type: 'fileChange'; id: string; status?: string; changes?: FileUpdateChange[] }
   // `tool`, NOT `toolName` — verified against the codex-cli 0.147.0 generated

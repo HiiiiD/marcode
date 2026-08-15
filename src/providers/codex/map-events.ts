@@ -176,7 +176,14 @@ function inputOf(item: ThreadItem): unknown {
   switch (item.type) {
     case 'commandExecution': {
       const c = item as Extract<ThreadItem, { type: 'commandExecution' }>;
-      return { command: displayCommand(c.command, c.commandActions), cwd: c.cwd };
+      return {
+        command: displayCommand(c.command, c.commandActions), cwd: c.cwd,
+        // Present only when Codex resolved the command to a trusted plugin
+        // script — see the field docs on `ThreadItem` in wire.ts. Absent for
+        // an ordinary shell command, so this never invents a skill identity.
+        ...(c.pluginId ? { pluginId: c.pluginId } : {}),
+        ...(c.scriptPath ? { scriptPath: c.scriptPath } : {}),
+      };
     }
     case 'mcpToolCall': {
       const m = item as Extract<ThreadItem, { type: 'mcpToolCall' }>;
@@ -228,11 +235,26 @@ function outputOf(item: ThreadItem): unknown {
  * Codex reports failure differently per kind: a command has an exit code, and
  * everything else has a status string. Treating a missing signal as success
  * is deliberate — a tool that completed without saying otherwise did.
+ *
+ * A command still carries its own `status` (`CommandExecutionStatus`:
+ * `'inProgress' | 'completed' | 'failed' | 'declined'`), and `status` is
+ * checked FIRST because it can diverge from `exitCode`: a declined approval
+ * or a spawn-level failure (measured live — a command that timed out before
+ * ever exiting reported `status: 'failed', exitCode: 124`, which the
+ * exit-code check alone would also have caught, but a command that never
+ * spawned at all reports a `null` exitCode with a `'failed'`/`'declined'`
+ * status, which the exit-code check alone reads as success — a null
+ * `exitCode` means "no signal" only when nothing else says otherwise). Stderr
+ * output does not affect this either way: `exitCode: 0` with stderr text in
+ * `aggregatedOutput` is still success — measured live, a command that printed
+ * profile-load warnings to stderr and still exited 0 completed with
+ * `status: 'completed'`, and this function agrees.
  */
 function succeeded(item: ThreadItem): boolean {
   if (item.type === 'commandExecution') {
-    const code = (item as Extract<ThreadItem, { type: 'commandExecution' }>).exitCode;
-    return code === undefined || code === null || code === 0;
+    const c = item as Extract<ThreadItem, { type: 'commandExecution' }>;
+    if (c.status === 'failed' || c.status === 'declined') { return false; }
+    return c.exitCode === undefined || c.exitCode === null || c.exitCode === 0;
   }
   const status = (item as { status?: string }).status;
   return status !== 'failed' && status !== 'error';

@@ -153,9 +153,9 @@ export function describeTool(name: string, input: unknown): ToolHeader {
   const k = key(name);
 
   const header = (
-    glyph: ToolGlyph, primary: string | undefined, mono: boolean,
+    glyph: ToolGlyph, primary: string | undefined, mono: boolean, verbOverride?: string,
   ): ToolHeader => ({
-    glyph, verb: LABELS[name] ?? name, mono,
+    glyph, verb: verbOverride ?? LABELS[name] ?? name, mono,
     primary: primary ?? '',
     ...(primary && primary.length > 40 ? { full: primary } : {}),
   });
@@ -215,8 +215,18 @@ export function describeTool(name: string, input: unknown): ToolHeader {
     // Codex tool kinds below. Names are the raw `ThreadItem.type` string from
     // map-events.ts, so no PascalCase translation happens for these.
 
-    case 'commandexecution':
+    case 'commandexecution': {
+      // Codex resolved this command to a trusted plugin script — `pluginId`/
+      // `scriptPath` on `map-events.ts`'s `inputOf` only carry a value in
+      // that case. That is a skill invocation, not a shell command anyone
+      // typed, so it leads with the skill's identity — same reasoning as
+      // `subagent_type` for the Agent tool, below — rather than the pwsh
+      // wrapper that actually ran. The raw command is still one click away:
+      // `describeInput`'s `commandexecution` case keeps the `command` block.
+      const skill = skillNameOf(str(record.pluginId), str(record.scriptPath));
+      if (skill) { return header('bot', skill, false, 'Skill'); }
       return header('terminal', str(record.command), true);
+    }
 
     case 'filechange': {
       const paths = fileChangePaths(record.changes);
@@ -248,6 +258,33 @@ export function describeTool(name: string, input: unknown): ToolHeader {
       return header('wrench', only, false);
     }
   }
+}
+
+/**
+ * The skill (or plugin) identity of a `commandExecution` Codex resolved to a
+ * trusted plugin script — undefined when neither field is set, which is the
+ * overwhelming majority of commands (see `wire.ts`'s `ThreadItem` doc).
+ *
+ * `scriptPath` is plugin-relative, e.g. `skills/using-superpowers/SKILL.md`;
+ * the segment right after `skills/` is the skill's own directory name, which
+ * is the one thing a reader recognizes (it is what they typed to invoke it).
+ * A script with no `skills/` segment — some other plugin-bundled script —
+ * falls back to its containing directory, then to the bare filename, then to
+ * `pluginId` as the last resort naming *something* trusted rather than
+ * nothing. One resolved script names one skill; a command that happens to
+ * touch several files (the two-`Get-Content` example this was built against)
+ * still only carries one `scriptPath`, and this deliberately does not try to
+ * enumerate the others — the fields don't support that claim.
+ */
+function skillNameOf(pluginId: string | undefined, scriptPath: string | undefined): string | undefined {
+  if (scriptPath) {
+    const parts = scriptPath.split(/[\\/]/).filter(Boolean);
+    const skillsIdx = parts.indexOf('skills');
+    if (skillsIdx !== -1 && parts[skillsIdx + 1]) { return parts[skillsIdx + 1]; }
+    if (parts.length >= 2) { return parts[parts.length - 2]; }
+    if (parts.length === 1) { return parts[0]; }
+  }
+  return pluginId;
 }
 
 function pathOf(record: Rec): string | undefined {
@@ -369,6 +406,10 @@ export function describeInput(name: string, input: unknown): ToolBlock[] {
     }
 
     case 'commandexecution': {
+      // The skill identity leads, same as the header — but the raw command
+      // that actually ran must still be reachable here, not hidden behind it.
+      const skill = skillNameOf(str(record.pluginId), str(record.scriptPath));
+      if (skill) { blocks.push({ kind: 'field', label: 'skill', value: skill }); }
       const command = str(record.command);
       if (command) { blocks.push({ kind: 'command', text: command }); }
       const cwd = str(record.cwd);

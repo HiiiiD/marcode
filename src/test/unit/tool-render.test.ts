@@ -287,6 +287,37 @@ suite('describeTool: codex', () => {
   test('a codex web search reuses the same header as the Claude tool', () => {
     assert.strictEqual(describeTool('webSearch', { query: 'vscode api' }).primary, 'vscode api');
   });
+
+  test('a plugin-resolved command renders as a skill, not a shell command', () => {
+    const header = describeTool('commandExecution', {
+      command: '"C:\\\\pwsh.exe" -Command "…"', cwd: '/repo',
+      pluginId: 'openai-curated-remote/superpowers', scriptPath: 'skills/using-superpowers/SKILL.md',
+    });
+    assert.strictEqual(header.verb, 'Skill');
+    assert.strictEqual(header.glyph, 'bot');
+    assert.strictEqual(header.primary, 'using-superpowers');
+  });
+
+  test('a plugin-resolved command with no skills/ segment falls back to its directory', () => {
+    const header = describeTool('commandExecution', {
+      command: 'x', cwd: '/repo', pluginId: 'my-plugin', scriptPath: 'scripts/install.sh',
+    });
+    assert.strictEqual(header.primary, 'scripts');
+  });
+
+  test('a plugin-resolved command with no scriptPath falls back to the plugin id', () => {
+    const header = describeTool('commandExecution', {
+      command: 'x', cwd: '/repo', pluginId: 'my-plugin', scriptPath: null,
+    });
+    assert.strictEqual(header.primary, 'my-plugin');
+  });
+
+  test('an ordinary command with no plugin fields still leads with the command', () => {
+    const header = describeTool('commandExecution', { command: 'yarn test', cwd: '/repo' });
+    assert.strictEqual(header.verb, 'Shell');
+    assert.strictEqual(header.glyph, 'terminal');
+    assert.strictEqual(header.primary, 'yarn test');
+  });
 });
 
 suite('describeInput blocks: codex', () => {
@@ -301,6 +332,20 @@ suite('describeInput blocks: codex', () => {
     assert.deepStrictEqual(describeInput('mcpToolCall', { server: 'github', toolName: 'list_prs' }), [
       { kind: 'field', label: 'server', value: 'github' },
       { kind: 'field', label: 'tool', value: 'list_prs' },
+    ]);
+  });
+
+  test('a plugin-resolved command still shows the raw command that ran', () => {
+    // The skill identity leads the header, but the expanded card must never
+    // hide what actually executed — see tool-render.ts's `commandexecution`
+    // case doc.
+    assert.deepStrictEqual(describeInput('commandExecution', {
+      command: 'raw invocation', cwd: '/repo',
+      pluginId: 'openai-curated-remote/superpowers', scriptPath: 'skills/using-superpowers/SKILL.md',
+    }), [
+      { kind: 'field', label: 'skill', value: 'using-superpowers' },
+      { kind: 'command', text: 'raw invocation' },
+      { kind: 'path', path: '/repo' },
     ]);
   });
 });
