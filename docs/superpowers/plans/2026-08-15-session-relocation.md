@@ -49,6 +49,16 @@ for git.
   exhaustive dispatch over those unions. Extend it in the same task. The webview
   reducer narrows with `role === 'x'` and has no exhaustive switch, so it needs
   nothing.
+- **A new inbound message ALSO needs its tag in `KNOWN_MESSAGE_TAGS` in
+  `src/host/message-router.ts`.** This is a hand-maintained runtime `Set`
+  checked before the switch: a tag missing from it is silently dropped as
+  malformed while every type check passes. Nothing catches this but a test that
+  actually posts the message. Tasks adding several messages must add several
+  tags.
+- **Route with `await`, not `void`.** Handlers that touch the filesystem can
+  reject (EPERM/EBUSY are routine on Windows); `await` puts them inside
+  `handle()`'s catch-all, while `void` produces an unhandled rejection at the
+  `onDidReceiveMessage` callback.
 - **The transcript's role switch lives in
   `src/webview/components/transcript-item.tsx`**, not `transcript.tsx`.
 
