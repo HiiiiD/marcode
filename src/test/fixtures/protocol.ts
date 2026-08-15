@@ -4,6 +4,7 @@ import type {
 } from '../../protocol/messages';
 
 export type PermissionItem = Extract<TranscriptItem, { role: 'permission' }>;
+export type RelocationItem = Extract<TranscriptItem, { role: 'relocation' }>;
 export type ToolItem = Extract<TranscriptItem, { role: 'tool' }>;
 
 export function tool(over: Partial<ToolItem> = {}): ToolItem {
@@ -100,6 +101,17 @@ export function permission(over: Partial<PermissionItem> = {}): PermissionItem {
       kind: 'file-edit', label: 'Write',
       files: [{ path: '/tmp/a.txt', op: 'create', edits: [{ after: 'hi' }] }],
     },
+    state: 'pending',
+    ...over,
+  };
+}
+
+export function relocation(over: Partial<RelocationItem> = {}): RelocationItem {
+  return {
+    id: 'r1',
+    ts: 1,
+    role: 'relocation',
+    path: '/repo/trees/feat-x',
     state: 'pending',
     ...over,
   };
