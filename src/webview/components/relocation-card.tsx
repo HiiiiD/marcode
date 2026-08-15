@@ -21,7 +21,7 @@ export function RelocationCard({
   item: RelocationItem;
   sessionId: SessionId;
 }) {
-  const { state, post } = useStore();
+  const { post } = useStore();
   const name = folderName(item.path);
   // The host drops a second answer for an already-settled item, and the patch
   // that would settle it here has to round-trip. Without local state both
@@ -39,12 +39,6 @@ export function RelocationCard({
     );
   }
 
-  // A turn in flight finishes in the tree it started in, so moving waits for
-  // idle. Staying costs nothing and stays live. SessionManager.relocate makes
-  // the same check host-side; this only keeps the UI honest about it.
-  const status = state.byId[sessionId]?.summary.status;
-  const canMove = status === 'idle';
-
   const answer = (move: boolean) => {
     setAnswered(true);
     post({ t: 'answer-relocation', id: sessionId, itemId: item.id, move });
@@ -59,14 +53,6 @@ export function RelocationCard({
       <div className="mb-2 text-muted-foreground">
         Move this session there? Its history stays here.
       </div>
-      {/* The disabled button cannot explain itself — the base style sets
-          `disabled:pointer-events-none`, so it has no hover and no title. Say
-          why in the flow instead. */}
-      {!canMove && (
-        <div className="mb-2 text-muted-foreground">
-          Moving waits for the current turn to finish.
-        </div>
-      )}
       {/* Stay comes first in DOM and tab order: it is the reversible choice,
           and the offer can be raised again. Move carries the consequence, so
           it is the outlined control rather than solid-primary emphasis —
@@ -84,7 +70,7 @@ export function RelocationCard({
         <Button
           variant="outline"
           size="sm"
-          disabled={answered || !canMove}
+          disabled={answered}
           onClick={() => answer(true)}
           aria-label={`Move this session to ${name}`}
           title={item.path}

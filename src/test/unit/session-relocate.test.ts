@@ -3,6 +3,7 @@ import * as fs from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
 import { resolve } from 'node:path';
+import type { AgentSession } from '../../host/agent-session';
 import { SessionManager } from '../../host/session-manager';
 import { TranscriptStore } from '../../host/transcript-store';
 import type { HostToWebview, SessionStatus, TranscriptItem } from '../../protocol/messages';
@@ -11,6 +12,37 @@ import type { AgentProvider } from '../../providers/types';
 
 async function settle() {
   for (let i = 0; i < 10; i++) { await new Promise((r) => setImmediate(r)); }
+}
+
+/**
+ * Waits for a condition that a *queued* move satisfies.
+ *
+ * A queued move is performed from the status sink, so no caller holds its
+ * promise: the chain is a store read, a transcript rewrite, a session dispose
+ * that drains an event pump, and a rebuild. That is more turns of the loop
+ * than `settle()` spends, and the exact count is an implementation detail no
+ * test should encode.
+ */
+async function until(done: () => boolean): Promise<void> {
+  for (let i = 0; i < 500 && !done(); i++) {
+    await new Promise((r) => setImmediate(r));
+  }
+}
+
+/**
+ * The transition `AgentSession.setStatus` makes: state first, then the sink.
+ * Written out rather than driven through a turn so a test can pick the exact
+ * moment the session lands on idle.
+ */
+/** True once the roster holds a session rebuilt in place of `session`. */
+function moved(manager: SessionManager, session: AgentSession): boolean {
+  const now = manager.get(session.state.id);
+  return now !== undefined && now !== session;
+}
+
+function goIdle(manager: SessionManager, session: AgentSession): void {
+  session.state.status = 'idle';
+  manager.status(session.state.id, 'idle');
 }
 
 suite('SessionManager.relocate', () => {
@@ -100,11 +132,100 @@ suite('SessionManager.relocate', () => {
     assert.strictEqual(manager.get(session.state.id)!.pendingSeedText!.length > 0, true);
   });
 
-  test('refuses while the session is running', async () => {
-    const { manager, session } = await withPendingOffer('/repo/../t/a', 'running');
+  test('defers the move while the session is running', async () => {
+    const { manager, session, store } = await withPendingOffer('/repo/../t/a', 'running');
     const before = session.state.cwd;
     await manager.relocate(session.state.id, 'r1', true);
     assert.strictEqual(manager.get(session.state.id)!.state.cwd, before);
+
+    // Deferred, not settled: a queue that does not survive a reload must not
+    // leave behind an item claiming an outcome that never happened.
+    const item = await store.find(session.state.id, 'r1');
+    assert.strictEqual(item?.role === 'relocation' && item.state, 'pending');
+  });
+
+  test('performs the queued move when the session goes idle', async () => {
+    const { manager, session, store } = await withPendingOffer('/repo/../t/a', 'running');
+    const id = session.state.id;
+    await manager.relocate(id, 'r1', true);
+
+    goIdle(manager, session);
+    // The rebuilt session, not just the repointed cwd: `moveTo` sets `cwd`
+    // early and only puts the new session in the roster at the end.
+    await until(() => moved(manager, session));
+
+    assert.strictEqual(manager.get(id)!.state.cwd.endsWith('a'), true);
+    const item = await store.find(id, 'r1');
+    assert.strictEqual(item?.role === 'relocation' && item.state, 'moved');
+  });
+
+  test('a real turn ending performs the queued move', async () => {
+    const { manager, session, provider } = await withPendingOffer('/repo/../t/a', 'running');
+    const id = session.state.id;
+    await manager.relocate(id, 'r1', true);
+
+    provider.runs[provider.runs.length - 1].emit({ kind: 'turn-end', reason: 'done' });
+    await until(() => moved(manager, session));
+
+    assert.strictEqual(manager.get(id)!.state.cwd.endsWith('a'), true);
+  });
+
+  test('a queued move is performed once, not on every idle', async () => {
+    const { manager, session, provider } = await withPendingOffer('/repo/../t/a', 'running');
+    const id = session.state.id;
+    await manager.relocate(id, 'r1', true);
+
+    goIdle(manager, session);
+    await until(() => moved(manager, session));
+    const starts = provider.starts.length;
+    const cwd = manager.get(id)!.state.cwd;
+
+    manager.status(id, 'idle');
+    await settle();
+    assert.strictEqual(provider.starts.length, starts);
+    assert.strictEqual(manager.get(id)!.state.cwd, cwd);
+  });
+
+  test('a second Move click replaces the queued move rather than queueing two', async () => {
+    const { manager, session, provider } = await withPendingOffer('/repo/../t/a', 'running');
+    const id = session.state.id;
+    await manager.relocate(id, 'r1', true);
+    await manager.relocate(id, 'r1', true);
+
+    goIdle(manager, session);
+    await until(() => moved(manager, session));
+    await settle();
+    // One rebuild, not two: `starts` grew by exactly the move's own restart.
+    assert.strictEqual(provider.starts.length, 2);
+    assert.strictEqual(manager.get(id)!.state.cwd.endsWith('a'), true);
+  });
+
+  test('declining while running settles immediately and queues nothing', async () => {
+    const { manager, session, store } = await withPendingOffer('/repo/../t/a', 'running');
+    const id = session.state.id;
+    const before = session.state.cwd;
+    await manager.relocate(id, 'r1', false);
+
+    const item = await store.find(id, 'r1');
+    assert.strictEqual(item?.role === 'relocation' && item.state, 'stayed');
+
+    goIdle(manager, session);
+    await settle();
+    assert.strictEqual(manager.get(id)!.state.cwd, before);
+  });
+
+  test('closing a session with a queued move moves nothing and does not throw', async () => {
+    const { manager, session } = await withPendingOffer('/repo/../t/a', 'running');
+    const id = session.state.id;
+    const before = session.state.cwd;
+    await manager.relocate(id, 'r1', true);
+
+    await manager.close(id);
+    manager.status(id, 'idle');
+    await settle();
+
+    assert.strictEqual(manager.get(id), undefined);
+    assert.strictEqual(session.state.cwd, before);
   });
 
   test('the seed rides the next send and is spent there', async () => {

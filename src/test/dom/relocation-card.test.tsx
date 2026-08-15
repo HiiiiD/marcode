@@ -52,20 +52,26 @@ suite('RelocationCard', () => {
     });
   });
 
-  test('the move is disabled while the session is running', () => {
+  test('the move stays offered while the session is running', async () => {
     renderWithStore(<RelocationCard item={relocation()} sessionId="a" />);
     hydrateWith([]);
     sendFromHost({ t: 'session-status', id: 'a', status: 'running' });
 
+    // The offer is raised mid-turn in the common case, so a card that gated
+    // Move on idle would arrive dead. The host queues the move instead.
     assert.strictEqual(
       (screen.getByLabelText('Move this session to feat-x') as HTMLButtonElement).disabled,
-      true,
+      false,
     );
-    // Declining never touches the provider, so it stays live mid-turn.
     assert.strictEqual(
       (screen.getByLabelText('Stay in the current directory') as HTMLButtonElement).disabled,
       false,
     );
+
+    await userEvent.click(screen.getByLabelText('Move this session to feat-x'));
+    assert.deepStrictEqual(posted().at(-1), {
+      t: 'answer-relocation', id: 'a', itemId: 'r1', move: true,
+    });
   });
 
   test('answering disables both buttons with no host round-trip', async () => {

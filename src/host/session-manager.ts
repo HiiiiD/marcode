@@ -43,6 +43,19 @@ export class SessionManager implements SessionSink {
   private persistTimer: NodeJS.Timeout | undefined;
   private disposed = false;
   /**
+   * Relocation offers answered with Move while a turn was in flight, keyed by
+   * session — the item id to perform once that session next reaches `idle`.
+   *
+   * Deliberately in memory only, and deliberately at most one per session. The
+   * offer is raised from a `tool-end` mid-turn, so "running" is the common
+   * case, not the exception; dropping the click there is how the feature used
+   * to fail silently. The transcript item stays `pending` the whole time it
+   * sits here, because this map does not survive a window reload and a
+   * persisted "queued" state would outlive the thing it describes. After a
+   * reload the offer is simply still open.
+   */
+  private queuedMoves = new Map<SessionId, string>();
+  /**
    * setVisible() reveals a session by fetching its snapshot (an await), then
    * emitting `session-snapshot`. A patch for that same id can arrive from
    * the live AgentSession while that snapshot fetch is in flight — patch()
@@ -419,19 +432,27 @@ export class SessionManager implements SessionSink {
    * `threadKey` — the provider declares whether its tokens travel.
    *
    * Never rejects for a decision that simply cannot be honored: an unknown
-   * session, an already-answered item and a turn in flight are all no-ops,
-   * because this is answered straight off the wire where errors are state.
+   * session and an already-answered item are both no-ops, because this is
+   * answered straight off the wire where errors are state.
+   *
+   * A turn in flight does not refuse the move — it defers it. Declining is
+   * unaffected: Stay never touches the provider, so it settles at once.
    */
   async relocate(id: SessionId, itemId: string, move: boolean): Promise<void> {
     const state = this.meta.get(id);
     const session = this.live.get(id);
     if (!state || !session) { return; }
-    // A turn in flight finishes on the tree it started in. The card disables
-    // its buttons for the same reason; this is the host-side guard.
-    if (move && state.status !== 'idle') { return; }
 
     const item = await this.store.find(id, itemId);
     if (!item || item.role !== 'relocation' || item.state !== 'pending') { return; }
+
+    // A turn in flight finishes on the tree it started in, so the move waits
+    // for idle rather than being dropped. The item stays `pending` until it
+    // actually performs — see `queuedMoves`.
+    if (move && state.status !== 'idle') {
+      this.queuedMoves.set(id, itemId);
+      return;
+    }
 
     const settled: TranscriptItem = { ...item, state: move ? 'moved' : 'stayed' };
     await session.replaceRelocation(settled);
@@ -977,6 +998,9 @@ export class SessionManager implements SessionSink {
   }
 
   private async archive(id: SessionId): Promise<void> {
+    // Before the dispose below, which can report a final status: a closed
+    // session must not relocate on its way out.
+    this.queuedMoves.delete(id);
     const session = this.live.get(id);
     if (session) {
       await session.dispose();
@@ -1014,6 +1038,7 @@ export class SessionManager implements SessionSink {
     // schedulePersist() becomes a no-op) and only clear the timer AFTER
     // every session has actually finished disposing.
     this.disposed = true;
+    this.queuedMoves.clear();
     await Promise.all([...this.live.values()].map((s) => s.dispose()));
     this.live.clear();
     if (this.persistTimer) { clearTimeout(this.persistTimer); }
@@ -1031,6 +1056,29 @@ export class SessionManager implements SessionSink {
 
   status(id: SessionId, status: SessionStatus): void {
     this.emit({ t: 'session-status', id, status });
+    if (status === 'idle') { this.drainQueuedMove(id); }
+  }
+
+  /**
+   * Performs a relocation the user asked for mid-turn, now that the turn is
+   * over. Called from the sink — i.e. from a session's event pump — so it is
+   * synchronous and must never reject: a rejection here escapes into the pump
+   * as an unhandled one.
+   *
+   * The entry is taken out of the map *before* the first await. `moveTo`
+   * disposes and rebuilds the session, and a dispose can report a status of
+   * its own; removing first is what stops that from re-entering here and
+   * moving twice.
+   */
+  private drainQueuedMove(id: SessionId): void {
+    const itemId = this.queuedMoves.get(id);
+    if (itemId === undefined) { return; }
+    this.queuedMoves.delete(id);
+    if (this.disposed || !this.live.has(id)) { return; }
+    void this.relocate(id, itemId, true).catch(() => {
+      // Errors are state. `relocate` already records what it can in the
+      // transcript; there is nothing to throw at from an event pump.
+    });
   }
 
   /**
