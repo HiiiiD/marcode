@@ -14,7 +14,7 @@ function summary(id: string, title: string): SessionSummary {
 
 suite('session mentions', () => {
   test('offers handoff first, then one row per kind per other session', () => {
-    const rows = sessionMentions([summary('s-1', 'me'), summary('s-2', 'refactor store')], 's-1');
+    const rows = sessionMentions([summary('s-1', 'me'), summary('s-2', 'refactor store')], 's-1', true);
     assert.strictEqual(rows[0].payload.kind, 'action');
     assert.strictEqual(rows[0].group, 'Actions');
     assert.strictEqual(rows.length, 3);
@@ -25,33 +25,73 @@ suite('session mentions', () => {
   });
 
   test('omits the session doing the referencing', () => {
-    const rows = sessionMentions([summary('s-1', 'me'), summary('s-2', 'other')], 's-1');
+    const rows = sessionMentions([summary('s-1', 'me'), summary('s-2', 'other')], 's-1', true);
     assert.strictEqual(rows.some((r) =>
       r.payload.kind === 'session-ref' && r.payload.ref.sessionId === 's-1'), false);
   });
 
   test('omits archived sessions', () => {
     const archived = { ...summary('s-2', 'gone'), archived: true };
-    const rows = sessionMentions([summary('s-1', 'me'), archived], 's-1');
+    const rows = sessionMentions([summary('s-1', 'me'), archived], 's-1', true);
     assert.strictEqual(rows.length, 1);
   });
 
   test('carries the session title on the ref, for the transcript chip', () => {
-    const rows = sessionMentions([summary('s-1', 'me'), summary('s-2', 'refactor store')], 's-1');
+    const rows = sessionMentions([summary('s-1', 'me'), summary('s-2', 'refactor store')], 's-1', true);
     const ref = rows.find((r) => r.payload.kind === 'session-ref');
     assert.strictEqual(ref?.payload.kind === 'session-ref' && ref.payload.ref.title, 'refactor store');
   });
 
   test('slugs the title into the base token', () => {
-    const rows = sessionMentions([summary('s-1', 'me'), summary('s-2', 'Refactor Store!')], 's-1');
+    const rows = sessionMentions([summary('s-1', 'me'), summary('s-2', 'Refactor Store!')], 's-1', true);
     const plan = rows.find((r) => r.baseToken.endsWith(':plan'));
     assert.strictEqual(plan?.baseToken, 'refactor-store:plan');
   });
 
   test('falls back to a stable slug for a title with no usable characters', () => {
-    const rows = sessionMentions([summary('s-1', 'me'), summary('s-2', '!!!')], 's-1');
+    const rows = sessionMentions([summary('s-1', 'me'), summary('s-2', '!!!')], 's-1', true);
     const plan = rows.find((r) => r.baseToken.endsWith(':plan'));
     assert.strictEqual(plan?.baseToken, 'session:plan');
+  });
+
+  /**
+   * The handoff row opens a create dialog the composer only renders when the
+   * catalog can answer for the source session's provider. Offered when it
+   * cannot, picking it clears the typed query, closes the menu and does
+   * nothing visible — so it is not offered.
+   */
+  test('omits handoff when there is nothing to hand off to', () => {
+    const rows = sessionMentions(
+      [summary('s-1', 'me'), summary('s-2', 'other')], 's-1', false,
+    );
+    assert.strictEqual(rows.some((r) => r.payload.kind === 'action'), false);
+    assert.strictEqual(rows.length, 2);
+  });
+
+  test('disambiguates identically titled sessions in the visible label', () => {
+    const rows = sessionMentions(
+      [summary('s-1', 'me'), summary('s-abcd', 'Untitled'), summary('s-wxyz', 'Untitled')],
+      's-1', true,
+    );
+    const labels = rows
+      .filter((r) => r.payload.kind === 'session-ref')
+      .map((r) => r.label);
+    assert.strictEqual(new Set(labels).size, 2, 'the two sessions must read differently');
+    assert.strictEqual(labels.every((l) => l.startsWith('Untitled (')), true);
+    // The ref still carries the real title: it is what the transcript chip
+    // and the composed block are keyed on.
+    const ref = rows.find((r) => r.payload.kind === 'session-ref');
+    assert.strictEqual(
+      ref?.payload.kind === 'session-ref' && ref.payload.ref.title, 'Untitled',
+    );
+  });
+
+  test('leaves a unique title alone', () => {
+    const rows = sessionMentions(
+      [summary('s-1', 'me'), summary('s-2', 'refactor store')], 's-1', true,
+    );
+    const ref = rows.find((r) => r.payload.kind === 'session-ref');
+    assert.strictEqual(ref?.label, 'refactor store');
   });
 
   test('sessionRefsOf keeps only the session-ref payloads, in order', () => {

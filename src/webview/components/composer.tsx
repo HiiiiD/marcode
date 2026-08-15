@@ -5,7 +5,7 @@ import { SendHorizontal, Square, TriangleAlert } from "lucide-react";
 import { useRef, useState } from "react";
 import type { Invocable, ModelInfo } from "../../protocol/messages";
 import { interceptFor } from "../lib/intercepts";
-import { insertionFor, menuKeyAction, menuQuery, menuView, nextIndex } from "../lib/invocable-menu";
+import { insertionFor, menuQuery, menuView } from "../lib/invocable-menu";
 import {
   filterMentions, mentionQuery, pruneMentions, spliceMention, tokenFor,
   type MentionOption, type PendingMention,
@@ -13,6 +13,7 @@ import {
 import {
   sessionMentions, sessionRefsOf, type SessionMentionPayload,
 } from "../lib/session-mentions";
+import { useMentionMenu } from "../lib/use-mention-menu";
 import type { PaneState } from "../reducer";
 import { useStore } from "../store";
 import { ContextRing } from "./context-ring";
@@ -45,16 +46,8 @@ export function Composer({
   const [text, setText] = useState("");
   /** The selected entry's arg hint. Presentation only; never sent. */
   const [ghost, setGhost] = useState("");
-  const [activeIndex, setActiveIndex] = useState(0);
-  /**
-   * Escape, or focus leaving the box, closed the menu. Only a fresh keystroke
-   * or the control reopens it — otherwise a user who dismissed the list would
-   * have it spring back on the next render.
-   */
-  const [dismissed, setDismissed] = useState(false);
   const [refs, setRefs] = useState<PendingMention<SessionMentionPayload>[]>([]);
   const [caret, setCaret] = useState(0);
-  const [refDismissed, setRefDismissed] = useState(false);
   // `setHandoffOpen` arrives in Task 7's dialog; declared now so `pickRef`'s
   // action branch has somewhere to signal it opened.
   const [handoffOpen, setHandoffOpen] = useState(false);
@@ -95,17 +88,23 @@ export function Composer({
    * clicked menu keyboard-dead and closed it on the first character typed.
    */
   const query = menuQuery(text);
-  const menuOpen = entries.length > 0 && query !== undefined && !dismissed;
-  const view = menuOpen ? menuView(entries, query ?? "") : { rows: [], overflow: 0 };
-  const index = Math.min(activeIndex, Math.max(0, view.rows.length - 1));
+  const view = query !== undefined
+    ? menuView(entries, query)
+    : { rows: [], overflow: 0 };
   // Session-scoped for the same reason as bypassReasonId above: one Composer
   // renders per pane, and `aria-activedescendant` resolves ids document-wide.
   const menuListId = `invocables-${pane.summary.id}`;
-  // The id goes on the TEXTAREA, which is where focus actually is. ARIA only
-  // honours `aria-activedescendant` on the focused element, so a copy on the
-  // listbox alone announces nothing. Undefined while the `No match` row shows:
-  // that row is deliberately not addressable, so there is no id to point at.
-  const activeOptionId = menuOpen && view.rows.length > 0 ? `${menuListId}-${index}` : undefined;
+  const menu = useMentionMenu({
+    triggered: query !== undefined,
+    rows: view.rows,
+    enabled: entries.length > 0,
+    listId: menuListId,
+    onPick: (entry: Invocable) => pick(entry),
+    // Pre-existing behaviour, kept deliberately: this menu renders a "No
+    // match" row rather than emptying, and its trigger discipline means an
+    // unmatched query is a lone `/word` and never the tail of a real message.
+    claimsWhenEmpty: true,
+  });
   // Trigger discipline puts the menu at position 0 only, so it genuinely
   // cannot open over a half-written message. Disabled-with-a-reason rather
   // than silently clearing the draft — the earlier shape reset the box, which
@@ -113,30 +112,31 @@ export function Composer({
   // flickering in and out of a row that already wraps.
   const menuBlocked = text.trim().length > 0;
 
-  const refHit = refDismissed ? undefined : mentionQuery(text, caret);
+  const refHit = mentionQuery(text, caret);
   // One array per source, concatenated. File tagging arrives as one more
   // source here and changes nothing else.
   const refRows = refHit
-    ? filterMentions(sessionMentions(state.sessions, pane.summary.id), refHit.query)
+    ? filterMentions(
+      sessionMentions(state.sessions, pane.summary.id, handoffSettings !== undefined),
+      refHit.query,
+    )
     : [];
-  // The two menus never share the screen: `/` only triggers on an empty box at
-  // position 0, `@` only on a word boundary, and `menuOpen` wins if both ever
-  // manage to be true.
-  const refOpen = refHit !== undefined && !menuOpen;
   const refListId = `session-refs-${pane.summary.id}`;
-  const refIndex = Math.min(activeIndex, Math.max(0, refRows.length - 1));
-  // Same contract as activeOptionId above: the id goes on the TEXTAREA,
-  // because ARIA only honours aria-activedescendant on the focused element,
-  // and it is undefined when the list has no addressable row.
-  const activeRefOptionId = refOpen && refRows.length > 0
-    ? `${refListId}-${refIndex}`
-    : undefined;
+  const refMenu = useMentionMenu({
+    triggered: refHit !== undefined,
+    rows: refRows,
+    // The two menus never share the screen: `/` only triggers on an empty box
+    // at position 0, `@` only on a word boundary, and `/` wins if both ever
+    // manage to be true.
+    enabled: !menu.open,
+    listId: refListId,
+    onPick: (option: MentionOption<SessionMentionPayload>) => pickRef(option),
+  });
 
   const openMenu = () => {
     setText("/");
     setGhost("");
-    setActiveIndex(0);
-    setDismissed(false);
+    menu.reset();
     box.current?.focus();
   };
 
@@ -144,7 +144,6 @@ export function Composer({
     const { text: next, ghost: hint } = insertionFor(entry);
     setText(next);
     setGhost(hint);
-    setActiveIndex(0);
   };
 
   const pickRef = (option: MentionOption<SessionMentionPayload>) => {
@@ -154,7 +153,6 @@ export function Composer({
       // referencing anything. Strip the query the user typed to get there.
       setText(spliceMention(text, refHit.start, caret, '').text);
       setHandoffOpen(true);
-      setRefDismissed(true);
       return;
     }
     const token = tokenFor(option, refs.map((r) => r.token));
@@ -162,7 +160,6 @@ export function Composer({
     setText(next.text);
     setCaret(next.caret);
     setRefs([...refs, { token, payload: option.payload }]);
-    setActiveIndex(0);
   };
 
   const submit = () => {
@@ -188,8 +185,8 @@ export function Composer({
     setText("");
     setGhost("");
     setRefs([]);
-    setDismissed(false);
-    setRefDismissed(false);
+    menu.reset();
+    refMenu.reset();
   };
 
   return (
@@ -210,27 +207,27 @@ export function Composer({
         </p>
       )}
       <InputGroup>
-        {menuOpen && (
+        {menu.open && (
           // A block-start addon, not a popover: the list sits above the box in
           // normal flow, so there is no positioning maths, no portal, and
           // nothing to clip inside a narrow pane's scroll container.
           <InputGroupAddon align="block-start" className="p-1">
             <InvocableMenu
-              rows={view.rows}
+              rows={menu.rows}
               overflow={view.overflow}
-              activeIndex={index}
+              activeIndex={menu.index}
               listId={menuListId}
-              onPick={pick}
+              onPick={menu.pick}
             />
           </InputGroupAddon>
         )}
-        {refOpen && (
+        {refMenu.open && (
           <InputGroupAddon align="block-start" className="p-1">
             <RefMenu
-              rows={refRows}
-              activeIndex={refIndex}
+              rows={refMenu.rows}
+              activeIndex={refMenu.index}
               listId={refListId}
-              onPick={pickRef}
+              onPick={refMenu.pick}
             />
           </InputGroupAddon>
         )}
@@ -242,57 +239,29 @@ export function Composer({
             setCaret(e.target.selectionStart ?? e.target.value.length);
             setRefs((current) => pruneMentions(e.target.value, current));
             setGhost("");
-            setActiveIndex(0);
-            setDismissed(false);
-            setRefDismissed(false);
+            menu.reset();
+            refMenu.reset();
           }}
-          // Focus leaving the box closes the list. The menu is an in-flow
+          // Focus leaving the box closes both lists. A menu is an in-flow
           // block-start addon, so left open it keeps eating vertical space
           // above the composer after the user has clicked away into the
           // transcript. This does not fight a mouse pick: the rows call
           // preventDefault on mousedown, so selecting one never blurs.
-          onBlur={() => setDismissed(true)}
+          onBlur={() => { menu.dismiss(); refMenu.dismiss(); }}
           onKeyDown={(e) => {
-            // Only WHILE OPEN does the menu claim keys. `menuKeyAction`
-            // decides which; anything it passes on falls through to the
-            // composer's own Enter binding below, unchanged.
+            // Only while open, and only with a row to insert, does a menu
+            // claim keys — `useMentionMenu` owns that rule for both. Anything
+            // it passes on falls through to the composer's own Enter binding
+            // below, unchanged.
             // An IME composition-confirm keydown reports key === 'Enter' with
             // isComposing === true. That Enter belongs to the composition,
             // not the menu — claiming it here (Chromium fires it even though
             // the composer's own Enter binding below already guards on
             // isComposing) would insert a row instead of committing the IME
-            // text, so it is treated as 'pass' regardless of what
-            // menuKeyAction says.
+            // text, so it is withheld from both menus.
             const composingEnter = e.key === "Enter" && e.nativeEvent.isComposing;
-            if (refOpen && !composingEnter) {
-              const action = menuKeyAction(e.key);
-              if (action !== "pass") {
-                e.preventDefault();
-                if (action === "move-down") { setActiveIndex(nextIndex(refIndex, 1, refRows.length)); }
-                if (action === "move-up") { setActiveIndex(nextIndex(refIndex, -1, refRows.length)); }
-                if (action === "select" && refRows[refIndex]) { pickRef(refRows[refIndex]); }
-                if (action === "close") { setRefDismissed(true); }
-                return;
-              }
-            }
-            if (menuOpen && !composingEnter) {
-              const action = menuKeyAction(e.key);
-              if (action !== "pass") {
-                e.preventDefault();
-                if (action === "move-down") {
-                  setActiveIndex(nextIndex(index, 1, view.rows.length));
-                }
-                if (action === "move-up") {
-                  setActiveIndex(nextIndex(index, -1, view.rows.length));
-                }
-                if (action === "select" && view.rows[index]) {
-                  pick(view.rows[index]);
-                }
-                if (action === "close") {
-                  setDismissed(true);
-                }
-                return;
-              }
+            if (!composingEnter && (refMenu.handleKeyDown(e) || menu.handleKeyDown(e))) {
+              return;
             }
             if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault();
@@ -301,13 +270,17 @@ export function Composer({
               }
             }
           }}
-          placeholder="Message the agent…"
+          // The `@` hint rides the placeholder: `/` has a persistent trigger
+          // button and `@` has nowhere else to be announced, and a second
+          // button would push a control row that already wraps at 300px onto
+          // another line.
+          placeholder="Message the agent… @ to reference a session"
           aria-label="Message"
           disabled={readOnly}
           aria-describedby={readOnly ? unavailableReasonId : undefined}
-          aria-controls={menuOpen ? menuListId : refOpen ? refListId : undefined}
-          aria-expanded={menuOpen || refOpen}
-          aria-activedescendant={activeOptionId ?? activeRefOptionId}
+          aria-controls={menu.open ? menuListId : refMenu.open ? refListId : undefined}
+          aria-expanded={menu.open || refMenu.open}
+          aria-activedescendant={menu.activeOptionId ?? refMenu.activeOptionId}
         />
         {/*
           flex-wrap: at pane widths around 300px the mode trigger, the model

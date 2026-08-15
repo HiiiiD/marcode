@@ -34,25 +34,41 @@ function slug(title: string): string {
  * One of possibly several sources — the composer concatenates what each
  * source offers, so adding file tagging later means adding a module beside
  * this one and one more array in the caller.
+ *
+ * `handoffAvailable` is a boolean rather than the catalog: whether there is a
+ * provider to create against is the caller's knowledge, and a row that opens a
+ * dialog which is not rendered looks like it worked and does nothing. Not
+ * offering it is the only honest shape.
  */
 export function sessionMentions(
-  sessions: SessionSummary[], selfId: SessionId,
+  sessions: SessionSummary[], selfId: SessionId, handoffAvailable: boolean,
 ): MentionOption<SessionMentionPayload>[] {
-  const options: MentionOption<SessionMentionPayload>[] = [{
-    id: 'handoff',
-    label: 'handoff',
-    hint: 'start a new session from this one',
-    group: 'Actions',
-    baseToken: 'handoff',
-    payload: { kind: 'action', action: 'handoff' },
-  }];
+  const options: MentionOption<SessionMentionPayload>[] = [];
+  if (handoffAvailable) {
+    options.push({
+      id: 'handoff',
+      label: 'handoff',
+      hint: 'start a new session from this one',
+      group: 'Actions',
+      baseToken: 'handoff',
+      payload: { kind: 'action', action: 'handoff' },
+    });
+  }
 
-  for (const s of sessions) {
-    if (s.id === selfId || s.archived) { continue; }
+  const referable = sessions.filter((s) => s.id !== selfId && !s.archived);
+  // Every session starts titled `Untitled`, so two rows reading the same word
+  // with the same hint is the common case, not the edge one — and the only
+  // thing telling them apart otherwise is a collision suffix inside a token
+  // the user has not looked at yet.
+  const seen = new Map<string, number>();
+  for (const s of referable) { seen.set(s.title, (seen.get(s.title) ?? 0) + 1); }
+
+  for (const s of referable) {
+    const label = (seen.get(s.title) ?? 0) > 1 ? `${s.title} (${shortId(s.id)})` : s.title;
     for (const { kind, hint } of KINDS) {
       options.push({
         id: `${s.id}:${kind}`,
-        label: s.title,
+        label,
         hint,
         group: 'Sessions',
         baseToken: `${slug(s.title)}:${kind}`,
@@ -61,6 +77,15 @@ export function sessionMentions(
     }
   }
   return options;
+}
+
+/**
+ * The tail of a session id, as a disambiguator for two identically titled
+ * sessions. The tail rather than the head: ids share a generated prefix often
+ * enough that the first characters are the ones that do not differ.
+ */
+function shortId(id: SessionId): string {
+  return id.slice(-4);
 }
 
 /**
