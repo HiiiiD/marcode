@@ -323,7 +323,7 @@ Expected: FAIL — `Cannot find module '../../host/replay'`
 import type { ToolCall, TranscriptItem } from '../protocol/messages';
 
 const PREAMBLE = [
-  'The following is a record of work that has ALREADY HAPPENED in this',
+  'The following is a record of work that has already happened in this',
   'conversation, before it moved to this directory. It is context, not a task.',
   'Do not redo any of it. Continue from where it leaves off.',
 ].join(' ');
@@ -378,7 +378,14 @@ export function buildSeed(items: TranscriptItem[], budgetChars = DEFAULT_BUDGET)
 
   if (kept.length === lines.length) { return `${header}${kept.join('\n')}`; }
 
-  const withNotice = `${header}${OMITTED}\n${kept.join('\n')}`;
+  // The notice costs bytes the loop above did not reserve, so pay for it by
+  // dropping further oldest lines. Trimming the string instead would cut the
+  // tail — the newest turns, which are exactly the ones worth keeping.
+  let withNotice = `${header}${OMITTED}\n${kept.join('\n')}`;
+  while (withNotice.length > budgetChars && kept.length > 0) {
+    kept.shift();
+    withNotice = `${header}${OMITTED}\n${kept.join('\n')}`;
+  }
   // A single oversized line can still overrun; the budget is a hard ceiling.
   return withNotice.length <= budgetChars
     ? withNotice
