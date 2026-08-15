@@ -23,9 +23,22 @@ async function settle() {
  * than `settle()` spends, and the exact count is an implementation detail no
  * test should encode.
  */
-async function until(done: () => boolean): Promise<void> {
-  for (let i = 0; i < 500 && !done(); i++) {
-    await new Promise((r) => setImmediate(r));
+async function until(done: () => boolean, what = 'the queued move to land'): Promise<void> {
+  // Bounded by wall clock, not by iteration count. A `setImmediate` loop only
+  // cycles the event loop — 500 turns of it elapse in a few milliseconds and
+  // never wait on the filesystem, so under full-suite load (other suites doing
+  // real fs work, the codex smoke tests running) the bound expired before the
+  // dispose and flush in this chain had settled. The suite passed in isolation
+  // and failed in aggregate, which is the worst way for a test to be wrong.
+  const deadline = Date.now() + 5000;
+  while (!done()) {
+    if (Date.now() > deadline) {
+      // Throw rather than return: falling through left the caller asserting on
+      // an unchanged roster and reporting `false !== true`, which says nothing
+      // about the timeout that actually happened.
+      throw new Error(`timed out after 5s waiting for ${what}`);
+    }
+    await new Promise((r) => setTimeout(r, 1));
   }
 }
 
