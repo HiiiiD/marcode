@@ -101,6 +101,10 @@ suite('PermissionCard', () => {
     const item = permission({
       name: 'Edit',
       input: { file_path: '/tmp/a.txt', old_string: 'one', new_string: 'two' },
+      tool: {
+        kind: 'file-edit', label: 'Edit',
+        files: [{ path: '/tmp/a.txt', op: 'modify', edits: [{ before: 'one', after: 'two' }] }],
+      },
     });
     renderWithStore(<PermissionCard item={item} sessionId="a" />);
     hydrateWith([{ requestId: 'r1', name: 'Edit', input: item.input }]);
@@ -121,11 +125,14 @@ suite('PermissionCard', () => {
   });
 
   test('an mcp-attributed request shows the server badge next to the bare name', () => {
-    const item = permission({ name: 'create_pr', mcpServer: 'github' });
+    const item = permission({
+      name: 'create_pr', mcpServer: 'github',
+      tool: { kind: 'mcp', label: 'create_pr', server: 'github', tool: 'create_pr' },
+    });
     renderWithStore(<PermissionCard item={item} sessionId="a" />);
     hydrateWith([{ requestId: 'r1', name: 'create_pr', input: item.input }]);
 
-    screen.getByText('github');
+    assert.ok(screen.getAllByText('github').length > 0);
     screen.getByText('Allow create_pr?');
   });
 });

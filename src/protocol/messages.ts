@@ -1,10 +1,10 @@
 import type {
-  ContextBreakdown, EditorContext, EffortLevel, Invocable, McpServerStatus, ModelInfo,
+  ContextBreakdown, EditorContext, EffortLevel, FileEdit, Invocable, McpServerStatus, ModelInfo,
   PermissionMode, PermissionModeInfo, ToolCall, ToolDecision, ToolOutput, UsageWindow,
 } from '../providers/types';
 
 export type {
-  ContextBreakdown, EditorContext, EffortLevel, Invocable, McpServerStatus, ModelInfo,
+  ContextBreakdown, EditorContext, EffortLevel, FileEdit, Invocable, McpServerStatus, ModelInfo,
   PermissionMode, PermissionModeInfo, ToolCall, ToolDecision, ToolOutput, UsageWindow,
 };
 

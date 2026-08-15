@@ -77,20 +77,15 @@ export function subagentStateLabel(item: ToolItem, blocked: boolean): string {
 }
 
 /**
- * The agent type from a `Task` call's input, when it carries one. This is
+ * The agent type from a spawned subagent call, when it carries one. This is
  * the identifying fact — "Explore" tells the user what is running, where
- * "Task" is only SDK vocabulary.
+ * "Agent" is only SDK vocabulary. The digging for `subagent_type` now happens
+ * in the Claude mapper, which is where that field name is known.
  */
 export function subagentLabel(item: ToolItem): string {
-  const input = item.input;
-  if (input && typeof input === 'object') {
-    // `name` is the caller-chosen label an `Agent` call can carry instead of a
-    // type — it is what SendMessage addresses, so it is the better identifier
-    // when both are absent from the type field.
-    for (const field of ['subagent_type', 'name'] as const) {
-      const value = (input as Record<string, unknown>)[field];
-      if (typeof value === 'string' && value.length > 0) { return value; }
-    }
-  }
-  return item.name;
+  const tool = item.tool;
+  if (!tool) { return item.name; }
+  return tool.kind === 'subagent'
+    ? (tool.agent ?? tool.target ?? tool.label)
+    : tool.label;
 }

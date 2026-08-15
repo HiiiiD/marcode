@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { useStore } from '../store';
 import { folderName } from '../format';
-import type { SessionId, TranscriptItem } from '../../protocol/messages';
+import type { SessionId, ToolCall, TranscriptItem } from '../../protocol/messages';
 import { ToolBody } from './tool-body';
 import { describeInput } from './tool-render';
 import { TranscriptItemShell } from './transcript-item-shell';
@@ -16,10 +16,14 @@ export function PermissionCard({
   sessionId: SessionId;
 }) {
   const { state, post } = useStore();
+  // Transitional while `tool` is still optional on the wire — deleted in the
+  // task that makes it required.
+  const tool: ToolCall = item.tool ?? { kind: 'other', label: item.name, raw: item.input };
+  const server = tool.kind === 'mcp' ? tool.server : undefined;
   // The same description layer the transcript's tool cards use, so a request
   // looks the way the completed call will look — a shell command reads as a
   // command in both places, an edit reads as the same diff.
-  const request = describeInput(item.name, item.input);
+  const request = describeInput(tool);
   const cwd = state.byId[sessionId]?.summary.cwd ?? '';
   // `respondToPermission` is exactly-once on the host and silently drops a
   // second response for the same requestId. Without local state, both
@@ -30,9 +34,9 @@ export function PermissionCard({
   const [answered, setAnswered] = useState(false);
 
   if (item.state !== 'pending') {
-    const label = item.mcpServer
-      ? `${item.mcpServer} ${item.name} — ${item.state}`
-      : `${item.name} — ${item.state}`;
+    const label = server
+      ? `${server} ${tool.label} — ${item.state}`
+      : `${tool.label} — ${item.state}`;
     return (
       <TranscriptItemShell role="permission" label={label} ts={item.ts}>
         {item.reason && <div className="text-xs text-muted-foreground">{item.reason}</div>}
@@ -59,20 +63,20 @@ export function PermissionCard({
     return (
       <div className="my-0 rounded border-2 border-dashed border-muted-foreground/40 p-2 text-xs">
         <div className="mb-1 flex items-baseline gap-2 font-medium text-muted-foreground">
-          {item.mcpServer && (
+          {server && (
             // Muted, not colour-per-server — mirrors ToolCard's badge treatment.
             <span className="shrink-0 rounded bg-muted px-1 text-muted-foreground">
-              {item.mcpServer}
+              {server}
             </span>
           )}
-          <span>{item.name} — no longer awaiting a response</span>
+          <span>{tool.label} — no longer awaiting a response</span>
         </div>
         <div className="mb-2">
           <ToolBody blocks={request} />
         </div>
         <div className="flex gap-2">
-          <Button size="sm" disabled aria-label={`Deny ${item.name} (unavailable)`}>Deny</Button>
-          <Button variant="outline" size="sm" disabled aria-label={`Allow ${item.name} (unavailable)`}>Allow</Button>
+          <Button size="sm" disabled aria-label={`Deny ${tool.label} (unavailable)`}>Deny</Button>
+          <Button variant="outline" size="sm" disabled aria-label={`Allow ${tool.label} (unavailable)`}>Allow</Button>
         </div>
       </div>
     );
@@ -94,13 +98,13 @@ export function PermissionCard({
   return (
     <div className="my-0 rounded border-2 border-destructive bg-destructive/10 p-2 text-xs">
       <div className="mb-1 flex items-baseline gap-2">
-        {item.mcpServer && (
+        {server && (
           // Muted, not colour-per-server — mirrors ToolCard's badge treatment.
           <span className="shrink-0 rounded bg-muted px-1 text-muted-foreground">
-            {item.mcpServer}
+            {server}
           </span>
         )}
-        <span className="font-medium">Allow {item.name}?</span>
+        <span className="font-medium">Allow {tool.label}?</span>
         <span className="truncate text-muted-foreground" title={cwd}>{folderName(cwd)}</span>
       </div>
       <div className="mb-2">
@@ -116,7 +120,7 @@ export function PermissionCard({
           size="sm"
           disabled={answered}
           onClick={() => decide(false)}
-          aria-label={`Deny ${item.name}`}
+          aria-label={`Deny ${tool.label}`}
         >
           Deny
         </Button>
@@ -125,7 +129,7 @@ export function PermissionCard({
           size="sm"
           disabled={answered}
           onClick={() => decide(true)}
-          aria-label={`Allow ${item.name}`}
+          aria-label={`Allow ${tool.label}`}
         >
           Allow
         </Button>

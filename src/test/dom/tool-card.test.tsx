@@ -9,7 +9,9 @@ const expand = () => userEvent.click(screen.getByRole('button', { expanded: fals
 
 suite('ToolCard', () => {
   test('the collapsed row names the tool and its one telling argument', () => {
-    renderWithStore(<ToolCard item={tool()} />);
+    renderWithStore(<ToolCard item={tool({
+      tool: { kind: 'command', label: 'Bash', command: 'yarn test:unit' },
+    })} />);
 
     screen.getByText('Bash');
     screen.getByText('yarn test:unit');
@@ -18,7 +20,10 @@ suite('ToolCard', () => {
   });
 
   test('expanding shows the command and the result under separate headings', async () => {
-    renderWithStore(<ToolCard item={tool({ output: '14 passing' })} />);
+    renderWithStore(<ToolCard item={tool({
+      tool: { kind: 'command', label: 'Bash', command: 'yarn test:unit' },
+      toolOutput: { kind: 'text', text: '14 passing' },
+    })} />);
     await expand();
 
     screen.getByText('Result');
@@ -30,7 +35,11 @@ suite('ToolCard', () => {
   });
 
   test('a failed call is named in words, not only in colour', async () => {
-    renderWithStore(<ToolCard item={tool({ state: 'error', output: 'ENOENT' })} />);
+    renderWithStore(<ToolCard item={tool({
+      tool: { kind: 'command', label: 'Bash', command: 'yarn test:unit' },
+      state: 'error',
+      toolOutput: { kind: 'text', text: 'ENOENT' },
+    })} />);
 
     screen.getByText('failed');
     await expand();
@@ -39,7 +48,11 @@ suite('ToolCard', () => {
   });
 
   test('a running call reports itself rather than showing an empty result', async () => {
-    renderWithStore(<ToolCard item={tool({ state: 'running', output: undefined })} />);
+    renderWithStore(<ToolCard item={tool({
+      tool: { kind: 'command', label: 'Bash', command: 'yarn test:unit' },
+      state: 'running',
+      toolOutput: undefined,
+    })} />);
     await expand();
 
     screen.getByText('Running…');
@@ -48,7 +61,10 @@ suite('ToolCard', () => {
 
   test('long output is clamped to its opening and its verdict until asked', async () => {
     const output = Array.from({ length: 100 }, (_, i) => `line ${i}`).join('\n');
-    renderWithStore(<ToolCard item={tool({ output })} />);
+    renderWithStore(<ToolCard item={tool({
+      tool: { kind: 'command', label: 'Bash', command: 'yarn test:unit' },
+      toolOutput: { kind: 'text', text: output },
+    })} />);
     await expand();
 
     screen.getByText('line 0');
@@ -63,7 +79,11 @@ suite('ToolCard', () => {
     const item = tool({
       name: 'Edit',
       input: { file_path: '/repo/src/a.ts', old_string: 'one', new_string: 'two' },
-      output: 'ok',
+      tool: {
+        kind: 'file-edit', label: 'Edit',
+        files: [{ path: '/repo/src/a.ts', op: 'modify', edits: [{ before: 'one', after: 'two' }] }],
+      },
+      toolOutput: { kind: 'text', text: 'ok' },
     });
     renderWithStore(<ToolCard item={item} />);
     await expand();
@@ -76,15 +96,16 @@ suite('ToolCard', () => {
     assert.deepStrictEqual(posted().at(-1), { t: 'reveal-file', path: '/repo/src/a.ts' });
   });
 
-  test('an mcp call keeps its server badge and falls back to JSON for its arguments', async () => {
+  test('an mcp call keeps its server badge and shows its tool name', () => {
     const item = tool({
-      name: 'create_pr', mcpServer: 'github', input: { title: 'x', body: 'y' }, output: 'done',
+      name: 'create_pr', mcpServer: 'github', input: { title: 'x', body: 'y' },
+      tool: { kind: 'mcp', label: 'create_pr', server: 'github', tool: 'create_pr' },
+      toolOutput: { kind: 'text', text: 'done' },
     });
     renderWithStore(<ToolCard item={item} />);
 
     screen.getByText('github');
-    await expand();
-    assert.ok(document.querySelector('pre')!.textContent!.includes('"title"'));
+    screen.getByText('create_pr');
   });
 
   test('an unserializable argument renders instead of throwing during a turn', () => {

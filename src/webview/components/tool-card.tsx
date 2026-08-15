@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import type { TranscriptItem } from '../../protocol/messages';
+import type { ToolCall, TranscriptItem } from '../../protocol/messages';
 import { ToolBody } from './tool-body';
 import { describeInput, describeOutput, describeTool, type ToolGlyph } from './tool-render';
 
@@ -28,7 +28,10 @@ const GLYPHS: Record<ToolGlyph, typeof TerminalIcon> = {
 
 export function ToolCard({ item }: { item: ToolItem }) {
   const [open, setOpen] = useState(false);
-  const header = describeTool(item.name, item.input);
+  // Transitional while `tool` is still optional on the wire — deleted in the
+  // task that makes it required.
+  const tool: ToolCall = item.tool ?? { kind: 'other', label: item.name, raw: item.input };
+  const header = describeTool(tool);
   // A settled check mark on every row is noise in a column this narrow: the
   // transcript is a log of things that already happened, so success is the
   // default reading. Only the two states that change what the user should do
@@ -37,8 +40,8 @@ export function ToolCard({ item }: { item: ToolItem }) {
   const Glyph = item.state === 'running' ? Loader2Icon : GLYPHS[header.glyph];
   const Chevron = open ? ChevronDownIcon : ChevronRightIcon;
 
-  const input = describeInput(item.name, item.input);
-  const output = describeOutput(item.name, item.output, item.state);
+  const input = describeInput(tool);
+  const output = describeOutput(tool.kind, item.toolOutput, item.state);
 
   return (
     <div className="my-0 rounded border border-border text-xs">

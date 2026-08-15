@@ -15,7 +15,9 @@ function child(id: string, name: string): TranscriptItem {
 function subagent(children: TranscriptItem[], over: Partial<ToolItem> = {}): ToolItem {
   return {
     id: 't1', ts: 1000, role: 'tool', toolId: 'task1', name: 'Task',
-    input: { subagent_type: 'Explore' }, state: 'running', children, ...over,
+    input: { subagent_type: 'Explore' },
+    tool: { kind: 'subagent', label: 'Task', action: 'spawn', agent: 'Explore' },
+    state: 'running', children, ...over,
   } as ToolItem;
 }
 
