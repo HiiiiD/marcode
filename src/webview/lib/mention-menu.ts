@@ -64,12 +64,17 @@ export function filterMentions<P>(options: MentionOption<P>[], query: string): M
  * These two have to agree, which is why they sit together: `tokenFor` appends
  * the suffix and `tokenPresent` is the only thing entitled to decide that a
  * token is in the text. A bare `text.includes(token)` is not, because
- * `@a:plan` is a substring of `@a:plan-2` — deleting the first of two
- * colliding tokens would leave both references attached and send a payload the
- * user removed.
+ * `@refactor-store` is a substring of both `@refactor-store-2` (the suffix)
+ * and `@refactor-store-two` (a different session whose slug merely starts the
+ * same way) — deleting the shorter token would leave both references attached
+ * and send a payload the user removed.
+ *
+ * So the continuation test is every character a token can be made of, not just
+ * the suffix's digits: base tokens are slugs and paths, and any of them
+ * running on where a token ended means the match was a prefix, not the token.
  */
 const collisionSuffix = (n: number) => `-${n}`;
-const CONTINUES_TOKEN = /^-\d/;
+const CONTINUES_TOKEN = /^[\w-]/;
 
 /**
  * The literal token for a row, unique against `taken`.

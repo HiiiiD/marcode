@@ -1,4 +1,4 @@
-import type { RefKind, SessionId, SessionRef, SessionSummary } from '../../protocol/messages';
+import type { SessionId, SessionRef, SessionSummary } from '../../protocol/messages';
 import type { MentionOption, PendingMention } from './mention-menu';
 
 /**
@@ -9,11 +9,6 @@ import type { MentionOption, PendingMention } from './mention-menu';
 export type SessionMentionPayload =
   | { kind: 'session-ref'; ref: SessionRef }
   | { kind: 'action'; action: 'handoff' };
-
-const KINDS: { kind: RefKind; hint: string }[] = [
-  { kind: 'message', hint: 'last reply' },
-  { kind: 'plan', hint: 'last plan' },
-];
 
 /**
  * Slugs a session title into a token-safe fragment.
@@ -28,8 +23,17 @@ function slug(title: string): string {
 }
 
 /**
- * The rows sessions contribute to the `@` menu: the handoff gesture, then
- * every other live session crossed with the payload kinds.
+ * The rows sessions contribute to the `@` menu: the handoff gesture, then one
+ * row for each other live session.
+ *
+ * One row per session, not one per `RefKind`. Crossing the two put a pair of
+ * rows on screen carrying the same title, separated only by a hint in the
+ * right margin of a 300px pane — and the `plan` half of every pair referenced
+ * something most sessions have never produced, so picking it got the message
+ * refused at send time. `message` is the kind a session always has if it has
+ * anything at all, and it is now the only kind this menu offers. `RefKind`
+ * keeps its other arm: transcripts written before this change still carry
+ * plan references, and the host still resolves and renders them.
  *
  * One of possibly several sources — the composer concatenates what each
  * source offers, so adding file tagging later means adding a module beside
@@ -64,17 +68,17 @@ export function sessionMentions(
   for (const s of referable) { seen.set(s.title, (seen.get(s.title) ?? 0) + 1); }
 
   for (const s of referable) {
-    const label = (seen.get(s.title) ?? 0) > 1 ? `${s.title} (${shortId(s.id)})` : s.title;
-    for (const { kind, hint } of KINDS) {
-      options.push({
-        id: `${s.id}:${kind}`,
-        label,
-        hint,
-        group: 'Sessions',
-        baseToken: `${slug(s.title)}:${kind}`,
-        payload: { kind: 'session-ref', ref: { sessionId: s.id, kind, title: s.title } },
-      });
-    }
+    options.push({
+      id: s.id,
+      label: (seen.get(s.title) ?? 0) > 1 ? `${s.title} (${shortId(s.id)})` : s.title,
+      hint: 'last reply',
+      group: 'Sessions',
+      baseToken: slug(s.title),
+      payload: {
+        kind: 'session-ref',
+        ref: { sessionId: s.id, kind: 'message', title: s.title },
+      },
+    });
   }
   return options;
 }

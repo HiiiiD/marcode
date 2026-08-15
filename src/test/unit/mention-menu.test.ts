@@ -103,6 +103,24 @@ suite('mention menu', () => {
       { token: '@a:plan', payload: { id: 'a' } },
     ];
     assert.strictEqual(pruneMentions('see @a:plan, then go', pending).length, 1);
-    assert.strictEqual(pruneMentions('see @a:plan-ish', pending).length, 1);
+    assert.strictEqual(pruneMentions('see @a:plan then go', pending).length, 1);
+  });
+
+  /**
+   * A token that is a strict prefix of a LONGER token, with no collision
+   * suffix in sight: two sessions titled `refactor store` and `refactor store
+   * two` slug to exactly this pair. Deleting the short one leaves the long one
+   * standing, and a prefix match would keep the deleted reference attached and
+   * send a payload the user removed.
+   */
+  test('pruneMentions drops a token that survives only as another token prefix', () => {
+    const pending: PendingMention<{ id: string }>[] = [
+      { token: '@refactor-store', payload: { id: 'short' } },
+      { token: '@refactor-store-two', payload: { id: 'long' } },
+    ];
+
+    const left = pruneMentions('kept @refactor-store-two only', pending);
+    assert.strictEqual(left.length, 1);
+    assert.strictEqual(left[0].payload.id, 'long');
   });
 });

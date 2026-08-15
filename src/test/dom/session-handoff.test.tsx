@@ -122,7 +122,8 @@ suite('session handoff', () => {
     const sent = sends[0] as { text: string; refs?: { sessionId: string; kind: string }[] };
     assert.strictEqual(sent.refs?.length, 1);
     assert.strictEqual(sent.refs?.[0].sessionId, 's-2');
-    assert.strictEqual(sent.text.includes('@refactor-store:'), true);
+    assert.strictEqual(sent.refs?.[0].kind, 'message');
+    assert.strictEqual(sent.text.includes('@refactor-store'), true);
   });
 
   /**
@@ -217,11 +218,11 @@ suite('session handoff', () => {
 
     fireEvent.change(messageBox(), { target: { value: '@' } });
 
-    // The heading is on screen and is NOT one of the addressable rows: three
-    // options (one action, two kinds for the other session), no more.
+    // The heading is on screen and is NOT one of the addressable rows: two
+    // options (the action, and the one other session), no more.
     screen.getByText('Actions');
     screen.getByText('Sessions');
-    assert.strictEqual(screen.getAllByRole('option').length, 3);
+    assert.strictEqual(screen.getAllByRole('option').length, 2);
     // The visible heading is aria-hidden, so the name reaches assistive tech
     // through the group instead — static text is not a legal listbox child.
     screen.getByRole('group', { name: 'Actions' });

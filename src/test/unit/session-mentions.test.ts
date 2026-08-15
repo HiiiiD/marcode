@@ -14,15 +14,27 @@ function summary(id: string, title: string): SessionSummary {
 }
 
 suite('session mentions', () => {
-  test('offers handoff first, then one row per kind per other session', () => {
+  /**
+   * One row, not one per `RefKind`. A session crossed with every kind put two
+   * rows on screen reading the same title, told apart only by a hint in the
+   * right margin — and half of them referenced a plan the session had never
+   * produced, which the host could only reject at send time.
+   */
+  test('offers handoff first, then exactly one row per other session', () => {
     const rows = sessionMentions([summary('s-1', 'me'), summary('s-2', 'refactor store')], 's-1', true);
     assert.strictEqual(rows[0].payload.kind, 'action');
     assert.strictEqual(rows[0].group, 'Actions');
-    assert.strictEqual(rows.length, 3);
+    assert.strictEqual(rows.length, 2);
     assert.strictEqual(rows.filter((r) =>
-      r.payload.kind === 'session-ref' && r.payload.ref.sessionId === 's-2').length, 2);
+      r.payload.kind === 'session-ref' && r.payload.ref.sessionId === 's-2').length, 1);
     const sessionRow = rows.find((r) => r.payload.kind === 'session-ref');
     assert.strictEqual(sessionRow?.group, 'Sessions');
+  });
+
+  test('references the last reply', () => {
+    const rows = sessionMentions([summary('s-1', 'me'), summary('s-2', 'refactor store')], 's-1', true);
+    const ref = rows.find((r) => r.payload.kind === 'session-ref');
+    assert.strictEqual(ref?.payload.kind === 'session-ref' && ref.payload.ref.kind, 'message');
   });
 
   test('omits the session doing the referencing', () => {
@@ -45,14 +57,14 @@ suite('session mentions', () => {
 
   test('slugs the title into the base token', () => {
     const rows = sessionMentions([summary('s-1', 'me'), summary('s-2', 'Refactor Store!')], 's-1', true);
-    const plan = rows.find((r) => r.baseToken.endsWith(':plan'));
-    assert.strictEqual(plan?.baseToken, 'refactor-store:plan');
+    const ref = rows.find((r) => r.payload.kind === 'session-ref');
+    assert.strictEqual(ref?.baseToken, 'refactor-store');
   });
 
   test('falls back to a stable slug for a title with no usable characters', () => {
     const rows = sessionMentions([summary('s-1', 'me'), summary('s-2', '!!!')], 's-1', true);
-    const plan = rows.find((r) => r.baseToken.endsWith(':plan'));
-    assert.strictEqual(plan?.baseToken, 'session:plan');
+    const ref = rows.find((r) => r.payload.kind === 'session-ref');
+    assert.strictEqual(ref?.baseToken, 'session');
   });
 
   /**
@@ -66,7 +78,7 @@ suite('session mentions', () => {
       [summary('s-1', 'me'), summary('s-2', 'other')], 's-1', false,
     );
     assert.strictEqual(rows.some((r) => r.payload.kind === 'action'), false);
-    assert.strictEqual(rows.length, 2);
+    assert.strictEqual(rows.length, 1);
   });
 
   test('disambiguates identically titled sessions in the visible label', () => {
