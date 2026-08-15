@@ -6,17 +6,20 @@ import * as path from 'node:path';
 import { AppServer, type Duplex } from '../../providers/codex/app-server';
 import { CodexProvider } from '../../providers/codex/codex-provider';
 import type { AgentEvent, AgentRun } from '../../providers/types';
-import type { RateLimitsReadResponse } from '../../providers/codex/wire';
+import type { AccountReadResponse, RateLimitsReadResponse } from '../../providers/codex/wire';
 
 /**
  * Opt-in tests against a real `codex` binary — a smoke test and the
  * protocol-skew check described in `src/providers/codex/wire.ts`'s header.
  *
- * These need a real binary and a signed-in account, so the whole suite
- * skips (never fails) when either is absent — a contributor without Codex
- * must still get a green `yarn test:unit`. `codexAvailable()` is a cheap
- * `codex --version` probe, not a spawn-and-wait, so the skip decision costs
- * nothing when Codex is absent.
+ * These need a real binary AND a signed-in account, so the whole suite
+ * skips (never fails) when either is absent — a contributor without Codex,
+ * or one who installed it but never ran `codex login`, must still get a
+ * green `yarn test:unit`. `codexAvailable()` is a cheap `codex --version`
+ * probe, not a spawn-and-wait, so the no-binary case costs nothing; only
+ * once that passes does `suiteSetup` pay for one real `initialize` +
+ * `account/read` round trip to check auth, shared by all three tests rather
+ * than repeated per test.
  */
 
 function codexAvailable(): boolean {
@@ -37,6 +40,12 @@ const CODEX_SRC_DIR = path.join(__dirname, '..', '..', 'providers', 'codex');
  * drift, not create one. Matches `server.request('method', ...)` and
  * `server.request<T>('method', ...)`, including the multi-line call in
  * `codex-run.ts`'s `thread/resume` branch.
+ *
+ * The two-file list below is accurate today — every `.request(...)` call
+ * under `src/providers/codex` lives in one of them — but it is still a
+ * named list: a future third file that calls `server.request(...)` would
+ * silently escape this check rather than widen it. If a new call site
+ * appears elsewhere under `src/providers/codex`, add its filename here.
  */
 function collectSentMethods(): string[] {
   const files = ['codex-provider.ts', 'codex-run.ts'];
@@ -83,6 +92,52 @@ async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): P
 }
 
 /**
+ * The one `initialize` + `account/read` round trip the whole suite pays for
+ * — `suiteSetup` calls this exactly once, never per test, and every test
+ * spawns its own separate connection for its own assertions afterward.
+ * `codex --version` succeeding says only that the binary exists; a CLI
+ * installed but never `codex login`-ed answers every RPC just fine and only
+ * `account/read` reveals that. `reason` is what `suiteSetup` logs, so a
+ * "not signed in" skip reads differently from a "no binary" skip in the
+ * test output — a silently-pending test a contributor expected to run is
+ * its own confusion.
+ */
+async function probeAuth(): Promise<{ signedIn: boolean; reason?: string }> {
+  const server = new AppServer(spawnCodex());
+  try {
+    await withTimeout(server.request('initialize', {
+      clientInfo: { name: 'hiiiid-code-smoke-test', title: null, version: '0.0.0' },
+      capabilities: { experimentalApi: true, requestAttestation: false, optOutNotificationMethods: [] },
+    }), 20_000, 'initialize');
+    const account = await withTimeout(
+      server.request<AccountReadResponse>('account/read', {}),
+      20_000,
+      'account/read',
+    );
+    // `account.account` — not `requiresOpenaiAuth` — is the real "signed
+    // in" signal. Measured live on codex-cli 0.147.0 against this repo's
+    // own signed-in ChatGPT Plus account: `account/read` answered
+    // `{"account":{"type":"chatgpt","email":"…","planType":"plus"},
+    // "requiresOpenaiAuth":true}` — `requiresOpenaiAuth` was `true` even
+    // though the account was fully populated and `model/list` genuinely
+    // returned six real models. `wire.ts`'s own comment already hedges this
+    // ("requiresOpenaiAuth: true ALONE is 'not signed in'" — i.e. only
+    // when `account` is also null): `codex-provider.ts`'s `fetchModels()`
+    // branches on `requiresOpenaiAuth` by itself, which this measurement
+    // shows is wrong on a genuinely signed-in account — flagged in the
+    // task-11 report as a discrepancy in task 8's code, not fixed here.
+    if (!account.account) {
+      return { signedIn: false, reason: 'codex is installed but not signed in — run `codex login`' };
+    }
+    return { signedIn: true };
+  } catch (err) {
+    return { signedIn: false, reason: `codex auth probe failed: ${errorMessage(err)}` };
+  } finally {
+    server.dispose();
+  }
+}
+
+/**
  * Drains `run.events` until a `turn-end` arrives or `maxMs` elapses,
  * whichever comes first. A plain `for await` would hang the test (and the
  * child process) forever if the real turn never ends; racing each `next()`
@@ -113,7 +168,20 @@ suite('codex smoke (opt-in)', function () {
   this.timeout(60_000);
   // TDD interface: `suiteSetup`, not BDD's `before` — the latter is not a
   // global under `--ui tdd` and would throw a ReferenceError at load time.
-  suiteSetup(function () { if (!codexAvailable()) { this.skip(); } });
+  suiteSetup(async function () {
+    if (!codexAvailable()) {
+      // A distinguishable, visible skip reason — see probeAuth()'s comment
+      // on why "no binary" and "not signed in" must not look the same.
+      console.log('[codex smoke] skipping: no codex binary on PATH');
+      this.skip();
+      return;
+    }
+    const probe = await probeAuth();
+    if (!probe.signedIn) {
+      console.log(`[codex smoke] skipping: ${probe.reason}`);
+      this.skip();
+    }
+  });
 
   test('every method name we send still exists in the generated protocol', function () {
     // The closest thing to the version negotiation the handshake does not
