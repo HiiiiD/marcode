@@ -6,7 +6,9 @@ import { SessionManager } from '../../host/session-manager';
 import { TranscriptStore } from '../../host/transcript-store';
 import type { HostToWebview, SessionState } from '../../protocol/messages';
 import { FakeProvider } from '../../providers/fake/fake-provider';
-import type { AgentProvider, ModelInfo, UsageWindow } from '../../providers/types';
+import type {
+  AgentProvider, ModelInfo, PermissionModeInfo, UsageWindow,
+} from '../../providers/types';
 
 async function settle() {
   for (let i = 0; i < 10; i++) { await new Promise((r) => setImmediate(r)); }
@@ -80,6 +82,26 @@ suite('SessionManager', () => {
   test('create defaults the permission mode when none is requested', async () => {
     const session = await manager.create('fake', '/tmp');
     assert.strictEqual(session.state.permissionMode, 'default');
+  });
+
+  test('create refuses to persist a mode the provider does not declare', async () => {
+    // The concrete failure: in New Session, pick a provider offering
+    // acceptEdits, then switch the model radio to one that does not (Codex
+    // declares five modes and omits it). Create posts `acceptEdits`, and
+    // without this gate the session PERSISTS as `acceptEdits` — the
+    // composer and the roster both label it "Auto-edit" while
+    // map-settings.ts quietly runs it as `default`.
+    // A narrower provider than the FakeProvider's own six, standing in for
+    // Codex's five. Set on the instance the suite's manager already holds;
+    // setup() builds a fresh one per test, so nothing needs restoring.
+    provider.listPermissionModes = (): PermissionModeInfo[] => [{ id: 'default' }, { id: 'plan' }];
+
+    const session = await manager.create('fake', '/tmp', undefined, undefined, 'acceptEdits');
+    // Never the requested-but-unavailable mode, and never 'bypass'.
+    assert.strictEqual(session.state.permissionMode, 'default');
+    // A mode the provider DOES declare still survives untouched.
+    const kept = await manager.create('fake', '/tmp', undefined, undefined, 'plan');
+    assert.strictEqual(kept.state.permissionMode, 'plan');
   });
 
   test('patches reach visible sessions only', async () => {
