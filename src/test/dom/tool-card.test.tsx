@@ -2,6 +2,7 @@ import * as assert from 'assert';
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ToolCard } from '@/components/tool-card';
+import { SAMPLE_TOOL_CALLS } from '../../providers/fake/sample-tools';
 import { tool } from '../fixtures/protocol';
 import { posted, renderWithStore } from './harness';
 
@@ -116,5 +117,58 @@ suite('ToolCard', () => {
     })} />);
 
     screen.getByText('create_pr');
+  });
+
+  // One case per canonical `ToolCall` kind, driven off the same
+  // `SAMPLE_TOOL_CALLS` fixture the fake-provider exhaustiveness test checks,
+  // so the renderer's coverage and the fixture's coverage never drift apart.
+  test('a command card shows its command', () => {
+    renderWithStore(<ToolCard item={tool({ tool: SAMPLE_TOOL_CALLS['command'] })} />);
+    screen.getByText('yarn test:unit');
+  });
+
+  test('a file-edit card shows the shortened path', () => {
+    renderWithStore(<ToolCard item={tool({ tool: SAMPLE_TOOL_CALLS['file-edit'] })} />);
+    screen.getByText('…/components/tool-render.ts');
+  });
+
+  test('a file-read card shows the shortened path', () => {
+    renderWithStore(<ToolCard item={tool({ tool: SAMPLE_TOOL_CALLS['file-read'] })} />);
+    screen.getByText('…/protocol/messages.ts');
+  });
+
+  test('a search card shows its pattern', () => {
+    renderWithStore(<ToolCard item={tool({ tool: SAMPLE_TOOL_CALLS['search'] })} />);
+    screen.getByText('describeTool');
+  });
+
+  test('a web card shows the URL host', () => {
+    renderWithStore(<ToolCard item={tool({ tool: SAMPLE_TOOL_CALLS['web'] })} />);
+    screen.getByText('example.dev');
+  });
+
+  test('a todos card shows the in-progress item', () => {
+    renderWithStore(<ToolCard item={tool({ tool: SAMPLE_TOOL_CALLS['todos'] })} />);
+    screen.getByText('Rewrite the renderer');
+  });
+
+  test('a plan card shows its text', () => {
+    renderWithStore(<ToolCard item={tool({ tool: SAMPLE_TOOL_CALLS['plan'] })} />);
+    screen.getByText('Map, render, then contract.');
+  });
+
+  test('a subagent card shows the agent name', () => {
+    renderWithStore(<ToolCard item={tool({ tool: SAMPLE_TOOL_CALLS['subagent'] })} />);
+    screen.getByText('Explore');
+  });
+
+  test('an mcp card shows the server and tool', () => {
+    renderWithStore(<ToolCard item={tool({ tool: SAMPLE_TOOL_CALLS['mcp'] })} />);
+    screen.getByText('github · create_issue');
+  });
+
+  test('an other card shows its label', () => {
+    renderWithStore(<ToolCard item={tool({ tool: SAMPLE_TOOL_CALLS['other'] })} />);
+    screen.getByText('Bananas');
   });
 });
