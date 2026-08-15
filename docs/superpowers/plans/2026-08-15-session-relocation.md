@@ -61,6 +61,14 @@ for git.
   `onDidReceiveMessage` callback.
 - **The transcript's role switch lives in
   `src/webview/components/transcript-item.tsx`**, not `transcript.tsx`.
+- **`yarn test:dom --grep X` does not work here.** The extra argument breaks
+  mocha's loader and throws `ERR_UNKNOWN_FILE_EXTENSION` regardless of the
+  code's state, so it can never be read as red-first evidence. Run the whole DOM
+  suite and grep its output.
+- **The DOM harness helpers are** `renderApp()`, `renderWithStore(ui)`,
+  `sendFromHost(...msgs)`, `posted()` and `resetHost()`, with `userEvent.click`
+  for interaction. Any other helper name in this plan's test code is
+  illustrative — adapt to the harness.
 
 **Milestones.** Tasks 1–8 deliver relocation end to end and are independently
 shippable. Tasks 9–11 add bringing a branch back and the stale-tree sweep; they
