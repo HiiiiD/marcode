@@ -3,6 +3,7 @@ import { catalogKey, CatalogService } from './catalog-service';
 import type { StoredIndex, TranscriptStore } from './transcript-store';
 import type { AgentProvider, EffortLevel, Invocable, ModelInfo, UsageWindow } from '../providers/types';
 import { findModel, resolveEffort } from '../shared/model-catalog';
+import { resolvePermissionMode } from '../shared/permission-catalog';
 import { orderWindows } from '../shared/usage-windows';
 import type {
   ContextResult, HostToWebview, McpServerStatus, PaneLayout, PermissionMode, ProviderInfo, SessionId,
@@ -154,7 +155,12 @@ export class SessionManager implements SessionSink {
    */
   catalog(): ProviderInfo[] {
     return [...this.providers.values()]
-      .map((p) => ({ id: p.id, displayName: p.displayName, models: this.modelsFor(p) }))
+      .map((p) => ({
+        id: p.id,
+        displayName: p.displayName,
+        models: this.modelsFor(p),
+        permissionModes: p.listPermissionModes(),
+      }))
       .filter((p) => p.models.length > 0);
   }
 
@@ -354,11 +360,20 @@ export class SessionManager implements SessionSink {
     }
     const chosen = findModel(models, model) ?? models[0];
     const resolvedEffort = resolveEffort(chosen, effort);
+    // The same gate `resolveEffort` is, for the same reason: a mode is a
+    // property of the provider, not of the session. The create dialog can
+    // post a mode the picked provider does not declare — pick Claude +
+    // Auto-edit, then switch the model radio to a Codex model, and `create`
+    // arrives with `acceptEdits`, which Codex has no equivalent for. Without
+    // this the session PERSISTS as `acceptEdits`, the composer and roster
+    // label it "Auto-edit", and `map-settings.ts` quietly runs it as
+    // `default` — the UI claiming one thing while the backend does another.
+    const resolvedMode = resolvePermissionMode(provider.listPermissionModes(), mode);
 
     const now = Date.now();
     const state: SessionState = {
       id: newSessionId(), providerId, model: chosen.id, effort: resolvedEffort,
-      title: 'Untitled', cwd, status: 'idle', permissionMode: mode,
+      title: 'Untitled', cwd, status: 'idle', permissionMode: resolvedMode,
       includeEditorContext: true,
       usage: { inputTokens: 0, outputTokens: 0 },
       archived: false, createdAt: now, updatedAt: now,

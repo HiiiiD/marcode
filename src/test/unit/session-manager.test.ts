@@ -6,7 +6,9 @@ import { SessionManager } from '../../host/session-manager';
 import { TranscriptStore } from '../../host/transcript-store';
 import type { HostToWebview, SessionState } from '../../protocol/messages';
 import { FakeProvider } from '../../providers/fake/fake-provider';
-import type { AgentProvider, ModelInfo, UsageWindow } from '../../providers/types';
+import type {
+  AgentProvider, ModelInfo, PermissionModeInfo, UsageWindow,
+} from '../../providers/types';
 
 async function settle() {
   for (let i = 0; i < 10; i++) { await new Promise((r) => setImmediate(r)); }
@@ -80,6 +82,26 @@ suite('SessionManager', () => {
   test('create defaults the permission mode when none is requested', async () => {
     const session = await manager.create('fake', '/tmp');
     assert.strictEqual(session.state.permissionMode, 'default');
+  });
+
+  test('create refuses to persist a mode the provider does not declare', async () => {
+    // The concrete failure: in New Session, pick a provider offering
+    // acceptEdits, then switch the model radio to one that does not (Codex
+    // declares five modes and omits it). Create posts `acceptEdits`, and
+    // without this gate the session PERSISTS as `acceptEdits` — the
+    // composer and the roster both label it "Auto-edit" while
+    // map-settings.ts quietly runs it as `default`.
+    // A narrower provider than the FakeProvider's own six, standing in for
+    // Codex's five. Set on the instance the suite's manager already holds;
+    // setup() builds a fresh one per test, so nothing needs restoring.
+    provider.listPermissionModes = (): PermissionModeInfo[] => [{ id: 'default' }, { id: 'plan' }];
+
+    const session = await manager.create('fake', '/tmp', undefined, undefined, 'acceptEdits');
+    // Never the requested-but-unavailable mode, and never 'bypass'.
+    assert.strictEqual(session.state.permissionMode, 'default');
+    // A mode the provider DOES declare still survives untouched.
+    const kept = await manager.create('fake', '/tmp', undefined, undefined, 'plan');
+    assert.strictEqual(kept.state.permissionMode, 'plan');
   });
 
   test('patches reach visible sessions only', async () => {
@@ -536,6 +558,7 @@ suite('SessionManager', () => {
       id: base.id,
       displayName: base.displayName,
       listModels: () => base.listModels(),
+      listPermissionModes: () => base.listPermissionModes(),
       start: (opts) => ({
         ...base.start(opts),
         contextBreakdown: () => new Promise<never>(() => {}),
@@ -914,6 +937,7 @@ suite('SessionManager', () => {
     return {
       id, displayName: id,
       listModels: () => models,
+      listPermissionModes: () => [],
       fetchModels: async (cwd: string) => {
         if (onFetch) { await onFetch(); }
         models = [{ id: `fresh-${cwd}`, displayName: 'Fresh' }];
@@ -938,6 +962,7 @@ suite('SessionManager', () => {
     assert.deepStrictEqual(catalogs[0].catalog, [{
       id: 'claude', displayName: 'claude',
       models: [{ id: 'fresh-/repo', displayName: 'Fresh' }],
+      permissionModes: [],
     }]);
     await m.dispose();
   });
@@ -947,6 +972,7 @@ suite('SessionManager', () => {
     return {
       id, displayName: id,
       listModels: () => [],
+      listPermissionModes: () => [],
       fetchModels: () => Promise.reject(new Error(reason)),
       start: () => { throw new Error('not used'); },
     };
@@ -1003,6 +1029,7 @@ suite('SessionManager', () => {
 
     assert.deepStrictEqual(m.catalog(), [{
       id: 'claude', displayName: 'claude', models: [{ id: 'opus', displayName: 'Opus 5' }],
+      permissionModes: [],
     }]);
     await m.dispose();
   });
@@ -1020,6 +1047,7 @@ suite('SessionManager', () => {
 
     assert.deepStrictEqual(m.catalog(), [{
       id: 'claude', displayName: 'claude', models: [{ id: 'fresh-/repo', displayName: 'Fresh' }],
+      permissionModes: [],
     }], 'the live list is the truth; the seed was only ever a stand-in for it');
     await m.dispose();
   });
@@ -1068,6 +1096,7 @@ suite('SessionManager', () => {
     const flaky: AgentProvider = {
       id: 'claude', displayName: 'Claude',
       listModels: () => models,
+      listPermissionModes: () => [],
       fetchModels: async () => {
         if (fail) { models = []; throw new Error('Claude Code CLI not found.'); }
         models = [{ id: 'haiku', displayName: 'Haiku 4.5' }];
@@ -1113,6 +1142,7 @@ suite('SessionManager', () => {
         { id: 'opus', displayName: 'Opus', resolvedModel: 'claude-opus-5',
           effort: { levels: ['low', 'high'], default: 'high' } },
       ],
+      listPermissionModes: () => [],
       // create() materializes an AgentSession, which starts a run — delegate
       // to the FakeProvider rather than reimplementing AgentRun here.
       start: (opts) => new FakeProvider(() => []).start(opts),
@@ -1180,6 +1210,7 @@ suite('SessionManager', () => {
     const broken: AgentProvider = {
       id: 'broken', displayName: 'Broken',
       listModels: () => [],
+      listPermissionModes: () => [],
       start: () => { throw new Error('not used'); },
       fetchUsage: (): Promise<UsageWindow[] | undefined> => { throw new Error('CLI is broken'); },
     };

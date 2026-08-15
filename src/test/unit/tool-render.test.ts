@@ -237,6 +237,306 @@ suite('describeOutput', () => {
   });
 });
 
+suite('describeTool: codex', () => {
+  test('a codex kind reads as a label, never as its raw wire type', () => {
+    // `commandExecution` / `webSearch` / `fileChange` are `ThreadItem.type`
+    // strings, not tool names a user has ever typed — unlike `Bash` or `Read`,
+    // which are the names their own docs use.
+    assert.strictEqual(describeTool('commandExecution', { command: 'ls' }).verb, 'Shell');
+    assert.strictEqual(describeTool('webSearch', { query: 'a' }).verb, 'Web search');
+    assert.strictEqual(describeTool('fileChange', {}).verb, 'Edit');
+    assert.strictEqual(describeTool('mcpToolCall', { server: 'g' }).verb, 'MCP');
+    assert.strictEqual(describeTool('dynamicToolCall', { toolName: 't' }).verb, 'Tool');
+    assert.strictEqual(describeTool('plan', { text: 'x' }).verb, 'Plan');
+  });
+
+  test('a tool that already names itself keeps its own name', () => {
+    assert.strictEqual(describeTool('Bash', { command: 'ls' }).verb, 'Bash');
+    assert.strictEqual(describeTool('mcp_tool', {}).verb, 'mcp_tool');
+  });
+
+  test('a command execution leads with the command, not its JSON', () => {
+    const header = describeTool('commandExecution', { command: 'yarn test', cwd: '/repo' });
+    assert.strictEqual(header.glyph, 'terminal');
+    assert.strictEqual(header.primary, 'yarn test');
+    assert.strictEqual(header.mono, true);
+  });
+
+  test('an mcp tool call names the server and the tool', () => {
+    const header = describeTool('mcpToolCall', { server: 'github', toolName: 'list_prs' });
+    assert.strictEqual(header.primary.includes('github'), true);
+    assert.strictEqual(header.primary.includes('list_prs'), true);
+  });
+
+  test('a file change leads with the changed path', () => {
+    const header = describeTool('fileChange', { changes: [{ path: '/a/b.ts' }] });
+    assert.strictEqual(header.glyph, 'file-pen');
+    assert.strictEqual(header.primary, '/a/b.ts');
+  });
+
+  test('a dynamic tool call leads with the tool name', () => {
+    assert.strictEqual(describeTool('dynamicToolCall', { toolName: 'custom_tool' }).primary, 'custom_tool');
+  });
+
+  test('a plan leads with its own label', () => {
+    const header = describeTool('plan', { text: 'Ship the feature' });
+    assert.strictEqual(header.glyph, 'list-todo');
+    assert.strictEqual(header.primary, 'Ship the feature');
+  });
+
+  test('a codex web search reuses the same header as the Claude tool', () => {
+    assert.strictEqual(describeTool('webSearch', { query: 'vscode api' }).primary, 'vscode api');
+  });
+
+  test('a plugin-resolved command renders as a skill, not a shell command', () => {
+    const header = describeTool('commandExecution', {
+      command: '"C:\\\\pwsh.exe" -Command "…"', cwd: '/repo',
+      pluginId: 'openai-curated-remote/superpowers', scriptPath: 'skills/using-superpowers/SKILL.md',
+    });
+    assert.strictEqual(header.verb, 'Skill');
+    assert.strictEqual(header.glyph, 'bot');
+    assert.strictEqual(header.primary, 'using-superpowers');
+  });
+
+  test('a plugin-resolved command with no skills/ segment falls back to its directory', () => {
+    const header = describeTool('commandExecution', {
+      command: 'x', cwd: '/repo', pluginId: 'my-plugin', scriptPath: 'scripts/install.sh',
+    });
+    assert.strictEqual(header.primary, 'scripts');
+  });
+
+  test('a plugin-resolved command with no scriptPath falls back to the plugin id', () => {
+    const header = describeTool('commandExecution', {
+      command: 'x', cwd: '/repo', pluginId: 'my-plugin', scriptPath: null,
+    });
+    assert.strictEqual(header.primary, 'my-plugin');
+  });
+
+  test('an ordinary command with no plugin fields still leads with the command', () => {
+    const header = describeTool('commandExecution', { command: 'yarn test', cwd: '/repo' });
+    assert.strictEqual(header.verb, 'Shell');
+    assert.strictEqual(header.glyph, 'terminal');
+    assert.strictEqual(header.primary, 'yarn test');
+  });
+});
+
+suite('describeInput blocks: codex', () => {
+  test('a command execution becomes a command and its working directory', () => {
+    assert.deepStrictEqual(describeInput('commandExecution', { command: 'ls', cwd: '/repo' }), [
+      { kind: 'command', text: 'ls' },
+      { kind: 'path', path: '/repo' },
+    ]);
+  });
+
+  test('an mcp tool call names its server and tool as fields', () => {
+    assert.deepStrictEqual(describeInput('mcpToolCall', { server: 'github', toolName: 'list_prs' }), [
+      { kind: 'field', label: 'server', value: 'github' },
+      { kind: 'field', label: 'tool', value: 'list_prs' },
+    ]);
+  });
+
+  test('a plugin-resolved command still shows the raw command that ran', () => {
+    // The skill identity leads the header, but the expanded card must never
+    // hide what actually executed — see tool-render.ts's `commandexecution`
+    // case doc.
+    assert.deepStrictEqual(describeInput('commandExecution', {
+      command: 'raw invocation', cwd: '/repo',
+      pluginId: 'openai-curated-remote/superpowers', scriptPath: 'skills/using-superpowers/SKILL.md',
+    }), [
+      { kind: 'field', label: 'skill', value: 'using-superpowers' },
+      { kind: 'command', text: 'raw invocation' },
+      { kind: 'path', path: '/repo' },
+    ]);
+  });
+});
+
+suite('describeOutput: codex', () => {
+  test('command output renders as an output-toned lines block', () => {
+    const blocks = describeOutput('commandExecution', 'a\nb', 'ok');
+    assert.strictEqual(blocks.some((b) => b.kind === 'lines' && b.tone === 'output'), true);
+  });
+
+  test('a file change renders one path and one diff block per file', () => {
+    const blocks = describeOutput('fileChange', {
+      changes: [
+        { path: '/a.ts', kind: 'update', diff: '--- a/a.ts\n+++ b/a.ts\n@@ -1,2 +1,2 @@\n-old\n+new\n context' },
+        { path: '/b.ts', kind: 'add', diff: '--- /dev/null\n+++ b/b.ts\n@@ -0,0 +1 @@\n+added' },
+      ],
+    }, 'ok');
+    assert.strictEqual(blocks.filter((b) => b.kind === 'path').length, 2);
+    assert.strictEqual(blocks.filter((b) => b.kind === 'diff').length, 2);
+  });
+
+  test('unified diff headers and hunk markers are stripped from the body', () => {
+    const blocks = describeOutput('fileChange', {
+      changes: [
+        { path: '/a.ts', kind: 'update', diff: '--- a/a.ts\n+++ b/a.ts\n@@ -1,2 +1,2 @@\n-old\n+new\n context' },
+      ],
+    }, 'ok');
+    const diffBlock = blocks.find((b) => b.kind === 'diff');
+    const lines = diffBlock && diffBlock.kind === 'diff' ? diffBlock.lines : [];
+    assert.strictEqual(lines.some((l) => l.startsWith('---') || l.startsWith('+++')), false);
+    assert.strictEqual(lines.some((l) => l.startsWith('@@')), false);
+    assert.strictEqual(lines.includes('-old'), true);
+    assert.strictEqual(lines.includes('+new'), true);
+  });
+
+  test('a diff with no body lines yields no empty diff block', () => {
+    const blocks = describeOutput('fileChange', {
+      changes: [
+        { path: '/renamed.ts', kind: 'update', diff: '--- a/old.ts\n+++ b/renamed.ts\n' },
+      ],
+    }, 'ok');
+    assert.strictEqual(blocks.some((b) => b.kind === 'path'), true);
+    assert.strictEqual(blocks.some((b) => b.kind === 'diff'), false);
+  });
+
+  test('an absent changes array does not throw and yields no diff or path blocks', () => {
+    assert.deepStrictEqual(describeOutput('fileChange', {}, 'ok'), [{ kind: 'note', text: 'No file changes.' }]);
+  });
+
+  test('a deleted line that itself starts with -- survives with its own - prefix', () => {
+    // Real content: `-color-primary` with the diff's own `-` glued on reads
+    // as `--color-primary`, which a prefix-matching header strip would drop.
+    const diff = '--- a/index.css\n+++ b/index.css\n@@ -1,2 +1,2 @@\n-  --color-primary: red;\n context';
+    const blocks = describeOutput('fileChange', {
+      changes: [{ path: '/index.css', kind: 'update', diff }],
+    }, 'ok');
+    const diffBlock = blocks.find((b) => b.kind === 'diff');
+    const lines = diffBlock && diffBlock.kind === 'diff' ? diffBlock.lines : [];
+    assert.strictEqual(lines.includes('-  --color-primary: red;'), true);
+  });
+
+  test('an added line that itself starts with ++ survives with its own + prefix', () => {
+    const diff = '--- a/index.css\n+++ b/index.css\n@@ -1 +1,2 @@\n context\n+  ++counter: 1;';
+    const blocks = describeOutput('fileChange', {
+      changes: [{ path: '/index.css', kind: 'update', diff }],
+    }, 'ok');
+    const diffBlock = blocks.find((b) => b.kind === 'diff');
+    const lines = diffBlock && diffBlock.kind === 'diff' ? diffBlock.lines : [];
+    assert.strictEqual(lines.includes('+  ++counter: 1;'), true);
+  });
+
+  test('a body line starting with -- in a later hunk of a multi-hunk diff also survives', () => {
+    const diff = [
+      '--- a/style.css', '+++ b/style.css',
+      '@@ -1,2 +1,2 @@', ' a', ' b',
+      '@@ -10,2 +10,2 @@', '-  --radius-md: 4px;', '+  --radius-md: 8px;',
+    ].join('\n');
+    const blocks = describeOutput('fileChange', {
+      changes: [{ path: '/style.css', kind: 'update', diff }],
+    }, 'ok');
+    const diffBlock = blocks.find((b) => b.kind === 'diff');
+    const lines = diffBlock && diffBlock.kind === 'diff' ? diffBlock.lines : [];
+    assert.strictEqual(lines.includes('-  --radius-md: 4px;'), true);
+    assert.strictEqual(lines.includes('+  --radius-md: 8px;'), true);
+    assert.strictEqual(lines.some((l) => l.startsWith('@@')), false);
+  });
+});
+
+// The three tools that drive a subagent fleet. Payloads below are copied from
+// real transcripts under ~/.claude/projects rather than invented: `SendMessage`
+// takes `to`/`summary`/`message` (not the `agent_id`/`prompt` pair a reader
+// might assume), and its result is a JSON envelope, not prose.
+suite('the Agent / SendMessage / TaskOutput family', () => {
+  test('a spawned agent leads with its type, not the word Agent', () => {
+    const header = describeTool('Agent', {
+      description: 'Review the diff', prompt: 'Read every changed file…', subagent_type: 'Explore',
+    });
+    assert.strictEqual(header.glyph, 'bot');
+    assert.strictEqual(header.primary, 'Explore');
+    assert.strictEqual(header.mono, false);
+  });
+
+  test('an untyped agent falls back to its name, then to its description', () => {
+    assert.strictEqual(describeTool('Agent', { name: 'task-7', prompt: 'x' }).primary, 'task-7');
+    assert.strictEqual(describeTool('Agent', { description: 'Fix it', prompt: 'x' }).primary, 'Fix it');
+  });
+
+  test('Task is the same tool as Agent under its older name', () => {
+    assert.strictEqual(describeTool('Task', { subagent_type: 'Plan' }).primary, 'Plan');
+  });
+
+  test('a message to an agent leads with its summary — the id means nothing to a reader', () => {
+    const header = describeTool('SendMessage', {
+      to: 'aa124f004ce1e2bea', summary: 'Fix round 2: hydrate reopens closed sessions',
+      message: 'Fix round 2 of 5. All four round-1 findings verified ADDRESSED…',
+    });
+    assert.strictEqual(header.glyph, 'send');
+    assert.strictEqual(header.primary, 'Fix round 2: hydrate reopens closed sessions');
+  });
+
+  test('an unsummarized message falls back to the recipient', () => {
+    assert.strictEqual(
+      describeTool('SendMessage', { to: 'aa124f004ce1e2bea', message: 'go' }).primary,
+      'aa124f004ce1e2bea',
+    );
+  });
+
+  test('a task output leads with the id it is collecting, in the editor font', () => {
+    const header = describeTool('TaskOutput', {
+      task_id: 'a21af635b3b176c93', block: true, timeout: 600000,
+    });
+    assert.strictEqual(header.glyph, 'bot');
+    assert.strictEqual(header.primary, 'a21af635b3b176c93');
+    assert.strictEqual(header.mono, true);
+  });
+
+  test('an agent body carries the brief it was actually given', () => {
+    assert.deepStrictEqual(describeInput('Agent', {
+      description: 'Review the diff', prompt: 'Read every changed file.',
+      subagent_type: 'Explore', isolation: 'worktree',
+    }), [
+      { kind: 'note', text: 'Review the diff' },
+      { kind: 'field', label: 'agent', value: 'Explore' },
+      { kind: 'field', label: 'isolation', value: 'worktree' },
+      { kind: 'lines', text: 'Read every changed file.', tone: 'output' },
+    ]);
+  });
+
+  test('a message body shows the recipient and the message itself', () => {
+    assert.deepStrictEqual(describeInput('SendMessage', {
+      to: 'aa124f004ce1e2bea', summary: 'Round 3', message: 'Fix round 3 of 5.',
+    }), [
+      { kind: 'field', label: 'to', value: 'aa124f004ce1e2bea' },
+      { kind: 'note', text: 'Round 3' },
+      { kind: 'lines', text: 'Fix round 3 of 5.', tone: 'output' },
+    ]);
+  });
+
+  test('a task output body says whether it is blocking, and for how long', () => {
+    assert.deepStrictEqual(describeInput('TaskOutput', {
+      task_id: 'a0473e1345b5c9162', block: true, timeout: 600000,
+    }), [
+      { kind: 'field', label: 'task', value: 'a0473e1345b5c9162' },
+      { kind: 'field', label: 'wait', value: 'until done' },
+      { kind: 'field', label: 'timeout', value: '600s' },
+    ]);
+  });
+
+  test('a send result is unwrapped from its JSON envelope', () => {
+    const blocks = describeOutput('SendMessage', JSON.stringify({
+      success: true, message: 'Message queued for delivery to aa124f004ce1e2bea.',
+      pin: { id: 'aa124f004ce1e2bea', ref: 'a0b813' },
+    }), 'ok');
+    assert.deepStrictEqual(blocks, [
+      { kind: 'note', text: 'Message queued for delivery to aa124f004ce1e2bea.' },
+    ]);
+  });
+
+  test('a send result that is not the expected envelope is shown verbatim', () => {
+    assert.deepStrictEqual(
+      describeOutput('SendMessage', 'delivered', 'ok'),
+      [{ kind: 'lines', text: 'delivered', tone: 'output' }],
+    );
+  });
+
+  test('a failed send keeps the error tone rather than being unwrapped', () => {
+    const blocks = describeOutput('SendMessage', JSON.stringify({ message: 'No such agent.' }), 'error');
+    assert.deepStrictEqual(blocks, [{ kind: 'lines', text: '{"message":"No such agent."}', tone: 'error' }]);
+  });
+});
+
 suite('shortPath and diffLines', () => {
   test('a path of two or fewer segments is left alone', () => {
     assert.strictEqual(shortPath('/tmp/a.txt'), '/tmp/a.txt');

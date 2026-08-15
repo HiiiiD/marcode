@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
-  ChevronDownIcon, ChevronRightIcon, FilePenIcon, FilePlusIcon, FileTextIcon,
-  FolderSearchIcon, GlobeIcon, ListTodoIcon, Loader2Icon, SearchIcon,
+  BotIcon, ChevronDownIcon, ChevronRightIcon, FilePenIcon, FilePlusIcon, FileTextIcon,
+  FolderSearchIcon, GlobeIcon, ListTodoIcon, Loader2Icon, SearchIcon, SendIcon,
   TerminalIcon, WrenchIcon,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -21,6 +21,8 @@ const GLYPHS: Record<ToolGlyph, typeof TerminalIcon> = {
   'folder-search': FolderSearchIcon,
   'globe': GlobeIcon,
   'list-todo': ListTodoIcon,
+  'bot': BotIcon,
+  'send': SendIcon,
   'wrench': WrenchIcon,
 };
 

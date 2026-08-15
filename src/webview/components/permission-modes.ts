@@ -1,5 +1,7 @@
-import { FilePen, Hand, Map, ShieldBan, Sparkles, Zap, type LucideIcon } from "lucide-react";
-import type { PermissionMode } from "../../protocol/messages";
+import {
+  FilePen, Hand, Map as MapIcon, ShieldBan, Sparkles, Zap, type LucideIcon,
+} from "lucide-react";
+import type { PermissionMode, PermissionModeInfo } from "../../protocol/messages";
 
 /**
  * One row per mode: a short label the trigger can wear at 300px, and a
@@ -36,7 +38,7 @@ export const MODES: {
     value: "plan",
     label: "Plan",
     description: "Read and propose. Nothing on disk is changed.",
-    icon: Map,
+    icon: MapIcon,
   },
   {
     value: "dontAsk",
@@ -53,3 +55,29 @@ export const MODES: {
 ];
 
 export const MODE_OF = (mode: PermissionMode) => MODES.find((m) => m.value === mode) ?? MODES[0];
+
+export type ModeRow = (typeof MODES)[number];
+
+/**
+ * The rows to offer for one provider, in the shared order.
+ *
+ * Order comes from `MODES`, not from the provider: the list reads as a
+ * severity ramp from "ask about everything" to "ask about nothing", and a
+ * provider returning its modes in some other order would scramble that for
+ * its sessions only.
+ *
+ * An undefined or empty list means the catalog has not loaded yet — the same
+ * "no opinion" case `resolvePermissionMode` handles — so every row is shown
+ * rather than none. A picker that renders empty while a probe is in flight
+ * looks broken in exactly the moment the user is trying to start work.
+ */
+export function modesFor(declared: PermissionModeInfo[] | undefined): ModeRow[] {
+  if (!declared || declared.length === 0) { return MODES; }
+  const byId = new Map(declared.map((d) => [d.id, d]));
+  return MODES
+    .filter((m) => byId.has(m.value))
+    .map((m) => {
+      const description = byId.get(m.value)?.description;
+      return description ? { ...m, description } : m;
+    });
+}

@@ -83,9 +83,14 @@ export function subagentStateLabel(item: ToolItem, blocked: boolean): string {
  */
 export function subagentLabel(item: ToolItem): string {
   const input = item.input;
-  if (input && typeof input === 'object' && 'subagent_type' in input) {
-    const type = (input as Record<string, unknown>).subagent_type;
-    if (typeof type === 'string' && type.length > 0) { return type; }
+  if (input && typeof input === 'object') {
+    // `name` is the caller-chosen label an `Agent` call can carry instead of a
+    // type — it is what SendMessage addresses, so it is the better identifier
+    // when both are absent from the type field.
+    for (const field of ['subagent_type', 'name'] as const) {
+      const value = (input as Record<string, unknown>)[field];
+      if (typeof value === 'string' && value.length > 0) { return value; }
+    }
   }
   return item.name;
 }

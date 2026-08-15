@@ -1,4 +1,4 @@
-export type EffortLevel = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+export type EffortLevel = 'low' | 'medium' | 'high' | 'xhigh' | 'max' | 'ultra';
 /**
  * 'default'     — prompt on anything that falls through to a prompt
  * 'acceptEdits' — auto-accept file edits, still prompt for everything else
@@ -8,6 +8,25 @@ export type EffortLevel = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
  * 'bypass'      — allow everything
  */
 export type PermissionMode = 'default' | 'acceptEdits' | 'auto' | 'plan' | 'dontAsk' | 'bypass';
+
+/**
+ * One permission mode a provider actually offers.
+ *
+ * `PermissionMode` stays a closed union — this is the `EffortLevel`
+ * precedent, where the union is fixed and each model publishes the subset it
+ * takes. A provider that cannot honor a mode must not offer it: Codex under
+ * `workspace-write` never raises an approval for an in-workspace edit, so a
+ * Codex `acceptEdits` would be a second name for `default`.
+ */
+export interface PermissionModeInfo {
+  id: PermissionMode;
+  /**
+   * Provider-specific one-liner, overriding the shared description in the
+   * picker. The same id enforces differently per provider, so the id alone is
+   * not always enough for the user to choose safely.
+   */
+  description?: string;
+}
 
 export interface ModelInfo {
   id: string;
@@ -123,7 +142,14 @@ export type AgentEvent =
   | { kind: 'text'; delta: string }
   | { kind: 'thinking'; delta: string }
   | { kind: 'tool-start'; id: string; name: string; input: unknown; parentId?: string }
-  | { kind: 'tool-end'; id: string; ok: boolean; output: unknown; parentId?: string }
+  /**
+   * `input`, when present, REPLACES what `tool-start` reported. A backend may
+   * only learn a call's real arguments when it finishes — Codex's `webSearch`
+   * item carries `query: ''` while running and the actual search only on
+   * completion — and a card that renders the start-time arguments forever
+   * would show a search with no query. Omit it and the arguments stand.
+   */
+  | { kind: 'tool-end'; id: string; ok: boolean; output: unknown; input?: unknown; parentId?: string }
   | { kind: 'permission'; id: string; name: string; input: unknown; parentId?: string }
   | { kind: 'turn-end'; reason: 'done' | 'interrupted' | 'error'; error?: string }
   | { kind: 'usage'; inputTokens: number; outputTokens: number }
@@ -197,6 +223,14 @@ export interface AgentProvider {
    * whether a failed probe is worth retrying.
    */
   fetchModels?(cwd: string): Promise<ModelInfo[]>;
+  /**
+   * The modes this provider can actually honor.
+   *
+   * Sync, like `listModels`: session creation and the roster read it inline.
+   * MUST include 'default' — creation falls back to it in message-router,
+   * and `resolvePermissionMode` resolves to it.
+   */
+  listPermissionModes(): PermissionModeInfo[];
   /**
    * Account/plan usage for a working directory, with NO session required.
    *

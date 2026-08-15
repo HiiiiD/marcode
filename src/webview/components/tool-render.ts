@@ -12,11 +12,14 @@ import { safeStringify } from './tool-card-format';
 /** Which lucide glyph the card draws. Resolved to a component in tool-body.tsx. */
 export type ToolGlyph =
   | 'terminal' | 'file-pen' | 'file-plus' | 'file-text' | 'search'
-  | 'folder-search' | 'globe' | 'list-todo' | 'wrench';
+  | 'folder-search' | 'globe' | 'list-todo' | 'bot' | 'send' | 'wrench';
 
 export interface ToolHeader {
   glyph: ToolGlyph;
-  /** The tool's own name — familiarity beats a translated verb here. */
+  /**
+   * The tool's own name — familiarity beats a translated verb here — except
+   * where the "name" is not a name a user has ever seen. See `LABELS`.
+   */
   verb: string;
   /** The one argument worth a sidebar's width. Empty when there isn't one. */
   primary: string;
@@ -121,14 +124,38 @@ export function clampLines(text: string, head = 12, tail = 8): Clamped {
   };
 }
 
+/**
+ * The few tools whose wire name is not a label.
+ *
+ * Claude's names are already the ones its own docs use — `Bash`, `Read`,
+ * `Edit` — so they ship verbatim, and the default stays "show the tool's own
+ * name". Codex has no tool names on this wire at all: what arrives is
+ * `ThreadItem.type`, an internal discriminant (`commandExecution`,
+ * `webSearch`, `fileChange`), which no user has typed or read anywhere. These
+ * are short enough for a 300px sidebar and say the same thing the Claude arm
+ * says with its own vocabulary — a label, not a rebranding.
+ *
+ * Keyed on the exact wire spelling, NOT on `key()`: Claude's own `WebSearch`
+ * normalizes to the same `websearch` slug as Codex's `webSearch`, and it is a
+ * real tool name that must keep shipping verbatim.
+ */
+const LABELS: Record<string, string> = {
+  commandExecution: 'Shell',
+  fileChange: 'Edit',
+  webSearch: 'Web search',
+  mcpToolCall: 'MCP',
+  dynamicToolCall: 'Tool',
+  plan: 'Plan',
+};
+
 export function describeTool(name: string, input: unknown): ToolHeader {
   const record = asRecord(input);
   const k = key(name);
 
   const header = (
-    glyph: ToolGlyph, primary: string | undefined, mono: boolean,
+    glyph: ToolGlyph, primary: string | undefined, mono: boolean, verbOverride?: string,
   ): ToolHeader => ({
-    glyph, verb: name, mono,
+    glyph, verb: verbOverride ?? LABELS[name] ?? name, mono,
     primary: primary ?? '',
     ...(primary && primary.length > 40 ? { full: primary } : {}),
   });
@@ -169,6 +196,59 @@ export function describeTool(name: string, input: unknown): ToolHeader {
         ?? `${todos.length} ${todos.length === 1 ? 'item' : 'items'}`, false);
     }
 
+    // The subagent family. `Agent` is the current name and `Task` the older
+    // one; both carry `subagent_type`, which is the identifying fact — "Explore"
+    // says what is running where the tool's own name is only SDK vocabulary.
+    case 'agent':
+    case 'task':
+      return header('bot', str(record.subagent_type) ?? str(record.name)
+        ?? str(record.description), false);
+
+    // `to` is an opaque agent id, so the model-written `summary` is the only
+    // part of a SendMessage a reader can act on.
+    case 'sendmessage':
+      return header('send', str(record.summary) ?? str(record.to) ?? str(record.recipient), false);
+
+    case 'taskoutput':
+      return header('bot', str(record.task_id), true);
+
+    // Codex tool kinds below. Names are the raw `ThreadItem.type` string from
+    // map-events.ts, so no PascalCase translation happens for these.
+
+    case 'commandexecution': {
+      // Codex resolved this command to a trusted plugin script — `pluginId`/
+      // `scriptPath` on `map-events.ts`'s `inputOf` only carry a value in
+      // that case. That is a skill invocation, not a shell command anyone
+      // typed, so it leads with the skill's identity — same reasoning as
+      // `subagent_type` for the Agent tool, below — rather than the pwsh
+      // wrapper that actually ran. The raw command is still one click away:
+      // `describeInput`'s `commandexecution` case keeps the `command` block.
+      const skill = skillNameOf(str(record.pluginId), str(record.scriptPath));
+      if (skill) { return header('bot', skill, false, 'Skill'); }
+      return header('terminal', str(record.command), true);
+    }
+
+    case 'filechange': {
+      const paths = fileChangePaths(record.changes);
+      const primary = paths.length === 1
+        ? shortPath(paths[0])
+        : paths.length > 1 ? `${paths.length} files` : undefined;
+      return header('file-pen', primary, true);
+    }
+
+    case 'mcptoolcall': {
+      const server = str(record.server);
+      const toolName = str(record.toolName);
+      const primary = server && toolName ? `${server} · ${toolName}` : server ?? toolName;
+      return header('wrench', primary, false);
+    }
+
+    case 'dynamictoolcall':
+      return header('wrench', str(record.toolName), false);
+
+    case 'plan':
+      return header('list-todo', str(record.text) ?? 'Plan', false);
+
     default: {
       // Not a tool we render bespoke. A single string argument is still worth
       // showing verbatim; anything else falls back to the JSON preview the
@@ -180,9 +260,52 @@ export function describeTool(name: string, input: unknown): ToolHeader {
   }
 }
 
+/**
+ * The skill (or plugin) identity of a `commandExecution` Codex resolved to a
+ * trusted plugin script — undefined when neither field is set, which is the
+ * overwhelming majority of commands (see `wire.ts`'s `ThreadItem` doc).
+ *
+ * `scriptPath` is plugin-relative, e.g. `skills/using-superpowers/SKILL.md`;
+ * the segment right after `skills/` is the skill's own directory name, which
+ * is the one thing a reader recognizes (it is what they typed to invoke it).
+ * A script with no `skills/` segment — some other plugin-bundled script —
+ * falls back to its containing directory, then to the bare filename, then to
+ * `pluginId` as the last resort naming *something* trusted rather than
+ * nothing. One resolved script names one skill; a command that happens to
+ * touch several files (the two-`Get-Content` example this was built against)
+ * still only carries one `scriptPath`, and this deliberately does not try to
+ * enumerate the others — the fields don't support that claim.
+ */
+function skillNameOf(pluginId: string | undefined, scriptPath: string | undefined): string | undefined {
+  if (scriptPath) {
+    const parts = scriptPath.split(/[\\/]/).filter(Boolean);
+    const skillsIdx = parts.indexOf('skills');
+    if (skillsIdx !== -1 && parts[skillsIdx + 1]) { return parts[skillsIdx + 1]; }
+    if (parts.length >= 2) { return parts[parts.length - 2]; }
+    if (parts.length === 1) { return parts[0]; }
+  }
+  return pluginId;
+}
+
 function pathOf(record: Rec): string | undefined {
   const path = str(record.file_path) ?? str(record.notebook_path) ?? str(record.path);
   return path ? shortPath(path) : undefined;
+}
+
+/**
+ * Path list out of a Codex `fileChange` item's `changes` field. `changes` is
+ * typed `FileUpdateChange[]` upstream (wire.ts), but this still narrows
+ * defensively — it also accepts an object keyed by path — since a tool
+ * result crosses a JSON-RPC boundary and is worth treating as untrusted.
+ */
+function fileChangePaths(changes: unknown): string[] {
+  if (Array.isArray(changes)) {
+    return changes.map((c) => str(asRecord(c).path)).filter((p): p is string => p !== undefined);
+  }
+  if (typeof changes === 'object' && changes !== null) {
+    return Object.keys(changes as Rec);
+  }
+  return [];
 }
 
 function hostOf(url: string | undefined): string | undefined {
@@ -282,6 +405,71 @@ export function describeInput(name: string, input: unknown): ToolBlock[] {
       break;
     }
 
+    case 'commandexecution': {
+      // The skill identity leads, same as the header — but the raw command
+      // that actually ran must still be reachable here, not hidden behind it.
+      const skill = skillNameOf(str(record.pluginId), str(record.scriptPath));
+      if (skill) { blocks.push({ kind: 'field', label: 'skill', value: skill }); }
+      const command = str(record.command);
+      if (command) { blocks.push({ kind: 'command', text: command }); }
+      const cwd = str(record.cwd);
+      if (cwd) { blocks.push({ kind: 'path', path: cwd }); }
+      break;
+    }
+
+    case 'mcptoolcall': {
+      const server = str(record.server);
+      if (server) { blocks.push({ kind: 'field', label: 'server', value: server }); }
+      const toolName = str(record.toolName);
+      if (toolName) { blocks.push({ kind: 'field', label: 'tool', value: toolName }); }
+      break;
+    }
+
+    case 'agent':
+    case 'task': {
+      if (note) { blocks.push({ kind: 'note', text: note }); }
+      const agent = str(record.subagent_type);
+      if (agent) { blocks.push({ kind: 'field', label: 'agent', value: agent }); }
+      const model = str(record.model);
+      if (model) { blocks.push({ kind: 'field', label: 'model', value: model }); }
+      const isolation = str(record.isolation);
+      if (isolation) { blocks.push({ kind: 'field', label: 'isolation', value: isolation }); }
+      // The brief is the whole point of the card — a subagent's transcript is
+      // not in this panel, so this is the only place its instructions appear.
+      const prompt = str(record.prompt);
+      if (prompt) { blocks.push({ kind: 'lines', text: prompt, tone: 'output' }); }
+      break;
+    }
+
+    case 'sendmessage': {
+      const to = str(record.to) ?? str(record.recipient);
+      if (to) { blocks.push({ kind: 'field', label: 'to', value: to }); }
+      const summary = str(record.summary);
+      if (summary) { blocks.push({ kind: 'note', text: summary }); }
+      const message = str(record.message) ?? str(record.content);
+      if (message) { blocks.push({ kind: 'lines', text: message, tone: 'output' }); }
+      break;
+    }
+
+    case 'taskoutput': {
+      const taskId = str(record.task_id);
+      if (taskId) { blocks.push({ kind: 'field', label: 'task', value: taskId }); }
+      // Blocking is what distinguishes a collect-now call from a peek, and it
+      // explains a card that sits running for ten minutes.
+      if (record.block === true) {
+        blocks.push({ kind: 'field', label: 'wait', value: 'until done' });
+      }
+      const timeout = num(record.timeout);
+      if (timeout) { blocks.push({ kind: 'field', label: 'timeout', value: `${timeout / 1000}s` }); }
+      break;
+    }
+
+    // fileChange, dynamicToolCall and plan carry no fixed *input* shape worth
+    // a bespoke block — fileChange's `changes` is rendered from the *output*
+    // side instead (describeOutput's `filechange` branch, below). They fall
+    // through to the JSON preview here, same as any tool this panel has
+    // never heard of.
+
     default: {
       // An MCP tool, or one this panel has never heard of. An empty object
       // gets no block at all — `{}` in a pane is worse than nothing.
@@ -314,11 +502,66 @@ export function diffLines(input: unknown): string[] | undefined {
   return lines;
 }
 
+/**
+ * Strips a unified diff's `---`/`+++` file headers and `@@` hunk headers,
+ * keeping only the body lines — already prefixed with `' '`/`'+'`/`'-'` by
+ * the unified-diff format itself, which is exactly what the `diff` block
+ * wants.
+ *
+ * This has to be positional, not prefix-matching: a deleted or added line
+ * can itself start with `--`/`++` (CSS custom properties — `-color-primary`
+ * with the diff's own `-`/`+` glued on reads as `--color-primary` — SQL/Lua
+ * `--` comments, C-style `++i`), so a bare `startsWith('---')` over every
+ * line drops real content. `---`/`+++` only ever appear in the file header,
+ * before the first `@@` hunk header; once a hunk has started, every
+ * remaining line is body, and only further `@@` lines are stripped.
+ */
+function diffBodyLines(diff: string): string[] {
+  const body: string[] = [];
+  let seenHunk = false;
+  for (const line of diff.split('\n')) {
+    if (line.length === 0) { continue; } // typically a trailing newline, never real content
+    if (line.startsWith('@@')) { seenHunk = true; continue; }
+    if (!seenHunk && (line.startsWith('---') || line.startsWith('+++'))) { continue; }
+    body.push(line);
+  }
+  return body;
+}
+
+/**
+ * A Codex `fileChange` result: one `path` + `diff` block pair per touched
+ * file, mirroring how the Claude arm pairs them for `edit` / `write`.
+ * `changes` is an array typed upstream by map-events.ts; still narrowed
+ * defensively since a tool result crosses a JSON-RPC boundary.
+ */
+function fileChangeBlocks(output: unknown): ToolBlock[] {
+  const changes = asRecord(output).changes;
+  const blocks: ToolBlock[] = [];
+  if (Array.isArray(changes)) {
+    for (const raw of changes) {
+      const change = asRecord(raw);
+      const path = str(change.path);
+      if (path) { blocks.push({ kind: 'path', path }); }
+      const diff = str(change.diff);
+      if (diff) {
+        const lines = diffBodyLines(diff);
+        // A rename- or mode-only change has headers and no body left after
+        // stripping them; an empty diff block would show an empty bordered
+        // box with nothing in it.
+        if (lines.length > 0) { blocks.push({ kind: 'diff', lines }); }
+      }
+    }
+  }
+  return blocks.length > 0 ? blocks : [{ kind: 'note', text: 'No file changes.' }];
+}
+
 /** The result side of the expanded card. */
 export function describeOutput(
   name: string, output: unknown, state: 'running' | 'ok' | 'error',
 ): ToolBlock[] {
   if (state === 'running') { return []; }
+
+  if (state === 'ok' && key(name) === 'filechange') { return fileChangeBlocks(output); }
 
   const text = outputText(output);
   if (text.trim().length === 0) {
@@ -330,6 +573,25 @@ export function describeOutput(
   if (state === 'error') { return [{ kind: 'lines', text, tone: 'error' }]; }
 
   const k = key(name);
+
+  // SendMessage answers with a JSON envelope — `{"success":true,"message":
+  // "Agent \"…\" had no active task; resumed from transcript…"}` — whose only
+  // readable part is `message`. Left alone it renders as a line of escaped
+  // JSON, which is the noisiest possible way to say "queued".
+  if (k === 'sendmessage') {
+    const note = str(asRecord(parseJson(text)).message);
+    if (note) { return [{ kind: 'note', text: note }]; }
+  }
+
   const tone = k === 'read' || k === 'glob' || k === 'grep' ? 'code' : 'output';
   return [{ kind: 'lines', text, tone }];
+}
+
+/** `JSON.parse` that returns `undefined` instead of throwing on a non-JSON result. */
+function parseJson(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return undefined;
+  }
 }

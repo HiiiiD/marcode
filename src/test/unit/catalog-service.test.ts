@@ -90,6 +90,7 @@ suite('CatalogService', () => {
       id: 'bare',
       displayName: 'Bare',
       listModels: () => [],
+      listPermissionModes: () => [],
       start: () => { throw new Error('not used in this test'); },
     };
     const key = catalogKey('bare', '/repo');
@@ -126,6 +127,7 @@ suite('CatalogService', () => {
       id: 'fake',
       displayName: 'Fake',
       listModels: () => [],
+      listPermissionModes: () => [],
       start: () => { throw new Error('not used in this test'); },
       listInvocables: () => new Promise((resolve) => { resolveProbe = resolve; }),
     };

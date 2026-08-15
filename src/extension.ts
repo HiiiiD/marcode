@@ -1,13 +1,28 @@
+import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
+import { defaultCwdOf } from './host/default-cwd';
 import { EditorContextTracker } from './host/editor-context-tracker';
 import { PanelViewProvider } from './host/panel-view-provider';
 import { SessionManager } from './host/session-manager';
 import { TranscriptStore } from './host/transcript-store';
 import { createVscodeEditorSource } from './host/vscode-editor-source';
 import { ClaudeProvider } from './providers/claude/claude-provider';
+import { CodexProvider } from './providers/codex/codex-provider';
 import { FakeProvider } from './providers/fake/fake-provider';
 import type { AgentProvider } from './providers/types';
+
+/**
+ * `hiiiidCode.codex.path` defaults to `""` (see package.json) so the
+ * settings UI shows an empty field, but CodexProvider's own default only
+ * kicks in for `undefined` — passing through `""` would spawn `''` and
+ * make Codex unavailable out of the box. Empty (or unset) means "use codex
+ * from PATH", so it is normalized to `undefined` here at the boundary.
+ */
+function codexBinPath(): string | undefined {
+  const configured = vscode.workspace.getConfiguration('hiiiidCode').get<string>('codex.path');
+  return configured ? configured : undefined;
+}
 
 export async function activate(context: vscode.ExtensionContext) {
   const rootDir = context.storageUri?.fsPath ?? context.globalStorageUri.fsPath;
@@ -17,6 +32,8 @@ export async function activate(context: vscode.ExtensionContext) {
   // so Claude — the real provider — is registered first.
   const providers = new Map<string, AgentProvider>();
   providers.set('claude', new ClaudeProvider());
+  const codexProvider = new CodexProvider({ binPath: codexBinPath() });
+  providers.set('codex', codexProvider);
   providers.set('fake', new FakeProvider(
     (text) => (text.includes('rm')
       ? [{ kind: 'permission', id: `p-${Date.now()}`, name: 'Bash', input: { command: text } }]
@@ -48,7 +65,22 @@ export async function activate(context: vscode.ExtensionContext) {
   let provider: PanelViewProvider;
   const manager = new SessionManager(store, providers, (msg) => provider.post(msg));
 
-  const defaultCwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd();
+  // Never `process.cwd()` — for an extension host that is VS Code's own
+  // install directory, and a session inherits it silently. See
+  // `host/default-cwd.ts`.
+  const resolvedCwd = defaultCwdOf(
+    vscode.workspace.workspaceFolders?.map((f) => f.uri.fsPath),
+    os.homedir(),
+  );
+  const defaultCwd = resolvedCwd.cwd;
+  if (resolvedCwd.fallback) {
+    // Visible, not silent: the alternative is an agent quietly reading and
+    // writing somewhere the user never chose.
+    void vscode.window.showWarningMessage(
+      `No folder is open, so agent sessions will run in ${defaultCwd}. `
+        + 'Open a folder to run them in your project.',
+    );
+  }
 
   const editorSource = createVscodeEditorSource();
   const tracker = new EditorContextTracker(editorSource);
@@ -69,6 +101,29 @@ export async function activate(context: vscode.ExtensionContext) {
     vscode.window.registerWebviewViewProvider(PanelViewProvider.viewType, provider),
     { dispose: () => { void manager.dispose(); } },
     { dispose: () => { contextSub.dispose(); tracker.dispose(); editorSource.dispose(); } },
+    vscode.commands.registerCommand('hiiiidCode.codex.login', () => {
+      // `codex login` opens a browser flow and needs a real TTY, so this
+      // hands the user a terminal rather than trying to drive it.
+      const terminal = vscode.window.createTerminal('Codex login');
+      terminal.show();
+      terminal.sendText('codex login');
+    }),
+    // A changed path is a different install: point the provider at it, then
+    // re-probe — which is also how the provider recovers from 'unavailable'.
+    // refreshModels already IS the availability probe — see session-manager.
+    // setBinPath must run first: it is what makes the re-probe actually use
+    // the new path, rather than retrying the stale one connect() already
+    // cached. It also kills the process running against the old binary,
+    // which ends any Codex session currently in flight — a user who
+    // changes the binary has declared the running one wrong, so those
+    // sessions land in 'error' with a transcript item (CodexRun's onClose
+    // handling), not silently on the old process.
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration('hiiiidCode.codex.path')) {
+        codexProvider.setBinPath(codexBinPath());
+        void manager.refreshModels(defaultCwd);
+      }
+    }),
   );
 
   try {

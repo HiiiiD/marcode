@@ -118,7 +118,7 @@ suite("SessionHeader status", () => {
       sessions: [summary("a")],
       layout: layoutOf("a"),
       snapshots: [snapshot("a")],
-      catalog: [...catalog(), { id: "other", displayName: "Other", models: [] }],
+      catalog: [...catalog(), { id: "other", displayName: "Other", models: [], permissionModes: [] }],
       unavailable: [],
       usage: {},
     });

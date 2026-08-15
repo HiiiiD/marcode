@@ -448,6 +448,10 @@ export class AgentSession {
           ...existing,
           state: event.ok ? 'ok' : 'error',
           output: event.output,
+          // A provider that only learns the real arguments on completion says
+          // so by sending them again — see `AgentEvent`'s `tool-end`. Absent,
+          // the tool-start arguments stand.
+          ...(event.input !== undefined ? { input: event.input } : {}),
           ...(children ? { children: [...children] } : {}),
         };
         this.toolItems.set(event.id, settled);

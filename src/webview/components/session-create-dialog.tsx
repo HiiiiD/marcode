@@ -7,8 +7,9 @@ import { cn } from "@/lib/utils";
 import { useId, useState } from "react";
 import type { EffortLevel, PermissionMode, ProviderInfo } from "../../protocol/messages";
 import { findModel, resolveEffort } from "../../shared/model-catalog";
+import { resolvePermissionMode } from "../../shared/permission-catalog";
 import { EffortSlider } from "./effort-slider";
-import { MODES } from "./permission-modes";
+import { modesFor } from "./permission-modes";
 import type { CreateSettings } from "./session-create-settings";
 
 /**
@@ -90,6 +91,15 @@ function CreateForm({
   const model = findModel(provider?.models ?? [], modelId) ?? provider?.models[0];
   const scale = model?.effort;
   const level = resolveEffort(model, effort ?? undefined);
+  const rows = modesFor(provider?.permissionModes);
+  // Derived, not stored — the same shape as `level` above, and for the same
+  // reason: a mode belongs to the provider, so one chosen against a previous
+  // provider is not a choice about this one. Switching the model radio from
+  // Claude to Codex used to re-filter these rows with `mode` still on
+  // `acceptEdits`, leaving nothing selected and Create posting a mode Codex
+  // does not offer. The host resolves this too (`SessionManager.create`);
+  // doing it here as well is what keeps the radio's selection honest.
+  const effectiveMode = resolvePermissionMode(provider?.permissionModes ?? [], mode);
 
   // More than one provider is the only case where naming them earns its
   // vertical space — with one, every group header would say the same word.
@@ -147,8 +157,8 @@ function CreateForm({
 
       <div className="flex flex-col gap-2">
         <p className="text-xs font-medium text-muted-foreground">Permission mode</p>
-        <RadioGroup value={mode} onValueChange={(v) => setMode(v as PermissionMode)}>
-          {MODES.map((m) => (
+        <RadioGroup value={effectiveMode} onValueChange={(v) => setMode(v as PermissionMode)}>
+          {rows.map((m) => (
             <div
               key={m.value}
               className={cn(
@@ -187,7 +197,7 @@ function CreateForm({
               providerId: provider.id,
               model: model.id,
               ...(level ? { effort: level } : {}),
-              mode,
+              mode: effectiveMode,
             });
           }}
         >

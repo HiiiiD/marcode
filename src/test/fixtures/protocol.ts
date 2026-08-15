@@ -66,6 +66,7 @@ export function catalog(): ProviderInfo[] {
         effort: { levels: ['low', 'medium'], default: 'low' },
       },
     ],
+    permissionModes: [],
   }];
 }
 

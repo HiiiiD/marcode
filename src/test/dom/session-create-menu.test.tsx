@@ -15,6 +15,7 @@ function twoProviders(): ProviderInfo[] {
       models: [
         { id: 'other-one', displayName: 'Other One', effort: { levels: ['low', 'high'], default: 'high' } },
       ],
+      permissionModes: [],
     },
   ];
 }
