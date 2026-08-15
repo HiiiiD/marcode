@@ -367,20 +367,38 @@ runs before the branch merges.
 
 ## Open questions
 
-**Does a fresh thread accept a prepended seed cleanly?** Expected yes — it is an
-ordinary first message — but it has never been done here, and the smoke test in
-measure 2 is what answers it.
+**Does a fresh thread accept a prepended seed cleanly?** **Answered: yes.**
+Measured 2026-08-15 against codex-cli 0.147.0 (`relocation-smoke.test.ts`, first
+case): a session was given a subject in a repository root, moved into a real
+linked worktree, and asked in the new tree what it had been working on. It
+answered "We were working on the SUNFLOWER file-format parser for `.sun`
+files." A seed is an ordinary first message and the agent treats it as
+conversation, not as instructions.
 
 **Does a round trip preserve the original thread?** Moving root → worktree →
 root should resume the root thread untouched, since nothing deletes it. Believed
 rather than verified; the same smoke test covers it.
 
-**Is Codex `threadScope: 'global'`?** Its threads are keyed by `threadId` and
-`cwd` is a per-thread start parameter, which suggests a token resolves anywhere.
-Unverified, so it ships as `'cwd'` — the safe direction, costing tokens rather
-than correctness. Promoting it needs one measurement: start a thread in one
-directory, `thread/resume` it from another, confirm the conversation is intact.
-Worth doing, because `'global'` makes every Codex relocation free.
+**Is Codex `threadScope: 'global'`?** **Still unanswered, and now for a
+concrete reason.** The measurement was attempted on 2026-08-15 against
+codex-cli 0.147.0 (`relocation-smoke.test.ts`, second case) and could not be
+made, because *no* `thread/resume` produces a turn today — not across
+directories, and not even in the directory the thread was born in. The
+same-directory control is part of that test precisely so the cross-directory
+result can never be read as an answer when it is really a broken resume.
+
+What the probe found: `thread/start` answers `{ thread: { id, … } }`, not
+`{ threadId }`, and `CodexRun.startThread` only survives that because the
+`thread/started` notification arrives separately and resolves the id. On
+`thread/resume` no such notification follows, so `threadIdReady` never settles,
+`ensureStarted()` never resolves, and `send()` silently drops the turn — zero
+events, no `turn-end`, no error. Until that is fixed, `resumeTokens` is inert
+for Codex and the scope question cannot be measured.
+
+So it stays `'cwd'` — the safe direction, costing tokens rather than
+correctness. The test is a guard as well as a measurement: it asserts
+`threadScope === 'global'` matches what the binary actually did, so whoever
+fixes the resume path gets the answer for free.
 
 ## Out of scope
 
