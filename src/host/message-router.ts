@@ -97,6 +97,24 @@ export class MessageRouter {
         const session = await this.manager.create(
           msg.providerId, msg.cwd || this.defaultCwd, msg.model, msg.effort, msg.mode,
         );
+        if (msg.seed) {
+          const { blocks, missing } = await this.manager.resolveRefs(msg.seed.refs);
+          if (missing.length > 0) {
+            const names = missing.map((r) => `${r.title} (${r.kind})`).join(', ');
+            session.noteError(
+              `Nothing to hand off from ${names}. `
+              + 'That session has not produced one yet.',
+            );
+          } else {
+            const context = session.state.includeEditorContext
+              ? this.editor.current() ?? undefined
+              : undefined;
+            session.send(
+              composePrompt(msg.seed.text, blocks), context,
+              msg.seed.refs.length > 0 ? msg.seed.refs : undefined,
+            );
+          }
+        }
         this.emit({ t: 'session-snapshot', session: await session.snapshot() });
         return;
       }

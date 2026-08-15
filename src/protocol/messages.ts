@@ -164,7 +164,15 @@ export type WebviewToHost =
    * creation is the one point on the wire where it is settable at all.
    */
   | { t: 'create-session'; providerId: string; cwd: string; model?: string;
-      effort?: EffortLevel; mode?: PermissionMode }
+      effort?: EffortLevel; mode?: PermissionMode;
+      /**
+       * The new session's first message, sent immediately after creation.
+       * Carried on creation rather than posted as a follow-up `send` because
+       * the webview does not know the new session's id until the host has
+       * made it — a two-step version would have to wait for the snapshot and
+       * would lose the seed if the panel reloaded in between.
+       */
+      seed?: { text: string; refs: SessionRef[] } }
   | { t: 'set-visible'; sessionIds: SessionId[] }
   | { t: 'set-layout'; layout: PaneLayout }
   | { t: 'close-session'; id: SessionId }

@@ -404,4 +404,41 @@ suite('MessageRouter', () => {
     assert.strictEqual(user?.role === 'user' && user.text, 'plain');
     assert.strictEqual(user?.role === 'user' && user.refs, undefined);
   });
+
+  test('create-session with a seed sends the composed first message', async () => {
+    const source = await manager.create('fake', dir);
+    source.send('plan it');
+    await settle();
+
+    await router.handle({
+      t: 'create-session', providerId: 'fake', cwd: '',
+      seed: {
+        text: 'Execute @agent-1 message',
+        refs: [{ sessionId: source.state.id, kind: 'message', title: 'agent-1' }],
+      },
+    });
+    await settle();
+
+    const created = manager.summaries().find((s) => s.id !== source.state.id);
+    assert.strictEqual(created !== undefined, true);
+    const items = (await manager.get(created!.id)!.snapshot()).items;
+    const user = items.find((i) => i.role === 'user');
+    assert.strictEqual(user?.role === 'user' && user.text.includes('--- message from agent-1 ---'), true);
+  });
+
+  test('create-session with an unresolvable seed still creates the session', async () => {
+    await router.handle({
+      t: 'create-session', providerId: 'fake', cwd: '',
+      seed: {
+        text: 'Execute @ghost message',
+        refs: [{ sessionId: 'nope', kind: 'message', title: 'ghost' }],
+      },
+    });
+    await settle();
+
+    const created = manager.summaries()[0];
+    const items = (await manager.get(created.id)!.snapshot()).items;
+    assert.strictEqual(items.some((i) => i.role === 'user'), false);
+    assert.strictEqual(items.some((i) => i.role === 'error'), true);
+  });
 });
