@@ -1343,15 +1343,30 @@ suite('SessionManager.bringBack', () => {
   });
 
   test('a failed git step leaves an error item and no move', async () => {
-    const { manager, session } = await sessionInWorktree('feat-x', { breakGit: true });
+    // Task 9 established the only failure mode that actually works: dirty the
+    // worktree AFTER planning, so `git worktree remove` genuinely refuses.
+    // Deleting the tree directory behind git's back does NOT fail — git drops
+    // the administrative entry and exits 0, and the checkout then succeeds.
+    const { manager, session, tree } = await sessionInWorktree('feat-x');
+    await writeFile(join(tree, 'dirty.txt'), 'x');
     const before = session.state.cwd;
     await manager.bringBack(session.state.id);
     assert.strictEqual(manager.get(session.state.id)!.state.cwd, before);
-    const items = await manager.snapshotItems(session.state.id);
+    const items = await readItems(session.state.id);
     assert.strictEqual(items.some((i) => i.role === 'error'), true);
   });
 });
 ```
+
+Read the transcript through `store.tail(id, 500)` rather than adding a
+`snapshotItems` method to the manager for a test's convenience — Task 8 set
+that precedent.
+
+Fixture requirements carry over from Task 9, and they are not optional on
+Windows: `fs.realpath` the mkdtemp result; `git init -b main` with repo-local
+`user.email`, `user.name` and `commit.gpgsign=false`; one initial commit so HEAD
+exists; `this.timeout(60_000)` on the suite; and `fs.rm(..., { maxRetries: 3 })`
+in teardown. Real git costs about 5s per suite of this size.
 
 - [ ] **Step 2: Run test to verify it fails**
 
