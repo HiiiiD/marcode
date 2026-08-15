@@ -96,7 +96,7 @@ suite('ToolCard', () => {
     assert.deepStrictEqual(posted().at(-1), { t: 'reveal-file', path: '/repo/src/a.ts' });
   });
 
-  test('an mcp call keeps its server badge and shows its tool name', () => {
+  test('an mcp call names its tool and shows its server badge in the collapsed row', () => {
     const item = tool({
       name: 'create_pr', mcpServer: 'github', input: { title: 'x', body: 'y' },
       tool: { kind: 'mcp', label: 'create_pr', server: 'github', tool: 'create_pr' },

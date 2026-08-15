@@ -1,6 +1,25 @@
 import * as assert from 'assert';
 import type { ToolCall } from '../../protocol/messages';
-import { describeInput, describeOutput, describeTool } from '../../webview/components/tool-render';
+import {
+  describeInput, describeOutput, describeTool, shortPath,
+} from '../../webview/components/tool-render';
+
+suite('shortPath', () => {
+  test('two or fewer segments are returned unchanged', () => {
+    assert.strictEqual(shortPath('a.ts'), 'a.ts');
+    assert.strictEqual(shortPath('src/a.ts'), 'src/a.ts');
+  });
+
+  test('a longer path is truncated to its last two segments', () => {
+    assert.strictEqual(shortPath('/repo/src/components/a.ts'), '…/components/a.ts');
+  });
+
+  test('Windows backslash separators are split the same as POSIX ones', () => {
+    assert.strictEqual(
+      shortPath('C:\\repo\\src\\components\\a.ts'), '…/components/a.ts',
+    );
+  });
+});
 
 suite('describeTool', () => {
   test('a command shows its command in mono', () => {
@@ -112,6 +131,34 @@ suite('describeInput', () => {
     assert.deepStrictEqual(blocks, [{ kind: 'path', path: '/a.ts' }]);
   });
 
+  test('a deleted line starting with -- and an added line starting with ++ survive stripping', () => {
+    const blocks = describeInput({
+      kind: 'file-edit', label: 'Edit',
+      files: [{
+        path: '/s.css', op: 'modify',
+        unifiedDiff: '--- a/s.css\n+++ b/s.css\n@@ -1,2 +1,2 @@\n--color-primary: red;\n++counter: 1;',
+      }],
+    });
+    assert.deepStrictEqual(blocks, [
+      { kind: 'path', path: '/s.css' },
+      { kind: 'diff', lines: ['--color-primary: red;', '++counter: 1;'] },
+    ]);
+  });
+
+  test('a multi-hunk diff strips every @@ header and keeps every hunk body', () => {
+    const blocks = describeInput({
+      kind: 'file-edit', label: 'Edit',
+      files: [{
+        path: '/a.ts', op: 'modify',
+        unifiedDiff: '--- a/a.ts\n+++ b/a.ts\n@@ -1 +1 @@\n-old1\n+new1\n@@ -10 +10 @@\n-old2\n+new2',
+      }],
+    });
+    assert.deepStrictEqual(blocks, [
+      { kind: 'path', path: '/a.ts' },
+      { kind: 'diff', lines: ['-old1', '+new1', '-old2', '+new2'] },
+    ]);
+  });
+
   test('a read shows its path with a line hint', () => {
     assert.deepStrictEqual(describeInput({
       kind: 'file-read', label: 'Read', path: '/a.ts', range: { offset: 10, limit: 20 },
@@ -139,6 +186,17 @@ suite('describeInput', () => {
       { kind: 'field', label: 'agent', value: 'Explore' },
       { kind: 'field', label: 'model', value: 'sonnet' },
       { kind: 'lines', text: 'find it', tone: 'output' },
+    ]);
+  });
+
+  test('an mcp call with args shows only its server and tool fields, never raw JSON', () => {
+    const blocks = describeInput({
+      kind: 'mcp', label: 'create_issue', server: 'github', tool: 'create_issue',
+      args: { title: 'x', body: 'y' },
+    });
+    assert.deepStrictEqual(blocks, [
+      { kind: 'field', label: 'server', value: 'github' },
+      { kind: 'field', label: 'tool', value: 'create_issue' },
     ]);
   });
 
