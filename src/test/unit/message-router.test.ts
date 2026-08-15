@@ -393,6 +393,65 @@ suite('MessageRouter', () => {
     assert.strictEqual(target.state.status, 'idle');
   });
 
+  test('one missing ref reads in the singular', async () => {
+    const target = await manager.create('fake', dir);
+
+    await router.handle({
+      t: 'send', id: target.state.id, text: 'Do @ghost message',
+      refs: [{ sessionId: 'nope', kind: 'message', title: 'ghost' }],
+    });
+    await settle();
+
+    const items = (await target.snapshot()).items;
+    const error = items.find((i) => i.role === 'error');
+    assert.strictEqual(
+      error?.role === 'error' && error.message,
+      'Nothing to hand off from ghost (message). That session has not produced one yet.',
+    );
+  });
+
+  test('several missing refs read in the plural', async () => {
+    const target = await manager.create('fake', dir);
+
+    await router.handle({
+      t: 'send', id: target.state.id, text: 'Do it',
+      refs: [
+        { sessionId: 'nope', kind: 'message', title: 'a' },
+        { sessionId: 'nix', kind: 'plan', title: 'b' },
+      ],
+    });
+    await settle();
+
+    const items = (await target.snapshot()).items;
+    const error = items.find((i) => i.role === 'error');
+    assert.strictEqual(
+      error?.role === 'error' && error.message,
+      'Nothing to hand off from a (message), b (plan). '
+      + 'Those sessions have not produced them yet.',
+    );
+  });
+
+  test('two kinds missing from one session keep the subject singular', async () => {
+    const target = await manager.create('fake', dir);
+
+    await router.handle({
+      t: 'send', id: target.state.id, text: 'Do it',
+      refs: [
+        { sessionId: 'nope', kind: 'message', title: 'a' },
+        { sessionId: 'nope', kind: 'plan', title: 'a' },
+      ],
+    });
+    await settle();
+
+    const items = (await target.snapshot()).items;
+    const error = items.find((i) => i.role === 'error');
+    assert.strictEqual(
+      error?.role === 'error' && error.message,
+      'Nothing to hand off from a (message), a (plan). '
+      + 'That session has not produced them yet.',
+    );
+  });
+
   test('send without refs is unchanged', async () => {
     const target = await manager.create('fake', dir);
 

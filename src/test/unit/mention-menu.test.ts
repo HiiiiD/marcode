@@ -77,4 +77,32 @@ suite('mention menu', () => {
     assert.strictEqual(pruneMentions('only @a survives', pending).length, 1);
     assert.strictEqual(pruneMentions('neither', pending).length, 0);
   });
+
+  /**
+   * `tokenFor` disambiguates a collision by appending `-2`, and `@a:plan` is a
+   * plain substring of `@a:plan-2` — so a `includes` test keeps the deleted
+   * first token alive and sends a payload the user removed.
+   */
+  test('pruneMentions drops the first of two colliding tokens', () => {
+    const pending: PendingMention<{ id: string }>[] = [
+      { token: '@a:plan', payload: { id: 'first' } },
+      { token: '@a:plan-2', payload: { id: 'second' } },
+    ];
+
+    const left = pruneMentions('kept @a:plan-2 only', pending);
+    assert.strictEqual(left.length, 1);
+    assert.strictEqual(left[0].payload.id, 'second');
+
+    // The other way round, and both together, for symmetry.
+    assert.strictEqual(pruneMentions('kept @a:plan only', pending).length, 1);
+    assert.strictEqual(pruneMentions('@a:plan and @a:plan-2', pending).length, 2);
+  });
+
+  test('pruneMentions keeps a token followed by ordinary prose', () => {
+    const pending: PendingMention<{ id: string }>[] = [
+      { token: '@a:plan', payload: { id: 'a' } },
+    ];
+    assert.strictEqual(pruneMentions('see @a:plan, then go', pending).length, 1);
+    assert.strictEqual(pruneMentions('see @a:plan-ish', pending).length, 1);
+  });
 });

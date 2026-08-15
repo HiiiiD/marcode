@@ -49,6 +49,20 @@ suite('session refs', () => {
     assert.strictEqual(findPayload(items, 'plan'), 'settled');
   });
 
+  /**
+   * Without the guard an empty plan resolves to `''`, which composes an empty
+   * fenced block and renders as a disclosure chip with nothing behind it —
+   * instead of falling back to the previous plan, or being reported missing.
+   */
+  test('plan ignores an empty plan and falls back to the previous one', () => {
+    const items = [plan('p1', 'real plan'), plan('p2', '   \n ')];
+    assert.strictEqual(findPayload(items, 'plan'), 'real plan');
+  });
+
+  test('plan with nothing but an empty plan is missing, not empty', () => {
+    assert.strictEqual(findPayload([plan('p1', '')], 'plan'), undefined);
+  });
+
   test('plan ignores tool calls that are not plans', () => {
     const items: TranscriptItem[] = [{
       id: 't1', ts: 1, role: 'tool', toolId: 'x',

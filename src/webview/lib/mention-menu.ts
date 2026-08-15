@@ -58,6 +58,20 @@ export function filterMentions<P>(options: MentionOption<P>[], query: string): M
 }
 
 /**
+ * How a colliding token is disambiguated, and — read as a pattern — how a
+ * token can be extended by one.
+ *
+ * These two have to agree, which is why they sit together: `tokenFor` appends
+ * the suffix and `tokenPresent` is the only thing entitled to decide that a
+ * token is in the text. A bare `text.includes(token)` is not, because
+ * `@a:plan` is a substring of `@a:plan-2` — deleting the first of two
+ * colliding tokens would leave both references attached and send a payload the
+ * user removed.
+ */
+const collisionSuffix = (n: number) => `-${n}`;
+const CONTINUES_TOKEN = /^-\d/;
+
+/**
  * The literal token for a row, unique against `taken`.
  *
  * Two rows can share a base token — every session starts as `Untitled`, and
@@ -68,9 +82,20 @@ export function tokenFor<P>(option: MentionOption<P>, taken: string[]): string {
   const base = `@${option.baseToken}`;
   if (!taken.includes(base)) { return base; }
   for (let n = 2; ; n++) {
-    const candidate = `${base}-${n}`;
+    const candidate = `${base}${collisionSuffix(n)}`;
     if (!taken.includes(candidate)) { return candidate; }
   }
+}
+
+/**
+ * Whether `token` stands in `text` as itself, rather than only as the opening
+ * of a longer token the collision suffix produced.
+ */
+export function tokenPresent(text: string, token: string): boolean {
+  for (let at = text.indexOf(token); at >= 0; at = text.indexOf(token, at + 1)) {
+    if (!CONTINUES_TOKEN.test(text.slice(at + token.length))) { return true; }
+  }
+  return false;
 }
 
 /** Replaces the `@query` span with `token`, leaving the caret after it. */
@@ -85,5 +110,5 @@ export function spliceMention(
 
 /** The mentions whose tokens are still present in the text. */
 export function pruneMentions<P>(text: string, pending: PendingMention<P>[]): PendingMention<P>[] {
-  return pending.filter((p) => text.includes(p.token));
+  return pending.filter((p) => tokenPresent(text, p.token));
 }

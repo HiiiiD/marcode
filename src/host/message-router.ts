@@ -1,8 +1,26 @@
 import type { SessionManager } from './session-manager';
 import type {
-  EditorContext, HostToWebview, SessionSnapshot, WebviewToHost,
+  EditorContext, HostToWebview, SessionRef, SessionSnapshot, WebviewToHost,
 } from '../protocol/messages';
 import { composePrompt } from './session-refs';
+
+/**
+ * Why a message with references was not sent. One function, called from both
+ * the `send` and the `create-session` paths: the two carried the sentence
+ * verbatim, which is how one of them came to read "…from a (message), b
+ * (plan). That session has not produced one yet."
+ *
+ * The subject counts distinct sessions rather than references, since one
+ * session can be missing both its last reply and its last plan.
+ */
+function missingRefsMessage(missing: SessionRef[]): string {
+  const names = missing.map((r) => `${r.title} (${r.kind})`).join(', ');
+  const subject = new Set(missing.map((r) => r.sessionId)).size === 1
+    ? 'That session has'
+    : 'Those sessions have';
+  const object = missing.length === 1 ? 'one' : 'them';
+  return `Nothing to hand off from ${names}. ${subject} not produced ${object} yet.`;
+}
 
 /**
  * The router must stay free of `vscode` (it has unit tests that run outside
@@ -100,11 +118,7 @@ export class MessageRouter {
         if (msg.seed) {
           const { blocks, missing } = await this.manager.resolveRefs(msg.seed.refs);
           if (missing.length > 0) {
-            const names = missing.map((r) => `${r.title} (${r.kind})`).join(', ');
-            session.noteError(
-              `Nothing to hand off from ${names}. `
-              + 'That session has not produced one yet.',
-            );
+            session.noteError(missingRefsMessage(missing));
           } else {
             const context = session.state.includeEditorContext
               ? this.editor.current() ?? undefined
@@ -153,11 +167,7 @@ export class MessageRouter {
         // no plan above is an invitation to invent one, which is worse than
         // not sending at all.
         if (missing.length > 0) {
-          const names = missing.map((r) => `${r.title} (${r.kind})`).join(', ');
-          session.noteError(
-            `Nothing to hand off from ${names}. `
-            + 'That session has not produced one yet.',
-          );
+          session.noteError(missingRefsMessage(missing));
           return;
         }
         session.send(composePrompt(msg.text, blocks), context, refs);

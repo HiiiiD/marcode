@@ -29,7 +29,11 @@ export function findPayload(
       }
       continue;
     }
-    if (item.role === 'tool' && item.state === 'ok' && item.tool.kind === 'plan') {
+    // Same emptiness guard as the message branch above: an empty plan resolves
+    // to `''`, which renders as an empty disclosure chip rather than falling
+    // through to the previous plan or being reported as missing.
+    if (item.role === 'tool' && item.state === 'ok' && item.tool.kind === 'plan'
+      && item.tool.text.trim().length > 0) {
       return item.tool.text;
     }
   }
