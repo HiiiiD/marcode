@@ -37,22 +37,62 @@ const AUTO_DEFAULTS: Record<string, unknown> = {
 };
 
 /**
+ * The exact params each request must carry, checked on every frame the stub
+ * drains.
+ *
+ * This table is the point of the stub. Matching on a method NAME and
+ * answering regardless of params is how `{ cwd }` on
+ * `account/rateLimits/read` shipped: that request declares `params:
+ * undefined` (a serde unit), so a live 0.147.0 binary answered every call
+ * with `Invalid request: invalid type: map, expected unit` and `fetchUsage`
+ * rejected forever — while every unit test passed, because both sides of the
+ * conversation were ours and neither looked. A `{}` here is not "don't care";
+ * it is the assertion that we send an empty object and nothing else.
+ *
+ * A method absent from this table is unchecked, so add one when you add a
+ * request. `params` is compared with `deepStrictEqual`, so an extra field
+ * fails as loudly as a missing one.
+ */
+const EXPECTED_PARAMS: Record<string, unknown> = {
+  // Unit params — an object with ANY field is a hard protocol error.
+  'account/rateLimits/read': {},
+  // Both are process/account-global. Neither declares a `cwd`.
+  'account/read': {},
+  'model/list': {},
+  // Plural, an array, and the only cwd-scoped probe in the class.
+  'skills/list': { cwds: ['/repo'] },
+};
+
+/**
  * Wires a `CodexProvider` to one stub child process and exposes `respondTo`:
  * await it with a method name and a result, and it drains every request the
  * provider sends up to (and including) that method, auto-answering anything
  * earlier from `AUTO_DEFAULTS` so the probe's own chain of requests can
  * proceed to the one under test.
+ *
+ * Every drained frame — the one under test and the auto-answered ones alike
+ * — is checked against `EXPECTED_PARAMS` first, so a wrong payload fails the
+ * test that happens to be running rather than the next live turn.
  */
 function providerWithStub() {
   const child = stubChild();
   const provider = new CodexProvider({ spawn: () => child });
   const answered = new Set<unknown>();
 
+  function checkParams(frame: { method: string; params?: unknown }): void {
+    if (!(frame.method in EXPECTED_PARAMS)) { return; }
+    assert.deepStrictEqual(
+      frame.params, EXPECTED_PARAMS[frame.method],
+      `${frame.method} sent params the protocol does not declare`,
+    );
+  }
+
   async function respondTo(method: string, result: unknown): Promise<void> {
     for (let i = 0; i < 50; i += 1) {
       const next = child.sent().find((f) => f.method !== undefined && !answered.has(f.id));
       if (!next) { await tick(); continue; }
       answered.add(next.id);
+      checkParams(next);
       if (next.method === method) {
         child.send({ id: next.id, result });
         await tick();
@@ -167,14 +207,52 @@ suite('CodexProvider', () => {
 
   test('fetchUsage reads the account snapshot without a thread', async () => {
     const { provider, respondTo } = providerWithStub();
+    // The cwd is accepted and must NOT reach the wire — `respondTo` asserts
+    // that against EXPECTED_PARAMS. The response is the full
+    // `GetAccountRateLimitsResponse`, extra buckets included, so the parse
+    // is exercised against what the binary actually sends rather than a
+    // trimmed shape we invented.
     const probe = provider.fetchUsage('/repo');
     await respondTo('account/rateLimits/read', {
       rateLimits: {
         primary: { usedPercent: 40, windowDurationMins: 300, resetsAt: null },
         secondary: null,
       },
+      rateLimitsByLimitId: {
+        codex: { primary: { usedPercent: 40, windowDurationMins: 300, resetsAt: null }, secondary: null },
+      },
+      rateLimitResetCredits: null,
     });
     assert.deepStrictEqual((await probe)?.map((w) => w.usedPercent), [40]);
+  });
+
+  // The structural gap that let three payload bugs ship: nothing asserted
+  // what we put on the wire, only that a method by that name was called.
+  // These pin the params of every request this class sends. `account/read`,
+  // `model/list` and `account/rateLimits/read` each declare no params at
+  // all — `{ cwd }` on the last one was rejected by every live binary with
+  // `Invalid request: invalid type: map, expected unit`.
+  test('every probe sends exactly the params its request declares', async () => {
+    const { provider, respondTo, sent } = providerWithStub();
+
+    const models = provider.fetchModels('/repo');
+    await respondTo('model/list', { data: [], nextCursor: null });
+    await models;
+
+    const usage = provider.fetchUsage('/repo');
+    await respondTo('account/rateLimits/read', { rateLimits: { primary: null, secondary: null } });
+    await usage;
+
+    const skills = provider.listInvocables('/repo');
+    await respondTo('skills/list', { data: [] });
+    await skills;
+
+    const paramsOf = (method: string): unknown =>
+      sent().find((f) => f.method === method)?.params;
+    assert.deepStrictEqual(paramsOf('account/read'), {});
+    assert.deepStrictEqual(paramsOf('model/list'), {});
+    assert.deepStrictEqual(paramsOf('account/rateLimits/read'), {});
+    assert.deepStrictEqual(paramsOf('skills/list'), { cwds: ['/repo'] });
   });
 
   test('two sessions share one process', () => {

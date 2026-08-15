@@ -51,14 +51,24 @@ suite('AppServer', () => {
   });
 
   test('a server request reaches the request sink and can be answered', () => {
+    // This asserts TRANSPORT only — that a server request reaches the sink
+    // and that whatever the sink hands back is framed onto the wire against
+    // the right id. It deliberately does NOT assert the decision's value:
+    // both sides here are ours, so a payload check at this layer can only
+    // ever confirm that the stub expects what the stub sends. That is
+    // exactly how `{decision:'approved'}` — a v1 shape no v2 approval
+    // accepts — passed this suite while failing every live turn. The
+    // decision's actual bytes are pinned in codex-run.test.ts, against the
+    // shapes in wire.ts.
     const { server, send, sent } = stub();
+    const answer = { decision: 'accept' };
     server.onServerRequest((method, id) => {
-      if (method === 'item/commandExecution/requestApproval') { server.respond(id, { decision: 'approved' }); }
+      if (method === 'item/commandExecution/requestApproval') { server.respond(id, answer); }
     });
     send({ id: 7, method: 'item/commandExecution/requestApproval', params: { threadId: 't1' } });
     const reply = sent().at(-1);
     assert.strictEqual(reply.id, 7);
-    assert.deepStrictEqual(reply.result, { decision: 'approved' });
+    assert.deepStrictEqual(reply.result, answer);
   });
 
   test('a frame split across chunks is still parsed', () => {

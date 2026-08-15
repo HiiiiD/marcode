@@ -120,12 +120,10 @@ async function probeAuth(): Promise<{ signedIn: boolean; reason?: string }> {
     // `{"account":{"type":"chatgpt","email":"…","planType":"plus"},
     // "requiresOpenaiAuth":true}` — `requiresOpenaiAuth` was `true` even
     // though the account was fully populated and `model/list` genuinely
-    // returned six real models. `wire.ts`'s own comment already hedges this
-    // ("requiresOpenaiAuth: true ALONE is 'not signed in'" — i.e. only
-    // when `account` is also null): `codex-provider.ts`'s `fetchModels()`
-    // branches on `requiresOpenaiAuth` by itself, which this measurement
-    // shows is wrong on a genuinely signed-in account — flagged in the
-    // task-11 report as a discrepancy in task 8's code, not fixed here.
+    // returned six real models. `codex-provider.ts`'s `fetchModels()` and
+    // `wire.ts`'s `AccountReadResponse` doc were both corrected to this
+    // reading in 327665a; the check below is the same one `fetchModels`
+    // now makes.
     if (!account.account) {
       return { signedIn: false, reason: 'codex is installed but not signed in — run `codex login`' };
     }

@@ -96,7 +96,14 @@ suite('CodexRun', () => {
     assert.deepStrictEqual(events().filter((e) => e.kind === 'text').map((e) => e.delta), ['yes']);
   });
 
-  test('an approval decision answers the originating request', async () => {
+  // The exact bytes of an approval answer, which is what the earlier version
+  // of this suite never checked: it asserted `{decision:'approved'}` — the
+  // legacy v1 `ReviewDecision` — and passed, because the stub on the other
+  // side was ours too. Measured on a live codex-cli 0.147.0:
+  // `{decision:'approved'}` left the command unrun and the agent reported
+  // that its "required approval mechanism failed"; `{decision:'accept'}` ran
+  // it. `accept`/`decline` are the v2 enums' members.
+  test('a command approval is accepted with the v2 decision, not the v1 one', async () => {
     const { server, send, sent } = stub();
     const run = await started(server, 'th_1');
     send({
@@ -105,20 +112,62 @@ suite('CodexRun', () => {
     });
     await tick();
     run.respondToTool('42', { allow: true });
-    assert.deepStrictEqual(sent().at(-1), { id: 42, result: { decision: 'approved' } });
+    assert.deepStrictEqual(sent().at(-1), { id: 42, result: { decision: 'accept' } });
   });
 
-  test('a denial carries the reason as the rejection', async () => {
+  test('a fileChange denial answers decline, with no v1 rejection envelope', async () => {
     const { server, send, sent } = stub();
     const run = await started(server, 'th_1');
     send({ id: 43, method: 'item/fileChange/requestApproval', params: { threadId: 'th_1' } });
     await tick();
+    // The reason has nowhere to go: no v2 decision carries free text. It
+    // stays in the transcript rather than being smuggled into a shape the
+    // server would refuse.
     run.respondToTool('43', { allow: false, reason: 'not this file' });
-    assert.deepStrictEqual(sent().at(-1),
-      { id: 43, result: { decision: { denied: { rejection: 'not this file' } } } });
+    assert.deepStrictEqual(sent().at(-1), { id: 43, result: { decision: 'decline' } });
   });
 
-  test('an input request is declined rather than left hanging', async () => {
+  test('a fileChange approval accepts', async () => {
+    const { server, send, sent } = stub();
+    const run = await started(server, 'th_1');
+    send({ id: 45, method: 'item/fileChange/requestApproval', params: { threadId: 'th_1' } });
+    await tick();
+    run.respondToTool('45', { allow: true });
+    assert.deepStrictEqual(sent().at(-1), { id: 45, result: { decision: 'accept' } });
+  });
+
+  test('a permissions request is answered with an empty, turn-scoped grant', async () => {
+    // `PermissionsRequestApprovalResponse` has NO decision field — it asks
+    // which permissions to grant, not yes/no. An empty profile at the
+    // narrower scope is the only refusal the type can express, and it is
+    // what both answers send, since a ToolDecision carries no permission set
+    // to grant with.
+    const { server, send, sent } = stub();
+    const run = await started(server, 'th_1');
+    send({ id: 46, method: 'item/permissions/requestApproval', params: { threadId: 'th_1' } });
+    await tick();
+    run.respondToTool('46', { allow: false });
+    assert.deepStrictEqual(sent().at(-1),
+      { id: 46, result: { permissions: {}, scope: 'turn' } });
+  });
+
+  test('disposing declines every parked approval in its own response shape', async () => {
+    const { server, send, sent } = stub();
+    const run = await started(server, 'th_1');
+    send({ id: 47, method: 'item/commandExecution/requestApproval', params: { threadId: 'th_1' } });
+    await tick();
+    // Not awaited: dispose() also fires `thread/unsubscribe` and waits on a
+    // reply this stub never sends. The denials go out before that.
+    void run.dispose();
+    await tick();
+    // Not `{denied:{rejection:'Session closed'}}`: that is the v1 shape, it
+    // fails to deserialize, and the request stays parked — the exact hang
+    // this denial exists to prevent.
+    const reply = sent().find((f) => f.id === 47 && f.result !== undefined);
+    assert.deepStrictEqual(reply?.result, { decision: 'decline' });
+  });
+
+  test('an input request is declined with the response shape its type requires', async () => {
     const { server, send, sent } = stub();
     const run = await started(server, 'th_1');
     const events = collect(run);
@@ -127,10 +176,22 @@ suite('CodexRun', () => {
       params: { threadId: 'th_1', questions: [], isBlocking: true },
     });
     await tick();
-    // Answered immediately: an unanswered blocking request hangs the turn.
-    assert.strictEqual(sent().at(-1).id, 44);
+    // `ToolRequestUserInputResponse` requires `answers`; `{}` fails
+    // deserialization and the blocking request goes unanswered. An empty map
+    // is structurally valid and means "answered none of them".
+    assert.deepStrictEqual(sent().at(-1), { id: 44, result: { answers: {} } });
     // And said so in the transcript, rather than failing silently.
     assert.strictEqual(events().some((e) => e.kind === 'tool-start'), true);
+  });
+
+  test('an MCP elicitation is declined with an action, not an empty object', async () => {
+    const { server, send, sent } = stub();
+    const run = await started(server, 'th_1');
+    collect(run);
+    send({ id: 48, method: 'mcpServer/elicitation/request', params: { threadId: 'th_1' } });
+    await tick();
+    assert.deepStrictEqual(sent().at(-1),
+      { id: 48, result: { action: 'decline', content: null, _meta: null } });
   });
 
   test('a mode change retargets the live thread on its next turn', async () => {
@@ -188,6 +249,131 @@ suite('CodexRun', () => {
     assert.doesNotThrow(() => { run.setPermissionMode('plan'); });
     assert.doesNotThrow(() => { run.setModel('other'); });
     assert.doesNotThrow(() => { run.setEffort('high'); });
+  });
+
+  test('thread/start carries no effort field', async () => {
+    // Neither ThreadStartParams nor ThreadResumeParams declares one. serde
+    // ignores unknown fields, so sending it was inert — which is why it had
+    // to go rather than stay: a field that looks like it works and does
+    // nothing is the thing a future reader trusts. Effort reaches the model
+    // on turn/start, which does declare it (asserted above).
+    const { server, sent } = stub();
+    new CodexRun(server, { cwd: '/repo', permissionMode: 'default', effort: 'high' }).send('hi');
+    await tick();
+    const start = sent().find((f) => f.method === 'thread/start');
+    assert.strictEqual('effort' in start.params, false);
+  });
+
+  test('usageWindows sends unit params and reads the nested snapshot', async () => {
+    // Two bugs in one call, both invisible to a name-only check: `{ cwd }`
+    // is a hard protocol error against a `params: undefined` request, and
+    // the snapshot is nested under `rateLimits` — typing the response as a
+    // bare RateLimitSnapshot found no primary/secondary and returned [].
+    const { server, sent } = stub();
+    const run = await started(server, 'th_1');
+    const pending = run.usageWindows();
+    await tick();
+    const req = sent().find((f) => f.method === 'account/rateLimits/read');
+    assert.deepStrictEqual(req.params, {});
+    // The full GetAccountRateLimitsResponse, extra buckets included.
+    server.ingest(`${JSON.stringify({
+      id: req.id,
+      result: {
+        rateLimits: {
+          primary: { usedPercent: 12, windowDurationMins: 300, resetsAt: null },
+          secondary: { usedPercent: 63, windowDurationMins: 10080, resetsAt: null },
+        },
+        rateLimitsByLimitId: null,
+        rateLimitResetCredits: null,
+      },
+    })}\n`);
+    assert.deepStrictEqual((await pending)?.map((w) => w.usedPercent), [12, 63]);
+  });
+
+  test('usageWindows goes quiet once the connection is gone, rather than respawning', async () => {
+    // setBinPath tears the shared process down without disposing its runs.
+    // An ungated request here goes through ThreadView.request, which spawns
+    // a FRESH process and drives it with a dead thread's id.
+    const { server, sent } = stub();
+    const run = await started(server, 'th_1');
+    const before = sent().length;
+    server.close('binary changed');
+    assert.strictEqual(await run.usageWindows(), undefined);
+    assert.strictEqual(sent().length, before);
+  });
+
+  test('MCP startup statuses accumulate into a full roster', async () => {
+    // The notification is one server at a time; the mcp-servers event is a
+    // full-replacement list that AgentSession assigns wholesale. Emitting a
+    // single-element list per notification would leave the strip showing
+    // only whichever server reported last.
+    const { server, send } = stub();
+    const run = await started(server, 'th_1');
+    const events = collect(run);
+    send({
+      method: 'mcpServer/startupStatus/updated',
+      params: { threadId: 'th_1', name: 'github', status: 'starting', error: null, failureReason: null },
+    });
+    send({
+      method: 'mcpServer/startupStatus/updated',
+      params: { threadId: 'th_1', name: 'linear', status: 'failed', error: 'boom', failureReason: null },
+    });
+    send({
+      method: 'mcpServer/startupStatus/updated',
+      params: { threadId: 'th_1', name: 'github', status: 'ready', error: null, failureReason: null },
+    });
+    await tick();
+    const last = events().filter((e) => e.kind === 'mcp-servers').at(-1);
+    assert.deepStrictEqual(last?.kind === 'mcp-servers' && last.servers, [
+      { name: 'github', state: 'connected' },
+      { name: 'linear', state: 'failed', error: 'boom' },
+    ]);
+  });
+
+  test('a reauthentication failure reads as needs-auth, not a broken server', async () => {
+    const { server, send } = stub();
+    const run = await started(server, 'th_1');
+    const events = collect(run);
+    send({
+      method: 'mcpServer/startupStatus/updated',
+      params: {
+        threadId: 'th_1', name: 'github', status: 'failed',
+        error: 'token expired', failureReason: 'reauthenticationRequired',
+      },
+    });
+    await tick();
+    const last = events().filter((e) => e.kind === 'mcp-servers').at(-1);
+    assert.strictEqual(last?.kind === 'mcp-servers' && last.servers[0].state, 'needs-auth');
+  });
+
+  test('skills/changed re-pulls the catalog and emits the new invocables', async () => {
+    // The notification is `Record<string, never>` — an invalidation signal
+    // carrying no payload, so no pure mapper can answer it. The list has to
+    // be pulled.
+    const { server, send, sent } = stub();
+    const run = await started(server, 'th_1');
+    const events = collect(run);
+    send({ method: 'skills/changed', params: {} });
+    await tick();
+    const req = sent().find((f) => f.method === 'skills/list');
+    assert.deepStrictEqual(req.params, { cwds: ['/repo'] });
+    server.ingest(`${JSON.stringify({
+      id: req.id,
+      result: {
+        data: [{
+          cwd: '/repo',
+          skills: [
+            { name: 'plan', shortDescription: 'Plan', description: 'Plan it', path: '/p', scope: 'project', enabled: true },
+            { name: 'off', description: 'Retired', path: '/o', scope: 'project', enabled: false },
+          ],
+          errors: [],
+        }],
+      },
+    })}\n`);
+    await tick();
+    const last = events().filter((e) => e.kind === 'invocables').at(-1);
+    assert.deepStrictEqual(last?.kind === 'invocables' && last.entries,
+      [{ name: 'plan', description: 'Plan', origin: 'project' }]);
   });
 
   test('the connection closing ends the turn with an error', async () => {
