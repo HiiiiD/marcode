@@ -238,6 +238,23 @@ suite('describeOutput', () => {
 });
 
 suite('describeTool: codex', () => {
+  test('a codex kind reads as a label, never as its raw wire type', () => {
+    // `commandExecution` / `webSearch` / `fileChange` are `ThreadItem.type`
+    // strings, not tool names a user has ever typed — unlike `Bash` or `Read`,
+    // which are the names their own docs use.
+    assert.strictEqual(describeTool('commandExecution', { command: 'ls' }).verb, 'Shell');
+    assert.strictEqual(describeTool('webSearch', { query: 'a' }).verb, 'Web search');
+    assert.strictEqual(describeTool('fileChange', {}).verb, 'Edit');
+    assert.strictEqual(describeTool('mcpToolCall', { server: 'g' }).verb, 'MCP');
+    assert.strictEqual(describeTool('dynamicToolCall', { toolName: 't' }).verb, 'Tool');
+    assert.strictEqual(describeTool('plan', { text: 'x' }).verb, 'Plan');
+  });
+
+  test('a tool that already names itself keeps its own name', () => {
+    assert.strictEqual(describeTool('Bash', { command: 'ls' }).verb, 'Bash');
+    assert.strictEqual(describeTool('mcp_tool', {}).verb, 'mcp_tool');
+  });
+
   test('a command execution leads with the command, not its JSON', () => {
     const header = describeTool('commandExecution', { command: 'yarn test', cwd: '/repo' });
     assert.strictEqual(header.glyph, 'terminal');

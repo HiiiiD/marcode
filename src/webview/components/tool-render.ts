@@ -16,7 +16,10 @@ export type ToolGlyph =
 
 export interface ToolHeader {
   glyph: ToolGlyph;
-  /** The tool's own name — familiarity beats a translated verb here. */
+  /**
+   * The tool's own name — familiarity beats a translated verb here — except
+   * where the "name" is not a name a user has ever seen. See `LABELS`.
+   */
   verb: string;
   /** The one argument worth a sidebar's width. Empty when there isn't one. */
   primary: string;
@@ -121,6 +124,30 @@ export function clampLines(text: string, head = 12, tail = 8): Clamped {
   };
 }
 
+/**
+ * The few tools whose wire name is not a label.
+ *
+ * Claude's names are already the ones its own docs use — `Bash`, `Read`,
+ * `Edit` — so they ship verbatim, and the default stays "show the tool's own
+ * name". Codex has no tool names on this wire at all: what arrives is
+ * `ThreadItem.type`, an internal discriminant (`commandExecution`,
+ * `webSearch`, `fileChange`), which no user has typed or read anywhere. These
+ * are short enough for a 300px sidebar and say the same thing the Claude arm
+ * says with its own vocabulary — a label, not a rebranding.
+ *
+ * Keyed on the exact wire spelling, NOT on `key()`: Claude's own `WebSearch`
+ * normalizes to the same `websearch` slug as Codex's `webSearch`, and it is a
+ * real tool name that must keep shipping verbatim.
+ */
+const LABELS: Record<string, string> = {
+  commandExecution: 'Shell',
+  fileChange: 'Edit',
+  webSearch: 'Web search',
+  mcpToolCall: 'MCP',
+  dynamicToolCall: 'Tool',
+  plan: 'Plan',
+};
+
 export function describeTool(name: string, input: unknown): ToolHeader {
   const record = asRecord(input);
   const k = key(name);
@@ -128,7 +155,7 @@ export function describeTool(name: string, input: unknown): ToolHeader {
   const header = (
     glyph: ToolGlyph, primary: string | undefined, mono: boolean,
   ): ToolHeader => ({
-    glyph, verb: name, mono,
+    glyph, verb: LABELS[name] ?? name, mono,
     primary: primary ?? '',
     ...(primary && primary.length > 40 ? { full: primary } : {}),
   });
