@@ -22,6 +22,24 @@ function formatPercent(percent: number): string {
 }
 
 /**
+ * Token counts, at the one place they are quoted.
+ *
+ * Thousands, one decimal, and never a bare digit group: 258400 read as a
+ * count is a number to parse, `258.4k` is a magnitude to recognise, and
+ * recognising which window a session is on is the whole reason the figure is
+ * here. Under 1000 stays exact, because "0.9k" is a rounding of something the
+ * reader could simply have been told.
+ */
+function formatTokens(tokens: number): string {
+  if (tokens < 1000) { return String(Math.round(tokens)); }
+  const thousands = tokens / 1000;
+  // 45.2k below a hundred thousand, 258k above it: past three digits the
+  // decimal is precision nobody acts on, and it costs a character in a
+  // column that is 300px wide.
+  return thousands >= 100 ? `${Math.round(thousands)}k` : `${(Math.round(thousands * 10) / 10)}k`;
+}
+
+/**
  * `~/.claude/CLAUDE.md` and `./CLAUDE.md` are the common case, and the
  * basename alone renders them as two identical rows. Split so the parent can
  * be dimmed and dropped first.
@@ -169,16 +187,29 @@ function Body({
   }
 
   const b = result.breakdown;
+  const tokens = b.usedTokens !== undefined && b.windowTokens !== undefined
+    ? `${formatTokens(b.usedTokens)} of ${formatTokens(b.windowTokens)} tokens`
+    : undefined;
   return (
     <div className="space-y-3">
-      <StackedBar
-        slices={[
-          { key: 'system', percent: clampPercent(b.systemPercent) },
-          { key: 'memory', percent: clampPercent(b.memoryPercent) },
-          { key: 'conversation', percent: clampPercent(b.conversationPercent) },
-          { key: 'free', percent: clampPercent(b.freePercent) },
-        ]}
-      />
+      <div className="space-y-1.5">
+        <StackedBar
+          slices={[
+            { key: 'system', percent: clampPercent(b.systemPercent) },
+            { key: 'memory', percent: clampPercent(b.memoryPercent) },
+            { key: 'conversation', percent: clampPercent(b.conversationPercent) },
+            { key: 'free', percent: clampPercent(b.freePercent) },
+          ]}
+        />
+        {/* Under the bar, not in the header: the percentages are the reading,
+            and this names the window they are percentages *of* — which is
+            what tells a 17% session on a 258k window apart from one on 1M.
+            Tied to the bar's own spacing so it reads as that bar's caption
+            rather than as a fifth row of the list below. */}
+        {tokens && (
+          <p className="text-right tabular-nums text-muted-foreground">{tokens}</p>
+        )}
+      </div>
       <div>
         <Row slice="system" label="System prompt" percent={b.systemPercent} />
         <Row slice="memory" label="Memory" percent={b.memoryPercent} />

@@ -55,6 +55,25 @@ suite('map-context', () => {
     });
   });
 
+  test('carries the window and its occupancy in tokens', () => {
+    // The numerator is the same `base` the percentages are shares of, so the
+    // figure and the bar beside it cannot disagree.
+    const breakdown = toContextBreakdown({
+      totalTokens: 50_000, maxTokens: 200_000,
+      memoryFiles: [{ path: '/repo/CLAUDE.md', type: 'project', tokens: 8_000 }],
+      messageBreakdown: undefined,
+    });
+    assert.strictEqual(breakdown.usedTokens, 50_000);
+    assert.strictEqual(breakdown.windowTokens, 200_000);
+  });
+
+  test('an over-full window quotes the window, never more than it', () => {
+    const breakdown = toContextBreakdown({
+      totalTokens: 250_000, maxTokens: 200_000, memoryFiles: [], messageBreakdown: undefined,
+    });
+    assert.strictEqual(breakdown.usedTokens, 200_000);
+  });
+
   test('an unknown window budget keeps the memory rows it cannot size', () => {
     // Dropping them renders "No memory files loaded", which says something
     // false about the session — the files were loaded; it is the

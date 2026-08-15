@@ -4,6 +4,7 @@ import * as vscode from 'vscode';
 import { defaultCwdOf } from './host/default-cwd';
 import { EditorContextTracker } from './host/editor-context-tracker';
 import { PanelViewProvider } from './host/panel-view-provider';
+import { PROFILE_GUARD_SNIPPET } from './host/profile-noise';
 import { SessionManager } from './host/session-manager';
 import { TranscriptStore } from './host/transcript-store';
 import { createVscodeEditorSource } from './host/vscode-editor-source';
@@ -22,6 +23,38 @@ import type { AgentProvider } from './providers/types';
 function codexBinPath(): string | undefined {
   const configured = vscode.workspace.getConfiguration('hiiiidCode').get<string>('codex.path');
   return configured ? configured : undefined;
+}
+
+/**
+ * One warning per window, not per session and not per command.
+ *
+ * Deliberately not persisted: the condition is a live property of the user's
+ * shell, so a flag on disk would silence the advice for an install that is
+ * still broken. A window is the smallest scope that does not nag.
+ */
+let profileWarned = false;
+
+/**
+ * Tells the user their PowerShell profile is being loaded — and failing — for
+ * every command Codex runs, and hands them the fix.
+ *
+ * Nothing here can repair it: Codex wraps commands as `pwsh.exe -Command "…"`
+ * with no `-NoProfile` and that invocation is not ours to change, so the
+ * profile is the only place the guard can go. See `host/profile-noise.ts`.
+ */
+function warnAboutProfile(profile: string): void {
+  if (profileWarned) { return; }
+  profileWarned = true;
+  const copy = 'Copy fix';
+  void vscode.window.showWarningMessage(
+    `Your PowerShell profile fails to load when Codex runs a command, and its errors `
+      + `end up in the agent's output. Commands still succeed. Guard the console-only `
+      + `parts of ${profile} to silence it.`,
+    copy,
+  ).then((choice) => {
+    if (choice !== copy) { return; }
+    void vscode.env.clipboard.writeText(PROFILE_GUARD_SNIPPET);
+  });
 }
 
 export async function activate(context: vscode.ExtensionContext) {
@@ -66,7 +99,9 @@ export async function activate(context: vscode.ExtensionContext) {
   ));
 
   let provider: PanelViewProvider;
-  const manager = new SessionManager(store, providers, (msg) => provider.post(msg));
+  const manager = new SessionManager(
+    store, providers, (msg) => provider.post(msg), undefined, warnAboutProfile,
+  );
 
   // Never `process.cwd()` — for an extension host that is VS Code's own
   // install directory, and a session inherits it silently. See

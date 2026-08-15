@@ -13,6 +13,7 @@ import type {
 } from '../providers/types';
 import { findModel, resolveEffort } from '../shared/model-catalog';
 import { threadKey } from '../shared/thread-key';
+import { profileNoiseIn } from './profile-noise';
 import type { TranscriptStore } from './transcript-store';
 import { detectWorktreeAdd } from './worktree-detect';
 
@@ -33,6 +34,16 @@ export interface SessionSink {
    * window, because a pull is a snapshot — see SessionManager.usageWindows.
    */
   usageWindows(providerId: string, windows: UsageWindow[] | undefined): void;
+  /**
+   * A shell command came back carrying a PowerShell profile's own load
+   * failure. Optional: a sink that has nowhere to put the advice may ignore
+   * it, and every existing sink stays valid without one.
+   *
+   * Reported at most once per session — the profile loads for every command,
+   * so the condition repeats even though the news does not. See
+   * `host/profile-noise.ts` for why the extension cannot fix it from here.
+   */
+  shellNoise?(profile: string): void;
 }
 
 const TITLE_MAX = 60;
@@ -51,6 +62,26 @@ function samePath(a: string, b: string): boolean {
   return process.platform === 'win32'
     ? a.toLowerCase() === b.toLowerCase()
     : a === b;
+}
+
+type ToolItem = Extract<TranscriptItem, { role: 'tool' }>;
+
+/**
+ * A tool call the turn ended without settling, as an errored item.
+ *
+ * The stand-in output is only used when the call reported none: a provider
+ * that streamed partial output before dying said something the user should
+ * keep, and overwriting it with a generic sentence would be a worse card
+ * than the one it replaces.
+ */
+function unsettled(item: ToolItem): ToolItem {
+  return {
+    ...item,
+    state: 'error',
+    output: item.output ?? {
+      kind: 'text', text: 'The agent ended this turn without reporting a result.',
+    },
+  };
 }
 
 let counter = 0;
@@ -99,6 +130,8 @@ export class AgentSession {
    * no disk read on the close path.
    */
   private appended = 0;
+  /** A profile failure has already been reported up; every later one is the same news. */
+  private shellNoiseReported = false;
 
   constructor(
     private readonly _state: SessionState,
@@ -125,6 +158,24 @@ export class AgentSession {
   }
 
   get state(): SessionState { return this._state; }
+
+  /**
+   * Tells the sink, once, that this session's shell is loading a profile that
+   * fails under Codex's redirected `pwsh -Command` wrapper.
+   *
+   * Gated on `kind: 'command'` deliberately: the same frame appearing in a
+   * `file-read` is an agent looking at a profile, which says nothing about the
+   * shell this session actually runs in.
+   */
+  private reportShellNoise(item: ToolItem): void {
+    if (this.shellNoiseReported || item.tool.kind !== 'command') { return; }
+    const output = item.output;
+    if (output?.kind !== 'text') { return; }
+    const profile = profileNoiseIn(output.text);
+    if (!profile) { return; }
+    this.shellNoiseReported = true;
+    this.sink.shellNoise?.(profile);
+  }
 
   /**
    * Nothing has been appended by *this* run. A run revived by
@@ -415,7 +466,7 @@ export class AgentSession {
       // Best-effort: nothing left to report a failure into once disposed.
     }
     await this.pumping;
-    this.flushUnsettledParents();
+    this.flushUnsettledTools();
     await this.scheduleFlush();
   }
 
@@ -495,6 +546,7 @@ export class AgentSession {
           ...(children ? { children: [...children] } : {}),
         };
         this.toolItems.set(event.id, settled);
+        this.reportShellNoise(settled);
 
         const parentRoot = this.childOf.get(event.id);
         if (parentRoot) {
@@ -568,7 +620,7 @@ export class AgentSession {
 
       case 'turn-end':
         this.closeAssistant();
-        this.flushUnsettledParents();
+        this.flushUnsettledTools();
         if (event.reason === 'error') {
           this.fail(event.error ?? 'Agent run failed');
         } else {
@@ -697,7 +749,7 @@ export class AgentSession {
    * the store yet — they land there inline when the parent settles — so
    * this just updates the buffer and streams a patch, with no store write.
    *
-   * But `flushUnsettledParents` can have already settled the parent (e.g.
+   * But `flushUnsettledTools` can have already settled the parent (e.g.
    * an interrupt mid-subagent) and cleared the buffer, while a permission
    * raised inside it is still outstanding and answered later. In that case
    * the parent's persisted `children` array is the only durable copy, so
@@ -729,21 +781,36 @@ export class AgentSession {
   }
 
   /**
-   * Settles any parent tool call still running when the turn ended.
+   * Settles every tool call still running when the turn ended.
    *
-   * Interrupt, provider crash, or a turn ending mid-Task means the parent's
-   * `tool-end` never arrives, so its buffered children would be dropped on
-   * the floor — discarding, on disk, subagent work the user watched happen
-   * on screen.
+   * A turn that ends is a turn where nothing more is coming, so a call still
+   * at 'running' is a call whose `tool-end` never arrived — interrupt,
+   * provider crash, or a notification the adapter did not recognize.
+   * Measured against codex-cli 0.147.0, where a dropped `item/completed`
+   * left the card spinning "Running…" with the status dot already back to
+   * idle, and nothing but a reload to clear it. For a parent it also flushes
+   * its buffered children, which would otherwise be dropped on the floor —
+   * discarding, on disk, subagent work the user watched happen on screen.
+   *
+   * Children settle first so a parent's copy of them is the settled one.
    */
-  private flushUnsettledParents(): void {
-    for (const [parentId, children] of this.childrenByParent) {
-      const existing = this.toolItems.get(parentId);
-      if (!existing || existing.role !== 'tool' || existing.state !== 'running') { continue; }
+  private flushUnsettledTools(): void {
+    for (const [toolId, item] of this.toolItems) {
+      const parentRoot = this.childOf.get(toolId);
+      if (!parentRoot || item.role !== 'tool' || item.state !== 'running') { continue; }
+      const settled = unsettled(item);
+      this.toolItems.set(toolId, settled);
+      this.replaceChild(parentRoot, settled);
+    }
+
+    for (const [toolId, item] of this.toolItems) {
+      if (this.childOf.has(toolId) || item.role !== 'tool' || item.state !== 'running') { continue; }
+      const children = this.childrenByParent.get(toolId);
       const settled: TranscriptItem = {
-        ...existing, state: 'error', children: [...children],
+        ...unsettled(item),
+        ...(children ? { children: [...children] } : {}),
       };
-      this.toolItems.set(parentId, settled);
+      this.toolItems.set(toolId, settled);
       this.replaceItem(settled);
     }
     this.childrenByParent.clear();

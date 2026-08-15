@@ -53,29 +53,62 @@ suite('toUsageWindows', () => {
 suite('toContextBreakdown', () => {
   test('reports percentages of the context window, never tokens', () => {
     const breakdown = toContextBreakdown({
-      total: { totalTokens: 50_000, inputTokens: 40_000, cachedInputTokens: 0,
-               outputTokens: 10_000, reasoningOutputTokens: 0 },
-      last: { totalTokens: 0, inputTokens: 0, cachedInputTokens: 0,
-              outputTokens: 0, reasoningOutputTokens: 0 },
+      total: { totalTokens: 0, inputTokens: 0, cachedInputTokens: 0,
+               outputTokens: 0, reasoningOutputTokens: 0 },
+      last: { totalTokens: 50_000, inputTokens: 40_000, cachedInputTokens: 0,
+              outputTokens: 10_000, reasoningOutputTokens: 0 },
       modelContextWindow: 200_000,
     });
     assert.deepStrictEqual(breakdown, {
       systemPercent: 0, memoryPercent: 0, conversationPercent: 25, freePercent: 75,
       memoryFiles: [],
+      usedTokens: 50_000, windowTokens: 200_000,
     });
+  });
+
+  test('occupancy comes from the last turn, not the cumulative total', () => {
+    // MEASURED against codex-cli 0.147.0 on 2026-08-15: three one-letter
+    // turns on a 258400-token window reported total.totalTokens
+    // 14974 → 32061 → 49165 while last.totalTokens held at
+    // 14974 → 17087 → 17104. `total` sums every turn ever sent, so dividing
+    // it by the window makes context climb monotonically and hit 100% after
+    // a handful of messages. `last` is what actually occupies the window.
+    const third = toContextBreakdown({
+      total: { totalTokens: 49_165, inputTokens: 49_150, cachedInputTokens: 36_096,
+               outputTokens: 15, reasoningOutputTokens: 0 },
+      last: { totalTokens: 17_104, inputTokens: 17_099, cachedInputTokens: 11_008,
+              outputTokens: 5, reasoningOutputTokens: 0 },
+      modelContextWindow: 258_400,
+    })!;
+    assert.strictEqual(third.conversationPercent, 7);
   });
 
   test('the four percentages always sum to 100', () => {
     const breakdown = toContextBreakdown({
-      total: { totalTokens: 33_333, inputTokens: 33_333, cachedInputTokens: 0,
+      total: { totalTokens: 0, inputTokens: 0, cachedInputTokens: 0,
                outputTokens: 0, reasoningOutputTokens: 0 },
-      last: { totalTokens: 0, inputTokens: 0, cachedInputTokens: 0,
+      last: { totalTokens: 33_333, inputTokens: 33_333, cachedInputTokens: 0,
               outputTokens: 0, reasoningOutputTokens: 0 },
       modelContextWindow: 100_000,
     })!;
     const sum = breakdown.systemPercent + breakdown.memoryPercent
       + breakdown.conversationPercent + breakdown.freePercent;
     assert.strictEqual(sum, 100);
+  });
+
+  test('carries the window and its occupancy in tokens', () => {
+    // A percentage cannot say which window it is a percentage of, and the
+    // model behind a session can change that denominator without changing
+    // anything else on screen.
+    const breakdown = toContextBreakdown({
+      total: { totalTokens: 49_165, inputTokens: 49_150, cachedInputTokens: 36_096,
+               outputTokens: 15, reasoningOutputTokens: 0 },
+      last: { totalTokens: 17_104, inputTokens: 17_099, cachedInputTokens: 11_008,
+              outputTokens: 5, reasoningOutputTokens: 0 },
+      modelContextWindow: 258_400,
+    })!;
+    assert.strictEqual(breakdown.usedTokens, 17_104);
+    assert.strictEqual(breakdown.windowTokens, 258_400);
   });
 
   test('no context window means no breakdown at all', () => {

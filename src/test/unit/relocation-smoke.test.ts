@@ -140,15 +140,26 @@ suite('relocation smoke (opt-in)', function () {
     await manager.relocate(id, offer.id, true);
     const moved = manager.get(id)!;
     assert.strictEqual(moved.state.cwd, tree);
-    // Codex keys threads by directory today (`threadScope: 'cwd'`), so the
-    // new tree has no thread and the move must have built a seed. If the
-    // second test below ever flips that, this assertion is the one that says
-    // the seed stopped being the mechanism under measurement.
-    assert.strictEqual(
-      moved.pendingSeedText !== undefined && moved.pendingSeedText.includes('SUNFLOWER'),
-      true,
-      'the moved session carries no replay of the earlier conversation',
-    );
+    // Which mechanism carries the conversation is the provider's declared
+    // scope, not this test's assumption. Under 'cwd' the new tree has no
+    // thread, so the move must have built a seed; under 'global' the thread
+    // travels and a seed would be waste. Asserting the mechanism *against the
+    // declaration* keeps this honest either way — what the test actually
+    // measures is the outcome below: the agent still knows the subject.
+    const scope = provider.threadScope;
+    if (scope === 'cwd') {
+      assert.strictEqual(
+        moved.pendingSeedText !== undefined && moved.pendingSeedText.includes('SUNFLOWER'),
+        true,
+        "threadScope is 'cwd', so the move should have built a replay — it did not",
+      );
+    } else {
+      assert.strictEqual(
+        moved.pendingSeedText,
+        undefined,
+        "threadScope is 'global', so the thread resumes and no replay should be built",
+      );
+    }
 
     moved.send('In one short sentence: what were we working on? Name it exactly.');
     await settle(moved, 120_000);

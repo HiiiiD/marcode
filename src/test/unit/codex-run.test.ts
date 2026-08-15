@@ -26,12 +26,17 @@ function stub() {
 const tick = (): Promise<void> => new Promise((r) => setImmediate(r));
 
 /**
- * Starts a `CodexRun`, answers its `thread/start` request and delivers the
- * `thread/started` notification that establishes the thread id — the two
- * things every test past the first three needs before it can exercise
- * anything thread-scoped. `AppServer`'s request ids are per-instance and
- * start at 1, and nothing else has talked to `server` yet, so the
- * `thread/start` request this triggers is deterministically id 1.
+ * Starts a `CodexRun` and answers its `thread/start` request with the shape
+ * the real server sends — `{ thread: { id } }`, measured on codex-cli 0.147.0
+ * — which is the one thing every test past the first three needs before it
+ * can exercise anything thread-scoped. `AppServer`'s request ids are
+ * per-instance and start at 1, and nothing else has talked to `server` yet, so
+ * the `thread/start` request this triggers is deterministically id 1.
+ *
+ * No `thread/started` notification: `thread/start` does emit one, but
+ * `thread/resume` does not, so a fixture that delivered it would let a run
+ * that only works with it keep passing here — which is exactly the bug this
+ * harness previously hid.
  */
 async function started(
   server: AppServer, threadId: string, opts: Partial<StartOptions> = {},
@@ -39,8 +44,7 @@ async function started(
   const run = new CodexRun(server, { cwd: '/repo', permissionMode: 'default', ...opts });
   run.send('hi');
   await tick();
-  server.ingest(`${JSON.stringify({ id: 1, result: { threadId } })}\n`);
-  server.ingest(`${JSON.stringify({ method: 'thread/started', params: { thread: { id: threadId } } })}\n`);
+  server.ingest(`${JSON.stringify({ id: 1, result: { thread: { id: threadId } } })}\n`);
   await tick();
   return run;
 }
@@ -84,6 +88,59 @@ suite('CodexRun', () => {
     await tick();
     const start = sent().find((f) => f.method === 'thread/start');
     assert.strictEqual(start.params.approvalsReviewer, 'auto_review');
+  });
+
+  // The hang this suite was blind to. `thread/resume` answers with
+  // `{ thread: { id } }` and emits NO `thread/started` notification (measured
+  // on codex-cli 0.147.0) — so a run that took the id only from a
+  // `threadId` field on the response, or only from that notification, never
+  // learned its own thread, never sent `turn/start`, and never emitted a
+  // single event. The session sat on "Working…" forever, with no error to
+  // show for it.
+  test('a resumed thread takes its id from the response and sends the turn', async () => {
+    const { server, sent } = stub();
+    const run = new CodexRun(server, {
+      cwd: '/repo', permissionMode: 'default', resumeToken: 'th_old',
+    });
+    run.send('hi');
+    await tick();
+    server.ingest(`${JSON.stringify({ id: 1, result: { thread: { id: 'th_old' } } })}\n`);
+    await tick();
+    const turn = sent().find((f) => f.method === 'turn/start');
+    assert.strictEqual(turn?.params.threadId, 'th_old');
+    assert.strictEqual(run.threadId, 'th_old');
+  });
+
+  test('the start response alone carries the resume token', async () => {
+    const { server } = stub();
+    const run = new CodexRun(server, { cwd: '/repo', permissionMode: 'default' });
+    const events = collect(run);
+    run.send('hi');
+    await tick();
+    server.ingest(`${JSON.stringify({ id: 1, result: { thread: { id: 'th_1' } } })}\n`);
+    await tick();
+    assert.deepStrictEqual(
+      events().filter((e) => e.kind === 'session').map((e) => e.resumeToken), ['th_1'],
+    );
+  });
+
+  // `thread/started` names its thread under `thread.id`, not `threadId`, so
+  // the generic guard never matched it and the provider's fan-out handed
+  // every live run every other session's start. Each one recorded the
+  // stranger's id as its own resume token: two Codex sessions in one window
+  // ended up pointing at a single thread, and the loser resumed a
+  // conversation it had never had.
+  test('another thread\'s start does not retarget this run\'s resume token', async () => {
+    const { server, send } = stub();
+    const run = await started(server, 'th_1');
+    const events = collect(run);
+    send({ method: 'thread/started', params: { thread: { id: 'th_other' } } });
+    await tick();
+    // Its own token, from its own start response, and nothing else.
+    assert.deepStrictEqual(
+      events().filter((e) => e.kind === 'session').map((e) => e.resumeToken), ['th_1'],
+    );
+    assert.strictEqual(run.threadId, 'th_1');
   });
 
   test('only this thread\'s notifications reach this run', async () => {

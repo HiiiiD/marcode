@@ -304,3 +304,19 @@ export interface SkillsListEntry {
 export interface SkillsListResponse {
   data: SkillsListEntry[];
 }
+
+/**
+ * What `thread/start` and `thread/resume` both answer with — the whole
+ * `Thread`, nested, with no bare `threadId` beside it. Only the id is read
+ * here; the rest of the object (preview, path, status, timestamps) has no
+ * consumer in this client yet.
+ *
+ * Measured on codex-cli 0.147.0. The distinction is load-bearing rather than
+ * cosmetic: `thread/start` also emits a `thread/started` notification
+ * carrying the same id, and `thread/resume` does not, so a client that reads
+ * the id off the notification works until the first reload and then hangs
+ * every restored session. See `startThread` in codex-run.ts.
+ */
+export interface ThreadResponse {
+  thread?: { id?: string };
+}

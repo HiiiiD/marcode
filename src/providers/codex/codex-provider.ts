@@ -101,8 +101,21 @@ class ThreadView implements CodexConnection {
 export class CodexProvider implements AgentProvider {
   readonly id = 'codex';
   readonly displayName = 'Codex';
-  // 'cwd' until Task 11 measures otherwise — see the spec's Open Questions.
-  readonly threadScope: ThreadScope = 'cwd';
+  /**
+   * Measured, not assumed: a thread started in one directory and resumed from
+   * another kept its conversation, against codex-cli 0.147.0. Threads are
+   * keyed by id inside the app-server and `cwd` is only a per-thread start
+   * parameter, so nothing about the history is filed under a directory the
+   * way Claude's `~/.claude/projects/<slug>` is.
+   *
+   * The measurement is `src/test/unit/relocation-smoke.test.ts`, which asserts
+   * this value against what it observes — so if a future CLI files history per
+   * directory, that test fails rather than this comment quietly going stale.
+   *
+   * Consequence: relocating a Codex session is a native resume and spends no
+   * tokens on replay.
+   */
+  readonly threadScope: ThreadScope = 'global';
 
   /**
    * The last answer from `fetchModels()`, and the whole of what this

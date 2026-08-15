@@ -144,6 +144,9 @@ class RecordingSink implements SessionSink {
   usageWindows(providerId: string, windows: UsageWindow[] | undefined) {
     this.usageWindowSets.push({ providerId, windows });
   }
+  /** Every shell-profile report, in order — one entry per call, no dedupe here. */
+  shellNoiseLog: string[] = [];
+  shellNoise(profile: string) { this.shellNoiseLog.push(profile); }
 }
 
 async function settle() {
@@ -322,6 +325,71 @@ suite('AgentSession', () => {
       (tool as { tool: unknown }).tool,
       { kind: 'file-read', label: 'Read', path: 'a.ts' },
     );
+    await session.dispose();
+  });
+
+  test('turn-end settles a tool call whose tool-end never arrived', async () => {
+    // Measured against codex-cli 0.147.0: a provider that drops a `tool-end`
+    // — a crash, an interrupt, a notification the adapter did not recognize
+    // — used to leave the card spinning "Running…" forever, with the status
+    // dot already back to idle.
+    const provider = new FakeProvider(() => [
+      { kind: 'tool-start', id: 't1', tool: { kind: 'command', label: 'Shell', command: 'ls' } },
+      { kind: 'turn-end', reason: 'done' },
+    ]);
+    const session = new AgentSession(baseState(), provider, store, sink);
+    session.send('list files');
+    await settle();
+
+    const snap = await session.snapshot();
+    const tool = snap.items.find((i) => i.role === 'tool');
+    assert.strictEqual((tool as { state: string }).state, 'error');
+    assert.deepStrictEqual(
+      (tool as { output?: unknown }).output,
+      { kind: 'text', text: 'The agent ended this turn without reporting a result.' },
+    );
+    await session.dispose();
+  });
+
+  test('turn-end leaves an unsettled tool call its own output when it has one', async () => {
+    const provider = new FakeProvider(() => [
+      { kind: 'tool-start', id: 't1', tool: { kind: 'command', label: 'Shell', command: 'ls' } },
+      { kind: 'tool-end', id: 't1', ok: true, output: { kind: 'text', text: 'a.ts' } },
+      { kind: 'turn-end', reason: 'done' },
+    ]);
+    const session = new AgentSession(baseState(), provider, store, sink);
+    session.send('list files');
+    await settle();
+
+    const snap = await session.snapshot();
+    const tool = snap.items.find((i) => i.role === 'tool');
+    assert.strictEqual((tool as { state: string }).state, 'ok');
+    assert.deepStrictEqual(
+      (tool as { output?: unknown }).output,
+      { kind: 'text', text: 'a.ts' },
+    );
+    await session.dispose();
+  });
+
+  test('turn-end settles an unsettled child inside its parent', async () => {
+    const provider = new FakeProvider(() => [
+      { kind: 'tool-start', id: 'p1', tool: { kind: 'other', label: 'Task', raw: {} } },
+      {
+        kind: 'tool-start', id: 'c1', parentId: 'p1',
+        tool: { kind: 'command', label: 'Shell', command: 'ls' },
+      },
+      { kind: 'turn-end', reason: 'done' },
+    ]);
+    const session = new AgentSession(baseState(), provider, store, sink);
+    session.send('go');
+    await settle();
+
+    const snap = await session.snapshot();
+    const parent = snap.items.find((i) => i.role === 'tool');
+    assert.strictEqual((parent as { state: string }).state, 'error');
+    const children = (parent as { children?: { state?: string }[] }).children ?? [];
+    assert.strictEqual(children.length, 1);
+    assert.strictEqual(children[0].state, 'error');
     await session.dispose();
   });
 
@@ -754,6 +822,92 @@ suite('AgentSession', () => {
     await settle();
 
     assert.deepStrictEqual(localSink.usageWindowSets, []);
+    await session.dispose();
+  });
+
+  const NOISY_OUTPUT = 'Set-PSReadLineOption: '
+    + 'C:\\Users\\dev\\Documents\\PowerShell\\Microsoft.PowerShell_profile.ps1:23\n'
+    + 'Handle is invalid.\n';
+
+  function shellEnd(id: string, text: string): AgentEvent[] {
+    return [
+      { kind: 'tool-start', id, tool: { kind: 'command', label: 'Shell', command: 'ls' } },
+      { kind: 'tool-end', id, ok: true, output: { kind: 'text', text } },
+    ];
+  }
+
+  test('a command whose output carries a profile failure reports the profile up', async () => {
+    const provider = new FakeProvider(() => [
+      ...shellEnd('t1', NOISY_OUTPUT),
+      { kind: 'turn-end', reason: 'done' },
+    ]);
+    const localSink = new RecordingSink();
+    const session = new AgentSession(baseState(), provider, store, localSink);
+    session.send('ls');
+    await settle();
+
+    assert.deepStrictEqual(
+      localSink.shellNoiseLog,
+      ['C:\\Users\\dev\\Documents\\PowerShell\\Microsoft.PowerShell_profile.ps1'],
+    );
+    await session.dispose();
+  });
+
+  test('a broken profile is reported once, not once per command', async () => {
+    // Every command in the turn carries the same frame — the profile loads
+    // for each one. Reporting per command would be a warning per shell call.
+    const provider = new FakeProvider(() => [
+      ...shellEnd('t1', NOISY_OUTPUT),
+      ...shellEnd('t2', NOISY_OUTPUT),
+      ...shellEnd('t3', NOISY_OUTPUT),
+      { kind: 'turn-end', reason: 'done' },
+    ]);
+    const localSink = new RecordingSink();
+    const session = new AgentSession(baseState(), provider, store, localSink);
+    session.send('ls');
+    await settle();
+
+    assert.strictEqual(localSink.shellNoiseLog.length, 1);
+    await session.dispose();
+  });
+
+  test('a clean command reports nothing, and neither does a non-command tool', async () => {
+    const provider = new FakeProvider(() => [
+      ...shellEnd('t1', 'src\ndist\n'),
+      {
+        kind: 'tool-start', id: 't2',
+        tool: { kind: 'file-read', label: 'Read', path: 'profile.ps1' },
+      },
+      { kind: 'tool-end', id: 't2', ok: true, output: { kind: 'text', text: NOISY_OUTPUT } },
+      { kind: 'turn-end', reason: 'done' },
+    ]);
+    const localSink = new RecordingSink();
+    const session = new AgentSession(baseState(), provider, store, localSink);
+    session.send('ls');
+    await settle();
+
+    // Reading a profile that happens to contain an old error frame is not the
+    // same claim as a shell that just loaded a broken one.
+    assert.deepStrictEqual(localSink.shellNoiseLog, []);
+    await session.dispose();
+  });
+
+  test('a sink with no shellNoise handler is not an error', async () => {
+    // The hook is optional on SessionSink so existing sinks stay valid.
+    const provider = new FakeProvider(() => [
+      ...shellEnd('t1', NOISY_OUTPUT),
+      { kind: 'turn-end', reason: 'done' },
+    ]);
+    const bare: SessionSink = {
+      patch: () => {}, status: () => {}, mcp: () => {}, changed: () => {},
+      invocables: () => {}, usageWindows: () => {},
+    };
+    const session = new AgentSession(baseState(), provider, store, bare);
+    session.send('ls');
+    await settle();
+
+    const snap = await session.snapshot();
+    assert.strictEqual(snap.items.filter((i) => i.role === 'tool').length, 1);
     await session.dispose();
   });
 });
