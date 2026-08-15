@@ -73,17 +73,55 @@ that record.
 
 ### The state model
 
-A session no longer has *a* thread. It has one per (provider, directory) it has
-run in:
+A session no longer has *a* thread. It has one per thread the provider
+distinguishes:
 
 ```ts
 // SessionState
 resumeToken: string                        // before
-resumeTokens: Record<string, string>       // after — key: `${providerId}:${cwd}`
+resumeTokens: Record<string, string>       // after — key from threadKey()
 ```
 
 `index.json` readers tolerate the old scalar and migrate it under the current
 key on load, so sessions written by earlier builds survive the upgrade.
+
+### Thread scope is declared by the provider
+
+The directory-keyed history in Evidence is a **Claude fact, not a universal
+one**, and the host must not assume it. Codex multiplexes threads by `threadId`
+inside one app-server process and takes `cwd` as a per-thread start parameter
+([codex design](2026-08-14-codex-provider-design.md)); its `resumeToken` is that
+`threadId`. If a Codex thread resumes regardless of directory, keying its tokens
+by directory would force a replay to rebuild a conversation that would have
+resumed for nothing.
+
+So the provider declares its own scope, the same way it already declares its
+permission modes and effort levels:
+
+```ts
+// AgentProvider
+/**
+ * Whether a resume token is valid only in the directory that produced it.
+ *
+ * 'cwd'    — history is stored per working directory (Claude: ~/.claude/projects/<slug>).
+ *            Crossing directories needs a new thread, seeded by replay.
+ * 'global' — a token resolves anywhere (Codex: threads keyed by threadId).
+ *            Crossing directories is a native resume and costs nothing.
+ */
+readonly threadScope: 'cwd' | 'global';
+```
+
+`threadKey(provider, cwd)` returns `` `${providerId}:${cwd}` `` for `'cwd'` and
+`providerId` for `'global'`. Everything downstream — lookup, migration, the
+replay decision — reads that one function, so a provider whose scope is
+mis-declared is a one-line fix rather than a redesign.
+
+Declaring `'cwd'` when the truth is `'global'` costs tokens. Declaring
+`'global'` when the truth is `'cwd'` costs correctness: the resume silently
+finds nothing and the agent comes up blank behind a full transcript, which is
+the invisible failure this whole design exists to avoid. **`'cwd'` is therefore
+the safe default, and `'global'` must be measured before it is claimed.** Codex
+is `'cwd'` until the smoke test in Testing shows otherwise.
 
 This one change covers every case:
 
@@ -95,7 +133,26 @@ This one change covers every case:
 | Claude → Codex, same directory | no | fresh thread, seeded by replay |
 
 Cross-provider handoff is not a feature added here. It falls out of the key
-including `providerId`, and is the same lookup missing.
+including `providerId`, and is the same lookup missing. The table above assumes
+`threadScope: 'cwd'`; under `'global'` the first row is a native resume too.
+
+### Interaction with the Codex provider
+
+Two more, both coordination rather than conflict.
+
+**The persisted field changes shape.** The codex design recovers from an
+app-server crash with `thread/resume` against "the `threadId` already persisted
+as `resumeToken`". The `AgentProvider` contract is untouched — `AgentEvent.session`
+still carries exactly one token — but the host field it lands in becomes a map.
+Cheaper if the codex branch lands first and this migrates it.
+
+**Relocation must not thrash the shared process.** One `codex app-server` serves
+the whole extension, ref-counted by live Codex sessions and torn down when the
+last one goes. Relocation is dispose-then-reconstruct, so moving the only Codex
+session drops the count to zero and immediately respawns a large Rust binary.
+Either construct the replacement before disposing the original, or give teardown
+a short grace period. Invisible until someone moves a lone Codex session, which
+is why it is written down here rather than found later.
 
 ### Replay
 
@@ -277,6 +334,13 @@ measure 2 is what answers it.
 **Does a round trip preserve the original thread?** Moving root → worktree →
 root should resume the root thread untouched, since nothing deletes it. Believed
 rather than verified; the same smoke test covers it.
+
+**Is Codex `threadScope: 'global'`?** Its threads are keyed by `threadId` and
+`cwd` is a per-thread start parameter, which suggests a token resolves anywhere.
+Unverified, so it ships as `'cwd'` — the safe direction, costing tokens rather
+than correctness. Promoting it needs one measurement: start a thread in one
+directory, `thread/resume` it from another, confirm the conversation is intact.
+Worth doing, because `'global'` makes every Codex relocation free.
 
 ## Out of scope
 
