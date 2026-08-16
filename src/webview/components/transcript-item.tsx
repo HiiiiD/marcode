@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { EditorContextChip } from './editor-context-chip';
 import { Markdown } from './markdown';
 import { PermissionCard } from './permission-card';
+import { QuestionCard } from './question-card';
 import { ReasoningBlock } from './reasoning-block';
 import { RelocationCard } from './relocation-card';
 import { SubagentCard } from './subagent-card';
@@ -47,6 +48,9 @@ export function TranscriptItemView({
 
     case 'permission':
       return <PermissionCard item={item} sessionId={sessionId} />;
+
+    case 'question':
+      return <QuestionCard item={item} sessionId={sessionId} />;
 
     case 'relocation':
       return <RelocationCard item={item} sessionId={sessionId} />;
