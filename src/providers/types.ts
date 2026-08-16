@@ -62,6 +62,31 @@ export interface Invocable {
   argHint?: string;
 }
 
+export type AttachmentKind = 'image' | 'file';
+
+/**
+ * A file carried by a turn. Always a real path on disk: a pasted screenshot
+ * is written to `context.storageUri` before it becomes one, so paste, the
+ * file picker and drag-and-drop all converge on a single model before
+ * anything downstream has to care which one it was.
+ *
+ * `kind` is what decides how a provider renders it — an image goes inline as
+ * a native image input, anything else is named by path for the agent to read
+ * with its own tools.
+ */
+export interface Attachment {
+  /** Stable within a session. The chip's key and the handle `attach-remove` names. */
+  id: string;
+  /** Absolute. Deliberately not workspace-relative: a screenshot in ~/Downloads is the common case. */
+  path: string;
+  /** Basename. What the chip shows. */
+  name: string;
+  kind: AttachmentKind;
+  /** Set for images; supplies the Claude block's `media_type`. */
+  mediaType?: string;
+  bytes: number;
+}
+
 /**
  * What the user is looking at in the editor when they hit send. Carries the
  * file reference always, and the selected text only when there is a

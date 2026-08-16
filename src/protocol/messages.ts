@@ -1,11 +1,13 @@
 import type {
-  ContextBreakdown, EditorContext, EffortLevel, FileEdit, Invocable, McpServerStatus, ModelInfo,
-  PermissionMode, PermissionModeInfo, TodoStatus, ToolCall, ToolDecision, ToolOutput, UsageWindow,
+  Attachment, AttachmentKind, ContextBreakdown, EditorContext, EffortLevel, FileEdit, Invocable,
+  McpServerStatus, ModelInfo, PermissionMode, PermissionModeInfo, TodoStatus, ToolCall,
+  ToolDecision, ToolOutput, UsageWindow,
 } from '../providers/types';
 
 export type {
-  ContextBreakdown, EditorContext, EffortLevel, FileEdit, Invocable, McpServerStatus, ModelInfo,
-  PermissionMode, PermissionModeInfo, TodoStatus, ToolCall, ToolDecision, ToolOutput, UsageWindow,
+  Attachment, AttachmentKind, ContextBreakdown, EditorContext, EffortLevel, FileEdit, Invocable,
+  McpServerStatus, ModelInfo, PermissionMode, PermissionModeInfo, TodoStatus, ToolCall,
+  ToolDecision, ToolOutput, UsageWindow,
 };
 
 export type SessionId = string;

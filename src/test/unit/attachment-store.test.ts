@@ -1,0 +1,100 @@
+import * as assert from 'assert';
+import * as fs from 'node:fs/promises';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import { AttachmentStore, MAX_ATTACHMENT_BYTES } from '../../host/attachment-store';
+import type { Attachment } from '../../providers/types';
+
+async function tmpRoot(): Promise<string> {
+  return await fs.mkdtemp(path.join(os.tmpdir(), 'hiiiid-attach-'));
+}
+
+/** A 1x1 PNG. Small, and a real image so kind-sniffing has something honest to read. */
+const PNG_B64 =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+
+suite('AttachmentStore', () => {
+  test('savePaste writes the bytes and mints an image attachment', async () => {
+    const root = await tmpRoot();
+    const store = new AttachmentStore(root);
+
+    const result = await store.savePaste('s1', {
+      name: 'screenshot.png', mediaType: 'image/png', base64: PNG_B64,
+    });
+
+    assert.strictEqual('error' in result, false);
+    const att = result as Exclude<typeof result, { error: string }>;
+    assert.strictEqual(att.kind, 'image');
+    assert.strictEqual(att.mediaType, 'image/png');
+    assert.strictEqual(att.name, 'screenshot.png');
+    assert.strictEqual(path.isAbsolute(att.path), true);
+    assert.strictEqual(att.path.startsWith(path.join(root, 'attachments', 's1')), true);
+    const onDisk = await fs.readFile(att.path);
+    assert.strictEqual(onDisk.toString('base64'), PNG_B64);
+    assert.strictEqual(att.bytes, onDisk.byteLength);
+  });
+
+  test('savePaste refuses anything over the size cap without writing', async () => {
+    const root = await tmpRoot();
+    const store = new AttachmentStore(root);
+
+    const huge = Buffer.alloc(MAX_ATTACHMENT_BYTES + 1, 7).toString('base64');
+    const result = await store.savePaste('s1', { name: 'big.png', mediaType: 'image/png', base64: huge });
+
+    assert.strictEqual('error' in result, true);
+    assert.match((result as { error: string }).error, /10 MB/);
+    const dir = path.join(root, 'attachments', 's1');
+    const listed = await fs.readdir(dir).catch(() => [] as string[]);
+    assert.strictEqual(listed.length, 0);
+  });
+
+  test('savePaste never collides two pastes of the same name', async () => {
+    const root = await tmpRoot();
+    const store = new AttachmentStore(root);
+
+    const a = await store.savePaste('s1', { name: 'shot.png', mediaType: 'image/png', base64: PNG_B64 });
+    const b = await store.savePaste('s1', { name: 'shot.png', mediaType: 'image/png', base64: PNG_B64 });
+
+    const pa = (a as Attachment).path;
+    const pb = (b as Attachment).path;
+    assert.strictEqual(pa === pb, false);
+    assert.strictEqual((a as Attachment).id === (b as Attachment).id, false);
+  });
+
+  test('adopt references an existing file in place and sniffs its kind', async () => {
+    const root = await tmpRoot();
+    const store = new AttachmentStore(root);
+    const outside = path.join(await tmpRoot(), 'notes.md');
+    await fs.writeFile(outside, '# hello', 'utf8');
+
+    const { attachments, rejected } = await store.adopt('s1', [outside]);
+
+    assert.strictEqual(rejected.length, 0);
+    assert.strictEqual(attachments.length, 1);
+    assert.strictEqual(attachments[0].kind, 'file');
+    assert.strictEqual(attachments[0].path, outside);
+    assert.strictEqual(attachments[0].name, 'notes.md');
+    assert.strictEqual(attachments[0].bytes, 7);
+  });
+
+  test('adopt rejects a missing path instead of throwing', async () => {
+    const root = await tmpRoot();
+    const store = new AttachmentStore(root);
+
+    const { attachments, rejected } = await store.adopt('s1', [path.join(root, 'nope.txt')]);
+
+    assert.strictEqual(attachments.length, 0);
+    assert.strictEqual(rejected.length, 1);
+  });
+
+  test('remove reaps the session directory', async () => {
+    const root = await tmpRoot();
+    const store = new AttachmentStore(root);
+    await store.savePaste('s1', { name: 'shot.png', mediaType: 'image/png', base64: PNG_B64 });
+
+    await store.remove('s1');
+
+    const exists = await fs.stat(path.join(root, 'attachments', 's1')).then(() => true, () => false);
+    assert.strictEqual(exists, false);
+  });
+});
