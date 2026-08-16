@@ -21,6 +21,10 @@ function describeInbound(m: WebviewToHost): string {
     case 'set-effort': return 'set-effort';
     case 'set-permission-mode': return 'set-permission-mode';
     case 'set-include-context': return 'set-include-context';
+    case 'attach-paste': return 'attach-paste';
+    case 'attach-pick': return 'attach-pick';
+    case 'attach-drop': return 'attach-drop';
+    case 'attach-remove': return 'attach-remove';
     case 'reveal-file': return 'reveal-file';
     case 'set-model': return 'set-model';
     case 'permission-decision': return 'permission-decision';
@@ -45,6 +49,8 @@ function describeOutbound(m: HostToWebview): string {
     case 'session-prepend': return 'session-prepend';
     case 'session-status': return 'session-status';
     case 'session-mcp': return 'session-mcp';
+    case 'session-attachments': return 'session-attachments';
+    case 'attachments-rejected': return 'attachments-rejected';
     case 'sessions-changed': return 'sessions-changed';
     case 'session-invocables': return 'session-invocables';
     case 'editor-context': return 'editor-context';

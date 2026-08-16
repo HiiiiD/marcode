@@ -1,8 +1,11 @@
 import { randomBytes } from 'node:crypto';
 import * as vscode from 'vscode';
-import { MessageRouter, type EditorContextHost } from './message-router';
+import type { AttachmentStore } from './attachment-store';
+import { MessageRouter, type AttachmentHost, type EditorContextHost } from './message-router';
 import type { SessionManager } from './session-manager';
 import type { HostToWebview, SessionId, WebviewToHost } from '../protocol/messages';
+
+const NO_PICKER: AttachmentHost = { pick: async () => [] };
 
 export class PanelViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'hiiiid-code.panel';
@@ -13,6 +16,8 @@ export class PanelViewProvider implements vscode.WebviewViewProvider {
     private readonly manager: SessionManager,
     private readonly defaultCwd: string,
     private readonly editor: EditorContextHost,
+    private readonly attachments?: AttachmentStore,
+    private readonly picker: AttachmentHost = NO_PICKER,
   ) {}
 
   post(msg: HostToWebview): void {
@@ -54,7 +59,7 @@ export class PanelViewProvider implements vscode.WebviewViewProvider {
     view.webview.html = this.render(view.webview);
 
     const router = new MessageRouter(
-      this.manager, (m) => this.post(m), this.defaultCwd, this.editor,
+      this.manager, (m) => this.post(m), this.defaultCwd, this.editor, this.attachments, this.picker,
     );
     view.webview.onDidReceiveMessage(async (raw: WebviewToHost) => {
       try {

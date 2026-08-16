@@ -1,5 +1,6 @@
 import { resolve } from 'node:path';
 import { AgentSession, type SessionSink } from './agent-session';
+import type { AttachmentStore } from './attachment-store';
 import { catalogKey, CatalogService } from './catalog-service';
 import { bringBack as runBringBack, bringBackPlan, samePath, treeStatus } from './git-worktree';
 import { buildSeed } from './replay';
@@ -148,6 +149,7 @@ export class SessionManager implements SessionSink {
      * every existing construction site valid.
      */
     private readonly onShellNoise: (profile: string) => void = () => {},
+    private readonly attachments?: AttachmentStore,
   ) {}
 
   async init(): Promise<void> {
@@ -1146,6 +1148,7 @@ export class SessionManager implements SessionSink {
     await this.archive(id);
     this.meta.delete(id);
     await this.store.remove(id);
+    await this.attachments?.remove(id);
     this.paneLayout = {
       ...this.paneLayout,
       panes: this.paneLayout.panes.filter((p) => p.sessionId !== id),

@@ -2,6 +2,8 @@ import * as assert from 'assert';
 import * as fs from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
+import { pathToFileURL } from 'node:url';
+import { AttachmentStore } from '../../host/attachment-store';
 import { MessageRouter } from '../../host/message-router';
 import { SessionManager } from '../../host/session-manager';
 import { TranscriptStore } from '../../host/transcript-store';
@@ -19,6 +21,7 @@ suite('MessageRouter', () => {
   let provider: FakeProvider;
   let manager: SessionManager;
   let router: MessageRouter;
+  let attachments: AttachmentStore;
 
   setup(async () => {
     dir = await fs.mkdtemp(path.join(os.tmpdir(), 'hiiiid-router-'));
@@ -30,7 +33,8 @@ suite('MessageRouter', () => {
     const providers = new Map<string, AgentProvider>([['fake', provider]]);
     manager = new SessionManager(new TranscriptStore(dir), providers, (m) => sent.push(m));
     await manager.init();
-    router = new MessageRouter(manager, (m) => sent.push(m), '/tmp');
+    attachments = new AttachmentStore(dir);
+    router = new MessageRouter(manager, (m) => sent.push(m), '/tmp', undefined, attachments);
   });
 
   teardown(async () => {
@@ -101,6 +105,127 @@ suite('MessageRouter', () => {
     await router.handle({ t: 'send', id: 'nope', text: 'hi' });
     await router.handle({ t: 'interrupt', id: 'nope' });
     assert.ok(true, 'no exception escaped the router');
+  });
+
+  test('attach-paste writes the file and emits the new pending set', async () => {
+    await router.handle({ t: 'create-session', providerId: 'fake', cwd: '/tmp' });
+    const id = manager.summaries()[0].id;
+    sent.length = 0;
+
+    await router.handle({
+      t: 'attach-paste', id, name: 'shot.png', mediaType: 'image/png', base64: 'iVBORw==',
+    });
+
+    const session = manager.get(id)!;
+    const msg = sent.at(-1) as Extract<HostToWebview, { t: 'session-attachments' }>;
+    assert.strictEqual(msg.t, 'session-attachments');
+    assert.strictEqual(msg.id, id);
+    assert.deepStrictEqual(msg.attachments.map((attachment) => attachment.name), ['shot.png']);
+    assert.strictEqual(session.pendingAttachments.length, 1);
+  });
+
+  test('an oversized paste is rejected without touching the pending set', async () => {
+    await router.handle({ t: 'create-session', providerId: 'fake', cwd: '/tmp' });
+    const id = manager.summaries()[0].id;
+    sent.length = 0;
+    const huge = Buffer.alloc(11 * 1024 * 1024, 1).toString('base64');
+
+    await router.handle({
+      t: 'attach-paste', id, name: 'big.png', mediaType: 'image/png', base64: huge,
+    });
+
+    const msg = sent.at(-1) as Extract<HostToWebview, { t: 'attachments-rejected' }>;
+    assert.strictEqual(msg.t, 'attachments-rejected');
+    assert.match(msg.reason, /10 MB/);
+    assert.strictEqual(manager.get(id)!.pendingAttachments.length, 0);
+  });
+
+  test('an eleventh pending attachment is rejected before paste storage', async () => {
+    await router.handle({ t: 'create-session', providerId: 'fake', cwd: '/tmp' });
+    const id = manager.summaries()[0].id;
+    const session = manager.get(id)!;
+    session.addAttachments(Array.from({ length: 10 }, (_, index) => ({
+      id: `a${index}`, path: `/tmp/${index}.txt`, name: `${index}.txt`, kind: 'file' as const, bytes: 1,
+    })));
+    sent.length = 0;
+
+    await router.handle({
+      t: 'attach-paste', id, name: 'extra.png', mediaType: 'image/png', base64: 'iVBORw==',
+    });
+
+    const msg = sent.at(-1) as Extract<HostToWebview, { t: 'attachments-rejected' }>;
+    assert.strictEqual(msg.t, 'attachments-rejected');
+    assert.match(msg.reason, /10 attachments/);
+    assert.strictEqual(session.pendingAttachments.length, 10);
+  });
+
+  test('attach-drop adopts file uris and ignores non-file entries', async () => {
+    await router.handle({ t: 'create-session', providerId: 'fake', cwd: '/tmp' });
+    const id = manager.summaries()[0].id;
+    const real = path.join(dir, 'notes.md');
+    await fs.writeFile(real, '# hi');
+    sent.length = 0;
+
+    await router.handle({
+      t: 'attach-drop', id,
+      uris: [pathToFileURL(real).href, 'https://example.com/x.png'],
+    });
+
+    const session = manager.get(id)!;
+    assert.strictEqual(session.pendingAttachments.length, 1);
+    assert.strictEqual(session.pendingAttachments[0].name, 'notes.md');
+    assert.strictEqual((sent.at(-1) as HostToWebview).t, 'session-attachments');
+  });
+
+  test('attach-pick adopts what the host dialog returned', async () => {
+    await router.handle({ t: 'create-session', providerId: 'fake', cwd: '/tmp' });
+    const id = manager.summaries()[0].id;
+    const real = path.join(dir, 'pick.md');
+    await fs.writeFile(real, 'x');
+    const pickerRouter = new MessageRouter(
+      manager, (message) => sent.push(message), '/tmp', undefined, attachments,
+      { pick: async () => [real] },
+    );
+
+    await pickerRouter.handle({ t: 'attach-pick', id });
+
+    assert.deepStrictEqual(manager.get(id)!.pendingAttachments.map((attachment) => attachment.name), ['pick.md']);
+  });
+
+  test('attach-pick with a cancelled dialog emits nothing new', async () => {
+    await router.handle({ t: 'create-session', providerId: 'fake', cwd: '/tmp' });
+    const id = manager.summaries()[0].id;
+    const pickerRouter = new MessageRouter(
+      manager, (message) => sent.push(message), '/tmp', undefined, attachments,
+      { pick: async () => [] },
+    );
+    const before = sent.length;
+
+    await pickerRouter.handle({ t: 'attach-pick', id });
+
+    assert.strictEqual(sent.length, before);
+    assert.strictEqual(manager.get(id)!.pendingAttachments.length, 0);
+  });
+
+  test('attach-remove drops one attachment and emits the replacement set', async () => {
+    await router.handle({ t: 'create-session', providerId: 'fake', cwd: '/tmp' });
+    const id = manager.summaries()[0].id;
+    await router.handle({
+      t: 'attach-paste', id, name: 'shot.png', mediaType: 'image/png', base64: 'iVBORw==',
+    });
+    const attachmentId = manager.get(id)!.pendingAttachments[0].id;
+
+    await router.handle({ t: 'attach-remove', id, attachmentId });
+
+    assert.strictEqual(manager.get(id)!.pendingAttachments.length, 0);
+    const msg = sent.at(-1) as Extract<HostToWebview, { t: 'session-attachments' }>;
+    assert.strictEqual(msg.t, 'session-attachments');
+    assert.strictEqual(msg.attachments.length, 0);
+  });
+
+  test('an attachment message for an unknown session is a no-op', async () => {
+    await router.handle({ t: 'attach-remove', id: 'nope', attachmentId: 'x' });
+    assert.strictEqual(manager.summaries().length, 0);
   });
 
   test('cancel-queued drops the message a send parked mid-turn', async () => {

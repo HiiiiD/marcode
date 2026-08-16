@@ -284,6 +284,12 @@ export type WebviewToHost =
   | { t: 'set-effort'; id: SessionId; effort: EffortLevel }
   | { t: 'set-permission-mode'; id: SessionId; mode: PermissionMode }
   | { t: 'set-include-context'; id: SessionId; on: boolean }
+  /** Pasted bytes cross the wire once; the host persists them and mints the attachment. */
+  | { t: 'attach-paste'; id: SessionId; name: string; mediaType?: string; base64: string }
+  | { t: 'attach-pick'; id: SessionId }
+  /** Unparsed URI-list entries from a drop. */
+  | { t: 'attach-drop'; id: SessionId; uris: string[] }
+  | { t: 'attach-remove'; id: SessionId; attachmentId: string }
   /** Not session-addressed: opening a file is global IDE state, not session state. */
   | { t: 'reveal-file'; path: string; startLine?: number }
   | { t: 'set-model'; id: SessionId; model: string }
@@ -352,6 +358,10 @@ export type HostToWebview =
   | { t: 'sessions-changed'; sessions: SessionSummary[] }
   | { t: 'session-invocables'; id: SessionId; entries: Invocable[] }
   | { t: 'session-mcp'; id: SessionId; servers: McpServerStatus[] }
+  /** Full replacement of the host-owned pending attachment set. */
+  | { t: 'session-attachments'; id: SessionId; attachments: Attachment[] }
+  /** A transient composer error; the session itself remains usable. */
+  | { t: 'attachments-rejected'; id: SessionId; reason: string }
   /**
    * Broadcast, not session-addressed: the provider/model catalog is global.
    * Sent after `hydrate` whenever a provider reports a catalog that differs

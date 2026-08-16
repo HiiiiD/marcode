@@ -1,9 +1,11 @@
 import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
+import { AttachmentStore } from './host/attachment-store';
 import { defaultCwdOf } from './host/default-cwd';
 import { EditorContextTracker } from './host/editor-context-tracker';
 import { PanelViewProvider } from './host/panel-view-provider';
+import type { AttachmentHost } from './host/message-router';
 import { PROFILE_GUARD_SNIPPET } from './host/profile-noise';
 import { SessionManager } from './host/session-manager';
 import { TranscriptStore } from './host/transcript-store';
@@ -60,6 +62,7 @@ function warnAboutProfile(profile: string): void {
 export async function activate(context: vscode.ExtensionContext) {
   const rootDir = context.storageUri?.fsPath ?? context.globalStorageUri.fsPath;
   const store = new TranscriptStore(rootDir);
+  const attachments = new AttachmentStore(rootDir);
 
   // Order matters: SessionPicker uses state.catalog[0] for the New button,
   // so Claude — the real provider — is registered first.
@@ -100,7 +103,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
   let provider: PanelViewProvider;
   const manager = new SessionManager(
-    store, providers, (msg) => provider.post(msg), undefined, warnAboutProfile,
+    store, providers, (msg) => provider.post(msg), undefined, warnAboutProfile, attachments,
   );
 
   // Never `process.cwd()` — for an extension host that is VS Code's own
@@ -130,7 +133,19 @@ export async function activate(context: vscode.ExtensionContext) {
     },
   };
 
-  provider = new PanelViewProvider(context.extensionUri, manager, defaultCwd, editorHost);
+  const picker: AttachmentHost = {
+    pick: async () => {
+      const chosen = await vscode.window.showOpenDialog({
+        canSelectMany: true,
+        openLabel: 'Attach',
+      });
+      return chosen?.map((uri) => uri.fsPath) ?? [];
+    },
+  };
+
+  provider = new PanelViewProvider(
+    context.extensionUri, manager, defaultCwd, editorHost, attachments, picker,
+  );
 
   // Push every change to the webview so the composer chip tracks the editor.
   const contextSub = tracker.onChange((ctx) => provider.post({ t: 'editor-context', ctx }));
