@@ -1,4 +1,5 @@
 import type {
+  Attachment,
   BringBackPlan,
   ContextResult,
   EditorContext,
@@ -14,6 +15,8 @@ export interface PaneState {
   /** The cwd's catalog. Absent until the host has one; see the spec's States. */
   invocables?: Invocable[];
   mcpServers: McpServerStatus[];
+  /** Composed but not sent. Host state mirrored for this pane. */
+  attachments: Attachment[];
 }
 
 export interface ClientState {
@@ -68,6 +71,8 @@ export interface ClientState {
    * honest answer on a fresh load: nothing has been worked in yet.
    */
   focusedSessionId: SessionId | null;
+  /** Last transient attachment failure for each composer. */
+  rejectionBySession: Record<SessionId, string | undefined>;
 }
 
 export const initialState: ClientState = {
@@ -83,6 +88,7 @@ export const initialState: ClientState = {
   usageByProvider: {},
   staleTrees: [],
   focusedSessionId: null,
+  rejectionBySession: {},
 };
 
 /**
@@ -116,6 +122,7 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
           summary: s, items: s.items, hasMore: s.hasMore, pending: s.pending,
           invocables: s.invocables,
           mcpServers: s.mcpServers ?? [],
+          attachments: s.pendingAttachments ?? [],
         };
       }
       return {
@@ -143,6 +150,7 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
         // hydrate rebuilds them. A stale id would let `+ New` inherit from a
         // session this hydrate may not even contain.
         focusedSessionId: null,
+        rejectionBySession: {},
       };
     }
 
@@ -233,6 +241,7 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
             summary: s, items: s.items, hasMore: s.hasMore, pending: s.pending,
             invocables: s.invocables,
             mcpServers: s.mcpServers ?? [],
+            attachments: s.pendingAttachments ?? [],
           },
         },
       };
@@ -247,6 +256,22 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
         byId: { ...state.byId, [msg.id]: { ...pane, invocables: msg.entries } },
       };
     }
+
+    case 'session-attachments': {
+      const pane = state.byId[msg.id];
+      if (!pane) { return state; }
+      return {
+        ...state,
+        byId: { ...state.byId, [msg.id]: { ...pane, attachments: msg.attachments } },
+        rejectionBySession: { ...state.rejectionBySession, [msg.id]: undefined },
+      };
+    }
+
+    case 'attachments-rejected':
+      return {
+        ...state,
+        rejectionBySession: { ...state.rejectionBySession, [msg.id]: msg.reason },
+      };
 
     case 'session-status': {
       const sessions = state.sessions.map((s) =>

@@ -18,6 +18,7 @@ import { useMentionMenu } from "../lib/use-mention-menu";
 import type { PaneState } from "../reducer";
 import { useStore } from "../store";
 import { ContextRing } from "./context-ring";
+import { AttachmentChips } from "./attachment-chips";
 import { EditorContextToggle } from "./editor-context-toggle";
 import { InvocableMenu } from "./invocable-menu";
 import { ModeMenu } from "./mode-menu";
@@ -79,6 +80,7 @@ export function Composer({
   // Same session-scoping rationale again, for the `/` control's
   // disabled-over-a-draft reason.
   const invocablesReasonId = `invocables-reason-${pane.summary.id}`;
+  const rejection = state.rejectionBySession[pane.summary.id];
 
   const handoffSettings = settingsFor(state, pane.summary.id);
 
@@ -268,6 +270,17 @@ export function Composer({
               listId={refListId}
               onPick={refMenu.pick}
             />
+          </InputGroupAddon>
+        )}
+        {(pane.attachments.length > 0 || rejection) && (
+          <InputGroupAddon align="block-start" className="flex-col items-start gap-1 p-1">
+            <AttachmentChips pane={pane} />
+            {rejection && (
+              <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
+                <TriangleAlert className="mt-px size-3.5 shrink-0" aria-hidden />
+                <span>{rejection}</span>
+              </p>
+            )}
           </InputGroupAddon>
         )}
         <InputGroupTextarea

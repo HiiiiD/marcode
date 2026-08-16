@@ -10,7 +10,7 @@ import { hydrate } from "./session-header.test";
 
 function pane(status: SessionStatus = 'idle'): PaneState {
   return {
-    summary: summary('a', { status }), items: [], hasMore: false, pending: [], mcpServers: [],
+    summary: summary('a', { status }), items: [], hasMore: false, pending: [], mcpServers: [], attachments: [],
   };
 }
 
@@ -22,6 +22,7 @@ function startedPane(id: string): PaneState {
     hasMore: false,
     pending: [],
     mcpServers: [],
+    attachments: [],
   };
 }
 
@@ -135,7 +136,7 @@ suite("Composer", () => {
   test("a queued message is shown and can be cancelled", async () => {
     const queued = {
       summary: summary("a", { status: "running", queued: { text: "next thing" } }),
-      items: [], hasMore: false, pending: [], mcpServers: [],
+      items: [], hasMore: false, pending: [], mcpServers: [], attachments: [],
     };
     renderWithStore(<Composer pane={queued} model={NO_EFFORT} models={[]} />);
 
@@ -420,6 +421,7 @@ suite("Composer", () => {
       hasMore: false,
       pending: [],
       mcpServers: [],
+      attachments: [],
     };
     renderWithStore(<Composer pane={off} model={NO_EFFORT} models={[]} />);
     sendFromHost({ t: "editor-context", ctx: CTX });
