@@ -3,7 +3,7 @@ import type {
   McpServerStatus, PermissionRequest, SessionId, SessionRef, SessionSnapshot, SessionState,
   SessionStatus, TranscriptItem, TranscriptPatch,
 } from '../protocol/messages';
-import type { ToolCall } from '../providers/canonical/tool-call';
+import type { ToolCall, ToolOutput } from '../providers/canonical/tool-call';
 import type {
   AgentEvent, AgentProvider, AgentRun,
   ContextBreakdown,
@@ -656,7 +656,7 @@ export class AgentSession {
         }
         this.childrenByParent.delete(event.id);
         this.replaceItem(settled);
-        this.offerRelocation(settled.tool, event.ok);
+        this.offerRelocation(settled.tool, event.ok, settled.output);
         return;
       }
 
@@ -746,8 +746,8 @@ export class AgentSession {
    * there, and a relative path in the transcript would be meaningless to the
    * host.
    */
-  private offerRelocation(tool: ToolCall, ok: boolean): void {
-    const found = detectWorktreeAdd(tool, ok);
+  private offerRelocation(tool: ToolCall, ok: boolean, output?: ToolOutput): void {
+    const found = detectWorktreeAdd(tool, ok, output);
     if (found === undefined) { return; }
     const path = resolve(this._state.cwd, found);
     if (samePath(path, resolve(this._state.cwd))) { return; }
