@@ -50,6 +50,25 @@ suite('AgentSession attachments', () => {
     assert.deepStrictEqual(run.sent.at(-1)?.attachments?.map((a) => a.id), ['a1']);
   });
 
+  test('a send reports the drained set up, so the composer stops showing it', async () => {
+    // The whole point: `sessions-changed` carries no attachments, so without
+    // this report the chips of a spent set stay in the composer, with live
+    // removal controls, describing a list the host no longer holds.
+    const { session, sink } = await makeSession();
+    session.addAttachments([att('a1')]);
+
+    session.send('look at this');
+
+    assert.deepStrictEqual(sink.attachmentSets.at(-1), []);
+  });
+
+  test('a send with nothing pending reports nothing — an empty set did not change', async () => {
+    const { session, sink } = await makeSession();
+    const before = sink.attachmentSets.length;
+    session.send('plain');
+    assert.strictEqual(sink.attachmentSets.length, before);
+  });
+
   test('a send with nothing pending carries no attachments field', async () => {
     const { session } = await makeSession();
     session.send('plain');

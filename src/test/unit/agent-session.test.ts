@@ -5,7 +5,7 @@ import * as path from 'path';
 import { AgentSession, type SessionSink } from '../../host/agent-session';
 import { TranscriptStore } from '../../host/transcript-store';
 import type {
-  Invocable, SessionId, SessionState, SessionStatus, TranscriptPatch,
+  Attachment, Invocable, SessionId, SessionState, SessionStatus, TranscriptPatch,
 } from '../../protocol/messages';
 import { FakeProvider } from '../../providers/fake/fake-provider';
 import type {
@@ -136,6 +136,9 @@ class RecordingSink implements SessionSink {
   invocablesLog: Invocable[][] = [];
   /** Every whole-set pull reported up, in order. */
   usageWindowSets: { providerId: string; windows: UsageWindow[] | undefined }[] = [];
+  /** Every pending-set report, in order — including the empty one a send leaves behind. */
+  attachmentSets: Attachment[][] = [];
+  pendingAttachments(_id: SessionId, pending: Attachment[]) { this.attachmentSets.push(pending); }
   patch(id: SessionId, patch: TranscriptPatch) { this.patches.push({ id, patch }); }
   status(_id: SessionId, status: SessionStatus) { this.statuses.push(status); }
   mcp(_id: SessionId, servers: unknown[]) { this.servers.push(servers); }

@@ -12,6 +12,7 @@ import { resolvePermissionMode } from '../shared/permission-catalog';
 import { threadKey, threadKeyCwd } from '../shared/thread-key';
 import { orderWindows } from '../shared/usage-windows';
 import type {
+  Attachment,
   ContextResult, HostToWebview, McpServerStatus, PaneLayout, PermissionMode, ProviderInfo, SessionId,
   SessionRef, SessionSnapshot, SessionState, SessionStatus, SessionSummary, StaleTree,
   TranscriptItem, TranscriptPatch, UnavailableProvider,
@@ -1281,6 +1282,14 @@ export class SessionManager implements SessionSink {
     // nothing to cache and no fan-out to siblings.
     if (!this.visible.has(id)) { return; }
     this.emit({ t: 'session-mcp', id, servers });
+  }
+
+  pendingAttachments(id: SessionId, pending: Attachment[]): void {
+    // Gated on visibility exactly like mcp(): a background session's composer
+    // is rendered nowhere, and a pane made visible later is built from the
+    // snapshot, which carries `pendingAttachments` already.
+    if (!this.visible.has(id)) { return; }
+    this.emit({ t: 'session-attachments', id, attachments: pending });
   }
 
   changed(): void {

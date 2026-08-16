@@ -25,6 +25,16 @@ export interface SessionSink {
   mcp(id: SessionId, servers: McpServerStatus[]): void;
   changed(): void;
   /**
+   * The pending attachment set changed. Separate from `changed()` because
+   * `sessions-changed` carries summaries, not attachments: without its own
+   * report a set spent by a send would keep its chips in the composer, with
+   * live removal controls, describing a list the host no longer holds.
+   *
+   * Optional for the same reason as `shellNoise`: a sink with nowhere to put
+   * it stays valid without one.
+   */
+  pendingAttachments?(id: SessionId, pending: Attachment[]): void;
+  /**
    * A running session reported its catalog. Goes UP to the manager, which
    * owns the per-cwd cache and the fan-out; it is not this session's answer
    * alone.
@@ -235,11 +245,13 @@ export class AgentSession {
     const room = MAX_PENDING - this.attachments.length;
     if (room <= 0) { return; }
     this.attachments = [...this.attachments, ...next.slice(0, room)];
+    this.reportAttachments();
     this.sink.changed();
   }
 
   removeAttachment(attachmentId: string): void {
     this.attachments = this.attachments.filter((a) => a.id !== attachmentId);
+    this.reportAttachments();
     this.sink.changed();
   }
 
@@ -306,8 +318,17 @@ export class AgentSession {
    */
   private drainLiveAttachments(): Attachment[] {
     const attachments = this.attachments;
+    if (attachments.length === 0) { return attachments; }
     this.attachments = [];
+    // Reported because it emptied: the composer is still rendering the set
+    // this call just spent, and nothing else on the wire would correct it.
+    this.reportAttachments();
     return attachments;
+  }
+
+  /** The one place the pending set is announced, so every mutation reports alike. */
+  private reportAttachments(): void {
+    this.sink.pendingAttachments?.(this._state.id, this.pendingAttachments);
   }
 
   private deliver(
