@@ -1629,8 +1629,12 @@ Expected: all PASS.
 
 - [ ] **Step 5: Commit**
 
+Stage by path, never `git add -A`. Other sessions may be working in this repo
+concurrently, and a blanket stage commits their in-progress files under this
+task's message.
+
 ```bash
-git add -A
+git add src/webview/components/
 git commit -m "fix: address impeccable findings on the question card"
 ```
 
