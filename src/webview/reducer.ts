@@ -67,6 +67,12 @@ export interface ClientState {
    */
   fleetDiff: TreeDiff[] | undefined;
   /**
+   * Why the host's last fleet read failed, if it did. Distinct from an empty
+   * `fleetDiff`, which is an answer: this one says there is no answer, and
+   * says what stopped it. `undefined` whenever the last read succeeded.
+   */
+  fleetDiffReason: string | undefined;
+  /**
    * Bumped whenever something happened that could have changed a diff: a
    * settled `file-edit` tool call, or a session going idle.
    *
@@ -101,6 +107,7 @@ export const initialState: ClientState = {
   usageByProvider: {},
   staleTrees: [],
   fleetDiff: undefined,
+  fleetDiffReason: undefined,
   fleetDiffDirty: 0,
   focusedSessionId: null,
 };
@@ -162,7 +169,7 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
         // Cleared with the sweep and for the same reason — and the counter
         // with it, so a reload does not immediately re-request off a count
         // that describes a webview that no longer exists.
-        fleetDiff: undefined, fleetDiffDirty: 0,
+        fleetDiff: undefined, fleetDiffReason: undefined, fleetDiffDirty: 0,
         // Not carried forward: focus is a fact about the rendered panes, and
         // hydrate rebuilds them. A stale id would let `+ New` inherit from a
         // session this hydrate may not even contain.
@@ -231,7 +238,11 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
       // Wholesale, never merged, for the same reason the sweep is: it
       // describes disk at an instant, and a merged delta would let a stale
       // row outlive the change it described.
-      return { ...state, fleetDiff: msg.trees };
+      // The reason travels with the answer and is replaced by it: a later
+      // successful read clears a failure, because a failure that outlived the
+      // read that disproved it would be the stale row this case exists to
+      // prevent.
+      return { ...state, fleetDiff: msg.trees, fleetDiffReason: msg.reason };
 
     case 'stale-trees':
       // Wholesale, never merged: the sweep is the complete answer, and a

@@ -68,6 +68,19 @@ suite('fleet diff reducer', () => {
     assert.strictEqual(state.fleetDiffDirty, 0);
   });
 
+  test('a failed read is state, not an empty answer', () => {
+    const state = reduce(initialState, {
+      t: 'fleet-diff', trees: [], reason: 'Could not read the working trees: boom',
+    });
+    assert.strictEqual(state.fleetDiffReason, 'Could not read the working trees: boom');
+  });
+
+  test('a later good answer clears the failure', () => {
+    const failed = reduce(initialState, { t: 'fleet-diff', trees: [], reason: 'boom' });
+    const ok = reduce(failed, { t: 'fleet-diff', trees: [TREE] });
+    assert.strictEqual(ok.fleetDiffReason, undefined);
+  });
+
   test('hydrate clears the answer and the counter', () => {
     const dirty = reduce(
       reduce(initialState, { t: 'fleet-diff', trees: [TREE] }),

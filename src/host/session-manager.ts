@@ -864,9 +864,29 @@ export class SessionManager implements SessionSink {
     return ids;
   }
 
-  /** Read-only, like `requestStaleTrees`: safe to ask whenever the panel wants. */
+  /**
+   * Read-only, like `requestStaleTrees`: safe to ask whenever the panel wants.
+   *
+   * A whole-read failure answers with a reason rather than rejecting. The
+   * router's catch-all would keep a rejection from escaping `handle()`, but
+   * it would also swallow the only event the surface has: nothing would be
+   * emitted, and the webview would hold "Reading the working trees…" forever.
+   * Errors are state — the same contract `TreeDiff.reason` already keeps for
+   * a single tree, kept here for the call as a whole.
+   */
   async requestFleetDiff(): Promise<void> {
-    const trees = await this.fleetDiff();
+    let trees: TreeDiff[];
+    try {
+      trees = await this.fleetDiff();
+    } catch (err) {
+      if (this.disposed) { return; }
+      const detail = err instanceof Error ? err.message : String(err);
+      this.emit({
+        t: 'fleet-diff', trees: [],
+        reason: `Could not read the working trees: ${detail}`,
+      });
+      return;
+    }
     if (this.disposed) { return; }
     this.emit({ t: 'fleet-diff', trees });
   }

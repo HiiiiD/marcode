@@ -10,6 +10,7 @@ import {
 import { cn } from '@/lib/utils';
 import { aggregateServers, isUnhealthy, worstState } from './mcp-status';
 import { evenlySizedPanes } from './pane-layout';
+import { REVIEW_TOGGLE_ATTR } from './review-toggle';
 import { SessionCreateMenu } from './session-create-menu';
 import { SessionRow } from './session-row';
 import { StaleTreesDialog } from './stale-trees';
@@ -24,10 +25,13 @@ interface SessionPickerProps {
   /** Whether the panel is wide enough to offer the fleet diff surface at all
    * — see `REVIEW_PX` in `use-is-narrow.ts`. */
   canReview: boolean;
+  /** Whether the fleet diff surface is currently showing — this control is a
+   * toggle over the panel body, and it says so through `aria-pressed`. */
+  reviewing: boolean;
   onReview: () => void;
 }
 
-export function SessionPicker({ narrow, canReview, onReview }: SessionPickerProps) {
+export function SessionPicker({ narrow, canReview, reviewing, onReview }: SessionPickerProps) {
   const { state, post } = useStore();
   const open = new Set(state.layout.panes.map((p) => p.sessionId));
   const horizontal = state.layout.orientation === 'horizontal';
@@ -184,6 +188,16 @@ export function SessionPicker({ narrow, canReview, onReview }: SessionPickerProp
           size="icon-sm"
           className="shrink-0"
           aria-label="Review changes: every file the fleet has changed"
+          // It replaces the panel body rather than opening something beside
+          // it, so it is a toggle, and a toggle that never says which way it
+          // is set leaves a screen-reader user with no way to tell the
+          // surface is already open. The same treatment the split-direction
+          // button beside it gets.
+          aria-pressed={reviewing}
+          // Read back by `FleetDiff` on the way out: closing unmounts the
+          // control that had focus, and this is where focus goes. See
+          // `review-toggle.ts`.
+          {...{ [REVIEW_TOGGLE_ATTR]: '' }}
           onClick={onReview}
         >
           <GitCompareIcon aria-hidden />

@@ -235,4 +235,21 @@ suite('SessionManager.fleetDiff', function () {
     const msg = emitted().filter((m) => m.t === 'fleet-diff').pop();
     assert.strictEqual(msg?.t, 'fleet-diff');
   });
+
+  test('a failed read answers with a reason rather than rejecting', async () => {
+    // Errors are state, never exceptions: a rejection here would leave the
+    // surface on "Reading the working trees…" forever, since the message that
+    // replaces that sentence is the one that never got sent.
+    const { manager, emitted } = await managerWith(() => [{ kind: 'turn-end', reason: 'done' }]);
+    manager.fleetDiff = async () => { throw new Error('git is not installed'); };
+
+    await manager.requestFleetDiff();
+
+    const msg = emitted().filter((m) => m.t === 'fleet-diff').pop();
+    assert.strictEqual(msg?.t === 'fleet-diff' && msg.trees.length, 0);
+    assert.strictEqual(
+      msg?.t === 'fleet-diff' && (msg.reason ?? '').includes('git is not installed'),
+      true,
+    );
+  });
 });

@@ -415,4 +415,14 @@ export type HostToWebview =
    * delta: it describes disk at an instant, and a merged delta would let a
    * stale row outlive the change it described.
    */
-  | { t: 'fleet-diff'; trees: TreeDiff[] };
+  | { t: 'fleet-diff'; trees: TreeDiff[];
+      /**
+       * Why the whole read failed; `trees` is empty when it is set. The
+       * per-tree counterpart of `TreeDiff.reason`, and it exists for the same
+       * reason: errors are state, never exceptions. Without it a read that
+       * threw before any tree was reached would emit nothing at all, and the
+       * surface would sit on "Reading the working trees…" for the life of the
+       * webview — the one sentence a failure must never be allowed to leave
+       * on screen.
+       */
+      reason?: string };

@@ -2,7 +2,7 @@
 // user reads. Pure: no React, no DOM, no store.
 
 import * as assert from 'assert';
-import { groupTree } from '../../webview/components/fleet-diff-groups';
+import { groupTree, summarize } from '../../webview/components/fleet-diff-groups';
 import type { FileChange, TreeDiff } from '../../protocol/messages';
 
 function file(path: string, claimedBy: string[], ins = 1, del = 0): FileChange {
@@ -61,5 +61,29 @@ suite('fleet diff grouping', () => {
 
   test('an empty tree groups to nothing', () => {
     assert.deepStrictEqual(groupTree(tree([])), []);
+  });
+});
+
+suite('fleet diff summary', () => {
+  test('one file is counted once, in the singular', () => {
+    assert.strictEqual(summarize([tree([file('a.ts', ['s1'])])]), '1 changed file');
+  });
+
+  test('several trees are named, because a count without them is ambiguous', () => {
+    const two = [tree([file('a.ts', ['s1'])]), { ...tree([file('b.ts', ['s1'])]), root: '/other' }];
+    assert.strictEqual(summarize(two), '2 changed files in 2 working trees');
+  });
+
+  test('a file two sessions claim is counted once and said to be listed twice', () => {
+    // The row count is 2 and the file count is 1: without the second clause
+    // the header would contradict what is on screen.
+    const summary = summarize([tree([file('shared.ts', ['s1', 's2'])])]);
+    assert.strictEqual(summary.startsWith('1 changed file,'), true);
+    assert.strictEqual(/1 .*more than one session/.test(summary), true);
+  });
+
+  test('an unshared set says nothing about sharing', () => {
+    const summary = summarize([tree([file('a.ts', ['s1']), file('b.ts', [])])]);
+    assert.strictEqual(summary.includes('more than one session'), false);
   });
 });

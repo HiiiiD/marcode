@@ -60,3 +60,35 @@ export function groupTree(tree: TreeDiff): SessionGroup[] {
 
   return groups;
 }
+
+/**
+ * The header line: how many files changed, and — when it would otherwise
+ * contradict the rows below it — why there are more rows than files.
+ *
+ * `groupTree` lists a file under every session that claimed it, deliberately:
+ * two agents writing one file is the case this surface exists to catch, and
+ * seeing it under only one of them would hide exactly that. But it means the
+ * row count can exceed the file count, and a bare "5 files" over six rows is
+ * a header the user has to disbelieve. The count stays per file — that is the
+ * question "what changed" asks — and the second clause accounts for the
+ * difference rather than letting the number absorb it.
+ *
+ * Paths need no de-duplication within a tree (git reports each once) and must
+ * not be de-duplicated across trees: the same relative path in two working
+ * trees is two different files.
+ */
+export function summarize(trees: TreeDiff[]): string {
+  let files = 0;
+  let shared = 0;
+  for (const tree of trees) {
+    files += tree.files.length;
+    shared += tree.files.filter((f) => f.claimedBy.length > 1).length;
+  }
+
+  let label = `${files} changed ${files === 1 ? 'file' : 'files'}`;
+  if (trees.length > 1) { label += ` in ${trees.length} working trees`; }
+  if (shared > 0) {
+    label += `, ${shared} listed under more than one session`;
+  }
+  return label;
+}

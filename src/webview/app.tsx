@@ -93,6 +93,11 @@ export function App() {
             <SessionPicker
               narrow={narrow}
               canReview={canReview}
+              // The same condition the body below renders on, not the intent
+              // flag: below REVIEW_PX the surface is not showing, whatever
+              // the user last asked for, and a toggle that claimed otherwise
+              // would describe a panel that isn't on screen.
+              reviewing={reviewOpen && canReview}
               onReview={() => { setReviewOpen(true); }}
             />
             <div className="min-h-0 flex-1">
