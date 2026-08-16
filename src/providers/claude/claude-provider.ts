@@ -117,10 +117,12 @@ import type {
   PermissionMode as SdkPermissionMode,
   SDKUserMessage,
 } from '@anthropic-ai/claude-agent-sdk' with { 'resolution-mode': 'import' };
+import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/messages' with { 'resolution-mode': 'import' };
 import { findModel, resolveEffort } from '../../shared/model-catalog';
+import { attachmentLines, imageAttachments, readBase64 } from '../attachment-payload';
 import { formatEditorContext } from '../format-editor-context';
 import type {
-  AgentEvent, AgentProvider, AgentRun,
+  AgentEvent, AgentProvider, AgentRun, Attachment,
   ContextBreakdown,
   EditorContext,
   EffortLevel, Invocable, ModelInfo, PermissionMode, PermissionModeInfo,
@@ -516,15 +518,27 @@ export class ClaudeProvider implements AgentProvider {
 
     return {
       events,
-      send: (text: string, context?: EditorContext) => {
+      send: (text: string, context?: EditorContext, attachments?: Attachment[]) => {
         ensureStarted();
-        // One text block rather than two: the SDK accepts an array, but a
-        // single block keeps the turn's shape identical whether or not
-        // context is attached, so nothing downstream has to special-case it.
         const body = context ? `${formatEditorContext(context)}\n\n${text}` : text;
+        const content: ContentBlockParam[] = [
+          { type: 'text', text: `${body}${attachmentLines(attachments)}` },
+        ];
+        for (const image of imageAttachments(attachments)) {
+          const data = readBase64(image);
+          if (!data) { continue; }
+          content.push({
+            type: 'image',
+            source: {
+              type: 'base64',
+              media_type: (image.mediaType ?? 'image/png') as 'image/png',
+              data,
+            },
+          });
+        }
         prompts.push({
           type: 'user',
-          message: { role: 'user', content: [{ type: 'text', text: body }] },
+          message: { role: 'user', content },
           parent_tool_use_id: null,
         });
       },
