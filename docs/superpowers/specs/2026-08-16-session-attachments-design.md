@@ -62,10 +62,15 @@ Each was taken deliberately; the rationale matters more than the choice.
    kind sniffing and existence checks in one place, and preserves the standing rule that the
    extension host owns all state.
 
-3. **Attachments are addressed by `path`, and re-sent by path on every turn.** The wire
-   carries a multi-megabyte payload exactly once, at paste time. Subsequent sends, the
-   transcript record and a post-reload hydrate all carry a short path. This is why the disk
-   round-trip pays for itself even for a one-shot screenshot.
+3. **The pending set lives on `AgentSession`, not in the composer, and `send` does not
+   carry it.** Attachments arrive from the host asynchronously, so composer-local state
+   would mean the webview holding something the host does not — the one thing this
+   architecture forbids. Instead the host owns the pending list, ships it on
+   `SessionSnapshot`, replaces it wholesale on every change, and consumes and clears it when
+   the turn goes out. Three consequences fall out for free: the wire carries a
+   multi-megabyte payload exactly once (at paste), the `send` message is unchanged, and
+   pending chips survive a webview reload — because host memory outlives it — which is
+   more than a draft does today.
 
 4. **Out-of-workspace paths are allowed, with no root check.** The `open-file` precedent
    validates against the session's memory files, but that guards a *host* action taken on a
@@ -86,11 +91,15 @@ Each was taken deliberately; the rationale matters more than the choice.
    `sendAttachment` would let a turn's attachments and its text arrive independently, which
    no provider can represent.
 
-7. **The composer's paperclip moves.** `editor-context-toggle.tsx:47` owns the `Paperclip`
-   glyph today, and the block-end control row already wraps at ~300px. Attachments take the
-   paperclip — it is the universal signifier and this is the feature it signifies — and the
-   editor-context toggle moves into `ModeMenu` as a checkable item. Net: no new button in a
-   row that cannot afford one, and the glyph lands on the feature it names.
+7. **The composer's paperclip changes hands; the toggle stays put.**
+   `editor-context-toggle.tsx:47` owns the `Paperclip` glyph today, but it names a file the
+   user is *looking at*, not a file they attached. Attachments take the paperclip — the
+   universal signifier, and this is the feature it signifies — and the editor-context
+   toggle swaps to `FileCode2`. It does **not** move into `ModeMenu`: its value is the
+   inline preview of which file and which lines would be attached, and a menu item shows
+   none of that. The block-end row does gain one `icon-xs` button; that row's `flex-wrap`
+   exists precisely so a control can land on a second line at 300px rather than shrink its
+   neighbours.
 
 ## Architecture
 
@@ -142,12 +151,17 @@ export type Attachment = {
 
 Additions:
 
-- `{ t: 'send'; id; text; refs?; attachments?: Attachment[] }`
-- `create-session`'s `seed` gains `attachments: Attachment[]`
-- The user `TranscriptItem` gains `attachments?: Attachment[]`, so a reload replays chips
+- `SessionSnapshot` gains `pendingAttachments: Attachment[]` — live host state, beside
+  `mcpServers`, not persisted to `index.json`
+- The user `TranscriptItem` gains `attachments?: Attachment[]`, so the transcript records
+  what a turn carried, exactly as `refs` and `context` do
 - Webview→host: `attach-paste { id, name, mediaType, base64 }`, `attach-pick { id }`,
-  `attach-drop { id, uris: string[] }` — all three added to `KNOWN_MESSAGE_TAGS`
-- Host→webview: `attachments-added { id, attachments }`, `attachments-rejected { id, reason }`
+  `attach-drop { id, uris: string[] }`, `attach-remove { id, attachmentId }` — all four
+  added to `KNOWN_MESSAGE_TAGS`
+- Host→webview: `session-attachments { id, attachments }` — a full replacement, the same
+  snapshot semantics as `session-invocables` and `session-mcp`; and
+  `attachments-rejected { id, reason }`
+- `send` is **unchanged**. The host already holds the pending set.
 
 ### `src/host/attachment-store.ts` (new)
 
@@ -169,11 +183,16 @@ item, turn not started.
 
 ### Host wiring
 
-- `message-router.ts` gains the three attach handlers and threads `attachments` through
-  `send` and the `create-session` seed. Still no `vscode` import.
-- `panel-view-provider.ts` owns `showOpenDialog` and `Uri.parse(uri).fsPath` for drops.
-- `agent-session.ts`: `send(text, context?, refs?, attachments?)` records them on the user
-  `TranscriptItem` before calling `run.send`.
+- `message-router.ts` gains the four attach handlers, each ending in a
+  `session-attachments` emit. Still no `vscode` import: the file dialog arrives through an
+  injected `AttachmentHost { pick(): Promise<string[]> }`, exactly as the editor arrives
+  through `EditorContextHost` today.
+- A `uris` payload is turned into paths by a pure `file-uri.ts` helper, not by
+  `vscode.Uri` — so the drop path unit-tests like everything else in the router.
+- `extension.ts` supplies the real `AttachmentHost`, wrapping
+  `vscode.window.showOpenDialog`.
+- `agent-session.ts` holds `pendingAttachments`, exposes add/remove, and `send` drains them
+  onto the user `TranscriptItem` and into `run.send`.
 
 ### Providers
 
@@ -197,7 +216,8 @@ line to the text. Two supporting fixes:
 
 ### Webview
 
-- `composer.tsx` holds `attachments: Attachment[]` beside `refs`, cleared on send with it.
+- `composer.tsx` reads `pane.attachments` from the store — it holds none of its own — and
+  removes a chip by posting `attach-remove`.
 - A chip strip as an `InputGroupAddon align="block-start"`, sibling of the two mention menus.
   Image chips show a thumbnail from the data URL the webview already holds from the paste,
   or from an `asWebviewUri` for picked files. CSP already permits `data:` in `img-src`
@@ -211,14 +231,16 @@ line to the text. Two supporting fixes:
 ## Data flow
 
 **Paste.** `onPaste` → `File` → `FileReader` → base64 → `attach-paste` → store writes
-`<root>/attachments/<sid>/3.png` → `attachments-added` → chip. On send, `send` carries the
-`Attachment`; Claude re-reads the file for base64, Codex passes the path.
+`<root>/attachments/<sid>/3.png` → session's pending list grows → `session-attachments` →
+chip. On the next `send`, the session drains the list; Claude re-reads the file for base64,
+Codex passes the path.
 
-**Pick / drop.** `attach-pick` or `attach-drop` → `panel-view-provider` resolves to fsPaths
-→ `store.adopt` → `attachments-added` → chip. Identical from there.
+**Pick / drop.** `attach-pick` (host opens the dialog) or `attach-drop` (URIs → paths) →
+`store.adopt` → same pending list, same message, same chip.
 
-**Reload.** Transcript replay carries `attachments` on the user item; the composer's pending
-list is empty, as it is for a draft today.
+**Reload.** `hydrate` carries each session's snapshot, which now carries
+`pendingAttachments` — so composed-but-unsent chips come back. The transcript's own user
+items carry the attachments each sent turn actually had.
 
 ## Error handling
 
