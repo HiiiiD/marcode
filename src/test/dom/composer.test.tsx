@@ -593,7 +593,7 @@ suite("Composer", () => {
       const describedBy = box.getAttribute("aria-describedby");
       assert.ok(describedBy, "the box must point at the reason it is disabled");
       const reason = document.getElementById(describedBy!);
-      assert.ok(reason, "the aria-describedby target must be real, rendered text");
+      assert.strictEqual(reason !== null, true, "the aria-describedby target must be real, rendered text");
       assert.strictEqual(reason!.textContent, "Answer the question above to continue.");
       assert.strictEqual(box.getAttribute("title"), null, "the reason must never ride a title attribute");
     });
