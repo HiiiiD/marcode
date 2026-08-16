@@ -3,18 +3,19 @@ import type { RequestId } from './app-server';
 import { approvalToolCall, toToolCall, toToolOutput } from './map-tools';
 import type {
   McpServerStatusUpdatedNotification, McpServerStartupState, ThreadItem,
+  ToolRequestUserInputParams,
 } from './wire';
 
 /**
- * Server requests that ask for typed input rather than a yes/no.
+ * Server requests that ask for typed input this panel still cannot render.
  *
- * `ToolDecision` cannot express either one, and a turn that never gets an
- * answer hangs. The run declines them with a transcript note instead — see
- * codex-run.ts. Both are experimental and only fire if a tool or MCP server
- * uses them.
+ * `item/tool/requestUserInput` used to live here too, but it now maps to a
+ * real `question` event (see `questionEventOf`) instead of being declined.
+ * MCP elicitation is deliberately unmodelled and stays declined — see
+ * codex-run.ts. Experimental upstream, and only fires if an MCP server uses
+ * it.
  */
 export const DECLINED_INPUT_METHODS = [
-  'item/tool/requestUserInput',
   'mcpServer/elicitation/request',
 ];
 
@@ -193,4 +194,26 @@ export function approvalEventOf(
   const tool = approvalToolCall(method, params);
   if (!tool) { return undefined; }
   return { kind: 'permission', id: String(id), tool };
+}
+
+/**
+ * `item/tool/requestUserInput` -> a neutral question event. Codex declares no
+ * multi-select: the response is an array, but nothing says more than one value
+ * is permitted, so v1 maps single-select. See the spec's Open Item 2.
+ */
+export function questionEventOf(id: string | number, params: ToolRequestUserInputParams): AgentEvent {
+  return {
+    kind: 'question',
+    id: String(id),
+    blocking: params.isBlocking,
+    questions: params.questions.map((q) => ({
+      id: q.id,
+      header: q.header,
+      question: q.question,
+      ...(q.options ? { options: q.options.map((o) => ({ label: o.label, description: o.description })) } : {}),
+      multiSelect: false,
+      allowOther: q.isOther,
+      secret: q.isSecret,
+    })),
+  };
 }

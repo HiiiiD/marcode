@@ -1,17 +1,17 @@
 import { formatEditorContext } from '../format-editor-context';
 import type {
   AgentEvent, AgentRun, ContextBreakdown, EditorContext, EffortLevel, McpServerStatus,
-  PermissionMode, StartOptions, ToolDecision, UsageWindow,
+  PermissionMode, QuestionAnswers, StartOptions, ToolDecision, UsageWindow,
 } from '../types';
 import type { RequestId } from './app-server';
-import { approvalEventOf, DECLINED_INPUT_METHODS, mapNotification } from './map-events';
+import { approvalEventOf, DECLINED_INPUT_METHODS, mapNotification, questionEventOf } from './map-events';
 import { codexSettings, sandboxPolicyOf } from './map-settings';
 import { toInvocables } from './map-skills';
 import { toContextBreakdown, toUsageWindows } from './map-usage';
 import type {
   FileChangeApprovalDecision, McpServerElicitationRequestResponse,
   PermissionsRequestApprovalResponse, RateLimitsReadResponse, SkillsListResponse,
-  ThreadResponse, ThreadTokenUsage, ToolRequestUserInputResponse,
+  ThreadResponse, ThreadTokenUsage, ToolRequestUserInputParams, ToolRequestUserInputResponse,
 } from './wire';
 
 /**
@@ -135,6 +135,9 @@ export class CodexRun implements AgentRun {
    */
   private readonly pendingApprovals = new Map<string, { rpcId: RequestId; method: string }>();
 
+  /** Every outstanding `question` event, keyed by its string id -> the JSON-RPC request id it must answer. */
+  private readonly pendingQuestions = new Map<string, RequestId>();
+
   /**
    * Every MCP server this thread has heard a startup status for, by name.
    *
@@ -202,19 +205,22 @@ export class CodexRun implements AgentRun {
       const p = (params ?? {}) as { threadId?: string };
       if (p.threadId !== undefined && p.threadId !== this._threadId) { return; }
 
+      if (method === 'item/tool/requestUserInput') {
+        const event = questionEventOf(id, params as ToolRequestUserInputParams);
+        if (event.kind === 'question') { this.pendingQuestions.set(event.id, id); }
+        this.events.push(event);
+        return;
+      }
+
       if (DECLINED_INPUT_METHODS.includes(method)) {
-        // Each of these has its own required-field response shape — `{}`
+        // MCP elicitation has its own required-field response shape — `{}`
         // fails deserialization server-side, which leaves the blocking
         // request unanswered and hangs the turn, i.e. exactly what this
         // branch exists to prevent.
-        const refusal: ToolRequestUserInputResponse | McpServerElicitationRequestResponse
-          = method === 'item/tool/requestUserInput'
-            // A map, so an empty one is structurally valid and says
-            // "answered none of the questions".
-            ? { answers: {} }
-            : { action: 'decline', content: null, _meta: null };
-        // v1 cannot render a typed-input request, but an unanswered blocking
-        // one hangs the turn — so it is declined immediately, and the
+        const refusal: McpServerElicitationRequestResponse
+          = { action: 'decline', content: null, _meta: null };
+        // Elicitation is deliberately unmodelled, but an unanswered blocking
+        // request hangs the turn — so it is declined immediately, and the
         // transcript says so rather than failing silently.
         const toolId = String(id);
         this.events.push({
@@ -418,7 +424,34 @@ export class CodexRun implements AgentRun {
     this.server.respond(pending.rpcId, { decision: result });
   }
 
-  respondToQuestion(): void { /* replaced in Tasks 3 and 6 */ }
+  /**
+   * Answers one parked question in codex's own response shape —
+   * `{answers: {[id]: {answers: [...]}}}`, one entry per question in that
+   * request (mirroring `respondToTool`'s per-method shape). A no-op if the
+   * id names no parked request, e.g. it was already cancelled.
+   */
+  respondToQuestion(id: string, answers: QuestionAnswers): void {
+    const rpcId = this.pendingQuestions.get(id);
+    if (rpcId === undefined) { return; }
+    this.pendingQuestions.delete(id);
+    const mapped: ToolRequestUserInputResponse = { answers: {} };
+    for (const [qid, values] of Object.entries(answers)) { mapped.answers[qid] = { answers: values }; }
+    this.server.respond(rpcId, mapped);
+  }
+
+  /**
+   * Answers every still-parked question with the structurally-valid empty
+   * map — "answered nothing" — and reports the cancellation, mirroring how
+   * `dispose()` already declines leftover approvals rather than leaving them
+   * to hang. Called from both `interrupt()` and `dispose()`.
+   */
+  private cancelParkedQuestions(): void {
+    for (const [id, rpcId] of this.pendingQuestions) {
+      this.server.respond(rpcId, { answers: {} } satisfies ToolRequestUserInputResponse);
+      this.events.push({ kind: 'request-cancelled', id });
+    }
+    this.pendingQuestions.clear();
+  }
 
   /**
    * Folds one server's status into the roster and returns the whole of it.
@@ -488,6 +521,7 @@ export class CodexRun implements AgentRun {
         // intent was to stop, so the turn ends here either way.
       }
     }
+    this.cancelParkedQuestions();
     this.events.push({ kind: 'turn-end', reason: 'interrupted' });
   }
 
@@ -533,6 +567,7 @@ export class CodexRun implements AgentRun {
       }
     }
     this.pendingApprovals.clear();
+    this.cancelParkedQuestions();
     if (this._threadId) {
       try {
         await this.server.request('thread/unsubscribe', { threadId: this._threadId });
