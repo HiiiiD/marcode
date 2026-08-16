@@ -25,7 +25,7 @@ const CATALOG: ProviderInfo[] = [{
 }];
 
 function snapshotOf(s: SessionSummary) {
-  return { ...s, items: [], hasMore: false, pending: [], mcpServers: [] };
+  return { ...s, items: [], hasMore: false, pending: [], mcpServers: [], pendingAttachments: [] };
 }
 
 /**

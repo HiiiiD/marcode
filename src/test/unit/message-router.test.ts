@@ -317,7 +317,7 @@ suite('MessageRouter', () => {
     await r.handle({ t: 'send', id: session.state.id, text: 'hi' });
     await settle();
 
-    assert.deepStrictEqual(fake.sent[0], { text: 'hi', context: ctx });
+    assert.deepStrictEqual(fake.sent[0], { text: 'hi', context: ctx, attachments: undefined });
     await mgr.dispose();
   });
 
@@ -336,7 +336,7 @@ suite('MessageRouter', () => {
     await r.handle({ t: 'send', id: session.state.id, text: 'hi' });
     await settle();
 
-    assert.deepStrictEqual(fake.sent[0], { text: 'hi', context: undefined });
+    assert.deepStrictEqual(fake.sent[0], { text: 'hi', context: undefined, attachments: undefined });
     assert.strictEqual(session.state.includeEditorContext, false);
     await mgr.dispose();
   });

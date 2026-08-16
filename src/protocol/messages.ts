@@ -37,6 +37,13 @@ export type TranscriptItem =
        * is already the fully-composed prompt the provider received.
        */
       refs?: SessionRef[];
+      /**
+       * Files this message carried. Metadata about the message exactly like
+       * `context` and `refs` above — `text` is the fully-composed prompt, and
+       * an attachment never appears in it: an image goes to the provider as a
+       * native image input, and a file goes as a path line the provider adds.
+       */
+      attachments?: Attachment[];
     })
   | (ItemBase & { role: 'assistant'; text: string; thinking?: string })
   | (ItemBase & {
@@ -152,6 +159,12 @@ export interface SessionSnapshot extends SessionState {
    * stores.
    */
   mcpServers: McpServerStatus[];
+  /**
+   * Composed but not yet sent. Live host state like `mcpServers`, deliberately
+   * not on SessionState (which is what index.json stores) — but it does
+   * outlive a webview reload, because the extension host does.
+   */
+  pendingAttachments: Attachment[];
 }
 
 export interface ProviderInfo {

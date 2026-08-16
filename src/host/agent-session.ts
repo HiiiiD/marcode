@@ -6,6 +6,7 @@ import type {
 import type { ToolCall } from '../providers/canonical/tool-call';
 import type {
   AgentEvent, AgentProvider, AgentRun,
+  Attachment,
   ContextBreakdown,
   EditorContext,
   EffortLevel, Invocable, PermissionMode, ToolDecision,
@@ -13,6 +14,7 @@ import type {
 } from '../providers/types';
 import { findModel, resolveEffort } from '../shared/model-catalog';
 import { threadKey } from '../shared/thread-key';
+import { MAX_PENDING } from './attachment-store';
 import { profileNoiseIn } from './profile-noise';
 import type { TranscriptStore } from './transcript-store';
 import { detectWorktreeAdd } from './worktree-detect';
@@ -139,6 +141,13 @@ export class AgentSession {
   private appended = 0;
   /** A profile failure has already been reported up; every later one is the same news. */
   private shellNoiseReported = false;
+  /**
+   * Composed but not yet sent. Host state, not webview state: attachments
+   * arrive asynchronously (a paste is written to disk before it becomes one),
+   * so a composer-local list would be the webview holding something the host
+   * does not.
+   */
+  private attachments: Attachment[] = [];
 
   constructor(
     private readonly _state: SessionState,
@@ -219,6 +228,21 @@ export class AgentSession {
     return this._state.status === 'running' || this._state.status === 'awaiting-approval';
   }
 
+  get pendingAttachments(): Attachment[] { return [...this.attachments]; }
+
+  /** Silently ignores anything past the cap — the router reports the refusal. */
+  addAttachments(next: Attachment[]): void {
+    const room = MAX_PENDING - this.attachments.length;
+    if (room <= 0) { return; }
+    this.attachments = [...this.attachments, ...next.slice(0, room)];
+    this.sink.changed();
+  }
+
+  removeAttachment(attachmentId: string): void {
+    this.attachments = this.attachments.filter((a) => a.id !== attachmentId);
+    this.sink.changed();
+  }
+
   /**
    * Sends, or parks the message until the turn in flight is over.
    *
@@ -266,10 +290,16 @@ export class AgentSession {
     if (this._state.title === 'Untitled' && text.trim().length > 0) {
       this._state.title = text.trim().slice(0, TITLE_MAX);
     }
+    // Drained before anything else can append: the pending set belongs to the
+    // turn being composed, and a paste that lands while the provider is
+    // starting belongs to the next one.
+    const attachments = this.attachments;
+    this.attachments = [];
     const item: TranscriptItem = {
       id: nextId('u'), ts: Date.now(), role: 'user', text,
       ...(context ? { context } : {}),
       ...(refs && refs.length > 0 ? { refs } : {}),
+      ...(attachments.length > 0 ? { attachments } : {}),
     };
     this.appendItem(item);
     this.closeAssistant();
@@ -281,7 +311,7 @@ export class AgentSession {
     const outgoing = this.seed ? `${this.seed}\n\n---\n\n${text}` : text;
     this.seed = undefined;
     try {
-      this.run.send(outgoing, context);
+      this.run.send(outgoing, context, attachments.length > 0 ? attachments : undefined);
     } catch (err) {
       this.fail(err instanceof Error ? err.message : String(err));
     }
@@ -509,6 +539,7 @@ export class AgentSession {
       ...this._state, items, hasMore, pending: [...this.pending.values()],
       invocables: this.invocableEntries,
       mcpServers: this.mcpServers,
+      pendingAttachments: this.pendingAttachments,
     };
   }
 

@@ -1044,6 +1044,9 @@ export class SessionManager implements SessionSink {
         // An archived session has no run to ask, and a stale snapshot
         // presented as current would be a lie.
         mcpServers: [],
+        // Same reason: nothing is composing into an archived session, so
+        // there is no pending set to report.
+        pendingAttachments: [],
       });
       this.drainSnapshotBuffer(id);
     }

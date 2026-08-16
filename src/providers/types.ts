@@ -216,7 +216,14 @@ export type AgentEvent =
   | { kind: 'mcp-servers'; servers: McpServerStatus[] };
 
 export interface AgentRun {
-  send(text: string, context?: EditorContext): void;
+  /**
+   * `attachments` belong to the turn `text` was composed with — an attachment
+   * added after this turn was sent belongs to the next one, not this one, so
+   * a provider must never reach back to a session's live pending set. Absent
+   * or empty means the turn carries none. Optional so a provider that does
+   * not yet handle attachments simply ignores the parameter.
+   */
+  send(text: string, context?: EditorContext, attachments?: Attachment[]): void;
   readonly events: AsyncIterable<AgentEvent>;
   respondToTool(id: string, decision: ToolDecision): void;
   setEffort(effort: EffortLevel): void;
