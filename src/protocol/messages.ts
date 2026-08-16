@@ -397,4 +397,10 @@ export type HostToWebview =
    * it could not go is the line it now carries. A complete replacement, never
    * a delta.
    */
-  | { t: 'stale-trees'; trees: StaleTree[] };
+  | { t: 'stale-trees'; trees: StaleTree[] }
+  /**
+   * The answer to `request-fleet-diff`. A complete replacement, never a
+   * delta: it describes disk at an instant, and a merged delta would let a
+   * stale row outlive the change it described.
+   */
+  | { t: 'fleet-diff'; trees: TreeDiff[] };

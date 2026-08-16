@@ -1,6 +1,8 @@
 import { resolve } from 'node:path';
 import { AgentSession, type SessionSink } from './agent-session';
 import { catalogKey, CatalogService } from './catalog-service';
+import { claimedPaths, toRepoRelative } from './claim-paths';
+import { treeChanges } from './fleet-diff';
 import { bringBack as runBringBack, bringBackPlan, samePath, treeStatus } from './git-worktree';
 import { buildSeed } from './replay';
 import { findPayload, type ResolvedBlock } from './session-refs';
@@ -13,7 +15,7 @@ import { orderWindows } from '../shared/usage-windows';
 import type {
   ContextResult, HostToWebview, McpServerStatus, PaneLayout, PermissionMode, ProviderInfo, SessionId,
   SessionRef, SessionSnapshot, SessionState, SessionStatus, SessionSummary, StaleTree,
-  TranscriptItem, TranscriptPatch, UnavailableProvider,
+  TranscriptItem, TranscriptPatch, TreeDiff, UnavailableProvider,
 } from '../protocol/messages';
 
 let counter = 0;
@@ -40,6 +42,16 @@ export class SessionManager implements SessionSink {
   private live = new Map<SessionId, AgentSession>();
   private meta = new Map<SessionId, SessionState>();
   private visible = new Set<SessionId>();
+  /**
+   * Claims rebuilt from a session's transcript, once per session per launch.
+   *
+   * A live `AgentSession` only knows what it wrote since it was constructed —
+   * a session restored from `index.json`, or one rebuilt by `moveTo`, starts
+   * empty. This is the pre-launch half, read from the JSONL the first time
+   * anything asks. Cached in memory and never persisted: see
+   * `AgentSession.claimedPaths` for why a stored claim would be a lie.
+   */
+  private readonly backfilled = new Map<SessionId, Set<string>>();
   private paneLayout: PaneLayout = { orientation: 'vertical', panes: [] };
   private persistTimer: NodeJS.Timeout | undefined;
   private disposed = false;
@@ -725,6 +737,138 @@ export class SessionManager implements SessionSink {
     const trees = await this.staleTrees();
     if (this.disposed) { return; }
     this.emit({ t: 'stale-trees', trees });
+  }
+
+  /**
+   * Every absolute path `id` is known to have written — the live session's
+   * own record unioned with what its transcript remembers from before this
+   * launch.
+   */
+  private async claimsOf(id: SessionId): Promise<Set<string>> {
+    let prior = this.backfilled.get(id);
+    if (!prior) {
+      prior = new Set<string>();
+      const state = this.meta.get(id);
+      if (state) {
+        // A limit past any real transcript: `tail` slices from
+        // `max(0, len - limit)`, so this reads the whole file.
+        const { items } = await this.store.tail(id, Number.MAX_SAFE_INTEGER);
+        for (const item of items) {
+          if (item.role !== 'tool') { continue; }
+          for (const path of claimedPaths(item.tool, state.cwd)) { prior.add(path); }
+          for (const child of item.children ?? []) {
+            if (child.role !== 'tool') { continue; }
+            for (const path of claimedPaths(child.tool, state.cwd)) { prior.add(path); }
+          }
+        }
+      }
+      this.backfilled.set(id, prior);
+    }
+    const live = this.live.get(id)?.claimedPaths;
+    return live ? new Set([...prior, ...live]) : prior;
+  }
+
+  /**
+   * What the fleet has changed, one row per working tree.
+   *
+   * A tree is the unit git can answer for; a session is the unit the user
+   * thinks in. Both travel: the tree carries its occupants, each file carries
+   * the sessions claiming it, and the webview derives the session grouping.
+   * Sending it pre-grouped would duplicate any file two sessions claim, and
+   * make the shared-file case unrepresentable without a second, contradicting
+   * copy of its diff.
+   *
+   * Non-repositories are dropped rather than listed with a reason: a session
+   * running in a plain directory has nothing to review, and a permanent row
+   * saying so is noise. A directory that *is* a repository but cannot be read
+   * stays, carrying why — that one is a fault worth surfacing.
+   */
+  async fleetDiff(): Promise<TreeDiff[]> {
+    const rows: TreeDiff[] = [];
+
+    for (const dir of this.knownDirectories()) {
+      const status = await treeStatus(dir);
+      if (!status.isRepo) { continue; }
+      // Two remembered paths can resolve to one tree. One tree, one row.
+      if (rows.some((row) => samePath(row.root, status.root))) { continue; }
+
+      const occupants = this.sessionsIn(status.root);
+      // A tree nobody sits in is somebody's abandoned worktree; the
+      // stale-tree sweep is where that is dealt with, not here.
+      if (occupants.length === 0) { continue; }
+
+      const changes = await treeChanges(status.root);
+      if ('reason' in changes) {
+        rows.push({
+          root: status.root, branch: status.branch, sessions: occupants,
+          base: { kind: 'head' }, files: [], omitted: 0, reason: changes.reason,
+        });
+        continue;
+      }
+
+      const claimsBySession = new Map<SessionId, Set<string>>();
+      for (const id of occupants) {
+        const absolute = await this.claimsOf(id);
+        const relative = new Set<string>();
+        for (const path of absolute) {
+          const rel = toRepoRelative(path, status.root);
+          if (rel !== undefined) { relative.add(rel); }
+        }
+        claimsBySession.set(id, relative);
+      }
+
+      rows.push({
+        root: status.root,
+        branch: status.branch,
+        sessions: occupants,
+        base: changes.base,
+        omitted: changes.omitted,
+        files: changes.files.map((file) => ({
+          ...file,
+          // A rename's old path is claimed too: the session that moved a file
+          // wrote both sides of it, and matching only the new path would
+          // orphan every rename an agent made.
+          claimedBy: occupants.filter((id) => {
+            const claimed = claimsBySession.get(id);
+            return claimed !== undefined
+              && (claimed.has(file.path) || (file.from !== undefined && claimed.has(file.from)));
+          }),
+        })),
+      });
+    }
+
+    return rows.sort((a, b) => a.root.localeCompare(b.root));
+  }
+
+  /**
+   * Every session sitting in `root`, roster order.
+   *
+   * `occupantOf` answers with one session because a bring-back moves exactly
+   * one; this answers with all of them, because a shared root is precisely
+   * the case this surface exists to disambiguate.
+   *
+   * Archived sessions count here, and deliberately — unlike `occupantOf`,
+   * which excludes them because resurrecting a closed session into the roster
+   * behind a sweep would be a surprise. Closing a session does not undo what
+   * it wrote: its changes are still uncommitted on disk and still unreviewed,
+   * and this is the surface whose entire job is to show them. Dropping it
+   * would hide exactly the work most likely to be forgotten. The directory
+   * leaves this list when `forgetTree` erases it from the roster, which is
+   * the same moment it stops being ours to describe.
+   */
+  private sessionsIn(root: string): SessionId[] {
+    const ids: SessionId[] = [];
+    for (const state of this.meta.values()) {
+      if (samePath(resolve(state.cwd), root)) { ids.push(state.id); }
+    }
+    return ids;
+  }
+
+  /** Read-only, like `requestStaleTrees`: safe to ask whenever the panel wants. */
+  async requestFleetDiff(): Promise<void> {
+    const trees = await this.fleetDiff();
+    if (this.disposed) { return; }
+    this.emit({ t: 'fleet-diff', trees });
   }
 
   /**

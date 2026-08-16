@@ -52,6 +52,7 @@ function describeOutbound(m: HostToWebview): string {
     case 'usage-windows': return 'usage-windows';
     case 'bring-back-plan': return 'bring-back-plan';
     case 'stale-trees': return 'stale-trees';
+    case 'fleet-diff': return 'fleet-diff';
     default: return assertNever(m);
   }
 }
