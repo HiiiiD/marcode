@@ -132,4 +132,46 @@ suite('Attachment chips', () => {
       t: 'attach-drop', id: 'a', uris: ['file:///tmp/a.png', 'file:///tmp/b.md'],
     });
   });
+
+  test('a sent user message lists what it carried', () => {
+    renderApp();
+    sendFromHost({
+      t: 'hydrate',
+      sessions: [summary('a')],
+      layout: layoutOf('a'),
+      snapshots: [{
+        ...snapshot('a'),
+        items: [{
+          id: 'u1', ts: 1, role: 'user', text: 'look at this',
+          attachments: [att({ name: 'carried.png' })],
+        }],
+      }],
+      catalog: catalog(),
+      unavailable: [],
+      usage: {},
+    });
+
+    assert.strictEqual(screen.getByText('carried.png') !== null, true);
+  });
+
+  test('a sent message offers no way to un-attach — it is a record, not a draft', () => {
+    renderApp();
+    sendFromHost({
+      t: 'hydrate',
+      sessions: [summary('a')],
+      layout: layoutOf('a'),
+      snapshots: [{
+        ...snapshot('a'),
+        items: [{
+          id: 'u1', ts: 1, role: 'user', text: 'look at this',
+          attachments: [att({ name: 'carried.png' })],
+        }],
+      }],
+      catalog: catalog(),
+      unavailable: [],
+      usage: {},
+    });
+
+    assert.strictEqual(screen.queryAllByRole('button', { name: /remove carried\.png/i }).length, 0);
+  });
 });

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { AttachmentChip } from './attachment-chips';
 import { EditorContextChip } from './editor-context-chip';
 import { Markdown } from './markdown';
 import { PermissionCard } from './permission-card';
@@ -93,6 +94,18 @@ function UserItem({ item }: { item: Extract<TranscriptItem, { role: 'user' }> })
       <div className="wrap-break-word whitespace-pre-wrap">
         {prose}
       </div>
+      {item.attachments && item.attachments.length > 0 && (
+        // Below the prose, unlike the editor-context chip above it: context is
+        // what the message was about, attachments are what it shipped with.
+        // Read-only — a sent turn is a record, so no chip offers removal.
+        <ul aria-label="Attachments sent" className="mt-1 flex min-w-0 flex-wrap gap-1">
+          {item.attachments.map((attachment) => (
+            <li key={attachment.id}>
+              <AttachmentChip attachment={attachment} />
+            </li>
+          ))}
+        </ul>
+      )}
       {blocks.map((block, i) => (
         // Positional, not the heading alone: a heading is `kind from title`
         // and every session starts titled `Untitled`, so two references to

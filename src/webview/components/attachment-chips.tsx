@@ -18,32 +18,57 @@ export function AttachmentChips({ pane }: { pane: PaneState }) {
     >
       {pane.attachments.map((attachment) => (
         <li key={attachment.id}>
-          <span
-            className={cn(
-              'flex max-w-48 items-center gap-1 rounded-md border border-border',
-              'bg-muted py-0.5 pl-1.5 pr-0.5 text-xs',
-            )}
-            title={`${attachment.path} · ${sizeOf(attachment)}`}
-          >
-            {attachment.kind === 'image'
-              ? <ImageIcon className="size-3 shrink-0 text-muted-foreground" aria-hidden />
-              : <FileText className="size-3 shrink-0 text-muted-foreground" aria-hidden />}
-            <span className="truncate">{attachment.name}</span>
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              className="size-4 shrink-0"
-              aria-label={`Remove ${attachment.name}`}
-              onClick={() => post({
-                t: 'attach-remove', id: pane.summary.id, attachmentId: attachment.id,
-              })}
-            >
-              <X />
-            </Button>
-          </span>
+          <AttachmentChip
+            attachment={attachment}
+            onRemove={() => post({
+              t: 'attach-remove', id: pane.summary.id, attachmentId: attachment.id,
+            })}
+          />
         </li>
       ))}
     </ul>
+  );
+}
+
+/**
+ * One file, named and sized.
+ *
+ * `onRemove` is optional because the same chip serves a draft and a record: a
+ * sent turn shows what it carried and nothing about it can still be taken
+ * back, so the control is absent rather than disabled — there is no state in
+ * which it could become live again.
+ *
+ * The name truncates rather than wraps: at 300px a long filename would push
+ * the removal control off the chip, and the full path is on the title.
+ */
+export function AttachmentChip({
+  attachment, onRemove,
+}: { attachment: Attachment; onRemove?: () => void }) {
+  return (
+    <span
+      className={cn(
+        'flex max-w-48 items-center gap-1 rounded-md border border-border',
+        'bg-muted py-0.5 text-xs',
+        onRemove ? 'pl-1.5 pr-0.5' : 'px-1.5',
+      )}
+      title={`${attachment.path} · ${sizeOf(attachment)}`}
+    >
+      {attachment.kind === 'image'
+        ? <ImageIcon className="size-3 shrink-0 text-muted-foreground" aria-hidden />
+        : <FileText className="size-3 shrink-0 text-muted-foreground" aria-hidden />}
+      <span className="truncate">{attachment.name}</span>
+      {onRemove && (
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          className="size-4 shrink-0"
+          aria-label={`Remove ${attachment.name}`}
+          onClick={onRemove}
+        >
+          <X />
+        </Button>
+      )}
+    </span>
   );
 }
 
