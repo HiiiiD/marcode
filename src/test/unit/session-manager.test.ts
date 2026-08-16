@@ -831,6 +831,39 @@ suite('SessionManager', () => {
     );
   });
 
+  test('a pending question with no live request reads back as stale', async () => {
+    const a = await manager.create('fake', '/tmp');
+    const id = a.state.id;
+    provider.runs[0].emit({
+      kind: 'question', id: 'r1', blocking: true,
+      questions: [{
+        id: 'q1', header: 'H', question: 'Q?', multiSelect: false,
+        allowOther: true, secret: false,
+        options: [{ label: 'A', description: 'a' }],
+      }],
+    });
+    await settle();
+
+    // The run it belonged to dies with the process — a close() plus a fresh
+    // reveal is the same "no live entry" the item would find after a host
+    // restart, without spinning up a second SessionManager.
+    await manager.close(id);
+    sent.length = 0;
+
+    await manager.setVisible([id]);
+    const snapshot = sent.find((m) => m.t === 'session-snapshot');
+    assert.ok(snapshot);
+    const item = (snapshot as { session: { items: { role: string; state: string }[] } })
+      .session.items.at(-1);
+    assert.strictEqual(item?.role, 'question');
+    assert.strictEqual(item?.state, 'stale');
+
+    // The file is not rewritten — the JSONL keeps what was written.
+    const jsonl = await fs.readFile(path.join(dir, 'sessions', `${id}.jsonl`), 'utf8');
+    assert.strictEqual(jsonl.includes('"state":"pending"'), true);
+    assert.strictEqual(jsonl.includes('"state":"stale"'), false);
+  });
+
   test('creating a session probes its cwd and emits the catalog to a visible pane', async () => {
     const { manager, provider, emitted } = await makeManager();
     provider.invocables = [{ name: 'init' }];

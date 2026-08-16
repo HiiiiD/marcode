@@ -15,6 +15,7 @@ import { findModel, resolveEffort } from '../shared/model-catalog';
 import { threadKey } from '../shared/thread-key';
 import { claimedPaths } from './claim-paths';
 import { profileNoiseIn } from './profile-noise';
+import { persistableAnswers } from './question-persistence';
 import type { TranscriptStore } from './transcript-store';
 import { detectWorktreeAdd } from './worktree-detect';
 
@@ -474,13 +475,22 @@ export class AgentSession {
     this.recomputeWaitingStatus();
   }
 
-  /** Replaces a parked question's transcript item with its settled state. */
+  /**
+   * Replaces a parked question's transcript item with its settled state.
+   *
+   * `answers` is the caller's unredacted set — `answerQuestion` still sends
+   * that one to `run.respondToQuestion` — and is redacted here, against this
+   * request's own `QuestionSpec[]`, before it ever reaches `replaceItem` or
+   * `this.store`. Getting the two the wrong way round either leaks a secret
+   * onto disk or answers the agent with an empty value.
+   */
   private replaceQuestionItem(
     requestId: string, state: 'answered' | 'cancelled', answers?: QuestionAnswers,
   ): void {
     const existing = this.questionItems.get(requestId);
     if (!existing || existing.role !== 'question') { return; }
-    const settled: TranscriptItem = { ...existing, state, ...(answers ? { answers } : {}) };
+    const persisted = answers ? persistableAnswers(existing.questions, answers) : undefined;
+    const settled: TranscriptItem = { ...existing, state, ...(persisted ? { answers: persisted } : {}) };
     this.replaceItem(settled);
     this.questionItems.set(requestId, settled);
   }

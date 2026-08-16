@@ -1044,4 +1044,37 @@ suite('AgentSession questions', () => {
     assert.strictEqual((perm2 as { state: string }).state, 'denied', 'the click is a no-op');
     await session.dispose();
   });
+
+  test("a secret answer's value never reaches the transcript file", async () => {
+    const { session, provider } = sessionWith();
+    const SECRET_SPEC = {
+      id: 'q1', header: 'Token', question: 'API token?', multiSelect: false,
+      allowOther: true, secret: true,
+    };
+    provider.runs[0].emit({ kind: 'question', id: 'r1', blocking: true, questions: [SECRET_SPEC] });
+    await settle();
+
+    session.answerQuestion('r1', { q1: ['sk-super-secret-value'] });
+    await settle();
+    await session.snapshot(); // forces a flush
+
+    const jsonl = await fs.readFile(path.join(dir, 'sessions', 's1.jsonl'), 'utf8');
+    assert.strictEqual(jsonl.includes('sk-super-secret-value'), false);
+    assert.strictEqual(jsonl.includes('"state":"answered"'), true);
+    await session.dispose();
+  });
+
+  test('a non-secret answer is persisted in full', async () => {
+    const { session, provider } = sessionWith();
+    provider.runs[0].emit({ kind: 'question', id: 'r1', blocking: true, questions: [QUESTION_SPEC] });
+    await settle();
+
+    session.answerQuestion('r1', { q1: ['A'] });
+    await settle();
+    await session.snapshot(); // forces a flush
+
+    const jsonl = await fs.readFile(path.join(dir, 'sessions', 's1.jsonl'), 'utf8');
+    assert.strictEqual(jsonl.includes('"q1":["A"]'), true);
+    await session.dispose();
+  });
 });

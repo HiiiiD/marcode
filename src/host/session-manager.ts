@@ -524,7 +524,8 @@ export class SessionManager implements SessionSink {
 
   /**
    * The one place a whole transcript is handed to the webview, and therefore
-   * the one place a stale `queued` offer has to be caught.
+   * the one place a stale `queued` relocation offer or a stale `pending`
+   * question has to be caught.
    *
    * `queuedMoves` lives in memory; the transcript lives on disk. A reload
    * leaves items promising a move nothing is left to perform, and a promise
@@ -536,6 +537,13 @@ export class SessionManager implements SessionSink {
    * `set-visible` for every restored pane, and `SessionManager.visible` starts
    * empty after a reload, so each of those panes passes through here.
    *
+   * A parked question follows the same shape but the opposite direction: a
+   * relocation offer is reopened and the correction *is* persisted (the move
+   * is still there to answer); a question whose request died with the last
+   * host process can never be answered, so it is read as `stale` without
+   * ever touching the store — the JSONL keeps the `pending` it was written
+   * with.
+   *
    * Deliberately over the items already read rather than a fresh store scan:
    * a reveal is on the critical path of showing a pane, and a second read of
    * the same transcript to answer a question the first read already answered
@@ -545,20 +553,32 @@ export class SessionManager implements SessionSink {
     const queued = this.queuedMoves.get(id);
     let items = snapshot.items;
     let reopenedAny = false;
+    let staleAny = false;
     for (const [at, item] of items.entries()) {
-      if (item.role !== 'relocation' || item.state !== 'queued') { continue; }
-      if (item.id === queued) { continue; }
-      const reopened: TranscriptItem = { ...item, state: 'pending' };
-      // The store too, not just the copy going out: `load-more` pages
-      // straight out of it, and so does the next launch.
-      this.store.replace(id, reopened);
-      if (items === snapshot.items) { items = [...items]; }
-      items[at] = reopened;
-      reopenedAny = true;
+      if (item.role === 'relocation' && item.state === 'queued' && item.id !== queued) {
+        const reopened: TranscriptItem = { ...item, state: 'pending' };
+        // The store too, not just the copy going out: `load-more` pages
+        // straight out of it, and so does the next launch.
+        this.store.replace(id, reopened);
+        if (items === snapshot.items) { items = [...items]; }
+        items[at] = reopened;
+        reopenedAny = true;
+        continue;
+      }
+      // A question parked in a previous host process. The SDK call it belonged
+      // to died with that process, so it can never be answered — but the file
+      // is not rewritten, exactly as for relocation: the JSONL keeps what was
+      // written and the restart-dependent reading is applied here.
+      if (item.role === 'question' && item.state === 'pending'
+          && !snapshot.pendingQuestions.some((q) => q.requestId === item.requestId)) {
+        if (items === snapshot.items) { items = [...items]; }
+        items[at] = { ...item, state: 'stale' as const };
+        staleAny = true;
+      }
     }
     this.emit({
       t: 'session-snapshot',
-      session: reopenedAny ? { ...snapshot, items } : snapshot,
+      session: (reopenedAny || staleAny) ? { ...snapshot, items } : snapshot,
     });
     // An archived session has no AgentSession to schedule a flush, so the
     // correction is pushed to disk here. Fire-and-forget and swallowed: this
