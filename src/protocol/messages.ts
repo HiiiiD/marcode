@@ -114,6 +114,17 @@ export interface SessionState {
    * the one path that knows whether it came from a live query or the cache.
    */
   lastContext?: ContextBreakdown;
+  /**
+   * A message the user sent while the turn was still running, parked until
+   * the session next goes idle — whether the turn ended on its own or the
+   * user interrupted it. At most one: a second send while one is parked
+   * replaces it, so what the composer shows is always what will be sent.
+   *
+   * Host state on the wire so the chip survives a reload like everything
+   * else. The editor context captured alongside it stays host-side: it is
+   * only ever handed to the provider, and the webview has no use for it.
+   */
+  queued?: { text: string; refs?: SessionRef[] };
   archived: boolean;
   createdAt: number;
   updatedAt: number;
@@ -247,6 +258,8 @@ export type WebviewToHost =
   | { t: 'delete-session'; id: SessionId }
   | { t: 'send'; id: SessionId; text: string; refs?: SessionRef[] }
   | { t: 'interrupt'; id: SessionId }
+  /** Drops `SessionState.queued`. Nothing was appended, so nothing is undone. */
+  | { t: 'cancel-queued'; id: SessionId }
   | { t: 'set-effort'; id: SessionId; effort: EffortLevel }
   | { t: 'set-permission-mode'; id: SessionId; mode: PermissionMode }
   | { t: 'set-include-context'; id: SessionId; on: boolean }

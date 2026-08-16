@@ -1,7 +1,8 @@
 import { Button } from "@/components/ui/button";
 import { InputGroup, InputGroupAddon, InputGroupTextarea } from "@/components/ui/input-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { SendHorizontal, Square, TriangleAlert } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { Clock, SendHorizontal, Square, TriangleAlert, X } from "lucide-react";
 import { useRef, useState } from "react";
 import type { Invocable, ModelInfo } from "../../protocol/messages";
 import { interceptFor } from "../lib/intercepts";
@@ -73,6 +74,8 @@ export function Composer({
   // the same sentence rather than repeating it sr-only per control.
   const unavailableReasonId = `provider-reason-${pane.summary.id}`;
   const readOnly = unavailableReason !== undefined;
+  /** The message the host has parked, if any. Host state — never local. */
+  const queued = pane.summary.queued;
   // Same session-scoping rationale again, for the `/` control's
   // disabled-over-a-draft reason.
   const invocablesReasonId = `invocables-reason-${pane.summary.id}`;
@@ -217,6 +220,31 @@ export function Composer({
           <span>{unavailableReason}</span>
         </p>
       )}
+      {queued && (
+        // Above the box, in flow, for the same reason the unavailable notice
+        // is: it explains something about the *next* send, so it has to read
+        // before the box rather than after it. One line, clamped — the pane
+        // is 300px wide and the message is already the user's own words.
+        <div
+          className={cn(
+            "mb-1.5 flex items-center gap-1.5 rounded-md border border-border",
+            "bg-muted/40 py-1 pl-2 pr-1 text-xs text-muted-foreground",
+          )}
+        >
+          <Clock className="size-3.5 shrink-0" aria-hidden />
+          <span className="sr-only">Queued, sent when the turn ends:</span>
+          <span className="min-w-0 flex-1 truncate text-foreground">{queued.text}</span>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            onClick={() => post({ t: "cancel-queued", id: pane.summary.id })}
+            aria-label="Cancel queued message"
+            title="Cancel queued message"
+          >
+            <X />
+          </Button>
+        </div>
+      )}
       <InputGroup>
         {menu.open && (
           // A block-start addon, not a popover: the list sits above the box in
@@ -274,11 +302,13 @@ export function Composer({
             if (!composingEnter && (refMenu.handleKeyDown(e) || menu.handleKeyDown(e))) {
               return;
             }
+            // Sent during a run too: the host parks it and spends it at the
+            // turn boundary, so the user never has to hold the next
+            // instruction in their head — or in an unsent box — while the
+            // agent works.
             if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault();
-              if (!running) {
-                submit();
-              }
+              submit();
             }
           }}
           // The `@` hint rides the placeholder: `/` has a persistent trigger
@@ -409,36 +439,38 @@ export function Composer({
           <Button
             size="icon-sm"
             onClick={submit}
-            // Disabled-with-a-reason rather than unmounted: swapping Send out
-            // for Stop makes the row jump and leaves a user who has typed the
-            // next instruction with no explanation of where Send went.
-            disabled={running || readOnly || !text.trim()}
+            // Live during a run: the message is parked by the host, not
+            // dropped, so there is nothing to disable. Only a dead provider or
+            // an empty box does that.
+            disabled={readOnly || !text.trim()}
             aria-label="Send"
             // Icon-only control: the hover title is a discoverability aid for
             // sighted mouse/keyboard users, not the accessible name (that's
-            // aria-label above). There are two disabled states here, not
-            // one — `running` and an empty box — so the title can't just key
-            // off `running`: doing that left `title="Send message"` sitting
-            // on a disabled, empty composer, which is actively misleading
-            // since clicking does nothing. Set only when the button is
-            // actually clickable; the running case gets its explanatory
-            // reason via `aria-describedby` instead, matching the other
-            // disabled-with-a-reason sites in this file and
-            // session-header.tsx/session-picker.tsx — a `title` on a
-            // disabled element is reachable by neither keyboard focus nor
-            // most screen readers, since disabled elements are pulled out of
-            // both.
+            // aria-label above). Set only when the button is actually
+            // clickable — `title="Send message"` on a disabled, empty
+            // composer is actively misleading since clicking does nothing —
+            // and it says *when* the message goes out while a turn is in
+            // flight, which is the one thing that differs from the idle case.
+            // The same sentence reaches assistive tech through
+            // `aria-describedby`, not `title`: a `title` on a disabled
+            // element is reachable by neither keyboard focus nor most screen
+            // readers, matching the other disabled-with-a-reason sites in
+            // this file and session-header.tsx/session-picker.tsx.
             aria-describedby={readOnly ? unavailableReasonId : running ? sendReasonId : undefined}
-            title={!running && text.trim() ? "Send message" : undefined}
+            title={
+              readOnly || !text.trim()
+                ? undefined
+                : running ? "Send when the turn ends" : "Send message"
+            }
           >
             <SendHorizontal />
           </Button>
           {running && (
-            // sr-only rather than visible: the row has no room for a
-            // sentence next to the settings and the Stop/Send buttons, and
-            // Send is already visibly disabled.
+            // sr-only rather than visible: the row has no room for a sentence
+            // next to the settings and the Stop/Send buttons, and the queued
+            // row above says the same thing visually the moment it applies.
             <span id={sendReasonId} className="sr-only">
-              The agent is working. Stop it to send another message.
+              The agent is working. This message is sent when the turn ends, or as soon as you stop it.
             </span>
           )}
           <ContextRing pane={pane} open={contextOpen} onOpenChange={setContextOpen} />

@@ -102,6 +102,13 @@ export class AgentSession {
   /** Permission request id -> the provider tool id of the subagent it nests under. */
   private permissionChildOf = new Map<string, string>();
   private pumping: Promise<void>;
+  /**
+   * The editor context captured when the parked message was typed, not when
+   * it is finally sent: the user attached the file they were looking at
+   * mid-turn, and re-reading the editor minutes later would attach a
+   * different one.
+   */
+  private queuedContext: EditorContext | undefined;
   private disposed = false;
   /**
    * TranscriptStore.flush() is not safe to call concurrently for the same
@@ -207,7 +214,55 @@ export class AgentSession {
   // flush could lose the item to the rebuild. Handoff's callers do not await
   // it, which is harmless — `scheduleFlush` never rejects.
 
+  /** A turn is in flight, so a send would have to interleave with it. */
+  private get busy(): boolean {
+    return this._state.status === 'running' || this._state.status === 'awaiting-approval';
+  }
+
+  /**
+   * Sends, or parks the message until the turn in flight is over.
+   *
+   * Draining first is what makes the order first-in-first-out: a session sent
+   * to while it is idle *and* holding a parked message — which is where an
+   * errored turn leaves it — sends the parked one and parks the new one
+   * behind it, rather than overwriting words the user already committed to.
+   */
   send(text: string, context?: EditorContext, refs?: SessionRef[]): void {
+    if (!this.busy) { this.drainQueued(); }
+    if (this.busy) {
+      this._state.queued = { text, ...(refs && refs.length > 0 ? { refs } : {}) };
+      this.queuedContext = context;
+      this._state.updatedAt = Date.now();
+      this.sink.changed();
+      return;
+    }
+    this.deliver(text, context, refs);
+  }
+
+  /** Drops the parked message. Nothing was ever appended, so nothing is undone. */
+  cancelQueued(): void {
+    if (!this._state.queued) { return; }
+    this._state.queued = undefined;
+    this.queuedContext = undefined;
+    this._state.updatedAt = Date.now();
+    this.sink.changed();
+  }
+
+  /**
+   * Spends the parked message if the session can take one now. Called at the
+   * turn boundary and before any fresh send; a no-op when there is nothing
+   * parked or the session is still busy.
+   */
+  private drainQueued(): void {
+    const queued = this._state.queued;
+    if (!queued || this.busy) { return; }
+    const context = this.queuedContext;
+    this._state.queued = undefined;
+    this.queuedContext = undefined;
+    this.deliver(queued.text, context, queued.refs);
+  }
+
+  private deliver(text: string, context?: EditorContext, refs?: SessionRef[]): void {
     if (this._state.title === 'Untitled' && text.trim().length > 0) {
       this._state.title = text.trim().slice(0, TITLE_MAX);
     }
@@ -642,6 +697,11 @@ export class AgentSession {
           // only sign anything is waiting, with the status dot claiming
           // otherwise.
           this.setStatus(this.pending.size > 0 ? 'awaiting-approval' : 'idle');
+          // After the status, never before: drainQueued() only fires once the
+          // session is genuinely idle, and an interrupted turn reaches here
+          // the same way a completed one does — which is what makes Stop a
+          // way to send the parked message now.
+          this.drainQueued();
           void this.scheduleFlush();
           void this.refreshContextPercent();
           void this.refreshUsage();

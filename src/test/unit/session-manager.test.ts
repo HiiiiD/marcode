@@ -67,6 +67,36 @@ suite('SessionManager', () => {
     return { manager: mmanager, provider, emitted, store: mstore };
   }
 
+  test('a message parked mid-turn does not survive a reload', async () => {
+    // Its own silent provider: the suite's script ends the turn on the spot,
+    // so nothing there is ever busy long enough to park a message.
+    const sdir = await fs.mkdtemp(path.join(os.tmpdir(), 'hiiiid-manager-'));
+    const silent = new FakeProvider();
+    const first = new SessionManager(
+      new TranscriptStore(sdir), new Map<string, AgentProvider>([['fake', silent]]), () => { },
+    );
+    await first.init();
+    const session = await first.create('fake', '/tmp');
+    session!.send('first');
+    await settle();
+    session!.send('parked');
+    await settle();
+    assert.strictEqual(session!.state.queued?.text, 'parked');
+    await first.dispose();
+
+    const second = new SessionManager(
+      new TranscriptStore(sdir), new Map<string, AgentProvider>([['fake', new FakeProvider()]]),
+      () => { },
+    );
+    await second.init();
+    extra.push({ manager: second, dir: sdir });
+
+    assert.strictEqual(
+      second.summaries()[0].queued, undefined,
+      'the editor context it was typed against is gone, and there is no turn left to wait for',
+    );
+  });
+
   test('a session reporting shell-profile noise reaches the host callback', async () => {
     // The manager is `vscode`-free, so the advice has to leave through an
     // injected callback — `extension.ts` is what turns it into a notification.

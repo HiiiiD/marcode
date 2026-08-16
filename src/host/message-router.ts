@@ -178,6 +178,11 @@ export class MessageRouter {
         await this.manager.get(msg.id)?.interrupt();
         return;
 
+      // No `reopen`: only a live session can be holding a parked message.
+      case 'cancel-queued':
+        this.manager.get(msg.id)?.cancelQueued();
+        return;
+
       case 'set-effort': {
         const session = this.manager.get(msg.id) ?? await this.reopen(msg.id);
         session?.setEffort(msg.effort);
@@ -291,7 +296,8 @@ export class MessageRouter {
 
 const KNOWN_MESSAGE_TAGS = new Set<WebviewToHost['t']>([
   'ready', 'create-session', 'set-visible', 'set-layout', 'close-session',
-  'delete-session', 'send', 'interrupt', 'set-effort', 'set-permission-mode',
+  'delete-session', 'send', 'interrupt', 'cancel-queued',
+  'set-effort', 'set-permission-mode',
   'set-model', 'permission-decision', 'load-more',
   'answer-relocation', 'cancel-relocation',
   'set-include-context', 'reveal-file',

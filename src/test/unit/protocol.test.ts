@@ -17,6 +17,7 @@ function describeInbound(m: WebviewToHost): string {
     case 'delete-session': return 'delete-session';
     case 'send': return 'send';
     case 'interrupt': return 'interrupt';
+    case 'cancel-queued': return 'cancel-queued';
     case 'set-effort': return 'set-effort';
     case 'set-permission-mode': return 'set-permission-mode';
     case 'set-include-context': return 'set-include-context';

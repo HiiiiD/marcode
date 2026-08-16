@@ -156,6 +156,12 @@ export class SessionManager implements SessionSink {
       this.meta.set(state.id, {
         ...state,
         status: 'idle',
+        // Dropped for the same reason `status` is reset: a parked message
+        // waits on a turn this process never started, and the editor context
+        // it was typed against lived only in the session that is now gone.
+        // Restoring the words without the attachment would send something
+        // other than what the user committed to.
+        queued: undefined,
         includeEditorContext: state.includeEditorContext ?? true,
         // An index written before this field existed still passes the version
         // guard — `TRANSCRIPT_VERSION` did not move for it — so a restored

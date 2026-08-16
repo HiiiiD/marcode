@@ -103,6 +103,39 @@ suite('MessageRouter', () => {
     assert.ok(true, 'no exception escaped the router');
   });
 
+  test('cancel-queued drops the message a send parked mid-turn', async () => {
+    // Its own provider: the suite's default script ends every turn on the
+    // spot, so a session over it is never busy long enough to park anything.
+    const silent = new FakeProvider();
+    const quiet = new SessionManager(
+      new TranscriptStore(dir), new Map<string, AgentProvider>([['fake', silent]]),
+      (m) => sent.push(m),
+    );
+    await quiet.init();
+    const quietRouter = new MessageRouter(quiet, (m) => sent.push(m), '/tmp');
+    await quietRouter.handle({ t: 'create-session', providerId: 'fake', cwd: '/tmp' });
+    const id = quiet.summaries()[0].id;
+
+    await quietRouter.handle({ t: 'send', id, text: 'first' });
+    await settle();
+    await quietRouter.handle({ t: 'send', id, text: 'second' });
+    await settle();
+    assert.strictEqual(quiet.get(id)!.state.queued?.text, 'second');
+
+    await quietRouter.handle({ t: 'cancel-queued', id });
+    assert.strictEqual(quiet.get(id)!.state.queued, undefined);
+
+    silent.runs[0].emit({ kind: 'turn-end', reason: 'done' });
+    await settle();
+    assert.deepStrictEqual(silent.sent.map((s) => s.text), ['first']);
+    await quiet.dispose();
+  });
+
+  test('cancel-queued for an unknown session id is ignored rather than thrown', async () => {
+    await router.handle({ t: 'cancel-queued', id: 'nope' });
+    assert.ok(true, 'no exception escaped the router');
+  });
+
   test('create-session with an unknown providerId is ignored rather than thrown', async () => {
     await router.handle({ t: 'create-session', providerId: 'nope-provider', cwd: '/tmp' });
     assert.strictEqual(manager.summaries().length, 0);
