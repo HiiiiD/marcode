@@ -1,4 +1,4 @@
-import type { QuestionAnswers, QuestionSpec } from '../types';
+import type { PermissionMeta, QuestionAnswers, QuestionSpec } from '../types';
 
 /**
  * `AskUserQuestion`'s input -> neutral specs, or undefined when the payload
@@ -52,4 +52,23 @@ export function toSdkAnswers(answers: QuestionAnswers): Record<string, string> {
   const out: Record<string, string> = {};
   for (const [id, values] of Object.entries(answers)) { out[id] = values.join(', '); }
   return out;
+}
+
+/**
+ * The permission engine's own account of a request. Everything here is
+ * already rendered by the bridge — the SDK says to prefer `title` over
+ * reconstructing a sentence from toolName+input. Returns undefined rather
+ * than an empty object so the event omits the key entirely.
+ */
+export function toPermissionMeta(options: {
+  title?: string; displayName?: string; description?: string;
+  decisionReason?: string; blockedPath?: string;
+}): PermissionMeta | undefined {
+  const meta: PermissionMeta = {};
+  if (options.title !== undefined) { meta.title = options.title; }
+  if (options.displayName !== undefined) { meta.displayName = options.displayName; }
+  if (options.description !== undefined) { meta.description = options.description; }
+  if (options.decisionReason !== undefined) { meta.decisionReason = options.decisionReason; }
+  if (options.blockedPath !== undefined) { meta.blockedPath = options.blockedPath; }
+  return Object.keys(meta).length > 0 ? meta : undefined;
 }

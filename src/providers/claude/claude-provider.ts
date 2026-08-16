@@ -129,7 +129,7 @@ import type {
 import { toInvocables } from './map-commands';
 import { toContextBreakdown, toUsageWindows, type ContextUsageLike, type UsageResponseLike } from './map-context';
 import { mapEvent } from './map-events';
-import { toQuestionSpecs, toSdkAnswers } from './map-questions';
+import { toPermissionMeta, toQuestionSpecs, toSdkAnswers } from './map-questions';
 import { toToolCall } from './map-tools';
 import { redactSecrets } from './redact';
 
@@ -435,7 +435,8 @@ export class ClaudeProvider implements AgentProvider {
         if (answers === CANCELLED) { return { behavior: 'deny', message: 'Turn cancelled' }; }
         return { behavior: 'allow', updatedInput: { ...input, answers: toSdkAnswers(answers) } };
       }
-      events.push({ kind: 'permission', id, tool: toToolCall(toolName, input) });
+      const meta = toPermissionMeta(options);
+      events.push({ kind: 'permission', id, tool: toToolCall(toolName, input), ...(meta ? { meta } : {}) });
       const decision = await new Promise<ToolDecision>((resolve) => {
         parked.set(id, { kind: 'permission', resolve });
       });

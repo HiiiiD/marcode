@@ -983,3 +983,77 @@ suite('ClaudeProvider (cancellation)', () => {
     assert.strictEqual(events().filter((e) => e.kind === 'request-cancelled').length, 1);
   });
 });
+
+suite('ClaudeProvider permission metadata', () => {
+  /** Helper to yield control so microtasks can execute (specifically permission calls). */
+  async function tick() {
+    await Promise.resolve();
+    await Promise.resolve();
+  }
+
+  test('a permission event carries the bridge-rendered title and reason', async () => {
+    const fake = fakeLoadQuery();
+    const provider = new ClaudeProvider(fake.load as never);
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+    run.send('hi');
+    await tick();
+
+    const canUseTool = fake.calls[0].options.canUseTool as never as (
+      toolName: string,
+      input: unknown,
+      options: Record<string, unknown>,
+    ) => Promise<{ behavior: string } | null>;
+
+    const permissionPromise = canUseTool('Read', { file_path: '/tmp/a' }, {
+      toolUseID: 't1', signal: new AbortController().signal, requestId: 'rq1',
+      title: 'Claude wants to read a.txt', displayName: 'Read file',
+      description: 'Read access to /tmp', decisionReason: 'outside allowed directories',
+      blockedPath: '/tmp/a',
+    });
+    await tick();
+
+    // Drain available events to find the permission event
+    const events = await drainAvailableEvents(run);
+    const p = events.find((e) => e.kind === 'permission');
+    assert.strictEqual(p?.kind, 'permission');
+    assert.strictEqual((p as any)?.meta?.title, 'Claude wants to read a.txt');
+    assert.strictEqual((p as any)?.meta?.decisionReason, 'outside allowed directories');
+    assert.strictEqual((p as any)?.meta?.blockedPath, '/tmp/a');
+
+    // Respond to the permission to unblock
+    run.respondToTool('t1', { allow: true });
+    await tick();
+    await permissionPromise;
+    await run.dispose();
+  });
+
+  test('a permission event omits meta entirely when the bridge sends none', async () => {
+    const fake = fakeLoadQuery();
+    const provider = new ClaudeProvider(fake.load as never);
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+    run.send('hi');
+    await tick();
+
+    const canUseTool = fake.calls[0].options.canUseTool as never as (
+      toolName: string,
+      input: unknown,
+      options: Record<string, unknown>,
+    ) => Promise<{ behavior: string } | null>;
+
+    const permissionPromise = canUseTool('Read', { file_path: '/tmp/a' },
+      { toolUseID: 't1', signal: new AbortController().signal, requestId: 'rq1' });
+    await tick();
+
+    // Drain available events to find the permission event
+    const events = await drainAvailableEvents(run);
+    const p = events.find((e) => e.kind === 'permission');
+    assert.strictEqual(p?.kind, 'permission');
+    assert.strictEqual((p as any)?.meta === undefined, true);
+
+    // Respond to the permission to unblock
+    run.respondToTool('t1', { allow: true });
+    await tick();
+    await permissionPromise;
+    await run.dispose();
+  });
+});
