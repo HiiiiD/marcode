@@ -124,11 +124,12 @@ import type {
   ContextBreakdown,
   EditorContext,
   EffortLevel, Invocable, ModelInfo, PermissionMode, PermissionModeInfo,
-  StartOptions, ThreadScope, ToolDecision, UsageWindow,
+  QuestionAnswers, StartOptions, ThreadScope, ToolDecision, UsageWindow,
 } from '../types';
 import { toInvocables } from './map-commands';
 import { toContextBreakdown, toUsageWindows, type ContextUsageLike, type UsageResponseLike } from './map-context';
 import { mapEvent } from './map-events';
+import { toQuestionSpecs, toSdkAnswers } from './map-questions';
 import { toToolCall } from './map-tools';
 import { redactSecrets } from './redact';
 
@@ -373,7 +374,10 @@ export class ClaudeProvider implements AgentProvider {
   start(opts: StartOptions): AgentRun {
     const events = new Channel<AgentEvent>();
     const prompts = new Channel<SDKUserMessage>();
-    const approvals = new Map<string, (decision: ToolDecision) => void>();
+    type Parked =
+      | { kind: 'permission'; resolve: (decision: ToolDecision) => void }
+      | { kind: 'question'; input: Record<string, unknown>; resolve: (answers: QuestionAnswers) => void };
+    const parked = new Map<string, Parked>();
     let disposed = false;
     let started = false;
     let queryRef: Query | undefined;
@@ -402,9 +406,17 @@ export class ClaudeProvider implements AgentProvider {
 
     const canUseTool: CanUseTool = async (toolName, input, options) => {
       const id = options.toolUseID;
+      const specs = toolName === 'AskUserQuestion' ? toQuestionSpecs(input) : undefined;
+      if (specs) {
+        events.push({ kind: 'question', id, questions: specs, blocking: true });
+        const answers = await new Promise<QuestionAnswers>((resolve) => {
+          parked.set(id, { kind: 'question', input, resolve });
+        });
+        return { behavior: 'allow', updatedInput: { ...input, answers: toSdkAnswers(answers) } };
+      }
       events.push({ kind: 'permission', id, tool: toToolCall(toolName, input) });
       const decision = await new Promise<ToolDecision>((resolve) => {
-        approvals.set(id, resolve);
+        parked.set(id, { kind: 'permission', resolve });
       });
       return decision.allow
         ? { behavior: 'allow' }
@@ -529,10 +541,13 @@ export class ClaudeProvider implements AgentProvider {
         });
       },
       respondToTool: (id, decision) => {
-        const resolve = approvals.get(id);
-        if (resolve) { approvals.delete(id); resolve(decision); }
+        const entry = parked.get(id);
+        if (entry?.kind === 'permission') { parked.delete(id); entry.resolve(decision); }
       },
-      respondToQuestion: () => { /* replaced in Tasks 3 and 6 */ },
+      respondToQuestion: (id, answers) => {
+        const entry = parked.get(id);
+        if (entry?.kind === 'question') { parked.delete(id); entry.resolve(answers); }
+      },
       setEffort: (next: EffortLevel) => {
         // `next` arrives unvalidated: the wire type (`set-effort`'s `effort`
         // field) carries the shared `EffortLevel` union with nothing tying a
@@ -648,10 +663,11 @@ export class ClaudeProvider implements AgentProvider {
       dispose: async () => {
         if (disposed) { return; }
         disposed = true;
-        for (const [, resolve] of approvals) {
-          resolve({ allow: false, reason: 'Session closed' });
+        for (const [, entry] of parked) {
+          if (entry.kind === 'permission') { entry.resolve({ allow: false, reason: 'Session closed' }); }
+          else { entry.resolve({}); }
         }
-        approvals.clear();
+        parked.clear();
         prompts.close();
         try {
           queryRef?.close();

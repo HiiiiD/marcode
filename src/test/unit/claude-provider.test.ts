@@ -2,6 +2,13 @@ import * as assert from 'assert';
 import { ClaudeProvider } from '../../providers/claude/claude-provider';
 import type { AgentEvent } from '../../providers/types';
 
+/** The subset of the SDK's real `CanUseTool` signature these tests drive directly. */
+type CanUseToolLike = (
+  toolName: string,
+  input: Record<string, unknown>,
+  options: { toolUseID: string; signal: AbortSignal; requestId: string },
+) => Promise<unknown>;
+
 /** A server-status shape matching the SDK's `Query.mcpServerStatus()` return type. */
 type FakeSdkServerStatus = {
   name: string;
@@ -117,6 +124,26 @@ async function drainAvailableEvents(run: { events: AsyncIterable<AgentEvent> }):
 async function flushMicrotasks() {
   await Promise.resolve();
   await Promise.resolve();
+}
+
+/**
+ * Subscribes to `run.events` immediately and returns a getter for everything
+ * received so far. Needed for the question tests below because they invoke
+ * `canUseTool` directly rather than driving it through the fake query, so
+ * events must be captured as they arrive rather than pulled after the fact
+ * (as `drainAvailableEvents` does).
+ */
+function collect(run: { events: AsyncIterable<AgentEvent> }): () => AgentEvent[] {
+  const out: AgentEvent[] = [];
+  void (async () => {
+    for await (const e of run.events) { out.push(e); }
+  })();
+  return () => out;
+}
+
+/** Flushes microtasks and one macrotask — enough for a Channel push to reach an async-iterating consumer. */
+async function tick(): Promise<void> {
+  await flushMacrotask();
 }
 
 suite('ClaudeProvider (lazy start)', () => {
@@ -824,5 +851,78 @@ suite('ClaudeProvider mcpServerStatus pull', () => {
 
     await assert.rejects(() => provider.fetchModels('/repo'), /control request failed/);
     assert.strictEqual(closed, true);
+  });
+});
+
+suite('ClaudeProvider (questions)', () => {
+  test('AskUserQuestion emits a question event rather than a permission', async () => {
+    const fake = fakeLoadQuery();
+    const provider = new ClaudeProvider(fake.load as never);
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+    const events = collect(run);
+    run.send('hi');
+    await tick();
+
+    const canUseTool = fake.calls[0].options.canUseTool as CanUseToolLike;
+    void canUseTool('AskUserQuestion', {
+      questions: [{
+        header: 'Scope', question: 'Which one?', multiSelect: false,
+        options: [{ label: 'A', description: 'first' }, { label: 'B', description: 'second' }],
+      }],
+    }, { toolUseID: 't1', signal: new AbortController().signal, requestId: 'rq1' });
+    await tick();
+
+    const q = events().find((e) => e.kind === 'question');
+    assert.strictEqual(q?.kind, 'question');
+    assert.ok(q && q.kind === 'question');
+    assert.strictEqual(q.blocking, true);
+    assert.strictEqual(q.questions.length, 1);
+    assert.strictEqual(q.questions[0].id, 'Which one?');
+    assert.strictEqual(q.questions[0].allowOther, true);
+    assert.strictEqual(q.questions[0].secret, false);
+    assert.strictEqual(q.questions[0].options?.length, 2);
+    assert.strictEqual(events().some((e) => e.kind === 'permission'), false);
+  });
+
+  test('respondToQuestion resolves with answers spread over the original input', async () => {
+    const fake = fakeLoadQuery();
+    const provider = new ClaudeProvider(fake.load as never);
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+    collect(run);
+    run.send('hi');
+    await tick();
+
+    const canUseTool = fake.calls[0].options.canUseTool as CanUseToolLike;
+    const input = {
+      questions: [{
+        header: 'Scope', question: 'Which one?', multiSelect: true,
+        options: [{ label: 'A', description: 'first' }, { label: 'B', description: 'second' }],
+      }],
+    };
+    const decision = canUseTool('AskUserQuestion', input,
+      { toolUseID: 't1', signal: new AbortController().signal, requestId: 'rq1' });
+    run.respondToQuestion('t1', { 'Which one?': ['A', 'B'] });
+
+    assert.deepStrictEqual(await decision, {
+      behavior: 'allow',
+      updatedInput: { ...input, answers: { 'Which one?': 'A, B' } },
+    });
+  });
+
+  test('a malformed questions payload degrades to a permission card', async () => {
+    const fake = fakeLoadQuery();
+    const provider = new ClaudeProvider(fake.load as never);
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+    const events = collect(run);
+    run.send('hi');
+    await tick();
+
+    const canUseTool = fake.calls[0].options.canUseTool as CanUseToolLike;
+    void canUseTool('AskUserQuestion', { questions: 'not an array' },
+      { toolUseID: 't1', signal: new AbortController().signal, requestId: 'rq1' });
+    await tick();
+
+    assert.strictEqual(events().some((e) => e.kind === 'permission'), true);
+    assert.strictEqual(events().some((e) => e.kind === 'question'), false);
   });
 });
