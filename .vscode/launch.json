@@ -6,10 +6,15 @@
 	"version": "0.2.0",
 	"configurations": [
 		{
+			// Opens dev.code-workspace, not the folder itself: VS Code refuses to
+			// open one folder in two windows, so passing ${workspaceFolder} while
+			// the repo is already open gives an empty dev host. The workspace file
+			// is a distinct window identity over the same folder.
 			"name": "Run Extension",
 			"type": "extensionHost",
 			"request": "launch",
 			"args": [
+				"${workspaceFolder}/.vscode/dev.code-workspace",
 				"--extensionDevelopmentPath=${workspaceFolder}"
 			],
 			"outFiles": [
@@ -25,6 +30,7 @@
 			"type": "extensionHost",
 			"request": "launch",
 			"args": [
+				"${workspaceFolder}/.vscode/dev.code-workspace",
 				"--extensionDevelopmentPath=${workspaceFolder}"
 			],
 			"outFiles": [
