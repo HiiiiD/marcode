@@ -1,4 +1,4 @@
-import { Paperclip } from 'lucide-react';
+import { FileCode2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { EditorContextLabel, contextTitle, lineSpan } from './editor-context-chip';
@@ -8,6 +8,8 @@ import type { PaneState } from '../reducer';
 /**
  * Attach-or-not for the next message, and a preview of what would be
  * attached.
+ * The file glyph names the editor context; the paperclip belongs to the
+ * separate file-attachment control beside it.
  *
  * Renders nothing when there is no editor: a disabled control in a 300px
  * sidebar is a dead affordance, and the absence is unambiguous because the
@@ -44,7 +46,7 @@ export function EditorContextToggle({ pane }: { pane: PaneState }) {
       onClick={() => post({ t: 'set-include-context', id: pane.summary.id, on: !on })}
       className={cn('min-w-0 max-w-56', !on && 'text-muted-foreground')}
     >
-      <Paperclip aria-hidden="true" />
+      <FileCode2 aria-hidden="true" />
       <EditorContextLabel ctx={ctx} className="hidden @[17rem]:flex" />
     </Button>
   );

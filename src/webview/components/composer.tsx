@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { InputGroup, InputGroupAddon, InputGroupTextarea } from "@/components/ui/input-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { Clock, SendHorizontal, Square, TriangleAlert, X } from "lucide-react";
+import { Clock, Paperclip, SendHorizontal, Square, TriangleAlert, X } from "lucide-react";
 import { useRef, useState } from "react";
 import type { Invocable, ModelInfo } from "../../protocol/messages";
 import { interceptFor } from "../lib/intercepts";
@@ -15,6 +15,7 @@ import {
   sessionMentions, sessionRefsOf, type SessionMentionPayload,
 } from "../lib/session-mentions";
 import { useMentionMenu } from "../lib/use-mention-menu";
+import { base64Of, urisOf } from "../lib/read-attachment";
 import type { PaneState } from "../reducer";
 import { useStore } from "../store";
 import { ContextRing } from "./context-ring";
@@ -59,6 +60,7 @@ export function Composer({
    * rather than inside the ring.
    */
   const [contextOpen, setContextOpen] = useState(false);
+  const [dragging, setDragging] = useState(false);
   // The control has to hand focus back to the box: every key the menu answers
   // to is bound on the textarea, so a menu opened by a click that left focus
   // on the button would be unreachable by keyboard.
@@ -205,8 +207,46 @@ export function Composer({
     refMenu.reset();
   };
 
+  const attachFiles = (files: FileList | File[]) => {
+    for (const file of Array.from(files)) {
+      void base64Of(file).then((base64) => {
+        post({
+          t: 'attach-paste', id: pane.summary.id,
+          name: file.name || 'pasted-image.png',
+          mediaType: file.type || undefined,
+          base64,
+        });
+      }).catch(() => {
+        // An unreadable clipboard entry is ignored; no rejection escapes the webview.
+      });
+    }
+  };
+
   return (
-    <div className="@container p-2">
+    <div
+      className="@container p-2"
+      data-testid="composer-drop"
+      onDragOver={(event) => {
+        event.preventDefault();
+        if (!dragging) { setDragging(true); }
+      }}
+      onDragLeave={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+          setDragging(false);
+        }
+      }}
+      onDrop={(event) => {
+        event.preventDefault();
+        setDragging(false);
+        if (readOnly) { return; }
+        const uris = urisOf(event.dataTransfer);
+        if (uris.length > 0) {
+          post({ t: 'attach-drop', id: pane.summary.id, uris });
+          return;
+        }
+        if (event.dataTransfer.files.length > 0) { attachFiles(event.dataTransfer.files); }
+      }}
+    >
       {readOnly && (
         // Visible, not sr-only, unlike the other disabled-reasons in this
         // row: those explain a control the user can re-enable in a second
@@ -247,7 +287,7 @@ export function Composer({
           </Button>
         </div>
       )}
-      <InputGroup>
+      <InputGroup className={cn(dragging && 'ring-2 ring-ring')}>
         {menu.open && (
           // A block-start addon, not a popover: the list sits above the box in
           // normal flow, so there is no positioning maths, no portal, and
@@ -294,6 +334,12 @@ export function Composer({
             menu.reset();
             refMenu.reset();
           }}
+          onPaste={(event) => {
+            const files = event.clipboardData?.files;
+            if (!files || files.length === 0) { return; }
+            event.preventDefault();
+            attachFiles(files);
+          }}
           // Focus leaving the box closes both lists. A menu is an in-flow
           // block-start addon, so left open it keeps eating vertical space
           // above the composer after the user has clicked away into the
@@ -328,7 +374,7 @@ export function Composer({
           // button and `@` has nowhere else to be announced, and a second
           // button would push a control row that already wraps at 300px onto
           // another line.
-          placeholder="Message the agent… @ to reference a session"
+          placeholder="Message the agent… @ references a session, paste or drop files"
           aria-label="Message"
           disabled={readOnly}
           aria-describedby={readOnly ? unavailableReasonId : undefined}
@@ -348,6 +394,17 @@ export function Composer({
           whichever line it wraps to.
         */}
         <InputGroupAddon align="block-end" className="flex-wrap">
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            aria-label="Attach files"
+            title="Attach files"
+            disabled={readOnly}
+            aria-describedby={readOnly ? unavailableReasonId : undefined}
+            onClick={() => post({ t: 'attach-pick', id: pane.summary.id })}
+          >
+            <Paperclip />
+          </Button>
           {/*
             First in the row, ahead of the ghost hint, so the control keeps a
             fixed position: the hint is transient, and a control that slides

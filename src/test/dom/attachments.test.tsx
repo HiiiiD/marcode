@@ -1,6 +1,6 @@
 import { Composer } from '@/components/composer';
 import type { PaneState } from '@/reducer';
-import { screen } from '@testing-library/react';
+import { act, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import * as assert from 'assert';
 import type { Attachment } from '../../protocol/messages';
@@ -65,5 +65,71 @@ suite('Attachment chips', () => {
     });
 
     assert.strictEqual(screen.getByText('Attachments are limited to 10 MB.') !== null, true);
+  });
+
+  /**
+   * `window.Event`, not the ambient `Event`: the suite's jsdom lives in its own
+   * realm, so a globally-constructed event fails jsdom's own brand check on
+   * dispatch. Paste and drop carry their payload on the native event, which is
+   * why these are dispatched rather than driven through userEvent.
+   */
+  function fire(target: EventTarget, type: string, props: Record<string, unknown>) {
+    target.dispatchEvent(Object.assign(
+      new window.Event(type, { bubbles: true, cancelable: true }),
+      props,
+    ));
+  }
+
+  test('the paperclip posts attach-pick', async () => {
+    renderWithStore(<Composer pane={pane()} model={NO_EFFORT} models={[]} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Attach files' }));
+    assert.deepStrictEqual(posted().at(-1), { t: 'attach-pick', id: 'a' });
+  });
+
+  test('pasting an image posts attach-paste with its bytes', async () => {
+    renderWithStore(<Composer pane={pane()} model={NO_EFFORT} models={[]} />);
+    const box = screen.getByLabelText('Message');
+    const file = new window.File(
+      [String.fromCharCode(1, 2, 3, 4)], 'image.png', { type: 'image/png' },
+    );
+    const clipboardData = { files: [file] } as unknown as DataTransfer;
+
+    act(() => { fire(box, 'paste', { clipboardData }); });
+    await waitFor(() => {
+      assert.strictEqual(posted().at(-1)?.t, 'attach-paste');
+    });
+
+    const msg = posted().at(-1) as Extract<ReturnType<typeof posted>[number], { t: 'attach-paste' }>;
+    assert.strictEqual(msg.t, 'attach-paste');
+    assert.strictEqual(msg.id, 'a');
+    assert.strictEqual(msg.mediaType, 'image/png');
+    assert.strictEqual(msg.base64, 'AQIDBA==');
+  });
+
+  test('pasting plain text does not attach anything', async () => {
+    renderWithStore(<Composer pane={pane()} model={NO_EFFORT} models={[]} />);
+    const box = screen.getByLabelText('Message');
+    const before = posted().length;
+
+    act(() => { fire(box, 'paste', { clipboardData: { files: [] } }); });
+
+    assert.strictEqual(posted().length, before);
+  });
+
+  test('dropping files posts attach-drop with their uris', async () => {
+    const { container } = renderWithStore(<Composer pane={pane()} model={NO_EFFORT} models={[]} />);
+    const zone = container.querySelector('[data-testid="composer-drop"]') as HTMLElement;
+    const dataTransfer = {
+      files: [],
+      getData: (type: string) => type === 'text/uri-list'
+        ? 'file:///tmp/a.png\r\nfile:///tmp/b.md'
+        : '',
+    } as unknown as DataTransfer;
+
+    await act(async () => { fire(zone, 'drop', { dataTransfer }); });
+
+    assert.deepStrictEqual(posted().at(-1), {
+      t: 'attach-drop', id: 'a', uris: ['file:///tmp/a.png', 'file:///tmp/b.md'],
+    });
   });
 });
