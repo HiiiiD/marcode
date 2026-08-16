@@ -132,8 +132,14 @@ export interface SessionState {
    * Host state on the wire so the chip survives a reload like everything
    * else. The editor context captured alongside it stays host-side: it is
    * only ever handed to the provider, and the webview has no use for it.
+   *
+   * `attachments` is captured at queue time, same as `refs` — the pending
+   * set at the moment this message was parked, not whatever the live set
+   * holds when it is finally delivered. An attachment added while this is
+   * already queued belongs to the *next* turn, not this one, so it must not
+   * be read off the live set again on delivery.
    */
-  queued?: { text: string; refs?: SessionRef[] };
+  queued?: { text: string; refs?: SessionRef[]; attachments?: Attachment[] };
   archived: boolean;
   createdAt: number;
   updatedAt: number;

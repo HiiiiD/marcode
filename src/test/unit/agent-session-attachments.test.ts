@@ -6,6 +6,10 @@ function att(id: string, over: Partial<Attachment> = {}): Attachment {
   return { id, path: `/tmp/${id}.png`, name: `${id}.png`, kind: 'image', mediaType: 'image/png', bytes: 4, ...over };
 }
 
+async function settle() {
+  for (let i = 0; i < 10; i++) { await new Promise((r) => setImmediate(r)); }
+}
+
 suite('AgentSession attachments', () => {
   test('added attachments show up as pending', async () => {
     const { session } = await makeSession();
@@ -52,5 +56,54 @@ suite('AgentSession attachments', () => {
     const snap = await session.snapshot();
     const last = snap.items.at(-1);
     assert.strictEqual(last?.role === 'user' && last.attachments === undefined, true);
+  });
+
+  test('an attachment pending at queue time rides the queued message', async () => {
+    const { session, run } = await makeSession();
+    session.send('first');
+    await settle();
+    assert.strictEqual(session.state.status, 'running', 'the turn is still in flight');
+
+    session.addAttachments([att('a1')]);
+    session.send('second');
+
+    // Captured into the queued entry immediately, not left on the live set.
+    assert.strictEqual(session.pendingAttachments.length, 0);
+    assert.deepStrictEqual(session.state.queued?.attachments?.map((a) => a.id), ['a1']);
+
+    run.runs[0].emit({ kind: 'turn-end', reason: 'done' });
+    await settle();
+
+    const snap = await session.snapshot();
+    const second = snap.items.filter((i) => i.role === 'user').at(-1);
+    assert.deepStrictEqual(
+      second?.role === 'user' ? second.attachments?.map((a) => a.id) : undefined,
+      ['a1'],
+    );
+    assert.deepStrictEqual(run.sent.at(-1)?.attachments?.map((a) => a.id), ['a1']);
+  });
+
+  test('an attachment added after queueing stays pending for the next turn, not the queued one', async () => {
+    const { session, run } = await makeSession();
+    session.send('first');
+    await settle();
+
+    session.send('second');
+    // Nothing was pending at queue time.
+    assert.strictEqual(session.state.queued?.attachments, undefined);
+
+    session.addAttachments([att('a2')]);
+    // Still pending: it must not retroactively attach to the already-queued message.
+    assert.deepStrictEqual(session.pendingAttachments.map((a) => a.id), ['a2']);
+
+    run.runs[0].emit({ kind: 'turn-end', reason: 'done' });
+    await settle();
+
+    const snap = await session.snapshot();
+    const second = snap.items.filter((i) => i.role === 'user').at(-1);
+    assert.strictEqual(second?.role === 'user' && second.attachments === undefined, true);
+    assert.deepStrictEqual(run.sent.at(-1)?.attachments, undefined);
+    // Left for the next turn to drain.
+    assert.deepStrictEqual(session.pendingAttachments.map((a) => a.id), ['a2']);
   });
 });

@@ -254,13 +254,22 @@ export class AgentSession {
   send(text: string, context?: EditorContext, refs?: SessionRef[]): void {
     if (!this.busy) { this.drainQueued(); }
     if (this.busy) {
-      this._state.queued = { text, ...(refs && refs.length > 0 ? { refs } : {}) };
+      // Captured now, not at eventual delivery: the pending set belongs to
+      // the turn being composed, and this message is the turn in progress —
+      // an attachment added after this point belongs to whatever is
+      // composed next, not to the message already parked here.
+      const attachments = this.drainLiveAttachments();
+      this._state.queued = {
+        text,
+        ...(refs && refs.length > 0 ? { refs } : {}),
+        ...(attachments.length > 0 ? { attachments } : {}),
+      };
       this.queuedContext = context;
       this._state.updatedAt = Date.now();
       this.sink.changed();
       return;
     }
-    this.deliver(text, context, refs);
+    this.deliver(text, context, refs, this.drainLiveAttachments());
   }
 
   /** Drops the parked message. Nothing was ever appended, so nothing is undone. */
@@ -283,18 +292,30 @@ export class AgentSession {
     const context = this.queuedContext;
     this._state.queued = undefined;
     this.queuedContext = undefined;
-    this.deliver(queued.text, context, queued.refs);
+    // The queued attachments, captured when this message was parked — not
+    // the live set, which by now belongs to whatever the user has composed
+    // since. See `send`'s queueing branch.
+    this.deliver(queued.text, context, queued.refs, queued.attachments ?? []);
   }
 
-  private deliver(text: string, context?: EditorContext, refs?: SessionRef[]): void {
+  /**
+   * Drains and returns the live pending set. The one place that reads
+   * `this.attachments`, so both the direct-send path (drained right before
+   * delivery) and the queue path (drained right before parking) go through
+   * the same "belongs to the turn being composed right now" rule.
+   */
+  private drainLiveAttachments(): Attachment[] {
+    const attachments = this.attachments;
+    this.attachments = [];
+    return attachments;
+  }
+
+  private deliver(
+    text: string, context?: EditorContext, refs?: SessionRef[], attachments: Attachment[] = [],
+  ): void {
     if (this._state.title === 'Untitled' && text.trim().length > 0) {
       this._state.title = text.trim().slice(0, TITLE_MAX);
     }
-    // Drained before anything else can append: the pending set belongs to the
-    // turn being composed, and a paste that lands while the provider is
-    // starting belongs to the next one.
-    const attachments = this.attachments;
-    this.attachments = [];
     const item: TranscriptItem = {
       id: nextId('u'), ts: Date.now(), role: 'user', text,
       ...(context ? { context } : {}),
