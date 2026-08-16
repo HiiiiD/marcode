@@ -111,6 +111,35 @@ suite('CodexRun', () => {
     assert.strictEqual(run.threadId, 'th_old');
   });
 
+  test('turn/start carries one localImage item per image attachment', async () => {
+    const { server, sent } = stub();
+    const run = await started(server, 'th_1');
+
+    run.send('look at this', undefined, [
+      { id: 'a1', path: '/tmp/shot.png', name: 'shot.png', kind: 'image', mediaType: 'image/png', bytes: 4 },
+      { id: 'a2', path: '/work/notes.md', name: 'notes.md', kind: 'file', bytes: 7 },
+    ]);
+    await tick();
+
+    const turn = sent().filter((frame) => frame.method === 'turn/start').at(-1);
+    const input = turn.params.input as Array<Record<string, unknown>>;
+    assert.strictEqual(input.length, 2);
+    assert.strictEqual(input[0].type, 'text');
+    assert.strictEqual(String(input[0].text).includes('/work/notes.md'), true);
+    assert.deepStrictEqual(input[1], { type: 'localImage', path: '/tmp/shot.png', detail: 'auto' });
+  });
+
+  test('a send with no attachments keeps the existing input payload', async () => {
+    const { server, sent } = stub();
+    const run = await started(server, 'th_1');
+
+    run.send('plain');
+    await tick();
+
+    const turn = sent().filter((frame) => frame.method === 'turn/start').at(-1);
+    assert.deepStrictEqual(turn.params.input, [{ type: 'text', text: 'plain', text_elements: [] }]);
+  });
+
   test('the start response alone carries the resume token', async () => {
     const { server } = stub();
     const run = new CodexRun(server, { cwd: '/repo', permissionMode: 'default' });
