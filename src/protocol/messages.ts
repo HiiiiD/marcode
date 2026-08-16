@@ -1,11 +1,13 @@
 import type {
   ContextBreakdown, EditorContext, EffortLevel, FileEdit, Invocable, McpServerStatus, ModelInfo,
-  PermissionMode, PermissionModeInfo, TodoStatus, ToolCall, ToolDecision, ToolOutput, UsageWindow,
+  PermissionMeta, PermissionMode, PermissionModeInfo, QuestionAnswers, QuestionOption, QuestionSpec,
+  TodoStatus, ToolCall, ToolDecision, ToolOutput, UsageWindow,
 } from '../providers/types';
 
 export type {
   ContextBreakdown, EditorContext, EffortLevel, FileEdit, Invocable, McpServerStatus, ModelInfo,
-  PermissionMode, PermissionModeInfo, TodoStatus, ToolCall, ToolDecision, ToolOutput, UsageWindow,
+  PermissionMeta, PermissionMode, PermissionModeInfo, QuestionAnswers, QuestionOption, QuestionSpec,
+  TodoStatus, ToolCall, ToolDecision, ToolOutput, UsageWindow,
 };
 
 export type SessionId = string;
@@ -51,6 +53,17 @@ export type TranscriptItem =
       state: 'pending' | 'allowed' | 'denied'; reason?: string;
     })
   /**
+   * A structured question from the agent. Blocking ones freeze the composer;
+   * codex can send non-blocking ones. `answers` omits the key of any question
+   * whose spec is `secret` — combined with `state: 'answered'` that reads as
+   * "asked, answered, deliberately not recorded".
+   */
+  | (ItemBase & {
+      role: 'question'; requestId: string; questions: QuestionSpec[]; blocking: boolean;
+      state: 'pending' | 'answered' | 'cancelled' | 'stale';
+      answers?: QuestionAnswers;
+    })
+  /**
    * An offer to follow an agent into a worktree it just created. Durable,
    * unlike a permission request: nothing is blocked on the answer, so it
    * survives a reload and stays meaningful when answered later. Answered
@@ -77,7 +90,8 @@ export type TranscriptPatch =
   | { op: 'delta'; itemId: string; field: 'text' | 'thinking'; delta: string }
   | { op: 'replace'; item: TranscriptItem; parentItemId?: string };
 
-export interface PermissionRequest { requestId: string; tool: ToolCall }
+export interface PermissionRequest { requestId: string; tool: ToolCall; meta?: PermissionMeta }
+export interface QuestionRequest { requestId: string; questions: QuestionSpec[]; blocking: boolean }
 
 export interface SessionState {
   id: SessionId;
@@ -125,6 +139,7 @@ export interface SessionState {
    * only ever handed to the provider, and the webview has no use for it.
    */
   queued?: { text: string; refs?: SessionRef[] };
+  pendingQuestions: QuestionRequest[];
   archived: boolean;
   createdAt: number;
   updatedAt: number;
@@ -310,6 +325,7 @@ export type WebviewToHost =
   | { t: 'reveal-file'; path: string; startLine?: number }
   | { t: 'set-model'; id: SessionId; model: string }
   | { t: 'permission-decision'; id: SessionId; requestId: string; decision: ToolDecision }
+  | { t: 'question-answer'; id: SessionId; requestId: string; answers: QuestionAnswers }
   | { t: 'load-more'; id: SessionId; beforeItemId: string }
   | { t: 'request-context'; id: SessionId }
   /**

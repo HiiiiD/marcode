@@ -10,6 +10,7 @@ function snapshot(over: Partial<SessionSnapshot> = {}): SessionSnapshot {
     cwd: '/work/hiiiid-code', status: 'idle', permissionMode: 'default',
     usage: { inputTokens: 0, outputTokens: 0 }, resumeTokens: {},
     archived: false, createdAt: 1, updatedAt: 1, includeEditorContext: true,
+    pendingQuestions: [],
     items: [], hasMore: false, pending: [], mcpServers: [], ...over,
   };
 }

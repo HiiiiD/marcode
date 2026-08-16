@@ -17,6 +17,7 @@ function baseState(): SessionState {
     includeEditorContext: true,
     resumeTokens: {},
     usage: { inputTokens: 0, outputTokens: 0 },
+    pendingQuestions: [],
     archived: false, createdAt: 1, updatedAt: 1,
   };
 }

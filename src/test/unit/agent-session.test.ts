@@ -93,6 +93,7 @@ class ThrowingProvider implements AgentProvider {
       respondToTool: (_id: string, _decision: ToolDecision) => {
         if (this.opts.throwOnRespond) { throw new Error('respond failed'); }
       },
+      respondToQuestion: () => { /* not exercised by these tests */ },
       setEffort: () => {
         if (this.opts.throwOnSetEffort) { throw new Error('setEffort failed'); }
       },
@@ -117,6 +118,7 @@ function baseState(): SessionState {
     includeEditorContext: true,
     resumeTokens: {},
     usage: { inputTokens: 0, outputTokens: 0 },
+    pendingQuestions: [],
     archived: false, createdAt: 1, updatedAt: 1,
   };
 }

@@ -570,6 +570,7 @@ suite('SessionManager', () => {
       includeEditorContext: true, resumeTokens: {},
       usage: { inputTokens: 0, outputTokens: 0 },
       contextPercent: 43, lastContext: remembered,
+      pendingQuestions: [],
       archived: false, createdAt: 1, updatedAt: 1, ...over,
     };
   }

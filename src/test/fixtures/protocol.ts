@@ -32,6 +32,7 @@ export function summary(id: string, over: Partial<SessionSummary> = {}): Session
     includeEditorContext: true,
     resumeTokens: {},
     usage: { inputTokens: 0, outputTokens: 0 },
+    pendingQuestions: [],
     archived: false,
     createdAt: 1,
     updatedAt: 1,

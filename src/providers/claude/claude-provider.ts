@@ -532,6 +532,7 @@ export class ClaudeProvider implements AgentProvider {
         const resolve = approvals.get(id);
         if (resolve) { approvals.delete(id); resolve(decision); }
       },
+      respondToQuestion: () => { /* replaced in Tasks 3 and 6 */ },
       setEffort: (next: EffortLevel) => {
         // `next` arrives unvalidated: the wire type (`set-effort`'s `effort`
         // field) carries the shared `EffortLevel` union with nothing tying a

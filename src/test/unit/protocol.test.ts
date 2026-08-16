@@ -24,6 +24,7 @@ function describeInbound(m: WebviewToHost): string {
     case 'reveal-file': return 'reveal-file';
     case 'set-model': return 'set-model';
     case 'permission-decision': return 'permission-decision';
+    case 'question-answer': return 'question-answer';
     case 'load-more': return 'load-more';
     case 'request-context': return 'request-context';
     case 'open-file': return 'open-file';

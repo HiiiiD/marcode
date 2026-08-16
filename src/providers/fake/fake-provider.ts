@@ -140,6 +140,7 @@ export class FakeProvider implements AgentProvider {
         // fake provider — the status dot is stuck at 'running' forever.
         channel.push({ kind: 'turn-end', reason: 'done' });
       },
+      respondToQuestion: () => { /* replaced in Tasks 3 and 6 */ },
       setEffort: (effort: EffortLevel) => { this.efforts.push(effort); },
       setPermissionMode: (mode: PermissionMode) => { this.permissionModes.push(mode); },
       setModel: (model: string) => { this.models.push(model); },

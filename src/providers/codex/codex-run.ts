@@ -418,6 +418,8 @@ export class CodexRun implements AgentRun {
     this.server.respond(pending.rpcId, { decision: result });
   }
 
+  respondToQuestion(): void { /* replaced in Tasks 3 and 6 */ }
+
   /**
    * Folds one server's status into the roster and returns the whole of it.
    *

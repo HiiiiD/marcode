@@ -431,6 +431,7 @@ export class SessionManager implements SessionSink {
       includeEditorContext: true,
       resumeTokens: {},
       usage: { inputTokens: 0, outputTokens: 0 },
+      pendingQuestions: [],
       archived: false, createdAt: now, updatedAt: now,
     };
 
