@@ -1013,4 +1013,35 @@ suite('AgentSession questions', () => {
     assert.strictEqual((await session.snapshot()).pendingQuestions.length, 1);
     await session.dispose();
   });
+
+  test('a cancelled permission settles denied, and a later decision on it is a no-op', async () => {
+    const { session, provider } = sessionWith();
+    provider.runs[0].emit({
+      kind: 'permission', id: 'p1', tool: { kind: 'command', label: 'Bash', command: 'ls' },
+    });
+    await settle();
+    assert.strictEqual(session.state.status, 'awaiting-approval');
+
+    provider.runs[0].emit({ kind: 'request-cancelled', id: 'p1' });
+    await settle();
+
+    const state = await session.snapshot();
+    const perm = state.items.find((i) => i.role === 'permission');
+    assert.strictEqual((perm as { state: string }).state, 'denied');
+    assert.strictEqual((perm as { reason?: string }).reason, 'Turn cancelled');
+    assert.strictEqual(state.pending.length, 0, 'no longer parked');
+    assert.strictEqual(session.state.status, 'running', 'nothing else pending');
+
+    session.respondToPermission('p1', { allow: true });
+    await settle();
+
+    assert.strictEqual(
+      provider.decisions.has('p1'), false,
+      'the provider never sees a decision for an already-cancelled request',
+    );
+    const after = await session.snapshot();
+    const perm2 = after.items.find((i) => i.role === 'permission');
+    assert.strictEqual((perm2 as { state: string }).state, 'denied', 'the click is a no-op');
+    await session.dispose();
+  });
 });

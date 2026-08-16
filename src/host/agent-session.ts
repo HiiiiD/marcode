@@ -441,14 +441,34 @@ export class AgentSession {
 
   /**
    * Settles a request cancelled out from under the host — an abort or an
-   * explicit interrupt racing a parked question or permission. `pending`
-   * (permissions) is checked first: a permission id has no `'cancelled'`
-   * transcript state to settle into, so this only acts when the id names a
-   * parked question. A permission cancellation, if the provider ever raises
-   * one, is left for the caller to settle the way it already does.
+   * explicit interrupt racing a parked permission or question (Claude raises
+   * `request-cancelled` for both; see `cancelParked` in claude-provider.ts).
+   * The provider has already resolved its own side by the time this arrives,
+   * so this only reconciles host state: without it, the card stays rendered
+   * `pending` and `recomputeWaitingStatus` leaves the session stuck at
+   * `awaiting-approval` forever, with a later Allow/Deny/answer click
+   * silently no-opping against a request the provider already discarded.
+   *
+   * A permission settles as `denied` with reason `'Turn cancelled'` — the
+   * permission item's state union stays `pending | allowed | denied`
+   * (widening it is a wire/type change no task here owns), and `denied` with
+   * that reason is exactly what the provider's own `cancelParked` already
+   * resolved with, so host and provider agree. A question settles into its
+   * own `'cancelled'` state.
    */
   private settleRequest(requestId: string, state: 'cancelled'): void {
-    if (this.pending.has(requestId)) { return; }
+    if (this.pending.delete(requestId)) {
+      const existing = this.permissionItems.get(requestId);
+      if (existing && existing.role === 'permission') {
+        const settled: TranscriptItem = { ...existing, state: 'denied', reason: 'Turn cancelled' };
+        const parentRoot = this.permissionChildOf.get(requestId);
+        if (parentRoot) { this.replaceChild(parentRoot, settled); }
+        else { this.replaceItem(settled); }
+        this.permissionItems.set(requestId, settled);
+      }
+      this.recomputeWaitingStatus();
+      return;
+    }
     if (!this.pendingQuestions.delete(requestId)) { return; }
     this.replaceQuestionItem(requestId, state);
     this.recomputeWaitingStatus();
