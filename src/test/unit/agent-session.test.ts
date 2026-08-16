@@ -913,3 +913,104 @@ suite('AgentSession', () => {
     await session.dispose();
   });
 });
+
+const QUESTION_SPEC = {
+  id: 'q1', header: 'H', question: 'Q?', multiSelect: false,
+  allowOther: true, secret: false,
+  options: [{ label: 'A', description: 'a' }, { label: 'B', description: 'b' }],
+};
+
+suite('AgentSession questions', () => {
+  let dir: string;
+  let store: TranscriptStore;
+
+  setup(async () => {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'hiiiid-session-questions-'));
+    store = new TranscriptStore(dir);
+  });
+
+  teardown(async () => { await fs.rm(dir, { recursive: true, force: true }); });
+
+  function sessionWith() {
+    const provider = new FakeProvider();
+    const sink = new RecordingSink();
+    const session = new AgentSession(baseState(), provider, store, sink);
+    return { session, provider, sink };
+  }
+
+  test('a question event appends a pending item and records the request', async () => {
+    const { session, provider } = sessionWith();
+    provider.runs[0].emit({ kind: 'question', id: 'r1', blocking: true, questions: [QUESTION_SPEC] });
+    await settle();
+
+    const state = await session.snapshot();
+    const item = state.items.at(-1);
+    assert.strictEqual(item?.role, 'question');
+    assert.strictEqual((item as { state: string }).state, 'pending');
+    assert.strictEqual(state.pendingQuestions.length, 1);
+    assert.strictEqual(state.pendingQuestions[0].requestId, 'r1');
+    await session.dispose();
+  });
+
+  test('answering replaces the item and calls the provider once', async () => {
+    const { session, provider } = sessionWith();
+    provider.runs[0].emit({ kind: 'question', id: 'r1', blocking: true, questions: [QUESTION_SPEC] });
+    await settle();
+
+    session.answerQuestion('r1', { q1: ['A'] });
+    session.answerQuestion('r1', { q1: ['B'] });
+    await settle();
+
+    assert.deepStrictEqual(provider.answered, [['r1', { q1: ['A'] }]]);
+    const state = await session.snapshot();
+    assert.strictEqual((state.items.at(-1) as { state: string }).state, 'answered');
+    assert.strictEqual(state.pendingQuestions.length, 0);
+    await session.dispose();
+  });
+
+  test('a cancellation marks the card cancelled', async () => {
+    const { session, provider } = sessionWith();
+    provider.runs[0].emit({ kind: 'question', id: 'r1', blocking: true, questions: [QUESTION_SPEC] });
+    await settle();
+    provider.runs[0].emit({ kind: 'request-cancelled', id: 'r1' });
+    await settle();
+
+    const state = await session.snapshot();
+    assert.strictEqual((state.items.at(-1) as { state: string }).state, 'cancelled');
+    assert.strictEqual(state.pendingQuestions.length, 0);
+    await session.dispose();
+  });
+
+  test('answering a question while a permission is still pending keeps the session waiting', async () => {
+    const { session, provider } = sessionWith();
+    provider.runs[0].emit({
+      kind: 'permission', id: 'p1', tool: { kind: 'command', label: 'Bash', command: 'ls' },
+    });
+    provider.runs[0].emit({ kind: 'question', id: 'r1', blocking: true, questions: [QUESTION_SPEC] });
+    await settle();
+    assert.strictEqual(session.state.status, 'awaiting-approval');
+
+    session.answerQuestion('r1', { q1: ['A'] });
+    await settle();
+
+    assert.strictEqual(session.state.status, 'awaiting-approval', 'the permission is still pending');
+    assert.strictEqual((await session.snapshot()).pending.length, 1);
+    await session.dispose();
+  });
+
+  test('resolving a pending permission while a question is still pending keeps the session waiting', async () => {
+    const { session, provider } = sessionWith();
+    provider.runs[0].emit({
+      kind: 'permission', id: 'p1', tool: { kind: 'command', label: 'Bash', command: 'ls' },
+    });
+    provider.runs[0].emit({ kind: 'question', id: 'r1', blocking: true, questions: [QUESTION_SPEC] });
+    await settle();
+
+    session.respondToPermission('p1', { allow: true });
+    await settle();
+
+    assert.strictEqual(session.state.status, 'awaiting-approval', 'the question is still pending');
+    assert.strictEqual((await session.snapshot()).pendingQuestions.length, 1);
+    await session.dispose();
+  });
+});

@@ -2,7 +2,7 @@ import type {
   AgentEvent, AgentProvider, AgentRun,
   ContextBreakdown,
   EditorContext,
-  EffortLevel, Invocable, ModelInfo, PermissionMode, PermissionModeInfo,
+  EffortLevel, Invocable, ModelInfo, PermissionMode, PermissionModeInfo, QuestionAnswers,
   StartOptions, ThreadScope, ToolDecision,
   UsageWindow
 } from '../types';
@@ -64,6 +64,8 @@ export class FakeProvider implements AgentProvider {
   readonly threadScope: ThreadScope = 'cwd';
   /** Records every decision passed to respondToTool, for assertions. */
   readonly decisions = new Map<string, ToolDecision>();
+  /** Records every (requestId, answers) pair passed to respondToQuestion, in order. */
+  readonly answered: [string, QuestionAnswers][] = [];
   /** Records every mode passed to setPermissionMode, for assertions. */
   readonly permissionModes: PermissionMode[] = [];
   /** Records every model passed to setModel, for assertions. */
@@ -140,7 +142,9 @@ export class FakeProvider implements AgentProvider {
         // fake provider — the status dot is stuck at 'running' forever.
         channel.push({ kind: 'turn-end', reason: 'done' });
       },
-      respondToQuestion: () => { /* replaced in Tasks 3 and 6 */ },
+      respondToQuestion: (id: string, answers: QuestionAnswers) => {
+        this.answered.push([id, answers]);
+      },
       setEffort: (effort: EffortLevel) => { this.efforts.push(effort); },
       setPermissionMode: (mode: PermissionMode) => { this.permissionModes.push(mode); },
       setModel: (model: string) => { this.models.push(model); },

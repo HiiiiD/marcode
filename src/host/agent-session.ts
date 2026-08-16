@@ -1,14 +1,14 @@
 import { resolve } from 'node:path';
 import type {
-  McpServerStatus, PermissionRequest, SessionId, SessionRef, SessionSnapshot, SessionState,
-  SessionStatus, TranscriptItem, TranscriptPatch,
+  McpServerStatus, PermissionRequest, QuestionRequest, SessionId, SessionRef, SessionSnapshot,
+  SessionState, SessionStatus, TranscriptItem, TranscriptPatch,
 } from '../protocol/messages';
 import type { ToolCall, ToolOutput } from '../providers/canonical/tool-call';
 import type {
   AgentEvent, AgentProvider, AgentRun,
   ContextBreakdown,
   EditorContext,
-  EffortLevel, Invocable, PermissionMode, ToolDecision,
+  EffortLevel, Invocable, PermissionMode, QuestionAnswers, ToolDecision,
   UsageWindow,
 } from '../providers/types';
 import { findModel, resolveEffort } from '../shared/model-catalog';
@@ -93,9 +93,11 @@ function nextId(prefix: string): string {
 export class AgentSession {
   private run: AgentRun;
   private pending = new Map<string, PermissionRequest>();
+  private pendingQuestions = new Map<string, QuestionRequest>();
   private openAssistantId: string | undefined;
   private toolItems = new Map<string, TranscriptItem>();
   private permissionItems = new Map<string, TranscriptItem>();
+  private questionItems = new Map<string, TranscriptItem>();
   /** Provider tool id -> the buffered children of that (parent) tool call. */
   private childrenByParent = new Map<string, TranscriptItem[]>();
   /** Provider tool id of a child -> the provider tool id of its parent. */
@@ -420,7 +422,58 @@ export class AgentSession {
       else { this.replaceItem(settled); }
       this.permissionItems.set(requestId, settled);
     }
-    this.setStatus(this.pending.size > 0 ? 'awaiting-approval' : 'running');
+    this.recomputeWaitingStatus();
+  }
+
+  /**
+   * Answers a parked question. A double answer — a second click on a card
+   * already settled — is a no-op rather than a failure: the request is gone
+   * from `pendingQuestions` after the first answer, so this mirrors the early
+   * return in `respondToPermission` that stops a second click from stranding
+   * the card with no way to retry.
+   */
+  answerQuestion(requestId: string, answers: QuestionAnswers): void {
+    if (!this.pendingQuestions.delete(requestId)) { return; }
+    this.replaceQuestionItem(requestId, 'answered', answers);
+    this.run.respondToQuestion(requestId, answers);
+    this.recomputeWaitingStatus();
+  }
+
+  /**
+   * Settles a request cancelled out from under the host — an abort or an
+   * explicit interrupt racing a parked question or permission. `pending`
+   * (permissions) is checked first: a permission id has no `'cancelled'`
+   * transcript state to settle into, so this only acts when the id names a
+   * parked question. A permission cancellation, if the provider ever raises
+   * one, is left for the caller to settle the way it already does.
+   */
+  private settleRequest(requestId: string, state: 'cancelled'): void {
+    if (this.pending.has(requestId)) { return; }
+    if (!this.pendingQuestions.delete(requestId)) { return; }
+    this.replaceQuestionItem(requestId, state);
+    this.recomputeWaitingStatus();
+  }
+
+  /** Replaces a parked question's transcript item with its settled state. */
+  private replaceQuestionItem(
+    requestId: string, state: 'answered' | 'cancelled', answers?: QuestionAnswers,
+  ): void {
+    const existing = this.questionItems.get(requestId);
+    if (!existing || existing.role !== 'question') { return; }
+    const settled: TranscriptItem = { ...existing, state, ...(answers ? { answers } : {}) };
+    this.replaceItem(settled);
+    this.questionItems.set(requestId, settled);
+  }
+
+  /**
+   * The one place that recomputes `awaiting-approval` vs. an idle status —
+   * used wherever a permission or question request settles. `idle` names
+   * what "not waiting" means at the call site: `running` mid-turn,
+   * `idle` once a turn has ended.
+   */
+  private recomputeWaitingStatus(idle: SessionStatus = 'running'): void {
+    const waiting = this.pending.size > 0 || this.pendingQuestions.size > 0;
+    this.setStatus(waiting ? 'awaiting-approval' : idle);
   }
 
   /**
@@ -522,6 +575,7 @@ export class AgentSession {
     const { items, hasMore } = await this.store.tail(this._state.id);
     return {
       ...this._state, items, hasMore, pending: [...this.pending.values()],
+      pendingQuestions: [...this.pendingQuestions.values()],
       invocables: this.invocableEntries,
       mcpServers: this.mcpServers,
     };
@@ -538,6 +592,14 @@ export class AgentSession {
       this.pending.delete(requestId);
       try {
         this.run.respondToTool(requestId, { allow: false, reason: 'Session closed' });
+      } catch {
+        // Best-effort: the provider is being torn down regardless.
+      }
+    }
+    for (const requestId of [...this.pendingQuestions.keys()]) {
+      this.pendingQuestions.delete(requestId);
+      try {
+        this.run.respondToQuestion(requestId, {});
       } catch {
         // Best-effort: the provider is being torn down regardless.
       }
@@ -693,6 +755,26 @@ export class AgentSession {
         return;
       }
 
+      case 'question': {
+        const item: TranscriptItem = {
+          id: nextId('q'), ts: Date.now(), role: 'question',
+          requestId: event.id, questions: event.questions, blocking: event.blocking,
+          state: 'pending',
+        };
+        this.questionItems.set(event.id, item);
+        this.pendingQuestions.set(event.id, {
+          requestId: event.id, questions: event.questions, blocking: event.blocking,
+        });
+        this.closeAssistant();
+        this.appendItem(item);
+        this.setStatus('awaiting-approval');
+        return;
+      }
+
+      case 'request-cancelled':
+        this.settleRequest(event.id, 'cancelled');
+        return;
+
       case 'invocables':
         this.sink.invocables(this._state.id, event.entries);
         return;
@@ -726,7 +808,7 @@ export class AgentSession {
           // unconditionally going idle here would strand its card as the
           // only sign anything is waiting, with the status dot claiming
           // otherwise.
-          this.setStatus(this.pending.size > 0 ? 'awaiting-approval' : 'idle');
+          this.recomputeWaitingStatus('idle');
           // After the status, never before: drainQueued() only fires once the
           // session is genuinely idle, and an interrupted turn reaches here
           // the same way a completed one does — which is what makes Stop a

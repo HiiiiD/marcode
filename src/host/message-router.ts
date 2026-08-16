@@ -271,6 +271,10 @@ export class MessageRouter {
         this.manager.get(msg.id)?.respondToPermission(msg.requestId, msg.decision);
         return;
 
+      case 'question-answer':
+        this.manager.get(msg.id)?.answerQuestion(msg.requestId, msg.answers);
+        return;
+
       case 'load-more': {
         const session = this.manager.get(msg.id);
         if (!session) { return; }
@@ -317,7 +321,7 @@ const KNOWN_MESSAGE_TAGS = new Set<WebviewToHost['t']>([
   'ready', 'create-session', 'set-visible', 'set-layout', 'close-session',
   'delete-session', 'send', 'interrupt', 'cancel-queued',
   'set-effort', 'set-permission-mode',
-  'set-model', 'permission-decision', 'load-more',
+  'set-model', 'permission-decision', 'question-answer', 'load-more',
   'answer-relocation', 'cancel-relocation',
   'set-include-context', 'reveal-file',
   'request-context', 'open-file',
