@@ -3,8 +3,8 @@ import type { PaneState } from "@/reducer";
 import { act, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import * as assert from "assert";
-import type { SessionStatus } from "../../protocol/messages";
-import { catalog, layoutOf, snapshot, summary } from "../fixtures/protocol";
+import type { QuestionRequest, SessionStatus } from "../../protocol/messages";
+import { catalog, layoutOf, permission, question, snapshot, summary } from "../fixtures/protocol";
 import { posted, renderApp, renderWithStore, sendFromHost } from "./harness";
 import { hydrate } from "./session-header.test";
 
@@ -556,6 +556,73 @@ suite("Composer", () => {
       });
 
       assert.ok(screen.getByText("refactor the parser"));
+    });
+  });
+
+  suite("a pending question", () => {
+    function hydrateWith(pendingQuestions: QuestionRequest[]) {
+      sendFromHost({
+        t: "hydrate",
+        sessions: [summary("a", { pendingQuestions })],
+        layout: layoutOf("a"),
+        snapshots: [snapshot("a", { pendingQuestions })],
+        catalog: catalog(),
+        unavailable: [],
+        usage: {},
+      });
+    }
+
+    function hydrateWithPermission(pending: ReturnType<typeof snapshot>["pending"]) {
+      sendFromHost({
+        t: "hydrate",
+        sessions: [summary("a")],
+        layout: layoutOf("a"),
+        snapshots: [snapshot("a", { pending })],
+        catalog: catalog(),
+        unavailable: [],
+        usage: {},
+      });
+    }
+
+    test("a blocking question disables the composer with a visible reason", () => {
+      renderApp();
+      hydrateWith([{ requestId: "r1", blocking: true, questions: question().questions }]);
+
+      const box = screen.getByLabelText("Message") as HTMLTextAreaElement;
+      assert.strictEqual(box.disabled, true);
+      const describedBy = box.getAttribute("aria-describedby");
+      assert.ok(describedBy, "the box must point at the reason it is disabled");
+      const reason = document.getElementById(describedBy!);
+      assert.ok(reason, "the aria-describedby target must be real, rendered text");
+      assert.strictEqual(reason!.textContent, "Answer the question above to continue.");
+      assert.strictEqual(box.getAttribute("title"), null, "the reason must never ride a title attribute");
+    });
+
+    test("a non-blocking question leaves the composer usable", () => {
+      renderApp();
+      hydrateWith([{ requestId: "r1", blocking: false, questions: question().questions }]);
+
+      assert.strictEqual((screen.getByLabelText("Message") as HTMLTextAreaElement).disabled, false);
+    });
+
+    test("a pending permission still leaves the composer usable", () => {
+      renderApp();
+      hydrateWithPermission([{ requestId: "r1", tool: permission().tool }]);
+
+      assert.strictEqual((screen.getByLabelText("Message") as HTMLTextAreaElement).disabled, false);
+    });
+
+    test("the composer re-enables once the blocking question leaves the pending slice", () => {
+      renderApp();
+      hydrateWith([{ requestId: "r1", blocking: true, questions: question().questions }]);
+      assert.strictEqual((screen.getByLabelText("Message") as HTMLTextAreaElement).disabled, true);
+
+      sendFromHost({
+        t: "session-snapshot",
+        session: snapshot("a", { pendingQuestions: [] }),
+      });
+
+      assert.strictEqual((screen.getByLabelText("Message") as HTMLTextAreaElement).disabled, false);
     });
   });
 });

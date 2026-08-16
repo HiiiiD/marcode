@@ -71,9 +71,21 @@ export function Composer({
   const sendReasonId = `send-reason-${pane.summary.id}`;
   // One id for every control this state disables, session-scoped like the
   // rest: the reason is one visible line, so each disabled control points at
-  // the same sentence rather than repeating it sr-only per control.
-  const unavailableReasonId = `provider-reason-${pane.summary.id}`;
+  // the same sentence rather than repeating it sr-only per control. Shared
+  // by both causes below — they never overlap in practice (a question and a
+  // dead provider are not simultaneous states worth distinguishing in the
+  // UI) — so one id keeps every disabled control pointing at a single
+  // sentence.
+  const blockedReasonId = `blocked-reason-${pane.summary.id}`;
   const readOnly = unavailableReason !== undefined;
+  // Codex distinguishes blocking from non-blocking questions; Claude's are
+  // always blocking. Only a blocking one freezes the composer — a
+  // non-blocking request never blocked the turn, so disabling here would
+  // invent a state the provider never claimed.
+  const blockedByQuestion = pane.pendingQuestions.some((q) => q.blocking);
+  const blockedReason = unavailableReason
+    ?? (blockedByQuestion ? "Answer the question above to continue." : undefined);
+  const disabled = blockedReason !== undefined;
   /** The message the host has parked, if any. Host state — never local. */
   const queued = pane.summary.queued;
   // Same session-scoping rationale again, for the `/` control's
@@ -205,7 +217,7 @@ export function Composer({
 
   return (
     <div className="@container p-2">
-      {readOnly && (
+      {disabled && (
         // Visible, not sr-only, unlike the other disabled-reasons in this
         // row: those explain a control the user can re-enable in a second
         // (stop the agent, clear the draft), while this one explains why the
@@ -213,11 +225,11 @@ export function Composer({
         // It sits above the box so it reads before the dead controls, and the
         // icon keeps it legible when the sentence wraps at 300px.
         <p
-          id={unavailableReasonId}
+          id={blockedReasonId}
           className="mb-1.5 flex items-start gap-1.5 text-xs text-muted-foreground"
         >
           <TriangleAlert className="mt-px size-3.5 shrink-0" aria-hidden />
-          <span>{unavailableReason}</span>
+          <span>{blockedReason}</span>
         </p>
       )}
       {queued && (
@@ -317,8 +329,8 @@ export function Composer({
           // another line.
           placeholder="Message the agent… @ to reference a session"
           aria-label="Message"
-          disabled={readOnly}
-          aria-describedby={readOnly ? unavailableReasonId : undefined}
+          disabled={disabled}
+          aria-describedby={disabled ? blockedReasonId : undefined}
           aria-controls={menu.open ? menuListId : refMenu.open ? refListId : undefined}
           aria-expanded={menu.open || refMenu.open}
           aria-activedescendant={menu.activeOptionId ?? refMenu.activeOptionId}
@@ -406,7 +418,7 @@ export function Composer({
               // effect on the next turn rather than being silently recorded —
               // there is nothing to freeze and no reason to explain — except
               // when the provider itself is unavailable, see `disabled` above.
-              aria-describedby={readOnly ? unavailableReasonId : undefined}
+              aria-describedby={readOnly ? blockedReasonId : undefined}
               render={<Button variant={"outline"} />}
             >
               <SelectValue className="truncate" />
@@ -440,9 +452,9 @@ export function Composer({
             size="icon-sm"
             onClick={submit}
             // Live during a run: the message is parked by the host, not
-            // dropped, so there is nothing to disable. Only a dead provider or
-            // an empty box does that.
-            disabled={readOnly || !text.trim()}
+            // dropped, so there is nothing to disable. Only a dead provider,
+            // an empty box, or a blocking question waiting on an answer does.
+            disabled={disabled || !text.trim()}
             aria-label="Send"
             // Icon-only control: the hover title is a discoverability aid for
             // sighted mouse/keyboard users, not the accessible name (that's
@@ -456,9 +468,9 @@ export function Composer({
             // element is reachable by neither keyboard focus nor most screen
             // readers, matching the other disabled-with-a-reason sites in
             // this file and session-header.tsx/session-picker.tsx.
-            aria-describedby={readOnly ? unavailableReasonId : running ? sendReasonId : undefined}
+            aria-describedby={disabled ? blockedReasonId : running ? sendReasonId : undefined}
             title={
-              readOnly || !text.trim()
+              disabled || !text.trim()
                 ? undefined
                 : running ? "Send when the turn ends" : "Send message"
             }
