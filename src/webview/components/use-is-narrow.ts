@@ -7,29 +7,45 @@ import { useEffect, useState } from 'react';
 export const NARROW_PX = 500;
 
 /**
- * Tracks whether the element behind `ref` is narrower than `NARROW_PX`.
+ * Below this width the fleet diff surface is not offered at all.
  *
- * There is exactly one call site for this hook — `App`, against the panel
- * root — and `narrow` is passed down to `SessionPicker` and `PaneGroup` as
- * a prop. Each of those used to run its own `ResizeObserver` against its
- * own root element; because `contentRect` is a content-box measurement and
- * the two roots carry different padding, they could disagree by 16-32px
- * near the threshold — one reporting `narrow` while the other did not, for
- * the same actual panel width. A single observer on a single element makes
- * that disagreement structurally impossible rather than merely unlikely.
+ * A file list with churn counts and session chips needs room to be scannable;
+ * in a 300px column it is a wall of truncated paths, which is the failure
+ * this threshold exists to prevent rather than to style around.
  */
-export function useIsNarrow(ref: React.RefObject<HTMLElement | null>): boolean {
-  const [narrow, setNarrow] = useState(false);
+export const REVIEW_PX = 700;
+
+/**
+ * The measured width of the element behind `ref`.
+ *
+ * There is exactly one call site — `App`, against the panel root — and every
+ * threshold is derived from the number it returns. Each consumer used to run
+ * its own `ResizeObserver` against its own root element; because
+ * `contentRect` is a content-box measurement and those roots carry different
+ * padding, they could disagree by 16-32px near a threshold — one reporting
+ * narrow while the other did not, for the same actual panel width. One
+ * observer on one element makes that disagreement structurally impossible
+ * rather than merely unlikely, and that property is why a second threshold
+ * is derived here instead of getting a second hook.
+ *
+ * `0` before the first measurement. Each threshold decides for itself what
+ * that means: `App` reads narrow as `width > 0 && width < NARROW_PX` so an
+ * unmeasured panel is not narrow (what the old boolean hook did), while
+ * `width >= REVIEW_PX` already refuses to offer review until something has
+ * measured. Both are the conservative reading of a width nobody has taken.
+ */
+export function usePanelWidth(ref: React.RefObject<HTMLElement | null>): number {
+  const [width, setWidth] = useState(0);
 
   useEffect(() => {
     const el = ref.current;
     if (!el) { return; }
     const observer = new ResizeObserver(([entry]) => {
-      setNarrow(entry.contentRect.width < NARROW_PX);
+      setWidth(entry.contentRect.width);
     });
     observer.observe(el);
     return () => observer.disconnect();
   }, [ref]);
 
-  return narrow;
+  return width;
 }

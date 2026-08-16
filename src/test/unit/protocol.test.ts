@@ -33,6 +33,8 @@ function describeInbound(m: WebviewToHost): string {
     case 'bring-back': return 'bring-back';
     case 'request-stale-trees': return 'request-stale-trees';
     case 'remove-stale-tree': return 'remove-stale-tree';
+    case 'request-fleet-diff': return 'request-fleet-diff';
+    case 'open-file-diff': return 'open-file-diff';
     default: return assertNever(m);
   }
 }
@@ -53,6 +55,7 @@ function describeOutbound(m: HostToWebview): string {
     case 'usage-windows': return 'usage-windows';
     case 'bring-back-plan': return 'bring-back-plan';
     case 'stale-trees': return 'stale-trees';
+    case 'fleet-diff': return 'fleet-diff';
     default: return assertNever(m);
   }
 }

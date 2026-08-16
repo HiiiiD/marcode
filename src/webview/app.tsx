@@ -1,8 +1,9 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { FleetDiff } from './components/fleet-diff';
 import { PaneGroup } from './components/pane-group';
 import { SessionPicker } from './components/session-picker';
-import { useIsNarrow } from './components/use-is-narrow';
+import { NARROW_PX, REVIEW_PX, usePanelWidth } from './components/use-is-narrow';
 import { reconcilePaneLayout, rosterSessionIds } from './components/pane-layout';
 import { UsageStrip } from './components/usage-strip';
 import { useStore } from './store';
@@ -16,7 +17,17 @@ export function App() {
   // NARROW_PX that the two disagreed near the threshold. One measurement,
   // passed down, makes that structurally impossible.
   const rootRef = useRef<HTMLDivElement>(null);
-  const narrow = useIsNarrow(rootRef);
+  const width = usePanelWidth(rootRef);
+  // `> 0` because `usePanelWidth` reports 0 until the observer has fired, and
+  // an unmeasured panel is not a narrow one — the boolean hook this replaced
+  // started at `false`, and the layout must not flash stacked before the
+  // first measurement lands.
+  const narrow = width > 0 && width < NARROW_PX;
+  // No `> 0` guard needed, unlike `narrow`: `>= REVIEW_PX` already refuses to
+  // offer review until something has measured, which is the conservative
+  // reading of a width nobody has taken.
+  const canReview = width >= REVIEW_PX;
+  const [reviewOpen, setReviewOpen] = useState(false);
 
   const byIdKeys = Object.keys(state.byId);
   const rosterKey = state.sessions.map((s) => s.id).join(',');
@@ -61,12 +72,12 @@ export function App() {
   }, [paneIdsKey]);
 
   // `rootRef` is attached to a div that mounts unconditionally — including
-  // during the pre-hydrate `Loading…` state — so `useIsNarrow`'s effect (it
+  // during the pre-hydrate `Loading…` state — so `usePanelWidth`'s effect (it
   // runs once, keyed on the `ref` object's identity, which doesn't change
   // across a ready/not-ready re-render) observes the real element from the
   // start rather than binding to a `Loading…` node that's gone by the time
   // hydrate replaces it. `data-narrow-observer` marks this as the one
-  // element whose width `useIsNarrow` tracks — `resizeTo` (in
+  // element whose width `usePanelWidth` tracks — `resizeTo` (in
   // src/test/dom/setup.ts) uses it to target only this observer's callback,
   // since react-resizable-panels registers its own `ResizeObserver`s on
   // panel/group elements that expect a different entry shape.
@@ -79,8 +90,29 @@ export function App() {
       <div ref={rootRef} data-narrow-observer className="flex h-screen flex-col">
         {state.ready ? (
           <>
-            <SessionPicker narrow={narrow} />
-            <div className="min-h-0 flex-1"><PaneGroup narrow={narrow} /></div>
+            <SessionPicker
+              narrow={narrow}
+              canReview={canReview}
+              // The same condition the body below renders on, not the intent
+              // flag: below REVIEW_PX the surface is not showing, whatever
+              // the user last asked for, and a toggle that claimed otherwise
+              // would describe a panel that isn't on screen.
+              reviewing={reviewOpen && canReview}
+              onReview={() => { setReviewOpen(true); }}
+            />
+            <div className="min-h-0 flex-1">
+              {/*
+                Derived, not imperative. If the panel shrinks below REVIEW_PX
+                while the surface is open, this falls back to the panes on its
+                own — an imperative close would strand the user in an
+                unusable surface at 300px with no visible way out — and
+                widening again restores it, because the intent flag was never
+                cleared.
+              */}
+              {reviewOpen && canReview
+                ? <FleetDiff onClose={() => { setReviewOpen(false); }} />
+                : <PaneGroup narrow={narrow} />}
+            </div>
             <UsageStrip />
           </>
         ) : (

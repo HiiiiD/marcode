@@ -1,6 +1,6 @@
 import type { SessionManager } from './session-manager';
 import type {
-  EditorContext, HostToWebview, SessionRef, SessionSnapshot, WebviewToHost,
+  DiffBase, EditorContext, HostToWebview, SessionRef, SessionSnapshot, WebviewToHost,
 } from '../protocol/messages';
 import { composePrompt } from './session-refs';
 
@@ -30,9 +30,17 @@ function missingRefsMessage(missing: SessionRef[]): string {
 export interface EditorContextHost {
   current(): EditorContext | null;
   reveal(path: string, startLine?: number): void;
+  /**
+   * Opens `path` in VS Code's diff editor, against its content at `base`.
+   * Here rather than in the router because it needs the `vscode` API, which
+   * this module must not import; `src/extension.ts` supplies the real one.
+   */
+  openDiff(root: string, path: string, base: DiffBase): void;
 }
 
-const NO_EDITOR: EditorContextHost = { current: () => null, reveal: () => {} };
+const NO_EDITOR: EditorContextHost = {
+  current: () => null, reveal: () => {}, openDiff: () => {},
+};
 
 export class MessageRouter {
   constructor(
@@ -248,6 +256,17 @@ export class MessageRouter {
         await this.manager.removeStaleTree(msg.path);
         return;
 
+      // Awaited for the same reason as the sweep — it shells out to git — and
+      // unaddressed for the same reason too: a working tree is the unit git
+      // can answer for, and two sessions in one tree share one answer.
+      case 'request-fleet-diff':
+        await this.manager.requestFleetDiff();
+        return;
+
+      case 'open-file-diff':
+        this.editor.openDiff(msg.root, msg.path, msg.base);
+        return;
+
       case 'permission-decision':
         this.manager.get(msg.id)?.respondToPermission(msg.requestId, msg.decision);
         return;
@@ -304,6 +323,7 @@ const KNOWN_MESSAGE_TAGS = new Set<WebviewToHost['t']>([
   'request-context', 'open-file',
   'request-bring-back', 'bring-back',
   'request-stale-trees', 'remove-stale-tree',
+  'request-fleet-diff', 'open-file-diff',
 ]);
 
 /**

@@ -3,7 +3,7 @@ import type {
   ContextResult,
   EditorContext,
   HostToWebview, Invocable, McpServerStatus, PaneLayout, PermissionRequest, ProviderInfo,
-  SessionId, SessionSummary, StaleTree, TranscriptItem, UnavailableProvider, UsageWindow,
+  SessionId, SessionSummary, StaleTree, TranscriptItem, TreeDiff, UnavailableProvider, UsageWindow,
 } from '../protocol/messages';
 
 export interface PaneState {
@@ -60,6 +60,30 @@ export interface ClientState {
    */
   staleTrees: StaleTree[];
   /**
+   * The host's last fleet answer. `undefined` means nobody has asked — which
+   * is not the same as `[]`, "asked, and nothing has changed". The two render
+   * differently, and collapsing them would make an idle fleet look like a
+   * broken one.
+   */
+  fleetDiff: TreeDiff[] | undefined;
+  /**
+   * Why the host's last fleet read failed, if it did. Distinct from an empty
+   * `fleetDiff`, which is an answer: this one says there is no answer, and
+   * says what stopped it. `undefined` whenever the last read succeeded.
+   */
+  fleetDiffReason: string | undefined;
+  /**
+   * Bumped whenever something happened that could have changed a diff: a
+   * settled `file-edit` tool call, or a session going idle.
+   *
+   * The counter, rather than a boolean, so the surface's debounce can key an
+   * effect on it and coalesce a burst of edits into one request. Deliberately
+   * client-side: `session-status` is ungated (it fans out for every session,
+   * visible or not) and `session-patch` already carries settled tool items
+   * for the visible ones, so the host needs no new plumbing to make this live.
+   */
+  fleetDiffDirty: number;
+  /**
    * The session whose pane last held focus — client-local, never sent to the
    * host and never persisted. It answers "which session is the user actually
    * working in", which is what a new session inherits its provider, model,
@@ -82,6 +106,9 @@ export const initialState: ClientState = {
   bringBackBySession: {},
   usageByProvider: {},
   staleTrees: [],
+  fleetDiff: undefined,
+  fleetDiffReason: undefined,
+  fleetDiffDirty: 0,
   focusedSessionId: null,
 };
 
@@ -139,6 +166,10 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
         // disk at one instant, and a reload is exactly the event after which
         // nothing in the client may still claim to know it.
         staleTrees: [],
+        // Cleared with the sweep and for the same reason — and the counter
+        // with it, so a reload does not immediately re-request off a count
+        // that describes a webview that no longer exists.
+        fleetDiff: undefined, fleetDiffReason: undefined, fleetDiffDirty: 0,
         // Not carried forward: focus is a fact about the rendered panes, and
         // hydrate rebuilds them. A stale id would let `+ New` inherit from a
         // session this hydrate may not even contain.
@@ -203,6 +234,16 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
       };
     }
 
+    case 'fleet-diff':
+      // Wholesale, never merged, for the same reason the sweep is: it
+      // describes disk at an instant, and a merged delta would let a stale
+      // row outlive the change it described.
+      // The reason travels with the answer and is replaced by it: a later
+      // successful read clears a failure, because a failure that outlived the
+      // read that disproved it would be the stale row this case exists to
+      // prevent.
+      return { ...state, fleetDiff: msg.trees, fleetDiffReason: msg.reason };
+
     case 'stale-trees':
       // Wholesale, never merged: the sweep is the complete answer, and a
       // removal's outcome is a row that is no longer in it.
@@ -251,11 +292,17 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
     case 'session-status': {
       const sessions = state.sessions.map((s) =>
         s.id === msg.id ? { ...s, status: msg.status } : s);
+      // Idle is when a turn's writes have landed. Ungated, so this is the one
+      // signal that reaches the client for a session with no pane on screen.
+      const fleetDiffDirty = msg.status === 'idle'
+        ? state.fleetDiffDirty + 1
+        : state.fleetDiffDirty;
       const pane = state.byId[msg.id];
-      if (!pane) { return { ...state, sessions }; }
+      if (!pane) { return { ...state, sessions, fleetDiffDirty }; }
       return {
         ...state,
         sessions,
+        fleetDiffDirty,
         byId: {
           ...state.byId,
           [msg.id]: { ...pane, summary: { ...pane.summary, status: msg.status } },
@@ -276,10 +323,19 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
     }
 
     case 'session-patch': {
+      // Counted before the pane guard: a file edit changed the tree whether
+      // or not this client is rendering that session's transcript.
+      const edited = msg.patch.op === 'replace'
+        && msg.patch.item.role === 'tool'
+        && msg.patch.item.state !== 'running'
+        && msg.patch.item.tool.kind === 'file-edit';
+      const fleetDiffDirty = edited ? state.fleetDiffDirty + 1 : state.fleetDiffDirty;
+
       const pane = state.byId[msg.id];
-      if (!pane) { return state; }
+      if (!pane) { return edited ? { ...state, fleetDiffDirty } : state; }
       return {
         ...state,
+        fleetDiffDirty,
         byId: { ...state.byId, [msg.id]: applyPatch(pane, msg.patch) },
       };
     }

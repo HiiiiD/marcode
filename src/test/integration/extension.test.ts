@@ -33,7 +33,9 @@ suite('PanelViewProvider CSP', () => {
   // render() never touches the manager; these tests exercise only HTML
   // generation, so an untyped stub is sufficient.
   const managerStub = {} as unknown as SessionManager;
-  const editorStub: EditorContextHost = { current: () => null, reveal: () => {} };
+  const editorStub: EditorContextHost = {
+    current: () => null, reveal: () => {}, openDiff: () => {},
+  };
 
   test('CSP contains default-src none', () => {
     const provider = new PanelViewProvider(extensionUri, managerStub, '/tmp', editorStub);

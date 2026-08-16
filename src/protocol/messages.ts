@@ -228,6 +228,49 @@ export interface StaleTree {
   reason?: string;
 }
 
+export type ChangeOp = 'create' | 'modify' | 'delete' | 'rename';
+
+/**
+ * How a tree's diff was anchored. Named rather than inline because the UI
+ * quotes it: `head` means the diff shows uncommitted work only, which is a
+ * materially different reading of a session than "everything since the
+ * branch point", and a number nobody can locate is not an answer.
+ */
+export type DiffBase =
+  | { kind: 'merge-base'; ref: string; sha: string }
+  | { kind: 'head' };
+
+export interface FileChange {
+  /** Repo-relative, POSIX separators — the spelling git reports. */
+  path: string;
+  /** Set only for a rename; the path the file moved from. */
+  from?: string;
+  op: ChangeOp;
+  /** Undefined for a binary file, where git reports no line counts. */
+  insertions?: number;
+  deletions?: number;
+  /**
+   * Sessions whose transcripts claim a write to this path. Empty is a real
+   * answer, not a gap: a change made by a shell command, a build or the user
+   * has no tool call behind it and no session may be named for it.
+   */
+  claimedBy: SessionId[];
+}
+
+export interface TreeDiff {
+  /** Resolved absolute path of the working tree root. */
+  root: string;
+  branch?: string;
+  /** Sessions occupying this tree, roster order. */
+  sessions: SessionId[];
+  base: DiffBase;
+  files: FileChange[];
+  /** Files beyond the render cap, omitted from `files`. Never truncate silently. */
+  omitted: number;
+  /** Why this tree has no diff. Set means `files` is empty. */
+  reason?: string;
+}
+
 export interface PaneLayout {
   orientation: 'vertical' | 'horizontal';
   panes: { sessionId: SessionId; size: number }[];
@@ -310,7 +353,19 @@ export type WebviewToHost =
    * reason. The host re-plans before acting and refuses through the refreshed
    * sweep, exactly as `bring-back` re-plans and refuses through a fresh plan.
    */
-  | { t: 'remove-stale-tree'; path: string };
+  | { t: 'remove-stale-tree'; path: string }
+  /**
+   * "What has the fleet changed?" Read-only and deliberately not
+   * session-addressed: a working tree is the unit git can answer for, and
+   * two sessions sharing one tree share one answer.
+   */
+  | { t: 'request-fleet-diff' }
+  /**
+   * Open one file's change in VS Code's own diff editor. Carries the tree
+   * because a repo-relative path is meaningless without it, and the base
+   * because the left-hand side is that file at the branch point.
+   */
+  | { t: 'open-file-diff'; root: string; path: string; base: DiffBase };
 
 export type HostToWebview =
   | { t: 'hydrate'; sessions: SessionSummary[]; layout: PaneLayout;
@@ -367,4 +422,20 @@ export type HostToWebview =
    * it could not go is the line it now carries. A complete replacement, never
    * a delta.
    */
-  | { t: 'stale-trees'; trees: StaleTree[] };
+  | { t: 'stale-trees'; trees: StaleTree[] }
+  /**
+   * The answer to `request-fleet-diff`. A complete replacement, never a
+   * delta: it describes disk at an instant, and a merged delta would let a
+   * stale row outlive the change it described.
+   */
+  | { t: 'fleet-diff'; trees: TreeDiff[];
+      /**
+       * Why the whole read failed; `trees` is empty when it is set. The
+       * per-tree counterpart of `TreeDiff.reason`, and it exists for the same
+       * reason: errors are state, never exceptions. Without it a read that
+       * threw before any tree was reached would emit nothing at all, and the
+       * surface would sit on "Reading the working trees…" for the life of the
+       * webview — the one sentence a failure must never be allowed to leave
+       * on screen.
+       */
+      reason?: string };

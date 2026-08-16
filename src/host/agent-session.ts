@@ -13,6 +13,7 @@ import type {
 } from '../providers/types';
 import { findModel, resolveEffort } from '../shared/model-catalog';
 import { threadKey } from '../shared/thread-key';
+import { claimedPaths } from './claim-paths';
 import { profileNoiseIn } from './profile-noise';
 import type { TranscriptStore } from './transcript-store';
 import { detectWorktreeAdd } from './worktree-detect';
@@ -101,6 +102,16 @@ export class AgentSession {
   private childOf = new Map<string, string>();
   /** Permission request id -> the provider tool id of the subagent it nests under. */
   private permissionChildOf = new Map<string, string>();
+  /**
+   * Every absolute path this session's tool calls have written, this launch.
+   *
+   * Not persisted, and deliberately: a claim describes a tree at an instant,
+   * and a restored claim would describe an install nobody checked this
+   * launch — the same reason a failed model probe never reaches
+   * `catalog.json`. `SessionManager` rebuilds the pre-launch part from the
+   * transcript on demand instead.
+   */
+  private readonly claims = new Set<string>();
   private pumping: Promise<void>;
   /**
    * The editor context captured when the parked message was typed, not when
@@ -165,6 +176,10 @@ export class AgentSession {
   }
 
   get state(): SessionState { return this._state; }
+
+  get claimedPaths(): ReadonlySet<string> {
+    return this.claims;
+  }
 
   /**
    * Tells the sink, once, that this session's shell is loading a profile that
@@ -614,6 +629,21 @@ export class AgentSession {
         };
         this.toolItems.set(event.id, settled);
         this.reportShellNoise(settled);
+
+        // Above the subagent branch below on purpose. `offerRelocation` skips
+        // subagent tool-ends because a subagent's worktree has no claim on
+        // where the parent conversation lives; attribution is the opposite
+        // case — a subagent's edit changed *this* session's tree and is this
+        // session's change on disk, so it must be recorded before that early
+        // return.
+        //
+        // Recorded whether or not the call succeeded: a failed edit can still
+        // have moved bytes, and a claim is "this session wrote here", not
+        // "this session succeeded here". The diff decides what is actually
+        // there; a claimed path with no diff is simply never listed.
+        for (const path of claimedPaths(settled.tool, this._state.cwd)) {
+          this.claims.add(path);
+        }
 
         const parentRoot = this.childOf.get(event.id);
         if (parentRoot) {
