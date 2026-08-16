@@ -1,4 +1,6 @@
-import { ColumnsIcon, FolderGit2Icon, PlugZapIcon, RowsIcon } from 'lucide-react';
+import {
+  ColumnsIcon, FolderGit2Icon, GitCompareIcon, PlugZapIcon, RowsIcon,
+} from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
@@ -19,9 +21,13 @@ interface SessionPickerProps {
   /** Whether the panel is too narrow to split side by side. Measured once,
    * in `App`, and shared with `PaneGroup` — see `use-is-narrow.ts`. */
   narrow: boolean;
+  /** Whether the panel is wide enough to offer the fleet diff surface at all
+   * — see `REVIEW_PX` in `use-is-narrow.ts`. */
+  canReview: boolean;
+  onReview: () => void;
 }
 
-export function SessionPicker({ narrow }: SessionPickerProps) {
+export function SessionPicker({ narrow, canReview, onReview }: SessionPickerProps) {
   const { state, post } = useStore();
   const open = new Set(state.layout.panes.map((p) => p.sessionId));
   const horizontal = state.layout.orientation === 'horizontal';
@@ -159,6 +165,28 @@ export function SessionPicker({ narrow }: SessionPickerProps) {
           onClick={() => { setTreesOpen(true); }}
         >
           <FolderGit2Icon aria-hidden />
+        </Button>
+      )}
+
+      {/*
+        Its own control, beside the working-trees one, for the same reason
+        that one is: the menu it sits next to answers questions about layout,
+        and filing "what did the fleet write" inside it would hide the only
+        surface that answers for the work itself behind a word about panes.
+
+        Gated on width rather than styled small: a file list with churn
+        counts and session chips in a 300px column is a wall of truncated
+        paths, which is the failure this gate exists to prevent.
+      */}
+      {canReview && (
+        <Button
+          variant="outline"
+          size="icon-sm"
+          className="shrink-0"
+          aria-label="Review changes: every file the fleet has changed"
+          onClick={onReview}
+        >
+          <GitCompareIcon aria-hidden />
         </Button>
       )}
 
