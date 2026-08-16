@@ -40,13 +40,67 @@ function toModelInfo(m: CodexModel): ModelInfo {
   return { id: m.id, displayName: m.displayName, effort: effortLevelsOf(m) };
 }
 
-/** Real, child-process-backed spawn — the production default, injected away in every test. */
-function defaultSpawn(bin: string): Duplex {
+/**
+ * How much of the child's stderr is kept for a failure message. Bounded
+ * because the point of reading that stream is not to collect it — see below.
+ */
+const STDERR_TAIL_BYTES = 2048;
+
+/**
+ * Real, child-process-backed spawn — the production default, injected away in
+ * every test except the two that exist to cover this function.
+ *
+ * Exported because the real-binary test gate (`src/test/unit/codex-gate.ts`)
+ * spawns the same process the same way, and a second copy of the wiring below
+ * is a second copy of the bugs it fixes.
+ *
+ * Three things here are load-bearing, and each one was a way Codex died
+ * silently:
+ *
+ * - **stderr is drained.** `stdio`'s third slot is a pipe, and a pipe nobody
+ *   reads fills at ~64KB and then BLOCKS the writer. A chatty app-server
+ *   (tracing, profile warnings) would wedge mid-turn on a write to fd 2 and
+ *   stop answering JSON-RPC — no error, no close, every session parked in
+ *   `running` forever. Draining it is the fix; keeping a bounded tail is the
+ *   bonus, since a startup failure's actual reason only ever exists there.
+ * - **`'error'` is handled.** `spawn` does not throw on ENOENT; it emits
+ *   `'error'` on the ChildProcess asynchronously. Unhandled, EventEmitter
+ *   rethrows it — an uncaught exception in the extension host, which is what
+ *   a user with no `codex` on PATH used to get instead of a message.
+ * - **`'exit'` is handled.** stdout closing usually follows, but "usually" is
+ *   not a contract, and the exit carries the code and signal that say why.
+ */
+export function spawnAppServer(bin: string): Duplex {
   const child = spawnChildProcess(bin, ['app-server'], { stdio: ['pipe', 'pipe', 'pipe'] });
+
+  let tail = '';
+  child.stderr?.on('data', (chunk: Buffer) => {
+    tail = (tail + chunk.toString()).slice(-STDERR_TAIL_BYTES);
+  });
+  // Same reasoning as the stdin/stdout handlers in `AppServer`: an unhandled
+  // stream 'error' is a thrown exception in the host.
+  child.stderr?.on('error', () => {});
+
+  let notify: (reason: string) => void = () => {};
+  let failed = false;
+  const fail = (reason: string): void => {
+    // First reason wins: an ENOENT 'error' is followed by an 'exit', and the
+    // spawn failure is the more useful of the two.
+    if (failed) { return; }
+    failed = true;
+    const detail = tail.trim();
+    notify(detail ? `${reason}: ${detail}` : reason);
+  };
+  child.on('error', (err: Error) => { fail(`codex app-server failed to start (${err.message})`); });
+  child.on('exit', (code, signal) => {
+    fail(`codex app-server exited (${signal ?? `code ${code}`})`);
+  });
+
   return {
     stdin: child.stdin!,
     stdout: child.stdout!,
     kill: () => { child.kill(); },
+    onFailure: (cb) => { notify = cb; },
   };
 }
 
@@ -196,7 +250,7 @@ export class CodexProvider implements AgentProvider {
     const bin = this.binPath ?? 'codex';
     let child: Duplex;
     try {
-      child = (this.opts.spawn ?? defaultSpawn)(bin);
+      child = (this.opts.spawn ?? spawnAppServer)(bin);
     } catch {
       this.connectionPromise = undefined;
       // This message IS the availability UX — see fetchModels()'s header.
@@ -241,6 +295,22 @@ export class CodexProvider implements AgentProvider {
       for (const view of this.views) { view.serverRequest(method, id, params); }
     });
     server.onClose((reason) => {
+      // A closed `AppServer` rejects every subsequent request with
+      // 'app-server is not running', forever. Leaving it in the cache is what
+      // turned one process death — a crash, an OOM kill, a pipe lost to a
+      // sleeping machine, a CLI upgrade swapping the binary underneath — into
+      // a Codex that stayed broken for the life of the window: new sessions
+      // got the same corpse, and `refreshModels` re-probed through it, so even
+      // the availability mechanism could not recover. Dropping it here makes
+      // the next `connection()` reconnect, exactly as the spawn- and
+      // handshake-failure paths already do.
+      //
+      // Identity-checked so a late close from a process already replaced (by
+      // `setBinPath`, say) cannot evict its successor.
+      if (this.serverInstance === server) {
+        this.connectionPromise = undefined;
+        this.serverInstance = undefined;
+      }
       for (const view of this.views) { view.closed(reason); }
     });
   }
