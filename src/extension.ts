@@ -2,6 +2,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { defaultCwdOf } from './host/default-cwd';
+import { diffUri, registerDiffContentProvider } from './host/diff-content-provider';
 import { EditorContextTracker } from './host/editor-context-tracker';
 import { PanelViewProvider } from './host/panel-view-provider';
 import { PROFILE_GUARD_SNIPPET } from './host/profile-noise';
@@ -11,6 +12,7 @@ import { createVscodeEditorSource } from './host/vscode-editor-source';
 import { ClaudeProvider } from './providers/claude/claude-provider';
 import { CodexProvider } from './providers/codex/codex-provider';
 import { FakeProvider } from './providers/fake/fake-provider';
+import type { DiffBase } from './protocol/messages';
 import type { AgentProvider } from './providers/types';
 
 /**
@@ -128,6 +130,9 @@ export async function activate(context: vscode.ExtensionContext) {
     reveal: (target: string, startLine?: number) => {
       void revealFile(target, startLine);
     },
+    openDiff: (root: string, target: string, base: DiffBase) => {
+      void openFileDiff(root, target, base);
+    },
   };
 
   provider = new PanelViewProvider(context.extensionUri, manager, defaultCwd, editorHost);
@@ -137,6 +142,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(PanelViewProvider.viewType, provider),
+    registerDiffContentProvider(),
     { dispose: () => { void manager.dispose(); } },
     { dispose: () => { contextSub.dispose(); tracker.dispose(); editorSource.dispose(); } },
     vscode.commands.registerCommand('hiiiidCode.codex.login', () => {
@@ -204,6 +210,29 @@ async function revealFile(target: string, startLine?: number): Promise<void> {
     // transcript restored in a different workspace). Failing to open one is
     // not worth a user-facing error.
     console.error('[hiiiid-code] could not reveal', target, err);
+  }
+}
+
+/**
+ * Opens one file's change in VS Code's own diff editor.
+ *
+ * The panel lists; VS Code renders. A side-by-side, syntax-highlit,
+ * navigable diff already exists in this window, and reimplementing a worse
+ * one inside a 300px sidebar would be the wrong half of the job.
+ */
+async function openFileDiff(root: string, target: string, base: DiffBase): Promise<void> {
+  try {
+    const right = vscode.Uri.file(path.join(root, target));
+    const left = diffUri(root, target, base.kind === 'merge-base' ? base.sha : 'HEAD');
+    const label = base.kind === 'merge-base' ? base.ref : 'HEAD';
+    await vscode.commands.executeCommand(
+      'vscode.diff', left, right, `${target} (${label} → working tree)`,
+    );
+  } catch (err) {
+    // A row can outlive the file it names — reverted, deleted, or swept with
+    // its worktree. Failing to open one is not worth a user-facing error, the
+    // same call this file already makes for a dead transcript chip.
+    console.error('[hiiiid-code] could not open diff for', target, err);
   }
 }
 

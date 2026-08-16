@@ -340,7 +340,19 @@ export type WebviewToHost =
    * reason. The host re-plans before acting and refuses through the refreshed
    * sweep, exactly as `bring-back` re-plans and refuses through a fresh plan.
    */
-  | { t: 'remove-stale-tree'; path: string };
+  | { t: 'remove-stale-tree'; path: string }
+  /**
+   * "What has the fleet changed?" Read-only and deliberately not
+   * session-addressed: a working tree is the unit git can answer for, and
+   * two sessions sharing one tree share one answer.
+   */
+  | { t: 'request-fleet-diff' }
+  /**
+   * Open one file's change in VS Code's own diff editor. Carries the tree
+   * because a repo-relative path is meaningless without it, and the base
+   * because the left-hand side is that file at the branch point.
+   */
+  | { t: 'open-file-diff'; root: string; path: string; base: DiffBase };
 
 export type HostToWebview =
   | { t: 'hydrate'; sessions: SessionSummary[]; layout: PaneLayout;

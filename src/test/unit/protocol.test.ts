@@ -32,6 +32,8 @@ function describeInbound(m: WebviewToHost): string {
     case 'bring-back': return 'bring-back';
     case 'request-stale-trees': return 'request-stale-trees';
     case 'remove-stale-tree': return 'remove-stale-tree';
+    case 'request-fleet-diff': return 'request-fleet-diff';
+    case 'open-file-diff': return 'open-file-diff';
     default: return assertNever(m);
   }
 }

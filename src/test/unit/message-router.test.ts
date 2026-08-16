@@ -278,6 +278,7 @@ suite('MessageRouter', () => {
     const r = new MessageRouter(mgr, (m) => sent.push(m), '/tmp', {
       current: () => ctx,
       reveal: () => {},
+      openDiff: () => {},
     });
 
     const session = await mgr.create('fake', '/tmp');
@@ -296,6 +297,7 @@ suite('MessageRouter', () => {
     const r = new MessageRouter(mgr, (m) => sent.push(m), '/tmp', {
       current: () => ({ path: 'src/a.ts', languageId: 'typescript' }),
       reveal: () => {},
+      openDiff: () => {},
     });
 
     const session = await mgr.create('fake', '/tmp');
@@ -336,6 +338,7 @@ suite('MessageRouter', () => {
     const r = new MessageRouter(manager, (m) => sent.push(m), '/tmp', {
       current: () => null,
       reveal: (path, startLine) => calls.push({ path, startLine }),
+      openDiff: () => {},
     });
 
     await r.handle({ t: 'reveal-file', path: 'src/a.ts', startLine: 12 });
@@ -408,6 +411,7 @@ suite('MessageRouter', () => {
     const r = new MessageRouter(manager, (m) => sent.push(m), '/tmp', {
       current: () => ctx,
       reveal: () => {},
+      openDiff: () => {},
     });
 
     await r.handle({ t: 'ready' });
