@@ -926,3 +926,60 @@ suite('ClaudeProvider (questions)', () => {
     assert.strictEqual(events().some((e) => e.kind === 'question'), false);
   });
 });
+
+suite('ClaudeProvider (cancellation)', () => {
+  test('interrupt settles a parked permission — it does not strand the card', async () => {
+    const fake = fakeLoadQuery();
+    const provider = new ClaudeProvider(fake.load as never);
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+    const events = collect(run);
+    run.send('hi');
+    await tick();
+
+    const canUseTool = fake.calls[0].options.canUseTool as CanUseToolLike;
+    const decision = canUseTool('Write', { file_path: '/tmp/a' },
+      { toolUseID: 't1', signal: new AbortController().signal, requestId: 'rq1' });
+    await run.interrupt();
+
+    assert.deepStrictEqual(await decision, { behavior: 'deny', message: 'Turn cancelled' });
+    assert.strictEqual(events().some((e) => e.kind === 'request-cancelled' && e.id === 't1'), true);
+  });
+
+  test('an aborted question resolves deny, never null', async () => {
+    const fake = fakeLoadQuery();
+    const provider = new ClaudeProvider(fake.load as never);
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+    collect(run);
+    run.send('hi');
+    await tick();
+
+    const controller = new AbortController();
+    const canUseTool = fake.calls[0].options.canUseTool as CanUseToolLike;
+    const decision = canUseTool('AskUserQuestion', {
+      questions: [{ header: 'H', question: 'Q?', multiSelect: false,
+        options: [{ label: 'A', description: 'a' }, { label: 'B', description: 'b' }] }],
+    }, { toolUseID: 't1', signal: controller.signal, requestId: 'rq1' });
+    controller.abort();
+
+    assert.deepStrictEqual(await decision, { behavior: 'deny', message: 'Turn cancelled' });
+  });
+
+  test('an abort followed by interrupt settles once and emits one cancellation', async () => {
+    const fake = fakeLoadQuery();
+    const provider = new ClaudeProvider(fake.load as never);
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+    const events = collect(run);
+    run.send('hi');
+    await tick();
+
+    const controller = new AbortController();
+    const canUseTool = fake.calls[0].options.canUseTool as CanUseToolLike;
+    const decision = canUseTool('Write', { file_path: '/tmp/a' },
+      { toolUseID: 't1', signal: controller.signal, requestId: 'rq1' });
+    controller.abort();
+    await run.interrupt();
+    await decision;
+
+    assert.strictEqual(events().filter((e) => e.kind === 'request-cancelled').length, 1);
+  });
+});

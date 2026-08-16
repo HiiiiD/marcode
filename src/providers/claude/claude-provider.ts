@@ -250,6 +250,9 @@ function errorMessage(err: unknown): string {
   return redactSecrets(raw);
 }
 
+/** Sentinel: a parked question settled by cancellation, not by an answer. */
+const CANCELLED: QuestionAnswers = Object.freeze({ __cancelled__: [] }) as QuestionAnswers;
+
 export class ClaudeProvider implements AgentProvider {
   readonly id = 'claude';
   readonly displayName = 'Claude';
@@ -378,6 +381,22 @@ export class ClaudeProvider implements AgentProvider {
       | { kind: 'permission'; resolve: (decision: ToolDecision) => void }
       | { kind: 'question'; input: Record<string, unknown>; resolve: (answers: QuestionAnswers) => void };
     const parked = new Map<string, Parked>();
+    /**
+     * Settles a parked entry as cancelled. Deletes before resolving, so an
+     * abort and an explicit interrupt cannot double-resolve or double-report.
+     *
+     * A question resolves `deny` and never `null`: the SDK reserves null for
+     * "control_response already sent out-of-band", and an accidental null
+     * leaves the tool blocked with no park deadline (sdk.d.ts:196-204).
+     */
+    const cancelParked = (id: string) => {
+      const entry = parked.get(id);
+      if (!entry) { return; }
+      parked.delete(id);
+      events.push({ kind: 'request-cancelled', id });
+      if (entry.kind === 'permission') { entry.resolve({ allow: false, reason: 'Turn cancelled' }); }
+      else { entry.resolve(CANCELLED); }
+    };
     let disposed = false;
     let started = false;
     let queryRef: Query | undefined;
@@ -406,12 +425,14 @@ export class ClaudeProvider implements AgentProvider {
 
     const canUseTool: CanUseTool = async (toolName, input, options) => {
       const id = options.toolUseID;
+      options.signal.addEventListener('abort', () => { cancelParked(id); }, { once: true });
       const specs = toolName === 'AskUserQuestion' ? toQuestionSpecs(input) : undefined;
       if (specs) {
         events.push({ kind: 'question', id, questions: specs, blocking: true });
         const answers = await new Promise<QuestionAnswers>((resolve) => {
           parked.set(id, { kind: 'question', input, resolve });
         });
+        if (answers === CANCELLED) { return { behavior: 'deny', message: 'Turn cancelled' }; }
         return { behavior: 'allow', updatedInput: { ...input, answers: toSdkAnswers(answers) } };
       }
       events.push({ kind: 'permission', id, tool: toToolCall(toolName, input) });
@@ -653,6 +674,7 @@ export class ClaudeProvider implements AgentProvider {
         return toContextBreakdown(res as unknown as ContextUsageLike);
       },
       interrupt: async () => {
+        for (const id of [...parked.keys()]) { cancelParked(id); }
         if (!queryRef) { return; } // nothing has ever run: a no-op, not a failure.
         try {
           await queryRef.interrupt();
