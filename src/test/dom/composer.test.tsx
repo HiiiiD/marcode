@@ -114,13 +114,40 @@ suite("Composer", () => {
     assert.deepStrictEqual(posted().at(-1), { t: "ready" });
   });
 
-  test("a running session shows Send disabled and Stop beside it; Stop posts interrupt", async () => {
+  test("a running session shows Stop beside Send; Stop posts interrupt", async () => {
     renderWithStore(<Composer pane={pane("running")} model={NO_EFFORT} models={[]} />);
 
-    assert.strictEqual(screen.getByRole("button", { name: "Send" }).hasAttribute("disabled"), true);
     await userEvent.click(screen.getByRole("button", { name: "Stop" }));
 
     assert.deepStrictEqual(posted().at(-1), { t: "interrupt", id: "a" });
+  });
+
+  test("Enter during a run still posts send, for the host to park", async () => {
+    renderWithStore(<Composer pane={pane("running")} model={NO_EFFORT} models={[]} />);
+    const box = screen.getByLabelText("Message") as HTMLTextAreaElement;
+
+    await userEvent.type(box, "next thing{Enter}");
+
+    assert.deepStrictEqual(posted().at(-1), { t: "send", id: "a", text: "next thing" });
+    assert.strictEqual(box.value, "");
+  });
+
+  test("a queued message is shown and can be cancelled", async () => {
+    const queued = {
+      summary: summary("a", { status: "running", queued: { text: "next thing" } }),
+      items: [], hasMore: false, pending: [], mcpServers: [],
+    };
+    renderWithStore(<Composer pane={queued} model={NO_EFFORT} models={[]} />);
+
+    assert.ok(screen.getByText("next thing"));
+    await userEvent.click(screen.getByRole("button", { name: "Cancel queued message" }));
+
+    assert.deepStrictEqual(posted().at(-1), { t: "cancel-queued", id: "a" });
+  });
+
+  test("an idle session shows no queued row", () => {
+    renderWithStore(<Composer pane={pane()} model={NO_EFFORT} models={[]} />);
+    assert.strictEqual(screen.queryByRole("button", { name: "Cancel queued message" }) === null, true);
   });
 
   test("awaiting-approval also shows Stop", () => {
@@ -292,23 +319,25 @@ suite("Composer", () => {
     );
   });
 
-  test("Send stays visible but disabled while the agent runs, with Stop beside it", () => {
+  test("Send stays live while the agent runs and says the message will wait", async () => {
     renderApp();
     hydrateOne();
     sendFromHost({ t: "session-status", id: "a", status: "running" });
+    await userEvent.type(screen.getByLabelText("Message"), "next thing");
 
     const send = screen.getByRole("button", { name: "Send" });
-    assert.ok((send as HTMLButtonElement).disabled, "Send is disabled, not removed, during a run");
     assert.strictEqual(
-      send.getAttribute("title"),
-      null,
-      "a title on a disabled control is unreachable by assistive tech; the reason lives in aria-describedby instead",
+      (send as HTMLButtonElement).disabled, false,
+      "a message typed during a run can be committed; the host parks it",
     );
     const describedBy = send.getAttribute("aria-describedby");
-    assert.ok(describedBy, "Send must explain why it is disabled while the agent runs");
+    assert.ok(describedBy, "Send must say the message will not go out immediately");
     const reason = document.getElementById(describedBy!);
     assert.ok(reason, "the aria-describedby target must be real, rendered text");
-    assert.strictEqual(reason!.textContent, "The agent is working. Stop it to send another message.");
+    assert.strictEqual(
+      reason!.textContent,
+      "The agent is working. This message is sent when the turn ends, or as soon as you stop it.",
+    );
     screen.getByRole("button", { name: "Stop" });
   });
 
