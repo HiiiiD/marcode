@@ -3,14 +3,15 @@ import type { PaneState } from "@/reducer";
 import { act, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import * as assert from "assert";
-import type { SessionStatus } from "../../protocol/messages";
-import { catalog, layoutOf, snapshot, summary } from "../fixtures/protocol";
+import type { QuestionRequest, SessionStatus } from "../../protocol/messages";
+import { catalog, layoutOf, permission, question, snapshot, summary } from "../fixtures/protocol";
 import { posted, renderApp, renderWithStore, sendFromHost } from "./harness";
 import { hydrate } from "./session-header.test";
 
 function pane(status: SessionStatus = 'idle'): PaneState {
   return {
-    summary: summary('a', { status }), items: [], hasMore: false, pending: [], mcpServers: [], attachments: [],
+    summary: summary('a', { status }), items: [], hasMore: false, pending: [], mcpServers: [],
+    pendingQuestions: [], attachments: [],
   };
 }
 
@@ -23,6 +24,7 @@ function startedPane(id: string): PaneState {
     pending: [],
     mcpServers: [],
     attachments: [],
+    pendingQuestions: [],
   };
 }
 
@@ -136,7 +138,8 @@ suite("Composer", () => {
   test("a queued message is shown and can be cancelled", async () => {
     const queued = {
       summary: summary("a", { status: "running", queued: { text: "next thing" } }),
-      items: [], hasMore: false, pending: [], mcpServers: [], attachments: [],
+      items: [], hasMore: false, pending: [], mcpServers: [],
+      pendingQuestions: [], attachments: [],
     };
     renderWithStore(<Composer pane={queued} model={NO_EFFORT} models={[]} />);
 
@@ -161,7 +164,7 @@ suite("Composer", () => {
 
     await userEvent.click(screen.getByLabelText("Permission mode"));
     await screen.findByRole("menuitemradio", { name: /Ask/ });
-    assert.strictEqual(screen.queryByRole("menuitem", { name: /Effort/ }), null);
+    assert.strictEqual(screen.queryByRole("menuitem", { name: /Effort/ }) === null, true);
   });
 
   test("the Effort row names the current level, in its text and its accessible name", async () => {
@@ -223,8 +226,9 @@ suite("Composer", () => {
     const row = await screen.findByRole("menuitem", { name: /Effort/ });
     await userEvent.click(row);
 
-    assert.ok(
-      screen.queryByRole("menuitem", { name: /Effort/ }),
+    assert.strictEqual(
+      screen.queryByRole("menuitem", { name: /Effort/ }) !== null,
+      true,
       "setting a level must leave the menu open so the change is visible",
     );
   });
@@ -387,7 +391,7 @@ suite("Composer", () => {
 
   test("no editor context means no control at all", () => {
     renderWithStore(<Composer pane={pane()} model={NO_EFFORT} models={[]} />);
-    assert.strictEqual(screen.queryByRole("button", { name: /editor context/i }), null);
+    assert.strictEqual(screen.queryByRole("button", { name: /editor context/i }) === null, true);
   });
 
   test("an editor context reveals the control, on and naming the file", () => {
@@ -422,6 +426,7 @@ suite("Composer", () => {
       pending: [],
       mcpServers: [],
       attachments: [],
+      pendingQuestions: [],
     };
     renderWithStore(<Composer pane={off} model={NO_EFFORT} models={[]} />);
     sendFromHost({ t: "editor-context", ctx: CTX });
@@ -554,6 +559,73 @@ suite("Composer", () => {
       });
 
       assert.ok(screen.getByText("refactor the parser"));
+    });
+  });
+
+  suite("a pending question", () => {
+    function hydrateWith(pendingQuestions: QuestionRequest[]) {
+      sendFromHost({
+        t: "hydrate",
+        sessions: [summary("a")],
+        layout: layoutOf("a"),
+        snapshots: [snapshot("a", { pendingQuestions })],
+        catalog: catalog(),
+        unavailable: [],
+        usage: {},
+      });
+    }
+
+    function hydrateWithPermission(pending: ReturnType<typeof snapshot>["pending"]) {
+      sendFromHost({
+        t: "hydrate",
+        sessions: [summary("a")],
+        layout: layoutOf("a"),
+        snapshots: [snapshot("a", { pending })],
+        catalog: catalog(),
+        unavailable: [],
+        usage: {},
+      });
+    }
+
+    test("a blocking question disables the composer with a visible reason", () => {
+      renderApp();
+      hydrateWith([{ requestId: "r1", blocking: true, questions: question().questions }]);
+
+      const box = screen.getByLabelText("Message") as HTMLTextAreaElement;
+      assert.strictEqual(box.disabled, true);
+      const describedBy = box.getAttribute("aria-describedby");
+      assert.ok(describedBy, "the box must point at the reason it is disabled");
+      const reason = document.getElementById(describedBy!);
+      assert.strictEqual(reason !== null, true, "the aria-describedby target must be real, rendered text");
+      assert.strictEqual(reason!.textContent, "Answer the question above to continue.");
+      assert.strictEqual(box.getAttribute("title"), null, "the reason must never ride a title attribute");
+    });
+
+    test("a non-blocking question leaves the composer usable", () => {
+      renderApp();
+      hydrateWith([{ requestId: "r1", blocking: false, questions: question().questions }]);
+
+      assert.strictEqual((screen.getByLabelText("Message") as HTMLTextAreaElement).disabled, false);
+    });
+
+    test("a pending permission still leaves the composer usable", () => {
+      renderApp();
+      hydrateWithPermission([{ requestId: "r1", tool: permission().tool }]);
+
+      assert.strictEqual((screen.getByLabelText("Message") as HTMLTextAreaElement).disabled, false);
+    });
+
+    test("the composer re-enables once the blocking question leaves the pending slice", () => {
+      renderApp();
+      hydrateWith([{ requestId: "r1", blocking: true, questions: question().questions }]);
+      assert.strictEqual((screen.getByLabelText("Message") as HTMLTextAreaElement).disabled, true);
+
+      sendFromHost({
+        t: "session-snapshot",
+        session: snapshot("a", { pendingQuestions: [] }),
+      });
+
+      assert.strictEqual((screen.getByLabelText("Message") as HTMLTextAreaElement).disabled, false);
     });
   });
 });

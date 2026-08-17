@@ -5,7 +5,25 @@ export interface Duplex {
   stdin: NodeJS.WritableStream;
   stdout: NodeJS.ReadableStream;
   kill(): void;
+  /**
+   * Process-level death, with a reason — a failed spawn or an exit.
+   *
+   * Distinct from the stream events this class already listens to, and not
+   * derivable from them: `spawn` reports ENOENT by emitting `'error'` on the
+   * ChildProcess itself, which is an object `Duplex` deliberately does not
+   * expose. Left unset by a stub that has no process behind it; the spawner
+   * that does own one (`defaultSpawn`) is where the reason — stderr tail
+   * included — gets composed.
+   */
+  onFailure?(cb: (reason: string) => void): void;
 }
+
+/**
+ * How long a stdout close waits for the process `exit` that explains it. Long
+ * enough for the few milliseconds measured between the two, short enough that
+ * a process which closes its output without ever exiting still fails fast.
+ */
+const EXIT_REASON_GRACE_MS = 250;
 
 /**
  * A line-framed JSON-RPC connection to `codex app-server`.
@@ -32,7 +50,25 @@ export class AppServer {
 
   constructor(private readonly child: Duplex) {
     child.stdout.on('data', (chunk: Buffer) => { this.ingest(chunk.toString()); });
-    child.stdout.on('close', () => { this.close('app-server closed its output'); });
+    child.stdout.on('close', () => {
+      // Immediate when nothing owns a process — a stub's streams closing is
+      // the whole of the news, and no better reason is coming.
+      if (!child.onFailure) { this.close('app-server closed its output'); return; }
+      // Otherwise held briefly, and only this reason is: when a real process
+      // dies its stdio streams close a few milliseconds BEFORE `exit` fires
+      // (measured: stdout close at 156ms, exit at 158ms, for a child that
+      // died on startup), and `exit` is the event that knows the code, the
+      // signal and the stderr tail — the whole of why. `close()` is
+      // first-reason-wins, so without the grace this generic sentence would
+      // always beat the useful one, and every crash would read identically.
+      // If nothing better arrives, it still fires: a connection left open
+      // over a dead pipe parks every request forever, which is the thing
+      // listening here exists to prevent.
+      const timer = setTimeout(() => {
+        this.close('app-server closed its output');
+      }, EXIT_REASON_GRACE_MS);
+      timer.unref?.();
+    });
     // A pipe error is otherwise an unhandled 'error' event — Node's default
     // behavior for that is to throw, which would crash the extension host
     // rather than land on a session as an error item.
@@ -42,6 +78,10 @@ export class AppServer {
     child.stdin.on('error', (err: Error) => {
       this.close(`app-server stdin error: ${err.message}`);
     });
+    // A spawn failure never reaches the streams at all — nothing is ever
+    // piped — so without this an unusable binary leaves every request pending
+    // forever instead of rejecting with a reason the user can act on.
+    child.onFailure?.((reason) => { this.close(reason); });
   }
 
   onNotification(cb: (method: string, params: unknown) => void): void { this.notify = cb; }
@@ -77,7 +117,19 @@ export class AppServer {
     while (newline !== -1) {
       const line = this.buffer.slice(0, newline).trim();
       this.buffer = this.buffer.slice(newline + 1);
-      if (line) { this.dispatch(line); }
+      if (line) {
+        // `dispatch` runs handler callbacks, and `ingest` is called straight
+        // from a stdout 'data' listener — a throw from a handler would escape
+        // as an uncaught exception in the extension host AND drop every
+        // remaining frame in this chunk. Same tolerance policy as the
+        // unparseable-line branch below: one bad frame must not take the
+        // connection, or the other live sessions, down with it.
+        try {
+          this.dispatch(line);
+        } catch (err) {
+          console.warn('[hiiiid-code] codex: frame handler threw', err);
+        }
+      }
       newline = this.buffer.indexOf('\n');
     }
   }

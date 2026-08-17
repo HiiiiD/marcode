@@ -1,12 +1,16 @@
-// Recognizes `git worktree add` in a canonical command call and returns the
-// path it creates. Deliberately narrow: scripts, aliases and non-git tools are
-// not chased. A missed detection costs nothing that is not already lost; a
-// wrong one would relocate a session into a directory nobody asked for, so
-// anything unparseable returns undefined.
+// Recognizes a worktree a session just created and returns its path. Two
+// spellings reach us: `git worktree add` in a canonical command call, and the
+// backend's own built-in `EnterWorktree` tool, which runs no shell at all and
+// names the path only in its result text.
+//
+// Deliberately narrow: scripts, aliases and other non-git tools are not
+// chased. A missed detection costs nothing that is not already lost; a wrong
+// one would relocate a session into a directory nobody asked for, so anything
+// unparseable returns undefined.
 //
 // No `vscode` import: this is unit-tested outside the extension host.
 
-import type { ToolCall } from '../providers/canonical/tool-call';
+import type { ToolCall, ToolOutput } from '../providers/canonical/tool-call';
 
 /** Splits on whitespace, keeping quoted runs together and stripping the quotes. */
 function tokenize(segment: string): string[] {
@@ -22,8 +26,24 @@ function tokenize(segment: string): string[] {
 /** Flags that take a value, so the value is never mistaken for the path. */
 const VALUED = new Set(['-b', '-B', '--reason', '--lock-reason']);
 
-export function detectWorktreeAdd(tool: ToolCall, ok: boolean): string | undefined {
-  if (!ok || tool.kind !== 'command') { return undefined; }
+/**
+ * The built-in tool's announcement. The path is whatever sits between the
+ * preamble and ` on branch `, so a directory with spaces in it survives; the
+ * lazy group stops at the first such marker rather than the last.
+ */
+const ENTERED = /\bworktree at (.+?) on branch /;
+
+export function detectWorktreeAdd(
+  tool: ToolCall, ok: boolean, output?: ToolOutput,
+): string | undefined {
+  if (!ok) { return undefined; }
+
+  if (tool.kind === 'other' && tool.label === 'EnterWorktree') {
+    if (output?.kind !== 'text') { return undefined; }
+    return ENTERED.exec(output.text)?.[1];
+  }
+
+  if (tool.kind !== 'command') { return undefined; }
 
   for (const segment of tool.command.split(/&&|\|\||;/)) {
     const words = tokenize(segment);

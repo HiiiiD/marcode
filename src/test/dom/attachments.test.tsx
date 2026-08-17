@@ -12,7 +12,7 @@ const NO_EFFORT = catalog()[0].models[1];
 function pane(attachments: Attachment[] = []): PaneState {
   return {
     summary: summary('a'), items: [], hasMore: false, pending: [],
-    mcpServers: [], attachments,
+    mcpServers: [], pendingQuestions: [], attachments,
   };
 }
 

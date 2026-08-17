@@ -253,24 +253,153 @@ suite('CodexRun', () => {
     assert.deepStrictEqual(reply?.result, { decision: 'decline' });
   });
 
-  test('an input request is declined with the response shape its type requires', async () => {
+  test('a requestUserInput becomes a question event, not a decline', async () => {
     const { server, send, sent } = stub();
     const run = await started(server, 'th_1');
     const events = collect(run);
     send({
       id: 44, method: 'item/tool/requestUserInput',
-      params: { threadId: 'th_1', questions: [], isBlocking: true },
+      params: {
+        threadId: 'th_1', turnId: 'tu_1', itemId: 'it_1', isBlocking: true,
+        questions: [{
+          id: 'q1', header: 'Scope', question: 'Which one?',
+          isOther: true, isSecret: false,
+          options: [{ label: 'A', description: 'first' }, { label: 'B', description: 'second' }],
+        }],
+      },
     });
     await tick();
-    // `ToolRequestUserInputResponse` requires `answers`; `{}` fails
-    // deserialization and the blocking request goes unanswered. An empty map
-    // is structurally valid and means "answered none of them".
-    assert.deepStrictEqual(sent().at(-1), { id: 44, result: { answers: {} } });
-    // And said so in the transcript, rather than failing silently.
-    assert.strictEqual(events().some((e) => e.kind === 'tool-start'), true);
+
+    const q = events().find((e) => e.kind === 'question');
+    assert.strictEqual(q?.kind, 'question');
+    assert.strictEqual(q.blocking, true);
+    assert.strictEqual(q.questions[0].id, 'q1');
+    assert.strictEqual(q.questions[0].allowOther, true);
+    assert.strictEqual(q.questions[0].secret, false);
+    // Nothing is answered yet — the request stays parked.
+    assert.strictEqual(sent().some((f) => f.id === 44), false);
   });
 
-  test('an MCP elicitation is declined with an action, not an empty object', async () => {
+  test('respondToQuestion answers the parked request in codex shape', async () => {
+    const { server, send, sent } = stub();
+    const run = await started(server, 'th_1');
+    const events = collect(run);
+    send({
+      id: 44, method: 'item/tool/requestUserInput',
+      params: {
+        threadId: 'th_1', turnId: 'tu_1', itemId: 'it_1', isBlocking: true,
+        questions: [{ id: 'q1', header: 'H', question: 'Q?', isOther: false, isSecret: false,
+          options: [{ label: 'A', description: 'a' }, { label: 'B', description: 'b' }] }],
+      },
+    });
+    await tick();
+
+    const q = events().find((e) => e.kind === 'question');
+    run.respondToQuestion(q!.id, { q1: ['A', 'B'] });
+    await tick();
+
+    assert.deepStrictEqual(sent().at(-1),
+      { id: 44, result: { answers: { q1: { answers: ['A', 'B'] } } } });
+  });
+
+  test('a question with null options maps to a free-text question', async () => {
+    const { server, send } = stub();
+    const run = await started(server, 'th_1');
+    const events = collect(run);
+    send({
+      id: 45, method: 'item/tool/requestUserInput',
+      params: {
+        threadId: 'th_1', turnId: 'tu_1', itemId: 'it_1', isBlocking: false,
+        questions: [{ id: 'q1', header: 'H', question: 'Name?', isOther: true, isSecret: true, options: null }],
+      },
+    });
+    await tick();
+
+    const q = events().find((e) => e.kind === 'question');
+    assert.strictEqual(q?.kind, 'question');
+    assert.strictEqual(q.blocking, false);
+    assert.strictEqual(q.questions[0].options === undefined, true);
+    assert.strictEqual(q.questions[0].secret, true);
+  });
+
+  test('malformed requestUserInput params answer the request instead of throwing', async () => {
+    const { server, send, sent } = stub();
+    const run = await started(server, 'th_1');
+    const events = collect(run);
+    // No `questions` at all. Mapping this used to throw straight out of the
+    // stdout data handler: an uncaught exception in the extension host, the
+    // rest of the chunk dropped, and a blocking request left unanswered with
+    // no card to answer it.
+    send({
+      id: 49, method: 'item/tool/requestUserInput',
+      params: { threadId: 'th_1', turnId: 'tu_1', itemId: 'it_1', isBlocking: true },
+    });
+    await tick();
+
+    assert.strictEqual(events().some((e) => e.kind === 'question'), false);
+    assert.deepStrictEqual(sent().find((f) => f.id === 49)?.result, { answers: {} });
+    const end = events().find((e) => e.kind === 'tool-end');
+    assert.strictEqual(end?.kind === 'tool-end' && end.ok, false);
+  });
+
+  test('a question entry that is not an object degrades the same way', async () => {
+    const { server, send, sent } = stub();
+    const run = await started(server, 'th_1');
+    const events = collect(run);
+    send({
+      id: 50, method: 'item/tool/requestUserInput',
+      params: {
+        threadId: 'th_1', turnId: 'tu_1', itemId: 'it_1', isBlocking: true,
+        questions: ['just a string'],
+      },
+    });
+    await tick();
+
+    assert.strictEqual(events().some((e) => e.kind === 'question'), false);
+    assert.deepStrictEqual(sent().find((f) => f.id === 50)?.result, { answers: {} });
+  });
+
+  test('interrupt settles every parked request, approvals included', async () => {
+    const { server, send, sent } = stub();
+    const run = await started(server, 'th_1');
+    const events = collect(run);
+    send({
+      id: 51, method: 'item/fileChange/requestApproval', params: { threadId: 'th_1' },
+    });
+    send({
+      id: 52, method: 'item/tool/requestUserInput',
+      params: {
+        threadId: 'th_1', turnId: 'tu_1', itemId: 'it_2', isBlocking: true,
+        questions: [{ id: 'q1', header: 'H', question: 'Q?', isOther: false, isSecret: false, options: null }],
+      },
+    });
+    await tick();
+    const parked = events().filter((e) => e.kind === 'permission' || e.kind === 'question');
+    assert.strictEqual(parked.length, 2, 'both must actually be parked first');
+
+    void run.interrupt();
+    await tick();
+    // `interrupt()` awaits `turn/interrupt` before settling anything, and the
+    // stub answers nothing on its own.
+    const rpc = sent().find((f) => f.method === 'turn/interrupt');
+    server.ingest(`${JSON.stringify({ id: rpc.id, result: {} })}\n`);
+    await tick();
+
+    // Every parked request has a reply frame. Without the approval half, the
+    // card stays `pending`, the host pins the session at `awaiting-approval`
+    // for a turn that no longer exists, and a later Allow answers a request
+    // codex has already abandoned.
+    for (const id of [51, 52]) {
+      assert.strictEqual(
+        sent().some((f) => f.id === id && f.result !== undefined), true,
+        `request ${id} was left unanswered by interrupt()`,
+      );
+    }
+    const cancelled = events().filter((e) => e.kind === 'request-cancelled').map((e) => e.id);
+    assert.deepStrictEqual(cancelled.sort(), ['51', '52']);
+  });
+
+  test('an MCP elicitation is still declined with an action', async () => {
     const { server, send, sent } = stub();
     const run = await started(server, 'th_1');
     collect(run);

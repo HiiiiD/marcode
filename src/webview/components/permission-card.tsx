@@ -2,12 +2,42 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { useStore } from '../store';
 import { folderName } from '../format';
-import type { SessionId, TranscriptItem } from '../../protocol/messages';
+import type { PermissionMeta, SessionId, TranscriptItem } from '../../protocol/messages';
 import { ToolBody } from './tool-body';
 import { describeInput } from './tool-render';
 import { TranscriptItemShell } from './transcript-item-shell';
 
 type PermissionItem = Extract<TranscriptItem, { role: 'permission' }>;
+
+/**
+ * What the backend's own permission engine already said about this request.
+ *
+ * Supporting detail, never the headline: the card's question stays "Allow
+ * X?", because that is the decision being asked for, and this sits under it
+ * in the same size as the rest of the body. Every field is optional and only
+ * rendered when the provider sent it — there is no placeholder and no
+ * invented copy, so a provider that reports nothing gets exactly the card it
+ * had before.
+ */
+function PermissionMetaDetail({ meta }: { meta?: PermissionMeta }) {
+  if (!meta) { return null; }
+  const { title, description, decisionReason, blockedPath } = meta;
+  if (!title && !description && !decisionReason && !blockedPath) { return null; }
+  return (
+    <div className="mb-2 flex flex-col gap-0.5">
+      {title && <div className="wrap-break-word">{title}</div>}
+      {description && <div className="wrap-break-word text-muted-foreground">{description}</div>}
+      {decisionReason && (
+        <div className="wrap-break-word text-muted-foreground">{decisionReason}</div>
+      )}
+      {blockedPath && (
+        <div className="min-w-0 truncate font-mono text-muted-foreground" title={blockedPath}>
+          {blockedPath}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function PermissionCard({
   item, sessionId,
@@ -22,6 +52,11 @@ export function PermissionCard({
   // looks the way the completed call will look — a shell command reads as a
   // command in both places, an edit reads as the same diff.
   const request = describeInput(tool);
+  // The backend's own name for the tool when it sent one — `displayName` is
+  // what its permission engine would have shown — falling back to the neutral
+  // label every other card uses. Used for the accessible names too, so the
+  // button a screen reader announces names the same tool the heading does.
+  const name = item.meta?.displayName ?? tool.label;
   const cwd = state.byId[sessionId]?.summary.cwd ?? '';
   // `respondToPermission` is exactly-once on the host and silently drops a
   // second response for the same requestId. Without local state, both
@@ -33,14 +68,15 @@ export function PermissionCard({
 
   if (item.state !== 'pending') {
     const label = server
-      ? `${server} ${tool.label} — ${item.state}`
-      : `${tool.label} — ${item.state}`;
+      ? `${server} ${name} — ${item.state}`
+      : `${name} — ${item.state}`;
     return (
       <TranscriptItemShell role="permission" label={label} ts={item.ts}>
         {item.reason && <div className="text-xs text-muted-foreground">{item.reason}</div>}
         <details className="text-xs">
           <summary className="cursor-default text-muted-foreground">What was requested</summary>
           <div className="mt-1">
+            <PermissionMetaDetail meta={item.meta} />
             <ToolBody blocks={request} />
           </div>
         </details>
@@ -67,14 +103,15 @@ export function PermissionCard({
               {server}
             </span>
           )}
-          <span>{tool.label} — no longer awaiting a response</span>
+          <span>{name} — no longer awaiting a response</span>
         </div>
         <div className="mb-2">
+          <PermissionMetaDetail meta={item.meta} />
           <ToolBody blocks={request} />
         </div>
         <div className="flex gap-2">
-          <Button size="sm" disabled aria-label={`Deny ${tool.label} (unavailable)`}>Deny</Button>
-          <Button variant="outline" size="sm" disabled aria-label={`Allow ${tool.label} (unavailable)`}>Allow</Button>
+          <Button size="sm" disabled aria-label={`Deny ${name} (unavailable)`}>Deny</Button>
+          <Button variant="outline" size="sm" disabled aria-label={`Allow ${name} (unavailable)`}>Allow</Button>
         </div>
       </div>
     );
@@ -102,10 +139,11 @@ export function PermissionCard({
             {server}
           </span>
         )}
-        <span className="font-medium">Allow {tool.label}?</span>
+        <span className="font-medium">Allow {name}?</span>
         <span className="truncate text-muted-foreground" title={cwd}>{folderName(cwd)}</span>
       </div>
       <div className="mb-2">
+        <PermissionMetaDetail meta={item.meta} />
         <ToolBody blocks={request} />
       </div>
       {/* Deny is the safe, reversible-feeling choice: it comes first in DOM
@@ -118,7 +156,7 @@ export function PermissionCard({
           size="sm"
           disabled={answered}
           onClick={() => decide(false)}
-          aria-label={`Deny ${tool.label}`}
+          aria-label={`Deny ${name}`}
         >
           Deny
         </Button>
@@ -127,7 +165,7 @@ export function PermissionCard({
           size="sm"
           disabled={answered}
           onClick={() => decide(true)}
-          aria-label={`Allow ${tool.label}`}
+          aria-label={`Allow ${name}`}
         >
           Allow
         </Button>

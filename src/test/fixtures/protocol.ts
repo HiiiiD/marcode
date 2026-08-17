@@ -4,6 +4,7 @@ import type {
 } from '../../protocol/messages';
 
 export type PermissionItem = Extract<TranscriptItem, { role: 'permission' }>;
+export type QuestionItem = Extract<TranscriptItem, { role: 'question' }>;
 export type RelocationItem = Extract<TranscriptItem, { role: 'relocation' }>;
 export type ToolItem = Extract<TranscriptItem, { role: 'tool' }>;
 
@@ -41,7 +42,8 @@ export function summary(id: string, over: Partial<SessionSummary> = {}): Session
 
 export function snapshot(id: string, over: Partial<SessionSnapshot> = {}): SessionSnapshot {
   return {
-    ...summary(id), items: [], hasMore: false, pending: [], mcpServers: [],
+    ...summary(id),
+    items: [], hasMore: false, pending: [], pendingQuestions: [], mcpServers: [],
     pendingAttachments: [], ...over,
   };
 }
@@ -105,6 +107,22 @@ export function permission(over: Partial<PermissionItem> = {}): PermissionItem {
       files: [{ path: '/tmp/a.txt', op: 'create', edits: [{ after: 'hi' }] }],
     },
     state: 'pending',
+    ...over,
+  };
+}
+
+export function question(over: Partial<QuestionItem> = {}): QuestionItem {
+  return {
+    id: 'q1', ts: 1, role: 'question', requestId: 'r1', blocking: true,
+    state: 'pending',
+    questions: [{
+      id: 'qq1', header: 'Scope', question: 'Which one?',
+      multiSelect: false, allowOther: true, secret: false,
+      options: [
+        { label: 'Question cards only', description: 'Smaller blast radius' },
+        { label: 'Both in one spec', description: 'Shares the call site' },
+      ],
+    }],
     ...over,
   };
 }

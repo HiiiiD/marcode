@@ -39,6 +39,21 @@
    */
   --input: var(--border);
   --ring: var(--vscode-focusBorder, var(--vscode-foreground));
+  /*
+   * Source-control decoration colours, so a changed path here reads the way
+   * the same path reads in VS Code's own SCM view. Named here rather than
+   * spelled inline at each use for the reason every other token is: the
+   * gitDecoration group is contributed by the git extension's colour
+   * registry, and a theme (or an install with git disabled) can leave it
+   * unset — a bare `var(--vscode-gitDecoration-*)` then resolves to nothing
+   * and the added/deleted distinction, which is the whole point of colouring
+   * these, silently collapses. The charts group is part of VS Code's own
+   * always-registered defaults, so the chain terminates on a real value.
+   */
+  --git-added: var(--vscode-gitDecoration-addedResourceForeground, var(--vscode-charts-green));
+  --git-modified: var(--vscode-gitDecoration-modifiedResourceForeground, var(--vscode-charts-blue));
+  --git-deleted: var(--vscode-gitDecoration-deletedResourceForeground, var(--vscode-charts-red));
+  --git-renamed: var(--vscode-gitDecoration-renamedResourceForeground, var(--vscode-charts-purple));
   --radius: 4px;
 }
 
@@ -62,6 +77,10 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-git-added: var(--git-added);
+  --color-git-modified: var(--git-modified);
+  --color-git-deleted: var(--git-deleted);
+  --color-git-renamed: var(--git-renamed);
   /*
    * Commands, paths, patterns and tool output are code, so they take the
    * editor's own font rather than the UI font — the same distinction VS Code

@@ -214,10 +214,18 @@ at read time. The JSONL is not rewritten.
   })
 
 export interface QuestionRequest { requestId: string; questions: QuestionSpec[]; blocking: boolean }
-// SessionState.pendingQuestions: QuestionRequest[]   — hydrate
+// SessionSnapshot.pendingQuestions: QuestionRequest[]  — hydrate
 // PermissionRequest.meta?: PermissionMeta            — Tier A
+// TranscriptItem role:'permission' gains meta?: PermissionMeta — Tier A
 | { t: 'question-answer'; id: SessionId; requestId: string; answers: QuestionAnswers }
 ```
+
+**Correction to this spec, made during the final review.** `pendingQuestions` was
+originally specified on `SessionState`. That is wrong for the same reason `pending` is not
+there: it describes a provider request waiting on an answer *right now*, so it is
+in-memory host state, and a field on `SessionState` rides every `sessions-changed` summary
+and every `index.json` entry — where nothing maintains it and it would read `[]` while a
+question was in fact parked. It lives on `SessionSnapshot`, beside `pending`.
 
 `MessageRouter` maps `question-answer` → `answerQuestion`, with no `vscode` import.
 
@@ -290,18 +298,46 @@ Assertions compare booleans, strings and counts — never a DOM node.
 
 ## Open items
 
-Both are cheap probes, and the first should be task 1 of the plan.
+1. **RESOLVED 2026-08-16 — bypass does not suppress questions.** Probed against the real
+   SDK (`@anthropic-ai/claude-agent-sdk`, model `claude-haiku-4-5`): with
+   `permissionMode: 'bypassPermissions'` **and** `allowDangerouslySkipPermissions: true`,
+   `canUseTool` fired for `AskUserQuestion` and the full round-trip worked — returning
+   `updatedInput.answers` produced the tool result `Your questions have been answered:
+   "Tabs or spaces for indentation?"="Spaces"`, and the model then answered from it.
 
-1. **Does bypass mode suppress `canUseTool` entirely?** `buildOptions()` sets both
-   `permissionMode: 'bypassPermissions'` and `allowDangerouslySkipPermissions: true`
-   (claude-provider.ts:450). If the mode alone gives bypass semantics the flag is
-   redundant, and it is the flag that plausibly suppresses the callback — which would mean
-   questions silently go unanswered in bypass. Probe against the real SDK. If confirmed,
-   dropping the flag fixes bypass for free; if not, bypass is documented as a mode where the
-   agent cannot ask anything.
-2. **Codex multi-select semantics.** `ToolRequestUserInputAnswer.answers` is an array, but
-   no question field declares whether more than one is permitted. v1 maps `multiSelect:
-   false`. Confirm against codex's own UI before treating that as settled.
+   Three corrections to the assumption above:
+   - The SDK emits `[CLAUDE_SDK_CAN_USE_TOOL_SHADOWED]` under this mode, warning that
+     `canUseTool` "will not be invoked". That covers **ordinary** tools, which are
+     auto-approved before the callback (measured: `Read` → 0 calls). `AskUserQuestion` is
+     not a permission gate — the callback *is* its execution — so it routes through
+     regardless of mode. Do not trust the warning text here; the probe overrides it.
+   - The flag is **not** redundant and cannot be dropped: `sdk.d.ts:1775` — "Must be set to
+     `true` when using `permissionMode: 'bypassPermissions'`."
+   - `updatedInput.answers` is a `Record<questionText, string>` — a record of **single
+     strings**, not an array. A wrong shape is rejected loudly, not silently:
+     `The parameter 'answers' type is expected as 'record' but provided as 'array'`.
+     The plan's `toSdkAnswers` (comma-joining a `string[]` into one string, keyed by
+     question text) is already correct.
+
+   No code change: `claude-provider.ts:450` stays as it is, and bypass needs no caveat.
+
+2. **RESOLVED 2026-08-16 — codex declares no arity; v1's `multiSelect: false` stands.**
+   Verified against the generated bindings, not inference:
+   `codex app-server generate-ts` on codex-cli 0.147.0 (the version `wire.ts` already pins).
+
+   `ToolRequestUserInputQuestion` is `{ id, header, question, isOther, isSecret,
+   options: Array<ToolRequestUserInputOption> | null }` — no `multiSelect`, and no other
+   field carrying arity. `ToolRequestUserInputAnswer` is `{ answers: Array<string> }`, so
+   codex is structurally list-native per question, but never *says* whether more than one
+   is permitted. Mapping `multiSelect: false` is therefore a panel-side default, not a
+   translation, and a one-element list satisfies the wire shape.
+
+   The rest of that shape is already modelled by `QuestionSpec`: `isSecret` → `secret`,
+   `isOther` → `allowOther`, `options: null` → absent `options` (free-text). Params carry
+   `isBlocking` plus a `@deprecated autoResolutionMs`, which stays unmapped.
+
+   Still worth confirming against codex's own UI before a v2 that offers multi-select on
+   the codex side — but nothing in v1 blocks on it.
 
 ## Deferred
 

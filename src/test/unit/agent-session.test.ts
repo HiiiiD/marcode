@@ -93,6 +93,7 @@ class ThrowingProvider implements AgentProvider {
       respondToTool: (_id: string, _decision: ToolDecision) => {
         if (this.opts.throwOnRespond) { throw new Error('respond failed'); }
       },
+      respondToQuestion: () => { /* not exercised by these tests */ },
       setEffort: () => {
         if (this.opts.throwOnSetEffort) { throw new Error('setEffort failed'); }
       },
@@ -924,6 +925,255 @@ suite('AgentSession', () => {
 
     const snap = await session.snapshot();
     assert.strictEqual(snap.items.filter((i) => i.role === 'tool').length, 1);
+    await session.dispose();
+  });
+});
+
+const QUESTION_SPEC = {
+  id: 'q1', header: 'H', question: 'Q?', multiSelect: false,
+  allowOther: true, secret: false,
+  options: [{ label: 'A', description: 'a' }, { label: 'B', description: 'b' }],
+};
+
+suite('AgentSession questions', () => {
+  let dir: string;
+  let store: TranscriptStore;
+
+  setup(async () => {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'hiiiid-session-questions-'));
+    store = new TranscriptStore(dir);
+  });
+
+  teardown(async () => { await fs.rm(dir, { recursive: true, force: true }); });
+
+  function sessionWith() {
+    const provider = new FakeProvider();
+    const sink = new RecordingSink();
+    const session = new AgentSession(baseState(), provider, store, sink);
+    return { session, provider, sink };
+  }
+
+  test('a question event appends a pending item and records the request', async () => {
+    const { session, provider } = sessionWith();
+    provider.runs[0].emit({ kind: 'question', id: 'r1', blocking: true, questions: [QUESTION_SPEC] });
+    await settle();
+
+    const state = await session.snapshot();
+    const item = state.items.at(-1);
+    assert.strictEqual(item?.role, 'question');
+    assert.strictEqual((item as { state: string }).state, 'pending');
+    assert.strictEqual(state.pendingQuestions.length, 1);
+    assert.strictEqual(state.pendingQuestions[0].requestId, 'r1');
+    await session.dispose();
+  });
+
+  test('answering replaces the item and calls the provider once', async () => {
+    const { session, provider } = sessionWith();
+    provider.runs[0].emit({ kind: 'question', id: 'r1', blocking: true, questions: [QUESTION_SPEC] });
+    await settle();
+
+    session.answerQuestion('r1', { q1: ['A'] });
+    session.answerQuestion('r1', { q1: ['B'] });
+    await settle();
+
+    assert.deepStrictEqual(provider.answered, [['r1', { q1: ['A'] }]]);
+    const state = await session.snapshot();
+    assert.strictEqual((state.items.at(-1) as { state: string }).state, 'answered');
+    assert.strictEqual(state.pendingQuestions.length, 0);
+    await session.dispose();
+  });
+
+  test('a cancellation marks the card cancelled', async () => {
+    const { session, provider } = sessionWith();
+    provider.runs[0].emit({ kind: 'question', id: 'r1', blocking: true, questions: [QUESTION_SPEC] });
+    await settle();
+    provider.runs[0].emit({ kind: 'request-cancelled', id: 'r1' });
+    await settle();
+
+    const state = await session.snapshot();
+    assert.strictEqual((state.items.at(-1) as { state: string }).state, 'cancelled');
+    assert.strictEqual(state.pendingQuestions.length, 0);
+    await session.dispose();
+  });
+
+  test('answering a question while a permission is still pending keeps the session waiting', async () => {
+    const { session, provider } = sessionWith();
+    provider.runs[0].emit({
+      kind: 'permission', id: 'p1', tool: { kind: 'command', label: 'Bash', command: 'ls' },
+    });
+    provider.runs[0].emit({ kind: 'question', id: 'r1', blocking: true, questions: [QUESTION_SPEC] });
+    await settle();
+    assert.strictEqual(session.state.status, 'awaiting-approval');
+
+    session.answerQuestion('r1', { q1: ['A'] });
+    await settle();
+
+    assert.strictEqual(session.state.status, 'awaiting-approval', 'the permission is still pending');
+    assert.strictEqual((await session.snapshot()).pending.length, 1);
+    await session.dispose();
+  });
+
+  test('resolving a pending permission while a question is still pending keeps the session waiting', async () => {
+    const { session, provider } = sessionWith();
+    provider.runs[0].emit({
+      kind: 'permission', id: 'p1', tool: { kind: 'command', label: 'Bash', command: 'ls' },
+    });
+    provider.runs[0].emit({ kind: 'question', id: 'r1', blocking: true, questions: [QUESTION_SPEC] });
+    await settle();
+
+    session.respondToPermission('p1', { allow: true });
+    await settle();
+
+    assert.strictEqual(session.state.status, 'awaiting-approval', 'the question is still pending');
+    assert.strictEqual((await session.snapshot()).pendingQuestions.length, 1);
+    await session.dispose();
+  });
+
+  test('a cancelled permission settles denied, and a later decision on it is a no-op', async () => {
+    const { session, provider } = sessionWith();
+    provider.runs[0].emit({
+      kind: 'permission', id: 'p1', tool: { kind: 'command', label: 'Bash', command: 'ls' },
+    });
+    await settle();
+    assert.strictEqual(session.state.status, 'awaiting-approval');
+
+    provider.runs[0].emit({ kind: 'request-cancelled', id: 'p1' });
+    await settle();
+
+    const state = await session.snapshot();
+    const perm = state.items.find((i) => i.role === 'permission');
+    assert.strictEqual((perm as { state: string }).state, 'denied');
+    assert.strictEqual((perm as { reason?: string }).reason, 'Turn cancelled');
+    assert.strictEqual(state.pending.length, 0, 'no longer parked');
+    assert.strictEqual(session.state.status, 'running', 'nothing else pending');
+
+    session.respondToPermission('p1', { allow: true });
+    await settle();
+
+    assert.strictEqual(
+      provider.decisions.has('p1'), false,
+      'the provider never sees a decision for an already-cancelled request',
+    );
+    const after = await session.snapshot();
+    const perm2 = after.items.find((i) => i.role === 'permission');
+    assert.strictEqual((perm2 as { state: string }).state, 'denied', 'the click is a no-op');
+    await session.dispose();
+  });
+
+  test("a secret answer's value never reaches the transcript file", async () => {
+    const { session, provider } = sessionWith();
+    const SECRET_SPEC = {
+      id: 'q1', header: 'Token', question: 'API token?', multiSelect: false,
+      allowOther: true, secret: true,
+    };
+    provider.runs[0].emit({ kind: 'question', id: 'r1', blocking: true, questions: [SECRET_SPEC] });
+    await settle();
+
+    session.answerQuestion('r1', { q1: ['sk-super-secret-value'] });
+    await settle();
+    await session.snapshot(); // forces a flush
+
+    const jsonl = await fs.readFile(path.join(dir, 'sessions', 's1.jsonl'), 'utf8');
+    assert.strictEqual(jsonl.includes('sk-super-secret-value'), false);
+    assert.strictEqual(jsonl.includes('"state":"answered"'), true);
+    await session.dispose();
+  });
+
+  test('a non-secret answer is persisted in full', async () => {
+    const { session, provider } = sessionWith();
+    provider.runs[0].emit({ kind: 'question', id: 'r1', blocking: true, questions: [QUESTION_SPEC] });
+    await settle();
+
+    session.answerQuestion('r1', { q1: ['A'] });
+    await settle();
+    await session.snapshot(); // forces a flush
+
+    const jsonl = await fs.readFile(path.join(dir, 'sessions', 's1.jsonl'), 'utf8');
+    assert.strictEqual(jsonl.includes('"q1":["A"]'), true);
+    await session.dispose();
+  });
+
+  test('answering the last parked question lets the turn end', async () => {
+    const { session, provider } = sessionWith();
+    provider.runs[0].emit({ kind: 'question', id: 'r1', blocking: true, questions: [QUESTION_SPEC] });
+    await settle();
+    assert.strictEqual(session.state.status, 'awaiting-approval');
+
+    session.answerQuestion('r1', { q1: ['A'] });
+    await settle();
+
+    // The fake provider ends the turn on an answer, exactly as it does on a
+    // tool decision — without that the status dot would stick at 'running'
+    // forever in the walking skeleton.
+    assert.strictEqual(session.state.status, 'idle');
+    await session.dispose();
+  });
+
+  test('a question parked at dispose is dropped, never answered with an empty set', async () => {
+    const { session, provider } = sessionWith();
+    provider.runs[0].emit({ kind: 'question', id: 'r1', blocking: true, questions: [QUESTION_SPEC] });
+    await settle();
+
+    await session.dispose();
+
+    // `{}` is a real answer to a provider, not a cancellation: on Claude it
+    // becomes `{behavior:'allow', updatedInput:{...input, answers:{}}}`.
+    // Cancelling is the run's own job, in its own vocabulary.
+    assert.deepStrictEqual(provider.answered, []);
+  });
+});
+
+suite('AgentSession permission metadata', () => {
+  let dir: string;
+  let store: TranscriptStore;
+
+  setup(async () => {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'hiiiid-session-meta-'));
+    store = new TranscriptStore(dir);
+  });
+
+  teardown(async () => { await fs.rm(dir, { recursive: true, force: true }); });
+
+  const TOOL = { kind: 'command' as const, label: 'Bash', command: 'ls' };
+  const META = { title: 'Run ls', decisionReason: 'not in the allowlist' };
+
+  test("the event's meta reaches both the parked request and the transcript item", async () => {
+    const provider = new FakeProvider();
+    const session = new AgentSession(baseState(), provider, store, new RecordingSink());
+    provider.runs[0].emit({ kind: 'permission', id: 'p1', tool: TOOL, meta: META });
+    await settle();
+
+    const state = await session.snapshot();
+    assert.deepStrictEqual(state.pending[0].meta, META);
+    const item = state.items.find((i) => i.role === 'permission');
+    assert.deepStrictEqual((item as { meta?: unknown }).meta, META);
+    await session.dispose();
+  });
+
+  test('an event with no meta writes no key at all', async () => {
+    const provider = new FakeProvider();
+    const session = new AgentSession(baseState(), provider, store, new RecordingSink());
+    provider.runs[0].emit({ kind: 'permission', id: 'p1', tool: TOOL });
+    await settle();
+
+    const state = await session.snapshot();
+    assert.deepStrictEqual(state.pending, [{ requestId: 'p1', tool: TOOL }]);
+    assert.strictEqual('meta' in (state.items.find((i) => i.role === 'permission') ?? {}), false);
+    await session.dispose();
+  });
+
+  test('the meta survives the settled item, so a reloaded card still reads the same', async () => {
+    const provider = new FakeProvider();
+    const session = new AgentSession(baseState(), provider, store, new RecordingSink());
+    provider.runs[0].emit({ kind: 'permission', id: 'p1', tool: TOOL, meta: META });
+    await settle();
+    session.respondToPermission('p1', { allow: true });
+    await settle();
+    await session.snapshot(); // forces a flush
+
+    const jsonl = await fs.readFile(path.join(dir, 'sessions', 's1.jsonl'), 'utf8');
+    assert.strictEqual(jsonl.includes('"title":"Run ls"'), true);
+    assert.strictEqual(jsonl.includes('"decisionReason":"not in the allowlist"'), true);
     await session.dispose();
   });
 });

@@ -2,7 +2,7 @@ import type { SessionManager } from './session-manager';
 import type { AgentSession } from './agent-session';
 import { MAX_PENDING, type AttachmentStore } from './attachment-store';
 import type {
-  EditorContext, HostToWebview, SessionId, SessionRef, SessionSnapshot, WebviewToHost,
+  DiffBase, EditorContext, HostToWebview, SessionId, SessionRef, SessionSnapshot, WebviewToHost,
 } from '../protocol/messages';
 import { fsPathOfUri } from './file-uri';
 import { composePrompt } from './session-refs';
@@ -33,9 +33,17 @@ function missingRefsMessage(missing: SessionRef[]): string {
 export interface EditorContextHost {
   current(): EditorContext | null;
   reveal(path: string, startLine?: number): void;
+  /**
+   * Opens `path` in VS Code's diff editor, against its content at `base`.
+   * Here rather than in the router because it needs the `vscode` API, which
+   * this module must not import; `src/extension.ts` supplies the real one.
+   */
+  openDiff(root: string, path: string, base: DiffBase): void;
 }
 
-const NO_EDITOR: EditorContextHost = { current: () => null, reveal: () => {} };
+const NO_EDITOR: EditorContextHost = {
+  current: () => null, reveal: () => {}, openDiff: () => {},
+};
 
 export interface AttachmentHost { pick(): Promise<string[]> }
 
@@ -326,8 +334,23 @@ export class MessageRouter {
         await this.manager.removeStaleTree(msg.path);
         return;
 
+      // Awaited for the same reason as the sweep — it shells out to git — and
+      // unaddressed for the same reason too: a working tree is the unit git
+      // can answer for, and two sessions in one tree share one answer.
+      case 'request-fleet-diff':
+        await this.manager.requestFleetDiff();
+        return;
+
+      case 'open-file-diff':
+        this.editor.openDiff(msg.root, msg.path, msg.base);
+        return;
+
       case 'permission-decision':
         this.manager.get(msg.id)?.respondToPermission(msg.requestId, msg.decision);
+        return;
+
+      case 'question-answer':
+        this.manager.get(msg.id)?.answerQuestion(msg.requestId, msg.answers);
         return;
 
       case 'load-more': {
@@ -399,13 +422,14 @@ const KNOWN_MESSAGE_TAGS = new Set<WebviewToHost['t']>([
   'ready', 'create-session', 'set-visible', 'set-layout', 'close-session',
   'delete-session', 'send', 'interrupt', 'cancel-queued',
   'set-effort', 'set-permission-mode',
-  'set-model', 'permission-decision', 'load-more',
+  'set-model', 'permission-decision', 'question-answer', 'load-more',
   'answer-relocation', 'cancel-relocation',
   'set-include-context', 'reveal-file',
   'attach-paste', 'attach-pick', 'attach-drop', 'attach-remove', 'attach-failed',
   'request-context', 'open-file',
   'request-bring-back', 'bring-back',
   'request-stale-trees', 'remove-stale-tree',
+  'request-fleet-diff', 'open-file-diff',
 ]);
 
 /**

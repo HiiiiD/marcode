@@ -61,11 +61,16 @@ extension.ts
 | `src/host/session-manager.ts` | Roster; create/close/delete; patch fan-out to the visible set |
 | `src/host/message-router.ts` | `WebviewToHost` → manager calls. No `vscode` import, so it unit-tests. |
 | `src/host/panel-view-provider.ts` | `WebviewViewProvider`; HTML + nonce; transport |
+| `src/host/fleet-diff.ts` | One tree's change set: base resolution, numstat + untracked parsing |
+| `src/host/claim-paths.ts` | Provider edit paths → git's repo-relative POSIX spelling |
+| `src/host/diff-content-provider.ts` | `hiiiid-diff:` scheme — a file's content at the base ref, via `git show` |
 | `src/webview/` | Transport, reducer, store, components |
 | `src/webview/components/context-ring.tsx` | Context-fill ring + breakdown popover, mounted in the composer |
 | `src/webview/components/usage-strip.tsx` | Panel-level account usage windows |
 | `src/webview/components/tool-render.ts` | `(name, input, output)` → one-line header + typed blocks. Pure; no React. |
 | `src/webview/components/tool-body.tsx` | Renders those blocks — command, diff, path, todos, clamped output |
+| `src/webview/components/fleet-diff.tsx` | The fleet diff surface: trees, session groups, file rows |
+| `src/webview/components/fleet-diff-groups.ts` | Pure grouping of a flat `TreeDiff` into session groups |
 
 **Build:** esbuild produces two bundles — node/CJS for the host, browser/IIFE for the
 webview. TypeScript, React 19, Tailwind v4.
@@ -137,6 +142,17 @@ These are not style preferences. Breaking one breaks the design.
   (no session needed, used at activation) or `AgentRun.usageWindows` (the live query). Its
   `resetsAt` is epoch **seconds** and its `utilization`, when present, is a **0–1 fraction**;
   the structured response uses ISO strings and **0–100**. Do not mix the two scales.
+- **Diff content comes from git; diff attribution comes from the transcript.**
+  Git sees one dirty tree when three sessions share a root, so a file's owner is
+  whichever sessions' canonical `file-edit` tool calls claimed its path — never
+  inferred from git. A change with no tool call behind it (a shell command, a
+  build, the user) is **unattributed**, and says so. Claims are never persisted:
+  they describe a tree at an instant, and a restored claim would describe an
+  install nobody checked this launch, the same reason a failed model probe never
+  reaches `catalog.json`. `SessionManager` rebuilds the pre-launch half from the
+  JSONL on demand. Attribution is recorded **above** the subagent early return in
+  `agent-session.ts`, unlike relocation: a subagent's edit changed *this*
+  session's tree and is this session's change on disk.
 
 ## UI: shadcn is mandatory
 

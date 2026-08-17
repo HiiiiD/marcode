@@ -2,10 +2,10 @@ import { attachmentLines, imageAttachments } from '../attachment-payload';
 import { formatEditorContext } from '../format-editor-context';
 import type {
   AgentEvent, AgentRun, Attachment, ContextBreakdown, EditorContext, EffortLevel, McpServerStatus,
-  PermissionMode, StartOptions, ToolDecision, UsageWindow,
+  PermissionMode, QuestionAnswers, StartOptions, ToolDecision, UsageWindow,
 } from '../types';
 import type { RequestId } from './app-server';
-import { approvalEventOf, DECLINED_INPUT_METHODS, mapNotification } from './map-events';
+import { approvalEventOf, DECLINED_INPUT_METHODS, mapNotification, questionEventOf } from './map-events';
 import { codexSettings, sandboxPolicyOf } from './map-settings';
 import { toInvocables } from './map-skills';
 import { toContextBreakdown, toUsageWindows } from './map-usage';
@@ -136,6 +136,9 @@ export class CodexRun implements AgentRun {
    */
   private readonly pendingApprovals = new Map<string, { rpcId: RequestId; method: string }>();
 
+  /** Every outstanding `question` event, keyed by its string id -> the JSON-RPC request id it must answer. */
+  private readonly pendingQuestions = new Map<string, RequestId>();
+
   /**
    * Every MCP server this thread has heard a startup status for, by name.
    *
@@ -203,19 +206,41 @@ export class CodexRun implements AgentRun {
       const p = (params ?? {}) as { threadId?: string };
       if (p.threadId !== undefined && p.threadId !== this._threadId) { return; }
 
+      if (method === 'item/tool/requestUserInput') {
+        const event = questionEventOf(id, params);
+        if (event) {
+          this.pendingQuestions.set(event.id, id);
+          this.events.push(event);
+          return;
+        }
+        // Params we cannot read. The request is still blocking, so it must be
+        // answered or the turn hangs with no card to answer it — `{answers:{}}`
+        // is the structurally-valid "answered nothing" (a bare `{}` fails
+        // deserialization server-side; see wire.ts). The transcript says so,
+        // the same way the elicitation decline below does, rather than the
+        // mapper throwing out of this listener.
+        const toolId = String(id);
+        this.events.push({
+          kind: 'tool-start', id: toolId,
+          tool: { kind: 'other', label: method, raw: params },
+        });
+        this.events.push({
+          kind: 'tool-end', id: toolId, ok: false,
+          output: { kind: 'text', text: 'The panel could not read this request.' },
+        });
+        this.server.respond(id, { answers: {} } satisfies ToolRequestUserInputResponse);
+        return;
+      }
+
       if (DECLINED_INPUT_METHODS.includes(method)) {
-        // Each of these has its own required-field response shape — `{}`
+        // MCP elicitation has its own required-field response shape — `{}`
         // fails deserialization server-side, which leaves the blocking
         // request unanswered and hangs the turn, i.e. exactly what this
         // branch exists to prevent.
-        const refusal: ToolRequestUserInputResponse | McpServerElicitationRequestResponse
-          = method === 'item/tool/requestUserInput'
-            // A map, so an empty one is structurally valid and says
-            // "answered none of the questions".
-            ? { answers: {} }
-            : { action: 'decline', content: null, _meta: null };
-        // v1 cannot render a typed-input request, but an unanswered blocking
-        // one hangs the turn — so it is declined immediately, and the
+        const refusal: McpServerElicitationRequestResponse
+          = { action: 'decline', content: null, _meta: null };
+        // Elicitation is deliberately unmodelled, but an unanswered blocking
+        // request hangs the turn — so it is declined immediately, and the
         // transcript says so rather than failing silently.
         const toolId = String(id);
         this.events.push({
@@ -423,6 +448,64 @@ export class CodexRun implements AgentRun {
   }
 
   /**
+   * Answers one parked question in codex's own response shape —
+   * `{answers: {[id]: {answers: [...]}}}`, one entry per question in that
+   * request (mirroring `respondToTool`'s per-method shape). A no-op if the
+   * id names no parked request, e.g. it was already cancelled.
+   */
+  respondToQuestion(id: string, answers: QuestionAnswers): void {
+    const rpcId = this.pendingQuestions.get(id);
+    if (rpcId === undefined) { return; }
+    this.pendingQuestions.delete(id);
+    const mapped: ToolRequestUserInputResponse = { answers: {} };
+    for (const [qid, values] of Object.entries(answers)) { mapped.answers[qid] = { answers: values }; }
+    this.server.respond(rpcId, mapped);
+  }
+
+  /**
+   * Answers every still-parked question with the structurally-valid empty
+   * map — "answered nothing" — and reports the cancellation, mirroring how
+   * `dispose()` already declines leftover approvals rather than leaving them
+   * to hang. Called from both `interrupt()` and `dispose()`.
+   */
+  private cancelParkedQuestions(): void {
+    for (const [id, rpcId] of this.pendingQuestions) {
+      this.server.respond(rpcId, { answers: {} } satisfies ToolRequestUserInputResponse);
+      this.events.push({ kind: 'request-cancelled', id });
+    }
+    this.pendingQuestions.clear();
+  }
+
+  /**
+   * Declines every still-parked approval, each in its own request's response
+   * shape, and reports the cancellation — the approval twin of
+   * `cancelParkedQuestions` above, called from both `interrupt()` and
+   * `dispose()` for the same reason.
+   *
+   * A v1 `{denied:{rejection}}` here is not a denial at all: it fails to
+   * deserialize and the request stays parked.
+   *
+   * `request-cancelled` is what makes `interrupt()` converge: without it the
+   * card stays rendered `pending`, `recomputeWaitingStatus` keeps the session
+   * at `awaiting-approval` for a turn that no longer exists, and a later
+   * Allow answers a request codex has already abandoned. The Claude bridge's
+   * `cancelParked` emits the same event for the same reason.
+   */
+  private cancelParkedApprovals(): void {
+    for (const [id, pending] of this.pendingApprovals) {
+      if (pending.method === 'item/permissions/requestApproval') {
+        const empty: PermissionsRequestApprovalResponse = { permissions: {}, scope: 'turn' };
+        this.server.respond(pending.rpcId, empty);
+      } else {
+        const declined: FileChangeApprovalDecision = 'decline';
+        this.server.respond(pending.rpcId, { decision: declined });
+      }
+      this.events.push({ kind: 'request-cancelled', id });
+    }
+    this.pendingApprovals.clear();
+  }
+
+  /**
    * Folds one server's status into the roster and returns the whole of it.
    *
    * See `mcpServers` for why: the notification is per-server, the event is a
@@ -490,6 +573,11 @@ export class CodexRun implements AgentRun {
         // intent was to stop, so the turn ends here either way.
       }
     }
+    // Both maps, not just the questions: a parked approval belongs to the turn
+    // being stopped exactly as much as a parked question does, and leaving it
+    // pins the session at `awaiting-approval` for a turn that is gone.
+    this.cancelParkedApprovals();
+    this.cancelParkedQuestions();
     this.events.push({ kind: 'turn-end', reason: 'interrupted' });
   }
 
@@ -521,20 +609,11 @@ export class CodexRun implements AgentRun {
   async dispose(): Promise<void> {
     if (this.disposed) { return; }
     this.disposed = true;
-    // Left-over approvals get an explicit denial rather than hanging forever
-    // on a session that is going away — in each request's own response shape,
-    // same as `respondToTool`. A v1 `{denied:{rejection}}` here is not a
-    // denial at all: it fails to deserialize and the request stays parked.
-    for (const [, pending] of this.pendingApprovals) {
-      if (pending.method === 'item/permissions/requestApproval') {
-        const empty: PermissionsRequestApprovalResponse = { permissions: {}, scope: 'turn' };
-        this.server.respond(pending.rpcId, empty);
-      } else {
-        const declined: FileChangeApprovalDecision = 'decline';
-        this.server.respond(pending.rpcId, { decision: declined });
-      }
-    }
-    this.pendingApprovals.clear();
+    // Left-over approvals and questions get settled rather than hanging
+    // forever on a session that is going away — each in its own request's
+    // response shape.
+    this.cancelParkedApprovals();
+    this.cancelParkedQuestions();
     if (this._threadId) {
       try {
         await this.server.request('thread/unsubscribe', { threadId: this._threadId });

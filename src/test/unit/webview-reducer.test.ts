@@ -1,7 +1,7 @@
 import * as assert from 'assert';
 import type { SessionSummary } from '../../protocol/messages';
 import { initialState, reduce } from '../../webview/reducer';
-import { snapshot, summary } from '../fixtures/protocol';
+import { question, snapshot, summary } from '../fixtures/protocol';
 
 /**
  * A state the host could actually produce for one session: a roster entry
@@ -35,6 +35,7 @@ function hydrated() {
       resumeTokens: {},
       usage: { inputTokens: 0, outputTokens: 0 },
       archived: false, createdAt: 1, updatedAt: 1, includeEditorContext: true,
+      pendingQuestions: [],
       items: [], hasMore: false, pending: [], mcpServers: [], pendingAttachments: [],
     }],
   });
@@ -299,6 +300,40 @@ suite('webview reducer', () => {
       t: 'session-patch', id: 's1', patch: { op: 'append', item: perm, parentItemId: 't1' },
     });
     assert.strictEqual(state.byId['s1'].pending.length, 1);
+  });
+
+  test('an appended pending question registers as pending', () => {
+    let state = reduce(hydrated(), {
+      t: 'session-patch', id: 's1', patch: { op: 'append', item: question() },
+    });
+    assert.strictEqual(state.byId['s1'].pendingQuestions.length, 1);
+  });
+
+  test('replacing it with an answered item clears the pending entry', () => {
+    let state = reduce(hydrated(), {
+      t: 'session-patch', id: 's1', patch: { op: 'append', item: question() },
+    });
+    state = reduce(state, {
+      t: 'session-patch', id: 's1',
+      patch: { op: 'replace', item: question({ state: 'answered', answers: { qq1: ['A'] } }) },
+    });
+    assert.strictEqual(state.byId['s1'].pendingQuestions.length, 0);
+  });
+
+  test('hydrate seeds pending questions', () => {
+    const state = reduce(initialState, {
+      t: 'hydrate',
+      sessions: [summary('s1')],
+      layout: { orientation: 'vertical', panes: [{ sessionId: 's1', size: 100 }] },
+      snapshots: [{
+        ...snapshot('s1'),
+        pendingQuestions: [{ requestId: 'r1', blocking: true, questions: question().questions }],
+      }],
+      catalog: [],
+      unavailable: [],
+      usage: {},
+    });
+    assert.strictEqual(state.byId['s1'].pendingQuestions.length, 1);
   });
 
   test('session-mcp replaces the pane server list wholesale', () => {

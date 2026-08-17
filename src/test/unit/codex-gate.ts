@@ -12,8 +12,9 @@
 // rather than being copied into each suite because "gated exactly like the
 // other one" is a promise two copies cannot keep.
 
-import { execFileSync, spawn as spawnChildProcess } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { AppServer, type Duplex } from '../../providers/codex/app-server';
+import { spawnAppServer } from '../../providers/codex/codex-provider';
 import type { AgentEvent, AgentRun } from '../../providers/types';
 import type { AccountReadResponse } from '../../providers/codex/wire';
 
@@ -30,14 +31,17 @@ export function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-/** Real, child-process-backed spawn — same shape as `codex-provider.ts`'s `defaultSpawn`. */
+/**
+ * Real, child-process-backed spawn — the production one, not a copy of it.
+ *
+ * This used to be a hand-rolled duplicate that piped stderr and read nothing
+ * from it, so a chatty real `codex app-server` could wedge on a blocked write
+ * to fd 2 and hang a smoke test with no reason to show for it. Calling the
+ * production spawner means these tests exercise the wiring the extension
+ * actually ships.
+ */
 export function spawnCodex(): Duplex {
-  const child = spawnChildProcess('codex', ['app-server'], { stdio: ['pipe', 'pipe', 'pipe'] });
-  return {
-    stdin: child.stdin!,
-    stdout: child.stdout!,
-    kill: () => { child.kill(); },
-  };
+  return spawnAppServer('codex');
 }
 
 /** Races a promise against a timeout so a hung real process can never block cleanup. */

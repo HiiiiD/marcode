@@ -383,6 +383,101 @@ suite('CodexProvider', () => {
       'expected the active run to end with a turn-end/error event, not hang or throw');
   });
 
+  test('a process that dies on its own is dropped, so the next call reconnects', async () => {
+    // The failure this pins: `connectionPromise` memoizes the one AppServer
+    // and used to be cleared on exactly three paths — spawn throw, handshake
+    // reject, teardown() — none of which is "the process died by itself".
+    // When the app-server crashed, was OOM-killed, or lost its pipe to a
+    // machine that slept, the cache went on resolving to a corpse whose
+    // `closed` flag rejects every request with 'app-server is not running'.
+    // Nothing respawned: new sessions got the same dead server, and
+    // refreshModels re-probed through it, so Codex stayed broken for the life
+    // of the window. Only a binary-path change or a reload cleared it.
+    const children: Array<ReturnType<typeof stubChild>> = [];
+    // Per child, not global: `AppServer`'s request ids restart at 1 for every
+    // process, so one shared set of answered ids would treat the new
+    // process's `initialize` as already answered.
+    const answered = new Map<ReturnType<typeof stubChild>, Set<unknown>>();
+    const provider = new CodexProvider({
+      spawn: () => { const child = stubChild(); children.push(child); return child; },
+    });
+
+    /** Drains one child's requests up to `method`, auto-answering the rest. */
+    async function drain(child: ReturnType<typeof stubChild>, method: string, result: unknown): Promise<void> {
+      const seen = answered.get(child) ?? new Set<unknown>();
+      answered.set(child, seen);
+      for (let i = 0; i < 50; i += 1) {
+        const next = child.sent().find((f) => f.method !== undefined && !seen.has(f.id));
+        if (!next) { await tick(); continue; }
+        seen.add(next.id);
+        const isTarget = next.method === method;
+        child.send({ id: next.id, result: isTarget ? result : AUTO_DEFAULTS[next.method] ?? {} });
+        await tick();
+        if (isTarget) { return; }
+      }
+      throw new Error(`drain('${method}') timed out`);
+    }
+
+    const run = provider.start({ cwd: '/a', permissionMode: 'default' });
+    // The handshake SUCCEEDS first. A process that dies before `initialize`
+    // answers is already handled — connect()'s catch clears the cache on that
+    // rejection. The hole is a process that dies after a good handshake,
+    // which is every real crash.
+    await drain(children[0], 'initialize', AUTO_DEFAULTS.initialize);
+    assert.strictEqual(children.length, 1);
+
+    // The app-server dies on its own — no dispose, no setBinPath.
+    children[0].stdout.end();
+    await tick();
+
+    // A session started afterwards must get a live process, not the corpse.
+    const next = provider.start({ cwd: '/b', permissionMode: 'default' });
+    await tick();
+    assert.strictEqual(children.length, 2, 'expected a fresh spawn after the old process died');
+
+    // And the probe that decides availability must reach the new process too,
+    // rather than replaying the dead one's rejection forever.
+    const probe = provider.fetchModels('/repo');
+    await drain(children[1], 'model/list', { data: [], nextCursor: null });
+    assert.deepStrictEqual(await probe, []);
+
+    await run.dispose();
+    await next.dispose();
+  });
+
+  test('a binary that does not exist rejects the probe instead of crashing the host', async function () {
+    // `child_process.spawn` does NOT throw on ENOENT — it emits 'error'
+    // asynchronously on the ChildProcess. `defaultSpawn` used to discard the
+    // child and wire handlers only on stdin/stdout, so that event had no
+    // listener: EventEmitter rethrows it, and an uncaught exception in the
+    // extension host is what a user with no `codex` on PATH actually got.
+    // The actionable message in connect()'s catch was unreachable.
+    //
+    // Real spawn on purpose — the injected-spawn tests above cannot reach
+    // `defaultSpawn`, which is where the bug lived.
+    this.timeout(15_000);
+    const provider = new CodexProvider({ binPath: 'hiiiid-code-no-such-codex-binary' });
+    await assert.rejects(provider.fetchModels('/repo'));
+  });
+
+  test('a child that exits reports its stderr, so the failure is diagnosable', async function () {
+    // Two facts in one: the child's exit reaches AppServer at all, and the
+    // stderr pipe is DRAINED. `stdio: [pipe, pipe, pipe]` with nothing reading
+    // fd 2 deadlocks the child on write once the ~64KB pipe buffer fills — the
+    // app-server stops answering JSON-RPC with no error and no close, and every
+    // session sits in 'running' forever. A drained tail is also the only place
+    // a startup failure's reason exists.
+    this.timeout(15_000);
+    // `node app-server` — a real binary that fails fast, writes to stderr and
+    // exits non-zero. No codex install required.
+    const provider = new CodexProvider({ binPath: process.execPath });
+    await assert.rejects(provider.fetchModels('/repo'), (err: Error) => {
+      assert.match(err.message, /app-server/i);
+      assert.match(err.message, /cannot find module/i, 'expected the child\'s stderr in the reason');
+      return true;
+    });
+  });
+
   // Not in the brief's list, but load-bearing: AppServer's onNotification/
   // onServerRequest/onClose are single-slot setters (last caller wins), and
   // one process serves every Codex session. If each CodexRun registered

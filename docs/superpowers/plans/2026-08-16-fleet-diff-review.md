@@ -90,7 +90,7 @@ Three places where implementation is cleaner than the spec's sketch. Each is a s
   - `RawChange = Omit<FileChange, 'claimedBy'>`
   - `FILE_CAP = 500`
 
-- [ ] **Step 1: Add the payload types to the protocol**
+- [x] **Step 1: Add the payload types to the protocol**
 
 In `src/protocol/messages.ts`, beside the existing `StaleTree` interface:
 
@@ -139,7 +139,7 @@ export interface TreeDiff {
 }
 ```
 
-- [ ] **Step 2: Write the failing tests**
+- [x] **Step 2: Write the failing tests**
 
 Create `src/test/unit/fleet-diff.test.ts`. Copy the `tempDir` / `initRepo` helpers from `src/test/unit/stale-trees.test.ts:26-41` verbatim — real git, no mocks, same rule.
 
@@ -275,12 +275,12 @@ suite('fleet-diff git plumbing', function () {
 });
 ```
 
-- [ ] **Step 3: Run the tests to verify they fail**
+- [x] **Step 3: Run the tests to verify they fail**
 
 Run: `yarn test:unit --grep "fleet-diff git plumbing"`
 Expected: FAIL — `Cannot find module '../../host/fleet-diff'`.
 
-- [ ] **Step 4: Implement `src/host/fleet-diff.ts`**
+- [x] **Step 4: Implement `src/host/fleet-diff.ts`**
 
 ```ts
 // What changed in a working tree, and against what.
@@ -446,12 +446,12 @@ export async function treeChanges(
 }
 ```
 
-- [ ] **Step 5: Run the tests to verify they pass**
+- [x] **Step 5: Run the tests to verify they pass**
 
 Run: `yarn test:unit --grep "fleet-diff git plumbing"`
 Expected: PASS, 7 passing.
 
-- [ ] **Step 6: Verify and commit**
+- [x] **Step 6: Verify and commit**
 
 Run: `yarn lint && yarn check-types`
 Expected: both clean.
@@ -477,7 +477,7 @@ git commit -m "feat: read a working tree's change set against its branch point"
 
 This is the spec's named bug site, so it is its own task with its own tests.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `src/test/unit/claim-paths.test.ts`:
 
@@ -559,12 +559,12 @@ suite('claim paths', () => {
 });
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `yarn test:unit --grep "claim paths"`
 Expected: FAIL — `Cannot find module '../../host/claim-paths'`.
 
-- [ ] **Step 3: Implement `src/host/claim-paths.ts`**
+- [x] **Step 3: Implement `src/host/claim-paths.ts`**
 
 ```ts
 // Provider paths in, git paths out.
@@ -623,12 +623,12 @@ export function toRepoRelative(absolute: string, root: string): string | undefin
 }
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `yarn test:unit --grep "claim paths"`
 Expected: PASS, 9 passing.
 
-- [ ] **Step 5: Verify and commit**
+- [x] **Step 5: Verify and commit**
 
 Run: `yarn lint && yarn check-types`
 
@@ -651,7 +651,7 @@ git commit -m "feat: normalize provider edit paths onto git's spelling"
 
 **Critical detail:** `tool-end` has two exits. The subagent branch returns early at `agent-session.ts:571`, before `offerRelocation`. Relocation skips subagents deliberately — a subagent's worktree has no claim on where the parent conversation lives. **Attribution must not skip them:** a subagent's edit changes this session's tree and is this session's change on disk. So the recording call goes *above* the `if (parentRoot)` branch.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `src/test/unit/fleet-diff-manager.test.ts` with this first suite. The `FakeProvider` constructor takes a function from prompt text to `AgentEvent[]` (see `src/extension.ts:70-77` for the shape).
 
@@ -764,12 +764,12 @@ suite('AgentSession claimed paths', function () {
 });
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `yarn test:unit --grep "AgentSession claimed paths"`
 Expected: FAIL — `session.claimedPaths is undefined`.
 
-- [ ] **Step 3: Implement the recording in `src/host/agent-session.ts`**
+- [x] **Step 3: Implement the recording in `src/host/agent-session.ts`**
 
 Add the import at the top of the file:
 
@@ -815,17 +815,17 @@ In the `tool-end` case, insert the recording call immediately after `this.report
         }
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `yarn test:unit --grep "AgentSession claimed paths"`
 Expected: PASS, 4 passing.
 
-- [ ] **Step 5: Run the full unit suite for regressions**
+- [x] **Step 5: Run the full unit suite for regressions**
 
 Run: `yarn test:unit`
 Expected: PASS. The relocation suites in particular must stay green — the insertion sits directly above the branch they cover.
 
-- [ ] **Step 6: Verify and commit**
+- [x] **Step 6: Verify and commit**
 
 Run: `yarn lint && yarn check-types`
 
@@ -848,7 +848,7 @@ git commit -m "feat: record the paths a session's tool calls write"
   - `SessionManager.fleetDiff(): Promise<TreeDiff[]>`
   - `SessionManager.requestFleetDiff(): Promise<void>` (emits `{ t: 'fleet-diff', trees }`)
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `src/test/unit/fleet-diff-manager.test.ts`. Add these imports at the top of the file:
 
@@ -992,12 +992,12 @@ suite('SessionManager.fleetDiff', function () {
 });
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `yarn test:unit --grep "SessionManager.fleetDiff"`
 Expected: FAIL — `manager.fleetDiff is not a function`.
 
-- [ ] **Step 3: Implement in `src/host/session-manager.ts`**
+- [x] **Step 3: Implement in `src/host/session-manager.ts`**
 
 Add imports:
 
@@ -1152,7 +1152,7 @@ Add the methods beside `staleTrees` / `requestStaleTrees`:
   }
 ```
 
-- [ ] **Step 4: Add the host-to-webview message arm**
+- [x] **Step 4: Add the host-to-webview message arm**
 
 In `src/protocol/messages.ts`, add to the `HostToWebview` union:
 
@@ -1165,12 +1165,12 @@ In `src/protocol/messages.ts`, add to the `HostToWebview` union:
   | { t: 'fleet-diff'; trees: TreeDiff[] }
 ```
 
-- [ ] **Step 5: Run the tests to verify they pass**
+- [x] **Step 5: Run the tests to verify they pass**
 
 Run: `yarn test:unit --grep "SessionManager.fleetDiff"`
 Expected: PASS, 7 passing.
 
-- [ ] **Step 6: Verify and commit**
+- [x] **Step 6: Verify and commit**
 
 Run: `yarn lint && yarn check-types && yarn test:unit`
 
@@ -1194,7 +1194,7 @@ git commit -m "feat: assemble the fleet diff from git content and transcript cla
 - Consumes: `SessionManager.requestFleetDiff` (Task 4)
 - Produces: `EditorContextHost.openDiff(root: string, path: string, base: DiffBase): void`; `registerDiffContentProvider(): vscode.Disposable`; `DIFF_SCHEME = 'hiiiid-diff'`; `diffUri(root, path, sha)`
 
-- [ ] **Step 1: Add the webview-to-host arms**
+- [x] **Step 1: Add the webview-to-host arms**
 
 In `src/protocol/messages.ts`, add to `WebviewToHost`:
 
@@ -1214,7 +1214,7 @@ In `src/protocol/messages.ts`, add to `WebviewToHost`:
   | { t: 'open-file-diff'; root: string; path: string; base: DiffBase }
 ```
 
-- [ ] **Step 2: Write the failing router test**
+- [x] **Step 2: Write the failing router test**
 
 Create `src/test/unit/fleet-diff-router.test.ts`:
 
@@ -1265,12 +1265,12 @@ suite('fleet-diff routing', () => {
 });
 ```
 
-- [ ] **Step 3: Run the test to verify it fails**
+- [x] **Step 3: Run the test to verify it fails**
 
 Run: `yarn test:unit --grep "fleet-diff routing"`
 Expected: FAIL — `openDiff` is not on `EditorContextHost`.
 
-- [ ] **Step 4: Implement the router changes**
+- [x] **Step 4: Implement the router changes**
 
 In `src/host/message-router.ts`, extend the seam:
 
@@ -1314,12 +1314,12 @@ Add both tags to `KNOWN_MESSAGE_TAGS`:
   'request-fleet-diff', 'open-file-diff',
 ```
 
-- [ ] **Step 5: Run the router test to verify it passes**
+- [x] **Step 5: Run the router test to verify it passes**
 
 Run: `yarn test:unit --grep "fleet-diff routing"`
 Expected: PASS, 3 passing.
 
-- [ ] **Step 6: Implement the content provider**
+- [x] **Step 6: Implement the content provider**
 
 Create `src/host/diff-content-provider.ts`:
 
@@ -1387,7 +1387,7 @@ export function registerDiffContentProvider(): vscode.Disposable {
 }
 ```
 
-- [ ] **Step 7: Wire it in `src/extension.ts`**
+- [x] **Step 7: Wire it in `src/extension.ts`**
 
 Add the imports:
 
@@ -1445,12 +1445,12 @@ async function openFileDiff(root: string, target: string, base: DiffBase): Promi
 
 `DIFF_SCHEME` is imported for the `localResourceRoots`-adjacent review in Step 8; if lint flags it as unused, drop it from the import.
 
-- [ ] **Step 8: Verify the whole host side compiles and passes**
+- [x] **Step 8: Verify the whole host side compiles and passes**
 
 Run: `yarn lint && yarn check-types && yarn run compile && yarn test:unit`
 Expected: all clean.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add src/protocol/messages.ts src/host/message-router.ts src/host/diff-content-provider.ts src/extension.ts src/test/unit/fleet-diff-router.test.ts
@@ -1475,7 +1475,7 @@ git commit -m "feat: route fleet diff requests and open changes in the diff edit
   - `ClientState.fleetDiffDirty: number`
   - `usePanelWidth(ref): number`, `NARROW_PX = 500`, `REVIEW_PX = 700`
 
-- [ ] **Step 1: Write the failing reducer tests**
+- [x] **Step 1: Write the failing reducer tests**
 
 Create `src/test/unit/fleet-diff-reducer.test.ts`:
 
@@ -1567,12 +1567,12 @@ suite('fleet diff reducer', () => {
 
 If `session-status`'s `status` literal `'running'` is not the busy status in this codebase, use whichever non-`idle` status `SessionStatus` declares — check `src/protocol/messages.ts` and adjust the string, not the assertion.
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `yarn test:unit --grep "fleet diff reducer"`
 Expected: FAIL — `fleetDiff` is not on `ClientState`.
 
-- [ ] **Step 3: Add the state slices**
+- [x] **Step 3: Add the state slices**
 
 In `src/webview/reducer.ts`, add to `ClientState`:
 
@@ -1606,7 +1606,7 @@ Add to `initialState`:
 
 Add `TreeDiff` to the type import list at the top of the file.
 
-- [ ] **Step 4: Add the reducer cases**
+- [x] **Step 4: Add the reducer cases**
 
 Add a `fleet-diff` case beside `stale-trees`:
 
@@ -1676,12 +1676,12 @@ In the `session-patch` case, bump on a settled file edit. Note the guard order �
 
 Check the running-state literal against `TranscriptItem`'s tool `state` union in `src/protocol/messages.ts` and use whatever it actually spells; the intent is "not still in flight".
 
-- [ ] **Step 5: Run the reducer tests to verify they pass**
+- [x] **Step 5: Run the reducer tests to verify they pass**
 
 Run: `yarn test:unit --grep "fleet diff reducer"`
 Expected: PASS, 8 passing.
 
-- [ ] **Step 6: Widen the width hook**
+- [x] **Step 6: Widen the width hook**
 
 Rewrite `src/webview/components/use-is-narrow.ts`:
 
@@ -1738,7 +1738,7 @@ export function usePanelWidth(ref: React.RefObject<HTMLElement | null>): number 
 
 `useIsNarrow` is deleted. `0 < NARROW_PX` is true, so an unmeasured panel reads as narrow — which is what `useIsNarrow` returning `false` initially did *not* do. Verify the DOM suite: if any existing test depends on the pre-measurement state being non-narrow, keep the old semantics by deriving `narrow` as `width > 0 && width < NARROW_PX` in `App` and note why in a comment.
 
-- [ ] **Step 7: Update `App`**
+- [x] **Step 7: Update `App`**
 
 In `src/webview/app.tsx`, replace the hook call:
 
@@ -1752,12 +1752,12 @@ import { NARROW_PX, REVIEW_PX, usePanelWidth } from './components/use-is-narrow'
   const canReview = width >= REVIEW_PX;
 ```
 
-- [ ] **Step 8: Verify no regressions**
+- [x] **Step 8: Verify no regressions**
 
 Run: `yarn test:unit && yarn test:dom && yarn lint && yarn check-types`
 Expected: all pass. `SessionPicker` and `PaneGroup` keep their `narrow: boolean` prop — nothing about their signatures changed.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add src/webview/reducer.ts src/webview/components/use-is-narrow.ts src/webview/app.tsx src/test/unit/fleet-diff-reducer.test.ts
@@ -1778,7 +1778,7 @@ git commit -m "feat: hold the fleet diff in client state and measure the panel o
 
 Pure, no React and no `@/` aliases, so it can be required from the mocha harness — the same rule `pane-layout.ts` states in its header.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `src/test/unit/fleet-diff-groups.test.ts`:
 
@@ -1850,12 +1850,12 @@ suite('fleet diff grouping', () => {
 });
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `yarn test:unit --grep "fleet diff grouping"`
 Expected: FAIL — module not found.
 
-- [ ] **Step 3: Implement `src/webview/components/fleet-diff-groups.ts`**
+- [x] **Step 3: Implement `src/webview/components/fleet-diff-groups.ts`**
 
 ```ts
 // The flat wire payload, grouped the way it is read.
@@ -1922,12 +1922,12 @@ export function groupTree(tree: TreeDiff): SessionGroup[] {
 }
 ```
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `yarn test:unit --grep "fleet diff grouping"`
 Expected: PASS, 8 passing.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 Run: `yarn lint && yarn check-types`
 
@@ -1954,7 +1954,7 @@ git commit -m "feat: group a tree's changes by the session that claimed them"
 `node <impeccable-skill-dir>/scripts/detect.mjs --json src/webview/components/fleet-diff.tsx src/webview/components/session-picker.tsx`
 Exit 0 is clean; exit 2 is a failing check, not a suggestion.
 
-- [ ] **Step 1: Write the failing DOM tests**
+- [x] **Step 1: Write the failing DOM tests**
 
 Create `src/test/dom/fleet-diff.test.tsx`. Note the assertion rule — booleans, strings and counts only, never a node.
 
@@ -2103,16 +2103,16 @@ suite('fleet diff surface', () => {
 
 The `hydrate` helper casts its one summary with `as never` because `SessionSummary` has more required fields than this test cares about; if `check-types` objects, fill in the remaining fields from `SessionSummary` rather than widening the cast further.
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `yarn test:dom --grep "fleet diff surface"`
 Expected: FAIL — no "Review changes" button exists.
 
-- [ ] **Step 3: Invoke the impeccable skill for the surface's shape**
+- [x] **Step 3: Invoke the impeccable skill for the surface's shape**
 
 Do this before writing JSX. Follow whatever it routes to; the constraints it must respect are already fixed: Operate mode, a 700px-plus sidebar, a long-running agent turn in progress, and the file list is the thing being scanned.
 
-- [ ] **Step 4: Implement `src/webview/components/fleet-diff.tsx`**
+- [x] **Step 4: Implement `src/webview/components/fleet-diff.tsx`**
 
 Structure to build (exact classNames are the impeccable step's output; the behaviour below is not negotiable):
 
@@ -2144,7 +2144,7 @@ The two effects, both in this component:
 
 `post` is `useCallback`-stable (see `store.tsx:29-44`) and that stability is load-bearing here — an unstable `post` would re-fire the mount effect on every render.
 
-- [ ] **Step 5: Mount it in `App`**
+- [x] **Step 5: Mount it in `App`**
 
 In `src/webview/app.tsx`:
 
@@ -2169,7 +2169,7 @@ In `src/webview/app.tsx`:
             </div>
 ```
 
-- [ ] **Step 6: Add the entry button in `SessionPicker`**
+- [x] **Step 6: Add the entry button in `SessionPicker`**
 
 Extend `SessionPickerProps` with `canReview: boolean` and `onReview: () => void`, and add the control beside the working-trees button (after the block at `session-picker.tsx:153-163`):
 
@@ -2199,17 +2199,17 @@ Extend `SessionPickerProps` with `canReview: boolean` and `onReview: () => void`
 
 Import `GitCompareIcon` from the same icon package `FolderGit2Icon` comes from.
 
-- [ ] **Step 7: Run the DOM tests to verify they pass**
+- [x] **Step 7: Run the DOM tests to verify they pass**
 
 Run: `yarn test:dom --grep "fleet diff surface"`
 Expected: PASS, 10 passing.
 
-- [ ] **Step 8: Run the impeccable detector**
+- [x] **Step 8: Run the impeccable detector**
 
 Run: `node <impeccable-skill-dir>/scripts/detect.mjs --json src/webview/components/fleet-diff.tsx src/webview/components/session-picker.tsx`
 Expected: exit 0. Exit 2 means findings — fix them, then re-run.
 
-- [ ] **Step 9: Full verification and commit**
+- [x] **Step 9: Full verification and commit**
 
 Run: `yarn lint && yarn check-types && yarn run compile && yarn test:unit && yarn test:dom`
 Expected: all pass.
@@ -2227,7 +2227,7 @@ git commit -m "feat: review every file the fleet changed, grouped by session"
 - Modify: `CLAUDE.md` (the path table, and one invariant)
 - Modify: `docs/superpowers/plans/2026-08-16-fleet-diff-review.md` (check the boxes)
 
-- [ ] **Step 1: Add the new modules to the path table in `CLAUDE.md`**
+- [x] **Step 1: Add the new modules to the path table in `CLAUDE.md`**
 
 ```markdown
 | `src/host/fleet-diff.ts` | One tree's change set: base resolution, numstat + untracked parsing |
@@ -2237,7 +2237,7 @@ git commit -m "feat: review every file the fleet changed, grouped by session"
 | `src/webview/components/fleet-diff-groups.ts` | Pure grouping of a flat `TreeDiff` into session groups |
 ```
 
-- [ ] **Step 2: Add the attribution invariant**
+- [x] **Step 2: Add the attribution invariant**
 
 Under **Invariants**:
 
@@ -2253,11 +2253,11 @@ Under **Invariants**:
   JSONL on demand.
 ```
 
-- [ ] **Step 3: Run the critique gate**
+- [x] **Step 3: Run the critique gate**
 
 Per `CLAUDE.md`, before merging a UI branch: run `critique` over `src/webview` and compare against the previous run in `.impeccable/critique/`. The score is expected to go up, never down. Per the project memory, the implementer cannot run this — it needs the controller and two isolated agents.
 
-- [ ] **Step 4: Final verification and commit**
+- [x] **Step 4: Final verification and commit**
 
 Run: `yarn lint && yarn check-types && yarn run compile && yarn test:unit && yarn test:dom && yarn test`
 Expected: all pass.

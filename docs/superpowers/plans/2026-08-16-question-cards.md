@@ -28,13 +28,19 @@
 
 ---
 
-### Task 1: Probe whether bypass mode suppresses `canUseTool`
+### Task 1: ~~Probe whether bypass mode suppresses `canUseTool`~~ — DONE 2026-08-16, no code change
 
-The spec's Open Item 1. This runs first because its outcome decides whether question cards work in bypass mode at all, and it may delete a line rather than add one.
+**Both of the spec's open items were probed on 2026-08-16 and are recorded there. This task is closed; start at Task 2.** Steps 1–6 below are kept only as the record of what was run.
+
+**Outcome — bypass does not suppress questions.** With `permissionMode: 'bypassPermissions'` *and* `allowDangerouslySkipPermissions: true`, `canUseTool` fired for `AskUserQuestion` and the answer round-tripped end to end. The SDK's `[CLAUDE_SDK_CAN_USE_TOOL_SHADOWED]` warning applies to ordinary tools (`Read` → 0 calls), not to `AskUserQuestion`, whose execution *is* the callback.
+
+**Step 4 does not apply and must not be done.** The flag is mandatory, not redundant — `sdk.d.ts:1775`: "Must be set to `true` when using `permissionMode: 'bypassPermissions'`." `buildOptions()` at `claude-provider.ts:450` and its test at `claude-provider.test.ts:137` stay exactly as they are.
+
+**One confirmation for later tasks:** `updatedInput.answers` is a `Record<questionText, string>`, and a wrong shape is rejected loudly — `The parameter 'answers' type is expected as 'record' but provided as 'array'`. Task 3's `toSdkAnswers` (comma-join to one string, keyed by question text) is already right; do not "fix" it into an array.
 
 **Files:**
-- Modify (conditional on outcome): `src/providers/claude/claude-provider.ts:450`
-- Modify: `docs/superpowers/specs/2026-08-16-question-cards-design.md` (record the answer)
+- ~~Modify (conditional on outcome): `src/providers/claude/claude-provider.ts:450`~~ — does not apply
+- Modify: `docs/superpowers/specs/2026-08-16-question-cards-design.md` (record the answer) — done
 
 **Interfaces:**
 - Consumes: nothing.

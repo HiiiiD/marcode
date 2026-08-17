@@ -483,6 +483,32 @@ suite('MessageRouter', () => {
     assert.strictEqual((await session!.snapshot()).model, 'fake-small');
   });
 
+  test('question-answer reaches the addressed session', async () => {
+    await router.handle({ t: 'create-session', providerId: 'fake', cwd: '/tmp' });
+    const id = manager.summaries()[0].id;
+    await router.handle({ t: 'set-visible', sessionIds: [id] });
+
+    provider.runs[0].emit({
+      kind: 'question', id: 'r1', blocking: true,
+      questions: [{
+        id: 'q1', header: 'H', question: 'Q?', multiSelect: false,
+        allowOther: true, secret: false,
+        options: [{ label: 'A', description: 'a' }, { label: 'B', description: 'b' }],
+      }],
+    });
+    await settle();
+
+    await router.handle({ t: 'question-answer', id, requestId: 'r1', answers: { q1: ['A'] } });
+    await settle();
+
+    assert.deepStrictEqual(provider.answered, [['r1', { q1: ['A'] }]]);
+    const session = manager.get(id);
+    assert.ok(session);
+    const snap = await session!.snapshot();
+    assert.strictEqual((snap.items.at(-1) as { state: string }).state, 'answered');
+    assert.strictEqual(snap.pendingQuestions.length, 0);
+  });
+
   test('request-context replies with a keyed result', async () => {
     await router.handle({ t: 'create-session', providerId: 'fake', cwd: '/tmp' });
     const id = manager.summaries()[0].id;
@@ -513,6 +539,7 @@ suite('MessageRouter', () => {
     const r = new MessageRouter(mgr, (m) => sent.push(m), '/tmp', {
       current: () => ctx,
       reveal: () => {},
+      openDiff: () => {},
     });
 
     const session = await mgr.create('fake', '/tmp');
@@ -531,6 +558,7 @@ suite('MessageRouter', () => {
     const r = new MessageRouter(mgr, (m) => sent.push(m), '/tmp', {
       current: () => ({ path: 'src/a.ts', languageId: 'typescript' }),
       reveal: () => {},
+      openDiff: () => {},
     });
 
     const session = await mgr.create('fake', '/tmp');
@@ -571,6 +599,7 @@ suite('MessageRouter', () => {
     const r = new MessageRouter(manager, (m) => sent.push(m), '/tmp', {
       current: () => null,
       reveal: (path, startLine) => calls.push({ path, startLine }),
+      openDiff: () => {},
     });
 
     await r.handle({ t: 'reveal-file', path: 'src/a.ts', startLine: 12 });
@@ -643,6 +672,7 @@ suite('MessageRouter', () => {
     const r = new MessageRouter(manager, (m) => sent.push(m), '/tmp', {
       current: () => ctx,
       reveal: () => {},
+      openDiff: () => {},
     });
 
     await r.handle({ t: 'ready' });

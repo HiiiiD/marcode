@@ -1,4 +1,4 @@
-import type { AgentEvent, McpServerStatus } from '../types';
+import type { AgentEvent, McpServerStatus, QuestionOption, QuestionSpec } from '../types';
 import type { RequestId } from './app-server';
 import { approvalToolCall, toToolCall, toToolOutput } from './map-tools';
 import type {
@@ -6,15 +6,15 @@ import type {
 } from './wire';
 
 /**
- * Server requests that ask for typed input rather than a yes/no.
+ * Server requests that ask for typed input this panel still cannot render.
  *
- * `ToolDecision` cannot express either one, and a turn that never gets an
- * answer hangs. The run declines them with a transcript note instead — see
- * codex-run.ts. Both are experimental and only fire if a tool or MCP server
- * uses them.
+ * `item/tool/requestUserInput` used to live here too, but it now maps to a
+ * real `question` event (see `questionEventOf`) instead of being declined.
+ * MCP elicitation is deliberately unmodelled and stays declined — see
+ * codex-run.ts. Experimental upstream, and only fires if an MCP server uses
+ * it.
  */
 export const DECLINED_INPUT_METHODS = [
-  'item/tool/requestUserInput',
   'mcpServer/elicitation/request',
 ];
 
@@ -197,4 +197,65 @@ export function approvalEventOf(
   const tool = approvalToolCall(method, params);
   if (!tool) { return undefined; }
   return { kind: 'permission', id: String(id), tool };
+}
+
+/**
+ * `item/tool/requestUserInput` -> a neutral question event, or `undefined`
+ * when the params are not the documented shape. Codex declares no
+ * multi-select: the response is an array, but nothing says more than one value
+ * is permitted, so v1 maps single-select. See the spec's Open Item 2.
+ *
+ * `params` is typed `unknown` and validated field by field, exactly like its
+ * Claude twin `toQuestionSpecs`. The request arrives off a subprocess's
+ * stdout, inside an event listener with nothing above it to catch a throw —
+ * so a bad shape has to be a value the caller can act on, never an exception.
+ * `ToolRequestUserInputParams` describes what codex documents, not what
+ * actually came down the pipe.
+ */
+export function questionEventOf(
+  id: string | number, params: unknown,
+): Extract<AgentEvent, { kind: 'question' }> | undefined {
+  if (typeof params !== 'object' || params === null) { return undefined; }
+  // A loose record, deliberately not `Partial<ToolRequestUserInputParams>`:
+  // the point of this function is that the payload may not be that type, and
+  // reading it through the type would let the compiler vouch for fields
+  // nothing has checked.
+  const p = params as Record<string, unknown>;
+  const blocking = p.isBlocking;
+  if (typeof blocking !== 'boolean') { return undefined; }
+  if (!Array.isArray(p.questions) || p.questions.length === 0) { return undefined; }
+  const questions: QuestionSpec[] = [];
+  for (const entry of p.questions) {
+    if (typeof entry !== 'object' || entry === null) { return undefined; }
+    const q = entry as Record<string, unknown>;
+    if (typeof q.id !== 'string' || typeof q.header !== 'string' || typeof q.question !== 'string') {
+      return undefined;
+    }
+    let options: QuestionOption[] | undefined;
+    // `null` is codex's own spelling of "no options" — a free-text question —
+    // and is not a malformed payload. Anything else non-array is.
+    if (q.options !== null && q.options !== undefined) {
+      if (!Array.isArray(q.options)) { return undefined; }
+      options = [];
+      for (const o of q.options) {
+        if (typeof o !== 'object' || o === null) { return undefined; }
+        const opt = o as Record<string, unknown>;
+        if (typeof opt.label !== 'string' || typeof opt.description !== 'string') { return undefined; }
+        options.push({ label: opt.label, description: opt.description });
+      }
+    }
+    questions.push({
+      id: q.id,
+      header: q.header,
+      question: q.question,
+      ...(options ? { options } : {}),
+      multiSelect: false,
+      // Absent reads as "not offered"/"not a secret" rather than rejecting the
+      // whole request: both are advisory flags, and a missing one costs the
+      // user an escape hatch, not a correct answer.
+      allowOther: q.isOther === true,
+      secret: q.isSecret === true,
+    });
+  }
+  return { kind: 'question', id: String(id), blocking, questions };
 }

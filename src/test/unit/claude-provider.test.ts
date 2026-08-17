@@ -5,6 +5,13 @@ import * as path from 'node:path';
 import { ClaudeProvider } from '../../providers/claude/claude-provider';
 import type { AgentEvent } from '../../providers/types';
 
+/** The subset of the SDK's real `CanUseTool` signature these tests drive directly. */
+type CanUseToolLike = (
+  toolName: string,
+  input: Record<string, unknown>,
+  options: { toolUseID: string; signal: AbortSignal; requestId: string },
+) => Promise<unknown>;
+
 /** A server-status shape matching the SDK's `Query.mcpServerStatus()` return type. */
 type FakeSdkServerStatus = {
   name: string;
@@ -120,6 +127,26 @@ async function drainAvailableEvents(run: { events: AsyncIterable<AgentEvent> }):
 async function flushMicrotasks() {
   await Promise.resolve();
   await Promise.resolve();
+}
+
+/**
+ * Subscribes to `run.events` immediately and returns a getter for everything
+ * received so far. Needed for the question tests below because they invoke
+ * `canUseTool` directly rather than driving it through the fake query, so
+ * events must be captured as they arrive rather than pulled after the fact
+ * (as `drainAvailableEvents` does).
+ */
+function collect(run: { events: AsyncIterable<AgentEvent> }): () => AgentEvent[] {
+  const out: AgentEvent[] = [];
+  void (async () => {
+    for await (const e of run.events) { out.push(e); }
+  })();
+  return () => out;
+}
+
+/** Flushes microtasks and one macrotask — enough for a Channel push to reach an async-iterating consumer. */
+async function tick(): Promise<void> {
+  await flushMacrotask();
 }
 
 suite('ClaudeProvider (lazy start)', () => {
@@ -858,5 +885,252 @@ suite('ClaudeProvider mcpServerStatus pull', () => {
 
     await assert.rejects(() => provider.fetchModels('/repo'), /control request failed/);
     assert.strictEqual(closed, true);
+  });
+});
+
+suite('ClaudeProvider (questions)', () => {
+  test('AskUserQuestion emits a question event rather than a permission', async () => {
+    const fake = fakeLoadQuery();
+    const provider = new ClaudeProvider(fake.load as never);
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+    const events = collect(run);
+    run.send('hi');
+    await tick();
+
+    const canUseTool = fake.calls[0].options.canUseTool as CanUseToolLike;
+    void canUseTool('AskUserQuestion', {
+      questions: [{
+        header: 'Scope', question: 'Which one?', multiSelect: false,
+        options: [{ label: 'A', description: 'first' }, { label: 'B', description: 'second' }],
+      }],
+    }, { toolUseID: 't1', signal: new AbortController().signal, requestId: 'rq1' });
+    await tick();
+
+    const q = events().find((e) => e.kind === 'question');
+    assert.strictEqual(q?.kind, 'question');
+    assert.ok(q && q.kind === 'question');
+    assert.strictEqual(q.blocking, true);
+    assert.strictEqual(q.questions.length, 1);
+    assert.strictEqual(q.questions[0].id, 'Which one?');
+    assert.strictEqual(q.questions[0].allowOther, true);
+    assert.strictEqual(q.questions[0].secret, false);
+    assert.strictEqual(q.questions[0].options?.length, 2);
+    assert.strictEqual(events().some((e) => e.kind === 'permission'), false);
+  });
+
+  test('respondToQuestion resolves with answers spread over the original input', async () => {
+    const fake = fakeLoadQuery();
+    const provider = new ClaudeProvider(fake.load as never);
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+    collect(run);
+    run.send('hi');
+    await tick();
+
+    const canUseTool = fake.calls[0].options.canUseTool as CanUseToolLike;
+    const input = {
+      questions: [{
+        header: 'Scope', question: 'Which one?', multiSelect: true,
+        options: [{ label: 'A', description: 'first' }, { label: 'B', description: 'second' }],
+      }],
+    };
+    const decision = canUseTool('AskUserQuestion', input,
+      { toolUseID: 't1', signal: new AbortController().signal, requestId: 'rq1' });
+    run.respondToQuestion('t1', { 'Which one?': ['A', 'B'] });
+
+    assert.deepStrictEqual(await decision, {
+      behavior: 'allow',
+      updatedInput: { ...input, answers: { 'Which one?': 'A, B' } },
+    });
+  });
+
+  test('a malformed questions payload degrades to a permission card', async () => {
+    const fake = fakeLoadQuery();
+    const provider = new ClaudeProvider(fake.load as never);
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+    const events = collect(run);
+    run.send('hi');
+    await tick();
+
+    const canUseTool = fake.calls[0].options.canUseTool as CanUseToolLike;
+    void canUseTool('AskUserQuestion', { questions: 'not an array' },
+      { toolUseID: 't1', signal: new AbortController().signal, requestId: 'rq1' });
+    await tick();
+
+    assert.strictEqual(events().some((e) => e.kind === 'permission'), true);
+    assert.strictEqual(events().some((e) => e.kind === 'question'), false);
+  });
+});
+
+suite('ClaudeProvider (cancellation)', () => {
+  test('interrupt settles a parked permission — it does not strand the card', async () => {
+    const fake = fakeLoadQuery();
+    const provider = new ClaudeProvider(fake.load as never);
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+    const events = collect(run);
+    run.send('hi');
+    await tick();
+
+    const canUseTool = fake.calls[0].options.canUseTool as CanUseToolLike;
+    const decision = canUseTool('Write', { file_path: '/tmp/a' },
+      { toolUseID: 't1', signal: new AbortController().signal, requestId: 'rq1' });
+    await run.interrupt();
+
+    assert.deepStrictEqual(await decision, { behavior: 'deny', message: 'Turn cancelled' });
+    assert.strictEqual(events().some((e) => e.kind === 'request-cancelled' && e.id === 't1'), true);
+  });
+
+  test('an aborted question resolves deny, never null', async () => {
+    const fake = fakeLoadQuery();
+    const provider = new ClaudeProvider(fake.load as never);
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+    collect(run);
+    run.send('hi');
+    await tick();
+
+    const controller = new AbortController();
+    const canUseTool = fake.calls[0].options.canUseTool as CanUseToolLike;
+    const decision = canUseTool('AskUserQuestion', {
+      questions: [{ header: 'H', question: 'Q?', multiSelect: false,
+        options: [{ label: 'A', description: 'a' }, { label: 'B', description: 'b' }] }],
+    }, { toolUseID: 't1', signal: controller.signal, requestId: 'rq1' });
+    controller.abort();
+
+    assert.deepStrictEqual(await decision, { behavior: 'deny', message: 'Turn cancelled' });
+  });
+
+  test('an abort followed by interrupt settles once and emits one cancellation', async () => {
+    const fake = fakeLoadQuery();
+    const provider = new ClaudeProvider(fake.load as never);
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+    const events = collect(run);
+    run.send('hi');
+    await tick();
+
+    const controller = new AbortController();
+    const canUseTool = fake.calls[0].options.canUseTool as CanUseToolLike;
+    const decision = canUseTool('Write', { file_path: '/tmp/a' },
+      { toolUseID: 't1', signal: controller.signal, requestId: 'rq1' });
+    controller.abort();
+    await run.interrupt();
+    await decision;
+
+    assert.strictEqual(events().filter((e) => e.kind === 'request-cancelled').length, 1);
+  });
+
+  test('a request that arrives on an already-aborted signal denies instead of parking', async () => {
+    const fake = fakeLoadQuery();
+    const provider = new ClaudeProvider(fake.load as never);
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+    const events = collect(run);
+    run.send('hi');
+    await tick();
+
+    const controller = new AbortController();
+    controller.abort();
+    const canUseTool = fake.calls[0].options.canUseTool as CanUseToolLike;
+    // `addEventListener('abort')` on an already-aborted signal never fires,
+    // so without the pre-check this promise parks with nothing able to
+    // resolve it: interrupt() ran before the entry existed, and there is no
+    // card to click.
+    const decision = canUseTool('Write', { file_path: '/tmp/a' },
+      { toolUseID: 't1', signal: controller.signal, requestId: 'rq1' });
+
+    assert.deepStrictEqual(await decision, { behavior: 'deny', message: 'Turn cancelled' });
+    assert.strictEqual(events().some((e) => e.kind === 'permission'), false);
+  });
+
+  test('dispose denies a parked question — never "allow with no answers"', async () => {
+    const fake = fakeLoadQuery();
+    const provider = new ClaudeProvider(fake.load as never);
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+    collect(run);
+    run.send('hi');
+    await tick();
+
+    const canUseTool = fake.calls[0].options.canUseTool as CanUseToolLike;
+    const decision = canUseTool('AskUserQuestion', {
+      questions: [{ header: 'H', question: 'Q?', multiSelect: false,
+        options: [{ label: 'A', description: 'a' }, { label: 'B', description: 'b' }] }],
+    }, { toolUseID: 't1', signal: new AbortController().signal, requestId: 'rq1' });
+    await run.dispose();
+
+    // `{}` here would produce `{behavior:'allow', updatedInput:{...input,
+    // answers:{}}}` — running the tool with no answer at all, which is the
+    // exact shape the question card exists to eliminate.
+    assert.deepStrictEqual(await decision, { behavior: 'deny', message: 'Turn cancelled' });
+  });
+});
+
+suite('ClaudeProvider permission metadata', () => {
+  /** Helper to yield control so microtasks can execute (specifically permission calls). */
+  async function tick() {
+    await Promise.resolve();
+    await Promise.resolve();
+  }
+
+  test('a permission event carries the bridge-rendered title and reason', async () => {
+    const fake = fakeLoadQuery();
+    const provider = new ClaudeProvider(fake.load as never);
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+    run.send('hi');
+    await tick();
+
+    const canUseTool = fake.calls[0].options.canUseTool as never as (
+      toolName: string,
+      input: unknown,
+      options: Record<string, unknown>,
+    ) => Promise<{ behavior: string } | null>;
+
+    const permissionPromise = canUseTool('Read', { file_path: '/tmp/a' }, {
+      toolUseID: 't1', signal: new AbortController().signal, requestId: 'rq1',
+      title: 'Claude wants to read a.txt', displayName: 'Read file',
+      description: 'Read access to /tmp', decisionReason: 'outside allowed directories',
+      blockedPath: '/tmp/a',
+    });
+    await tick();
+
+    // Drain available events to find the permission event
+    const events = await drainAvailableEvents(run);
+    const p = events.find((e) => e.kind === 'permission');
+    assert.strictEqual(p?.kind, 'permission');
+    assert.strictEqual((p as any)?.meta?.title, 'Claude wants to read a.txt');
+    assert.strictEqual((p as any)?.meta?.decisionReason, 'outside allowed directories');
+    assert.strictEqual((p as any)?.meta?.blockedPath, '/tmp/a');
+
+    // Respond to the permission to unblock
+    run.respondToTool('t1', { allow: true });
+    await tick();
+    await permissionPromise;
+    await run.dispose();
+  });
+
+  test('a permission event omits meta entirely when the bridge sends none', async () => {
+    const fake = fakeLoadQuery();
+    const provider = new ClaudeProvider(fake.load as never);
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+    run.send('hi');
+    await tick();
+
+    const canUseTool = fake.calls[0].options.canUseTool as never as (
+      toolName: string,
+      input: unknown,
+      options: Record<string, unknown>,
+    ) => Promise<{ behavior: string } | null>;
+
+    const permissionPromise = canUseTool('Read', { file_path: '/tmp/a' },
+      { toolUseID: 't1', signal: new AbortController().signal, requestId: 'rq1' });
+    await tick();
+
+    // Drain available events to find the permission event
+    const events = await drainAvailableEvents(run);
+    const p = events.find((e) => e.kind === 'permission');
+    assert.strictEqual(p?.kind, 'permission');
+    assert.strictEqual((p as any)?.meta === undefined, true);
+
+    // Respond to the permission to unblock
+    run.respondToTool('t1', { allow: true });
+    await tick();
+    await permissionPromise;
+    await run.dispose();
   });
 });
