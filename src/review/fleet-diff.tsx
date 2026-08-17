@@ -89,13 +89,19 @@ interface Row {
    * once per claiming group, and `groupKey` is what tells those rows apart. */
   groupKey: string;
   file: FileChange;
+  /** `${groupKey}::${file.path}` — this row's stable identity across a
+   * rebuild, not its position. This surface re-reads its trees every 750ms
+   * while agents work, and a row's *index* shifts whenever a file sorts in
+   * ahead of it; the roving hook reconciles against this key instead of a
+   * bare number so it keeps pointing at the same file, not the same slot. */
+  key: string;
 }
 
 /**
  * The rendered rows, in the exact order `Tree`/`Group` put them on screen —
  * a collapsed tree or group contributes nothing, matching what `isCollapsed`
  * already hides there. Computed once per render so the roving index has a
- * stable count and the next/prev controls have somewhere to point; a index
+ * stable count and the next/prev controls have somewhere to point; an index
  * into a row a collapse or filter just hid would land the reader — or the
  * next/prev control — on a file that is not on screen.
  */
@@ -108,7 +114,7 @@ function flattenRows(trees: TreeDiff[], collapsed: Set<string>): Row[] {
       const groupKey = `${tree.root}::${group.sessionId ?? UNATTRIBUTED_KEY}`;
       if (collapsed.has(groupKey)) { continue; }
       for (const file of group.files) {
-        rows.push({ tree, groupKey, file });
+        rows.push({ tree, groupKey, file, key: `${groupKey}::${file.path}` });
       }
     }
   }
@@ -117,16 +123,17 @@ function flattenRows(trees: TreeDiff[], collapsed: Set<string>): Row[] {
 
 /**
  * The roving-focus plumbing threaded down to every `FileRow`: which index is
- * focusable, which files have been opened this session, and how to move
- * between them. Bundled into one object rather than five separate props
- * because every layer between `FleetDiff` and `FileRow` passes all five
- * through unchanged.
+ * focusable, which files have been opened this session, how many rows there
+ * are in total (for `aria-setsize`), and how to move between them. Bundled
+ * into one object rather than six separate props because every layer between
+ * `FleetDiff` and `FileRow` passes all six through unchanged.
  */
 interface RowNav {
   rowIndex: Map<string, number>;
+  rowCount: number;
   active: number;
   opened: Set<string>;
-  setActive: (index: number) => void;
+  onFocus: (index: number) => void;
   onOpen: (index: number) => void;
 }
 
@@ -176,9 +183,11 @@ export function FleetDiff() {
 
   const rows = flattenRows(filtered, collapsed);
   const rowIndex = new Map<string, number>();
-  rows.forEach((row, i) => rowIndex.set(`${row.groupKey}::${row.file.path}`, i));
+  rows.forEach((row, i) => rowIndex.set(row.key, i));
 
-  const { active, setActive, onKeyDown } = useRovingRows(rows.length);
+  const {
+    active, setActive, onKeyDown, containerRef, focusRow, onRowFocus,
+  } = useRovingRows(rows.map((row) => row.key));
 
   const openRow = (index: number) => {
     const row = rows[index];
@@ -189,10 +198,17 @@ export function FleetDiff() {
       return next;
     });
     setActive(index);
+    // Moves real DOM focus, not just the roving index — the next/prev header
+    // controls open a row the user never navigated to by keyboard, and
+    // "Focus follows the roving index" has to hold for them too, not only
+    // for arrow keys.
+    focusRow(index);
     post({ t: 'open-file-diff', root: row.tree.root, path: row.file.path, base: row.tree.base });
   };
 
-  const nav: RowNav = { rowIndex, active, opened, setActive, onOpen: openRow };
+  const nav: RowNav = {
+    rowIndex, rowCount: rows.length, active, opened, onFocus: onRowFocus, onOpen: openRow,
+  };
 
   // Ask once on mount: the surface is the only thing that wants this, so it
   // is the only thing that asks for it.
@@ -299,7 +315,15 @@ export function FleetDiff() {
         </Button>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto text-xs" onKeyDown={onKeyDown}>
+      <div
+        ref={containerRef}
+        className="min-h-0 flex-1 overflow-y-auto text-xs"
+        onKeyDown={onKeyDown}
+        // Programmatically focusable only (`-1`, never in the Tab order):
+        // the fallback focus target when the active row's own node has
+        // disappeared and there is no row left to hand focus to instead.
+        tabIndex={-1}
+      >
         {state.fleetDiffReason !== undefined ? (
           // A failed read is a third state, and it has to be one: the loading
           // sentence below is the only other thing that could be on screen,
@@ -513,19 +537,32 @@ function Group({
             <p className="pl-4 pt-1 text-muted-foreground">{prefix}</p>
           )}
           <ul className="mt-1 border-l border-border">
-            {group.files.map((file) => (
-              <li key={file.path}>
-                <FileRow
-                  file={file}
-                  tree={tree}
-                  sessions={sessions}
-                  own={group.sessionId}
-                  prefix={prefix}
-                  groupKey={groupKey}
-                  nav={nav}
-                />
-              </li>
-            ))}
+            {group.files.map((file) => {
+              // Position within the *whole* review, not just this group's own
+              // `<ul>` — `aria-posinset`/`aria-setsize` are defined for a
+              // conceptual set that need not match the DOM nesting (the same
+              // mechanism a virtualized or paginated list uses), so a screen
+              // reader can announce "row 12 of 340" while the file list stays
+              // grouped by session on screen.
+              const position = nav.rowIndex.get(`${groupKey}::${file.path}`);
+              return (
+                <li
+                  key={file.path}
+                  aria-posinset={position === undefined ? undefined : position + 1}
+                  aria-setsize={nav.rowCount}
+                >
+                  <FileRow
+                    file={file}
+                    tree={tree}
+                    sessions={sessions}
+                    own={group.sessionId}
+                    prefix={prefix}
+                    groupKey={groupKey}
+                    nav={nav}
+                  />
+                </li>
+              );
+            })}
           </ul>
         </>
       )}
@@ -611,7 +648,7 @@ function FileRow({
       data-review-row
       data-opened={isOpened ? 'true' : undefined}
       tabIndex={index === nav.active ? 0 : -1}
-      onFocus={() => nav.setActive(index)}
+      onFocus={() => nav.onFocus(index)}
       onClick={() => nav.onOpen(index)}
     >
       <Icon aria-hidden className={OP_COLOR[file.op]} />
