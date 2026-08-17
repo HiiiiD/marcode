@@ -15,6 +15,7 @@ import { useStore } from "../store";
 import { Composer } from "./composer";
 import { accessibleTitles, rosterSessionIds, visiblePanes } from "./pane-layout";
 import { SessionCreateMenu } from "./session-create-menu";
+import { MessageScrollerProvider } from "@/components/ui/message-scroller";
 import { SessionHeader } from "./session-header";
 import { Transcript } from "./transcript";
 
@@ -244,30 +245,43 @@ export function PaneGroup({ narrow }: PaneGroupProps) {
                     individually gave two siblings of the same children list
                     the same key ("Encountered two children with the same key,
                     s-…"), which lets React drop one of them. */}
-                <div className="flex h-full flex-col">
-                  <SessionHeader
-                    pane={paneState}
-                    accessibleTitle={names.get(paneState.summary.id)!}
-                  />
-                  <div className="min-h-0 flex-1">
-                    <Transcript
+                {/* The scroller's context wraps the whole pane, not just the
+                    transcript: the header's active-subagent badge reveals an
+                    item in this pane's transcript, and it is a sibling of the
+                    transcript rather than a descendant. Chat-shaped, not
+                    document-shaped — the latest item is pinned to the bottom
+                    edge and history grows upward off the top. `end` rather
+                    than `last-anchor`, which parks the newest user message at
+                    the *top* of the viewport and streams the reply beneath
+                    it: that reads as a document scrolling past, not a
+                    conversation. One provider per pane, so two panes never
+                    share a scroll position. */}
+                <MessageScrollerProvider autoScroll defaultScrollPosition="end">
+                  <div className="flex h-full flex-col">
+                    <SessionHeader
                       pane={paneState}
-                      onLoadMore={(beforeItemId) =>
-                        post({
-                          t: "load-more",
-                          id: pane.sessionId,
-                          beforeItemId,
-                        })
-                      }
+                      accessibleTitle={names.get(paneState.summary.id)!}
+                    />
+                    <div className="min-h-0 flex-1">
+                      <Transcript
+                        pane={paneState}
+                        onLoadMore={(beforeItemId) =>
+                          post({
+                            t: "load-more",
+                            id: pane.sessionId,
+                            beforeItemId,
+                          })
+                        }
+                      />
+                    </div>
+                    <Composer
+                      pane={paneState}
+                      model={model}
+                      models={provider?.models ?? []}
+                      unavailableReason={unavailabilityFor(state, paneState.summary.providerId)}
                     />
                   </div>
-                  <Composer
-                    pane={paneState}
-                    model={model}
-                    models={provider?.models ?? []}
-                    unavailableReason={unavailabilityFor(state, paneState.summary.providerId)}
-                  />
-                </div>
+                </MessageScrollerProvider>
               </ResizablePanel>
             </Fragment>
           );

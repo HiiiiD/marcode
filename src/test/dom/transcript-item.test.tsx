@@ -58,6 +58,36 @@ suite('TranscriptItemView', () => {
   });
 });
 
+suite('TranscriptItemView subagent routing', () => {
+  const spawned = (children?: TranscriptItem[]): TranscriptItem => ({
+    id: 't1', ts: 1, role: 'tool', toolId: 'task1',
+    tool: { kind: 'subagent', label: 'Task', action: 'spawn', agent: 'Explore' },
+    state: 'running', children,
+  });
+
+  test('a just-spawned subagent renders as a subagent card, not a tool card', () => {
+    // The window where the jump-to affordance matters most: the Task is
+    // running and has returned nothing, so `children` is still empty. Routing
+    // on children alone made exactly this case look like a generic tool.
+    renderWithStore(<TranscriptItemView item={spawned()} sessionId="a" />);
+
+    screen.getByText('Subagent');
+    assert.ok(
+      screen.getByRole('button', { expanded: false }).textContent?.includes('Explore'),
+      'and it is named by the agent type it spawned',
+    );
+  });
+
+  test('a plain tool with no children is still a tool card', () => {
+    renderWithStore(<TranscriptItemView item={{
+      id: 'r1', ts: 1, role: 'tool', toolId: 'read1',
+      tool: { kind: 'file-read', label: 'Read', path: 'a.ts' }, state: 'running',
+    }} sessionId="a" />);
+
+    assert.strictEqual(screen.queryByText('Subagent'), null);
+  });
+});
+
 const WITH_CONTEXT: TranscriptItem = {
   id: 'u1', ts: 1, role: 'user', text: 'fix the send path',
   context: {
