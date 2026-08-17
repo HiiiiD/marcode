@@ -126,6 +126,14 @@ export class ReviewPanel {
       this.unregister?.();
       this.unregister = undefined;
       this.panel = undefined;
+      // The ordinary path — the user closes the tab — lands here, not in
+      // `restore()`'s explicit clear above. Without this, these three
+      // disposables sit in `this.subscriptions` until the next `open()`
+      // overwrites the array at its assignment above, and we never dispose
+      // them ourselves (VS Code tears down a disposed panel's own emitters
+      // regardless, so this is belt-and-suspenders, not a leak fix — but it
+      // is the same discipline every other exit path here already has).
+      for (const sub of this.subscriptions.splice(0)) { sub.dispose(); }
     });
 
     this.subscriptions = [messageSub, viewStateSub, disposeSub];

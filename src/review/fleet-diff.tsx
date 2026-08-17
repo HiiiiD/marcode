@@ -154,6 +154,12 @@ export function FleetDiff() {
   const filtered = (trees ?? []).map((tree) => filterTree(tree, query, contestedOnly));
   const shown = countFiles(filtered);
   const total = countFiles(trees ?? []);
+  // How many files each tree carried *before* the filter, keyed by root —
+  // the only way to tell "the filter emptied this tree" apart from "this
+  // tree was already empty because the repository is clean". Both look
+  // identical on the filtered tree alone (`files: []`), and only the first
+  // one is a reason to drop the tree's header below.
+  const unfilteredFileCount = new Map((trees ?? []).map((tree) => [tree.root, tree.files.length]));
   // `filterTree` never touches `omitted` — it counts files the *host* never
   // sent, and a filter over what already arrived cannot know whether they
   // would have matched. Summed across the unfiltered trees so the empty-filter
@@ -406,11 +412,22 @@ export function FleetDiff() {
         ) : (
           // A filter that empties one tree's files, while others still match,
           // must drop that tree rather than leave a header — and a "Show N
-          // more" button — over nothing. A tree reporting a read failure
-          // (`reason`) has no files to filter and always stays: the filter
-          // narrows *files*, not which working trees this surface reports on.
+          // more" button — over nothing. But a tree with `files: []` and no
+          // `reason` is also exactly what a *clean* repository looks like
+          // (SessionManager reports one row per repo a session occupies,
+          // clean ones included) — dropping it unconditionally would make a
+          // clean repo indistinguishable from one never read, the same
+          // implied-answer mistake the "Nothing to review" copy above is
+          // careful to avoid. So the drop is conditional on the filter
+          // actually having removed something: only when this tree carried
+          // files before the filter ran. A tree reporting a read failure
+          // (`reason`) has no files to filter and always stays regardless —
+          // the filter narrows *files*, not which working trees this surface
+          // reports on.
           filtered
-            .filter((tree) => tree.reason !== undefined || tree.files.length > 0)
+            .filter((tree) => tree.reason !== undefined
+              || tree.files.length > 0
+              || unfilteredFileCount.get(tree.root) === 0)
             .map((tree) => (
               <Tree
                 key={tree.root}

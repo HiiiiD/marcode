@@ -186,4 +186,31 @@ suite('review structure', () => {
     // On is `secondary`, the same variant the sidebar toggle switches to.
     assert.strictEqual(toggle.className.includes('bg-secondary'), true);
   });
+
+  // `files: []` with no `reason` is not just what a filter empties a tree
+  // down to — it is also exactly what SessionManager reports for a *clean*
+  // repository a session occupies (one row per repo, clean ones included).
+  // With no filter active, that row must keep its header: dropping it would
+  // make "this repo is clean" indistinguishable from "this repo was never
+  // read", the same implied-answer mistake the empty-fleet copy elsewhere on
+  // this surface is careful to avoid.
+  test('a clean repository keeps its header when no filter is active', () => {
+    renderReview();
+    sendFromHost(READY as never, { t: 'fleet-diff', trees: [
+      ...TREES,
+      { root: '/repo-clean', branch: 'main', sessions: ['s1'], base: { kind: 'head' }, omitted: 0, files: [] },
+    ] } as never);
+
+    assert.strictEqual(screen.getByText('repo-clean').textContent, 'repo-clean');
+  });
+
+  test('an all-clean fleet does not silently render a blank body under "0 changed files"', () => {
+    renderReview();
+    sendFromHost(READY as never, { t: 'fleet-diff', trees: [
+      { root: '/repo-clean', branch: 'main', sessions: ['s1'], base: { kind: 'head' }, omitted: 0, files: [] },
+    ] } as never);
+
+    assert.strictEqual(screen.getByText('repo-clean').textContent, 'repo-clean');
+    assert.strictEqual(screen.queryByText('Nothing to review') === null, true);
+  });
 });
