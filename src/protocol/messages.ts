@@ -440,7 +440,20 @@ export type WebviewToHost =
    * because a repo-relative path is meaningless without it, and the base
    * because the left-hand side is that file at the branch point.
    */
-  | { t: 'open-file-diff'; root: string; path: string; base: DiffBase };
+  | { t: 'open-file-diff'; root: string; path: string; base: DiffBase }
+  /**
+   * "Ask the backends again." Re-probing is the whole mechanism for
+   * re-checking an install (see `SessionManager.refreshModels`), so the empty
+   * state's retry is this and nothing else — there is no separate
+   * availability call for the webview to make.
+   */
+  | { t: 'refresh-catalog' }
+  /**
+   * Open VS Code's settings UI at `section`. The webview cannot run a
+   * command, and the one place it needs to is the empty state: with no
+   * provider enabled, the setting that enables one is the only next step.
+   */
+  | { t: 'open-settings'; section: string };
 
 export type HostToWebview =
   | { t: 'hydrate'; sessions: SessionSummary[]; layout: PaneLayout;
@@ -452,6 +465,10 @@ export type HostToWebview =
        * message fills both in.
        */
       unavailable: UnavailableProvider[];
+      /** See `catalog`'s field of the same name. True at hydrate whenever the
+       * host is about to probe, which is every hydrate with a provider
+       * configured. */
+      probing?: boolean;
       /** Per provider, the last window set the host knew. Empty on a fresh install. */
       usage: Record<string, UsageWindow[]> }
   | { t: 'session-snapshot'; session: SessionSnapshot }
@@ -480,7 +497,16 @@ export type HostToWebview =
    * Both arrays are full replacements, never deltas, and they partition the
    * configured providers: a provider is in exactly one of them.
    */
-  | { t: 'catalog'; catalog: ProviderInfo[]; unavailable: UnavailableProvider[] }
+  | { t: 'catalog'; catalog: ProviderInfo[]; unavailable: UnavailableProvider[];
+      /**
+       * Whether a probe is still in flight. An empty catalog means two very
+       * different things one second apart — "nobody has answered yet" and
+       * "nothing here can run an agent" — and only the second one is a
+       * diagnosis worth showing. Absent is read as "still probing": a client
+       * that has never been told otherwise has not been told the answer
+       * settled.
+       */
+      probing?: boolean }
   /** Broadcast, not session-addressed: every composer shows the same editor. */
   | { t: 'editor-context'; ctx: EditorContext | null }
   | { t: 'context-breakdown'; id: SessionId; result: ContextResult }

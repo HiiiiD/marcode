@@ -39,10 +39,17 @@ export interface EditorContextHost {
    * this module must not import; `src/extension.ts` supplies the real one.
    */
   openDiff(root: string, path: string, base: DiffBase): void;
+  /**
+   * Reveals `section` in VS Code's settings UI. Here for the same reason
+   * `openDiff` is — it needs `vscode.commands`, which this module must not
+   * import — even though settings are not the editor. The alternative was a
+   * seventh constructor parameter for one call site.
+   */
+  openSettings(section: string): void;
 }
 
 const NO_EDITOR: EditorContextHost = {
-  current: () => null, reveal: () => {}, openDiff: () => {},
+  current: () => null, reveal: () => {}, openDiff: () => {}, openSettings: () => {},
 };
 
 export interface AttachmentHost { pick(): Promise<string[]> }
@@ -112,6 +119,12 @@ export class MessageRouter {
           snapshots,
           catalog: this.manager.catalog(),
           unavailable: this.manager.unavailable(),
+          // Asked before the probe below is fired, and answered by the
+          // provider set rather than by a flag: an empty catalog at hydrate
+          // is a pending question on a normal install and a settled answer on
+          // one with no provider enabled, and only the second one is
+          // something to tell the user about.
+          probing: this.manager.willProbe(),
           usage: this.manager.usageSnapshot(),
         });
         this.emit({ t: 'editor-context', ctx: this.editor.current() });
@@ -345,6 +358,16 @@ export class MessageRouter {
         this.editor.openDiff(msg.root, msg.path, msg.base);
         return;
 
+      // Awaited, unlike the fire-and-forget probe at hydrate: this one was
+      // asked for, and its `catalog` emit is the only feedback the retry has.
+      case 'refresh-catalog':
+        await this.manager.refreshModels(this.defaultCwd);
+        return;
+
+      case 'open-settings':
+        this.editor.openSettings(msg.section);
+        return;
+
       case 'permission-decision':
         this.manager.get(msg.id)?.respondToPermission(msg.requestId, msg.decision);
         return;
@@ -430,6 +453,7 @@ const KNOWN_MESSAGE_TAGS = new Set<WebviewToHost['t']>([
   'request-bring-back', 'bring-back',
   'request-stale-trees', 'remove-stale-tree',
   'request-fleet-diff', 'open-file-diff',
+  'refresh-catalog', 'open-settings',
 ]);
 
 /**

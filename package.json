@@ -33,6 +33,29 @@
     "configuration": {
       "title": "HiiiiD Code",
       "properties": {
+        "hiiiidCode.enabledProviders": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "claude",
+              "codex",
+              "fake"
+            ],
+            "enumDescriptions": [
+              "Claude Agent SDK.",
+              "Codex CLI.",
+              "A scripted stand-in that answers without a backend. For development only."
+            ]
+          },
+          "uniqueItems": true,
+          "default": [
+            "claude",
+            "codex"
+          ],
+          "description": "Which agent providers this window registers. A provider left out is not probed and does not appear in the panel. Takes effect after a window reload.",
+          "scope": "window"
+        },
         "hiiiidCode.codex.path": {
           "type": "string",
           "default": "",

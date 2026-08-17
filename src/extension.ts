@@ -15,6 +15,9 @@ import { ClaudeProvider } from './providers/claude/claude-provider';
 import { CodexProvider } from './providers/codex/codex-provider';
 import { FakeProvider } from './providers/fake/fake-provider';
 import type { DiffBase } from './protocol/messages';
+import {
+  DEFAULT_PROVIDER_IDS, ENABLED_PROVIDERS_SETTING, KNOWN_PROVIDER_IDS,
+} from './shared/settings';
 import type { AgentProvider } from './providers/types';
 
 /**
@@ -27,6 +30,44 @@ import type { AgentProvider } from './providers/types';
 function codexBinPath(): string | undefined {
   const configured = vscode.workspace.getConfiguration('hiiiidCode').get<string>('codex.path');
   return configured ? configured : undefined;
+}
+
+/**
+ * The provider ids this window registers.
+ *
+ * A `Set` of ids rather than a filter over a provider list, because
+ * construction itself is what is gated: `ClaudeProvider` and `CodexProvider`
+ * each own a subprocess, and building one nobody enabled would spawn a CLI to
+ * answer a question the panel will never ask.
+ *
+ * A malformed value (not an array, or entries that are not strings) falls back
+ * to the default rather than yielding a panel with nothing in it: the user's
+ * mistake is in a settings file, and a silently empty roster is a worse
+ * account of it than the default behaviour plus an unknown-id warning.
+ */
+function enabledProviderIds(): Set<string> {
+  const configured = vscode.workspace
+    .getConfiguration()
+    .get<unknown>(ENABLED_PROVIDERS_SETTING);
+  if (!Array.isArray(configured) || configured.some((id) => typeof id !== 'string')) {
+    if (configured !== undefined) {
+      console.warn('[hiiiid-code] enabledProviders is not a list of strings; using the default', configured);
+    }
+    return new Set(DEFAULT_PROVIDER_IDS);
+  }
+  const ids = configured as string[];
+  const unknown = ids.filter((id) => !KNOWN_PROVIDER_IDS.includes(id as typeof KNOWN_PROVIDER_IDS[number]));
+  if (unknown.length > 0) {
+    // Named, not silently dropped: an id with a typo in it is the difference
+    // between "Claude is broken" and "Claude was never asked", and the panel's
+    // empty state cannot tell that story — it only ever hears about providers
+    // that exist.
+    void vscode.window.showWarningMessage(
+      `${ENABLED_PROVIDERS_SETTING}: ignoring unknown provider ${unknown.join(', ')}. `
+        + `Known providers: ${KNOWN_PROVIDER_IDS.join(', ')}.`,
+    );
+  }
+  return new Set(ids);
 }
 
 /**
@@ -68,11 +109,23 @@ export async function activate(context: vscode.ExtensionContext) {
 
   // Order matters: SessionPicker uses state.catalog[0] for the New button,
   // so Claude — the real provider — is registered first.
+  //
+  // Registration is gated on `hiiiidCode.enabledProviders`, and a disabled
+  // provider is not registered at all rather than registered-and-hidden: it
+  // must appear in neither `catalog()` nor `unavailable()`, since "nobody
+  // asked for this backend" is not a diagnosis of it. Emptying the setting is
+  // therefore how the no-provider empty state is reached on purpose.
+  const enabled = enabledProviderIds();
   const providers = new Map<string, AgentProvider>();
-  providers.set('claude', new ClaudeProvider());
-  const codexProvider = new CodexProvider({ binPath: codexBinPath() });
-  providers.set('codex', codexProvider);
-  providers.set('fake', new FakeProvider(
+  if (enabled.has('claude')) { providers.set('claude', new ClaudeProvider()); }
+  // Constructed only when enabled — it owns a CLI subprocess, and building
+  // one nobody asked for would spawn a backend to answer a question the panel
+  // never puts to it. `undefined` is why the path listener below is guarded.
+  const codexProvider = enabled.has('codex')
+    ? new CodexProvider({ binPath: codexBinPath() })
+    : undefined;
+  if (codexProvider) { providers.set('codex', codexProvider); }
+  if (enabled.has('fake')) { providers.set('fake', new FakeProvider(
     (text) => (text.includes('rm')
       ? [{
           kind: 'permission', id: `p-${Date.now()}`,
@@ -101,7 +154,7 @@ export async function activate(context: vscode.ExtensionContext) {
         { id: 'seven-day', label: 'Week', usedPercent: 18, resetsAt: Date.now() + 3 * 86_400_000 },
       ],
     },
-  ));
+  )); }
 
   let provider: PanelViewProvider;
   const manager = new SessionManager(
@@ -135,6 +188,9 @@ export async function activate(context: vscode.ExtensionContext) {
     },
     openDiff: (root: string, target: string, base: DiffBase) => {
       void openFileDiff(root, target, base);
+    },
+    openSettings: (section: string) => {
+      void vscode.commands.executeCommand('workbench.action.openSettings', section);
     },
   };
 
@@ -178,9 +234,23 @@ export async function activate(context: vscode.ExtensionContext) {
     // sessions land in 'error' with a transcript item (CodexRun's onClose
     // handling), not silently on the old process.
     vscode.workspace.onDidChangeConfiguration((e) => {
-      if (e.affectsConfiguration('hiiiidCode.codex.path')) {
+      if (codexProvider && e.affectsConfiguration('hiiiidCode.codex.path')) {
         codexProvider.setBinPath(codexBinPath());
         void manager.refreshModels(defaultCwd);
+      }
+      // Registration happens once, at activate, and a provider added here
+      // would have no sessions, no transcript store wiring and no probe —
+      // so this asks rather than pretends. A re-probe would be the wrong
+      // remedy: the provider set itself changed, not any backend's answer.
+      if (e.affectsConfiguration(ENABLED_PROVIDERS_SETTING)) {
+        const reload = 'Reload window';
+        void vscode.window.showInformationMessage(
+          'The enabled agent providers changed. Reload the window to apply it.',
+          reload,
+        ).then((choice) => {
+          if (choice !== reload) { return; }
+          void vscode.commands.executeCommand('workbench.action.reloadWindow');
+        });
       }
     }),
   );

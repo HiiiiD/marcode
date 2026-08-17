@@ -1,5 +1,7 @@
+import { Button } from "@/components/ui/button";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { cn } from "@/lib/utils";
+import { RefreshCwIcon, SettingsIcon } from "lucide-react";
 import { Fragment, useEffect, useRef } from "react";
 // react-resizable-panels ships ESM-only; a type-only import from a CommonJS
 // module needs an explicit resolution-mode attribute (TS 5.3+) or tsc's
@@ -7,6 +9,7 @@ import { Fragment, useEffect, useRef } from "react";
 // similar note on the value import in the vendored resizable.tsx.
 import type { Layout, LayoutChangedMeta } from "react-resizable-panels" with { "resolution-mode": "import" };
 import { findModel } from "../../shared/model-catalog";
+import { ENABLED_PROVIDERS_SETTING } from "../../shared/settings";
 import { unavailabilityFor } from "../lib/provider-availability";
 import { useStore } from "../store";
 import { Composer } from "./composer";
@@ -102,10 +105,17 @@ export function PaneGroup({ narrow }: PaneGroupProps) {
     prevCount.current = panes.length;
   }, [panes.length]);
 
-  // Nothing can be created: every configured provider failed its probe (or
-  // none is configured at all). Distinct from "no sessions yet", which is an
-  // invitation — this one is an explanation, since `+ New` is dead either way.
-  const noProviders = state.catalog.length === 0 && state.unavailable.length > 0;
+  // Nothing can be created. Three readings of one empty catalog, and they are
+  // not interchangeable:
+  //  - `probing`: nobody has answered yet. Not a verdict, so it is shown as a
+  //    wait — a diagnosis here would accuse a healthy install for the second
+  //    the CLI handshake takes.
+  //  - settled with reasons: every enabled provider failed its probe.
+  //  - settled without reasons: no provider is enabled at all, so nothing was
+  //    ever asked. The remedy is a setting, not a retry.
+  const noProviders = state.catalog.length === 0 && !state.probing;
+  const noneEnabled = noProviders && state.unavailable.length === 0;
+  const checking = state.catalog.length === 0 && state.probing;
 
   if (panes.length === 0) {
     return (
@@ -118,11 +128,15 @@ export function PaneGroup({ narrow }: PaneGroupProps) {
         )}
       >
         <p className="text-xs text-muted-foreground">
-          {noProviders
-            ? "No agent provider is available."
-            : roster.size === 0
-              ? "No sessions yet. Start one to give an agent something to do."
-              : "No sessions in the split. Pick one from the roster above to show it here."}
+          {checking
+            ? "Checking for agent backends…"
+            : noneEnabled
+              ? "No agent provider is enabled."
+              : noProviders
+                ? "No agent provider is available."
+                : roster.size === 0
+                  ? "No sessions yet. Start one to give an agent something to do."
+                  : "No sessions in the split. Pick one from the roster above to show it here."}
         </p>
         {/* The one place the reasons are worth spelling out in full: `+ New`
             is disabled here and there is no session on screen to explain it.
@@ -134,7 +148,33 @@ export function PaneGroup({ narrow }: PaneGroupProps) {
               <span className="font-medium text-foreground">{p.displayName}</span> — {p.reason}
             </p>
           ))}
-        {roster.size === 0 && !noProviders && <SessionCreateMenu />}
+        {noneEnabled && (
+          <>
+            <p className="text-xs text-muted-foreground">
+              Enable one in settings, then reload the window.
+            </p>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => post({ t: "open-settings", section: ENABLED_PROVIDERS_SETTING })}
+            >
+              <SettingsIcon aria-hidden />
+              Open settings
+            </Button>
+          </>
+        )}
+        {/* Only where re-asking could change the answer. Re-probing IS the
+            availability check (see SessionManager.refreshModels), so this is
+            the whole remedy for an install that was fixed in a terminal while
+            the panel sat open — but with nothing enabled there is nobody to
+            ask, and a button that re-runs zero probes would just blink. */}
+        {noProviders && !noneEnabled && (
+          <Button size="sm" variant="outline" onClick={() => post({ t: "refresh-catalog" })}>
+            <RefreshCwIcon aria-hidden />
+            Check again
+          </Button>
+        )}
+        {roster.size === 0 && !noProviders && !checking && <SessionCreateMenu />}
       </div>
     );
   }
