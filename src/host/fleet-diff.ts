@@ -26,6 +26,33 @@ export type RawChange = Omit<FileChange, 'claimedBy'>;
 export const FILE_CAP = 500;
 
 /**
+ * The hard ceiling on a raised cap.
+ *
+ * The surface can ask for more than `FILE_CAP` — "N more files are not shown"
+ * with nothing to press is a named dead end — but it cannot ask for
+ * everything. Each file costs a numstat row to parse and a React row to
+ * render, and a request with no ceiling is a request the host cannot promise
+ * to answer.
+ */
+export const MAX_FILE_CAP = 2000;
+
+/**
+ * A requested cap, made safe. Nonsense (zero, negative, NaN) falls back to the
+ * default rather than to zero rows: answering "nothing changed" because a
+ * number arrived malformed is the one wrong answer this surface can give.
+ */
+export function clampCap(requested: number | undefined): number {
+  // `Infinity` is nonsense as an unbounded request, but it is still a
+  // direction — up — so it clamps to the ceiling below rather than falling
+  // back to the default. Only `NaN` (not a number at all) and non-positive
+  // values fall back.
+  if (requested === undefined || Number.isNaN(requested) || requested < 1) {
+    return FILE_CAP;
+  }
+  return Math.min(Math.floor(requested), MAX_FILE_CAP);
+}
+
+/**
  * `core.quotepath=false` on every call: git otherwise escapes non-ASCII paths
  * into octal (`"caf\303\251.ts"`), which would never match a path a provider
  * reported and would silently lose that file's attribution.
@@ -132,6 +159,7 @@ export function parseNumstat(out: string): RawChange[] {
  */
 export async function treeChanges(
   dir: string,
+  cap?: number,
 ): Promise<{ base: DiffBase; files: RawChange[]; omitted: number } | { reason: string }> {
   const inside = await git(dir, ['rev-parse', '--is-inside-work-tree']);
   if (!inside.ok || inside.out !== 'true') {
@@ -156,6 +184,7 @@ export async function treeChanges(
   }
 
   files.sort((a, b) => a.path.localeCompare(b.path));
-  const omitted = Math.max(0, files.length - FILE_CAP);
-  return { base, files: files.slice(0, FILE_CAP), omitted };
+  const limit = clampCap(cap);
+  const omitted = Math.max(0, files.length - limit);
+  return { base, files: files.slice(0, limit), omitted };
 }

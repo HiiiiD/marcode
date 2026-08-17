@@ -433,8 +433,12 @@ export type WebviewToHost =
    * "What has the fleet changed?" Read-only and deliberately not
    * session-addressed: a working tree is the unit git can answer for, and
    * two sessions sharing one tree share one answer.
+   *
+   * `cap` raises the per-tree file cap past the host's default (`FILE_CAP`
+   * in `src/host/fleet-diff.ts`). The host clamps it to `MAX_FILE_CAP`
+   * regardless of what is asked for; an absent `cap` means the default.
    */
-  | { t: 'request-fleet-diff' }
+  | { t: 'request-fleet-diff'; cap?: number }
   /**
    * Open the review tab. Unaddressed, like `request-fleet-diff`: review is a
    * fleet-wide surface, not a session's.

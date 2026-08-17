@@ -837,7 +837,7 @@ export class SessionManager implements SessionSink {
    * saying so is noise. A directory that *is* a repository but cannot be read
    * stays, carrying why — that one is a fault worth surfacing.
    */
-  async fleetDiff(): Promise<TreeDiff[]> {
+  async fleetDiff(cap?: number): Promise<TreeDiff[]> {
     const rows: TreeDiff[] = [];
 
     for (const dir of this.knownDirectories()) {
@@ -851,7 +851,7 @@ export class SessionManager implements SessionSink {
       // stale-tree sweep is where that is dealt with, not here.
       if (occupants.length === 0) { continue; }
 
-      const changes = await treeChanges(status.root);
+      const changes = await treeChanges(status.root, cap);
       if ('reason' in changes) {
         rows.push({
           root: status.root, branch: status.branch, sessions: occupants,
@@ -928,10 +928,10 @@ export class SessionManager implements SessionSink {
    * Errors are state — the same contract `TreeDiff.reason` already keeps for
    * a single tree, kept here for the call as a whole.
    */
-  async requestFleetDiff(): Promise<void> {
+  async requestFleetDiff(cap?: number): Promise<void> {
     let trees: TreeDiff[];
     try {
-      trees = await this.fleetDiff();
+      trees = await this.fleetDiff(cap);
     } catch (err) {
       if (this.disposed) { return; }
       const detail = err instanceof Error ? err.message : String(err);

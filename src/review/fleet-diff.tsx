@@ -2,7 +2,7 @@ import {
   FileMinusIcon, FilePenLineIcon, FilePlusIcon, FileSymlinkIcon,
   RefreshCwIcon,
 } from 'lucide-react';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { groupTree, summarize, type SessionGroup } from './fleet-diff-groups';
@@ -50,6 +50,11 @@ export function FleetDiff() {
   const { state, post } = useStore();
   const trees = state.fleetDiff;
 
+  // Undefined means "the default" — the host's own `FILE_CAP` — and is never
+  // sent as a literal, so a fresh mount asks for the default rather than
+  // pinning a number the surface never chose.
+  const [cap, setCap] = useState<number | undefined>(undefined);
+
   // Ask once on mount: the surface is the only thing that wants this, so it
   // is the only thing that asks for it.
   useEffect(() => { post({ t: 'request-fleet-diff' }); }, [post]);
@@ -57,12 +62,30 @@ export function FleetDiff() {
   // And again, debounced, whenever the reducer counted something that could
   // have changed a diff. 750ms coalesces a burst of edits inside one turn
   // into a single request; without it a fan-out of file writes would put one
-  // git invocation per tree on the host for every edit.
+  // git invocation per tree on the host for every edit. The current cap
+  // travels with it — without this, a background refresh 750ms after any
+  // session goes idle would silently collapse a list the user had just
+  // raised back down to the default.
   useEffect(() => {
     if (state.fleetDiffDirty === 0) { return; }
-    const timer = setTimeout(() => { post({ t: 'request-fleet-diff' }); }, 750);
+    const timer = setTimeout(() => { post({ t: 'request-fleet-diff', cap }); }, 750);
     return () => { clearTimeout(timer); };
-  }, [state.fleetDiffDirty, post]);
+  }, [state.fleetDiffDirty, post, cap]);
+
+  const showMore = () => {
+    // Doubling from the current effective cap, not jumping to the ceiling: a
+    // user with 340 more files wants to see them, not to make the host parse
+    // 2000 numstat rows on the way there.
+    //
+    // 500 here duplicates `FILE_CAP` from `src/host/fleet-diff.ts` — the
+    // webview bundle cannot import across the host boundary, so this is the
+    // wire-visible copy of that constant. If the host's default ever moves,
+    // this literal (and the DOM test pinning the resulting 1000) has to move
+    // with it.
+    const next = (cap ?? 500) * 2;
+    setCap(next);
+    post({ t: 'request-fleet-diff', cap: next });
+  };
 
   return (
     <section aria-label="Changes across every working tree" className="flex h-screen min-h-0 flex-col">
@@ -123,14 +146,18 @@ export function FleetDiff() {
             </p>
           </div>
         ) : (
-          trees.map((tree) => <Tree key={tree.root} tree={tree} sessions={state.sessions} />)
+          trees.map((tree) => (
+            <Tree key={tree.root} tree={tree} sessions={state.sessions} onShowMore={showMore} />
+          ))
         )}
       </div>
     </section>
   );
 }
 
-function Tree({ tree, sessions }: { tree: TreeDiff; sessions: SessionSummary[] }) {
+function Tree({
+  tree, sessions, onShowMore,
+}: { tree: TreeDiff; sessions: SessionSummary[]; onShowMore: () => void }) {
   const groups = groupTree(tree);
 
   return (
@@ -181,12 +208,12 @@ function Tree({ tree, sessions }: { tree: TreeDiff; sessions: SessionSummary[] }
           ))
         )}
         {tree.omitted > 0 && (
-          // Never truncate silently: the cap is a rendering decision, and a
-          // list that hid it would answer "what changed" with a number the
-          // user cannot act on.
-          <p className="mt-2 text-muted-foreground">
-            {tree.omitted} more {tree.omitted === 1 ? 'file is' : 'files are'} not shown.
-          </p>
+          // Never a dead end. The cap is a rendering decision, and a sentence
+          // naming a number the user cannot act on is worse than either
+          // showing the rows or not mentioning them.
+          <Button variant="outline" size="sm" className="mt-2" onClick={onShowMore}>
+            Show {tree.omitted} more
+          </Button>
         )}
       </div>
     </div>

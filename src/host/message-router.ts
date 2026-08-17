@@ -351,7 +351,7 @@ export class MessageRouter {
       // unaddressed for the same reason too: a working tree is the unit git
       // can answer for, and two sessions in one tree share one answer.
       case 'request-fleet-diff':
-        await this.manager.requestFleetDiff();
+        await this.manager.requestFleetDiff(msg.cap);
         return;
 
       case 'open-file-diff':

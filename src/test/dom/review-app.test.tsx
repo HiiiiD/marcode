@@ -48,4 +48,22 @@ suite('review app', () => {
     sendFromHost({ t: 'fleet-diff', trees: [] } as never);
     assert.strictEqual(screen.getByText('Nothing to review').textContent, 'Nothing to review');
   });
+
+  test('"show more" re-requests with a raised cap', async () => {
+    renderReview();
+    sendFromHost({
+      t: 'fleet-diff',
+      trees: [{
+        root: '/repo', branch: 'main', sessions: ['s1'],
+        base: { kind: 'head' }, omitted: 340,
+        files: [{ path: 'src/a.ts', op: 'modify', insertions: 1, deletions: 0, claimedBy: ['s1'] }],
+      }],
+    } as never);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Show 340 more' }));
+
+    const raised = posted().filter((m) => m.t === 'request-fleet-diff' && m.cap !== undefined);
+    assert.strictEqual(raised.length, 1);
+    assert.strictEqual((raised[0] as { cap?: number }).cap, 1000);
+  });
 });
