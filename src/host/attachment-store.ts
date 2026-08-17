@@ -11,6 +11,31 @@ const IMAGE_EXT = new Map<string, string>([
 ]);
 
 /**
+ * One path that did not become an attachment, and why.
+ *
+ * A reason per path rather than one sentence for the batch: dropping four
+ * files and being told "could not attach 4 of those files" names neither the
+ * files nor the constraint, which leaves the user guessing at both.
+ */
+export interface RejectedPath {
+  path: string;
+  /** Basename. What the user sees; the full path is the title. */
+  name: string;
+  /** Lowercase fragment, composed into a sentence by the caller. */
+  reason: string;
+}
+
+export interface AdoptResult {
+  attachments: Attachment[];
+  rejected: RejectedPath[];
+}
+
+/** One decimal, so a file just over the line does not read as exactly the cap. */
+function megabytes(bytes: number): string {
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/**
  * Kind is decided by mediaType when the clipboard supplied one, and by
  * extension otherwise. Deliberately not by sniffing magic bytes: the only
  * consumer of `kind` is which provider payload an attachment becomes, and a
@@ -74,21 +99,27 @@ export class AttachmentStore {
     return { id, path: file, name: input.name, kind, mediaType, bytes: bytes.byteLength };
   }
 
-  async adopt(sessionId: string, paths: string[]): Promise<{ attachments: Attachment[]; rejected: string[] }> {
+  async adopt(sessionId: string, paths: string[]): Promise<AdoptResult> {
     const attachments: Attachment[] = [];
-    const rejected: string[] = [];
+    const rejected: RejectedPath[] = [];
     for (const p of paths) {
+      const name = path.basename(p);
       let size: number;
       try {
         const stat = await fs.stat(p);
-        if (!stat.isFile()) { rejected.push(p); continue; }
+        // A folder is refused for a different reason than a broken path, and
+        // saying which is the whole difference between "try again with a file"
+        // and "check the path".
+        if (!stat.isFile()) { rejected.push({ path: p, name, reason: 'that is a folder' }); continue; }
         size = stat.size;
       } catch {
-        rejected.push(p);
+        rejected.push({ path: p, name, reason: 'could not be read' });
         continue;
       }
-      if (size > MAX_ATTACHMENT_BYTES) { rejected.push(p); continue; }
-      const name = path.basename(p);
+      if (size > MAX_ATTACHMENT_BYTES) {
+        rejected.push({ path: p, name, reason: `too large (${megabytes(size)} of 10 MB)` });
+        continue;
+      }
       const { kind, mediaType } = kindOf(name);
       attachments.push({ id: this.nextId(), path: p, name, kind, mediaType, bytes: size });
     }

@@ -136,7 +136,7 @@ suite('MessageRouter', () => {
 
     const msg = sent.at(-1) as Extract<HostToWebview, { t: 'attachments-rejected' }>;
     assert.strictEqual(msg.t, 'attachments-rejected');
-    assert.match(msg.reason, /10 MB/);
+    assert.match(msg.reasons[0], /10 MB/);
     assert.strictEqual(manager.get(id)!.pendingAttachments.length, 0);
   });
 
@@ -155,7 +155,7 @@ suite('MessageRouter', () => {
 
     const msg = sent.at(-1) as Extract<HostToWebview, { t: 'attachments-rejected' }>;
     assert.strictEqual(msg.t, 'attachments-rejected');
-    assert.match(msg.reason, /10 attachments/);
+    assert.match(msg.reasons[0], /10 attachments/);
     assert.strictEqual(session.pendingAttachments.length, 10);
   });
 
@@ -175,6 +175,57 @@ suite('MessageRouter', () => {
     assert.strictEqual(session.pendingAttachments.length, 1);
     assert.strictEqual(session.pendingAttachments[0].name, 'notes.md');
     assert.strictEqual((sent.at(-1) as HostToWebview).t, 'session-attachments');
+  });
+
+  test('a mixed drop names every file it refused, and why', async () => {
+    await router.handle({ t: 'create-session', providerId: 'fake', cwd: '/tmp' });
+    const id = manager.summaries()[0].id;
+    const good = path.join(dir, 'keep.md');
+    const folder = path.join(dir, 'a-folder');
+    await fs.writeFile(good, 'x');
+    await fs.mkdir(folder, { recursive: true });
+    sent.length = 0;
+
+    await router.handle({
+      t: 'attach-drop', id,
+      uris: [pathToFileURL(good).href, pathToFileURL(folder).href],
+    });
+
+    assert.deepStrictEqual(manager.get(id)!.pendingAttachments.map((a) => a.name), ['keep.md']);
+    const msg = sent.at(-1) as Extract<HostToWebview, { t: 'attachments-rejected' }>;
+    assert.strictEqual(msg.t, 'attachments-rejected');
+    // One line per refused file, each naming the file and the constraint —
+    // a batch count would name neither.
+    assert.deepStrictEqual(msg.reasons, ['a-folder — that is a folder']);
+  });
+
+  test('a drop that is all folders still reports each one', async () => {
+    await router.handle({ t: 'create-session', providerId: 'fake', cwd: '/tmp' });
+    const id = manager.summaries()[0].id;
+    const one = path.join(dir, 'one');
+    const two = path.join(dir, 'two');
+    await fs.mkdir(one, { recursive: true });
+    await fs.mkdir(two, { recursive: true });
+    sent.length = 0;
+
+    await router.handle({
+      t: 'attach-drop', id, uris: [pathToFileURL(one).href, pathToFileURL(two).href],
+    });
+
+    const msg = sent.at(-1) as Extract<HostToWebview, { t: 'attachments-rejected' }>;
+    assert.strictEqual(msg.reasons.length, 2);
+  });
+
+  test('attach-failed reports a clipboard read the webview could not finish', async () => {
+    await router.handle({ t: 'create-session', providerId: 'fake', cwd: '/tmp' });
+    const id = manager.summaries()[0].id;
+    sent.length = 0;
+
+    await router.handle({ t: 'attach-failed', id, name: 'image.png' });
+
+    const msg = sent.at(-1) as Extract<HostToWebview, { t: 'attachments-rejected' }>;
+    assert.strictEqual(msg.t, 'attachments-rejected');
+    assert.deepStrictEqual(msg.reasons, ['image.png — could not be read']);
   });
 
   test('attach-pick adopts what the host dialog returned', async () => {

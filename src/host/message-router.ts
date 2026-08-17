@@ -223,13 +223,13 @@ export class MessageRouter {
         if (session.pendingAttachments.length >= MAX_PENDING) {
           this.emit({
             t: 'attachments-rejected', id: msg.id,
-            reason: 'A turn can carry up to 10 attachments.',
+            reasons: ['A turn can carry up to 10 attachments.'],
           });
           return;
         }
         const saved = await this.attachments.savePaste(msg.id, msg);
         if ('error' in saved) {
-          this.emit({ t: 'attachments-rejected', id: msg.id, reason: saved.error });
+          this.emit({ t: 'attachments-rejected', id: msg.id, reasons: [saved.error] });
           return;
         }
         session.addAttachments([saved]);
@@ -255,7 +255,7 @@ export class MessageRouter {
         if (paths.length === 0) {
           this.emit({
             t: 'attachments-rejected', id: msg.id,
-            reason: 'That drop carried nothing on disk.',
+            reasons: ['That drop carried nothing on disk.'],
           });
           return;
         }
@@ -268,6 +268,17 @@ export class MessageRouter {
         if (!session) { return; }
         session.removeAttachment(msg.attachmentId);
         this.emitAttachments(session, msg.id);
+        return;
+      }
+
+      case 'attach-failed': {
+        // Nothing to store and nothing to reject — the bytes never arrived.
+        // The host still owns the sentence, so the composer has exactly one
+        // place errors come from, whichever side noticed the failure.
+        this.emit({
+          t: 'attachments-rejected', id: msg.id,
+          reasons: [`${msg.name} — could not be read`],
+        });
         return;
       }
 
@@ -366,20 +377,14 @@ export class MessageRouter {
       session.addAttachments(accepted);
       this.emitAttachments(session, id);
     }
-    if (attachments.length > accepted.length) {
-      this.emit({
-        t: 'attachments-rejected', id,
-        reason: 'A turn can carry up to 10 attachments.',
-      });
-    }
-    if (rejected.length > 0) {
-      this.emit({
-        t: 'attachments-rejected', id,
-        reason: rejected.length === 1
-          ? `Could not attach ${rejected[0]}.`
-          : `Could not attach ${rejected.length} of those files.`,
-      });
-    }
+    // One message carrying every reason, not one message per reason: two
+    // emissions would make the second overwrite the first, and a drop that
+    // broke the cap *and* contained a folder has two things to say.
+    const reasons = [
+      ...rejected.map((r) => `${r.name} — ${r.reason}`),
+      ...(attachments.length > accepted.length ? ['A turn can carry up to 10 attachments.'] : []),
+    ];
+    if (reasons.length > 0) { this.emit({ t: 'attachments-rejected', id, reasons }); }
   }
 
   private emitAttachments(session: AgentSession, id: SessionId): void {
@@ -394,7 +399,7 @@ const KNOWN_MESSAGE_TAGS = new Set<WebviewToHost['t']>([
   'set-model', 'permission-decision', 'load-more',
   'answer-relocation', 'cancel-relocation',
   'set-include-context', 'reveal-file',
-  'attach-paste', 'attach-pick', 'attach-drop', 'attach-remove',
+  'attach-paste', 'attach-pick', 'attach-drop', 'attach-remove', 'attach-failed',
   'request-context', 'open-file',
   'request-bring-back', 'bring-back',
   'request-stale-trees', 'remove-stale-tree',

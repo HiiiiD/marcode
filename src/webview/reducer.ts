@@ -71,8 +71,8 @@ export interface ClientState {
    * honest answer on a fresh load: nothing has been worked in yet.
    */
   focusedSessionId: SessionId | null;
-  /** Last transient attachment failure for each composer. */
-  rejectionBySession: Record<SessionId, string | undefined>;
+  /** Last transient attachment failure for each composer, one line per refused file. */
+  rejectionBySession: Record<SessionId, string[] | undefined>;
 }
 
 export const initialState: ClientState = {
@@ -105,7 +105,13 @@ export type ClientAction =
   | HostToWebview
   | { t: 'local-layout'; layout: PaneLayout }
   /** Focus landed somewhere inside `id`'s pane. Client-local; see `focusedSessionId`. */
-  | { t: 'local-focus'; id: SessionId };
+  | { t: 'local-focus'; id: SessionId }
+  /**
+   * The user closed the composer's rejection line. Client-local because the
+   * host emits rejections and forgets them — `rejectionBySession` is the only
+   * place they live, so there is nothing on the host to tell.
+   */
+  | { t: 'local-dismiss-rejection'; id: SessionId };
 
 export function reduce(state: ClientState, msg: ClientAction): ClientState {
   switch (msg.t) {
@@ -270,7 +276,16 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
     case 'attachments-rejected':
       return {
         ...state,
-        rejectionBySession: { ...state.rejectionBySession, [msg.id]: msg.reason },
+        rejectionBySession: { ...state.rejectionBySession, [msg.id]: msg.reasons },
+      };
+
+    // Dismissed by the user rather than by a later success. The reasons are
+    // read and spent; keeping them until something unrelated attaches leaves
+    // a stale complaint sitting under the box with no way to close it.
+    case 'local-dismiss-rejection':
+      return {
+        ...state,
+        rejectionBySession: { ...state.rejectionBySession, [msg.id]: undefined },
       };
 
     case 'session-status': {

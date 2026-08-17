@@ -77,7 +77,7 @@ suite('AttachmentStore', () => {
     assert.strictEqual(attachments[0].bytes, 7);
   });
 
-  test('adopt rejects a missing path instead of throwing', async () => {
+  test('adopt rejects a missing path instead of throwing, and says it could not be read', async () => {
     const root = await tmpRoot();
     const store = new AttachmentStore(root);
 
@@ -85,6 +85,33 @@ suite('AttachmentStore', () => {
 
     assert.strictEqual(attachments.length, 0);
     assert.strictEqual(rejected.length, 1);
+    assert.strictEqual(rejected[0].name, 'nope.txt');
+    assert.strictEqual(rejected[0].reason, 'could not be read');
+  });
+
+  test('adopt names a directory as a directory, not as an unreadable file', async () => {
+    const root = await tmpRoot();
+    const store = new AttachmentStore(root);
+    const dir = path.join(root, 'a-folder');
+    await fs.mkdir(dir, { recursive: true });
+
+    const { rejected } = await store.adopt('s1', [dir]);
+
+    assert.strictEqual(rejected[0].name, 'a-folder');
+    assert.strictEqual(rejected[0].reason, 'that is a folder');
+  });
+
+  test('adopt quotes the oversize file against the cap it broke', async () => {
+    const root = await tmpRoot();
+    const store = new AttachmentStore(root);
+    const big = path.join(root, 'huge.bin');
+    await fs.writeFile(big, Buffer.alloc(MAX_ATTACHMENT_BYTES + 1, 3));
+
+    const { attachments, rejected } = await store.adopt('s1', [big]);
+
+    assert.strictEqual(attachments.length, 0);
+    // The number is the point: "too large" alone leaves the user guessing by how much.
+    assert.strictEqual(rejected[0].reason, 'too large (10.0 MB of 10 MB)');
   });
 
   test('remove reaps the session directory', async () => {

@@ -45,7 +45,7 @@ export function Composer({
    */
   unavailableReason?: string;
 }) {
-  const { state, post } = useStore();
+  const { state, post, dismissRejection } = useStore();
   const [text, setText] = useState("");
   /** The selected entry's arg hint. Presentation only; never sent. */
   const [ghost, setGhost] = useState("");
@@ -217,7 +217,10 @@ export function Composer({
           base64,
         });
       }).catch(() => {
-        // An unreadable clipboard entry is ignored; no rejection escapes the webview.
+        // Reported, not swallowed: the bytes never reached the host, so this
+        // is the only side that knows the attach failed at all. The host
+        // still composes the sentence — see `attach-failed`.
+        post({ t: 'attach-failed', id: pane.summary.id, name: file.name || 'That image' });
       });
     }
   };
@@ -316,10 +319,32 @@ export function Composer({
           <InputGroupAddon align="block-start" className="flex-col items-start gap-1 p-1">
             <AttachmentChips pane={pane} />
             {rejection && (
-              <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
+              // A live region: an attach that fails is the one thing here a
+              // sighted user sees without asking and a screen-reader user
+              // would otherwise never hear, since nothing takes focus.
+              <div
+                role="status"
+                className="flex w-full items-start gap-1.5 text-xs text-muted-foreground"
+              >
                 <TriangleAlert className="mt-px size-3.5 shrink-0" aria-hidden />
-                <span>{rejection}</span>
-              </p>
+                <ul className="min-w-0 flex-1 space-y-0.5">
+                  {rejection.map((line) => (
+                    // One line per refused file. Wraps rather than truncates:
+                    // the reason is the whole value of the line, and a
+                    // truncated "too large (14.0 MB of…" says nothing.
+                    <li key={line} className="wrap-break-word">{line}</li>
+                  ))}
+                </ul>
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  className="size-4 shrink-0"
+                  aria-label="Dismiss"
+                  onClick={() => dismissRejection(pane.summary.id)}
+                >
+                  <X />
+                </Button>
+              </div>
             )}
           </InputGroupAddon>
         )}

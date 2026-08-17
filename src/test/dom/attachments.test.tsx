@@ -61,7 +61,7 @@ suite('Attachment chips', () => {
   test('a rejection renders its reason', () => {
     renderWithStore(<Composer pane={pane()} model={NO_EFFORT} models={[]} />);
     sendFromHost({
-      t: 'attachments-rejected', id: 'a', reason: 'Attachments are limited to 10 MB.',
+      t: 'attachments-rejected', id: 'a', reasons: ['Attachments are limited to 10 MB.'],
     });
 
     assert.strictEqual(screen.getByText('Attachments are limited to 10 MB.') !== null, true);
@@ -131,6 +131,48 @@ suite('Attachment chips', () => {
     assert.deepStrictEqual(posted().at(-1), {
       t: 'attach-drop', id: 'a', uris: ['file:///tmp/a.png', 'file:///tmp/b.md'],
     });
+  });
+
+  test('every refused file gets its own line, naming the file and the constraint', () => {
+    renderWithStore(<Composer pane={pane()} model={NO_EFFORT} models={[]} />);
+    sendFromHost({
+      t: 'attachments-rejected', id: 'a',
+      reasons: ['a-folder — that is a folder', 'huge.bin — too large (14.0 MB of 10 MB)'],
+    });
+
+    assert.strictEqual(screen.getByText('a-folder — that is a folder') !== null, true);
+    assert.strictEqual(screen.getByText('huge.bin — too large (14.0 MB of 10 MB)') !== null, true);
+  });
+
+  test('the rejection is a live region, so a failed attach is announced', () => {
+    const { container } = renderWithStore(<Composer pane={pane()} model={NO_EFFORT} models={[]} />);
+    sendFromHost({ t: 'attachments-rejected', id: 'a', reasons: ['shot.png — could not be read'] });
+
+    assert.strictEqual(container.querySelector('[role="status"]') === null, false);
+  });
+
+  test('the rejection can be dismissed without attaching something else', async () => {
+    renderWithStore(<Composer pane={pane()} model={NO_EFFORT} models={[]} />);
+    sendFromHost({ t: 'attachments-rejected', id: 'a', reasons: ['shot.png — could not be read'] });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
+
+    assert.strictEqual(screen.queryByText('shot.png — could not be read') === null, true);
+  });
+
+  test('a clipboard entry the webview cannot read is reported to the host', async () => {
+    renderWithStore(<Composer pane={pane()} model={NO_EFFORT} models={[]} />);
+    const box = screen.getByLabelText('Message');
+    // A File whose bytes cannot be read: FileReader rejects, so no attach-paste
+    // can ever be posted, and silence would be the only other option.
+    const unreadable = { name: 'broken.png', type: 'image/png' } as unknown as File;
+
+    act(() => { fire(box, 'paste', { clipboardData: { files: [unreadable] } }); });
+    await waitFor(() => {
+      assert.strictEqual(posted().at(-1)?.t, 'attach-failed');
+    });
+
+    assert.deepStrictEqual(posted().at(-1), { t: 'attach-failed', id: 'a', name: 'broken.png' });
   });
 
   test('a sent user message lists what it carried', () => {

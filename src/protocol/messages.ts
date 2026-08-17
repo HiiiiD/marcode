@@ -290,6 +290,16 @@ export type WebviewToHost =
   /** Unparsed URI-list entries from a drop. */
   | { t: 'attach-drop'; id: SessionId; uris: string[] }
   | { t: 'attach-remove'; id: SessionId; attachmentId: string }
+  /**
+   * A clipboard or dropped `File` the webview could not read, so no bytes
+   * ever reached the host.
+   *
+   * Reported rather than handled in the composer because the host owns the
+   * rejection line: a webview that rendered this one failure from local state
+   * would be the only thing on this surface holding an error the host has
+   * never heard of.
+   */
+  | { t: 'attach-failed'; id: SessionId; name: string }
   /** Not session-addressed: opening a file is global IDE state, not session state. */
   | { t: 'reveal-file'; path: string; startLine?: number }
   | { t: 'set-model'; id: SessionId; model: string }
@@ -360,8 +370,14 @@ export type HostToWebview =
   | { t: 'session-mcp'; id: SessionId; servers: McpServerStatus[] }
   /** Full replacement of the host-owned pending attachment set. */
   | { t: 'session-attachments'; id: SessionId; attachments: Attachment[] }
-  /** A transient composer error; the session itself remains usable. */
-  | { t: 'attachments-rejected'; id: SessionId; reason: string }
+  /**
+   * A transient composer error; the session itself remains usable.
+   *
+   * One composed sentence per refused file rather than one for the batch: a
+   * drop of four can fail four different ways, and a single count names
+   * neither which file nor which constraint.
+   */
+  | { t: 'attachments-rejected'; id: SessionId; reasons: string[] }
   /**
    * Broadcast, not session-addressed: the provider/model catalog is global.
    * Sent after `hydrate` whenever a provider reports a catalog that differs
