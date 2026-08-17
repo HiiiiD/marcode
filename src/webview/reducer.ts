@@ -33,6 +33,13 @@ export interface ClientState {
    * explanation.
    */
   unavailable: UnavailableProvider[];
+  /**
+   * Whether the host is still asking the backends. `true` until a message
+   * says otherwise, because an empty catalog nobody has answered for yet is
+   * not the same claim as an empty catalog that settled — and only the second
+   * one may be shown as "nothing here can run an agent".
+   */
+  probing: boolean;
   byId: Record<SessionId, PaneState>;
   /**
    * Client-wide, not per session: the active editor is global IDE state and
@@ -107,6 +114,7 @@ export const initialState: ClientState = {
   layout: { orientation: 'vertical', panes: [] },
   catalog: [],
   unavailable: [],
+  probing: true,
   byId: {},
   editorContext: null,
   contextBySession: {},
@@ -163,7 +171,12 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
       }
       return {
         ready: true, sessions: msg.sessions, layout: msg.layout,
-        catalog: msg.catalog, unavailable: msg.unavailable, byId,
+        catalog: msg.catalog, unavailable: msg.unavailable,
+        // Absent reads as "still probing", the conservative side: a host that
+        // never mentions it has never said the answer settled, and the empty
+        // state stays a wait rather than becoming a verdict.
+        probing: msg.probing ?? true,
+        byId,
         // Explicit, not `...state`: `hydrate` is meant to be a total
         // rebuild of `ClientState`, not a merge. `editorContext` is
         // genuinely client-wide (global IDE state a reload doesn't change),
@@ -276,7 +289,10 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
       // Full replacement: the host sends the whole catalog, never a delta —
       // and both arrays move together, so an availability change lands as one
       // message rather than a window where the two could disagree.
-      return { ...state, catalog: msg.catalog, unavailable: msg.unavailable };
+      return {
+        ...state, catalog: msg.catalog, unavailable: msg.unavailable,
+        probing: msg.probing ?? true,
+      };
 
     case 'editor-context':
       return { ...state, editorContext: msg.ctx };

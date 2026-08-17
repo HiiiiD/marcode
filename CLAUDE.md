@@ -114,6 +114,22 @@ These are not style preferences. Breaking one breaks the design.
   took a developer machine down on 2026-08-14. It only detonates while the test is red,
   which is exactly when you are running it. `screen.getByX` helpers are safe — they throw
   their own message and never hand the node to `assert`.
+- **Which providers exist is a setting; whether they work is a probe.**
+  `hiiiidCode.enabledProviders` (default `["claude","codex"]`) decides what
+  `activate()` registers, and a provider left out is not constructed at all — it
+  appears in neither `catalog()` nor `unavailable()`, because "nobody asked for this
+  backend" is not a diagnosis of it. `fake` is a legal value, never a default: a
+  shipped panel offering it would offer a backend that answers "ok" to everything.
+  Emptying the setting is how the no-provider empty state is reached on purpose.
+  Registration happens once, at activate, so a change prompts a window reload rather
+  than pretending to apply live.
+- **An empty catalog is two different claims, and `probing` is which one.** Nobody
+  has answered yet, or nothing here can run an agent — one second apart, and only
+  the second is a diagnosis. `hydrate` answers it from `SessionManager.willProbe()`,
+  `refreshModels` closes it with `probing: false` *even when it asked nobody*, and
+  the webview reads an absent field as "still probing". The empty state waits while
+  probing, lists per-provider reasons once settled, and — with nothing enabled, so
+  nothing to re-ask — offers the setting instead of a retry.
 - **A provider's model list is its availability.** Models come from the backend,
   so an empty list means the backend never answered — there is no hardcoded fallback
   catalog, because listing a model is also a claim that this install can run it.

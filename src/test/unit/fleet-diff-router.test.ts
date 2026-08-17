@@ -15,6 +15,7 @@ function routerWith() {
     current: () => null,
     reveal: () => {},
     openDiff: (root, path) => { opened.push({ root, path }); },
+    openSettings: () => {},
   };
   const emitted: HostToWebview[] = [];
   const router = new MessageRouter(manager, (m) => emitted.push(m), '/tmp', editor);

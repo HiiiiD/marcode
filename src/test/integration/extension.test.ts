@@ -34,7 +34,7 @@ suite('PanelViewProvider CSP', () => {
   // generation, so an untyped stub is sufficient.
   const managerStub = {} as unknown as SessionManager;
   const editorStub: EditorContextHost = {
-    current: () => null, reveal: () => {}, openDiff: () => {},
+    current: () => null, reveal: () => {}, openDiff: () => {}, openSettings: () => {},
   };
 
   test('CSP contains default-src none', () => {

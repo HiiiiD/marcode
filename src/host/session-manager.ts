@@ -275,6 +275,17 @@ export class SessionManager implements SessionSink {
    * carries the whole catalog, so per-provider emits would just be N
    * successive whole-catalog replacements.
    */
+  /**
+   * Whether calling `refreshModels` would actually ask anybody. Read by the
+   * router so `hydrate` can say whether an empty catalog is a pending
+   * question or a settled answer — with no provider configured (or none that
+   * can be probed), it is settled the moment the panel opens, and the empty
+   * state is entitled to say so rather than sit in "checking…" forever.
+   */
+  willProbe(): boolean {
+    return [...this.providers.values()].some((p) => p.fetchModels);
+  }
+
   async refreshModels(cwd: string): Promise<void> {
     const probes = [...this.providers.values()]
       .filter((p) => p.fetchModels)
@@ -305,11 +316,25 @@ export class SessionManager implements SessionSink {
           this.seededModels.delete(p.id);
         },
       ));
-    if (probes.length === 0) { return; }
+    if (probes.length === 0) {
+      // Still announced, and this is the case that made `probing` necessary:
+      // with no provider configured there is nothing to ask, so an empty
+      // catalog is the final answer and the panel must be told it settled.
+      // Returning silently here left the webview waiting on a message that
+      // was never coming, which reads on screen as "checking…" forever.
+      if (!this.disposed) {
+        this.emit({
+          t: 'catalog', catalog: this.catalog(), unavailable: this.unavailable(), probing: false,
+        });
+      }
+      return;
+    }
 
     await Promise.all(probes);
     if (this.disposed) { return; }
-    this.emit({ t: 'catalog', catalog: this.catalog(), unavailable: this.unavailable() });
+    this.emit({
+      t: 'catalog', catalog: this.catalog(), unavailable: this.unavailable(), probing: false,
+    });
     // Record what the backend just said, so the next launch's panel comes up
     // with a live model switcher instead of waiting on this same probe.
     this.schedulePersist();

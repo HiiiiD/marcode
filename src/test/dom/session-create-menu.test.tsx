@@ -210,18 +210,19 @@ suite('SessionCreateMenu', () => {
       snapshots: [],
       catalog: [],
       unavailable: [],
+      probing: false,
       usage: {},
     });
 
-    // Two of each control exist here: the roster's persistent pair and the
-    // empty state's own (pane-group.tsx renders `<SessionCreateMenu />` when
-    // the roster is empty). All must be disabled with no provider to create
-    // against.
+    // Only the roster's persistent pair: with the catalog settled and empty,
+    // pane-group.tsx's empty state stops inviting creation and explains
+    // instead, so it renders no `<SessionCreateMenu />` of its own. The pair
+    // that remains must be disabled — there is nothing to create against.
     const controls = [
       ...screen.getAllByRole('button', { name: 'New session' }),
       ...screen.getAllByRole('button', { name: 'New session with options' }),
     ];
-    assert.strictEqual(controls.length, 4);
+    assert.strictEqual(controls.length, 2);
     for (const control of controls) {
       assert.ok((control as HTMLButtonElement).disabled);
     }

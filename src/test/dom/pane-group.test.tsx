@@ -2,7 +2,7 @@ import * as assert from 'assert';
 import { act, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { catalog, layoutOf, snapshot, summary } from '../fixtures/protocol';
-import { renderApp, renderWithStore, sendFromHost } from './harness';
+import { posted, renderApp, renderWithStore, sendFromHost } from './harness';
 import { PaneGroup } from '@/components/pane-group';
 
 function hydrate(paneIds: string[], rosterIds = paneIds) {
@@ -25,12 +25,65 @@ suite('PaneGroup', () => {
       sessions: [], layout: layoutOf(), snapshots: [],
       catalog: [],
       unavailable: [{ id: 'claude', displayName: 'Claude', reason: 'Claude Code CLI not found.' }],
+      probing: false,
       usage: {},
     });
 
     // Without this the panel offers a dead `+ New` and no account of itself.
     assert.ok(screen.getByText(/no agent provider is available/i));
     assert.ok(screen.getByText(/Claude Code CLI not found\./));
+  });
+
+  test('an empty catalog nobody has answered for yet is a wait, not a verdict', () => {
+    renderApp();
+    sendFromHost({
+      t: 'hydrate',
+      sessions: [], layout: layoutOf(), snapshots: [],
+      catalog: [], unavailable: [], probing: true, usage: {},
+    });
+
+    // The second a CLI handshake takes must not read as "this install is
+    // broken" — that accusation is only true once the probe has settled.
+    assert.ok(screen.getByText(/checking for agent backends/i));
+    assert.strictEqual(screen.queryByText(/no agent provider is/i) === null, true);
+  });
+
+  test('a settled empty catalog with no reasons says nothing is enabled, and offers the setting', async () => {
+    renderApp();
+    sendFromHost({
+      t: 'hydrate',
+      sessions: [], layout: layoutOf(), snapshots: [],
+      catalog: [], unavailable: [], probing: false, usage: {},
+    });
+
+    // Nothing was asked, so there is no reason to report and no point
+    // re-asking: the remedy is the setting that enables a provider.
+    assert.ok(screen.getByText(/no agent provider is enabled/i));
+    assert.strictEqual(screen.queryByRole('button', { name: /check again/i }) === null, true);
+
+    await userEvent.click(screen.getByRole('button', { name: /open settings/i }));
+
+    assert.deepStrictEqual(posted().at(-1), {
+      t: 'open-settings', section: 'hiiiidCode.enabledProviders',
+    });
+  });
+
+  test('the failed-probe empty state can ask the backends again', async () => {
+    renderApp();
+    sendFromHost({
+      t: 'hydrate',
+      sessions: [], layout: layoutOf(), snapshots: [],
+      catalog: [],
+      unavailable: [{ id: 'claude', displayName: 'Claude', reason: 'Claude Code CLI not found.' }],
+      probing: false,
+      usage: {},
+    });
+
+    await userEvent.click(screen.getByRole('button', { name: /check again/i }));
+
+    // Re-probing IS the availability check, so this is the whole remedy for
+    // an install repaired in a terminal while the panel sat open.
+    assert.deepStrictEqual(posted().at(-1), { t: 'refresh-catalog' });
   });
 
   test('the empty state stays a plain invitation while the providers still work', () => {

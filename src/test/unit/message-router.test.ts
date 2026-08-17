@@ -53,6 +53,41 @@ suite('MessageRouter', () => {
     assert.deepStrictEqual(hydrate.usage, {});
   });
 
+  test('hydrate says whether an empty catalog is still a pending question', async () => {
+    // FakeProvider has no `fetchModels`, so nothing will be probed and the
+    // catalog it hydrates with is already the final answer. Saying `probing`
+    // here would leave the panel in "checking…" for the life of the window.
+    await router.handle({ t: 'ready' });
+    const hydrate = sent.find((m) => m.t === 'hydrate') as
+      Extract<HostToWebview, { t: 'hydrate' }>;
+    assert.strictEqual(hydrate.probing, false);
+  });
+
+  test('refresh-catalog re-probes and announces a settled catalog', async () => {
+    // Whatever the answer, the retry must produce one message saying the
+    // question is closed — that emit is the only feedback the button has.
+    await router.handle({ t: 'refresh-catalog' });
+
+    const catalogs = sent.filter((m) => m.t === 'catalog') as
+      Extract<HostToWebview, { t: 'catalog' }>[];
+    assert.strictEqual(catalogs.length, 1);
+    assert.strictEqual(catalogs[0].probing, false);
+  });
+
+  test('open-settings reaches the host with the section to reveal', async () => {
+    const sections: string[] = [];
+    const r = new MessageRouter(manager, (m) => sent.push(m), '/tmp', {
+      current: () => null,
+      reveal: () => {},
+      openDiff: () => {},
+      openSettings: (section) => sections.push(section),
+    });
+
+    await r.handle({ t: 'open-settings', section: 'hiiiidCode.enabledProviders' });
+
+    assert.deepStrictEqual(sections, ['hiiiidCode.enabledProviders']);
+  });
+
   test('ready carries the manager\'s current usage snapshot on hydrate', async () => {
     await manager.create('fake', '/tmp');
     manager.usageWindows('fake', [{ id: 'five-hour', label: 'Session (5h)', usedPercent: 62 }]);
@@ -540,6 +575,7 @@ suite('MessageRouter', () => {
       current: () => ctx,
       reveal: () => {},
       openDiff: () => {},
+      openSettings: () => {},
     });
 
     const session = await mgr.create('fake', '/tmp');
@@ -559,6 +595,7 @@ suite('MessageRouter', () => {
       current: () => ({ path: 'src/a.ts', languageId: 'typescript' }),
       reveal: () => {},
       openDiff: () => {},
+      openSettings: () => {},
     });
 
     const session = await mgr.create('fake', '/tmp');
@@ -600,6 +637,7 @@ suite('MessageRouter', () => {
       current: () => null,
       reveal: (path, startLine) => calls.push({ path, startLine }),
       openDiff: () => {},
+      openSettings: () => {},
     });
 
     await r.handle({ t: 'reveal-file', path: 'src/a.ts', startLine: 12 });
@@ -673,6 +711,7 @@ suite('MessageRouter', () => {
       current: () => ctx,
       reveal: () => {},
       openDiff: () => {},
+      openSettings: () => {},
     });
 
     await r.handle({ t: 'ready' });

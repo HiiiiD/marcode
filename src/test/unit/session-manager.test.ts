@@ -1136,6 +1136,29 @@ suite('SessionManager', () => {
     await m.dispose();
   });
 
+  test('with no provider enabled, refreshModels still announces a settled empty catalog', async () => {
+    // The case the setting makes reachable on purpose: nothing to ask, so the
+    // empty catalog is final. Returning silently left the panel waiting on a
+    // message that was never coming, which reads on screen as "checking…"
+    // forever.
+    const emitted: HostToWebview[] = [];
+    const m = new SessionManager(
+      new TranscriptStore(dir), new Map(), (msg) => emitted.push(msg),
+    );
+    await m.init();
+
+    assert.strictEqual(m.willProbe(), false);
+    await m.refreshModels('/repo');
+
+    const catalogs = emitted.filter((msg) => msg.t === 'catalog') as
+      Extract<HostToWebview, { t: 'catalog' }>[];
+    assert.strictEqual(catalogs.length, 1);
+    assert.deepStrictEqual(catalogs[0].catalog, []);
+    assert.deepStrictEqual(catalogs[0].unavailable, []);
+    assert.strictEqual(catalogs[0].probing, false);
+    await m.dispose();
+  });
+
   /** A provider that can offer nothing until — and unless — a probe succeeds. */
   function unavailableProvider(id: string, reason: string): AgentProvider {
     return {
@@ -1329,14 +1352,21 @@ suite('SessionManager', () => {
     await m.dispose();
   });
 
-  test('refreshModels emits nothing when no provider can answer', async () => {
+  test('refreshModels announces a settled catalog even when no provider can answer', async () => {
+    // It used to emit nothing here, which was defensible while an empty
+    // catalog was only ever transient. It is not: the panel now distinguishes
+    // "nobody has answered yet" from "this is the answer", and silence is
+    // indistinguishable from the first.
     const emitted: HostToWebview[] = [];
     const m = new SessionManager(new TranscriptStore(dir), providers, (msg) => emitted.push(msg));
     await m.init();
 
     await m.refreshModels('/repo');
 
-    assert.deepStrictEqual(emitted.filter((msg) => msg.t === 'catalog'), []);
+    const catalogs = emitted.filter((msg) => msg.t === 'catalog') as
+      Extract<HostToWebview, { t: 'catalog' }>[];
+    assert.strictEqual(catalogs.length, 1);
+    assert.strictEqual(catalogs[0].probing, false);
     await m.dispose();
   });
 
