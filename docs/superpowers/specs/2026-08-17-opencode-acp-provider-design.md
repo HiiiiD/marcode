@@ -43,9 +43,18 @@ The split is the point. `acp/` may not import anything OpenCode-specific; a seco
 agent must cost a spawn recipe and a tool mapper, nothing more. Neither directory imports
 `vscode`, per the existing invariant.
 
-We take the official `@zed-industries/agent-client-protocol` package. t3code hand-rolled an
-in-repo `effect-acp` with a codegen'd schema because their whole server is Effect-based; we
-have no Effect runtime and no reason to own a schema generator.
+We take **`@agentclientprotocol/sdk`** (1.3.0, published 2026-07-21, zero dependencies) — the
+maintained TypeScript SDK. Its bundled schema covers the variants opencode 1.18.18 actually
+sends, `usage_update` and `config_option_update` included, and it exposes `setConfigOption`
+and `setSessionMode`.
+
+Not `@zed-industries/agent-client-protocol`: that is the abandoned predecessor, stuck at
+0.4.5 since 2025-10-10, and its types would contradict the wire we measured. Not a hand-roll
+either — t3code wrote an in-repo `effect-acp` with a codegen'd schema because their whole
+server is Effect-based; we have no Effect runtime and no reason to own a schema generator.
+
+The package is ESM-only against a CJS host bundle, so esbuild must bundle it rather than mark
+it external.
 
 ## Transport and process model
 
