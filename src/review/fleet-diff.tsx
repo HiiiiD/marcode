@@ -1,12 +1,14 @@
 import {
-  FileMinusIcon, FilePenLineIcon, FilePlusIcon, FileSymlinkIcon,
+  ChevronDownIcon, ChevronRightIcon, FileMinusIcon, FilePenLineIcon, FilePlusIcon, FileSymlinkIcon,
   RefreshCwIcon,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
-import { countFiles, filterTree, groupTree, summarize, type SessionGroup } from './fleet-diff-groups';
+import {
+  commonPrefix, countFiles, filterTree, groupTree, stripPrefix, summarize, type SessionGroup,
+} from './fleet-diff-groups';
 import { useStore } from './store';
 import { folderName } from '@/format';
 import type {
@@ -71,6 +73,18 @@ export function FleetDiff() {
   const filtered = (trees ?? []).map((tree) => filterTree(tree, query, contestedOnly));
   const shown = countFiles(filtered);
   const total = countFiles(trees ?? []);
+
+  // Ephemeral by design. Both this and the opened set describe a reading
+  // position in a list that re-reads itself every 750ms while agents work; a
+  // restored collapse would be folding groups of a list assembled from a
+  // different working tree than the one that was folded. Same reasoning that
+  // keeps diff claims and failed model probes off disk.
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const toggle = (key: string) => setCollapsed((prev) => {
+    const next = new Set(prev);
+    if (!next.delete(key)) { next.add(key); }
+    return next;
+  });
 
   // Ask once on mount: the surface is the only thing that wants this, so it
   // is the only thing that asks for it.
@@ -190,6 +204,8 @@ export function FleetDiff() {
               sessions={state.sessions}
               onShowMore={showMore}
               atCeiling={atCeiling}
+              collapsed={collapsed}
+              toggle={toggle}
             />
           ))
         )}
@@ -199,11 +215,15 @@ export function FleetDiff() {
 }
 
 function Tree({
-  tree, sessions, onShowMore, atCeiling,
+  tree, sessions, onShowMore, atCeiling, collapsed, toggle,
 }: {
   tree: TreeDiff; sessions: SessionSummary[]; onShowMore: () => void; atCeiling: boolean;
+  collapsed: Set<string>; toggle: (key: string) => void;
 }) {
   const groups = groupTree(tree);
+  const treeKey = `tree:${tree.root}`;
+  const isCollapsed = collapsed.has(treeKey);
+  const name = folderName(tree.root);
 
   return (
     <div className="border-b border-border last:border-b-0">
@@ -213,7 +233,16 @@ function Tree({
         here — a transparent sticky header lets rows scroll through it.
       */}
       <div className="sticky top-0 z-10 space-y-0.5 bg-background px-2 pt-2.5 pb-1.5">
-        <div className="flex min-w-0 items-baseline gap-2">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            aria-expanded={!isCollapsed}
+            aria-label={isCollapsed ? `Expand ${name}` : `Collapse ${name}`}
+            onClick={() => toggle(treeKey)}
+          >
+            {isCollapsed ? <ChevronRightIcon aria-hidden /> : <ChevronDownIcon aria-hidden />}
+          </Button>
           {/*
             `h3`, under the surface's own `h2` — the same reasoning as the
             headings on a pane header: this list is designed to carry 500
@@ -222,90 +251,127 @@ function Tree({
             levels say what the nesting already says visually: tree, then the
             sessions inside it.
           */}
-          <h3 className="min-w-0 truncate font-medium" title={tree.root}>
-            {folderName(tree.root)}
+          <h3 className="min-w-0 truncate text-sm font-medium" title={tree.root}>
+            {name}
           </h3>
           {tree.branch !== undefined && (
-            <span className="min-w-0 truncate text-muted-foreground">{tree.branch}</span>
+            <span className="min-w-0 shrink-0 truncate rounded-[min(var(--radius-md),8px)] bg-muted px-1.5 py-0.5 text-muted-foreground">
+              {tree.branch}
+            </span>
           )}
         </div>
         {/* Named, never implied. `head` means uncommitted work only, and a
             list that let that pass for "everything this session did" would
             quietly under-report a session that had committed as it went. */}
-        <p className="text-muted-foreground">
+        <p className="pl-6 text-muted-foreground">
           {tree.base.kind === 'merge-base'
             ? `Since ${tree.base.ref} (${tree.base.sha.slice(0, 7)})`
             : 'Uncommitted changes only — nothing to compare a branch point against.'}
         </p>
       </div>
 
-      <div className="px-2 pb-2.5">
-        {tree.reason !== undefined ? (
-          <p className="text-muted-foreground">{tree.reason}</p>
-        ) : (
-          groups.map((group) => (
-            <Group
-              key={group.sessionId === null ? UNATTRIBUTED_KEY : `session:${group.sessionId}`}
-              group={group}
-              tree={tree}
-              sessions={sessions}
-            />
-          ))
-        )}
-        {tree.omitted > 0 && (
-          // Never a dead end. The cap is a rendering decision, and a sentence
-          // naming a number the user cannot act on is worse than either
-          // showing the rows or not mentioning them. Disabled once the cap
-          // is already at the ceiling: past `MAX_FILE_CAP` the host keeps
-          // returning the same `omitted` no matter how many more times this
-          // is pressed, and a button that never becomes a no-op-free action
-          // again is the same dead end this control exists to remove.
-          <Button
-            variant="outline"
-            size="sm"
-            className="mt-2"
-            onClick={onShowMore}
-            disabled={atCeiling}
-          >
-            {atCeiling ? `${tree.omitted} more, past the ${MAX_FILE_CAP}-file limit` : `Show ${tree.omitted} more`}
-          </Button>
-        )}
-      </div>
+      {isCollapsed ? null : (
+        <div className="pb-2.5">
+          {tree.reason !== undefined ? (
+            <p className="px-2 text-muted-foreground">{tree.reason}</p>
+          ) : (
+            groups.map((group) => (
+              <Group
+                key={group.sessionId === null ? UNATTRIBUTED_KEY : `session:${group.sessionId}`}
+                group={group}
+                tree={tree}
+                sessions={sessions}
+                collapsed={collapsed}
+                toggle={toggle}
+              />
+            ))
+          )}
+          {tree.omitted > 0 && (
+            // Never a dead end. The cap is a rendering decision, and a sentence
+            // naming a number the user cannot act on is worse than either
+            // showing the rows or not mentioning them. Disabled once the cap
+            // is already at the ceiling: past `MAX_FILE_CAP` the host keeps
+            // returning the same `omitted` no matter how many more times this
+            // is pressed, and a button that never becomes a no-op-free action
+            // again is the same dead end this control exists to remove.
+            <Button
+              variant="outline"
+              size="sm"
+              className="mx-2 mt-2"
+              onClick={onShowMore}
+              disabled={atCeiling}
+            >
+              {atCeiling ? `${tree.omitted} more, past the ${MAX_FILE_CAP}-file limit` : `Show ${tree.omitted} more`}
+            </Button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
 function Group({
-  group, tree, sessions,
-}: { group: SessionGroup; tree: TreeDiff; sessions: SessionSummary[] }) {
+  group, tree, sessions, collapsed, toggle,
+}: {
+  group: SessionGroup; tree: TreeDiff; sessions: SessionSummary[];
+  collapsed: Set<string>; toggle: (key: string) => void;
+}) {
   const unattributed = group.sessionId === null;
+  const title = group.sessionId === null
+    ? 'Not attributed to a session'
+    : titleOf(group.sessionId, sessions);
+  const groupKey = `${tree.root}::${group.sessionId ?? UNATTRIBUTED_KEY}`;
+  const isCollapsed = collapsed.has(groupKey);
+  const prefix = commonPrefix(group.files.map((f) => f.path));
 
   return (
     <div className="mt-2.5 first:mt-1">
-      <div className="flex min-w-0 items-baseline gap-2 px-2">
-        <h4 className={cn('min-w-0 truncate', unattributed ? 'text-muted-foreground' : 'font-medium')}>
-          {group.sessionId === null
-            ? 'Not attributed to a session'
-            : titleOf(group.sessionId, sessions)}
+      <div className="sticky top-8 z-[9] flex min-w-0 items-center gap-1.5 bg-background pl-4">
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          aria-expanded={!isCollapsed}
+          aria-label={isCollapsed ? `Expand ${title}` : `Collapse ${title}`}
+          onClick={() => toggle(groupKey)}
+        >
+          {isCollapsed ? <ChevronRightIcon aria-hidden /> : <ChevronDownIcon aria-hidden />}
+        </Button>
+        <h4 className={cn('min-w-0 truncate text-xs', unattributed ? 'text-muted-foreground' : 'font-medium')}>
+          {title}
         </h4>
+        <span className="min-w-0 shrink-0 truncate text-muted-foreground">
+          {group.files.length}
+          {' '}
+          {group.files.length === 1 ? 'file' : 'files'}
+        </span>
         <Churn insertions={group.insertions} deletions={group.deletions} className="ml-auto" />
       </div>
-      {unattributed && (
-        // The sentence is the point of the group. Without it "not attributed"
-        // reads as a bug in the attribution rather than as what it is: a
-        // change no tool call in any transcript accounts for.
-        <p className="px-2 pt-0.5 text-muted-foreground">
-          No session recorded a tool call for these. A shell command, a build or your own
-          edit changed them.
-        </p>
+      {isCollapsed ? null : (
+        <>
+          {unattributed && (
+            // The sentence is the point of the group. Without it "not attributed"
+            // reads as a bug in the attribution rather than as what it is: a
+            // change no tool call in any transcript accounts for.
+            <p className="pl-4 pt-0.5 text-muted-foreground">
+              No session recorded a tool call for these. A shell command, a build or your own
+              edit changed them.
+            </p>
+          )}
+          {prefix !== '' && (
+            // Named once, above the rows, instead of on every row: a shared
+            // directory repeated on every line spends the row's width saying
+            // what this line already says.
+            <p className="pl-4 pt-1 text-muted-foreground">{prefix}</p>
+          )}
+          <ul className="mt-1 border-l border-border">
+            {group.files.map((file) => (
+              <li key={file.path}>
+                <FileRow file={file} tree={tree} sessions={sessions} own={group.sessionId} prefix={prefix} />
+              </li>
+            ))}
+          </ul>
+        </>
       )}
-      <ul className="mt-1">
-        {group.files.map((file) => (
-          <li key={file.path}>
-            <FileRow file={file} tree={tree} sessions={sessions} own={group.sessionId} />
-          </li>
-        ))}
-      </ul>
     </div>
   );
 }
@@ -344,13 +410,20 @@ const OP_WORD: Record<ChangeOp, string> = {
 };
 
 function FileRow({
-  file, tree, sessions, own,
-}: { file: FileChange; tree: TreeDiff; sessions: SessionSummary[]; own: SessionId | null }) {
+  file, tree, sessions, own, prefix,
+}: {
+  file: FileChange; tree: TreeDiff; sessions: SessionSummary[]; own: SessionId | null; prefix: string;
+}) {
   const { post } = useStore();
   const Icon = OP_ICON[file.op];
-  const slash = file.path.lastIndexOf('/');
-  const dir = slash === -1 ? '' : file.path.slice(0, slash + 1);
-  const name = slash === -1 ? file.path : file.path.slice(slash + 1);
+  // Only the part the group's shared prefix didn't already say. A row can
+  // still nest deeper than the group's own common directory — the prefix is
+  // shared across the whole group, not per row — so what remains can still
+  // carry its own `dir/` component, split the same way the whole path used to be.
+  const remainder = stripPrefix(file.path, prefix);
+  const slash = remainder.lastIndexOf('/');
+  const dir = slash === -1 ? '' : remainder.slice(0, slash + 1);
+  const name = slash === -1 ? remainder : remainder.slice(slash + 1);
   // Only the *other* claimants: the group header already names this one, and
   // repeating it on every row would spend the row's remaining width saying
   // what the line above it just said.
@@ -367,20 +440,20 @@ function FileRow({
       // No height override: `size="sm"` is 28px, which is what every other
       // list row in the sidebar panel is, and a 24px row here would make
       // this the one dense list in the app that does not match.
-      className="w-full justify-start gap-2 px-2 font-normal"
+      className="w-full justify-start gap-2 pl-6 pr-2 font-normal"
       onClick={() => post({
         t: 'open-file-diff', root: tree.root, path: file.path, base: tree.base,
       })}
     >
       <Icon aria-hidden className={OP_COLOR[file.op]} />
       {/*
-        `dir` gives up its width first and the basename gives up its last: at
-        700px a deep path has to lose something, and losing the end of
-        `.../a.ts` would cost the only part of it the eye is scanning for.
-        A weight, not `shrink-0` — a basename that cannot shrink also cannot
-        truncate, so one long filename would push the churn column out of the
-        row and clip the counts off the right edge instead of ellipsing the
-        one string that had room to give.
+        `dir` gives up its width first and the basename gives up its last: the
+        row's own width has to lose something before the churn column does,
+        and losing the end of `.../a.ts` would cost the only part of it the
+        eye is scanning for. A weight, not `shrink-0` — a basename that cannot
+        shrink also cannot truncate, so one long filename would push the churn
+        column out of the row and clip the counts off the right edge instead
+        of ellipsing the one string that had room to give.
       */}
       <span className="min-w-0 shrink-[8] truncate text-muted-foreground">{dir}</span>
       <span className="min-w-0 truncate">{name}</span>

@@ -121,3 +121,28 @@ export function filterTree(tree: TreeDiff, query: string, contestedOnly: boolean
 export function countFiles(trees: TreeDiff[]): number {
   return trees.reduce((total, tree) => total + tree.files.length, 0);
 }
+
+/**
+ * The deepest directory every path shares, with its trailing slash.
+ *
+ * Directory-boundary only: `src/webview/` and `src/west/` share the string
+ * `src/we`, and eliding that would leave rows spelling paths that do not
+ * exist. Paths are git's repo-relative POSIX spelling, so `/` is the only
+ * separator to consider.
+ */
+export function commonPrefix(paths: string[]): string {
+  if (paths.length === 0) { return ''; }
+  let prefix = paths[0].slice(0, paths[0].lastIndexOf('/') + 1);
+  for (const path of paths.slice(1)) {
+    while (prefix !== '' && !path.startsWith(prefix)) {
+      // Drop one segment: cut the trailing slash, then back to the previous one.
+      prefix = prefix.slice(0, prefix.lastIndexOf('/', prefix.length - 2) + 1);
+    }
+    if (prefix === '') { return ''; }
+  }
+  return prefix;
+}
+
+export function stripPrefix(path: string, prefix: string): string {
+  return prefix !== '' && path.startsWith(prefix) ? path.slice(prefix.length) : path;
+}

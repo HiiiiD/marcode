@@ -2,7 +2,9 @@
 // user reads. Pure: no React, no DOM, no store.
 
 import * as assert from 'assert';
-import { countFiles, filterTree, groupTree, summarize } from '../../review/fleet-diff-groups';
+import {
+  commonPrefix, countFiles, filterTree, groupTree, stripPrefix, summarize,
+} from '../../review/fleet-diff-groups';
 import type { FileChange, TreeDiff } from '../../protocol/messages';
 
 function file(path: string, claimedBy: string[], ins = 1, del = 0): FileChange {
@@ -121,5 +123,36 @@ suite('filterTree', () => {
     // README.md is claimed twice and will render under two groups. The count
     // answers "what changed", which is a question about files.
     assert.strictEqual(countFiles([tree]), 2);
+  });
+});
+
+suite('commonPrefix', () => {
+  test('finds the deepest shared directory', () => {
+    assert.strictEqual(
+      commonPrefix(['src/webview/a.tsx', 'src/webview/b.tsx']), 'src/webview/',
+    );
+  });
+
+  test('stops at a directory boundary, never mid-segment', () => {
+    // 'src/we' is a shared string but not a shared directory. Eliding it would
+    // render paths that do not exist.
+    assert.strictEqual(commonPrefix(['src/webview/a.tsx', 'src/west/b.tsx']), 'src/');
+  });
+
+  test('is empty when nothing is shared', () => {
+    assert.strictEqual(commonPrefix(['src/a.ts', 'docs/b.md']), '');
+  });
+
+  test('a single file elides its own directory, not its name', () => {
+    assert.strictEqual(commonPrefix(['src/webview/a.tsx']), 'src/webview/');
+  });
+
+  test('a root-level file has no prefix', () => {
+    assert.strictEqual(commonPrefix(['README.md']), '');
+  });
+
+  test('stripPrefix leaves the remainder', () => {
+    assert.strictEqual(stripPrefix('src/webview/a.tsx', 'src/webview/'), 'a.tsx');
+    assert.strictEqual(stripPrefix('README.md', ''), 'README.md');
   });
 });
