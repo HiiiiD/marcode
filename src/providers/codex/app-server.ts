@@ -117,7 +117,19 @@ export class AppServer {
     while (newline !== -1) {
       const line = this.buffer.slice(0, newline).trim();
       this.buffer = this.buffer.slice(newline + 1);
-      if (line) { this.dispatch(line); }
+      if (line) {
+        // `dispatch` runs handler callbacks, and `ingest` is called straight
+        // from a stdout 'data' listener — a throw from a handler would escape
+        // as an uncaught exception in the extension host AND drop every
+        // remaining frame in this chunk. Same tolerance policy as the
+        // unparseable-line branch below: one bad frame must not take the
+        // connection, or the other live sessions, down with it.
+        try {
+          this.dispatch(line);
+        } catch (err) {
+          console.warn('[hiiiid-code] codex: frame handler threw', err);
+        }
+      }
       newline = this.buffer.indexOf('\n');
     }
   }
