@@ -51,8 +51,8 @@ extension.ts
 
 | Path | Responsibility |
 |---|---|
-| `src/extension.ts` | `activate()`: construct manager + store, register the webview view |
-| `src/protocol/messages.ts` | Shared wire types. **Types only.** The one module both bundles import. |
+| `src/extension.ts` | `activate()`: construct manager + store + `PostBus` + `ReviewPanel`, register the sidebar webview view, the `hiiiidCode.review.open` command, and the review tab's `WebviewPanelSerializer` |
+| `src/protocol/messages.ts` | Shared wire types. **Types only.** The one module every bundle imports. |
 | `src/providers/types.ts` | `AgentProvider`, `AgentRun`, `AgentEvent`, `ModelInfo` |
 | `src/providers/fake/fake-provider.ts` | Scripted provider for tests and the walking skeleton |
 | `src/providers/claude/` | Claude Agent SDK adapter and `SDKMessage` → `AgentEvent` mapping |
