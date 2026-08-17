@@ -36,15 +36,17 @@ extension.ts
        └─ TranscriptStore ── index.json + per-session JSONL
 
   MessageRouter ── WebviewToHost → SessionManager calls
-  PanelViewProvider ── WebviewViewProvider: HTML, nonce, transport
+  PostBus ──────── fan-out; each registered client supplies its own `wants` predicate
 
-           ▲  postMessage (typed, src/protocol/messages.ts)
-           ▼
+           ┌─────────────────┴─────────────────┐
+           ▼ PanelViewProvider                  ▼ ReviewPanel
+   WebviewView, all messages           WebviewPanel, REVIEW_WANTS allow-list only
+           │  postMessage                       │  postMessage
+           ▼  (typed, src/protocol/messages.ts) ▼
 
-  webview/vscode-api.ts ── typed post/subscribe
-  webview/reducer.ts ──── React-free reduce(ClientState, HostToWebview)
-  webview/store.tsx ───── StoreProvider + useStore()
-  webview/components/ ── panes, transcript, composer, permission card, roster
+  webview/vscode-api.ts, reducer.ts,   review/store.tsx, reducer.ts (reduceReview),
+  store.tsx, components/ ── panes,     fleet-diff.tsx ── the review surface, its own
+  transcript, composer, roster, diff   narrow ReviewState (no byId, no layout, no composer)
 ```
 
 | Path | Responsibility |
@@ -61,6 +63,9 @@ extension.ts
 | `src/host/session-manager.ts` | Roster; create/close/delete; patch fan-out to the visible set |
 | `src/host/message-router.ts` | `WebviewToHost` → manager calls. No `vscode` import, so it unit-tests. |
 | `src/host/panel-view-provider.ts` | `WebviewViewProvider`; HTML + nonce; transport |
+| `src/host/webview-html.ts` | One CSP and nonce for every webview surface |
+| `src/host/post-bus.ts` | Fan-out to registered clients; `REVIEW_WANTS` is the review tab's allow-list |
+| `src/host/review-panel.ts` | The review editor tab: creation, restore, transport |
 | `src/host/fleet-diff.ts` | One tree's change set: base resolution, numstat + untracked parsing |
 | `src/host/claim-paths.ts` | Provider edit paths → git's repo-relative POSIX spelling |
 | `src/host/diff-content-provider.ts` | `hiiiid-diff:` scheme — a file's content at the base ref, via `git show` |
@@ -69,11 +74,13 @@ extension.ts
 | `src/webview/components/usage-strip.tsx` | Panel-level account usage windows |
 | `src/webview/components/tool-render.ts` | `(name, input, output)` → one-line header + typed blocks. Pure; no React. |
 | `src/webview/components/tool-body.tsx` | Renders those blocks — command, diff, path, todos, clamped output |
-| `src/webview/components/fleet-diff.tsx` | The fleet diff surface: trees, session groups, file rows |
-| `src/webview/components/fleet-diff-groups.ts` | Pure grouping of a flat `TreeDiff` into session groups |
+| `src/review/` | The review client: its own reducer, store and surface |
+| `src/review/fleet-diff.tsx` | The fleet diff surface: trees, session groups, file rows |
+| `src/review/fleet-diff-groups.ts` | Pure grouping of a flat `TreeDiff` into session groups |
 
-**Build:** esbuild produces two bundles — node/CJS for the host, browser/IIFE for the
-webview. TypeScript, React 19, Tailwind v4.
+**Build:** esbuild produces three bundles — `dist/extension.js` (node/CJS, the host) and two
+browser/IIFE webview bundles, one per surface: `dist/webview.js`/`.css` for the sidebar and
+`dist/review.js`/`.css` for the review tab. TypeScript, React 19, Tailwind v4.
 
 **Tests:** mocha for unit tests (`yarn test:unit`, TDD-style `suite`/`test` globals, run
 straight from source through the `tsx/cjs` hook), mocha + jsdom for webview DOM tests
@@ -169,6 +176,14 @@ These are not style preferences. Breaking one breaks the design.
   JSONL on demand. Attribution is recorded **above** the subagent early return in
   `agent-session.ts`, unlike relocation: a subagent's edit changed *this*
   session's tree and is this session's change on disk.
+- **The review tab is a second client, not a second source of truth.** It
+  registers on the `PostBus` with `REVIEW_WANTS` — an allow-list, so a new
+  message type defaults to not reaching it — and never subscribes to
+  `session-patch`. Visible-set gating stays in `SessionManager` and is not
+  re-decided anywhere else. Its view state (collapse, opened rows) is
+  deliberately ephemeral: both describe a reading position in a list that
+  re-reads itself while agents work, so a restored one would describe a tree
+  nobody checked this launch.
 
 ## UI: shadcn is mandatory
 

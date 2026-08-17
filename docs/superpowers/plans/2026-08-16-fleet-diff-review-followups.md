@@ -1,5 +1,11 @@
 # Fleet Diff Review — deferred work
 
+> **§1, §3 and §5 are done** — see
+> [the review tab spec](../specs/2026-08-17-fleet-diff-review-tab-design.md) and
+> [its plan](2026-08-17-fleet-diff-review-tab.md). §2 dissolved with the move to
+> an editor tab: the panes are never replaced, so a permission card can no
+> longer be hidden by the review surface. **§4, §6 and §7 remain open.**
+
 **Status:** the feature shipped on `feat/fleet-diff-review` (tasks 1–9 of
 [the plan](2026-08-16-fleet-diff-review.md), plus one remediation commit). Everything below
 was found by the `impeccable` critique gate on 2026-08-16 and deliberately **not** done,
