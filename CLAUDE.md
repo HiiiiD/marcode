@@ -40,7 +40,9 @@ extension.ts
 
            ┌─────────────────┴─────────────────┐
            ▼ PanelViewProvider                  ▼ ReviewPanel
-   WebviewView, all messages           WebviewPanel, REVIEW_WANTS allow-list only
+   WebviewView, all messages           WebviewPanel, its own MessageRouter (answers
+                                        what it asked for) + REVIEW_WANTS on the bus
+                                        (the manager's unsolicited fan-out only)
            │  postMessage                       │  postMessage
            ▼  (typed, src/protocol/messages.ts) ▼
 
@@ -58,6 +60,7 @@ extension.ts
 | `src/providers/claude/` | Claude Agent SDK adapter and `SDKMessage` → `AgentEvent` mapping |
 | `src/providers/claude/map-context.ts` | SDK context response → `ContextBreakdown`; structured usage response → `UsageWindow[]` |
 | `src/shared/usage-windows.ts` | Fixed display order for usage windows; shared so neither provider nor host owns the other's table |
+| `src/shared/file-cap.ts` | `FILE_CAP`/`MAX_FILE_CAP` — shared so the host and the review webview agree on the default and ceiling without importing across the host/webview boundary |
 | `src/host/transcript-store.ts` | `index.json` + per-session JSONL; append, load, page |
 | `src/host/agent-session.ts` | One conversation: transcript, status, pending approvals |
 | `src/host/session-manager.ts` | Roster; create/close/delete; patch fan-out to the visible set |
@@ -177,13 +180,23 @@ These are not style preferences. Breaking one breaks the design.
   `agent-session.ts`, unlike relocation: a subagent's edit changed *this*
   session's tree and is this session's change on disk.
 - **The review tab is a second client, not a second source of truth.** It
-  registers on the `PostBus` with `REVIEW_WANTS` — an allow-list, so a new
-  message type defaults to not reaching it — and never subscribes to
-  `session-patch`. Visible-set gating stays in `SessionManager` and is not
-  re-decided anywhere else. Its view state (collapse, opened rows) is
-  deliberately ephemeral: both describe a reading position in a list that
-  re-reads itself while agents work, so a restored one would describe a tree
-  nobody checked this launch.
+  registers on the `PostBus` with `REVIEW_WANTS`, but that allow-list governs
+  only `SessionManager`'s fan-out (`sessions-changed`, `session-status`,
+  `fleet-diff`) — a new message type posted through the manager defaults to
+  not reaching review, and `session-patch` never will, because the review
+  client simply never asks for it. It is not the whole story, though:
+  `ReviewPanel` also owns its own `MessageRouter`, whose `emit` posts straight
+  to the same webview outside the bus entirely — that is how `hydrate` and
+  `editor-context` actually reach this client, each in direct answer to a
+  message it sent (`ready`). The allow-list is what stops an *unsolicited*
+  broadcast from reaching review; a request this client makes gets its answer
+  regardless of the allow-list. (`'hydrate'` is correspondingly absent from
+  `REVIEW_WANTS`: nothing ever `bus.post`s one, only the router's `emit`
+  does, so listing it there would claim a fan-out path that does not exist.)
+  Visible-set gating stays in `SessionManager` and is not re-decided anywhere
+  else. Its view state (collapse, opened rows) is deliberately ephemeral: both
+  describe a reading position in a list that re-reads itself while agents
+  work, so a restored one would describe a tree nobody checked this launch.
 
 ## UI: shadcn is mandatory
 
