@@ -12,18 +12,44 @@
 
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { FILE_CAP, MAX_FILE_CAP } from '../shared/file-cap';
 import type { ChangeOp, DiffBase, FileChange } from '../protocol/messages';
 
 const execFileAsync = promisify(execFile);
 
 export type RawChange = Omit<FileChange, 'claimedBy'>;
 
+// `FILE_CAP` (a tree with more changed files than this is a tree nobody
+// reviews in a sidebar; the remainder is *reported*, never silently dropped)
+// and `MAX_FILE_CAP` (the hard ceiling on a raised cap — each file costs a
+// numstat row to parse and a React row to render, so a request with no
+// ceiling is a request the host cannot promise to answer) live in
+// `src/shared/file-cap.ts`, re-exported here so existing callers of this
+// module keep working unchanged.
+export { FILE_CAP, MAX_FILE_CAP };
+
 /**
- * A tree with more changed files than this is a tree nobody reviews in a
- * sidebar. The remainder is *reported*, never silently dropped — a truncated
- * list reads as "that's everything" when it isn't.
+ * A requested cap, made safe. Nonsense (zero, negative, NaN) falls back to the
+ * default rather than to zero rows: answering "nothing changed" because a
+ * number arrived malformed is the one wrong answer this surface can give.
  */
-export const FILE_CAP = 500;
+export function clampCap(requested: number | undefined): number {
+  // `Infinity` is nonsense as an unbounded request, but it is still a
+  // direction — up — so it clamps to the ceiling below rather than falling
+  // back to the default. Only a non-number (`typeof !== 'number'`, which
+  // also catches a wire message whose `cap` arrived as a string, object or
+  // `null` — nothing at compile time stops that at runtime), `NaN`, and
+  // non-positive values fall back. `Number.isNaN` alone is not enough of a
+  // guard here: it does not coerce, so it returns `false` for any
+  // non-number and lets it fall straight through to `Math.floor`.
+  if (
+    requested === undefined || typeof requested !== 'number'
+    || Number.isNaN(requested) || requested < 1
+  ) {
+    return FILE_CAP;
+  }
+  return Math.min(Math.floor(requested), MAX_FILE_CAP);
+}
 
 /**
  * `core.quotepath=false` on every call: git otherwise escapes non-ASCII paths
@@ -132,6 +158,7 @@ export function parseNumstat(out: string): RawChange[] {
  */
 export async function treeChanges(
   dir: string,
+  cap?: number,
 ): Promise<{ base: DiffBase; files: RawChange[]; omitted: number } | { reason: string }> {
   const inside = await git(dir, ['rev-parse', '--is-inside-work-tree']);
   if (!inside.ok || inside.out !== 'true') {
@@ -156,6 +183,7 @@ export async function treeChanges(
   }
 
   files.sort((a, b) => a.path.localeCompare(b.path));
-  const omitted = Math.max(0, files.length - FILE_CAP);
-  return { base, files: files.slice(0, FILE_CAP), omitted };
+  const limit = clampCap(cap);
+  const omitted = Math.max(0, files.length - limit);
+  return { base, files: files.slice(0, limit), omitted };
 }

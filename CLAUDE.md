@@ -36,31 +36,39 @@ extension.ts
        └─ TranscriptStore ── index.json + per-session JSONL
 
   MessageRouter ── WebviewToHost → SessionManager calls
-  PanelViewProvider ── WebviewViewProvider: HTML, nonce, transport
+  PostBus ──────── fan-out; each registered client supplies its own `wants` predicate
 
-           ▲  postMessage (typed, src/protocol/messages.ts)
-           ▼
+           ┌─────────────────┴─────────────────┐
+           ▼ PanelViewProvider                  ▼ ReviewPanel
+   WebviewView, all messages           WebviewPanel, its own MessageRouter (answers
+                                        what it asked for) + REVIEW_WANTS on the bus
+                                        (the manager's unsolicited fan-out only)
+           │  postMessage                       │  postMessage
+           ▼  (typed, src/protocol/messages.ts) ▼
 
-  webview/vscode-api.ts ── typed post/subscribe
-  webview/reducer.ts ──── React-free reduce(ClientState, HostToWebview)
-  webview/store.tsx ───── StoreProvider + useStore()
-  webview/components/ ── panes, transcript, composer, permission card, roster
+  webview/vscode-api.ts, reducer.ts,   review/store.tsx, reducer.ts (reduceReview),
+  store.tsx, components/ ── panes,     fleet-diff.tsx ── the review surface, its own
+  transcript, composer, roster, diff   narrow ReviewState (no byId, no layout, no composer)
 ```
 
 | Path | Responsibility |
 |---|---|
-| `src/extension.ts` | `activate()`: construct manager + store, register the webview view |
-| `src/protocol/messages.ts` | Shared wire types. **Types only.** The one module both bundles import. |
+| `src/extension.ts` | `activate()`: construct manager + store + `PostBus` + `ReviewPanel`, register the sidebar webview view, the `hiiiidCode.review.open` command, and the review tab's `WebviewPanelSerializer` |
+| `src/protocol/messages.ts` | Shared wire types. **Types only.** The one module every bundle imports. |
 | `src/providers/types.ts` | `AgentProvider`, `AgentRun`, `AgentEvent`, `ModelInfo` |
 | `src/providers/fake/fake-provider.ts` | Scripted provider for tests and the walking skeleton |
 | `src/providers/claude/` | Claude Agent SDK adapter and `SDKMessage` → `AgentEvent` mapping |
 | `src/providers/claude/map-context.ts` | SDK context response → `ContextBreakdown`; structured usage response → `UsageWindow[]` |
 | `src/shared/usage-windows.ts` | Fixed display order for usage windows; shared so neither provider nor host owns the other's table |
+| `src/shared/file-cap.ts` | `FILE_CAP`/`MAX_FILE_CAP` — shared so the host and the review webview agree on the default and ceiling without importing across the host/webview boundary |
 | `src/host/transcript-store.ts` | `index.json` + per-session JSONL; append, load, page |
 | `src/host/agent-session.ts` | One conversation: transcript, status, pending approvals |
 | `src/host/session-manager.ts` | Roster; create/close/delete; patch fan-out to the visible set |
 | `src/host/message-router.ts` | `WebviewToHost` → manager calls. No `vscode` import, so it unit-tests. |
 | `src/host/panel-view-provider.ts` | `WebviewViewProvider`; HTML + nonce; transport |
+| `src/host/webview-html.ts` | One CSP and nonce for every webview surface |
+| `src/host/post-bus.ts` | Fan-out to registered clients; `REVIEW_WANTS` is the review tab's allow-list |
+| `src/host/review-panel.ts` | The review editor tab: creation, restore, transport |
 | `src/host/fleet-diff.ts` | One tree's change set: base resolution, numstat + untracked parsing |
 | `src/host/claim-paths.ts` | Provider edit paths → git's repo-relative POSIX spelling |
 | `src/host/diff-content-provider.ts` | `hiiiid-diff:` scheme — a file's content at the base ref, via `git show` |
@@ -69,11 +77,13 @@ extension.ts
 | `src/webview/components/usage-strip.tsx` | Panel-level account usage windows |
 | `src/webview/components/tool-render.ts` | `(name, input, output)` → one-line header + typed blocks. Pure; no React. |
 | `src/webview/components/tool-body.tsx` | Renders those blocks — command, diff, path, todos, clamped output |
-| `src/webview/components/fleet-diff.tsx` | The fleet diff surface: trees, session groups, file rows |
-| `src/webview/components/fleet-diff-groups.ts` | Pure grouping of a flat `TreeDiff` into session groups |
+| `src/review/` | The review client: its own reducer, store and surface |
+| `src/review/fleet-diff.tsx` | The fleet diff surface: trees, session groups, file rows |
+| `src/review/fleet-diff-groups.ts` | Pure grouping of a flat `TreeDiff` into session groups |
 
-**Build:** esbuild produces two bundles — node/CJS for the host, browser/IIFE for the
-webview. TypeScript, React 19, Tailwind v4.
+**Build:** esbuild produces three bundles — `dist/extension.js` (node/CJS, the host) and two
+browser/IIFE webview bundles, one per surface: `dist/webview.js`/`.css` for the sidebar and
+`dist/review.js`/`.css` for the review tab. TypeScript, React 19, Tailwind v4.
 
 **Tests:** mocha for unit tests (`yarn test:unit`, TDD-style `suite`/`test` globals, run
 straight from source through the `tsx/cjs` hook), mocha + jsdom for webview DOM tests
@@ -169,6 +179,24 @@ These are not style preferences. Breaking one breaks the design.
   JSONL on demand. Attribution is recorded **above** the subagent early return in
   `agent-session.ts`, unlike relocation: a subagent's edit changed *this*
   session's tree and is this session's change on disk.
+- **The review tab is a second client, not a second source of truth.** It
+  registers on the `PostBus` with `REVIEW_WANTS`, but that allow-list governs
+  only `SessionManager`'s fan-out (`sessions-changed`, `session-status`,
+  `fleet-diff`) — a new message type posted through the manager defaults to
+  not reaching review, and `session-patch` never will, because the review
+  client simply never asks for it. It is not the whole story, though:
+  `ReviewPanel` also owns its own `MessageRouter`, whose `emit` posts straight
+  to the same webview outside the bus entirely — that is how `hydrate` and
+  `editor-context` actually reach this client, each in direct answer to a
+  message it sent (`ready`). The allow-list is what stops an *unsolicited*
+  broadcast from reaching review; a request this client makes gets its answer
+  regardless of the allow-list. (`'hydrate'` is correspondingly absent from
+  `REVIEW_WANTS`: nothing ever `bus.post`s one, only the router's `emit`
+  does, so listing it there would claim a fan-out path that does not exist.)
+  Visible-set gating stays in `SessionManager` and is not re-decided anywhere
+  else. Its view state (collapse, opened rows) is deliberately ephemeral: both
+  describe a reading position in a list that re-reads itself while agents
+  work, so a restored one would describe a tree nobody checked this launch.
 
 ## UI: shadcn is mandatory
 

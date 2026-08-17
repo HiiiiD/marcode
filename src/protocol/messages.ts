@@ -433,8 +433,21 @@ export type WebviewToHost =
    * "What has the fleet changed?" Read-only and deliberately not
    * session-addressed: a working tree is the unit git can answer for, and
    * two sessions sharing one tree share one answer.
+   *
+   * `cap` raises the per-tree file cap past the host's default (`FILE_CAP`
+   * in `src/host/fleet-diff.ts`). The host clamps it to `MAX_FILE_CAP`
+   * regardless of what is asked for; an absent `cap` means the default.
    */
-  | { t: 'request-fleet-diff' }
+  | { t: 'request-fleet-diff'; cap?: number }
+  /**
+   * Open the review tab. Unaddressed, like `request-fleet-diff`: review is a
+   * fleet-wide surface, not a session's.
+   *
+   * Handled in `PanelViewProvider`, not `MessageRouter` — it needs the
+   * `vscode` API, and the router must stay importable outside the extension
+   * host. Same interception `open-file` already gets.
+   */
+  | { t: 'open-review' }
   /**
    * Open one file's change in VS Code's own diff editor. Carries the tree
    * because a repo-relative path is meaningless without it, and the base
@@ -559,4 +572,14 @@ export type HostToWebview =
        * webview — the one sentence a failure must never be allowed to leave
        * on screen.
        */
-      reason?: string };
+      reason?: string }
+  /**
+   * Whether the review tab is on screen.
+   *
+   * A tab in a background editor group would otherwise keep the 750ms dirty
+   * timer running — one git invocation per working tree, for a surface nobody
+   * can see. The client stops requesting while hidden and reads once on
+   * becoming visible again, which costs one stale frame on re-focus and is the
+   * trade this makes deliberately.
+   */
+  | { t: 'review-visibility'; visible: boolean };

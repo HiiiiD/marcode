@@ -282,6 +282,18 @@ suite('SessionPicker', () => {
     assert.strictEqual(screen.queryByRole('menuitem', { name: /Working trees/ }) === null, true);
   });
 
+  test('the picker asks the host to open the review tab', async () => {
+    renderApp();
+    sendFromHost({
+      t: 'hydrate', sessions: [], layout: { orientation: 'vertical', panes: [] },
+      snapshots: [], catalog: catalog(), unavailable: [], usage: {},
+    });
+
+    await userEvent.click(screen.getByRole('button', { name: /Review fleet changes/ }));
+
+    assert.strictEqual(posted().some((m) => m.t === 'open-review'), true);
+  });
+
   test('the empty state offers the way out', () => {
     renderApp();
     sendFromHost({

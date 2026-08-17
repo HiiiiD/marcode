@@ -6,8 +6,10 @@ import { defaultCwdOf } from './host/default-cwd';
 import { diffUri, registerDiffContentProvider } from './host/diff-content-provider';
 import { EditorContextTracker } from './host/editor-context-tracker';
 import { PanelViewProvider } from './host/panel-view-provider';
+import { PostBus } from './host/post-bus';
 import type { AttachmentHost } from './host/message-router';
 import { PROFILE_GUARD_SNIPPET } from './host/profile-noise';
+import { ReviewPanel, REVIEW_VIEW_TYPE } from './host/review-panel';
 import { SessionManager } from './host/session-manager';
 import { TranscriptStore } from './host/transcript-store';
 import { createVscodeEditorSource } from './host/vscode-editor-source';
@@ -157,8 +159,9 @@ export async function activate(context: vscode.ExtensionContext) {
   )); }
 
   let provider: PanelViewProvider;
+  const bus = new PostBus();
   const manager = new SessionManager(
-    store, providers, (msg) => provider.post(msg), undefined, warnAboutProfile, attachments,
+    store, providers, (msg) => bus.post(msg), undefined, warnAboutProfile, attachments,
   );
 
   // Never `process.cwd()` — for an extension host that is VS Code's own
@@ -207,9 +210,16 @@ export async function activate(context: vscode.ExtensionContext) {
     },
   };
 
+  const review = new ReviewPanel(context.extensionUri, manager, bus, defaultCwd, editorHost);
+
   provider = new PanelViewProvider(
     context.extensionUri, manager, defaultCwd, editorHost, attachments, picker,
+    () => { review.open(); },
   );
+  // The sidebar is the client that wants everything. Registered here rather
+  // than inside PanelViewProvider so there is one place that says which
+  // surfaces exist and what each of them sees.
+  bus.add({ post: (msg) => provider.post(msg), wants: () => true });
 
   // Push every change to the webview so the composer chip tracks the editor.
   const contextSub = tracker.onChange((ctx) => provider.post({ t: 'editor-context', ctx }));
@@ -219,6 +229,14 @@ export async function activate(context: vscode.ExtensionContext) {
     registerDiffContentProvider(),
     { dispose: () => { void manager.dispose(); } },
     { dispose: () => { contextSub.dispose(); tracker.dispose(); editorSource.dispose(); } },
+    vscode.commands.registerCommand('hiiiidCode.review.open', () => { review.open(); }),
+    // Without a serializer VS Code restores the tab as a blank webview, which
+    // is worse than not restoring it. The host owns whether the tab exists;
+    // the client owns nothing durable, so re-attaching is the whole job.
+    vscode.window.registerWebviewPanelSerializer(REVIEW_VIEW_TYPE, {
+      deserializeWebviewPanel: async (panel) => { review.restore(panel); },
+    }),
+    { dispose: () => { review.dispose(); } },
     vscode.commands.registerCommand('hiiiidCode.codex.login', () => {
       // `codex login` opens a browser flow and needs a real TTY, so this
       // hands the user a terminal rather than trying to drive it.

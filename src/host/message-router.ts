@@ -360,7 +360,7 @@ export class MessageRouter {
       // unaddressed for the same reason too: a working tree is the unit git
       // can answer for, and two sessions in one tree share one answer.
       case 'request-fleet-diff':
-        await this.manager.requestFleetDiff();
+        await this.manager.requestFleetDiff(msg.cap);
         return;
 
       case 'open-file-diff':
@@ -410,6 +410,15 @@ export class MessageRouter {
       // It is listed here, and in KNOWN_MESSAGE_TAGS, so a stray one is a
       // deliberate no-op rather than a "malformed message" error log.
       case 'open-file':
+        return;
+
+      // Same precedent as `open-file` above: `PanelViewProvider` intercepts
+      // this before delegating, since opening the review tab needs the
+      // `vscode` API this module must not import. Listed here, and in
+      // KNOWN_MESSAGE_TAGS, so a stray one — this router also backs
+      // `ReviewPanel` itself, where nothing intercepts it — is a deliberate
+      // no-op rather than a "malformed message" error log.
+      case 'open-review':
         return;
     }
   }
@@ -465,7 +474,7 @@ const KNOWN_MESSAGE_TAGS = new Set<WebviewToHost['t']>([
   'request-context', 'open-file',
   'request-bring-back', 'bring-back',
   'request-stale-trees', 'remove-stale-tree',
-  'request-fleet-diff', 'open-file-diff',
+  'request-fleet-diff', 'open-file-diff', 'open-review',
   'refresh-catalog', 'open-settings', 'open-external',
 ]);
 

@@ -581,6 +581,17 @@ suite('MessageRouter', () => {
     assert.deepStrictEqual(sent, []);
   });
 
+  test('open-review survives the wire guard as a deliberate no-op, same as open-file', async () => {
+    // Same trap as `answer-relocation` above: a tag missing from
+    // KNOWN_MESSAGE_TAGS is silently dropped as "malformed" at runtime while
+    // every type check still passes. This router also backs `ReviewPanel`
+    // directly, unlike `open-file`, which `PanelViewProvider` always
+    // intercepts first — so a regression here is not latent the same way.
+    sent.length = 0;
+    await router.handle({ t: 'open-review' });
+    assert.deepStrictEqual(sent, []);
+  });
+
   test('send attaches the tracked context when the session opts in', async () => {
     const ctx = { path: 'src/a.ts', languageId: 'typescript' };
     const fake = new FakeProvider(() => [{ kind: 'turn-end', reason: 'done' }]);

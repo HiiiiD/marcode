@@ -10,7 +10,6 @@ import {
 import { cn } from '@/lib/utils';
 import { aggregateServers, isUnhealthy, worstState } from './mcp-status';
 import { evenlySizedPanes } from './pane-layout';
-import { REVIEW_TOGGLE_ATTR } from './review-toggle';
 import { SessionCreateMenu } from './session-create-menu';
 import { SessionRow } from './session-row';
 import { StaleTreesDialog } from './stale-trees';
@@ -22,16 +21,10 @@ interface SessionPickerProps {
   /** Whether the panel is too narrow to split side by side. Measured once,
    * in `App`, and shared with `PaneGroup` — see `use-is-narrow.ts`. */
   narrow: boolean;
-  /** Whether the panel is wide enough to offer the fleet diff surface at all
-   * — see `REVIEW_PX` in `use-is-narrow.ts`. */
-  canReview: boolean;
-  /** Whether the fleet diff surface is currently showing — this control is a
-   * toggle over the panel body, and it says so through `aria-pressed`. */
-  reviewing: boolean;
   onReview: () => void;
 }
 
-export function SessionPicker({ narrow, canReview, reviewing, onReview }: SessionPickerProps) {
+export function SessionPicker({ narrow, onReview }: SessionPickerProps) {
   const { state, post } = useStore();
   const open = new Set(state.layout.panes.map((p) => p.sessionId));
   const horizontal = state.layout.orientation === 'horizontal';
@@ -178,31 +171,18 @@ export function SessionPicker({ narrow, canReview, reviewing, onReview }: Sessio
         and filing "what did the fleet write" inside it would hide the only
         surface that answers for the work itself behind a word about panes.
 
-        Gated on width rather than styled small: a file list with churn
-        counts and session chips in a 300px column is a wall of truncated
-        paths, which is the failure this gate exists to prevent.
+        Always enabled: the surface it opens is an editor tab, not a panel
+        takeover, so there is no panel width it could fail to fit in.
       */}
-      {canReview && (
-        <Button
-          variant="outline"
-          size="icon-sm"
-          className="shrink-0"
-          aria-label="Review changes: every file the fleet has changed"
-          // It replaces the panel body rather than opening something beside
-          // it, so it is a toggle, and a toggle that never says which way it
-          // is set leaves a screen-reader user with no way to tell the
-          // surface is already open. The same treatment the split-direction
-          // button beside it gets.
-          aria-pressed={reviewing}
-          // Read back by `FleetDiff` on the way out: closing unmounts the
-          // control that had focus, and this is where focus goes. See
-          // `review-toggle.ts`.
-          {...{ [REVIEW_TOGGLE_ATTR]: '' }}
-          onClick={onReview}
-        >
-          <GitCompareIcon aria-hidden />
-        </Button>
-      )}
+      <Button
+        variant="outline"
+        size="icon-sm"
+        className="shrink-0"
+        aria-label="Review fleet changes in an editor tab"
+        onClick={onReview}
+      >
+        <GitCompareIcon aria-hidden />
+      </Button>
 
       {/* Mounted whether or not the button is: the last removal empties the
           sweep, and the dialog that is still open is where the user reads
