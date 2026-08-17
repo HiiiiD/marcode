@@ -112,5 +112,12 @@ export function useRovingRows(keys: string[]) {
 
   return {
     active: index, setActive, onKeyDown, containerRef, focusRow, onRowFocus,
+    // Whether real DOM focus has ever landed in the list — distinct from
+    // `active`, which resolves to `0` even on a fresh mount nothing has
+    // touched. Callers use it to tell "the reader is genuinely on row 0" from
+    // "row 0 is just where the index defaults to" — see the "Open the next
+    // file" header control, which must open row 0 rather than row 1 the first
+    // time it is pressed on a tab nobody has focused yet.
+    hadFocus: hadFocusRef.current,
   };
 }

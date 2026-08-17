@@ -93,4 +93,48 @@ suite('review app', () => {
     assert.strictEqual((raised[0] as { cap?: number }).cap, 1000);
     assert.strictEqual((raised[1] as { cap?: number }).cap, 2000);
   });
+
+  test('refresh carries the raised cap instead of silently collapsing the list', async () => {
+    renderReview();
+    sendFromHost({
+      t: 'fleet-diff',
+      trees: [{
+        root: '/repo', branch: 'main', sessions: ['s1'],
+        base: { kind: 'head' }, omitted: 340,
+        files: [{ path: 'src/a.ts', op: 'modify', insertions: 1, deletions: 0, claimedBy: ['s1'] }],
+      }],
+    } as never);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Show 340 more' }));
+    resetHost();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Refresh: read every working tree again' }));
+
+    const requests = posted().filter((m) => m.t === 'request-fleet-diff');
+    assert.strictEqual(requests.length, 1);
+    assert.strictEqual((requests[0] as { cap?: number }).cap, 1000);
+  });
+
+  test('"show more" on a tree with nothing else dirty does not arm a further debounced read', async () => {
+    // The debounced re-read effect must not treat a cap change as a reason
+    // to run — only `fleetDiffDirty` and `visible` do. Raising the cap with
+    // nothing else dirty must leave exactly the one, immediate request.
+    renderReview();
+    sendFromHost({
+      t: 'fleet-diff',
+      trees: [{
+        root: '/repo', branch: 'main', sessions: ['s1'],
+        base: { kind: 'head' }, omitted: 340,
+        files: [{ path: 'src/a.ts', op: 'modify', insertions: 1, deletions: 0, claimedBy: ['s1'] }],
+      }],
+    } as never);
+    resetHost();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Show 340 more' }));
+    await new Promise((r) => setTimeout(r, 900));
+
+    const requests = posted().filter((m) => m.t === 'request-fleet-diff');
+    assert.strictEqual(requests.length, 1);
+    assert.strictEqual((requests[0] as { cap?: number }).cap, 1000);
+  });
 });

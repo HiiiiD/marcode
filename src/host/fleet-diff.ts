@@ -12,29 +12,21 @@
 
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { FILE_CAP, MAX_FILE_CAP } from '../shared/file-cap';
 import type { ChangeOp, DiffBase, FileChange } from '../protocol/messages';
 
 const execFileAsync = promisify(execFile);
 
 export type RawChange = Omit<FileChange, 'claimedBy'>;
 
-/**
- * A tree with more changed files than this is a tree nobody reviews in a
- * sidebar. The remainder is *reported*, never silently dropped — a truncated
- * list reads as "that's everything" when it isn't.
- */
-export const FILE_CAP = 500;
-
-/**
- * The hard ceiling on a raised cap.
- *
- * The surface can ask for more than `FILE_CAP` — "N more files are not shown"
- * with nothing to press is a named dead end — but it cannot ask for
- * everything. Each file costs a numstat row to parse and a React row to
- * render, and a request with no ceiling is a request the host cannot promise
- * to answer.
- */
-export const MAX_FILE_CAP = 2000;
+// `FILE_CAP` (a tree with more changed files than this is a tree nobody
+// reviews in a sidebar; the remainder is *reported*, never silently dropped)
+// and `MAX_FILE_CAP` (the hard ceiling on a raised cap — each file costs a
+// numstat row to parse and a React row to render, so a request with no
+// ceiling is a request the host cannot promise to answer) live in
+// `src/shared/file-cap.ts`, re-exported here so existing callers of this
+// module keep working unchanged.
+export { FILE_CAP, MAX_FILE_CAP };
 
 /**
  * A requested cap, made safe. Nonsense (zero, negative, NaN) falls back to the

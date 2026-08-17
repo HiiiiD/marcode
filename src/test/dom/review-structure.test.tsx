@@ -130,4 +130,60 @@ suite('review structure', () => {
     );
     assert.strictEqual(screen.getAllByText('Also Session B').length, 1);
   });
+
+  test('a contested badge carries a title, same as the rename-from span beside it', () => {
+    renderReview();
+    sendFromHost(
+      { t: 'hydrate',
+        sessions: [
+          { id: 's1', title: 'Session A', status: 'idle' },
+          { id: 's2', title: 'Session B', status: 'idle' },
+        ],
+        layout: { panes: [], orientation: 'horizontal' } } as never,
+      { t: 'fleet-diff', trees: [{
+        ...TREES[0], sessions: ['s1', 's2'],
+        files: [{ path: 'shared.ts', op: 'modify', insertions: 1, deletions: 0,
+          claimedBy: ['s1', 's2'] }],
+      }] } as never,
+    );
+    assert.strictEqual(screen.getByText('Also Session B').getAttribute('title'), 'Also Session B');
+  });
+
+  test("the group's status region stays mounted at idle so a later transition can still announce", () => {
+    renderReview();
+    sendFromHost(READY as never, { t: 'fleet-diff', trees: TREES } as never);
+
+    // Nothing visible for an idle session — but the live region itself has
+    // to already be in the DOM, or the transition to `running` a moment
+    // later would create it with the new text already inside, announcing
+    // nothing.
+    const region = document.querySelector('[data-testid="group-header"] [aria-live="polite"]');
+    assert.strictEqual(region !== null, true);
+    assert.strictEqual(region?.textContent, '');
+
+    sendFromHost(
+      { t: 'sessions-changed',
+        sessions: [{ id: 's1', title: 'Session A', status: 'running' }] } as never,
+    );
+    const sameRegion = document.querySelector('[data-testid="group-header"] [aria-live="polite"]');
+    assert.strictEqual(sameRegion === region, true);
+    assert.strictEqual(sameRegion?.textContent?.includes('Working'), true);
+  });
+
+  test('the "Contested only" toggle matches the sidebar\'s ghost/secondary on-off pattern', async () => {
+    const user = userEvent.setup();
+    renderReview();
+    sendFromHost(READY as never, { t: 'fleet-diff', trees: TREES } as never);
+
+    const toggle = screen.getByRole('button', { name: /Contested only/ });
+    // Off is `ghost` (no `bg-background`, the marker `outline` carries but
+    // `ghost` does not), matching `editor-context-toggle.tsx`'s off state —
+    // not `outline`, which the sidebar never uses for this on/off pattern.
+    assert.strictEqual(toggle.className.includes('bg-background'), false);
+
+    await user.click(toggle);
+    assert.strictEqual(toggle.getAttribute('aria-pressed'), 'true');
+    // On is `secondary`, the same variant the sidebar toggle switches to.
+    assert.strictEqual(toggle.className.includes('bg-secondary'), true);
+  });
 });

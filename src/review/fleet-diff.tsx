@@ -1,6 +1,6 @@
 import {
   ArrowDownIcon, ArrowUpIcon, ChevronDownIcon, ChevronRightIcon, FileMinusIcon, FilePenLineIcon,
-  FilePlusIcon, FileSymlinkIcon, RefreshCwIcon,
+  FilePlusIcon, FileSymlinkIcon, RefreshCwIcon, XIcon,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
@@ -12,8 +12,10 @@ import {
   commonPrefix, countFiles, filterTree, groupTree, stripPrefix, summarize, type SessionGroup,
 } from './fleet-diff-groups';
 import { useStore } from './store';
+import { useFleetDiffRequests } from './use-fleet-diff-requests';
 import { nextIndex, useRovingRows } from './use-roving-rows';
 import { folderName } from '@/format';
+import { MAX_FILE_CAP } from '../shared/file-cap';
 import type {
   ChangeOp, FileChange, SessionId, SessionSummary, TreeDiff,
 } from '../protocol/messages';
@@ -61,16 +63,6 @@ import type {
  * text searches. A prefix is the same guarantee in printable bytes.
  */
 const UNATTRIBUTED_KEY = 'unattributed';
-
-/**
- * Wire-boundary duplicates of `FILE_CAP` and `MAX_FILE_CAP` from
- * `src/host/fleet-diff.ts` — the webview bundle cannot import across the
- * host boundary. If either constant moves host-side, these (and the DOM
- * tests pinning the resulting 1000 and the ceiling behavior) have to move
- * with them.
- */
-const DEFAULT_FILE_CAP = 500;
-const MAX_FILE_CAP = 2000;
 
 /**
  * The tree header's rendered height, in pixels — pinned here so the sticky
@@ -153,16 +145,21 @@ export function FleetDiff() {
   const { state, post } = useStore();
   const trees = state.fleetDiff;
 
-  // Undefined means "the default" — the host's own `FILE_CAP` — and is never
-  // sent as a literal, so a fresh mount asks for the default rather than
-  // pinning a number the surface never chose.
-  const [cap, setCap] = useState<number | undefined>(undefined);
+  const { showMore, refresh, atCeiling } = useFleetDiffRequests(
+    post, state.visible, state.fleetDiffDirty,
+  );
 
   const [query, setQuery] = useState('');
   const [contestedOnly, setContestedOnly] = useState(false);
   const filtered = (trees ?? []).map((tree) => filterTree(tree, query, contestedOnly));
   const shown = countFiles(filtered);
   const total = countFiles(trees ?? []);
+  // `filterTree` never touches `omitted` — it counts files the *host* never
+  // sent, and a filter over what already arrived cannot know whether they
+  // would have matched. Summed across the unfiltered trees so the empty-filter
+  // state below can tell "nothing matches" apart from "nothing matches among
+  // what's loaded" and offer the way out either way.
+  const totalOmitted = (trees ?? []).reduce((sum, tree) => sum + tree.omitted, 0);
 
   // Ephemeral by design. Both this and the opened set describe a reading
   // position in a list that re-reads itself every 750ms while agents work; a
@@ -186,6 +183,20 @@ export function FleetDiff() {
   // what's hidden instead of splitting that decision between two effects.
   useEffect(() => { setCollapsed(new Set()); }, [query, contestedOnly]);
 
+  // A screen-reader-only echo of the visible count, above, updated only when
+  // the filter itself changes — never by the 750ms poll that also moves
+  // `shown`/`total`. Depending on `[query, contestedOnly]` alone, rather than
+  // on the counts it reads, is what keeps a background re-read of an
+  // unrelated tree from re-announcing a sentence the user never asked to hear
+  // again.
+  const [filterAnnouncement, setFilterAnnouncement] = useState('');
+  useEffect(() => {
+    if (query.trim() === '' && !contestedOnly) { setFilterAnnouncement(''); return; }
+    setFilterAnnouncement(
+      shown === total ? summarize(filtered) : `${shown} of ${total} files match this filter.`,
+    );
+  }, [query, contestedOnly]);
+
   // Ephemeral for the same reason `collapsed` is: it answers "have I read this
   // in *this* review", not across reloads, and a restored marker would be
   // ticking off files in a list assembled from a different working tree than
@@ -198,7 +209,7 @@ export function FleetDiff() {
   rows.forEach((row, i) => rowIndex.set(row.key, i));
 
   const {
-    active, setActive, onKeyDown, containerRef, focusRow, onRowFocus,
+    active, setActive, onKeyDown, containerRef, focusRow, onRowFocus, hadFocus,
   } = useRovingRows(rows.map((row) => row.key));
 
   const openRow = (index: number) => {
@@ -222,48 +233,6 @@ export function FleetDiff() {
     rowIndex, rowCount: rows.length, active, opened, onFocus: onRowFocus, onOpen: openRow,
   };
 
-  // Ask once on mount: the surface is the only thing that wants this, so it
-  // is the only thing that asks for it.
-  useEffect(() => { post({ t: 'request-fleet-diff' }); }, [post]);
-
-  // And again, debounced, whenever the reducer counted something that could
-  // have changed a diff. 750ms coalesces a burst of edits inside one turn
-  // into a single request; without it a fan-out of file writes would put one
-  // git invocation per tree on the host for every edit. The current cap
-  // travels with it — without this, a background refresh 750ms after any
-  // session goes idle would silently collapse a list the user had just
-  // raised back down to the default.
-  //
-  // Gated on `state.visible`: a tab in a background editor group would
-  // otherwise keep this timer running forever — one git invocation per
-  // working tree, on a 750ms cadence, for a surface nobody can see. A
-  // background tab shows stale rows for one request cycle when it comes
-  // back into view; that trade is deliberately cheaper than the alternative.
-  // `fleetDiffDirty` keeps counting while hidden, so becoming visible again
-  // with a non-zero count re-enters this effect (because `visible` is a
-  // dependency) and reads once — no separate edge-detection effect needed.
-  useEffect(() => {
-    if (!state.visible || state.fleetDiffDirty === 0) { return; }
-    const timer = setTimeout(() => { post({ t: 'request-fleet-diff', cap }); }, 750);
-    return () => { clearTimeout(timer); };
-  }, [state.visible, state.fleetDiffDirty, post, cap]);
-
-  // Past the ceiling, doubling forever while the host keeps clamping to
-  // `MAX_FILE_CAP` would leave the button on screen as a permanent no-op —
-  // exactly the dead end this task exists to remove.
-  const atCeiling = cap !== undefined && cap >= MAX_FILE_CAP;
-
-  const showMore = () => {
-    // Doubling from the current effective cap, not jumping to the ceiling: a
-    // user with 340 more files wants to see them, not to make the host parse
-    // 2000 numstat rows on the way there. Clamped to the ceiling so a press
-    // past it cannot grow `cap` unboundedly while the host's answer stays
-    // fixed at `MAX_FILE_CAP`.
-    const next = Math.min((cap ?? DEFAULT_FILE_CAP) * 2, MAX_FILE_CAP);
-    setCap(next);
-    post({ t: 'request-fleet-diff', cap: next });
-  };
-
   return (
     <section aria-label="Changes across every working tree" className="flex h-screen min-h-0 flex-col">
       {/*
@@ -279,15 +248,33 @@ export function FleetDiff() {
             {shown === total ? summarize(filtered) : `${shown} of ${total} files`}
           </span>
         )}
-        <Input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          aria-label="Filter by path"
-          placeholder="Filter by path"
-          className="h-7 max-w-64"
-        />
+        {/* Mounted for the life of the tab, same shape as `StatusBadge`'s own
+            live region: only its text changes, and it changes only on a
+            filter edit — never on the 750ms poll, which updates `shown` and
+            `total` without touching `query` or `contestedOnly`. */}
+        <span aria-live="polite" className="sr-only">{filterAnnouncement}</span>
+        <div className="relative min-w-0 max-w-64">
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            aria-label="Filter by path"
+            placeholder="Filter by path"
+            className={cn('h-7', query !== '' && 'pr-6')}
+          />
+          {query !== '' && (
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              aria-label="Clear filter"
+              className="absolute top-0.5 right-0.5"
+              onClick={() => setQuery('')}
+            >
+              <XIcon aria-hidden />
+            </Button>
+          )}
+        </div>
         <Button
-          variant={contestedOnly ? 'secondary' : 'outline'}
+          variant={contestedOnly ? 'secondary' : 'ghost'}
           size="sm"
           aria-pressed={contestedOnly}
           onClick={() => setContestedOnly((on) => !on)}
@@ -319,7 +306,13 @@ export function FleetDiff() {
           aria-label="Open the next file"
           disabled={rows.length === 0}
           onClick={() => {
-            const next = nextIndex(active, 'ArrowDown', rows.length);
+            // On a tab nothing has focused or opened yet, `active` still
+            // resolves to `0` by default (see `useRovingRows`) — advancing
+            // from it with `nextIndex` would open row 1 and silently skip
+            // row 0, the one file "Previous" would correctly open first.
+            // Once the list has genuine focus, this is ordinary next-row
+            // movement.
+            const next = hadFocus ? nextIndex(active, 'ArrowDown', rows.length) : active;
             if (next !== null) { openRow(next); }
           }}
         >
@@ -330,7 +323,7 @@ export function FleetDiff() {
           size="icon-sm"
           className="shrink-0"
           aria-label="Refresh: read every working tree again"
-          onClick={() => post({ t: 'request-fleet-diff' })}
+          onClick={refresh}
         >
           <RefreshCwIcon aria-hidden />
         </Button>
@@ -339,7 +332,15 @@ export function FleetDiff() {
       <div
         ref={containerRef}
         className="min-h-0 flex-1 overflow-y-auto text-xs"
-        onKeyDown={onKeyDown}
+        onKeyDown={(e) => {
+          // Only a row's own key events drive roving focus. Without this
+          // guard, ArrowDown on a tree's collapse chevron or a "Show more"
+          // button — both inside this same scroll container — would also
+          // resolve through `onKeyDown` and teleport focus into a row the
+          // user never asked to move to.
+          if (!(e.target as HTMLElement).hasAttribute('data-review-row')) { return; }
+          onKeyDown(e);
+        }}
         // Programmatically focusable only (`-1`, never in the Tab order):
         // the fallback focus target when the active row's own node has
         // disappeared and there is no row left to hand focus to instead.
@@ -379,20 +380,49 @@ export function FleetDiff() {
             </p>
           </div>
         ) : shown === 0 && total > 0 ? (
-          <p className="px-2 py-2 text-muted-foreground">No file matches this filter.</p>
+          <div className="space-y-1 px-2 py-2">
+            {/*
+              "No file matches this filter" is only true of the files this
+              client actually has. A cap can withhold files the host never
+              sent, and a match could be sitting among them — the filter has
+              no way to know either way, so it must not claim there isn't
+              one. This is also the one place in the empty state that needs a
+              way out: with every tree replaced by this branch, the per-tree
+              "Show more" button that would normally offer it is gone too.
+            */}
+            <p className="text-muted-foreground">
+              {totalOmitted > 0
+                ? 'No file matches this filter among the files loaded so far.'
+                : 'No file matches this filter.'}
+            </p>
+            {totalOmitted > 0 && (
+              <Button variant="outline" size="sm" onClick={showMore} disabled={atCeiling}>
+                {atCeiling
+                  ? `${totalOmitted} more, past the ${MAX_FILE_CAP}-file limit`
+                  : `Show ${totalOmitted} more`}
+              </Button>
+            )}
+          </div>
         ) : (
-          filtered.map((tree) => (
-            <Tree
-              key={tree.root}
-              tree={tree}
-              sessions={state.sessions}
-              onShowMore={showMore}
-              atCeiling={atCeiling}
-              collapsed={collapsed}
-              toggle={toggle}
-              nav={nav}
-            />
-          ))
+          // A filter that empties one tree's files, while others still match,
+          // must drop that tree rather than leave a header — and a "Show N
+          // more" button — over nothing. A tree reporting a read failure
+          // (`reason`) has no files to filter and always stays: the filter
+          // narrows *files*, not which working trees this surface reports on.
+          filtered
+            .filter((tree) => tree.reason !== undefined || tree.files.length > 0)
+            .map((tree) => (
+              <Tree
+                key={tree.root}
+                tree={tree}
+                sessions={state.sessions}
+                onShowMore={showMore}
+                atCeiling={atCeiling}
+                collapsed={collapsed}
+                toggle={toggle}
+                nav={nav}
+              />
+            ))
         )}
       </div>
     </section>
@@ -544,13 +574,16 @@ function Group({
           Outside the `h4`, not inside it: `StatusBadge` carries its own
           `aria-live="polite"` region (see status-badge.tsx) so a status
           change announces on its own, once, without also re-announcing the
-          heading it would join if nested inside it. `idle` renders nothing —
-          the badge earns its space by saying something is happening, and a
-          quiet session has nothing to add here that the group not saying
-          anything doesn't already say.
+          heading it would join if nested inside it. Mounted unconditionally,
+          not gated on `status !== 'idle'` — a live region created only once a
+          session leaves idle announces nothing on the very transition it
+          exists to announce, because its text already carries the new status
+          the moment it first mounts. `StatusBadge` itself renders nothing
+          visible for `idle`; the DOM node — and the region — stay put either
+          way.
         */}
-        {session !== undefined && !session.archived && session.status !== 'idle' && (
-          <StatusBadge status={session.status} />
+        {session !== undefined && !session.archived && (
+          <StatusBadge status={session.status} hideIdle />
         )}
         <span className="min-w-0 shrink-0 truncate text-muted-foreground">
           {group.files.length}
@@ -710,7 +743,11 @@ function FileRow({
         // row's truncating tail: two sessions writing one file is the single
         // situation in this whole surface worth stopping on, and "+1" does
         // not say who to go and read.
-        <Badge variant="outline" className="min-w-0 shrink truncate border-destructive/50 text-destructive">
+        <Badge
+          variant="outline"
+          className="min-w-0 shrink truncate border-destructive/50 text-destructive"
+          title={`Also ${others.map((id) => titleOf(id, sessions)).join(', ')}`}
+        >
           Also {others.map((id) => titleOf(id, sessions)).join(', ')}
         </Badge>
       )}

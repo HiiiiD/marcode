@@ -28,9 +28,20 @@ const CHIP: Record<StatusView['tone'], string> = {
  * one thing a user who is not looking at this pane most needs to hear: "the
  * agent is blocked on you" and "the agent failed" demand opposite responses
  * and used to render as the identical red dot.
+ *
+ * `hideIdle` renders no visible chip for `idle` — a quiet session earning no
+ * space in a caller like the review tab's group header, where every group
+ * would otherwise carry a permanent "Idle" pill — while still returning the
+ * same `<span aria-live>` node in the same position, so React reuses it
+ * rather than mounting a fresh, empty region the moment the caller does have
+ * something to announce. A caller that always wants the chip (session-header)
+ * leaves this off.
  */
-export function StatusBadge({ status }: { status: SessionStatus }) {
+export function StatusBadge({ status, hideIdle }: { status: SessionStatus; hideIdle?: boolean }) {
   const view = statusView(status);
+  if (hideIdle && status === 'idle') {
+    return <span aria-live="polite" className="sr-only" />;
+  }
   return (
     <span
       aria-live="polite"

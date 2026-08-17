@@ -65,7 +65,12 @@ suite('review keyboard', () => {
     );
   });
 
-  test('next-file opens the row after the active one, not just any row', async () => {
+  test('on a fresh tab, next-file opens the current row rather than skipping past it', async () => {
+    // Nothing has been focused or opened yet, so the roving index's default
+    // (`0`, from `useRovingRows`) is not a real reading position — advancing
+    // from it with a plain "next" would open a.ts, the row `active` already
+    // (nominally) points to. The first press must open that row, not skip
+    // past it to b.ts.
     const user = userEvent.setup();
     renderReview();
     sendFromHost({ t: 'fleet-diff', trees: TREES } as never);
@@ -73,7 +78,15 @@ suite('review keyboard', () => {
 
     await user.click(screen.getByRole('button', { name: 'Open the next file' }));
 
-    const opened = posted().filter((m) => m.t === 'open-file-diff');
+    let opened = posted().filter((m) => m.t === 'open-file-diff');
+    assert.strictEqual(opened.length, 1);
+    assert.strictEqual((opened[0] as { path: string }).path, 'a.ts');
+
+    // Once the list has genuine focus (openRow above moved it there),
+    // "next" resumes ordinary next-row movement.
+    resetHost();
+    await user.click(screen.getByRole('button', { name: 'Open the next file' }));
+    opened = posted().filter((m) => m.t === 'open-file-diff');
     assert.strictEqual(opened.length, 1);
     assert.strictEqual((opened[0] as { path: string }).path, 'b.ts');
   });
@@ -149,5 +162,20 @@ suite('review keyboard', () => {
     assert.strictEqual(listItems[0]?.getAttribute('aria-setsize'), '2');
     assert.strictEqual(listItems[1]?.getAttribute('aria-posinset'), '2');
     assert.strictEqual(listItems[1]?.getAttribute('aria-setsize'), '2');
+  });
+
+  test('ArrowDown on the tree collapse chevron does not steal focus into a row', async () => {
+    const user = userEvent.setup();
+    renderReview();
+    sendFromHost({ t: 'fleet-diff', trees: TREES } as never);
+
+    const chevron = screen.getByRole('button', { name: /Collapse repo/ });
+    chevron.focus();
+    await user.keyboard('{ArrowDown}');
+
+    // Focus must still be on the chevron — the scroll container's key
+    // handler only acts on a row's own key events, not on any focused
+    // descendant.
+    assert.strictEqual(document.activeElement === chevron, true);
   });
 });
