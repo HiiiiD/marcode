@@ -35,6 +35,7 @@ suite('PanelViewProvider CSP', () => {
   const managerStub = {} as unknown as SessionManager;
   const editorStub: EditorContextHost = {
     current: () => null, reveal: () => {}, openDiff: () => {}, openSettings: () => {},
+    openExternal: () => {},
   };
 
   test('CSP contains default-src none', () => {

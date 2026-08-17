@@ -192,6 +192,9 @@ export async function activate(context: vscode.ExtensionContext) {
     openSettings: (section: string) => {
       void vscode.commands.executeCommand('workbench.action.openSettings', section);
     },
+    openExternal: (url: string) => {
+      void openExternal(url);
+    },
   };
 
   const picker: AttachmentHost = {
@@ -318,6 +321,24 @@ async function openFileDiff(root: string, target: string, base: DiffBase): Promi
     // its worktree. Failing to open one is not worth a user-facing error, the
     // same call this file already makes for a dead transcript chip.
     console.error('[hiiiid-code] could not open diff for', target, err);
+  }
+}
+
+/**
+ * Hands a URL from agent output to the OS.
+ *
+ * `Uri.parse` is strict so a malformed href fails here, in a `catch` that
+ * logs, rather than reaching `openExternal` as a half-parsed URI. VS Code
+ * owns the decision after that — an unfamiliar host gets its own
+ * trusted-domain prompt, which is a gate this panel should not duplicate.
+ */
+async function openExternal(url: string): Promise<void> {
+  try {
+    await vscode.env.openExternal(vscode.Uri.parse(url, true));
+  } catch (err) {
+    // Errors are state, never exceptions, and a link that will not open is
+    // not worth a modal — the same call the reveal path already makes.
+    console.error('[hiiiid-code] could not open', url, err);
   }
 }
 
