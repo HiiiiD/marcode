@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   MessageScroller, MessageScrollerButton, MessageScrollerContent,
-  MessageScrollerItem, MessageScrollerProvider, MessageScrollerViewport,
+  MessageScrollerItem, MessageScrollerViewport,
 } from '@/components/ui/message-scroller';
 import { Button } from '@/components/ui/button';
 import { TranscriptItemView } from './transcript-item';
@@ -48,12 +48,11 @@ export function Transcript({
   }, [first?.id, pane.hasMore]);
 
   return (
-    // Chat-shaped, not document-shaped: the latest item is pinned to the
-    // bottom edge and history grows upward off the top. `end` rather than
-    // `last-anchor` — anchoring parks the newest user message at the *top* of
-    // the viewport and streams the reply beneath it, which reads as a document
-    // scrolling past, not a conversation.
-    <MessageScrollerProvider autoScroll defaultScrollPosition="end">
+    // No `MessageScrollerProvider` here: it lives in `pane-group.tsx`, one
+    // level up, so that `SessionHeader` — a sibling of this component, not a
+    // descendant — can call `useMessageScroller()` to reveal an item in this
+    // transcript. Nothing else about the scroller moved.
+    <>
       <MessageScroller className="h-full">
         <MessageScrollerViewport className="px-2" preserveScrollOnPrepend>
           {/* `justify-end` only bites while the content is shorter than the
@@ -90,6 +89,6 @@ export function Transcript({
         </MessageScrollerViewport>
         <MessageScrollerButton />
       </MessageScroller>
-    </MessageScrollerProvider>
+    </>
   );
 }
