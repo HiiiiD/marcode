@@ -23,4 +23,10 @@ suite('review app', () => {
     assert.strictEqual(screen.getByText('Could not read the changes').textContent, 'Could not read the changes');
     assert.strictEqual(screen.getByText('git exploded').textContent, 'git exploded');
   });
+
+  test('a successful read with no changes is its own state, not loading or error', () => {
+    renderReview();
+    sendFromHost({ t: 'fleet-diff', trees: [] } as never);
+    assert.strictEqual(screen.getByText('Nothing to review').textContent, 'Nothing to review');
+  });
 });
