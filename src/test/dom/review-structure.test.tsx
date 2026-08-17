@@ -51,4 +51,37 @@ suite('review structure', () => {
     assert.strictEqual(screen.queryAllByRole('button', { name: /a\.tsx/ }).length, 0);
     assert.strictEqual(screen.getByRole('heading', { level: 4 }).textContent?.includes('Session A'), true);
   });
+
+  // jsdom performs no layout, so this cannot verify a rendered pixel — it
+  // verifies the relationship the fix depends on: the group header's sticky
+  // offset is exactly the tree header's declared height, both read from the
+  // same source. A future edit that changes one without the other is a real
+  // regression this test cannot catch; only a screenshot can. See the
+  // `TREE_HEADER_HEIGHT` comment in fleet-diff.tsx.
+  test('the group header sticks exactly below the declared tree header height', () => {
+    renderReview();
+    sendFromHost(READY as never, { t: 'fleet-diff', trees: TREES } as never);
+
+    const treeHeader = screen.getByTestId('tree-header');
+    const groupHeader = screen.getByTestId('group-header');
+    assert.strictEqual(groupHeader.style.top, treeHeader.style.height);
+    assert.notStrictEqual(treeHeader.style.height, '');
+  });
+
+  test('widening a filter after collapsing does not re-hide the group it repopulates', async () => {
+    const user = userEvent.setup();
+    renderReview();
+    sendFromHost(READY as never, { t: 'fleet-diff', trees: TREES } as never);
+
+    await user.click(screen.getByRole('button', { name: /Collapse Session A/ }));
+    assert.strictEqual(screen.queryAllByRole('button', { name: /a\.tsx/ }).length, 0);
+
+    const filter = screen.getByLabelText('Filter by path');
+    await user.type(filter, 'no-such-file');
+    assert.strictEqual(screen.queryByText('Session A') === null, true);
+
+    await user.clear(filter);
+
+    assert.strictEqual(screen.queryAllByRole('button', { name: /a\.tsx/ }).length, 1);
+  });
 });

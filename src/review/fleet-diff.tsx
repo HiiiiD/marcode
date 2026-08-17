@@ -59,6 +59,27 @@ const UNATTRIBUTED_KEY = 'unattributed';
 const DEFAULT_FILE_CAP = 500;
 const MAX_FILE_CAP = 2000;
 
+/**
+ * The tree header's rendered height, in pixels — pinned here so the sticky
+ * group header below it can be given the exact same number rather than a
+ * second, independent guess.
+ *
+ * `top-8` (32px) was the first guess and it undershot: the header is two
+ * fixed-height rows — `pt-2.5` (10px) + the chevron row, whose tallest child
+ * is the `icon-xs` `Button` at 24px + `space-y-0.5` (2px) + the `text-xs`
+ * base-line row at its default 16px line-height + `pb-1.5` (6px) — 58px in
+ * total, not 32. Both rows truncate rather than wrap, so this height is fixed
+ * regardless of path length or branch name; nothing here depends on content
+ * that can grow. `TREE_HEADER_HEIGHT` is applied as the header's own explicit
+ * height (so it cannot silently drift from this number) and consumed again as
+ * the group header's `top`. jsdom performs no layout, so no DOM test can
+ * catch a future edit to the header's padding or row heights that stops
+ * matching this constant — changing the header's rows means updating this
+ * number by hand, and a screenshot is the only thing that verifies the
+ * result.
+ */
+const TREE_HEADER_HEIGHT = 58;
+
 export function FleetDiff() {
   const { state, post } = useStore();
   const trees = state.fleetDiff;
@@ -85,6 +106,16 @@ export function FleetDiff() {
     if (!next.delete(key)) { next.add(key); }
     return next;
   });
+
+  // A filter change is a new reading position, same as the collapse set
+  // itself is ephemeral for: `filterTree`/`groupTree` drop a group entirely
+  // once its matched files hit zero and re-add it under the same key once
+  // they match again, so an un-pruned `collapsed` would silently re-hide a
+  // group the filter just repopulated — exactly the files the filter was
+  // widened to find. Clearing here, rather than pruning the vanished key on
+  // every render, keeps the collapse set the single thing that decides
+  // what's hidden instead of splitting that decision between two effects.
+  useEffect(() => { setCollapsed(new Set()); }, [query, contestedOnly]);
 
   // Ask once on mount: the surface is the only thing that wants this, so it
   // is the only thing that asks for it.
@@ -232,7 +263,11 @@ function Tree({
         that says which of them you are reading. `bg-background` is load-bearing
         here — a transparent sticky header lets rows scroll through it.
       */}
-      <div className="sticky top-0 z-10 space-y-0.5 bg-background px-2 pt-2.5 pb-1.5">
+      <div
+        data-testid="tree-header"
+        className="sticky top-0 z-10 space-y-0.5 bg-background px-2 pt-2.5 pb-1.5"
+        style={{ height: TREE_HEADER_HEIGHT }}
+      >
         <div className="flex min-w-0 items-center gap-1.5">
           <Button
             variant="ghost"
@@ -326,7 +361,11 @@ function Group({
 
   return (
     <div className="mt-2.5 first:mt-1">
-      <div className="sticky top-8 z-[9] flex min-w-0 items-center gap-1.5 bg-background pl-4">
+      <div
+        data-testid="group-header"
+        className="sticky z-[9] flex min-w-0 items-center gap-1.5 bg-background pl-4"
+        style={{ top: TREE_HEADER_HEIGHT }}
+      >
         <Button
           variant="ghost"
           size="icon-xs"
