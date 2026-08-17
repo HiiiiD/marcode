@@ -6,7 +6,7 @@ const production = process.argv.includes('--production');
 const watch = process.argv.includes('--watch');
 
 /**
- * Rebuilds dist/webview.css after every webview build.
+ * Rebuilds a webview's CSS after every build of that webview.
  *
  * Tailwind scans the .tsx sources for class names, so the CSS is only correct
  * once the sources it scans are current. Running it here rather than as a
@@ -14,10 +14,10 @@ const watch = process.argv.includes('--watch');
  * Tailwind CLI's own watch mode prints no per-rebuild marker, so a VS Code
  * background task cannot tell when it has finished.
  *
- * @type {import('esbuild').Plugin}
+ * @returns {import('esbuild').Plugin}
  */
-const tailwindPlugin = {
-	name: 'tailwind',
+const tailwindPlugin = (input, output) => ({
+	name: `tailwind:${output}`,
 
 	setup(build) {
 		// Resolve the CLI's JS entry rather than the node_modules/.bin shim:
@@ -26,7 +26,7 @@ const tailwindPlugin = {
 		// cross-platform and shell-free.
 		const cliDir = path.dirname(require.resolve('@tailwindcss/cli/package.json'));
 		const cli = path.join(cliDir, require('@tailwindcss/cli/package.json').bin.tailwindcss);
-		const args = [cli, '-i', 'src/webview/index.css', '-o', 'dist/webview.css'];
+		const args = [cli, '-i', input, '-o', output];
 		if (production) {
 			args.push('--minify');
 		}
@@ -40,7 +40,7 @@ const tailwindPlugin = {
 			});
 		}));
 	},
-};
+});
 
 /**
  * @type {import('esbuild').Plugin}
@@ -93,14 +93,28 @@ async function main() {
 		// tailwindPlugin is registered first so its onEnd is awaited before the
 		// problem matcher logs "[watch] build finished" — the CSS is on disk by
 		// the time anything downstream treats the build as complete.
-		plugins: [tailwindPlugin, ...common.plugins],
+		plugins: [tailwindPlugin('src/webview/index.css', 'dist/webview.css'), ...common.plugins],
+	});
+
+	// The review tab. Same alias — `@/components/ui/*` and `@/lib/utils` are
+	// shared between the two clients on purpose; only the store, the reducer
+	// and the surface itself differ.
+	const reviewCtx = await esbuild.context({
+		...common,
+		entryPoints: ['src/review/main.tsx'],
+		format: 'iife',
+		platform: 'browser',
+		outfile: 'dist/review.js',
+		loader: { '.tsx': 'tsx', '.ts': 'ts' },
+		alias: { '@': require('path').resolve(__dirname, 'src/webview') },
+		plugins: [tailwindPlugin('src/review/index.css', 'dist/review.css'), ...common.plugins],
 	});
 
 	if (watch) {
-		await Promise.all([hostCtx.watch(), webviewCtx.watch()]);
+		await Promise.all([hostCtx.watch(), webviewCtx.watch(), reviewCtx.watch()]);
 	} else {
-		await Promise.all([hostCtx.rebuild(), webviewCtx.rebuild()]);
-		await Promise.all([hostCtx.dispose(), webviewCtx.dispose()]);
+		await Promise.all([hostCtx.rebuild(), webviewCtx.rebuild(), reviewCtx.rebuild()]);
+		await Promise.all([hostCtx.dispose(), webviewCtx.dispose(), reviewCtx.dispose()]);
 	}
 }
 
