@@ -626,14 +626,17 @@ export class AgentSession {
         // Best-effort: the provider is being torn down regardless.
       }
     }
-    for (const requestId of [...this.pendingQuestions.keys()]) {
-      this.pendingQuestions.delete(requestId);
-      try {
-        this.run.respondToQuestion(requestId, {});
-      } catch {
-        // Best-effort: the provider is being torn down regardless.
-      }
-    }
+    // Dropped, not answered. `respondToQuestion` has no "declined" spelling —
+    // its only argument is a set of answers — and the neutral `{}` does not
+    // mean the same thing to both backends: codex reads it as "answered
+    // nothing", while Claude turns it into `{behavior:'allow', updatedInput:
+    // {...input, answers:{}}}`, i.e. run the tool with no answer at all. So
+    // cancelling is the provider's own job, in its own vocabulary, and every
+    // AgentRun.dispose() does it (claude-provider's `parked` loop resolves its
+    // CANCELLED sentinel; CodexRun.cancelParkedQuestions responds with the
+    // empty map). Clearing here only keeps host state honest for the
+    // `flushUnsettledTools`/`scheduleFlush` that follow.
+    this.pendingQuestions.clear();
     try {
       await this.run.dispose();
     } catch {
@@ -762,12 +765,17 @@ export class AgentSession {
           ? this.parentItemIdFor(parentSource)
           : undefined;
 
+        // `meta` is spread conditionally, never written as an explicit
+        // `undefined`: it reaches both the JSONL and the wire, where an
+        // absent key and a present-but-undefined one are the same value but
+        // not the same object.
+        const meta = event.meta ? { meta: event.meta } : {};
         const item: TranscriptItem = {
           id: nextId('p'), ts: Date.now(), role: 'permission',
-          requestId: event.id, tool: event.tool, state: 'pending',
+          requestId: event.id, tool: event.tool, state: 'pending', ...meta,
         };
         this.permissionItems.set(event.id, item);
-        this.pending.set(event.id, { requestId: event.id, tool: event.tool });
+        this.pending.set(event.id, { requestId: event.id, tool: event.tool, ...meta });
 
         if (parentSource && parentItemId) {
           const root = this.resolveParent(parentSource);

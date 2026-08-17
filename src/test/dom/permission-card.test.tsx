@@ -93,9 +93,11 @@ suite('PermissionCard', () => {
 
     screen.getByText('Write — denied');
     screen.getByText('nope');
-    assert.strictEqual(screen.queryByLabelText('Allow Write'), null);
-    const details = document.querySelector('details');
-    assert.notStrictEqual(details, null, 'the diff must not be discarded on resolution');
+    assert.strictEqual(screen.queryByLabelText('Allow Write') === null, true);
+    assert.strictEqual(
+      document.querySelector('details') === null, false,
+      'the diff must not be discarded on resolution',
+    );
   });
 
   test('an edit-shaped input renders a diff preview', () => {
@@ -111,7 +113,7 @@ suite('PermissionCard', () => {
     // completed tool card gives it, so approving and reviewing look alike.
     screen.getByText('/tmp/a.txt');
     const pre = document.querySelector('pre');
-    assert.notStrictEqual(pre, null);
+    assert.strictEqual(pre === null, false);
     assert.strictEqual(pre!.textContent, '-one+two');
   });
 
@@ -130,5 +132,70 @@ suite('PermissionCard', () => {
 
     assert.ok(screen.getAllByText('github').length > 0);
     screen.getByText('Allow create_pr?');
+  });
+
+  suite('the backend permission engine metadata', () => {
+    const META = {
+      title: 'Claude wants to write a.txt',
+      description: 'Creates a file that does not exist yet',
+      decisionReason: 'outside allowed directories',
+      blockedPath: '/tmp/a.txt',
+    };
+
+    test('every field the provider sent is rendered on the live card', () => {
+      renderWithStore(<PermissionCard item={permission({ meta: META })} sessionId="a" />);
+      hydrateWith(LIVE);
+
+      screen.getByText('Claude wants to write a.txt');
+      screen.getByText('Creates a file that does not exist yet');
+      screen.getByText('outside allowed directories');
+      // Twice: the tool card's own path row already carries it.
+      assert.ok(screen.getAllByText('/tmp/a.txt').length > 0);
+    });
+
+    test('a partial meta renders only what is there', () => {
+      const item = permission({ meta: { decisionReason: 'not in the allowlist' } });
+      renderWithStore(<PermissionCard item={item} sessionId="a" />);
+      hydrateWith(LIVE);
+
+      screen.getByText('not in the allowlist');
+      assert.strictEqual(
+        screen.queryByText('Claude wants to write a.txt') === null, true,
+        'nothing is invented for a field the provider did not send',
+      );
+    });
+
+    test('no meta leaves the card exactly as it was', () => {
+      renderWithStore(<PermissionCard item={permission()} sessionId="a" />);
+      hydrateWith(LIVE);
+
+      screen.getByText('Allow Write?');
+      assert.strictEqual(
+        (screen.getByLabelText('Allow Write') as HTMLButtonElement).disabled, false,
+      );
+    });
+
+    test('displayName names the tool in the heading and both accessible names', () => {
+      const item = permission({ meta: { displayName: 'Write file' } });
+      renderWithStore(<PermissionCard item={item} sessionId="a" />);
+      hydrateWith(LIVE);
+
+      screen.getByText('Allow Write file?');
+      assert.strictEqual(
+        (screen.getByLabelText('Allow Write file') as HTMLButtonElement).disabled, false,
+      );
+      assert.strictEqual(
+        (screen.getByLabelText('Deny Write file') as HTMLButtonElement).disabled, false,
+      );
+    });
+
+    test('a settled card still carries the metadata, under the disclosure', () => {
+      const item = permission({ state: 'allowed', meta: META });
+      renderWithStore(<PermissionCard item={item} sessionId="a" />);
+      hydrateWith([]);
+
+      screen.getByText('Write — allowed');
+      screen.getByText('Claude wants to write a.txt');
+    });
   });
 });

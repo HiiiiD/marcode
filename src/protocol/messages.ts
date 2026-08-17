@@ -48,9 +48,17 @@ export type TranscriptItem =
        */
       children?: TranscriptItem[];
     })
+  /**
+   * `meta` is what the backend's own permission engine already worked out
+   * about the request — the sentence it would render, and why it is asking.
+   * It rides the item as well as `SessionSnapshot.pending` so a settled or
+   * reloaded card still reads the way the live one did; nothing in it is
+   * user input, so persisting it is safe.
+   */
   | (ItemBase & {
       role: 'permission'; requestId: string; tool: ToolCall;
       state: 'pending' | 'allowed' | 'denied'; reason?: string;
+      meta?: PermissionMeta;
     })
   /**
    * A structured question from the agent. Blocking ones freeze the composer;
@@ -139,7 +147,6 @@ export interface SessionState {
    * only ever handed to the provider, and the webview has no use for it.
    */
   queued?: { text: string; refs?: SessionRef[] };
-  pendingQuestions: QuestionRequest[];
   archived: boolean;
   createdAt: number;
   updatedAt: number;
@@ -153,6 +160,15 @@ export interface SessionSnapshot extends SessionState {
   /** More history available before items[0]. */
   hasMore: boolean;
   pending: PermissionRequest[];
+  /**
+   * Questions parked on the live run, exactly like `pending` above and
+   * deliberately alongside it rather than on `SessionState`: both describe a
+   * provider request waiting on an answer *right now*, which is in-memory
+   * host state that `index.json` must not claim to know. A field on
+   * `SessionState` would ride every `sessions-changed` summary and every
+   * persisted entry reading `[]` while a question was in fact parked.
+   */
+  pendingQuestions: QuestionRequest[];
   /**
    * The cwd's catalog, when the host has one. In-memory host state: absent
    * before the probe resolves, and absent forever if it failed.
