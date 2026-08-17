@@ -85,6 +85,13 @@ export class ReviewPanel {
     panel.onDidChangeViewState(() => {
       void panel.webview.postMessage({ t: 'review-visibility', visible: panel.visible });
     });
+    // `onDidChangeViewState` only fires on a future transition, never
+    // synthetically on registration. Without this, a `restore()`d panel that
+    // VS Code drops straight into a background editor group would leave the
+    // client's `visible` at its `true` default forever if the user never
+    // switches to the tab — exactly the always-reading background tab this
+    // task exists to stop.
+    void panel.webview.postMessage({ t: 'review-visibility', visible: panel.visible });
 
     panel.onDidDispose(() => {
       this.unregister?.();
