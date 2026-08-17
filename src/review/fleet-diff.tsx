@@ -3,8 +3,10 @@ import {
   FilePlusIcon, FileSymlinkIcon, RefreshCwIcon,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { StatusBadge } from '@/components/status-badge';
 import { cn } from '@/lib/utils';
 import {
   commonPrefix, countFiles, filterTree, groupTree, stripPrefix, summarize, type SessionGroup,
@@ -37,6 +39,16 @@ import type {
  * is headed by the reason it exists, because a file nobody claimed is a real
  * answer — a build, a shell command, the user's own edit — not a gap in the
  * data.
+ *
+ * Two things on this surface only this panel can say, because both come from
+ * the transcript's attribution rather than from git: a session group's own
+ * live status (git sees a dirty tree; it has no idea the diff you are
+ * reading right now is still being written), and which *other* session also
+ * claimed a file — a contested file is the one situation in this whole list
+ * worth stopping on, so it is named beside the basename rather than buried,
+ * truncating, at the row's tail. That is why the group header is worth its
+ * vertical space: a status glance VS Code's own SCM view is structurally
+ * unable to offer.
  */
 /**
  * React key for the unattributed group.
@@ -489,6 +501,13 @@ function Group({
   const title = group.sessionId === null
     ? 'Not attributed to a session'
     : titleOf(group.sessionId, sessions);
+  // Undefined for the unattributed group and for a session that has been
+  // deleted since — `titleOf` covers "deleted" in the title text already,
+  // but a live-status badge has nothing true to claim about a session that
+  // is gone, so it renders nothing rather than looking up `undefined.status`.
+  const session = group.sessionId === null
+    ? undefined
+    : sessions.find((s) => s.id === group.sessionId);
   const groupKey = `${tree.root}::${group.sessionId ?? UNATTRIBUTED_KEY}`;
   const isCollapsed = collapsed.has(groupKey);
   const prefix = commonPrefix(group.files.map((f) => f.path));
@@ -512,6 +531,18 @@ function Group({
         <h4 className={cn('min-w-0 truncate text-xs', unattributed ? 'text-muted-foreground' : 'font-medium')}>
           {title}
         </h4>
+        {/*
+          Outside the `h4`, not inside it: `StatusBadge` carries its own
+          `aria-live="polite"` region (see status-badge.tsx) so a status
+          change announces on its own, once, without also re-announcing the
+          heading it would join if nested inside it. `idle` renders nothing —
+          the badge earns its space by saying something is happening, and a
+          quiet session has nothing to add here that the group not saying
+          anything doesn't already say.
+        */}
+        {session !== undefined && !session.archived && session.status !== 'idle' && (
+          <StatusBadge status={session.status} />
+        )}
         <span className="min-w-0 shrink-0 truncate text-muted-foreground">
           {group.files.length}
           {' '}
@@ -665,16 +696,18 @@ function FileRow({
       {/* Dimmed once opened: the marker for "already read this" this task
           adds, ephemeral for the same reason `collapsed` is. */}
       <span className={cn('min-w-0 truncate', isOpened && 'text-muted-foreground')}>{name}</span>
+      {others.length > 0 && (
+        // Named, not counted, directly after the basename rather than at the
+        // row's truncating tail: two sessions writing one file is the single
+        // situation in this whole surface worth stopping on, and "+1" does
+        // not say who to go and read.
+        <Badge variant="outline" className="min-w-0 shrink truncate border-destructive/50 text-destructive">
+          Also {others.map((id) => titleOf(id, sessions)).join(', ')}
+        </Badge>
+      )}
       {file.op === 'rename' && file.from !== undefined && (
         <span className="min-w-0 shrink truncate text-muted-foreground" title={file.from}>
           from {file.from}
-        </span>
-      )}
-      {others.length > 0 && (
-        // Named, not counted. Two sessions writing one file is the situation
-        // worth stopping on, and "+1" does not say who to go and read.
-        <span className="min-w-0 shrink truncate text-muted-foreground">
-          also {others.map((id) => titleOf(id, sessions)).join(', ')}
         </span>
       )}
       <Churn insertions={file.insertions} deletions={file.deletions} className="ml-auto" />

@@ -84,4 +84,50 @@ suite('review structure', () => {
 
     assert.strictEqual(screen.queryAllByRole('button', { name: /a\.tsx/ }).length, 1);
   });
+
+  // 'thinking' is not a real SessionStatus (the type is idle | running |
+  // awaiting-approval | error, and `running` renders as "Working" — see
+  // src/webview/status.ts); `running` is the substitution that keeps this
+  // test's intent — a session that is not idle says so — while staying a
+  // status this codebase can actually produce.
+  test('a session still working says so on its group', () => {
+    renderReview();
+    sendFromHost(
+      { t: 'hydrate', sessions: [{ id: 's1', title: 'Session A', status: 'running' }],
+        layout: { panes: [], orientation: 'horizontal' } } as never,
+      { t: 'fleet-diff', trees: TREES } as never,
+    );
+    // The diff you are reading is still being written. No SCM view can say this.
+    assert.strictEqual(screen.getAllByText(/working/i).length > 0, true);
+  });
+
+  test('a status change after the diff lands still reaches the group', () => {
+    renderReview();
+    sendFromHost(
+      { t: 'hydrate', sessions: [{ id: 's1', title: 'Session A', status: 'running' }],
+        layout: { panes: [], orientation: 'horizontal' } } as never,
+      { t: 'fleet-diff', trees: TREES } as never,
+      { t: 'sessions-changed',
+        sessions: [{ id: 's1', title: 'Session A', status: 'idle' }] } as never,
+    );
+    assert.strictEqual(screen.queryAllByText(/working/i).length, 0);
+  });
+
+  test('a contested file is named as contested, not buried at the end of the row', () => {
+    renderReview();
+    sendFromHost(
+      { t: 'hydrate',
+        sessions: [
+          { id: 's1', title: 'Session A', status: 'idle' },
+          { id: 's2', title: 'Session B', status: 'idle' },
+        ],
+        layout: { panes: [], orientation: 'horizontal' } } as never,
+      { t: 'fleet-diff', trees: [{
+        ...TREES[0], sessions: ['s1', 's2'],
+        files: [{ path: 'shared.ts', op: 'modify', insertions: 1, deletions: 0,
+          claimedBy: ['s1', 's2'] }],
+      }] } as never,
+    );
+    assert.strictEqual(screen.getAllByText('Also Session B').length, 1);
+  });
 });
