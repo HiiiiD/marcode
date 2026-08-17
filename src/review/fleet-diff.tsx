@@ -1,6 +1,6 @@
 import {
-  ChevronDownIcon, ChevronRightIcon, FileMinusIcon, FilePenLineIcon, FilePlusIcon, FileSymlinkIcon,
-  RefreshCwIcon,
+  ArrowDownIcon, ArrowUpIcon, ChevronDownIcon, ChevronRightIcon, FileMinusIcon, FilePenLineIcon,
+  FilePlusIcon, FileSymlinkIcon, RefreshCwIcon,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -10,6 +10,7 @@ import {
   commonPrefix, countFiles, filterTree, groupTree, stripPrefix, summarize, type SessionGroup,
 } from './fleet-diff-groups';
 import { useStore } from './store';
+import { nextIndex, useRovingRows } from './use-roving-rows';
 import { folderName } from '@/format';
 import type {
   ChangeOp, FileChange, SessionId, SessionSummary, TreeDiff,
@@ -80,6 +81,55 @@ const MAX_FILE_CAP = 2000;
  */
 const TREE_HEADER_HEIGHT = 58;
 
+/** One row's place in the flat, rendered order. */
+interface Row {
+  tree: TreeDiff;
+  /** Same key `Group` computes for its own sticky header, reused here as the
+   * other half of a row's identity — a file claimed by two sessions renders
+   * once per claiming group, and `groupKey` is what tells those rows apart. */
+  groupKey: string;
+  file: FileChange;
+}
+
+/**
+ * The rendered rows, in the exact order `Tree`/`Group` put them on screen —
+ * a collapsed tree or group contributes nothing, matching what `isCollapsed`
+ * already hides there. Computed once per render so the roving index has a
+ * stable count and the next/prev controls have somewhere to point; a index
+ * into a row a collapse or filter just hid would land the reader — or the
+ * next/prev control — on a file that is not on screen.
+ */
+function flattenRows(trees: TreeDiff[], collapsed: Set<string>): Row[] {
+  const rows: Row[] = [];
+  for (const tree of trees) {
+    if (collapsed.has(`tree:${tree.root}`)) { continue; }
+    if (tree.reason !== undefined) { continue; }
+    for (const group of groupTree(tree)) {
+      const groupKey = `${tree.root}::${group.sessionId ?? UNATTRIBUTED_KEY}`;
+      if (collapsed.has(groupKey)) { continue; }
+      for (const file of group.files) {
+        rows.push({ tree, groupKey, file });
+      }
+    }
+  }
+  return rows;
+}
+
+/**
+ * The roving-focus plumbing threaded down to every `FileRow`: which index is
+ * focusable, which files have been opened this session, and how to move
+ * between them. Bundled into one object rather than five separate props
+ * because every layer between `FleetDiff` and `FileRow` passes all five
+ * through unchanged.
+ */
+interface RowNav {
+  rowIndex: Map<string, number>;
+  active: number;
+  opened: Set<string>;
+  setActive: (index: number) => void;
+  onOpen: (index: number) => void;
+}
+
 export function FleetDiff() {
   const { state, post } = useStore();
   const trees = state.fleetDiff;
@@ -116,6 +166,33 @@ export function FleetDiff() {
   // every render, keeps the collapse set the single thing that decides
   // what's hidden instead of splitting that decision between two effects.
   useEffect(() => { setCollapsed(new Set()); }, [query, contestedOnly]);
+
+  // Ephemeral for the same reason `collapsed` is: it answers "have I read this
+  // in *this* review", not across reloads, and a restored marker would be
+  // ticking off files in a list assembled from a different working tree than
+  // the one that was read. Keyed `${root}::${path}` rather than by path alone
+  // — the same relative path in two trees is two different files.
+  const [opened, setOpened] = useState<Set<string>>(new Set());
+
+  const rows = flattenRows(filtered, collapsed);
+  const rowIndex = new Map<string, number>();
+  rows.forEach((row, i) => rowIndex.set(`${row.groupKey}::${row.file.path}`, i));
+
+  const { active, setActive, onKeyDown } = useRovingRows(rows.length);
+
+  const openRow = (index: number) => {
+    const row = rows[index];
+    if (row === undefined) { return; }
+    setOpened((prev) => {
+      const next = new Set(prev);
+      next.add(`${row.tree.root}::${row.file.path}`);
+      return next;
+    });
+    setActive(index);
+    post({ t: 'open-file-diff', root: row.tree.root, path: row.file.path, base: row.tree.base });
+  };
+
+  const nav: RowNav = { rowIndex, active, opened, setActive, onOpen: openRow };
 
   // Ask once on mount: the surface is the only thing that wants this, so it
   // is the only thing that asks for it.
@@ -180,10 +257,41 @@ export function FleetDiff() {
         >
           Contested only
         </Button>
+        {/*
+          Next/prev walks the flat row order the roving index already counts,
+          so the user never has to find the next file by eye in a 500-row
+          list — the reason this control exists at all.
+        */}
         <Button
           variant="outline"
           size="icon-sm"
           className="ml-auto shrink-0"
+          aria-label="Open the previous file"
+          disabled={rows.length === 0}
+          onClick={() => {
+            const next = nextIndex(active, 'ArrowUp', rows.length);
+            if (next !== null) { openRow(next); }
+          }}
+        >
+          <ArrowUpIcon aria-hidden />
+        </Button>
+        <Button
+          variant="outline"
+          size="icon-sm"
+          className="shrink-0"
+          aria-label="Open the next file"
+          disabled={rows.length === 0}
+          onClick={() => {
+            const next = nextIndex(active, 'ArrowDown', rows.length);
+            if (next !== null) { openRow(next); }
+          }}
+        >
+          <ArrowDownIcon aria-hidden />
+        </Button>
+        <Button
+          variant="outline"
+          size="icon-sm"
+          className="shrink-0"
           aria-label="Refresh: read every working tree again"
           onClick={() => post({ t: 'request-fleet-diff' })}
         >
@@ -191,7 +299,7 @@ export function FleetDiff() {
         </Button>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto text-xs">
+      <div className="min-h-0 flex-1 overflow-y-auto text-xs" onKeyDown={onKeyDown}>
         {state.fleetDiffReason !== undefined ? (
           // A failed read is a third state, and it has to be one: the loading
           // sentence below is the only other thing that could be on screen,
@@ -237,6 +345,7 @@ export function FleetDiff() {
               atCeiling={atCeiling}
               collapsed={collapsed}
               toggle={toggle}
+              nav={nav}
             />
           ))
         )}
@@ -246,10 +355,10 @@ export function FleetDiff() {
 }
 
 function Tree({
-  tree, sessions, onShowMore, atCeiling, collapsed, toggle,
+  tree, sessions, onShowMore, atCeiling, collapsed, toggle, nav,
 }: {
   tree: TreeDiff; sessions: SessionSummary[]; onShowMore: () => void; atCeiling: boolean;
-  collapsed: Set<string>; toggle: (key: string) => void;
+  collapsed: Set<string>; toggle: (key: string) => void; nav: RowNav;
 }) {
   const groups = groupTree(tree);
   const treeKey = `tree:${tree.root}`;
@@ -318,6 +427,7 @@ function Tree({
                 sessions={sessions}
                 collapsed={collapsed}
                 toggle={toggle}
+                nav={nav}
               />
             ))
           )}
@@ -346,10 +456,10 @@ function Tree({
 }
 
 function Group({
-  group, tree, sessions, collapsed, toggle,
+  group, tree, sessions, collapsed, toggle, nav,
 }: {
   group: SessionGroup; tree: TreeDiff; sessions: SessionSummary[];
-  collapsed: Set<string>; toggle: (key: string) => void;
+  collapsed: Set<string>; toggle: (key: string) => void; nav: RowNav;
 }) {
   const unattributed = group.sessionId === null;
   const title = group.sessionId === null
@@ -405,7 +515,15 @@ function Group({
           <ul className="mt-1 border-l border-border">
             {group.files.map((file) => (
               <li key={file.path}>
-                <FileRow file={file} tree={tree} sessions={sessions} own={group.sessionId} prefix={prefix} />
+                <FileRow
+                  file={file}
+                  tree={tree}
+                  sessions={sessions}
+                  own={group.sessionId}
+                  prefix={prefix}
+                  groupKey={groupKey}
+                  nav={nav}
+                />
               </li>
             ))}
           </ul>
@@ -449,11 +567,11 @@ const OP_WORD: Record<ChangeOp, string> = {
 };
 
 function FileRow({
-  file, tree, sessions, own, prefix,
+  file, tree, sessions, own, prefix, groupKey, nav,
 }: {
   file: FileChange; tree: TreeDiff; sessions: SessionSummary[]; own: SessionId | null; prefix: string;
+  groupKey: string; nav: RowNav;
 }) {
-  const { post } = useStore();
   const Icon = OP_ICON[file.op];
   // Only the part the group's shared prefix didn't already say. A row can
   // still nest deeper than the group's own common directory — the prefix is
@@ -468,6 +586,11 @@ function FileRow({
   // what the line above it just said.
   const others = file.claimedBy.filter((id) => id !== own);
 
+  // A file claimed by two sessions renders once per claiming group, so the
+  // index has to be looked up by group + path, not by path alone.
+  const index = nav.rowIndex.get(`${groupKey}::${file.path}`) ?? -1;
+  const isOpened = nav.opened.has(`${tree.root}::${file.path}`);
+
   return (
     <Button
       variant="ghost"
@@ -480,9 +603,16 @@ function FileRow({
       // list row in the sidebar panel is, and a 24px row here would make
       // this the one dense list in the app that does not match.
       className="w-full justify-start gap-2 pl-6 pr-2 font-normal"
-      onClick={() => post({
-        t: 'open-file-diff', root: tree.root, path: file.path, base: tree.base,
-      })}
+      // Every row used to be its own stop in the tab order — 400 Tab presses
+      // to reach row 400. Only the active row is tabbable; arrow keys move
+      // the roving index (`useRovingRows`) the rest of the way, and focus
+      // landing here (by Tab, or by the browser after a click) is what tells
+      // the roving index to follow.
+      data-review-row
+      data-opened={isOpened ? 'true' : undefined}
+      tabIndex={index === nav.active ? 0 : -1}
+      onFocus={() => nav.setActive(index)}
+      onClick={() => nav.onOpen(index)}
     >
       <Icon aria-hidden className={OP_COLOR[file.op]} />
       {/*
@@ -495,7 +625,9 @@ function FileRow({
         of ellipsing the one string that had room to give.
       */}
       <span className="min-w-0 shrink-[8] truncate text-muted-foreground">{dir}</span>
-      <span className="min-w-0 truncate">{name}</span>
+      {/* Dimmed once opened: the marker for "already read this" this task
+          adds, ephemeral for the same reason `collapsed` is. */}
+      <span className={cn('min-w-0 truncate', isOpened && 'text-muted-foreground')}>{name}</span>
       {file.op === 'rename' && file.from !== undefined && (
         <span className="min-w-0 shrink truncate text-muted-foreground" title={file.from}>
           from {file.from}
