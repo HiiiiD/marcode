@@ -11,17 +11,24 @@ export interface PostClient {
 }
 
 /**
- * What the review tab subscribes to.
+ * What the review tab subscribes to *through this bus*.
  *
  * Deliberately an allow-list, not a deny-list. `session-patch` is gated on the
  * visible set and that gating lives in SessionManager; the review client simply
  * never asks for it, so there is no second place where visibility is decided.
  * A new message type defaults to *not* reaching the review tab, which is the
  * safe direction to fail.
+ *
+ * This is not the whole story of what the review webview receives, though:
+ * `ReviewPanel` also owns its own `MessageRouter`, whose `emit` posts
+ * straight to the same webview outside this bus entirely — that is how
+ * `hydrate` and `editor-context` actually reach it, each in direct answer to
+ * a message this client sent (`ready`). `hydrate` is deliberately not listed
+ * here as a result: nothing ever `bus.post`s one — only the router's `emit`
+ * does — so listing it would claim a fan-out path that does not exist.
  */
 export const REVIEW_WANTS = (msg: HostToWebview): boolean =>
-  msg.t === 'hydrate' || msg.t === 'sessions-changed'
-  || msg.t === 'session-status' || msg.t === 'fleet-diff';
+  msg.t === 'sessions-changed' || msg.t === 'session-status' || msg.t === 'fleet-diff';
 
 export class PostBus {
   private readonly clients = new Set<PostClient>();

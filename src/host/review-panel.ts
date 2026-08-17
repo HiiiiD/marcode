@@ -22,6 +22,10 @@ export const REVIEW_VIEW_TYPE = 'hiiiid-code.review';
 export class ReviewPanel {
   private panel: vscode.WebviewPanel | undefined;
   private unregister: (() => void) | undefined;
+  /** Every subscription `adopt()` makes on the current `panel` — tracked and
+   * disposed together with it, the same discipline `extension.ts` applies to
+   * every other subscription in the extension. */
+  private subscriptions: vscode.Disposable[] = [];
 
   constructor(
     private readonly extensionUri: vscode.Uri,
@@ -45,7 +49,23 @@ export class ReviewPanel {
 
   /** The serializer's entry point: VS Code restored the tab, we re-attach. */
   restore(panel: vscode.WebviewPanel): void {
-    this.panel?.dispose();
+    // Clears this instance's own bookkeeping *before* asking the old panel to
+    // dispose, rather than relying on its `onDidDispose` handler (below) to
+    // do it — that handler fires on whatever VS Code's own event loop
+    // schedules, and if it ever fires asynchronously rather than
+    // synchronously, it would run after `adopt(panel)` already set
+    // `this.panel`/`this.unregister` to the *new* panel's values and null
+    // them out from under it. Doing the clear here makes `restore()` correct
+    // regardless of that ordering; the identity guard in the dispose handler
+    // below is the second, independent safety net.
+    const old = this.panel;
+    if (old !== undefined) {
+      this.unregister?.();
+      this.unregister = undefined;
+      this.panel = undefined;
+      for (const sub of this.subscriptions.splice(0)) { sub.dispose(); }
+      old.dispose();
+    }
     this.adopt(panel);
   }
 
@@ -74,34 +94,46 @@ export class ReviewPanel {
       this.manager, (m) => { void panel.webview.postMessage(m); },
       this.defaultCwd, this.editor,
     );
-    panel.webview.onDidReceiveMessage(async (raw: WebviewToHost) => {
+    const messageSub = panel.webview.onDidReceiveMessage(async (raw: WebviewToHost) => {
       try {
+        // Answered here, off the client's own `ready` — not synthesized at
+        // attach time. `onDidChangeViewState` only fires on a future
+        // transition, never on registration, and a restored panel VS Code
+        // drops straight into a background editor group has
+        // `retainContextWhenHidden: false`, so its webview script has not
+        // even loaded yet; a post made in `adopt()` before that happens is
+        // simply dropped. `ready` is the one signal that cannot race the
+        // script load, because the client sent it from inside that script.
+        if (raw?.t === 'ready') {
+          void panel.webview.postMessage({ t: 'review-visibility', visible: panel.visible });
+        }
         await router.handle(raw);
       } catch (err) {
         console.error('[hiiiid-code] review message handling failed', err);
       }
     });
 
-    panel.onDidChangeViewState(() => {
+    const viewStateSub = panel.onDidChangeViewState(() => {
       void panel.webview.postMessage({ t: 'review-visibility', visible: panel.visible });
     });
-    // `onDidChangeViewState` only fires on a future transition, never
-    // synthetically on registration. Without this, a `restore()`d panel that
-    // VS Code drops straight into a background editor group would leave the
-    // client's `visible` at its `true` default forever if the user never
-    // switches to the tab — exactly the always-reading background tab this
-    // task exists to stop.
-    void panel.webview.postMessage({ t: 'review-visibility', visible: panel.visible });
 
-    panel.onDidDispose(() => {
+    const disposeSub = panel.onDidDispose(() => {
+      // Guards against `onDidDispose` outliving the panel it was registered
+      // for — `restore()` above already clears this instance's bookkeeping
+      // before disposing the old panel, but this check makes the handler
+      // correct on its own even if that ordering ever changes.
+      if (this.panel !== panel) { return; }
       this.unregister?.();
       this.unregister = undefined;
       this.panel = undefined;
     });
+
+    this.subscriptions = [messageSub, viewStateSub, disposeSub];
   }
 
   dispose(): void {
     this.unregister?.();
+    for (const sub of this.subscriptions.splice(0)) { sub.dispose(); }
     this.panel?.dispose();
   }
 }
