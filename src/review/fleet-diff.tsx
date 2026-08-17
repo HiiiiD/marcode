@@ -46,6 +46,16 @@ import type {
  */
 const UNATTRIBUTED_KEY = 'unattributed';
 
+/**
+ * Wire-boundary duplicates of `FILE_CAP` and `MAX_FILE_CAP` from
+ * `src/host/fleet-diff.ts` — the webview bundle cannot import across the
+ * host boundary. If either constant moves host-side, these (and the DOM
+ * tests pinning the resulting 1000 and the ceiling behavior) have to move
+ * with them.
+ */
+const DEFAULT_FILE_CAP = 500;
+const MAX_FILE_CAP = 2000;
+
 export function FleetDiff() {
   const { state, post } = useStore();
   const trees = state.fleetDiff;
@@ -72,17 +82,18 @@ export function FleetDiff() {
     return () => { clearTimeout(timer); };
   }, [state.fleetDiffDirty, post, cap]);
 
+  // Past the ceiling, doubling forever while the host keeps clamping to
+  // `MAX_FILE_CAP` would leave the button on screen as a permanent no-op —
+  // exactly the dead end this task exists to remove.
+  const atCeiling = cap !== undefined && cap >= MAX_FILE_CAP;
+
   const showMore = () => {
     // Doubling from the current effective cap, not jumping to the ceiling: a
     // user with 340 more files wants to see them, not to make the host parse
-    // 2000 numstat rows on the way there.
-    //
-    // 500 here duplicates `FILE_CAP` from `src/host/fleet-diff.ts` — the
-    // webview bundle cannot import across the host boundary, so this is the
-    // wire-visible copy of that constant. If the host's default ever moves,
-    // this literal (and the DOM test pinning the resulting 1000) has to move
-    // with it.
-    const next = (cap ?? 500) * 2;
+    // 2000 numstat rows on the way there. Clamped to the ceiling so a press
+    // past it cannot grow `cap` unboundedly while the host's answer stays
+    // fixed at `MAX_FILE_CAP`.
+    const next = Math.min((cap ?? DEFAULT_FILE_CAP) * 2, MAX_FILE_CAP);
     setCap(next);
     post({ t: 'request-fleet-diff', cap: next });
   };
@@ -147,7 +158,13 @@ export function FleetDiff() {
           </div>
         ) : (
           trees.map((tree) => (
-            <Tree key={tree.root} tree={tree} sessions={state.sessions} onShowMore={showMore} />
+            <Tree
+              key={tree.root}
+              tree={tree}
+              sessions={state.sessions}
+              onShowMore={showMore}
+              atCeiling={atCeiling}
+            />
           ))
         )}
       </div>
@@ -156,8 +173,10 @@ export function FleetDiff() {
 }
 
 function Tree({
-  tree, sessions, onShowMore,
-}: { tree: TreeDiff; sessions: SessionSummary[]; onShowMore: () => void }) {
+  tree, sessions, onShowMore, atCeiling,
+}: {
+  tree: TreeDiff; sessions: SessionSummary[]; onShowMore: () => void; atCeiling: boolean;
+}) {
   const groups = groupTree(tree);
 
   return (
@@ -210,9 +229,19 @@ function Tree({
         {tree.omitted > 0 && (
           // Never a dead end. The cap is a rendering decision, and a sentence
           // naming a number the user cannot act on is worse than either
-          // showing the rows or not mentioning them.
-          <Button variant="outline" size="sm" className="mt-2" onClick={onShowMore}>
-            Show {tree.omitted} more
+          // showing the rows or not mentioning them. Disabled once the cap
+          // is already at the ceiling: past `MAX_FILE_CAP` the host keeps
+          // returning the same `omitted` no matter how many more times this
+          // is pressed, and a button that never becomes a no-op-free action
+          // again is the same dead end this control exists to remove.
+          <Button
+            variant="outline"
+            size="sm"
+            className="mt-2"
+            onClick={onShowMore}
+            disabled={atCeiling}
+          >
+            {atCeiling ? `${tree.omitted} more, past the ${MAX_FILE_CAP}-file limit` : `Show ${tree.omitted} more`}
           </Button>
         )}
       </div>

@@ -44,9 +44,16 @@ export const MAX_FILE_CAP = 2000;
 export function clampCap(requested: number | undefined): number {
   // `Infinity` is nonsense as an unbounded request, but it is still a
   // direction — up — so it clamps to the ceiling below rather than falling
-  // back to the default. Only `NaN` (not a number at all) and non-positive
-  // values fall back.
-  if (requested === undefined || Number.isNaN(requested) || requested < 1) {
+  // back to the default. Only a non-number (`typeof !== 'number'`, which
+  // also catches a wire message whose `cap` arrived as a string, object or
+  // `null` — nothing at compile time stops that at runtime), `NaN`, and
+  // non-positive values fall back. `Number.isNaN` alone is not enough of a
+  // guard here: it does not coerce, so it returns `false` for any
+  // non-number and lets it fall straight through to `Math.floor`.
+  if (
+    requested === undefined || typeof requested !== 'number'
+    || Number.isNaN(requested) || requested < 1
+  ) {
     return FILE_CAP;
   }
   return Math.min(Math.floor(requested), MAX_FILE_CAP);

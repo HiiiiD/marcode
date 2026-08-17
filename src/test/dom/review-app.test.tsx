@@ -66,4 +66,31 @@ suite('review app', () => {
     assert.strictEqual(raised.length, 1);
     assert.strictEqual((raised[0] as { cap?: number }).cap, 1000);
   });
+
+  test('"show more" stops being a live control once the cap is at the ceiling', async () => {
+    renderReview();
+    sendFromHost({
+      t: 'fleet-diff',
+      trees: [{
+        root: '/repo', branch: 'main', sessions: ['s1'],
+        base: { kind: 'head' }, omitted: 5000,
+        files: [{ path: 'src/a.ts', op: 'modify', insertions: 1, deletions: 0, claimedBy: ['s1'] }],
+      }],
+    } as never);
+
+    // 500 -> 1000 -> 2000: the second press reaches MAX_FILE_CAP.
+    await userEvent.click(screen.getByRole('button', { name: 'Show 5000 more' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Show 5000 more' }));
+
+    const button = screen.getByRole('button', { name: /5000 more/ });
+    assert.strictEqual(button.hasAttribute('disabled'), true);
+
+    // A press on a disabled button posts nothing further — the cap the host
+    // already saw (2000) is the last one sent.
+    await userEvent.click(button);
+    const raised = posted().filter((m) => m.t === 'request-fleet-diff' && m.cap !== undefined);
+    assert.strictEqual(raised.length, 2);
+    assert.strictEqual((raised[0] as { cap?: number }).cap, 1000);
+    assert.strictEqual((raised[1] as { cap?: number }).cap, 2000);
+  });
 });
