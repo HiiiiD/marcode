@@ -99,6 +99,45 @@ export type ToolDecision =
   | { allow: true }
   | { allow: false; reason?: string };
 
+export interface QuestionOption {
+  label: string;
+  description: string;
+  /** Claude only. Longer comparison content, rendered as markdown. */
+  preview?: string;
+}
+
+export interface QuestionSpec {
+  /**
+   * Stable answer key. Codex supplies one per question; Claude has no id, so
+   * its adapter uses the question text and maps back at its own boundary.
+   */
+  id: string;
+  header: string;
+  question: string;
+  /** Absent means a free-text question with no options to choose from. */
+  options?: QuestionOption[];
+  multiSelect: boolean;
+  /** Whether a free-text answer is offered alongside the options. */
+  allowOther: boolean;
+  /** The answer is a credential: masked on input, never persisted. */
+  secret: boolean;
+}
+
+/** Question id -> that question's answers. A list because codex is list-native. */
+export type QuestionAnswers = Record<string, string[]>;
+
+/**
+ * What the backend's own permission engine already worked out about a
+ * request. Every field is optional: a provider reports what it has.
+ */
+export interface PermissionMeta {
+  title?: string;
+  displayName?: string;
+  description?: string;
+  decisionReason?: string;
+  blockedPath?: string;
+}
+
 /** One account/plan usage window, as a percentage. Never a token count. */
 export interface UsageWindow {
   /** Provider-defined: 'five-hour' | 'seven-day' | … */
@@ -173,7 +212,9 @@ export type AgentEvent =
    */
   | { kind: 'tool-end'; id: string; ok: boolean; output: ToolOutput;
       tool?: ToolCall; parentId?: string }
-  | { kind: 'permission'; id: string; tool: ToolCall; parentId?: string }
+  | { kind: 'permission'; id: string; tool: ToolCall; parentId?: string; meta?: PermissionMeta }
+  | { kind: 'question'; id: string; questions: QuestionSpec[]; blocking: boolean; parentId?: string }
+  | { kind: 'request-cancelled'; id: string }
   | { kind: 'turn-end'; reason: 'done' | 'interrupted' | 'error'; error?: string }
   | { kind: 'usage'; inputTokens: number; outputTokens: number }
   /**
@@ -194,6 +235,11 @@ export interface AgentRun {
   send(text: string, context?: EditorContext): void;
   readonly events: AsyncIterable<AgentEvent>;
   respondToTool(id: string, decision: ToolDecision): void;
+  /**
+   * Answers a parked `question`. Fire-and-forget like the other responders:
+   * callers must never see this reject.
+   */
+  respondToQuestion(id: string, answers: QuestionAnswers): void;
   setEffort(effort: EffortLevel): void;
   /**
    * Changes the model of the *running* session, not just recorded state —

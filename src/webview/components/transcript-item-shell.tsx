@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 
-export type TranscriptItemRole = 'user' | 'assistant' | 'tool' | 'permission' | 'subagent' | 'error';
+export type TranscriptItemRole =
+  | 'user' | 'assistant' | 'tool' | 'permission' | 'question' | 'subagent' | 'error';
 
 /**
  * What the eye lands on before it can read anything. Two left rules that
@@ -36,6 +37,12 @@ const FRAME: Record<TranscriptItemRole, string> = {
   // competes with `permission`/`error` (destructive).
   subagent: 'border-l border-l-muted-foreground pl-2',
   permission: 'border-l border-l-destructive pl-2',
+  // No frame of its own: a live question is a full bordered card carrying the
+  // `attention` tone, and a gutter rule beside it would be the same signal
+  // said twice. The role exists so that card gets the label and timestamp
+  // every other item has — it had neither — without inheriting a second
+  // border.
+  question: '',
   error: 'border-l border-l-destructive pl-2',
 };
 

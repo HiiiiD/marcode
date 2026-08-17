@@ -3,6 +3,7 @@ import type {
   ContextResult,
   EditorContext,
   HostToWebview, Invocable, McpServerStatus, PaneLayout, PermissionRequest, ProviderInfo,
+  QuestionRequest,
   SessionId, SessionSummary, StaleTree, TranscriptItem, TreeDiff, UnavailableProvider, UsageWindow,
 } from '../protocol/messages';
 
@@ -14,6 +15,7 @@ export interface PaneState {
   /** The cwd's catalog. Absent until the host has one; see the spec's States. */
   invocables?: Invocable[];
   mcpServers: McpServerStatus[];
+  pendingQuestions: QuestionRequest[];
 }
 
 export interface ClientState {
@@ -143,6 +145,7 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
           summary: s, items: s.items, hasMore: s.hasMore, pending: s.pending,
           invocables: s.invocables,
           mcpServers: s.mcpServers ?? [],
+          pendingQuestions: s.pendingQuestions,
         };
       }
       return {
@@ -274,6 +277,7 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
             summary: s, items: s.items, hasMore: s.hasMore, pending: s.pending,
             invocables: s.invocables,
             mcpServers: s.mcpServers ?? [],
+            pendingQuestions: s.pendingQuestions,
           },
         },
       };
@@ -366,6 +370,11 @@ function applyPatch(pane: PaneState, patch: Patch): PaneState {
       const pending = patch.item.role === 'permission' && patch.item.state === 'pending'
         ? [...pane.pending, { requestId: patch.item.requestId, tool: patch.item.tool }]
         : pane.pending;
+      const pendingQuestions = patch.item.role === 'question' && patch.item.state === 'pending'
+        ? [...pane.pendingQuestions, {
+            requestId: patch.item.requestId, questions: patch.item.questions, blocking: patch.item.blocking,
+          }]
+        : pane.pendingQuestions;
 
       // A nested append targets a parent already in the loaded window: the
       // parent's tool-start is appended before its subagent can emit
@@ -374,10 +383,10 @@ function applyPatch(pane: PaneState, patch: Patch): PaneState {
       // losing nesting degrades rendering; dropping hides real work.
       if (patch.parentItemId) {
         const nested = withChild(pane.items, patch.parentItemId, patch.item);
-        if (nested) { return { ...pane, items: nested, pending }; }
+        if (nested) { return { ...pane, items: nested, pending, pendingQuestions }; }
       }
 
-      return { ...pane, items: [...pane.items, patch.item], pending };
+      return { ...pane, items: [...pane.items, patch.item], pending, pendingQuestions };
     }
 
     case 'replace': {
@@ -385,14 +394,17 @@ function applyPatch(pane: PaneState, patch: Patch): PaneState {
       const pending = replaced.role === 'permission' && replaced.state !== 'pending'
         ? pane.pending.filter((p) => p.requestId !== replaced.requestId)
         : pane.pending;
+      const pendingQuestions = replaced.role === 'question' && replaced.state !== 'pending'
+        ? pane.pendingQuestions.filter((q) => q.requestId !== replaced.requestId)
+        : pane.pendingQuestions;
 
       if (patch.parentItemId) {
         const nested = withChild(pane.items, patch.parentItemId, replaced);
-        if (nested) { return { ...pane, items: nested, pending }; }
+        if (nested) { return { ...pane, items: nested, pending, pendingQuestions }; }
       }
 
       const items = pane.items.map((i) => (i.id === replaced.id ? replaced : i));
-      return { ...pane, items, pending };
+      return { ...pane, items, pending, pendingQuestions };
     }
 
     case 'delta': {

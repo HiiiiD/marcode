@@ -189,19 +189,39 @@ export interface PermissionsRequestApprovalResponse {
 }
 
 /**
- * The two typed-input server requests this panel cannot render, and the
- * responses that decline them — verified against the codex-cli 0.147.0
- * generated bindings (`ToolRequestUserInputResponse`,
- * `McpServerElicitationRequestResponse`).
+ * `item/tool/requestUserInput`'s response, and MCP elicitation's decline
+ * response — verified against the codex-cli 0.147.0 generated bindings
+ * (`ToolRequestUserInputResponse`, `McpServerElicitationRequestResponse`).
  *
- * Both have required fields, so `{}` fails deserialization server-side and
- * the blocking request goes unanswered — the exact hang the decline exists to
- * prevent. `answers` is a map, so an empty one is structurally valid and
- * means "answered nothing".
+ * `item/tool/requestUserInput` is now answered as a real `question` event
+ * (see `map-events.ts`'s `questionEventOf` and `CodexRun.respondToQuestion`);
+ * MCP elicitation is still declined outright — see `DECLINED_INPUT_METHODS`.
+ * Both response types have required fields, so `{}` fails deserialization
+ * server-side and a blocking request goes unanswered — the exact hang a
+ * cancellation's empty map/decline action exists to prevent. `answers` is a
+ * map, so an empty one is structurally valid and means "answered nothing".
  */
 export interface ToolRequestUserInputAnswer { answers: string[] }
 export interface ToolRequestUserInputResponse {
   answers: Record<string, ToolRequestUserInputAnswer>;
+}
+
+/**
+ * `item/tool/requestUserInput`'s params — verified against the codex-cli
+ * 0.147.0 generated bindings (`ToolRequestUserInputParams`). EXPERIMENTAL
+ * upstream. `autoResolutionMs` is deprecated in favour of `isBlocking` and
+ * is deliberately not mapped.
+ */
+export interface ToolRequestUserInputOption { label: string; description: string }
+export interface ToolRequestUserInputQuestion {
+  id: string; header: string; question: string;
+  isOther: boolean; isSecret: boolean;
+  options: ToolRequestUserInputOption[] | null;
+}
+export interface ToolRequestUserInputParams {
+  threadId: string; turnId: string; itemId: string;
+  questions: ToolRequestUserInputQuestion[];
+  isBlocking: boolean;
 }
 export type McpServerElicitationAction = 'accept' | 'decline' | 'cancel';
 export interface McpServerElicitationRequestResponse {

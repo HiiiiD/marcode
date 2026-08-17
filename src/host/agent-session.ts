@@ -1,20 +1,21 @@
 import { resolve } from 'node:path';
 import type {
-  McpServerStatus, PermissionRequest, SessionId, SessionRef, SessionSnapshot, SessionState,
-  SessionStatus, TranscriptItem, TranscriptPatch,
+  McpServerStatus, PermissionRequest, QuestionRequest, SessionId, SessionRef, SessionSnapshot,
+  SessionState, SessionStatus, TranscriptItem, TranscriptPatch,
 } from '../protocol/messages';
 import type { ToolCall, ToolOutput } from '../providers/canonical/tool-call';
 import type {
   AgentEvent, AgentProvider, AgentRun,
   ContextBreakdown,
   EditorContext,
-  EffortLevel, Invocable, PermissionMode, ToolDecision,
+  EffortLevel, Invocable, PermissionMode, QuestionAnswers, ToolDecision,
   UsageWindow,
 } from '../providers/types';
 import { findModel, resolveEffort } from '../shared/model-catalog';
 import { threadKey } from '../shared/thread-key';
 import { claimedPaths } from './claim-paths';
 import { profileNoiseIn } from './profile-noise';
+import { persistableAnswers } from './question-persistence';
 import type { TranscriptStore } from './transcript-store';
 import { detectWorktreeAdd } from './worktree-detect';
 
@@ -93,9 +94,11 @@ function nextId(prefix: string): string {
 export class AgentSession {
   private run: AgentRun;
   private pending = new Map<string, PermissionRequest>();
+  private pendingQuestions = new Map<string, QuestionRequest>();
   private openAssistantId: string | undefined;
   private toolItems = new Map<string, TranscriptItem>();
   private permissionItems = new Map<string, TranscriptItem>();
+  private questionItems = new Map<string, TranscriptItem>();
   /** Provider tool id -> the buffered children of that (parent) tool call. */
   private childrenByParent = new Map<string, TranscriptItem[]>();
   /** Provider tool id of a child -> the provider tool id of its parent. */
@@ -420,7 +423,87 @@ export class AgentSession {
       else { this.replaceItem(settled); }
       this.permissionItems.set(requestId, settled);
     }
-    this.setStatus(this.pending.size > 0 ? 'awaiting-approval' : 'running');
+    this.recomputeWaitingStatus();
+  }
+
+  /**
+   * Answers a parked question. A double answer — a second click on a card
+   * already settled — is a no-op rather than a failure: the request is gone
+   * from `pendingQuestions` after the first answer, so this mirrors the early
+   * return in `respondToPermission` that stops a second click from stranding
+   * the card with no way to retry.
+   */
+  answerQuestion(requestId: string, answers: QuestionAnswers): void {
+    if (!this.pendingQuestions.delete(requestId)) { return; }
+    this.replaceQuestionItem(requestId, 'answered', answers);
+    this.run.respondToQuestion(requestId, answers);
+    this.recomputeWaitingStatus();
+  }
+
+  /**
+   * Settles a request cancelled out from under the host — an abort or an
+   * explicit interrupt racing a parked permission or question (Claude raises
+   * `request-cancelled` for both; see `cancelParked` in claude-provider.ts).
+   * The provider has already resolved its own side by the time this arrives,
+   * so this only reconciles host state: without it, the card stays rendered
+   * `pending` and `recomputeWaitingStatus` leaves the session stuck at
+   * `awaiting-approval` forever, with a later Allow/Deny/answer click
+   * silently no-opping against a request the provider already discarded.
+   *
+   * A permission settles as `denied` with reason `'Turn cancelled'` — the
+   * permission item's state union stays `pending | allowed | denied`
+   * (widening it is a wire/type change no task here owns), and `denied` with
+   * that reason is exactly what the provider's own `cancelParked` already
+   * resolved with, so host and provider agree. A question settles into its
+   * own `'cancelled'` state.
+   */
+  private settleRequest(requestId: string, state: 'cancelled'): void {
+    if (this.pending.delete(requestId)) {
+      const existing = this.permissionItems.get(requestId);
+      if (existing && existing.role === 'permission') {
+        const settled: TranscriptItem = { ...existing, state: 'denied', reason: 'Turn cancelled' };
+        const parentRoot = this.permissionChildOf.get(requestId);
+        if (parentRoot) { this.replaceChild(parentRoot, settled); }
+        else { this.replaceItem(settled); }
+        this.permissionItems.set(requestId, settled);
+      }
+      this.recomputeWaitingStatus();
+      return;
+    }
+    if (!this.pendingQuestions.delete(requestId)) { return; }
+    this.replaceQuestionItem(requestId, state);
+    this.recomputeWaitingStatus();
+  }
+
+  /**
+   * Replaces a parked question's transcript item with its settled state.
+   *
+   * `answers` is the caller's unredacted set — `answerQuestion` still sends
+   * that one to `run.respondToQuestion` — and is redacted here, against this
+   * request's own `QuestionSpec[]`, before it ever reaches `replaceItem` or
+   * `this.store`. Getting the two the wrong way round either leaks a secret
+   * onto disk or answers the agent with an empty value.
+   */
+  private replaceQuestionItem(
+    requestId: string, state: 'answered' | 'cancelled', answers?: QuestionAnswers,
+  ): void {
+    const existing = this.questionItems.get(requestId);
+    if (!existing || existing.role !== 'question') { return; }
+    const persisted = answers ? persistableAnswers(existing.questions, answers) : undefined;
+    const settled: TranscriptItem = { ...existing, state, ...(persisted ? { answers: persisted } : {}) };
+    this.replaceItem(settled);
+    this.questionItems.set(requestId, settled);
+  }
+
+  /**
+   * The one place that recomputes `awaiting-approval` vs. an idle status —
+   * used wherever a permission or question request settles. `idle` names
+   * what "not waiting" means at the call site: `running` mid-turn,
+   * `idle` once a turn has ended.
+   */
+  private recomputeWaitingStatus(idle: SessionStatus = 'running'): void {
+    const waiting = this.pending.size > 0 || this.pendingQuestions.size > 0;
+    this.setStatus(waiting ? 'awaiting-approval' : idle);
   }
 
   /**
@@ -522,6 +605,7 @@ export class AgentSession {
     const { items, hasMore } = await this.store.tail(this._state.id);
     return {
       ...this._state, items, hasMore, pending: [...this.pending.values()],
+      pendingQuestions: [...this.pendingQuestions.values()],
       invocables: this.invocableEntries,
       mcpServers: this.mcpServers,
     };
@@ -542,6 +626,17 @@ export class AgentSession {
         // Best-effort: the provider is being torn down regardless.
       }
     }
+    // Dropped, not answered. `respondToQuestion` has no "declined" spelling —
+    // its only argument is a set of answers — and the neutral `{}` does not
+    // mean the same thing to both backends: codex reads it as "answered
+    // nothing", while Claude turns it into `{behavior:'allow', updatedInput:
+    // {...input, answers:{}}}`, i.e. run the tool with no answer at all. So
+    // cancelling is the provider's own job, in its own vocabulary, and every
+    // AgentRun.dispose() does it (claude-provider's `parked` loop resolves its
+    // CANCELLED sentinel; CodexRun.cancelParkedQuestions responds with the
+    // empty map). Clearing here only keeps host state honest for the
+    // `flushUnsettledTools`/`scheduleFlush` that follow.
+    this.pendingQuestions.clear();
     try {
       await this.run.dispose();
     } catch {
@@ -670,12 +765,17 @@ export class AgentSession {
           ? this.parentItemIdFor(parentSource)
           : undefined;
 
+        // `meta` is spread conditionally, never written as an explicit
+        // `undefined`: it reaches both the JSONL and the wire, where an
+        // absent key and a present-but-undefined one are the same value but
+        // not the same object.
+        const meta = event.meta ? { meta: event.meta } : {};
         const item: TranscriptItem = {
           id: nextId('p'), ts: Date.now(), role: 'permission',
-          requestId: event.id, tool: event.tool, state: 'pending',
+          requestId: event.id, tool: event.tool, state: 'pending', ...meta,
         };
         this.permissionItems.set(event.id, item);
-        this.pending.set(event.id, { requestId: event.id, tool: event.tool });
+        this.pending.set(event.id, { requestId: event.id, tool: event.tool, ...meta });
 
         if (parentSource && parentItemId) {
           const root = this.resolveParent(parentSource);
@@ -692,6 +792,26 @@ export class AgentSession {
         this.setStatus('awaiting-approval');
         return;
       }
+
+      case 'question': {
+        const item: TranscriptItem = {
+          id: nextId('q'), ts: Date.now(), role: 'question',
+          requestId: event.id, questions: event.questions, blocking: event.blocking,
+          state: 'pending',
+        };
+        this.questionItems.set(event.id, item);
+        this.pendingQuestions.set(event.id, {
+          requestId: event.id, questions: event.questions, blocking: event.blocking,
+        });
+        this.closeAssistant();
+        this.appendItem(item);
+        this.setStatus('awaiting-approval');
+        return;
+      }
+
+      case 'request-cancelled':
+        this.settleRequest(event.id, 'cancelled');
+        return;
 
       case 'invocables':
         this.sink.invocables(this._state.id, event.entries);
@@ -726,7 +846,7 @@ export class AgentSession {
           // unconditionally going idle here would strand its card as the
           // only sign anything is waiting, with the status dot claiming
           // otherwise.
-          this.setStatus(this.pending.size > 0 ? 'awaiting-approval' : 'idle');
+          this.recomputeWaitingStatus('idle');
           // After the status, never before: drainQueued() only fires once the
           // session is genuinely idle, and an interrupted turn reaches here
           // the same way a completed one does — which is what makes Stop a
