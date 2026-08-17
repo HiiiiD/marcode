@@ -75,11 +75,15 @@ suite("SessionHeader status", () => {
     // very first render, empty, rather than only once bypass is chosen — a
     // live region created with its announcement text already inside it is
     // typically not announced by assistive tech.
-    const badge = screen.getByRole("status");
-    assert.strictEqual(badge.textContent, "");
+    // The composer mounts a named live region of its own for attachment
+    // errors, on the same pre-mounted-and-empty principle. This badge is the
+    // unnamed one.
+    const badgeOf = () => screen.getAllByRole("status")
+      .find((el) => el.getAttribute("aria-label") === null);
+    assert.strictEqual(badgeOf()?.textContent, "");
 
     sendFromHost({ t: "sessions-changed", sessions: [summary("a", { permissionMode: "bypass" })] });
-    assert.strictEqual(screen.getByRole("status").textContent, "Bypassing permissions");
+    assert.strictEqual(badgeOf()?.textContent, "Bypassing permissions");
   });
 
   test("the header shows the folder the agent is working in", () => {

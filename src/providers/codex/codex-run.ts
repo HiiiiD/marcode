@@ -1,6 +1,7 @@
+import { attachmentLines, imageAttachments } from '../attachment-payload';
 import { formatEditorContext } from '../format-editor-context';
 import type {
-  AgentEvent, AgentRun, ContextBreakdown, EditorContext, EffortLevel, McpServerStatus,
+  AgentEvent, AgentRun, Attachment, ContextBreakdown, EditorContext, EffortLevel, McpServerStatus,
   PermissionMode, QuestionAnswers, StartOptions, ToolDecision, UsageWindow,
 } from '../types';
 import type { RequestId } from './app-server';
@@ -11,7 +12,7 @@ import { toContextBreakdown, toUsageWindows } from './map-usage';
 import type {
   FileChangeApprovalDecision, McpServerElicitationRequestResponse,
   PermissionsRequestApprovalResponse, RateLimitsReadResponse, SkillsListResponse,
-  ThreadResponse, ThreadTokenUsage, ToolRequestUserInputResponse,
+  ThreadResponse, ThreadTokenUsage, ToolRequestUserInputResponse, UserInput,
 } from './wire';
 
 /**
@@ -365,17 +366,20 @@ export class CodexRun implements AgentRun {
     }
   }
 
-  send(text: string, context?: EditorContext): void {
-    // One text block rather than two, same as the Claude provider: a single
-    // block keeps the turn's shape identical whether or not context is
-    // attached.
+  send(text: string, context?: EditorContext, attachments?: Attachment[]): void {
     const body = context ? `${formatEditorContext(context)}\n\n${text}` : text;
+    const input: UserInput[] = [
+      { type: 'text', text: `${body}${attachmentLines(attachments)}`, text_elements: [] },
+    ];
+    for (const image of imageAttachments(attachments)) {
+      input.push({ type: 'localImage', path: image.path, detail: 'auto' });
+    }
     this.ensureStarted().then((threadId) => {
       if (this.dead || !threadId) { return; }
       const settings = codexSettings(this.mode);
       this.server.request('turn/start', {
         threadId,
-        input: [{ type: 'text', text: body, text_elements: [] }],
+        input,
         // Codex has no in-place "patch the live thread" request —
         // `ThreadMetadataUpdateParams` carries only `threadId` and
         // `gitInfo`, nothing settings-shaped. Every field below is

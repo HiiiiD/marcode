@@ -36,7 +36,7 @@ function hydrated() {
       usage: { inputTokens: 0, outputTokens: 0 },
       archived: false, createdAt: 1, updatedAt: 1, includeEditorContext: true,
       pendingQuestions: [],
-      items: [], hasMore: false, pending: [], mcpServers: [],
+      items: [], hasMore: false, pending: [], mcpServers: [], pendingAttachments: [],
     }],
   });
 }

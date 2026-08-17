@@ -6,6 +6,7 @@ import type {
 import type { ToolCall, ToolOutput } from '../providers/canonical/tool-call';
 import type {
   AgentEvent, AgentProvider, AgentRun,
+  Attachment,
   ContextBreakdown,
   EditorContext,
   EffortLevel, Invocable, PermissionMode, QuestionAnswers, ToolDecision,
@@ -13,6 +14,7 @@ import type {
 } from '../providers/types';
 import { findModel, resolveEffort } from '../shared/model-catalog';
 import { threadKey } from '../shared/thread-key';
+import { MAX_PENDING } from './attachment-store';
 import { claimedPaths } from './claim-paths';
 import { profileNoiseIn } from './profile-noise';
 import { persistableAnswers } from './question-persistence';
@@ -24,6 +26,16 @@ export interface SessionSink {
   status(id: SessionId, status: SessionStatus): void;
   mcp(id: SessionId, servers: McpServerStatus[]): void;
   changed(): void;
+  /**
+   * The pending attachment set changed. Separate from `changed()` because
+   * `sessions-changed` carries summaries, not attachments: without its own
+   * report a set spent by a send would keep its chips in the composer, with
+   * live removal controls, describing a list the host no longer holds.
+   *
+   * Optional for the same reason as `shellNoise`: a sink with nowhere to put
+   * it stays valid without one.
+   */
+  pendingAttachments?(id: SessionId, pending: Attachment[]): void;
   /**
    * A running session reported its catalog. Goes UP to the manager, which
    * owns the per-cwd cache and the fan-out; it is not this session's answer
@@ -153,6 +165,13 @@ export class AgentSession {
   private appended = 0;
   /** A profile failure has already been reported up; every later one is the same news. */
   private shellNoiseReported = false;
+  /**
+   * Composed but not yet sent. Host state, not webview state: attachments
+   * arrive asynchronously (a paste is written to disk before it becomes one),
+   * so a composer-local list would be the webview holding something the host
+   * does not.
+   */
+  private attachments: Attachment[] = [];
 
   constructor(
     private readonly _state: SessionState,
@@ -237,6 +256,23 @@ export class AgentSession {
     return this._state.status === 'running' || this._state.status === 'awaiting-approval';
   }
 
+  get pendingAttachments(): Attachment[] { return [...this.attachments]; }
+
+  /** Silently ignores anything past the cap — the router reports the refusal. */
+  addAttachments(next: Attachment[]): void {
+    const room = MAX_PENDING - this.attachments.length;
+    if (room <= 0) { return; }
+    this.attachments = [...this.attachments, ...next.slice(0, room)];
+    this.reportAttachments();
+    this.sink.changed();
+  }
+
+  removeAttachment(attachmentId: string): void {
+    this.attachments = this.attachments.filter((a) => a.id !== attachmentId);
+    this.reportAttachments();
+    this.sink.changed();
+  }
+
   /**
    * Sends, or parks the message until the turn in flight is over.
    *
@@ -248,13 +284,22 @@ export class AgentSession {
   send(text: string, context?: EditorContext, refs?: SessionRef[]): void {
     if (!this.busy) { this.drainQueued(); }
     if (this.busy) {
-      this._state.queued = { text, ...(refs && refs.length > 0 ? { refs } : {}) };
+      // Captured now, not at eventual delivery: the pending set belongs to
+      // the turn being composed, and this message is the turn in progress —
+      // an attachment added after this point belongs to whatever is
+      // composed next, not to the message already parked here.
+      const attachments = this.drainLiveAttachments();
+      this._state.queued = {
+        text,
+        ...(refs && refs.length > 0 ? { refs } : {}),
+        ...(attachments.length > 0 ? { attachments } : {}),
+      };
       this.queuedContext = context;
       this._state.updatedAt = Date.now();
       this.sink.changed();
       return;
     }
-    this.deliver(text, context, refs);
+    this.deliver(text, context, refs, this.drainLiveAttachments());
   }
 
   /** Drops the parked message. Nothing was ever appended, so nothing is undone. */
@@ -277,10 +322,36 @@ export class AgentSession {
     const context = this.queuedContext;
     this._state.queued = undefined;
     this.queuedContext = undefined;
-    this.deliver(queued.text, context, queued.refs);
+    // The queued attachments, captured when this message was parked — not
+    // the live set, which by now belongs to whatever the user has composed
+    // since. See `send`'s queueing branch.
+    this.deliver(queued.text, context, queued.refs, queued.attachments ?? []);
   }
 
-  private deliver(text: string, context?: EditorContext, refs?: SessionRef[]): void {
+  /**
+   * Drains and returns the live pending set. The one place that reads
+   * `this.attachments`, so both the direct-send path (drained right before
+   * delivery) and the queue path (drained right before parking) go through
+   * the same "belongs to the turn being composed right now" rule.
+   */
+  private drainLiveAttachments(): Attachment[] {
+    const attachments = this.attachments;
+    if (attachments.length === 0) { return attachments; }
+    this.attachments = [];
+    // Reported because it emptied: the composer is still rendering the set
+    // this call just spent, and nothing else on the wire would correct it.
+    this.reportAttachments();
+    return attachments;
+  }
+
+  /** The one place the pending set is announced, so every mutation reports alike. */
+  private reportAttachments(): void {
+    this.sink.pendingAttachments?.(this._state.id, this.pendingAttachments);
+  }
+
+  private deliver(
+    text: string, context?: EditorContext, refs?: SessionRef[], attachments: Attachment[] = [],
+  ): void {
     if (this._state.title === 'Untitled' && text.trim().length > 0) {
       this._state.title = text.trim().slice(0, TITLE_MAX);
     }
@@ -288,6 +359,7 @@ export class AgentSession {
       id: nextId('u'), ts: Date.now(), role: 'user', text,
       ...(context ? { context } : {}),
       ...(refs && refs.length > 0 ? { refs } : {}),
+      ...(attachments.length > 0 ? { attachments } : {}),
     };
     this.appendItem(item);
     this.closeAssistant();
@@ -299,7 +371,7 @@ export class AgentSession {
     const outgoing = this.seed ? `${this.seed}\n\n---\n\n${text}` : text;
     this.seed = undefined;
     try {
-      this.run.send(outgoing, context);
+      this.run.send(outgoing, context, attachments.length > 0 ? attachments : undefined);
     } catch (err) {
       this.fail(err instanceof Error ? err.message : String(err));
     }
@@ -608,6 +680,7 @@ export class AgentSession {
       pendingQuestions: [...this.pendingQuestions.values()],
       invocables: this.invocableEntries,
       mcpServers: this.mcpServers,
+      pendingAttachments: this.pendingAttachments,
     };
   }
 

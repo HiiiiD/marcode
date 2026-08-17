@@ -98,9 +98,22 @@ export interface CommandAction {
   command: string;
 }
 
+/**
+ * `turn/start` input items. Mirrors `.codex-bindings/v2/UserInput.ts`,
+ * verified against codex-cli 0.147.0. Only variants this panel sends are
+ * declared; `codex-run.test.ts` guards the payload shape.
+ */
+export type UserInput =
+  | { type: 'text'; text: string; text_elements: [] }
+  | { type: 'localImage'; path: string; detail?: ImageDetail };
+
+export type ImageDetail = 'auto' | 'low' | 'high' | 'original';
+
 export type ThreadItem =
   | { type: 'agentMessage'; id: string; text: string }
   | { type: 'reasoning'; id: string; summary: string[]; content: string[] }
+  /** An echoed user image; the transcript's user item already renders it. */
+  | { type: 'imageView'; id: string; path: string }
   // `command` is SHELL-ESCAPED, not display text — measured on codex-cli
   // 0.147.0, a `pwsh` call arrives as
   // `"C:\\Program Files\\PowerShell\\7\\pwsh.exe" -Command "…"` with every

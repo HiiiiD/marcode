@@ -126,6 +126,8 @@ export function mcpServerStatusOf(
 
 function startOf(item: ThreadItem | undefined): AgentEvent[] {
   if (!item) { return []; }
+  // The user transcript item already records an echoed image.
+  if (item.type === 'imageView') { return []; }
   const tool = toToolCall(item);
   if (!tool) { return []; }
   return [{ kind: 'tool-start', id: item.id, tool }];
@@ -141,6 +143,8 @@ function startOf(item: ThreadItem | undefined): AgentEvent[] {
  */
 function endOf(item: ThreadItem | undefined): AgentEvent[] {
   if (!item) { return []; }
+  // The user transcript item already records an echoed image.
+  if (item.type === 'imageView') { return []; }
   const tool = toToolCall(item);
   if (!tool) { return []; }
   return [{

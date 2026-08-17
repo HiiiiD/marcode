@@ -44,7 +44,7 @@ export function snapshot(id: string, over: Partial<SessionSnapshot> = {}): Sessi
   return {
     ...summary(id),
     items: [], hasMore: false, pending: [], pendingQuestions: [], mcpServers: [],
-    ...over,
+    pendingAttachments: [], ...over,
   };
 }
 

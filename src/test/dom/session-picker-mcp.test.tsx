@@ -11,7 +11,7 @@ function snapshot(over: Partial<SessionSnapshot> = {}): SessionSnapshot {
     usage: { inputTokens: 0, outputTokens: 0 }, resumeTokens: {},
     archived: false, createdAt: 1, updatedAt: 1, includeEditorContext: true,
     pendingQuestions: [],
-    items: [], hasMore: false, pending: [], mcpServers: [], ...over,
+    items: [], hasMore: false, pending: [], mcpServers: [], pendingAttachments: [], ...over,
   };
 }
 

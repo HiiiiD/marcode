@@ -13,6 +13,12 @@ interface StoreValue {
    * posted, because the host has no use for which pane has focus.
    */
   focus: (id: SessionId) => void;
+  /**
+   * Close `id`'s composer rejection line. Client-local for the same reason as
+   * `focus`: the host emits a rejection and keeps nothing, so there is no
+   * host state a dismissal could correct.
+   */
+  dismissRejection: (id: SessionId) => void;
 }
 
 const StoreContext = createContext<StoreValue | undefined>(undefined);
@@ -44,9 +50,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const focus = (id: SessionId) => dispatch({ t: 'local-focus', id });
+  const dismissRejection = (id: SessionId) => dispatch({ t: 'local-dismiss-rejection', id });
 
   return (
-    <StoreContext.Provider value={{ state, post, focus }}>
+    <StoreContext.Provider value={{ state, post, focus, dismissRejection }}>
       {children}
     </StoreContext.Provider>
   );

@@ -1,8 +1,11 @@
 import { randomBytes } from 'node:crypto';
 import * as vscode from 'vscode';
-import { MessageRouter, type EditorContextHost } from './message-router';
+import type { AttachmentStore } from './attachment-store';
+import { MessageRouter, type AttachmentHost, type EditorContextHost } from './message-router';
 import type { SessionManager } from './session-manager';
 import type { HostToWebview, SessionId, WebviewToHost } from '../protocol/messages';
+
+const NO_PICKER: AttachmentHost = { pick: async () => [] };
 
 export class PanelViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'hiiiid-code.panel';
@@ -13,6 +16,8 @@ export class PanelViewProvider implements vscode.WebviewViewProvider {
     private readonly manager: SessionManager,
     private readonly defaultCwd: string,
     private readonly editor: EditorContextHost,
+    private readonly attachments?: AttachmentStore,
+    private readonly picker: AttachmentHost = NO_PICKER,
   ) {}
 
   post(msg: HostToWebview): void {
@@ -49,12 +54,19 @@ export class PanelViewProvider implements vscode.WebviewViewProvider {
     this.view = view;
     view.webview.options = {
       enableScripts: true,
-      localResourceRoots: [vscode.Uri.joinPath(this.extensionUri, 'dist')],
+      // The attachment store joins `dist` as a root so a pasted screenshot can
+      // be previewed from disk instead of having its bytes re-sent as a data
+      // URL on every render. Still local-only: this widens the roots by one
+      // directory the extension itself owns, and the CSP is untouched.
+      localResourceRoots: [
+        vscode.Uri.joinPath(this.extensionUri, 'dist'),
+        ...(this.attachments ? [vscode.Uri.file(this.attachments.baseDir)] : []),
+      ],
     };
     view.webview.html = this.render(view.webview);
 
     const router = new MessageRouter(
-      this.manager, (m) => this.post(m), this.defaultCwd, this.editor,
+      this.manager, (m) => this.post(m), this.defaultCwd, this.editor, this.attachments, this.picker,
     );
     view.webview.onDidReceiveMessage(async (raw: WebviewToHost) => {
       try {
@@ -83,6 +95,13 @@ export class PanelViewProvider implements vscode.WebviewViewProvider {
     const styleUri = webview.asWebviewUri(
       vscode.Uri.joinPath(this.extensionUri, 'dist', 'webview.css'),
     );
+    // One URI for the whole store, minted here because `asWebviewUri` is a
+    // host API and the webview must not learn disk paths. Every preview is
+    // this plus an `Attachment.storeRelative`, so no attachment message
+    // carries a URI of its own.
+    const attachmentBase = this.attachments
+      ? webview.asWebviewUri(vscode.Uri.file(this.attachments.baseDir)).toString()
+      : '';
     const csp = [
       `default-src 'none'`,
       `img-src ${webview.cspSource} data:`,
@@ -101,7 +120,7 @@ export class PanelViewProvider implements vscode.WebviewViewProvider {
 <title>HiiiiD Code</title>
 </head>
 <body>
-<div id="root"></div>
+<div id="root" data-attachment-base="${attachmentBase}"></div>
 <script nonce="${nonce}" src="${scriptUri}"></script>
 </body>
 </html>`;

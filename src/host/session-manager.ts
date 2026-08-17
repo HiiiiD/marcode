@@ -1,5 +1,6 @@
 import { resolve } from 'node:path';
 import { AgentSession, type SessionSink } from './agent-session';
+import type { AttachmentStore } from './attachment-store';
 import { catalogKey, CatalogService } from './catalog-service';
 import { claimedPaths, toRepoRelative } from './claim-paths';
 import { treeChanges } from './fleet-diff';
@@ -13,6 +14,7 @@ import { resolvePermissionMode } from '../shared/permission-catalog';
 import { threadKey, threadKeyCwd } from '../shared/thread-key';
 import { orderWindows } from '../shared/usage-windows';
 import type {
+  Attachment,
   ContextResult, HostToWebview, McpServerStatus, PaneLayout, PermissionMode, ProviderInfo, SessionId,
   SessionRef, SessionSnapshot, SessionState, SessionStatus, SessionSummary, StaleTree,
   TranscriptItem, TranscriptPatch, TreeDiff, UnavailableProvider,
@@ -160,6 +162,7 @@ export class SessionManager implements SessionSink {
      * every existing construction site valid.
      */
     private readonly onShellNoise: (profile: string) => void = () => {},
+    private readonly attachments?: AttachmentStore,
   ) {}
 
   async init(): Promise<void> {
@@ -1232,6 +1235,9 @@ export class SessionManager implements SessionSink {
         // for an archived session is all of them.
         pendingQuestions: [],
         mcpServers: [],
+        // Same reason: nothing is composing into an archived session, so
+        // there is no pending set to report.
+        pendingAttachments: [],
       });
       this.drainSnapshotBuffer(id);
     }
@@ -1331,6 +1337,7 @@ export class SessionManager implements SessionSink {
     await this.archive(id);
     this.meta.delete(id);
     await this.store.remove(id);
+    await this.attachments?.remove(id);
     this.paneLayout = {
       ...this.paneLayout,
       panes: this.paneLayout.panes.filter((p) => p.sessionId !== id),
@@ -1463,6 +1470,14 @@ export class SessionManager implements SessionSink {
     // nothing to cache and no fan-out to siblings.
     if (!this.visible.has(id)) { return; }
     this.emit({ t: 'session-mcp', id, servers });
+  }
+
+  pendingAttachments(id: SessionId, pending: Attachment[]): void {
+    // Gated on visibility exactly like mcp(): a background session's composer
+    // is rendered nowhere, and a pane made visible later is built from the
+    // snapshot, which carries `pendingAttachments` already.
+    if (!this.visible.has(id)) { return; }
+    this.emit({ t: 'session-attachments', id, attachments: pending });
   }
 
   changed(): void {

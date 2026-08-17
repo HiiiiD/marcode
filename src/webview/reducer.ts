@@ -1,4 +1,5 @@
 import type {
+  Attachment,
   BringBackPlan,
   ContextResult,
   EditorContext,
@@ -15,6 +16,8 @@ export interface PaneState {
   /** The cwd's catalog. Absent until the host has one; see the spec's States. */
   invocables?: Invocable[];
   mcpServers: McpServerStatus[];
+  /** Composed but not sent. Host state mirrored for this pane. */
+  attachments: Attachment[];
   pendingQuestions: QuestionRequest[];
 }
 
@@ -94,6 +97,8 @@ export interface ClientState {
    * honest answer on a fresh load: nothing has been worked in yet.
    */
   focusedSessionId: SessionId | null;
+  /** Last transient attachment failure for each composer, one line per refused file. */
+  rejectionBySession: Record<SessionId, string[] | undefined>;
 }
 
 export const initialState: ClientState = {
@@ -112,6 +117,7 @@ export const initialState: ClientState = {
   fleetDiffReason: undefined,
   fleetDiffDirty: 0,
   focusedSessionId: null,
+  rejectionBySession: {},
 };
 
 /**
@@ -128,7 +134,13 @@ export type ClientAction =
   | HostToWebview
   | { t: 'local-layout'; layout: PaneLayout }
   /** Focus landed somewhere inside `id`'s pane. Client-local; see `focusedSessionId`. */
-  | { t: 'local-focus'; id: SessionId };
+  | { t: 'local-focus'; id: SessionId }
+  /**
+   * The user closed the composer's rejection line. Client-local because the
+   * host emits rejections and forgets them — `rejectionBySession` is the only
+   * place they live, so there is nothing on the host to tell.
+   */
+  | { t: 'local-dismiss-rejection'; id: SessionId };
 
 export function reduce(state: ClientState, msg: ClientAction): ClientState {
   switch (msg.t) {
@@ -145,6 +157,7 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
           summary: s, items: s.items, hasMore: s.hasMore, pending: s.pending,
           invocables: s.invocables,
           mcpServers: s.mcpServers ?? [],
+          attachments: s.pendingAttachments ?? [],
           pendingQuestions: s.pendingQuestions,
         };
       }
@@ -177,6 +190,7 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
         // hydrate rebuilds them. A stale id would let `+ New` inherit from a
         // session this hydrate may not even contain.
         focusedSessionId: null,
+        rejectionBySession: {},
       };
     }
 
@@ -277,6 +291,7 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
             summary: s, items: s.items, hasMore: s.hasMore, pending: s.pending,
             invocables: s.invocables,
             mcpServers: s.mcpServers ?? [],
+            attachments: s.pendingAttachments ?? [],
             pendingQuestions: s.pendingQuestions,
           },
         },
@@ -292,6 +307,31 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
         byId: { ...state.byId, [msg.id]: { ...pane, invocables: msg.entries } },
       };
     }
+
+    case 'session-attachments': {
+      const pane = state.byId[msg.id];
+      if (!pane) { return state; }
+      return {
+        ...state,
+        byId: { ...state.byId, [msg.id]: { ...pane, attachments: msg.attachments } },
+        rejectionBySession: { ...state.rejectionBySession, [msg.id]: undefined },
+      };
+    }
+
+    case 'attachments-rejected':
+      return {
+        ...state,
+        rejectionBySession: { ...state.rejectionBySession, [msg.id]: msg.reasons },
+      };
+
+    // Dismissed by the user rather than by a later success. The reasons are
+    // read and spent; keeping them until something unrelated attaches leaves
+    // a stale complaint sitting under the box with no way to close it.
+    case 'local-dismiss-rejection':
+      return {
+        ...state,
+        rejectionBySession: { ...state.rejectionBySession, [msg.id]: undefined },
+      };
 
     case 'session-status': {
       const sessions = state.sessions.map((s) =>

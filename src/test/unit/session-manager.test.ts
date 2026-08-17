@@ -2,6 +2,7 @@ import * as assert from 'assert';
 import * as fs from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
+import { AttachmentStore } from '../../host/attachment-store';
 import { SessionManager } from '../../host/session-manager';
 import { TranscriptStore } from '../../host/transcript-store';
 import type { HostToWebview, SessionState } from '../../protocol/messages';
@@ -21,6 +22,7 @@ suite('SessionManager', () => {
   let providers: Map<string, AgentProvider>;
   let provider: FakeProvider;
   let manager: SessionManager;
+  let attachments: AttachmentStore;
   let extra: { manager: SessionManager; dir: string }[];
 
   setup(async () => {
@@ -32,7 +34,10 @@ suite('SessionManager', () => {
       { kind: 'turn-end', reason: 'done' },
     ]);
     providers = new Map<string, AgentProvider>([['fake', provider]]);
-    manager = new SessionManager(store, providers, (m) => sent.push(m));
+    attachments = new AttachmentStore(dir);
+    manager = new SessionManager(
+      store, providers, (m) => sent.push(m), undefined, undefined, attachments,
+    );
     await manager.init();
     extra = [];
   });
@@ -419,11 +424,17 @@ suite('SessionManager', () => {
     assert.strictEqual(summary?.archived, true);
     const kept = await store.tail(id);
     assert.ok(kept.items.length > 0, 'transcript survives close');
+    const pasted = await attachments.savePaste(id, {
+      name: 'shot.png', mediaType: 'image/png', base64: 'iVBORw==',
+    });
+    assert.strictEqual('path' in pasted, true);
+    const pastedPath = 'path' in pasted ? pasted.path : '';
 
     await manager.remove(id);
     assert.strictEqual(manager.summaries().find((s) => s.id === id), undefined);
     const gone = await store.tail(id);
     assert.strictEqual(gone.items.length, 0);
+    assert.strictEqual(await fs.access(pastedPath).then(() => true, () => false), false);
   });
 
   test('init restores sessions and layout from the index', async () => {

@@ -1,7 +1,10 @@
 import type { SessionManager } from './session-manager';
+import type { AgentSession } from './agent-session';
+import { MAX_PENDING, type AttachmentStore } from './attachment-store';
 import type {
-  DiffBase, EditorContext, HostToWebview, SessionRef, SessionSnapshot, WebviewToHost,
+  DiffBase, EditorContext, HostToWebview, SessionId, SessionRef, SessionSnapshot, WebviewToHost,
 } from '../protocol/messages';
+import { fsPathOfUri } from './file-uri';
 import { composePrompt } from './session-refs';
 
 /**
@@ -42,12 +45,18 @@ const NO_EDITOR: EditorContextHost = {
   current: () => null, reveal: () => {}, openDiff: () => {},
 };
 
+export interface AttachmentHost { pick(): Promise<string[]> }
+
+const NO_PICKER: AttachmentHost = { pick: async () => [] };
+
 export class MessageRouter {
   constructor(
     private readonly manager: SessionManager,
     private readonly emit: (msg: HostToWebview) => void,
     private readonly defaultCwd: string,
     private readonly editor: EditorContextHost = NO_EDITOR,
+    private readonly attachments?: AttachmentStore,
+    private readonly picker: AttachmentHost = NO_PICKER,
   ) {}
 
   /**
@@ -215,6 +224,75 @@ export class MessageRouter {
         return;
       }
 
+      case 'attach-paste': {
+        if (!this.attachments) { return; }
+        const session = this.manager.get(msg.id) ?? await this.reopen(msg.id);
+        if (!session) { return; }
+        if (session.pendingAttachments.length >= MAX_PENDING) {
+          this.emit({
+            t: 'attachments-rejected', id: msg.id,
+            reasons: ['A turn can carry up to 10 attachments.'],
+          });
+          return;
+        }
+        // Numbered here, where the pending set is known and handling is
+        // sequential: the webview cannot count two in-flight pastes apart.
+        const name = msg.name || `Pasted image ${session.pendingAttachments.length + 1}`;
+        const saved = await this.attachments.savePaste(msg.id, { ...msg, name });
+        if ('error' in saved) {
+          this.emit({ t: 'attachments-rejected', id: msg.id, reasons: [saved.error] });
+          return;
+        }
+        session.addAttachments([saved]);
+        this.emitAttachments(session, msg.id);
+        return;
+      }
+
+      case 'attach-pick': {
+        if (!this.attachments) { return; }
+        const session = this.manager.get(msg.id) ?? await this.reopen(msg.id);
+        if (!session) { return; }
+        const picked = await this.picker.pick();
+        if (picked.length === 0) { return; }
+        await this.adopt(session, msg.id, picked);
+        return;
+      }
+
+      case 'attach-drop': {
+        if (!this.attachments) { return; }
+        const session = this.manager.get(msg.id) ?? await this.reopen(msg.id);
+        if (!session) { return; }
+        const paths = msg.uris.map(fsPathOfUri).filter((path): path is string => path !== undefined);
+        if (paths.length === 0) {
+          this.emit({
+            t: 'attachments-rejected', id: msg.id,
+            reasons: ['That drop carried nothing on disk.'],
+          });
+          return;
+        }
+        await this.adopt(session, msg.id, paths);
+        return;
+      }
+
+      case 'attach-remove': {
+        const session = this.manager.get(msg.id);
+        if (!session) { return; }
+        session.removeAttachment(msg.attachmentId);
+        this.emitAttachments(session, msg.id);
+        return;
+      }
+
+      case 'attach-failed': {
+        // Nothing to store and nothing to reject — the bytes never arrived.
+        // The host still owns the sentence, so the composer has exactly one
+        // place errors come from, whichever side noticed the failure.
+        this.emit({
+          t: 'attachments-rejected', id: msg.id,
+          reasons: [`${msg.name} — could not be read`],
+        });
+        return;
+      }
+
       case 'reveal-file':
         this.editor.reveal(msg.path, msg.startLine);
         return;
@@ -315,6 +393,29 @@ export class MessageRouter {
       return undefined;
     }
   }
+
+  private async adopt(session: AgentSession, id: SessionId, paths: string[]): Promise<void> {
+    if (!this.attachments) { return; }
+    const { attachments, rejected } = await this.attachments.adopt(id, paths);
+    const room = MAX_PENDING - session.pendingAttachments.length;
+    const accepted = attachments.slice(0, Math.max(0, room));
+    if (accepted.length > 0) {
+      session.addAttachments(accepted);
+      this.emitAttachments(session, id);
+    }
+    // One message carrying every reason, not one message per reason: two
+    // emissions would make the second overwrite the first, and a drop that
+    // broke the cap *and* contained a folder has two things to say.
+    const reasons = [
+      ...rejected.map((r) => `${r.name} — ${r.reason}`),
+      ...(attachments.length > accepted.length ? ['A turn can carry up to 10 attachments.'] : []),
+    ];
+    if (reasons.length > 0) { this.emit({ t: 'attachments-rejected', id, reasons }); }
+  }
+
+  private emitAttachments(session: AgentSession, id: SessionId): void {
+    this.emit({ t: 'session-attachments', id, attachments: session.pendingAttachments });
+  }
 }
 
 const KNOWN_MESSAGE_TAGS = new Set<WebviewToHost['t']>([
@@ -324,6 +425,7 @@ const KNOWN_MESSAGE_TAGS = new Set<WebviewToHost['t']>([
   'set-model', 'permission-decision', 'question-answer', 'load-more',
   'answer-relocation', 'cancel-relocation',
   'set-include-context', 'reveal-file',
+  'attach-paste', 'attach-pick', 'attach-drop', 'attach-remove', 'attach-failed',
   'request-context', 'open-file',
   'request-bring-back', 'bring-back',
   'request-stale-trees', 'remove-stale-tree',

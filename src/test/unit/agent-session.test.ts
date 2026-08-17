@@ -5,7 +5,7 @@ import * as path from 'path';
 import { AgentSession, type SessionSink } from '../../host/agent-session';
 import { TranscriptStore } from '../../host/transcript-store';
 import type {
-  Invocable, SessionId, SessionState, SessionStatus, TranscriptPatch,
+  Attachment, Invocable, SessionId, SessionState, SessionStatus, TranscriptPatch,
 } from '../../protocol/messages';
 import { FakeProvider } from '../../providers/fake/fake-provider';
 import type {
@@ -137,6 +137,9 @@ class RecordingSink implements SessionSink {
   invocablesLog: Invocable[][] = [];
   /** Every whole-set pull reported up, in order. */
   usageWindowSets: { providerId: string; windows: UsageWindow[] | undefined }[] = [];
+  /** Every pending-set report, in order — including the empty one a send leaves behind. */
+  attachmentSets: Attachment[][] = [];
+  pendingAttachments(_id: SessionId, pending: Attachment[]) { this.attachmentSets.push(pending); }
   patch(id: SessionId, patch: TranscriptPatch) { this.patches.push({ id, patch }); }
   status(_id: SessionId, status: SessionStatus) { this.statuses.push(status); }
   mcp(_id: SessionId, servers: unknown[]) { this.servers.push(servers); }
@@ -154,6 +157,24 @@ async function settle() {
   for (let i = 0; i < 10; i++) { await new Promise((r) => setImmediate(r)); }
 }
 
+/**
+ * Builds a session against its own scratch transcript directory, so this
+ * helper is self-contained enough to be shared across test files (see
+ * `agent-session-attachments.test.ts`) rather than needing the suite's
+ * shared `store`/`sink` fixtures.
+ */
+export async function makeSession(script: (text: string) => AgentEvent[] = () => []) {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'hiiiid-session-'));
+  const store = new TranscriptStore(dir);
+  const provider = new FakeProvider(script);
+  const sink = new RecordingSink();
+  const session = new AgentSession(baseState(), provider, store, sink);
+  // `run` is the provider, not `provider.runs[0]`: `.sent` — the (text,
+  // context, attachments) triples a session's sends produced — lives on the
+  // provider, since that is what FakeProvider records onto.
+  return { provider, sink, session, run: provider };
+}
+
 suite('AgentSession', () => {
   let dir: string;
   let store: TranscriptStore;
@@ -166,13 +187,6 @@ suite('AgentSession', () => {
   });
 
   teardown(async () => { await fs.rm(dir, { recursive: true, force: true }); });
-
-  function makeSession(script: (text: string) => AgentEvent[] = () => []) {
-    const provider = new FakeProvider(script);
-    const localSink = new RecordingSink();
-    const session = new AgentSession(baseState(), provider, store, localSink);
-    return { provider, sink: localSink, session };
-  }
 
   test('coalesces text deltas into one assistant item', async () => {
     const provider = new FakeProvider(() => [
@@ -643,7 +657,7 @@ suite('AgentSession', () => {
   });
 
   test('an invocables event is reported to the sink', async () => {
-    const { provider, sink } = makeSession();
+    const { provider, sink } = await makeSession();
 
     provider.runs[0].emit({ kind: 'invocables', entries: [{ name: 'init' }] });
     await settle();
@@ -652,7 +666,7 @@ suite('AgentSession', () => {
   });
 
   test('setInvocables lands in the snapshot and replaces wholesale', async () => {
-    const { session } = makeSession();
+    const { session } = await makeSession();
 
     session.setInvocables([{ name: 'a' }, { name: 'b' }]);
     session.setInvocables([{ name: 'c' }]);
@@ -661,7 +675,7 @@ suite('AgentSession', () => {
   });
 
   test('a session told nothing has no invocables in its snapshot', async () => {
-    const { session } = makeSession();
+    const { session } = await makeSession();
 
     assert.strictEqual((await session.snapshot()).invocables, undefined);
 
@@ -678,7 +692,9 @@ suite('AgentSession', () => {
     session.send('look at this', ctx);
     await settle();
 
-    assert.deepStrictEqual(provider.sent[0], { text: 'look at this', context: ctx });
+    assert.deepStrictEqual(
+      provider.sent[0], { text: 'look at this', context: ctx, attachments: undefined },
+    );
     const snapshot = await session.snapshot();
     const user = snapshot.items.find((i) => i.role === 'user');
     assert.ok(user && user.role === 'user');

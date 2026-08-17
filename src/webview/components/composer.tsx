@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { InputGroup, InputGroupAddon, InputGroupTextarea } from "@/components/ui/input-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { Clock, SendHorizontal, Square, TriangleAlert, X } from "lucide-react";
+import { Clock, Paperclip, SendHorizontal, Square, TriangleAlert, X } from "lucide-react";
 import { useRef, useState } from "react";
 import type { Invocable, ModelInfo } from "../../protocol/messages";
 import { interceptFor } from "../lib/intercepts";
@@ -15,9 +15,11 @@ import {
   sessionMentions, sessionRefsOf, type SessionMentionPayload,
 } from "../lib/session-mentions";
 import { useMentionMenu } from "../lib/use-mention-menu";
+import { base64Of, urisOf } from "../lib/read-attachment";
 import type { PaneState } from "../reducer";
 import { useStore } from "../store";
 import { ContextRing } from "./context-ring";
+import { AttachmentChip, AttachmentChips } from "./attachment-chips";
 import { EditorContextToggle } from "./editor-context-toggle";
 import { InvocableMenu } from "./invocable-menu";
 import { ModeMenu } from "./mode-menu";
@@ -43,7 +45,7 @@ export function Composer({
    */
   unavailableReason?: string;
 }) {
-  const { state, post } = useStore();
+  const { state, post, dismissRejection } = useStore();
   const [text, setText] = useState("");
   /** The selected entry's arg hint. Presentation only; never sent. */
   const [ghost, setGhost] = useState("");
@@ -58,6 +60,7 @@ export function Composer({
    * rather than inside the ring.
    */
   const [contextOpen, setContextOpen] = useState(false);
+  const [dragging, setDragging] = useState(false);
   // The control has to hand focus back to the box: every key the menu answers
   // to is bound on the textarea, so a menu opened by a click that left focus
   // on the button would be unreachable by keyboard.
@@ -91,6 +94,7 @@ export function Composer({
   // Same session-scoping rationale again, for the `/` control's
   // disabled-over-a-draft reason.
   const invocablesReasonId = `invocables-reason-${pane.summary.id}`;
+  const rejection = state.rejectionBySession[pane.summary.id];
 
   const handoffSettings = settingsFor(state, pane.summary.id);
 
@@ -215,8 +219,55 @@ export function Composer({
     refMenu.reset();
   };
 
+  const attachFiles = (files: FileList | File[]) => {
+    for (const file of Array.from(files)) {
+      void base64Of(file).then((base64) => {
+        post({
+          t: 'attach-paste', id: pane.summary.id,
+          // Omitted rather than defaulted: a clipboard image has no name, and
+          // the host numbers the nameless ones so two are never alike.
+          ...(file.name ? { name: file.name } : {}),
+          mediaType: file.type || undefined,
+          base64,
+        });
+      }).catch(() => {
+        // Reported, not swallowed: the bytes never reached the host, so this
+        // is the only side that knows the attach failed at all. The host
+        // still composes the sentence — see `attach-failed`.
+        post({ t: 'attach-failed', id: pane.summary.id, name: file.name || 'That image' });
+      });
+    }
+  };
+
   return (
-    <div className="@container p-2">
+    <div
+      className="@container p-2"
+      data-testid="composer-drop"
+      onDragOver={(event) => {
+        // Gated on `disabled`, not just an unavailable provider: a blocking
+        // question freezes the composer too, and a ring that lights over a
+        // composer that will discard the drop is a promise it cannot keep.
+        if (disabled) { return; }
+        event.preventDefault();
+        if (!dragging) { setDragging(true); }
+      }}
+      onDragLeave={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+          setDragging(false);
+        }
+      }}
+      onDrop={(event) => {
+        event.preventDefault();
+        setDragging(false);
+        if (disabled) { return; }
+        const uris = urisOf(event.dataTransfer);
+        if (uris.length > 0) {
+          post({ t: 'attach-drop', id: pane.summary.id, uris });
+          return;
+        }
+        if (event.dataTransfer.files.length > 0) { attachFiles(event.dataTransfer.files); }
+      }}
+    >
       {disabled && (
         // Visible, not sr-only, unlike the other disabled-reasons in this
         // row: those explain a control the user can re-enable in a second
@@ -239,25 +290,43 @@ export function Composer({
         // is 300px wide and the message is already the user's own words.
         <div
           className={cn(
-            "mb-1.5 flex items-center gap-1.5 rounded-md border border-border",
+            "mb-1.5 rounded-md border border-border",
             "bg-muted/40 py-1 pl-2 pr-1 text-xs text-muted-foreground",
           )}
         >
-          <Clock className="size-3.5 shrink-0" aria-hidden />
-          <span className="sr-only">Queued, sent when the turn ends:</span>
-          <span className="min-w-0 flex-1 truncate text-foreground">{queued.text}</span>
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            onClick={() => post({ t: "cancel-queued", id: pane.summary.id })}
-            aria-label="Cancel queued message"
-            title="Cancel queued message"
-          >
-            <X />
-          </Button>
+          <div className="flex items-center gap-1.5">
+            <Clock className="size-3.5 shrink-0" aria-hidden />
+            <span className="sr-only">Queued, sent when the turn ends:</span>
+            <span className="min-w-0 flex-1 truncate text-foreground">{queued.text}</span>
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              onClick={() => post({ t: "cancel-queued", id: pane.summary.id })}
+              aria-label="Cancel queued message"
+              title="Cancel queued message"
+            >
+              <X />
+            </Button>
+          </div>
+          {queued.attachments && queued.attachments.length > 0 && (
+            // Read-only, like a sent turn: cancelling takes the whole message
+            // and its files, and there is no wire message for editing one
+            // that is already parked. Shown at all because cancelling
+            // otherwise discards files the row never admitted to holding.
+            <ul
+              aria-label="Queued attachments"
+              className="mt-1 flex min-w-0 flex-wrap gap-1 pb-0.5 pl-5"
+            >
+              {queued.attachments.map((attachment) => (
+                <li key={attachment.id}>
+                  <AttachmentChip attachment={attachment} />
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
-      <InputGroup>
+      <InputGroup className={cn(dragging && 'ring-2 ring-ring')}>
         {menu.open && (
           // A block-start addon, not a popover: the list sits above the box in
           // normal flow, so there is no positioning maths, no portal, and
@@ -282,6 +351,51 @@ export function Composer({
             />
           </InputGroupAddon>
         )}
+        {/*
+          Mounted whenever the composer is, empty or not. A live region
+          created with its text already inside it announces nothing — the same
+          reasoning status-badge.tsx sets out for the status chip — and an
+          attach that fails is the one event in this flow a screen-reader user
+          has no other way to discover, since nothing takes focus and no chip
+          appears. Only the text inside changes.
+        */}
+        <span role="status" aria-label="Attachment errors" className="sr-only">
+          {/* One node per line, matching the visible list: a single joined
+              string would read as one run-on sentence when several files
+              failed for several different reasons. */}
+          {(rejection ?? []).map((line) => <span key={line}>{line}</span>)}
+        </span>
+        {(pane.attachments.length > 0 || rejection) && (
+          <InputGroupAddon align="block-start" className="flex-col items-start gap-1 p-1">
+            <AttachmentChips pane={pane} />
+            {rejection && (
+              // The visible half. The text is `aria-hidden` because the live
+              // region above already carries these words, and announcing them
+              // twice is its own defect; the dismiss control is not, since it
+              // is a real action and nothing else offers it.
+              <div className="flex w-full items-start gap-1.5 text-xs text-muted-foreground">
+                <TriangleAlert className="mt-px size-3.5 shrink-0" aria-hidden />
+                <ul aria-hidden className="min-w-0 flex-1 space-y-0.5">
+                  {rejection.map((line) => (
+                    // One line per refused file. Wraps rather than truncates:
+                    // the reason is the whole value of the line, and a
+                    // truncated "too large (14.0 MB of…" says nothing.
+                    <li key={line} className="wrap-break-word">{line}</li>
+                  ))}
+                </ul>
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  className="size-4 shrink-0"
+                  aria-label="Dismiss attachment errors"
+                  onClick={() => dismissRejection(pane.summary.id)}
+                >
+                  <X />
+                </Button>
+              </div>
+            )}
+          </InputGroupAddon>
+        )}
         <InputGroupTextarea
           ref={box}
           value={text}
@@ -292,6 +406,12 @@ export function Composer({
             setGhost("");
             menu.reset();
             refMenu.reset();
+          }}
+          onPaste={(event) => {
+            const files = event.clipboardData?.files;
+            if (!files || files.length === 0) { return; }
+            event.preventDefault();
+            attachFiles(files);
           }}
           // Focus leaving the box closes both lists. A menu is an in-flow
           // block-start addon, so left open it keeps eating vertical space
@@ -327,7 +447,7 @@ export function Composer({
           // button and `@` has nowhere else to be announced, and a second
           // button would push a control row that already wraps at 300px onto
           // another line.
-          placeholder="Message the agent… @ to reference a session"
+          placeholder="Message the agent… @ references a session, paste or drop files"
           aria-label="Message"
           disabled={disabled}
           aria-describedby={disabled ? blockedReasonId : undefined}
@@ -347,6 +467,17 @@ export function Composer({
           whichever line it wraps to.
         */}
         <InputGroupAddon align="block-end" className="flex-wrap">
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            aria-label="Attach files"
+            title="Attach files"
+            disabled={disabled}
+            aria-describedby={disabled ? blockedReasonId : undefined}
+            onClick={() => post({ t: 'attach-pick', id: pane.summary.id })}
+          >
+            <Paperclip />
+          </Button>
           {/*
             First in the row, ahead of the ghost hint, so the control keeps a
             fixed position: the hint is transient, and a control that slides

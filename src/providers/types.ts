@@ -62,6 +62,43 @@ export interface Invocable {
   argHint?: string;
 }
 
+export type AttachmentKind = 'image' | 'file';
+
+/**
+ * A file carried by a turn. Always a real path on disk: a pasted screenshot
+ * is written to `context.storageUri` before it becomes one, so paste, the
+ * file picker and drag-and-drop all converge on a single model before
+ * anything downstream has to care which one it was.
+ *
+ * `kind` is what decides how a provider renders it — an image goes inline as
+ * a native image input, anything else is named by path for the agent to read
+ * with its own tools.
+ */
+export interface Attachment {
+  /** Stable within a session. The chip's key and the handle `attach-remove` names. */
+  id: string;
+  /** Absolute. Deliberately not workspace-relative: a screenshot in ~/Downloads is the common case. */
+  path: string;
+  /** Basename. What the chip shows. */
+  name: string;
+  kind: AttachmentKind;
+  /** Set for images; supplies the Claude block's `media_type`. */
+  mediaType?: string;
+  bytes: number;
+  /**
+   * POSIX path under the attachment store's root, for the files the store
+   * wrote itself — which is pastes, and only pastes.
+   *
+   * It exists so an image can be previewed without its bytes crossing
+   * `postMessage`: the host mints one webview URI for the store root, and the
+   * webview composes this onto it. An adopted file has none, because it was
+   * never copied in and a webview cannot load an arbitrary disk path — which
+   * is why a pasted screenshot previews and a picked one does not. Widening
+   * that is the spec's deferred `localResourceRoots` item.
+   */
+  storeRelative?: string;
+}
+
 /**
  * What the user is looking at in the editor when they hit send. Carries the
  * file reference always, and the selected text only when there is a
@@ -232,7 +269,14 @@ export type AgentEvent =
   | { kind: 'mcp-servers'; servers: McpServerStatus[] };
 
 export interface AgentRun {
-  send(text: string, context?: EditorContext): void;
+  /**
+   * `attachments` belong to the turn `text` was composed with — an attachment
+   * added after this turn was sent belongs to the next one, not this one, so
+   * a provider must never reach back to a session's live pending set. Absent
+   * or empty means the turn carries none. Optional so a provider that does
+   * not yet handle attachments simply ignores the parameter.
+   */
+  send(text: string, context?: EditorContext, attachments?: Attachment[]): void;
   readonly events: AsyncIterable<AgentEvent>;
   respondToTool(id: string, decision: ToolDecision): void;
   /**

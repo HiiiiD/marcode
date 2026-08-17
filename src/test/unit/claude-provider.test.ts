@@ -1,4 +1,7 @@
 import * as assert from 'assert';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import { ClaudeProvider } from '../../providers/claude/claude-provider';
 import type { AgentEvent } from '../../providers/types';
 
@@ -32,7 +35,7 @@ function fakeLoadQuery(opts: {
   /** What `supportedModels()` answers, for a test that seeds the catalog. */
   models?: unknown[];
 } = {}) {
-  const calls: { options: Record<string, unknown> }[] = [];
+  const calls: { options: Record<string, unknown>; prompt: AsyncIterable<unknown> }[] = [];
   /** Every model pushed at the *running* query, in order. */
   const setModels: (string | undefined)[] = [];
   /** Every settings patch pushed at the *running* query via applyFlagSettings, in order. */
@@ -40,7 +43,7 @@ function fakeLoadQuery(opts: {
   let closed = false;
 
   const queryFn = (params: { prompt: AsyncIterable<unknown>; options: Record<string, unknown> }) => {
-    calls.push({ options: params.options });
+    calls.push({ options: params.options, prompt: params.prompt });
     // A minimal stand-in for the real Query: a real async generator (so
     // `for await` over it behaves correctly and terminates) with the extra
     // Query-interface methods claude-provider.ts calls bolted on.
@@ -473,6 +476,37 @@ suite('ClaudeProvider (lazy start)', () => {
       'enabling this streams every subagent token into the transcript, which is exactly what the nested-card design avoids',
     );
     await run.dispose();
+  });
+
+  test('send appends one image block per image attachment', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'hiiiid-claude-attachment-'));
+    const pngOnDisk = path.join(tmpDir, 'shot.png');
+    fs.writeFileSync(pngOnDisk, Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+
+    const fake = fakeLoadQuery();
+    const provider = new ClaudeProvider(fake.load as never);
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+
+    try {
+      run.send('look', undefined, [
+        { id: 'a1', path: pngOnDisk, name: 'shot.png', kind: 'image', mediaType: 'image/png', bytes: 4 },
+      ]);
+      await flushMicrotasks();
+
+      const next = await fake.calls[0].prompt[Symbol.asyncIterator]().next();
+      const message = next.value as {
+        message: { content: Array<{ type: string; source?: { media_type: string; data: string } }> };
+      };
+      const content = message.message.content;
+      assert.strictEqual(content.length, 2);
+      assert.strictEqual(content[0].type, 'text');
+      assert.strictEqual(content[1].type, 'image');
+      assert.strictEqual(content[1].source?.media_type, 'image/png');
+      assert.strictEqual(content[1].source?.data, 'iVBORw==');
+    } finally {
+      await run.dispose();
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
   });
 
   test('contextBreakdown() rejects before the first send()', async () => {

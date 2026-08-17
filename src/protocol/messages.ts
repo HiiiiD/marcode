@@ -1,13 +1,13 @@
 import type {
-  ContextBreakdown, EditorContext, EffortLevel, FileEdit, Invocable, McpServerStatus, ModelInfo,
-  PermissionMeta, PermissionMode, PermissionModeInfo, QuestionAnswers, QuestionOption, QuestionSpec,
-  TodoStatus, ToolCall, ToolDecision, ToolOutput, UsageWindow,
+  Attachment, AttachmentKind, ContextBreakdown, EditorContext, EffortLevel, FileEdit, Invocable,
+  McpServerStatus, ModelInfo, PermissionMeta, PermissionMode, PermissionModeInfo, QuestionAnswers,
+  QuestionOption, QuestionSpec, TodoStatus, ToolCall, ToolDecision, ToolOutput, UsageWindow,
 } from '../providers/types';
 
 export type {
-  ContextBreakdown, EditorContext, EffortLevel, FileEdit, Invocable, McpServerStatus, ModelInfo,
-  PermissionMeta, PermissionMode, PermissionModeInfo, QuestionAnswers, QuestionOption, QuestionSpec,
-  TodoStatus, ToolCall, ToolDecision, ToolOutput, UsageWindow,
+  Attachment, AttachmentKind, ContextBreakdown, EditorContext, EffortLevel, FileEdit, Invocable,
+  McpServerStatus, ModelInfo, PermissionMeta, PermissionMode, PermissionModeInfo, QuestionAnswers,
+  QuestionOption, QuestionSpec, TodoStatus, ToolCall, ToolDecision, ToolOutput, UsageWindow,
 };
 
 export type SessionId = string;
@@ -37,6 +37,13 @@ export type TranscriptItem =
        * is already the fully-composed prompt the provider received.
        */
       refs?: SessionRef[];
+      /**
+       * Files this message carried. Metadata about the message exactly like
+       * `context` and `refs` above — `text` is the fully-composed prompt, and
+       * an attachment never appears in it: an image goes to the provider as a
+       * native image input, and a file goes as a path line the provider adds.
+       */
+      attachments?: Attachment[];
     })
   | (ItemBase & { role: 'assistant'; text: string; thinking?: string })
   | (ItemBase & {
@@ -145,8 +152,14 @@ export interface SessionState {
    * Host state on the wire so the chip survives a reload like everything
    * else. The editor context captured alongside it stays host-side: it is
    * only ever handed to the provider, and the webview has no use for it.
+   *
+   * `attachments` is captured at queue time, same as `refs` — the pending
+   * set at the moment this message was parked, not whatever the live set
+   * holds when it is finally delivered. An attachment added while this is
+   * already queued belongs to the *next* turn, not this one, so it must not
+   * be read off the live set again on delivery.
    */
-  queued?: { text: string; refs?: SessionRef[] };
+  queued?: { text: string; refs?: SessionRef[]; attachments?: Attachment[] };
   archived: boolean;
   createdAt: number;
   updatedAt: number;
@@ -181,6 +194,12 @@ export interface SessionSnapshot extends SessionState {
    * stores.
    */
   mcpServers: McpServerStatus[];
+  /**
+   * Composed but not yet sent. Live host state like `mcpServers`, deliberately
+   * not on SessionState (which is what index.json stores) — but it does
+   * outlive a webview reload, because the extension host does.
+   */
+  pendingAttachments: Attachment[];
 }
 
 export interface ProviderInfo {
@@ -337,6 +356,30 @@ export type WebviewToHost =
   | { t: 'set-effort'; id: SessionId; effort: EffortLevel }
   | { t: 'set-permission-mode'; id: SessionId; mode: PermissionMode }
   | { t: 'set-include-context'; id: SessionId; on: boolean }
+  /**
+   * Pasted bytes cross the wire once; the host persists them and mints the
+   * attachment.
+   *
+   * `name` is absent for a clipboard image, which usually has none. The host
+   * numbers those against the pending set rather than the webview doing it,
+   * because two pastes in flight would both read the same length and pick the
+   * same number.
+   */
+  | { t: 'attach-paste'; id: SessionId; name?: string; mediaType?: string; base64: string }
+  | { t: 'attach-pick'; id: SessionId }
+  /** Unparsed URI-list entries from a drop. */
+  | { t: 'attach-drop'; id: SessionId; uris: string[] }
+  | { t: 'attach-remove'; id: SessionId; attachmentId: string }
+  /**
+   * A clipboard or dropped `File` the webview could not read, so no bytes
+   * ever reached the host.
+   *
+   * Reported rather than handled in the composer because the host owns the
+   * rejection line: a webview that rendered this one failure from local state
+   * would be the only thing on this surface holding an error the host has
+   * never heard of.
+   */
+  | { t: 'attach-failed'; id: SessionId; name: string }
   /** Not session-addressed: opening a file is global IDE state, not session state. */
   | { t: 'reveal-file'; path: string; startLine?: number }
   | { t: 'set-model'; id: SessionId; model: string }
@@ -418,6 +461,16 @@ export type HostToWebview =
   | { t: 'sessions-changed'; sessions: SessionSummary[] }
   | { t: 'session-invocables'; id: SessionId; entries: Invocable[] }
   | { t: 'session-mcp'; id: SessionId; servers: McpServerStatus[] }
+  /** Full replacement of the host-owned pending attachment set. */
+  | { t: 'session-attachments'; id: SessionId; attachments: Attachment[] }
+  /**
+   * A transient composer error; the session itself remains usable.
+   *
+   * One composed sentence per refused file rather than one for the batch: a
+   * drop of four can fail four different ways, and a single count names
+   * neither which file nor which constraint.
+   */
+  | { t: 'attachments-rejected'; id: SessionId; reasons: string[] }
   /**
    * Broadcast, not session-addressed: the provider/model catalog is global.
    * Sent after `hydrate` whenever a provider reports a catalog that differs

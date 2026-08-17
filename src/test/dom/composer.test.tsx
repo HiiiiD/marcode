@@ -11,7 +11,7 @@ import { hydrate } from "./session-header.test";
 function pane(status: SessionStatus = 'idle'): PaneState {
   return {
     summary: summary('a', { status }), items: [], hasMore: false, pending: [], mcpServers: [],
-    pendingQuestions: [],
+    pendingQuestions: [], attachments: [],
   };
 }
 
@@ -23,6 +23,7 @@ function startedPane(id: string): PaneState {
     hasMore: false,
     pending: [],
     mcpServers: [],
+    attachments: [],
     pendingQuestions: [],
   };
 }
@@ -138,7 +139,7 @@ suite("Composer", () => {
     const queued = {
       summary: summary("a", { status: "running", queued: { text: "next thing" } }),
       items: [], hasMore: false, pending: [], mcpServers: [],
-      pendingQuestions: [],
+      pendingQuestions: [], attachments: [],
     };
     renderWithStore(<Composer pane={queued} model={NO_EFFORT} models={[]} />);
 
@@ -424,6 +425,7 @@ suite("Composer", () => {
       hasMore: false,
       pending: [],
       mcpServers: [],
+      attachments: [],
       pendingQuestions: [],
     };
     renderWithStore(<Composer pane={off} model={NO_EFFORT} models={[]} />);

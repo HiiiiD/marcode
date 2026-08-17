@@ -1,5 +1,6 @@
 import type {
   AgentEvent, AgentProvider, AgentRun,
+  Attachment,
   ContextBreakdown,
   EditorContext,
   EffortLevel, Invocable, ModelInfo, PermissionMode, PermissionModeInfo, QuestionAnswers,
@@ -82,8 +83,8 @@ export class FakeProvider implements AgentProvider {
   readonly listInvocablesCalls: string[] = [];
   /** Scripted probe answer: a catalog to resolve with, or an Error to reject with. */
   invocables: Invocable[] | Error | undefined;
-  /** Records every (text, context) pair passed to send, for assertions. */
-  readonly sent: { text: string; context?: EditorContext }[] = [];
+  /** Records every (text, context, attachments) triple passed to send, for assertions. */
+  readonly sent: { text: string; context?: EditorContext; attachments?: Attachment[] }[] = [];
   /** Every cwd fetchUsage() was called with, in order. */
   readonly fetchUsageCalls: string[] = [];
   /** Every options object start() was called with, in order. */
@@ -125,8 +126,8 @@ export class FakeProvider implements AgentProvider {
 
     const run: FakeRun = {
       events: channel,
-      send: (text: string, context?: EditorContext) => {
-        this.sent.push({ text, context });
+      send: (text: string, context?: EditorContext, attachments?: Attachment[]) => {
+        this.sent.push({ text, context, attachments });
         if (!started) {
           started = true;
           channel.push({ kind: 'session', resumeToken });
