@@ -4,8 +4,9 @@ import {
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
-import { groupTree, summarize, type SessionGroup } from './fleet-diff-groups';
+import { countFiles, filterTree, groupTree, summarize, type SessionGroup } from './fleet-diff-groups';
 import { useStore } from './store';
 import { folderName } from '@/format';
 import type {
@@ -65,6 +66,12 @@ export function FleetDiff() {
   // pinning a number the surface never chose.
   const [cap, setCap] = useState<number | undefined>(undefined);
 
+  const [query, setQuery] = useState('');
+  const [contestedOnly, setContestedOnly] = useState(false);
+  const filtered = (trees ?? []).map((tree) => filterTree(tree, query, contestedOnly));
+  const shown = countFiles(filtered);
+  const total = countFiles(trees ?? []);
+
   // Ask once on mount: the surface is the only thing that wants this, so it
   // is the only thing that asks for it.
   useEffect(() => { post({ t: 'request-fleet-diff' }); }, [post]);
@@ -109,8 +116,25 @@ export function FleetDiff() {
       <div className="flex items-center gap-2 border-b border-border px-2 py-1 text-xs">
         <h2 className="min-w-0 truncate font-medium">Changes</h2>
         {trees !== undefined && trees.length > 0 && (
-          <span className="min-w-0 truncate text-muted-foreground">{summarize(trees)}</span>
+          <span className="min-w-0 truncate text-muted-foreground">
+            {shown === total ? summarize(filtered) : `${shown} of ${total} files`}
+          </span>
         )}
+        <Input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          aria-label="Filter by path"
+          placeholder="Filter by path"
+          className="h-7 max-w-64"
+        />
+        <Button
+          variant={contestedOnly ? 'secondary' : 'outline'}
+          size="sm"
+          aria-pressed={contestedOnly}
+          onClick={() => setContestedOnly((on) => !on)}
+        >
+          Contested only
+        </Button>
         <Button
           variant="outline"
           size="icon-sm"
@@ -156,8 +180,10 @@ export function FleetDiff() {
                 : 'No session is in a git repository. A session in a plain directory has no diff to show.'}
             </p>
           </div>
+        ) : shown === 0 && total > 0 ? (
+          <p className="px-2 py-2 text-muted-foreground">No file matches this filter.</p>
         ) : (
-          trees.map((tree) => (
+          filtered.map((tree) => (
             <Tree
               key={tree.root}
               tree={tree}

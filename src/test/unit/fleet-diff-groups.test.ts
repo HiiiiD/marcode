@@ -2,7 +2,7 @@
 // user reads. Pure: no React, no DOM, no store.
 
 import * as assert from 'assert';
-import { groupTree, summarize } from '../../review/fleet-diff-groups';
+import { countFiles, filterTree, groupTree, summarize } from '../../review/fleet-diff-groups';
 import type { FileChange, TreeDiff } from '../../protocol/messages';
 
 function file(path: string, claimedBy: string[], ins = 1, del = 0): FileChange {
@@ -85,5 +85,41 @@ suite('fleet diff summary', () => {
   test('an unshared set says nothing about sharing', () => {
     const summary = summarize([tree([file('a.ts', ['s1']), file('b.ts', [])])]);
     assert.strictEqual(summary.includes('more than one session'), false);
+  });
+});
+
+suite('filterTree', () => {
+  const tree = {
+    root: '/repo', branch: 'main', sessions: ['s1', 's2'],
+    base: { kind: 'head' as const }, omitted: 0,
+    files: [
+      { path: 'src/webview/app.tsx', op: 'modify' as const, insertions: 1, deletions: 0, claimedBy: ['s1'] },
+      { path: 'README.md', op: 'modify' as const, insertions: 2, deletions: 0, claimedBy: ['s1', 's2'] },
+    ],
+  };
+
+  test('an empty query keeps everything', () => {
+    assert.strictEqual(filterTree(tree, '', false).files.length, 2);
+  });
+
+  test('matches anywhere in the path, case-insensitively', () => {
+    assert.strictEqual(filterTree(tree, 'WEBVIEW', false).files.length, 1);
+    assert.strictEqual(filterTree(tree, 'readme', false).files.length, 1);
+  });
+
+  test('contested-only keeps files more than one session claimed', () => {
+    const only = filterTree(tree, '', true);
+    assert.strictEqual(only.files.length, 1);
+    assert.strictEqual(only.files[0].path, 'README.md');
+  });
+
+  test('the two compose', () => {
+    assert.strictEqual(filterTree(tree, 'src', true).files.length, 0);
+  });
+
+  test('countFiles counts files, not rows', () => {
+    // README.md is claimed twice and will render under two groups. The count
+    // answers "what changed", which is a question about files.
+    assert.strictEqual(countFiles([tree]), 2);
   });
 });

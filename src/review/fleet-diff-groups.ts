@@ -92,3 +92,32 @@ export function summarize(trees: TreeDiff[]): string {
   }
   return label;
 }
+
+/**
+ * A tree with only the files the user asked to see.
+ *
+ * Filtering happens on the tree, before grouping, so an emptied session group
+ * disappears rather than rendering as a header over nothing — an empty group
+ * reads as "this session did nothing", which under a filter is false.
+ *
+ * `omitted` is deliberately carried through untouched: it counts files the
+ * *host* never sent, and a filter cannot know whether they would have matched.
+ */
+export function filterTree(tree: TreeDiff, query: string, contestedOnly: boolean): TreeDiff {
+  const needle = query.trim().toLowerCase();
+  if (needle === '' && !contestedOnly) { return tree; }
+
+  const files = tree.files.filter((file) => {
+    if (contestedOnly && file.claimedBy.length < 2) { return false; }
+    if (needle === '') { return true; }
+    return file.path.toLowerCase().includes(needle);
+  });
+
+  return { ...tree, files };
+}
+
+/** Files across every tree. Paths are never de-duplicated across trees: the
+ * same relative path in two working trees is two different files. */
+export function countFiles(trees: TreeDiff[]): number {
+  return trees.reduce((total, tree) => total + tree.files.length, 0);
+}
