@@ -145,6 +145,8 @@ export class AcpRun implements AgentRun {
   private readonly startup: Promise<void>;
   /** The in-flight `session/prompt`, if any. Never rejects — see `runPrompt`. */
   private promptPromise: Promise<void> | undefined;
+  /** Set by `interrupt()`, cleared by the next `send()`. See `runPrompt`. */
+  private interrupted = false;
   private disposed = false;
 
   /**
@@ -342,6 +344,7 @@ export class AcpRun implements AgentRun {
     // own tools — the same rendering every other provider uses.
     const named = attachmentLines(attachments).trim();
     if (named) { blocks.push({ type: 'text', text: named }); }
+    this.interrupted = false;
     this.promptPromise = this.runPrompt(blocks);
   }
 
@@ -351,6 +354,13 @@ export class AcpRun implements AgentRun {
     const conn = this.conn;
     const sessionId = this.sessionId;
     if (this.disposed || !conn || !sessionId) { return; }
+    // Interrupted before the session even existed: `interrupt()` had no
+    // sessionId to cancel, so sending the prompt now would start the very turn
+    // the user just stopped.
+    if (this.interrupted) {
+      this.events.push({ kind: 'turn-end', reason: 'interrupted' });
+      return;
+    }
     try {
       const reply = await conn.prompt({ sessionId, prompt: blocks });
       if (this.disposed) { return; }
@@ -436,7 +446,13 @@ export class AcpRun implements AgentRun {
       .catch(() => { /* state, not an exception — and never a turn-end */ });
   }
 
+  /**
+   * Deliberately does not await `startup` — a session still waiting on a
+   * `session/load` that will never answer is exactly the one a user reaches
+   * for Stop on, and an interrupt that hangs is not an interrupt.
+   */
   async interrupt(): Promise<void> {
+    this.interrupted = true;
     const conn = this.conn;
     const sessionId = this.sessionId;
     if (conn && sessionId) {
