@@ -335,19 +335,31 @@ export function Composer({
             />
           </InputGroupAddon>
         )}
+        {/*
+          Mounted whenever the composer is, empty or not. A live region
+          created with its text already inside it announces nothing — the same
+          reasoning status-badge.tsx sets out for the status chip — and an
+          attach that fails is the one event in this flow a screen-reader user
+          has no other way to discover, since nothing takes focus and no chip
+          appears. Only the text inside changes.
+        */}
+        <span role="status" aria-label="Attachment errors" className="sr-only">
+          {/* One node per line, matching the visible list: a single joined
+              string would read as one run-on sentence when several files
+              failed for several different reasons. */}
+          {(rejection ?? []).map((line) => <span key={line}>{line}</span>)}
+        </span>
         {(pane.attachments.length > 0 || rejection) && (
           <InputGroupAddon align="block-start" className="flex-col items-start gap-1 p-1">
             <AttachmentChips pane={pane} />
             {rejection && (
-              // A live region: an attach that fails is the one thing here a
-              // sighted user sees without asking and a screen-reader user
-              // would otherwise never hear, since nothing takes focus.
-              <div
-                role="status"
-                className="flex w-full items-start gap-1.5 text-xs text-muted-foreground"
-              >
+              // The visible half. The text is `aria-hidden` because the live
+              // region above already carries these words, and announcing them
+              // twice is its own defect; the dismiss control is not, since it
+              // is a real action and nothing else offers it.
+              <div className="flex w-full items-start gap-1.5 text-xs text-muted-foreground">
                 <TriangleAlert className="mt-px size-3.5 shrink-0" aria-hidden />
-                <ul className="min-w-0 flex-1 space-y-0.5">
+                <ul aria-hidden className="min-w-0 flex-1 space-y-0.5">
                   {rejection.map((line) => (
                     // One line per refused file. Wraps rather than truncates:
                     // the reason is the whole value of the line, and a
@@ -359,7 +371,7 @@ export function Composer({
                   variant="ghost"
                   size="icon-xs"
                   className="size-4 shrink-0"
-                  aria-label="Dismiss"
+                  aria-label="Dismiss attachment errors"
                   onClick={() => dismissRejection(pane.summary.id)}
                 >
                   <X />

@@ -64,7 +64,8 @@ suite('Attachment chips', () => {
       t: 'attachments-rejected', id: 'a', reasons: ['Attachments are limited to 10 MB.'],
     });
 
-    assert.strictEqual(screen.getByText('Attachments are limited to 10 MB.') !== null, true);
+    // Two copies by design: the announced region and the visible line.
+    assert.strictEqual(screen.getAllByText('Attachments are limited to 10 MB.').length, 2);
   });
 
   /**
@@ -199,24 +200,37 @@ suite('Attachment chips', () => {
       reasons: ['a-folder — that is a folder', 'huge.bin — too large (14.0 MB of 10 MB)'],
     });
 
-    assert.strictEqual(screen.getByText('a-folder — that is a folder') !== null, true);
-    assert.strictEqual(screen.getByText('huge.bin — too large (14.0 MB of 10 MB)') !== null, true);
+    assert.strictEqual(screen.getAllByText('a-folder — that is a folder').length, 2);
+    assert.strictEqual(screen.getAllByText('huge.bin — too large (14.0 MB of 10 MB)').length, 2);
   });
 
-  test('the rejection is a live region, so a failed attach is announced', () => {
+  test('the live region is mounted before there is anything to say', () => {
+    // A region created with its text already inside it announces nothing —
+    // the same reasoning status-badge.tsx documents. It has to be mounted
+    // ahead of the failure so only its content changes.
     const { container } = renderWithStore(<Composer pane={pane()} model={NO_EFFORT} models={[]} />);
-    sendFromHost({ t: 'attachments-rejected', id: 'a', reasons: ['shot.png — could not be read'] });
 
     assert.strictEqual(container.querySelector('[role="status"]') === null, false);
+    assert.strictEqual(container.querySelector('[role="status"]')?.textContent, '');
+  });
+
+  test('a rejection changes the mounted region\'s text rather than creating one', () => {
+    const { container } = renderWithStore(<Composer pane={pane()} model={NO_EFFORT} models={[]} />);
+    const before = container.querySelector('[role="status"]');
+    sendFromHost({ t: 'attachments-rejected', id: 'a', reasons: ['shot.png — could not be read'] });
+
+    const after = container.querySelector('[role="status"]');
+    assert.strictEqual(before === after, true);
+    assert.strictEqual(after?.textContent?.includes('shot.png — could not be read'), true);
   });
 
   test('the rejection can be dismissed without attaching something else', async () => {
     renderWithStore(<Composer pane={pane()} model={NO_EFFORT} models={[]} />);
     sendFromHost({ t: 'attachments-rejected', id: 'a', reasons: ['shot.png — could not be read'] });
 
-    await userEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Dismiss attachment errors' }));
 
-    assert.strictEqual(screen.queryByText('shot.png — could not be read') === null, true);
+    assert.strictEqual(screen.queryAllByText('shot.png — could not be read').length, 0);
   });
 
   test('a clipboard entry the webview cannot read is reported to the host', async () => {
