@@ -40,6 +40,7 @@ function describeInbound(m: WebviewToHost): string {
     case 'request-stale-trees': return 'request-stale-trees';
     case 'remove-stale-tree': return 'remove-stale-tree';
     case 'request-fleet-diff': return 'request-fleet-diff';
+    case 'open-review': return 'open-review';
     case 'open-file-diff': return 'open-file-diff';
     case 'refresh-catalog': return 'refresh-catalog';
     case 'open-settings': return 'open-settings';

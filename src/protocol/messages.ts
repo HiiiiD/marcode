@@ -436,6 +436,15 @@ export type WebviewToHost =
    */
   | { t: 'request-fleet-diff' }
   /**
+   * Open the review tab. Unaddressed, like `request-fleet-diff`: review is a
+   * fleet-wide surface, not a session's.
+   *
+   * Handled in `PanelViewProvider`, not `MessageRouter` — it needs the
+   * `vscode` API, and the router must stay importable outside the extension
+   * host. Same interception `open-file` already gets.
+   */
+  | { t: 'open-review' }
+  /**
    * Open one file's change in VS Code's own diff editor. Carries the tree
    * because a repo-relative path is meaningless without it, and the base
    * because the left-hand side is that file at the branch point.

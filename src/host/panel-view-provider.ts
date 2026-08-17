@@ -1,8 +1,8 @@
-import { randomBytes } from 'node:crypto';
 import * as vscode from 'vscode';
 import type { AttachmentStore } from './attachment-store';
 import { MessageRouter, type AttachmentHost, type EditorContextHost } from './message-router';
 import type { SessionManager } from './session-manager';
+import { renderWebviewHtml } from './webview-html';
 import type { HostToWebview, SessionId, WebviewToHost } from '../protocol/messages';
 
 const NO_PICKER: AttachmentHost = { pick: async () => [] };
@@ -18,6 +18,7 @@ export class PanelViewProvider implements vscode.WebviewViewProvider {
     private readonly editor: EditorContextHost,
     private readonly attachments?: AttachmentStore,
     private readonly picker: AttachmentHost = NO_PICKER,
+    private readonly onOpenReview: () => void = () => {},
   ) {}
 
   post(msg: HostToWebview): void {
@@ -78,6 +79,10 @@ export class PanelViewProvider implements vscode.WebviewViewProvider {
           await this.openFile(raw.id, raw.path);
           return;
         }
+        if (raw?.t === 'open-review') {
+          this.onOpenReview();
+          return;
+        }
         await router.handle(raw);
       } catch (err) {
         console.error('[hiiiid-code] message handling failed', err);
@@ -88,45 +93,17 @@ export class PanelViewProvider implements vscode.WebviewViewProvider {
   }
 
   render(webview: vscode.Webview): string {
-    const nonce = makeNonce();
-    const scriptUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(this.extensionUri, 'dist', 'webview.js'),
-    );
-    const styleUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(this.extensionUri, 'dist', 'webview.css'),
-    );
-    // One URI for the whole store, minted here because `asWebviewUri` is a
-    // host API and the webview must not learn disk paths. Every preview is
-    // this plus an `Attachment.storeRelative`, so no attachment message
-    // carries a URI of its own.
-    const attachmentBase = this.attachments
-      ? webview.asWebviewUri(vscode.Uri.file(this.attachments.baseDir)).toString()
-      : '';
-    const csp = [
-      `default-src 'none'`,
-      `img-src ${webview.cspSource} data:`,
-      `style-src ${webview.cspSource}`,
-      `font-src ${webview.cspSource}`,
-      `script-src 'nonce-${nonce}'`,
-    ].join('; ');
-
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="${csp}">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<link href="${styleUri}" rel="stylesheet">
-<title>HiiiiD Code</title>
-</head>
-<body>
-<div id="root" data-attachment-base="${attachmentBase}"></div>
-<script nonce="${nonce}" src="${scriptUri}"></script>
-</body>
-</html>`;
+    return renderWebviewHtml(webview, {
+      scriptUri: webview.asWebviewUri(
+        vscode.Uri.joinPath(this.extensionUri, 'dist', 'webview.js'),
+      ),
+      styleUri: webview.asWebviewUri(
+        vscode.Uri.joinPath(this.extensionUri, 'dist', 'webview.css'),
+      ),
+      title: 'HiiiiD Code',
+      attachmentBase: this.attachments
+        ? webview.asWebviewUri(vscode.Uri.file(this.attachments.baseDir)).toString()
+        : '',
+    });
   }
-}
-
-function makeNonce(): string {
-  return randomBytes(16).toString('base64url');
 }
