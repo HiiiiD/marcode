@@ -5,8 +5,6 @@ import type { SessionManager } from './session-manager';
 import { renderWebviewHtml } from './webview-html';
 import type { HostToWebview, SessionId, WebviewToHost } from '../protocol/messages';
 
-const NO_PICKER: AttachmentHost = { pick: async () => [] };
-
 export class PanelViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'hiiiid-code.panel';
   private view: vscode.WebviewView | undefined;
@@ -16,9 +14,9 @@ export class PanelViewProvider implements vscode.WebviewViewProvider {
     private readonly manager: SessionManager,
     private readonly defaultCwd: string,
     private readonly editor: EditorContextHost,
-    private readonly attachments?: AttachmentStore,
-    private readonly picker: AttachmentHost = NO_PICKER,
-    private readonly onOpenReview: () => void = () => {},
+    private readonly attachments: AttachmentStore | undefined,
+    private readonly picker: AttachmentHost | undefined,
+    private readonly onOpenReview: () => void,
   ) {}
 
   post(msg: HostToWebview): void {
