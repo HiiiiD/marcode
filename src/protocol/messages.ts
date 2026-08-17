@@ -284,8 +284,16 @@ export type WebviewToHost =
   | { t: 'set-effort'; id: SessionId; effort: EffortLevel }
   | { t: 'set-permission-mode'; id: SessionId; mode: PermissionMode }
   | { t: 'set-include-context'; id: SessionId; on: boolean }
-  /** Pasted bytes cross the wire once; the host persists them and mints the attachment. */
-  | { t: 'attach-paste'; id: SessionId; name: string; mediaType?: string; base64: string }
+  /**
+   * Pasted bytes cross the wire once; the host persists them and mints the
+   * attachment.
+   *
+   * `name` is absent for a clipboard image, which usually has none. The host
+   * numbers those against the pending set rather than the webview doing it,
+   * because two pastes in flight would both read the same length and pick the
+   * same number.
+   */
+  | { t: 'attach-paste'; id: SessionId; name?: string; mediaType?: string; base64: string }
   | { t: 'attach-pick'; id: SessionId }
   /** Unparsed URI-list entries from a drop. */
   | { t: 'attach-drop'; id: SessionId; uris: string[] }

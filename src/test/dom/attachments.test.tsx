@@ -133,6 +133,65 @@ suite('Attachment chips', () => {
     });
   });
 
+  test('a pasted image previews from the store, composed onto the host base', () => {
+    // The host writes this attribute on #root; nothing else in the webview
+    // ever learns a disk path.
+    const root = document.createElement('div');
+    root.id = 'root';
+    root.dataset.attachmentBase = 'https://file+.vscode-resource/attachments';
+    document.body.appendChild(root);
+
+    try {
+      renderWithStore(
+        <Composer
+          pane={pane([att({ storeRelative: 's1/a1.png' })])}
+          model={NO_EFFORT}
+          models={[]}
+        />,
+      );
+
+      const image = screen.getByRole('img', { name: 'shot.png' }) as HTMLImageElement;
+      assert.strictEqual(
+        image.getAttribute('src'),
+        'https://file+.vscode-resource/attachments/s1/a1.png',
+      );
+    } finally {
+      root.remove();
+    }
+  });
+
+  test('an image with no store-relative path keeps the icon', () => {
+    renderWithStore(
+      <Composer pane={pane([att()])} model={NO_EFFORT} models={[]} />,
+    );
+
+    // An adopted image was never copied into the store, so there is nothing a
+    // webview may load — the chip must not render a broken image.
+    assert.strictEqual(screen.queryByRole('img') === null, true);
+    assert.strictEqual(screen.getByText('shot.png') !== null, true);
+  });
+
+  test('a non-image with a store-relative path is never previewed', () => {
+    const root = document.createElement('div');
+    root.id = 'root';
+    root.dataset.attachmentBase = 'https://file+.vscode-resource/attachments';
+    document.body.appendChild(root);
+
+    try {
+      renderWithStore(
+        <Composer
+          pane={pane([att({ kind: 'file', name: 'notes.md', storeRelative: 's1/a2.md' })])}
+          model={NO_EFFORT}
+          models={[]}
+        />,
+      );
+
+      assert.strictEqual(screen.queryByRole('img') === null, true);
+    } finally {
+      root.remove();
+    }
+  });
+
   test('every refused file gets its own line, naming the file and the constraint', () => {
     renderWithStore(<Composer pane={pane()} model={NO_EFFORT} models={[]} />);
     sendFromHost({
@@ -173,6 +232,34 @@ suite('Attachment chips', () => {
     });
 
     assert.deepStrictEqual(posted().at(-1), { t: 'attach-failed', id: 'a', name: 'broken.png' });
+  });
+
+  test('a queued message shows the files parked with it', () => {
+    const queuedPane = pane();
+    queuedPane.summary = {
+      ...queuedPane.summary,
+      queued: { text: 'look at this', attachments: [att({ name: 'parked.png' })] },
+    };
+
+    renderWithStore(<Composer pane={queuedPane} model={NO_EFFORT} models={[]} />);
+
+    // Cancelling a queued message discards its attachments too, so the row
+    // has to say what it is holding before the user decides.
+    assert.strictEqual(screen.getByText('parked.png') !== null, true);
+  });
+
+  test('a queued message offers no way to un-attach what it parked', () => {
+    const queuedPane = pane();
+    queuedPane.summary = {
+      ...queuedPane.summary,
+      queued: { text: 'look at this', attachments: [att({ name: 'parked.png' })] },
+    };
+
+    renderWithStore(<Composer pane={queuedPane} model={NO_EFFORT} models={[]} />);
+
+    // The whole message is cancelled or it is not; there is no wire message
+    // for editing a parked one.
+    assert.strictEqual(screen.queryAllByRole('button', { name: /remove parked\.png/i }).length, 0);
   });
 
   test('a sent user message lists what it carried', () => {

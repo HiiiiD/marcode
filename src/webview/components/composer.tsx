@@ -19,7 +19,7 @@ import { base64Of, urisOf } from "../lib/read-attachment";
 import type { PaneState } from "../reducer";
 import { useStore } from "../store";
 import { ContextRing } from "./context-ring";
-import { AttachmentChips } from "./attachment-chips";
+import { AttachmentChip, AttachmentChips } from "./attachment-chips";
 import { EditorContextToggle } from "./editor-context-toggle";
 import { InvocableMenu } from "./invocable-menu";
 import { ModeMenu } from "./mode-menu";
@@ -212,7 +212,9 @@ export function Composer({
       void base64Of(file).then((base64) => {
         post({
           t: 'attach-paste', id: pane.summary.id,
-          name: file.name || 'pasted-image.png',
+          // Omitted rather than defaulted: a clipboard image has no name, and
+          // the host numbers the nameless ones so two are never alike.
+          ...(file.name ? { name: file.name } : {}),
           mediaType: file.type || undefined,
           base64,
         });
@@ -272,22 +274,40 @@ export function Composer({
         // is 300px wide and the message is already the user's own words.
         <div
           className={cn(
-            "mb-1.5 flex items-center gap-1.5 rounded-md border border-border",
+            "mb-1.5 rounded-md border border-border",
             "bg-muted/40 py-1 pl-2 pr-1 text-xs text-muted-foreground",
           )}
         >
-          <Clock className="size-3.5 shrink-0" aria-hidden />
-          <span className="sr-only">Queued, sent when the turn ends:</span>
-          <span className="min-w-0 flex-1 truncate text-foreground">{queued.text}</span>
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            onClick={() => post({ t: "cancel-queued", id: pane.summary.id })}
-            aria-label="Cancel queued message"
-            title="Cancel queued message"
-          >
-            <X />
-          </Button>
+          <div className="flex items-center gap-1.5">
+            <Clock className="size-3.5 shrink-0" aria-hidden />
+            <span className="sr-only">Queued, sent when the turn ends:</span>
+            <span className="min-w-0 flex-1 truncate text-foreground">{queued.text}</span>
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              onClick={() => post({ t: "cancel-queued", id: pane.summary.id })}
+              aria-label="Cancel queued message"
+              title="Cancel queued message"
+            >
+              <X />
+            </Button>
+          </div>
+          {queued.attachments && queued.attachments.length > 0 && (
+            // Read-only, like a sent turn: cancelling takes the whole message
+            // and its files, and there is no wire message for editing one
+            // that is already parked. Shown at all because cancelling
+            // otherwise discards files the row never admitted to holding.
+            <ul
+              aria-label="Queued attachments"
+              className="mt-1 flex min-w-0 flex-wrap gap-1 pb-0.5 pl-5"
+            >
+              {queued.attachments.map((attachment) => (
+                <li key={attachment.id}>
+                  <AttachmentChip attachment={attachment} />
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       )}
       <InputGroup className={cn(dragging && 'ring-2 ring-ring')}>

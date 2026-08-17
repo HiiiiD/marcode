@@ -34,6 +34,33 @@ suite('AttachmentStore', () => {
     assert.strictEqual(att.bytes, onDisk.byteLength);
   });
 
+  test('savePaste records where the file sits under the store, for previewing', async () => {
+    const root = await tmpRoot();
+    const store = new AttachmentStore(root);
+
+    const result = await store.savePaste('s1', {
+      name: 'screenshot.png', mediaType: 'image/png', base64: PNG_B64,
+    });
+    const att = result as Attachment;
+
+    // POSIX-joined and relative to the attachments root: the webview composes
+    // it onto a single host-minted base URI, so it can never be a disk path.
+    assert.strictEqual(att.storeRelative, `s1/${path.basename(att.path)}`);
+    assert.strictEqual(att.storeRelative?.includes('\\'), false);
+  });
+
+  test('an adopted file has no store-relative path — it was never copied in', async () => {
+    const root = await tmpRoot();
+    const store = new AttachmentStore(root);
+    const outside = path.join(await tmpRoot(), 'shot.png');
+    await fs.writeFile(outside, Buffer.from(PNG_B64, 'base64'));
+
+    const { attachments } = await store.adopt('s1', [outside]);
+
+    assert.strictEqual(attachments[0].kind, 'image');
+    assert.strictEqual(attachments[0].storeRelative, undefined);
+  });
+
   test('savePaste refuses anything over the size cap without writing', async () => {
     const root = await tmpRoot();
     const store = new AttachmentStore(root);

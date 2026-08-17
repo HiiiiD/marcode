@@ -227,7 +227,10 @@ export class MessageRouter {
           });
           return;
         }
-        const saved = await this.attachments.savePaste(msg.id, msg);
+        // Numbered here, where the pending set is known and handling is
+        // sequential: the webview cannot count two in-flight pastes apart.
+        const name = msg.name || `Pasted image ${session.pendingAttachments.length + 1}`;
+        const saved = await this.attachments.savePaste(msg.id, { ...msg, name });
         if ('error' in saved) {
           this.emit({ t: 'attachments-rejected', id: msg.id, reasons: [saved.error] });
           return;

@@ -85,6 +85,18 @@ export interface Attachment {
   /** Set for images; supplies the Claude block's `media_type`. */
   mediaType?: string;
   bytes: number;
+  /**
+   * POSIX path under the attachment store's root, for the files the store
+   * wrote itself — which is pastes, and only pastes.
+   *
+   * It exists so an image can be previewed without its bytes crossing
+   * `postMessage`: the host mints one webview URI for the store root, and the
+   * webview composes this onto it. An adopted file has none, because it was
+   * never copied in and a webview cannot load an arbitrary disk path — which
+   * is why a pasted screenshot previews and a picked one does not. Widening
+   * that is the spec's deferred `localResourceRoots` item.
+   */
+  storeRelative?: string;
 }
 
 /**

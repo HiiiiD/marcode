@@ -2,6 +2,7 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { FileText, ImageIcon, X } from 'lucide-react';
 import type { Attachment } from '../../protocol/messages';
+import { previewUriOf } from '../lib/attachment-preview';
 import type { PaneState } from '../reducer';
 import { useStore } from '../store';
 
@@ -44,6 +45,8 @@ export function AttachmentChips({ pane }: { pane: PaneState }) {
 export function AttachmentChip({
   attachment, onRemove,
 }: { attachment: Attachment; onRemove?: () => void }) {
+  const preview = previewUriOf(attachment);
+
   return (
     <span
       className={cn(
@@ -53,9 +56,21 @@ export function AttachmentChip({
       )}
       title={`${attachment.path} · ${sizeOf(attachment)}`}
     >
-      {attachment.kind === 'image'
-        ? <ImageIcon className="size-3 shrink-0 text-muted-foreground" aria-hidden />
-        : <FileText className="size-3 shrink-0 text-muted-foreground" aria-hidden />}
+      {preview
+        ? (
+          // The thumbnail replaces the icon rather than joining it: at this
+          // size the image is the identity, and a generic glyph beside it
+          // would say only what the picture already says. Square-cropped so a
+          // row of chips keeps one rhythm whatever the source aspect ratio.
+          <img
+            src={preview}
+            alt={attachment.name}
+            className="size-4 shrink-0 rounded-[2px] object-cover"
+          />
+        )
+        : attachment.kind === 'image'
+          ? <ImageIcon className="size-3 shrink-0 text-muted-foreground" aria-hidden />
+          : <FileText className="size-3 shrink-0 text-muted-foreground" aria-hidden />}
       <span className="truncate">{attachment.name}</span>
       {onRemove && (
         <Button

@@ -124,6 +124,32 @@ suite('MessageRouter', () => {
     assert.strictEqual(session.pendingAttachments.length, 1);
   });
 
+  test('a clipboard image with no name of its own is numbered as it arrives', async () => {
+    await router.handle({ t: 'create-session', providerId: 'fake', cwd: '/tmp' });
+    const id = manager.summaries()[0].id;
+
+    await router.handle({ t: 'attach-paste', id, mediaType: 'image/png', base64: 'iVBORw==' });
+    await router.handle({ t: 'attach-paste', id, mediaType: 'image/png', base64: 'iVBORw==' });
+
+    // Numbered against the pending set, so two screenshots are two names — a
+    // shared fallback makes the chips' remove labels indistinguishable.
+    assert.deepStrictEqual(
+      manager.get(id)!.pendingAttachments.map((a) => a.name),
+      ['Pasted image 1', 'Pasted image 2'],
+    );
+  });
+
+  test('a paste that carries its own name keeps it', async () => {
+    await router.handle({ t: 'create-session', providerId: 'fake', cwd: '/tmp' });
+    const id = manager.summaries()[0].id;
+
+    await router.handle({
+      t: 'attach-paste', id, name: 'diagram.png', mediaType: 'image/png', base64: 'iVBORw==',
+    });
+
+    assert.deepStrictEqual(manager.get(id)!.pendingAttachments.map((a) => a.name), ['diagram.png']);
+  });
+
   test('an oversized paste is rejected without touching the pending set', async () => {
     await router.handle({ t: 'create-session', providerId: 'fake', cwd: '/tmp' });
     const id = manager.summaries()[0].id;

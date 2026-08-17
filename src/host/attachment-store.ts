@@ -63,8 +63,17 @@ export class AttachmentStore {
 
   constructor(private readonly rootDir: string) {}
 
+  /**
+   * The directory every `storeRelative` is relative to. Public because the
+   * webview layer has to mint exactly one resource URI for it — see
+   * `Attachment.storeRelative`.
+   */
+  get baseDir(): string {
+    return path.join(this.rootDir, 'attachments');
+  }
+
   private dirFor(sessionId: string): string {
-    return path.join(this.rootDir, 'attachments', sessionId);
+    return path.join(this.baseDir, sessionId);
   }
 
   async savePaste(
@@ -96,7 +105,12 @@ export class AttachmentStore {
     } catch (err) {
       return { error: `Could not save that attachment: ${(err as Error).message}` };
     }
-    return { id, path: file, name: input.name, kind, mediaType, bytes: bytes.byteLength };
+    return {
+      id, path: file, name: input.name, kind, mediaType, bytes: bytes.byteLength,
+      // Always POSIX-joined: this is composed onto a webview URI, not walked
+      // on disk, and a backslash would not survive the URL.
+      storeRelative: `${sessionId}/${path.basename(file)}`,
+    };
   }
 
   async adopt(sessionId: string, paths: string[]): Promise<AdoptResult> {
