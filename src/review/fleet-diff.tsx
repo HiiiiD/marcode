@@ -233,11 +233,20 @@ export function FleetDiff() {
   // travels with it — without this, a background refresh 750ms after any
   // session goes idle would silently collapse a list the user had just
   // raised back down to the default.
+  //
+  // Gated on `state.visible`: a tab in a background editor group would
+  // otherwise keep this timer running forever — one git invocation per
+  // working tree, on a 750ms cadence, for a surface nobody can see. A
+  // background tab shows stale rows for one request cycle when it comes
+  // back into view; that trade is deliberately cheaper than the alternative.
+  // `fleetDiffDirty` keeps counting while hidden, so becoming visible again
+  // with a non-zero count re-enters this effect (because `visible` is a
+  // dependency) and reads once — no separate edge-detection effect needed.
   useEffect(() => {
-    if (state.fleetDiffDirty === 0) { return; }
+    if (!state.visible || state.fleetDiffDirty === 0) { return; }
     const timer = setTimeout(() => { post({ t: 'request-fleet-diff', cap }); }, 750);
     return () => { clearTimeout(timer); };
-  }, [state.fleetDiffDirty, post, cap]);
+  }, [state.visible, state.fleetDiffDirty, post, cap]);
 
   // Past the ceiling, doubling forever while the host keeps clamping to
   // `MAX_FILE_CAP` would leave the button on screen as a permanent no-op —

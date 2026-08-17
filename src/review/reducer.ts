@@ -18,6 +18,11 @@ export interface ReviewState {
    * a re-request off it rather than re-reading on every edit.
    */
   fleetDiffDirty: number;
+  /**
+   * Whether the review tab is on screen. A tab that has never reported was
+   * just created and revealed, so the initial value is `true`.
+   */
+  visible: boolean;
 }
 
 export const initialReviewState: ReviewState = {
@@ -26,6 +31,7 @@ export const initialReviewState: ReviewState = {
   fleetDiff: undefined,
   fleetDiffReason: undefined,
   fleetDiffDirty: 0,
+  visible: true,
 };
 
 export function reduceReview(state: ReviewState, msg: HostToWebview): ReviewState {
@@ -45,6 +51,9 @@ export function reduceReview(state: ReviewState, msg: HostToWebview): ReviewStat
 
     case 'fleet-diff':
       return { ...state, fleetDiff: msg.trees, fleetDiffReason: msg.reason };
+
+    case 'review-visibility':
+      return { ...state, visible: msg.visible };
 
     // Anything else is a message this client never subscribed to. Ignoring it
     // is the second layer behind REVIEW_WANTS, not a substitute for it.

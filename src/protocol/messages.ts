@@ -562,4 +562,14 @@ export type HostToWebview =
        * webview — the one sentence a failure must never be allowed to leave
        * on screen.
        */
-      reason?: string };
+      reason?: string }
+  /**
+   * Whether the review tab is on screen.
+   *
+   * A tab in a background editor group would otherwise keep the 750ms dirty
+   * timer running — one git invocation per working tree, for a surface nobody
+   * can see. The client stops requesting while hidden and reads once on
+   * becoming visible again, which costs one stale frame on re-focus and is the
+   * trade this makes deliberately.
+   */
+  | { t: 'review-visibility'; visible: boolean };

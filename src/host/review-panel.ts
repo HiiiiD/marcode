@@ -82,6 +82,10 @@ export class ReviewPanel {
       }
     });
 
+    panel.onDidChangeViewState(() => {
+      void panel.webview.postMessage({ t: 'review-visibility', visible: panel.visible });
+    });
+
     panel.onDidDispose(() => {
       this.unregister?.();
       this.unregister = undefined;

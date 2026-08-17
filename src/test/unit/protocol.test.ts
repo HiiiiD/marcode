@@ -67,6 +67,7 @@ function describeOutbound(m: HostToWebview): string {
     case 'bring-back-plan': return 'bring-back-plan';
     case 'stale-trees': return 'stale-trees';
     case 'fleet-diff': return 'fleet-diff';
+    case 'review-visibility': return 'review-visibility';
     default: return assertNever(m);
   }
 }
