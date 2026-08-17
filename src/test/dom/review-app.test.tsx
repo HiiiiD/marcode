@@ -1,9 +1,28 @@
 import * as assert from 'node:assert';
 import { screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { posted, renderReview, resetHost, sendFromHost } from './review-harness';
 
 suite('review app', () => {
   setup(() => { resetHost(); });
+
+  test('renders a file row per change, and opens the diff on click', async () => {
+    renderReview();
+    sendFromHost({
+      t: 'fleet-diff',
+      trees: [{
+        root: '/repo', branch: 'main', sessions: ['s1'],
+        base: { kind: 'head' }, omitted: 0,
+        files: [{ path: 'src/a.ts', op: 'modify', insertions: 3, deletions: 1, claimedBy: ['s1'] }],
+      }],
+    } as never);
+
+    await userEvent.click(screen.getByRole('button', { name: /src\/a\.ts/ }));
+
+    const open = posted().filter((m) => m.t === 'open-file-diff');
+    assert.strictEqual(open.length, 1);
+    assert.strictEqual(JSON.stringify(open[0]).includes('src/a.ts'), true);
+  });
 
   test('posts ready on mount, then requests the fleet diff', () => {
     renderReview();

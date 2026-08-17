@@ -10,7 +10,7 @@
 // No React and no `@/` aliases: this is required directly from the mocha
 // harness, the same rule `pane-layout.ts` follows.
 
-import type { FileChange, SessionId, TreeDiff } from '../../protocol/messages';
+import type { FileChange, SessionId, TreeDiff } from '../protocol/messages';
 
 export interface SessionGroup {
   /** `null` is the unattributed group — see `groupTree`. */

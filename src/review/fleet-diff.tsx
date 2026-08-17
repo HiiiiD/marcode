@@ -1,17 +1,16 @@
 import {
   FileMinusIcon, FilePenLineIcon, FilePlusIcon, FileSymlinkIcon,
-  RefreshCwIcon, XIcon,
+  RefreshCwIcon,
 } from 'lucide-react';
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { groupTree, summarize, type SessionGroup } from './fleet-diff-groups';
-import { REVIEW_TOGGLE_ATTR } from './review-toggle';
-import { useStore } from '../store';
-import { folderName } from '../format';
+import { useStore } from './store';
+import { folderName } from '@/format';
 import type {
   ChangeOp, FileChange, SessionId, SessionSummary, TreeDiff,
-} from '../../protocol/messages';
+} from '../protocol/messages';
 
 /**
  * Every file the fleet has changed, grouped by the session that changed it.
@@ -21,10 +20,12 @@ import type {
  * grid of cards, because the task is scanning many paths for the one worth
  * opening, and a card puts three lines of chrome between every two of them.
  *
- * It replaces the panes rather than floating over them. A dialog would be the
- * wrong shape twice: review is not a modal decision (the agents keep working
- * while it is open, and the list re-reads itself as they do), and a popup
- * over a 700px sidebar has nowhere to put a 500-row list.
+ * It is an editor tab, not a panel surface. The panel is 300-500px in
+ * practice, and this list — file paths, churn counts, session chips — did not
+ * render there at all under the width gate it used to sit behind; an editor
+ * tab has a whole column to itself and, unlike a panel takeover, leaves the
+ * session panes and their permission cards on screen while a diff is being
+ * read.
  *
  * What each row must survive being read as: the base line names what the diff
  * is measured against, because "12 files changed" since a branch point and
@@ -45,53 +46,13 @@ import type {
  */
 const UNATTRIBUTED_KEY = 'unattributed';
 
-export function FleetDiff({ onClose }: { onClose: () => void }) {
+export function FleetDiff() {
   const { state, post } = useStore();
   const trees = state.fleetDiff;
-  const rootRef = useRef<HTMLElement>(null);
 
   // Ask once on mount: the surface is the only thing that wants this, so it
   // is the only thing that asks for it.
   useEffect(() => { post({ t: 'request-fleet-diff' }); }, [post]);
-
-  // Escape leaves, from anywhere. On the window rather than on the section,
-  // because opening the surface does not move focus into it: the control that
-  // opened it stays mounted in the toolbar above and keeps focus, so a
-  // handler on this subtree would never see the keystroke that matters most.
-  // `onClose` is read through a ref-free dependency: the effect re-binds when
-  // it changes, which is cheap and cannot go stale.
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape' || e.defaultPrevented) { return; }
-      // Not stopped: a dialog opened over this surface handles Escape first
-      // and marks it handled, which the guard above respects. Anything that
-      // reaches here means nothing nearer wanted it.
-      onClose();
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => { window.removeEventListener('keydown', onKeyDown); };
-  }, [onClose]);
-
-  // Closing unmounts whatever held focus — the close button itself, most of
-  // the time — and the browser drops `activeElement` back to `<body>` with no
-  // event to hook, exactly as `PaneGroup` describes for a vanishing pane. The
-  // difference is that here the control that opened the surface is still on
-  // screen, so there is an unambiguous place to go back to. Restored only
-  // when focus was ours to move: if the user had already clicked somewhere
-  // else, stealing it back would be worse than leaving it.
-  useEffect(() => {
-    const root = rootRef.current;
-    return () => {
-      const active = document.activeElement;
-      const ours = active === null || active === document.body
-        || (root !== null && root.contains(active));
-      if (!ours) { return; }
-      // Absent when the panel shrank below the review width, which unmounts
-      // the toggle along with this surface. Nothing to restore to, and the
-      // panes it fell back to take focus on their own terms.
-      document.querySelector<HTMLElement>(`[${REVIEW_TOGGLE_ATTR}]`)?.focus();
-    };
-  }, []);
 
   // And again, debounced, whenever the reducer counted something that could
   // have changed a diff. 750ms coalesces a burst of edits inside one turn
@@ -104,7 +65,7 @@ export function FleetDiff({ onClose }: { onClose: () => void }) {
   }, [state.fleetDiffDirty, post]);
 
   return (
-    <section ref={rootRef} aria-label="Changes" className="flex h-full min-h-0 flex-col">
+    <section aria-label="Changes" className="flex h-screen min-h-0 flex-col">
       {/*
         The same toolbar the picker above it uses — same height, same border,
         same control sizes. This surface takes over the whole panel body, and
@@ -124,15 +85,6 @@ export function FleetDiff({ onClose }: { onClose: () => void }) {
           onClick={() => post({ t: 'request-fleet-diff' })}
         >
           <RefreshCwIcon aria-hidden />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          className="shrink-0"
-          aria-label="Close: go back to the session panes"
-          onClick={onClose}
-        >
-          <XIcon aria-hidden />
         </Button>
       </div>
 

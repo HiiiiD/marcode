@@ -2,7 +2,7 @@
 // user reads. Pure: no React, no DOM, no store.
 
 import * as assert from 'assert';
-import { groupTree, summarize } from '../../webview/components/fleet-diff-groups';
+import { groupTree, summarize } from '../../review/fleet-diff-groups';
 import type { FileChange, TreeDiff } from '../../protocol/messages';
 
 function file(path: string, claimedBy: string[], ins = 1, del = 0): FileChange {

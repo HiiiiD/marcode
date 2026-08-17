@@ -1,9 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { FleetDiff } from './components/fleet-diff';
 import { PaneGroup } from './components/pane-group';
 import { SessionPicker } from './components/session-picker';
-import { NARROW_PX, REVIEW_PX, usePanelWidth } from './components/use-is-narrow';
+import { NARROW_PX, usePanelWidth } from './components/use-is-narrow';
 import { reconcilePaneLayout, rosterSessionIds } from './components/pane-layout';
 import { UsageStrip } from './components/usage-strip';
 import { useStore } from './store';
@@ -23,11 +22,6 @@ export function App() {
   // started at `false`, and the layout must not flash stacked before the
   // first measurement lands.
   const narrow = width > 0 && width < NARROW_PX;
-  // No `> 0` guard needed, unlike `narrow`: `>= REVIEW_PX` already refuses to
-  // offer review until something has measured, which is the conservative
-  // reading of a width nobody has taken.
-  const canReview = width >= REVIEW_PX;
-  const [reviewOpen, setReviewOpen] = useState(false);
 
   const byIdKeys = Object.keys(state.byId);
   const rosterKey = state.sessions.map((s) => s.id).join(',');
@@ -92,26 +86,10 @@ export function App() {
           <>
             <SessionPicker
               narrow={narrow}
-              canReview={canReview}
-              // The same condition the body below renders on, not the intent
-              // flag: below REVIEW_PX the surface is not showing, whatever
-              // the user last asked for, and a toggle that claimed otherwise
-              // would describe a panel that isn't on screen.
-              reviewing={reviewOpen && canReview}
-              onReview={() => { setReviewOpen(true); }}
+              onReview={() => post({ t: 'open-review' })}
             />
             <div className="min-h-0 flex-1">
-              {/*
-                Derived, not imperative. If the panel shrinks below REVIEW_PX
-                while the surface is open, this falls back to the panes on its
-                own — an imperative close would strand the user in an
-                unusable surface at 300px with no visible way out — and
-                widening again restores it, because the intent flag was never
-                cleared.
-              */}
-              {reviewOpen && canReview
-                ? <FleetDiff onClose={() => { setReviewOpen(false); }} />
-                : <PaneGroup narrow={narrow} />}
+              <PaneGroup narrow={narrow} />
             </div>
             <UsageStrip />
           </>
