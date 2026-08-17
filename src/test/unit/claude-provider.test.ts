@@ -982,6 +982,49 @@ suite('ClaudeProvider (cancellation)', () => {
 
     assert.strictEqual(events().filter((e) => e.kind === 'request-cancelled').length, 1);
   });
+
+  test('a request that arrives on an already-aborted signal denies instead of parking', async () => {
+    const fake = fakeLoadQuery();
+    const provider = new ClaudeProvider(fake.load as never);
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+    const events = collect(run);
+    run.send('hi');
+    await tick();
+
+    const controller = new AbortController();
+    controller.abort();
+    const canUseTool = fake.calls[0].options.canUseTool as CanUseToolLike;
+    // `addEventListener('abort')` on an already-aborted signal never fires,
+    // so without the pre-check this promise parks with nothing able to
+    // resolve it: interrupt() ran before the entry existed, and there is no
+    // card to click.
+    const decision = canUseTool('Write', { file_path: '/tmp/a' },
+      { toolUseID: 't1', signal: controller.signal, requestId: 'rq1' });
+
+    assert.deepStrictEqual(await decision, { behavior: 'deny', message: 'Turn cancelled' });
+    assert.strictEqual(events().some((e) => e.kind === 'permission'), false);
+  });
+
+  test('dispose denies a parked question — never "allow with no answers"', async () => {
+    const fake = fakeLoadQuery();
+    const provider = new ClaudeProvider(fake.load as never);
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+    collect(run);
+    run.send('hi');
+    await tick();
+
+    const canUseTool = fake.calls[0].options.canUseTool as CanUseToolLike;
+    const decision = canUseTool('AskUserQuestion', {
+      questions: [{ header: 'H', question: 'Q?', multiSelect: false,
+        options: [{ label: 'A', description: 'a' }, { label: 'B', description: 'b' }] }],
+    }, { toolUseID: 't1', signal: new AbortController().signal, requestId: 'rq1' });
+    await run.dispose();
+
+    // `{}` here would produce `{behavior:'allow', updatedInput:{...input,
+    // answers:{}}}` — running the tool with no answer at all, which is the
+    // exact shape the question card exists to eliminate.
+    assert.deepStrictEqual(await decision, { behavior: 'deny', message: 'Turn cancelled' });
+  });
 });
 
 suite('ClaudeProvider permission metadata', () => {

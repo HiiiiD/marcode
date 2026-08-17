@@ -425,6 +425,13 @@ export class ClaudeProvider implements AgentProvider {
 
     const canUseTool: CanUseTool = async (toolName, input, options) => {
       const id = options.toolUseID;
+      // Before the listener, not after: `addEventListener('abort')` on a
+      // signal that has ALREADY aborted never fires, so a request that raced
+      // the abort would park a promise nothing can ever resolve — the turn is
+      // gone, and neither `interrupt()` nor a click can reach an entry that
+      // was added after they ran. Deny immediately instead, with the same
+      // message `cancelParked` resolves with.
+      if (options.signal.aborted) { return { behavior: 'deny', message: 'Turn cancelled' }; }
       options.signal.addEventListener('abort', () => { cancelParked(id); }, { once: true });
       const specs = toolName === 'AskUserQuestion' ? toQuestionSpecs(input) : undefined;
       if (specs) {
@@ -688,7 +695,12 @@ export class ClaudeProvider implements AgentProvider {
         disposed = true;
         for (const [, entry] of parked) {
           if (entry.kind === 'permission') { entry.resolve({ allow: false, reason: 'Session closed' }); }
-          else { entry.resolve({}); }
+          // CANCELLED, never `{}`: an empty answer map is a real answer here —
+          // `canUseTool` turns it into `{behavior:'allow', updatedInput:{...input,
+          // answers:{}}}`, i.e. "the user chose nothing, run the tool anyway",
+          // which is exactly the shape this branch exists to avoid. The
+          // sentinel resolves `deny` instead.
+          else { entry.resolve(CANCELLED); }
         }
         parked.clear();
         prompts.close();

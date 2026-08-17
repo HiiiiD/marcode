@@ -144,6 +144,10 @@ export class FakeProvider implements AgentProvider {
       },
       respondToQuestion: (id: string, answers: QuestionAnswers) => {
         this.answered.push([id, answers]);
+        // Same reason as respondToTool above: a real provider resumes and
+        // finishes the turn once the answer lands, and without a follow-up
+        // event AgentSession leaves the status at 'running' forever.
+        channel.push({ kind: 'turn-end', reason: 'done' });
       },
       setEffort: (effort: EffortLevel) => { this.efforts.push(effort); },
       setPermissionMode: (mode: PermissionMode) => { this.permissionModes.push(mode); },
