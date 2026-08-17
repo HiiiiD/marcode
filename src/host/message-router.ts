@@ -46,10 +46,19 @@ export interface EditorContextHost {
    * seventh constructor parameter for one call site.
    */
   openSettings(section: string): void;
+  /**
+   * Opens `url` outside VS Code. Here for the same reason `openDiff` is: it
+   * needs `vscode.env`, which this module must not import.
+   */
+  openExternal(url: string): void;
 }
 
 const NO_EDITOR: EditorContextHost = {
-  current: () => null, reveal: () => {}, openDiff: () => {}, openSettings: () => {},
+  current: () => null,
+  reveal: () => {},
+  openDiff: () => {},
+  openSettings: () => {},
+  openExternal: () => {},
 };
 
 export interface AttachmentHost { pick(): Promise<string[]> }
@@ -368,6 +377,10 @@ export class MessageRouter {
         this.editor.openSettings(msg.section);
         return;
 
+      case 'open-external':
+        this.editor.openExternal(msg.url);
+        return;
+
       case 'permission-decision':
         this.manager.get(msg.id)?.respondToPermission(msg.requestId, msg.decision);
         return;
@@ -462,7 +475,7 @@ const KNOWN_MESSAGE_TAGS = new Set<WebviewToHost['t']>([
   'request-bring-back', 'bring-back',
   'request-stale-trees', 'remove-stale-tree',
   'request-fleet-diff', 'open-file-diff', 'open-review',
-  'refresh-catalog', 'open-settings',
+  'refresh-catalog', 'open-settings', 'open-external',
 ]);
 
 /**

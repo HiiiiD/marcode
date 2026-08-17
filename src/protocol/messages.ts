@@ -466,7 +466,17 @@ export type WebviewToHost =
    * command, and the one place it needs to is the empty state: with no
    * provider enabled, the setting that enables one is the only next step.
    */
-  | { t: 'open-settings'; section: string };
+  | { t: 'open-settings'; section: string }
+  /**
+   * A URL from agent-authored markdown, handed to the OS. Not
+   * session-addressed for the same reason `reveal-file` is not: where a link
+   * goes is global IDE state, and no session owns the browser.
+   *
+   * The webview has already ruled out the schemes that name a script rather
+   * than a destination (`markdown-link.ts`); VS Code applies its own
+   * trusted-domain prompt to what survives.
+   */
+  | { t: 'open-external'; url: string };
 
 export type HostToWebview =
   | { t: 'hydrate'; sessions: SessionSummary[]; layout: PaneLayout;

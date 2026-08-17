@@ -81,11 +81,27 @@ suite('MessageRouter', () => {
       reveal: () => {},
       openDiff: () => {},
       openSettings: (section) => sections.push(section),
+      openExternal: () => {},
     });
 
     await r.handle({ t: 'open-settings', section: 'hiiiidCode.enabledProviders' });
 
     assert.deepStrictEqual(sections, ['hiiiidCode.enabledProviders']);
+  });
+
+  test('open-external reaches the host with the url to open', async () => {
+    const urls: string[] = [];
+    const r = new MessageRouter(manager, (m) => sent.push(m), '/tmp', {
+      current: () => null,
+      reveal: () => {},
+      openDiff: () => {},
+      openSettings: () => {},
+      openExternal: (url) => urls.push(url),
+    });
+
+    await r.handle({ t: 'open-external', url: 'https://example.test/a' });
+
+    assert.deepStrictEqual(urls, ['https://example.test/a']);
   });
 
   test('ready carries the manager\'s current usage snapshot on hydrate', async () => {
@@ -587,6 +603,7 @@ suite('MessageRouter', () => {
       reveal: () => {},
       openDiff: () => {},
       openSettings: () => {},
+      openExternal: () => {},
     });
 
     const session = await mgr.create('fake', '/tmp');
@@ -607,6 +624,7 @@ suite('MessageRouter', () => {
       reveal: () => {},
       openDiff: () => {},
       openSettings: () => {},
+      openExternal: () => {},
     });
 
     const session = await mgr.create('fake', '/tmp');
@@ -649,6 +667,7 @@ suite('MessageRouter', () => {
       reveal: (path, startLine) => calls.push({ path, startLine }),
       openDiff: () => {},
       openSettings: () => {},
+      openExternal: () => {},
     });
 
     await r.handle({ t: 'reveal-file', path: 'src/a.ts', startLine: 12 });
@@ -723,6 +742,7 @@ suite('MessageRouter', () => {
       reveal: () => {},
       openDiff: () => {},
       openSettings: () => {},
+      openExternal: () => {},
     });
 
     await r.handle({ t: 'ready' });

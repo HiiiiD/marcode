@@ -31,10 +31,14 @@ export function TranscriptItemView({
       );
 
     case 'tool':
-      // A tool item only grows `children` once its subagent actually does
-      // something, so a Task that ran nothing renders as an ordinary tool
-      // card — correct, since there is nothing nested to show.
-      return item.children && item.children.length > 0
+      // What the call IS, not what it has produced yet. A tool item only
+      // grows `children` once its subagent does something, so routing on
+      // children alone rendered a just-spawned Task as a generic tool card —
+      // precisely the window where the header's jump-to badge points at it
+      // and the user needs the destination to look like what was promised.
+      // `children` still routes on its own, so a provider that nests under a
+      // call we do not classify as a subagent keeps its nested rendering.
+      return item.tool.kind === 'subagent' || (item.children && item.children.length > 0)
         ? <SubagentCard item={item} sessionId={sessionId} />
         : <ToolCard item={item} />;
 

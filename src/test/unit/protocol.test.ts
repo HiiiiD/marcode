@@ -44,6 +44,7 @@ function describeInbound(m: WebviewToHost): string {
     case 'open-file-diff': return 'open-file-diff';
     case 'refresh-catalog': return 'refresh-catalog';
     case 'open-settings': return 'open-settings';
+    case 'open-external': return 'open-external';
     default: return assertNever(m);
   }
 }
