@@ -15,7 +15,6 @@ function baseState(): SessionState {
     title: 'Untitled', cwd: '/tmp', status: 'idle', permissionMode: 'default',
     resumeTokens: {},
     usage: { inputTokens: 0, outputTokens: 0 },
-    pendingQuestions: [],
     archived: false, createdAt: 1, updatedAt: 1, includeEditorContext: true,
   };
 }

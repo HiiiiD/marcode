@@ -9,7 +9,7 @@ import { posted, renderApp, renderWithStore, sendFromHost } from './harness';
 function hydrateWith(pendingQuestions: QuestionRequest[]) {
   sendFromHost({
     t: 'hydrate',
-    sessions: [summary('a', { pendingQuestions })],
+    sessions: [summary('a')],
     layout: layoutOf('a'),
     snapshots: [snapshot('a', { pendingQuestions })],
     catalog: catalog(),
@@ -395,7 +395,7 @@ suite('QuestionCard', () => {
     renderApp();
     sendFromHost({
       t: 'hydrate',
-      sessions: [summary('a', { pendingQuestions: LIVE })],
+      sessions: [summary('a')],
       layout: layoutOf('a'),
       snapshots: [snapshot('a', { items: [question()], pendingQuestions: LIVE })],
       catalog: catalog(),

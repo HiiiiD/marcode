@@ -214,10 +214,18 @@ at read time. The JSONL is not rewritten.
   })
 
 export interface QuestionRequest { requestId: string; questions: QuestionSpec[]; blocking: boolean }
-// SessionState.pendingQuestions: QuestionRequest[]   — hydrate
+// SessionSnapshot.pendingQuestions: QuestionRequest[]  — hydrate
 // PermissionRequest.meta?: PermissionMeta            — Tier A
+// TranscriptItem role:'permission' gains meta?: PermissionMeta — Tier A
 | { t: 'question-answer'; id: SessionId; requestId: string; answers: QuestionAnswers }
 ```
+
+**Correction to this spec, made during the final review.** `pendingQuestions` was
+originally specified on `SessionState`. That is wrong for the same reason `pending` is not
+there: it describes a provider request waiting on an answer *right now*, so it is
+in-memory host state, and a field on `SessionState` rides every `sessions-changed` summary
+and every `index.json` entry — where nothing maintains it and it would read `[]` while a
+question was in fact parked. It lives on `SessionSnapshot`, beside `pending`.
 
 `MessageRouter` maps `question-answer` → `answerQuestion`, with no `vscode` import.
 

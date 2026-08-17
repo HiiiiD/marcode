@@ -118,7 +118,6 @@ function baseState(): SessionState {
     includeEditorContext: true,
     resumeTokens: {},
     usage: { inputTokens: 0, outputTokens: 0 },
-    pendingQuestions: [],
     archived: false, createdAt: 1, updatedAt: 1,
   };
 }
@@ -1075,6 +1074,90 @@ suite('AgentSession questions', () => {
 
     const jsonl = await fs.readFile(path.join(dir, 'sessions', 's1.jsonl'), 'utf8');
     assert.strictEqual(jsonl.includes('"q1":["A"]'), true);
+    await session.dispose();
+  });
+
+  test('answering the last parked question lets the turn end', async () => {
+    const { session, provider } = sessionWith();
+    provider.runs[0].emit({ kind: 'question', id: 'r1', blocking: true, questions: [QUESTION_SPEC] });
+    await settle();
+    assert.strictEqual(session.state.status, 'awaiting-approval');
+
+    session.answerQuestion('r1', { q1: ['A'] });
+    await settle();
+
+    // The fake provider ends the turn on an answer, exactly as it does on a
+    // tool decision — without that the status dot would stick at 'running'
+    // forever in the walking skeleton.
+    assert.strictEqual(session.state.status, 'idle');
+    await session.dispose();
+  });
+
+  test('a question parked at dispose is dropped, never answered with an empty set', async () => {
+    const { session, provider } = sessionWith();
+    provider.runs[0].emit({ kind: 'question', id: 'r1', blocking: true, questions: [QUESTION_SPEC] });
+    await settle();
+
+    await session.dispose();
+
+    // `{}` is a real answer to a provider, not a cancellation: on Claude it
+    // becomes `{behavior:'allow', updatedInput:{...input, answers:{}}}`.
+    // Cancelling is the run's own job, in its own vocabulary.
+    assert.deepStrictEqual(provider.answered, []);
+  });
+});
+
+suite('AgentSession permission metadata', () => {
+  let dir: string;
+  let store: TranscriptStore;
+
+  setup(async () => {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'hiiiid-session-meta-'));
+    store = new TranscriptStore(dir);
+  });
+
+  teardown(async () => { await fs.rm(dir, { recursive: true, force: true }); });
+
+  const TOOL = { kind: 'command' as const, label: 'Bash', command: 'ls' };
+  const META = { title: 'Run ls', decisionReason: 'not in the allowlist' };
+
+  test("the event's meta reaches both the parked request and the transcript item", async () => {
+    const provider = new FakeProvider();
+    const session = new AgentSession(baseState(), provider, store, new RecordingSink());
+    provider.runs[0].emit({ kind: 'permission', id: 'p1', tool: TOOL, meta: META });
+    await settle();
+
+    const state = await session.snapshot();
+    assert.deepStrictEqual(state.pending[0].meta, META);
+    const item = state.items.find((i) => i.role === 'permission');
+    assert.deepStrictEqual((item as { meta?: unknown }).meta, META);
+    await session.dispose();
+  });
+
+  test('an event with no meta writes no key at all', async () => {
+    const provider = new FakeProvider();
+    const session = new AgentSession(baseState(), provider, store, new RecordingSink());
+    provider.runs[0].emit({ kind: 'permission', id: 'p1', tool: TOOL });
+    await settle();
+
+    const state = await session.snapshot();
+    assert.deepStrictEqual(state.pending, [{ requestId: 'p1', tool: TOOL }]);
+    assert.strictEqual('meta' in (state.items.find((i) => i.role === 'permission') ?? {}), false);
+    await session.dispose();
+  });
+
+  test('the meta survives the settled item, so a reloaded card still reads the same', async () => {
+    const provider = new FakeProvider();
+    const session = new AgentSession(baseState(), provider, store, new RecordingSink());
+    provider.runs[0].emit({ kind: 'permission', id: 'p1', tool: TOOL, meta: META });
+    await settle();
+    session.respondToPermission('p1', { allow: true });
+    await settle();
+    await session.snapshot(); // forces a flush
+
+    const jsonl = await fs.readFile(path.join(dir, 'sessions', 's1.jsonl'), 'utf8');
+    assert.strictEqual(jsonl.includes('"title":"Run ls"'), true);
+    assert.strictEqual(jsonl.includes('"decisionReason":"not in the allowlist"'), true);
     await session.dispose();
   });
 });

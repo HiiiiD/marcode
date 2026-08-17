@@ -431,7 +431,6 @@ export class SessionManager implements SessionSink {
       includeEditorContext: true,
       resumeTokens: {},
       usage: { inputTokens: 0, outputTokens: 0 },
-      pendingQuestions: [],
       archived: false, createdAt: now, updatedAt: now,
     };
 
@@ -1227,7 +1226,11 @@ export class SessionManager implements SessionSink {
         ...state, items, hasMore, pending: [],
         invocables: this.catalogSvc.get(this.keyOf(state)),
         // An archived session has no run to ask, and a stale snapshot
-        // presented as current would be a lie.
+        // presented as current would be a lie. Same for the parked questions:
+        // there is no live run holding any, and `emitSnapshot` reads this list
+        // to decide which persisted `pending` question items are stale — which
+        // for an archived session is all of them.
+        pendingQuestions: [],
         mcpServers: [],
       });
       this.drainSnapshotBuffer(id);

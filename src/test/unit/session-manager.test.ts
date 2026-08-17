@@ -570,7 +570,6 @@ suite('SessionManager', () => {
       includeEditorContext: true, resumeTokens: {},
       usage: { inputTokens: 0, outputTokens: 0 },
       contextPercent: 43, lastContext: remembered,
-      pendingQuestions: [],
       archived: false, createdAt: 1, updatedAt: 1, ...over,
     };
   }
@@ -829,6 +828,39 @@ suite('SessionManager', () => {
     assert.deepStrictEqual(
       (snapshot as { session: { mcpServers: unknown[] } }).session.mcpServers, [],
     );
+    // Spelled out for the same reason, not inherited from a persisted field:
+    // there is no run holding a parked question, and `emitSnapshot` reads
+    // this list to decide which persisted `pending` items are stale.
+    assert.deepStrictEqual(
+      (snapshot as { session: { pendingQuestions: unknown[] } }).session.pendingQuestions, [],
+    );
+  });
+
+  test('a parked question never reaches the roster summary or index.json', async () => {
+    const a = await manager.create('fake', '/tmp');
+    const id = a.state.id;
+    provider.runs[0].emit({
+      kind: 'question', id: 'r1', blocking: true,
+      questions: [{
+        id: 'q1', header: 'H', question: 'Q?', multiSelect: false,
+        allowOther: true, secret: false,
+        options: [{ label: 'A', description: 'a' }],
+      }],
+    });
+    await settle();
+
+    // The live snapshot is the one and only place the parked list is true.
+    await manager.setVisible([id]);
+    const snapshot = sent.find((m) => m.t === 'session-snapshot');
+    assert.ok(snapshot);
+    assert.strictEqual(
+      (snapshot as { session: { pendingQuestions: unknown[] } }).session.pendingQuestions.length, 1,
+    );
+    // The summary is `SessionState`, which must not claim to know it: nothing
+    // maintains the field there, so it would read `[]` forever — one keystroke
+    // from the truthful `pane.pendingQuestions` in the webview.
+    const summary = manager.summaries().find((s) => s.id === id);
+    assert.strictEqual('pendingQuestions' in (summary ?? {}), false);
   });
 
   test('a pending question with no live request reads back as stale', async () => {

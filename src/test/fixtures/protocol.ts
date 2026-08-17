@@ -33,7 +33,6 @@ export function summary(id: string, over: Partial<SessionSummary> = {}): Session
     includeEditorContext: true,
     resumeTokens: {},
     usage: { inputTokens: 0, outputTokens: 0 },
-    pendingQuestions: [],
     archived: false,
     createdAt: 1,
     updatedAt: 1,
@@ -42,7 +41,11 @@ export function summary(id: string, over: Partial<SessionSummary> = {}): Session
 }
 
 export function snapshot(id: string, over: Partial<SessionSnapshot> = {}): SessionSnapshot {
-  return { ...summary(id), items: [], hasMore: false, pending: [], mcpServers: [], ...over };
+  return {
+    ...summary(id),
+    items: [], hasMore: false, pending: [], pendingQuestions: [], mcpServers: [],
+    ...over,
+  };
 }
 
 export function layoutOf(...ids: string[]): PaneLayout {

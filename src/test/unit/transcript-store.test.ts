@@ -90,7 +90,6 @@ suite('TranscriptStore', () => {
         status: 'idle', permissionMode: 'default', includeEditorContext: true,
         resumeTokens: {},
         usage: { inputTokens: 0, outputTokens: 0 },
-        pendingQuestions: [],
         archived: false, createdAt: 1, updatedAt: 1,
       }],
       layout: { orientation: 'vertical', panes: [{ sessionId: 's1', size: 100 }] },

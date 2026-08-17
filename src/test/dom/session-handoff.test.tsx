@@ -14,7 +14,6 @@ function summary(id: string, title: string): SessionSummary {
     status: 'idle', permissionMode: 'default', includeEditorContext: true,
     resumeTokens: {},
     usage: { inputTokens: 0, outputTokens: 0 },
-    pendingQuestions: [],
     archived: false, createdAt: 1, updatedAt: 1,
   };
 }
@@ -26,7 +25,9 @@ const CATALOG: ProviderInfo[] = [{
 }];
 
 function snapshotOf(s: SessionSummary) {
-  return { ...s, items: [], hasMore: false, pending: [], mcpServers: [] };
+  return {
+    ...s, items: [], hasMore: false, pending: [], pendingQuestions: [], mcpServers: [],
+  };
 }
 
 /**

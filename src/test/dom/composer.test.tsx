@@ -163,7 +163,7 @@ suite("Composer", () => {
 
     await userEvent.click(screen.getByLabelText("Permission mode"));
     await screen.findByRole("menuitemradio", { name: /Ask/ });
-    assert.strictEqual(screen.queryByRole("menuitem", { name: /Effort/ }), null);
+    assert.strictEqual(screen.queryByRole("menuitem", { name: /Effort/ }) === null, true);
   });
 
   test("the Effort row names the current level, in its text and its accessible name", async () => {
@@ -225,8 +225,9 @@ suite("Composer", () => {
     const row = await screen.findByRole("menuitem", { name: /Effort/ });
     await userEvent.click(row);
 
-    assert.ok(
-      screen.queryByRole("menuitem", { name: /Effort/ }),
+    assert.strictEqual(
+      screen.queryByRole("menuitem", { name: /Effort/ }) !== null,
+      true,
       "setting a level must leave the menu open so the change is visible",
     );
   });
@@ -389,7 +390,7 @@ suite("Composer", () => {
 
   test("no editor context means no control at all", () => {
     renderWithStore(<Composer pane={pane()} model={NO_EFFORT} models={[]} />);
-    assert.strictEqual(screen.queryByRole("button", { name: /editor context/i }), null);
+    assert.strictEqual(screen.queryByRole("button", { name: /editor context/i }) === null, true);
   });
 
   test("an editor context reveals the control, on and naming the file", () => {
@@ -563,7 +564,7 @@ suite("Composer", () => {
     function hydrateWith(pendingQuestions: QuestionRequest[]) {
       sendFromHost({
         t: "hydrate",
-        sessions: [summary("a", { pendingQuestions })],
+        sessions: [summary("a")],
         layout: layoutOf("a"),
         snapshots: [snapshot("a", { pendingQuestions })],
         catalog: catalog(),
