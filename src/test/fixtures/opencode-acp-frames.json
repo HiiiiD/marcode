@@ -1,0 +1,125 @@
+{
+  "initialize": {
+    "protocolVersion": 1,
+    "agentCapabilities": {
+      "loadSession": true,
+      "mcpCapabilities": { "http": true, "sse": true },
+      "promptCapabilities": { "embeddedContext": true, "image": true },
+      "sessionCapabilities": { "close": {}, "fork": {}, "list": {}, "resume": {} }
+    },
+    "authMethods": [
+      { "id": "opencode-login", "name": "Login with opencode",
+        "description": "Run `opencode auth login` in the terminal" }
+    ],
+    "agentInfo": { "name": "OpenCode", "version": "1.18.18" }
+  },
+  "newSession": {
+    "sessionId": "ses_ff0400c8affe2kYFjqc6OUHpG3",
+    "configOptions": [
+      { "id": "model", "name": "Model", "category": "model", "type": "select",
+        "currentValue": "opencode/big-pickle",
+        "options": [
+          { "value": "opencode/big-pickle", "name": "OpenCode Zen/Big Pickle" },
+          { "value": "opencode/hy3-free", "name": "OpenCode Zen/Hy3 Free" }
+        ] },
+      { "id": "mode", "name": "Session Mode", "category": "mode", "type": "select",
+        "currentValue": "build",
+        "options": [
+          { "value": "build", "name": "build",
+            "description": "The default agent. Executes tools based on configured permissions." },
+          { "value": "plan", "name": "plan", "description": "Plan mode. Disallows all edit tools." }
+        ] }
+    ]
+  },
+  "updates": {
+    "agentMessageChunk": {
+      "sessionUpdate": "agent_message_chunk",
+      "messageId": "msg_00fc001c3001tST90eYIeTsHrL",
+      "content": { "type": "text", "text": "Done" }
+    },
+    "agentThoughtChunk": {
+      "sessionUpdate": "agent_thought_chunk",
+      "messageId": "msg_00fc001c3001tST90eYIeTsHrL",
+      "content": { "type": "text", "text": "I should write the file" }
+    },
+    "userMessageChunk": {
+      "sessionUpdate": "user_message_chunk",
+      "messageId": "msg_00fc06fef0011QBpOqce2lnFhS",
+      "content": { "type": "text", "text": "Think briefly, then create a file" }
+    },
+    "bashToolCall": {
+      "sessionUpdate": "tool_call",
+      "toolCallId": "call_149d4cd4e9d34517851b27d4",
+      "title": "bash",
+      "kind": "execute",
+      "status": "pending",
+      "locations": [{ "path": "C:\\Users\\Marco\\AppData\\Local\\Temp\\opencode-acp-spike\\sandbox" }],
+      "rawInput": { "cwd": "C:\\Users\\Marco\\AppData\\Local\\Temp\\opencode-acp-spike\\sandbox" }
+    },
+    "bashToolCallInProgress": {
+      "sessionUpdate": "tool_call_update",
+      "toolCallId": "call_149d4cd4e9d34517851b27d4",
+      "status": "in_progress",
+      "kind": "execute",
+      "title": "echo hi",
+      "locations": [{ "path": "C:\\Users\\Marco\\AppData\\Local\\Temp\\opencode-acp-spike\\sandbox" }],
+      "rawInput": { "command": "echo hi", "cwd": "C:\\Users\\Marco\\AppData\\Local\\Temp\\opencode-acp-spike\\sandbox" }
+    },
+    "bashToolCallCompleted": {
+      "sessionUpdate": "tool_call_update",
+      "toolCallId": "call_149d4cd4e9d34517851b27d4",
+      "status": "completed",
+      "title": "echo hi",
+      "content": [{ "type": "content", "content": { "type": "text", "text": "hi\r\n" } }],
+      "rawOutput": { "output": "hi\r\n", "metadata": { "exit": 0, "truncated": false } }
+    },
+    "editToolCallCompleted": {
+      "sessionUpdate": "tool_call_update",
+      "toolCallId": "call_5187bca818b9473c8bbfe792",
+      "status": "completed",
+      "kind": "edit",
+      "title": "notes.txt",
+      "locations": [{ "path": "C:\\Users\\Marco\\AppData\\Local\\Temp\\opencode-acp-spike\\sandbox\\notes.txt" }],
+      "content": [{ "type": "diff",
+        "path": "C:\\Users\\Marco\\AppData\\Local\\Temp\\opencode-acp-spike\\sandbox\\notes.txt",
+        "oldText": null, "newText": "hi" }],
+      "rawOutput": { "output": "Wrote file successfully." }
+    },
+    "availableCommands": {
+      "sessionUpdate": "available_commands_update",
+      "availableCommands": [
+        { "name": "customize-opencode", "description": "Use ONLY when the user is editing opencode's own configuration" },
+        { "name": "init", "description": "Create or update AGENTS.md" }
+      ]
+    },
+    "usageUpdate": {
+      "sessionUpdate": "usage_update",
+      "used": 8896,
+      "size": 200000,
+      "cost": { "amount": 0, "currency": "USD" }
+    }
+  },
+  "requestPermission": {
+    "sessionId": "ses_ff03f902affeyFUbwdSgzPrCT2",
+    "toolCall": {
+      "toolCallId": "call_5187bca818b9473c8bbfe792",
+      "title": "C:\\Users\\Marco\\AppData\\Local\\Temp\\opencode-acp-spike\\sandbox\\notes.txt",
+      "kind": "edit",
+      "status": "pending",
+      "locations": [{ "path": "C:\\Users\\Marco\\AppData\\Local\\Temp\\opencode-acp-spike\\sandbox\\notes.txt" }],
+      "content": [{ "type": "diff",
+        "path": "C:\\Users\\Marco\\AppData\\Local\\Temp\\opencode-acp-spike\\sandbox\\notes.txt",
+        "oldText": null, "newText": "hi" }]
+    },
+    "options": [
+      { "optionId": "once", "kind": "allow_once", "name": "Allow once" },
+      { "optionId": "always", "kind": "allow_always", "name": "Always allow" },
+      { "optionId": "reject", "kind": "reject_once", "name": "Reject" }
+    ]
+  },
+  "promptResponse": {
+    "stopReason": "end_turn",
+    "usage": { "inputTokens": 160, "outputTokens": 18, "totalTokens": 8777,
+               "thoughtTokens": 23, "cachedReadTokens": 8576 }
+  }
+}
