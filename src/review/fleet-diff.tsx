@@ -65,12 +65,12 @@ export function FleetDiff() {
   }, [state.fleetDiffDirty, post]);
 
   return (
-    <section aria-label="Changes" className="flex h-screen min-h-0 flex-col">
+    <section aria-label="Changes across every working tree" className="flex h-screen min-h-0 flex-col">
       {/*
-        The same toolbar the picker above it uses — same height, same border,
-        same control sizes. This surface takes over the whole panel body, and
-        a header that announced itself with a different rhythm would read as
-        a different application rather than the panel's second view.
+        The same toolbar rhythm as the sidebar's own header — same height,
+        same border, same control sizes — so this tab and the panel it opened
+        from read as one application rather than two surfaces that happen to
+        share a codebase.
       */}
       <div className="flex items-center gap-2 border-b border-border px-2 py-1 text-xs">
         <h2 className="min-w-0 truncate font-medium">Changes</h2>
@@ -283,8 +283,8 @@ function FileRow({
       // wrong for anyone hearing the row one at a time.
       aria-label={`${file.path}: ${OP_WORD[file.op]}, ${file.insertions ?? 0} added, ${file.deletions ?? 0} removed. Open in the diff editor`}
       // No height override: `size="sm"` is 28px, which is what every other
-      // list row in this panel is, and a 24px row here would make the one
-      // dense list in the app the one that does not match.
+      // list row in the sidebar panel is, and a 24px row here would make
+      // this the one dense list in the app that does not match.
       className="w-full justify-start gap-2 px-2 font-normal"
       onClick={() => post({
         t: 'open-file-diff', root: tree.root, path: file.path, base: tree.base,
