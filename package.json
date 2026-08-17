@@ -70,15 +70,7 @@
       },
       {
         "command": "hiiiidCode.review.open",
-        "title": "HiiiiD Code: Review fleet changes",
-        "category": "HiiiiD Code"
-      }
-    ],
-    "keybindings": [
-      {
-        "command": "hiiiidCode.review.open",
-        "key": "ctrl+alt+d",
-        "mac": "cmd+alt+d"
+        "title": "HiiiiD Code: Review fleet changes"
       }
     ],
     "walkthroughs": [
