@@ -8,7 +8,7 @@
   "icon": "media/marcode-logo.png",
   "repository": {
     "type": "git",
-    "url": "https://github.com/HiiiiD/hiiiid-code.git"
+    "url": "https://github.com/HiiiiD/marcode.git"
   },
   "engines": {
     "vscode": "^1.125.0"
