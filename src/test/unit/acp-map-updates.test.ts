@@ -116,7 +116,7 @@ suite('acp ToolCallLog', () => {
     const last = seen[seen.length - 1];
     assert.strictEqual(last.kind, 'read');
     assert.strictEqual(last.locations?.[0]?.path,
-      'C:\\Users\\Marco\\AppData\\Local\\Temp\\oc-read-spike\\notes.txt');
+      'C:\\Users\\dev\\AppData\\Local\\Temp\\oc-read-spike\\notes.txt');
   });
 
   test('an in_progress update is merged even though it emits nothing', () => {

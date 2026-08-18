@@ -140,7 +140,7 @@ suite('AcpRun', () => {
     const end = events.find((e) => e.kind === 'tool-end') as { tool?: unknown } | undefined;
     assert.deepStrictEqual(end?.tool, {
       kind: 'file-read', label: 'Read',
-      path: 'C:/Users/Marco/AppData/Local/Temp/oc-read-spike/notes.txt',
+      path: 'C:/Users/dev/AppData/Local/Temp/oc-read-spike/notes.txt',
     });
     await run.dispose();
   });

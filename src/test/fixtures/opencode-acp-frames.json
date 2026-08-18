@@ -53,8 +53,8 @@
       "title": "bash",
       "kind": "execute",
       "status": "pending",
-      "locations": [{ "path": "C:\\Users\\Marco\\AppData\\Local\\Temp\\opencode-acp-spike\\sandbox" }],
-      "rawInput": { "cwd": "C:\\Users\\Marco\\AppData\\Local\\Temp\\opencode-acp-spike\\sandbox" }
+      "locations": [{ "path": "C:\\Users\\dev\\AppData\\Local\\Temp\\opencode-acp-spike\\sandbox" }],
+      "rawInput": { "cwd": "C:\\Users\\dev\\AppData\\Local\\Temp\\opencode-acp-spike\\sandbox" }
     },
     "bashToolCallInProgress": {
       "sessionUpdate": "tool_call_update",
@@ -62,8 +62,8 @@
       "status": "in_progress",
       "kind": "execute",
       "title": "echo hi",
-      "locations": [{ "path": "C:\\Users\\Marco\\AppData\\Local\\Temp\\opencode-acp-spike\\sandbox" }],
-      "rawInput": { "command": "echo hi", "cwd": "C:\\Users\\Marco\\AppData\\Local\\Temp\\opencode-acp-spike\\sandbox" }
+      "locations": [{ "path": "C:\\Users\\dev\\AppData\\Local\\Temp\\opencode-acp-spike\\sandbox" }],
+      "rawInput": { "command": "echo hi", "cwd": "C:\\Users\\dev\\AppData\\Local\\Temp\\opencode-acp-spike\\sandbox" }
     },
     "bashToolCallCompleted": {
       "sessionUpdate": "tool_call_update",
@@ -79,9 +79,9 @@
       "status": "completed",
       "kind": "edit",
       "title": "notes.txt",
-      "locations": [{ "path": "C:\\Users\\Marco\\AppData\\Local\\Temp\\opencode-acp-spike\\sandbox\\notes.txt" }],
+      "locations": [{ "path": "C:\\Users\\dev\\AppData\\Local\\Temp\\opencode-acp-spike\\sandbox\\notes.txt" }],
       "content": [{ "type": "diff",
-        "path": "C:\\Users\\Marco\\AppData\\Local\\Temp\\opencode-acp-spike\\sandbox\\notes.txt",
+        "path": "C:\\Users\\dev\\AppData\\Local\\Temp\\opencode-acp-spike\\sandbox\\notes.txt",
         "oldText": null, "newText": "hi" }],
       "rawOutput": { "output": "Wrote file successfully." }
     },
@@ -102,18 +102,18 @@
       "title": "read",
       "locations": [
         {
-          "path": "C:\\Users\\Marco\\AppData\\Local\\Temp\\oc-read-spike\\notes.txt"
+          "path": "C:\\Users\\dev\\AppData\\Local\\Temp\\oc-read-spike\\notes.txt"
         }
       ],
       "rawInput": {
-        "filePath": "C:\\Users\\Marco\\AppData\\Local\\Temp\\oc-read-spike\\notes.txt"
+        "filePath": "C:\\Users\\dev\\AppData\\Local\\Temp\\oc-read-spike\\notes.txt"
       }
     },
     "readToolCallCompleted": {
       "sessionUpdate": "tool_call_update",
       "toolCallId": "call_420b060b6c63426c9fe09987",
       "status": "completed",
-      "title": "Users\\Marco\\AppData\\Local\\Temp\\oc-read-spike\\notes.txt",
+      "title": "Users\\dev\\AppData\\Local\\Temp\\oc-read-spike\\notes.txt",
       "content": [
         {
           "type": "content",
@@ -124,7 +124,7 @@
         }
       ],
       "rawOutput": {
-        "output": "<path>C:\\Users\\Marco\\AppData\\Local\\Temp\\oc-read-spike\\notes.txt</path>\n<type>file</type>"
+        "output": "<path>C:\\Users\\dev\\AppData\\Local\\Temp\\oc-read-spike\\notes.txt</path>\n<type>file</type>"
       }
     },
     "availableCommands": {
@@ -145,12 +145,12 @@
     "sessionId": "ses_ff03f902affeyFUbwdSgzPrCT2",
     "toolCall": {
       "toolCallId": "call_5187bca818b9473c8bbfe792",
-      "title": "C:\\Users\\Marco\\AppData\\Local\\Temp\\opencode-acp-spike\\sandbox\\notes.txt",
+      "title": "C:\\Users\\dev\\AppData\\Local\\Temp\\opencode-acp-spike\\sandbox\\notes.txt",
       "kind": "edit",
       "status": "pending",
-      "locations": [{ "path": "C:\\Users\\Marco\\AppData\\Local\\Temp\\opencode-acp-spike\\sandbox\\notes.txt" }],
+      "locations": [{ "path": "C:\\Users\\dev\\AppData\\Local\\Temp\\opencode-acp-spike\\sandbox\\notes.txt" }],
       "content": [{ "type": "diff",
-        "path": "C:\\Users\\Marco\\AppData\\Local\\Temp\\opencode-acp-spike\\sandbox\\notes.txt",
+        "path": "C:\\Users\\dev\\AppData\\Local\\Temp\\opencode-acp-spike\\sandbox\\notes.txt",
         "oldText": null, "newText": "hi" }]
     },
     "options": [

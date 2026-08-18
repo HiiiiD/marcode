@@ -8,7 +8,7 @@ suite('opencode toToolCall', () => {
     assert.deepStrictEqual(
       toToolCall(frames.updates.bashToolCallInProgress as unknown as AcpToolCall), {
         kind: 'command', label: 'Shell', command: 'echo hi',
-        cwd: 'C:/Users/Marco/AppData/Local/Temp/opencode-acp-spike/sandbox',
+        cwd: 'C:/Users/dev/AppData/Local/Temp/opencode-acp-spike/sandbox',
       });
   });
 
@@ -16,7 +16,7 @@ suite('opencode toToolCall', () => {
     assert.deepStrictEqual(
       toToolCall(frames.updates.bashToolCall as unknown as AcpToolCall), {
         kind: 'command', label: 'Shell', command: 'bash',
-        cwd: 'C:/Users/Marco/AppData/Local/Temp/opencode-acp-spike/sandbox',
+        cwd: 'C:/Users/dev/AppData/Local/Temp/opencode-acp-spike/sandbox',
       });
   });
 
@@ -25,7 +25,7 @@ suite('opencode toToolCall', () => {
       toToolCall(frames.updates.editToolCallCompleted as unknown as AcpToolCall), {
         kind: 'file-edit', label: 'Edit',
         files: [{
-          path: 'C:/Users/Marco/AppData/Local/Temp/opencode-acp-spike/sandbox/notes.txt',
+          path: 'C:/Users/dev/AppData/Local/Temp/opencode-acp-spike/sandbox/notes.txt',
           op: 'create',
           edits: [{ after: 'hi' }],
         }],
@@ -55,7 +55,7 @@ suite('opencode toToolCall', () => {
     assert.deepStrictEqual(
       toToolCall(frames.updates.readToolCallInProgress as unknown as AcpToolCall), {
         kind: 'file-read', label: 'Read',
-        path: 'C:/Users/Marco/AppData/Local/Temp/oc-read-spike/notes.txt',
+        path: 'C:/Users/dev/AppData/Local/Temp/oc-read-spike/notes.txt',
       });
   });
 
