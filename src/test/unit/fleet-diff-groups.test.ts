@@ -3,7 +3,8 @@
 
 import * as assert from 'assert';
 import {
-  buildFolderTree, commonPrefix, countFiles, filterTree, groupTree, stripPrefix, summarize,
+  buildFolderTree, commonPrefix, compactFolderTree, countFiles, filterTree, groupTree,
+  stripPrefix, summarize,
 } from '../../review/fleet-diff-groups';
 import type { FileChange, TreeDiff } from '../../protocol/messages';
 
@@ -209,5 +210,51 @@ suite('buildFolderTree', () => {
     const root = buildFolderTree([], '');
     assert.strictEqual(root.folders.length, 0);
     assert.strictEqual(root.files.length, 0);
+  });
+});
+
+suite('compactFolderTree', () => {
+  test('a single shared directory compacts to one row', () => {
+    const root = compactFolderTree(
+      buildFolderTree([file('src/review/a.tsx', ['s1']), file('src/review/b.tsx', ['s1'])], ''),
+    );
+    assert.strictEqual(root.folders.length, 1);
+    assert.strictEqual(root.folders[0].name, 'src/review');
+    assert.strictEqual(root.folders[0].dirPath, 'src/review/');
+    assert.strictEqual(root.folders[0].files.length, 2);
+  });
+
+  test('one file still compacts its whole directory chain into one row', () => {
+    const root = compactFolderTree(buildFolderTree([file('src/review/a.tsx', ['s1'])], ''));
+    assert.strictEqual(root.folders.length, 1);
+    assert.strictEqual(root.folders[0].name, 'src/review');
+    assert.strictEqual(root.folders[0].folders.length, 0);
+    assert.strictEqual(root.folders[0].files.length, 1);
+  });
+
+  test('a branch stops the compaction at the branch point', () => {
+    const root = compactFolderTree(buildFolderTree(
+      [file('src/webview/a.tsx', ['s1']), file('src/west/b.tsx', ['s1'])], '',
+    ));
+    assert.strictEqual(root.folders.length, 1);
+    assert.strictEqual(root.folders[0].name, 'src');
+    assert.deepStrictEqual(root.folders[0].folders.map((f) => f.name), ['webview', 'west']);
+  });
+
+  test('a folder holding its own file never merges past it', () => {
+    const root = compactFolderTree(buildFolderTree(
+      [file('src/a.ts', ['s1']), file('src/webview/b.tsx', ['s1'])], '',
+    ));
+    assert.strictEqual(root.folders.length, 1);
+    assert.strictEqual(root.folders[0].name, 'src');
+    assert.strictEqual(root.folders[0].files.length, 1);
+    assert.strictEqual(root.folders[0].folders.length, 1);
+    assert.strictEqual(root.folders[0].folders[0].name, 'webview');
+  });
+
+  test('a root-level file grows no folder to compact', () => {
+    const root = compactFolderTree(buildFolderTree([file('README.md', ['s1'])], ''));
+    assert.strictEqual(root.folders.length, 0);
+    assert.strictEqual(root.files.length, 1);
   });
 });

@@ -28,11 +28,12 @@ suite('review structure', () => {
     assert.strictEqual(screen.getByRole('heading', { level: 4 }).textContent?.includes('Session A'), true);
   });
 
-  test('names the shared directory once instead of on every row', () => {
+  test('names the shared directory once, as its own expandable folder row', () => {
     renderReview();
     sendFromHost(READY as never, { t: 'fleet-diff', trees: TREES } as never);
-    assert.strictEqual(screen.getByText('src/webview/').textContent, 'src/webview/');
-    assert.strictEqual(screen.queryAllByText('src/webview/').length, 1);
+    const folder = screen.getByRole('treeitem', { name: 'src/webview' });
+    assert.strictEqual(folder.getAttribute('aria-expanded'), 'true');
+    assert.strictEqual(screen.queryAllByRole('treeitem', { name: 'src/webview' }).length, 1);
   });
 
   test('counts the files in a session group', () => {

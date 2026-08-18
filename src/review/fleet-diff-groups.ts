@@ -150,11 +150,12 @@ export function stripPrefix(path: string, prefix: string): string {
 /**
  * One directory in a session group's file list, nested.
  *
- * `dirPath` is this folder's full path *from the group's already-elided
- * prefix*, trailing slash included (`'src/webview/'`), empty for the
- * synthetic root — it is what the fleet-diff surface namespaces its
- * folder-collapse keys with, so it has to be unique within one group and
- * stable across a 750ms rebuild, which a plain array index is not.
+ * `dirPath` is this folder's full path from the group's own root, trailing
+ * slash included (`'src/webview/'`), empty for the synthetic root — it is
+ * what the fleet-diff surface namespaces its folder-collapse keys with, so
+ * it has to be unique within one group and stable across a 750ms rebuild,
+ * which a plain array index is not. `compactFolderTree` below reassigns it
+ * to the deepest folder in a merged chain, still unique for the same reason.
  */
 export interface FolderNode {
   dirPath: string;
@@ -169,9 +170,11 @@ export interface FolderNode {
  * alphabetical at every level — the order a file explorer reads in, and the
  * order `flattenFolder` (fleet-diff.tsx) walks to build the roving row list.
  *
- * `prefix` is the same string `commonPrefix` already computes for the group:
- * stripped before nesting, so the directory the group header already names
- * once above the rows grows no folder node of its own.
+ * `prefix`, when non-empty, is stripped from every path before nesting —
+ * `compactFolderTree` is what the fleet-diff surface actually reaches for to
+ * fold a group's own shared directory into its rows now, so callers there
+ * always pass `''` and let compaction do that job as a real, expandable row
+ * instead of a string cut out of every path.
  */
 export function buildFolderTree(files: FileChange[], prefix: string): FolderNode {
   const root: FolderNode = { dirPath: '', name: '', folders: [], files: [] };
@@ -203,4 +206,36 @@ function sortFolderTree(node: FolderNode): void {
   node.folders.sort((a, b) => a.name.localeCompare(b.name));
   node.files.sort((a, b) => a.path.localeCompare(b.path));
   node.folders.forEach(sortFolderTree);
+}
+
+/**
+ * `buildFolderTree`'s output, compacted the way VS Code's own Explorer
+ * "compact folders" setting reads a tree: a folder that holds no file of its
+ * own and has exactly one child folder merges into that child, so an
+ * unbranched chain — most often the whole directory every file in a group
+ * happens to share — renders as one row (`src/review`), not one chevron per
+ * segment with nothing to branch at any of them. A folder that also holds a
+ * file of its own never merges past it: the row would otherwise have to
+ * claim two different things, its own file and a nested folder's name.
+ *
+ * Applied to the root's children, never the synthetic root itself — the root
+ * has no name to merge into anything and is never rendered as a row.
+ */
+export function compactFolderTree(node: FolderNode): FolderNode {
+  return { ...node, folders: node.folders.map(compactChain) };
+}
+
+function compactChain(node: FolderNode): FolderNode {
+  let current = node;
+  const names = [current.name];
+  while (current.files.length === 0 && current.folders.length === 1) {
+    current = current.folders[0];
+    names.push(current.name);
+  }
+  return {
+    dirPath: current.dirPath,
+    name: names.join('/'),
+    files: current.files,
+    folders: current.folders.map(compactChain),
+  };
 }

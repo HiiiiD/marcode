@@ -16,7 +16,7 @@ import {
 } from '@/components/reui/tree';
 import { cn } from '@/lib/utils';
 import {
-  buildFolderTree, commonPrefix, countFiles, filterTree, groupTree, summarize,
+  buildFolderTree, compactFolderTree, countFiles, filterTree, groupTree, summarize,
   type FolderNode, type SessionGroup,
 } from './fleet-diff-groups';
 import { useStore } from './store';
@@ -33,6 +33,19 @@ import type {
  * pixel-for-pixel or a file would sit at a different depth than its own
  * folder row. */
 const TREE_INDENT = 16;
+
+/**
+ * A folder row's icon sits `TreeItemLabel`'s own `px-2` (reui/tree.tsx)
+ * past its `ps-(--tree-padding)` — breathing room for that span's
+ * rounded-md hover/focus pill, baked in at every depth. `FileRow` is its
+ * own `Button`, never a `TreeItemLabel`, so without adding this same 8px
+ * back a file lines up 8px short of a folder at its own depth, and a file
+ * nested one level under a folder steps in only 8px instead of the full
+ * `TREE_INDENT` a folder-to-folder level uses — a folder → folder step
+ * reading as roughly double a folder → file step for the same one level of
+ * nesting.
+ */
+const FILE_ROW_BASE_INSET = 8;
 
 /**
  * Every file the fleet has changed, grouped by the session that changed it.
@@ -131,8 +144,9 @@ function flattenRows(trees: TreeDiff[], collapsed: Set<string>): Row[] {
     for (const group of groupTree(tree)) {
       const groupKey = `${tree.root}::${group.sessionId ?? UNATTRIBUTED_KEY}`;
       if (collapsed.has(groupKey)) { continue; }
-      const prefix = commonPrefix(group.files.map((f) => f.path));
-      flattenFolder(buildFolderTree(group.files, prefix), tree, groupKey, collapsed, rows);
+      flattenFolder(
+        compactFolderTree(buildFolderTree(group.files, '')), tree, groupKey, collapsed, rows,
+      );
     }
   }
   return rows;
@@ -304,7 +318,7 @@ export function FleetDiff() {
             onChange={(e) => setQuery(e.target.value)}
             aria-label="Filter by path"
             placeholder="Filter by path"
-            className={cn('h-7', query !== '' && 'pr-6')}
+            className={cn('h-7 text-xs md:text-xs', query !== '' && 'pr-6')}
           />
           {query !== '' && (
             <Button
@@ -321,6 +335,7 @@ export function FleetDiff() {
         <Button
           variant={contestedOnly ? 'secondary' : 'ghost'}
           size="sm"
+          className="text-xs"
           aria-pressed={contestedOnly}
           onClick={() => setContestedOnly((on) => !on)}
         >
@@ -654,8 +669,7 @@ function Group({
     : sessions.find((s) => s.id === group.sessionId);
   const groupKey = `${tree.root}::${group.sessionId ?? UNATTRIBUTED_KEY}`;
   const isCollapsed = collapsed.has(groupKey);
-  const prefix = commonPrefix(group.files.map((f) => f.path));
-  const folderRoot = buildFolderTree(group.files, prefix);
+  const folderRoot = compactFolderTree(buildFolderTree(group.files, ''));
   const { index, childrenOf, folderDirPaths } = indexFolderTree(folderRoot);
 
   // Controlled expand state: derived from the same `collapsed` set the tree
@@ -754,7 +768,7 @@ function Group({
     <div className="mt-2.5 first:mt-1">
       <div
         data-testid="group-header"
-        className="sticky z-[9] flex min-w-0 items-center gap-1.5 bg-background pl-4"
+        className="sticky z-[9] flex min-w-0 items-center gap-1.5 bg-background pl-4 pr-2"
         style={{ top: TREE_HEADER_HEIGHT }}
       >
         <Button
@@ -802,12 +816,6 @@ function Group({
               No session recorded a tool call for these. A shell command, a build or your own
               edit changed them.
             </p>
-          )}
-          {prefix !== '' && (
-            // Named once, above the rows, instead of on every row: a shared
-            // directory repeated on every line spends the row's width saying
-            // what this line already says.
-            <p className="pl-4 pt-1 text-muted-foreground">{prefix}</p>
           )}
           {/*
             One flat container, folders and files interleaved in
@@ -934,10 +942,12 @@ function FileRow({
       // this the one dense list in the app that does not match.
       //
       // `depth * TREE_INDENT` matches the vendored `Tree`'s own
-      // `--tree-padding` formula pixel-for-pixel — the two have to agree, or
-      // a file would sit at a visibly different depth than its own folder.
+      // `--tree-padding` formula pixel-for-pixel, plus `FILE_ROW_BASE_INSET`
+      // to match its `TreeItemLabel`'s own `px-2` too — the two have to
+      // agree on both, or a file sits at a visibly different depth than a
+      // folder row at that same depth.
       className="w-full justify-start gap-2 pr-2 font-normal"
-      style={{ paddingLeft: depth * TREE_INDENT }}
+      style={{ paddingLeft: depth * TREE_INDENT + FILE_ROW_BASE_INSET }}
       // Every row used to be its own stop in the tab order — 400 Tab presses
       // to reach row 400. Only the active row is tabbable; arrow keys move
       // the roving index (`useRovingRows`) the rest of the way, and focus
