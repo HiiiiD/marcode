@@ -23,6 +23,15 @@ export interface ReviewState {
    * just created and revealed, so the initial value is `true`.
    */
   visible: boolean;
+  /**
+   * `hiiiidCode.review.pollIntervalMs`, as last reported by `hydrate`. Read
+   * by `useFleetDiffRequests`' debounced re-read — see `HostToWebview`'s
+   * `reviewPollIntervalMs` field for why it rides `hydrate` rather than a
+   * dedicated message. `750` (the host's own default when unconfigured)
+   * until the first `hydrate` lands, so a surface that renders before then
+   * debounces at the same cadence the host will actually answer with.
+   */
+  pollIntervalMs: number;
 }
 
 export const initialReviewState: ReviewState = {
@@ -32,12 +41,18 @@ export const initialReviewState: ReviewState = {
   fleetDiffReason: undefined,
   fleetDiffDirty: 0,
   visible: true,
+  pollIntervalMs: 750,
 };
 
 export function reduceReview(state: ReviewState, msg: HostToWebview): ReviewState {
   switch (msg.t) {
     case 'hydrate':
-      return { ...state, ready: true, sessions: msg.sessions };
+      return {
+        ...state,
+        ready: true,
+        sessions: msg.sessions,
+        pollIntervalMs: msg.reviewPollIntervalMs ?? state.pollIntervalMs,
+      };
 
     case 'sessions-changed':
       return { ...state, sessions: msg.sessions };

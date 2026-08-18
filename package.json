@@ -68,6 +68,28 @@
           "type": "string",
           "default": "",
           "description": "Path to the opencode binary. Empty means use opencode from PATH."
+        },
+        "hiiiidCode.review.fileCap": {
+          "type": "number",
+          "default": 500,
+          "minimum": 1,
+          "maximum": 2000,
+          "description": "How many changed files the review tab loads per working tree before showing a \"Show more\" button. A value over 2000 is clamped; an invalid one falls back to 500. Takes effect after a window reload.",
+          "scope": "window"
+        },
+        "hiiiidCode.review.pollIntervalMs": {
+          "type": "number",
+          "default": 750,
+          "minimum": 100,
+          "description": "How often, in milliseconds, the review tab re-reads a working tree after it goes dirty. Lower values catch edits sooner at the cost of more frequent git invocations. Takes effect after a window reload.",
+          "scope": "window"
+        },
+        "hiiiidCode.review.baseRefs": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Extra branch names (e.g. \"develop\", \"trunk\") the review tab tries as a working tree's comparison base, after the auto-detected default branch and before the built-in fallbacks (origin/main, origin/master, main, master). Takes effect after a window reload.",
+          "scope": "window"
         }
       }
     },

@@ -199,7 +199,7 @@ export function FleetDiff() {
   const trees = state.fleetDiff;
 
   const { showMore, refresh, atCeiling } = useFleetDiffRequests(
-    post, state.visible, state.fleetDiffDirty,
+    post, state.visible, state.fleetDiffDirty, state.pollIntervalMs,
   );
 
   const [query, setQuery] = useState('');

@@ -4,6 +4,10 @@ Run several coding-agent sessions at once, in resizable split panes, in VS Code'
 secondary sidebar. Tool-permission requests show up as cards in the transcript and are
 answered from the UI. Transcripts survive a window reload.
 
+It is an orchestrator, not another agent: it drives other vendors' coding-agent backends
+(Claude, Codex, OpenCode) side by side, in one panel, rather than shipping its own agent
+loop.
+
 ## Features
 
 - A roster of concurrent agent sessions, each its own conversation with its own status,
@@ -11,6 +15,12 @@ answered from the UI. Transcripts survive a window reload.
 - Split panes over the visible subset of that roster, with a persisted layout.
 - Tool-permission requests surfaced as cards in the transcript, answered from the UI.
 - Durable transcripts, paged on demand, that survive a window reload.
+- Three agent backends behind one interface: the Claude Agent SDK, the Codex CLI, and the
+  OpenCode CLI over the Agent Client Protocol (ACP) — configurable via
+  `hiiiidCode.enabledProviders`.
+- A fleet diff review tab (**HiiiiD Code: Review fleet changes**) showing every session's
+  changes against a base ref, attributed to the session whose tool calls made them.
+- Context-usage and plan-usage indicators per session and per panel.
 
 ## Install
 
@@ -90,9 +100,18 @@ Palette with **Get Started: Open Walkthrough...** and pick "Set up the HiiiiD Co
 
 ## Requirements
 
-The Claude Agent SDK backend shells out to the `claude` CLI. That CLI must already be
-installed and authenticated before starting a session — this extension does not manage
-or prompt for authentication itself.
+Each backend needs its own CLI installed and authenticated before starting a session —
+this extension does not manage or prompt for authentication itself, except where noted:
+
+- **Claude** — the `claude` CLI must be on PATH and authenticated.
+- **Codex** — the `codex` CLI must be on PATH (or set via `hiiiidCode.codex.path`). Sign in
+  from the Command Palette with **HiiiiD Code: Sign in to Codex**.
+- **OpenCode** — the `opencode` CLI must be on PATH (or set via
+  `hiiiidCode.opencode.path`).
+
+Which providers this window registers is controlled by `hiiiidCode.enabledProviders`
+(default `["claude", "codex", "opencode"]`); a provider left out is not probed and never
+appears in the panel. Changing the setting requires a window reload.
 
 ## What v1 does not do
 

@@ -12,6 +12,7 @@ import { findPayload, type ResolvedBlock } from './session-refs';
 import { TRANSCRIPT_VERSION, type StoredIndex, type TranscriptStore } from './transcript-store';
 import type { AgentProvider, EffortLevel, Invocable, ModelInfo, UsageWindow } from '../providers/types';
 import { findModel, resolveEffort } from '../shared/model-catalog';
+import { FILE_CAP } from '../shared/file-cap';
 import { resolvePermissionMode } from '../shared/permission-catalog';
 import { threadKey, threadKeyCwd } from '../shared/thread-key';
 import { orderWindows } from '../shared/usage-windows';
@@ -165,6 +166,18 @@ export class SessionManager implements SessionSink {
      */
     private readonly onShellNoise: (profile: string) => void = () => {},
     private readonly attachments?: AttachmentStore,
+    /**
+     * `hiiiidCode.review.fileCap`. The page size `fleetDiff` asks `treeChanges`
+     * for when a request (initial mount, or a debounced re-read) omits its own
+     * `cap` — an explicit `cap` (from `showMore`) always wins over this.
+     */
+    private readonly defaultFileCap: number = FILE_CAP,
+    /**
+     * `hiiiidCode.review.baseRefs`. Extra candidate refs `resolveBase` tries
+     * for a working tree whose integration branch is neither auto-detected
+     * via `origin/HEAD` nor one of `fleet-diff.ts`'s own hardcoded fallbacks.
+     */
+    private readonly extraBaseRefs: string[] = [],
   ) {}
 
   async init(): Promise<void> {
@@ -877,7 +890,7 @@ export class SessionManager implements SessionSink {
     // Each tree's `treeChanges` + claim lookups are independent of every
     // other tree's, for the same reason the status reads above are.
     const rows = await Promise.all(occupied.map(async ({ status, occupants }) => {
-      const changes = await treeChanges(status.root, cap);
+      const changes = await treeChanges(status.root, cap ?? this.defaultFileCap, this.extraBaseRefs);
       if ('reason' in changes) {
         return {
           root: status.root, branch: status.branch, sessions: occupants,

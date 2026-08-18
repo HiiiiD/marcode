@@ -51,6 +51,17 @@ suite('MessageRouter', () => {
     assert.strictEqual(hydrate.catalog[0].id, 'fake');
     assert.deepStrictEqual(hydrate.sessions, []);
     assert.deepStrictEqual(hydrate.usage, {});
+    assert.strictEqual(hydrate.reviewPollIntervalMs, 750);
+  });
+
+  test('hydrate carries a configured review poll interval', async () => {
+    const configured = new MessageRouter(
+      manager, (m) => sent.push(m), '/tmp', undefined, attachments, undefined, 2000,
+    );
+    await configured.handle({ t: 'ready' });
+    const hydrate = sent.find((m) => m.t === 'hydrate') as
+      Extract<HostToWebview, { t: 'hydrate' }>;
+    assert.strictEqual(hydrate.reviewPollIntervalMs, 2000);
   });
 
   test('hydrate says whether an empty catalog is still a pending question', async () => {

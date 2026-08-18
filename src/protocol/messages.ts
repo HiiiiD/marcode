@@ -507,7 +507,17 @@ export type HostToWebview =
        * configured. */
       probing?: boolean;
       /** Per provider, the last window set the host knew. Empty on a fresh install. */
-      usage: Record<string, UsageWindow[]> }
+      usage: Record<string, UsageWindow[]>;
+      /**
+       * `hiiiidCode.review.pollIntervalMs`. Only the review tab reads this
+       * (see `ReviewState.pollIntervalMs`) — carried on the shared `hydrate`
+       * rather than a review-only message because `MessageRouter` answers
+       * `ready` identically for both surfaces, and the sidebar simply has
+       * nothing that consults it. Optional so every existing hand-built
+       * `hydrate` fixture stays valid; `reduceReview` supplies its own
+       * default (see `initialReviewState.pollIntervalMs`) when it is absent.
+       */
+      reviewPollIntervalMs?: number }
   | { t: 'session-snapshot'; session: SessionSnapshot }
   | { t: 'session-patch'; id: SessionId; patch: TranscriptPatch }
   | { t: 'session-prepend'; id: SessionId; items: TranscriptItem[]; hasMore: boolean }

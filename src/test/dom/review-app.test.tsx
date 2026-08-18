@@ -137,4 +137,18 @@ suite('review app', () => {
     assert.strictEqual(requests.length, 1);
     assert.strictEqual((requests[0] as { cap?: number }).cap, 1000);
   });
+
+  test('a configured review poll interval drives the debounced re-read', async () => {
+    renderReview();
+    sendFromHost({
+      t: 'hydrate', sessions: [], layout: { panes: [], orientation: 'horizontal' },
+      reviewPollIntervalMs: 50,
+    } as never);
+    resetHost();
+
+    sendFromHost({ t: 'session-status', id: 's1', status: 'idle' } as never);
+    await new Promise((r) => setTimeout(r, 200));
+
+    assert.strictEqual(posted().some((m) => m.t === 'request-fleet-diff'), true);
+  });
 });

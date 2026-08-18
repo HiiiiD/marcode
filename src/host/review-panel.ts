@@ -33,6 +33,9 @@ export class ReviewPanel {
     private readonly bus: PostBus,
     private readonly defaultCwd: string,
     private readonly editor: EditorContextHost,
+    /** `hiiiidCode.review.pollIntervalMs`, forwarded to this tab's own
+     * `MessageRouter` so its `hydrate` carries it. */
+    private readonly reviewPollIntervalMs: number = 750,
   ) {}
 
   open(): void {
@@ -92,7 +95,7 @@ export class ReviewPanel {
 
     const router = new MessageRouter(
       this.manager, (m) => { void panel.webview.postMessage(m); },
-      this.defaultCwd, this.editor,
+      this.defaultCwd, this.editor, undefined, undefined, this.reviewPollIntervalMs,
     );
     const messageSub = panel.webview.onDidReceiveMessage(async (raw: WebviewToHost) => {
       try {

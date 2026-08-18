@@ -80,6 +80,12 @@ export class MessageRouter {
     private readonly editor: EditorContextHost = NO_EDITOR,
     private readonly attachments?: AttachmentStore,
     private readonly picker: AttachmentHost = NO_PICKER,
+    /**
+     * `hiiiidCode.review.pollIntervalMs`, echoed onto every `hydrate` — see
+     * `HostToWebview`'s `reviewPollIntervalMs` field for why it rides the
+     * shared message rather than a review-only one.
+     */
+    private readonly reviewPollIntervalMs: number = 750,
   ) {}
 
   /**
@@ -142,6 +148,7 @@ export class MessageRouter {
           // something to tell the user about.
           probing: this.manager.willProbe(),
           usage: this.manager.usageSnapshot(),
+          reviewPollIntervalMs: this.reviewPollIntervalMs,
         });
         this.emit({ t: 'editor-context', ctx: this.editor.current() });
         // Not awaited: hydrate must not wait on a CLI handshake. The catalog

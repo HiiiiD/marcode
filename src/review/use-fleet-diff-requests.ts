@@ -50,6 +50,11 @@ export function useFleetDiffRequests(
   post: (msg: WebviewToHost) => void,
   visible: boolean,
   dirty: number,
+  /** `ReviewState.pollIntervalMs` — `hiiiidCode.review.pollIntervalMs`, as
+   * last reported by `hydrate`. Passed in for the same reason `visible`
+   * and `dirty` are: this hook stays about the request contract, not about
+   * where its inputs come from. */
+  pollIntervalMs: number,
 ): FleetDiffRequests {
   const [cap, setCap] = useState<number | undefined>(undefined);
   // The debounce effect below reads the cap through this ref rather than as a
@@ -65,13 +70,14 @@ export function useFleetDiffRequests(
   useEffect(() => { post({ t: 'request-fleet-diff' }); }, [post]);
 
   // And again, debounced, whenever the reducer counted something that could
-  // have changed a diff. 750ms coalesces a burst of edits inside one turn
+  // have changed a diff. `pollIntervalMs` (750 by default, `hiiiidCode.review
+  // .pollIntervalMs` otherwise) coalesces a burst of edits inside one turn
   // into a single request; without it a fan-out of file writes would put one
   // git invocation per tree on the host for every edit.
   //
   // Gated on `visible`: a tab in a background editor group would otherwise
   // keep this timer running forever — one git invocation per working tree, on
-  // a 750ms cadence, for a surface nobody can see. A background tab shows
+  // this cadence, for a surface nobody can see. A background tab shows
   // stale rows for one request cycle when it comes back into view; that trade
   // is deliberately cheaper than the alternative. `dirty` keeps counting
   // while hidden, so becoming visible again with a non-zero count re-enters
@@ -81,9 +87,9 @@ export function useFleetDiffRequests(
     if (!visible || dirty === 0) { return; }
     const timer = setTimeout(() => {
       post({ t: 'request-fleet-diff', cap: capRef.current });
-    }, 750);
+    }, pollIntervalMs);
     return () => { clearTimeout(timer); };
-  }, [visible, dirty, post]);
+  }, [visible, dirty, post, pollIntervalMs]);
 
   const atCeiling = cap !== undefined && cap >= MAX_FILE_CAP;
 

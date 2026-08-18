@@ -30,12 +30,18 @@ async function settle(): Promise<void> {
   for (let i = 0; i < 10; i++) { await new Promise((r) => setImmediate(r)); }
 }
 
-async function managerWith(script: ConstructorParameters<typeof FakeProvider>[0]) {
+async function managerWith(
+  script: ConstructorParameters<typeof FakeProvider>[0],
+  opts: { defaultFileCap?: number; extraBaseRefs?: string[] } = {},
+) {
   const storage = await tempDir();
   const store = new TranscriptStore(storage);
   const providers = new Map<string, AgentProvider>([['fake', new FakeProvider(script)]]);
   const emitted: HostToWebview[] = [];
-  const manager = new SessionManager(store, providers, (m) => emitted.push(m));
+  const manager = new SessionManager(
+    store, providers, (m) => emitted.push(m), undefined, undefined, undefined,
+    opts.defaultFileCap, opts.extraBaseRefs,
+  );
   managers.push(manager);
   await manager.init();
   return { manager, store, emitted: () => emitted };
@@ -273,6 +279,66 @@ suite('SessionManager.fleetDiff', function () {
 
     const msg = emitted().filter((m) => m.t === 'fleet-diff').pop();
     assert.strictEqual(msg?.t, 'fleet-diff');
+  });
+
+  test('a configured default cap applies when a request omits one', async () => {
+    const repo = await tempDir();
+    await initRepo(repo);
+    const { manager } = await managerWith(() => [{ kind: 'turn-end', reason: 'done' }], {
+      defaultFileCap: 1,
+    });
+    const session = await manager.create('fake', repo);
+    await manager.setVisible([session.state.id]);
+    await settle();
+    await fs.writeFile(join(repo, 'a.ts'), 'x\n');
+    await fs.writeFile(join(repo, 'b.ts'), 'x\n');
+
+    const trees = await manager.fleetDiff();
+    assert.strictEqual(trees[0].files.length, 1);
+    assert.strictEqual(trees[0].omitted, 1);
+  });
+
+  test('an explicit cap on the request still overrides the configured default', async () => {
+    const repo = await tempDir();
+    await initRepo(repo);
+    const { manager } = await managerWith(() => [{ kind: 'turn-end', reason: 'done' }], {
+      defaultFileCap: 1,
+    });
+    const session = await manager.create('fake', repo);
+    await manager.setVisible([session.state.id]);
+    await settle();
+    await fs.writeFile(join(repo, 'a.ts'), 'x\n');
+    await fs.writeFile(join(repo, 'b.ts'), 'x\n');
+
+    const trees = await manager.fleetDiff(10);
+    assert.strictEqual(trees[0].files.length, 2);
+    assert.strictEqual(trees[0].omitted, 0);
+  });
+
+  test('configured extra base refs reach a tree whose branch is neither detected nor built in', async () => {
+    const repo = await tempDir();
+    await run('git', ['init', '-b', 'trunk', repo], { windowsHide: true });
+    await run('git', ['config', 'user.email', 'test@example.invalid'], { cwd: repo, windowsHide: true });
+    await run('git', ['config', 'user.name', 'Test'], { cwd: repo, windowsHide: true });
+    await run('git', ['config', 'commit.gpgsign', 'false'], { cwd: repo, windowsHide: true });
+    await fs.writeFile(join(repo, 'README.md'), 'seed\n');
+    await run('git', ['add', 'README.md'], { cwd: repo, windowsHide: true });
+    await run('git', ['commit', '-m', 'seed'], { cwd: repo, windowsHide: true });
+    await run('git', ['checkout', '-b', 'work'], { cwd: repo, windowsHide: true });
+    await fs.writeFile(join(repo, 'work.ts'), 'a\n');
+    await run('git', ['add', '-A'], { cwd: repo, windowsHide: true });
+    await run('git', ['commit', '-m', 'work'], { cwd: repo, windowsHide: true });
+
+    const { manager } = await managerWith(() => [{ kind: 'turn-end', reason: 'done' }], {
+      extraBaseRefs: ['trunk'],
+    });
+    const session = await manager.create('fake', repo);
+    await manager.setVisible([session.state.id]);
+    await settle();
+
+    const trees = await manager.fleetDiff();
+    assert.strictEqual(trees[0].base.kind, 'merge-base');
+    if (trees[0].base.kind === 'merge-base') { assert.strictEqual(trees[0].base.ref, 'trunk'); }
   });
 
   test('a failed read answers with a reason rather than rejecting', async () => {

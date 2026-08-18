@@ -76,15 +76,22 @@ const FALLBACK_REFS = ['origin/main', 'origin/master', 'main', 'master'];
  * confidence. `head` is the honest floor: it means the answer covers
  * uncommitted work only, and the UI says so rather than implying a branch
  * point it could not find.
+ *
+ * `extraRefs` (from `hiiiidCode.review.baseRefs`) are user-named integration
+ * branches — `develop`, `trunk` — for a repo whose default branch is neither
+ * auto-detected via `origin/HEAD` nor one of the hardcoded `FALLBACK_REFS`.
+ * They sit between the two: still less confident than the repo's own
+ * declared default, still more confident than a guess this module ships
+ * with for every install.
  */
-export async function resolveBase(dir: string): Promise<DiffBase> {
+export async function resolveBase(dir: string, extraRefs: string[] = []): Promise<DiffBase> {
   const candidates: string[] = [];
 
   const symbolic = await git(dir, ['symbolic-ref', '--quiet', 'refs/remotes/origin/HEAD']);
   if (symbolic.ok && symbolic.out !== '') {
     candidates.push(symbolic.out.replace(/^refs\/remotes\//, ''));
   }
-  candidates.push(...FALLBACK_REFS);
+  candidates.push(...extraRefs, ...FALLBACK_REFS);
 
   for (const ref of candidates) {
     const exists = await git(dir, ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]);
@@ -159,13 +166,14 @@ export function parseNumstat(out: string): RawChange[] {
 export async function treeChanges(
   dir: string,
   cap?: number,
+  extraBaseRefs: string[] = [],
 ): Promise<{ base: DiffBase; files: RawChange[]; omitted: number } | { reason: string }> {
   const inside = await git(dir, ['rev-parse', '--is-inside-work-tree']);
   if (!inside.ok || inside.out !== 'true') {
     return { reason: `${dir} is not a git repository.` };
   }
 
-  const base = await resolveBase(dir);
+  const base = await resolveBase(dir, extraBaseRefs);
   const against = base.kind === 'merge-base' ? base.sha : 'HEAD';
 
   const diff = await git(dir, ['diff', '--numstat', '-M', against]);

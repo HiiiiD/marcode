@@ -5,6 +5,7 @@ import { AttachmentStore } from './host/attachment-store';
 import { defaultCwdOf } from './host/default-cwd';
 import { diffUri, registerDiffContentProvider } from './host/diff-content-provider';
 import { EditorContextTracker } from './host/editor-context-tracker';
+import { clampCap } from './host/fleet-diff';
 import { PanelViewProvider } from './host/panel-view-provider';
 import { PostBus } from './host/post-bus';
 import type { AttachmentHost } from './host/message-router';
@@ -45,6 +46,45 @@ function codexBinPath(): string | undefined {
 function openCodeBinPath(): string | undefined {
   const configured = vscode.workspace.getConfiguration('hiiiidCode').get<string>('opencode.path');
   return configured ? configured : undefined;
+}
+
+/**
+ * `hiiiidCode.review.fileCap` — the default page size `SessionManager.fleetDiff`
+ * asks for when a request omits its own `cap`. Sanitized through the same
+ * `clampCap` `treeChanges` itself uses: a missing, non-numeric or non-positive
+ * value falls back to `FILE_CAP` (500), and an over-large one clamps to
+ * `MAX_FILE_CAP` (2000) rather than letting a typo ask the host to parse an
+ * unbounded numstat every poll.
+ */
+function reviewFileCap(): number {
+  const configured = vscode.workspace.getConfiguration('hiiiidCode').get<number>('review.fileCap');
+  return clampCap(configured);
+}
+
+/**
+ * `hiiiidCode.review.pollIntervalMs` — how often the review tab re-reads a
+ * dirty working tree. Floored at 100ms so a misconfigured value cannot turn
+ * this into a busy loop of git spawns; a non-number or non-positive value
+ * falls back to the host's own 750ms default.
+ */
+function reviewPollIntervalMs(): number {
+  const configured = vscode.workspace.getConfiguration('hiiiidCode').get<number>('review.pollIntervalMs');
+  if (typeof configured !== 'number' || Number.isNaN(configured) || configured < 1) { return 750; }
+  return Math.max(100, Math.floor(configured));
+}
+
+/**
+ * `hiiiidCode.review.baseRefs` — extra candidate refs `resolveBase` tries for
+ * a working tree whose integration branch (`develop`, `trunk`, …) is neither
+ * auto-detected via `origin/HEAD` nor one of `fleet-diff.ts`'s own hardcoded
+ * fallbacks. A malformed value (not an array of strings) is dropped rather
+ * than passed through — a bad ref name here would name that fact in a diff
+ * base line, not in the settings UI where it could be fixed.
+ */
+function reviewBaseRefs(): string[] {
+  const configured = vscode.workspace.getConfiguration('hiiiidCode').get<unknown>('review.baseRefs');
+  if (!Array.isArray(configured)) { return []; }
+  return configured.filter((ref): ref is string => typeof ref === 'string' && ref.trim() !== '');
 }
 
 /**
@@ -182,6 +222,7 @@ export async function activate(context: vscode.ExtensionContext) {
   const bus = new PostBus();
   const manager = new SessionManager(
     store, providers, (msg) => bus.post(msg), undefined, warnAboutProfile, attachments,
+    reviewFileCap(), reviewBaseRefs(),
   );
 
   // Never `process.cwd()` — for an extension host that is VS Code's own
@@ -233,7 +274,9 @@ export async function activate(context: vscode.ExtensionContext) {
     },
   };
 
-  const review = new ReviewPanel(context.extensionUri, manager, bus, defaultCwd, editorHost);
+  const review = new ReviewPanel(
+    context.extensionUri, manager, bus, defaultCwd, editorHost, reviewPollIntervalMs(),
+  );
 
   provider = new PanelViewProvider(
     context.extensionUri, manager, defaultCwd, editorHost, attachments, picker,

@@ -71,6 +71,27 @@ suite('fleet-diff git plumbing', function () {
     assert.strictEqual(base.kind, 'head');
   });
 
+  test('an integration branch outside the built-in fallbacks is missed without extraRefs', async () => {
+    const dir = await tempDir();
+    await run('git', ['init', '-b', 'trunk', dir], { windowsHide: true });
+    await run('git', ['config', 'user.email', 'test@example.invalid'], { cwd: dir, windowsHide: true });
+    await run('git', ['config', 'user.name', 'Test'], { cwd: dir, windowsHide: true });
+    await run('git', ['config', 'commit.gpgsign', 'false'], { cwd: dir, windowsHide: true });
+    await fs.writeFile(join(dir, 'README.md'), 'seed\n');
+    await run('git', ['add', 'README.md'], { cwd: dir, windowsHide: true });
+    await run('git', ['commit', '-m', 'seed'], { cwd: dir, windowsHide: true });
+    await run('git', ['checkout', '-b', 'work'], { cwd: dir, windowsHide: true });
+    await fs.writeFile(join(dir, 'work.ts'), 'a\n');
+    await commitAll(dir, 'work');
+
+    const withoutExtra = await resolveBase(dir);
+    assert.strictEqual(withoutExtra.kind, 'head');
+
+    const withExtra = await resolveBase(dir, ['trunk']);
+    assert.strictEqual(withExtra.kind, 'merge-base');
+    if (withExtra.kind === 'merge-base') { assert.strictEqual(withExtra.ref, 'trunk'); }
+  });
+
   test('committed and uncommitted changes arrive merged, in one answer', async () => {
     const dir = await tempDir();
     await initRepo(dir);
