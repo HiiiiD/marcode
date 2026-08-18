@@ -25,31 +25,31 @@ import {
 import type { AgentProvider } from './providers/types';
 
 /**
- * `hiiiidCode.codex.path` defaults to `""` (see package.json) so the
+ * `marcode.codex.path` defaults to `""` (see package.json) so the
  * settings UI shows an empty field, but CodexProvider's own default only
  * kicks in for `undefined` — passing through `""` would spawn `''` and
  * make Codex unavailable out of the box. Empty (or unset) means "use codex
  * from PATH", so it is normalized to `undefined` here at the boundary.
  */
 function codexBinPath(): string | undefined {
-  const configured = vscode.workspace.getConfiguration('hiiiidCode').get<string>('codex.path');
+  const configured = vscode.workspace.getConfiguration('marcode').get<string>('codex.path');
   return configured ? configured : undefined;
 }
 
 /**
- * `hiiiidCode.opencode.path` defaults to `""` (see package.json) so the
+ * `marcode.opencode.path` defaults to `""` (see package.json) so the
  * settings UI shows an empty field, but OpenCodeProvider's own default only
  * kicks in for `undefined` — passing through `""` would spawn `''` and
  * make OpenCode unavailable out of the box. Empty (or unset) means "use opencode
  * from PATH", so it is normalized to `undefined` here at the boundary.
  */
 function openCodeBinPath(): string | undefined {
-  const configured = vscode.workspace.getConfiguration('hiiiidCode').get<string>('opencode.path');
+  const configured = vscode.workspace.getConfiguration('marcode').get<string>('opencode.path');
   return configured ? configured : undefined;
 }
 
 /**
- * `hiiiidCode.review.fileCap` — the default page size `SessionManager.fleetDiff`
+ * `marcode.review.fileCap` — the default page size `SessionManager.fleetDiff`
  * asks for when a request omits its own `cap`. Sanitized through the same
  * `clampCap` `treeChanges` itself uses: a missing, non-numeric or non-positive
  * value falls back to `FILE_CAP` (500), and an over-large one clamps to
@@ -57,24 +57,24 @@ function openCodeBinPath(): string | undefined {
  * unbounded numstat every poll.
  */
 function reviewFileCap(): number {
-  const configured = vscode.workspace.getConfiguration('hiiiidCode').get<number>('review.fileCap');
+  const configured = vscode.workspace.getConfiguration('marcode').get<number>('review.fileCap');
   return clampCap(configured);
 }
 
 /**
- * `hiiiidCode.review.pollIntervalMs` — how often the review tab re-reads a
+ * `marcode.review.pollIntervalMs` — how often the review tab re-reads a
  * dirty working tree. Floored at 100ms so a misconfigured value cannot turn
  * this into a busy loop of git spawns; a non-number or non-positive value
  * falls back to the host's own 750ms default.
  */
 function reviewPollIntervalMs(): number {
-  const configured = vscode.workspace.getConfiguration('hiiiidCode').get<number>('review.pollIntervalMs');
+  const configured = vscode.workspace.getConfiguration('marcode').get<number>('review.pollIntervalMs');
   if (typeof configured !== 'number' || Number.isNaN(configured) || configured < 1) { return 750; }
   return Math.max(100, Math.floor(configured));
 }
 
 /**
- * `hiiiidCode.review.baseRefs` — extra candidate refs `resolveBase` tries for
+ * `marcode.review.baseRefs` — extra candidate refs `resolveBase` tries for
  * a working tree whose integration branch (`develop`, `trunk`, …) is neither
  * auto-detected via `origin/HEAD` nor one of `fleet-diff.ts`'s own hardcoded
  * fallbacks. A malformed value (not an array of strings) is dropped rather
@@ -82,7 +82,7 @@ function reviewPollIntervalMs(): number {
  * base line, not in the settings UI where it could be fixed.
  */
 function reviewBaseRefs(): string[] {
-  const configured = vscode.workspace.getConfiguration('hiiiidCode').get<unknown>('review.baseRefs');
+  const configured = vscode.workspace.getConfiguration('marcode').get<unknown>('review.baseRefs');
   if (!Array.isArray(configured)) { return []; }
   return configured.filter((ref): ref is string => typeof ref === 'string' && ref.trim() !== '');
 }
@@ -106,7 +106,7 @@ function enabledProviderIds(): Set<string> {
     .get<unknown>(ENABLED_PROVIDERS_SETTING);
   if (!Array.isArray(configured) || configured.some((id) => typeof id !== 'string')) {
     if (configured !== undefined) {
-      console.warn('[hiiiid-code] enabledProviders is not a list of strings; using the default', configured);
+      console.warn('[mar-code] enabledProviders is not a list of strings; using the default', configured);
     }
     return new Set(DEFAULT_PROVIDER_IDS);
   }
@@ -165,7 +165,7 @@ export async function activate(context: vscode.ExtensionContext) {
   // Order matters: SessionPicker uses state.catalog[0] for the New button,
   // so Claude — the real provider — is registered first.
   //
-  // Registration is gated on `hiiiidCode.enabledProviders`, and a disabled
+  // Registration is gated on `marcode.enabledProviders`, and a disabled
   // provider is not registered at all rather than registered-and-hidden: it
   // must appear in neither `catalog()` nor `unavailable()`, since "nobody
   // asked for this backend" is not a diagnosis of it. Emptying the setting is
@@ -295,7 +295,7 @@ export async function activate(context: vscode.ExtensionContext) {
     registerDiffContentProvider(),
     { dispose: () => { void manager.dispose(); } },
     { dispose: () => { contextSub.dispose(); tracker.dispose(); editorSource.dispose(); } },
-    vscode.commands.registerCommand('hiiiidCode.review.open', () => { review.open(); }),
+    vscode.commands.registerCommand('marcode.review.open', () => { review.open(); }),
     // Without a serializer VS Code restores the tab as a blank webview, which
     // is worse than not restoring it. The host owns whether the tab exists;
     // the client owns nothing durable, so re-attaching is the whole job.
@@ -303,7 +303,7 @@ export async function activate(context: vscode.ExtensionContext) {
       deserializeWebviewPanel: async (panel) => { review.restore(panel); },
     }),
     { dispose: () => { review.dispose(); } },
-    vscode.commands.registerCommand('hiiiidCode.codex.login', () => {
+    vscode.commands.registerCommand('marcode.codex.login', () => {
       // `codex login` opens a browser flow and needs a real TTY, so this
       // hands the user a terminal rather than trying to drive it.
       const terminal = vscode.window.createTerminal('Codex login');
@@ -321,7 +321,7 @@ export async function activate(context: vscode.ExtensionContext) {
     // sessions land in 'error' with a transcript item (CodexRun's onClose
     // handling), not silently on the old process.
     vscode.workspace.onDidChangeConfiguration((e) => {
-      if (codexProvider && e.affectsConfiguration('hiiiidCode.codex.path')) {
+      if (codexProvider && e.affectsConfiguration('marcode.codex.path')) {
         codexProvider.setBinPath(codexBinPath());
         void manager.refreshModels(defaultCwd);
       }
@@ -349,7 +349,7 @@ export async function activate(context: vscode.ExtensionContext) {
     // whole extension down with it: the view provider is already registered
     // above, so the panel still comes up — with an empty roster — instead
     // of the extension failing to activate and there being no UI at all.
-    console.error('[hiiiid-code] failed to restore session index; starting with an empty roster', err);
+    console.error('[mar-code] failed to restore session index; starting with an empty roster', err);
   }
 }
 
@@ -381,7 +381,7 @@ async function revealFile(target: string, startLine?: number): Promise<void> {
     // A chip can outlive the file it points at (renamed, deleted, or from a
     // transcript restored in a different workspace). Failing to open one is
     // not worth a user-facing error.
-    console.error('[hiiiid-code] could not reveal', target, err);
+    console.error('[mar-code] could not reveal', target, err);
   }
 }
 
@@ -404,7 +404,7 @@ async function openFileDiff(root: string, target: string, base: DiffBase): Promi
     // A row can outlive the file it names — reverted, deleted, or swept with
     // its worktree. Failing to open one is not worth a user-facing error, the
     // same call this file already makes for a dead transcript chip.
-    console.error('[hiiiid-code] could not open diff for', target, err);
+    console.error('[mar-code] could not open diff for', target, err);
   }
 }
 
@@ -422,7 +422,7 @@ async function openExternal(url: string): Promise<void> {
   } catch (err) {
     // Errors are state, never exceptions, and a link that will not open is
     // not worth a modal — the same call the reveal path already makes.
-    console.error('[hiiiid-code] could not open', url, err);
+    console.error('[mar-code] could not open', url, err);
   }
 }
 
@@ -441,7 +441,7 @@ async function exportCsv(csv: string): Promise<void> {
     await vscode.workspace.fs.writeFile(target, new TextEncoder().encode(csv));
   } catch (err) {
     // Errors are state, never exceptions — same posture as openExternal.
-    console.error('[hiiiid-code] could not save', target.fsPath, err);
+    console.error('[mar-code] could not save', target.fsPath, err);
     void vscode.window.showErrorMessage(`Could not save ${target.fsPath}.`);
   }
 }

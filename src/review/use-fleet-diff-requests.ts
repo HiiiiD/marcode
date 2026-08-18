@@ -50,7 +50,7 @@ export function useFleetDiffRequests(
   post: (msg: WebviewToHost) => void,
   visible: boolean,
   dirty: number,
-  /** `ReviewState.pollIntervalMs` — `hiiiidCode.review.pollIntervalMs`, as
+  /** `ReviewState.pollIntervalMs` — `marcode.review.pollIntervalMs`, as
    * last reported by `hydrate`. Passed in for the same reason `visible`
    * and `dirty` are: this hook stays about the request contract, not about
    * where its inputs come from. */
@@ -70,7 +70,7 @@ export function useFleetDiffRequests(
   useEffect(() => { post({ t: 'request-fleet-diff' }); }, [post]);
 
   // And again, debounced, whenever the reducer counted something that could
-  // have changed a diff. `pollIntervalMs` (750 by default, `hiiiidCode.review
+  // have changed a diff. `pollIntervalMs` (750 by default, `marcode.review
   // .pollIntervalMs` otherwise) coalesces a burst of edits inside one turn
   // into a single request; without it a fan-out of file writes would put one
   // git invocation per tree on the host for every edit.

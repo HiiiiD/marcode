@@ -15,7 +15,7 @@ import * as vscode from 'vscode';
 
 const execFileAsync = promisify(execFile);
 
-export const DIFF_SCHEME = 'hiiiid-diff';
+export const DIFF_SCHEME = 'mar-diff';
 
 /**
  * `root` rides in the authority-free `query`, not the path: a Windows tree

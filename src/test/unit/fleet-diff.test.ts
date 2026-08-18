@@ -16,7 +16,7 @@ const run = promisify(execFile);
 const roots: string[] = [];
 
 async function tempDir(): Promise<string> {
-  const dir = await fs.realpath(await fs.mkdtemp(join(os.tmpdir(), 'hiiiid-fdiff-')));
+  const dir = await fs.realpath(await fs.mkdtemp(join(os.tmpdir(), 'mar-fdiff-')));
   roots.push(dir);
   return dir;
 }

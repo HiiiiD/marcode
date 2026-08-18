@@ -54,7 +54,7 @@ suite('AgentSession subagent nesting', () => {
   let sink: RecordingSink;
 
   setup(async () => {
-    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'hiiiid-nest-'));
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mar-nest-'));
     store = new TranscriptStore(dir);
     sink = new RecordingSink();
   });

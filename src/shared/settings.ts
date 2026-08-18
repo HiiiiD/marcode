@@ -9,7 +9,7 @@
  */
 
 /** Which providers this install registers. See `package.json`'s contribution. */
-export const ENABLED_PROVIDERS_SETTING = 'hiiiidCode.enabledProviders';
+export const ENABLED_PROVIDERS_SETTING = 'marcode.enabledProviders';
 
 /** The provider ids that setting accepts, and the ones enabled by default. */
 export const KNOWN_PROVIDER_IDS = ['claude', 'codex', 'opencode', 'fake'] as const;

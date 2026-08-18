@@ -14,7 +14,7 @@ suite('TranscriptStore', () => {
   let store: TranscriptStore;
 
   setup(async () => {
-    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'hiiiid-store-'));
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mar-store-'));
     store = new TranscriptStore(dir);
   });
 

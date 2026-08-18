@@ -78,7 +78,7 @@ suite('SessionManager.relocate', () => {
    * an offer, and Task 5's suite already covers raising one.
    */
   async function withPendingOffer(target: string, status: SessionStatus = 'idle') {
-    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'hiiiid-relocate-'));
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mar-relocate-'));
     dirs.push(dir);
     const store = new TranscriptStore(dir);
     const provider = new FakeProvider(() => [

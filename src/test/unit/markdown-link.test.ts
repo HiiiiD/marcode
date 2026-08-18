@@ -47,8 +47,8 @@ suite('classifyHref', () => {
   // Windows absolute path to the browser.
   test('a windows drive path is a file, not a one-letter scheme', () => {
     assert.deepStrictEqual(
-      classifyHref('e:\\Efebia\\hiiiid-code\\src\\a.ts'),
-      { kind: 'file', path: 'e:\\Efebia\\hiiiid-code\\src\\a.ts', startLine: undefined },
+      classifyHref('e:\\Efebia\\mar-code\\src\\a.ts'),
+      { kind: 'file', path: 'e:\\Efebia\\mar-code\\src\\a.ts', startLine: undefined },
     );
     assert.deepStrictEqual(
       classifyHref('C:/repo/a.ts'),

@@ -167,13 +167,13 @@ export class SessionManager implements SessionSink {
     private readonly onShellNoise: (profile: string) => void = () => {},
     private readonly attachments?: AttachmentStore,
     /**
-     * `hiiiidCode.review.fileCap`. The page size `fleetDiff` asks `treeChanges`
+     * `marcode.review.fileCap`. The page size `fleetDiff` asks `treeChanges`
      * for when a request (initial mount, or a debounced re-read) omits its own
      * `cap` — an explicit `cap` (from `showMore`) always wins over this.
      */
     private readonly defaultFileCap: number = FILE_CAP,
     /**
-     * `hiiiidCode.review.baseRefs`. Extra candidate refs `resolveBase` tries
+     * `marcode.review.baseRefs`. Extra candidate refs `resolveBase` tries
      * for a working tree whose integration branch is neither auto-detected
      * via `origin/HEAD` nor one of `fleet-diff.ts`'s own hardcoded fallbacks.
      */
@@ -321,7 +321,7 @@ export class SessionManager implements SessionSink {
           // Errors are state, never exceptions — and the state here is "this
           // provider cannot be picked, and here is why". Still worth a
           // developer-facing trace: the panel shows one line, not a stack.
-          console.warn('[hiiiid-code] session-manager: model probe failed for', p.id, err);
+          console.warn('[mar-code] session-manager: model probe failed for', p.id, err);
           this.probeFailures.set(p.id, err instanceof Error ? err.message : String(err));
           // Drop the seed for the same reason a stale `probeFailures` entry is
           // dropped on success: the probe has now answered, and a model list
@@ -385,7 +385,7 @@ export class SessionManager implements SessionSink {
           // stands". Worth a developer-facing trace: a permanently broken
           // CLI would otherwise be indistinguishable from an account that
           // genuinely has no plan limits.
-          console.warn('[hiiiid-code] session-manager: usage probe failed for', p.id, err);
+          console.warn('[mar-code] session-manager: usage probe failed for', p.id, err);
         },
       )));
   }

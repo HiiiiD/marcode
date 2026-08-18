@@ -42,7 +42,7 @@ suite('AgentSession queued message', () => {
   const open: AgentSession[] = [];
 
   setup(async () => {
-    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'hiiiid-queue-'));
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mar-queue-'));
     store = new TranscriptStore(dir);
   });
 

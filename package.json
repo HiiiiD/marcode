@@ -1,6 +1,6 @@
 {
-  "name": "hiiiid-code",
-  "displayName": "HiiiiD Code",
+  "name": "mar-code",
+  "displayName": "Marcode",
   "description": "Use your code agents at ease",
   "version": "0.0.1",
   "engines": {
@@ -15,25 +15,25 @@
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "hiiiid-code",
-          "title": "HiiiiD Code",
+          "id": "mar-code",
+          "title": "Marcode",
           "icon": "media/icon.svg"
         }
       ]
     },
     "views": {
-      "hiiiid-code": [
+      "mar-code": [
         {
-          "id": "hiiiid-code.panel",
+          "id": "mar-code.panel",
           "name": "Sessions",
           "type": "webview"
         }
       ]
     },
     "configuration": {
-      "title": "HiiiiD Code",
+      "title": "Marcode",
       "properties": {
-        "hiiiidCode.enabledProviders": {
+        "marcode.enabledProviders": {
           "type": "array",
           "items": {
             "type": "string",
@@ -59,17 +59,17 @@
           "description": "Which agent providers this window registers. A provider left out is not probed and does not appear in the panel. Takes effect after a window reload.",
           "scope": "window"
         },
-        "hiiiidCode.codex.path": {
+        "marcode.codex.path": {
           "type": "string",
           "default": "",
           "description": "Path to the Codex CLI. Leave empty to use `codex` from PATH."
         },
-        "hiiiidCode.opencode.path": {
+        "marcode.opencode.path": {
           "type": "string",
           "default": "",
           "description": "Path to the opencode binary. Empty means use opencode from PATH."
         },
-        "hiiiidCode.review.fileCap": {
+        "marcode.review.fileCap": {
           "type": "number",
           "default": 500,
           "minimum": 1,
@@ -77,16 +77,18 @@
           "description": "How many changed files the review tab loads per working tree before showing a \"Show more\" button. A value over 2000 is clamped; an invalid one falls back to 500. Takes effect after a window reload.",
           "scope": "window"
         },
-        "hiiiidCode.review.pollIntervalMs": {
+        "marcode.review.pollIntervalMs": {
           "type": "number",
           "default": 750,
           "minimum": 100,
           "description": "How often, in milliseconds, the review tab re-reads a working tree after it goes dirty. Lower values catch edits sooner at the cost of more frequent git invocations. Takes effect after a window reload.",
           "scope": "window"
         },
-        "hiiiidCode.review.baseRefs": {
+        "marcode.review.baseRefs": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "default": [],
           "description": "Extra branch names (e.g. \"develop\", \"trunk\") the review tab tries as a working tree's comparison base, after the auto-detected default branch and before the built-in fallbacks (origin/main, origin/master, main, master). Takes effect after a window reload.",
           "scope": "window"
@@ -95,27 +97,27 @@
     },
     "commands": [
       {
-        "command": "hiiiidCode.codex.login",
-        "title": "HiiiiD Code: Sign in to Codex"
+        "command": "marcode.codex.login",
+        "title": "Marcode: Sign in to Codex"
       },
       {
-        "command": "hiiiidCode.review.open",
-        "title": "HiiiiD Code: Review fleet changes"
+        "command": "marcode.review.open",
+        "title": "Marcode: Review fleet changes"
       }
     ],
     "walkthroughs": [
       {
-        "id": "hiiiid-code.setup",
-        "title": "Set up the HiiiiD Code panel",
-        "description": "Move the HiiiiD Code panel into the secondary sidebar",
+        "id": "mar-code.setup",
+        "title": "Set up the Marcode panel",
+        "description": "Move the Marcode panel into the secondary sidebar",
         "steps": [
           {
             "id": "move-to-secondary",
-            "title": "Move HiiiiD Code to the secondary sidebar",
-            "description": "VS Code extensions cannot place a view in the secondary sidebar directly. Open the secondary sidebar with Ctrl+Alt+B, then drag the HiiiiD Code icon from the activity bar into it. VS Code remembers the location.",
+            "title": "Move Marcode to the secondary sidebar",
+            "description": "VS Code extensions cannot place a view in the secondary sidebar directly. Open the secondary sidebar with Ctrl+Alt+B, then drag the Marcode icon from the activity bar into it. VS Code remembers the location.",
             "media": {
               "markdown": "media/walkthrough-sidebar.md",
-              "altText": "Drag HiiiiD Code to the secondary sidebar"
+              "altText": "Drag Marcode to the secondary sidebar"
             }
           }
         ]
@@ -139,8 +141,6 @@
     "test": "yarn run pretest && vscode-test",
     "test:unit": "mocha --ui tdd --require tsx/cjs \"src/test/unit/**/*.test.ts\"",
     "test:dom": "mocha --ui tdd --require tsx/cjs --require global-jsdom/register --require src/test/dom/setup.ts \"src/test/dom/**/*.test.tsx\"",
-    "dev": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev-host.ps1",
-    "dev:clean": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev-host.ps1 -Clean",
     "codex:bindings": "codex app-server generate-ts --out .codex-bindings"
   },
   "devDependencies": {

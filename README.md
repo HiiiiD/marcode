@@ -1,4 +1,4 @@
-# HiiiiD Code
+# Marcode
 
 Run several coding-agent sessions at once, in resizable split panes, in VS Code's
 secondary sidebar. Tool-permission requests show up as cards in the transcript and are
@@ -17,8 +17,8 @@ loop.
 - Durable transcripts, paged on demand, that survive a window reload.
 - Three agent backends behind one interface: the Claude Agent SDK, the Codex CLI, and the
   OpenCode CLI over the Agent Client Protocol (ACP) — configurable via
-  `hiiiidCode.enabledProviders`.
-- A fleet diff review tab (**HiiiiD Code: Review fleet changes**) showing every session's
+  `marcode.enabledProviders`.
+- A fleet diff review tab (**Marcode: Review fleet changes**) showing every session's
   changes against a base ref, attributed to the session whose tool calls made them.
 - Context-usage and plan-usage indicators per session and per panel.
 
@@ -45,19 +45,9 @@ parallel) and launch with `F5`. After a rebuild, reload the dev-host window with
 Because the extension host owns all state and the webview is rehydrated from it, a reload
 is a real test of persistence rather than a reset.
 
-Fallback, for when the debugger itself is the problem or `--disable-extensions` is needed:
-
-```powershell
-yarn run compile   # esbuild + check-types + lint
-yarn dev           # launches a separate VS Code with this repo as the extension
-yarn dev:clean     # same, plus --disable-extensions
-```
-
-`yarn dev` runs [`scripts/dev-host.ps1`](scripts/dev-host.ps1), which strips every
-inherited `ELECTRON_*` / `VSCODE_*` variable and starts a fresh instance under its own
-profile in `%TEMP%\hiiiid-devhost` — useful if launching `code` from an integrated terminal
-inherits `ELECTRON_RUN_AS_NODE=1` and exits immediately. `F5`'s debug-launched extension
-host doesn't hit that.
+If the debugger itself is the problem or `--disable-extensions` is needed, launch via a
+VS Code task instead of `F5` — add one to `.vscode/tasks.json` running
+`code --extensionDevelopmentPath=. .vscode/dev.code-workspace [--disable-extensions]`.
 
 ### Packaged `.vsix`
 
@@ -66,8 +56,8 @@ any string — a local install does not need a real Marketplace account:
 
 ```jsonc
 {
-  "name": "hiiiid-code",
-  "publisher": "hiiiid",
+  "name": "mar-code",
+  "publisher": "HiiiiD",
   ...
 }
 ```
@@ -76,11 +66,11 @@ Then:
 
 ```powershell
 yarn run package              # check-types + lint + production bundle
-npx @vscode/vsce package      # -> hiiiid-code-0.0.1.vsix
-code --install-extension hiiiid-code-0.0.1.vsix
+npx @vscode/vsce package      # -> mar-code-0.0.1.vsix
+code --install-extension mar-code-0.0.1.vsix
 ```
 
-Reload the window afterwards. To remove it: `code --uninstall-extension hiiiid.hiiiid-code`.
+Reload the window afterwards. To remove it: `code --uninstall-extension HiiiiD.mar-code`.
 
 [`.vscodeignore`](.vscodeignore) excludes `node_modules/**` but re-includes
 `@anthropic-ai/claude-agent-sdk` and its `win32-x64` native package, so the SDK ships
@@ -95,12 +85,12 @@ VS Code extensions cannot place a view in the secondary sidebar directly, so thi
 one-time manual step:
 
 1. Open the secondary sidebar — **View → Appearance → Secondary Side Bar**, or `Ctrl+Alt+B`.
-2. Drag the **HiiiiD Code** icon from the activity bar into the secondary sidebar.
+2. Drag the **Marcode** icon from the activity bar into the secondary sidebar.
 3. Widen it by dragging its inner edge — split panes need the room.
 
 VS Code stores this per profile and workspace, so it only has to be done once. The
 extension also ships a walkthrough with the same steps — open it from the Command
-Palette with **Get Started: Open Walkthrough...** and pick "Set up the HiiiiD Code panel".
+Palette with **Get Started: Open Walkthrough...** and pick "Set up the Marcode panel".
 
 ## Requirements
 
@@ -108,12 +98,12 @@ Each backend needs its own CLI installed and authenticated before starting a ses
 this extension does not manage or prompt for authentication itself, except where noted:
 
 - **Claude** — the `claude` CLI must be on PATH and authenticated.
-- **Codex** — the `codex` CLI must be on PATH (or set via `hiiiidCode.codex.path`). Sign in
-  from the Command Palette with **HiiiiD Code: Sign in to Codex**.
+- **Codex** — the `codex` CLI must be on PATH (or set via `marcode.codex.path`). Sign in
+  from the Command Palette with **Marcode: Sign in to Codex**.
 - **OpenCode** — the `opencode` CLI must be on PATH (or set via
-  `hiiiidCode.opencode.path`).
+  `marcode.opencode.path`).
 
-Which providers this window registers is controlled by `hiiiidCode.enabledProviders`
+Which providers this window registers is controlled by `marcode.enabledProviders`
 (default `["claude", "codex", "opencode"]`); a provider left out is not probed and never
 appears in the panel. Changing the setting requires a window reload.
 

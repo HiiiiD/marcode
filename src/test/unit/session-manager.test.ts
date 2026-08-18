@@ -26,7 +26,7 @@ suite('SessionManager', () => {
   let extra: { manager: SessionManager; dir: string }[];
 
   setup(async () => {
-    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'hiiiid-manager-'));
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mar-manager-'));
     store = new TranscriptStore(dir);
     sent = [];
     provider = new FakeProvider(() => [
@@ -58,7 +58,7 @@ suite('SessionManager', () => {
    * from setup(). Cleaned up in teardown alongside the suite-level manager.
    */
   async function makeManager() {
-    const mdir = await fs.mkdtemp(path.join(os.tmpdir(), 'hiiiid-manager-'));
+    const mdir = await fs.mkdtemp(path.join(os.tmpdir(), 'mar-manager-'));
     const mstore = new TranscriptStore(mdir);
     const provider = new FakeProvider(() => [
       { kind: 'text', delta: 'ok' },
@@ -75,7 +75,7 @@ suite('SessionManager', () => {
   test('a message parked mid-turn does not survive a reload', async () => {
     // Its own silent provider: the suite's script ends the turn on the spot,
     // so nothing there is ever busy long enough to park a message.
-    const sdir = await fs.mkdtemp(path.join(os.tmpdir(), 'hiiiid-manager-'));
+    const sdir = await fs.mkdtemp(path.join(os.tmpdir(), 'mar-manager-'));
     const silent = new FakeProvider();
     const first = new SessionManager(
       new TranscriptStore(sdir), new Map<string, AgentProvider>([['fake', silent]]), () => { },
@@ -108,7 +108,7 @@ suite('SessionManager', () => {
     const noise = 'Set-PSReadLineOption: '
       + 'C:\\Users\\dev\\Documents\\PowerShell\\Microsoft.PowerShell_profile.ps1:23\n'
       + 'Handle is invalid.\n';
-    const ndir = await fs.mkdtemp(path.join(os.tmpdir(), 'hiiiid-manager-'));
+    const ndir = await fs.mkdtemp(path.join(os.tmpdir(), 'mar-manager-'));
     const nprovider = new FakeProvider(() => [
       { kind: 'tool-start', id: 't1', tool: { kind: 'command', label: 'Shell', command: 'ls' } },
       { kind: 'tool-end', id: 't1', ok: true, output: { kind: 'text', text: noise } },

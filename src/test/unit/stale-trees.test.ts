@@ -25,7 +25,7 @@ const managers: SessionManager[] = [];
 
 /** See Task 9's suite: `realpath` matters on Windows, where tmpdir is short. */
 async function tempDir(): Promise<string> {
-  const dir = await fs.realpath(await fs.mkdtemp(join(os.tmpdir(), 'hiiiid-stale-')));
+  const dir = await fs.realpath(await fs.mkdtemp(join(os.tmpdir(), 'mar-stale-')));
   roots.push(dir);
   return dir;
 }

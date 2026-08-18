@@ -456,7 +456,7 @@ suite('CodexProvider', () => {
     // Real spawn on purpose — the injected-spawn tests above cannot reach
     // `defaultSpawn`, which is where the bug lived.
     this.timeout(15_000);
-    const provider = new CodexProvider({ binPath: 'hiiiid-code-no-such-codex-binary' });
+    const provider = new CodexProvider({ binPath: 'mar-code-no-such-codex-binary' });
     await assert.rejects(provider.fetchModels('/repo'));
   });
 

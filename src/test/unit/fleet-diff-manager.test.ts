@@ -20,7 +20,7 @@ const roots: string[] = [];
 const managers: SessionManager[] = [];
 
 async function tempDir(): Promise<string> {
-  const dir = await fs.realpath(await fs.mkdtemp(join(os.tmpdir(), 'hiiiid-claims-')));
+  const dir = await fs.realpath(await fs.mkdtemp(join(os.tmpdir(), 'mar-claims-')));
   roots.push(dir);
   return dir;
 }

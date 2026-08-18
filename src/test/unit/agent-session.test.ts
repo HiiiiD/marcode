@@ -164,7 +164,7 @@ async function settle() {
  * shared `store`/`sink` fixtures.
  */
 export async function makeSession(script: (text: string) => AgentEvent[] = () => []) {
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'hiiiid-session-'));
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mar-session-'));
   const store = new TranscriptStore(dir);
   const provider = new FakeProvider(script);
   const sink = new RecordingSink();
@@ -181,7 +181,7 @@ suite('AgentSession', () => {
   let sink: RecordingSink;
 
   setup(async () => {
-    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'hiiiid-session-'));
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mar-session-'));
     store = new TranscriptStore(dir);
     sink = new RecordingSink();
   });
@@ -1024,7 +1024,7 @@ suite('AgentSession questions', () => {
   let store: TranscriptStore;
 
   setup(async () => {
-    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'hiiiid-session-questions-'));
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mar-session-questions-'));
     store = new TranscriptStore(dir);
   });
 
@@ -1212,7 +1212,7 @@ suite('AgentSession permission metadata', () => {
   let store: TranscriptStore;
 
   setup(async () => {
-    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'hiiiid-session-meta-'));
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mar-session-meta-'));
     store = new TranscriptStore(dir);
   });
 

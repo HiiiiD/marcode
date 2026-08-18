@@ -254,14 +254,14 @@ export class CodexProvider implements AgentProvider {
     } catch {
       this.connectionPromise = undefined;
       // This message IS the availability UX — see fetchModels()'s header.
-      throw new Error('Codex CLI not found. Install it, or set hiiiidCode.codex.path.');
+      throw new Error('Codex CLI not found. Install it, or set marcode.codex.path.');
     }
     const server = new AppServer(child);
     this.serverInstance = server;
     this.wireFanout(server);
     try {
       await server.request('initialize', {
-        clientInfo: { name: 'hiiiid-code', title: null, version: CLIENT_VERSION },
+        clientInfo: { name: 'mar-code', title: null, version: CLIENT_VERSION },
         capabilities: {
           experimentalApi: true,
           requestAttestation: false,

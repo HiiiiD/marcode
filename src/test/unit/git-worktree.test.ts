@@ -21,7 +21,7 @@ const roots: string[] = [];
  * reports the real one — comparing the two forms fails confusingly.
  */
 async function tempDir(): Promise<string> {
-  const dir = await fs.realpath(await fs.mkdtemp(join(os.tmpdir(), 'hiiiid-git-')));
+  const dir = await fs.realpath(await fs.mkdtemp(join(os.tmpdir(), 'mar-git-')));
   roots.push(dir);
   return dir;
 }

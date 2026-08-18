@@ -479,7 +479,7 @@ suite('ClaudeProvider (lazy start)', () => {
   });
 
   test('send appends one image block per image attachment', async () => {
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'hiiiid-claude-attachment-'));
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mar-claude-attachment-'));
     const pngOnDisk = path.join(tmpDir, 'shot.png');
     fs.writeFileSync(pngOnDisk, Buffer.from([0x89, 0x50, 0x4e, 0x47]));
 

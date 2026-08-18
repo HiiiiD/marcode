@@ -6,7 +6,7 @@ import { AttachmentStore, MAX_ATTACHMENT_BYTES } from '../../host/attachment-sto
 import type { Attachment } from '../../providers/types';
 
 async function tmpRoot(): Promise<string> {
-  return await fs.mkdtemp(path.join(os.tmpdir(), 'hiiiid-attach-'));
+  return await fs.mkdtemp(path.join(os.tmpdir(), 'mar-attach-'));
 }
 
 /** A 1x1 PNG. Small, and a real image so kind-sniffing has something honest to read. */

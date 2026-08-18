@@ -41,7 +41,7 @@ suite('AgentSession relocation offer', () => {
   const open: AgentSession[] = [];
 
   setup(async () => {
-    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'hiiiid-reloc-'));
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mar-reloc-'));
     store = new TranscriptStore(dir);
   });
 

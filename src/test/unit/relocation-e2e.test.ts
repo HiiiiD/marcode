@@ -34,7 +34,7 @@ suite('relocation end to end', () => {
 
   /** A live, idle session at `/repo` with one completed turn behind it. */
   async function liveSession() {
-    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'hiiiid-e2e-'));
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mar-e2e-'));
     dirs.push(dir);
     const store = new TranscriptStore(dir);
     const provider = new FakeProvider(() => [

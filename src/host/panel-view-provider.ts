@@ -6,7 +6,7 @@ import { renderWebviewHtml } from './webview-html';
 import type { HostToWebview, SessionId, WebviewToHost } from '../protocol/messages';
 
 export class PanelViewProvider implements vscode.WebviewViewProvider {
-  public static readonly viewType = 'hiiiid-code.panel';
+  public static readonly viewType = 'mar-code.panel';
   private view: vscode.WebviewView | undefined;
 
   constructor(
@@ -38,14 +38,14 @@ export class PanelViewProvider implements vscode.WebviewViewProvider {
    */
   private async openFile(id: SessionId, path: string): Promise<void> {
     if (!this.manager.canOpenFile(id, path)) {
-      console.error('[hiiiid-code] refusing to open a path this session never reported', path);
+      console.error('[mar-code] refusing to open a path this session never reported', path);
       return;
     }
     try {
       const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(path));
       await vscode.window.showTextDocument(doc, { preview: true });
     } catch (err) {
-      console.error('[hiiiid-code] could not open', path, err);
+      console.error('[mar-code] could not open', path, err);
     }
   }
 
@@ -83,7 +83,7 @@ export class PanelViewProvider implements vscode.WebviewViewProvider {
         }
         await router.handle(raw);
       } catch (err) {
-        console.error('[hiiiid-code] message handling failed', err);
+        console.error('[mar-code] message handling failed', err);
       }
     });
 
@@ -98,7 +98,7 @@ export class PanelViewProvider implements vscode.WebviewViewProvider {
       styleUri: webview.asWebviewUri(
         vscode.Uri.joinPath(this.extensionUri, 'dist', 'webview.css'),
       ),
-      title: 'HiiiiD Code',
+      title: 'Marcode',
       attachmentBase: this.attachments
         ? webview.asWebviewUri(vscode.Uri.file(this.attachments.baseDir)).toString()
         : '',
