@@ -33,6 +33,7 @@ jobs:
         with:
           name: dist
           path: dist/
+          retention-days: 1 # inter-job handoff only, not a release artifact
 
   # One leg per target platform, each producing a smaller, platform-specific
   # .vsix instead of one universal package bundling all 8 native binaries.
@@ -114,6 +115,7 @@ jobs:
         with:
           name: vsix-${{ matrix.target }}
           path: marcode-${{ matrix.target }}.vsix
+          retention-days: 1 # superseded by the GitHub release the publish job creates
 
   publish:
     needs: vsix
