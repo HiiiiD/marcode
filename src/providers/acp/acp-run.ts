@@ -143,10 +143,26 @@ export class AcpRun implements AgentRun {
   private loadTimer: NodeJS.Timeout | undefined;
 
   private readonly startup: Promise<void>;
-  /** The in-flight `session/prompt`, if any. Never rejects — see `runPrompt`. */
-  private promptPromise: Promise<void> | undefined;
+  /**
+   * The `session/prompt` RPC that is actually ON THE WIRE, if any — set inside
+   * `runPrompt` once the request has been issued, never before.
+   *
+   * Deliberately not "the promise `send()` returned": that one opens with
+   * `await this.startup`, so awaiting it anywhere transitively awaits startup,
+   * and an agent that never answers `initialize` leaves it unresolved forever.
+   * `interrupt()` awaits this instead, which cannot outlive a request the peer
+   * has already been sent. Never rejects.
+   */
+  private inFlight: Promise<void> | undefined;
   /** Set by `interrupt()`, cleared by the next `send()`. See `runPrompt`. */
   private interrupted = false;
+  /**
+   * Why startup failed, if it did. Re-reported by every later `send()`: the
+   * `turn-end` `start()` pushes is a one-off at construction, and a session
+   * whose agent is broken must not go `running` forever the next time the user
+   * types into it.
+   */
+  private startError: string | undefined;
   private disposed = false;
 
   /**
@@ -223,7 +239,8 @@ export class AcpRun implements AgentRun {
         }
       }
     } catch (err) {
-      this.events.push({ kind: 'turn-end', reason: 'error', error: errorMessage(err) });
+      this.startError = errorMessage(err);
+      this.events.push({ kind: 'turn-end', reason: 'error', error: this.startError });
     }
   }
 
@@ -316,13 +333,22 @@ export class AcpRun implements AgentRun {
     const call = p.toolCall;
     if (!call?.toolCallId) { return { outcome: { outcome: 'cancelled' } }; }
     const id = call.toolCallId;
+    let own: ((decision: ToolDecision | undefined) => void) | undefined;
     const decision = await new Promise<ToolDecision | undefined>((resolve) => {
+      own = resolve;
+      const previous = this.parked.get(id);
       this.parked.set(id, resolve);
+      // A second request reusing a tool-call id would otherwise orphan the
+      // first, whose RPC then hangs unanswered for the rest of the session.
+      // Cancelled, not denied — nobody decided anything about it.
+      if (previous) { previous(undefined); }
       this.events.push({
         kind: 'permission', id, tool: this.opts.tools.call(call), meta: { title: call.title },
       });
     });
-    this.parked.delete(id);
+    // Only if this call still owns the slot: an orphaned predecessor unwinding
+    // here must not delete its successor's entry.
+    if (this.parked.get(id) === own) { this.parked.delete(id); }
     if (!decision) { return { outcome: { outcome: 'cancelled' } }; }
     return chooseOption(options, decision);
   }
@@ -337,7 +363,10 @@ export class AcpRun implements AgentRun {
       // A file that has gone since it was attached contributes nothing rather
       // than failing the turn.
       if (data) {
-        blocks.push({ type: 'image', data, mimeType: image.mediaType ?? 'application/octet-stream' });
+        // `image/png` is the fallback the Claude provider already uses for the
+        // same field, and a pasted screenshot — the overwhelming majority of
+        // image attachments — is a PNG.
+        blocks.push({ type: 'image', data, mimeType: image.mediaType ?? 'image/png' });
       }
     }
     // Non-image attachments are named by path for the agent to read with its
@@ -345,15 +374,13 @@ export class AcpRun implements AgentRun {
     const named = attachmentLines(attachments).trim();
     if (named) { blocks.push({ type: 'text', text: named }); }
     this.interrupted = false;
-    this.promptPromise = this.runPrompt(blocks);
+    void this.runPrompt(blocks);
   }
 
-  /** Never rejects — every failure becomes a `turn-end`, so `promptPromise` is always safe to await. */
+  /** Never rejects — every failure becomes a `turn-end`. */
   private async runPrompt(blocks: unknown[]): Promise<void> {
     await this.startup;
-    const conn = this.conn;
-    const sessionId = this.sessionId;
-    if (this.disposed || !conn || !sessionId) { return; }
+    if (this.disposed) { return; }
     // Interrupted before the session even existed: `interrupt()` had no
     // sessionId to cancel, so sending the prompt now would start the very turn
     // the user just stopped.
@@ -361,8 +388,25 @@ export class AcpRun implements AgentRun {
       this.events.push({ kind: 'turn-end', reason: 'interrupted' });
       return;
     }
+    const conn = this.conn;
+    const sessionId = this.sessionId;
+    if (!conn || !sessionId) {
+      // Startup failed and the user has typed anyway. Returning silently here
+      // leaves the session `running` forever with nothing in the transcript
+      // saying why: only a `turn-end` clears that status, and the one `start()`
+      // pushed was consumed by the turn that had already ended.
+      this.events.push({
+        kind: 'turn-end', reason: 'error',
+        error: this.startError ?? 'The agent never started a session.',
+      });
+      return;
+    }
     try {
-      const reply = await conn.prompt({ sessionId, prompt: blocks });
+      const rpc = conn.prompt({ sessionId, prompt: blocks });
+      // Published only now: `interrupt()` waits on the request the peer has
+      // actually been sent, never on startup. See `inFlight`.
+      this.inFlight = rpc.then(() => undefined, () => undefined);
+      const reply = await rpc;
       if (this.disposed) { return; }
       const usage = reply?.usage;
       if (usage) {
@@ -408,14 +452,20 @@ export class AcpRun implements AgentRun {
   }
 
   /**
-   * `plan` and `default` are the two modes ACP can express as a session mode;
-   * every other mode is enforced in `onRequestPermission` instead, because ACP
-   * hands the decision to the client (see `permissions.ts`).
+   * Every mode that is not `plan` maps to `build`, and a `set_mode` goes out
+   * on every change — not just the two the mode names line up with.
+   *
+   * Plan mode is a WIRE-level session mode: once `{modeId:'plan'}` is sent,
+   * only an explicit `build` retracts it. Sending nothing for `bypass` left
+   * the agent still refusing to edit while every permission request was being
+   * auto-allowed — the panel saying one thing and the agent doing another.
+   * Client-side enforcement in `onRequestPermission` is the right home for
+   * *answering* permission requests, and is untouched by this; it just cannot
+   * take the agent out of a mode the agent is holding.
    */
   setPermissionMode(mode: PermissionMode): void {
     this.mode = mode;
-    const modeId = mode === 'plan' ? 'plan' : mode === 'default' ? 'build' : undefined;
-    if (!modeId) { return; }
+    const modeId = mode === 'plan' ? 'plan' : 'build';
     this.fireAndForget((conn, sessionId) => conn.setSessionMode({ sessionId, modeId }));
   }
 
@@ -447,9 +497,12 @@ export class AcpRun implements AgentRun {
   }
 
   /**
-   * Deliberately does not await `startup` — a session still waiting on a
+   * Waits only on `inFlight` — the prompt the peer has actually been sent —
+   * and never on `startup`. A session still waiting on an `initialize` or a
    * `session/load` that will never answer is exactly the one a user reaches
-   * for Stop on, and an interrupt that hangs is not an interrupt.
+   * for Stop on, and an interrupt that hangs is not an interrupt. There is
+   * nothing to wait for in that case anyway: the `interrupted` flag above
+   * stops the prompt from ever being issued, and `runPrompt` ends the turn.
    */
   async interrupt(): Promise<void> {
     this.interrupted = true;
@@ -463,13 +516,17 @@ export class AcpRun implements AgentRun {
         // own `stopReason: 'cancelled'` is what produces the turn-end.
       }
     }
-    await this.promptPromise;
+    await this.inFlight;
   }
 
   /**
-   * Deliberately does not await `startup`: a run disposed while `initialize`
-   * is still outstanding would otherwise wait for an answer that is never
-   * coming — which is exactly the case a user closing a broken session is in.
+   * Never awaits `startup`, directly or transitively: `AgentSession.dispose`
+   * awaits this, `SessionManager.dispose` awaits all of them, so one agent
+   * that never answered `initialize` would block the whole extension from
+   * shutting down — and `child.kill()` below, the one thing that actually
+   * reclaims the process, would never run. Killing the child is what cancels
+   * an in-flight prompt here; there is no answer left to wait for once the
+   * peer is gone.
    */
   async dispose(): Promise<void> {
     if (this.disposed) { return; }
@@ -491,7 +548,6 @@ export class AcpRun implements AgentRun {
         // Best-effort: the connection may already be gone.
       }
     }
-    await this.promptPromise;
     this.events.close();
     this.child.kill();
   }

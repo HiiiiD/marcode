@@ -206,4 +206,83 @@ suite('AcpRun', () => {
     await new Promise((r) => setTimeout(r, 30));
     await run.dispose();
   });
+
+  test('a send after a failed startup ends the turn instead of hanging it', async () => {
+    const p = peer();
+    const events: AgentEvent[] = [];
+    const run = new AcpRun(p.child, {
+      cwd: '/w', permissionMode: 'default', tools: openCodeTools, clientName: 'hiiiid-code',
+    });
+    collect(run, events);
+    const init = await p.waitFor('initialize');
+    p.emit({ jsonrpc: '2.0', id: init.id,
+             error: { code: -32603, message: 'agent is broken' } });
+    await new Promise((r) => setTimeout(r, 20));
+    // The user retries by typing. Only a turn-end clears `running`, and the
+    // one startup pushed belongs to the turn that already ended.
+    run.send('are you there');
+    await new Promise((r) => setTimeout(r, 20));
+    const failed = events.filter(
+      (e): e is Extract<AgentEvent, { kind: 'turn-end' }> =>
+        e.kind === 'turn-end' && e.reason === 'error',
+    );
+    assert.strictEqual(failed.length, 2);
+    assert.strictEqual(failed[1].error, 'agent is broken');
+    await run.dispose();
+  });
+
+  test('leaving plan mode retracts it on the wire', async () => {
+    const p = peer();
+    const run = new AcpRun(p.child, {
+      cwd: '/w', permissionMode: 'plan', tools: openCodeTools, clientName: 'hiiiid-code',
+    });
+    collect(run, []);
+    const init = await p.waitFor('initialize');
+    p.emit({ jsonrpc: '2.0', id: init.id, result: frames.initialize });
+    const created = await p.waitFor('session/new');
+    p.emit({ jsonrpc: '2.0', id: created.id, result: frames.newSession });
+    await new Promise((r) => setTimeout(r, 20));
+
+    const modeWrites = async (n: number): Promise<Record<string, unknown>[]> => {
+      for (let i = 0; i < 200; i++) {
+        const hits = p.sent.filter((f) => f.method === 'session/set_mode');
+        if (hits.length >= n) { return hits; }
+        await new Promise((r) => setTimeout(r, 5));
+      }
+      throw new Error(`fewer than ${n} session/set_mode were sent`);
+    };
+
+    run.setPermissionMode('plan');
+    const first = await modeWrites(1);
+    assert.deepStrictEqual(first[0].params,
+      { sessionId: 'ses_ff0400c8affe2kYFjqc6OUHpG3', modeId: 'plan' });
+    p.emit({ jsonrpc: '2.0', id: first[0].id, result: {} });
+
+    // bypass is enforced client-side for permission ANSWERING, but only an
+    // explicit `build` takes the agent back out of plan mode.
+    run.setPermissionMode('bypass');
+    const both = await modeWrites(2);
+    assert.deepStrictEqual(both[1].params,
+      { sessionId: 'ses_ff0400c8affe2kYFjqc6OUHpG3', modeId: 'build' });
+    await run.dispose();
+  });
+
+  test('dispose returns when the agent never answered initialize', async () => {
+    const p = peer();
+    const run = new AcpRun(p.child, {
+      cwd: '/w', permissionMode: 'default', tools: openCodeTools, clientName: 'hiiiid-code',
+    });
+    collect(run, []);
+    await p.waitFor('initialize');
+    // Never answered. `send` parks on a startup promise that will never
+    // resolve — nothing dispose does may wait on it, or extension shutdown
+    // blocks on this one agent and its child is never killed.
+    run.send('hello');
+    await new Promise((r) => setTimeout(r, 20));
+    const outcome = await Promise.race([
+      run.dispose().then(() => 'disposed'),
+      new Promise((r) => setTimeout(() => r('hung'), 500)),
+    ]);
+    assert.strictEqual(outcome, 'disposed');
+  });
 });
