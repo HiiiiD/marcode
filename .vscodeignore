@@ -2,6 +2,11 @@
 .vscode-test/**
 .yarn/**
 .superpowers/**
+.claude/**
+.codex-bindings/**
+.dev-host-profile/**
+.impeccable/**
+scratch/**
 docs/**
 .mcp.json
 components.json
@@ -11,8 +16,8 @@ out/**
 node_modules/**
 !node_modules/@anthropic-ai/claude-agent-sdk
 !node_modules/@anthropic-ai/claude-agent-sdk/**
-!node_modules/@anthropic-ai/claude-agent-sdk-win32-x64
-!node_modules/@anthropic-ai/claude-agent-sdk-win32-x64/**
+!node_modules/@anthropic-ai/claude-agent-sdk-*
+!node_modules/@anthropic-ai/claude-agent-sdk-*/**
 src/**
 .gitignore
 .yarnrc
