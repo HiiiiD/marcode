@@ -28,6 +28,18 @@ import { ChevronDownIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
+/**
+ * The look every toggle chevron in the fleet-diff tree shares — this folder
+ * row's own, and (imported back into `fleet-diff.tsx`) the tree/group
+ * header `Button`s above it: no background at rest, on hover, or (`Button`'s
+ * own default for an expanded control) while expanded, and no padding
+ * around the icon. `size-3` on the clickable element itself, not just the
+ * icon, so the two coincide exactly — the chevron *is* the control, with
+ * nothing drawn around it. One export shared by all three call sites so a
+ * change to the look can't silently drift between them.
+ */
+export const CHEVRON_TOGGLE_CLASS = "size-3 bg-transparent hover:bg-transparent aria-expanded:bg-transparent dark:hover:bg-transparent";
+
 type ToggleIconType = "chevron" | "plus-minus"
 
 interface TreeContextValue<T = any> {
@@ -181,32 +193,17 @@ function TreeItemLabel<T = any>({
       {...props}
     >
       {item.isFolder() && (
-        // A ghost-icon-button-shaped box around the chevron, not just a
-        // same-size icon: the tree/group headers above this row toggle
-        // through an actual `Button variant="ghost" size="icon-xs"`, which
-        // carries its own 24×24 box, 4px-radius corners, and a persistent
-        // `bg-muted` while expanded (`aria-expanded:bg-muted`, one of
-        // `Button`'s own variant rules, not a hover-only effect) — measured
-        // against `rgb(37, 37, 38)` in a real render. Reproduced here with
-        // the identical utility classes rather than a nested `<Button>`,
-        // which isn't possible: `TreeItem` (the whole row) is already a
-        // `<button>`, and a `<button>` inside a `<button>` is invalid HTML.
-        // `in-aria-[expanded=...]`, not `group-aria-expanded:` — the
-        // `aria-expanded` attribute this reads lives on that ancestor
-        // `<button>`, not on this span, and `in-*` matches an ancestor's
-        // state without needing a `group` marker class on it.
-        <span className="in-aria-[expanded=true]:bg-muted hover:bg-muted inline-flex size-6 shrink-0 items-center justify-center rounded-[min(var(--radius-md),10px)] transition-colors">
-          {/* No `text-muted-foreground`: the tree/group chevrons render at
-              plain foreground color (`rgb(204, 204, 204)`, not the dimmer
-              `rgb(157, 157, 157)` this measured at before), because `Button`
-              sets no color of its own at rest — only `Button`'s ghost
-              variant's `hover:text-foreground` name suggests dimming, and it
-              doesn't actually apply one either. */}
-          <ChevronDownIcon
-            aria-hidden
-            className="size-3 in-aria-[expanded=false]:-rotate-90"
-          />
-        </span>
+        // No `text-muted-foreground`: the tree/group chevrons render at
+        // plain foreground color, because `Button` (which they're built
+        // from) sets no color of its own — inherited here the same way.
+        // `CHEVRON_TOGGLE_CLASS` (this file, exported) is the rest: no
+        // background, no padding, `size-3` matching the icon itself so
+        // nothing is drawn around it — shared with the tree/group toggle
+        // `Button`s in fleet-diff.tsx so the three can't drift apart.
+        <ChevronDownIcon
+          aria-hidden
+          className={cn(CHEVRON_TOGGLE_CLASS, "in-aria-[expanded=false]:-rotate-90")}
+        />
       )}
       {children ||
         (typeof item.getItemName === "function" ? item.getItemName() : null)}

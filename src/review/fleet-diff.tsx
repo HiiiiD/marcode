@@ -11,7 +11,9 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { StatusBadge } from '@/components/status-badge';
-import { Tree as FolderTree, TreeItem, TreeItemLabel } from '@/components/reui/tree';
+import {
+  CHEVRON_TOGGLE_CLASS, Tree as FolderTree, TreeItem, TreeItemLabel,
+} from '@/components/reui/tree';
 import { cn } from '@/lib/utils';
 import {
   buildFolderTree, commonPrefix, countFiles, filterTree, groupTree, summarize,
@@ -510,6 +512,7 @@ function Tree({
           <Button
             variant="ghost"
             size="icon-xs"
+            className={CHEVRON_TOGGLE_CLASS}
             aria-expanded={!isCollapsed}
             aria-label={isCollapsed ? `Expand ${name}` : `Collapse ${name}`}
             onClick={() => toggle(treeKey)}
@@ -757,6 +760,7 @@ function Group({
         <Button
           variant="ghost"
           size="icon-xs"
+          className={CHEVRON_TOGGLE_CLASS}
           aria-expanded={!isCollapsed}
           aria-label={isCollapsed ? `Expand ${title}` : `Collapse ${title}`}
           onClick={() => toggle(groupKey)}
