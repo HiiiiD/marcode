@@ -141,8 +141,6 @@
     "test": "yarn run pretest && vscode-test",
     "test:unit": "mocha --ui tdd --require tsx/cjs \"src/test/unit/**/*.test.ts\"",
     "test:dom": "mocha --ui tdd --require tsx/cjs --require global-jsdom/register --require src/test/dom/setup.ts \"src/test/dom/**/*.test.tsx\"",
-    "dev": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev-host.ps1",
-    "dev:clean": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/dev-host.ps1 -Clean",
     "codex:bindings": "codex app-server generate-ts --out .codex-bindings"
   },
   "devDependencies": {
