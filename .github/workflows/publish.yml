@@ -22,6 +22,7 @@ jobs:
         with:
           node-version: 22
 
+      - run: corepack enable
       - run: yarn install --frozen-lockfile
       - run: yarn run check-types
       - run: yarn run lint
@@ -96,6 +97,7 @@ jobs:
             fi
           } >> .yarnrc.yml
 
+      - run: corepack enable
       - run: yarn install --frozen-lockfile
 
       - uses: actions/download-artifact@v4
