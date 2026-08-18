@@ -181,9 +181,15 @@ function TreeItemLabel<T = any>({
       {...props}
     >
       {item.isFolder() && (
+        // `size-3`, not the vendor's original `size-4`: the tree/group
+        // headers above this row toggle through `Button size="icon-xs"`,
+        // whose own `[&_svg:not([class*='size-'])]:size-3` rule sizes their
+        // chevrons at 12px — three chevron levels (workspace, session,
+        // folder) reading as three different sizes would look like a
+        // mistake, not a hierarchy.
         <ChevronDownIcon
           aria-hidden
-          className="text-muted-foreground size-4 in-aria-[expanded=false]:-rotate-90"
+          className="text-muted-foreground size-3 in-aria-[expanded=false]:-rotate-90"
         />
       )}
       {children ||
