@@ -4,7 +4,7 @@
   "description": "Use your code agents at ease",
   "version": "0.0.1",
   "publisher": "TODO-set-publisher-id",
-  "icon": "media/icon.png",
+  "icon": "media/marcode-logo.png",
   "repository": {
     "type": "git",
     "url": "https://github.com/TODO-owner/TODO-repo.git"
