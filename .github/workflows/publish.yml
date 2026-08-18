@@ -1,0 +1,151 @@
+name: Publish
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  # Verify once and produce the platform-agnostic JS/CSS bundle. `dist/` never
+  # differs by target — the Claude Agent SDK's native binary is `external` in
+  # esbuild.js and is added per target only at packaging time below.
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - run: yarn install --frozen-lockfile
+      - run: yarn run check-types
+      - run: yarn run lint
+      - run: yarn run test:unit
+      - run: yarn run test:dom
+      - run: node esbuild.js --production
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          retention-days: 1 # inter-job handoff only, not a release artifact
+
+  # One leg per target platform, each producing a smaller, platform-specific
+  # .vsix instead of one universal package bundling all 8 native binaries.
+  #
+  # No native win32/darwin/arm64 runner needed: the binary is never executed
+  # here, only packaged. `supportedArchitectures` (yarn 4, node-modules
+  # linker) makes `yarn install` fetch the optional dependency for the target
+  # platform regardless of the runner's own platform, the same way it
+  # normally installs only the host's own — see .vscodeignore, which unignores
+  # whichever single `claude-agent-sdk-*` platform directory is present.
+  vsix:
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - target: win32-x64
+            os: win32
+            cpu: x64
+          - target: win32-arm64
+            os: win32
+            cpu: arm64
+          - target: linux-x64
+            os: linux
+            cpu: x64
+            libc: glibc
+          - target: linux-arm64
+            os: linux
+            cpu: arm64
+            libc: glibc
+          - target: alpine-x64
+            os: linux
+            cpu: x64
+            libc: musl
+          - target: alpine-arm64
+            os: linux
+            cpu: arm64
+            libc: musl
+          - target: darwin-x64
+            os: darwin
+            cpu: x64
+          - target: darwin-arm64
+            os: darwin
+            cpu: arm64
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Restrict yarn to the ${{ matrix.target }} optional dependency
+        run: |
+          {
+            echo "supportedArchitectures:"
+            echo "  os: [${{ matrix.os }}]"
+            echo "  cpu: [${{ matrix.cpu }}]"
+            if [ -n "${{ matrix.libc }}" ]; then
+              echo "  libc: [${{ matrix.libc }}]"
+            fi
+          } >> .yarnrc.yml
+
+      - run: yarn install --frozen-lockfile
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      # --no-yarn: vsce's dependency-detection shells out to `yarn list
+      # --prod --json`, a yarn classic command that doesn't exist under yarn
+      # berry (this repo's `packageManager: yarn@4.18.0`). --no-yarn falls
+      # back to reading the already-installed tree directly instead — the
+      # detection step itself still runs (unlike --no-dependencies, which
+      # skips node_modules entirely and would drop the native binary).
+      - run: npx @vscode/vsce package --target ${{ matrix.target }} --out marcode-${{ matrix.target }}.vsix --no-yarn
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vsix-${{ matrix.target }}
+          path: marcode-${{ matrix.target }}.vsix
+          retention-days: 1 # superseded by the GitHub release the publish job creates
+
+  # publish:
+  #   needs: vsix
+  #   runs-on: ubuntu-latest
+  #   # Name must match the federated credential's subject in the Entra app
+  #   # registration (e.g. repo:OWNER/REPO:environment:marketplace-publish).
+  #   environment: marketplace-publish
+  #   permissions:
+  #     id-token: write
+  #     contents: write # gh release create needs this; the top-level block stays read-only
+  #   steps:
+  #     - uses: actions/download-artifact@v4
+  #       with:
+  #         pattern: vsix-*
+  #         merge-multiple: true
+
+  #     # Entra ID workload identity federation — no PAT, no stored secret.
+  #     # Azure DevOps retires global PATs on 2026-12-01.
+  #     - uses: azure/login@v2
+  #       with:
+  #         client-id: ${{ secrets.AZURE_CLIENT_ID }}
+  #         tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+  #         allow-no-subscriptions: true
+
+  #     - run: npx @vscode/vsce publish --packagePath marcode-*.vsix --azure-credential
+
+  #     # Marketplace has no download page for older/specific versions; the
+  #     # release is where the per-platform .vsix files (and a diff-able
+  #     # changelog) actually live afterwards.
+  #     - name: Attach vsix files to a GitHub release
+  #       env:
+  #         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  #       run: gh release create "${{ github.ref_name }}" marcode-*.vsix --generate-notes

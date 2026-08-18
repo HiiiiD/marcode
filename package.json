@@ -3,6 +3,13 @@
   "displayName": "Marcode",
   "description": "Use your code agents at ease",
   "version": "0.0.1",
+  "publisher": "TODO-set-publisher-id",
+  "license": "MIT",
+  "icon": "media/marcode-logo.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/HiiiiD/marcode.git"
+  },
   "engines": {
     "vscode": "^1.125.0"
   },
