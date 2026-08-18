@@ -17,6 +17,7 @@ function routerWith() {
     openDiff: (root, path) => { opened.push({ root, path }); },
     openSettings: () => {},
     openExternal: () => {},
+    exportCsv: () => {},
   };
   const emitted: HostToWebview[] = [];
   const router = new MessageRouter(manager, (m) => emitted.push(m), '/tmp', editor);

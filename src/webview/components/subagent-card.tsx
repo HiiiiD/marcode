@@ -65,6 +65,14 @@ export function SubagentCard({ item, sessionId }: { item: ToolItem; sessionId: S
           <span className="shrink-0 text-muted-foreground">
             {summary.toolCount} {summary.toolCount === 1 ? 'tool' : 'tools'}
             {' · '}{formatElapsed(summary.elapsedMs)}
+            {/* Only present when the spawn call named a model explicitly —
+                most subagents inherit the session's, and this is not the
+                place to guess one. Printed as the SDK gave it: this is not a
+                session's model, so there is no catalog row to resolve a
+                display name from. */}
+            {item.tool.kind === 'subagent' && item.tool.model && (
+              <>{' · '}{item.tool.model}</>
+            )}
           </span>
           {/*
             The visible state is carried by the chevron and, when blocked, by

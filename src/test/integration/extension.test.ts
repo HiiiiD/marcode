@@ -36,6 +36,7 @@ suite('PanelViewProvider CSP', () => {
   const editorStub: EditorContextHost = {
     current: () => null, reveal: () => {}, openDiff: () => {}, openSettings: () => {},
     openExternal: () => {},
+    exportCsv: () => {},
   };
 
   test('CSP contains default-src none', () => {

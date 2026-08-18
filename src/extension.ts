@@ -218,6 +218,9 @@ export async function activate(context: vscode.ExtensionContext) {
     openExternal: (url: string) => {
       void openExternal(url);
     },
+    exportCsv: (csv: string) => {
+      void exportCsv(csv);
+    },
   };
 
   const picker: AttachmentHost = {
@@ -377,6 +380,26 @@ async function openExternal(url: string): Promise<void> {
     // Errors are state, never exceptions, and a link that will not open is
     // not worth a modal — the same call the reveal path already makes.
     console.error('[hiiiid-code] could not open', url, err);
+  }
+}
+
+/**
+ * Saves a markdown table's CSV text to a file the user picks. A cancelled
+ * dialog resolves `undefined`, which is not an error — it's the user
+ * changing their mind, so it takes no action rather than a swallowed catch.
+ */
+async function exportCsv(csv: string): Promise<void> {
+  const target = await vscode.window.showSaveDialog({
+    filters: { 'CSV': ['csv'] },
+    defaultUri: vscode.Uri.file('table.csv'),
+  });
+  if (!target) { return; }
+  try {
+    await vscode.workspace.fs.writeFile(target, new TextEncoder().encode(csv));
+  } catch (err) {
+    // Errors are state, never exceptions — same posture as openExternal.
+    console.error('[hiiiid-code] could not save', target.fsPath, err);
+    void vscode.window.showErrorMessage(`Could not save ${target.fsPath}.`);
   }
 }
 

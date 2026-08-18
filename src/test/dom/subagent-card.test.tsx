@@ -35,6 +35,22 @@ suite('SubagentCard', () => {
     assert.strictEqual(screen.queryByText('Read'), null, 'no child is rendered while collapsed');
   });
 
+  test('shows the model when the spawn call named one', () => {
+    const item = subagent([], {
+      tool: { kind: 'subagent', label: 'Task', action: 'spawn', agent: 'Explore', model: 'opus' },
+    });
+    renderWithStore(<SubagentCard item={item} sessionId="s1" />);
+
+    const toggle = screen.getByRole('button', { expanded: false });
+    assert.ok(toggle.textContent?.includes('opus'));
+  });
+
+  test('omits the model when the spawn call did not name one', () => {
+    renderWithStore(<SubagentCard item={subagent([child('c1', 'Read')])} sessionId="s1" />);
+
+    assert.strictEqual(screen.queryByText(/opus|sonnet|haiku/i), null);
+  });
+
   test('expanding reveals the children through the shipped ToolCard', async () => {
     renderWithStore(<SubagentCard item={subagent([child('c1', 'Read')])} sessionId="s1" />);
     await userEvent.click(screen.getByRole('button', { expanded: false }));

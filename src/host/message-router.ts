@@ -51,6 +51,12 @@ export interface EditorContextHost {
    * needs `vscode.env`, which this module must not import.
    */
   openExternal(url: string): void;
+  /**
+   * Saves `csv` to a file the user picks. Here for the same reason
+   * `openDiff` is — it needs `vscode.window.showSaveDialog`, which this
+   * module must not import.
+   */
+  exportCsv(csv: string): void;
 }
 
 const NO_EDITOR: EditorContextHost = {
@@ -59,6 +65,7 @@ const NO_EDITOR: EditorContextHost = {
   openDiff: () => {},
   openSettings: () => {},
   openExternal: () => {},
+  exportCsv: () => {},
 };
 
 export interface AttachmentHost { pick(): Promise<string[]> }
@@ -381,6 +388,10 @@ export class MessageRouter {
         this.editor.openExternal(msg.url);
         return;
 
+      case 'export-table-csv':
+        this.editor.exportCsv(msg.csv);
+        return;
+
       case 'permission-decision':
         this.manager.get(msg.id)?.respondToPermission(msg.requestId, msg.decision);
         return;
@@ -475,7 +486,7 @@ const KNOWN_MESSAGE_TAGS = new Set<WebviewToHost['t']>([
   'request-bring-back', 'bring-back',
   'request-stale-trees', 'remove-stale-tree',
   'request-fleet-diff', 'open-file-diff', 'open-review',
-  'refresh-catalog', 'open-settings', 'open-external',
+  'refresh-catalog', 'open-settings', 'open-external', 'export-table-csv',
 ]);
 
 /**

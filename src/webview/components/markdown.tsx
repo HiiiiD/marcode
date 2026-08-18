@@ -1,16 +1,25 @@
-import type { ReactNode } from 'react';
+import { useMemo, type ReactNode } from 'react';
+import type { Element } from 'hast';
+import { CopyIcon, DownloadIcon } from 'lucide-react';
 // @ts-expect-error react-markdown ships ESM-only; tsc's per-file CJS/ESM
 // interop check (tsconfig "module": "Node16") flags this as unimportable via
 // require(), but esbuild bundles it directly and this is a type-check-only
 // false positive.
 import ReactMarkdown from 'react-markdown';
+// @ts-expect-error remark-gfm ships ESM-only; same tsc CJS/ESM interop false
+// positive as react-markdown above — esbuild bundles it fine.
+import remarkGfm from 'remark-gfm';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useStore } from '../store';
 import { classifyHref } from './markdown-link';
+import { hastText } from './hast-text';
+import { tableRows, toCsv, toTsv } from './markdown-table';
 
 /**
- * No plugins, and an explicit component map, because the webview's CSP is
+ * `remark-gfm` for table support (the only plugin), and otherwise an
+ * explicit component map, because the webview's CSP is
  * `default-src 'none'`: an <img> or a stylesheet reference from agent output
  * would be blocked at load and show as a broken box, and it degrades to its
  * text. `react-markdown` does not parse raw HTML unless rehype-raw is added —
@@ -33,6 +42,7 @@ import { classifyHref } from './markdown-link';
 export function Markdown({ children }: { children: string }) {
   return (
     <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
       // react-markdown's default transform blanks every href whose scheme is
       // not http(s)/mailto — which includes `e:\repo\a.ts`, since a Windows
       // drive letter parses as a one-letter scheme. Pass hrefs through and let
@@ -41,10 +51,8 @@ export function Markdown({ children }: { children: string }) {
       components={{
         img: ({ alt }) => <span className="text-muted-foreground">{alt ?? 'image'}</span>,
         a: ({ href, children: text }) => <MarkdownLink href={href}>{text}</MarkdownLink>,
-        pre: ({ children: content }) => (
-          <pre className="my-1 overflow-x-auto rounded bg-muted p-1.5 text-xs whitespace-pre-wrap wrap-break-word">
-            {content}
-          </pre>
+        pre: ({ node, children: content }) => (
+          <CodeBlock node={node}>{content}</CodeBlock>
         ),
         code: ({ className, children: content }) => (
           <code className={cn('rounded bg-muted px-1 py-0.5 text-xs', className)}>
@@ -60,6 +68,14 @@ export function Markdown({ children }: { children: string }) {
         h5: ({ children: content }) => <p className="mt-2 font-semibold">{content}</p>,
         h6: ({ children: content }) => <p className="mt-2 font-semibold">{content}</p>,
         p: ({ children: content }) => <p className="my-1 wrap-break-word">{content}</p>,
+        table: ({ node, children: content }) => (
+          <MarkdownTable node={node}>{content}</MarkdownTable>
+        ),
+        thead: ({ children: content }) => <TableHeader>{content}</TableHeader>,
+        tbody: ({ children: content }) => <TableBody>{content}</TableBody>,
+        tr: ({ children: content }) => <TableRow>{content}</TableRow>,
+        th: ({ children: content }) => <TableHead>{content}</TableHead>,
+        td: ({ children: content }) => <TableCell>{content}</TableCell>,
       }}
     >
       {children}
@@ -90,5 +106,70 @@ function MarkdownLink({ href, children }: { href?: string; children: ReactNode }
     >
       {children}
     </Button>
+  );
+}
+
+/**
+ * A fenced code block plus a copy action. The copy button always renders
+ * (never hover-only) — matching the table toolbar below, this is a panel
+ * used mid-turn, not one where discoverability can wait on a pointer.
+ */
+function CodeBlock({ node, children }: { node?: Element; children: ReactNode }) {
+  return (
+    <div className="relative my-1">
+      <pre className="overflow-x-auto rounded bg-muted p-1.5 pr-7 text-xs whitespace-pre-wrap wrap-break-word">
+        {children}
+      </pre>
+      {node && (
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          aria-label="Copy code"
+          onClick={() => { void navigator.clipboard.writeText(hastText(node)); }}
+          className="absolute top-1 right-1 text-muted-foreground"
+        >
+          <CopyIcon />
+        </Button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * A GFM table plus a copy (TSV, for pasting straight into a spreadsheet) and
+ * download (CSV, via the host's save dialog) action. Row data comes from the
+ * hast `node` react-markdown hands every custom component, not from
+ * `children` — `children` here is already this module's own `TableHeader`/
+ * `TableBody` elements, and re-parsing rendered output back into cell text
+ * would be circular.
+ */
+function MarkdownTable({ node, children }: { node?: Element; children: ReactNode }) {
+  const { post } = useStore();
+  const rows = useMemo(() => (node ? tableRows(node) : []), [node]);
+
+  return (
+    <div className="my-1">
+      <div className="flex justify-end gap-1">
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          aria-label="Copy table"
+          onClick={() => { void navigator.clipboard.writeText(toTsv(rows)); }}
+          className="text-muted-foreground"
+        >
+          <CopyIcon />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          aria-label="Download table"
+          onClick={() => post({ t: 'export-table-csv', csv: toCsv(rows) })}
+          className="text-muted-foreground"
+        >
+          <DownloadIcon />
+        </Button>
+      </div>
+      <Table className="rounded border border-border">{children}</Table>
+    </div>
   );
 }
