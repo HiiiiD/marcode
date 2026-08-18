@@ -45,6 +45,7 @@ function describeInbound(m: WebviewToHost): string {
     case 'refresh-catalog': return 'refresh-catalog';
     case 'open-settings': return 'open-settings';
     case 'open-external': return 'open-external';
+    case 'export-table-csv': return 'export-table-csv';
     default: return assertNever(m);
   }
 }

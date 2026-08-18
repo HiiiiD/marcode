@@ -476,7 +476,13 @@ export type WebviewToHost =
    * than a destination (`markdown-link.ts`); VS Code applies its own
    * trusted-domain prompt to what survives.
    */
-  | { t: 'open-external'; url: string };
+  | { t: 'open-external'; url: string }
+  /**
+   * A markdown table's cells, already CSV-formatted, for the host to save to
+   * disk. Not session-addressed — the table exists in rendered transcript
+   * text, not session state, the same reason `open-external` is not.
+   */
+  | { t: 'export-table-csv'; csv: string };
 
 export type HostToWebview =
   | { t: 'hydrate'; sessions: SessionSummary[]; layout: PaneLayout;

@@ -82,6 +82,7 @@ suite('MessageRouter', () => {
       openDiff: () => {},
       openSettings: (section) => sections.push(section),
       openExternal: () => {},
+      exportCsv: () => {},
     });
 
     await r.handle({ t: 'open-settings', section: 'hiiiidCode.enabledProviders' });
@@ -97,11 +98,28 @@ suite('MessageRouter', () => {
       openDiff: () => {},
       openSettings: () => {},
       openExternal: (url) => urls.push(url),
+      exportCsv: () => {},
     });
 
     await r.handle({ t: 'open-external', url: 'https://example.test/a' });
 
     assert.deepStrictEqual(urls, ['https://example.test/a']);
+  });
+
+  test('export-table-csv reaches the host with the csv text', async () => {
+    const csvs: string[] = [];
+    const r = new MessageRouter(manager, (m) => sent.push(m), '/tmp', {
+      current: () => null,
+      reveal: () => {},
+      openDiff: () => {},
+      openSettings: () => {},
+      openExternal: () => {},
+      exportCsv: (csv) => csvs.push(csv),
+    });
+
+    await r.handle({ t: 'export-table-csv', csv: 'Task,State\r\na,b' });
+
+    assert.deepStrictEqual(csvs, ['Task,State\r\na,b']);
   });
 
   test('ready carries the manager\'s current usage snapshot on hydrate', async () => {
@@ -604,6 +622,7 @@ suite('MessageRouter', () => {
       openDiff: () => {},
       openSettings: () => {},
       openExternal: () => {},
+      exportCsv: () => {},
     });
 
     const session = await mgr.create('fake', '/tmp');
@@ -625,6 +644,7 @@ suite('MessageRouter', () => {
       openDiff: () => {},
       openSettings: () => {},
       openExternal: () => {},
+      exportCsv: () => {},
     });
 
     const session = await mgr.create('fake', '/tmp');
@@ -668,6 +688,7 @@ suite('MessageRouter', () => {
       openDiff: () => {},
       openSettings: () => {},
       openExternal: () => {},
+      exportCsv: () => {},
     });
 
     await r.handle({ t: 'reveal-file', path: 'src/a.ts', startLine: 12 });
@@ -743,6 +764,7 @@ suite('MessageRouter', () => {
       openDiff: () => {},
       openSettings: () => {},
       openExternal: () => {},
+      exportCsv: () => {},
     });
 
     await r.handle({ t: 'ready' });

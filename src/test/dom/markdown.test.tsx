@@ -90,4 +90,54 @@ suite('Markdown', () => {
       renderWithStore(<Markdown>{'- one\n- '}</Markdown>);
     });
   });
+
+  test('a GFM table renders as a real table, not piped text', () => {
+    const source = '| Task | State |\n|---|---|\n| a | done |';
+    const { container } = renderWithStore(<Markdown>{source}</Markdown>);
+    assert.strictEqual(container.querySelector('table') === null, false);
+    assert.strictEqual(container.querySelectorAll('tbody tr').length, 1);
+    assert.strictEqual(container.textContent!.includes('|'), false);
+  });
+
+  suite('table actions', () => {
+    const source = '| Task | State |\n|---|---|\n| a | done |\n| b\tx | e"f |';
+    let writeText: (text: string) => Promise<void>;
+    let written: string[];
+
+    setup(() => {
+      written = [];
+      writeText = async (text: string) => { written.push(text); };
+      Object.assign(navigator, { clipboard: { writeText } });
+    });
+
+    test('copy writes the table as TSV', async () => {
+      renderWithStore(<Markdown>{source}</Markdown>);
+
+      await userEvent.click(screen.getByRole('button', { name: /copy table/i }));
+
+      assert.deepStrictEqual(written, ['Task\tState\na\tdone\nb x\te"f']);
+    });
+
+    test('download posts the table as CSV to the host', async () => {
+      renderWithStore(<Markdown>{source}</Markdown>);
+
+      await userEvent.click(screen.getByRole('button', { name: /download table/i }));
+
+      assert.deepStrictEqual(posted().at(-1), {
+        t: 'export-table-csv',
+        csv: 'Task,State\r\na,done\r\nb\tx,"e""f"',
+      });
+    });
+  });
+
+  test('copying a code block writes its text to the clipboard', async () => {
+    const written: string[] = [];
+    Object.assign(navigator, { clipboard: { writeText: async (t: string) => { written.push(t); } } });
+    renderWithStore(<Markdown>{'```ts\nconst a = 1;\n```'}</Markdown>);
+
+    await userEvent.click(screen.getByRole('button', { name: /copy code/i }));
+
+    assert.strictEqual(written.length, 1);
+    assert.strictEqual(written[0].trim(), 'const a = 1;');
+  });
 });
