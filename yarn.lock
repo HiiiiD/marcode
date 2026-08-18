@@ -619,6 +619,24 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@headless-tree/core@npm:1.7.0":
+  version: 1.7.0
+  resolution: "@headless-tree/core@npm:1.7.0"
+  checksum: 10c0/e586dad212fc3a34f5f28d9dfa23e98fa71e5f0aec380e337f5d98fa8952d9569aeb33913c0d2cd11c261ea03e8bda40c3afa397e90f1197c8829d9fa7f1f02c
+  languageName: node
+  linkType: hard
+
+"@headless-tree/react@npm:1.7.0":
+  version: 1.7.0
+  resolution: "@headless-tree/react@npm:1.7.0"
+  peerDependencies:
+    "@headless-tree/core": "*"
+    react: "*"
+    react-dom: "*"
+  checksum: 10c0/dad541d75c23211eaaeb5462b4a7f1fc331bd9ed57ef5ff78ac80dfca0d97578913c82a4e9858170b0230f9b547fdf1682c115f4140afe2fb6d1c3222f9a4eba
+  languageName: node
+  linkType: hard
+
 "@hono/node-server@npm:^1.19.9 || ^2.0.5":
   version: 2.1.0
   resolution: "@hono/node-server@npm:2.1.0"
@@ -3291,6 +3309,8 @@ __metadata:
     "@anthropic-ai/claude-agent-sdk": "npm:^0.3.228"
     "@anthropic-ai/sdk": "npm:^0.116.0"
     "@base-ui/react": "npm:^1.7.0"
+    "@headless-tree/core": "npm:1.7.0"
+    "@headless-tree/react": "npm:1.7.0"
     "@modelcontextprotocol/sdk": "npm:^1.30.0"
     "@shadcn/react": "npm:^0.3.0"
     "@tailwindcss/cli": "npm:^4.3.3"
