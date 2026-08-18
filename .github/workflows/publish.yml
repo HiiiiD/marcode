@@ -117,35 +117,35 @@ jobs:
           path: marcode-${{ matrix.target }}.vsix
           retention-days: 1 # superseded by the GitHub release the publish job creates
 
-  publish:
-    needs: vsix
-    runs-on: ubuntu-latest
-    # Name must match the federated credential's subject in the Entra app
-    # registration (e.g. repo:OWNER/REPO:environment:marketplace-publish).
-    environment: marketplace-publish
-    permissions:
-      id-token: write
-      contents: write # gh release create needs this; the top-level block stays read-only
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          pattern: vsix-*
-          merge-multiple: true
+  # publish:
+  #   needs: vsix
+  #   runs-on: ubuntu-latest
+  #   # Name must match the federated credential's subject in the Entra app
+  #   # registration (e.g. repo:OWNER/REPO:environment:marketplace-publish).
+  #   environment: marketplace-publish
+  #   permissions:
+  #     id-token: write
+  #     contents: write # gh release create needs this; the top-level block stays read-only
+  #   steps:
+  #     - uses: actions/download-artifact@v4
+  #       with:
+  #         pattern: vsix-*
+  #         merge-multiple: true
 
-      # Entra ID workload identity federation — no PAT, no stored secret.
-      # Azure DevOps retires global PATs on 2026-12-01.
-      - uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          allow-no-subscriptions: true
+  #     # Entra ID workload identity federation — no PAT, no stored secret.
+  #     # Azure DevOps retires global PATs on 2026-12-01.
+  #     - uses: azure/login@v2
+  #       with:
+  #         client-id: ${{ secrets.AZURE_CLIENT_ID }}
+  #         tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+  #         allow-no-subscriptions: true
 
-      - run: npx @vscode/vsce publish --packagePath marcode-*.vsix --azure-credential
+  #     - run: npx @vscode/vsce publish --packagePath marcode-*.vsix --azure-credential
 
-      # Marketplace has no download page for older/specific versions; the
-      # release is where the per-platform .vsix files (and a diff-able
-      # changelog) actually live afterwards.
-      - name: Attach vsix files to a GitHub release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release create "${{ github.ref_name }}" marcode-*.vsix --generate-notes
+  #     # Marketplace has no download page for older/specific versions; the
+  #     # release is where the per-platform .vsix files (and a diff-able
+  #     # changelog) actually live afterwards.
+  #     - name: Attach vsix files to a GitHub release
+  #       env:
+  #         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  #       run: gh release create "${{ github.ref_name }}" marcode-*.vsix --generate-notes
