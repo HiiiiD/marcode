@@ -7,7 +7,7 @@
   "icon": "media/marcode-logo.png",
   "repository": {
     "type": "git",
-    "url": "https://github.com/TODO-owner/TODO-repo.git"
+    "url": "https://github.com/HiiiiD/hiiiid-code.git"
   },
   "engines": {
     "vscode": "^1.125.0"
