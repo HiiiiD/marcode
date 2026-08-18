@@ -56,6 +56,15 @@ suite('TranscriptItemView', () => {
     const el = screen.getByText(/boom/);
     assert.ok(/max-h-\d/.test(el.className) || /max-h-\d/.test(el.parentElement!.className));
   });
+
+  test('a switch item renders its precomputed sentence', () => {
+    renderApp();
+    hydrateWithItems([
+      { id: '4', ts: 4, role: 'switch', kind: 'model', text: 'Switched model to Fake Small' },
+    ]);
+
+    screen.getByText('Switched model to Fake Small');
+  });
 });
 
 suite('TranscriptItemView subagent routing', () => {

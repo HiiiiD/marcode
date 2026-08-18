@@ -27,7 +27,35 @@ const textOf = (content: unknown): string | undefined => {
   return block?.type === 'text' ? block.text ?? '' : undefined;
 };
 
-export function toAgentEvents(update: Record<string, unknown>, tools: ToolMapper): AgentEvent[] {
+/**
+ * A `tool_call_update` is a **delta**, not a whole call: opencode's completed
+ * frame for a `read` carries neither `kind` nor `locations`, and rewrites
+ * `title` to the file path. Mapping that frame alone turns a Read card into an
+ * `other` card labelled with a filename, so every frame is folded over the
+ * ones before it and the mapper sees the accumulated call.
+ *
+ * State lives here rather than in the vendor mapper because the merge is the
+ * protocol's rule, not a vendor's: `AcpRun` owns one log per session.
+ */
+export class ToolCallLog {
+  private readonly calls = new Map<string, AcpToolCall>();
+
+  /** Folds `update` over what this call already said and returns the whole of it. */
+  merge(update: AcpToolCall): AcpToolCall {
+    const prev = this.calls.get(update.toolCallId);
+    // Absent means "unchanged"; present — including an empty array — is a
+    // statement, so a later frame still wins wherever it says anything.
+    const said = Object.fromEntries(
+      Object.entries(update).filter(([, v]) => v !== undefined && v !== null));
+    const merged = { ...prev, ...said } as AcpToolCall;
+    this.calls.set(update.toolCallId, merged);
+    return merged;
+  }
+}
+
+export function toAgentEvents(
+  update: Record<string, unknown>, tools: ToolMapper, calls: ToolCallLog,
+): AgentEvent[] {
   switch (update.sessionUpdate) {
     case 'agent_message_chunk': {
       const delta = textOf(update.content);
@@ -38,14 +66,16 @@ export function toAgentEvents(update: Record<string, unknown>, tools: ToolMapper
       return delta === undefined ? [] : [{ kind: 'thinking', delta }];
     }
     case 'tool_call': {
-      const call = update as unknown as AcpToolCall;
+      const call = calls.merge(update as unknown as AcpToolCall);
       return [{ kind: 'tool-start', id: call.toolCallId, tool: tools.call(call) }];
     }
     case 'tool_call_update': {
-      const call = update as unknown as AcpToolCall;
+      // Merged before the status check: `in_progress` emits nothing, but it is
+      // the only frame carrying a read's path or a bash call's command.
+      const call = calls.merge(update as unknown as AcpToolCall);
       if (call.status !== 'completed' && call.status !== 'failed') { return []; }
       // `tool` is re-sent deliberately: opencode's `tool_call` for bash carries
-      // no command at all, and only this update has `rawInput.command`.
+      // no command at all, and only a later frame has `rawInput.command`.
       return [{
         kind: 'tool-end', id: call.toolCallId, ok: call.status === 'completed',
         output: tools.output(call), tool: tools.call(call),

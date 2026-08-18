@@ -6,7 +6,10 @@ import type {
 } from '../types';
 import { CLIENT_CAPABILITIES, connectAcp, PROTOCOL_VERSION, type AcpChild } from './acp-client';
 import { currentModelId, modelConfigId, toModeIds, type ConfigOption } from './config-options';
-import { toAgentEvents, toContextBreakdown, type AcpToolCall, type ToolMapper } from './map-updates';
+import {
+  ToolCallLog, toAgentEvents, toContextBreakdown,
+  type AcpToolCall, type ToolMapper,
+} from './map-updates';
 import { autoDecision, chooseOption, type PermissionOption, type PermissionOutcome } from './permissions';
 
 /**
@@ -194,6 +197,9 @@ export class AcpRun implements AgentRun {
    * Same conditional shape as `CodexRun`'s, for the same reason.
    */
   private lastBreakdown: ContextBreakdown | undefined;
+
+  /** One session's tool calls, folded across the partial frames that describe them. */
+  private readonly calls = new ToolCallLog();
   contextBreakdown?: () => Promise<ContextBreakdown>;
 
   constructor(
@@ -363,7 +369,9 @@ export class AcpRun implements AgentRun {
       this.captureUsage(p.update as { used?: unknown; size?: unknown });
       return;
     }
-    for (const event of toAgentEvents(p.update, this.opts.tools)) { this.events.push(event); }
+    for (const event of toAgentEvents(p.update, this.opts.tools, this.calls)) {
+      this.events.push(event);
+    }
   }
 
   /** `usage_update` feeds `contextBreakdown` and emits nothing — it is not a transcript item. */
@@ -410,7 +418,10 @@ export class AcpRun implements AgentRun {
       // Cancelled, not denied — nobody decided anything about it.
       if (previous) { previous(undefined); }
       this.events.push({
-        kind: 'permission', id, tool: this.opts.tools.call(call), meta: { title: call.title },
+        // Merged like any other frame: a permission request's `toolCall` is
+        // as partial as the updates around it, and it shares their id.
+        kind: 'permission', id, tool: this.opts.tools.call(this.calls.merge(call)),
+        meta: { title: call.title },
       });
     });
     // Only if this call still owns the slot: an orphaned predecessor unwinding

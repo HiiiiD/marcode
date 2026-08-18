@@ -60,6 +60,13 @@ export function TranscriptItemView({
     case 'relocation':
       return <RelocationCard item={item} sessionId={sessionId} />;
 
+    case 'switch':
+      return (
+        <TranscriptItemShell role="tool" label={item.kind === 'model' ? 'Model' : 'Effort'} ts={item.ts}>
+          <div className="text-xs text-muted-foreground">{item.text}</div>
+        </TranscriptItemShell>
+      );
+
     default:
       // The TranscriptItem type is closed, but nothing guarantees a runtime
       // value matches it (schema drift between an older webview bundle and a

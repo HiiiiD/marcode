@@ -122,6 +122,29 @@ suite('AcpRun', () => {
     await run.dispose();
   });
 
+  test("a read's tool-end keeps the kind and path the earlier frames carried", async () => {
+    const p = peer();
+    const events: AgentEvent[] = [];
+    const run = new AcpRun(p.child, {
+      cwd: '/w', permissionMode: 'default', tools: openCodeTools,
+      modeId: openCodeModeId, clientName: 'hiiiid-code',
+    });
+    collect(run, events);
+    await handshake(p);
+    for (const update of [frames.updates.readToolCall, frames.updates.readToolCallInProgress,
+      frames.updates.readToolCallCompleted]) {
+      p.emit({ jsonrpc: '2.0', method: 'session/update', params: {
+        sessionId: 'ses_ff0400c8affe2kYFjqc6OUHpG3', update } });
+    }
+    await new Promise((r) => setTimeout(r, 20));
+    const end = events.find((e) => e.kind === 'tool-end') as { tool?: unknown } | undefined;
+    assert.deepStrictEqual(end?.tool, {
+      kind: 'file-read', label: 'Read',
+      path: 'C:/Users/Marco/AppData/Local/Temp/oc-read-spike/notes.txt',
+    });
+    await run.dispose();
+  });
+
   test('a permission request under default mode parks as a permission event', async () => {
     const p = peer();
     const events: AgentEvent[] = [];
