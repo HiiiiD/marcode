@@ -143,6 +143,7 @@ suite('SessionManager.fleetDiff', function () {
     await initRepo(repo);
     const { manager } = await managerWith(claims('feature.ts'));
     const session = await manager.create('fake', repo);
+    await manager.setVisible([session.state.id]);
     session.send('write it');
     await settle();
     await fs.writeFile(join(repo, 'feature.ts'), 'hello\n');
@@ -157,7 +158,8 @@ suite('SessionManager.fleetDiff', function () {
     const repo = await tempDir();
     await initRepo(repo);
     const { manager } = await managerWith(() => [{ kind: 'turn-end', reason: 'done' }]);
-    await manager.create('fake', repo);
+    const session = await manager.create('fake', repo);
+    await manager.setVisible([session.state.id]);
     await settle();
     // Made by a shell command, a build, or the user — no tool call behind it.
     await fs.writeFile(join(repo, 'by-hand.ts'), 'x\n');
@@ -172,9 +174,10 @@ suite('SessionManager.fleetDiff', function () {
     await initRepo(repo);
     const { manager } = await managerWith(claims('shared.ts'));
     const a = await manager.create('fake', repo);
+    const b = await manager.create('fake', repo);
+    await manager.setVisible([a.state.id, b.state.id]);
     a.send('go');
     await settle();
-    const b = await manager.create('fake', repo);
     b.send('go');
     await settle();
     await fs.writeFile(join(repo, 'shared.ts'), 'x\n');
@@ -192,6 +195,7 @@ suite('SessionManager.fleetDiff', function () {
     const elsewhere = await tempDir();
     const { manager } = await managerWith(claims(join(elsewhere, 'stray.ts').split('\\').join('/')));
     const session = await manager.create('fake', repo);
+    await manager.setVisible([session.state.id]);
     session.send('go');
     await settle();
     await fs.writeFile(join(repo, 'real.ts'), 'x\n');
@@ -199,6 +203,37 @@ suite('SessionManager.fleetDiff', function () {
     const trees = await manager.fleetDiff();
     const row = trees[0].files.find((f) => f.path === 'real.ts');
     assert.deepStrictEqual(row?.claimedBy, []);
+  });
+
+  test('a tree with no visible pane is omitted, even with a claimed change', async () => {
+    const repo = await tempDir();
+    await initRepo(repo);
+    const { manager } = await managerWith(claims('hidden.ts'));
+    const session = await manager.create('fake', repo);
+    // Never made visible: no pane is open for it.
+    session.send('go');
+    await settle();
+    await fs.writeFile(join(repo, 'hidden.ts'), 'x\n');
+
+    assert.deepStrictEqual(await manager.fleetDiff(), []);
+  });
+
+  test('two sessions share a tree; only the visible one keeps it listed', async () => {
+    const repo = await tempDir();
+    await initRepo(repo);
+    const { manager } = await managerWith(claims('shared.ts'));
+    const a = await manager.create('fake', repo);
+    const b = await manager.create('fake', repo);
+    await manager.setVisible([a.state.id]);
+    a.send('go');
+    await settle();
+    b.send('go');
+    await settle();
+    await fs.writeFile(join(repo, 'shared.ts'), 'x\n');
+
+    const trees = await manager.fleetDiff();
+    assert.strictEqual(trees.length, 1);
+    assert.deepStrictEqual(trees[0].sessions, [a.state.id]);
   });
 
   test('a session in a plain directory is not a tree at all', async () => {
@@ -215,9 +250,12 @@ suite('SessionManager.fleetDiff', function () {
     const { manager } = await managerWith(claims('restored.ts'));
     const session = await manager.create('fake', repo);
     const id = session.state.id;
+    await manager.setVisible([id]);
     session.send('go');
     await settle();
     await manager.close(id);
+    await manager.open(id);
+    await manager.setVisible([id]);
     await fs.writeFile(join(repo, 'restored.ts'), 'x\n');
 
     const trees = await manager.fleetDiff();
@@ -229,7 +267,8 @@ suite('SessionManager.fleetDiff', function () {
     const repo = await tempDir();
     await initRepo(repo);
     const { manager, emitted } = await managerWith(() => [{ kind: 'turn-end', reason: 'done' }]);
-    await manager.create('fake', repo);
+    const session = await manager.create('fake', repo);
+    await manager.setVisible([session.state.id]);
     await manager.requestFleetDiff();
 
     const msg = emitted().filter((m) => m.t === 'fleet-diff').pop();

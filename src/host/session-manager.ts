@@ -846,9 +846,14 @@ export class SessionManager implements SessionSink {
       // Two remembered paths can resolve to one tree. One tree, one row.
       if (rows.some((row) => samePath(row.root, status.root))) { continue; }
 
-      const occupants = this.sessionsIn(status.root);
-      // A tree nobody sits in is somebody's abandoned worktree; the
-      // stale-tree sweep is where that is dealt with, not here.
+      // `sessionsIn` answers for the whole roster — this surface only
+      // reviews trees a shown pane sits in. A session nobody has a pane
+      // open for is not "reviewing" anything right now, archived or not:
+      // filtering here (rather than narrowing `sessionsIn` itself) keeps
+      // the stale-tree sweep, which wants every roster occupant, unchanged.
+      const occupants = this.sessionsIn(status.root).filter((id) => this.visible.has(id));
+      // A tree nobody sits in — or nobody has a pane open for — is not this
+      // surface's to show; the stale-tree sweep covers the abandoned case.
       if (occupants.length === 0) { continue; }
 
       const changes = await treeChanges(status.root, cap);
