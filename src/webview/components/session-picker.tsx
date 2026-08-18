@@ -32,6 +32,16 @@ export function SessionPicker({ narrow, onReview }: SessionPickerProps) {
   const servers = aggregateServers(state.byId);
   const worst = worstState(servers);
   const serversNeedAttention = worst !== undefined && isUnhealthy(worst);
+  // ACP carries no MCP status notification, so an OpenCode session's servers
+  // never populate `mcpServers` even though they load and work normally from
+  // the user's opencode.json. The group renders anyway for that provider —
+  // with an explanatory line in place of rows we simply never receive —
+  // rather than silently dropping the whole section, which would read as
+  // "no servers configured" and send the user chasing a problem that isn't
+  // theirs to fix.
+  const hasOpenCodeSession = state.sessions.some(
+    (s) => open.has(s.id) && s.providerId === 'opencode',
+  );
 
   const setPanes = (ids: SessionId[]) => {
     post({ t: 'set-layout', layout: evenlySizedPanes(ids, state.layout.orientation) });
@@ -104,11 +114,17 @@ export function SessionPicker({ narrow, onReview }: SessionPickerProps) {
               </DropdownMenuGroup>
             </>
           )}
-          {servers.length > 0 && (
+          {(servers.length > 0 || hasOpenCodeSession) && (
             <>
               <DropdownMenuSeparator />
               <DropdownMenuGroup>
                 <DropdownMenuLabel>MCP servers (open sessions)</DropdownMenuLabel>
+                {hasOpenCodeSession && (
+                  <DropdownMenuItem disabled className="flex-col items-start gap-0.5 whitespace-normal text-muted-foreground">
+                    MCP servers load from your opencode.json. OpenCode doesn&apos;t
+                    report their status, so they can&apos;t be listed here.
+                  </DropdownMenuItem>
+                )}
                 {servers.map((server) => (
                   <DropdownMenuItem key={server.name} disabled className="flex-col items-start gap-0.5">
                     <span className="flex w-full items-center gap-2">
