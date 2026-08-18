@@ -36,24 +36,28 @@ yarn install
 
 ### Extension Development Host
 
+Press `F5` (**Run Extension** in `.vscode/launch.json`). It builds via the default task and
+opens `.vscode/dev.code-workspace` — a separate window identity over this same folder, so
+VS Code doesn't refuse the launch with an already-open-folder conflict.
+
+To iterate, run `yarn watch` in one terminal (esbuild, `tsc --noEmit` and Tailwind in
+parallel) and launch with `F5`. After a rebuild, reload the dev-host window with `Ctrl+R`.
+Because the extension host owns all state and the webview is rehydrated from it, a reload
+is a real test of persistence rather than a reset.
+
+Fallback, for when the debugger itself is the problem or `--disable-extensions` is needed:
+
 ```powershell
 yarn run compile   # esbuild + check-types + lint
 yarn dev           # launches a separate VS Code with this repo as the extension
+yarn dev:clean     # same, plus --disable-extensions
 ```
 
-Do not press `F5`. VS Code launches the dev host from inside its own extension host, which
-runs as `Code.exe` with `ELECTRON_RUN_AS_NODE=1`; an inheriting window exits immediately
-instead of opening. `yarn dev` runs [`scripts/dev-host.ps1`](scripts/dev-host.ps1), which
-strips every inherited `ELECTRON_*` / `VSCODE_*` variable and starts a fresh instance under
-its own profile in `%TEMP%\hiiiid-devhost`.
-
-To iterate, run `yarn watch` in one terminal (esbuild, `tsc --noEmit` and Tailwind in
-parallel) and `yarn dev` in another. After a rebuild, reload the dev-host window with
-`Ctrl+R`. Because the extension host owns all state and the webview is rehydrated from it,
-a reload is a real test of persistence rather than a reset.
-
-`yarn dev:clean` adds `--disable-extensions`, to rule out interference from other
-extensions.
+`yarn dev` runs [`scripts/dev-host.ps1`](scripts/dev-host.ps1), which strips every
+inherited `ELECTRON_*` / `VSCODE_*` variable and starts a fresh instance under its own
+profile in `%TEMP%\hiiiid-devhost` — useful if launching `code` from an integrated terminal
+inherits `ELECTRON_RUN_AS_NODE=1` and exits immediately. `F5`'s debug-launched extension
+host doesn't hit that.
 
 ### Packaged `.vsix`
 
