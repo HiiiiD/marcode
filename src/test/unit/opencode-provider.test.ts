@@ -1,6 +1,7 @@
 import * as assert from 'assert';
 import { PassThrough } from 'node:stream';
 import * as frames from '../fixtures/opencode-acp-frames.json';
+import { DEFAULT_PROVIDER_IDS } from '../../shared/settings';
 import { OpenCodeProvider } from '../../providers/opencode/opencode-provider';
 
 /** A spawn stub that answers initialize + session/new from the fixtures and
@@ -111,5 +112,9 @@ suite('OpenCodeProvider', () => {
   test('fetchUsage and listInvocables are absent — no plan data over ACP', () => {
     const provider = new OpenCodeProvider({ spawn: scriptedSpawn().spawn });
     assert.strictEqual(provider.fetchUsage, undefined);
+  });
+
+  test('the default provider set includes opencode', () => {
+    assert.strictEqual(DEFAULT_PROVIDER_IDS.includes('opencode'), true);
   });
 });
