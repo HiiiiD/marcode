@@ -2,6 +2,7 @@ import { spawn as spawnChildProcess } from 'node:child_process';
 import { connectAcp, CLIENT_CAPABILITIES, PROTOCOL_VERSION, type AcpChild } from '../acp/acp-client';
 import { toModels, type ConfigOption } from '../acp/config-options';
 import { AcpRun } from '../acp/acp-run';
+import { openCodeModeId } from './map-modes';
 import { openCodeTools } from './map-tools';
 import type {
   AgentProvider, AgentRun, ModelInfo, PermissionModeInfo, StartOptions, ThreadScope,
@@ -165,6 +166,7 @@ export class OpenCodeProvider implements AgentProvider {
       permissionMode: opts.permissionMode,
       resumeToken: opts.resumeToken,
       tools: openCodeTools,
+      modeId: openCodeModeId,
       clientName: 'hiiiid-code',
     });
   }

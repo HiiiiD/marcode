@@ -5,7 +5,7 @@ import type {
   EffortLevel, PermissionMode, QuestionAnswers, ToolDecision,
 } from '../types';
 import { CLIENT_CAPABILITIES, connectAcp, PROTOCOL_VERSION, type AcpChild } from './acp-client';
-import { currentModelId, modelConfigId, type ConfigOption } from './config-options';
+import { currentModelId, modelConfigId, toModeIds, type ConfigOption } from './config-options';
 import { toAgentEvents, toContextBreakdown, type AcpToolCall, type ToolMapper } from './map-updates';
 import { autoDecision, chooseOption, type PermissionOption, type PermissionOutcome } from './permissions';
 
@@ -34,6 +34,17 @@ export interface AcpRunOptions {
   permissionMode: PermissionMode;
   resumeToken?: string;
   tools: ToolMapper;
+  /**
+   * This agent's own session-mode name for a permission mode, or `undefined`
+   * when it has no session mode that expresses one.
+   *
+   * The vendor half, exactly like `tools`: `'plan'` and `'build'` are names
+   * OpenCode chose, and this layer's whole justification is that a second ACP
+   * agent costs a spawn recipe and a couple of mappers. What `AcpRun` still
+   * owns is *when* a mode is asserted, and checking the answer against the
+   * ids the agent actually advertised — see `modeIdFor`.
+   */
+  modeId(mode: PermissionMode): string | undefined;
   clientName: string;
 }
 
@@ -163,6 +174,17 @@ export class AcpRun implements AgentRun {
    * types into it.
    */
   private startError: string | undefined;
+  /**
+   * Why the child process died, when the spawn recipe told us.
+   *
+   * The SDK reports a dead peer as the generic `"ACP connection closed"`,
+   * which has no remedy in it. `AcpChild.onFailure` carries the exit
+   * code/signal and the stderr tail — the thing a user can act on — and
+   * `start()` already races it, but a crash *after* startup settled lands on
+   * a promise nobody is awaiting. Retaining it here is what lets `runPrompt`
+   * report the real reason instead. Respawning is deliberately not attempted.
+   */
+  private childFailure: string | undefined;
   private disposed = false;
 
   /**
@@ -209,7 +231,10 @@ export class AcpRun implements AgentRun {
    */
   private async start(): Promise<void> {
     const failure = new Promise<never>((_, reject) => {
-      this.child.onFailure?.((reason) => { reject(new Error(reason)); });
+      this.child.onFailure?.((reason) => {
+        this.childFailure = reason;
+        reject(new Error(reason));
+      });
     });
     try {
       await Promise.race([this.startInner(), failure]);
@@ -247,6 +272,26 @@ export class AcpRun implements AgentRun {
     }
     if (this.disposed || !this.sessionId) { return; }
     this.events.push({ kind: 'session', resumeToken: this.sessionId });
+    // ACP's `NewSessionRequest` carries NO mode field, and `AgentSession` only
+    // calls `setPermissionMode` on a user change — so the mode a session was
+    // created (or restored) with reaches the agent only if it is asserted
+    // here. Without this, a `plan` session comes up in the agent's own default
+    // and edits files on request while the pane's chip reads Plan: `plan` has
+    // no client-side enforcement to compensate, because `autoDecision`
+    // deliberately answers nothing for it.
+    //
+    // Awaited rather than fired and forgotten: `runPrompt` opens with
+    // `await this.startup`, so awaiting here is what guarantees the mode is in
+    // force before this session's first prompt can be sent.
+    const startupModeId = this.modeIdFor(this.mode);
+    if (startupModeId !== undefined) {
+      try {
+        await conn.setSessionMode({ sessionId: this.sessionId, modeId: startupModeId });
+      } catch {
+        // Its own catch, same as the model write below: a mode the agent
+        // refuses is a worse session, not a dead one.
+      }
+    }
     // The session comes up on whatever model the agent's own config selects,
     // so a requested one is a write like any other — issued here rather than
     // through `setModel`, whose `fireAndForget` awaits the very promise this
@@ -419,7 +464,7 @@ export class AcpRun implements AgentRun {
       // pushed was consumed by the turn that had already ended.
       this.events.push({
         kind: 'turn-end', reason: 'error',
-        error: this.startError ?? 'The agent never started a session.',
+        error: this.startError ?? this.childFailure ?? 'The agent never started a session.',
       });
       return;
     }
@@ -438,8 +483,34 @@ export class AcpRun implements AgentRun {
       }
       this.events.push({ kind: 'turn-end', reason: turnEndReason(reply?.stopReason) });
     } catch (err) {
-      this.events.push({ kind: 'turn-end', reason: 'error', error: errorMessage(err) });
+      // A dead peer reaches us as the SDK's generic "ACP connection closed".
+      // The child's own exit reason — code/signal plus the stderr tail — is
+      // the one a user can act on, so it wins whenever the spawn recipe
+      // reported one. See `childFailure`.
+      this.events.push({
+        kind: 'turn-end', reason: 'error', error: this.childFailure ?? errorMessage(err),
+      });
     }
+  }
+
+  /**
+   * Answers every still-parked permission `cancelled` and says so in the
+   * transcript. Called from both `interrupt()` and `dispose()`.
+   *
+   * Cancelled, never denied: nobody decided anything about these. The
+   * `request-cancelled` event is what makes the card stop rendering pending —
+   * without it `recomputeWaitingStatus` holds the session at
+   * `awaiting-approval` for a turn that no longer exists, and a later Allow
+   * answers a request the agent has already abandoned. Both existing
+   * providers emit it here for the same reason.
+   */
+  private cancelParked(): void {
+    // Snapshot first: each resolver deletes its own entry as it unwinds.
+    for (const [id, resolve] of [...this.parked.entries()]) {
+      resolve(undefined);
+      this.events.push({ kind: 'request-cancelled', id });
+    }
+    this.parked.clear();
   }
 
   respondToTool(id: string, decision: ToolDecision): void {
@@ -474,20 +545,40 @@ export class AcpRun implements AgentRun {
   }
 
   /**
-   * Every mode that is not `plan` maps to `build`, and a `set_mode` goes out
-   * on every change — not just the two the mode names line up with.
+   * The wire mode id to assert for a permission mode, or `undefined` when
+   * there is none to assert.
    *
-   * Plan mode is a WIRE-level session mode: once `{modeId:'plan'}` is sent,
-   * only an explicit `build` retracts it. Sending nothing for `bypass` left
-   * the agent still refusing to edit while every permission request was being
-   * auto-allowed — the panel saying one thing and the agent doing another.
-   * Client-side enforcement in `onRequestPermission` is the right home for
-   * *answering* permission requests, and is untouched by this; it just cannot
-   * take the agent out of a mode the agent is holding.
+   * The vendor mapper names it; this checks that name against the ids the
+   * session actually advertised, so a mapper written against a newer agent
+   * cannot silently write a mode this one has never heard of. An EMPTY
+   * catalog means "not known yet" — a resumed session may never receive one —
+   * and must not be read as "this agent has no modes", or a reload would stop
+   * asserting modes altogether.
+   */
+  private modeIdFor(mode: PermissionMode): string | undefined {
+    const modeId = this.opts.modeId(mode);
+    if (modeId === undefined) { return undefined; }
+    const advertised = toModeIds(this.configOptions);
+    if (advertised.length > 0 && !advertised.includes(modeId)) { return undefined; }
+    return modeId;
+  }
+
+  /**
+   * A `set_mode` goes out on EVERY change, not only the ones whose names line
+   * up with a mode of the agent's.
+   *
+   * Plan mode is a wire-level session mode: once plan is sent, only an
+   * explicit retraction takes the agent back out of it. Sending nothing for
+   * `bypass` left the agent still refusing to edit while every permission
+   * request was being auto-allowed — the panel saying one thing and the agent
+   * doing another. Client-side enforcement in `onRequestPermission` is the
+   * right home for *answering* permission requests, and is untouched by this;
+   * it just cannot take the agent out of a mode the agent is holding.
    */
   setPermissionMode(mode: PermissionMode): void {
     this.mode = mode;
-    const modeId = mode === 'plan' ? 'plan' : 'build';
+    const modeId = this.modeIdFor(mode);
+    if (modeId === undefined) { return; }
     this.fireAndForget((conn, sessionId) => conn.setSessionMode({ sessionId, modeId }));
   }
 
@@ -528,6 +619,14 @@ export class AcpRun implements AgentRun {
    */
   async interrupt(): Promise<void> {
     this.interrupted = true;
+    // Before the cancel, not after. `session/cancel` is a NOTIFICATION and the
+    // SDK does not abort inbound request handlers, so a parked permission
+    // lives straight through it. Leaving one costs whichever failure the agent
+    // picks: it answers the prompt `cancelled` and `recomputeWaitingStatus`
+    // pins the session at `awaiting-approval` for a turn that no longer
+    // exists, or it waits for the permission answer and `await this.inFlight`
+    // below never resolves, so Stop silently does nothing forever.
+    this.cancelParked();
     const conn = this.conn;
     const sessionId = this.sessionId;
     if (conn && sessionId) {
@@ -557,10 +656,7 @@ export class AcpRun implements AgentRun {
     // unwinds rather than holding a 2s timer on a session that is gone.
     this.clearLoadTimer();
     this.loadIdle?.();
-    // A request still parked is answered `cancelled` — not denied. Snapshot
-    // first: each resolver deletes its own entry as it unwinds.
-    for (const resolve of [...this.parked.values()]) { resolve(undefined); }
-    this.parked.clear();
+    this.cancelParked();
     const conn = this.conn;
     const sessionId = this.sessionId;
     if (conn && sessionId) {
