@@ -4,7 +4,9 @@ import type { AttachmentStore } from './attachment-store';
 import { catalogKey, CatalogService } from './catalog-service';
 import { claimedPaths, toRepoRelative } from './claim-paths';
 import { treeChanges } from './fleet-diff';
-import { bringBack as runBringBack, bringBackPlan, samePath, treeStatus } from './git-worktree';
+import {
+  bringBack as runBringBack, bringBackPlan, samePath, treeStatus, type TreeStatus,
+} from './git-worktree';
 import { buildSeed } from './replay';
 import { findPayload, type ResolvedBlock } from './session-refs';
 import { TRANSCRIPT_VERSION, type StoredIndex, type TranscriptStore } from './transcript-store';
@@ -838,35 +840,53 @@ export class SessionManager implements SessionSink {
    * stays, carrying why — that one is a fault worth surfacing.
    */
   async fleetDiff(cap?: number): Promise<TreeDiff[]> {
-    const rows: TreeDiff[] = [];
+    // Every directory's `treeStatus` is independent — each is its own chain
+    // of git spawns, and awaiting them one directory at a time serialises
+    // work that has nothing to do with each other. Reading them together is
+    // what keeps a fleet of N trees from costing N times one tree's latency.
+    const statuses = await Promise.all(
+      this.knownDirectories().map((dir) => treeStatus(dir)),
+    );
 
-    for (const dir of this.knownDirectories()) {
-      const status = await treeStatus(dir);
+    // Two remembered paths can resolve to one tree. One tree, one row — kept
+    // as a sequential dedup pass (not parallelisable, and cheap: no I/O)
+    // so the first directory to name a root is the one that describes it,
+    // exactly as the original sequential loop did.
+    const unique: TreeStatus[] = [];
+    for (const status of statuses) {
       if (!status.isRepo) { continue; }
-      // Two remembered paths can resolve to one tree. One tree, one row.
-      if (rows.some((row) => samePath(row.root, status.root))) { continue; }
+      if (unique.some((row) => samePath(row.root, status.root))) { continue; }
+      unique.push(status);
+    }
 
-      // `sessionsIn` answers for the whole roster — this surface only
-      // reviews trees a shown pane sits in. A session nobody has a pane
-      // open for is not "reviewing" anything right now, archived or not:
-      // filtering here (rather than narrowing `sessionsIn` itself) keeps
-      // the stale-tree sweep, which wants every roster occupant, unchanged.
-      const occupants = this.sessionsIn(status.root).filter((id) => this.visible.has(id));
-      // A tree nobody sits in — or nobody has a pane open for — is not this
-      // surface's to show; the stale-tree sweep covers the abandoned case.
-      if (occupants.length === 0) { continue; }
+    // `sessionsIn` answers for the whole roster — this surface only
+    // reviews trees a shown pane sits in. A session nobody has a pane
+    // open for is not "reviewing" anything right now, archived or not:
+    // filtering here (rather than narrowing `sessionsIn` itself) keeps
+    // the stale-tree sweep, which wants every roster occupant, unchanged.
+    const occupied = unique
+      .map((status) => ({
+        status,
+        // A tree nobody sits in — or nobody has a pane open for — is not
+        // this surface's to show; the stale-tree sweep covers the
+        // abandoned case.
+        occupants: this.sessionsIn(status.root).filter((id) => this.visible.has(id)),
+      }))
+      .filter(({ occupants }) => occupants.length > 0);
 
+    // Each tree's `treeChanges` + claim lookups are independent of every
+    // other tree's, for the same reason the status reads above are.
+    const rows = await Promise.all(occupied.map(async ({ status, occupants }) => {
       const changes = await treeChanges(status.root, cap);
       if ('reason' in changes) {
-        rows.push({
+        return {
           root: status.root, branch: status.branch, sessions: occupants,
-          base: { kind: 'head' }, files: [], omitted: 0, reason: changes.reason,
-        });
-        continue;
+          base: { kind: 'head' as const }, files: [], omitted: 0, reason: changes.reason,
+        };
       }
 
       const claimsBySession = new Map<SessionId, Set<string>>();
-      for (const id of occupants) {
+      await Promise.all(occupants.map(async (id) => {
         const absolute = await this.claimsOf(id);
         const relative = new Set<string>();
         for (const path of absolute) {
@@ -874,9 +894,9 @@ export class SessionManager implements SessionSink {
           if (rel !== undefined) { relative.add(rel); }
         }
         claimsBySession.set(id, relative);
-      }
+      }));
 
-      rows.push({
+      return {
         root: status.root,
         branch: status.branch,
         sessions: occupants,
@@ -893,8 +913,8 @@ export class SessionManager implements SessionSink {
               && (claimed.has(file.path) || (file.from !== undefined && claimed.has(file.from)));
           }),
         })),
-      });
-    }
+      };
+    }));
 
     return rows.sort((a, b) => a.root.localeCompare(b.root));
   }

@@ -88,14 +88,20 @@ export async function treeStatus(dir: string): Promise<TreeStatus> {
   const inside = await git(dir, ['rev-parse', '--is-inside-work-tree']);
   if (!inside.ok || inside.out !== 'true') { return NOT_A_REPO; }
 
-  const top = await git(dir, ['rev-parse', '--show-toplevel']);
+  // None of these five reads depends on another's answer — each is its own
+  // git spawn against the same `dir` — so firing them together turns five
+  // sequential process spawns into one round of concurrent ones. Only the
+  // `inside` gate above stays sequential first: it is what tells a non-repo
+  // apart, and there is nothing to read yet if `dir` is not one.
+  const [top, branch, porcelain, commonDir, gitDir] = await Promise.all([
+    git(dir, ['rev-parse', '--show-toplevel']),
+    git(dir, ['branch', '--show-current']),
+    git(dir, ['status', '--porcelain']),
+    git(dir, ['rev-parse', '--path-format=absolute', '--git-common-dir']),
+    git(dir, ['rev-parse', '--path-format=absolute', '--git-dir']),
+  ]);
   if (!top.ok || top.out === '') { return NOT_A_REPO; }
   const root = normalize(top.out);
-
-  const branch = await git(dir, ['branch', '--show-current']);
-  const porcelain = await git(dir, ['status', '--porcelain']);
-  const commonDir = await git(dir, ['rev-parse', '--path-format=absolute', '--git-common-dir']);
-  const gitDir = await git(dir, ['rev-parse', '--path-format=absolute', '--git-dir']);
 
   // A linked worktree has its own git dir under `<main>/.git/worktrees/<name>`
   // while its *common* dir stays `<main>/.git`. In the main tree the two agree.
