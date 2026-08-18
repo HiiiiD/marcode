@@ -386,6 +386,7 @@ export class AgentSession {
   }
 
   setEffort(effort: EffortLevel): void {
+    const previous = this._state.effort;
     this._state.effort = effort;
     this._state.updatedAt = Date.now();
     try {
@@ -393,6 +394,13 @@ export class AgentSession {
     } catch (err) {
       this.fail(err instanceof Error ? err.message : String(err));
       return;
+    }
+    if (effort !== previous) {
+      this.appendItem({
+        id: nextId('sw'), ts: Date.now(), role: 'switch', kind: 'effort',
+        text: `Switched effort to ${effort}`,
+      });
+      void this.scheduleFlush();
     }
     this.sink.changed();
   }
@@ -413,8 +421,10 @@ export class AgentSession {
    * both sides of the first send, for the same reason the model itself does.
    */
   setModel(model: string): void {
+    const previousModel = this._state.model;
     const previousEffort = this._state.effort;
-    const effort = resolveEffort(findModel(this.provider.listModels(), model), previousEffort);
+    const found = findModel(this.provider.listModels(), model);
+    const effort = resolveEffort(found, previousEffort);
     this._state.model = model;
     this._state.effort = effort;
     this._state.updatedAt = Date.now();
@@ -426,6 +436,17 @@ export class AgentSession {
     } catch (err) {
       this.fail(err instanceof Error ? err.message : String(err));
       return;
+    }
+    if (model !== previousModel) {
+      // Effort travels with the model (see the doc comment above), so a
+      // switch that also reconciles effort still reads as one line — a
+      // second, implicit "switched effort" line would be noise about a
+      // consequence, not a decision.
+      this.appendItem({
+        id: nextId('sw'), ts: Date.now(), role: 'switch', kind: 'model',
+        text: `Switched model to ${found?.displayName ?? model}`,
+      });
+      void this.scheduleFlush();
     }
     this.sink.changed();
   }

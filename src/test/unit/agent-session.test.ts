@@ -620,6 +620,90 @@ suite('AgentSession', () => {
     await session.dispose();
   });
 
+  test('setModel() appends a switch item naming the new model', async () => {
+    const provider = new FakeProvider(() => []);
+    const session = new AgentSession(baseState(), provider, store, sink);
+
+    session.setModel('fake-small');
+
+    const snap = await session.snapshot();
+    const sw = snap.items.find((i) => i.role === 'switch');
+    assert.strictEqual((sw as { kind: string }).kind, 'model');
+    assert.strictEqual((sw as { text: string }).text, 'Switched model to Fake Small');
+    await session.dispose();
+  });
+
+  test('setModel() to the model already in use appends no switch item', async () => {
+    const provider = new FakeProvider(() => []);
+    const session = new AgentSession(baseState(), provider, store, sink);
+
+    session.setModel('fake-large');
+
+    const snap = await session.snapshot();
+    assert.strictEqual(snap.items.some((i) => i.role === 'switch'), false);
+    await session.dispose();
+  });
+
+  test('setModel() implicitly reconciling effort appends only the model switch line', async () => {
+    const provider = new FakeProvider(() => []);
+    const session = new AgentSession(
+      { ...baseState(), model: 'fake-small', effort: 'max' }, provider, store, sink,
+    );
+
+    session.setModel('fake-large');
+
+    const snap = await session.snapshot();
+    const switches = snap.items.filter((i) => i.role === 'switch');
+    assert.strictEqual(switches.length, 1);
+    await session.dispose();
+  });
+
+  test('setModel() on a throwing provider appends no switch item', async () => {
+    const provider = new ThrowingProvider({ throwOnSetModel: true });
+    const session = new AgentSession(baseState(), provider, store, sink);
+
+    session.setModel('haiku');
+
+    const snap = await session.snapshot();
+    assert.strictEqual(snap.items.some((i) => i.role === 'switch'), false);
+    await session.dispose();
+  });
+
+  test('setEffort() appends a switch item naming the new level', async () => {
+    const provider = new FakeProvider(() => []);
+    const session = new AgentSession(baseState(), provider, store, sink);
+
+    session.setEffort('high');
+
+    const snap = await session.snapshot();
+    const sw = snap.items.find((i) => i.role === 'switch');
+    assert.strictEqual((sw as { kind: string }).kind, 'effort');
+    assert.strictEqual((sw as { text: string }).text, 'Switched effort to high');
+    await session.dispose();
+  });
+
+  test('setEffort() to the level already in use appends no switch item', async () => {
+    const provider = new FakeProvider(() => []);
+    const session = new AgentSession(baseState(), provider, store, sink);
+
+    session.setEffort('medium');
+
+    const snap = await session.snapshot();
+    assert.strictEqual(snap.items.some((i) => i.role === 'switch'), false);
+    await session.dispose();
+  });
+
+  test('setEffort() on a throwing provider appends no switch item', async () => {
+    const provider = new ThrowingProvider({ throwOnSetEffort: true });
+    const session = new AgentSession(baseState(), provider, store, sink);
+
+    session.setEffort('high');
+
+    const snap = await session.snapshot();
+    assert.strictEqual(snap.items.some((i) => i.role === 'switch'), false);
+    await session.dispose();
+  });
+
   test('an mcp-servers event reaches the sink and the snapshot', async () => {
     const provider = new FakeProvider(() => [
       { kind: 'mcp-servers', servers: [

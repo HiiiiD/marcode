@@ -98,7 +98,15 @@ export type TranscriptItem =
       role: 'relocation'; path: string;
       state: 'pending' | 'queued' | 'moved' | 'stayed';
     })
-  | (ItemBase & { role: 'error'; message: string });
+  | (ItemBase & { role: 'error'; message: string })
+  /**
+   * A record that the model or effort level changed mid-conversation. `text`
+   * is the full precomputed sentence — not the raw ids — so a later catalog
+   * change (a model renamed or retired) can't reinterpret an old line: the
+   * transcript says what the switch read as *at the time*, exactly like
+   * `SessionRef.title` above.
+   */
+  | (ItemBase & { role: 'switch'; kind: 'model' | 'effort'; text: string });
 
 export type TranscriptPatch =
   | { op: 'append'; item: TranscriptItem; parentItemId?: string }
