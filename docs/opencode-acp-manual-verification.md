@@ -26,21 +26,21 @@ Record a pass/fail and any notes for each item below.
    think out loud. Confirm reasoning/thought text and the final message both
    stream into the transcript, and that the model dropdown lists the models
    `opencode` itself reports (not a hardcoded list).
-   - Result: ___
+   - Result: OK
    - Notes: ___
 
 2. **Switching the model mid-session takes effect on the next turn.** Change
    the model in an existing session, send another prompt, and confirm the
    reply reflects the new model (e.g. ask the model to name itself, or watch
    for an obvious quality/latency difference).
-   - Result: ___
+   - Result: OK
    - Notes: ___
 
 3. **`plan` mode refuses an edit; `default` performs one.** Switch the
    session to `plan` mode and ask for a file edit — confirm it is refused or
    only describes the change. Switch to `default` (build) and ask again —
    confirm the edit actually lands on disk.
-   - Result: ___
+   - Result: OK
    - Notes: ___
 
 4. **Permission cards appear and both allow and deny work.** In the
@@ -63,7 +63,7 @@ Record a pass/fail and any notes for each item below.
    to move the context ring visibly. Open its breakdown popover and confirm
    the caption is `usedTokens / windowTokens`, not a bare percentage and not
    a token count standing in for one.
-   - Result: ___
+   - Result: OK
    - Notes: ___
 
 7. **Reload restores the session in the same directory.** With an active
