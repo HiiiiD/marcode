@@ -4,6 +4,7 @@
   "description": "Use your code agents at ease",
   "version": "0.0.1",
   "publisher": "TODO-set-publisher-id",
+  "license": "MIT",
   "icon": "media/marcode-logo.png",
   "repository": {
     "type": "git",

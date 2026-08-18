@@ -2,6 +2,7 @@
 .vscode-test/**
 .yarn/**
 .superpowers/**
+.github/**
 .claude/**
 .codex-bindings/**
 .dev-host-profile/**
