@@ -817,7 +817,7 @@ function Group({
             (`--tree-padding`, `TREE_INDENT` per level), not DOM nesting, the
             same scheme the vendored `Tree` primitive uses.
           */}
-          <FolderTree indent={TREE_INDENT} tree={folders} className="mt-1 space-y-0.5 border-l border-border pl-6">
+          <FolderTree indent={TREE_INDENT} tree={folders} className="mt-1 space-y-0.5 border-l border-border pl-10">
             {folders.getItems().map((item) => {
               const data = item.getItemData();
               if (data.kind === 'folder') {
