@@ -5,9 +5,16 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  id-token: write
+  contents: read
+
 jobs:
   publish:
     runs-on: ubuntu-latest
+    # Name must match the federated credential's subject in the Entra app
+    # registration (e.g. repo:OWNER/REPO:environment:marketplace-publish).
+    environment: marketplace-publish
     steps:
       - uses: actions/checkout@v4
 
@@ -22,6 +29,12 @@ jobs:
       - run: yarn run test:unit
       - run: yarn run test:dom
 
-      - run: npx @vscode/vsce publish -p "$VSCE_PAT"
-        env:
-          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+      # Entra ID workload identity federation — no PAT, no stored secret.
+      # Azure DevOps retires global PATs on 2026-12-01.
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          allow-no-subscriptions: true
+
+      - run: npx @vscode/vsce publish --azure-credential
