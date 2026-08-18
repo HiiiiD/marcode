@@ -181,16 +181,32 @@ function TreeItemLabel<T = any>({
       {...props}
     >
       {item.isFolder() && (
-        // `size-3`, not the vendor's original `size-4`: the tree/group
-        // headers above this row toggle through `Button size="icon-xs"`,
-        // whose own `[&_svg:not([class*='size-'])]:size-3` rule sizes their
-        // chevrons at 12px — three chevron levels (workspace, session,
-        // folder) reading as three different sizes would look like a
-        // mistake, not a hierarchy.
-        <ChevronDownIcon
-          aria-hidden
-          className="text-muted-foreground size-3 in-aria-[expanded=false]:-rotate-90"
-        />
+        // A ghost-icon-button-shaped box around the chevron, not just a
+        // same-size icon: the tree/group headers above this row toggle
+        // through an actual `Button variant="ghost" size="icon-xs"`, which
+        // carries its own 24×24 box, 4px-radius corners, and a persistent
+        // `bg-muted` while expanded (`aria-expanded:bg-muted`, one of
+        // `Button`'s own variant rules, not a hover-only effect) — measured
+        // against `rgb(37, 37, 38)` in a real render. Reproduced here with
+        // the identical utility classes rather than a nested `<Button>`,
+        // which isn't possible: `TreeItem` (the whole row) is already a
+        // `<button>`, and a `<button>` inside a `<button>` is invalid HTML.
+        // `in-aria-[expanded=...]`, not `group-aria-expanded:` — the
+        // `aria-expanded` attribute this reads lives on that ancestor
+        // `<button>`, not on this span, and `in-*` matches an ancestor's
+        // state without needing a `group` marker class on it.
+        <span className="in-aria-[expanded=true]:bg-muted hover:bg-muted inline-flex size-6 shrink-0 items-center justify-center rounded-[min(var(--radius-md),10px)] transition-colors">
+          {/* No `text-muted-foreground`: the tree/group chevrons render at
+              plain foreground color (`rgb(204, 204, 204)`, not the dimmer
+              `rgb(157, 157, 157)` this measured at before), because `Button`
+              sets no color of its own at rest — only `Button`'s ghost
+              variant's `hover:text-foreground` name suggests dimming, and it
+              doesn't actually apply one either. */}
+          <ChevronDownIcon
+            aria-hidden
+            className="size-3 in-aria-[expanded=false]:-rotate-90"
+          />
+        </span>
       )}
       {children ||
         (typeof item.getItemName === "function" ? item.getItemName() : null)}
