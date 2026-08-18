@@ -78,6 +78,36 @@ suite('OpenCodeProvider', () => {
     });
   });
 
+  /**
+   * The realistic Windows shape: `spawn` succeeds (a shell was launched
+   * fine), nothing ever answers on stdout, and the child later reports why
+   * through `onFailure` rather than by throwing. Without racing that signal,
+   * this would only ever surface as the ACP SDK's own generic
+   * "ACP connection closed" — no "opencode", no remedy.
+   */
+  test('an async spawn failure (a shell that never finds opencode) still names it', async () => {
+    let fail: (reason: string) => void = () => {};
+    const provider = new OpenCodeProvider({
+      spawn: () => {
+        const toAgent = new PassThrough();
+        const toClient = new PassThrough();
+        // Streams are live but nothing ever replies — the shell that ran
+        // instead of `opencode` exits asynchronously, same as Windows does.
+        return {
+          stdin: toAgent, stdout: toClient,
+          kill: () => { toClient.end(); },
+          onFailure: (cb: (reason: string) => void) => { fail = cb; },
+        };
+      },
+    });
+    const pending = provider.fetchModels('/w');
+    setImmediate(() => { fail("opencode acp exited (code 1): 'opencode' is not recognized"); });
+    await assert.rejects(() => pending, (err: Error) => {
+      assert.strictEqual(err.message.includes('opencode'), true);
+      return true;
+    });
+  });
+
   test('fetchUsage and listInvocables are absent — no plan data over ACP', () => {
     const provider = new OpenCodeProvider({ spawn: scriptedSpawn().spawn });
     assert.strictEqual(provider.fetchUsage, undefined);

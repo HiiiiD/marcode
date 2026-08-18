@@ -285,4 +285,37 @@ suite('AcpRun', () => {
     ]);
     assert.strictEqual(outcome, 'disposed');
   });
+
+  /**
+   * The realistic Windows shape: `spawn` succeeds — the streams are live —
+   * but nothing ever answers `initialize`, and the child later reports why
+   * through `onFailure` rather than by throwing (a shell that ran instead of
+   * `opencode` and exits async). Without racing that signal, startup only
+   * ever fails via the SDK's own stream-close handling, whose generic
+   * "ACP connection closed" names neither the binary nor a fix.
+   */
+  test('an async spawn failure surfaces its real reason, not the SDK’s generic close', async () => {
+    const toAgent = new PassThrough();
+    const toClient = new PassThrough();
+    let fail: (reason: string) => void = () => {};
+    const child = {
+      stdin: toAgent, stdout: toClient,
+      kill: () => { toClient.end(); },
+      onFailure: (cb: (reason: string) => void) => { fail = cb; },
+    };
+    const run = new AcpRun(child, {
+      cwd: '/w', permissionMode: 'default', tools: openCodeTools, clientName: 'hiiiid-code',
+    });
+    const events: AgentEvent[] = [];
+    collect(run, events);
+    setImmediate(() => { fail("opencode acp exited (code 1): 'opencode' is not recognized"); });
+    await new Promise((r) => setTimeout(r, 30));
+    const failed = events.find(
+      (e): e is Extract<AgentEvent, { kind: 'turn-end' }> => e.kind === 'turn-end' && e.reason === 'error',
+    );
+    assert.strictEqual(failed !== undefined, true);
+    assert.strictEqual(failed?.error?.includes('opencode'), true);
+    assert.strictEqual(failed?.error?.includes('ACP connection closed'), false);
+    await run.dispose();
+  });
 });

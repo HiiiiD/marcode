@@ -191,56 +191,78 @@ export class AcpRun implements AgentRun {
 
   // ---------------------------------------------------------------- startup
 
-  /** Never rejects: a failed startup is a `turn-end` in the transcript, not an exception. */
+  /**
+   * Never rejects: a failed startup is a `turn-end` in the transcript, not an
+   * exception.
+   *
+   * Raced against `child.onFailure` — a spawn that never reaches a real
+   * agent (a missing binary on Windows resolves to a shell that exits async;
+   * see `spawnOpenCodeAcp`) never sends a reply, so the plain `await` chain
+   * below would otherwise only ever fail via the SDK's own stream-close
+   * handling, which rejects every pending request with the generic
+   * `"ACP connection closed"` — a message with no remedy in it. `onFailure`
+   * knows the real reason (exit code/signal, stderr tail) and reports it
+   * first. A `reject` that loses the race lands on an already-settled
+   * promise and is silently ignored, which is also why a *later* failure —
+   * after startup already succeeded — never double-reports: this method has
+   * already returned by then, and nothing here is still awaiting `failure`.
+   */
   private async start(): Promise<void> {
+    const failure = new Promise<never>((_, reject) => {
+      this.child.onFailure?.((reason) => { reject(new Error(reason)); });
+    });
     try {
-      const conn = await connectAcp(this.child, {
-        sessionUpdate: (params) => { this.onSessionUpdate(params); },
-        requestPermission: (params) => this.onRequestPermission(params),
-      }) as unknown as AcpConnection;
-      this.conn = conn;
-      if (this.disposed) { return; }
-
-      await conn.initialize({
-        protocolVersion: PROTOCOL_VERSION,
-        clientCapabilities: CLIENT_CAPABILITIES,
-        clientInfo: { name: this.opts.clientName, version: '0.0.1' },
-      });
-      if (this.disposed) { return; }
-
-      if (this.opts.resumeToken) {
-        this.sessionId = this.opts.resumeToken;
-        await this.loadGated(conn, this.opts.resumeToken);
-      } else {
-        // `mcpServers: []` is not a gap: that parameter is for a CLIENT
-        // injecting its own servers. The user's own servers load from their
-        // agent config regardless, and listing them here would double them.
-        const created = await conn.newSession({ cwd: this.opts.cwd, mcpServers: [] });
-        this.sessionId = created.sessionId;
-        this.applyConfigOptions(created.configOptions);
-      }
-      if (this.disposed || !this.sessionId) { return; }
-      this.events.push({ kind: 'session', resumeToken: this.sessionId });
-      // The session comes up on whatever model the agent's own config selects,
-      // so a requested one is a write like any other — issued here rather than
-      // through `setModel`, whose `fireAndForget` awaits the very promise this
-      // is running inside.
-      if (this.model && this.model !== currentModelId(this.configOptions)) {
-        const configId = modelConfigId(this.configOptions) ?? 'model';
-        try {
-          const reply = await conn.setSessionConfigOption(
-            { sessionId: this.sessionId, configId, value: this.model },
-          );
-          this.applyConfigOptions(reply?.configOptions);
-        } catch {
-          // Its own catch, not the one below: a model the agent will not take
-          // leaves a working session on the agent's default. That is a worse
-          // session, not a dead one, and must not read as a failed startup.
-        }
-      }
+      await Promise.race([this.startInner(), failure]);
     } catch (err) {
       this.startError = errorMessage(err);
       this.events.push({ kind: 'turn-end', reason: 'error', error: this.startError });
+    }
+  }
+
+  private async startInner(): Promise<void> {
+    const conn = await connectAcp(this.child, {
+      sessionUpdate: (params) => { this.onSessionUpdate(params); },
+      requestPermission: (params) => this.onRequestPermission(params),
+    }) as unknown as AcpConnection;
+    this.conn = conn;
+    if (this.disposed) { return; }
+
+    await conn.initialize({
+      protocolVersion: PROTOCOL_VERSION,
+      clientCapabilities: CLIENT_CAPABILITIES,
+      clientInfo: { name: this.opts.clientName, version: '0.0.1' },
+    });
+    if (this.disposed) { return; }
+
+    if (this.opts.resumeToken) {
+      this.sessionId = this.opts.resumeToken;
+      await this.loadGated(conn, this.opts.resumeToken);
+    } else {
+      // `mcpServers: []` is not a gap: that parameter is for a CLIENT
+      // injecting its own servers. The user's own servers load from their
+      // agent config regardless, and listing them here would double them.
+      const created = await conn.newSession({ cwd: this.opts.cwd, mcpServers: [] });
+      this.sessionId = created.sessionId;
+      this.applyConfigOptions(created.configOptions);
+    }
+    if (this.disposed || !this.sessionId) { return; }
+    this.events.push({ kind: 'session', resumeToken: this.sessionId });
+    // The session comes up on whatever model the agent's own config selects,
+    // so a requested one is a write like any other — issued here rather than
+    // through `setModel`, whose `fireAndForget` awaits the very promise this
+    // is running inside.
+    if (this.model && this.model !== currentModelId(this.configOptions)) {
+      const configId = modelConfigId(this.configOptions) ?? 'model';
+      try {
+        const reply = await conn.setSessionConfigOption(
+          { sessionId: this.sessionId, configId, value: this.model },
+        );
+        this.applyConfigOptions(reply?.configOptions);
+      } catch {
+        // Its own catch, not the one below: a model the agent will not take
+        // leaves a working session on the agent's default. That is a worse
+        // session, not a dead one, and must not read as a failed startup.
+      }
     }
   }
 

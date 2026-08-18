@@ -104,6 +104,14 @@ export class OpenCodeProvider implements AgentProvider {
    * closes it again — an unclosed probe session would show up in the user's
    * own opencode history. Every rejection here is the unavailability reason
    * the panel shows verbatim, so it says what to do about it.
+   *
+   * Raced against `child.onFailure`, same reasoning as `AcpRun.start()`: with
+   * `shell: true` (required on Windows — see `spawnOpenCodeAcp`), a missing
+   * `opencode` binary does not make `this.spawn(...)` throw. It launches a
+   * shell that exits async with "not recognized", and without this race the
+   * probe below never sees that — it only ever fails once the SDK's own
+   * stream-close handling rejects every pending request with the generic
+   * `"ACP connection closed"`, which names neither the binary nor a fix.
    */
   async fetchModels(cwd: string): Promise<ModelInfo[]> {
     let child: AcpChild;
@@ -113,24 +121,11 @@ export class OpenCodeProvider implements AgentProvider {
       this.models = [];
       throw new Error('opencode not found. Install it, or set hiiiidCode.opencode.path.');
     }
+    const failure = new Promise<never>((_, reject) => {
+      child.onFailure?.((reason) => { reject(new Error(reason)); });
+    });
     try {
-      const connection = await connectAcp(child, {
-        sessionUpdate: () => {}, requestPermission: async () => ({ outcome: { outcome: 'cancelled' } }),
-      }) as unknown as AcpProbeConnection;
-      await connection.initialize({
-        protocolVersion: PROTOCOL_VERSION,
-        clientCapabilities: CLIENT_CAPABILITIES,
-        clientInfo: { name: 'hiiiid-code-probe', version: '0.0.1' },
-      });
-      const session = await connection.newSession({ cwd, mcpServers: [] });
-      this.models = toModels(session.configOptions ?? []);
-      try {
-        await connection.closeSession({ sessionId: session.sessionId });
-      } catch {
-        // Best effort. A probe session left open is untidy, not broken —
-        // and never a reason to report the provider as unavailable.
-      }
-      return this.models;
+      return await Promise.race([this.probe(child, cwd), failure]);
     } catch (err) {
       // A failed re-probe must not leave a stale catalog behind — the
       // model list IS the availability signal, so an install that stops
@@ -140,6 +135,26 @@ export class OpenCodeProvider implements AgentProvider {
     } finally {
       child.kill();
     }
+  }
+
+  private async probe(child: AcpChild, cwd: string): Promise<ModelInfo[]> {
+    const connection = await connectAcp(child, {
+      sessionUpdate: () => {}, requestPermission: async () => ({ outcome: { outcome: 'cancelled' } }),
+    }) as unknown as AcpProbeConnection;
+    await connection.initialize({
+      protocolVersion: PROTOCOL_VERSION,
+      clientCapabilities: CLIENT_CAPABILITIES,
+      clientInfo: { name: 'hiiiid-code-probe', version: '0.0.1' },
+    });
+    const session = await connection.newSession({ cwd, mcpServers: [] });
+    this.models = toModels(session.configOptions ?? []);
+    try {
+      await connection.closeSession({ sessionId: session.sessionId });
+    } catch {
+      // Best effort. A probe session left open is untidy, not broken —
+      // and never a reason to report the provider as unavailable.
+    }
+    return this.models;
   }
 
   start(opts: StartOptions): AgentRun {
