@@ -16,6 +16,7 @@ import { createVscodeEditorSource } from './host/vscode-editor-source';
 import { ClaudeProvider } from './providers/claude/claude-provider';
 import { CodexProvider } from './providers/codex/codex-provider';
 import { FakeProvider } from './providers/fake/fake-provider';
+import { OpenCodeProvider } from './providers/opencode/opencode-provider';
 import type { DiffBase } from './protocol/messages';
 import {
   DEFAULT_PROVIDER_IDS, ENABLED_PROVIDERS_SETTING, KNOWN_PROVIDER_IDS,
@@ -31,6 +32,18 @@ import type { AgentProvider } from './providers/types';
  */
 function codexBinPath(): string | undefined {
   const configured = vscode.workspace.getConfiguration('hiiiidCode').get<string>('codex.path');
+  return configured ? configured : undefined;
+}
+
+/**
+ * `hiiiidCode.opencode.path` defaults to `""` (see package.json) so the
+ * settings UI shows an empty field, but OpenCodeProvider's own default only
+ * kicks in for `undefined` — passing through `""` would spawn `''` and
+ * make OpenCode unavailable out of the box. Empty (or unset) means "use opencode
+ * from PATH", so it is normalized to `undefined` here at the boundary.
+ */
+function openCodeBinPath(): string | undefined {
+  const configured = vscode.workspace.getConfiguration('hiiiidCode').get<string>('opencode.path');
   return configured ? configured : undefined;
 }
 
@@ -127,6 +140,13 @@ export async function activate(context: vscode.ExtensionContext) {
     ? new CodexProvider({ binPath: codexBinPath() })
     : undefined;
   if (codexProvider) { providers.set('codex', codexProvider); }
+  // Constructed only when enabled — it owns a CLI subprocess, and building
+  // one nobody asked for would spawn a backend to answer a question the panel
+  // never puts to it. `undefined` is why the path listener below is guarded.
+  const openCodeProvider = enabled.has('opencode')
+    ? new OpenCodeProvider({ binPath: openCodeBinPath() })
+    : undefined;
+  if (openCodeProvider) { providers.set('opencode', openCodeProvider); }
   if (enabled.has('fake')) { providers.set('fake', new FakeProvider(
     (text) => (text.includes('rm')
       ? [{

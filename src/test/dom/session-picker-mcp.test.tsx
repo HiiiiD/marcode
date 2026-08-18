@@ -88,4 +88,23 @@ suite('roster MCP group', () => {
     assert.ok(screen.getByText('1 needs you'));
     assert.strictEqual(screen.queryByText('MCP: failed'), null);
   });
+
+  test('an OpenCode session explains why MCP servers cannot be listed, even with none reported', async () => {
+    renderApp();
+    hydrate(snapshot({ providerId: 'opencode' }));
+
+    await userEvent.click(screen.getByRole('button', { name: /in split/i }));
+    assert.ok(await screen.findByText(
+      "MCP servers load from your opencode.json. OpenCode doesn't report their status, so they can't be listed here.",
+    ));
+    assert.strictEqual(screen.queryByText(/unsupported/i), null);
+  });
+
+  test('a non-OpenCode session does not show the OpenCode MCP explanation', async () => {
+    renderApp();
+    hydrate(snapshot({ providerId: 'claude' }));
+
+    await userEvent.click(screen.getByRole('button', { name: /in split/i }));
+    assert.strictEqual(screen.queryByText(/opencode\.json/i), null);
+  });
 });

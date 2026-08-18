@@ -96,8 +96,8 @@ or prompt for authentication itself.
 
 ## What v1 does not do
 
-- No Codex or OpenCode provider backends — only the Claude Agent SDK and a scripted
-  provider used for tests and development.
+- No plan-usage windows or question-card support for the OpenCode backend — ACP carries
+  no plan-usage data, and question cards are out of scope for v1.
 - No transcript retention policy — transcripts accumulate under extension storage with
   no automatic pruning.
 - No virtualized scrolling in the transcript view.

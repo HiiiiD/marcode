@@ -12,11 +12,11 @@
 export const ENABLED_PROVIDERS_SETTING = 'hiiiidCode.enabledProviders';
 
 /** The provider ids that setting accepts, and the ones enabled by default. */
-export const KNOWN_PROVIDER_IDS = ['claude', 'codex', 'fake'] as const;
+export const KNOWN_PROVIDER_IDS = ['claude', 'codex', 'opencode', 'fake'] as const;
 
 /**
  * `fake` is deliberately absent: it is a scripted stand-in for tests and the
  * dev host, and a shipped panel offering it would be offering a backend that
  * answers "ok" to everything. It stays a legal value anyone can add.
  */
-export const DEFAULT_PROVIDER_IDS: string[] = ['claude', 'codex'];
+export const DEFAULT_PROVIDER_IDS: string[] = ['claude', 'codex', 'opencode'];

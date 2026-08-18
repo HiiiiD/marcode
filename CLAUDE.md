@@ -59,6 +59,13 @@ extension.ts
 | `src/providers/fake/fake-provider.ts` | Scripted provider for tests and the walking skeleton |
 | `src/providers/claude/` | Claude Agent SDK adapter and `SDKMessage` → `AgentEvent` mapping |
 | `src/providers/claude/map-context.ts` | SDK context response → `ContextBreakdown`; structured usage response → `UsageWindow[]` |
+| `src/providers/acp/acp-client.ts` | Child stdio → an ACP `ClientSideConnection`; loaded via async `import()` since the SDK is ESM-only and the host bundle is CJS |
+| `src/providers/acp/map-updates.ts` | `session/update` → `AgentEvent`; the `ToolMapper` seam is where a vendor plugs in its own tool shapes |
+| `src/providers/acp/config-options.ts` | `session/new`'s `configOptions` → `ModelInfo[]` and mode ids |
+| `src/providers/acp/permissions.ts` | Permission-option selection off the request's real `optionId`/`kind`, plus `bypass`/`dontAsk` auto-answer policy |
+| `src/providers/acp/acp-run.ts` | `AcpRun implements AgentRun` — one ACP session: prompt, cancel, model/mode switches, permission relay |
+| `src/providers/opencode/opencode-provider.ts` | `OpenCodeProvider implements AgentProvider`: spawns `opencode acp`, probes models, `threadScope: 'cwd'` |
+| `src/providers/opencode/map-tools.ts` | OpenCode's ACP tool calls → this project's canonical `ToolCall` — the `ToolMapper` for this vendor |
 | `src/shared/usage-windows.ts` | Fixed display order for usage windows; shared so neither provider nor host owns the other's table |
 | `src/shared/file-cap.ts` | `FILE_CAP`/`MAX_FILE_CAP` — shared so the host and the review webview agree on the default and ceiling without importing across the host/webview boundary |
 | `src/host/transcript-store.ts` | `index.json` + per-session JSONL; append, load, page |
@@ -197,6 +204,11 @@ These are not style preferences. Breaking one breaks the design.
   else. Its view state (collapse, opened rows) is deliberately ephemeral: both
   describe a reading position in a list that re-reads itself while agents
   work, so a restored one would describe a tree nobody checked this launch.
+- **ACP is the protocol layer, not a provider.** `src/providers/acp/` may not
+  import anything vendor-specific; a new ACP agent is a spawn recipe plus a
+  `map-tools.ts`. Client capabilities stay `false` for fs and terminal — an
+  agent that calls them anyway falls back to its own IO, which is what keeps
+  diff attribution reading the transcript instead of our writes.
 
 ## UI: shadcn is mandatory
 
