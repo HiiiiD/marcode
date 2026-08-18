@@ -120,7 +120,7 @@ export class OpenCodeProvider implements AgentProvider {
       child = this.spawn(this.binPath ?? 'opencode');
     } catch {
       this.models = [];
-      throw new Error('opencode not found. Install it, or set hiiiidCode.opencode.path.');
+      throw new Error('opencode not found. Install it, or set marcode.opencode.path.');
     }
     const failure = new Promise<never>((_, reject) => {
       child.onFailure?.((reason) => { reject(new Error(reason)); });
@@ -145,7 +145,7 @@ export class OpenCodeProvider implements AgentProvider {
     await connection.initialize({
       protocolVersion: PROTOCOL_VERSION,
       clientCapabilities: CLIENT_CAPABILITIES,
-      clientInfo: { name: 'hiiiid-code-probe', version: '0.0.1' },
+      clientInfo: { name: 'mar-code-probe', version: '0.0.1' },
     });
     const session = await connection.newSession({ cwd, mcpServers: [] });
     this.models = toModels(session.configOptions ?? []);
@@ -167,7 +167,7 @@ export class OpenCodeProvider implements AgentProvider {
       resumeToken: opts.resumeToken,
       tools: openCodeTools,
       modeId: openCodeModeId,
-      clientName: 'hiiiid-code',
+      clientName: 'mar-code',
     });
   }
 }

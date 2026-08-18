@@ -45,7 +45,7 @@ Get-ChildItem Env: |
 # Deliberately outside the repo: VS Code opens and file-watches $repo, and a
 # profile directory living inside the watched folder makes the instance exit
 # before it opens a window.
-$profileDir = Join-Path $env:TEMP 'hiiiid-devhost'
+$profileDir = Join-Path $env:TEMP 'mar-devhost'
 
 $launchArgs = @(
     "--extensionDevelopmentPath=$repo",

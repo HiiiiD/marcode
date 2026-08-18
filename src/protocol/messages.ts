@@ -509,7 +509,7 @@ export type HostToWebview =
       /** Per provider, the last window set the host knew. Empty on a fresh install. */
       usage: Record<string, UsageWindow[]>;
       /**
-       * `hiiiidCode.review.pollIntervalMs`. Only the review tab reads this
+       * `marcode.review.pollIntervalMs`. Only the review tab reads this
        * (see `ReviewState.pollIntervalMs`) — carried on the shared `hydrate`
        * rather than a review-only message because `MessageRouter` answers
        * `ready` identically for both surfaces, and the sidebar simply has

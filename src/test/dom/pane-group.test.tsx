@@ -64,7 +64,7 @@ suite('PaneGroup', () => {
     await userEvent.click(screen.getByRole('button', { name: /open settings/i }));
 
     assert.deepStrictEqual(posted().at(-1), {
-      t: 'open-settings', section: 'hiiiidCode.enabledProviders',
+      t: 'open-settings', section: 'marcode.enabledProviders',
     });
   });
 

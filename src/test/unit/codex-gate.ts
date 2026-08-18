@@ -70,7 +70,7 @@ export async function probeAuth(): Promise<{ signedIn: boolean; reason?: string 
   const server = new AppServer(spawnCodex());
   try {
     await withTimeout(server.request('initialize', {
-      clientInfo: { name: 'hiiiid-code-smoke-test', title: null, version: '0.0.0' },
+      clientInfo: { name: 'mar-code-smoke-test', title: null, version: '0.0.0' },
       capabilities: { experimentalApi: true, requestAttestation: false, optOutNotificationMethods: [] },
     }), 20_000, 'initialize');
     const account = await withTimeout(

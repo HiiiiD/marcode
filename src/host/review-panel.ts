@@ -5,7 +5,7 @@ import type { SessionManager } from './session-manager';
 import { renderWebviewHtml } from './webview-html';
 import type { WebviewToHost } from '../protocol/messages';
 
-export const REVIEW_VIEW_TYPE = 'hiiiid-code.review';
+export const REVIEW_VIEW_TYPE = 'mar-code.review';
 
 /**
  * The fleet diff review tab.
@@ -33,7 +33,7 @@ export class ReviewPanel {
     private readonly bus: PostBus,
     private readonly defaultCwd: string,
     private readonly editor: EditorContextHost,
-    /** `hiiiidCode.review.pollIntervalMs`, forwarded to this tab's own
+    /** `marcode.review.pollIntervalMs`, forwarded to this tab's own
      * `MessageRouter` so its `hydrate` carries it. */
     private readonly reviewPollIntervalMs: number = 750,
   ) {}
@@ -112,7 +112,7 @@ export class ReviewPanel {
         }
         await router.handle(raw);
       } catch (err) {
-        console.error('[hiiiid-code] review message handling failed', err);
+        console.error('[mar-code] review message handling failed', err);
       }
     });
 

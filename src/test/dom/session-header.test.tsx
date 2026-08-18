@@ -120,12 +120,12 @@ suite("SessionHeader status", () => {
 
   test("the header shows the folder the agent is working in", () => {
     renderApp();
-    hydrate({ cwd: "/repos/hiiiid-code" });
+    hydrate({ cwd: "/repos/mar-code" });
 
-    screen.getByText("hiiiid-code");
+    screen.getByText("mar-code");
     assert.strictEqual(
-      screen.getByText("hiiiid-code").getAttribute("title"),
-      "/repos/hiiiid-code",
+      screen.getByText("mar-code").getAttribute("title"),
+      "/repos/mar-code",
       "the basename is what fits at 300px; the full path is the tooltip",
     );
   });

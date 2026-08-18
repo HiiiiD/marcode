@@ -127,7 +127,7 @@ export class AppServer {
         try {
           this.dispatch(line);
         } catch (err) {
-          console.warn('[hiiiid-code] codex: frame handler threw', err);
+          console.warn('[mar-code] codex: frame handler threw', err);
         }
       }
       newline = this.buffer.indexOf('\n');
@@ -144,7 +144,7 @@ export class AppServer {
     } catch {
       // Tolerant by policy: a line we cannot parse is a line we ignore. The
       // alternative is one stray write killing every live session.
-      console.warn('[hiiiid-code] codex: unparseable frame');
+      console.warn('[mar-code] codex: unparseable frame');
       return;
     }
 

@@ -24,7 +24,7 @@ export interface ReviewState {
    */
   visible: boolean;
   /**
-   * `hiiiidCode.review.pollIntervalMs`, as last reported by `hydrate`. Read
+   * `marcode.review.pollIntervalMs`, as last reported by `hydrate`. Read
    * by `useFleetDiffRequests`' debounced re-read — see `HostToWebview`'s
    * `reviewPollIntervalMs` field for why it rides `hydrate` rather than a
    * dedicated message. `750` (the host's own default when unconfigured)

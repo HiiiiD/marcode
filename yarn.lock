@@ -3301,53 +3301,6 @@ __metadata:
   languageName: node
   linkType: hard
 
-"hiiiid-code@workspace:.":
-  version: 0.0.0-use.local
-  resolution: "hiiiid-code@workspace:."
-  dependencies:
-    "@agentclientprotocol/sdk": "npm:^1.3.0"
-    "@anthropic-ai/claude-agent-sdk": "npm:^0.3.228"
-    "@anthropic-ai/sdk": "npm:^0.116.0"
-    "@base-ui/react": "npm:^1.7.0"
-    "@headless-tree/core": "npm:1.7.0"
-    "@headless-tree/react": "npm:1.7.0"
-    "@modelcontextprotocol/sdk": "npm:^1.30.0"
-    "@shadcn/react": "npm:^0.3.0"
-    "@tailwindcss/cli": "npm:^4.3.3"
-    "@testing-library/dom": "npm:^10.4.1"
-    "@testing-library/react": "npm:^16.3.2"
-    "@testing-library/user-event": "npm:^14.6.4"
-    "@types/jsdom": "npm:^30.0.0"
-    "@types/mocha": "npm:^10.0.10"
-    "@types/node": "npm:24.x"
-    "@types/react": "npm:^19.2.18"
-    "@types/react-dom": "npm:^19.2.4"
-    "@types/vscode": "npm:^1.125.0"
-    "@vscode/test-cli": "npm:^0.0.15"
-    "@vscode/test-electron": "npm:^3.0.0"
-    class-variance-authority: "npm:^0.7.1"
-    clsx: "npm:^2.1.1"
-    esbuild: "npm:^0.28.1"
-    eslint: "npm:^10.5.0"
-    global-jsdom: "npm:^29.0.0"
-    jsdom: "npm:^30.0.1"
-    lucide-react: "npm:^1.31.0"
-    mocha: "npm:^11.8.0"
-    npm-run-all: "npm:^4.1.5"
-    react: "npm:^19.2.8"
-    react-dom: "npm:^19.2.8"
-    react-markdown: "npm:^10.1.0"
-    react-resizable-panels: "npm:^4.12.2"
-    remark-gfm: "npm:^4.0.1"
-    tailwind-merge: "npm:^3.6.0"
-    tailwindcss: "npm:^4.3.3"
-    tsx: "npm:^4.23.12"
-    typescript: "npm:^6.0.3"
-    typescript-eslint: "npm:^8.61.1"
-    zod: "npm:^4.4.3"
-  languageName: unknown
-  linkType: soft
-
 "hono@npm:^4.11.4":
   version: 4.13.1
   resolution: "hono@npm:4.13.1"
@@ -4290,6 +4243,53 @@ __metadata:
   checksum: 10c0/69b98a6c0b8e5c4fe9acb61608a9fbcfca1756d910f51e5dbe7a9e5cfb74fca9b8a0c8a0ffdf1294a740826c1ab4871d5bf3f62f72a3049e5eac6541ddffed68
   languageName: node
   linkType: hard
+
+"mar-code@workspace:.":
+  version: 0.0.0-use.local
+  resolution: "mar-code@workspace:."
+  dependencies:
+    "@agentclientprotocol/sdk": "npm:^1.3.0"
+    "@anthropic-ai/claude-agent-sdk": "npm:^0.3.228"
+    "@anthropic-ai/sdk": "npm:^0.116.0"
+    "@base-ui/react": "npm:^1.7.0"
+    "@headless-tree/core": "npm:1.7.0"
+    "@headless-tree/react": "npm:1.7.0"
+    "@modelcontextprotocol/sdk": "npm:^1.30.0"
+    "@shadcn/react": "npm:^0.3.0"
+    "@tailwindcss/cli": "npm:^4.3.3"
+    "@testing-library/dom": "npm:^10.4.1"
+    "@testing-library/react": "npm:^16.3.2"
+    "@testing-library/user-event": "npm:^14.6.4"
+    "@types/jsdom": "npm:^30.0.0"
+    "@types/mocha": "npm:^10.0.10"
+    "@types/node": "npm:24.x"
+    "@types/react": "npm:^19.2.18"
+    "@types/react-dom": "npm:^19.2.4"
+    "@types/vscode": "npm:^1.125.0"
+    "@vscode/test-cli": "npm:^0.0.15"
+    "@vscode/test-electron": "npm:^3.0.0"
+    class-variance-authority: "npm:^0.7.1"
+    clsx: "npm:^2.1.1"
+    esbuild: "npm:^0.28.1"
+    eslint: "npm:^10.5.0"
+    global-jsdom: "npm:^29.0.0"
+    jsdom: "npm:^30.0.1"
+    lucide-react: "npm:^1.31.0"
+    mocha: "npm:^11.8.0"
+    npm-run-all: "npm:^4.1.5"
+    react: "npm:^19.2.8"
+    react-dom: "npm:^19.2.8"
+    react-markdown: "npm:^10.1.0"
+    react-resizable-panels: "npm:^4.12.2"
+    remark-gfm: "npm:^4.0.1"
+    tailwind-merge: "npm:^3.6.0"
+    tailwindcss: "npm:^4.3.3"
+    tsx: "npm:^4.23.12"
+    typescript: "npm:^6.0.3"
+    typescript-eslint: "npm:^8.61.1"
+    zod: "npm:^4.4.3"
+  languageName: unknown
+  linkType: soft
 
 "markdown-table@npm:^3.0.0":
   version: 3.0.4

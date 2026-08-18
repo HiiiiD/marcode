@@ -81,7 +81,7 @@ export class MessageRouter {
     private readonly attachments?: AttachmentStore,
     private readonly picker: AttachmentHost = NO_PICKER,
     /**
-     * `hiiiidCode.review.pollIntervalMs`, echoed onto every `hydrate` — see
+     * `marcode.review.pollIntervalMs`, echoed onto every `hydrate` — see
      * `HostToWebview`'s `reviewPollIntervalMs` field for why it rides the
      * shared message rather than a review-only one.
      */
@@ -105,13 +105,13 @@ export class MessageRouter {
       // `msg` itself can be why this failed (e.g. `msg` is null, or `msg.t`
       // isn't a recognized case) — dereference defensively so the catch
       // block can never itself throw and reject handle().
-      console.error('[hiiiid-code] message-router: failed to handle', msg?.t, err);
+      console.error('[mar-code] message-router: failed to handle', msg?.t, err);
     }
   }
 
   private async route(msg: WebviewToHost): Promise<void> {
     if (!isWireMessage(msg)) {
-      console.error('[hiiiid-code] message-router: dropping malformed message', msg);
+      console.error('[mar-code] message-router: dropping malformed message', msg);
       return;
     }
 

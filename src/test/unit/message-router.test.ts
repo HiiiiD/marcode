@@ -24,7 +24,7 @@ suite('MessageRouter', () => {
   let attachments: AttachmentStore;
 
   setup(async () => {
-    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'hiiiid-router-'));
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mar-router-'));
     sent = [];
     provider = new FakeProvider(() => [
       { kind: 'text', delta: 'ok' },
@@ -96,9 +96,9 @@ suite('MessageRouter', () => {
       exportCsv: () => {},
     });
 
-    await r.handle({ t: 'open-settings', section: 'hiiiidCode.enabledProviders' });
+    await r.handle({ t: 'open-settings', section: 'marcode.enabledProviders' });
 
-    assert.deepStrictEqual(sections, ['hiiiidCode.enabledProviders']);
+    assert.deepStrictEqual(sections, ['marcode.enabledProviders']);
   });
 
   test('open-external reaches the host with the url to open', async () => {

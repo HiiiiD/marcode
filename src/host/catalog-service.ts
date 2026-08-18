@@ -59,7 +59,7 @@ export class CatalogService {
         // as plain text; there is nothing the user could act on. Still worth
         // a developer-facing trace, since otherwise a permanently broken CLI
         // is silent.
-        console.warn('[hiiiid-code] catalog-service: probe failed for', key, err);
+        console.warn('[mar-code] catalog-service: probe failed for', key, err);
       })
       .finally(() => { this.inflight.delete(key); });
   }

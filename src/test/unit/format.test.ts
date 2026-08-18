@@ -3,16 +3,16 @@ import { folderName, formatTokens } from '../../webview/format';
 
 suite('folderName', () => {
   test('returns the last segment of a forward-slash path', () => {
-    assert.strictEqual(folderName('/repos/hiiiid-code'), 'hiiiid-code');
+    assert.strictEqual(folderName('/repos/mar-code'), 'mar-code');
   });
 
   test('returns the last segment of a backslash path (Windows)', () => {
-    assert.strictEqual(folderName('C:\\Users\\marco\\repos\\hiiiid-code'), 'hiiiid-code');
+    assert.strictEqual(folderName('C:\\Users\\marco\\repos\\mar-code'), 'mar-code');
   });
 
   test('tolerates a trailing separator', () => {
-    assert.strictEqual(folderName('/repos/hiiiid-code/'), 'hiiiid-code');
-    assert.strictEqual(folderName('C:\\Users\\marco\\repos\\hiiiid-code\\'), 'hiiiid-code');
+    assert.strictEqual(folderName('/repos/mar-code/'), 'mar-code');
+    assert.strictEqual(folderName('C:\\Users\\marco\\repos\\mar-code\\'), 'mar-code');
   });
 
   test('a Windows drive root has no last segment below the drive letter, so it renders the drive letter', () => {
@@ -24,7 +24,7 @@ suite('folderName', () => {
   });
 
   test('a single segment with no separators is returned as-is', () => {
-    assert.strictEqual(folderName('hiiiid-code'), 'hiiiid-code');
+    assert.strictEqual(folderName('mar-code'), 'mar-code');
   });
 });
 

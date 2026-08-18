@@ -43,7 +43,7 @@ Two things a neighbouring tool could not truthfully copy:
 
 ## Brand Commitments
 
-Name: HiiiiD Code. No logo, wordmark or palette is committed beyond the extension icon at `media/icon.svg`. The panel is expected to read as part of VS Code rather than as a guest inside it.
+Name: Marcode. No logo, wordmark or palette is committed beyond the extension icon at `media/icon.svg`. The panel is expected to read as part of VS Code rather than as a guest inside it.
 
 ## Evidence on Hand
 

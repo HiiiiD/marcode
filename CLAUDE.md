@@ -1,4 +1,4 @@
-# HiiiiD Code
+# Marcode
 
 ## Scope
 
@@ -53,7 +53,7 @@ extension.ts
 
 | Path | Responsibility |
 |---|---|
-| `src/extension.ts` | `activate()`: construct manager + store + `PostBus` + `ReviewPanel`, register the sidebar webview view, the `hiiiidCode.review.open` command, and the review tab's `WebviewPanelSerializer` |
+| `src/extension.ts` | `activate()`: construct manager + store + `PostBus` + `ReviewPanel`, register the sidebar webview view, the `marcode.review.open` command, and the review tab's `WebviewPanelSerializer` |
 | `src/protocol/messages.ts` | Shared wire types. **Types only.** The one module every bundle imports. |
 | `src/providers/types.ts` | `AgentProvider`, `AgentRun`, `AgentEvent`, `ModelInfo` |
 | `src/providers/fake/fake-provider.ts` | Scripted provider for tests and the walking skeleton |
@@ -78,7 +78,7 @@ extension.ts
 | `src/host/review-panel.ts` | The review editor tab: creation, restore, transport |
 | `src/host/fleet-diff.ts` | One tree's change set: base resolution, numstat + untracked parsing |
 | `src/host/claim-paths.ts` | Provider edit paths → git's repo-relative POSIX spelling |
-| `src/host/diff-content-provider.ts` | `hiiiid-diff:` scheme — a file's content at the base ref, via `git show` |
+| `src/host/diff-content-provider.ts` | `mar-diff:` scheme — a file's content at the base ref, via `git show` |
 | `src/webview/` | Transport, reducer, store, components |
 | `src/webview/components/context-ring.tsx` | Context-fill ring + breakdown popover, mounted in the composer |
 | `src/webview/components/usage-strip.tsx` | Panel-level account usage windows |
@@ -132,7 +132,7 @@ These are not style preferences. Breaking one breaks the design.
   which is exactly when you are running it. `screen.getByX` helpers are safe — they throw
   their own message and never hand the node to `assert`.
 - **Which providers exist is a setting; whether they work is a probe.**
-  `hiiiidCode.enabledProviders` (default `["claude","codex"]`) decides what
+  `marcode.enabledProviders` (default `["claude","codex"]`) decides what
   `activate()` registers, and a provider left out is not constructed at all — it
   appears in neither `catalog()` nor `unavailable()`, because "nobody asked for this
   backend" is not a diagnosis of it. `fake` is a legal value, never a default: a

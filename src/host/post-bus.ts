@@ -49,7 +49,7 @@ export class PostBus {
       try {
         client.post(msg);
       } catch (err) {
-        console.error('[hiiiid-code] a webview client failed to receive', msg.t, err);
+        console.error('[mar-code] a webview client failed to receive', msg.t, err);
       }
     }
   }

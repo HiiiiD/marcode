@@ -12,9 +12,9 @@ that touches `src/providers/acp/` or `src/providers/opencode/`.
    (`opencode auth login`), so the model list is real.
 2. Confirm `opencode acp` starts and speaks ACP: `opencode acp` should sit
    waiting on stdin rather than exit.
-3. In VS Code, set `hiiiidCode.enabledProviders` to include `"opencode"`
+3. In VS Code, set `marcode.enabledProviders` to include `"opencode"`
    (it does by default) and, if `opencode` is not on `PATH`, point
-   `hiiiidCode.opencode.path` at the binary.
+   `marcode.opencode.path` at the binary.
 4. Reload the window so `activate()` re-probes providers.
 
 Record a pass/fail and any notes for each item below.

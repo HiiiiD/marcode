@@ -74,7 +74,7 @@ suite('AcpRun', () => {
     const p = peer();
     const run = new AcpRun(p.child, {
       cwd: '/w', permissionMode: 'default', tools: openCodeTools,
-      modeId: openCodeModeId, clientName: 'hiiiid-code',
+      modeId: openCodeModeId, clientName: 'mar-code',
     });
     const init = await p.waitFor('initialize');
     assert.deepStrictEqual((init.params as { clientCapabilities: unknown }).clientCapabilities, {
@@ -89,7 +89,7 @@ suite('AcpRun', () => {
     const events: AgentEvent[] = [];
     const run = new AcpRun(p.child, {
       cwd: '/w', permissionMode: 'default', tools: openCodeTools,
-      modeId: openCodeModeId, clientName: 'hiiiid-code',
+      modeId: openCodeModeId, clientName: 'mar-code',
     });
     collect(run, events);
     const init = await p.waitFor('initialize');
@@ -107,7 +107,7 @@ suite('AcpRun', () => {
     const events: AgentEvent[] = [];
     const run = new AcpRun(p.child, {
       cwd: '/w', permissionMode: 'default', tools: openCodeTools,
-      modeId: openCodeModeId, clientName: 'hiiiid-code',
+      modeId: openCodeModeId, clientName: 'mar-code',
     });
     collect(run, events);
     const init = await p.waitFor('initialize');
@@ -127,7 +127,7 @@ suite('AcpRun', () => {
     const events: AgentEvent[] = [];
     const run = new AcpRun(p.child, {
       cwd: '/w', permissionMode: 'default', tools: openCodeTools,
-      modeId: openCodeModeId, clientName: 'hiiiid-code',
+      modeId: openCodeModeId, clientName: 'mar-code',
     });
     collect(run, events);
     await handshake(p);
@@ -150,7 +150,7 @@ suite('AcpRun', () => {
     const events: AgentEvent[] = [];
     const run = new AcpRun(p.child, {
       cwd: '/w', permissionMode: 'default', tools: openCodeTools,
-      modeId: openCodeModeId, clientName: 'hiiiid-code',
+      modeId: openCodeModeId, clientName: 'mar-code',
     });
     collect(run, events);
     const init = await p.waitFor('initialize');
@@ -176,7 +176,7 @@ suite('AcpRun', () => {
     const events: AgentEvent[] = [];
     const run = new AcpRun(p.child, {
       cwd: '/w', permissionMode: 'bypass', tools: openCodeTools,
-      modeId: openCodeModeId, clientName: 'hiiiid-code',
+      modeId: openCodeModeId, clientName: 'mar-code',
     });
     collect(run, events);
     const init = await p.waitFor('initialize');
@@ -198,7 +198,7 @@ suite('AcpRun', () => {
     const p = peer();
     const run = new AcpRun(p.child, {
       cwd: '/w', permissionMode: 'default', tools: openCodeTools,
-      modeId: openCodeModeId, clientName: 'hiiiid-code',
+      modeId: openCodeModeId, clientName: 'mar-code',
     });
     collect(run, []);
     const init = await p.waitFor('initialize');
@@ -220,7 +220,7 @@ suite('AcpRun', () => {
     const events: AgentEvent[] = [];
     const run = new AcpRun(p.child, {
       cwd: '/w', permissionMode: 'default', tools: openCodeTools,
-      modeId: openCodeModeId, clientName: 'hiiiid-code',
+      modeId: openCodeModeId, clientName: 'mar-code',
       resumeToken: 'ses_old',
     });
     collect(run, events);
@@ -238,7 +238,7 @@ suite('AcpRun', () => {
     const p = peer();
     const run = new AcpRun(p.child, {
       cwd: '/w', permissionMode: 'default', tools: openCodeTools,
-      modeId: openCodeModeId, clientName: 'hiiiid-code',
+      modeId: openCodeModeId, clientName: 'mar-code',
     });
     collect(run, []);
     await handshake(p);
@@ -254,7 +254,7 @@ suite('AcpRun', () => {
     const p = peer();
     const run = new AcpRun(p.child, {
       cwd: '/w', permissionMode: 'default', tools: openCodeTools,
-      modeId: openCodeModeId, clientName: 'hiiiid-code',
+      modeId: openCodeModeId, clientName: 'mar-code',
     });
     collect(run, []);
     await handshake(p);
@@ -272,7 +272,7 @@ suite('AcpRun', () => {
     const events: AgentEvent[] = [];
     const run = new AcpRun(p.child, {
       cwd: '/w', permissionMode: 'default', tools: openCodeTools,
-      modeId: openCodeModeId, clientName: 'hiiiid-code',
+      modeId: openCodeModeId, clientName: 'mar-code',
     });
     collect(run, events);
     const init = await p.waitFor('initialize');
@@ -296,7 +296,7 @@ suite('AcpRun', () => {
     const p = peer();
     const run = new AcpRun(p.child, {
       cwd: '/w', permissionMode: 'plan', tools: openCodeTools,
-      modeId: openCodeModeId, clientName: 'hiiiid-code',
+      modeId: openCodeModeId, clientName: 'mar-code',
     });
     collect(run, []);
     // ACP's session/new carries no mode, and AgentSession only calls
@@ -321,7 +321,7 @@ suite('AcpRun', () => {
       cwd: '/w', permissionMode: 'plan', tools: openCodeTools,
       // A mapper written against some other ACP agent. The neutral layer
       // checks the vendor's answer against the ids session/new advertised.
-      modeId: () => 'architect', clientName: 'hiiiid-code',
+      modeId: () => 'architect', clientName: 'mar-code',
     });
     collect(run, []);
     const init = await p.waitFor('initialize');
@@ -338,7 +338,7 @@ suite('AcpRun', () => {
     const events: AgentEvent[] = [];
     const run = new AcpRun(p.child, {
       cwd: '/w', permissionMode: 'default', tools: openCodeTools,
-      modeId: openCodeModeId, clientName: 'hiiiid-code',
+      modeId: openCodeModeId, clientName: 'mar-code',
     });
     collect(run, events);
     await handshake(p);
@@ -378,7 +378,7 @@ suite('AcpRun', () => {
     const events: AgentEvent[] = [];
     const run = new AcpRun(p.child, {
       cwd: '/w', permissionMode: 'default', tools: openCodeTools,
-      modeId: openCodeModeId, clientName: 'hiiiid-code',
+      modeId: openCodeModeId, clientName: 'mar-code',
     });
     collect(run, events);
     await handshake(p);
@@ -400,7 +400,7 @@ suite('AcpRun', () => {
     const p = peer();
     const run = new AcpRun(p.child, {
       cwd: '/w', permissionMode: 'default', tools: openCodeTools,
-      modeId: openCodeModeId, clientName: 'hiiiid-code',
+      modeId: openCodeModeId, clientName: 'mar-code',
     });
     collect(run, []);
     await p.waitFor('initialize');
@@ -435,7 +435,7 @@ suite('AcpRun', () => {
     };
     const run = new AcpRun(child, {
       cwd: '/w', permissionMode: 'default', tools: openCodeTools,
-      modeId: openCodeModeId, clientName: 'hiiiid-code',
+      modeId: openCodeModeId, clientName: 'mar-code',
     });
     const events: AgentEvent[] = [];
     collect(run, events);

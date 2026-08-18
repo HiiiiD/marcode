@@ -77,7 +77,7 @@ const FALLBACK_REFS = ['origin/main', 'origin/master', 'main', 'master'];
  * uncommitted work only, and the UI says so rather than implying a branch
  * point it could not find.
  *
- * `extraRefs` (from `hiiiidCode.review.baseRefs`) are user-named integration
+ * `extraRefs` (from `marcode.review.baseRefs`) are user-named integration
  * branches — `develop`, `trunk` — for a repo whose default branch is neither
  * auto-detected via `origin/HEAD` nor one of the hardcoded `FALLBACK_REFS`.
  * They sit between the two: still less confident than the repo's own
