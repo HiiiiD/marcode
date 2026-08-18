@@ -51,6 +51,20 @@ suite('opencode toToolCall', () => {
       { kind: 'file-read', label: 'Read', path: '/w/a.ts' });
   });
 
+  test('a read call falls back to rawInput.filePath before its location arrives', () => {
+    assert.deepStrictEqual(
+      toToolCall(frames.updates.readToolCallInProgress as unknown as AcpToolCall), {
+        kind: 'file-read', label: 'Read',
+        path: 'C:/Users/Marco/AppData/Local/Temp/oc-read-spike/notes.txt',
+      });
+  });
+
+  test('a read call with no path yet is still labelled Read, not the vendor title', () => {
+    assert.deepStrictEqual(
+      toToolCall(frames.updates.readToolCall as unknown as AcpToolCall),
+      { kind: 'other', label: 'Read', raw: {} });
+  });
+
   test('an unknown kind falls through to other, carrying its raw input', () => {
     const call = {
       toolCallId: 't', kind: 'fetch', title: 'grab it', rawInput: { url: 'https://x' },

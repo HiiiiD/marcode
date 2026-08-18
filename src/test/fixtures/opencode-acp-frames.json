@@ -85,6 +85,48 @@
         "oldText": null, "newText": "hi" }],
       "rawOutput": { "output": "Wrote file successfully." }
     },
+    "readToolCall": {
+      "sessionUpdate": "tool_call",
+      "toolCallId": "call_420b060b6c63426c9fe09987",
+      "title": "read",
+      "kind": "read",
+      "status": "pending",
+      "locations": [],
+      "rawInput": {}
+    },
+    "readToolCallInProgress": {
+      "sessionUpdate": "tool_call_update",
+      "toolCallId": "call_420b060b6c63426c9fe09987",
+      "status": "in_progress",
+      "kind": "read",
+      "title": "read",
+      "locations": [
+        {
+          "path": "C:\\Users\\Marco\\AppData\\Local\\Temp\\oc-read-spike\\notes.txt"
+        }
+      ],
+      "rawInput": {
+        "filePath": "C:\\Users\\Marco\\AppData\\Local\\Temp\\oc-read-spike\\notes.txt"
+      }
+    },
+    "readToolCallCompleted": {
+      "sessionUpdate": "tool_call_update",
+      "toolCallId": "call_420b060b6c63426c9fe09987",
+      "status": "completed",
+      "title": "Users\\Marco\\AppData\\Local\\Temp\\oc-read-spike\\notes.txt",
+      "content": [
+        {
+          "type": "content",
+          "content": {
+            "type": "text",
+            "text": "hello world\nsecond line"
+          }
+        }
+      ],
+      "rawOutput": {
+        "output": "<path>C:\\Users\\Marco\\AppData\\Local\\Temp\\oc-read-spike\\notes.txt</path>\n<type>file</type>"
+      }
+    },
     "availableCommands": {
       "sessionUpdate": "available_commands_update",
       "availableCommands": [

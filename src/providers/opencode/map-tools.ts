@@ -12,7 +12,7 @@ const diffs = (c: AcpToolCall): DiffBlock[] =>
   (c.content ?? []).filter((b): b is DiffBlock => (b as DiffBlock)?.type === 'diff');
 
 export function toToolCall(c: AcpToolCall): ToolCall {
-  const raw = (c.rawInput ?? {}) as { command?: string; cwd?: string };
+  const raw = (c.rawInput ?? {}) as { command?: string; cwd?: string; filePath?: string };
   switch (c.kind) {
     case 'execute': {
       // `tool_call` arrives with no command and only `cwd`; the command lands
@@ -33,9 +33,14 @@ export function toToolCall(c: AcpToolCall): ToolCall {
       return { kind: 'file-edit', label: 'Edit', files };
     }
     case 'read': {
-      const path = c.locations?.[0]?.path;
+      // The opening `tool_call` carries an empty `locations` and an empty
+      // `rawInput`; the path arrives on the `in_progress` frame, in whichever
+      // of the two that agent version fills in.
+      const path = c.locations?.[0]?.path ?? raw.filePath;
       if (path) { return { kind: 'file-read', label: 'Read', path: posix(path) }; }
-      break;
+      // Known kind, unknown path: the vendor's own title here is the literal
+      // word `read`, and the card says what the call is either way.
+      return { kind: 'other', label: 'Read', raw: c.rawInput };
     }
     default:
       break;
