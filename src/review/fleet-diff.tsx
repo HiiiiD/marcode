@@ -1,15 +1,21 @@
+import { syncDataLoaderFeature } from '@headless-tree/core';
+import { useTree } from '@headless-tree/react';
 import {
   ArrowDownIcon, ArrowUpIcon, ChevronDownIcon, ChevronRightIcon, FileMinusIcon, FilePenLineIcon,
   FilePlusIcon, FileSymlinkIcon, RefreshCwIcon, XIcon,
 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import {
+  useEffect, useMemo, useRef, useState,
+} from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { StatusBadge } from '@/components/status-badge';
+import { Tree as FolderTree, TreeItem, TreeItemLabel } from '@/components/reui/tree';
 import { cn } from '@/lib/utils';
 import {
-  commonPrefix, countFiles, filterTree, groupTree, stripPrefix, summarize, type SessionGroup,
+  buildFolderTree, commonPrefix, countFiles, filterTree, groupTree, summarize,
+  type FolderNode, type SessionGroup,
 } from './fleet-diff-groups';
 import { useStore } from './store';
 import { useFleetDiffRequests } from './use-fleet-diff-requests';
@@ -19,6 +25,12 @@ import { MAX_FILE_CAP } from '../shared/file-cap';
 import type {
   ChangeOp, FileChange, SessionId, SessionSummary, TreeDiff,
 } from '../protocol/messages';
+
+/** Pixel step per nesting level, fed to the vendored `Tree`'s own `indent`
+ * prop and to `FileRow`'s matching inline indent — the two have to agree
+ * pixel-for-pixel or a file would sit at a different depth than its own
+ * folder row. */
+const TREE_INDENT = 16;
 
 /**
  * Every file the fleet has changed, grouped by the session that changed it.
@@ -117,12 +129,37 @@ function flattenRows(trees: TreeDiff[], collapsed: Set<string>): Row[] {
     for (const group of groupTree(tree)) {
       const groupKey = `${tree.root}::${group.sessionId ?? UNATTRIBUTED_KEY}`;
       if (collapsed.has(groupKey)) { continue; }
-      for (const file of group.files) {
-        rows.push({ tree, groupKey, file, key: `${groupKey}::${file.path}` });
-      }
+      const prefix = commonPrefix(group.files.map((f) => f.path));
+      flattenFolder(buildFolderTree(group.files, prefix), tree, groupKey, collapsed, rows);
     }
   }
   return rows;
+}
+
+/** The key a folder's own collapse toggle uses, namespaced under its group
+ * so the same directory name in two groups (or two working trees) never
+ * collides in the shared `collapsed` set. */
+function folderKey(groupKey: string, dirPath: string): string {
+  return `${groupKey}::folder:${dirPath}`;
+}
+
+/**
+ * Walks one group's nested folders depth-first — folders (recursed) before
+ * files, matching `buildFolderTree`'s own sort — skipping the files under any
+ * collapsed folder. This is the roving order: it decides which files Up/Down
+ * and the next/prev header buttons visit, independent of how `Group` chooses
+ * to render the same tree.
+ */
+function flattenFolder(
+  node: FolderNode, tree: TreeDiff, groupKey: string, collapsed: Set<string>, rows: Row[],
+): void {
+  for (const folder of node.folders) {
+    if (collapsed.has(folderKey(groupKey, folder.dirPath))) { continue; }
+    flattenFolder(folder, tree, groupKey, collapsed, rows);
+  }
+  for (const file of node.files) {
+    rows.push({ tree, groupKey, file, key: `${groupKey}::${file.path}` });
+  }
 }
 
 /**
@@ -547,6 +584,54 @@ function Tree({
   );
 }
 
+/** What `useTree`'s `dataLoader` resolves an id to: a folder's own node (the
+ * synthetic root included — headless-tree never renders it, only reads its
+ * children) or one leaf file. */
+type FolderItemData =
+  | { kind: 'folder'; node: FolderNode }
+  | { kind: 'file'; file: FileChange };
+
+/** `folder:${dirPath}` for a folder, the bare path for a file — a folder's id
+ * is namespaced so it can never collide with a file whose own path happens to
+ * read the same as a directory's. */
+function folderItemId(dirPath: string): string {
+  return `folder:${dirPath}`;
+}
+
+function childIds(node: FolderNode): string[] {
+  return [
+    ...node.folders.map((folder) => folderItemId(folder.dirPath)),
+    ...node.files.map((file) => file.path),
+  ];
+}
+
+/** Flattens a group's folder tree into the id→data/children map `useTree`'s
+ * `dataLoader` reads by id — built fresh each render from `buildFolderTree`'s
+ * output, the same way `groupTree`/`filterTree` are recomputed each render
+ * rather than cached, since the underlying files change every 750ms poll. */
+function indexFolderTree(root: FolderNode): {
+  index: Map<string, FolderItemData>; childrenOf: Map<string, string[]>; folderDirPaths: string[];
+} {
+  const index = new Map<string, FolderItemData>();
+  const childrenOf = new Map<string, string[]>();
+  const folderDirPaths: string[] = [];
+
+  const walk = (node: FolderNode, id: string) => {
+    index.set(id, { kind: 'folder', node });
+    childrenOf.set(id, childIds(node));
+    for (const folder of node.folders) {
+      folderDirPaths.push(folder.dirPath);
+      walk(folder, folderItemId(folder.dirPath));
+    }
+    for (const file of node.files) {
+      index.set(file.path, { kind: 'file', file });
+    }
+  };
+  walk(root, '');
+
+  return { index, childrenOf, folderDirPaths };
+}
+
 function Group({
   group, tree, sessions, collapsed, toggle, nav,
 }: {
@@ -567,6 +652,100 @@ function Group({
   const groupKey = `${tree.root}::${group.sessionId ?? UNATTRIBUTED_KEY}`;
   const isCollapsed = collapsed.has(groupKey);
   const prefix = commonPrefix(group.files.map((f) => f.path));
+  const folderRoot = buildFolderTree(group.files, prefix);
+  const { index, childrenOf, folderDirPaths } = indexFolderTree(folderRoot);
+
+  // Controlled expand state: derived from the same `collapsed` set the tree
+  // and group headers already toggle through, not a second, independent
+  // state — a folder is expanded exactly when its own key is absent from it.
+  //
+  // Memoized on a signature, not recomputed as a bare array every render:
+  // `useTree` re-syncs its own React state from this array during render
+  // (the same "adjust state during render" pattern `useRovingRows` above
+  // uses deliberately) whenever it sees a *new reference*, content aside. A
+  // fresh array every render — equal contents, different identity — reads as
+  // "the controlled value changed" forever, which is a render-phase setState
+  // every render: React's "too many re-renders" guard, not a slow leak.
+  const expandedSignature = folderDirPaths
+    .filter((dirPath) => !collapsed.has(folderKey(groupKey, dirPath)))
+    .join(' ');
+  const expandedItems = useMemo(
+    () => (expandedSignature === '' ? [] : expandedSignature.split(' ').map(folderItemId)),
+    [expandedSignature],
+  );
+
+  const folders = useTree<FolderItemData>({
+    rootItemId: '',
+    getItemName: (item) => {
+      const data = item.getItemData();
+      return data.kind === 'folder' ? data.node.name : basename(data.file.path);
+    },
+    isItemFolder: (item) => item.getItemData().kind === 'folder',
+    dataLoader: {
+      getItem: (id) => index.get(id)!,
+      getChildren: (id) => childrenOf.get(id) ?? [],
+    },
+    state: { expandedItems },
+    setExpandedItems: (updater) => {
+      // headless-tree hands back the full next list (or, per its `Updater`
+      // type, a function from the old list to it — every call observed in
+      // practice passes the plain array, but the type covers both), not the
+      // one id that changed — this app's own toggle only flips one key at a
+      // time, so the reconciliation is a diff against the *previous*
+      // expanded set, not a wholesale replace. A single `expand()`/
+      // `collapse()` call (this app never invokes bulk expand/collapse)
+      // changes exactly one entry.
+      const next = typeof updater === 'function' ? updater(expandedItems) : updater;
+      const nextExpanded = new Set(next);
+      for (const dirPath of folderDirPaths) {
+        const key = folderKey(groupKey, dirPath);
+        const wasExpanded = !collapsed.has(key);
+        if (wasExpanded !== nextExpanded.has(folderItemId(dirPath))) { toggle(key); }
+      }
+    },
+    // No hotkeysCoreFeature: this surface's own roving focus already owns
+    // arrow-key navigation across every file, in every group, in every
+    // working tree — a second, folder-scoped keyboard nav would fight it.
+    // Folders expand by click alone, same as the tree/group chevrons above.
+    features: [syncDataLoaderFeature],
+  });
+
+  // `syncDataLoaderFeature` reads the loader once and caches it; it does not
+  // notice a new `index`/`childrenOf` on its own — the 750ms poll replaces
+  // them wholesale, so every render that actually changed the files has to
+  // tell the tree to re-read, the gotcha the spike for this feature caught.
+  //
+  // Done during render, not in a `useEffect` — the same render-phase-update
+  // pattern `useRovingRows` above already uses, and for the same reason: an
+  // effect runs one render *after* the props that triggered it, so
+  // `folders.getItems()` — read directly below, in this same render's JSX —
+  // would still answer from the *previous* file list for that one render.
+  // For a file genuinely removed from `group.files`, that stale item is a
+  // dangling id the (already-current) `dataLoader` closures above no longer
+  // recognize, and resolving it throws (`sync dataLoader returned
+  // undefined`) — reachable simply by a poll removing a row the user is
+  // looking at. Rebuilding synchronously, before `getItems()` is ever read,
+  // closes that window instead of racing it.
+  //
+  // Guarded by a ref, not called unconditionally: `rebuildTree()` calls
+  // `useTree`'s own internal `setState`, and calling that every render
+  // (matching content or not) is the same "too many re-renders" trap
+  // `expandedItems` above was memoized to avoid — this only fires the render
+  // after the group's *files* actually changed.
+  //
+  // A signature, not `group.files` itself: `groupTree`/`filterTree` rebuild
+  // that array fresh every render regardless of whether anything in it
+  // changed (documented where they're defined, in fleet-diff-groups.ts), so
+  // comparing the array reference would never stay equal and the guard would
+  // never hold.
+  const filesSignature = group.files
+    .map((file) => `${file.path}:${file.op}:${file.insertions}:${file.deletions}`)
+    .join(' ');
+  const lastFilesSignature = useRef(filesSignature);
+  if (lastFilesSignature.current !== filesSignature) {
+    lastFilesSignature.current = filesSignature;
+    folders.rebuildTree();
+  }
 
   return (
     <div className="mt-2.5 first:mt-1">
@@ -626,38 +805,59 @@ function Group({
             // what this line already says.
             <p className="pl-4 pt-1 text-muted-foreground">{prefix}</p>
           )}
-          <ul className="mt-1 border-l border-border">
-            {group.files.map((file) => {
+          {/*
+            One flat container, folders and files interleaved in
+            `folders.getItems()`'s own order (folders-then-files at every
+            level, depth-first — the same order `flattenFolder` walks for
+            roving) — not a nested `<ul>`: a folder row's indent is CSS
+            (`--tree-padding`, `TREE_INDENT` per level), not DOM nesting, the
+            same scheme the vendored `Tree` primitive uses.
+          */}
+          <FolderTree indent={TREE_INDENT} tree={folders} className="mt-1 space-y-0.5 border-l border-border pl-6">
+            {folders.getItems().map((item) => {
+              const data = item.getItemData();
+              if (data.kind === 'folder') {
+                return (
+                  <TreeItem key={item.getId()} item={item}>
+                    <TreeItemLabel />
+                  </TreeItem>
+                );
+              }
+              const { file } = data;
               // Position within the *whole* review, not just this group's own
-              // `<ul>` — `aria-posinset`/`aria-setsize` are defined for a
+              // folder tree — `aria-posinset`/`aria-setsize` are defined for a
               // conceptual set that need not match the DOM nesting (the same
               // mechanism a virtualized or paginated list uses), so a screen
               // reader can announce "row 12 of 340" while the file list stays
-              // grouped by session on screen.
+              // grouped by session, and nested by folder, on screen.
               const position = nav.rowIndex.get(`${groupKey}::${file.path}`);
               return (
-                <li
+                <FileRow
                   key={file.path}
-                  aria-posinset={position === undefined ? undefined : position + 1}
-                  aria-setsize={nav.rowCount}
-                >
-                  <FileRow
-                    file={file}
-                    tree={tree}
-                    sessions={sessions}
-                    own={group.sessionId}
-                    prefix={prefix}
-                    groupKey={groupKey}
-                    nav={nav}
-                  />
-                </li>
+                  file={file}
+                  tree={tree}
+                  sessions={sessions}
+                  own={group.sessionId}
+                  depth={item.getItemMeta().level}
+                  groupKey={groupKey}
+                  nav={nav}
+                  posInSet={position === undefined ? undefined : position + 1}
+                  setSize={nav.rowCount}
+                />
               );
             })}
-          </ul>
+          </FolderTree>
         </>
       )}
     </div>
   );
+}
+
+/** The basename of a repo-relative path — the part a folder row's own name
+ * doesn't already say. */
+function basename(path: string): string {
+  const slash = path.lastIndexOf('/');
+  return slash === -1 ? path : path.slice(slash + 1);
 }
 
 function titleOf(id: SessionId, sessions: SessionSummary[]): string {
@@ -694,20 +894,13 @@ const OP_WORD: Record<ChangeOp, string> = {
 };
 
 function FileRow({
-  file, tree, sessions, own, prefix, groupKey, nav,
+  file, tree, sessions, own, depth, groupKey, nav, posInSet, setSize,
 }: {
-  file: FileChange; tree: TreeDiff; sessions: SessionSummary[]; own: SessionId | null; prefix: string;
-  groupKey: string; nav: RowNav;
+  file: FileChange; tree: TreeDiff; sessions: SessionSummary[]; own: SessionId | null; depth: number;
+  groupKey: string; nav: RowNav; posInSet: number | undefined; setSize: number;
 }) {
   const Icon = OP_ICON[file.op];
-  // Only the part the group's shared prefix didn't already say. A row can
-  // still nest deeper than the group's own common directory — the prefix is
-  // shared across the whole group, not per row — so what remains can still
-  // carry its own `dir/` component, split the same way the whole path used to be.
-  const remainder = stripPrefix(file.path, prefix);
-  const slash = remainder.lastIndexOf('/');
-  const dir = slash === -1 ? '' : remainder.slice(0, slash + 1);
-  const name = slash === -1 ? remainder : remainder.slice(slash + 1);
+  const name = basename(file.path);
   // Only the *other* claimants: the group header already names this one, and
   // repeating it on every row would spend the row's remaining width saying
   // what the line above it just said.
@@ -723,13 +916,24 @@ function FileRow({
       variant="ghost"
       size="sm"
       // The full path, the operation and the churn: the visible row leads with
-      // the basename and dims the directory, which is right for scanning and
-      // wrong for anyone hearing the row one at a time.
+      // the basename — its containing folders are already named by the rows
+      // above it — which is right for scanning and wrong for anyone hearing
+      // the row one at a time, so the accessible name still carries the
+      // whole path.
       aria-label={`${file.path}: ${OP_WORD[file.op]}, ${file.insertions ?? 0} added, ${file.deletions ?? 0} removed. Open in the diff editor`}
+      // Same conceptual set the folder rows above it are numbered against —
+      // see the comment where this is computed, in `Group`.
+      aria-posinset={posInSet}
+      aria-setsize={setSize}
       // No height override: `size="sm"` is 28px, which is what every other
       // list row in the sidebar panel is, and a 24px row here would make
       // this the one dense list in the app that does not match.
-      className="w-full justify-start gap-2 pl-6 pr-2 font-normal"
+      //
+      // `depth * TREE_INDENT` matches the vendored `Tree`'s own
+      // `--tree-padding` formula pixel-for-pixel — the two have to agree, or
+      // a file would sit at a visibly different depth than its own folder.
+      className="w-full justify-start gap-2 pr-2 font-normal"
+      style={{ paddingLeft: depth * TREE_INDENT }}
       // Every row used to be its own stop in the tab order — 400 Tab presses
       // to reach row 400. Only the active row is tabbable; arrow keys move
       // the roving index (`useRovingRows`) the rest of the way, and focus
@@ -742,16 +946,6 @@ function FileRow({
       onClick={() => nav.onOpen(index)}
     >
       <Icon aria-hidden className={OP_COLOR[file.op]} />
-      {/*
-        `dir` gives up its width first and the basename gives up its last: the
-        row's own width has to lose something before the churn column does,
-        and losing the end of `.../a.ts` would cost the only part of it the
-        eye is scanning for. A weight, not `shrink-0` — a basename that cannot
-        shrink also cannot truncate, so one long filename would push the churn
-        column out of the row and clip the counts off the right edge instead
-        of ellipsing the one string that had room to give.
-      */}
-      <span className="min-w-0 shrink-[8] truncate text-muted-foreground">{dir}</span>
       {/* Dimmed once opened: the marker for "already read this" this task
           adds, ephemeral for the same reason `collapsed` is. */}
       <span className={cn('min-w-0 truncate', isOpened && 'text-muted-foreground')}>{name}</span>

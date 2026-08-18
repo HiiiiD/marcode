@@ -146,3 +146,61 @@ export function commonPrefix(paths: string[]): string {
 export function stripPrefix(path: string, prefix: string): string {
   return prefix !== '' && path.startsWith(prefix) ? path.slice(prefix.length) : path;
 }
+
+/**
+ * One directory in a session group's file list, nested.
+ *
+ * `dirPath` is this folder's full path *from the group's already-elided
+ * prefix*, trailing slash included (`'src/webview/'`), empty for the
+ * synthetic root — it is what the fleet-diff surface namespaces its
+ * folder-collapse keys with, so it has to be unique within one group and
+ * stable across a 750ms rebuild, which a plain array index is not.
+ */
+export interface FolderNode {
+  dirPath: string;
+  /** Last path segment, no slash. Empty for the synthetic root. */
+  name: string;
+  folders: FolderNode[];
+  files: FileChange[];
+}
+
+/**
+ * Nests a session group's files by directory, folders before files and both
+ * alphabetical at every level — the order a file explorer reads in, and the
+ * order `flattenFolder` (fleet-diff.tsx) walks to build the roving row list.
+ *
+ * `prefix` is the same string `commonPrefix` already computes for the group:
+ * stripped before nesting, so the directory the group header already names
+ * once above the rows grows no folder node of its own.
+ */
+export function buildFolderTree(files: FileChange[], prefix: string): FolderNode {
+  const root: FolderNode = { dirPath: '', name: '', folders: [], files: [] };
+  for (const file of files) {
+    const segments = stripPrefix(file.path, prefix).split('/');
+    // The last segment is the filename, not a directory — never turned into
+    // a folder node even when it is the only segment (a root-level file).
+    segments.pop();
+    let cursor = root;
+    let dirPath = '';
+    for (const segment of segments) {
+      dirPath += `${segment}/`;
+      let next = cursor.folders.find((folder) => folder.name === segment);
+      if (next === undefined) {
+        next = {
+          dirPath, name: segment, folders: [], files: [],
+        };
+        cursor.folders.push(next);
+      }
+      cursor = next;
+    }
+    cursor.files.push(file);
+  }
+  sortFolderTree(root);
+  return root;
+}
+
+function sortFolderTree(node: FolderNode): void {
+  node.folders.sort((a, b) => a.name.localeCompare(b.name));
+  node.files.sort((a, b) => a.path.localeCompare(b.path));
+  node.folders.forEach(sortFolderTree);
+}

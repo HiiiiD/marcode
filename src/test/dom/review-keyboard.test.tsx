@@ -156,12 +156,10 @@ suite('review keyboard', () => {
     sendFromHost({ t: 'fleet-diff', trees: TREES } as never);
 
     const rows = [...document.querySelectorAll('[data-review-row]')];
-    const listItems = rows.map((row) => row.closest('li'));
-    assert.strictEqual(listItems.every((li) => li !== null), true);
-    assert.strictEqual(listItems[0]?.getAttribute('aria-posinset'), '1');
-    assert.strictEqual(listItems[0]?.getAttribute('aria-setsize'), '2');
-    assert.strictEqual(listItems[1]?.getAttribute('aria-posinset'), '2');
-    assert.strictEqual(listItems[1]?.getAttribute('aria-setsize'), '2');
+    assert.strictEqual(rows[0]?.getAttribute('aria-posinset'), '1');
+    assert.strictEqual(rows[0]?.getAttribute('aria-setsize'), '2');
+    assert.strictEqual(rows[1]?.getAttribute('aria-posinset'), '2');
+    assert.strictEqual(rows[1]?.getAttribute('aria-setsize'), '2');
   });
 
   test('ArrowDown on the tree collapse chevron does not steal focus into a row', async () => {

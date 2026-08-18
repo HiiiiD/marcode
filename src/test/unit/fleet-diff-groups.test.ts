@@ -3,7 +3,7 @@
 
 import * as assert from 'assert';
 import {
-  commonPrefix, countFiles, filterTree, groupTree, stripPrefix, summarize,
+  buildFolderTree, commonPrefix, countFiles, filterTree, groupTree, stripPrefix, summarize,
 } from '../../review/fleet-diff-groups';
 import type { FileChange, TreeDiff } from '../../protocol/messages';
 
@@ -154,5 +154,60 @@ suite('commonPrefix', () => {
   test('stripPrefix leaves the remainder', () => {
     assert.strictEqual(stripPrefix('src/webview/a.tsx', 'src/webview/'), 'a.tsx');
     assert.strictEqual(stripPrefix('README.md', ''), 'README.md');
+  });
+});
+
+suite('buildFolderTree', () => {
+  test('a root-level file lands on the root node, no folder', () => {
+    const root = buildFolderTree([file('README.md', ['s1'])], '');
+    assert.strictEqual(root.folders.length, 0);
+    assert.strictEqual(root.files.length, 1);
+    assert.strictEqual(root.files[0].path, 'README.md');
+  });
+
+  test('nests one folder deep', () => {
+    const root = buildFolderTree([file('src/a.ts', ['s1'])], '');
+    assert.strictEqual(root.folders.length, 1);
+    assert.strictEqual(root.folders[0].name, 'src');
+    assert.strictEqual(root.folders[0].dirPath, 'src/');
+    assert.strictEqual(root.folders[0].files.length, 1);
+  });
+
+  test('two files in the same folder share one node', () => {
+    const root = buildFolderTree([file('src/a.ts', ['s1']), file('src/b.ts', ['s1'])], '');
+    assert.strictEqual(root.folders.length, 1);
+    assert.strictEqual(root.folders[0].files.length, 2);
+  });
+
+  test('nests multiple levels deep', () => {
+    const root = buildFolderTree([file('src/webview/components/a.tsx', ['s1'])], '');
+    const src = root.folders[0];
+    const webview = src.folders[0];
+    const components = webview.folders[0];
+    assert.strictEqual(src.dirPath, 'src/');
+    assert.strictEqual(webview.dirPath, 'src/webview/');
+    assert.strictEqual(components.dirPath, 'src/webview/components/');
+    assert.strictEqual(components.files[0].path, 'src/webview/components/a.tsx');
+  });
+
+  test('folders sort before files, both alphabetically', () => {
+    const root = buildFolderTree(
+      [file('b.ts', ['s1']), file('a.ts', ['s1']), file('zdir/x.ts', ['s1']), file('adir/y.ts', ['s1'])],
+      '',
+    );
+    assert.deepStrictEqual(root.folders.map((f) => f.name), ['adir', 'zdir']);
+    assert.deepStrictEqual(root.files.map((f) => f.path), ['a.ts', 'b.ts']);
+  });
+
+  test('the group prefix is stripped before nesting, so the elided directory grows no folder node', () => {
+    const root = buildFolderTree([file('src/webview/a.tsx', ['s1']), file('src/webview/b.tsx', ['s1'])], 'src/webview/');
+    assert.strictEqual(root.folders.length, 0);
+    assert.strictEqual(root.files.length, 2);
+  });
+
+  test('an empty file list builds an empty root', () => {
+    const root = buildFolderTree([], '');
+    assert.strictEqual(root.folders.length, 0);
+    assert.strictEqual(root.files.length, 0);
   });
 });
