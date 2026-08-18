@@ -138,6 +138,10 @@ jobs:
       id-token: write
       contents: write # gh release create needs this; the top-level block stays read-only
     steps:
+      # gh release create --generate-notes shells out to git to diff against
+      # the previous tag; without a checkout there is no .git and it fails.
+      - uses: actions/checkout@v4
+
       - uses: actions/download-artifact@v4
         with:
           pattern: vsix-*
