@@ -276,6 +276,27 @@ suite('mapEvent', () => {
   test('other system subtypes still map to nothing', () => {
     assert.deepStrictEqual(mapEvent({ type: 'system', subtype: 'status', session_id: 's' } as never), []);
   });
+
+  test('a background_tasks_changed message becomes a background-tasks-changed event carrying task ids', () => {
+    const out = mapEvent({
+      type: 'system', subtype: 'background_tasks_changed',
+      tasks: [
+        { task_id: 't1', task_type: 'agent', description: 'Investigating' },
+        { task_id: 't2', task_type: 'bash', description: 'Running tests' },
+      ],
+      uuid: 'u', session_id: 's',
+    } as never);
+
+    assert.deepStrictEqual(out, [{ kind: 'background-tasks-changed', taskIds: ['t1', 't2'] }]);
+  });
+
+  test('a background_tasks_changed message with no live tasks replaces the set with empty', () => {
+    const out = mapEvent({
+      type: 'system', subtype: 'background_tasks_changed', tasks: [], uuid: 'u', session_id: 's',
+    } as never);
+
+    assert.deepStrictEqual(out, [{ kind: 'background-tasks-changed', taskIds: [] }]);
+  });
 });
 
 suite('rate_limit_event', () => {

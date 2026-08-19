@@ -172,6 +172,27 @@ export class AgentSession {
    * does not.
    */
   private attachments: Attachment[] = [];
+  /**
+   * The live set of background task ids `background-tasks-changed` last
+   * reported — REPLACE semantics, matching the event. Non-empty keeps
+   * `recomputeWaitingStatus` out of `idle` even after `turn-end` fires: a
+   * task the CLI detached from the foreground turn (Ctrl+B semantics) keeps
+   * running after the turn does, and a session reading `idle` would hide
+   * the Stop control over work that is still genuinely in flight.
+   */
+  private activeBackgroundTasks = new Set<string>();
+  /**
+   * Whether the foreground turn is currently in flight — `true` from
+   * `deliver()` until `turn-end` settles it back to `false`. Only
+   * `background-tasks-changed` reads this: it can arrive mid-turn (stay
+   * `running` regardless) or after `turn-end` already fired while tasks
+   * drain (go `idle` once the last one does), and `recomputeWaitingStatus`'s
+   * own `idle` parameter is set by the *caller*, not derived — this is what
+   * lets that handler pick the right one instead of either wedging the
+   * status at `running` forever or flipping to `idle` mid-turn the moment a
+   * task happens to finish before the rest of the turn does.
+   */
+  private turnActive = false;
 
   constructor(
     private readonly _state: SessionState,
@@ -364,6 +385,7 @@ export class AgentSession {
     this.appendItem(item);
     this.closeAssistant();
     this.setStatus('running');
+    this.turnActive = true;
     // The transcript item above deliberately recorded `text`, never
     // `outgoing`: a seed is context handed to the provider, not something the
     // user wrote, and writing it into the transcript would both duplicate the
@@ -596,7 +618,11 @@ export class AgentSession {
    */
   private recomputeWaitingStatus(idle: SessionStatus = 'running'): void {
     const waiting = this.pending.size > 0 || this.pendingQuestions.size > 0;
-    this.setStatus(waiting ? 'awaiting-approval' : idle);
+    // A non-empty background-task set overrides `idle` specifically, never
+    // `awaiting-approval`: there is nothing to approve, so 'running' (which
+    // keeps the composer's Stop control visible) is the accurate reading.
+    const busy = this.activeBackgroundTasks.size > 0;
+    this.setStatus(waiting ? 'awaiting-approval' : busy ? 'running' : idle);
   }
 
   /**
@@ -929,7 +955,13 @@ export class AgentSession {
         this.sink.mcp(this._state.id, event.servers);
         return;
 
+      case 'background-tasks-changed':
+        this.activeBackgroundTasks = new Set(event.taskIds);
+        this.recomputeWaitingStatus(this.turnActive ? 'running' : 'idle');
+        return;
+
       case 'turn-end':
+        this.turnActive = false;
         this.closeAssistant();
         this.flushUnsettledTools();
         if (event.reason === 'error') {
@@ -998,6 +1030,7 @@ export class AgentSession {
   }
 
   private fail(message: string): void {
+    this.turnActive = false;
     this.appendItem({ id: nextId('e'), ts: Date.now(), role: 'error', message });
     this.setStatus('error');
     void this.scheduleFlush();

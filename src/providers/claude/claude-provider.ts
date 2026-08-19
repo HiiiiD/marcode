@@ -424,6 +424,12 @@ export class ClaudeProvider implements AgentProvider {
     // until a microtask after send() returns) or starting a second one.
     let resolveQueryReady: ((query: Query | undefined) => void) | undefined;
     const queryReady = new Promise<Query | undefined>((resolve) => { resolveQueryReady = resolve; });
+    // The live set of task ids the CLI has detached from the foreground turn
+    // (Ctrl+B semantics) — REPLACEd wholesale on every `background-tasks-changed`
+    // event, mirroring the SDK's own level-signal contract. `interrupt()`
+    // below stops each of these explicitly: `Query.interrupt()` only cancels
+    // the foreground turn, and a backgrounded task survives it by design.
+    let backgroundTaskIds: string[] = [];
 
     const canUseTool: CanUseTool = async (toolName, input, options) => {
       const id = options.toolUseID;
@@ -543,7 +549,10 @@ export class ClaudeProvider implements AgentProvider {
             // exactly as non-fatal as an async rejection.
           }
           for await (const msg of session) {
-            for (const event of mapEvent(msg)) { events.push(event); }
+            for (const event of mapEvent(msg)) {
+              if (event.kind === 'background-tasks-changed') { backgroundTaskIds = event.taskIds; }
+              events.push(event);
+            }
           }
         } catch (err) {
           events.push({ kind: 'turn-end', reason: 'error', error: errorMessage(err) });
@@ -699,6 +708,19 @@ export class ClaudeProvider implements AgentProvider {
         for (const id of [...parked.keys()]) { cancelParked(id); }
         if (!queryRef) { return; } // nothing has ever run: a no-op, not a failure.
         try {
+          // Stop every tracked background task first: `Query.interrupt()`
+          // below only cancels the foreground turn, and a task the CLI
+          // detached from it (Ctrl+B semantics) is specifically designed to
+          // survive that call. Best-effort per task — one rejecting (e.g.
+          // the task already settled and the id is stale) must not skip the
+          // rest or block the foreground interrupt.
+          for (const taskId of backgroundTaskIds) {
+            try {
+              await queryRef.stopTask(taskId);
+            } catch {
+              // Best-effort: see comment above.
+            }
+          }
           await queryRef.interrupt();
         } catch (err) {
           events.push({ kind: 'turn-end', reason: 'error', error: errorMessage(err) });

@@ -1013,6 +1013,73 @@ suite('AgentSession', () => {
   });
 });
 
+suite('AgentSession background tasks', () => {
+  let dir: string;
+  let store: TranscriptStore;
+  let sink: RecordingSink;
+
+  setup(async () => {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mar-session-'));
+    store = new TranscriptStore(dir);
+    sink = new RecordingSink();
+  });
+
+  teardown(async () => { await fs.rm(dir, { recursive: true, force: true }); });
+
+  test('turn-end does not go idle while a background task is still live', async () => {
+    const provider = new FakeProvider(() => [
+      { kind: 'background-tasks-changed', taskIds: ['bg-1'] },
+      { kind: 'turn-end', reason: 'done' },
+    ]);
+    const session = new AgentSession(baseState(), provider, store, sink);
+    session.send('kick off a background task');
+    await settle();
+
+    assert.strictEqual(
+      session.state.status, 'running',
+      'a live background task must keep the session out of idle, so Stop stays reachable',
+    );
+    await session.dispose();
+  });
+
+  test('the session goes idle once the background-tasks-changed event reports the set drained', async () => {
+    const provider = new FakeProvider(() => [
+      { kind: 'background-tasks-changed', taskIds: ['bg-1'] },
+      { kind: 'turn-end', reason: 'done' },
+    ]);
+    const session = new AgentSession(baseState(), provider, store, sink);
+    session.send('kick off a background task');
+    await settle();
+    assert.strictEqual(session.state.status, 'running');
+
+    // The task settles after the foreground turn already ended — exactly
+    // the ordering `task_notification`/`background_tasks_changed` reports.
+    provider.runs[0].emit({ kind: 'background-tasks-changed', taskIds: [] });
+    await settle();
+
+    assert.strictEqual(session.state.status, 'idle');
+    await session.dispose();
+  });
+
+  test('a background task that starts and drains mid-turn does not end the turn early', async () => {
+    const provider = new FakeProvider(() => [
+      { kind: 'background-tasks-changed', taskIds: ['bg-1'] },
+      { kind: 'background-tasks-changed', taskIds: [] },
+      { kind: 'text', delta: 'still working' },
+      { kind: 'turn-end', reason: 'done' },
+    ]);
+    const session = new AgentSession(baseState(), provider, store, sink);
+    session.send('kick off a short background task');
+    await settle();
+
+    assert.strictEqual(session.state.status, 'idle', 'the turn itself has since ended normally');
+    const snap = await session.snapshot();
+    const assistant = snap.items.find((i) => i.role === 'assistant');
+    assert.strictEqual((assistant as { text: string } | undefined)?.text, 'still working');
+    await session.dispose();
+  });
+});
+
 const QUESTION_SPEC = {
   id: 'q1', header: 'H', question: 'Q?', multiSelect: false,
   allowOther: true, secret: false,
