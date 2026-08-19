@@ -20,24 +20,89 @@ export interface ResolvedBlock { title: string; kind: RefKind; text: string }
 export function findPayload(
   items: TranscriptItem[], kind: RefKind, excludeItemId?: string,
 ): string | undefined {
+  if (kind === 'message') { return buildRecap(items, excludeItemId); }
+
   for (let i = items.length - 1; i >= 0; i--) {
     const item = items[i];
     if (item.id === excludeItemId) { continue; }
-    if (kind === 'message') {
-      if (item.role === 'assistant' && item.text.trim().length > 0) {
-        return item.text;
-      }
-      continue;
-    }
-    // Same emptiness guard as the message branch above: an empty plan resolves
-    // to `''`, which renders as an empty disclosure chip rather than falling
-    // through to the previous plan or being reported as missing.
+    // Same emptiness guard as the closing-note branch in buildRecap below: an
+    // empty plan resolves to `''`, which renders as an empty disclosure chip
+    // rather than falling through to the previous plan or being reported as
+    // missing.
     if (item.role === 'tool' && item.state === 'ok' && item.tool.kind === 'plan'
       && item.tool.text.trim().length > 0) {
       return item.tool.text;
     }
   }
   return undefined;
+}
+
+const MAX_FILES = 6;
+const MAX_COMMANDS = 4;
+const MAX_PLAN_CHARS = 400;
+
+/**
+ * What a `message` reference actually resolves to.
+ *
+ * A mentioned session's single last message can be the wrong turn entirely —
+ * a session that ended on a rate limit or other transient failure has its
+ * last real content sitting turns earlier, and picking only that one message
+ * either surfaces something stale or nothing at all. This instead walks the
+ * whole transcript and reports what the session *did*: files it touched,
+ * commands it ran, its last plan, and its last word — the way a human
+ * skimming the pane above would summarize it, not a single quoted line.
+ *
+ * Deliberately says nothing about `role: 'error'` items: a rate limit or
+ * crash is the receiving session's problem to route around, not content for
+ * it to reason about.
+ */
+function buildRecap(items: TranscriptItem[], excludeItemId?: string): string | undefined {
+  const files: string[] = [];
+  const seenFiles = new Set<string>();
+  const commands: string[] = [];
+  const seenCommands = new Set<string>();
+  let planText: string | undefined;
+
+  for (const item of items) {
+    if (item.role !== 'tool' || item.state !== 'ok') { continue; }
+    const tool = item.tool;
+    if (tool.kind === 'file-edit') {
+      for (const f of tool.files) {
+        if (!seenFiles.has(f.path)) { seenFiles.add(f.path); files.push(f.path); }
+      }
+    } else if (tool.kind === 'command') {
+      if (!seenCommands.has(tool.command)) { seenCommands.add(tool.command); commands.push(tool.command); }
+    } else if (tool.kind === 'plan' && tool.text.trim().length > 0) {
+      planText = tool.text;
+    }
+  }
+
+  let closingNote: string | undefined;
+  for (let i = items.length - 1; i >= 0; i--) {
+    const item = items[i];
+    if (item.id === excludeItemId) { continue; }
+    if (item.role === 'assistant' && item.text.trim().length > 0) {
+      closingNote = item.text;
+      break;
+    }
+  }
+
+  const lines: string[] = [];
+  if (files.length > 0) { lines.push(`Touched: ${capped(files, MAX_FILES)}`); }
+  if (commands.length > 0) { lines.push(`Ran: ${capped(commands, MAX_COMMANDS)}`); }
+  if (planText !== undefined) { lines.push(`Plan: ${truncate(planText, MAX_PLAN_CHARS)}`); }
+  if (closingNote !== undefined) { lines.push(closingNote); }
+
+  return lines.length > 0 ? lines.join('\n') : undefined;
+}
+
+function capped(values: string[], max: number): string {
+  if (values.length <= max) { return values.join(', '); }
+  return `${values.slice(0, max).join(', ')} (+${values.length - max} more)`;
+}
+
+function truncate(text: string, max: number): string {
+  return text.length > max ? `${text.slice(0, max).trimEnd()}…` : text;
 }
 
 /**
