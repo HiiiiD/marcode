@@ -5,13 +5,16 @@ import type { UsageWindow } from '../../protocol/messages';
 
 function resetsIn(at: number | undefined, now: number): string | undefined {
   if (at === undefined) { return undefined; }
-  const ms = at - now;
-  if (ms <= 0) { return undefined; }
-  const minutes = Math.round(ms / 60_000);
-  if (minutes < 60) { return `resets in ${minutes}m`; }
-  const hours = Math.round(minutes / 60);
-  if (hours < 48) { return `resets in ${hours}h`; }
-  return `resets in ${Math.round(hours / 24)}d`;
+  if (at - now <= 0) { return undefined; }
+  const resetDate = new Date(at);
+  const nowDate = new Date(now);
+  const sameDay = resetDate.getFullYear() === nowDate.getFullYear()
+    && resetDate.getMonth() === nowDate.getMonth()
+    && resetDate.getDate() === nowDate.getDate();
+  const time = resetDate.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  if (sameDay) { return `resets at ${time}`; }
+  const date = resetDate.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  return `resets ${date} at ${time}`;
 }
 
 function WindowChip({ window: w }: { window: UsageWindow }) {
