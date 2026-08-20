@@ -137,21 +137,47 @@ suite("Composer", () => {
 
   test("a queued message is shown and can be cancelled", async () => {
     const queued = {
-      summary: summary("a", { status: "running", queued: { text: "next thing" } }),
+      summary: summary("a", { status: "running", queued: [{ id: "q1", text: "next thing" }] }),
       items: [], hasMore: false, pending: [], mcpServers: [],
       pendingQuestions: [], attachments: [],
     };
     renderWithStore(<Composer pane={queued} model={NO_EFFORT} models={[]} />);
 
     assert.ok(screen.getByText("next thing"));
-    await userEvent.click(screen.getByRole("button", { name: "Cancel queued message" }));
+    await userEvent.click(screen.getByRole("button", { name: "Cancel queued message: next thing" }));
 
-    assert.deepStrictEqual(posted().at(-1), { t: "cancel-queued", id: "a" });
+    assert.deepStrictEqual(posted().at(-1), { t: "cancel-queued", id: "a", messageId: "q1" });
+  });
+
+  test("several queued messages are all shown, each with its own cancel control", async () => {
+    const queued = {
+      summary: summary("a", {
+        status: "running",
+        queued: [
+          { id: "q1", text: "next thing" },
+          { id: "q2", text: "then this" },
+        ],
+      }),
+      items: [], hasMore: false, pending: [], mcpServers: [],
+      pendingQuestions: [], attachments: [],
+    };
+    renderWithStore(<Composer pane={queued} model={NO_EFFORT} models={[]} />);
+
+    assert.ok(screen.getByText("next thing"));
+    assert.ok(screen.getByText("then this"));
+
+    await userEvent.click(screen.getByRole("button", { name: "Cancel queued message: then this" }));
+    assert.deepStrictEqual(posted().at(-1), { t: "cancel-queued", id: "a", messageId: "q2" });
+
+    // The other row is untouched — cancelling one must not drop the rest.
+    assert.ok(screen.getByText("next thing"));
   });
 
   test("an idle session shows no queued row", () => {
     renderWithStore(<Composer pane={pane()} model={NO_EFFORT} models={[]} />);
-    assert.strictEqual(screen.queryByRole("button", { name: "Cancel queued message" }) === null, true);
+    assert.strictEqual(
+      screen.queryByRole("button", { name: /Cancel queued message/ }) === null, true,
+    );
   });
 
   test("awaiting-approval also shows Stop", () => {

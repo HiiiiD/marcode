@@ -88,7 +88,7 @@ suite('AgentSession attachments', () => {
 
     // Captured into the queued entry immediately, not left on the live set.
     assert.strictEqual(session.pendingAttachments.length, 0);
-    assert.deepStrictEqual(session.state.queued?.attachments?.map((a) => a.id), ['a1']);
+    assert.deepStrictEqual(session.state.queued?.[0]?.attachments?.map((a) => a.id), ['a1']);
 
     run.runs[0].emit({ kind: 'turn-end', reason: 'done' });
     await settle();
@@ -109,7 +109,7 @@ suite('AgentSession attachments', () => {
 
     session.send('second');
     // Nothing was pending at queue time.
-    assert.strictEqual(session.state.queued?.attachments, undefined);
+    assert.strictEqual(session.state.queued?.[0]?.attachments, undefined);
 
     session.addAttachments([att('a2')]);
     // Still pending: it must not retroactively attach to the already-queued message.

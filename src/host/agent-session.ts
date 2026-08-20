@@ -1,7 +1,7 @@
 import { resolve } from 'node:path';
 import type {
-  McpServerStatus, PermissionRequest, QuestionRequest, SessionId, SessionRef, SessionSnapshot,
-  SessionState, SessionStatus, TranscriptItem, TranscriptPatch,
+  McpServerStatus, PermissionRequest, QuestionRequest, QueuedMessage, SessionId, SessionRef,
+  SessionSnapshot, SessionState, SessionStatus, TranscriptItem, TranscriptPatch,
 } from '../protocol/messages';
 import type { ToolCall, ToolOutput } from '../providers/canonical/tool-call';
 import type {
@@ -129,12 +129,14 @@ export class AgentSession {
   private readonly claims = new Set<string>();
   private pumping: Promise<void>;
   /**
-   * The editor context captured when the parked message was typed, not when
+   * The editor context captured when each parked message was typed, not when
    * it is finally sent: the user attached the file they were looking at
    * mid-turn, and re-reading the editor minutes later would attach a
-   * different one.
+   * different one. Keyed by `QueuedMessage.id` rather than held index-aligned
+   * with `_state.queued`, so cancelling one entry can drop its context without
+   * having to keep two arrays in lockstep.
    */
-  private queuedContext: EditorContext | undefined;
+  private queuedContext = new Map<string, EditorContext | undefined>();
   private disposed = false;
   /**
    * TranscriptStore.flush() is not safe to call concurrently for the same
@@ -295,12 +297,14 @@ export class AgentSession {
   }
 
   /**
-   * Sends, or parks the message until the turn in flight is over.
+   * Sends, or parks the message behind whatever is already queued until the
+   * turn in flight is over.
    *
    * Draining first is what makes the order first-in-first-out: a session sent
-   * to while it is idle *and* holding a parked message — which is where an
-   * errored turn leaves it — sends the parked one and parks the new one
-   * behind it, rather than overwriting words the user already committed to.
+   * to while it is idle *and* holding parked messages — which is where an
+   * errored turn leaves it — sends the head of the queue and parks the new
+   * one behind the rest, rather than overwriting words the user already
+   * committed to.
    */
   send(text: string, context?: EditorContext, refs?: SessionRef[]): void {
     if (!this.busy) { this.drainQueued(); }
@@ -310,12 +314,14 @@ export class AgentSession {
       // an attachment added after this point belongs to whatever is
       // composed next, not to the message already parked here.
       const attachments = this.drainLiveAttachments();
-      this._state.queued = {
+      const entry: QueuedMessage = {
+        id: nextId('qm'),
         text,
         ...(refs && refs.length > 0 ? { refs } : {}),
         ...(attachments.length > 0 ? { attachments } : {}),
       };
-      this.queuedContext = context;
+      this._state.queued = [...(this._state.queued ?? []), entry];
+      this.queuedContext.set(entry.id, context);
       this._state.updatedAt = Date.now();
       this.sink.changed();
       return;
@@ -323,30 +329,38 @@ export class AgentSession {
     this.deliver(text, context, refs, this.drainLiveAttachments());
   }
 
-  /** Drops the parked message. Nothing was ever appended, so nothing is undone. */
-  cancelQueued(): void {
-    if (!this._state.queued) { return; }
-    this._state.queued = undefined;
-    this.queuedContext = undefined;
+  /**
+   * Drops one parked message by id. Nothing was ever appended, so nothing is
+   * undone. A no-op for an id already sent or already cancelled.
+   */
+  cancelQueued(messageId: string): void {
+    const queued = this._state.queued;
+    if (!queued || !queued.some((q) => q.id === messageId)) { return; }
+    const next = queued.filter((q) => q.id !== messageId);
+    this._state.queued = next.length > 0 ? next : undefined;
+    this.queuedContext.delete(messageId);
     this._state.updatedAt = Date.now();
     this.sink.changed();
   }
 
   /**
-   * Spends the parked message if the session can take one now. Called at the
-   * turn boundary and before any fresh send; a no-op when there is nothing
-   * parked or the session is still busy.
+   * Spends the head of the parked queue if the session can take one now.
+   * Called at the turn boundary and before any fresh send; a no-op when
+   * there is nothing parked or the session is still busy. Only ever spends
+   * one entry — delivering sets the session busy again, so the rest of the
+   * queue waits for the next idle transition, one turn per queued message.
    */
   private drainQueued(): void {
     const queued = this._state.queued;
-    if (!queued || this.busy) { return; }
-    const context = this.queuedContext;
-    this._state.queued = undefined;
-    this.queuedContext = undefined;
+    if (!queued || queued.length === 0 || this.busy) { return; }
+    const [head, ...rest] = queued;
+    const context = this.queuedContext.get(head.id);
+    this.queuedContext.delete(head.id);
+    this._state.queued = rest.length > 0 ? rest : undefined;
     // The queued attachments, captured when this message was parked — not
     // the live set, which by now belongs to whatever the user has composed
     // since. See `send`'s queueing branch.
-    this.deliver(queued.text, context, queued.refs, queued.attachments ?? []);
+    this.deliver(head.text, context, head.refs, head.attachments ?? []);
   }
 
   /**
@@ -958,6 +972,15 @@ export class AgentSession {
       case 'background-tasks-changed':
         this.activeBackgroundTasks = new Set(event.taskIds);
         this.recomputeWaitingStatus(this.turnActive ? 'running' : 'idle');
+        // The foreground turn can have already ended while this task was
+        // still the only thing keeping the session busy (recomputeWaitingStatus
+        // forced 'running' for it — see the busy override above). Once the
+        // set drains and this call is the thing that finally lets the status
+        // go idle, nothing else will ever call drainQueued() for this turn:
+        // turn-end already fired and won't fire again, so a message queued
+        // behind this task would otherwise sit parked until the user typed a
+        // fresh send.
+        this.drainQueued();
         return;
 
       case 'turn-end':

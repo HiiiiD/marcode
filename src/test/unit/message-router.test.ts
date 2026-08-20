@@ -402,9 +402,11 @@ suite('MessageRouter', () => {
     await settle();
     await quietRouter.handle({ t: 'send', id, text: 'second' });
     await settle();
-    assert.strictEqual(quiet.get(id)!.state.queued?.text, 'second');
+    const messageId = quiet.get(id)!.state.queued?.[0]?.id;
+    assert.strictEqual(quiet.get(id)!.state.queued?.[0]?.text, 'second');
+    assert.ok(messageId);
 
-    await quietRouter.handle({ t: 'cancel-queued', id });
+    await quietRouter.handle({ t: 'cancel-queued', id, messageId: messageId! });
     assert.strictEqual(quiet.get(id)!.state.queued, undefined);
 
     silent.runs[0].emit({ kind: 'turn-end', reason: 'done' });
@@ -414,7 +416,7 @@ suite('MessageRouter', () => {
   });
 
   test('cancel-queued for an unknown session id is ignored rather than thrown', async () => {
-    await router.handle({ t: 'cancel-queued', id: 'nope' });
+    await router.handle({ t: 'cancel-queued', id: 'nope', messageId: 'nope' });
     assert.ok(true, 'no exception escaped the router');
   });
 
