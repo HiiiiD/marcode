@@ -86,7 +86,7 @@ suite('SessionManager', () => {
     await settle();
     session!.send('parked');
     await settle();
-    assert.strictEqual(session!.state.queued?.text, 'parked');
+    assert.strictEqual(session!.state.queued?.[0]?.text, 'parked');
     await first.dispose();
 
     const second = new SessionManager(

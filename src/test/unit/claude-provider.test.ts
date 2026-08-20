@@ -979,6 +979,103 @@ suite('ClaudeProvider (cancellation)', () => {
     assert.strictEqual(events().some((e) => e.kind === 'request-cancelled' && e.id === 't1'), true);
   });
 
+  test('interrupt() stops every tracked background task before interrupting the foreground turn', async () => {
+    // A backgrounded task (Ctrl+B semantics) survives Query.interrupt() by
+    // design — the SDK reports its id via `background_tasks_changed` and
+    // exposes `stopTask(id)` as the only way to actually stop it.
+    const stoppedTaskIds: string[] = [];
+    const order: string[] = [];
+    let stop!: () => void;
+    const stopSignal = new Promise<void>((resolve) => { stop = resolve; });
+    const queryFn = (params: { prompt: AsyncIterable<unknown>; options: unknown }) => {
+      void params;
+      const gen = (async function* () {
+        yield {
+          type: 'system', subtype: 'background_tasks_changed',
+          tasks: [
+            { task_id: 'bg-1', task_type: 'agent', description: 'Investigating' },
+            { task_id: 'bg-2', task_type: 'bash', description: 'Running tests' },
+          ],
+          uuid: 'u1', session_id: 's1',
+        };
+        await stopSignal;
+      })() as AsyncGenerator<unknown, void> & {
+        interrupt: () => Promise<undefined>;
+        setPermissionMode: () => Promise<void>;
+        applyFlagSettings: () => Promise<void>;
+        close: () => void;
+        mcpServerStatus: () => Promise<unknown[]>;
+        stopTask: (taskId: string) => Promise<void>;
+      };
+      gen.interrupt = async () => { order.push('interrupt'); return undefined; };
+      gen.setPermissionMode = async () => { /* no-op fake */ };
+      gen.applyFlagSettings = async () => { /* no-op fake */ };
+      gen.close = () => { stop(); };
+      gen.mcpServerStatus = async () => [];
+      gen.stopTask = async (taskId: string) => { stoppedTaskIds.push(taskId); order.push(`stop:${taskId}`); };
+      return gen;
+    };
+
+    const provider = new ClaudeProvider((async () => queryFn) as never);
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+    run.send('go');
+    await tick();
+
+    await run.interrupt();
+
+    assert.deepStrictEqual(stoppedTaskIds, ['bg-1', 'bg-2']);
+    assert.deepStrictEqual(
+      order, ['stop:bg-1', 'stop:bg-2', 'interrupt'],
+      'both background tasks are stopped before the foreground interrupt',
+    );
+    await run.dispose();
+  });
+
+  test('a drained background-tasks-changed event (empty taskIds) leaves interrupt() with nothing to stop', async () => {
+    const stoppedTaskIds: string[] = [];
+    let stop!: () => void;
+    const stopSignal = new Promise<void>((resolve) => { stop = resolve; });
+    const queryFn = (params: { prompt: AsyncIterable<unknown>; options: unknown }) => {
+      void params;
+      const gen = (async function* () {
+        yield {
+          type: 'system', subtype: 'background_tasks_changed',
+          tasks: [{ task_id: 'bg-1', task_type: 'agent', description: 'Investigating' }],
+          uuid: 'u1', session_id: 's1',
+        };
+        yield {
+          type: 'system', subtype: 'background_tasks_changed',
+          tasks: [], uuid: 'u2', session_id: 's1',
+        };
+        await stopSignal;
+      })() as AsyncGenerator<unknown, void> & {
+        interrupt: () => Promise<undefined>;
+        setPermissionMode: () => Promise<void>;
+        applyFlagSettings: () => Promise<void>;
+        close: () => void;
+        mcpServerStatus: () => Promise<unknown[]>;
+        stopTask: (taskId: string) => Promise<void>;
+      };
+      gen.interrupt = async () => undefined;
+      gen.setPermissionMode = async () => { /* no-op fake */ };
+      gen.applyFlagSettings = async () => { /* no-op fake */ };
+      gen.close = () => { stop(); };
+      gen.mcpServerStatus = async () => [];
+      gen.stopTask = async (taskId: string) => { stoppedTaskIds.push(taskId); };
+      return gen;
+    };
+
+    const provider = new ClaudeProvider((async () => queryFn) as never);
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+    run.send('go');
+    await tick();
+
+    await run.interrupt();
+
+    assert.deepStrictEqual(stoppedTaskIds, [], 'the set already drained, so there is nothing left to stop');
+    await run.dispose();
+  });
+
   test('an aborted question resolves deny, never null', async () => {
     const fake = fakeLoadQuery();
     const provider = new ClaudeProvider(fake.load as never);

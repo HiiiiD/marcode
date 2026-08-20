@@ -125,7 +125,11 @@ function MemoryRow({
         size="xs"
         // pl-4 lines the filename up with the labels beside their swatches,
         // so the files read as belonging to the Memory row above them.
-        className="h-auto min-w-0 flex-1 justify-start gap-0 px-0 pl-4 font-normal"
+        // `shrink` overrides the Button base's own `shrink-0` — a different
+        // twMerge group from `flex-1`, so the two don't dedupe on their own —
+        // and without it a long path's dir never gives way and the row
+        // spills past the dialog's edge instead of truncating.
+        className="h-auto min-w-0 flex-1 shrink justify-start gap-0 px-0 pl-4 font-normal"
         title={path}
         onClick={() => onOpenFile(path)}
       >
@@ -191,7 +195,11 @@ function Body({
     ? `${formatTokens(b.usedTokens)} of ${formatTokens(b.windowTokens)} tokens`
     : undefined;
   return (
-    <div className="space-y-3">
+    // min-w-0: DialogContent is a grid, and a grid item's default min-width
+    // is content-based (`auto`), not 0. Without this a long memory path's
+    // min-content width wins and the row spills past the dialog's capped
+    // width instead of ever reaching the flex truncation below.
+    <div className="min-w-0 space-y-3">
       <div className="space-y-1.5">
         <StackedBar
           slices={[

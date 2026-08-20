@@ -180,6 +180,21 @@ export function mapEvent(msg: unknown): AgentEvent[] {
         entries: toInvocables((msg as { commands?: unknown }).commands),
       }];
     }
+    if (subtype === 'background_tasks_changed') {
+      // Level signal, not an edge: REPLACE semantics per the SDK's own doc
+      // comment (sdk.d.ts, SDKBackgroundTasksChangedMessage) — a consumer
+      // that only needs "is background work running" swaps its set for this
+      // payload rather than pairing this against task_notification's
+      // start/settle edges, so a missed edge can never wedge a stale
+      // running indicator.
+      const tasks = (msg as { tasks?: { task_id?: unknown }[] }).tasks;
+      return [{
+        kind: 'background-tasks-changed',
+        taskIds: Array.isArray(tasks)
+          ? tasks.map((t) => t.task_id).filter((id): id is string => typeof id === 'string')
+          : [],
+      }];
+    }
     if (subtype !== 'init') { return []; }
     const out: AgentEvent[] = [];
     const sessionId = (msg as { session_id?: string }).session_id;

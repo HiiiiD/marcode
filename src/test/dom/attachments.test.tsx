@@ -252,7 +252,7 @@ suite('Attachment chips', () => {
     const queuedPane = pane();
     queuedPane.summary = {
       ...queuedPane.summary,
-      queued: { text: 'look at this', attachments: [att({ name: 'parked.png' })] },
+      queued: [{ id: 'q1', text: 'look at this', attachments: [att({ name: 'parked.png' })] }],
     };
 
     renderWithStore(<Composer pane={queuedPane} model={NO_EFFORT} models={[]} />);
@@ -266,7 +266,7 @@ suite('Attachment chips', () => {
     const queuedPane = pane();
     queuedPane.summary = {
       ...queuedPane.summary,
-      queued: { text: 'look at this', attachments: [att({ name: 'parked.png' })] },
+      queued: [{ id: 'q1', text: 'look at this', attachments: [att({ name: 'parked.png' })] }],
     };
 
     renderWithStore(<Composer pane={queuedPane} model={NO_EFFORT} models={[]} />);

@@ -266,7 +266,17 @@ export type AgentEvent =
   /** Full replacement list, not a delta. Emitted whenever the provider notices a change. */
   | { kind: 'invocables'; entries: Invocable[] }
   /** Full replacement list, not a delta — same snapshot semantics as `invocables`. */
-  | { kind: 'mcp-servers'; servers: McpServerStatus[] };
+  | { kind: 'mcp-servers'; servers: McpServerStatus[] }
+  /**
+   * The live set of background tasks (a Bash command or a subagent the CLI
+   * detached from the foreground turn — Ctrl+B semantics), REPLACING
+   * whatever this session tracked before. A turn can end normally
+   * (`turn-end`) while this set is still non-empty: the task keeps running
+   * after the turn does, so a session must not read as idle — and therefore
+   * must not lose its Stop control — until this drains to `[]`. Claude-only
+   * today; a provider with no such concept never emits it.
+   */
+  | { kind: 'background-tasks-changed'; taskIds: string[] };
 
 export interface AgentRun {
   /**

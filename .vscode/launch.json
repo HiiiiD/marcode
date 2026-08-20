@@ -15,7 +15,8 @@
 			"request": "launch",
 			"args": [
 				"${workspaceFolder}/.vscode/dev.code-workspace",
-				"--extensionDevelopmentPath=${workspaceFolder}"
+				"--extensionDevelopmentPath=${workspaceFolder}",
+				"--disable-extensions"
 			],
 			"outFiles": [
 				"${workspaceFolder}/dist/**/*.js"
@@ -31,7 +32,8 @@
 			"request": "launch",
 			"args": [
 				"${workspaceFolder}/.vscode/dev.code-workspace",
-				"--extensionDevelopmentPath=${workspaceFolder}"
+				"--extensionDevelopmentPath=${workspaceFolder}",
+				"--disable-extensions"
 			],
 			"outFiles": [
 				"${workspaceFolder}/dist/**/*.js"
