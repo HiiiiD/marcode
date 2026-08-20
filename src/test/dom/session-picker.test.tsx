@@ -110,6 +110,11 @@ suite('SessionPicker', () => {
     hydrateAOpen();
 
     await userEvent.click(screen.getByText(/1 of 2 in split/i));
+    // Same async `Menu.Positioner` commit as the menu-open races fixed
+    // elsewhere in this file (see the "the confirm offers a way out" test):
+    // the roving-focus items this keyboard sequence walks aren't in the DOM
+    // until that pass resolves, so it has to be awaited before the first key.
+    await screen.findByRole('menu');
     // a checkbox, a actions trigger, b checkbox, b actions trigger.
     await userEvent.keyboard('{ArrowDown}{ArrowDown}{ArrowDown}{ArrowDown}');
     assert.strictEqual(
@@ -154,6 +159,9 @@ suite('SessionPicker', () => {
     hydrateAOpen();
 
     await userEvent.click(screen.getByText(/1 of 2 in split/i));
+    // Same async `Menu.Positioner` commit race as above — the roving-focus
+    // targets below aren't mounted until this pass resolves.
+    await screen.findByRole('menu');
     await userEvent.keyboard('{ArrowDown}{ArrowDown}{ArrowDown}{ArrowDown}');
     await userEvent.keyboard('{ArrowRight}');
     await screen.findByRole('menuitem', { name: 'Archive Session b' });
