@@ -2,6 +2,7 @@ import * as assert from 'assert';
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Markdown } from '@/components/markdown';
+import { Toaster } from '@/components/ui/sonner';
 import { posted, renderWithStore, resetHost } from './harness';
 
 suite('Markdown', () => {
@@ -118,6 +119,14 @@ suite('Markdown', () => {
       assert.deepStrictEqual(written, ['Task\tState\na\tdone\nb x\te"f']);
     });
 
+    test('copy shows a confirmation toast', async () => {
+      renderWithStore(<><Toaster /><Markdown>{source}</Markdown></>);
+
+      await userEvent.click(screen.getByRole('button', { name: /copy table/i }));
+
+      assert.ok((await screen.findAllByText(/table copied/i)).length > 0);
+    });
+
     test('download posts the table as CSV to the host', async () => {
       renderWithStore(<Markdown>{source}</Markdown>);
 
@@ -139,5 +148,14 @@ suite('Markdown', () => {
 
     assert.strictEqual(written.length, 1);
     assert.strictEqual(written[0].trim(), 'const a = 1;');
+  });
+
+  test('copying a code block shows a confirmation toast', async () => {
+    Object.assign(navigator, { clipboard: { writeText: async () => {} } });
+    renderWithStore(<><Toaster /><Markdown>{'```ts\nconst a = 1;\n```'}</Markdown></>);
+
+    await userEvent.click(screen.getByRole('button', { name: /copy code/i }));
+
+    assert.ok((await screen.findAllByText(/code copied/i)).length > 0);
   });
 });

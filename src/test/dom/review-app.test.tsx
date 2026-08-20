@@ -119,6 +119,12 @@ suite('review app', () => {
     // The debounced re-read effect must not treat a cap change as a reason
     // to run — only `fleetDiffDirty` and `visible` do. Raising the cap with
     // nothing else dirty must leave exactly the one, immediate request.
+    //
+    // A small `reviewPollIntervalMs` (rather than the 750ms default) keeps
+    // the real-clock margin below wide relative to CI scheduling noise: a
+    // fixed 900ms wait against the 750ms default left only ~150ms of slack,
+    // which a loaded runner can eat — see the "configured review poll
+    // interval" test below for the same pattern.
     renderReview();
     sendFromHost({
       t: 'fleet-diff',
@@ -128,10 +134,14 @@ suite('review app', () => {
         files: [{ path: 'src/a.ts', op: 'modify', insertions: 1, deletions: 0, claimedBy: ['s1'] }],
       }],
     } as never);
+    sendFromHost({
+      t: 'hydrate', sessions: [], layout: { panes: [], orientation: 'horizontal' },
+      reviewPollIntervalMs: 20,
+    } as never);
     resetHost();
 
     await userEvent.click(screen.getByRole('button', { name: 'Show 340 more' }));
-    await new Promise((r) => setTimeout(r, 900));
+    await new Promise((r) => setTimeout(r, 150));
 
     const requests = posted().filter((m) => m.t === 'request-fleet-diff');
     assert.strictEqual(requests.length, 1);

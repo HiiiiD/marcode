@@ -3,6 +3,7 @@
 // this file runs; requiring this file first throws `ReferenceError: window
 // is not defined` at the `window.` assignments below.
 import { act, cleanup } from '@testing-library/react';
+import { toast } from 'sonner';
 import { resetHost } from './harness';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -106,5 +107,13 @@ export const mochaHooks = {
   afterEach(): void {
     cleanup();
     resetHost();
+    // sonner's toast queue is a module-level singleton, independent of any
+    // one `Toaster`'s React lifecycle: `cleanup()` unmounts the component
+    // but leaves a still-open toast queued, so the next test's `Toaster` (a
+    // fresh mount reading the same singleton) renders it immediately —
+    // e.g. every `App` render since app.tsx mounts one. Undismissed, a
+    // toast from one suite bleeds its DOM node into an unrelated suite's
+    // element-count assertions.
+    toast.dismiss();
   },
 };
