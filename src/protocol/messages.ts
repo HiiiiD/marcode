@@ -116,6 +116,17 @@ export type TranscriptPatch =
 export interface PermissionRequest { requestId: string; tool: ToolCall; meta?: PermissionMeta }
 export interface QuestionRequest { requestId: string; questions: QuestionSpec[]; blocking: boolean }
 
+/**
+ * One parked send, identified so a specific row in a multi-message queue can
+ * be cancelled without disturbing the others — see `SessionState.queued`.
+ */
+export interface QueuedMessage {
+  id: string;
+  text: string;
+  refs?: SessionRef[];
+  attachments?: Attachment[];
+}
+
 export interface SessionState {
   id: SessionId;
   providerId: string;
@@ -152,22 +163,25 @@ export interface SessionState {
    */
   lastContext?: ContextBreakdown;
   /**
-   * A message the user sent while the turn was still running, parked until
-   * the session next goes idle — whether the turn ended on its own or the
-   * user interrupted it. At most one: a second send while one is parked
-   * replaces it, so what the composer shows is always what will be sent.
+   * Messages the user sent while a turn was running, FIFO — parked until the
+   * session next goes idle, whether the turn ended on its own or the user
+   * interrupted it. `drainQueued` sends only the head on each idle
+   * transition, so a session with several queued sends its way through them
+   * one turn at a time, in the order they were composed, rather than
+   * dropping every send but the last.
    *
-   * Host state on the wire so the chip survives a reload like everything
-   * else. The editor context captured alongside it stays host-side: it is
-   * only ever handed to the provider, and the webview has no use for it.
+   * Host state on the wire so the chips survive a reload like everything
+   * else. The editor context captured alongside each one stays host-side: it
+   * is only ever handed to the provider, and the webview has no use for it.
    *
    * `attachments` is captured at queue time, same as `refs` — the pending
-   * set at the moment this message was parked, not whatever the live set
-   * holds when it is finally delivered. An attachment added while this is
-   * already queued belongs to the *next* turn, not this one, so it must not
-   * be read off the live set again on delivery.
+   * set at the moment that message was parked, not whatever the live set
+   * holds when it is finally delivered. An attachment added while messages
+   * are already queued belongs to whatever is composed next, not to one
+   * already parked, so it must not be read off the live set again on
+   * delivery.
    */
-  queued?: { text: string; refs?: SessionRef[]; attachments?: Attachment[] };
+  queued?: QueuedMessage[];
   archived: boolean;
   createdAt: number;
   updatedAt: number;
@@ -359,8 +373,11 @@ export type WebviewToHost =
   | { t: 'delete-session'; id: SessionId }
   | { t: 'send'; id: SessionId; text: string; refs?: SessionRef[] }
   | { t: 'interrupt'; id: SessionId }
-  /** Drops `SessionState.queued`. Nothing was appended, so nothing is undone. */
-  | { t: 'cancel-queued'; id: SessionId }
+  /**
+   * Drops one entry from `SessionState.queued` by id. Nothing was appended,
+   * so nothing is undone.
+   */
+  | { t: 'cancel-queued'; id: SessionId; messageId: string }
   | { t: 'set-effort'; id: SessionId; effort: EffortLevel }
   | { t: 'set-permission-mode'; id: SessionId; mode: PermissionMode }
   | { t: 'set-include-context'; id: SessionId; on: boolean }

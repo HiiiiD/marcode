@@ -283,47 +283,57 @@ export function Composer({
           <span>{blockedReason}</span>
         </p>
       )}
-      {queued && (
+      {queued && queued.length > 0 && (
         // Above the box, in flow, for the same reason the unavailable notice
-        // is: it explains something about the *next* send, so it has to read
-        // before the box rather than after it. One line, clamped — the pane
-        // is 300px wide and the message is already the user's own words.
+        // is: it explains something about the *next* send(s), so it has to
+        // read before the box rather than after it. One row per queued
+        // message, each clamped to a line — the pane is 300px wide and every
+        // message is already the user's own words. `divide-y` is what keeps
+        // several rows reading as one queue rather than several disconnected
+        // cards.
         <div
           className={cn(
-            "mb-1.5 rounded-md border border-border",
-            "bg-muted/40 py-1 pl-2 pr-1 text-xs text-muted-foreground",
+            "mb-1.5 divide-y divide-border rounded-md border border-border",
+            "bg-muted/40 text-xs text-muted-foreground",
           )}
         >
-          <div className="flex items-center gap-1.5">
-            <Clock className="size-3.5 shrink-0" aria-hidden />
-            <span className="sr-only">Queued, sent when the turn ends:</span>
-            <span className="min-w-0 flex-1 truncate text-foreground">{queued.text}</span>
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              onClick={() => post({ t: "cancel-queued", id: pane.summary.id })}
-              aria-label="Cancel queued message"
-              title="Cancel queued message"
-            >
-              <X />
-            </Button>
-          </div>
-          {queued.attachments && queued.attachments.length > 0 && (
-            // Read-only, like a sent turn: cancelling takes the whole message
-            // and its files, and there is no wire message for editing one
-            // that is already parked. Shown at all because cancelling
-            // otherwise discards files the row never admitted to holding.
-            <ul
-              aria-label="Queued attachments"
-              className="mt-1 flex min-w-0 flex-wrap gap-1 pb-0.5 pl-5"
-            >
-              {queued.attachments.map((attachment) => (
-                <li key={attachment.id}>
-                  <AttachmentChip attachment={attachment} />
-                </li>
-              ))}
-            </ul>
-          )}
+          {queued.map((item, index) => (
+            <div key={item.id} className="py-1 pl-2 pr-1">
+              <div className="flex items-center gap-1.5">
+                <Clock className="size-3.5 shrink-0" aria-hidden />
+                <span className="sr-only">
+                  {`Queued (${index + 1} of ${queued.length}), sent when the turn ends:`}
+                </span>
+                <span className="min-w-0 flex-1 truncate text-foreground">{item.text}</span>
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  onClick={() => post({ t: "cancel-queued", id: pane.summary.id, messageId: item.id })}
+                  aria-label={`Cancel queued message: ${item.text}`}
+                  title="Cancel queued message"
+                >
+                  <X />
+                </Button>
+              </div>
+              {item.attachments && item.attachments.length > 0 && (
+                // Read-only, like a sent turn: cancelling takes the whole
+                // message and its files, and there is no wire message for
+                // editing one that is already parked. Shown at all because
+                // cancelling otherwise discards files the row never admitted
+                // to holding.
+                <ul
+                  aria-label="Queued attachments"
+                  className="mt-1 flex min-w-0 flex-wrap gap-1 pb-0.5 pl-5"
+                >
+                  {item.attachments.map((attachment) => (
+                    <li key={attachment.id}>
+                      <AttachmentChip attachment={attachment} />
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          ))}
         </div>
       )}
       <InputGroup className={cn(dragging && 'ring-2 ring-ring')}>

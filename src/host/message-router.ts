@@ -233,7 +233,7 @@ export class MessageRouter {
 
       // No `reopen`: only a live session can be holding a parked message.
       case 'cancel-queued':
-        this.manager.get(msg.id)?.cancelQueued();
+        this.manager.get(msg.id)?.cancelQueued(msg.messageId);
         return;
 
       case 'set-effort': {

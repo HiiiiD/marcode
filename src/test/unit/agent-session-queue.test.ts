@@ -74,7 +74,7 @@ suite('AgentSession queued message', () => {
 
     assert.strictEqual(provider.sent.length, 1);
     assert.strictEqual(provider.sent[0].text, 'first');
-    assert.strictEqual(session.state.queued?.text, 'second');
+    assert.strictEqual(session.state.queued?.[0]?.text, 'second');
     const snap = await session.snapshot();
     assert.strictEqual(snap.items.filter((i) => i.role === 'user').length, 1);
   });
@@ -123,11 +123,11 @@ suite('AgentSession queued message', () => {
     await settle();
 
     assert.strictEqual(session.state.status, 'awaiting-approval');
-    assert.strictEqual(session.state.queued?.text, 'second');
+    assert.strictEqual(session.state.queued?.[0]?.text, 'second');
     assert.strictEqual(provider.sent.length, 1);
   });
 
-  test('a second send while one is queued replaces it', async () => {
+  test('several sends while busy queue in order, FIFO, one delivered per turn', async () => {
     const { provider, session } = makeSession();
     session.send('first');
     await settle();
@@ -135,22 +135,54 @@ suite('AgentSession queued message', () => {
     session.send('third');
     await settle();
 
-    assert.strictEqual(session.state.queued?.text, 'third');
+    assert.deepStrictEqual(session.state.queued?.map((q) => q.text), ['second', 'third']);
+
+    provider.runs[0].emit({ kind: 'turn-end', reason: 'done' });
+    await settle();
+
+    // Only the head of the queue is spent on this idle transition — the rest
+    // waits for the turn `second` just started to end in its turn.
+    assert.deepStrictEqual(provider.sent.map((s) => s.text), ['first', 'second']);
+    assert.deepStrictEqual(session.state.queued?.map((q) => q.text), ['third']);
+
+    provider.runs[0].emit({ kind: 'turn-end', reason: 'done' });
+    await settle();
+
+    assert.deepStrictEqual(provider.sent.map((s) => s.text), ['first', 'second', 'third']);
+    assert.strictEqual(session.state.queued, undefined);
+  });
+
+  test('cancelQueued drops one queued message by id, leaving the rest', async () => {
+    const { provider, session } = makeSession();
+    session.send('first');
+    await settle();
+    session.send('second');
+    session.send('third');
+    await settle();
+
+    const secondId = session.state.queued?.[0]?.id;
+    assert.ok(secondId);
+    session.cancelQueued(secondId!);
+    assert.deepStrictEqual(session.state.queued?.map((q) => q.text), ['third']);
 
     provider.runs[0].emit({ kind: 'turn-end', reason: 'done' });
     await settle();
 
     assert.deepStrictEqual(provider.sent.map((s) => s.text), ['first', 'third']);
+    // 'third' was just delivered as its own turn, so the session is busy
+    // again rather than idle.
+    assert.strictEqual(session.state.status, 'running');
   });
 
-  test('cancelQueued drops the queued message so the turn ends without it', async () => {
+  test('cancelQueued drops the last queued message so the turn ends without it', async () => {
     const { provider, session } = makeSession();
     session.send('first');
     await settle();
     session.send('second');
     await settle();
 
-    session.cancelQueued();
+    const secondId = session.state.queued?.[0]?.id;
+    session.cancelQueued(secondId!);
     assert.strictEqual(session.state.queued, undefined);
 
     provider.runs[0].emit({ kind: 'turn-end', reason: 'done' });
@@ -158,6 +190,17 @@ suite('AgentSession queued message', () => {
 
     assert.deepStrictEqual(provider.sent.map((s) => s.text), ['first']);
     assert.strictEqual(session.state.status, 'idle');
+  });
+
+  test('cancelQueued for an id already sent or unknown is a no-op', async () => {
+    const { session } = makeSession();
+    session.send('first');
+    await settle();
+    session.send('second');
+    await settle();
+
+    session.cancelQueued('nope');
+    assert.strictEqual(session.state.queued?.[0]?.text, 'second');
   });
 
   test('the editor context captured at queue time is the one sent', async () => {
@@ -175,6 +218,26 @@ suite('AgentSession queued message', () => {
     });
   });
 
+  test('each queued message keeps its own editor context, not the last one typed', async () => {
+    const { provider, session } = makeSession();
+    session.send('first');
+    await settle();
+    session.send('second', { path: 'a.ts', languageId: 'typescript' });
+    session.send('third', { path: 'b.ts', languageId: 'typescript' });
+    await settle();
+
+    provider.runs[0].emit({ kind: 'turn-end', reason: 'done' });
+    await settle();
+    provider.runs[0].emit({ kind: 'turn-end', reason: 'done' });
+    await settle();
+
+    assert.deepStrictEqual(provider.sent.map((s) => s.context), [
+      undefined,
+      { path: 'a.ts', languageId: 'typescript' },
+      { path: 'b.ts', languageId: 'typescript' },
+    ]);
+  });
+
   test('a queued message is not lost when the turn ends in an error', async () => {
     const { provider, session } = makeSession();
     session.send('first');
@@ -186,7 +249,33 @@ suite('AgentSession queued message', () => {
     await settle();
 
     assert.strictEqual(session.state.status, 'error');
-    assert.strictEqual(session.state.queued?.text, 'second');
+    assert.strictEqual(session.state.queued?.[0]?.text, 'second');
     assert.strictEqual(provider.sent.length, 1);
+  });
+
+  test('a queued message drains once a background task outlives turn-end', async () => {
+    const { provider, session } = makeSession();
+    session.send('first');
+    await settle();
+
+    provider.runs[0].emit({ kind: 'background-tasks-changed', taskIds: ['bg-1'] });
+    await settle();
+    provider.runs[0].emit({ kind: 'turn-end', reason: 'done' });
+    await settle();
+
+    // The foreground turn ended, but the background task keeps the session
+    // out of idle, so a fresh send parks rather than forwards.
+    session.send('second');
+    await settle();
+    assert.strictEqual(session.state.status, 'running');
+    assert.strictEqual(provider.sent.length, 1);
+    assert.strictEqual(session.state.queued?.[0]?.text, 'second');
+
+    provider.runs[0].emit({ kind: 'background-tasks-changed', taskIds: [] });
+    await settle();
+
+    assert.deepStrictEqual(provider.sent.map((s) => s.text), ['first', 'second']);
+    assert.strictEqual(session.state.queued, undefined);
+    assert.strictEqual(session.state.status, 'running');
   });
 });
