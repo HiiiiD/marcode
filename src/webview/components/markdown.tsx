@@ -1,6 +1,7 @@
 import { useMemo, type ReactNode } from 'react';
 import type { Element } from 'hast';
 import { CopyIcon, DownloadIcon } from 'lucide-react';
+import { toast } from 'sonner';
 // @ts-expect-error react-markdown ships ESM-only; tsc's per-file CJS/ESM
 // interop check (tsconfig "module": "Node16") flags this as unimportable via
 // require(), but esbuild bundles it directly and this is a type-check-only
@@ -125,7 +126,7 @@ function CodeBlock({ node, children }: { node?: Element; children: ReactNode }) 
           variant="ghost"
           size="icon-xs"
           aria-label="Copy code"
-          onClick={() => { void navigator.clipboard.writeText(hastText(node)); }}
+          onClick={() => { void navigator.clipboard.writeText(hastText(node)).then(() => toast('Code copied')); }}
           className="absolute top-1 right-1 text-muted-foreground"
         >
           <CopyIcon />
@@ -154,7 +155,7 @@ function MarkdownTable({ node, children }: { node?: Element; children: ReactNode
           variant="ghost"
           size="icon-xs"
           aria-label="Copy table"
-          onClick={() => { void navigator.clipboard.writeText(toTsv(rows)); }}
+          onClick={() => { void navigator.clipboard.writeText(toTsv(rows)).then(() => toast('Table copied')); }}
           className="text-muted-foreground"
         >
           <CopyIcon />
