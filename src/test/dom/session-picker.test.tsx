@@ -1,5 +1,5 @@
 import * as assert from 'assert';
-import { screen, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { catalog, layoutOf, snapshot, summary } from '../fixtures/protocol';
 import { posted, renderApp, sendFromHost } from './harness';
@@ -92,10 +92,17 @@ suite('SessionPicker', () => {
     await userEvent.click(await screen.findByRole('menuitem', { name: 'Keep it' }));
 
     assert.ok(!posted().some((m) => m.t === 'delete-session'));
-    assert.strictEqual(
-      screen.queryByRole('menuitem', { name: /Delete Session/ }), null,
-      'activating "Keep it" must close the submenu, not just decline to delete',
-    );
+    // Same async commit as the `findBy*` calls above, but on the way out:
+    // `Menu.Positioner` unmounts its `Popup` after an exit pass too, so the
+    // submenu item can still be in the DOM for the tick right after the
+    // click. A sync `queryByRole` here raced that unmount; `waitFor` polls
+    // until it actually clears.
+    await waitFor(() => {
+      assert.strictEqual(
+        screen.queryByRole('menuitem', { name: /Delete Session/ }), null,
+        'activating "Keep it" must close the submenu, not just decline to delete',
+      );
+    });
   });
 
   test('opening the actions submenu by keyboard lands on the safe item, not delete', async () => {
