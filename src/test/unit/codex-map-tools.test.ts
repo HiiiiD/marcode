@@ -101,6 +101,39 @@ suite('codex toToolCall', () => {
     const item = { type: 'agentMessage', id: 'i7' } as unknown as ThreadItem;
     assert.strictEqual(toToolCall(item), undefined);
   });
+
+  test('subAgentActivity started is a subagent spawn', () => {
+    const item = {
+      type: 'subAgentActivity', id: 'i8', kind: 'started',
+      agentThreadId: 'th_child', agentPath: 'reviewer',
+    } as unknown as ThreadItem;
+    assert.deepStrictEqual(toToolCall(item), {
+      kind: 'subagent', label: 'Subagent', action: 'spawn',
+      agent: 'reviewer', target: 'th_child',
+    });
+  });
+
+  test('subAgentActivity interacted is a subagent message', () => {
+    const item = {
+      type: 'subAgentActivity', id: 'i9', kind: 'interacted',
+      agentThreadId: 'th_child', agentPath: 'reviewer',
+    } as unknown as ThreadItem;
+    assert.deepStrictEqual(toToolCall(item), {
+      kind: 'subagent', label: 'Subagent', action: 'message',
+      agent: 'reviewer', target: 'th_child',
+    });
+  });
+
+  test('subAgentActivity interrupted is a subagent collect', () => {
+    const item = {
+      type: 'subAgentActivity', id: 'i10', kind: 'interrupted',
+      agentThreadId: 'th_child', agentPath: 'reviewer',
+    } as unknown as ThreadItem;
+    assert.deepStrictEqual(toToolCall(item), {
+      kind: 'subagent', label: 'Subagent', action: 'collect',
+      agent: 'reviewer', target: 'th_child',
+    });
+  });
 });
 
 suite('codex toToolOutput', () => {
@@ -145,6 +178,14 @@ suite('codex toToolOutput', () => {
       result: { count: 2 },
     } as unknown as ThreadItem;
     assert.deepStrictEqual(toToolOutput(item), { kind: 'json', value: { count: 2 } });
+  });
+
+  test('a subAgentActivity has no output — the card itself is the signal', () => {
+    const item = {
+      type: 'subAgentActivity', id: 'i7', kind: 'started',
+      agentThreadId: 'th_child', agentPath: 'reviewer',
+    } as unknown as ThreadItem;
+    assert.deepStrictEqual(toToolOutput(item), { kind: 'none' });
   });
 });
 

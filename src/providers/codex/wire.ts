@@ -145,6 +145,14 @@ export type ThreadItem =
   | { type: 'webSearch'; id: string; query?: string; results?: unknown[] }
   | { type: 'dynamicToolCall'; id: string; tool?: string; status?: string }
   | { type: 'plan'; id: string; text: string }
+  // A subagent Codex delegated a turn to — `agentThreadId` names its own
+  // thread (its tool calls arrive there, not nested here); `kind` is a
+  // lifecycle marker, not a status: `'started'` opens the card,
+  // `'interacted'` is one further exchange, `'interrupted'` is terminal.
+  // Verified against the generated `v2/ThreadItem.ts`.
+  | { type: 'subAgentActivity'; id: string;
+      kind: 'started' | 'interacted' | 'interrupted';
+      agentThreadId: string; agentPath: string }
   // Every other kind is deliberately unmodelled: parsing is tolerant, and an
   // unknown item is ignored rather than thrown.
   | { type: string; id: string };
