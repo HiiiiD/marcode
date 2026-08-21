@@ -12,6 +12,7 @@ import { PostBus } from './host/post-bus';
 import type { AttachmentHost } from './host/message-router';
 import { PROFILE_GUARD_SNIPPET } from './host/profile-noise';
 import { ReviewPanel, REVIEW_VIEW_TYPE } from './host/review-panel';
+import { SelfControlMcpServer } from './host/self-control-mcp-server';
 import { SessionManager } from './host/session-manager';
 import { TranscriptStore } from './host/transcript-store';
 import { createVscodeEditorSource } from './host/vscode-editor-source';
@@ -24,7 +25,7 @@ import type { DiffBase } from './protocol/messages';
 import {
   DEFAULT_PROVIDER_IDS, ENABLED_PROVIDERS_SETTING, KNOWN_PROVIDER_IDS,
 } from './shared/settings';
-import type { AgentProvider } from './providers/types';
+import type { AgentProvider, SelfControlMcpConfig } from './providers/types';
 
 /**
  * `marcode.codex.path` defaults to `""` (see package.json) so the
@@ -176,20 +177,52 @@ export async function activate(context: vscode.ExtensionContext) {
   // asked for this backend" is not a diagnosis of it. Emptying the setting is
   // therefore how the no-provider empty state is reached on purpose.
   const enabled = enabledProviderIds();
+  // Empty at construction — `manager` needs this Map to build, but the
+  // self-control server (constructed just below, from `manager`) needs to
+  // resolve its config before providers can be built with it. `.set()` below
+  // populates the same Map by reference: `SessionManager` reads
+  // `this.providers` live on every call (`catalog()`, `create()`), never
+  // copies it at construction, so populating it after is safe.
   const providers = new Map<string, AgentProvider>();
-  if (enabled.has('claude')) { providers.set('claude', new ClaudeProvider()); }
+
+  let provider: PanelViewProvider;
+  const bus = new PostBus();
+  const manager = new SessionManager(
+    store, providers, (msg) => bus.post(msg), undefined, warnAboutProfile, attachments,
+    reviewFileCap(), reviewBaseRefs(),
+  );
+
+  // Constructed against `manager` via closures — `SessionManagerLike`
+  // defers to `manager` only when a tool call actually arrives, well after
+  // `activate()` returns, the same "assigned below, before this ever runs"
+  // pattern `agentsMdNudge`'s `post` callback uses further down.
+  const selfControlServer = new SelfControlMcpServer({
+    catalog: () => manager.catalog(),
+    create: (providerId, cwd, model, effort, mode) => manager.create(providerId, cwd, model, effort, mode),
+  });
+  let selfControlConfig: SelfControlMcpConfig | undefined;
+  try {
+    selfControlConfig = await selfControlServer.start();
+  } catch (err) {
+    // Errors are state, never exceptions, and sessions from this launch
+    // simply have no self-control tool — the same posture a failed model
+    // probe takes.
+    console.warn('[mar-code] self-control MCP server failed to start; spawn_session will be unavailable', err);
+  }
+
+  if (enabled.has('claude')) { providers.set('claude', new ClaudeProvider(undefined, selfControlConfig)); }
   // Constructed only when enabled — it owns a CLI subprocess, and building
   // one nobody asked for would spawn a backend to answer a question the panel
   // never puts to it. `undefined` is why the path listener below is guarded.
   const codexProvider = enabled.has('codex')
-    ? new CodexProvider({ binPath: codexBinPath() })
+    ? new CodexProvider({ binPath: codexBinPath(), selfControlMcp: selfControlConfig })
     : undefined;
   if (codexProvider) { providers.set('codex', codexProvider); }
   // Constructed only when enabled — it owns a CLI subprocess, and building
   // one nobody asked for would spawn a backend to answer a question the panel
   // never puts to it. `undefined` is why the path listener below is guarded.
   const openCodeProvider = enabled.has('opencode')
-    ? new OpenCodeProvider({ binPath: openCodeBinPath() })
+    ? new OpenCodeProvider({ binPath: openCodeBinPath(), selfControlMcp: selfControlConfig })
     : undefined;
   if (openCodeProvider) { providers.set('opencode', openCodeProvider); }
   if (enabled.has('fake')) { providers.set('fake', new FakeProvider(
@@ -222,13 +255,6 @@ export async function activate(context: vscode.ExtensionContext) {
       ],
     },
   )); }
-
-  let provider: PanelViewProvider;
-  const bus = new PostBus();
-  const manager = new SessionManager(
-    store, providers, (msg) => bus.post(msg), undefined, warnAboutProfile, attachments,
-    reviewFileCap(), reviewBaseRefs(),
-  );
 
   // Never `process.cwd()` — for an extension host that is VS Code's own
   // install directory, and a session inherits it silently. See
@@ -335,6 +361,7 @@ export async function activate(context: vscode.ExtensionContext) {
     vscode.window.registerWebviewViewProvider(PanelViewProvider.viewType, provider),
     registerDiffContentProvider(),
     { dispose: () => { void manager.dispose(); } },
+    { dispose: () => { void selfControlServer.dispose(); } },
     { dispose: () => { contextSub.dispose(); tracker.dispose(); editorSource.dispose(); } },
     fileIndex,
     vscode.commands.registerCommand('marcode.review.open', () => { review.open(); }),
