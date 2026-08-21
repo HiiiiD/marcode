@@ -290,6 +290,33 @@ suite('mapNotification', () => {
     assert.deepStrictEqual(mapNotification('thread/realtime/sdp', { anything: true }), []);
   });
 
+  test('a subagent spawning surfaces as a tool-start, not silently dropped', () => {
+    const events = mapNotification('item/started', {
+      item: {
+        type: 'subAgentActivity', id: 'sa_1', kind: 'started',
+        agentThreadId: 'th_child', agentPath: 'reviewer',
+      },
+    });
+    assert.deepStrictEqual(events, [{
+      kind: 'tool-start', id: 'sa_1',
+      tool: { kind: 'subagent', label: 'Subagent', action: 'spawn', agent: 'reviewer', target: 'th_child' },
+    }]);
+  });
+
+  test('a subagent interruption completes the card', () => {
+    const events = mapNotification('item/completed', {
+      item: {
+        type: 'subAgentActivity', id: 'sa_2', kind: 'interrupted',
+        agentThreadId: 'th_child', agentPath: 'reviewer',
+      },
+    });
+    assert.deepStrictEqual(events, [{
+      kind: 'tool-end', id: 'sa_2', ok: true,
+      tool: { kind: 'subagent', label: 'Subagent', action: 'collect', agent: 'reviewer', target: 'th_child' },
+      output: { kind: 'none' },
+    }]);
+  });
+
   test('an unknown item kind is ignored, not thrown', () => {
     assert.deepStrictEqual(
       mapNotification('item/started', { item: { type: 'imageGeneration', id: 'it_9' } }),

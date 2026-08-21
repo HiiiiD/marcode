@@ -82,6 +82,20 @@ function errorMessage(err: unknown): string {
 }
 
 /**
+ * The thread id a notification names, or `undefined` for a process-global
+ * one (e.g. `account/rateLimits/updated`) that carries no thread at all.
+ *
+ * `thread/started` needs its own reading because it names its thread under
+ * `thread.id` rather than `threadId` — the generic lookup finds nothing
+ * there, which used to let a stranger's start reach every run and overwrite
+ * its resume token with a thread it had never talked to.
+ */
+function threadIdOf(method: string, params: unknown): string | undefined {
+  const p = (params ?? {}) as { threadId?: string; thread?: { id?: string } };
+  return method === 'thread/started' ? p.thread?.id : p.threadId;
+}
+
+/**
  * One Codex thread, presented as an `AgentRun`.
  *
  * Thread creation is lazy — deferred to the first `send()` — for the same
@@ -140,6 +154,23 @@ export class CodexRun implements AgentRun {
   private readonly pendingQuestions = new Map<string, RequestId>();
 
   /**
+   * Every subagent thread this run has rejoined, keyed by the child's own
+   * `agentThreadId` -> the id of the `subAgentActivity` tool card its
+   * activity nests under (the same id `AgentSession` uses as `parentId` to
+   * park a child transcript item under its parent — see `agent-session.ts`).
+   *
+   * Codex reports a spawned subagent as a genuinely separate thread — its
+   * commands and file edits arrive as notifications addressed to *that*
+   * thread's own id, not this run's `_threadId` — so nesting them the way
+   * Claude's `Task` calls nest (which share one event stream with the caller)
+   * needs two things this map exists to hold together: `thread/resume`
+   * against the child's id to start receiving its notifications at all (see
+   * `rejoinSubagentThread`), and this id to stamp every one of them with the
+   * `parentId` that puts them under the right card.
+   */
+  private readonly childThreads = new Map<string, string>();
+
+  /**
    * Every MCP server this thread has heard a startup status for, by name.
    *
    * `mcpServer/startupStatus/updated` reports one server at a time, while the
@@ -181,12 +212,31 @@ export class CodexRun implements AgentRun {
     this.effort = opts.effort;
 
     server.onNotification((method, params) => {
+      const named = threadIdOf(method, params);
+      const fromChild = named !== undefined && named !== this._threadId
+        ? this.childThreads.get(named) : undefined;
+
       // A notification that names no thread at all (e.g.
       // `account/rateLimits/updated`) is process-global, not thread-scoped —
       // it must pass through regardless of whether this run has started.
-      // Anything naming a different thread is dropped. Mirrors the identical
-      // guard on `onServerRequest` below.
-      if (!this.namesThisThread(method, params)) { return; }
+      // Anything naming a thread that is neither this one nor a rejoined
+      // subagent's is dropped. Mirrors the identical guard on
+      // `onServerRequest` below.
+      if (named !== undefined && named !== this._threadId && fromChild === undefined) { return; }
+
+      if (fromChild !== undefined) {
+        // A subagent's own thread — only its tool lifecycle nests under the
+        // spawn card; its `turn/completed`, usage, and text deltas are that
+        // thread's business, not this run's turn. `mapNotification` still
+        // does the item -> `ToolCall` translation; only `parentId` and the
+        // event-kind filter are specific to a child's traffic.
+        for (const event of mapNotification(method, params)) {
+          if (event.kind === 'tool-start' || event.kind === 'tool-end') {
+            this.events.push({ ...event, parentId: fromChild });
+          }
+        }
+        return;
+      }
 
       if (method === 'thread/tokenUsage/updated') {
         this.captureContextUsage((params as { tokenUsage?: ThreadTokenUsage } | undefined)?.tokenUsage);
@@ -198,19 +248,32 @@ export class CodexRun implements AgentRun {
         void this.refreshInvocables();
       }
       for (const event of mapNotification(method, params)) {
+        if (event.kind === 'tool-start' && event.tool.kind === 'subagent' && event.tool.action === 'spawn') {
+          const agentThreadId = event.tool.target;
+          if (agentThreadId) {
+            this.childThreads.set(agentThreadId, event.id);
+            void this.rejoinSubagentThread(agentThreadId);
+          }
+        }
+        if (event.kind === 'tool-end' && event.tool?.kind === 'subagent' && event.tool.action === 'collect') {
+          const agentThreadId = event.tool.target;
+          if (agentThreadId) { void this.leaveSubagentThread(agentThreadId); }
+        }
         this.events.push(event.kind === 'mcp-servers' ? this.mergeMcpServers(event.servers) : event);
       }
     });
 
     server.onServerRequest((method, id, params) => {
       const p = (params ?? {}) as { threadId?: string };
-      if (p.threadId !== undefined && p.threadId !== this._threadId) { return; }
+      const fromChild = p.threadId !== undefined && p.threadId !== this._threadId
+        ? this.childThreads.get(p.threadId) : undefined;
+      if (p.threadId !== undefined && p.threadId !== this._threadId && fromChild === undefined) { return; }
 
       if (method === 'item/tool/requestUserInput') {
         const event = questionEventOf(id, params);
         if (event) {
           this.pendingQuestions.set(event.id, id);
-          this.events.push(event);
+          this.events.push(fromChild ? { ...event, parentId: fromChild } : event);
           return;
         }
         // Params we cannot read. The request is still blocking, so it must be
@@ -223,10 +286,12 @@ export class CodexRun implements AgentRun {
         this.events.push({
           kind: 'tool-start', id: toolId,
           tool: { kind: 'other', label: method, raw: params },
+          ...(fromChild ? { parentId: fromChild } : {}),
         });
         this.events.push({
           kind: 'tool-end', id: toolId, ok: false,
           output: { kind: 'text', text: 'The panel could not read this request.' },
+          ...(fromChild ? { parentId: fromChild } : {}),
         });
         this.server.respond(id, { answers: {} } satisfies ToolRequestUserInputResponse);
         return;
@@ -246,10 +311,12 @@ export class CodexRun implements AgentRun {
         this.events.push({
           kind: 'tool-start', id: toolId,
           tool: { kind: 'other', label: method, raw: params },
+          ...(fromChild ? { parentId: fromChild } : {}),
         });
         this.events.push({
           kind: 'tool-end', id: toolId, ok: false,
           output: { kind: 'text', text: 'The panel cannot answer this request yet.' },
+          ...(fromChild ? { parentId: fromChild } : {}),
         });
         this.server.respond(id, refusal);
         return;
@@ -258,7 +325,7 @@ export class CodexRun implements AgentRun {
       const approval = approvalEventOf(method, id, params);
       if (approval && approval.kind === 'permission') {
         this.pendingApprovals.set(approval.id, { rpcId: id, method });
-        this.events.push(approval);
+        this.events.push(fromChild ? { ...approval, parentId: fromChild } : approval);
       }
     });
 
@@ -275,22 +342,40 @@ export class CodexRun implements AgentRun {
   }
 
   /**
-   * Whether an incoming notification belongs to this run.
-   *
-   * The provider fans every frame out to every live run (see
-   * codex-provider.ts), so this is the only thing keeping one Codex session's
-   * traffic out of another's transcript. `thread/started` needs its own
-   * reading because it names its thread under `thread.id` rather than
-   * `threadId` — the generic lookup finds nothing there, which used to let a
-   * stranger's start reach every run and overwrite its resume token with a
-   * thread it had never talked to. It is no longer how this run learns its
-   * own id either: the `thread/start`/`thread/resume` response is (see
-   * `startThread`), which is what makes a guard this strict possible.
+   * Rejoins a subagent's own thread so its notifications start arriving on
+   * this same connection — Codex does not push a thread's traffic to a
+   * client that never subscribed to it. `ThreadResumeParams.threadId` is the
+   * only field sent: every override it carries (model, cwd, sandbox, …) is
+   * optional and documented as retargeting the thread, which a subagent we
+   * merely want to *watch* must not do. Per its own doc comment, resuming a
+   * thread that is already running "rejoins" it rather than replaying it.
+   * Best-effort: a failed rejoin leaves the spawn card visible but flat,
+   * which is what this run already showed before this feature existed.
    */
-  private namesThisThread(method: string, params: unknown): boolean {
-    const p = (params ?? {}) as { threadId?: string; thread?: { id?: string } };
-    const named = method === 'thread/started' ? p.thread?.id : p.threadId;
-    return named === undefined || named === this._threadId;
+  private async rejoinSubagentThread(agentThreadId: string): Promise<void> {
+    if (this.dead) { return; }
+    try {
+      await this.server.request('thread/resume', { threadId: agentThreadId });
+    } catch {
+      // Best-effort, as above.
+    }
+  }
+
+  /**
+   * Stops tracking a subagent thread and releases the rejoin from
+   * `rejoinSubagentThread` — the same cleanup `dispose()` does for this
+   * run's own thread, mirrored for a child's. Called once its
+   * `subAgentActivity` reports `'interrupted'`, and again (for every thread
+   * still tracked) from `dispose()`.
+   */
+  private async leaveSubagentThread(agentThreadId: string): Promise<void> {
+    this.childThreads.delete(agentThreadId);
+    if (this.dead) { return; }
+    try {
+      await this.server.request('thread/unsubscribe', { threadId: agentThreadId });
+    } catch {
+      // Best-effort, as above.
+    }
   }
 
   /**
@@ -614,6 +699,18 @@ export class CodexRun implements AgentRun {
     // response shape.
     this.cancelParkedApprovals();
     this.cancelParkedQuestions();
+    // Every rejoined subagent thread first, unsubscribed directly rather
+    // than through `leaveSubagentThread` — that helper's own `dead` guard
+    // includes `disposed`, already true above, and would swallow every one
+    // of these before it ever left.
+    for (const agentThreadId of [...this.childThreads.keys()]) {
+      this.childThreads.delete(agentThreadId);
+      try {
+        await this.server.request('thread/unsubscribe', { threadId: agentThreadId });
+      } catch {
+        // Best-effort: the connection may already be gone.
+      }
+    }
     if (this._threadId) {
       try {
         await this.server.request('thread/unsubscribe', { threadId: this._threadId });

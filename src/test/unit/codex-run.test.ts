@@ -591,6 +591,126 @@ suite('CodexRun', () => {
       [{ name: 'plan', description: 'Plan', origin: 'project' }]);
   });
 
+  // Codex reports a spawned subagent as a genuinely separate thread: its own
+  // tool activity arrives addressed to `agentThreadId`, not this run's own
+  // `threadId`, and app-server never pushes a thread's notifications to a
+  // client that has not subscribed to it. `thread/resume` with only the
+  // child's id is the documented way to "rejoin" an already-running thread
+  // without retargeting any of its settings.
+  test('a subagent spawning rejoins its own thread to watch its activity', async () => {
+    const { server, send, sent } = stub();
+    await started(server, 'th_1');
+    send({
+      method: 'item/started',
+      params: {
+        threadId: 'th_1',
+        item: {
+          type: 'subAgentActivity', id: 'sa_1', kind: 'started',
+          agentThreadId: 'th_child', agentPath: 'reviewer',
+        },
+      },
+    });
+    await tick();
+    const resume = sent().find((f) => f.method === 'thread/resume' && f.params.threadId === 'th_child');
+    assert.ok(resume, 'expected a thread/resume rejoin for the child thread');
+  });
+
+  test('a rejoined subagent thread nests its tool activity under the spawn card', async () => {
+    const { server, send } = stub();
+    const run = await started(server, 'th_1');
+    const events = collect(run);
+    send({
+      method: 'item/started',
+      params: {
+        threadId: 'th_1',
+        item: {
+          type: 'subAgentActivity', id: 'sa_1', kind: 'started',
+          agentThreadId: 'th_child', agentPath: 'reviewer',
+        },
+      },
+    });
+    await tick();
+    send({
+      method: 'item/started',
+      params: {
+        threadId: 'th_child',
+        item: { type: 'commandExecution', id: 'exec_1', command: 'ls', cwd: '/repo' },
+      },
+    });
+    await tick();
+    const nested = events().find((e) => e.kind === 'tool-start' && e.id === 'exec_1');
+    assert.strictEqual(nested?.kind === 'tool-start' ? nested.parentId : undefined, 'sa_1');
+  });
+
+  test('a subagent thread\'s own turn/completed does not end this run\'s turn', async () => {
+    const { server, send } = stub();
+    const run = await started(server, 'th_1');
+    const events = collect(run);
+    send({
+      method: 'item/started',
+      params: {
+        threadId: 'th_1',
+        item: {
+          type: 'subAgentActivity', id: 'sa_1', kind: 'started',
+          agentThreadId: 'th_child', agentPath: 'reviewer',
+        },
+      },
+    });
+    await tick();
+    send({ method: 'turn/completed', params: { threadId: 'th_child', turn: {} } });
+    await tick();
+    assert.strictEqual(events().some((e) => e.kind === 'turn-end'), false);
+  });
+
+  test('a subagent going interrupted unsubscribes its own thread', async () => {
+    const { server, send, sent } = stub();
+    await started(server, 'th_1');
+    send({
+      method: 'item/started',
+      params: {
+        threadId: 'th_1',
+        item: {
+          type: 'subAgentActivity', id: 'sa_1', kind: 'started',
+          agentThreadId: 'th_child', agentPath: 'reviewer',
+        },
+      },
+    });
+    await tick();
+    send({
+      method: 'item/completed',
+      params: {
+        threadId: 'th_1',
+        item: {
+          type: 'subAgentActivity', id: 'sa_1', kind: 'interrupted',
+          agentThreadId: 'th_child', agentPath: 'reviewer',
+        },
+      },
+    });
+    await tick();
+    const unsub = sent().find((f) => f.method === 'thread/unsubscribe' && f.params.threadId === 'th_child');
+    assert.ok(unsub, 'expected the child thread to be unsubscribed once interrupted');
+  });
+
+  test('disposing unsubscribes every still-rejoined subagent thread', async () => {
+    const { server, send, sent } = stub();
+    const run = await started(server, 'th_1');
+    send({
+      method: 'item/started',
+      params: {
+        threadId: 'th_1',
+        item: {
+          type: 'subAgentActivity', id: 'sa_1', kind: 'started',
+          agentThreadId: 'th_child', agentPath: 'reviewer',
+        },
+      },
+    });
+    await tick();
+    void run.dispose();
+    await tick();
+    const unsub = sent().find((f) => f.method === 'thread/unsubscribe' && f.params.threadId === 'th_child');
+    assert.ok(unsub, 'expected dispose() to unsubscribe the still-tracked child thread');
+  });
+
   test('the connection closing ends the turn with an error', async () => {
     const { server } = stub();
     const run = await started(server, 'th_1');

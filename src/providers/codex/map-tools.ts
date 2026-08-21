@@ -134,11 +134,32 @@ export function toToolCall(item: ThreadItem): ToolCall | undefined {
       return { kind: 'other', label: str(d.tool) ?? 'Tool', raw: item };
     }
 
+    case 'subAgentActivity': {
+      const s = item as Extract<ThreadItem, { type: 'subAgentActivity' }>;
+      return {
+        kind: 'subagent', label: 'Subagent', action: subagentActionOf(s.kind),
+        agent: s.agentPath, target: s.agentThreadId,
+      };
+    }
+
     // Every other item kind is deliberately not a tool. Parsing stays
     // tolerant: an unknown item is ignored rather than rendered.
     default:
       return undefined;
   }
+}
+
+/**
+ * `SubAgentActivityKind` has no Claude-side counterpart to borrow spellings
+ * from, so this picks the canonical `action` that reads closest to what each
+ * one means: `'started'` opens the card the same way `Task` does, an
+ * `'interacted'` exchange is one message in, and `'interrupted'` is the
+ * terminal marker — closest in spirit to `TaskOutput` collecting a result.
+ */
+function subagentActionOf(kind: 'started' | 'interacted' | 'interrupted'): 'spawn' | 'message' | 'collect' {
+  if (kind === 'started') { return 'spawn'; }
+  if (kind === 'interacted') { return 'message'; }
+  return 'collect';
 }
 
 export function toToolOutput(item: ThreadItem): ToolOutput {
