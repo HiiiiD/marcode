@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import type { AgentsMdNudgeController } from './agents-md-nudge';
 import type { AttachmentStore } from './attachment-store';
 import {
   MessageRouter, type AttachmentHost, type EditorContextHost, type FileSearch,
@@ -20,6 +21,7 @@ export class PanelViewProvider implements vscode.WebviewViewProvider {
     private readonly picker: AttachmentHost | undefined,
     private readonly onOpenReview: () => void,
     private readonly fileSearch?: FileSearch,
+    private readonly agentsMdNudge?: AgentsMdNudgeController,
   ) {}
 
   post(msg: HostToWebview): void {
@@ -85,11 +87,20 @@ export class PanelViewProvider implements vscode.WebviewViewProvider {
           this.onOpenReview();
           return;
         }
+        // Same reason as open-file: this needs workspaceState/fs, which
+        // MessageRouter must not import.
+        if (raw?.t === 'agents-md-nudge-action') {
+          await this.agentsMdNudge?.handleAction(raw.action, raw.dirs);
+          return;
+        }
         await router.handle(raw);
       } catch (err) {
         console.error('[mar-code] message handling failed', err);
       }
     });
+
+    // One scan per activate/reload, not a live watcher — see agents-md-nudge.ts.
+    void this.agentsMdNudge?.scan();
 
     view.onDidDispose(() => { this.view = undefined; });
   }

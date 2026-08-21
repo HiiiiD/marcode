@@ -535,7 +535,15 @@ export type WebviewToHost =
    * disk. Not session-addressed — the table exists in rendered transcript
    * text, not session state, the same reason `open-external` is not.
    */
-  | { t: 'export-table-csv'; csv: string };
+  | { t: 'export-table-csv'; csv: string }
+  /**
+   * Migrate (or dismiss) the AGENTS.md/CLAUDE.md nudge card's rows. `dirs`
+   * is workspace-relative POSIX, always sent by the webview regardless of
+   * whether the action came from a row button or a card-level bulk button —
+   * one dir for a row, every listed dir for "Migrate all" / the card's own
+   * dismiss.
+   */
+  | { t: 'agents-md-nudge-action'; action: 'migrate' | 'dismiss'; dirs: string[] };
 
 export type HostToWebview =
   | { t: 'hydrate'; sessions: SessionSummary[]; layout: PaneLayout;
@@ -653,4 +661,13 @@ export type HostToWebview =
    * becoming visible again, which costs one stale frame on re-focus and is the
    * trade this makes deliberately.
    */
-  | { t: 'review-visibility'; visible: boolean };
+  | { t: 'review-visibility'; visible: boolean }
+  /**
+   * AGENTS.md is the source of truth; CLAUDE.md, when present, is only ever
+   * a `@AGENTS.md` stub. `hits` are the dirs where that has drifted and
+   * hasn't been dismissed or resolved yet — empty means no card. Sent once
+   * per activate, after the workspace scan; there is no live watcher, so a
+   * file added mid-session surfaces on the next reload, not immediately.
+   */
+  | { t: 'agents-md-nudge'; hits: Array<{ dir: string; kind: 'migrate' | 'add-stub';
+      error?: string }> };
