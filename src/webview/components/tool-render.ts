@@ -19,7 +19,8 @@ export interface ToolHeader {
   glyph: ToolGlyph;
   /**
    * The tool's own name — familiarity beats a translated verb here — except
-   * for a Codex skill invocation, where the skill's own name leads instead
+   * for a skill invocation (Claude's native `Skill` tool, or a Codex
+   * plugin-resolved shell command), where the skill's own name leads instead
    * (see `describeTool`'s `command` arm). Every other kind's `verb` is
    * exactly the `label` its provider's `map-tools.ts` classified it with.
    */
