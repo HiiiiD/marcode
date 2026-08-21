@@ -1,11 +1,14 @@
+import * as fs from 'fs/promises';
+import * as path from 'path';
 import type { SessionManager } from './session-manager';
 import type { AgentSession } from './agent-session';
 import { MAX_PENDING, type AttachmentStore } from './attachment-store';
 import type {
-  DiffBase, EditorContext, HostToWebview, SessionId, SessionRef, SessionSnapshot, WebviewToHost,
+  DiffBase, EditorContext, FileRef, HostToWebview, SessionId, SessionRef, SessionSnapshot,
+  WebviewToHost,
 } from '../protocol/messages';
 import { fsPathOfUri } from './file-uri';
-import { composePrompt } from './session-refs';
+import { composePrompt, resolveFileRefs } from './session-refs';
 
 /**
  * Why a message with references was not sent. One function, called from both
@@ -23,6 +26,23 @@ function missingRefsMessage(missing: SessionRef[]): string {
     : 'Those sessions have';
   const object = missing.length === 1 ? 'one' : 'them';
   return `Nothing to hand off from ${names}. ${subject} not produced ${object} yet.`;
+}
+
+/** Same all-or-nothing shape as `missingRefsMessage`, for `@file` mentions. */
+function missingFileRefsMessage(missing: FileRef[]): string {
+  const names = missing.map((r) => r.path).join(', ');
+  const subject = missing.length === 1 ? 'That file' : 'Those files';
+  return `Could not read ${names}. ${subject} no longer exist at that path.`;
+}
+
+/**
+ * "What files match this?" — the router's own dependency, kept as narrow as
+ * `EditorContextHost`: it needs `vscode.workspace.findFiles`, which this
+ * module must not import. `src/extension.ts` supplies the real one, backed
+ * by `WorkspaceFileIndex` in `file-index.ts`.
+ */
+export interface FileSearch {
+  search(query: string): Promise<FileRef[]>;
 }
 
 /**
@@ -86,6 +106,7 @@ export class MessageRouter {
      * shared message rather than a review-only one.
      */
     private readonly reviewPollIntervalMs: number = 750,
+    private readonly fileSearch?: FileSearch,
   ) {}
 
   /**
@@ -169,16 +190,22 @@ export class MessageRouter {
           msg.providerId, msg.cwd || this.defaultCwd, msg.model, msg.effort, msg.mode,
         );
         if (msg.seed) {
-          const { blocks, missing } = await this.manager.resolveRefs(msg.seed.refs);
-          if (missing.length > 0) {
-            session.noteError(missingRefsMessage(missing));
+          const fileRefs = msg.seed.fileRefs ?? [];
+          const [{ blocks: sBlocks, missing: sMissing }, { blocks: fBlocks, missing: fMissing }] =
+            await Promise.all([
+              this.manager.resolveRefs(msg.seed.refs),
+              this.resolveFileRefsFor(session, fileRefs),
+            ]);
+          if (sMissing.length > 0 || fMissing.length > 0) {
+            session.noteError(this.missingMessage(sMissing, fMissing));
           } else {
             const context = session.state.includeEditorContext
               ? this.editor.current() ?? undefined
               : undefined;
             session.send(
-              composePrompt(msg.seed.text, blocks), context,
+              composePrompt(msg.seed.text, [...sBlocks, ...fBlocks]), context,
               msg.seed.refs.length > 0 ? msg.seed.refs : undefined,
+              fileRefs.length > 0 ? fileRefs : undefined,
             );
           }
         }
@@ -210,20 +237,29 @@ export class MessageRouter {
           : undefined;
 
         const refs = msg.refs ?? [];
-        if (refs.length === 0) {
+        const fileRefs = msg.fileRefs ?? [];
+        if (refs.length === 0 && fileRefs.length === 0) {
           session.send(msg.text, context);
           return;
         }
 
-        const { blocks, missing } = await this.manager.resolveRefs(refs);
+        const [{ blocks: sBlocks, missing: sMissing }, { blocks: fBlocks, missing: fMissing }] =
+          await Promise.all([
+            this.manager.resolveRefs(refs),
+            this.resolveFileRefsFor(session, fileRefs),
+          ]);
         // All or nothing. A prompt that says "implement the plan above" with
         // no plan above is an invitation to invent one, which is worse than
         // not sending at all.
-        if (missing.length > 0) {
-          session.noteError(missingRefsMessage(missing));
+        if (sMissing.length > 0 || fMissing.length > 0) {
+          session.noteError(this.missingMessage(sMissing, fMissing));
           return;
         }
-        session.send(composePrompt(msg.text, blocks), context, refs);
+        session.send(
+          composePrompt(msg.text, [...sBlocks, ...fBlocks]), context,
+          refs.length > 0 ? refs : undefined,
+          fileRefs.length > 0 ? fileRefs : undefined,
+        );
         return;
       }
 
@@ -438,6 +474,12 @@ export class MessageRouter {
       // no-op rather than a "malformed message" error log.
       case 'open-review':
         return;
+
+      case 'file-search': {
+        const files = this.fileSearch ? await this.fileSearch.search(msg.query) : [];
+        this.emit({ t: 'file-search-result', id: msg.id, query: msg.query, files });
+        return;
+      }
     }
   }
 
@@ -455,6 +497,29 @@ export class MessageRouter {
     } catch {
       return undefined;
     }
+  }
+
+  /**
+   * Reads each ref's content off disk, resolved against `session`'s own cwd
+   * — the same tree the mention was searched over, and which multiple
+   * sessions in this panel are free to disagree about.
+   */
+  private resolveFileRefsFor(session: AgentSession, refs: FileRef[]) {
+    return resolveFileRefs(refs, async (relativePath) => {
+      try {
+        return await fs.readFile(path.resolve(session.state.cwd, relativePath), 'utf8');
+      } catch {
+        return undefined;
+      }
+    });
+  }
+
+  /** One sentence covering whichever kind of ref went missing, or both. */
+  private missingMessage(sessionMissing: SessionRef[], fileMissing: FileRef[]): string {
+    return [
+      sessionMissing.length > 0 ? missingRefsMessage(sessionMissing) : undefined,
+      fileMissing.length > 0 ? missingFileRefsMessage(fileMissing) : undefined,
+    ].filter((line): line is string => line !== undefined).join(' ');
   }
 
   private async adopt(session: AgentSession, id: SessionId, paths: string[]): Promise<void> {
@@ -494,6 +559,7 @@ const KNOWN_MESSAGE_TAGS = new Set<WebviewToHost['t']>([
   'request-stale-trees', 'remove-stale-tree',
   'request-fleet-diff', 'open-file-diff', 'open-review',
   'refresh-catalog', 'open-settings', 'open-external', 'export-table-csv',
+  'file-search',
 ]);
 
 /**

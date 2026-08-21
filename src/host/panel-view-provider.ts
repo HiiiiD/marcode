@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
 import type { AttachmentStore } from './attachment-store';
-import { MessageRouter, type AttachmentHost, type EditorContextHost } from './message-router';
+import {
+  MessageRouter, type AttachmentHost, type EditorContextHost, type FileSearch,
+} from './message-router';
 import type { SessionManager } from './session-manager';
 import { renderWebviewHtml } from './webview-html';
 import type { HostToWebview, SessionId, WebviewToHost } from '../protocol/messages';
@@ -17,6 +19,7 @@ export class PanelViewProvider implements vscode.WebviewViewProvider {
     private readonly attachments: AttachmentStore | undefined,
     private readonly picker: AttachmentHost | undefined,
     private readonly onOpenReview: () => void,
+    private readonly fileSearch?: FileSearch,
   ) {}
 
   post(msg: HostToWebview): void {
@@ -66,6 +69,7 @@ export class PanelViewProvider implements vscode.WebviewViewProvider {
 
     const router = new MessageRouter(
       this.manager, (m) => this.post(m), this.defaultCwd, this.editor, this.attachments, this.picker,
+      undefined, this.fileSearch,
     );
     view.webview.onDidReceiveMessage(async (raw: WebviewToHost) => {
       try {

@@ -1,7 +1,7 @@
-import type { RefKind, TranscriptItem } from '../protocol/messages';
+import type { FileRef, RefKind, TranscriptItem } from '../protocol/messages';
 
 /** One resolved reference, ready to be appended to a prompt. */
-export interface ResolvedBlock { title: string; kind: RefKind; text: string }
+export interface ResolvedBlock { title: string; kind: RefKind | 'file'; text: string }
 
 /**
  * The text a reference resolves to, or `undefined` when the source has
@@ -118,4 +118,31 @@ export function composePrompt(prose: string, blocks: ResolvedBlock[]): string {
   const rendered = blocks.map((b) =>
     `--- ${b.kind} from ${b.title} ---\n${b.text}\n--- end ${b.kind} from ${b.title} ---`);
   return [prose, ...rendered].join('\n\n');
+}
+
+const MAX_FILE_CHARS = 4000;
+
+/**
+ * `@file` mentions, resolved to their content. One reference per row, unlike
+ * session refs' all-or-nothing prompt: a file deleted between being typed and
+ * sent is reported missing on its own, the same shape `resolveRefs` already
+ * uses for sessions.
+ *
+ * `readFile` is injected rather than this module reaching for `node:fs`
+ * itself — the caller resolves `FileRef.path` against whichever session's cwd
+ * it belongs to, and this stays a pure function to test.
+ */
+export async function resolveFileRefs(
+  refs: FileRef[], readFile: (path: string) => Promise<string | undefined>,
+): Promise<{ blocks: ResolvedBlock[]; missing: FileRef[] }> {
+  const blocks: ResolvedBlock[] = [];
+  const missing: FileRef[] = [];
+
+  for (const ref of refs) {
+    const text = await readFile(ref.path);
+    if (text === undefined) { missing.push(ref); continue; }
+    blocks.push({ title: ref.path, kind: 'file', text: truncate(text, MAX_FILE_CHARS) });
+  }
+
+  return { blocks, missing };
 }

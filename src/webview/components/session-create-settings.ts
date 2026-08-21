@@ -1,5 +1,5 @@
 import type {
-  EffortLevel, PermissionMode, SessionId, SessionRef, WebviewToHost,
+  EffortLevel, FileRef, PermissionMode, SessionId, SessionRef, WebviewToHost,
 } from "../../protocol/messages";
 import { findModel, resolveEffort } from "../../shared/model-catalog";
 import type { ClientState } from "../reducer";
@@ -67,7 +67,7 @@ export function inheritedSettings(state: ClientState): CreateSettings | undefine
 /** The wire message for `settings`. `cwd: ''` means the workspace root. */
 export function createMessage(
   settings: CreateSettings,
-  seed?: { text: string; refs: SessionRef[] },
+  seed?: { text: string; refs: SessionRef[]; fileRefs?: FileRef[] },
 ): WebviewToHost {
   return {
     t: "create-session",

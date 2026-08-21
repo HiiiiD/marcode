@@ -102,12 +102,16 @@ function shortId(id: SessionId): string {
  * the mapped element, which is what forced an unchecked cast here before. With
  * the predicate the compiler keeps the filter and the projection in step, so a
  * payload arm added later cannot silently fall through as `undefined`.
+ *
+ * Generic over `P` for the same reason `fileRefsOf` is: the composer's
+ * pending array unions every source's payload, and `Extract` narrows this
+ * source's own arm out of it without importing another source's types.
  */
-export function sessionRefsOf(
-  pending: PendingMention<SessionMentionPayload>[],
+export function sessionRefsOf<P extends { kind: string }>(
+  pending: PendingMention<P>[],
 ): SessionRef[] {
   return pending
-    .filter((p): p is PendingMention<{ kind: 'session-ref'; ref: SessionRef }> =>
+    .filter((p): p is PendingMention<Extract<P, { kind: 'session-ref'; ref: SessionRef }>> =>
       p.payload.kind === 'session-ref')
     .map((p) => p.payload.ref);
 }

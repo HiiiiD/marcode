@@ -3,6 +3,7 @@ import type {
   BringBackPlan,
   ContextResult,
   EditorContext,
+  FileRef,
   HostToWebview, Invocable, McpServerStatus, PaneLayout, PermissionRequest, ProviderInfo,
   QuestionRequest,
   SessionId, SessionSummary, StaleTree, TranscriptItem, TreeDiff, UnavailableProvider, UsageWindow,
@@ -106,6 +107,13 @@ export interface ClientState {
   focusedSessionId: SessionId | null;
   /** Last transient attachment failure for each composer, one line per refused file. */
   rejectionBySession: Record<SessionId, string[] | undefined>;
+  /**
+   * The most recent `file-search-result` per composer, keyed alongside the
+   * `query` it answers — the composer compares that against its own live
+   * query and drops a result for a keystroke the user has since typed past,
+   * rather than needing a separate staleness id on the wire.
+   */
+  fileSearchBySession: Record<SessionId, { query: string; files: FileRef[] } | undefined>;
 }
 
 export const initialState: ClientState = {
@@ -126,6 +134,7 @@ export const initialState: ClientState = {
   fleetDiffDirty: 0,
   focusedSessionId: null,
   rejectionBySession: {},
+  fileSearchBySession: {},
 };
 
 /**
@@ -204,6 +213,9 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
         // session this hydrate may not even contain.
         focusedSessionId: null,
         rejectionBySession: {},
+        // Cleared for the same reason: it answers "what did the box's last
+        // keystroke ask for", and a reload has no box left holding one.
+        fileSearchBySession: {},
       };
     }
 
@@ -338,6 +350,15 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
       return {
         ...state,
         rejectionBySession: { ...state.rejectionBySession, [msg.id]: msg.reasons },
+      };
+
+    case 'file-search-result':
+      return {
+        ...state,
+        fileSearchBySession: {
+          ...state.fileSearchBySession,
+          [msg.id]: { query: msg.query, files: msg.files },
+        },
       };
 
     // Dismissed by the user rather than by a later success. The reasons are
