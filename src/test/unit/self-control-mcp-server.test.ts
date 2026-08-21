@@ -1,6 +1,13 @@
 import * as assert from 'node:assert';
+import * as fs from 'node:fs/promises';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import { suite, test } from 'mocha';
 import { SelfControlMcpServer, type SessionManagerLike } from '../../host/self-control-mcp-server';
+import { SessionManager } from '../../host/session-manager';
+import { TranscriptStore } from '../../host/transcript-store';
+import { FakeProvider } from '../../providers/fake/fake-provider';
+import type { AgentProvider } from '../../providers/types';
 
 function fakeManager(overrides: Partial<SessionManagerLike> = {}): SessionManagerLike {
   return {
@@ -84,5 +91,48 @@ suite('SelfControlMcpServer', () => {
     assert.strictEqual(parsed.sessionId, 's-new-1');
     assert.deepStrictEqual(seenArgs.slice(0, 4), ['claude', '/tmp/work', 'sonnet', undefined]);
     await server.dispose();
+  });
+
+  test('a real tool call against a real SessionManager creates a session and delivers the prompt', async () => {
+    // Same fixture pattern as session-manager.test.ts's suite-level setup(): a
+    // fresh temp dir, a real TranscriptStore, and a FakeProvider scripted to
+    // answer 'ok' — the one test in this file exercising the whole path
+    // (SelfControlMcpServer -> real SessionManager -> real AgentSession ->
+    // FakeProvider) rather than the narrow SessionManagerLike fake above.
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mar-self-control-'));
+    const store = new TranscriptStore(dir);
+    const provider = new FakeProvider(() => [
+      { kind: 'text', delta: 'ok' },
+      { kind: 'turn-end', reason: 'done' },
+    ]);
+    const providers = new Map<string, AgentProvider>([['fake', provider]]);
+    const manager = new SessionManager(store, providers, () => { });
+    await manager.init();
+
+    try {
+      const server = new SelfControlMcpServer(manager);
+      const config = await server.start();
+      const res = await fetch(config.url, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json', accept: 'application/json, text/event-stream',
+          authorization: `Bearer ${config.token}`,
+        },
+        body: JSON.stringify({
+          jsonrpc: '2.0', id: 1, method: 'tools/call',
+          params: {
+            name: 'marcode__spawn_session',
+            arguments: { provider: 'fake', cwd: process.cwd(), prompt: 'hello' },
+          },
+        }),
+      });
+      const body = await res.json() as { result: { content: { type: string; text: string }[] } };
+      const { sessionId } = JSON.parse(body.result.content[0].text) as { sessionId: string };
+      assert.strictEqual(manager.summaries().some((s) => s.id === sessionId), true);
+      await server.dispose();
+    } finally {
+      await manager.dispose();
+      await fs.rm(dir, { recursive: true, force: true });
+    }
   });
 });
