@@ -373,6 +373,34 @@ suite('AcpRun', () => {
     await run.dispose();
   });
 
+  test('interrupt() converges the turn locally even when the peer never replies to session/prompt', async () => {
+    // Real-world case: the peer accepts session/cancel but its reply to the
+    // in-flight session/prompt request never arrives (dropped, crashed
+    // silently, whatever). `interrupt()` must not hang forever waiting on
+    // that reply — a session stuck at 'running'/'awaiting-approval' with a
+    // parked message behind it, and Stop itself never resolving, is exactly
+    // the "stuck thread" bug this guards against.
+    const p = peer();
+    const events: AgentEvent[] = [];
+    const run = new AcpRun(p.child, {
+      cwd: '/w', permissionMode: 'default', tools: openCodeTools,
+      modeId: openCodeModeId, clientName: 'mar-code',
+    });
+    collect(run, events);
+    await handshake(p);
+    run.send('edit the file');
+    await p.waitFor('session/prompt');
+
+    const stopped = run.interrupt();
+    await p.waitFor('session/cancel');
+    // Deliberately never emit a reply to session/prompt.
+    await stopped;
+
+    assert.strictEqual(
+      events.some((e) => e.kind === 'turn-end' && e.reason === 'interrupted'), true);
+    await run.dispose();
+  });
+
   test('a child that dies mid-turn reports its own reason, not the SDK close', async () => {
     const p = peer();
     const events: AgentEvent[] = [];

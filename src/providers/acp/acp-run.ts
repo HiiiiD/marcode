@@ -157,17 +157,6 @@ export class AcpRun implements AgentRun {
   private loadTimer: NodeJS.Timeout | undefined;
 
   private readonly startup: Promise<void>;
-  /**
-   * The `session/prompt` RPC that is actually ON THE WIRE, if any — set inside
-   * `runPrompt` once the request has been issued, never before.
-   *
-   * Deliberately not "the promise `send()` returned": that one opens with
-   * `await this.startup`, so awaiting it anywhere transitively awaits startup,
-   * and an agent that never answers `initialize` leaves it unresolved forever.
-   * `interrupt()` awaits this instead, which cannot outlive a request the peer
-   * has already been sent. Never rejects.
-   */
-  private inFlight: Promise<void> | undefined;
   /** Set by `interrupt()`, cleared by the next `send()`. See `runPrompt`. */
   private interrupted = false;
   /**
@@ -480,11 +469,7 @@ export class AcpRun implements AgentRun {
       return;
     }
     try {
-      const rpc = conn.prompt({ sessionId, prompt: blocks });
-      // Published only now: `interrupt()` waits on the request the peer has
-      // actually been sent, never on startup. See `inFlight`.
-      this.inFlight = rpc.then(() => undefined, () => undefined);
-      const reply = await rpc;
+      const reply = await conn.prompt({ sessionId, prompt: blocks });
       if (this.disposed) { return; }
       const usage = reply?.usage;
       if (usage) {
@@ -621,12 +606,15 @@ export class AcpRun implements AgentRun {
   }
 
   /**
-   * Waits only on `inFlight` — the prompt the peer has actually been sent —
-   * and never on `startup`. A session still waiting on an `initialize` or a
-   * `session/load` that will never answer is exactly the one a user reaches
-   * for Stop on, and an interrupt that hangs is not an interrupt. There is
-   * nothing to wait for in that case anyway: the `interrupted` flag above
-   * stops the prompt from ever being issued, and `runPrompt` ends the turn.
+   * Never waits on the peer's reply to the in-flight `session/prompt` RPC,
+   * and never on `startup` either. A session still waiting on an
+   * `initialize` or a `session/load` that will never answer is exactly the
+   * one a user reaches for Stop on, and an interrupt that hangs is not an
+   * interrupt — the same is true of a peer that accepts `session/cancel` but
+   * then drops or never sends the `session/prompt` reply `runPrompt` is
+   * waiting on: without a local, unconditional turn-end that peer would leave
+   * the session wedged at `running`/`awaiting-approval` with a message parked
+   * behind it forever, and this call itself never resolving either.
    */
   async interrupt(): Promise<void> {
     this.interrupted = true;
@@ -635,8 +623,7 @@ export class AcpRun implements AgentRun {
     // lives straight through it. Leaving one costs whichever failure the agent
     // picks: it answers the prompt `cancelled` and `recomputeWaitingStatus`
     // pins the session at `awaiting-approval` for a turn that no longer
-    // exists, or it waits for the permission answer and `await this.inFlight`
-    // below never resolves, so Stop silently does nothing forever.
+    // exists.
     this.cancelParked();
     const conn = this.conn;
     const sessionId = this.sessionId;
@@ -648,7 +635,11 @@ export class AcpRun implements AgentRun {
         // own `stopReason: 'cancelled'` is what produces the turn-end.
       }
     }
-    await this.inFlight;
+    // Pushed unconditionally, mirroring codex-run.ts's `interrupt()`: if the
+    // in-flight `session/prompt` reply does eventually arrive, `runPrompt`
+    // pushes its own turn-end too — a harmless second one onto an
+    // already-idle, already-drained session.
+    this.events.push({ kind: 'turn-end', reason: 'interrupted' });
   }
 
   /**
