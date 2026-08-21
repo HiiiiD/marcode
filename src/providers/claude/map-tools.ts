@@ -158,6 +158,13 @@ export function toToolCall(name: string, input: unknown): ToolCall {
           : undefined,
       });
 
+    case 'Skill':
+      return compact({
+        kind: 'command', label: name,
+        command: str(record.args) ?? '',
+        skill: str(record.skill),
+      });
+
     default:
       return { kind: 'other', label: name, raw: input };
   }

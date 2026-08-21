@@ -99,6 +99,18 @@ suite('claude toToolCall', () => {
     });
   });
 
+  test('Skill carries the invoked skill name and its args', () => {
+    const call = toToolCall('Skill', { skill: 'superpowers:brainstorming', args: 'feature design' });
+    assert.deepStrictEqual(call, {
+      kind: 'command', label: 'Skill', command: 'feature design',
+      skill: 'superpowers:brainstorming',
+    });
+    const bare = toToolCall('Skill', { skill: 'code-review' });
+    assert.deepStrictEqual(bare, {
+      kind: 'command', label: 'Skill', command: '', skill: 'code-review',
+    });
+  });
+
   test('an mcp__ name becomes an mcp call, carrying no raw arguments', () => {
     const call = toToolCall('mcp__github__create_issue', { title: 'bug' });
     assert.deepStrictEqual(call, {
@@ -116,6 +128,7 @@ suite('claude toToolCall', () => {
     assert.strictEqual(toToolCall('Bash', null).kind, 'command');
     assert.strictEqual(toToolCall('Edit', 'nonsense').kind, 'file-edit');
     assert.strictEqual(toToolCall('TodoWrite', { todos: 'no' }).kind, 'todos');
+    assert.strictEqual(toToolCall('Skill', null).kind, 'command');
   });
 });
 
