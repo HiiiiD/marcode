@@ -126,7 +126,7 @@ import type {
   ContextBreakdown,
   EditorContext,
   EffortLevel, Invocable, ModelInfo, PermissionMode, PermissionModeInfo,
-  QuestionAnswers, StartOptions, ThreadScope, ToolDecision, UsageWindow,
+  QuestionAnswers, SelfControlMcpConfig, StartOptions, ThreadScope, ToolDecision, UsageWindow,
 } from '../types';
 import { toInvocables } from './map-commands';
 import { toContextBreakdown, toUsageWindows, type ContextUsageLike, type UsageResponseLike } from './map-context';
@@ -270,7 +270,10 @@ export class ClaudeProvider implements AgentProvider {
    */
   private models: ModelInfo[] = [];
 
-  constructor(private readonly loadQueryFn: () => Promise<QueryFn> = loadQuery) {}
+  constructor(
+    private readonly loadQueryFn: () => Promise<QueryFn> = loadQuery,
+    private readonly selfControlMcp?: SelfControlMcpConfig,
+  ) {}
 
   listModels(): ModelInfo[] { return this.models; }
 
@@ -497,6 +500,15 @@ export class ClaudeProvider implements AgentProvider {
         thinking: { type: 'adaptive', display: 'summarized' },
         ...(effort !== undefined ? { effort: effort as SdkEffortLevel } : {}),
         ...(isBypassMode ? { allowDangerouslySkipPermissions: true } : {}),
+        ...(this.selfControlMcp ? {
+          mcpServers: {
+            marcode_self_control: {
+              type: 'http' as const,
+              url: this.selfControlMcp.url,
+              headers: { authorization: `Bearer ${this.selfControlMcp.token}` },
+            },
+          },
+        } : {}),
       };
     };
 

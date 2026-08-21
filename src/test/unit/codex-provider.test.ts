@@ -77,7 +77,9 @@ const EXPECTED_PARAMS: Record<string, unknown> = {
  * — is checked against `EXPECTED_PARAMS` first, so a wrong payload fails the
  * test that happens to be running rather than the next live turn.
  */
-function providerWithStub(opts: { teardownGraceMs?: number } = {}) {
+function providerWithStub(
+  opts: { teardownGraceMs?: number; selfControlMcp?: { url: string; token: string } } = {},
+) {
   const child = stubChild();
   const provider = new CodexProvider({ spawn: () => child, ...opts });
   const answered = new Set<unknown>();
@@ -484,6 +486,40 @@ suite('CodexProvider', () => {
   // itself directly on the shared AppServer, starting a second run would
   // silently steal every event the first run was waiting on. This pins the
   // provider's fan-out: both runs must go on hearing only their own thread.
+  test('thread/start includes an mcp_servers config override when self-control is configured', async () => {
+    const { provider, respondTo, sent } = providerWithStub({
+      selfControlMcp: { url: 'http://127.0.0.1:1/mcp', token: 'tok' },
+    });
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+    run.send('hi');
+    await respondTo('thread/start', { thread: { id: 'th_1' } });
+    const started = sent().find((f) => f.method === 'thread/start');
+    assert.deepStrictEqual((started?.params as { config?: unknown }).config, {
+      mcp_servers: {
+        marcode_self_control: { url: 'http://127.0.0.1:1/mcp', bearer_token_env_var: 'MARCODE_SELF_CONTROL_TOKEN' },
+      },
+    });
+  });
+
+  test('the spawned app-server process gets MARCODE_SELF_CONTROL_TOKEN in its env', () => {
+    let capturedEnv: NodeJS.ProcessEnv | undefined;
+    const provider = new CodexProvider({
+      spawn: (_bin, env) => { capturedEnv = env; return stubChild(); },
+      selfControlMcp: { url: 'http://x/mcp', token: 'tok' },
+    });
+    provider.start({ cwd: '/tmp', permissionMode: 'default' });
+    assert.strictEqual(capturedEnv?.MARCODE_SELF_CONTROL_TOKEN, 'tok');
+  });
+
+  test('no config override is sent when self-control is not configured', async () => {
+    const { provider, respondTo, sent } = providerWithStub();
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+    run.send('hi');
+    await respondTo('thread/start', { thread: { id: 'th_1' } });
+    const started = sent().find((f) => f.method === 'thread/start');
+    assert.strictEqual((started?.params as { config?: unknown }).config, undefined);
+  });
+
   test('two concurrent runs each receive only their own thread\'s events', async () => {
     const { provider, respondTo, send } = providerWithStub();
     const first = provider.start({ cwd: '/a', permissionMode: 'default' });

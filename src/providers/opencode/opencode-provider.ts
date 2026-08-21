@@ -5,7 +5,8 @@ import { AcpRun } from '../acp/acp-run';
 import { openCodeModeId } from './map-modes';
 import { openCodeTools } from './map-tools';
 import type {
-  AgentProvider, AgentRun, ModelInfo, PermissionModeInfo, StartOptions, ThreadScope,
+  AgentProvider, AgentRun, ModelInfo, PermissionModeInfo, SelfControlMcpConfig,
+  StartOptions, ThreadScope,
 } from '../types';
 
 const STDERR_TAIL_BYTES = 2000;
@@ -81,6 +82,7 @@ export class OpenCodeProvider implements AgentProvider {
   private models: ModelInfo[] = [];
   private readonly binPath?: string;
   private readonly spawn: (bin: string) => AcpChild;
+  private readonly selfControlMcp?: SelfControlMcpConfig;
 
   /**
    * Deliberately never assigned. ACP carries no plan-usage data, so this
@@ -92,9 +94,12 @@ export class OpenCodeProvider implements AgentProvider {
    */
   readonly fetchUsage?: AgentProvider['fetchUsage'];
 
-  constructor(opts: { binPath?: string; spawn?: (bin: string) => AcpChild } = {}) {
+  constructor(opts: {
+    binPath?: string; spawn?: (bin: string) => AcpChild; selfControlMcp?: SelfControlMcpConfig;
+  } = {}) {
     this.binPath = opts.binPath;
     this.spawn = opts.spawn ?? ((bin) => spawnOpenCodeAcp(bin));
+    this.selfControlMcp = opts.selfControlMcp;
   }
 
   listModels(): ModelInfo[] { return this.models; }
@@ -168,6 +173,7 @@ export class OpenCodeProvider implements AgentProvider {
       tools: openCodeTools,
       modeId: openCodeModeId,
       clientName: 'mar-code',
+      selfControlMcp: this.selfControlMcp,
     });
   }
 }

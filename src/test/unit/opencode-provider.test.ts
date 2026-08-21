@@ -4,6 +4,40 @@ import * as frames from '../fixtures/opencode-acp-frames.json';
 import { DEFAULT_PROVIDER_IDS } from '../../shared/settings';
 import { OpenCodeProvider } from '../../providers/opencode/opencode-provider';
 
+/** A scripted spawn that answers `initialize` so `session/new` gets sent, then
+ *  records every frame it received without answering it — enough to inspect
+ *  the params `start()`'s `AcpRun` opened the session with. */
+function recordingSpawn() {
+  const seen: Record<string, unknown>[] = [];
+  const spawn = () => {
+    const toAgent = new PassThrough();
+    const toClient = new PassThrough();
+    toAgent.on('data', (chunk: Buffer) => {
+      for (const line of chunk.toString().split('\n')) {
+        if (!line.trim()) { continue; }
+        const frame = JSON.parse(line) as Record<string, unknown>;
+        seen.push(frame);
+        if (frame.method === 'initialize') {
+          toClient.write(`${JSON.stringify({ jsonrpc: '2.0', id: frame.id, result: frames.initialize })}\n`);
+        }
+      }
+    });
+    return { stdin: toAgent, stdout: toClient, kill: () => { toClient.end(); } };
+  };
+  return { spawn, seen };
+}
+
+const waitFor = async (
+  seen: Record<string, unknown>[], method: string,
+): Promise<Record<string, unknown>> => {
+  for (let i = 0; i < 200; i++) {
+    const hit = seen.find((f) => f.method === method);
+    if (hit) { return hit; }
+    await new Promise((r) => setTimeout(r, 5));
+  }
+  throw new Error(`no ${method} was sent`);
+};
+
 /** A spawn stub that answers initialize + session/new from the fixtures and
  *  records the frames it received. */
 function scriptedSpawn() {
@@ -116,5 +150,21 @@ suite('OpenCodeProvider', () => {
 
   test('the default provider set includes opencode', () => {
     assert.strictEqual(DEFAULT_PROVIDER_IDS.includes('opencode'), true);
+  });
+
+  test('start() passes the self-control MCP config through to the AcpRun it builds', async () => {
+    const { spawn, seen } = recordingSpawn();
+    const provider = new OpenCodeProvider({
+      spawn, selfControlMcp: { url: 'http://x/mcp', token: 't' },
+    });
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+    const created = await waitFor(seen, 'session/new');
+    assert.deepStrictEqual((created.params as { mcpServers: unknown }).mcpServers, [
+      {
+        type: 'http', name: 'marcode-self-control', url: 'http://x/mcp',
+        headers: [{ name: 'Authorization', value: 'Bearer t' }],
+      },
+    ]);
+    await run.dispose();
   });
 });

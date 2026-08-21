@@ -517,6 +517,39 @@ suite('ClaudeProvider (lazy start)', () => {
     await assert.rejects(() => run.contextBreakdown!(), /has not started yet/);
     await run.dispose();
   });
+
+  test('start() adds the self-control MCP server to mcpServers when configured', async () => {
+    const fake = fakeLoadQuery();
+    const provider = new ClaudeProvider(
+      fake.load as never,
+      { url: 'http://127.0.0.1:1234/mcp', token: 'tok' },
+    );
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+
+    run.send('hi');
+    await flushMicrotasks();
+
+    assert.strictEqual(fake.calls.length, 1);
+    assert.deepStrictEqual(fake.calls[0].options.mcpServers, {
+      marcode_self_control: {
+        type: 'http', url: 'http://127.0.0.1:1234/mcp', headers: { authorization: 'Bearer tok' },
+      },
+    });
+    await run.dispose();
+  });
+
+  test('start() omits mcpServers when no self-control config was given', async () => {
+    const fake = fakeLoadQuery();
+    const provider = new ClaudeProvider(fake.load as never);
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+
+    run.send('hi');
+    await flushMicrotasks();
+
+    assert.strictEqual(fake.calls.length, 1);
+    assert.strictEqual('mcpServers' in fake.calls[0].options, false);
+    await run.dispose();
+  });
 });
 
 suite('ClaudeProvider usage pull', () => {

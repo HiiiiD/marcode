@@ -1,6 +1,7 @@
 import { spawn as spawnChildProcess } from 'node:child_process';
 import type {
-  AgentProvider, AgentRun, Invocable, ModelInfo, PermissionModeInfo, StartOptions, ThreadScope, UsageWindow,
+  AgentProvider, AgentRun, Invocable, ModelInfo, PermissionModeInfo, SelfControlMcpConfig, StartOptions,
+  ThreadScope, UsageWindow,
 } from '../types';
 import { AppServer, type Duplex, type RequestId } from './app-server';
 import { CodexRun, type CodexConnection } from './codex-run';
@@ -70,8 +71,10 @@ const STDERR_TAIL_BYTES = 2048;
  * - **`'exit'` is handled.** stdout closing usually follows, but "usually" is
  *   not a contract, and the exit carries the code and signal that say why.
  */
-export function spawnAppServer(bin: string): Duplex {
-  const child = spawnChildProcess(bin, ['app-server'], { stdio: ['pipe', 'pipe', 'pipe'] });
+export function spawnAppServer(bin: string, env?: NodeJS.ProcessEnv): Duplex {
+  const child = spawnChildProcess(bin, ['app-server'], {
+    stdio: ['pipe', 'pipe', 'pipe'], ...(env ? { env } : {}),
+  });
 
   let tail = '';
   child.stderr?.on('data', (chunk: Buffer) => {
@@ -216,8 +219,10 @@ export class CodexProvider implements AgentProvider {
 
   constructor(private readonly opts: {
     binPath?: string;
-    spawn?: (bin: string) => Duplex;
+    spawn?: (bin: string, env?: NodeJS.ProcessEnv) => Duplex;
     teardownGraceMs?: number;
+    /** The loopback MCP server this provider's threads should connect to, if any. */
+    selfControlMcp?: SelfControlMcpConfig;
   } = {}) {
     this.binPath = opts.binPath;
     this.teardownGraceMs = opts.teardownGraceMs ?? 5000;
@@ -248,9 +253,12 @@ export class CodexProvider implements AgentProvider {
 
   private async connect(): Promise<AppServer> {
     const bin = this.binPath ?? 'codex';
+    const env = this.opts.selfControlMcp
+      ? { ...process.env, MARCODE_SELF_CONTROL_TOKEN: this.opts.selfControlMcp.token }
+      : undefined;
     let child: Duplex;
     try {
-      child = (this.opts.spawn ?? spawnAppServer)(bin);
+      child = (this.opts.spawn ?? spawnAppServer)(bin, env);
     } catch {
       this.connectionPromise = undefined;
       // This message IS the availability UX — see fetchModels()'s header.
@@ -412,7 +420,7 @@ export class CodexProvider implements AgentProvider {
     });
     const view = new ThreadView(() => this.connection());
     this.views.add(view);
-    return new CodexRun(view, opts, () => {
+    return new CodexRun(view, { ...opts, selfControlMcp: this.opts.selfControlMcp }, () => {
       this.views.delete(view);
       if (this.views.size === 0) { this.scheduleTeardown(); }
     });
