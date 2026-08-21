@@ -1,6 +1,6 @@
 import * as assert from 'assert';
-import { composePrompt, findPayload } from '../../host/session-refs';
-import type { TranscriptItem } from '../../protocol/messages';
+import { composePrompt, findPayload, resolveFileRefs } from '../../host/session-refs';
+import type { FileRef, TranscriptItem } from '../../protocol/messages';
 
 function assistant(id: string, text: string): TranscriptItem {
   return { id, ts: 1, role: 'assistant', text };
@@ -152,5 +152,58 @@ suite('session refs', () => {
 
   test('composePrompt with no blocks returns the prose unchanged', () => {
     assert.strictEqual(composePrompt('hello', []), 'hello');
+  });
+});
+
+suite('resolveFileRefs', () => {
+  function reader(files: Record<string, string>): (path: string) => Promise<string | undefined> {
+    return async (path: string) => files[path];
+  }
+
+  test('resolves each ref to a block carrying its content', async () => {
+    const refs: FileRef[] = [{ path: 'src/a.ts', name: 'a.ts' }];
+    const { blocks, missing } = await resolveFileRefs(refs, reader({ 'src/a.ts': 'export {}' }));
+    assert.deepStrictEqual(blocks, [{ title: 'src/a.ts', kind: 'file', text: 'export {}' }]);
+    assert.strictEqual(missing.length, 0);
+  });
+
+  test('a ref the reader cannot answer for is missing, not an empty block', async () => {
+    const refs: FileRef[] = [{ path: 'src/gone.ts', name: 'gone.ts' }];
+    const { blocks, missing } = await resolveFileRefs(refs, reader({}));
+    assert.strictEqual(blocks.length, 0);
+    assert.deepStrictEqual(missing, refs);
+  });
+
+  test('resolves several refs independently, missing and present alike', async () => {
+    const refs: FileRef[] = [
+      { path: 'src/a.ts', name: 'a.ts' },
+      { path: 'src/gone.ts', name: 'gone.ts' },
+    ];
+    const { blocks, missing } = await resolveFileRefs(refs, reader({ 'src/a.ts': 'x' }));
+    assert.strictEqual(blocks.length, 1);
+    assert.strictEqual(blocks[0].title, 'src/a.ts');
+    assert.strictEqual(missing.length, 1);
+    assert.strictEqual(missing[0].path, 'src/gone.ts');
+  });
+
+  test('truncates content past the cap, rather than flooding the prompt', async () => {
+    const refs: FileRef[] = [{ path: 'src/big.ts', name: 'big.ts' }];
+    const huge = 'x'.repeat(5000);
+    const { blocks } = await resolveFileRefs(refs, reader({ 'src/big.ts': huge }));
+    assert.strictEqual(blocks[0].text.length, 4001); // 4000 chars + the ellipsis
+    assert.strictEqual(blocks[0].text.endsWith('…'), true);
+  });
+
+  test('composePrompt renders a file block with its own delimiter', () => {
+    const out = composePrompt('Look at @src/a.ts please.', [
+      { title: 'src/a.ts', kind: 'file', text: 'export {}' },
+    ]);
+    assert.strictEqual(
+      out,
+      'Look at @src/a.ts please.\n\n'
+      + '--- file from src/a.ts ---\n'
+      + 'export {}\n'
+      + '--- end file from src/a.ts ---',
+    );
   });
 });

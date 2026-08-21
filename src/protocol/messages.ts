@@ -25,6 +25,19 @@ export type RefKind = 'message' | 'plan';
  */
 export interface SessionRef { sessionId: SessionId; kind: RefKind; title: string }
 
+/**
+ * A file the user tagged with `@` from the composer. `path` is relative to
+ * the session's cwd, the same way `Attachment.path` is absolute for a picked
+ * or dropped file — a mention typed by a relative search result stays
+ * relative, since resolving it is the host's job, not the composer's.
+ *
+ * Unlike `SessionRef`, a file mention never becomes an attachment: the token
+ * stays in the raw text (mid-sentence, like a session ref), and the host
+ * appends the file's content as a block the same way it does for a session's
+ * recap. See `session-refs.ts`'s `resolveFileRefs`.
+ */
+export interface FileRef { path: string; name: string }
+
 interface ItemBase { id: string; ts: number }
 
 export type TranscriptItem =
@@ -37,6 +50,13 @@ export type TranscriptItem =
        * is already the fully-composed prompt the provider received.
        */
       refs?: SessionRef[];
+      /**
+       * Files mentioned with `@` — see `FileRef`. Distinct from
+       * `attachments` below: a mentioned file's content is folded into
+       * `text` by `composePrompt`, while an attachment stays a discrete,
+       * provider-native reference.
+       */
+      fileRefs?: FileRef[];
       /**
        * Files this message carried. Metadata about the message exactly like
        * `context` and `refs` above — `text` is the fully-composed prompt, and
@@ -124,6 +144,7 @@ export interface QueuedMessage {
   id: string;
   text: string;
   refs?: SessionRef[];
+  fileRefs?: FileRef[];
   attachments?: Attachment[];
 }
 
@@ -366,12 +387,19 @@ export type WebviewToHost =
        * made it — a two-step version would have to wait for the snapshot and
        * would lose the seed if the panel reloaded in between.
        */
-      seed?: { text: string; refs: SessionRef[] } }
+      seed?: { text: string; refs: SessionRef[]; fileRefs?: FileRef[] } }
   | { t: 'set-visible'; sessionIds: SessionId[] }
   | { t: 'set-layout'; layout: PaneLayout }
   | { t: 'close-session'; id: SessionId }
   | { t: 'delete-session'; id: SessionId }
-  | { t: 'send'; id: SessionId; text: string; refs?: SessionRef[] }
+  | { t: 'send'; id: SessionId; text: string; refs?: SessionRef[]; fileRefs?: FileRef[] }
+  /**
+   * "What files match this?" — fired as the user types after `@`, debounced
+   * in the composer. Answered by `file-search-result` carrying the same
+   * `query` back, which is what lets a response for a keystroke the user has
+   * since typed past be told apart from the live one and dropped.
+   */
+  | { t: 'file-search'; id: SessionId; query: string }
   | { t: 'interrupt'; id: SessionId }
   /**
    * Drops one entry from `SessionState.queued` by id. Nothing was appended,
@@ -552,6 +580,8 @@ export type HostToWebview =
    * neither which file nor which constraint.
    */
   | { t: 'attachments-rejected'; id: SessionId; reasons: string[] }
+  /** Answers `file-search`. See that message for why `query` rides back. */
+  | { t: 'file-search-result'; id: SessionId; query: string; files: FileRef[] }
   /**
    * Broadcast, not session-addressed: the provider/model catalog is global.
    * Sent after `hydrate` whenever a provider reports a catalog that differs

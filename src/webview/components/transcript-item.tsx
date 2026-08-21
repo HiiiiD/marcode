@@ -10,7 +10,7 @@ import { SubagentCard } from './subagent-card';
 import { ToolCard } from './tool-card';
 import { TranscriptItemShell } from './transcript-item-shell';
 import { useStore } from '../store';
-import type { SessionId, SessionRef, TranscriptItem } from '../../protocol/messages';
+import type { FileRef, SessionId, SessionRef, TranscriptItem } from '../../protocol/messages';
 
 export function TranscriptItemView({
   item, sessionId,
@@ -85,9 +85,10 @@ function UserItem({ item }: { item: Extract<TranscriptItem, { role: 'user' }> })
   const ctx = item.context;
   // The item's `text` is the composed prompt, blocks included — it has to be,
   // since it is exactly what the provider received. For display the blocks are
-  // lifted back out and shown as collapsed chips, so a handoff reads as one
-  // sentence plus a source rather than as a wall of somebody else's output.
-  const { prose, blocks } = splitComposed(item.text, item.refs ?? []);
+  // lifted back out and shown as collapsed chips, so a handoff — or an
+  // `@file` mention — reads as one sentence plus a source rather than as a
+  // wall of somebody else's output.
+  const { prose, blocks } = splitComposed(item.text, item.refs ?? [], item.fileRefs ?? []);
 
   return (
     <TranscriptItemShell role="user" label="You" ts={item.ts}>
@@ -174,19 +175,24 @@ function SourceBlock({ heading, text }: { heading: string; text: string }) {
 /**
  * Lifts the fenced blocks `composePrompt` appended back out of the text.
  *
- * Keyed off `refs` rather than pattern-matching every `---` line: a user whose
- * own prose contains a matching line must not have it swallowed, and the refs
- * say exactly which headings to look for.
+ * Keyed off `refs`/`fileRefs` rather than pattern-matching every `---`
+ * line: a user whose own prose contains a matching line must not have it
+ * swallowed, and the refs say exactly which headings to look for. File
+ * mentions use the same `--- file from <path> ---` heading `composePrompt`
+ * gives `resolveFileRefs`'s blocks — see `session-refs.ts`.
  */
-function splitComposed(text: string, refs: SessionRef[]): {
+function splitComposed(text: string, refs: SessionRef[], fileRefs: FileRef[]): {
   prose: string;
   blocks: { heading: string; text: string }[];
 } {
+  const headings = [
+    ...refs.map((ref) => `${ref.kind} from ${ref.title}`),
+    ...fileRefs.map((ref) => `file from ${ref.path}`),
+  ];
   const blocks: { heading: string; text: string }[] = [];
   let prose = text;
 
-  for (const ref of refs) {
-    const heading = `${ref.kind} from ${ref.title}`;
+  for (const heading of headings) {
     const open = `--- ${heading} ---\n`;
     const close = `\n--- end ${heading} ---`;
     const start = prose.indexOf(open);

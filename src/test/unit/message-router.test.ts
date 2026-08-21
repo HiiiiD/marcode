@@ -930,4 +930,62 @@ suite('MessageRouter', () => {
     assert.strictEqual(items.some((i) => i.role === 'user'), false);
     assert.strictEqual(items.some((i) => i.role === 'error'), true);
   });
+
+  test('send with a file ref reads it off the session cwd and composes it in', async () => {
+    await fs.writeFile(path.join(dir, 'a.ts'), 'export const x = 1;');
+    const target = await manager.create('fake', dir);
+
+    await router.handle({
+      t: 'send', id: target.state.id, text: 'Look at @a.ts please',
+      fileRefs: [{ path: 'a.ts', name: 'a.ts' }],
+    });
+    await settle();
+
+    const items = (await target.snapshot()).items;
+    const user = items.find((i) => i.role === 'user');
+    assert.strictEqual(user?.role === 'user' && user.text.includes('Look at @a.ts please'), true);
+    assert.strictEqual(user?.role === 'user' && user.text.includes('export const x = 1;'), true);
+    assert.strictEqual(user?.role === 'user' && user.fileRefs?.length, 1);
+  });
+
+  test('send with an unreadable file ref sends nothing and records why', async () => {
+    const target = await manager.create('fake', dir);
+
+    await router.handle({
+      t: 'send', id: target.state.id, text: 'Look at @gone.ts',
+      fileRefs: [{ path: 'gone.ts', name: 'gone.ts' }],
+    });
+    await settle();
+
+    const items = (await target.snapshot()).items;
+    assert.strictEqual(items.some((i) => i.role === 'user'), false);
+    const error = items.find((i) => i.role === 'error');
+    assert.strictEqual(error?.role === 'error' && error.message.includes('gone.ts'), true);
+  });
+
+  test('file-search asks the injected FileSearch and echoes the query back', async () => {
+    const target = await manager.create('fake', dir);
+    const routerWithSearch = new MessageRouter(
+      manager, (m) => sent.push(m), '/tmp', undefined, attachments, undefined, 750,
+      { search: async (query) => [{ path: `${query}.ts`, name: `${query}.ts` }] },
+    );
+
+    await routerWithSearch.handle({ t: 'file-search', id: target.state.id, query: 'foo' });
+
+    const result = sent.find((m) => m.t === 'file-search-result') as
+      Extract<HostToWebview, { t: 'file-search-result' }>;
+    assert.ok(result);
+    assert.strictEqual(result.query, 'foo');
+    assert.deepStrictEqual(result.files, [{ path: 'foo.ts', name: 'foo.ts' }]);
+  });
+
+  test('file-search with no FileSearch configured answers empty rather than throwing', async () => {
+    const target = await manager.create('fake', dir);
+
+    await router.handle({ t: 'file-search', id: target.state.id, query: 'foo' });
+
+    const result = sent.find((m) => m.t === 'file-search-result') as
+      Extract<HostToWebview, { t: 'file-search-result' }>;
+    assert.deepStrictEqual(result.files, []);
+  });
 });

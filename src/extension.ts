@@ -14,6 +14,7 @@ import { ReviewPanel, REVIEW_VIEW_TYPE } from './host/review-panel';
 import { SessionManager } from './host/session-manager';
 import { TranscriptStore } from './host/transcript-store';
 import { createVscodeEditorSource } from './host/vscode-editor-source';
+import { createWorkspaceFileIndex } from './host/workspace-file-index';
 import { ClaudeProvider } from './providers/claude/claude-provider';
 import { CodexProvider } from './providers/codex/codex-provider';
 import { FakeProvider } from './providers/fake/fake-provider';
@@ -278,9 +279,12 @@ export async function activate(context: vscode.ExtensionContext) {
     context.extensionUri, manager, bus, defaultCwd, editorHost, reviewPollIntervalMs(),
   );
 
+  const fileIndex = createWorkspaceFileIndex(defaultCwd);
+
   provider = new PanelViewProvider(
     context.extensionUri, manager, defaultCwd, editorHost, attachments, picker,
     () => { review.open(); },
+    fileIndex,
   );
   // The sidebar is the client that wants everything. Registered here rather
   // than inside PanelViewProvider so there is one place that says which
@@ -295,6 +299,7 @@ export async function activate(context: vscode.ExtensionContext) {
     registerDiffContentProvider(),
     { dispose: () => { void manager.dispose(); } },
     { dispose: () => { contextSub.dispose(); tracker.dispose(); editorSource.dispose(); } },
+    fileIndex,
     vscode.commands.registerCommand('marcode.review.open', () => { review.open(); }),
     // Without a serializer VS Code restores the tab as a blank webview, which
     // is worse than not restoring it. The host owns whether the tab exists;

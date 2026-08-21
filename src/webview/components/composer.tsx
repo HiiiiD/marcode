@@ -3,8 +3,9 @@ import { InputGroup, InputGroupAddon, InputGroupTextarea } from "@/components/ui
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { Clock, Paperclip, SendHorizontal, Square, TriangleAlert, X } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Invocable, ModelInfo } from "../../protocol/messages";
+import { fileMentions, fileRefsOf, type FileMentionPayload } from "../lib/file-mentions";
 import { interceptFor } from "../lib/intercepts";
 import { insertionFor, menuQuery, menuView } from "../lib/invocable-menu";
 import {
@@ -49,7 +50,7 @@ export function Composer({
   const [text, setText] = useState("");
   /** The selected entry's arg hint. Presentation only; never sent. */
   const [ghost, setGhost] = useState("");
-  const [refs, setRefs] = useState<PendingMention<SessionMentionPayload>[]>([]);
+  const [refs, setRefs] = useState<PendingMention<SessionMentionPayload | FileMentionPayload>[]>([]);
   const [caret, setCaret] = useState(0);
   // `setHandoffOpen` arrives in Task 7's dialog; declared now so `pickRef`'s
   // action branch has somewhere to signal it opened.
@@ -139,15 +140,24 @@ export function Composer({
    * read to check what they are attaching.
    */
   const onScreen = new Set(state.layout.panes.map((p) => p.sessionId));
-  // One array per source, concatenated. File tagging arrives as one more
-  // source here and changes nothing else.
+  // The host's answer to the query currently live in the box — stale once
+  // the user has typed past it, which is what comparing `query` against
+  // `refHit.query` below catches without a separate id on the wire.
+  const fileSearch = state.fileSearchBySession[pane.summary.id];
+  const fileRows = refHit && fileSearch?.query === refHit.query ? fileSearch.files : [];
+  // One array per source, concatenated. File tagging is the second source —
+  // the doc comment above `sessionMentions` named this module before it
+  // existed.
   const refRows = refHit
-    ? filterMentions(
-      sessionMentions(
-        state.sessions.filter((s) => onScreen.has(s.id)),
-        pane.summary.id,
-        handoffSettings !== undefined,
-      ),
+    ? filterMentions<SessionMentionPayload | FileMentionPayload>(
+      [
+        ...sessionMentions(
+          state.sessions.filter((s) => onScreen.has(s.id)),
+          pane.summary.id,
+          handoffSettings !== undefined,
+        ),
+        ...fileMentions(fileRows),
+      ],
       refHit.query,
     )
     : [];
@@ -160,8 +170,19 @@ export function Composer({
     // manage to be true.
     enabled: !menu.open,
     listId: refListId,
-    onPick: (option: MentionOption<SessionMentionPayload>) => pickRef(option),
+    onPick: (option: MentionOption<SessionMentionPayload | FileMentionPayload>) => pickRef(option),
   });
+
+  // Debounced, so the host is not asked on every keystroke — `matchFiles`
+  // itself refuses an empty query, so there is nothing to ask for until the
+  // user has typed at least one character past the `@`.
+  useEffect(() => {
+    const query = refHit?.query;
+    if (!query) { return; }
+    const id = pane.summary.id;
+    const timer = setTimeout(() => { post({ t: 'file-search', id, query }); }, 120);
+    return () => clearTimeout(timer);
+  }, [refHit?.query, pane.summary.id, post]);
 
   const openMenu = () => {
     setText("/");
@@ -176,7 +197,7 @@ export function Composer({
     setGhost(hint);
   };
 
-  const pickRef = (option: MentionOption<SessionMentionPayload>) => {
+  const pickRef = (option: MentionOption<SessionMentionPayload | FileMentionPayload>) => {
     if (!refHit) { return; }
     if (option.payload.kind === 'action') {
       // An action row inserts no token: it opens a dialog instead of
@@ -206,10 +227,13 @@ export function Composer({
       setContextOpen(true);
     } else {
       // `ghost` is presentation only — the arg hint is never part of the message.
-      const carried = sessionRefsOf(pruneMentions(trimmed, refs));
+      const pruned = pruneMentions(trimmed, refs);
+      const carried = sessionRefsOf(pruned);
+      const fileCarried = fileRefsOf(pruned);
       post({
         t: "send", id: pane.summary.id, text: trimmed,
         ...(carried.length > 0 ? { refs: carried } : {}),
+        ...(fileCarried.length > 0 ? { fileRefs: fileCarried } : {}),
       });
     }
     setText("");
@@ -637,10 +661,13 @@ export function Composer({
           initial={handoffSettings}
           seedable
           onCreate={(chosen, seed) => {
-            const carried = sessionRefsOf(pruneMentions(seed ?? "", refs));
+            const pruned = pruneMentions(seed ?? "", refs);
+            const carried = sessionRefsOf(pruned);
+            const fileCarried = fileRefsOf(pruned);
             post(createMessage(chosen, {
               text: seed ?? "",
               refs: carried,
+              ...(fileCarried.length > 0 ? { fileRefs: fileCarried } : {}),
             }));
             setHandoffOpen(false);
           }}

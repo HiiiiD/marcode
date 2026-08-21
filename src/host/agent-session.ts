@@ -1,7 +1,7 @@
 import { resolve } from 'node:path';
 import type {
-  McpServerStatus, PermissionRequest, QuestionRequest, QueuedMessage, SessionId, SessionRef,
-  SessionSnapshot, SessionState, SessionStatus, TranscriptItem, TranscriptPatch,
+  FileRef, McpServerStatus, PermissionRequest, QuestionRequest, QueuedMessage, SessionId,
+  SessionRef, SessionSnapshot, SessionState, SessionStatus, TranscriptItem, TranscriptPatch,
 } from '../protocol/messages';
 import type { ToolCall, ToolOutput } from '../providers/canonical/tool-call';
 import type {
@@ -306,7 +306,7 @@ export class AgentSession {
    * one behind the rest, rather than overwriting words the user already
    * committed to.
    */
-  send(text: string, context?: EditorContext, refs?: SessionRef[]): void {
+  send(text: string, context?: EditorContext, refs?: SessionRef[], fileRefs?: FileRef[]): void {
     if (!this.busy) { this.drainQueued(); }
     if (this.busy) {
       // Captured now, not at eventual delivery: the pending set belongs to
@@ -318,6 +318,7 @@ export class AgentSession {
         id: nextId('qm'),
         text,
         ...(refs && refs.length > 0 ? { refs } : {}),
+        ...(fileRefs && fileRefs.length > 0 ? { fileRefs } : {}),
         ...(attachments.length > 0 ? { attachments } : {}),
       };
       this._state.queued = [...(this._state.queued ?? []), entry];
@@ -326,7 +327,7 @@ export class AgentSession {
       this.sink.changed();
       return;
     }
-    this.deliver(text, context, refs, this.drainLiveAttachments());
+    this.deliver(text, context, refs, fileRefs, this.drainLiveAttachments());
   }
 
   /**
@@ -360,7 +361,7 @@ export class AgentSession {
     // The queued attachments, captured when this message was parked — not
     // the live set, which by now belongs to whatever the user has composed
     // since. See `send`'s queueing branch.
-    this.deliver(head.text, context, head.refs, head.attachments ?? []);
+    this.deliver(head.text, context, head.refs, head.fileRefs, head.attachments ?? []);
   }
 
   /**
@@ -385,7 +386,8 @@ export class AgentSession {
   }
 
   private deliver(
-    text: string, context?: EditorContext, refs?: SessionRef[], attachments: Attachment[] = [],
+    text: string, context?: EditorContext, refs?: SessionRef[], fileRefs?: FileRef[],
+    attachments: Attachment[] = [],
   ): void {
     if (this._state.title === 'Untitled' && text.trim().length > 0) {
       this._state.title = text.trim().slice(0, TITLE_MAX);
@@ -394,6 +396,7 @@ export class AgentSession {
       id: nextId('u'), ts: Date.now(), role: 'user', text,
       ...(context ? { context } : {}),
       ...(refs && refs.length > 0 ? { refs } : {}),
+      ...(fileRefs && fileRefs.length > 0 ? { fileRefs } : {}),
       ...(attachments.length > 0 ? { attachments } : {}),
     };
     this.appendItem(item);
