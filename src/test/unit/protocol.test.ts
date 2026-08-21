@@ -47,6 +47,7 @@ function describeInbound(m: WebviewToHost): string {
     case 'open-external': return 'open-external';
     case 'export-table-csv': return 'export-table-csv';
     case 'file-search': return 'file-search';
+    case 'agents-md-nudge-action': return 'agents-md-nudge-action';
     default: return assertNever(m);
   }
 }
@@ -72,6 +73,7 @@ function describeOutbound(m: HostToWebview): string {
     case 'fleet-diff': return 'fleet-diff';
     case 'review-visibility': return 'review-visibility';
     case 'file-search-result': return 'file-search-result';
+    case 'agents-md-nudge': return 'agents-md-nudge';
     default: return assertNever(m);
   }
 }

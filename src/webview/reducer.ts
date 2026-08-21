@@ -114,6 +114,13 @@ export interface ClientState {
    * rather than needing a separate staleness id on the wire.
    */
   fileSearchBySession: Record<SessionId, { query: string; files: FileRef[] } | undefined>;
+  /**
+   * The AGENTS.md/CLAUDE.md nudge card's rows. Empty means no card — sent
+   * once per activate/reload, wholesale, same posture as `staleTrees`: it
+   * describes disk at an instant, and a resolved or dismissed row is simply
+   * absent from the next message rather than merged against.
+   */
+  agentsMdNudgeHits: Array<{ dir: string; kind: 'migrate' | 'add-stub'; error?: string }>;
 }
 
 export const initialState: ClientState = {
@@ -135,6 +142,7 @@ export const initialState: ClientState = {
   focusedSessionId: null,
   rejectionBySession: {},
   fileSearchBySession: {},
+  agentsMdNudgeHits: [],
 };
 
 /**
@@ -216,6 +224,11 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
         // Cleared for the same reason: it answers "what did the box's last
         // keystroke ask for", and a reload has no box left holding one.
         fileSearchBySession: {},
+        // Cleared, not carried: a reload re-scans (panel-view-provider.ts
+        // triggers the scan on resolveWebviewView), and the fresh
+        // `agents-md-nudge` message that follows is the total rebuild here —
+        // same posture as `staleTrees`.
+        agentsMdNudgeHits: [],
       };
     }
 
@@ -420,6 +433,9 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
         byId: { ...state.byId, [msg.id]: applyPatch(pane, msg.patch) },
       };
     }
+
+    case 'agents-md-nudge':
+      return { ...state, agentsMdNudgeHits: msg.hits };
 
     case 'session-mcp': {
       const pane = state.byId[msg.id];

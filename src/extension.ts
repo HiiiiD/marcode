@@ -1,6 +1,7 @@
 import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
+import { AgentsMdNudgeController } from './host/agents-md-nudge';
 import { AttachmentStore } from './host/attachment-store';
 import { defaultCwdOf } from './host/default-cwd';
 import { diffUri, registerDiffContentProvider } from './host/diff-content-provider';
@@ -134,6 +135,9 @@ function enabledProviderIds(): Set<string> {
  * still broken. A window is the smallest scope that does not nag.
  */
 let profileWarned = false;
+
+/** `context.workspaceState` key for dirs the AGENTS.md/CLAUDE.md nudge has resolved or dismissed. */
+const DISMISSED_AGENTS_MD_KEY = 'marcode.agentsmdNudge.dismissed';
 
 /**
  * Tells the user their PowerShell profile is being loaded — and failing — for
@@ -281,10 +285,43 @@ export async function activate(context: vscode.ExtensionContext) {
 
   const fileIndex = createWorkspaceFileIndex(defaultCwd);
 
+  const agentsMdNudge = new AgentsMdNudgeController({
+    findRelativePaths: async () => {
+      const uris = await vscode.workspace.findFiles(
+        '**/{CLAUDE.md,AGENTS.md}',
+        '{**/node_modules/**,**/.git/**,**/dist/**,**/out/**}',
+      );
+      return uris.map((u) => vscode.workspace.asRelativePath(u, false).split(path.sep).join('/'));
+    },
+    hasClaudeProvider: enabled.has('claude'),
+    dismiss: {
+      get: () => new Set(context.workspaceState.get<string[]>(DISMISSED_AGENTS_MD_KEY, [])),
+      add: async (dirs) => {
+        const current = new Set(context.workspaceState.get<string[]>(DISMISSED_AGENTS_MD_KEY, []));
+        for (const dir of dirs) { current.add(dir); }
+        await context.workspaceState.update(DISMISSED_AGENTS_MD_KEY, [...current]);
+      },
+    },
+    resolvePaths: (dir) => ({
+      claudeMdPath: path.join(defaultCwd, dir, 'CLAUDE.md'),
+      agentsMdPath: path.join(defaultCwd, dir, 'AGENTS.md'),
+    }),
+    fs: {
+      readFile: async (p) => new TextDecoder().decode(await vscode.workspace.fs.readFile(vscode.Uri.file(p))),
+      writeFile: async (p, content) => {
+        await vscode.workspace.fs.writeFile(vscode.Uri.file(p), new TextEncoder().encode(content));
+      },
+    },
+    // provider is assigned below, before this ever runs (scan fires from
+    // resolveWebviewView, which only happens once VS Code shows the panel).
+    post: (m) => provider.post(m),
+  });
+
   provider = new PanelViewProvider(
     context.extensionUri, manager, defaultCwd, editorHost, attachments, picker,
     () => { review.open(); },
     fileIndex,
+    agentsMdNudge,
   );
   // The sidebar is the client that wants everything. Registered here rather
   // than inside PanelViewProvider so there is one place that says which
