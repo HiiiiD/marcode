@@ -71,6 +71,7 @@ extension.ts
 | `src/host/transcript-store.ts` | `index.json` + per-session JSONL; append, load, page |
 | `src/host/agent-session.ts` | One conversation: transcript, status, pending approvals |
 | `src/host/session-manager.ts` | Roster; create/close/delete; patch fan-out to the visible set |
+| `src/host/self-control-mcp-server.ts` | One loopback HTTP MCP server exposing `marcode__spawn_session` to every session's provider; started at `activate()`, token/url threaded into all three provider constructors |
 | `src/host/message-router.ts` | `WebviewToHost` → manager calls. No `vscode` import, so it unit-tests. |
 | `src/host/panel-view-provider.ts` | `WebviewViewProvider`; HTML + nonce; transport |
 | `src/host/webview-html.ts` | One CSP and nonce for every webview surface |

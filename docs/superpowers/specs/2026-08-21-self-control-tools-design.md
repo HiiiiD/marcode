@@ -81,10 +81,17 @@ choice over the alternatives:
 ## Error handling
 
 - Missing/incorrect bearer token → HTTP 401, no `SessionManager` call made.
-- Unknown `provider`/`model`/`mode`, or `cwd` outside anything the extension is allowed to
-  touch → MCP tool error content (`isError: true` with a message), not a thrown exception
-  — keeps the "errors are state" spirit at this new boundary too, even though it isn't a
-  transcript item this time.
+- Unknown `provider`/`model`/`mode`, a relative `cwd`, or `mode: 'bypass'` → MCP tool error
+  content (`isError: true` with a message), not a thrown exception — keeps the "errors are
+  state" spirit at this new boundary too, even though it isn't a transcript item this time.
+  `cwd` validation is `path.isAbsolute(cwd)` only, not "outside anything the extension is
+  allowed to touch": this module carries no `vscode` import (see Components, above), so it
+  has no way to check a candidate path against `vscode.workspace.workspaceFolders` without
+  either threading the folder list in from `extension.ts` or accepting that import. Left as
+  a v1 gap rather than solved with an import that would break the module's unit-testability
+  boundary. `mode: 'bypass'` is rejected unconditionally, regardless of whether the target
+  provider's own `permissionModes` catalog lists it — a session running in a restricted mode
+  must not be able to delegate around its own restriction by spawning a `bypass` child.
 - Port bind failure at startup → retry a couple of random ports; if still failing, log and
   skip wiring self-control for this launch entirely (sessions start without the extra
   `mcpServers` entry rather than the extension failing to activate).

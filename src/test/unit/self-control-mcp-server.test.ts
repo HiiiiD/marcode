@@ -129,10 +129,124 @@ suite('SelfControlMcpServer', () => {
       const body = await res.json() as { result: { content: { type: string; text: string }[] } };
       const { sessionId } = JSON.parse(body.result.content[0].text) as { sessionId: string };
       assert.strictEqual(manager.summaries().some((s) => s.id === sessionId), true);
+      // Closes Important #3's assertion gap: the tool returning a sessionId
+      // is not proof the prompt was delivered. Read the real session's own
+      // transcript back and check the user message actually landed there.
+      const spawned = manager.get(sessionId);
+      assert.strictEqual(spawned !== undefined, true);
+      const snapshot = await spawned!.snapshot();
+      assert.strictEqual(
+        snapshot.items.some((i) => i.role === 'user' && i.text === 'hello'),
+        true,
+      );
       await server.dispose();
     } finally {
       await manager.dispose();
       await fs.rm(dir, { recursive: true, force: true });
     }
+  });
+
+  test('rejects a relative cwd', async () => {
+    let created = false;
+    const server = new SelfControlMcpServer(fakeManager({
+      create: async () => { created = true; return { state: { id: 'x' } }; },
+    }));
+    const config = await server.start();
+    const res = await fetch(config.url, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json', accept: 'application/json, text/event-stream',
+        authorization: `Bearer ${config.token}`,
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0', id: 1, method: 'tools/call',
+        params: {
+          name: 'marcode__spawn_session',
+          arguments: { provider: 'claude', cwd: 'relative/path', prompt: 'hi' },
+        },
+      }),
+    });
+    const body = await res.json() as { result?: { isError?: boolean; content?: { text: string }[] } };
+    assert.strictEqual(body.result?.isError, true);
+    assert.strictEqual(body.result?.content?.[0]?.text.includes('absolute'), true);
+    assert.strictEqual(created, false);
+    await server.dispose();
+  });
+
+  test('rejects mode: bypass even when the provider advertises it', async () => {
+    let created = false;
+    const server = new SelfControlMcpServer(fakeManager({
+      catalog: () => [
+        { id: 'claude', models: [{ id: 'sonnet' }], permissionModes: [{ id: 'default' }, { id: 'bypass' }] },
+      ],
+      create: async () => { created = true; return { state: { id: 'x' } }; },
+    }));
+    const config = await server.start();
+    const res = await fetch(config.url, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json', accept: 'application/json, text/event-stream',
+        authorization: `Bearer ${config.token}`,
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0', id: 1, method: 'tools/call',
+        params: {
+          name: 'marcode__spawn_session',
+          arguments: { provider: 'claude', mode: 'bypass', cwd: '/tmp/work', prompt: 'hi' },
+        },
+      }),
+    });
+    const body = await res.json() as { result?: { isError?: boolean; content?: { text: string }[] } };
+    assert.strictEqual(body.result?.isError, true);
+    assert.strictEqual(body.result?.content?.[0]?.text.includes('bypass'), true);
+    assert.strictEqual(created, false);
+    await server.dispose();
+  });
+
+  test('two concurrent tool calls that reuse JSON-RPC id 1 each get their own correct response', async () => {
+    // Regression test for Critical #1: a single shared McpServer/transport
+    // correlates requests to responses on the raw JSON-RPC id,
+    // transport-globally. Two independent MCP clients naturally both start
+    // at id 1, so without per-request transports the second POST's id->stream
+    // mapping overwrites the first's, misdelivering responses.
+    const server = new SelfControlMcpServer(fakeManager({
+      create: async (providerId, cwd) => ({ state: { id: `s-${cwd}` } }),
+    }));
+    const config = await server.start();
+    const callFor = (cwd: string) => fetch(config.url, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json', accept: 'application/json, text/event-stream',
+        authorization: `Bearer ${config.token}`,
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0', id: 1, method: 'tools/call',
+        params: {
+          name: 'marcode__spawn_session',
+          arguments: { provider: 'claude', cwd, prompt: 'hi' },
+        },
+      }),
+    });
+
+    const [resA, resB] = await Promise.all([callFor('/tmp/a'), callFor('/tmp/b')]);
+    const bodyA = await resA.json() as { result: { content: { type: string; text: string }[] } };
+    const bodyB = await resB.json() as { result: { content: { type: string; text: string }[] } };
+    const parsedA = JSON.parse(bodyA.result.content[0].text) as { sessionId: string };
+    const parsedB = JSON.parse(bodyB.result.content[0].text) as { sessionId: string };
+
+    assert.strictEqual(parsedA.sessionId, 's-/tmp/a');
+    assert.strictEqual(parsedB.sessionId, 's-/tmp/b');
+    await server.dispose();
+  });
+
+  test('a post-bind server error does not crash the process (permanent error listener)', async () => {
+    const server = new SelfControlMcpServer(fakeManager());
+    const config = await server.start();
+    const http = (server as unknown as { http: import('node:http').Server }).http;
+    assert.strictEqual(http.listenerCount('error') > 0, true);
+    // Emitting 'error' with zero listeners is what throws in Node; asserting
+    // a listener is attached is the whole regression guard here without
+    // reaching into private internals further than this file already does.
+    await server.dispose();
   });
 });
