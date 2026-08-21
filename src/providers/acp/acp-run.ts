@@ -2,7 +2,7 @@ import { attachmentLines, imageAttachments, readBase64 } from '../attachment-pay
 import { formatEditorContext } from '../format-editor-context';
 import type {
   AgentEvent, AgentRun, Attachment, ContextBreakdown, EditorContext,
-  EffortLevel, PermissionMode, QuestionAnswers, ToolDecision,
+  EffortLevel, PermissionMode, QuestionAnswers, SelfControlMcpConfig, ToolDecision,
 } from '../types';
 import { CLIENT_CAPABILITIES, connectAcp, PROTOCOL_VERSION, type AcpChild } from './acp-client';
 import { currentModelId, modelConfigId, toModeIds, type ConfigOption } from './config-options';
@@ -49,6 +49,22 @@ export interface AcpRunOptions {
    */
   modeId(mode: PermissionMode): string | undefined;
   clientName: string;
+  /** The loopback MCP server this run's agent should connect to, if any. */
+  selfControlMcp?: SelfControlMcpConfig;
+}
+
+/**
+ * The `mcpServers` entry for `session/new`/`session/load`. Empty when no
+ * self-control server is configured — the user's own servers still load from
+ * their own agent config regardless, so an empty list here never means "no
+ * MCP servers for this session", only "this client injected none of its own".
+ */
+function mcpServersFor(config: SelfControlMcpConfig | undefined): unknown[] {
+  if (!config) { return []; }
+  return [{
+    type: 'http', name: 'marcode-self-control', url: config.url,
+    headers: [{ name: 'Authorization', value: `Bearer ${config.token}` }],
+  }];
 }
 
 /**
@@ -258,10 +274,13 @@ export class AcpRun implements AgentRun {
       this.sessionId = this.opts.resumeToken;
       await this.loadGated(conn, this.opts.resumeToken);
     } else {
-      // `mcpServers: []` is not a gap: that parameter is for a CLIENT
-      // injecting its own servers. The user's own servers load from their
-      // agent config regardless, and listing them here would double them.
-      const created = await conn.newSession({ cwd: this.opts.cwd, mcpServers: [] });
+      // This is where the self-control server rides: `mcpServers` is for a
+      // CLIENT injecting its own servers, and the self-control loopback
+      // server is exactly that. The user's own servers still load from their
+      // own agent config regardless, so this never doubles them.
+      const created = await conn.newSession({
+        cwd: this.opts.cwd, mcpServers: mcpServersFor(this.opts.selfControlMcp),
+      });
       this.sessionId = created.sessionId;
       this.applyConfigOptions(created.configOptions);
     }
@@ -317,7 +336,9 @@ export class AcpRun implements AgentRun {
     // A `loadSession` reply may carry no config options at all — do not depend
     // on it. The catch is attached here, at creation, so a rejection that
     // arrives AFTER the idle timer already won the race is still handled.
-    const rpc = conn.loadSession({ sessionId, cwd: this.opts.cwd, mcpServers: [] })
+    const rpc = conn.loadSession({
+      sessionId, cwd: this.opts.cwd, mcpServers: mcpServersFor(this.opts.selfControlMcp),
+    })
       .then((reply) => { this.applyConfigOptions(reply?.configOptions); });
     rpc.catch(() => { /* handled by the race below, or already settled */ });
     try {

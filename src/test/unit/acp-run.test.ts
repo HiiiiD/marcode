@@ -102,6 +102,40 @@ suite('AcpRun', () => {
     await run.dispose();
   });
 
+  test('newSession includes the self-control MCP server when configured', async () => {
+    const p = peer();
+    const run = new AcpRun(p.child, {
+      cwd: '/w', permissionMode: 'default', tools: openCodeTools,
+      modeId: openCodeModeId, clientName: 'mar-code',
+      selfControlMcp: { url: 'http://127.0.0.1:9/mcp', token: 't' },
+    });
+    const init = await p.waitFor('initialize');
+    p.emit({ jsonrpc: '2.0', id: init.id, result: frames.initialize });
+    const created = await p.waitFor('session/new');
+    assert.deepStrictEqual((created.params as { mcpServers: unknown }).mcpServers, [
+      {
+        type: 'http', name: 'marcode-self-control', url: 'http://127.0.0.1:9/mcp',
+        headers: [{ name: 'Authorization', value: 'Bearer t' }],
+      },
+    ]);
+    p.emit({ jsonrpc: '2.0', id: created.id, result: frames.newSession });
+    await run.dispose();
+  });
+
+  test('newSession carries an empty mcpServers list when no self-control config is given', async () => {
+    const p = peer();
+    const run = new AcpRun(p.child, {
+      cwd: '/w', permissionMode: 'default', tools: openCodeTools,
+      modeId: openCodeModeId, clientName: 'mar-code',
+    });
+    const init = await p.waitFor('initialize');
+    p.emit({ jsonrpc: '2.0', id: init.id, result: frames.initialize });
+    const created = await p.waitFor('session/new');
+    assert.deepStrictEqual((created.params as { mcpServers: unknown }).mcpServers, []);
+    p.emit({ jsonrpc: '2.0', id: created.id, result: frames.newSession });
+    await run.dispose();
+  });
+
   test('a session update reaches the event stream', async () => {
     const p = peer();
     const events: AgentEvent[] = [];
