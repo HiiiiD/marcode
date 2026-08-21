@@ -132,6 +132,17 @@ export interface StartOptions {
   resumeToken?: string;
 }
 
+/**
+ * The loopback MCP server every session's provider connects to, so an agent
+ * running inside it can call `marcode__spawn_session`. Absent when the
+ * server failed to bind at startup — see `self-control-mcp-server.ts` — in
+ * which case sessions from this provider simply have no such tool.
+ */
+export interface SelfControlMcpConfig {
+  url: string;
+  token: string;
+}
+
 export type ToolDecision =
   | { allow: true }
   | { allow: false; reason?: string };
