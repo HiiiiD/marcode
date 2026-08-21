@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "sonner/dist/styles.css";
 
 /* VS Code stamps vscode-light / vscode-dark / vscode-high-contrast on <body>.
    Tailwind v4's stock `dark:` is prefers-color-scheme, which tracks the OS and
