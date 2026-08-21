@@ -722,6 +722,18 @@ export class ClaudeProvider implements AgentProvider {
             }
           }
           await queryRef.interrupt();
+          // `queryRef.interrupt()` resolving only means the SDK accepted the
+          // request — the turn-end that actually unwedges the session comes
+          // later, async, from the SDK's own `result` message (mapped by
+          // map-events.ts via `terminal_reason: 'aborted_streaming'/
+          // 'aborted_tools'`). When that message is delayed or dropped this
+          // session would otherwise stay `running`/`awaiting-approval`
+          // forever, with a parked message never draining and Stop having
+          // done nothing visible. Pushed unconditionally on the success path,
+          // same as codex-run.ts's `interrupt()` — a later genuine result
+          // message still arriving is a harmless second `turn-end` onto an
+          // already-idle, already-drained session.
+          events.push({ kind: 'turn-end', reason: 'interrupted' });
         } catch (err) {
           events.push({ kind: 'turn-end', reason: 'error', error: errorMessage(err) });
         }

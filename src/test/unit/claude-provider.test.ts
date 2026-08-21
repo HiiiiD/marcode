@@ -979,6 +979,29 @@ suite('ClaudeProvider (cancellation)', () => {
     assert.strictEqual(events().some((e) => e.kind === 'request-cancelled' && e.id === 't1'), true);
   });
 
+  test('interrupt() converges the turn locally even when the SDK never reports its own result message', async () => {
+    // The fake query's generator body only awaits its stop signal — it never
+    // yields the SDK's `result` message (terminal_reason: 'aborted_streaming'
+    // /'aborted_tools') that map-events.ts otherwise relies on to emit
+    // turn-end. This is the real-world case where that message is delayed or
+    // dropped: interrupt() must still converge the session, not leave status
+    // wedged at 'running' with a queued message parked behind it forever.
+    const fake = fakeLoadQuery();
+    const provider = new ClaudeProvider(fake.load as never);
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+    const events = collect(run);
+    run.send('hi');
+    await tick();
+
+    await run.interrupt();
+
+    assert.strictEqual(
+      events().some((e) => e.kind === 'turn-end' && e.reason === 'interrupted'),
+      true,
+      'interrupt() must self-resolve the turn, not wait on the SDK result message alone',
+    );
+  });
+
   test('interrupt() stops every tracked background task before interrupting the foreground turn', async () => {
     // A backgrounded task (Ctrl+B semantics) survives Query.interrupt() by
     // design — the SDK reports its id via `background_tasks_changed` and
