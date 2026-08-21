@@ -2,7 +2,7 @@ import { attachmentLines, imageAttachments } from '../attachment-payload';
 import { formatEditorContext } from '../format-editor-context';
 import type {
   AgentEvent, AgentRun, Attachment, ContextBreakdown, EditorContext, EffortLevel, McpServerStatus,
-  PermissionMode, QuestionAnswers, StartOptions, ToolDecision, UsageWindow,
+  PermissionMode, QuestionAnswers, SelfControlMcpConfig, StartOptions, ToolDecision, UsageWindow,
 } from '../types';
 import type { RequestId } from './app-server';
 import { approvalEventOf, DECLINED_INPUT_METHODS, mapNotification, questionEventOf } from './map-events';
@@ -37,6 +37,19 @@ export interface CodexConnection {
   onNotification(cb: (method: string, params: unknown) => void): void;
   onServerRequest(cb: (method: string, id: RequestId, params: unknown) => void): void;
   onClose(cb: (reason: string) => void): void;
+}
+
+/**
+ * `StartOptions` plus this run's own share of the provider's self-control
+ * config — not folded into `StartOptions` itself, which is the wire-shaped
+ * type every backend's `start()` receives verbatim from `SessionManager` and
+ * carries no notion of a per-provider MCP server. `CodexProvider.start()`
+ * builds one of these by spreading its `StartOptions` argument and adding its
+ * own `selfControlMcp` field, mirroring `AcpRunOptions` in `acp-run.ts`.
+ */
+export interface CodexRunOptions extends StartOptions {
+  /** The loopback MCP server this thread should connect to, if any. */
+  selfControlMcp?: SelfControlMcpConfig;
 }
 
 /** Same async-iterable pattern as `FakeProvider`'s — the house idiom for an `AgentRun.events`. */
@@ -195,7 +208,7 @@ export class CodexRun implements AgentRun {
 
   constructor(
     private readonly server: CodexConnection,
-    private readonly opts: StartOptions,
+    private readonly opts: CodexRunOptions,
     /**
      * Fired once, at the end of `dispose()` — never earlier, so the provider
      * only sees this run as gone once its own cleanup (declining pending
@@ -421,6 +434,24 @@ export class CodexRun implements AgentRun {
       ...settings,
       cwd: this.opts.cwd,
       model: this.model,
+      // Codex's own app-server protocol has no `mcpServers` field on
+      // `ThreadStartParams`/`ThreadResumeParams` — only this raw config
+      // override map, matching the same dotted-path shape as `codex mcp add`
+      // writes to `config.toml` (`[mcp_servers.<name>]` / `url` /
+      // `bearer_token_env_var`). The bearer token itself never goes on the
+      // wire: it reaches the spawned process via the
+      // `MARCODE_SELF_CONTROL_TOKEN` env var `CodexProvider.connect()` sets,
+      // named here only by the env var it lives in.
+      ...(this.opts.selfControlMcp ? {
+        config: {
+          mcp_servers: {
+            marcode_self_control: {
+              url: this.opts.selfControlMcp.url,
+              bearer_token_env_var: 'MARCODE_SELF_CONTROL_TOKEN',
+            },
+          },
+        },
+      } : {}),
     };
     try {
       // Both requests answer with the whole `Thread` under `thread` — there
