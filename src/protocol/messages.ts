@@ -126,7 +126,13 @@ export type TranscriptItem =
    * transcript says what the switch read as *at the time*, exactly like
    * `SessionRef.title` above.
    */
-  | (ItemBase & { role: 'switch'; kind: 'model' | 'effort'; text: string });
+  /**
+   * `kind: 'relocation'` is the turn in flight being cut short to perform a
+   * queued move, distinct from a user-initiated Stop: a plain interrupt says
+   * nothing about why, and "the session just moved cwd" is not implied by
+   * the interrupted turn's own transcript.
+   */
+  | (ItemBase & { role: 'switch'; kind: 'model' | 'effort' | 'relocation'; text: string });
 
 export type TranscriptPatch =
   | { op: 'append'; item: TranscriptItem; parentItemId?: string }

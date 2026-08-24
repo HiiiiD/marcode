@@ -19,6 +19,16 @@ const PREAMBLE = [
   'Do not redo any of it. Continue from where it leaves off.',
 ].join(' ');
 
+/**
+ * Names the directory explicitly rather than leaving "this directory" to
+ * whatever the agent last ran `cd` to. The cwd this thread starts in is a
+ * launch parameter the agent never chose and cannot see, so without this
+ * line the seed's "this directory" refers to nothing it can resolve.
+ */
+function preambleFor(newCwd: string | undefined): string {
+  return newCwd === undefined ? PREAMBLE : `${PREAMBLE} The new directory is ${newCwd}.`;
+}
+
 const OMITTED = '[Earlier turns omitted to fit context.]';
 
 /** Default budget in characters. Roughly 6k tokens. */
@@ -50,11 +60,13 @@ function lineFor(item: TranscriptItem): string | undefined {
   }
 }
 
-export function buildSeed(items: TranscriptItem[], budgetChars = DEFAULT_BUDGET): string {
+export function buildSeed(
+  items: TranscriptItem[], budgetChars = DEFAULT_BUDGET, newCwd?: string,
+): string {
   const lines = items.map(lineFor).filter((l): l is string => l !== undefined);
   if (lines.length === 0) { return ''; }
 
-  const header = `${PREAMBLE}\n\n`;
+  const header = `${preambleFor(newCwd)}\n\n`;
   const kept: string[] = [];
   let used = header.length;
 

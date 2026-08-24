@@ -520,6 +520,12 @@ export class SessionManager implements SessionSink {
     if (move && state.status !== 'idle') {
       await session.replaceRelocation({ ...item, state: 'queued' });
       this.queuedMoves.set(id, itemId);
+      // Cuts the turn short rather than waiting for it to end on its own —
+      // otherwise the user stops it by hand every time to get the move to
+      // happen now. `interrupt()` never rejects for a reason worth acting on
+      // here (AgentSession.interrupt() already turns a failure into a
+      // recorded error), so fire-and-forget is correct.
+      void session.interrupt();
       return;
     }
 
@@ -552,11 +558,17 @@ export class SessionManager implements SessionSink {
    * Writes the outcome and, for a move, performs it. Shared by the immediate
    * answer and by the queued one so there is a single place that decides what
    * an answered offer looks like.
+   *
+   * `interrupted` is only ever true from the queued path (`performQueuedMove`)
+   * — the immediate one never touched the run, so there is nothing to say
+   * stopped it early.
    */
   private async settleRelocation(
     id: SessionId, session: AgentSession, state: SessionState,
     item: Extract<TranscriptItem, { role: 'relocation' }>, move: boolean,
+    interrupted = false,
   ): Promise<void> {
+    if (move && interrupted) { await session.noteInterruptedMove(item.path); }
     const settled: TranscriptItem = { ...item, state: move ? 'moved' : 'stayed' };
     await session.replaceRelocation(settled);
     if (!move) { return; }
@@ -670,13 +682,18 @@ export class SessionManager implements SessionSink {
     const key = threadKey(provider.id, provider.threadScope, state.cwd);
     const seed = state.resumeTokens[key]
       ? undefined
-      : buildSeed((await this.store.tail(id, 200)).items);
+      : buildSeed((await this.store.tail(id, 200)).items, undefined, state.cwd);
 
     const moved = new AgentSession(state, provider, this.store, this, seed);
     this.live.set(id, moved);
     const cached = this.catalogSvc.get(this.keyOf(state));
     if (cached) { moved.setInvocables(cached); }
     this.catalogSvc.ensure(this.keyOf(state), provider, state.cwd);
+    // Whatever the old session's own turn-end skipped draining (see
+    // AgentSession's `relocating` guard) belongs to this session now: `state`
+    // — and its `queued` array — is the same object the old session held, so
+    // it survived the dispose above untouched.
+    moved.drainQueued();
     this.changed();
     if (this.visible.has(id)) {
       this.emitSnapshot(id, await moved.snapshot());
@@ -1476,7 +1493,7 @@ export class SessionManager implements SessionSink {
     const item = await this.store.find(id, itemId);
     if (!item || item.role !== 'relocation' || item.state !== 'queued') { return; }
 
-    await this.settleRelocation(id, session, state, item, true);
+    await this.settleRelocation(id, session, state, item, true, true);
   }
 
   /**
@@ -1486,6 +1503,10 @@ export class SessionManager implements SessionSink {
    */
   shellNoise(profile: string): void {
     this.onShellNoise(profile);
+  }
+
+  hasQueuedRelocation(id: SessionId): boolean {
+    return this.queuedMoves.has(id);
   }
 
   invocables(id: SessionId, entries: Invocable[]): void {

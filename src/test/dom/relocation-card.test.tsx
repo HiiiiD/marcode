@@ -111,7 +111,7 @@ suite('RelocationCard', () => {
 
     // Settled-but-live: the question is answered, so the two answer buttons
     // are gone, but the row still says what is about to happen and when.
-    screen.getByText('Moving to feat-x when this turn ends');
+    screen.getByText('Interrupting the turn to move to feat-x');
     assert.strictEqual(screen.queryByLabelText('Move this session to feat-x') === null, true);
     assert.strictEqual(screen.queryByLabelText('Stay in the current directory') === null, true);
     assert.strictEqual(

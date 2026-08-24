@@ -777,7 +777,7 @@ suite('AgentSession', () => {
     await settle();
 
     assert.deepStrictEqual(
-      provider.sent[0], { text: 'look at this', context: ctx, attachments: undefined },
+      provider.sent[0], { text: 'look at this', context: ctx, attachments: undefined, runIndex: 0 },
     );
     const snapshot = await session.snapshot();
     const user = snapshot.items.find((i) => i.role === 'user');

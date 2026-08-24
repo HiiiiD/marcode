@@ -75,6 +75,11 @@ suite('buildSeed', () => {
     assert.strictEqual(seed.length <= 300, true);
   });
 
+  test('states the new directory explicitly when given one', () => {
+    const seed = buildSeed([user('u1', 'add a login form')], undefined, '/repo/worktrees/feat-x');
+    assert.strictEqual(seed.includes('/repo/worktrees/feat-x'), true);
+  });
+
   test('skips permission and error items', () => {
     const items: TranscriptItem[] = [
       { id: 'p1', ts: 4, role: 'permission', requestId: 'r1', state: 'allowed',
