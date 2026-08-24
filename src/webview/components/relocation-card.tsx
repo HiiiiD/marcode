@@ -45,7 +45,7 @@ export function RelocationCard({
             change the outcome. */}
         <div className="flex items-baseline gap-2 text-xs text-muted-foreground">
           <span className="truncate" title={item.path}>
-            Moving to {name} when this turn ends
+            Interrupting the turn to move to {name}
           </span>
           <Button
             variant="ghost"

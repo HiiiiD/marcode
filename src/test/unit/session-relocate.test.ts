@@ -58,6 +58,19 @@ function goIdle(manager: SessionManager, session: AgentSession): void {
   manager.status(session.state.id, 'idle');
 }
 
+/**
+ * Makes a run's `interrupt()` hang rather than settle at once, the way a real
+ * provider's cancellation can take real time. `relocate()` now fires the
+ * interrupt itself, so a test asserting the item is still `queued` right
+ * after the click needs a run that has not actually stopped yet — the
+ * default `FakeProvider` interrupt settles synchronously (see
+ * fake-provider.test.ts), which would otherwise race the move to completion
+ * before the assertion runs.
+ */
+function stallInterrupt(run: { interrupt: () => Promise<void> }): void {
+  run.interrupt = () => new Promise<void>(() => {});
+}
+
 suite('SessionManager.relocate', () => {
   const dirs: string[] = [];
   const managers: SessionManager[] = [];
@@ -146,7 +159,8 @@ suite('SessionManager.relocate', () => {
   });
 
   test('defers the move while the session is running', async () => {
-    const { manager, session, store } = await withPendingOffer('/repo/../t/a', 'running');
+    const { manager, session, store, provider } = await withPendingOffer('/repo/../t/a', 'running');
+    stallInterrupt(provider.runs[provider.runs.length - 1]);
     const before = session.state.cwd;
     await manager.relocate(session.state.id, 'r1', true);
     assert.strictEqual(manager.get(session.state.id)!.state.cwd, before);
@@ -159,8 +173,17 @@ suite('SessionManager.relocate', () => {
     assert.strictEqual(item?.role === 'relocation' && item.state, 'queued');
   });
 
+  test('queuing a move interrupts the running turn immediately', async () => {
+    const { manager, session, provider } = await withPendingOffer('/repo/../t/a', 'running');
+    const run = provider.runs[provider.runs.length - 1];
+    await manager.relocate(session.state.id, 'r1', true);
+
+    assert.strictEqual(provider.interrupted.includes(run), true);
+  });
+
   test('cancelling a queued move returns the item to pending', async () => {
-    const { manager, session, store } = await withPendingOffer('/repo/../t/a', 'running');
+    const { manager, session, store, provider } = await withPendingOffer('/repo/../t/a', 'running');
+    stallInterrupt(provider.runs[provider.runs.length - 1]);
     const id = session.state.id;
     const before = session.state.cwd;
     await manager.relocate(id, 'r1', true);
@@ -188,7 +211,8 @@ suite('SessionManager.relocate', () => {
   });
 
   test('a queued item whose queue entry is gone comes back as pending', async () => {
-    const { manager, session, store, target } = await withPendingOffer('/repo/../t/a', 'running');
+    const { manager, session, store, target, provider } = await withPendingOffer('/repo/../t/a', 'running');
+    stallInterrupt(provider.runs[provider.runs.length - 1]);
     const id = session.state.id;
     await manager.relocate(id, 'r1', true);
 
@@ -226,6 +250,40 @@ suite('SessionManager.relocate', () => {
     const after = await store2.find(id, 'r1');
     assert.strictEqual(after?.role === 'relocation' && after.state, 'pending');
     assert.strictEqual(revived.summaries().find((s) => s.id === id)!.cwd, session.state.cwd);
+  });
+
+  test('an interrupted move records why the turn stopped', async () => {
+    const { manager, session, store, target } = await withPendingOffer('/repo/../t/a', 'running');
+    const id = session.state.id;
+    await manager.relocate(id, 'r1', true);
+
+    goIdle(manager, session);
+    await until(() => moved(manager, session));
+
+    const { items } = await store.tail(id, 200);
+    const note = items.find((i) => i.role === 'switch' && i.kind === 'relocation');
+    assert.strictEqual(note !== undefined, true);
+    assert.strictEqual(note?.role === 'switch' && note.text.includes(target), true);
+  });
+
+  test('a message parked while the move was queued is delivered after the move, not before', async () => {
+    const { manager, session, provider } = await withPendingOffer('/repo/../t/a', 'running');
+    const id = session.state.id;
+    // Not awaited: relocate() only reaches its own first await before
+    // returning control here, so `state.status` is still 'running' — this is
+    // the same-tick window in which the message must park rather than send.
+    const relocated = manager.relocate(id, 'r1', true);
+    session.send('follow up');
+    await relocated;
+
+    await until(() => moved(manager, session));
+    await settle();
+
+    const last = provider.sent[provider.sent.length - 1];
+    assert.strictEqual(last.text.endsWith('follow up'), true);
+    // Went out on the run started for the new cwd, not the one being torn
+    // down for the old one.
+    assert.strictEqual(last.runIndex, provider.starts.length - 1);
   });
 
   test('performs the queued move when the session goes idle', async () => {

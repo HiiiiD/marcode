@@ -58,6 +58,16 @@ export interface SessionSink {
    * `host/profile-noise.ts` for why the extension cannot fix it from here.
    */
   shellNoise?(profile: string): void;
+  /**
+   * Whether a Move is queued for this session, right now. Consulted only at
+   * the start of `turn-end` handling, before `recomputeWaitingStatus` runs —
+   * that call is what performs a queued move (through the sink's own
+   * `status()`), which removes the entry synchronously. Asking afterward
+   * would always see it gone. Optional for the same reason every other hook
+   * here is: a sink with no notion of relocation (a review-only client, say)
+   * answers "no" by omission, and the composer queue just drains as usual.
+   */
+  hasQueuedRelocation?(id: SessionId): boolean;
 }
 
 const TITLE_MAX = 60;
@@ -351,7 +361,7 @@ export class AgentSession {
    * one entry — delivering sets the session busy again, so the rest of the
    * queue waits for the next idle transition, one turn per queued message.
    */
-  private drainQueued(): void {
+  drainQueued(): void {
     const queued = this._state.queued;
     if (!queued || queued.length === 0 || this.busy) { return; }
     const [head, ...rest] = queued;
@@ -993,6 +1003,11 @@ export class AgentSession {
         if (event.reason === 'error') {
           this.fail(event.error ?? 'Agent run failed');
         } else {
+          // Read before recomputeWaitingStatus, never after: that call is
+          // what performs a queued move (through the sink's status() hook),
+          // which clears the queue entry synchronously — asking afterward
+          // would always read false.
+          const relocating = this.sink.hasQueuedRelocation?.(this._state.id) ?? false;
           // A permission raised earlier in the same event batch (e.g. inside
           // a subagent) can still be outstanding when turn-end arrives —
           // unconditionally going idle here would strand its card as the
@@ -1003,7 +1018,13 @@ export class AgentSession {
           // session is genuinely idle, and an interrupted turn reaches here
           // the same way a completed one does — which is what makes Stop a
           // way to send the parked message now.
-          this.drainQueued();
+          //
+          // Skipped when a move is queued: this run is about to be disposed
+          // and rebuilt at the new cwd, and sending here would hand a parked
+          // message to the run being torn down instead of the one that
+          // replaces it. `moveTo` drains the same queue on the rebuilt
+          // session once it exists.
+          if (!relocating) { this.drainQueued(); }
           void this.scheduleFlush();
           void this.refreshContextPercent();
           void this.refreshUsage();
@@ -1039,6 +1060,20 @@ export class AgentSession {
    */
   async replaceRelocation(item: TranscriptItem): Promise<void> {
     this.replaceItem(item);
+    await this.scheduleFlush();
+  }
+
+  /**
+   * Records that the turn in flight was cut short to perform a queued move —
+   * distinct from a user-initiated Stop, which leaves no transcript item of
+   * its own. Flushed eagerly for the same reason as `replaceRelocation`: the
+   * manager disposes and rebuilds this session right after.
+   */
+  async noteInterruptedMove(path: string): Promise<void> {
+    this.appendItem({
+      id: nextId('sw'), ts: Date.now(), role: 'switch', kind: 'relocation',
+      text: `Interrupted this turn to move to ${path}`,
+    });
     await this.scheduleFlush();
   }
 

@@ -60,12 +60,14 @@ export function TranscriptItemView({
     case 'relocation':
       return <RelocationCard item={item} sessionId={sessionId} />;
 
-    case 'switch':
+    case 'switch': {
+      const label = item.kind === 'model' ? 'Model' : item.kind === 'effort' ? 'Effort' : 'Worktree';
       return (
-        <TranscriptItemShell role="tool" label={item.kind === 'model' ? 'Model' : 'Effort'} ts={item.ts}>
+        <TranscriptItemShell role="tool" label={label} ts={item.ts}>
           <div className="text-xs text-muted-foreground">{item.text}</div>
         </TranscriptItemShell>
       );
+    }
 
     default:
       // The TranscriptItem type is closed, but nothing guarantees a runtime

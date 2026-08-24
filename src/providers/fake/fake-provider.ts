@@ -83,12 +83,21 @@ export class FakeProvider implements AgentProvider {
   readonly listInvocablesCalls: string[] = [];
   /** Scripted probe answer: a catalog to resolve with, or an Error to reject with. */
   invocables: Invocable[] | Error | undefined;
-  /** Records every (text, context, attachments) triple passed to send, for assertions. */
-  readonly sent: { text: string; context?: EditorContext; attachments?: Attachment[] }[] = [];
+  /**
+   * Records every (text, context, attachments) triple passed to send, for
+   * assertions. `runIndex` is this send's position in `starts`/`runs` — the
+   * one way a test can tell a message went to the run started for a moved
+   * cwd rather than the one being torn down.
+   */
+  readonly sent: {
+    text: string; context?: EditorContext; attachments?: Attachment[]; runIndex: number;
+  }[] = [];
   /** Every cwd fetchUsage() was called with, in order. */
   readonly fetchUsageCalls: string[] = [];
   /** Every options object start() was called with, in order. */
   readonly starts: StartOptions[] = [];
+  /** Every run whose interrupt() was called, in order — a run can appear more than once. */
+  readonly interrupted: FakeRun[] = [];
   private sessionCounter = 0;
 
   /** The options the most recent run was started with, for assertions. */
@@ -119,6 +128,7 @@ export class FakeProvider implements AgentProvider {
   }
 
   start(opts: StartOptions): AgentRun {
+    const runIndex = this.starts.length;
     this.starts.push(opts);
     const channel = new EventChannel();
     const resumeToken = `fake-session-${++this.sessionCounter}`;
@@ -127,7 +137,7 @@ export class FakeProvider implements AgentProvider {
     const run: FakeRun = {
       events: channel,
       send: (text: string, context?: EditorContext, attachments?: Attachment[]) => {
-        this.sent.push({ text, context, attachments });
+        this.sent.push({ text, context, attachments, runIndex });
         if (!started) {
           started = true;
           channel.push({ kind: 'session', resumeToken });
@@ -153,7 +163,10 @@ export class FakeProvider implements AgentProvider {
       setEffort: (effort: EffortLevel) => { this.efforts.push(effort); },
       setPermissionMode: (mode: PermissionMode) => { this.permissionModes.push(mode); },
       setModel: (model: string) => { this.models.push(model); },
-      interrupt: async () => { channel.push({ kind: 'turn-end', reason: 'interrupted' }); },
+      interrupt: async () => {
+        this.interrupted.push(run);
+        channel.push({ kind: 'turn-end', reason: 'interrupted' });
+      },
       dispose: async () => { channel.close(); },
       emit: (event: AgentEvent) => { channel.push(event); },
       usageWindows: async (): Promise<UsageWindow[] | undefined> =>
