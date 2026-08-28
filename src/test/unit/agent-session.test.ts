@@ -1404,4 +1404,43 @@ suite('AgentSession activityLabel', () => {
     assert.strictEqual(session.state.activityLabel, 'Running Task', 'the parent, not its child');
     await session.dispose();
   });
+
+  test('a turn with only assistant text leaves activityLabel running, not stale Idle', async () => {
+    // No tool call at all — deliver() alone must move activityLabel off
+    // whatever it read before the turn started, the same way it moves
+    // status. Deliberately no turn-end in the script: the turn is still
+    // in flight when the assertion runs.
+    const provider = new FakeProvider(() => [{ kind: 'text', delta: 'Hello there' }]);
+    const session = new AgentSession(baseState(), provider, store, sink);
+    session.send('hi');
+    await settle();
+
+    assert.strictEqual(session.state.status, 'running');
+    assert.strictEqual(session.state.activityLabel, 'Running a tool');
+    await session.dispose();
+  });
+
+  test('a pending question describes waiting on an answer, not on a tool', async () => {
+    const provider = new FakeProvider();
+    const session = new AgentSession(baseState(), provider, store, sink);
+    provider.runs[0].emit({ kind: 'question', id: 'r1', blocking: true, questions: [QUESTION_SPEC] });
+    await settle();
+
+    assert.strictEqual(session.state.status, 'awaiting-approval');
+    assert.strictEqual(session.state.activityLabel, 'Waiting for your answer');
+    await session.dispose();
+  });
+
+  test('a pending permission alongside a pending question still names the tool', async () => {
+    const provider = new FakeProvider();
+    const session = new AgentSession(baseState(), provider, store, sink);
+    provider.runs[0].emit({
+      kind: 'permission', id: 'p1', tool: { kind: 'command', label: 'Bash', command: 'ls' },
+    });
+    provider.runs[0].emit({ kind: 'question', id: 'r1', blocking: true, questions: [QUESTION_SPEC] });
+    await settle();
+
+    assert.strictEqual(session.state.activityLabel, 'Waiting for approval: Bash');
+    await session.dispose();
+  });
 });

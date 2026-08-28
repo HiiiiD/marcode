@@ -413,6 +413,7 @@ export class AgentSession {
     this.appendItem(item);
     this.closeAssistant();
     this.setStatus('running');
+    this.refreshActivityLabel();
     this.turnActive = true;
     // The transcript item above deliberately recorded `text`, never
     // `outgoing`: a seed is context handed to the provider, not something the
@@ -689,10 +690,23 @@ export class AgentSession {
    * describe different things. `'error'` and `'idle'` share the fallback:
    * once a turn is not `running` or `awaiting-approval` there is nothing
    * left to name.
+   *
+   * `awaiting-approval` covers two unrelated request shapes — a permission
+   * (asking about a `ToolCall`) and a question (asking the user something,
+   * with no tool involved at all) — and `pending`/`pendingQuestions` can
+   * both be non-empty at once (see the "keeps the session waiting" tests).
+   * Permission wording wins when both are outstanding: a tool decision
+   * blocks the agent from proceeding at all, where an unanswered question
+   * is just one more parked request. Checked before falling back to
+   * `currentToolLabel()`, which would otherwise mislabel a plain question
+   * with whatever unrelated tool happens to still be running.
    */
   private activityLabelFor(status: SessionStatus): string {
     if (status === 'awaiting-approval') {
-      return `Waiting for approval: ${this.waitingToolLabel() ?? this.currentToolLabel() ?? 'a tool'}`;
+      if (this.pending.size > 0) {
+        return `Waiting for approval: ${this.waitingToolLabel() ?? this.currentToolLabel() ?? 'a tool'}`;
+      }
+      return 'Waiting for your answer';
     }
     if (status === 'running') {
       return `Running ${this.currentToolLabel() ?? 'a tool'}`;
