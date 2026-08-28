@@ -68,9 +68,16 @@ suite('SubagentCard', () => {
     assert.ok(screen.getByText('showing last 10 of 25'));
     assert.ok(screen.getByText('Tool24'), 'the newest child is rendered');
     assert.strictEqual(screen.queryByText('Tool14'), null, 'the eleventh-from-last is not');
+  });
+
+  test('offers to open the full transcript once past the window', async () => {
+    const children = Array.from({ length: 25 }, (_, i) => child(`c${i}`, `Tool${i}`));
+    renderWithStore(<SubagentCard item={subagent(children)} sessionId="s1" />);
+    await userEvent.click(screen.getByRole('button', { expanded: false }));
+
     assert.strictEqual(
-      screen.queryByRole('button', { name: /show all/i }), null,
-      'no overflow control',
+      screen.getByRole('button', { name: /open full transcript/i }) !== null,
+      true,
     );
   });
 

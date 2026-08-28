@@ -154,14 +154,16 @@ export const initialState: ClientState = {
 };
 
 /**
- * `HostToWebview` plus one client-local action. The host persists
- * `set-layout` but never echoes it back — `hydrate` is the only
- * `HostToWebview` message carrying `layout`, and it only arrives on
- * `ready`. `local-layout` lets `StoreProvider.post` apply a posted layout
- * change optimistically so a newly opened or closed pane renders
- * immediately instead of waiting for the next reload; the host ends up
- * persisting exactly the value computed here, so there's nothing to
- * reconcile against later.
+ * `HostToWebview` plus one client-local action. `hydrate` carries `layout`
+ * too, but only once, on `ready`; a later layout change reaches the webview
+ * either via the host's own `layout-changed` echo (`SessionManager.setLayout`
+ * emits it for every caller, e.g. the fleet view's `focus-session` handler)
+ * or, for a layout change the webview itself posted, via `local-layout`:
+ * `StoreProvider.post` applies a posted `set-layout` optimistically so a
+ * newly opened or closed pane renders immediately instead of waiting for the
+ * round trip; the host ends up persisting and echoing back exactly the value
+ * computed here, so there's nothing to reconcile once `layout-changed`
+ * arrives for it.
  */
 export type ClientAction =
   | HostToWebview
@@ -178,6 +180,9 @@ export type ClientAction =
 export function reduce(state: ClientState, msg: ClientAction): ClientState {
   switch (msg.t) {
     case 'local-layout':
+      return { ...state, layout: msg.layout };
+
+    case 'layout-changed':
       return { ...state, layout: msg.layout };
 
     case 'local-focus':

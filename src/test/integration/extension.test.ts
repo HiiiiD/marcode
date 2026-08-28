@@ -41,7 +41,7 @@ suite('PanelViewProvider CSP', () => {
 
   test('CSP contains default-src none', () => {
     const provider = new PanelViewProvider(
-      extensionUri, managerStub, '/tmp', editorStub, undefined, undefined, () => {},
+      extensionUri, managerStub, '/tmp', editorStub, undefined, undefined, () => {}, () => {},
     );
     const html = provider.render(makeWebviewStub());
     assert.match(html, /default-src 'none'/);
@@ -49,7 +49,7 @@ suite('PanelViewProvider CSP', () => {
 
   test('CSP does not contain unsafe-inline or unsafe-eval', () => {
     const provider = new PanelViewProvider(
-      extensionUri, managerStub, '/tmp', editorStub, undefined, undefined, () => {},
+      extensionUri, managerStub, '/tmp', editorStub, undefined, undefined, () => {}, () => {},
     );
     const html = provider.render(makeWebviewStub());
     assert.ok(!html.includes('unsafe-inline'), 'CSP should not contain unsafe-inline');
@@ -58,7 +58,7 @@ suite('PanelViewProvider CSP', () => {
 
   test('nonce in the CSP meta tag matches the nonce on the script tag', () => {
     const provider = new PanelViewProvider(
-      extensionUri, managerStub, '/tmp', editorStub, undefined, undefined, () => {},
+      extensionUri, managerStub, '/tmp', editorStub, undefined, undefined, () => {}, () => {},
     );
     const html = provider.render(makeWebviewStub());
 
@@ -72,7 +72,7 @@ suite('PanelViewProvider CSP', () => {
 
   test('two separate renders produce different nonces', () => {
     const provider = new PanelViewProvider(
-      extensionUri, managerStub, '/tmp', editorStub, undefined, undefined, () => {},
+      extensionUri, managerStub, '/tmp', editorStub, undefined, undefined, () => {}, () => {},
     );
     const first = provider.render(makeWebviewStub());
     const second = provider.render(makeWebviewStub());

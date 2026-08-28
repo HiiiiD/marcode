@@ -42,6 +42,8 @@ function describeInbound(m: WebviewToHost): string {
     case 'remove-stale-tree': return 'remove-stale-tree';
     case 'request-fleet-diff': return 'request-fleet-diff';
     case 'open-review': return 'open-review';
+    case 'open-fleet': return 'open-fleet';
+    case 'focus-session': return 'focus-session';
     case 'open-file-diff': return 'open-file-diff';
     case 'refresh-catalog': return 'refresh-catalog';
     case 'open-settings': return 'open-settings';
@@ -77,6 +79,7 @@ function describeOutbound(m: HostToWebview): string {
     case 'file-search-result': return 'file-search-result';
     case 'agents-md-nudge': return 'agents-md-nudge';
     case 'favorite-models': return 'favorite-models';
+    case 'layout-changed': return 'layout-changed';
     default: return assertNever(m);
   }
 }

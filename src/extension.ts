@@ -6,6 +6,7 @@ import { AttachmentStore } from './host/attachment-store';
 import { defaultCwdOf } from './host/default-cwd';
 import { diffUri, registerDiffContentProvider } from './host/diff-content-provider';
 import { EditorContextTracker } from './host/editor-context-tracker';
+import { FleetPanel, FLEET_VIEW_TYPE } from './host/fleet-panel';
 import { clampCap } from './host/fleet-diff';
 import { PanelViewProvider } from './host/panel-view-provider';
 import { PostBus } from './host/post-bus';
@@ -328,6 +329,7 @@ export async function activate(context: vscode.ExtensionContext) {
   const review = new ReviewPanel(
     context.extensionUri, manager, bus, defaultCwd, editorHost, reviewPollIntervalMs(),
   );
+  const fleet = new FleetPanel(context.extensionUri, manager, bus, defaultCwd, editorHost);
 
   const fileIndex = createWorkspaceFileIndex(defaultCwd);
 
@@ -366,6 +368,7 @@ export async function activate(context: vscode.ExtensionContext) {
   provider = new PanelViewProvider(
     context.extensionUri, manager, defaultCwd, editorHost, attachments, picker,
     () => { review.open(); },
+    () => { fleet.open(); },
     fileIndex,
     agentsMdNudge,
     favoriteModels,
@@ -387,13 +390,18 @@ export async function activate(context: vscode.ExtensionContext) {
     { dispose: () => { contextSub.dispose(); tracker.dispose(); editorSource.dispose(); } },
     fileIndex,
     vscode.commands.registerCommand('marcode.review.open', () => { review.open(); }),
+    vscode.commands.registerCommand('marcode.fleet.open', () => { fleet.open(); }),
     // Without a serializer VS Code restores the tab as a blank webview, which
     // is worse than not restoring it. The host owns whether the tab exists;
     // the client owns nothing durable, so re-attaching is the whole job.
     vscode.window.registerWebviewPanelSerializer(REVIEW_VIEW_TYPE, {
       deserializeWebviewPanel: async (panel) => { review.restore(panel); },
     }),
+    vscode.window.registerWebviewPanelSerializer(FLEET_VIEW_TYPE, {
+      deserializeWebviewPanel: async (panel) => { fleet.restore(panel); },
+    }),
     { dispose: () => { review.dispose(); } },
+    { dispose: () => { fleet.dispose(); } },
     vscode.commands.registerCommand('marcode.codex.login', () => {
       // `codex login` opens a browser flow and needs a real TTY, so this
       // hands the user a terminal rather than trying to drive it.

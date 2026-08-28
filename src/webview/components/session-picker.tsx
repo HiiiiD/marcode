@@ -1,5 +1,5 @@
 import {
-  ColumnsIcon, FolderGit2Icon, GitCompareIcon, PlugZapIcon, RowsIcon,
+  ColumnsIcon, FolderGit2Icon, GitCompareIcon, LayoutGridIcon, PlugZapIcon, RowsIcon,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -22,9 +22,10 @@ interface SessionPickerProps {
    * in `App`, and shared with `PaneGroup` — see `use-is-narrow.ts`. */
   narrow: boolean;
   onReview: () => void;
+  onFleet: () => void;
 }
 
-export function SessionPicker({ narrow, onReview }: SessionPickerProps) {
+export function SessionPicker({ narrow, onReview, onFleet }: SessionPickerProps) {
   const { state, post } = useStore();
   const open = new Set(state.layout.panes.map((p) => p.sessionId));
   const horizontal = state.layout.orientation === 'horizontal';
@@ -198,6 +199,23 @@ export function SessionPicker({ narrow, onReview }: SessionPickerProps) {
         onClick={onReview}
       >
         <GitCompareIcon aria-hidden />
+      </Button>
+
+      {/*
+        Its own control, beside the review one, for the same reason that one
+        is: this opens the fleet-wide status view — every roster session's
+        live status and activity, in an editor tab — a different surface than
+        review's diff, and filing it inside another control's menu would hide
+        it behind a word that names neither.
+      */}
+      <Button
+        variant="outline"
+        size="icon-sm"
+        className="shrink-0"
+        aria-label="Open the fleet view in an editor tab"
+        onClick={onFleet}
+      >
+        <LayoutGridIcon aria-hidden />
       </Button>
 
       {/* Mounted whether or not the button is: the last removal empties the

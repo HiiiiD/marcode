@@ -426,8 +426,19 @@ export class SessionManager implements SessionSink {
     }
   }
 
+  /**
+   * Assigns and persists the pane layout, and echoes the change to the
+   * sidebar. The echo is the only way a layout change made *by the host*
+   * (the fleet view's `focus-session` handler is the motivating case) ever
+   * reaches the webview — `hydrate` carries `layout` too, but only once, on
+   * `ready`. A layout change the webview itself posted (`set-layout`)
+   * already applies optimistically on the client via `local-layout` before
+   * this round-trips back, so the echo is a no-op there; it is load-bearing
+   * only for a caller other than the webview itself.
+   */
   setLayout(layout: PaneLayout): void {
     this.paneLayout = layout;
+    if (!this.disposed) { this.emit({ t: 'layout-changed', layout }); }
     this.schedulePersist();
   }
 

@@ -162,6 +162,14 @@ export interface SessionState {
   title: string;
   cwd: string;
   status: SessionStatus;
+  /**
+   * A short, human-readable description of what this session is doing right
+   * now — "Running Edit", "Waiting for approval: Bash", "Idle". Derived
+   * alongside `status` in `AgentSession`, so the two can never read the wall
+   * differently. Optional only for the instant before a session's first
+   * event.
+   */
+  activityLabel?: string;
   permissionMode: PermissionMode;
   /** Whether sends from this session attach the editor context. Sticky. */
   includeEditorContext: boolean;
@@ -396,6 +404,13 @@ export type WebviewToHost =
       seed?: { text: string; refs: SessionRef[]; fileRefs?: FileRef[] } }
   | { t: 'set-visible'; sessionIds: SessionId[] }
   | { t: 'set-layout'; layout: PaneLayout }
+  /**
+   * Sent only by the fleet view: bring a session into the sidebar's visible
+   * split. Intercepted by `FleetPanel` before `MessageRouter.handle` (same
+   * precedent as `open-review`), because revealing the sidebar view
+   * container needs the `vscode` API this module must not import.
+   */
+  | { t: 'focus-session'; id: SessionId }
   | { t: 'close-session'; id: SessionId }
   | { t: 'delete-session'; id: SessionId }
   | { t: 'send'; id: SessionId; text: string; refs?: SessionRef[]; fileRefs?: FileRef[] }
@@ -516,6 +531,14 @@ export type WebviewToHost =
    */
   | { t: 'open-review' }
   /**
+   * Open the fleet view tab. Unaddressed, like `open-review`: the fleet is a
+   * fleet-wide surface, not a session's.
+   *
+   * Handled in `PanelViewProvider`, not `MessageRouter` — same interception
+   * `open-review` already gets, and for the same reason.
+   */
+  | { t: 'open-fleet' }
+  /**
    * Open one file's change in VS Code's own diff editor. Carries the tree
    * because a repo-relative path is meaningless without it, and the base
    * because the left-hand side is that file at the branch point.
@@ -609,6 +632,19 @@ export type HostToWebview =
    * a star toggled in one has to reach all of them, not just the sender.
    */
   | { t: 'favorite-models'; ids: string[] }
+  /**
+   * The host changed `PaneLayout` itself — e.g. the fleet view's
+   * `focus-session` handler adding a session to the sidebar's split.
+   * `SessionManager.setLayout()` emits this right after it assigns
+   * `this.paneLayout`, alongside its existing persist call, so every caller
+   * of `setLayout` reaches the sidebar the same way, not just the one that
+   * happened to be reachable by accident (a session-snapshot on first
+   * arrival). A layout change the webview itself posted (`set-layout`)
+   * already applies optimistically via `local-layout` — see reducer.ts — so
+   * this message matters most for a layout change the webview did not
+   * initiate itself.
+   */
+  | { t: 'layout-changed'; layout: PaneLayout }
   | { t: 'session-snapshot'; session: SessionSnapshot }
   | { t: 'session-patch'; id: SessionId; patch: TranscriptPatch }
   | { t: 'session-prepend'; id: SessionId; items: TranscriptItem[]; hasMore: boolean }

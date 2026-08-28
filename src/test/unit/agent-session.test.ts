@@ -1328,3 +1328,119 @@ suite('AgentSession permission metadata', () => {
     await session.dispose();
   });
 });
+
+suite('AgentSession activityLabel', () => {
+  let dir: string;
+  let store: TranscriptStore;
+  let sink: RecordingSink;
+
+  setup(async () => {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mar-activity-'));
+    store = new TranscriptStore(dir);
+    sink = new RecordingSink();
+  });
+
+  teardown(async () => { await fs.rm(dir, { recursive: true, force: true }); });
+
+  test('starts Idle before any event', async () => {
+    const session = new AgentSession(baseState(), new FakeProvider(() => []), store, sink);
+    assert.strictEqual(session.state.activityLabel, 'Idle');
+    await session.dispose();
+  });
+
+  test('reports the running tool by its label while one is in flight', async () => {
+    const provider = new FakeProvider(() => [
+      { kind: 'tool-start', id: 't1', tool: { kind: 'command', label: 'Bash', command: 'ls' } },
+    ]);
+    const session = new AgentSession(baseState(), provider, store, sink);
+    session.send('list files');
+    await settle();
+
+    assert.strictEqual(session.state.activityLabel, 'Running Bash');
+    await session.dispose();
+  });
+
+  test('reports which tool is awaiting approval', async () => {
+    const provider = new FakeProvider(() => [
+      { kind: 'permission', id: 'r1', tool: { kind: 'command', label: 'Bash', command: 'ls' } },
+    ]);
+    const session = new AgentSession(baseState(), provider, store, sink);
+    session.send('list files');
+    await settle();
+
+    assert.strictEqual(session.state.activityLabel, 'Waiting for approval: Bash');
+    await session.dispose();
+  });
+
+  test('returns to Idle once the turn ends', async () => {
+    const provider = new FakeProvider(() => [
+      { kind: 'tool-start', id: 't1', tool: { kind: 'command', label: 'Bash', command: 'ls' } },
+      { kind: 'tool-end', id: 't1', ok: true, output: { kind: 'text', text: 'a.ts' } },
+      { kind: 'turn-end', reason: 'done' },
+    ]);
+    const session = new AgentSession(baseState(), provider, store, sink);
+    session.send('list files');
+    await settle();
+
+    assert.strictEqual(session.state.activityLabel, 'Idle');
+    await session.dispose();
+  });
+
+  test('a subagent-nested tool does not surface as the session-level activity', async () => {
+    const provider = new FakeProvider(() => [
+      {
+        kind: 'tool-start', id: 'task1',
+        tool: { kind: 'subagent', label: 'Task', action: 'spawn', agent: 'Explore' },
+      },
+      {
+        kind: 'tool-start', id: 'c1', parentId: 'task1',
+        tool: { kind: 'file-read', label: 'Read', path: 'a.ts' },
+      },
+    ]);
+    const session = new AgentSession(baseState(), provider, store, sink);
+    session.send('explore');
+    await settle();
+
+    assert.strictEqual(session.state.activityLabel, 'Running Task', 'the parent, not its child');
+    await session.dispose();
+  });
+
+  test('a turn with only assistant text leaves activityLabel running, not stale Idle', async () => {
+    // No tool call at all — deliver() alone must move activityLabel off
+    // whatever it read before the turn started, the same way it moves
+    // status. Deliberately no turn-end in the script: the turn is still
+    // in flight when the assertion runs.
+    const provider = new FakeProvider(() => [{ kind: 'text', delta: 'Hello there' }]);
+    const session = new AgentSession(baseState(), provider, store, sink);
+    session.send('hi');
+    await settle();
+
+    assert.strictEqual(session.state.status, 'running');
+    assert.strictEqual(session.state.activityLabel, 'Running a tool');
+    await session.dispose();
+  });
+
+  test('a pending question describes waiting on an answer, not on a tool', async () => {
+    const provider = new FakeProvider();
+    const session = new AgentSession(baseState(), provider, store, sink);
+    provider.runs[0].emit({ kind: 'question', id: 'r1', blocking: true, questions: [QUESTION_SPEC] });
+    await settle();
+
+    assert.strictEqual(session.state.status, 'awaiting-approval');
+    assert.strictEqual(session.state.activityLabel, 'Waiting for your answer');
+    await session.dispose();
+  });
+
+  test('a pending permission alongside a pending question still names the tool', async () => {
+    const provider = new FakeProvider();
+    const session = new AgentSession(baseState(), provider, store, sink);
+    provider.runs[0].emit({
+      kind: 'permission', id: 'p1', tool: { kind: 'command', label: 'Bash', command: 'ls' },
+    });
+    provider.runs[0].emit({ kind: 'question', id: 'r1', blocking: true, questions: [QUESTION_SPEC] });
+    await settle();
+
+    assert.strictEqual(session.state.activityLabel, 'Waiting for approval: Bash');
+    await session.dispose();
+  });
+});
