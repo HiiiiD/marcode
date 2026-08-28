@@ -99,6 +99,15 @@
           "default": [],
           "description": "Extra branch names (e.g. \"develop\", \"trunk\") the review tab tries as a working tree's comparison base, after the auto-detected default branch and before the built-in fallbacks (origin/main, origin/master, main, master). Takes effect after a window reload.",
           "scope": "window"
+        },
+        "marcode.hiddenModels": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Model rows hidden from every picker, each entry \"providerId modelId\" (e.g. \"opencode gpt-9\"). Managed from the New session dialog's hide toggle; edit here only to bulk-restore.",
+          "scope": "application"
         }
       }
     },

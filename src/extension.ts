@@ -9,7 +9,7 @@ import { EditorContextTracker } from './host/editor-context-tracker';
 import { clampCap } from './host/fleet-diff';
 import { PanelViewProvider } from './host/panel-view-provider';
 import { PostBus } from './host/post-bus';
-import type { AttachmentHost } from './host/message-router';
+import type { AttachmentHost, ConfigHost } from './host/message-router';
 import { PROFILE_GUARD_SNIPPET } from './host/profile-noise';
 import { ReviewPanel, REVIEW_VIEW_TYPE } from './host/review-panel';
 import { SelfControlMcpServer } from './host/self-control-mcp-server';
@@ -88,6 +88,18 @@ function reviewBaseRefs(): string[] {
   const configured = vscode.workspace.getConfiguration('marcode').get<unknown>('review.baseRefs');
   if (!Array.isArray(configured)) { return []; }
   return configured.filter((ref): ref is string => typeof ref === 'string' && ref.trim() !== '');
+}
+
+/**
+ * `marcode.hiddenModels` — model rows the New session dialog's user hid,
+ * each keyed `"providerId modelId"` (see `shared/model-catalog.ts#modelKey`).
+ * A malformed value (not an array of strings) is dropped rather than passed
+ * through, the same posture as `reviewBaseRefs`.
+ */
+function hiddenModels(): string[] {
+  const configured = vscode.workspace.getConfiguration('marcode').get<unknown>('hiddenModels');
+  if (!Array.isArray(configured)) { return []; }
+  return configured.filter((id): id is string => typeof id === 'string' && id.trim() !== '');
 }
 
 /**
@@ -295,6 +307,13 @@ export async function activate(context: vscode.ExtensionContext) {
     },
   };
 
+  const configHost: ConfigHost = {
+    setHiddenModels: (ids) => {
+      void vscode.workspace.getConfiguration('marcode')
+        .update('hiddenModels', ids, vscode.ConfigurationTarget.Global);
+    },
+  };
+
   const picker: AttachmentHost = {
     pick: async () => {
       const chosen = await vscode.window.showOpenDialog({
@@ -348,6 +367,8 @@ export async function activate(context: vscode.ExtensionContext) {
     () => { review.open(); },
     fileIndex,
     agentsMdNudge,
+    hiddenModels,
+    configHost,
   );
   // The sidebar is the client that wants everything. Registered here rather
   // than inside PanelViewProvider so there is one place that says which

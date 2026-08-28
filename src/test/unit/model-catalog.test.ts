@@ -1,6 +1,6 @@
 import * as assert from 'assert';
 import type { ModelInfo } from '../../providers/types';
-import { findModel, resolveEffort } from '../../shared/model-catalog';
+import { findModel, modelKey, resolveEffort, visibleModels } from '../../shared/model-catalog';
 
 const MODELS: ModelInfo[] = [
   { id: 'default', displayName: 'Default (recommended)', resolvedModel: 'claude-opus-5' },
@@ -69,5 +69,27 @@ suite('resolveEffort', () => {
     // provider that reports none, must not silently wipe a real choice.
     assert.strictEqual(resolveEffort(undefined, 'high'), 'high');
     assert.strictEqual(resolveEffort(undefined, undefined), undefined);
+  });
+});
+
+suite('modelKey', () => {
+  test('joins provider and model id with a space', () => {
+    assert.strictEqual(modelKey('opencode', 'gpt-4'), 'opencode gpt-4');
+  });
+});
+
+suite('visibleModels', () => {
+  test('drops rows whose key is in the hidden list', () => {
+    const visible = visibleModels(MODELS, 'opencode', ['opencode fable']);
+    assert.deepStrictEqual(visible.map((m) => m.id), ['default', 'opus', 'claude-sonnet-5']);
+  });
+
+  test('leaves every row when nothing is hidden', () => {
+    assert.strictEqual(visibleModels(MODELS, 'opencode', []).length, MODELS.length);
+  });
+
+  test('a hidden key under a different provider does not hide this provider\'s row', () => {
+    const visible = visibleModels(MODELS, 'opencode', ['claude fable']);
+    assert.strictEqual(visible.length, MODELS.length);
   });
 });

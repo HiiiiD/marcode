@@ -528,6 +528,64 @@ suite("Composer", () => {
     assert.deepStrictEqual(posted().at(-1), { t: "set-model", id: "a", model: "fake-small" });
   });
 
+  test("typing in the model picker filters the options by name", async () => {
+    renderWithStore(
+      <Composer
+        pane={pane()}
+        model={NO_EFFORT}
+        models={[
+          { displayName: "Fake Small", id: "fake-small" },
+          { displayName: "GPT Nine", id: "gpt-9" },
+        ]}
+      />,
+    );
+
+    await userEvent.click(screen.getByLabelText("Model"));
+    await userEvent.type(await screen.findByPlaceholderText("Search models…"), "gpt");
+
+    assert.ok(await screen.findByRole("option", { name: "GPT Nine" }));
+    assert.strictEqual(
+      screen.queryByRole("option", { name: "Fake Small" }) === null, true,
+    );
+  });
+
+  test("a model hidden via marcode.hiddenModels does not appear in the picker", async () => {
+    renderWithStore(
+      <Composer
+        pane={pane()}
+        model={NO_EFFORT}
+        models={[
+          { displayName: "Fake Small", id: "fake-small" },
+          { displayName: "GPT Nine", id: "gpt-9" },
+        ]}
+      />,
+    );
+    sendFromHost({ t: "hidden-models", ids: ["fake gpt-9"] });
+
+    await userEvent.click(screen.getByLabelText("Model"));
+
+    assert.ok(await screen.findByRole("option", { name: "Fake Small" }));
+    assert.strictEqual(
+      screen.queryByRole("option", { name: "GPT Nine" }) === null, true,
+    );
+  });
+
+  test("the session's current model stays in the picker even after being hidden", async () => {
+    const gpt9 = { displayName: "GPT Nine", id: "gpt-9" };
+    renderWithStore(
+      <Composer
+        pane={pane()}
+        model={gpt9}
+        models={[{ displayName: "Fake Small", id: "fake-small" }, gpt9]}
+      />,
+    );
+    sendFromHost({ t: "hidden-models", ids: ["fake gpt-9"] });
+
+    await userEvent.click(screen.getByLabelText("Model"));
+
+    assert.ok(await screen.findByRole("option", { name: "GPT Nine" }));
+  });
+
   suite("a session whose provider is unavailable", () => {
     /** The roster after the provider a session was created against went away. */
     function hydrateWithoutProvider() {

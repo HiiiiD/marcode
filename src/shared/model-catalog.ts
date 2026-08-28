@@ -25,6 +25,29 @@ export function findModel(models: ModelInfo[], id: string | undefined): ModelInf
 }
 
 /**
+ * The key a hidden-models entry names.
+ *
+ * A model id alone is not unique across providers — two providers can
+ * publish the same id (an alias like `opus` is exactly the kind that
+ * collides) — so hiding one must not hide the other's row of the same name.
+ */
+export function modelKey(providerId: string, modelId: string): string {
+  return `${providerId} ${modelId}`;
+}
+
+/**
+ * `models`, minus the ones this provider's user asked never to see.
+ *
+ * Filters by `modelKey`, not bare id, for the same collision reason `findModel`
+ * matches `resolvedModel` as a fallback rather than assuming ids are global.
+ */
+export function visibleModels(
+  models: ModelInfo[], providerId: string, hidden: string[],
+): ModelInfo[] {
+  return models.filter((m) => !hidden.includes(modelKey(providerId, m.id)));
+}
+
+/**
  * The effort a session on `model` should actually be running at, given what
  * it was asking for.
  *

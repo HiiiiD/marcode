@@ -2,13 +2,16 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog, DialogClose, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+import { Eye, EyeOff } from "lucide-react";
 import { useId, useState } from "react";
 import type { EffortLevel, PermissionMode, ProviderInfo } from "../../protocol/messages";
-import { findModel, resolveEffort } from "../../shared/model-catalog";
+import { findModel, modelKey, resolveEffort } from "../../shared/model-catalog";
 import { resolvePermissionMode } from "../../shared/permission-catalog";
+import { useStore } from "../store";
 import { EffortSlider } from "./effort-slider";
 import { modesFor } from "./permission-modes";
 import type { CreateSettings } from "./session-create-settings";
@@ -18,8 +21,11 @@ import type { CreateSettings } from "./session-create-settings";
  * providers can publish the same model id (an alias like `opus` is exactly
  * the kind of id that will collide), and this is one radio group so that
  * picking a model under one provider clears the pick under the other.
+ *
+ * Same key `shared/model-catalog.ts#modelKey` uses for a hidden-models entry
+ * — not a coincidence, the collision it guards against is the same one.
  */
-const valueOf = (providerId: string, modelId: string) => `${providerId} ${modelId}`;
+const valueOf = modelKey;
 
 /**
  * The full create form, for the session that is NOT like the one you are in.
@@ -84,9 +90,13 @@ function CreateForm({
   seedable?: boolean;
   onCreate: (settings: CreateSettings, seed?: string) => void;
 }) {
+  const { state, post } = useStore();
   const [picked, setPicked] = useState(valueOf(initial.providerId, initial.model));
   const [mode, setMode] = useState<PermissionMode>(initial.mode);
   const [seedText, setSeedText] = useState("");
+  /** Filters the model rows below as the user types. Local — search position
+   * is not something a reload needs to remember. */
+  const [modelSearch, setModelSearch] = useState("");
   /**
    * `null` means "whatever this model's default is", which is what a freshly
    * picked model has to mean: effort levels belong to the model, so a level
@@ -117,6 +127,28 @@ function CreateForm({
   // vertical space — with one, every group header would say the same word.
   const named = catalog.length > 1;
 
+  const isHidden = (providerId2: string, modelId2: string) =>
+    state.hiddenModels.includes(modelKey(providerId2, modelId2));
+
+  /**
+   * This dialog is the only place a hidden row can be unhidden, so — unlike
+   * every other model picker — a hidden row stays listed here, merely dimmed
+   * with its toggle flipped to "Show". The host echoes the write back as
+   * `hidden-models`; nothing here applies it optimistically.
+   */
+  const toggleHidden = (providerId2: string, modelId2: string) => {
+    const key = modelKey(providerId2, modelId2);
+    const ids = isHidden(providerId2, modelId2)
+      ? state.hiddenModels.filter((id) => id !== key)
+      : [...state.hiddenModels, key];
+    post({ t: "set-hidden-models", ids });
+  };
+
+  const query = modelSearch.trim().toLowerCase();
+  const groups = catalog
+    .map((p) => ({ provider: p, models: p.models.filter((m) => m.displayName.toLowerCase().includes(query)) }))
+    .filter((g) => g.models.length > 0);
+
   return (
     <>
       {/* `min-h-0` or the flex item refuses to shrink below its content and
@@ -141,26 +173,53 @@ function CreateForm({
 
         <div className="flex flex-col gap-2">
           <p className="text-xs font-medium text-muted-foreground">Model</p>
+          <Input
+            value={modelSearch}
+            onChange={(e) => setModelSearch(e.target.value)}
+            placeholder="Search models…"
+            className="h-7 text-xs"
+          />
+          {groups.length === 0 && (
+            <p className="px-0.5 py-1 text-xs text-muted-foreground">
+              No models match "{modelSearch.trim()}".
+            </p>
+          )}
           <RadioGroup value={picked} onValueChange={(v) => { setPicked(String(v)); setEffort(null); }}>
-            {catalog.map((p) => (
+            {groups.map(({ provider: p, models }) => (
               <div key={p.id} role="group" aria-label={p.displayName} className="flex flex-col gap-1">
                 {named && (
                   <p className="px-0.5 text-[0.65rem] tracking-wide text-muted-foreground uppercase">
                     {p.displayName}
                   </p>
                 )}
-                {p.models.map((m) => (
-                  <label
-                    key={m.id}
-                    className={cn(
-                      "flex cursor-pointer items-center gap-2 rounded-md px-1.5 py-1.5",
-                      "hover:bg-accent hover:text-accent-foreground",
-                    )}
-                  >
-                    <RadioGroupItem value={valueOf(p.id, m.id)} />
-                    <span className="min-w-0 truncate">{m.displayName}</span>
-                  </label>
-                ))}
+                {models.map((m) => {
+                  const hidden = isHidden(p.id, m.id);
+                  return (
+                    <div
+                      key={m.id}
+                      className={cn(
+                        "flex items-center gap-1 rounded-md pr-1",
+                        "hover:bg-accent hover:text-accent-foreground",
+                        hidden && "opacity-50",
+                      )}
+                    >
+                      <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 px-1.5 py-1.5">
+                        <RadioGroupItem value={valueOf(p.id, m.id)} />
+                        <span className="min-w-0 truncate">{m.displayName}</span>
+                      </label>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-xs"
+                        className="shrink-0"
+                        aria-label={hidden ? `Show ${m.displayName}` : `Hide ${m.displayName}`}
+                        onClick={() => toggleHidden(p.id, m.id)}
+                      >
+                        {hidden ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+                      </Button>
+                    </div>
+                  );
+                })}
               </div>
             ))}
           </RadioGroup>

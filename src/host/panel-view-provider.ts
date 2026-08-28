@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import type { AgentsMdNudgeController } from './agents-md-nudge';
 import type { AttachmentStore } from './attachment-store';
 import {
-  MessageRouter, type AttachmentHost, type EditorContextHost, type FileSearch,
+  MessageRouter, type AttachmentHost, type ConfigHost, type EditorContextHost, type FileSearch,
 } from './message-router';
 import type { SessionManager } from './session-manager';
 import { renderWebviewHtml } from './webview-html';
@@ -22,6 +22,9 @@ export class PanelViewProvider implements vscode.WebviewViewProvider {
     private readonly onOpenReview: () => void,
     private readonly fileSearch?: FileSearch,
     private readonly agentsMdNudge?: AgentsMdNudgeController,
+    /** `marcode.hiddenModels`, read fresh each time the view resolves. */
+    private readonly hiddenModels?: () => string[],
+    private readonly configHost?: ConfigHost,
   ) {}
 
   post(msg: HostToWebview): void {
@@ -71,7 +74,7 @@ export class PanelViewProvider implements vscode.WebviewViewProvider {
 
     const router = new MessageRouter(
       this.manager, (m) => this.post(m), this.defaultCwd, this.editor, this.attachments, this.picker,
-      undefined, this.fileSearch,
+      undefined, this.fileSearch, this.hiddenModels?.() ?? [], this.configHost,
     );
     view.webview.onDidReceiveMessage(async (raw: WebviewToHost) => {
       try {

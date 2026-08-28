@@ -201,6 +201,54 @@ suite('SessionCreateMenu', () => {
     assert.strictEqual(screen.queryByRole('dialog'), null);
   });
 
+  test('typing in the model search filters rows across every provider group', async () => {
+    renderApp();
+    hydrate([summary('a')], twoProviders());
+
+    await userEvent.click(optionsButton());
+    await userEvent.type(await screen.findByPlaceholderText('Search models…'), 'other');
+
+    assert.ok(screen.getByRole('radio', { name: 'Other One' }));
+    assert.strictEqual(screen.queryByRole('radio', { name: 'Fake Large' }) === null, true);
+    // The now-empty "Fake" group heading does not float with nothing under it.
+    assert.strictEqual(screen.queryByRole('group', { name: 'Fake' }) === null, true);
+  });
+
+  test('hiding a model posts set-hidden-models, keyed by provider and model id', async () => {
+    renderApp();
+    hydrate([summary('a')], twoProviders());
+
+    await userEvent.click(optionsButton());
+    await userEvent.click(await screen.findByRole('button', { name: 'Hide Fake Large' }));
+
+    assert.deepStrictEqual(posted().at(-1), { t: 'set-hidden-models', ids: ['fake fake-large'] });
+  });
+
+  test('a hidden model stays in the dialog, and its toggle offers to show it again', async () => {
+    renderApp();
+    hydrate([summary('a')], twoProviders());
+
+    await userEvent.click(optionsButton());
+    await userEvent.click(await screen.findByRole('button', { name: 'Hide Fake Large' }));
+    sendFromHost({ t: 'hidden-models', ids: ['fake fake-large'] });
+
+    assert.ok(await screen.findByRole('radio', { name: 'Fake Large' }));
+    assert.ok(await screen.findByRole('button', { name: 'Show Fake Large' }));
+  });
+
+  test('showing a model again removes just its key from the hidden list', async () => {
+    renderApp();
+    hydrate([summary('a')], twoProviders());
+
+    await userEvent.click(optionsButton());
+    await userEvent.click(await screen.findByRole('button', { name: 'Hide Fake Large' }));
+    sendFromHost({ t: 'hidden-models', ids: ['fake fake-large', 'other other-one'] });
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Show Fake Large' }));
+
+    assert.deepStrictEqual(posted().at(-1), { t: 'set-hidden-models', ids: ['other other-one'] });
+  });
+
   test('both create controls are disabled when no provider is available', () => {
     renderApp();
     sendFromHost({
