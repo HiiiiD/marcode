@@ -404,6 +404,13 @@ export type WebviewToHost =
       seed?: { text: string; refs: SessionRef[]; fileRefs?: FileRef[] } }
   | { t: 'set-visible'; sessionIds: SessionId[] }
   | { t: 'set-layout'; layout: PaneLayout }
+  /**
+   * Sent only by the fleet view: bring a session into the sidebar's visible
+   * split. Intercepted by `FleetPanel` before `MessageRouter.handle` (same
+   * precedent as `open-review`), because revealing the sidebar view
+   * container needs the `vscode` API this module must not import.
+   */
+  | { t: 'focus-session'; id: SessionId }
   | { t: 'close-session'; id: SessionId }
   | { t: 'delete-session'; id: SessionId }
   | { t: 'send'; id: SessionId; text: string; refs?: SessionRef[]; fileRefs?: FileRef[] }

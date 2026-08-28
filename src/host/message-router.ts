@@ -507,6 +507,15 @@ export class MessageRouter {
       case 'open-review':
         return;
 
+      // Same precedent as open-review: FleetPanel intercepts this before
+      // delegating, since revealing the sidebar view container needs the
+      // vscode API this module must not import. Listed here, and in
+      // KNOWN_MESSAGE_TAGS, so a stray one — this router also backs
+      // PanelViewProvider itself, where nothing intercepts it — is a
+      // deliberate no-op rather than a "malformed message" error log.
+      case 'focus-session':
+        return;
+
       case 'file-search': {
         const files = this.fileSearch ? await this.fileSearch.search(msg.query) : [];
         this.emit({ t: 'file-search-result', id: msg.id, query: msg.query, files });
@@ -589,7 +598,7 @@ const KNOWN_MESSAGE_TAGS = new Set<WebviewToHost['t']>([
   'request-context', 'open-file',
   'request-bring-back', 'bring-back',
   'request-stale-trees', 'remove-stale-tree',
-  'request-fleet-diff', 'open-file-diff', 'open-review',
+  'request-fleet-diff', 'open-file-diff', 'open-review', 'focus-session',
   'refresh-catalog', 'open-settings', 'open-external', 'export-table-csv',
   'file-search', 'set-favorite-models',
 ]);
