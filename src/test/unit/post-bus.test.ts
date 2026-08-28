@@ -1,6 +1,6 @@
 import * as assert from 'node:assert';
-import { PostBus, REVIEW_WANTS } from '../../host/post-bus';
-import type { HostToWebview } from '../../protocol/messages';
+import { PostBus, REVIEW_WANTS, FLEET_WANTS } from '../../host/post-bus';
+import type { HostToWebview, SessionId } from '../../protocol/messages';
 
 suite('PostBus', () => {
   test('delivers only what a client wants', () => {
@@ -22,6 +22,13 @@ suite('PostBus', () => {
     assert.strictEqual(REVIEW_WANTS({ t: 'session-patch' } as HostToWebview), false);
     assert.strictEqual(REVIEW_WANTS({ t: 'fleet-diff', trees: [] } as HostToWebview), true);
     assert.strictEqual(REVIEW_WANTS({ t: 'sessions-changed' } as unknown as HostToWebview), true);
+  });
+
+  test('FLEET_WANTS admits only sessions-changed and session-status', () => {
+    assert.strictEqual(FLEET_WANTS({ t: 'sessions-changed', sessions: [] } as unknown as HostToWebview), true);
+    assert.strictEqual(FLEET_WANTS({ t: 'session-status', id: 's1' as SessionId, status: 'idle' } as HostToWebview), true);
+    assert.strictEqual(FLEET_WANTS({ t: 'fleet-diff', trees: [] } as unknown as HostToWebview), false);
+    assert.strictEqual(FLEET_WANTS({ t: 'session-patch', id: 's1' as SessionId, ops: [] } as unknown as HostToWebview), false);
   });
 
   test('remove stops delivery', () => {
