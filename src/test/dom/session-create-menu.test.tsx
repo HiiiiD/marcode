@@ -249,6 +249,63 @@ suite('SessionCreateMenu', () => {
     assert.deepStrictEqual(posted().at(-1), { t: 'set-hidden-models', ids: ['other other-one'] });
   });
 
+  test('a provider header offers to hide every one of its models in one click', async () => {
+    renderApp();
+    hydrate([summary('a')], twoProviders());
+
+    await userEvent.click(optionsButton());
+    const fake = await screen.findByRole('group', { name: 'Fake' });
+    await userEvent.click(within(fake).getByRole('button', { name: 'Hide all' }));
+
+    assert.deepStrictEqual(posted().at(-1), {
+      t: 'set-hidden-models',
+      ids: ['fake fake-large', 'fake fake-small', 'fake fake-medium'],
+    });
+  });
+
+  test('hiding a whole provider does not touch another provider\'s hidden models', async () => {
+    renderApp();
+    hydrate([summary('a')], twoProviders());
+
+    await userEvent.click(optionsButton());
+    sendFromHost({ t: 'hidden-models', ids: ['other other-one'] });
+    const fake = await screen.findByRole('group', { name: 'Fake' });
+    await userEvent.click(within(fake).getByRole('button', { name: 'Hide all' }));
+
+    const ids = (posted().at(-1) as { ids: string[] }).ids;
+    assert.ok(ids.includes('other other-one'));
+    assert.ok(ids.includes('fake fake-large'));
+  });
+
+  test('a bulk hide is scoped to the models the search has narrowed to', async () => {
+    renderApp();
+    hydrate([summary('a')], twoProviders());
+
+    await userEvent.click(optionsButton());
+    await userEvent.type(await screen.findByPlaceholderText('Search models…'), 'Large');
+    const fake = await screen.findByRole('group', { name: 'Fake' });
+    await userEvent.click(within(fake).getByRole('button', { name: 'Hide all' }));
+
+    assert.deepStrictEqual(posted().at(-1), { t: 'set-hidden-models', ids: ['fake fake-large'] });
+  });
+
+  test('once every model in a group is hidden, its bulk button offers to show them again', async () => {
+    renderApp();
+    hydrate([summary('a')], twoProviders());
+
+    await userEvent.click(optionsButton());
+    const fake = await screen.findByRole('group', { name: 'Fake' });
+    await userEvent.click(within(fake).getByRole('button', { name: 'Hide all' }));
+    sendFromHost({
+      t: 'hidden-models',
+      ids: ['fake fake-large', 'fake fake-small', 'fake fake-medium'],
+    });
+
+    await userEvent.click(await within(fake).findByRole('button', { name: 'Show all' }));
+
+    assert.deepStrictEqual(posted().at(-1), { t: 'set-hidden-models', ids: [] });
+  });
+
   test('both create controls are disabled when no provider is available', () => {
     renderApp();
     sendFromHost({

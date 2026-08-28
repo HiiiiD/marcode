@@ -144,6 +144,31 @@ function CreateForm({
     post({ t: "set-hidden-models", ids });
   };
 
+  /**
+   * Whether the group's bulk button reads "Show all" (every one of the rows
+   * *currently listed* — search-narrowed, not the provider's whole catalog —
+   * is already hidden) or "Hide all". An empty group has nothing to claim
+   * either way, so it reads as not-all-hidden rather than vacuously true.
+   */
+  const isGroupHidden = (p: ProviderInfo, models: ProviderInfo["models"]) =>
+    models.length > 0 && models.every((m) => isHidden(p.id, m.id));
+
+  /**
+   * OpenRouter-through-OpenCode is the case this exists for: hundreds of
+   * models, of which someone wants five. Hiding one at a time is the
+   * `toggleHidden` path above; getting to zero-minus-five needs one click
+   * for "everything", after which the five wanted rows come back through
+   * that same per-row toggle. Scoped to `models` — the search-filtered
+   * list — so narrowing the search first bulk-hides only the match.
+   */
+  const toggleGroupHidden = (p: ProviderInfo, models: ProviderInfo["models"]) => {
+    const keys = new Set(models.map((m) => modelKey(p.id, m.id)));
+    const ids = isGroupHidden(p, models)
+      ? state.hiddenModels.filter((id) => !keys.has(id))
+      : [...new Set([...state.hiddenModels, ...keys])];
+    post({ t: "set-hidden-models", ids });
+  };
+
   const query = modelSearch.trim().toLowerCase();
   const groups = catalog
     .map((p) => ({ provider: p, models: p.models.filter((m) => m.displayName.toLowerCase().includes(query)) }))
@@ -155,7 +180,7 @@ function CreateForm({
           the popup grows past `max-h` instead of scrolling here. The negative
           margins put the scrollbar on the popup's edge rather than inside its
           padding. */}
-      <div className="-mx-4 flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4">
+      <div className="-mx-4 flex min-h-0 flex-1 flex-col gap-3 overflow-x-hidden overflow-y-auto px-4">
         {seedable && (
           <div className="flex flex-col gap-2">
             <label htmlFor={`${ids}-seed`} className="text-xs font-medium text-muted-foreground">
@@ -186,19 +211,30 @@ function CreateForm({
           )}
           <RadioGroup value={picked} onValueChange={(v) => { setPicked(String(v)); setEffort(null); }}>
             {groups.map(({ provider: p, models }) => (
-              <div key={p.id} role="group" aria-label={p.displayName} className="flex flex-col gap-1">
-                {named && (
-                  <p className="px-0.5 text-[0.65rem] tracking-wide text-muted-foreground uppercase">
-                    {p.displayName}
-                  </p>
-                )}
+              <div key={p.id} role="group" aria-label={p.displayName} className="flex min-w-0 flex-col gap-1">
+                <div className="flex items-center justify-between gap-2 px-0.5">
+                  {named && (
+                    <p className="min-w-0 truncate text-[0.65rem] tracking-wide text-muted-foreground uppercase">
+                      {p.displayName}
+                    </p>
+                  )}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="xs"
+                    className="ml-auto h-5 shrink-0 px-1.5 text-[0.65rem] text-muted-foreground"
+                    onClick={() => toggleGroupHidden(p, models)}
+                  >
+                    {isGroupHidden(p, models) ? "Show all" : "Hide all"}
+                  </Button>
+                </div>
                 {models.map((m) => {
                   const hidden = isHidden(p.id, m.id);
                   return (
                     <div
                       key={m.id}
                       className={cn(
-                        "flex items-center gap-1 rounded-md pr-1",
+                        "flex min-w-0 items-center gap-1 rounded-md pr-1",
                         "hover:bg-accent hover:text-accent-foreground",
                         hidden && "opacity-50",
                       )}
