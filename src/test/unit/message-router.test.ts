@@ -64,6 +64,32 @@ suite('MessageRouter', () => {
     assert.strictEqual(hydrate.reviewPollIntervalMs, 2000);
   });
 
+  test('hydrate carries the configured favorite models', async () => {
+    const configured = new MessageRouter(
+      manager, (m) => sent.push(m), '/tmp', undefined, attachments, undefined, 750, undefined,
+      ['fake gpt-9'],
+    );
+    await configured.handle({ t: 'ready' });
+    const hydrate = sent.find((m) => m.t === 'hydrate') as
+      Extract<HostToWebview, { t: 'hydrate' }>;
+    assert.deepStrictEqual(hydrate.favoriteModels, ['fake gpt-9']);
+  });
+
+  test('set-favorite-models persists via the config host and echoes the new list', async () => {
+    const persisted: string[][] = [];
+    const r = new MessageRouter(
+      manager, (m) => sent.push(m), '/tmp', undefined, attachments, undefined, 750, undefined,
+      [], { setFavoriteModels: (ids) => persisted.push(ids) },
+    );
+
+    await r.handle({ t: 'set-favorite-models', ids: ['fake gpt-9'] });
+
+    assert.deepStrictEqual(persisted, [['fake gpt-9']]);
+    const echoed = sent.find((m) => m.t === 'favorite-models') as
+      Extract<HostToWebview, { t: 'favorite-models' }>;
+    assert.deepStrictEqual(echoed.ids, ['fake gpt-9']);
+  });
+
   test('hydrate says whether an empty catalog is still a pending question', async () => {
     // FakeProvider has no `fetchModels`, so nothing will be probed and the
     // catalog it hydrates with is already the final answer. Saying `probing`

@@ -121,6 +121,13 @@ export interface ClientState {
    * absent from the next message rather than merged against.
    */
   agentsMdNudgeHits: Array<{ dir: string; kind: 'migrate' | 'add-stub'; error?: string }>;
+  /**
+   * `marcode.favoriteModels`: starred rows, keyed `"providerId modelId"`
+   * (see `shared/model-catalog.ts#modelKey`). Global client state, not
+   * per-pane — every composer's picker and the New session dialog read the
+   * same list.
+   */
+  favoriteModels: string[];
 }
 
 export const initialState: ClientState = {
@@ -143,6 +150,7 @@ export const initialState: ClientState = {
   rejectionBySession: {},
   fileSearchBySession: {},
   agentsMdNudgeHits: [],
+  favoriteModels: [],
 };
 
 /**
@@ -229,6 +237,10 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
         // `agents-md-nudge` message that follows is the total rebuild here —
         // same posture as `staleTrees`.
         agentsMdNudgeHits: [],
+        // Absent reads as empty, not "carry the previous reload's list
+        // forward" — same posture as `probing`: a host that predates this
+        // field (or a hand-built fixture) has not said otherwise.
+        favoriteModels: msg.favoriteModels ?? [],
       };
     }
 
@@ -318,6 +330,9 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
         ...state, catalog: msg.catalog, unavailable: msg.unavailable,
         probing: msg.probing ?? true,
       };
+
+    case 'favorite-models':
+      return { ...state, favoriteModels: msg.ids };
 
     case 'editor-context':
       return { ...state, editorContext: msg.ctx };

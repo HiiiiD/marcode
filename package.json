@@ -99,6 +99,15 @@
           "default": [],
           "description": "Extra branch names (e.g. \"develop\", \"trunk\") the review tab tries as a working tree's comparison base, after the auto-detected default branch and before the built-in fallbacks (origin/main, origin/master, main, master). Takes effect after a window reload.",
           "scope": "window"
+        },
+        "marcode.favoriteModels": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Starred model rows, each entry \"providerId modelId\" (e.g. \"opencode gpt-4\"). Managed from the New session dialog's star toggle; edit here only to bulk-restore.",
+          "scope": "application"
         }
       }
     },

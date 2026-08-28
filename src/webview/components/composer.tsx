@@ -1,6 +1,8 @@
 import { Button } from "@/components/ui/button";
+import {
+  Combobox, ComboboxContent, ComboboxItem, ComboboxTrigger, ComboboxValue,
+} from "@/components/ui/combobox";
 import { InputGroup, InputGroupAddon, InputGroupTextarea } from "@/components/ui/input-group";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { Clock, Paperclip, SendHorizontal, Square, TriangleAlert, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -8,6 +10,7 @@ import type { Invocable, ModelInfo } from "../../protocol/messages";
 import { fileMentions, fileRefsOf, type FileMentionPayload } from "../lib/file-mentions";
 import { interceptFor } from "../lib/intercepts";
 import { insertionFor, menuQuery, menuView } from "../lib/invocable-menu";
+import { sortFavoritesFirst } from "../../shared/model-catalog";
 import {
   filterMentions, mentionQuery, pruneMentions, spliceMention, tokenFor,
   type MentionOption, type PendingMention,
@@ -82,6 +85,13 @@ export function Composer({
   // sentence.
   const blockedReasonId = `blocked-reason-${pane.summary.id}`;
   const readOnly = unavailableReason !== undefined;
+  // Every model stays reachable here — the combobox's own type-to-search is
+  // what keeps a huge catalog (hundreds of OpenRouter rows via OpenCode)
+  // usable, not exclusion. Starred rows only move to the front, as a
+  // convenience for the ones actually used; nothing here can vanish, so a
+  // session's current model needs no special-cased union the way a hide list
+  // would have required.
+  const pickerModels = sortFavoritesFirst(models, pane.summary.providerId, state.favoriteModels);
   // Codex distinguishes blocking from non-blocking questions; Claude's are
   // always blocking. Only a blocking one freezes the composer — a
   // non-blocking request never blocked the turn, so disabling here would
@@ -561,8 +571,8 @@ export function Composer({
               the modes unexplained. See mode-menu.tsx. */}
           <ModeMenu pane={pane} model={model} disabled={readOnly} />
 
-          <Select
-            items={models.map((m) => ({ value: m.id, label: m.displayName }))}
+          <Combobox
+            items={pickerModels.map((m) => ({ value: m.id, label: m.displayName }))}
             // The one case where the model control does freeze: with the
             // provider gone so is its catalog, so there is nothing to switch
             // to that the host could honor.
@@ -574,7 +584,7 @@ export function Composer({
             value={model?.id ?? pane.summary.model}
             onValueChange={(value) => post({ t: "set-model", id: pane.summary.id, model: value as string })}
           >
-            <SelectTrigger
+            <ComboboxTrigger
               size="sm"
               className="min-w-0 shrink truncate ml-auto"
               aria-label="Model"
@@ -586,21 +596,26 @@ export function Composer({
               aria-describedby={readOnly ? blockedReasonId : undefined}
               render={<Button variant={"outline"} />}
             >
-              <SelectValue className="truncate" />
-            </SelectTrigger>
+              <ComboboxValue className="truncate" />
+            </ComboboxTrigger>
             {/* The popup defaults to the trigger's width with the overflow
                 hidden, and this trigger shrinks to fit a 300px sidebar — so
                 a name like "Default (recommended)" gets cut mid-word. Size
                 to the content instead, floored at the trigger and capped at
-                what the viewport actually has. */}
-            <SelectContent className="w-auto min-w-(--anchor-width) max-w-(--available-width)">
-              {models.map((m) => (
-                <SelectItem key={m.id} value={m.id}>
-                  {m.displayName}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+                what the viewport actually has. A search box up top is what
+                makes a long OpenCode catalog navigable without hiding
+                anything — hiding rows happens only in the New session dialog. */}
+            <ComboboxContent
+              className="w-auto min-w-(--anchor-width) max-w-(--available-width)"
+              placeholder="Search models…"
+            >
+              {(item: { value: string; label: string }) => (
+                <ComboboxItem key={item.value} value={item.value}>
+                  {item.label}
+                </ComboboxItem>
+              )}
+            </ComboboxContent>
+          </Combobox>
 
           {running && (
             <Button

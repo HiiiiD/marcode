@@ -25,6 +25,45 @@ export function findModel(models: ModelInfo[], id: string | undefined): ModelInf
 }
 
 /**
+ * The key a hidden-models entry names.
+ *
+ * A model id alone is not unique across providers — two providers can
+ * publish the same id (an alias like `opus` is exactly the kind that
+ * collides) — so hiding one must not hide the other's row of the same name.
+ */
+export function modelKey(providerId: string, modelId: string): string {
+  return `${providerId} ${modelId}`;
+}
+
+/** Whether `providerId`/`modelId` is in `favorites` — see `modelKey` for the join. */
+export function isFavorite(providerId: string, modelId: string, favorites: string[]): boolean {
+  return favorites.includes(modelKey(providerId, modelId));
+}
+
+/**
+ * `models`, with starred rows moved to the front — a stable partition, so
+ * ties (all-starred, none-starred) keep the catalog's own order rather than
+ * being re-sorted alphabetically or by id.
+ *
+ * A reorder, not a filter: this backs the composer's quick-switch, which
+ * already has type-to-search for reaching an unstarred row, so nothing here
+ * is ever excluded — only decluttered by default. `New session`'s Favorites
+ * tab is the one place a favorite list becomes an actual filter, and it
+ * builds that directly off `isFavorite` rather than through this function.
+ */
+export function sortFavoritesFirst(
+  models: ModelInfo[], providerId: string, favorites: string[],
+): ModelInfo[] {
+  if (favorites.length === 0) { return models; }
+  const starred: ModelInfo[] = [];
+  const rest: ModelInfo[] = [];
+  for (const m of models) {
+    (isFavorite(providerId, m.id, favorites) ? starred : rest).push(m);
+  }
+  return [...starred, ...rest];
+}
+
+/**
  * The effort a session on `model` should actually be running at, given what
  * it was asking for.
  *

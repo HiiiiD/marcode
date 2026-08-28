@@ -557,7 +557,16 @@ export type WebviewToHost =
    * one dir for a row, every listed dir for "Migrate all" / the card's own
    * dismiss.
    */
-  | { t: 'agents-md-nudge-action'; action: 'migrate' | 'dismiss'; dirs: string[] };
+  | { t: 'agents-md-nudge-action'; action: 'migrate' | 'dismiss'; dirs: string[] }
+  /**
+   * The complete `marcode.favoriteModels` list, after a star toggled in the
+   * New session dialog. Whole-list, not one id at a time — the host writes
+   * the setting and echoes back exactly what it persisted, the same round
+   * trip `set-layout`/`local-layout` avoid only because that one is applied
+   * optimistically; here every mounted picker needs the same answer, not
+   * just the one that changed it.
+   */
+  | { t: 'set-favorite-models'; ids: string[] };
 
 export type HostToWebview =
   | { t: 'hydrate'; sessions: SessionSummary[]; layout: PaneLayout;
@@ -584,7 +593,22 @@ export type HostToWebview =
        * `hydrate` fixture stays valid; `reduceReview` supplies its own
        * default (see `initialReviewState.pollIntervalMs`) when it is absent.
        */
-      reviewPollIntervalMs?: number }
+      reviewPollIntervalMs?: number;
+      /**
+       * `marcode.favoriteModels`: model rows the user starred, each keyed
+       * `"providerId modelId"` (see `shared/model-catalog.ts#modelKey`) since
+       * a bare id is not unique across providers. Optional for the same
+       * reason `probing` is — every hand-built `hydrate` fixture predating
+       * this field stays valid, and the reducer treats an absent list as
+       * empty rather than as "unknown". */
+      favoriteModels?: string[] }
+  /**
+   * The `marcode.favoriteModels` setting, after `set-favorite-models` wrote
+   * it. Broadcast rather than a reply to whichever pane sent it: the New
+   * session dialog and every composer's model picker read the same list, so
+   * a star toggled in one has to reach all of them, not just the sender.
+   */
+  | { t: 'favorite-models'; ids: string[] }
   | { t: 'session-snapshot'; session: SessionSnapshot }
   | { t: 'session-patch'; id: SessionId; patch: TranscriptPatch }
   | { t: 'session-prepend'; id: SessionId; items: TranscriptItem[]; hasMore: boolean }

@@ -92,6 +92,15 @@ export interface AttachmentHost { pick(): Promise<string[]> }
 
 const NO_PICKER: AttachmentHost = { pick: async () => [] };
 
+/**
+ * Persists `marcode.favoriteModels`. Here for the same reason
+ * `EditorContextHost` exists — writing a VS Code setting needs the `vscode`
+ * API, which this module must not import.
+ */
+export interface ConfigHost { setFavoriteModels(ids: string[]): void }
+
+const NO_CONFIG: ConfigHost = { setFavoriteModels: () => {} };
+
 export class MessageRouter {
   constructor(
     private readonly manager: SessionManager,
@@ -107,6 +116,14 @@ export class MessageRouter {
      */
     private readonly reviewPollIntervalMs: number = 750,
     private readonly fileSearch?: FileSearch,
+    /**
+     * `marcode.favoriteModels` as read at construction. Mutable from here on:
+     * `set-favorite-models` updates it in place so a `ready` from a second
+     * pane opened later in the same session hydrates with the current list,
+     * not the one the extension started with.
+     */
+    private favoriteModels: string[] = [],
+    private readonly configHost: ConfigHost = NO_CONFIG,
   ) {}
 
   /**
@@ -170,6 +187,7 @@ export class MessageRouter {
           probing: this.manager.willProbe(),
           usage: this.manager.usageSnapshot(),
           reviewPollIntervalMs: this.reviewPollIntervalMs,
+          favoriteModels: this.favoriteModels,
         });
         this.emit({ t: 'editor-context', ctx: this.editor.current() });
         // Not awaited: hydrate must not wait on a CLI handshake. The catalog
@@ -443,6 +461,12 @@ export class MessageRouter {
         this.editor.exportCsv(msg.csv);
         return;
 
+      case 'set-favorite-models':
+        this.favoriteModels = msg.ids;
+        this.configHost.setFavoriteModels(msg.ids);
+        this.emit({ t: 'favorite-models', ids: msg.ids });
+        return;
+
       case 'permission-decision':
         this.manager.get(msg.id)?.respondToPermission(msg.requestId, msg.decision);
         return;
@@ -567,7 +591,7 @@ const KNOWN_MESSAGE_TAGS = new Set<WebviewToHost['t']>([
   'request-stale-trees', 'remove-stale-tree',
   'request-fleet-diff', 'open-file-diff', 'open-review',
   'refresh-catalog', 'open-settings', 'open-external', 'export-table-csv',
-  'file-search',
+  'file-search', 'set-favorite-models',
 ]);
 
 /**

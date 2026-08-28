@@ -528,6 +528,66 @@ suite("Composer", () => {
     assert.deepStrictEqual(posted().at(-1), { t: "set-model", id: "a", model: "fake-small" });
   });
 
+  test("typing in the model picker filters the options by name", async () => {
+    renderWithStore(
+      <Composer
+        pane={pane()}
+        model={NO_EFFORT}
+        models={[
+          { displayName: "Fake Small", id: "fake-small" },
+          { displayName: "GPT Nine", id: "gpt-9" },
+        ]}
+      />,
+    );
+
+    await userEvent.click(screen.getByLabelText("Model"));
+    await userEvent.type(await screen.findByPlaceholderText("Search models…"), "gpt");
+
+    assert.ok(await screen.findByRole("option", { name: "GPT Nine" }));
+    assert.strictEqual(
+      screen.queryByRole("option", { name: "Fake Small" }) === null, true,
+    );
+  });
+
+  test("every model stays reachable even once one is starred — starring only reorders", async () => {
+    renderWithStore(
+      <Composer
+        pane={pane()}
+        model={NO_EFFORT}
+        models={[
+          { displayName: "Fake Small", id: "fake-small" },
+          { displayName: "GPT Nine", id: "gpt-9" },
+        ]}
+      />,
+    );
+    sendFromHost({ t: "favorite-models", ids: ["fake gpt-9"] });
+
+    await userEvent.click(screen.getByLabelText("Model"));
+
+    assert.ok(await screen.findByRole("option", { name: "Fake Small" }));
+    assert.ok(screen.getByRole("option", { name: "GPT Nine" }));
+  });
+
+  test("a starred model sorts to the front of the picker", async () => {
+    renderWithStore(
+      <Composer
+        pane={pane()}
+        model={NO_EFFORT}
+        models={[
+          { displayName: "Fake Small", id: "fake-small" },
+          { displayName: "GPT Nine", id: "gpt-9" },
+        ]}
+      />,
+    );
+    sendFromHost({ t: "favorite-models", ids: ["fake gpt-9"] });
+
+    await userEvent.click(screen.getByLabelText("Model"));
+    await screen.findByRole("option", { name: "GPT Nine" });
+
+    const names = screen.getAllByRole("option").map((o) => o.textContent);
+    assert.deepStrictEqual(names, ["GPT Nine", "Fake Small"]);
+  });
+
   suite("a session whose provider is unavailable", () => {
     /** The roster after the provider a session was created against went away. */
     function hydrateWithoutProvider() {

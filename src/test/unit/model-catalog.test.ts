@@ -1,6 +1,6 @@
 import * as assert from 'assert';
 import type { ModelInfo } from '../../providers/types';
-import { findModel, resolveEffort } from '../../shared/model-catalog';
+import { findModel, isFavorite, modelKey, resolveEffort, sortFavoritesFirst } from '../../shared/model-catalog';
 
 const MODELS: ModelInfo[] = [
   { id: 'default', displayName: 'Default (recommended)', resolvedModel: 'claude-opus-5' },
@@ -69,5 +69,37 @@ suite('resolveEffort', () => {
     // provider that reports none, must not silently wipe a real choice.
     assert.strictEqual(resolveEffort(undefined, 'high'), 'high');
     assert.strictEqual(resolveEffort(undefined, undefined), undefined);
+  });
+});
+
+suite('modelKey', () => {
+  test('joins provider and model id with a space', () => {
+    assert.strictEqual(modelKey('opencode', 'gpt-4'), 'opencode gpt-4');
+  });
+});
+
+suite('isFavorite', () => {
+  test('true when the key is in the favorites list', () => {
+    assert.strictEqual(isFavorite('opencode', 'fable', ['opencode fable']), true);
+  });
+
+  test('false for an unstarred model, or a same-id row under a different provider', () => {
+    assert.strictEqual(isFavorite('opencode', 'fable', []), false);
+    assert.strictEqual(isFavorite('opencode', 'fable', ['claude fable']), false);
+  });
+});
+
+suite('sortFavoritesFirst', () => {
+  test('moves starred rows to the front, each group keeping its relative order', () => {
+    const sorted = sortFavoritesFirst(MODELS, 'opencode', ['opencode fable', 'opencode opus']);
+    assert.deepStrictEqual(sorted.map((m) => m.id), ['opus', 'fable', 'default', 'claude-sonnet-5']);
+  });
+
+  test('is a no-op when nothing is starred', () => {
+    assert.deepStrictEqual(sortFavoritesFirst(MODELS, 'opencode', []), MODELS);
+  });
+
+  test('does not treat another provider\'s star as this provider\'s', () => {
+    assert.deepStrictEqual(sortFavoritesFirst(MODELS, 'opencode', ['claude fable']), MODELS);
   });
 });

@@ -201,6 +201,98 @@ suite('SessionCreateMenu', () => {
     assert.strictEqual(screen.queryByRole('dialog'), null);
   });
 
+  test('typing in the model search filters rows across every provider group', async () => {
+    renderApp();
+    hydrate([summary('a')], twoProviders());
+
+    await userEvent.click(optionsButton());
+    await userEvent.type(await screen.findByPlaceholderText('Search models…'), 'other');
+
+    assert.ok(screen.getByRole('radio', { name: 'Other One' }));
+    assert.strictEqual(screen.queryByRole('radio', { name: 'Fake Large' }) === null, true);
+    // The now-empty "Fake" group heading does not float with nothing under it.
+    assert.strictEqual(screen.queryByRole('group', { name: 'Fake' }) === null, true);
+  });
+
+  test('the dialog opens on the All tab when nothing is starred yet', async () => {
+    renderApp();
+    hydrate([summary('a')], twoProviders());
+
+    await userEvent.click(optionsButton());
+
+    assert.ok(await screen.findByRole('radio', { name: 'Fake Large' }));
+    assert.strictEqual(screen.getByRole('tab', { name: 'All' }).getAttribute('aria-selected'), 'true');
+  });
+
+  test('starring a model in the All tab posts set-favorite-models, keyed by provider and model id', async () => {
+    renderApp();
+    hydrate([summary('a')], twoProviders());
+
+    await userEvent.click(optionsButton());
+    await userEvent.click(await screen.findByRole('button', { name: 'Star Fake Large' }));
+
+    assert.deepStrictEqual(posted().at(-1), { t: 'set-favorite-models', ids: ['fake fake-large'] });
+  });
+
+  test('the Favorites tab shows a nudge to browse All when nothing is starred', async () => {
+    renderApp();
+    hydrate([summary('a')], twoProviders());
+
+    await userEvent.click(optionsButton());
+    await userEvent.click(screen.getByRole('tab', { name: 'Favorites' }));
+
+    assert.ok(screen.getByText('No favorites yet.'));
+    await userEvent.click(screen.getByRole('button', { name: 'Browse all models to star the ones you use' }));
+
+    assert.ok(screen.getByRole('radio', { name: 'Fake Large' }));
+  });
+
+  test('a starred model shows up in the Favorites tab, with provider as a subtitle', async () => {
+    renderApp();
+    hydrate([summary('a')], twoProviders());
+    sendFromHost({ t: 'favorite-models', ids: ['other other-one'] });
+
+    await userEvent.click(optionsButton());
+    await userEvent.click(await screen.findByRole('tab', { name: 'Favorites' }));
+
+    assert.ok(await screen.findByRole('radio', { name: 'Other One' }));
+    assert.ok(screen.getByText('Other'));
+    assert.ok(screen.getByRole('button', { name: 'Unstar Other One' }));
+  });
+
+  test('the dialog opens on Favorites when a favorite already exists', async () => {
+    renderApp();
+    hydrate([summary('a')], twoProviders());
+    sendFromHost({ t: 'favorite-models', ids: ['other other-one'] });
+
+    await userEvent.click(optionsButton());
+
+    assert.ok(await screen.findByRole('radio', { name: 'Other One' }));
+    assert.strictEqual(screen.getByRole('tab', { name: 'Favorites' }).getAttribute('aria-selected'), 'true');
+  });
+
+  test('unstarring from the Favorites tab posts the list with just that key removed', async () => {
+    renderApp();
+    hydrate([summary('a')], twoProviders());
+    sendFromHost({ t: 'favorite-models', ids: ['fake fake-large', 'other other-one'] });
+
+    await userEvent.click(optionsButton());
+    await userEvent.click(await screen.findByRole('button', { name: 'Unstar Other One' }));
+
+    assert.deepStrictEqual(posted().at(-1), { t: 'set-favorite-models', ids: ['fake fake-large'] });
+  });
+
+  test('a starred model stays selectable and searchable in the All tab too', async () => {
+    renderApp();
+    hydrate([summary('a')], twoProviders());
+    sendFromHost({ t: 'favorite-models', ids: ['fake fake-large'] });
+
+    await userEvent.click(optionsButton());
+    await userEvent.click(screen.getByRole('tab', { name: 'All' }));
+
+    assert.ok(await screen.findByRole('button', { name: 'Unstar Fake Large' }));
+  });
+
   test('both create controls are disabled when no provider is available', () => {
     renderApp();
     sendFromHost({
