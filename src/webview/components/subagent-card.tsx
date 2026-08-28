@@ -8,6 +8,7 @@ import { TranscriptItemShell } from './transcript-item-shell';
 import {
   formatElapsed, subagentLabel, subagentStateLabel, summarizeSubagent, windowChildren,
 } from './subagent-window';
+import { useOpenSubagentTranscript } from './subagent-drill-in-context';
 import type { SessionId, TranscriptItem } from '../../protocol/messages';
 
 type ToolItem = Extract<TranscriptItem, { role: 'tool' }>;
@@ -16,6 +17,7 @@ export function SubagentCard({ item, sessionId }: { item: ToolItem; sessionId: S
   const [manuallyCollapsed, setManuallyCollapsed] = useState(false);
   const [open, setOpen] = useState(false);
   const [now, setNow] = useState(() => Date.now());
+  const openTranscript = useOpenSubagentTranscript();
 
   // A collapsed card must still tick: a row reading "12 tools · 34s" is not
   // a hang, and a static row is. One interval per running card, cleared the
@@ -95,12 +97,17 @@ export function SubagentCard({ item, sessionId }: { item: ToolItem; sessionId: S
         {expanded && (
           <div id={panelId} className="border-t border-border px-2 py-1">
             {children.length > shown.length && (
-              // A statement of fact, not a control. "Show all" would dump
-              // 200 rows into the transcript and undo the bound; the escape
-              // hatch is a future subagent pane, not a button here.
-              <p className="pb-1 text-muted-foreground">
-                showing last {shown.length} of {children.length}
-              </p>
+              <div className="flex items-center justify-between pb-1 text-muted-foreground">
+                <p>showing last {shown.length} of {children.length}</p>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 px-2 text-xs font-normal"
+                  onClick={() => openTranscript(item.id)}
+                >
+                  Open full transcript
+                </Button>
+              </div>
             )}
             <div className={cn('flex flex-col gap-1')}>
               {shown.map((child) =>
