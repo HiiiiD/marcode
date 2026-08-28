@@ -1,9 +1,10 @@
 import * as assert from 'assert';
-import { act, screen } from '@testing-library/react';
+import { act, fireEvent, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { catalog, layoutOf, snapshot, summary } from '../fixtures/protocol';
 import { posted, renderApp, renderWithStore, sendFromHost } from './harness';
 import { PaneGroup } from '@/components/pane-group';
+import type { TranscriptItem } from '../../protocol/messages';
 
 function hydrate(paneIds: string[], rosterIds = paneIds) {
   sendFromHost({
@@ -298,5 +299,38 @@ suite('PaneGroup', () => {
       panelA.getAttribute('aria-label'), panelB.getAttribute('aria-label'),
       'two same-titled panes must still be distinguishable by their region name',
     );
+  });
+
+  test('opening a subagent transcript replaces the pane, and the breadcrumb returns', async () => {
+    renderApp();
+    const children: TranscriptItem[] = Array.from({ length: 25 }, (_, i) => ({
+      id: `c${i}`, ts: i + 1, role: 'tool', toolId: `c${i}`,
+      tool: { kind: 'other', label: `Tool${i}`, raw: {} }, state: 'ok',
+    }));
+    const subagentItem: TranscriptItem = {
+      id: 't1', ts: 1000, role: 'tool', toolId: 'task1',
+      tool: { kind: 'subagent', label: 'Task', action: 'spawn', agent: 'Explore' },
+      state: 'ok', children,
+    };
+    sendFromHost({
+      t: 'hydrate',
+      sessions: [summary('a')],
+      layout: layoutOf('a'),
+      snapshots: [snapshot('a', { items: [subagentItem] })],
+      catalog: catalog(),
+      unavailable: [],
+      usage: {},
+    });
+
+    await userEvent.click(screen.getByRole('button', { name: /explore/i }));
+    fireEvent.click(screen.getByRole('button', { name: /open full transcript/i }));
+
+    assert.strictEqual(screen.getByRole('button', { name: /back to/i }) !== null, true);
+    // The session's own composer is gone while drilled in — replaced in
+    // place, not split.
+    assert.strictEqual(screen.queryAllByRole('textbox').length, 0);
+
+    fireEvent.click(screen.getByRole('button', { name: /back to/i }));
+    assert.strictEqual(screen.queryAllByRole('textbox').length, 1);
   });
 });
