@@ -17,7 +17,7 @@ function TabsList({ className, ...props }: TabsPrimitive.List.Props) {
         // own here, that negative z-index would rank below THIS element's
         // background too, not just its siblings — invisible behind bg-muted
         // rather than merely behind the tabs.
-        "isolate relative flex items-center gap-1 rounded-lg bg-muted p-0.5",
+        "isolate relative flex min-w-0 items-center gap-1 rounded-lg bg-muted p-0.5",
         className
       )}
       {...props}
@@ -60,7 +60,7 @@ function TabsPanel({ className, ...props }: TabsPrimitive.Panel.Props) {
   return (
     <TabsPrimitive.Panel
       data-slot="tabs-panel"
-      className={cn("flex min-h-0 flex-col gap-1 outline-none", className)}
+      className={cn("flex min-h-0 min-w-0 flex-col gap-1 outline-none", className)}
       {...props}
     />
   )

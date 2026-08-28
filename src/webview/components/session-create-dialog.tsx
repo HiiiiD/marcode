@@ -260,7 +260,17 @@ function CreateForm({
             className="h-7 text-xs"
           />
           <RadioGroup value={picked} onValueChange={(v) => { setPicked(String(v)); setEffort(null); }}>
-            <Tabs value={modelTab} onValueChange={(v) => setModelTab(v as "favorites" | "all")}>
+            {/* RadioGroup's own root is `display: grid`, and a grid item's
+                default min-width is `auto` — the same shrink-blocking trap as
+                a flex item. Without this, a long OpenRouter model name forced
+                the whole Tabs subtree wider than the dialog, and the
+                overflow-x-hidden scroll container upstream clipped the star
+                button clean off the edge instead of truncating the name. */}
+            <Tabs
+              value={modelTab}
+              onValueChange={(v) => setModelTab(v as "favorites" | "all")}
+              className="min-w-0"
+            >
               <TabsList>
                 <TabsTab value="favorites">Favorites</TabsTab>
                 <TabsTab value="all">All</TabsTab>
@@ -307,7 +317,7 @@ function CreateForm({
                     No models match "{modelSearch.trim()}".
                   </p>
                 )}
-                <div className="flex flex-col gap-2">
+                <div className="flex min-w-0 flex-col gap-2">
                   {groups.map(({ provider: p, models }) => (
                     <div
                       key={p.id} role="group" aria-label={p.displayName}
