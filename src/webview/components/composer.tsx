@@ -10,7 +10,7 @@ import type { Invocable, ModelInfo } from "../../protocol/messages";
 import { fileMentions, fileRefsOf, type FileMentionPayload } from "../lib/file-mentions";
 import { interceptFor } from "../lib/intercepts";
 import { insertionFor, menuQuery, menuView } from "../lib/invocable-menu";
-import { visibleModels } from "../../shared/model-catalog";
+import { sortFavoritesFirst } from "../../shared/model-catalog";
 import {
   filterMentions, mentionQuery, pruneMentions, spliceMention, tokenFor,
   type MentionOption, type PendingMention,
@@ -85,13 +85,13 @@ export function Composer({
   // sentence.
   const blockedReasonId = `blocked-reason-${pane.summary.id}`;
   const readOnly = unavailableReason !== undefined;
-  // Hidden rows drop out of the picker, except one already in use: a session
-  // pinned to a model its user later hid must keep showing it, or the
-  // trigger falls back to rendering the raw id (see `findModel`'s doc).
-  const pickerModels = (() => {
-    const visible = visibleModels(models, pane.summary.providerId, state.hiddenModels);
-    return model && !visible.some((m) => m.id === model.id) ? [...visible, model] : visible;
-  })();
+  // Every model stays reachable here — the combobox's own type-to-search is
+  // what keeps a huge catalog (hundreds of OpenRouter rows via OpenCode)
+  // usable, not exclusion. Starred rows only move to the front, as a
+  // convenience for the ones actually used; nothing here can vanish, so a
+  // session's current model needs no special-cased union the way a hide list
+  // would have required.
+  const pickerModels = sortFavoritesFirst(models, pane.summary.providerId, state.favoriteModels);
   // Codex distinguishes blocking from non-blocking questions; Claude's are
   // always blocking. Only a blocking one freezes the composer — a
   // non-blocking request never blocked the turn, so disabling here would

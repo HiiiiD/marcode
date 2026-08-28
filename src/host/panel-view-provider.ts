@@ -22,8 +22,8 @@ export class PanelViewProvider implements vscode.WebviewViewProvider {
     private readonly onOpenReview: () => void,
     private readonly fileSearch?: FileSearch,
     private readonly agentsMdNudge?: AgentsMdNudgeController,
-    /** `marcode.hiddenModels`, read fresh each time the view resolves. */
-    private readonly hiddenModels?: () => string[],
+    /** `marcode.favoriteModels`, read fresh each time the view resolves. */
+    private readonly favoriteModels?: () => string[],
     private readonly configHost?: ConfigHost,
   ) {}
 
@@ -74,7 +74,7 @@ export class PanelViewProvider implements vscode.WebviewViewProvider {
 
     const router = new MessageRouter(
       this.manager, (m) => this.post(m), this.defaultCwd, this.editor, this.attachments, this.picker,
-      undefined, this.fileSearch, this.hiddenModels?.() ?? [], this.configHost,
+      undefined, this.fileSearch, this.favoriteModels?.() ?? [], this.configHost,
     );
     view.webview.onDidReceiveMessage(async (raw: WebviewToHost) => {
       try {

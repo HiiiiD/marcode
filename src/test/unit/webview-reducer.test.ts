@@ -452,29 +452,29 @@ suite('webview reducer', () => {
     }]);
   });
 
-  test('hydrate seeds hiddenModels, defaulting to empty when the host omits it', () => {
+  test('hydrate seeds favoriteModels, defaulting to empty when the host omits it', () => {
     const withList = reduce(initialState, {
       t: 'hydrate', sessions: [], layout: { orientation: 'vertical', panes: [] },
       snapshots: [], catalog: [], unavailable: [], usage: {},
-      hiddenModels: ['opencode gpt-9'],
+      favoriteModels: ['opencode gpt-9'],
     });
-    assert.deepStrictEqual(withList.hiddenModels, ['opencode gpt-9']);
+    assert.deepStrictEqual(withList.favoriteModels, ['opencode gpt-9']);
 
     const withoutList = reduce(initialState, {
       t: 'hydrate', sessions: [], layout: { orientation: 'vertical', panes: [] },
       snapshots: [], catalog: [], unavailable: [], usage: {},
     });
-    assert.deepStrictEqual(withoutList.hiddenModels, []);
+    assert.deepStrictEqual(withoutList.favoriteModels, []);
   });
 
-  test('hidden-models replaces the list wholesale', () => {
+  test('favorite-models replaces the list wholesale', () => {
     const seeded = reduce(initialState, {
       t: 'hydrate', sessions: [], layout: { orientation: 'vertical', panes: [] },
       snapshots: [], catalog: [], unavailable: [], usage: {},
-      hiddenModels: ['opencode gpt-9'],
+      favoriteModels: ['opencode gpt-9'],
     });
-    const next = reduce(seeded, { t: 'hidden-models', ids: ['opencode gpt-8'] });
-    assert.deepStrictEqual(next.hiddenModels, ['opencode gpt-8']);
+    const next = reduce(seeded, { t: 'favorite-models', ids: ['opencode gpt-8'] });
+    assert.deepStrictEqual(next.favoriteModels, ['opencode gpt-8']);
   });
 
   test('the initial state has no editor context', () => {

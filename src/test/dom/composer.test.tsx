@@ -549,7 +549,7 @@ suite("Composer", () => {
     );
   });
 
-  test("a model hidden via marcode.hiddenModels does not appear in the picker", async () => {
+  test("every model stays reachable even once one is starred — starring only reorders", async () => {
     renderWithStore(
       <Composer
         pane={pane()}
@@ -560,30 +560,32 @@ suite("Composer", () => {
         ]}
       />,
     );
-    sendFromHost({ t: "hidden-models", ids: ["fake gpt-9"] });
+    sendFromHost({ t: "favorite-models", ids: ["fake gpt-9"] });
 
     await userEvent.click(screen.getByLabelText("Model"));
 
     assert.ok(await screen.findByRole("option", { name: "Fake Small" }));
-    assert.strictEqual(
-      screen.queryByRole("option", { name: "GPT Nine" }) === null, true,
-    );
+    assert.ok(screen.getByRole("option", { name: "GPT Nine" }));
   });
 
-  test("the session's current model stays in the picker even after being hidden", async () => {
-    const gpt9 = { displayName: "GPT Nine", id: "gpt-9" };
+  test("a starred model sorts to the front of the picker", async () => {
     renderWithStore(
       <Composer
         pane={pane()}
-        model={gpt9}
-        models={[{ displayName: "Fake Small", id: "fake-small" }, gpt9]}
+        model={NO_EFFORT}
+        models={[
+          { displayName: "Fake Small", id: "fake-small" },
+          { displayName: "GPT Nine", id: "gpt-9" },
+        ]}
       />,
     );
-    sendFromHost({ t: "hidden-models", ids: ["fake gpt-9"] });
+    sendFromHost({ t: "favorite-models", ids: ["fake gpt-9"] });
 
     await userEvent.click(screen.getByLabelText("Model"));
+    await screen.findByRole("option", { name: "GPT Nine" });
 
-    assert.ok(await screen.findByRole("option", { name: "GPT Nine" }));
+    const names = screen.getAllByRole("option").map((o) => o.textContent);
+    assert.deepStrictEqual(names, ["GPT Nine", "Fake Small"]);
   });
 
   suite("a session whose provider is unavailable", () => {

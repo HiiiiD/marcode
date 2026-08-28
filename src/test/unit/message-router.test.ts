@@ -64,7 +64,7 @@ suite('MessageRouter', () => {
     assert.strictEqual(hydrate.reviewPollIntervalMs, 2000);
   });
 
-  test('hydrate carries the configured hidden models', async () => {
+  test('hydrate carries the configured favorite models', async () => {
     const configured = new MessageRouter(
       manager, (m) => sent.push(m), '/tmp', undefined, attachments, undefined, 750, undefined,
       ['fake gpt-9'],
@@ -72,21 +72,21 @@ suite('MessageRouter', () => {
     await configured.handle({ t: 'ready' });
     const hydrate = sent.find((m) => m.t === 'hydrate') as
       Extract<HostToWebview, { t: 'hydrate' }>;
-    assert.deepStrictEqual(hydrate.hiddenModels, ['fake gpt-9']);
+    assert.deepStrictEqual(hydrate.favoriteModels, ['fake gpt-9']);
   });
 
-  test('set-hidden-models persists via the config host and echoes the new list', async () => {
+  test('set-favorite-models persists via the config host and echoes the new list', async () => {
     const persisted: string[][] = [];
     const r = new MessageRouter(
       manager, (m) => sent.push(m), '/tmp', undefined, attachments, undefined, 750, undefined,
-      [], { setHiddenModels: (ids) => persisted.push(ids) },
+      [], { setFavoriteModels: (ids) => persisted.push(ids) },
     );
 
-    await r.handle({ t: 'set-hidden-models', ids: ['fake gpt-9'] });
+    await r.handle({ t: 'set-favorite-models', ids: ['fake gpt-9'] });
 
     assert.deepStrictEqual(persisted, [['fake gpt-9']]);
-    const echoed = sent.find((m) => m.t === 'hidden-models') as
-      Extract<HostToWebview, { t: 'hidden-models' }>;
+    const echoed = sent.find((m) => m.t === 'favorite-models') as
+      Extract<HostToWebview, { t: 'favorite-models' }>;
     assert.deepStrictEqual(echoed.ids, ['fake gpt-9']);
   });
 

@@ -35,16 +35,32 @@ export function modelKey(providerId: string, modelId: string): string {
   return `${providerId} ${modelId}`;
 }
 
+/** Whether `providerId`/`modelId` is in `favorites` — see `modelKey` for the join. */
+export function isFavorite(providerId: string, modelId: string, favorites: string[]): boolean {
+  return favorites.includes(modelKey(providerId, modelId));
+}
+
 /**
- * `models`, minus the ones this provider's user asked never to see.
+ * `models`, with starred rows moved to the front — a stable partition, so
+ * ties (all-starred, none-starred) keep the catalog's own order rather than
+ * being re-sorted alphabetically or by id.
  *
- * Filters by `modelKey`, not bare id, for the same collision reason `findModel`
- * matches `resolvedModel` as a fallback rather than assuming ids are global.
+ * A reorder, not a filter: this backs the composer's quick-switch, which
+ * already has type-to-search for reaching an unstarred row, so nothing here
+ * is ever excluded — only decluttered by default. `New session`'s Favorites
+ * tab is the one place a favorite list becomes an actual filter, and it
+ * builds that directly off `isFavorite` rather than through this function.
  */
-export function visibleModels(
-  models: ModelInfo[], providerId: string, hidden: string[],
+export function sortFavoritesFirst(
+  models: ModelInfo[], providerId: string, favorites: string[],
 ): ModelInfo[] {
-  return models.filter((m) => !hidden.includes(modelKey(providerId, m.id)));
+  if (favorites.length === 0) { return models; }
+  const starred: ModelInfo[] = [];
+  const rest: ModelInfo[] = [];
+  for (const m of models) {
+    (isFavorite(providerId, m.id, favorites) ? starred : rest).push(m);
+  }
+  return [...starred, ...rest];
 }
 
 /**

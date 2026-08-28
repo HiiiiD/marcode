@@ -214,96 +214,83 @@ suite('SessionCreateMenu', () => {
     assert.strictEqual(screen.queryByRole('group', { name: 'Fake' }) === null, true);
   });
 
-  test('hiding a model posts set-hidden-models, keyed by provider and model id', async () => {
+  test('the dialog opens on the All tab when nothing is starred yet', async () => {
     renderApp();
     hydrate([summary('a')], twoProviders());
 
     await userEvent.click(optionsButton());
-    await userEvent.click(await screen.findByRole('button', { name: 'Hide Fake Large' }));
-
-    assert.deepStrictEqual(posted().at(-1), { t: 'set-hidden-models', ids: ['fake fake-large'] });
-  });
-
-  test('a hidden model stays in the dialog, and its toggle offers to show it again', async () => {
-    renderApp();
-    hydrate([summary('a')], twoProviders());
-
-    await userEvent.click(optionsButton());
-    await userEvent.click(await screen.findByRole('button', { name: 'Hide Fake Large' }));
-    sendFromHost({ t: 'hidden-models', ids: ['fake fake-large'] });
 
     assert.ok(await screen.findByRole('radio', { name: 'Fake Large' }));
-    assert.ok(await screen.findByRole('button', { name: 'Show Fake Large' }));
+    assert.strictEqual(screen.getByRole('tab', { name: 'All' }).getAttribute('aria-selected'), 'true');
   });
 
-  test('showing a model again removes just its key from the hidden list', async () => {
+  test('starring a model in the All tab posts set-favorite-models, keyed by provider and model id', async () => {
     renderApp();
     hydrate([summary('a')], twoProviders());
 
     await userEvent.click(optionsButton());
-    await userEvent.click(await screen.findByRole('button', { name: 'Hide Fake Large' }));
-    sendFromHost({ t: 'hidden-models', ids: ['fake fake-large', 'other other-one'] });
+    await userEvent.click(await screen.findByRole('button', { name: 'Star Fake Large' }));
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Show Fake Large' }));
-
-    assert.deepStrictEqual(posted().at(-1), { t: 'set-hidden-models', ids: ['other other-one'] });
+    assert.deepStrictEqual(posted().at(-1), { t: 'set-favorite-models', ids: ['fake fake-large'] });
   });
 
-  test('a provider header offers to hide every one of its models in one click', async () => {
+  test('the Favorites tab shows a nudge to browse All when nothing is starred', async () => {
     renderApp();
     hydrate([summary('a')], twoProviders());
 
     await userEvent.click(optionsButton());
-    const fake = await screen.findByRole('group', { name: 'Fake' });
-    await userEvent.click(within(fake).getByRole('button', { name: 'Hide all' }));
+    await userEvent.click(screen.getByRole('tab', { name: 'Favorites' }));
 
-    assert.deepStrictEqual(posted().at(-1), {
-      t: 'set-hidden-models',
-      ids: ['fake fake-large', 'fake fake-small', 'fake fake-medium'],
-    });
+    assert.ok(screen.getByText('No favorites yet.'));
+    await userEvent.click(screen.getByRole('button', { name: 'Browse all models to star the ones you use' }));
+
+    assert.ok(screen.getByRole('radio', { name: 'Fake Large' }));
   });
 
-  test('hiding a whole provider does not touch another provider\'s hidden models', async () => {
+  test('a starred model shows up in the Favorites tab, with provider as a subtitle', async () => {
     renderApp();
     hydrate([summary('a')], twoProviders());
+    sendFromHost({ t: 'favorite-models', ids: ['other other-one'] });
 
     await userEvent.click(optionsButton());
-    sendFromHost({ t: 'hidden-models', ids: ['other other-one'] });
-    const fake = await screen.findByRole('group', { name: 'Fake' });
-    await userEvent.click(within(fake).getByRole('button', { name: 'Hide all' }));
+    await userEvent.click(await screen.findByRole('tab', { name: 'Favorites' }));
 
-    const ids = (posted().at(-1) as { ids: string[] }).ids;
-    assert.ok(ids.includes('other other-one'));
-    assert.ok(ids.includes('fake fake-large'));
+    assert.ok(await screen.findByRole('radio', { name: 'Other One' }));
+    assert.ok(screen.getByText('Other'));
+    assert.ok(screen.getByRole('button', { name: 'Unstar Other One' }));
   });
 
-  test('a bulk hide is scoped to the models the search has narrowed to', async () => {
+  test('the dialog opens on Favorites when a favorite already exists', async () => {
     renderApp();
     hydrate([summary('a')], twoProviders());
+    sendFromHost({ t: 'favorite-models', ids: ['other other-one'] });
 
     await userEvent.click(optionsButton());
-    await userEvent.type(await screen.findByPlaceholderText('Search models…'), 'Large');
-    const fake = await screen.findByRole('group', { name: 'Fake' });
-    await userEvent.click(within(fake).getByRole('button', { name: 'Hide all' }));
 
-    assert.deepStrictEqual(posted().at(-1), { t: 'set-hidden-models', ids: ['fake fake-large'] });
+    assert.ok(await screen.findByRole('radio', { name: 'Other One' }));
+    assert.strictEqual(screen.getByRole('tab', { name: 'Favorites' }).getAttribute('aria-selected'), 'true');
   });
 
-  test('once every model in a group is hidden, its bulk button offers to show them again', async () => {
+  test('unstarring from the Favorites tab posts the list with just that key removed', async () => {
     renderApp();
     hydrate([summary('a')], twoProviders());
+    sendFromHost({ t: 'favorite-models', ids: ['fake fake-large', 'other other-one'] });
 
     await userEvent.click(optionsButton());
-    const fake = await screen.findByRole('group', { name: 'Fake' });
-    await userEvent.click(within(fake).getByRole('button', { name: 'Hide all' }));
-    sendFromHost({
-      t: 'hidden-models',
-      ids: ['fake fake-large', 'fake fake-small', 'fake fake-medium'],
-    });
+    await userEvent.click(await screen.findByRole('button', { name: 'Unstar Other One' }));
 
-    await userEvent.click(await within(fake).findByRole('button', { name: 'Show all' }));
+    assert.deepStrictEqual(posted().at(-1), { t: 'set-favorite-models', ids: ['fake fake-large'] });
+  });
 
-    assert.deepStrictEqual(posted().at(-1), { t: 'set-hidden-models', ids: [] });
+  test('a starred model stays selectable and searchable in the All tab too', async () => {
+    renderApp();
+    hydrate([summary('a')], twoProviders());
+    sendFromHost({ t: 'favorite-models', ids: ['fake fake-large'] });
+
+    await userEvent.click(optionsButton());
+    await userEvent.click(screen.getByRole('tab', { name: 'All' }));
+
+    assert.ok(await screen.findByRole('button', { name: 'Unstar Fake Large' }));
   });
 
   test('both create controls are disabled when no provider is available', () => {

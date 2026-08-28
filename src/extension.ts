@@ -91,13 +91,14 @@ function reviewBaseRefs(): string[] {
 }
 
 /**
- * `marcode.hiddenModels` — model rows the New session dialog's user hid,
- * each keyed `"providerId modelId"` (see `shared/model-catalog.ts#modelKey`).
- * A malformed value (not an array of strings) is dropped rather than passed
- * through, the same posture as `reviewBaseRefs`.
+ * `marcode.favoriteModels` — model rows the New session dialog's user
+ * starred, each keyed `"providerId modelId"` (see
+ * `shared/model-catalog.ts#modelKey`). A malformed value (not an array of
+ * strings) is dropped rather than passed through, the same posture as
+ * `reviewBaseRefs`.
  */
-function hiddenModels(): string[] {
-  const configured = vscode.workspace.getConfiguration('marcode').get<unknown>('hiddenModels');
+function favoriteModels(): string[] {
+  const configured = vscode.workspace.getConfiguration('marcode').get<unknown>('favoriteModels');
   if (!Array.isArray(configured)) { return []; }
   return configured.filter((id): id is string => typeof id === 'string' && id.trim() !== '');
 }
@@ -308,9 +309,9 @@ export async function activate(context: vscode.ExtensionContext) {
   };
 
   const configHost: ConfigHost = {
-    setHiddenModels: (ids) => {
+    setFavoriteModels: (ids) => {
       void vscode.workspace.getConfiguration('marcode')
-        .update('hiddenModels', ids, vscode.ConfigurationTarget.Global);
+        .update('favoriteModels', ids, vscode.ConfigurationTarget.Global);
     },
   };
 
@@ -367,7 +368,7 @@ export async function activate(context: vscode.ExtensionContext) {
     () => { review.open(); },
     fileIndex,
     agentsMdNudge,
-    hiddenModels,
+    favoriteModels,
     configHost,
   );
   // The sidebar is the client that wants everything. Registered here rather

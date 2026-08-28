@@ -1,6 +1,6 @@
 import * as assert from 'assert';
 import type { ModelInfo } from '../../providers/types';
-import { findModel, modelKey, resolveEffort, visibleModels } from '../../shared/model-catalog';
+import { findModel, isFavorite, modelKey, resolveEffort, sortFavoritesFirst } from '../../shared/model-catalog';
 
 const MODELS: ModelInfo[] = [
   { id: 'default', displayName: 'Default (recommended)', resolvedModel: 'claude-opus-5' },
@@ -78,18 +78,28 @@ suite('modelKey', () => {
   });
 });
 
-suite('visibleModels', () => {
-  test('drops rows whose key is in the hidden list', () => {
-    const visible = visibleModels(MODELS, 'opencode', ['opencode fable']);
-    assert.deepStrictEqual(visible.map((m) => m.id), ['default', 'opus', 'claude-sonnet-5']);
+suite('isFavorite', () => {
+  test('true when the key is in the favorites list', () => {
+    assert.strictEqual(isFavorite('opencode', 'fable', ['opencode fable']), true);
   });
 
-  test('leaves every row when nothing is hidden', () => {
-    assert.strictEqual(visibleModels(MODELS, 'opencode', []).length, MODELS.length);
+  test('false for an unstarred model, or a same-id row under a different provider', () => {
+    assert.strictEqual(isFavorite('opencode', 'fable', []), false);
+    assert.strictEqual(isFavorite('opencode', 'fable', ['claude fable']), false);
+  });
+});
+
+suite('sortFavoritesFirst', () => {
+  test('moves starred rows to the front, each group keeping its relative order', () => {
+    const sorted = sortFavoritesFirst(MODELS, 'opencode', ['opencode fable', 'opencode opus']);
+    assert.deepStrictEqual(sorted.map((m) => m.id), ['opus', 'fable', 'default', 'claude-sonnet-5']);
   });
 
-  test('a hidden key under a different provider does not hide this provider\'s row', () => {
-    const visible = visibleModels(MODELS, 'opencode', ['claude fable']);
-    assert.strictEqual(visible.length, MODELS.length);
+  test('is a no-op when nothing is starred', () => {
+    assert.deepStrictEqual(sortFavoritesFirst(MODELS, 'opencode', []), MODELS);
+  });
+
+  test('does not treat another provider\'s star as this provider\'s', () => {
+    assert.deepStrictEqual(sortFavoritesFirst(MODELS, 'opencode', ['claude fable']), MODELS);
   });
 });
