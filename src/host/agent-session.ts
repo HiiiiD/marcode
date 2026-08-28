@@ -228,6 +228,7 @@ export class AgentSession {
       ],
     });
     this.pumping = this.pump();
+    this._state.activityLabel = this.activityLabelFor(this._state.status);
   }
 
   get state(): SessionState { return this._state; }
@@ -650,6 +651,69 @@ export class AgentSession {
     // keeps the composer's Stop control visible) is the accurate reading.
     const busy = this.activeBackgroundTasks.size > 0;
     this.setStatus(waiting ? 'awaiting-approval' : busy ? 'running' : idle);
+    this.refreshActivityLabel();
+  }
+
+  /**
+   * The label of the most recently started, still-running top-level tool —
+   * "the current tool" for `activityLabel`'s purposes. Subagent-nested tool
+   * activity is deliberately not surfaced here: the fleet card is a
+   * one-line summary of the session, not of everything running inside it.
+   * `toolItems` keeps a tool at the map position of its `tool-start` even
+   * after `tool-end` replaces the value in place, so a reverse scan for the
+   * last still-running entry does read most-recently-started first.
+   */
+  private currentToolLabel(): string | undefined {
+    for (const [toolId, item] of [...this.toolItems].reverse()) {
+      if (item.role === 'tool' && item.state === 'running' && !this.childOf.has(toolId)) {
+        return item.tool.label;
+      }
+    }
+    return undefined;
+  }
+
+  /**
+   * The label of the tool a pending permission request names — the most
+   * recently raised one, if several are outstanding. Read straight off
+   * `pending` rather than `toolItems`: the request already carries the
+   * `ToolCall` it is asking about, and a provider is not guaranteed to have
+   * sent a matching `tool-start` first.
+   */
+  private waitingToolLabel(): string | undefined {
+    return [...this.pending.values()].at(-1)?.tool.label;
+  }
+
+  /**
+   * `activityLabel`'s value for a given `status` — the same three-way read
+   * `recomputeWaitingStatus` already computed, so the two fields can never
+   * describe different things. `'error'` and `'idle'` share the fallback:
+   * once a turn is not `running` or `awaiting-approval` there is nothing
+   * left to name.
+   */
+  private activityLabelFor(status: SessionStatus): string {
+    if (status === 'awaiting-approval') {
+      return `Waiting for approval: ${this.waitingToolLabel() ?? this.currentToolLabel() ?? 'a tool'}`;
+    }
+    if (status === 'running') {
+      return `Running ${this.currentToolLabel() ?? 'a tool'}`;
+    }
+    return 'Idle';
+  }
+
+  /**
+   * Recomputes `activityLabel` from the current status and current tool,
+   * and reports a change the same way every other derived field on
+   * `SessionState` does. Needed as its own step, separate from `setStatus`,
+   * because the current tool can change (one call finishes, the next
+   * starts) without `status` itself moving off `'running'` — a case
+   * `setStatus`'s no-op-on-unchanged-status guard would otherwise swallow.
+   */
+  private refreshActivityLabel(): void {
+    const label = this.activityLabelFor(this._state.status);
+    if (this._state.activityLabel === label) { return; }
+    this._state.activityLabel = label;
+    this._state.updatedAt = Date.now();
+    this.sink.changed();
   }
 
   /**
@@ -852,6 +916,7 @@ export class AgentSession {
 
         this.closeAssistant();
         this.appendItem(item);
+        this.refreshActivityLabel();
         return;
       }
 
@@ -899,6 +964,7 @@ export class AgentSession {
         this.childrenByParent.delete(event.id);
         this.replaceItem(settled);
         this.offerRelocation(settled.tool, event.ok, settled.output);
+        this.refreshActivityLabel();
         return;
       }
 
@@ -937,6 +1003,7 @@ export class AgentSession {
           this.appendItem(item);
         }
         this.setStatus('awaiting-approval');
+        this.refreshActivityLabel();
         return;
       }
 
@@ -953,6 +1020,7 @@ export class AgentSession {
         this.closeAssistant();
         this.appendItem(item);
         this.setStatus('awaiting-approval');
+        this.refreshActivityLabel();
         return;
       }
 
@@ -1094,6 +1162,7 @@ export class AgentSession {
     this.turnActive = false;
     this.appendItem({ id: nextId('e'), ts: Date.now(), role: 'error', message });
     this.setStatus('error');
+    this.refreshActivityLabel();
     void this.scheduleFlush();
   }
 

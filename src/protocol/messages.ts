@@ -162,6 +162,14 @@ export interface SessionState {
   title: string;
   cwd: string;
   status: SessionStatus;
+  /**
+   * A short, human-readable description of what this session is doing right
+   * now — "Running Edit", "Waiting for approval: Bash", "Idle". Derived
+   * alongside `status` in `AgentSession`, so the two can never read the wall
+   * differently. Optional only for the instant before a session's first
+   * event.
+   */
+  activityLabel?: string;
   permissionMode: PermissionMode;
   /** Whether sends from this session attach the editor context. Sticky. */
   includeEditorContext: boolean;
