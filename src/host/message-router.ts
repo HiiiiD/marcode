@@ -507,6 +507,12 @@ export class MessageRouter {
       case 'open-review':
         return;
 
+      // Same precedent as open-review: PanelViewProvider intercepts this
+      // before delegating, since opening the fleet tab needs the vscode API
+      // this module must not import.
+      case 'open-fleet':
+        return;
+
       // Same precedent as open-review: FleetPanel intercepts this before
       // delegating, since revealing the sidebar view container needs the
       // vscode API this module must not import. Listed here, and in
@@ -598,7 +604,7 @@ const KNOWN_MESSAGE_TAGS = new Set<WebviewToHost['t']>([
   'request-context', 'open-file',
   'request-bring-back', 'bring-back',
   'request-stale-trees', 'remove-stale-tree',
-  'request-fleet-diff', 'open-file-diff', 'open-review', 'focus-session',
+  'request-fleet-diff', 'open-file-diff', 'open-review', 'open-fleet', 'focus-session',
   'refresh-catalog', 'open-settings', 'open-external', 'export-table-csv',
   'file-search', 'set-favorite-models',
 ]);

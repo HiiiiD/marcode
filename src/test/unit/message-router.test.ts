@@ -649,6 +649,17 @@ suite('MessageRouter', () => {
     assert.deepStrictEqual(sent, []);
   });
 
+  test('open-fleet survives the wire guard as a deliberate no-op, same as open-review', async () => {
+    // Same trap as `answer-relocation` above: a tag missing from
+    // KNOWN_MESSAGE_TAGS is silently dropped as "malformed" at runtime while
+    // every type check still passes. This router also backs `FleetPanel`
+    // directly, unlike `open-file`, which `PanelViewProvider` always
+    // intercepts first — so a regression here is not latent the same way.
+    sent.length = 0;
+    await router.handle({ t: 'open-fleet' });
+    assert.deepStrictEqual(sent, []);
+  });
+
   test('focus-session survives the wire guard as a deliberate no-op, same as open-review', async () => {
     // Same trap as `answer-relocation` above: a tag missing from
     // KNOWN_MESSAGE_TAGS is silently dropped as "malformed" at runtime while

@@ -90,6 +90,7 @@ export function App() {
             <SessionPicker
               narrow={narrow}
               onReview={() => post({ t: 'open-review' })}
+              onFleet={() => post({ t: 'open-fleet' })}
             />
             <AgentsMdNudgeCard />
             <div className="min-h-0 flex-1">

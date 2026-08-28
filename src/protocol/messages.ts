@@ -531,6 +531,14 @@ export type WebviewToHost =
    */
   | { t: 'open-review' }
   /**
+   * Open the fleet view tab. Unaddressed, like `open-review`: the fleet is a
+   * fleet-wide surface, not a session's.
+   *
+   * Handled in `PanelViewProvider`, not `MessageRouter` — same interception
+   * `open-review` already gets, and for the same reason.
+   */
+  | { t: 'open-fleet' }
+  /**
    * Open one file's change in VS Code's own diff editor. Carries the tree
    * because a repo-relative path is meaningless without it, and the base
    * because the left-hand side is that file at the branch point.

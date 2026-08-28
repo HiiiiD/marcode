@@ -119,6 +119,10 @@
       {
         "command": "marcode.review.open",
         "title": "Marcode: Review fleet changes"
+      },
+      {
+        "command": "marcode.fleet.open",
+        "title": "Marcode: Open fleet view"
       }
     ],
     "walkthroughs": [

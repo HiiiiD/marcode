@@ -309,6 +309,18 @@ suite('SessionPicker', () => {
     assert.strictEqual(posted().some((m) => m.t === 'open-review'), true);
   });
 
+  test('the picker asks the host to open the fleet view', async () => {
+    renderApp();
+    sendFromHost({
+      t: 'hydrate', sessions: [], layout: { orientation: 'vertical', panes: [] },
+      snapshots: [], catalog: catalog(), unavailable: [], usage: {},
+    });
+
+    await userEvent.click(screen.getByRole('button', { name: /Open the fleet view/ }));
+
+    assert.strictEqual(posted().some((m) => m.t === 'open-fleet'), true);
+  });
+
   test('the empty state offers the way out', () => {
     renderApp();
     sendFromHost({
