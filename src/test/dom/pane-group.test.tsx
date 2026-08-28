@@ -333,4 +333,67 @@ suite('PaneGroup', () => {
     fireEvent.click(screen.getByRole('button', { name: /back to/i }));
     assert.strictEqual(screen.queryAllByRole('textbox').length, 1);
   });
+
+  test('a subagent transcript shows a visible session title and the model, and offers no dead fork', async () => {
+    renderApp();
+    const children: TranscriptItem[] = Array.from({ length: 25 }, (_, i) => ({
+      id: `c${i}`, ts: i + 1, role: 'tool', toolId: `c${i}`,
+      tool: { kind: 'other', label: `Tool${i}`, raw: {} }, state: 'ok',
+    }));
+    const subagentItem: TranscriptItem = {
+      id: 't1', ts: 1000, role: 'tool', toolId: 'task1',
+      tool: { kind: 'subagent', label: 'Task', action: 'spawn', agent: 'Explore', model: 'opus' },
+      state: 'ok', children,
+    };
+    // Idle, so TranscriptItemView would offer "Fork from here" on every
+    // top-level 'tool' item if these children were ever routed through it —
+    // exactly the bug this pane must not reintroduce.
+    sendFromHost({
+      t: 'hydrate',
+      sessions: [summary('a', { title: 'My Session', status: 'idle' })],
+      layout: layoutOf('a'),
+      snapshots: [snapshot('a', { title: 'My Session', status: 'idle', items: [subagentItem] })],
+      catalog: catalog(),
+      unavailable: [],
+      usage: {},
+    });
+
+    await userEvent.click(screen.getByRole('button', { name: /explore/i }));
+    fireEvent.click(screen.getByRole('button', { name: /open full transcript/i }));
+
+    // The session title is visible text, not only an aria-label.
+    assert.strictEqual(screen.getByText('My Session') !== undefined, true);
+    // The model rides along on the "Subagent: …" line.
+    assert.strictEqual(screen.getByText(/subagent:.*explore.*opus/i) !== undefined, true);
+    // No child offers a fork: subagent children aren't top-level JSONL
+    // items, so TranscriptStore.upTo() can never find one and the control
+    // would silently do nothing.
+    assert.strictEqual(screen.queryAllByRole('button', { name: /fork from here/i }).length, 0);
+  });
+
+  test('a layout-changed echo reveals a pane for a session already known but hidden', () => {
+    // Reproduces the exact shape `focus-session` needs to fix: a session the
+    // sidebar has already seen (so `reconcilePaneLayout`'s `knownSessionIds`
+    // already contains it — see its doc comment) and then hidden/closed.
+    // `reconcilePaneLayout` will never auto-append a known session again, so
+    // only an explicit layout change from the host — this fix's
+    // `layout-changed` message — can bring its pane back.
+    renderApp();
+    hydrate(['a', 'b']);
+    screen.getByLabelText('Session: Session a');
+    screen.getByLabelText('Session: Session b');
+
+    // The host echoes a layout that dropped 'b' (e.g. the user closed its
+    // pane) — both sessions are already "known" by this point, so this does
+    // not itself trigger the reconcile effect to bring 'b' back.
+    sendFromHost({ t: 'layout-changed', layout: layoutOf('a') });
+    screen.getByLabelText('Session: Session a');
+    assert.strictEqual(screen.queryByLabelText('Session: Session b') === null, true);
+
+    // The fix under test: SessionManager.setLayout()'s echo — what
+    // FleetPanel's focus-session handler now triggers — brings 'b' back.
+    sendFromHost({ t: 'layout-changed', layout: layoutOf('a', 'b') });
+    screen.getByLabelText('Session: Session a');
+    screen.getByLabelText('Session: Session b');
+  });
 });

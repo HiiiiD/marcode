@@ -117,8 +117,15 @@ call.
 
 Clicking a card posts `{ t: 'focus-session', id }` to the fleet panel's own router. The
 handler calls the existing `SessionManager.setVisible`/`setLayout` (adds the session to the
-current pane layout if absent, otherwise leaves it), which fans out `session-status`/pane
-updates to the sidebar exactly as any other layout change does — no new manager method.
+current pane layout if absent, otherwise leaves it) — no new manager method for the add
+itself. Reaching the sidebar, though, needed one: `setVisible` only emits a session snapshot,
+and a session the sidebar has already seen once (opened, then hidden or closed) is never
+auto-appended to its pane layout by the client's own reconcile effect (see `app.tsx`'s
+`knownSessionIdsRef`), so nothing before this feature told that pane to come back. The fix is
+a `HostToWebview` message, `{ t: 'layout-changed'; layout: PaneLayout }`, emitted by
+`SessionManager.setLayout()` itself right after it assigns `this.paneLayout` — every caller
+of `setLayout`, not just this one, now echoes to the sidebar, and `focus-session`'s
+`setVisible`/`setLayout` pair rides that same rail rather than a special case of its own.
 Alongside that, `vscode.commands.executeCommand('workbench.view.extension.mar-code')`
 reveals the sidebar. This is push-only: the fleet tab does not read back the sidebar's pane
 state, so there's no cycle to reason about between two panels each owning layout.

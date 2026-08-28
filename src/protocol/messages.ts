@@ -632,6 +632,19 @@ export type HostToWebview =
    * a star toggled in one has to reach all of them, not just the sender.
    */
   | { t: 'favorite-models'; ids: string[] }
+  /**
+   * The host changed `PaneLayout` itself — e.g. the fleet view's
+   * `focus-session` handler adding a session to the sidebar's split.
+   * `SessionManager.setLayout()` emits this right after it assigns
+   * `this.paneLayout`, alongside its existing persist call, so every caller
+   * of `setLayout` reaches the sidebar the same way, not just the one that
+   * happened to be reachable by accident (a session-snapshot on first
+   * arrival). A layout change the webview itself posted (`set-layout`)
+   * already applies optimistically via `local-layout` — see reducer.ts — so
+   * this message matters most for a layout change the webview did not
+   * initiate itself.
+   */
+  | { t: 'layout-changed'; layout: PaneLayout }
   | { t: 'session-snapshot'; session: SessionSnapshot }
   | { t: 'session-patch'; id: SessionId; patch: TranscriptPatch }
   | { t: 'session-prepend'; id: SessionId; items: TranscriptItem[]; hasMore: boolean }

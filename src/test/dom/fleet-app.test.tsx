@@ -20,6 +20,22 @@ suite('fleet view', () => {
     assert.strictEqual(screen.getByText('Beta') !== undefined, true);
     assert.strictEqual(screen.getByText('Needs you') !== undefined, true);
   });
+
+  test('a card renders the host-computed activityLabel wired from AgentSession', () => {
+    resetHost();
+    renderFleet();
+    const sessions: SessionSummary[] = [
+      makeSession({
+        id: 's1' as SessionSummary['id'], title: 'Alpha', status: 'running',
+        activityLabel: 'Running Edit',
+      }),
+    ];
+    sendFromHost({
+      t: 'hydrate', sessions, layout: { orientation: 'vertical', panes: [] },
+      snapshots: [], catalog: [], unavailable: [], usage: {},
+    });
+    assert.strictEqual(screen.getByText('Running Edit') !== undefined, true);
+  });
 });
 
 function makeSession(overrides: Partial<SessionSummary>): SessionSummary {

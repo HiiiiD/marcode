@@ -15,6 +15,16 @@ export function SessionCard({ session }: { session: SessionSummary }) {
         <span className="truncate font-medium">{session.title}</span>
         <StatusBadge status={session.status} />
       </div>
+      {/*
+        Always the model, never conditioned on a provider count: unlike
+        session-header.tsx's provider label (which only shows once a
+        multi-provider catalog makes the provider itself informative), the
+        fleet client's `FleetState` deliberately carries no catalog (just
+        `{ ready, sessions }` per the spec), and `model` is unconditionally
+        present on every `SessionSummary` — the simplest way to identify a
+        card without growing that state.
+      */}
+      <span className="truncate text-muted-foreground">{session.model}</span>
       <span className="truncate text-muted-foreground">{session.activityLabel ?? 'Idle'}</span>
     </Button>
   );

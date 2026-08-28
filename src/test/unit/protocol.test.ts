@@ -79,6 +79,7 @@ function describeOutbound(m: HostToWebview): string {
     case 'file-search-result': return 'file-search-result';
     case 'agents-md-nudge': return 'agents-md-nudge';
     case 'favorite-models': return 'favorite-models';
+    case 'layout-changed': return 'layout-changed';
     default: return assertNever(m);
   }
 }
