@@ -12,19 +12,38 @@ import { TranscriptItemShell } from './transcript-item-shell';
 import { useStore } from '../store';
 import type { FileRef, SessionId, SessionRef, TranscriptItem } from '../../protocol/messages';
 
+/**
+ * "Fork from here" is offered only on the roles `buildSeed` actually turns
+ * into seed lines — a permission/question/relocation/error/switch item is UI
+ * chrome, not conversation content, and forking "from" one would branch at a
+ * point the new session's provider thread never learns happened.
+ */
+const FORKABLE_ROLES: ReadonlySet<TranscriptItem['role']> = new Set(['user', 'assistant', 'tool']);
+
 export function TranscriptItemView({
   item, sessionId,
 }: {
   item: TranscriptItem;
   sessionId: SessionId;
 }) {
+  const { post, state } = useStore();
+  // Gated on the whole session being idle, not on which turn this item
+  // belongs to: a live turn can leave a dangling unanswered tool call or
+  // permission past any item in it, and telling those apart per-item is not
+  // worth the complexity a coarse "not mid-turn" gate avoids entirely.
+  const canFork = FORKABLE_ROLES.has(item.role)
+    && state.byId[sessionId]?.summary.status === 'idle';
+  const onFork = canFork
+    ? () => post({ t: 'fork-session', id: sessionId, itemId: item.id })
+    : undefined;
+
   switch (item.role) {
     case 'user':
-      return <UserItem item={item} />;
+      return <UserItem item={item} onFork={onFork} />;
 
     case 'assistant':
       return (
-        <TranscriptItemShell role="assistant" label="Agent" ts={item.ts}>
+        <TranscriptItemShell role="assistant" label="Agent" ts={item.ts} onFork={onFork}>
           {item.thinking && <ReasoningBlock text={item.thinking} />}
           <Markdown>{item.text}</Markdown>
         </TranscriptItemShell>
@@ -40,7 +59,7 @@ export function TranscriptItemView({
       // call we do not classify as a subagent keeps its nested rendering.
       return item.tool.kind === 'subagent' || (item.children && item.children.length > 0)
         ? <SubagentCard item={item} sessionId={sessionId} />
-        : <ToolCard item={item} />;
+        : <ToolCard item={item} onFork={onFork} />;
 
     case 'error':
       return (
@@ -82,7 +101,12 @@ export function TranscriptItemView({
   }
 }
 
-function UserItem({ item }: { item: Extract<TranscriptItem, { role: 'user' }> }) {
+function UserItem({
+  item, onFork,
+}: {
+  item: Extract<TranscriptItem, { role: 'user' }>;
+  onFork?: () => void;
+}) {
   const { post } = useStore();
   const ctx = item.context;
   // The item's `text` is the composed prompt, blocks included — it has to be,
@@ -93,7 +117,7 @@ function UserItem({ item }: { item: Extract<TranscriptItem, { role: 'user' }> })
   const { prose, blocks } = splitComposed(item.text, item.refs ?? [], item.fileRefs ?? []);
 
   return (
-    <TranscriptItemShell role="user" label="You" ts={item.ts}>
+    <TranscriptItemShell role="user" label="You" ts={item.ts} onFork={onFork}>
       {ctx && (
         <div className="mb-1 flex">
           <EditorContextChip

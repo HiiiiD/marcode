@@ -345,6 +345,20 @@ export class TranscriptStore {
     return { items: items.slice(start), hasMore: start > 0 };
   }
 
+  /**
+   * Every item from the start of `id`'s transcript through `itemId`,
+   * inclusive — the source range a fork copies into a new session. Empty for
+   * an unknown session or an item id that transcript does not contain,
+   * exactly like `tail`'s unknown-session case: this answers a UI action, not
+   * a disk read that may throw.
+   */
+  async upTo(id: SessionId, itemId: string): Promise<TranscriptItem[]> {
+    const items = await this.ensureLoaded(id);
+    const at = items.findIndex((i) => i.id === itemId);
+    if (at < 0) { return []; }
+    return items.slice(0, at + 1);
+  }
+
   async before(
     id: SessionId,
     beforeItemId: string,

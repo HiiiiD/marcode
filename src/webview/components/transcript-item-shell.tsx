@@ -1,4 +1,6 @@
+import { GitForkIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
+import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 export type TranscriptItemRole =
@@ -51,15 +53,25 @@ const FRAME: Record<TranscriptItemRole, string> = {
  * transcript item, and the frame that says whose turn this is.
  */
 export function TranscriptItemShell({
-  role, label, ts, children,
+  role, label, ts, onFork, children,
 }: {
   role: TranscriptItemRole;
   label: string;
   ts?: number;
+  /**
+   * "Fork from here" — absent for a role that is not a meaningful branch
+   * point (a permission card, say) or while the session cannot fork right
+   * now. The caller decides both; this only renders what it is handed.
+   * Hover-revealed, like the roster row's own actions trigger: unlike the
+   * markdown toolbar's always-on copy button, an icon on every single
+   * transcript item would be a permanent column of chrome down the whole
+   * scroll.
+   */
+  onFork?: () => void;
   children: ReactNode;
 }) {
   return (
-    <div className={cn('my-0', FRAME[role])}>
+    <div className={cn('group/item my-0', FRAME[role])}>
       <div className="mb-0.5 flex items-baseline gap-2">
         <span
           className={cn(
@@ -79,6 +91,18 @@ export function TranscriptItemShell({
           >
             {new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
           </span>
+        )}
+        {onFork && (
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            aria-label="Fork from here"
+            title="Fork a new session from this point"
+            onClick={onFork}
+            className="ml-auto text-muted-foreground opacity-0 group-hover/item:opacity-100 focus:opacity-100"
+          >
+            <GitForkIcon />
+          </Button>
         )}
       </div>
       {children}

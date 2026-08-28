@@ -731,6 +731,24 @@ suite('MessageRouter', () => {
     assert.strictEqual(reached, true);
   });
 
+  test('fork-session reaches the manager with the session and item', async () => {
+    const calls: [string, string][] = [];
+    manager.fork = async (id, itemId) => { calls.push([id, itemId]); return undefined; };
+
+    await router.handle({ t: 'fork-session', id: 's-1', itemId: 'u1' });
+
+    assert.deepStrictEqual(calls, [['s-1', 'u1']]);
+  });
+
+  test('fork-session is not dropped as a malformed message', async () => {
+    // Same trap as `answer-relocation` above: a new inbound arm needs its own
+    // entry in the hand-maintained KNOWN_MESSAGE_TAGS set.
+    let reached = false;
+    manager.fork = async () => { reached = true; return undefined; };
+    await router.handle({ t: 'fork-session', id: 's-1', itemId: 'u1' });
+    assert.strictEqual(reached, true);
+  });
+
   test('both bring-back messages survive the wire guard and reach the manager', async () => {
     // Same trap as `answer-relocation` above, twice over: two new inbound arms
     // mean two new entries in KNOWN_MESSAGE_TAGS, and a missing one is dropped
