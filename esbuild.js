@@ -110,11 +110,24 @@ async function main() {
 		plugins: [tailwindPlugin('src/review/index.css', 'dist/review.css'), ...common.plugins],
 	});
 
+	// The fleet tab. Same alias as review — shared `@/components/ui/*` and
+	// `@/lib/utils`, only the store, the reducer and the surface differ.
+	const fleetCtx = await esbuild.context({
+		...common,
+		entryPoints: ['src/fleet/main.tsx'],
+		format: 'iife',
+		platform: 'browser',
+		outfile: 'dist/fleet.js',
+		loader: { '.tsx': 'tsx', '.ts': 'ts' },
+		alias: { '@': require('path').resolve(__dirname, 'src/webview') },
+		plugins: [tailwindPlugin('src/fleet/index.css', 'dist/fleet.css'), ...common.plugins],
+	});
+
 	if (watch) {
-		await Promise.all([hostCtx.watch(), webviewCtx.watch(), reviewCtx.watch()]);
+		await Promise.all([hostCtx.watch(), webviewCtx.watch(), reviewCtx.watch(), fleetCtx.watch()]);
 	} else {
-		await Promise.all([hostCtx.rebuild(), webviewCtx.rebuild(), reviewCtx.rebuild()]);
-		await Promise.all([hostCtx.dispose(), webviewCtx.dispose(), reviewCtx.dispose()]);
+		await Promise.all([hostCtx.rebuild(), webviewCtx.rebuild(), reviewCtx.rebuild(), fleetCtx.rebuild()]);
+		await Promise.all([hostCtx.dispose(), webviewCtx.dispose(), reviewCtx.dispose(), fleetCtx.dispose()]);
 	}
 }
 
