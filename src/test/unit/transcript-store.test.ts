@@ -546,6 +546,33 @@ suite('TranscriptStore', () => {
     assert.strictEqual((items[0] as { text: string }).text, 'changed');
   });
 
+  test('upTo returns items up to and including the given id', async () => {
+    for (let i = 0; i < 5; i++) { store.append('s1', item(`i${i}`, `t${i}`)); }
+    await store.flush();
+
+    const items = await store.upTo('s1', 'i2');
+    assert.deepStrictEqual(items.map((i) => i.id), ['i0', 'i1', 'i2']);
+  });
+
+  test('upTo on the last item returns the whole transcript', async () => {
+    for (let i = 0; i < 3; i++) { store.append('s1', item(`i${i}`, `t${i}`)); }
+    await store.flush();
+
+    const items = await store.upTo('s1', 'i2');
+    assert.deepStrictEqual(items.map((i) => i.id), ['i0', 'i1', 'i2']);
+  });
+
+  test('upTo on an unknown item id returns empty', async () => {
+    store.append('s1', item('i0', 't0'));
+    await store.flush();
+
+    assert.deepStrictEqual(await store.upTo('s1', 'missing'), []);
+  });
+
+  test('upTo on an unknown session returns empty rather than throwing', async () => {
+    assert.deepStrictEqual(await store.upTo('missing', 'i0'), []);
+  });
+
   test('remove on a session with unflushed pending appends is not resurrected by a later flush', async () => {
     store.append('s1', item('a', 'one'));
 

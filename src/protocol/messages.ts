@@ -457,6 +457,14 @@ export type WebviewToHost =
   | { t: 'open-file'; id: SessionId; path: string }
   | { t: 'answer-relocation'; id: SessionId; itemId: string; move: boolean }
   /**
+   * Branches a new session off this one's transcript at `itemId`: a copy of
+   * everything up to and including that item, running against a fresh
+   * provider thread — see `SessionManager.fork`. No dedicated reply: the new
+   * session reaches the roster the same way one from `create-session` does,
+   * through `sessions-changed`.
+   */
+  | { t: 'fork-session'; id: SessionId; itemId: string }
+  /**
    * "Not any more." Calls off a move that is waiting for the turn to finish
    * and puts the offer back to `pending`. Deliberately not `answer-relocation`
    * with `move: false`: that is Stay, an answer, and it settles the item

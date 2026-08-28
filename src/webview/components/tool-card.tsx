@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   BotIcon, ChevronDownIcon, ChevronRightIcon, FilePenIcon, FilePlusIcon, FileTextIcon,
-  FolderSearchIcon, GlobeIcon, ListTodoIcon, Loader2Icon, SearchIcon, SendIcon,
+  FolderSearchIcon, GitForkIcon, GlobeIcon, ListTodoIcon, Loader2Icon, SearchIcon, SendIcon,
   TerminalIcon, WrenchIcon,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -26,7 +26,7 @@ const GLYPHS: Record<ToolGlyph, typeof TerminalIcon> = {
   'wrench': WrenchIcon,
 };
 
-export function ToolCard({ item }: { item: ToolItem }) {
+export function ToolCard({ item, onFork }: { item: ToolItem; onFork?: () => void }) {
   const [open, setOpen] = useState(false);
   const tool = item.tool;
   const server = tool.kind === 'mcp' ? tool.server : undefined;
@@ -43,53 +43,72 @@ export function ToolCard({ item }: { item: ToolItem }) {
   const output = describeOutput(tool.kind, item.output, item.state);
 
   return (
-    <div className="my-0 rounded border border-border text-xs">
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-        aria-controls={`tool-${item.toolId}`}
-        // `gap-2`/`px-2`/`justify-start` override `size="sm"`'s own gap/px —
-        // the fixed h-7 the variant sets is kept, not hand-written, per the
-        // Task 2 discipline against overriding a size variant's height.
-        className="flex w-full items-center justify-start gap-2 px-2 font-normal"
-      >
-        <Glyph
-          aria-hidden
-          className={cn(
-            'shrink-0',
-            item.state === 'running' && 'animate-spin',
-            item.state === 'error' && 'text-destructive',
+    // `group/item`, not a second `<button>` nested inside the toggle: the
+    // toggle below IS a button, and a fork button placed inside it would be
+    // interactive-inside-interactive — the same trap the roster row's own
+    // actions trigger sits beside its checkbox item to avoid, not inside it.
+    <div className="group/item my-0 rounded border border-border text-xs">
+      <div className="flex items-center">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          aria-controls={`tool-${item.toolId}`}
+          // `gap-2`/`px-2`/`justify-start` override `size="sm"`'s own gap/px —
+          // the fixed h-7 the variant sets is kept, not hand-written, per the
+          // Task 2 discipline against overriding a size variant's height.
+          className="flex min-w-0 flex-1 items-center justify-start gap-2 px-2 font-normal"
+        >
+          <Glyph
+            aria-hidden
+            className={cn(
+              'shrink-0',
+              item.state === 'running' && 'animate-spin',
+              item.state === 'error' && 'text-destructive',
+            )}
+          />
+          <span className="sr-only">{item.state}</span>
+          {server && (
+            // Muted, not colour-per-server: a palette per server would collide
+            // with the status tones already in use and buys nothing when the
+            // name is right beside it.
+            <span className="shrink-0 rounded bg-muted px-1 text-muted-foreground">
+              {server}
+            </span>
           )}
-        />
-        <span className="sr-only">{item.state}</span>
-        {server && (
-          // Muted, not colour-per-server: a palette per server would collide
-          // with the status tones already in use and buys nothing when the
-          // name is right beside it.
-          <span className="shrink-0 rounded bg-muted px-1 text-muted-foreground">
-            {server}
-          </span>
-        )}
-        <span className="shrink-0 font-medium">{header.verb}</span>
-        {header.primary && (
-          <span
-            className={cn('min-w-0 truncate text-muted-foreground', header.mono && 'font-mono')}
-            title={header.full}
+          <span className="shrink-0 font-medium">{header.verb}</span>
+          {header.primary && (
+            <span
+              className={cn('min-w-0 truncate text-muted-foreground', header.mono && 'font-mono')}
+              title={header.full}
+            >
+              {header.primary}
+            </span>
+          )}
+          {item.state === 'error' && (
+            // The `attention` spelling used elsewhere in the panel: a word plus
+            // a quiet fill, never colour alone.
+            <span className="ml-auto shrink-0 rounded-full border border-destructive/40 bg-destructive/10 px-1.5 font-medium text-destructive">
+              failed
+            </span>
+          )}
+          <Chevron aria-hidden className={cn('shrink-0 text-muted-foreground', item.state !== 'error' && 'ml-auto')} />
+        </Button>
+
+        {onFork && (
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            aria-label="Fork from here"
+            title="Fork a new session from this point"
+            onClick={onFork}
+            className="mr-1 shrink-0 text-muted-foreground opacity-0 group-hover/item:opacity-100 focus:opacity-100"
           >
-            {header.primary}
-          </span>
+            <GitForkIcon />
+          </Button>
         )}
-        {item.state === 'error' && (
-          // The `attention` spelling used elsewhere in the panel: a word plus
-          // a quiet fill, never colour alone.
-          <span className="ml-auto shrink-0 rounded-full border border-destructive/40 bg-destructive/10 px-1.5 font-medium text-destructive">
-            failed
-          </span>
-        )}
-        <Chevron aria-hidden className={cn('shrink-0 text-muted-foreground', item.state !== 'error' && 'ml-auto')} />
-      </Button>
+      </div>
 
       {open && (
         <div id={`tool-${item.toolId}`} className="flex flex-col gap-1.5 border-t border-border px-2 py-1.5">

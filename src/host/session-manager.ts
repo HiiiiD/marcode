@@ -487,6 +487,61 @@ export class SessionManager implements SessionSink {
     return session;
   }
 
+  /**
+   * Branches a new session off `id`'s transcript at `itemId`: a fresh
+   * `SessionId` whose transcript is a verbatim copy of everything up to and
+   * including that item, running against a fresh provider thread. Same seam
+   * `moveTo` already uses for "a thread with no history of this
+   * conversation" — empty `resumeTokens`, so the new session's first `send()`
+   * prepends a `buildSeed()` summary of the copied history.
+   *
+   * Current settings (model, effort, permission mode, cwd), not settings as
+   * of the fork point: simpler, and a fork is "keep how I'm running it,
+   * change the history" rather than a full time-travel of every field.
+   *
+   * Never rejects and never throws — answered straight off the wire, where
+   * errors are state. An unknown session or an item id its transcript does
+   * not contain (including one from a live run's still-unflushed queue) is a
+   * no-op, signalled by returning `undefined`.
+   */
+  async fork(id: SessionId, itemId: string): Promise<AgentSession | undefined> {
+    const state = this.meta.get(id);
+    if (!state) { return undefined; }
+    const provider = this.providers.get(state.providerId);
+    if (!provider) { return undefined; }
+
+    // Flushes the live session's pending writes first, if any — otherwise a
+    // fork requested moments after the item that names it was appended could
+    // race the flush and find nothing to copy.
+    await this.live.get(id)?.snapshot();
+
+    const items = await this.store.upTo(id, itemId);
+    if (items.length === 0) { return undefined; }
+
+    const now = Date.now();
+    const forkState: SessionState = {
+      id: newSessionId(), providerId: state.providerId, model: state.model,
+      effort: state.effort, title: `Fork of ${state.title}`, cwd: state.cwd,
+      status: 'idle', permissionMode: state.permissionMode,
+      includeEditorContext: state.includeEditorContext,
+      resumeTokens: {},
+      usage: { inputTokens: 0, outputTokens: 0 },
+      archived: false, createdAt: now, updatedAt: now,
+    };
+
+    for (const item of items) { this.store.append(forkState.id, item); }
+    await this.store.flush(forkState.id);
+
+    const session = new AgentSession(forkState, provider, this.store, this, buildSeed(items));
+    this.meta.set(forkState.id, forkState);
+    this.live.set(forkState.id, session);
+    const cached = this.catalogSvc.get(this.keyOf(forkState));
+    if (cached) { session.setInvocables(cached); }
+    this.catalogSvc.ensure(this.keyOf(forkState), provider, forkState.cwd);
+    this.changed();
+    return session;
+  }
+
   get(id: SessionId): AgentSession | undefined { return this.live.get(id); }
 
   /**

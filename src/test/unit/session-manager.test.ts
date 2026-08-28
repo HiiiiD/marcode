@@ -72,6 +72,58 @@ suite('SessionManager', () => {
     return { manager: mmanager, provider, emitted, store: mstore };
   }
 
+  test('fork copies the transcript up to the chosen item into a new session', async () => {
+    const session = await manager.create('fake', '/tmp');
+    session!.send('first');
+    await settle();
+    session!.send('second');
+    await settle();
+
+    const before = await session!.snapshot();
+    const targetId = before.items[0].id; // the "first" user item
+
+    const forked = await manager.fork(session!.state.id, targetId);
+    assert.ok(forked, 'fork must return the new session');
+    assert.notStrictEqual(forked!.state.id, session!.state.id);
+    assert.strictEqual(forked!.state.cwd, session!.state.cwd);
+    assert.strictEqual(forked!.state.providerId, session!.state.providerId);
+    assert.strictEqual(forked!.state.model, session!.state.model);
+    assert.strictEqual(forked!.state.title, 'Fork of first');
+    assert.deepStrictEqual(forked!.state.resumeTokens, {},
+      'a fork starts a fresh provider thread, not a shared resume token');
+
+    const forkedSnapshot = await forked!.snapshot();
+    assert.strictEqual(forkedSnapshot.items.length, 1,
+      'only the item at and before the fork point is copied');
+    const forkedItem = forkedSnapshot.items[0];
+    assert.strictEqual(forkedItem.role === 'user' ? forkedItem.text : undefined, 'first');
+
+    // The source session is untouched.
+    const sourceAfter = await session!.snapshot();
+    assert.strictEqual(sourceAfter.items.length, 4);
+  });
+
+  test('fork registers the new session in the roster', async () => {
+    const session = await manager.create('fake', '/tmp');
+    session!.send('first');
+    await settle();
+    const targetId = (await session!.snapshot()).items[0].id;
+
+    const forked = await manager.fork(session!.state.id, targetId);
+    assert.ok(manager.summaries().some((s) => s.id === forked!.state.id));
+  });
+
+  test('fork of an unknown session is a no-op', async () => {
+    assert.strictEqual(await manager.fork('missing', 'i0'), undefined);
+  });
+
+  test('fork with an unknown item id is a no-op', async () => {
+    const session = await manager.create('fake', '/tmp');
+    session!.send('first');
+    await settle();
+    assert.strictEqual(await manager.fork(session!.state.id, 'missing'), undefined);
+  });
+
   test('a message parked mid-turn does not survive a reload', async () => {
     // Its own silent provider: the suite's script ends the turn on the spot,
     // so nothing there is ever busy long enough to park a message.

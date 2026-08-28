@@ -384,6 +384,14 @@ export class MessageRouter {
         await this.manager.cancelRelocation(msg.id, msg.itemId);
         return;
 
+      // Awaited for the same reason: `fork` writes the new session's
+      // transcript to disk before returning, and a `void` here would put
+      // that rejection outside `handle()`'s catch-all. No reply beyond the
+      // `sessions-changed` `fork()` already fires through `changed()`.
+      case 'fork-session':
+        await this.manager.fork(msg.id, msg.itemId);
+        return;
+
       // Both awaited for the same reason as `answer-relocation`: they shell
       // out to git and touch the filesystem, and a `void` here would put a
       // rejection outside `handle()`'s catch-all.
@@ -551,7 +559,7 @@ const KNOWN_MESSAGE_TAGS = new Set<WebviewToHost['t']>([
   'delete-session', 'send', 'interrupt', 'cancel-queued',
   'set-effort', 'set-permission-mode',
   'set-model', 'permission-decision', 'question-answer', 'load-more',
-  'answer-relocation', 'cancel-relocation',
+  'answer-relocation', 'cancel-relocation', 'fork-session',
   'set-include-context', 'reveal-file',
   'attach-paste', 'attach-pick', 'attach-drop', 'attach-remove', 'attach-failed',
   'request-context', 'open-file',
