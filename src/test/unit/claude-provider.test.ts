@@ -696,6 +696,21 @@ suite('ClaudeProvider mcpServerStatus pull', () => {
     await assert.doesNotReject(() => run.dispose());
   });
 
+  test('an OAuth expiry mid-turn reads as a sign-in problem, not raw SDK text', async () => {
+    const provider = new ClaudeProvider((async () => {
+      throw new Error('Failed to authenticate: OAuth session expired and could not be refreshed');
+    }) as never);
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+
+    run.send('go');
+    await flushMacrotask();
+    const events = await drainAvailableEvents(run);
+
+    assert.deepStrictEqual(events, [
+      { kind: 'turn-end', reason: 'error', error: 'Not signed in to Claude. Run `claude auth login`.' },
+    ]);
+  });
+
   test('a synchronous throw from mcpServerStatus() itself does not abort the pump', async () => {
     // Distinct from the rejection case above: this simulates the call itself
     // throwing (e.g. an already-torn-down transport) rather than returning a
@@ -904,6 +919,15 @@ suite('ClaudeProvider mcpServerStatus pull', () => {
       assert.match(err.message, /Claude Code CLI not found/);
       assert.strictEqual(/pathToClaudeCodeExecutable/.test(err.message), false,
         'the reason reaches the panel, so it names the tool the user installed');
+      return true;
+    });
+  });
+
+  test('fetchModels reports an expired OAuth session as a sign-in problem, not raw SDK text', async () => {
+    const provider = providerThatFails('Failed to authenticate: OAuth session expired and could not be refreshed');
+
+    await assert.rejects(() => provider.fetchModels('/repo'), (err: Error) => {
+      assert.strictEqual(err.message, 'Not signed in to Claude. Run `claude auth login`.');
       return true;
     });
   });

@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { cn } from "@/lib/utils";
-import { RefreshCwIcon, SettingsIcon } from "lucide-react";
+import { LogInIcon, RefreshCwIcon, SettingsIcon } from "lucide-react";
 import { Fragment, useEffect, useRef, useState } from "react";
 // react-resizable-panels ships ESM-only; a type-only import from a CommonJS
 // module needs an explicit resolution-mode attribute (TS 5.3+) or tsc's
@@ -11,6 +11,7 @@ import type { Layout, LayoutChangedMeta } from "react-resizable-panels" with { "
 import { findModel } from "../../shared/model-catalog";
 import { ENABLED_PROVIDERS_SETTING } from "../../shared/settings";
 import { unavailabilityFor } from "../lib/provider-availability";
+import { isSignInFailure } from "../lib/provider-login";
 import { useStore } from "../store";
 import { Composer } from "./composer";
 import { accessibleTitles, rosterSessionIds, visiblePanes } from "./pane-layout";
@@ -155,9 +156,25 @@ export function PaneGroup({ narrow }: PaneGroupProps) {
             several and only some of them broken. */}
         {noProviders &&
           state.unavailable.map((p) => (
-            <p key={p.id} className="text-xs text-muted-foreground">
-              <span className="font-medium text-foreground">{p.displayName}</span> — {p.reason}
-            </p>
+            <div key={p.id} className="flex flex-col items-center gap-1">
+              <p className="text-xs text-muted-foreground">
+                <span className="font-medium text-foreground">{p.displayName}</span> — {p.reason}
+              </p>
+              {/* Login is a browser/TTY flow the extension hands to a
+                  terminal — only offered when the reason names a specific
+                  provider's sign-in state, never for a dead binary or an
+                  unrecognized failure a login would not fix. */}
+              {isSignInFailure(p.reason) && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => post({ t: "login-provider", providerId: p.id })}
+                >
+                  <LogInIcon aria-hidden />
+                  Log in
+                </Button>
+              )}
+            </div>
           ))}
         {noneEnabled && (
           <>

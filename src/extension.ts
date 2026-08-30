@@ -307,6 +307,15 @@ export async function activate(context: vscode.ExtensionContext) {
     exportCsv: (csv: string) => {
       void exportCsv(csv);
     },
+    login: (providerId: string) => {
+      // `providerId` names the backend a "not signed in" reason called out
+      // (see LOGIN_COMMANDS), not an arbitrary string — a provider with no
+      // login command (or a typo reaching this from a future provider) is a
+      // no-op rather than a thrown error, the same tolerance `revealFile`
+      // and `openFileDiff` give a dead reference.
+      const command = LOGIN_COMMANDS[providerId];
+      if (command) { void vscode.commands.executeCommand(command); }
+    },
   };
 
   const configHost: ConfigHost = {
@@ -403,11 +412,10 @@ export async function activate(context: vscode.ExtensionContext) {
     { dispose: () => { review.dispose(); } },
     { dispose: () => { fleet.dispose(); } },
     vscode.commands.registerCommand('marcode.codex.login', () => {
-      // `codex login` opens a browser flow and needs a real TTY, so this
-      // hands the user a terminal rather than trying to drive it.
-      const terminal = vscode.window.createTerminal('Codex login');
-      terminal.show();
-      terminal.sendText('codex login');
+      openLoginTerminal('Codex login', 'codex login');
+    }),
+    vscode.commands.registerCommand('marcode.claude.login', () => {
+      openLoginTerminal('Claude login', 'claude auth login');
     }),
     // A changed path is a different install: point the provider at it, then
     // re-probe — which is also how the provider recovers from 'unavailable'.
@@ -505,6 +513,24 @@ async function openFileDiff(root: string, target: string, base: DiffBase): Promi
     // same call this file already makes for a dead transcript chip.
     console.error('[mar-code] could not open diff for', target, err);
   }
+}
+
+/** `providerId` (from `UnavailableProvider.id` / a session's `providerId`) → the command that signs it back in. */
+const LOGIN_COMMANDS: Record<string, string> = {
+  codex: 'marcode.codex.login',
+  claude: 'marcode.claude.login',
+};
+
+/**
+ * `codex login` / `claude auth login` each open a browser flow and need a
+ * real TTY, so this hands the user a terminal rather than trying to drive
+ * it. Re-probing afterward is the existing "Check again" retry — nothing
+ * here waits for the terminal to close or the login to succeed.
+ */
+function openLoginTerminal(terminalName: string, command: string): void {
+  const terminal = vscode.window.createTerminal(terminalName);
+  terminal.show();
+  terminal.sendText(command);
 }
 
 /**

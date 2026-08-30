@@ -120,11 +120,29 @@ suite('MessageRouter', () => {
       openSettings: (section) => sections.push(section),
       openExternal: () => {},
       exportCsv: () => {},
+      login: () => {},
     });
 
     await r.handle({ t: 'open-settings', section: 'marcode.enabledProviders' });
 
     assert.deepStrictEqual(sections, ['marcode.enabledProviders']);
+  });
+
+  test('login-provider reaches the host with the provider to sign back in to', async () => {
+    const providers: string[] = [];
+    const r = new MessageRouter(manager, (m) => sent.push(m), '/tmp', {
+      current: () => null,
+      reveal: () => {},
+      openDiff: () => {},
+      openSettings: () => {},
+      openExternal: () => {},
+      exportCsv: () => {},
+      login: (providerId) => providers.push(providerId),
+    });
+
+    await r.handle({ t: 'login-provider', providerId: 'claude' });
+
+    assert.deepStrictEqual(providers, ['claude']);
   });
 
   test('open-external reaches the host with the url to open', async () => {
@@ -136,6 +154,7 @@ suite('MessageRouter', () => {
       openSettings: () => {},
       openExternal: (url) => urls.push(url),
       exportCsv: () => {},
+      login: () => {},
     });
 
     await r.handle({ t: 'open-external', url: 'https://example.test/a' });
@@ -152,6 +171,7 @@ suite('MessageRouter', () => {
       openSettings: () => {},
       openExternal: () => {},
       exportCsv: (csv) => csvs.push(csv),
+      login: () => {},
     });
 
     await r.handle({ t: 'export-table-csv', csv: 'Task,State\r\na,b' });
@@ -684,6 +704,7 @@ suite('MessageRouter', () => {
       openSettings: () => {},
       openExternal: () => {},
       exportCsv: () => {},
+      login: () => {},
     });
 
     const session = await mgr.create('fake', '/tmp');
@@ -706,6 +727,7 @@ suite('MessageRouter', () => {
       openSettings: () => {},
       openExternal: () => {},
       exportCsv: () => {},
+      login: () => {},
     });
 
     const session = await mgr.create('fake', '/tmp');
@@ -752,6 +774,7 @@ suite('MessageRouter', () => {
       openSettings: () => {},
       openExternal: () => {},
       exportCsv: () => {},
+      login: () => {},
     });
 
     await r.handle({ t: 'reveal-file', path: 'src/a.ts', startLine: 12 });
@@ -846,6 +869,7 @@ suite('MessageRouter', () => {
       openSettings: () => {},
       openExternal: () => {},
       exportCsv: () => {},
+      login: () => {},
     });
 
     await r.handle({ t: 'ready' });

@@ -37,6 +37,7 @@ suite('PanelViewProvider CSP', () => {
     current: () => null, reveal: () => {}, openDiff: () => {}, openSettings: () => {},
     openExternal: () => {},
     exportCsv: () => {},
+    login: () => {},
   };
 
   test('CSP contains default-src none', () => {

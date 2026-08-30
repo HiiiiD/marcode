@@ -147,7 +147,21 @@ import { redactSecrets } from './redact';
  */
 function unavailableReason(err: unknown): string {
   const raw = errorMessage(err);
-  return /executable not found|ENOENT/i.test(raw) ? 'Claude Code CLI not found.' : raw;
+  if (/executable not found|ENOENT/i.test(raw)) { return 'Claude Code CLI not found.'; }
+  return authFailureReason(raw) ?? raw;
+}
+
+/**
+ * The SDK's own OAuth-expiry text, turned into the same "not signed in"
+ * phrasing Codex's `fetchModels` already uses — so the panel's reauth
+ * action (matched client-side on that phrasing) recognizes both providers
+ * with one pattern. `undefined` when `raw` is not an auth failure, so
+ * callers fall back to the message unchanged.
+ */
+function authFailureReason(raw: string): string | undefined {
+  return /Failed to authenticate|OAuth session expired/i.test(raw)
+    ? 'Not signed in to Claude. Run `claude auth login`.'
+    : undefined;
 }
 
 /** The subset of the SDK's `ModelInfo` this adapter reads. */
@@ -567,7 +581,8 @@ export class ClaudeProvider implements AgentProvider {
             }
           }
         } catch (err) {
-          events.push({ kind: 'turn-end', reason: 'error', error: errorMessage(err) });
+          const raw = errorMessage(err);
+          events.push({ kind: 'turn-end', reason: 'error', error: authFailureReason(raw) ?? raw });
           // Unblocks a usageWindows() call that is awaiting this exact
           // construction — resolving to undefined so it degrades to "no
           // windows" rather than hanging on a query that will never exist.

@@ -87,6 +87,36 @@ suite('PaneGroup', () => {
     assert.deepStrictEqual(posted().at(-1), { t: 'refresh-catalog' });
   });
 
+  test('a not-signed-in provider offers a login action in the empty state', async () => {
+    renderApp();
+    sendFromHost({
+      t: 'hydrate',
+      sessions: [], layout: layoutOf(), snapshots: [],
+      catalog: [],
+      unavailable: [{ id: 'claude', displayName: 'Claude', reason: 'Not signed in to Claude. Run `claude auth login`.' }],
+      probing: false,
+      usage: {},
+    });
+
+    await userEvent.click(screen.getByRole('button', { name: /log in/i }));
+
+    assert.deepStrictEqual(posted().at(-1), { t: 'login-provider', providerId: 'claude' });
+  });
+
+  test('an unavailable provider with no login-shaped reason offers no login action', () => {
+    renderApp();
+    sendFromHost({
+      t: 'hydrate',
+      sessions: [], layout: layoutOf(), snapshots: [],
+      catalog: [],
+      unavailable: [{ id: 'claude', displayName: 'Claude', reason: 'Claude Code CLI not found.' }],
+      probing: false,
+      usage: {},
+    });
+
+    assert.strictEqual(screen.queryByRole('button', { name: /log in/i }) === null, true);
+  });
+
   test('the empty state stays a plain invitation while the providers still work', () => {
     renderApp();
     sendFromHost({
