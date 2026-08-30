@@ -48,8 +48,8 @@ function WindowChip({ window: w }: { window: UsageWindow }) {
 }
 
 function ProviderUsage({
-  displayName, windows, showName,
-}: { displayName: string; windows: UsageWindow[] | undefined; showName: boolean }) {
+  displayName, windows,
+}: { displayName: string; windows: UsageWindow[] | undefined }) {
   // The host prunes expired windows on read, but the client holds its own
   // copy until the next broadcast — and broadcasts ride on provider events,
   // which may be hours apart. So a window can pass its reset with nothing
@@ -67,14 +67,14 @@ function ProviderUsage({
   // have all expired unrefreshed. Asserting any one of them would be a claim
   // we cannot support, so the copy says only what is true of all three.
   //
-  // showName applies here too, not just in the chip branch below: with
-  // several providers in the roster, an unlabelled "Plan usage not reported"
-  // is ambiguous about which account it describes, and two of them side by
-  // side are indistinguishable.
+  // The name is always shown, not gated on how many providers currently
+  // report: a provider can drop out of `reporting` mid-session (an auth
+  // failure, an expired token), leaving a single row that would otherwise be
+  // indistinguishable from any other provider's row.
   if (!live || live.length === 0) {
     return (
       <div className="flex min-h-5 flex-wrap items-center gap-x-3 gap-y-0.5 text-muted-foreground">
-        {showName && <span className="shrink-0">{displayName}</span>}
+        <span className="shrink-0">{displayName}</span>
         <span>Plan usage not reported</span>
       </div>
     );
@@ -86,7 +86,7 @@ function ProviderUsage({
   // strip exists to surface. Wrapping costs a row and hides nothing.
   return (
     <div className="flex min-h-5 flex-wrap items-center gap-x-3 gap-y-0.5">
-      {showName && <span className="shrink-0 text-muted-foreground">{displayName}</span>}
+      <span className="shrink-0 text-muted-foreground">{displayName}</span>
       {live.map((w) => <WindowChip key={w.id} window={w} />)}
     </div>
   );
@@ -119,7 +119,6 @@ export function UsageStrip() {
           key={id}
           displayName={state.catalog.find((p) => p.id === id)?.displayName ?? id}
           windows={state.usageByProvider[id]}
-          showName={reporting.length > 1}
         />
       ))}
     </div>
