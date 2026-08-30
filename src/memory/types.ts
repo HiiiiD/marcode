@@ -47,6 +47,12 @@ export interface MemoryStore {
   search(query: string, opts?: { providerId?: string; limit?: number }): Promise<MemoryHit[]>;
   /** Full slice for exactly one hit, on demand. */
   fetch(hit: { sessionId: SessionId; itemId: string }): Promise<MemoryDetail>;
+  /**
+   * Erases a session's row, if any. Called when a session is permanently
+   * deleted — `remove()`, not `close()` — so an explicit delete cannot leave
+   * the transcript it was meant to erase permanently findable in this cache.
+   */
+  forget(sessionId: SessionId): Promise<void>;
 }
 
 /**

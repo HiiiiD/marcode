@@ -53,7 +53,7 @@ export class FtsMemoryStore implements MemoryStore {
       .filter((t) => t.length > 0)
       .join('\n');
 
-    this.db.prepare('DELETE FROM sessions_fts WHERE sessionId = ?').run(record.sessionId);
+    await this.forget(record.sessionId);
     this.db.prepare(`
       INSERT INTO sessions_fts (title, summary, text, sessionId, providerId, cwd, firstItemId, closedAt)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -61,6 +61,11 @@ export class FtsMemoryStore implements MemoryStore {
       record.title, summary, text,
       record.sessionId, record.providerId, record.cwd, firstItemId, record.closedAt,
     );
+  }
+
+  /** Erases `sessionId`'s row, if any. See `MemoryStore.forget`. */
+  async forget(sessionId: SessionId): Promise<void> {
+    this.db.prepare('DELETE FROM sessions_fts WHERE sessionId = ?').run(sessionId);
   }
 
   /**

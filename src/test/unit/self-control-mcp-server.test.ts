@@ -43,6 +43,7 @@ function fakeMemory(overrides: Partial<MemoryStore> = {}): MemoryStore {
     search: async () => [],
     fetch: async () => ({ sessionId: 's1', items: [] }),
     index: async () => {},
+    forget: async () => {},
     ...overrides,
   };
 }

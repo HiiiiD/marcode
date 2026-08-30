@@ -87,6 +87,18 @@ suite('FtsMemoryStore', () => {
     assert.strictEqual(hits.length, 2);
   });
 
+  test('forget() removes a session\'s row from search results', async () => {
+    const dbPath = await tempDbPath();
+    const store = new FtsMemoryStore(dbPath, new ExtractiveSummarizer(), noopReader);
+    await store.index({
+      sessionId: 's1', providerId: 'claude', cwd: '/repo', title: 'Untitled', closedAt: 1000,
+      items: [userItem('u1', 'Investigate the flaky login test on CI')],
+    });
+    await store.forget('s1');
+    const hits = await store.search('flaky login');
+    assert.strictEqual(hits.length, 0);
+  });
+
   // FTS5's MATCH clause has its own query grammar that runs before
   // tokenization, so punctuation a caller never meant as syntax must not
   // reach it raw. Each of these throws in real node:sqlite if search()

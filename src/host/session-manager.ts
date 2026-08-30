@@ -1516,6 +1516,17 @@ export class SessionManager implements SessionSink {
     this.meta.delete(id);
     await this.store.remove(id);
     await this.attachments?.remove(id);
+    // `archive()` above may have just indexed this session into the memory
+    // store — the same `close()` path a mere close takes. A `remove()` is a
+    // permanent delete, so that row must not outlive the transcript it was
+    // built from; erasing it is best-effort and swallowed like
+    // `indexForMemory`'s own errors, since a `forget()` failure must not
+    // block session removal.
+    try {
+      await this.memory?.forget(id);
+    } catch (err) {
+      console.error('[mar-code] memory forget failed', err);
+    }
     this.paneLayout = {
       ...this.paneLayout,
       panes: this.paneLayout.panes.filter((p) => p.sessionId !== id),

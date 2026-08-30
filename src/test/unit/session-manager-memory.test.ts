@@ -15,9 +15,11 @@ async function tempRoot(): Promise<string> {
 
 class RecordingMemoryStore implements MemoryStore {
   indexed: SessionRecord[] = [];
+  forgotten: string[] = [];
   async index(record: SessionRecord): Promise<void> { this.indexed.push(record); }
   async search(): Promise<[]> { return []; }
   async fetch(): Promise<{ sessionId: string; items: [] }> { return { sessionId: '', items: [] }; }
+  async forget(sessionId: string): Promise<void> { this.forgotten.push(sessionId); }
 }
 
 suite('SessionManager memory indexing', () => {
@@ -57,6 +59,7 @@ suite('SessionManager memory indexing', () => {
       index: async () => { throw new Error('disk full'); },
       search: async () => [],
       fetch: async () => ({ sessionId: '', items: [] }),
+      forget: async () => {},
     };
     const manager = new SessionManager(
       store, providers, () => {}, undefined, undefined, undefined, undefined, undefined, memory,
@@ -64,5 +67,21 @@ suite('SessionManager memory indexing', () => {
     const session = await manager.create('fake', '/repo');
     session.send('Investigate the flaky login test');
     await assert.doesNotReject(manager.close(session.state.id));
+  });
+
+  test('deleting a session with real content forgets it from memory', async () => {
+    const store = new TranscriptStore(await tempRoot());
+    const providers = new Map<string, AgentProvider>([['fake', new FakeProvider()]]);
+    const memory = new RecordingMemoryStore();
+    const manager = new SessionManager(
+      store, providers, () => {}, undefined, undefined, undefined, undefined, undefined, memory,
+    );
+    const session = await manager.create('fake', '/repo');
+    session.send('Investigate the flaky login test');
+    await manager.remove(session.state.id);
+    // archive() (called by remove()) indexes it first, same as a plain
+    // close() — the point of this test is that remove() then erases it again.
+    assert.strictEqual(memory.indexed.length, 1);
+    assert.deepStrictEqual(memory.forgotten, [session.state.id]);
   });
 });
