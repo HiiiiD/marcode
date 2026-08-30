@@ -20,6 +20,7 @@ import { createVscodeEditorSource } from './host/vscode-editor-source';
 import { createWorkspaceFileIndex } from './host/workspace-file-index';
 import { ExtractiveSummarizer } from './memory/extractive-summarizer';
 import { FtsMemoryStore } from './memory/fts-memory-store';
+import type { MemoryStore } from './memory/types';
 import { ClaudeProvider } from './providers/claude/claude-provider';
 import { CodexProvider } from './providers/codex/codex-provider';
 import { FakeProvider } from './providers/fake/fake-provider';
@@ -183,11 +184,22 @@ export async function activate(context: vscode.ExtensionContext) {
   const rootDir = context.storageUri?.fsPath ?? context.globalStorageUri.fsPath;
   const store = new TranscriptStore(rootDir);
   const attachments = new AttachmentStore(rootDir);
-  const memory = new FtsMemoryStore(
-    path.join(rootDir, 'memory.sqlite'),
-    new ExtractiveSummarizer(),
-    { tail: (id, limit) => store.tail(id, limit) },
-  );
+  // Errors are state, never exceptions — same posture as
+  // `selfControlServer.start()` below. A locked/corrupt `memory.sqlite`, or
+  // `node:sqlite`/FTS5 being unavailable in this Electron-bundled Node, must
+  // not fail the whole extension: `SessionManager` and `SelfControlMcpServer`
+  // both already accept `memory` as optional, and their `marcode__recall`
+  // tools already answer gracefully with none configured.
+  let memory: MemoryStore | undefined;
+  try {
+    memory = new FtsMemoryStore(
+      path.join(rootDir, 'memory.sqlite'),
+      new ExtractiveSummarizer(),
+      { tail: (id, limit) => store.tail(id, limit) },
+    );
+  } catch (err) {
+    console.warn('[mar-code] memory store unavailable; recall tools will be disabled', err);
+  }
 
   // Order matters: SessionPicker uses state.catalog[0] for the New button,
   // so Claude — the real provider — is registered first.
