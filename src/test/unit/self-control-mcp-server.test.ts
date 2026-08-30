@@ -6,8 +6,9 @@ import { suite, test } from 'mocha';
 import { SelfControlMcpServer, type SessionManagerLike } from '../../host/self-control-mcp-server';
 import { SessionManager } from '../../host/session-manager';
 import { TranscriptStore } from '../../host/transcript-store';
+import type { MemoryHit, MemoryStore } from '../../memory/types';
 import { FakeProvider } from '../../providers/fake/fake-provider';
-import type { AgentProvider } from '../../providers/types';
+import type { AgentProvider, SelfControlMcpConfig } from '../../providers/types';
 
 function fakeManager(overrides: Partial<SessionManagerLike> = {}): SessionManagerLike {
   return {
@@ -15,6 +16,33 @@ function fakeManager(overrides: Partial<SessionManagerLike> = {}): SessionManage
       { id: 'claude', models: [{ id: 'sonnet' }], permissionModes: [{ id: 'default' }] },
     ],
     create: async () => ({ state: { id: 's-fake-1' } }),
+    ...overrides,
+  };
+}
+
+async function callTool(
+  config: SelfControlMcpConfig, name: string, args: Record<string, unknown>,
+): Promise<{ isError?: boolean; content: { type: string; text: string }[] }> {
+  const res = await fetch(config.url, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json', accept: 'application/json, text/event-stream',
+      authorization: `Bearer ${config.token}`,
+    },
+    body: JSON.stringify({
+      jsonrpc: '2.0', id: 1, method: 'tools/call',
+      params: { name, arguments: args },
+    }),
+  });
+  const body = await res.json() as { result: { isError?: boolean; content: { type: string; text: string }[] } };
+  return body.result;
+}
+
+function fakeMemory(overrides: Partial<MemoryStore> = {}): MemoryStore {
+  return {
+    search: async () => [],
+    fetch: async () => ({ sessionId: 's1', items: [] }),
+    index: async () => {},
     ...overrides,
   };
 }
@@ -247,6 +275,42 @@ suite('SelfControlMcpServer', () => {
     // Emitting 'error' with zero listeners is what throws in Node; asserting
     // a listener is attached is the whole regression guard here without
     // reaching into private internals further than this file already does.
+    await server.dispose();
+  });
+});
+
+suite('SelfControlMcpServer memory tools', () => {
+  test('marcode__recall returns snippets from MemoryStore.search()', async () => {
+    const hit: MemoryHit = { sessionId: 's1', itemId: 'u1', snippet: 'Fixed the flaky login test', score: 1, ts: 1000 };
+    const memory = fakeMemory({ search: async (query) => { assert.strictEqual(query, 'login'); return [hit]; } });
+    const server = new SelfControlMcpServer(fakeManager(), memory);
+    const config = await server.start();
+    const result = await callTool(config, 'marcode__recall', { query: 'login' });
+    assert.deepStrictEqual(JSON.parse(result.content[0].text), [hit]);
+    await server.dispose();
+  });
+
+  test('marcode__recall_fetch returns MemoryStore.fetch()\'s slice', async () => {
+    const memory = fakeMemory({
+      fetch: async (hit) => {
+        assert.strictEqual(hit.sessionId, 's1');
+        assert.strictEqual(hit.itemId, 'u1');
+        return { sessionId: 's1', items: [{ id: 'u1', ts: 0, role: 'user', text: 'hi' }] };
+      },
+    });
+    const server = new SelfControlMcpServer(fakeManager(), memory);
+    const config = await server.start();
+    const result = await callTool(config, 'marcode__recall_fetch', { sessionId: 's1', itemId: 'u1' });
+    const body = JSON.parse(result.content[0].text) as { items: unknown[] };
+    assert.strictEqual(body.items.length, 1);
+    await server.dispose();
+  });
+
+  test('marcode__recall errors without a MemoryStore configured', async () => {
+    const server = new SelfControlMcpServer(fakeManager());
+    const config = await server.start();
+    const result = await callTool(config, 'marcode__recall', { query: 'login' });
+    assert.strictEqual(result.isError, true);
     await server.dispose();
   });
 });
