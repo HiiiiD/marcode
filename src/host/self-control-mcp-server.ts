@@ -4,6 +4,7 @@ import * as path from 'node:path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { z } from 'zod';
+import type { MemoryStore } from '../memory/types';
 import type { PermissionMode } from '../protocol/messages';
 import type { SelfControlMcpConfig } from '../providers/types';
 
@@ -39,7 +40,10 @@ export class SelfControlMcpServer {
   private http: Server | undefined;
   private readonly token = randomBytes(24).toString('hex');
 
-  constructor(private readonly sessionManager: SessionManagerLike) {}
+  constructor(
+    private readonly sessionManager: SessionManagerLike,
+    private readonly memory?: MemoryStore,
+  ) {}
 
   /**
    * Registers the one tool on a fresh `McpServer`. Called per request (see
@@ -114,6 +118,48 @@ export class SelfControlMcpServer {
         } catch (err) {
           return { isError: true, content: [{ type: 'text', text: err instanceof Error ? err.message : String(err) }] };
         }
+      },
+    );
+
+    mcp.registerTool(
+      'marcode__recall',
+      {
+        title: 'Search past Marcode sessions',
+        description: 'Searches this workspace\'s closed Marcode sessions for a keyword or '
+          + 'phrase. Returns short snippets, not full transcripts — call marcode__recall_fetch '
+          + 'on a specific result to read more.',
+        inputSchema: {
+          query: z.string().describe('Keywords to search for.'),
+          providerId: z.string().optional().describe('Restrict to one provider, e.g. "claude".'),
+          limit: z.number().optional().describe('Max results. Defaults to 20.'),
+        },
+      },
+      async ({ query, providerId, limit }) => {
+        if (!this.memory) {
+          return { isError: true, content: [{ type: 'text', text: 'Memory search is unavailable in this window.' }] };
+        }
+        const hits = await this.memory.search(query, { providerId, limit });
+        return { content: [{ type: 'text', text: JSON.stringify(hits) }] };
+      },
+    );
+
+    mcp.registerTool(
+      'marcode__recall_fetch',
+      {
+        title: 'Fetch a past session\'s transcript slice',
+        description: 'Reads a bounded slice of one past session\'s transcript, anchored at a '
+          + 'result from marcode__recall. Never call this speculatively — call marcode__recall first.',
+        inputSchema: {
+          sessionId: z.string().describe('A sessionId from a marcode__recall result.'),
+          itemId: z.string().describe('The itemId from that same result.'),
+        },
+      },
+      async ({ sessionId, itemId }) => {
+        if (!this.memory) {
+          return { isError: true, content: [{ type: 'text', text: 'Memory search is unavailable in this window.' }] };
+        }
+        const detail = await this.memory.fetch({ sessionId, itemId });
+        return { content: [{ type: 'text', text: JSON.stringify(detail) }] };
       },
     );
     return mcp;
