@@ -77,6 +77,15 @@ export interface EditorContextHost {
    * module must not import.
    */
   exportCsv(csv: string): void;
+  /**
+   * Opens a terminal and runs the given provider's sign-in flow. Here for
+   * the same reason `openSettings` is — it needs `vscode.window.createTerminal`,
+   * which this module must not import. Login is a browser/TTY flow the
+   * extension cannot drive headlessly, so this is a terminal handoff, not a
+   * result: the webview's own `refresh-catalog` retry is what notices it
+   * worked.
+   */
+  login(providerId: string): void;
 }
 
 const NO_EDITOR: EditorContextHost = {
@@ -86,6 +95,7 @@ const NO_EDITOR: EditorContextHost = {
   openSettings: () => {},
   openExternal: () => {},
   exportCsv: () => {},
+  login: () => {},
 };
 
 export interface AttachmentHost { pick(): Promise<string[]> }
@@ -453,6 +463,10 @@ export class MessageRouter {
         this.editor.openSettings(msg.section);
         return;
 
+      case 'login-provider':
+        this.editor.login(msg.providerId);
+        return;
+
       case 'open-external':
         this.editor.openExternal(msg.url);
         return;
@@ -605,7 +619,7 @@ const KNOWN_MESSAGE_TAGS = new Set<WebviewToHost['t']>([
   'request-bring-back', 'bring-back',
   'request-stale-trees', 'remove-stale-tree',
   'request-fleet-diff', 'open-file-diff', 'open-review', 'open-fleet', 'focus-session',
-  'refresh-catalog', 'open-settings', 'open-external', 'export-table-csv',
+  'refresh-catalog', 'open-settings', 'login-provider', 'open-external', 'export-table-csv',
   'file-search', 'set-favorite-models',
 ]);
 

@@ -47,6 +47,7 @@ function describeInbound(m: WebviewToHost): string {
     case 'open-file-diff': return 'open-file-diff';
     case 'refresh-catalog': return 'refresh-catalog';
     case 'open-settings': return 'open-settings';
+    case 'login-provider': return 'login-provider';
     case 'open-external': return 'open-external';
     case 'export-table-csv': return 'export-table-csv';
     case 'file-search': return 'file-search';

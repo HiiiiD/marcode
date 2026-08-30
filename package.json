@@ -117,6 +117,10 @@
         "title": "Marcode: Sign in to Codex"
       },
       {
+        "command": "marcode.claude.login",
+        "title": "Marcode: Sign in to Claude"
+      },
+      {
         "command": "marcode.review.open",
         "title": "Marcode: Review fleet changes"
       },

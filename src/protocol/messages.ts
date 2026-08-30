@@ -558,6 +558,15 @@ export type WebviewToHost =
    */
   | { t: 'open-settings'; section: string }
   /**
+   * Sign back in to a provider whose reason string named a specific backend
+   * (Claude/Codex OAuth expiry, "not signed in"). Login is a browser/TTY
+   * flow the extension cannot drive headlessly, so the host's answer is a
+   * terminal, not a state change — the webview re-probes afterward the same
+   * way `refresh-catalog` already does for any other fixed-in-a-terminal
+   * install.
+   */
+  | { t: 'login-provider'; providerId: string }
+  /**
    * A URL from agent-authored markdown, handed to the OS. Not
    * session-addressed for the same reason `reveal-file` is not: where a link
    * goes is global IDE state, and no session owns the browser.

@@ -18,6 +18,7 @@ function routerWith() {
     openSettings: () => {},
     openExternal: () => {},
     exportCsv: () => {},
+    login: () => {},
   };
   const emitted: HostToWebview[] = [];
   const router = new MessageRouter(manager, (m) => emitted.push(m), '/tmp', editor);

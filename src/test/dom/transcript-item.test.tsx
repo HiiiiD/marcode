@@ -6,10 +6,10 @@ import { catalog, layoutOf, snapshot, summary } from '../fixtures/protocol';
 import { posted, renderApp, renderWithStore, sendFromHost } from './harness';
 import type { TranscriptItem } from '../../protocol/messages';
 
-function hydrateWithItems(items: TranscriptItem[]) {
+function hydrateWithItems(items: TranscriptItem[], summaryOver: Parameters<typeof summary>[1] = {}) {
   sendFromHost({
     t: 'hydrate',
-    sessions: [summary('a')],
+    sessions: [summary('a', summaryOver)],
     layout: layoutOf('a'),
     snapshots: [snapshot('a', { items })],
     catalog: catalog(),
@@ -55,6 +55,25 @@ suite('TranscriptItemView', () => {
 
     const el = screen.getByText(/boom/);
     assert.ok(/max-h-\d/.test(el.className) || /max-h-\d/.test(el.parentElement!.className));
+  });
+
+  test('a sign-in error offers a login action for the session\'s provider', async () => {
+    renderApp();
+    hydrateWithItems(
+      [{ id: '3', ts: 3, role: 'error', message: 'Not signed in to Claude. Run `claude auth login`.' }],
+      { providerId: 'claude' },
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: /log in/i }));
+
+    assert.deepStrictEqual(posted().at(-1), { t: 'login-provider', providerId: 'claude' });
+  });
+
+  test('an error unrelated to sign-in offers no login action', () => {
+    renderApp();
+    hydrateWithItems([{ id: '3', ts: 3, role: 'error', message: 'control request failed' }]);
+
+    assert.strictEqual(screen.queryByRole('button', { name: /log in/i }) === null, true);
   });
 
   test('a switch item renders its precomputed sentence', () => {
