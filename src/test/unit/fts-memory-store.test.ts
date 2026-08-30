@@ -87,3 +87,33 @@ suite('FtsMemoryStore', () => {
     assert.strictEqual(hits.length, 2);
   });
 });
+
+function fakeReader(items: TranscriptItem[]): { tail: (id: string, limit?: number) => Promise<{ items: TranscriptItem[]; hasMore: boolean }> } {
+  return {
+    tail: async (_id, limit = 100) => {
+      const start = Math.max(0, items.length - limit);
+      return { items: items.slice(start), hasMore: start > 0 };
+    },
+  };
+}
+
+suite('FtsMemoryStore.fetch()', () => {
+  test('returns a bounded slice starting at the hit\'s itemId', async () => {
+    const items = [userItem('u1', 'first'), userItem('u2', 'second'), userItem('u3', 'third')];
+    const store = new FtsMemoryStore(await tempDbPath(), new ExtractiveSummarizer(), fakeReader(items));
+    await store.index({ sessionId: 's1', providerId: 'claude', cwd: '/repo', title: 'Untitled', closedAt: 1, items });
+    const [hit] = await store.search('first');
+    const detail = await store.fetch(hit);
+    assert.strictEqual(detail.sessionId, 's1');
+    assert.strictEqual(detail.items.length, 3);
+    assert.strictEqual(detail.items[0].id, 'u1');
+  });
+
+  test('returns an empty slice when the itemId is no longer in the transcript', async () => {
+    const items = [userItem('u1', 'first')];
+    const store = new FtsMemoryStore(await tempDbPath(), new ExtractiveSummarizer(), fakeReader(items));
+    await store.index({ sessionId: 's1', providerId: 'claude', cwd: '/repo', title: 'Untitled', closedAt: 1, items });
+    const detail = await store.fetch({ sessionId: 's1', itemId: 'gone' });
+    assert.strictEqual(detail.items.length, 0);
+  });
+});
