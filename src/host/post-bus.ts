@@ -31,13 +31,19 @@ export const REVIEW_WANTS = (msg: HostToWebview): boolean =>
   msg.t === 'sessions-changed' || msg.t === 'session-status' || msg.t === 'fleet-diff';
 
 /**
- * The fleet view's allow-list. One narrower than `REVIEW_WANTS`: it never
- * asks for `fleet-diff` (no transcript or diff content, just roster status),
- * so it doesn't get it — a new message type here defaults to not reaching
- * this client either, the same discipline `REVIEW_WANTS` documents.
+ * The fleet view's allow-list. `session-patch` and `layout-changed` joined
+ * 2026-08-30, once Fleet started rendering a session's subagent transcripts
+ * rather than just roster status: both are already gated to the sidebar's
+ * visible-pane set (`session-patch` by `SessionManager`, `layout-changed`
+ * simply by carrying the current `PaneLayout` itself), so admitting them here
+ * inherits that scope for free rather than deciding it a second time. Never
+ * `fleet-diff` — Fleet has no diff surface — so a new message type still
+ * defaults to not reaching this client, the same discipline `REVIEW_WANTS`
+ * documents.
  */
 export const FLEET_WANTS = (msg: HostToWebview): boolean =>
-  msg.t === 'sessions-changed' || msg.t === 'session-status';
+  msg.t === 'sessions-changed' || msg.t === 'session-status'
+  || msg.t === 'session-patch' || msg.t === 'layout-changed';
 
 export class PostBus {
   private readonly clients = new Set<PostClient>();
