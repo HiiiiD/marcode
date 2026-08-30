@@ -10,6 +10,7 @@ import {
 import { buildSeed } from './replay';
 import { findPayload, type ResolvedBlock } from './session-refs';
 import { TRANSCRIPT_VERSION, type StoredIndex, type TranscriptStore } from './transcript-store';
+import type { MemoryStore } from '../memory/types';
 import type { AgentProvider, EffortLevel, Invocable, ModelInfo, UsageWindow } from '../providers/types';
 import { findModel, resolveEffort } from '../shared/model-catalog';
 import { FILE_CAP } from '../shared/file-cap';
@@ -178,6 +179,13 @@ export class SessionManager implements SessionSink {
      * via `origin/HEAD` nor one of `fleet-diff.ts`'s own hardcoded fallbacks.
      */
     private readonly extraBaseRefs: string[] = [],
+    /**
+     * Indexes a session's transcript into the swappable memory backend the
+     * moment it archives. Optional: a construction site with no memory
+     * store simply never indexes, the same posture `attachments` already
+     * takes for a missing `AttachmentStore`.
+     */
+    private readonly memory?: MemoryStore,
   ) {}
 
   async init(): Promise<void> {
@@ -1474,9 +1482,33 @@ export class SessionManager implements SessionSink {
       state.archived = true;
       state.status = 'idle';
       state.updatedAt = Date.now();
+      await this.indexForMemory(id, state);
     }
     this.visible.delete(id);
     this.changed();
+  }
+
+  /**
+   * Awaited by `archive()` so a session is actually searchable the moment
+   * `close()`/`remove()` resolves, but never lets a memory-store failure
+   * surface as a rejection out of either: every error is caught and logged
+   * here, so `memory.sqlite` (or whatever a future implementation uses) is a
+   * rebuildable cache, never a reason to fail a session lifecycle
+   * transition. Skips a bare untitled/empty session — same emptiness check
+   * `isDiscardable` uses — since there is nothing there worth finding later.
+   */
+  private async indexForMemory(id: SessionId, state: SessionState): Promise<void> {
+    if (!this.memory || state.title === 'Untitled') { return; }
+    try {
+      const { items } = await this.store.tail(id, Number.MAX_SAFE_INTEGER);
+      if (items.length === 0) { return; }
+      await this.memory.index({
+        sessionId: id, providerId: state.providerId, cwd: state.cwd,
+        title: state.title, closedAt: state.updatedAt, items,
+      });
+    } catch (err) {
+      console.error('[mar-code] memory indexing failed', err);
+    }
   }
 
   async remove(id: SessionId): Promise<void> {
