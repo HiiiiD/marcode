@@ -80,34 +80,42 @@ panel's own `ready` handler produces, once the target session's snapshot is guar
 in it — sending it any earlier would ask the client to select a subagent it has no items for
 yet.
 
-### Client (`src/fleet/`)
+### Client (`src/fleet/`) — corrected during planning
 
-`FleetState` (`src/fleet/reducer.ts`) drops `sessions: SessionSummary[]` as its rendering
-basis and instead tracks a `byId`-shaped items store — narrower than the sidebar's `PaneState`
-by design, since Fleet never composes, never pages, never answers questions:
+The original 2026-08-28 design gave Fleet its own narrow `FleetState`/`reduceFleet`
+specifically to avoid pulling in the sidebar's full transcript state. That no longer holds:
+`PermissionCard` and `ToolCard` — the components this spec reuses "verbatim" to render a
+subagent's transcript — import `useStore` from `../store` as a **fixed module reference**
+(`src/webview/store.tsx`), not a value passed down through props. That module's `StoreContext`
+is a specific `React.createContext` instance; a second, separate context (Fleet's own
+`FleetState`/`useStore`, matching shape or not) is a different object; and
+`useContext` on the wrong context throws `useStore must be used inside StoreProvider`
+regardless of what Fleet's tree provides. So `SubagentTranscript` cannot actually render
+inside Fleet's own store — only inside the genuine `src/webview/store.tsx` provider.
 
-```ts
-interface FleetPaneState {
-  summary: SessionSummary;
-  items: TranscriptItem[];
-}
-interface FleetState {
-  ready: boolean;
-  layout: PaneLayout;
-  byId: Record<SessionId, FleetPaneState>;
-  selectedSessionId: SessionId | null;
-  selectedSubagentId: string | null;
-  showSettled: boolean; // the running-only/all toggle
-}
-```
+The fix: Fleet drops its own store/reducer entirely and mounts the real one.
+`src/fleet/store.tsx` and `src/fleet/reducer.ts` are **deleted**; `src/fleet/main.tsx`
+imports `StoreProvider` from `../webview/store`, and every Fleet component imports
+`useStore` from the same place `PermissionCard` already does. This gives `FleetApp` the
+full `ClientState` (`byId`, `layout`, `sessions`, `catalog`, …) — most of it unread, exactly
+as `PaneGroup` itself only reads a fraction of `ClientState` for any one pane. `PermissionCard`
+gains nothing new to depend on either: its only use of `state` is
+`state.byId[sessionId]?.summary.cwd`, which is correct and present under Fleet for the same
+reason it's correct under the sidebar — both hydrate from the same
+`SessionManager`/`MessageRouter`.
 
-`reduceFleet` gains the same three cases the sidebar reducer already has for these exact
-message types (`hydrate` populates `byId`/`layout` from `msg.snapshots`/`msg.layout`;
-`layout-changed` updates `layout`; `session-patch` applies the patch to the matching pane) —
-copied at the shape Fleet needs, not imported from the sidebar reducer (that module is
-webview-specific and carries fields — `pending`, `mcpServers`, `attachments` — Fleet has no
-use for). A new `fleet-focus-subagent` case sets `selectedSessionId`/`selectedSubagentId`
-directly.
+`FLEET_WANTS` is unaffected by this correction — it still governs exactly which
+`HostToWebview` messages reach the Fleet client's `PostBus` registration
+(`sessions-changed` / `session-status` / `session-patch` / `layout-changed`), regardless of
+which reducer consumes them.
+
+Fleet's own UI state — `selectedSessionId`, `selectedSubagentId`, `showSettled` — has no home
+in `ClientState` (correctly: the sidebar has no use for it) and is not part of this reuse. It
+lives as local `useState` inside `FleetApp`, alongside a second, independent
+`onHostMessage` subscription (the same exported function `StoreProvider` itself uses,
+`src/webview/vscode-api.ts`'s listener is `addEventListener`-based and supports multiple
+independent subscribers) that watches for the one message type `ClientState`'s own reducer
+has no case for and correctly ignores: `fleet-focus-subagent`.
 
 `FleetApp` (`src/fleet/fleet-app.tsx`) restructures around three states:
 
@@ -166,9 +174,11 @@ is persisted; a reload always returns Fleet to "pick a session."
 - `FLEET_WANTS` predicate gains `session-patch`/`layout-changed`, mirroring the existing
   `REVIEW_WANTS`/`FLEET_WANTS` tests — asserts the fleet client still never receives, e.g.,
   `fleet-diff`.
-- `reduceFleet`: `hydrate` populates `byId`/`layout`; `session-patch` applies to the right
-  pane and no-ops for a pane not in `byId`; `layout-changed` updates `layout` without
-  touching `byId`; `fleet-focus-subagent` sets both selection fields.
+- `hydrate`/`session-patch`/`layout-changed` handling itself needs no new reducer tests —
+  `src/webview/reducer.ts`'s existing suite already covers it, since Fleet now consumes that
+  same `reduce()` unmodified. What's new is the small `fleet-focus-subagent` listener
+  (`useState` + `onHostMessage`) — tested by mounting `FleetApp` and asserting the selection
+  it produces, not by unit-testing a reducer case.
 - Subagent filtering (running vs. `showSettled`) as a pure function beside
   `active-subagents.ts`'s existing precedent, so it unit-tests without mounting `FleetApp`.
 - `FleetPanel.open(focus)`: reveals + emits directly when already open; holds and sends after
@@ -187,13 +197,14 @@ is persisted; a reload always returns Fleet to "pick a session."
 
 ## Risks
 
-- **Two reducers (`reduce`, `reduceFleet`) now both implement `session-patch`'s `append`/
-  `replace`/`delta` handling**, previously true only of the sidebar. Divergence risk is
-  bounded by scope: Fleet's copy only ever needs to keep `items` and nested `children`
-  correct for rendering, never `pending`/`pendingQuestions`/`mcpServers` bookkeeping, so the
-  two are expected to diverge in *size*, not in the shared logic they both implement
-  correctly. If a third consumer of `session-patch` shows up, that shared core is worth
-  extracting then — not preemptively here.
+- **The Fleet bundle now includes the sidebar's full `ClientState` reducer**, not a narrow
+  slice — a real bundle-size increase, and the trade CLAUDE.md's original "no `byId`, no
+  layout, no composer" framing for the fleet client explicitly wanted to avoid. Accepted here
+  because the alternative (decoupling `PermissionCard`/`ToolCard` from `useStore` so any host
+  can supply `post`/`cwd` through props) is a real refactor across every caller of those two
+  components, for a payload-size concern in an editor-tab webview that is not on any
+  performance-sensitive path (unlike the sidebar, which is visible during every keystroke of
+  every session). Revisit only if Fleet's bundle size becomes an actual complaint.
 - **Fleet now holds transcript content**, which the original design's "never transcript,
   always summary" framing explicitly avoided. That framing is superseded by this spec, not
   violated by accident: showing subagent tool-call detail is the whole point of this change,
