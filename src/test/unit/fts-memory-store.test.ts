@@ -86,6 +86,29 @@ suite('FtsMemoryStore', () => {
     const hits = await store.search('flaky login', { limit: 2 });
     assert.strictEqual(hits.length, 2);
   });
+
+  // FTS5's MATCH clause has its own query grammar that runs before
+  // tokenization, so punctuation a caller never meant as syntax must not
+  // reach it raw. Each of these throws in real node:sqlite if search()
+  // passes the query straight through to MATCH.
+  for (const query of [
+    'how did we fix the login bug?',
+    'auth: login',
+    'C++ build',
+    'node_modules/foo',
+    'fix -bug',
+    '',
+  ]) {
+    test(`search() returns [] rather than throwing for ${JSON.stringify(query)}`, async () => {
+      const store = new FtsMemoryStore(await tempDbPath(), new ExtractiveSummarizer(), noopReader);
+      await store.index({
+        sessionId: 's1', providerId: 'claude', cwd: '/repo', title: 'Untitled', closedAt: 1000,
+        items: [userItem('u1', 'Investigate the flaky login test on CI')],
+      });
+      const hits = await store.search(query);
+      assert.deepStrictEqual(hits, []);
+    });
+  }
 });
 
 function fakeReader(items: TranscriptItem[]): { tail: (id: string, limit?: number) => Promise<{ items: TranscriptItem[]; hasMore: boolean }> } {

@@ -63,29 +63,49 @@ export class FtsMemoryStore implements MemoryStore {
     );
   }
 
+  /**
+   * FTS5's `MATCH` clause has its own query grammar — column filters,
+   * `AND`/`OR`/`NOT`, prefix `*`, phrase quoting — that runs BEFORE
+   * tokenization, so punctuation a caller never chose to mean anything
+   * special (`?`, `:`, `/`, `-`, `+`, an empty string) is a syntax error, not
+   * "no results". Recall's contract (see the design spec's Error handling
+   * section) is that a bad query returns no hits rather than throwing, so
+   * every query is reduced to plain double-quoted barewords — FTS5's
+   * implicit AND between quoted terms reproduces the old unquoted-AND
+   * behaviour for ordinary alphanumeric queries — and any remaining SQL
+   * error (a corrupt index, say) is caught rather than left to propagate.
+   */
   async search(query: string, opts: { providerId?: string; limit?: number } = {}): Promise<MemoryHit[]> {
     const limit = opts.limit ?? 20;
     const providerId = opts.providerId ?? null;
-    const rows = this.db.prepare(`
-      SELECT sessionId, firstItemId, summary, closedAt, providerId, bm25(sessions_fts) AS rank
-      FROM sessions_fts
-      WHERE sessions_fts MATCH ?
-        AND (? IS NULL OR providerId = ?)
-      ORDER BY rank
-      LIMIT ?
-    `).all(query, providerId, providerId, limit) as Array<{
-      sessionId: string; firstItemId: string; summary: string; closedAt: number;
-      providerId: string; rank: number;
-    }>;
-    return rows.map((row) => ({
-      sessionId: row.sessionId,
-      itemId: row.firstItemId,
-      snippet: row.summary,
-      // bm25() is negative and lower-is-better; flip sign so a caller reads
-      // "higher score is more relevant", the ordinary convention.
-      score: -row.rank,
-      ts: row.closedAt,
-    }));
+    const terms = query.match(/[\p{L}\p{N}_]+/gu) ?? [];
+    if (terms.length === 0) { return []; }
+    const match = terms.map((term) => `"${term}"`).join(' ');
+    try {
+      const rows = this.db.prepare(`
+        SELECT sessionId, firstItemId, summary, closedAt, providerId, bm25(sessions_fts) AS rank
+        FROM sessions_fts
+        WHERE sessions_fts MATCH ?
+          AND (? IS NULL OR providerId = ?)
+        ORDER BY rank
+        LIMIT ?
+      `).all(match, providerId, providerId, limit) as Array<{
+        sessionId: string; firstItemId: string; summary: string; closedAt: number;
+        providerId: string; rank: number;
+      }>;
+      return rows.map((row) => ({
+        sessionId: row.sessionId,
+        itemId: row.firstItemId,
+        snippet: row.summary,
+        // bm25() is negative and lower-is-better; flip sign so a caller reads
+        // "higher score is more relevant", the ordinary convention.
+        score: -row.rank,
+        ts: row.closedAt,
+      }));
+    } catch (err) {
+      console.error('[mar-code] memory search failed', err);
+      return [];
+    }
   }
 
   async fetch(hit: { sessionId: SessionId; itemId: string }): Promise<MemoryDetail> {
