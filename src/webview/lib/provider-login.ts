@@ -1,18 +1,17 @@
 /**
- * Which provider a "not signed in" reason names, or `undefined` when the
- * reason is not an auth failure at all — a dead CLI, a missing binary, or
- * anything else, none of which a terminal-based login fixes.
+ * Whether a provider's reason string names an auth failure a login terminal
+ * could fix, as opposed to a dead binary or anything else re-signing in
+ * would not touch.
  *
- * Matched on the exact phrasing the two providers already normalize their
- * OAuth-expiry / signed-out errors to (`claude-provider.ts`'s
- * `authFailureReason`, `codex-provider.ts`'s `fetchModels`) — client-side,
- * so a login action can be offered wherever that string surfaces
- * (`UnavailableProvider.reason`, a session error transcript item) without a
- * new boolean traveling the wire for it.
+ * The caller always already knows *which* provider — an unavailable-list
+ * entry carries `id`, a transcript item's session carries `providerId` — so
+ * this only answers "does a login action belong here", never "which
+ * provider does this text name". Matched on the exact phrasing the two
+ * providers already normalize their OAuth-expiry / signed-out errors to
+ * (`claude-provider.ts`'s `authFailureReason`, `codex-provider.ts`'s
+ * `fetchModels`), client-side so the action can be offered wherever that
+ * string surfaces without a new boolean traveling the wire for it.
  */
-export function loginProviderFor(reason: string | undefined): string | undefined {
-  if (reason === undefined) { return undefined; }
-  if (/Not signed in to Claude\b/i.test(reason)) { return 'claude'; }
-  if (/Not signed in to Codex\b/i.test(reason)) { return 'codex'; }
-  return undefined;
+export function isSignInFailure(reason: string | undefined): boolean {
+  return reason !== undefined && /Not signed in to \w+\b/i.test(reason);
 }

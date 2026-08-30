@@ -11,7 +11,7 @@ import { RelocationCard } from './relocation-card';
 import { SubagentCard } from './subagent-card';
 import { ToolCard } from './tool-card';
 import { TranscriptItemShell } from './transcript-item-shell';
-import { loginProviderFor } from '../lib/provider-login';
+import { isSignInFailure } from '../lib/provider-login';
 import { useStore } from '../store';
 import type { FileRef, SessionId, SessionRef, TranscriptItem } from '../../protocol/messages';
 
@@ -65,21 +65,22 @@ export function TranscriptItemView({
         : <ToolCard item={item} onFork={onFork} />;
 
     case 'error': {
-      // Only offered when the message names a specific provider's sign-in
-      // state (see loginProviderFor) — a dead binary or an unrecognized
-      // failure would not be fixed by a login terminal.
-      const loginProvider = loginProviderFor(item.message);
+      // Only offered when the message reads as a sign-in failure (see
+      // isSignInFailure) — a dead binary or an unrecognized failure would
+      // not be fixed by a login terminal. The provider to sign in to is the
+      // session's own, not parsed back out of the message text.
+      const providerId = state.byId[sessionId]?.summary.providerId;
       return (
         <TranscriptItemShell role="error" label="Error" ts={item.ts}>
           <div className="max-h-48 overflow-auto rounded border border-destructive px-2 py-1 text-xs wrap-break-word whitespace-pre-wrap text-destructive">
             {item.message}
           </div>
-          {loginProvider !== undefined && (
+          {isSignInFailure(item.message) && providerId !== undefined && (
             <Button
               size="sm"
               variant="outline"
               className="mt-1.5"
-              onClick={() => post({ t: 'login-provider', providerId: loginProvider })}
+              onClick={() => post({ t: 'login-provider', providerId })}
             >
               <LogInIcon aria-hidden />
               Log in

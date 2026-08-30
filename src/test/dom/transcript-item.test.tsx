@@ -11,7 +11,7 @@ function hydrateWithItems(items: TranscriptItem[], summaryOver: Parameters<typeo
     t: 'hydrate',
     sessions: [summary('a', summaryOver)],
     layout: layoutOf('a'),
-    snapshots: [snapshot('a', { items })],
+    snapshots: [snapshot('a', { ...summaryOver, items })],
     catalog: catalog(),
     unavailable: [],
     usage: {},
