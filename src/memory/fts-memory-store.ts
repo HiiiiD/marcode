@@ -17,6 +17,18 @@ export interface TranscriptReader {
 export const FETCH_WINDOW = 40;
 
 /**
+ * Bumped whenever `sessions_fts`'s column list changes. Checked against the
+ * database's own `PRAGMA user_version` at construction: a mismatch means the
+ * table on disk was built by an older shape of this class, and every insert
+ * against it would fail with a column-count mismatch rather than "no
+ * results" — the same silent-corruption risk `search()` guards against for
+ * a malformed query. This store is a rebuildable cache (see the design
+ * spec's "Modularity / swap story"), so the fix is to drop and rebuild it,
+ * never to migrate it.
+ */
+const SCHEMA_VERSION = 1;
+
+/**
  * v1's only `MemoryStore`: one FTS5 row per session, upserted whenever that
  * session archives. Indexes at session granularity, not per-turn — a hit's
  * `itemId` anchors to the session's first item, and `fetch()` (Task 4) reads
@@ -33,8 +45,24 @@ export class FtsMemoryStore implements MemoryStore {
     dbPath: string,
     private readonly summarizer: Summarizer,
     private readonly transcripts: TranscriptReader,
+    schemaVersion: number = SCHEMA_VERSION,
   ) {
     this.db = new DatabaseSync(dbPath);
+
+    // `CREATE VIRTUAL TABLE IF NOT EXISTS` is a no-op once the table already
+    // exists on disk, so a future column-list change would otherwise leave
+    // an old-shaped table in place and fail every insert with a
+    // column-count mismatch. `PRAGMA user_version` is SQLite's own built-in
+    // schema-version slot; a mismatch means the on-disk table was built by a
+    // different shape of this class, so it is dropped and rebuilt rather
+    // than migrated — this store is a cache, never a source of truth.
+    const { user_version: onDiskVersion } = this.db.prepare('PRAGMA user_version').get() as {
+      user_version: number;
+    };
+    if (onDiskVersion !== schemaVersion) {
+      this.db.exec('DROP TABLE IF EXISTS sessions_fts;');
+      this.db.exec(`PRAGMA user_version = ${schemaVersion};`);
+    }
     this.db.exec(`
       CREATE VIRTUAL TABLE IF NOT EXISTS sessions_fts USING fts5(
         title, summary, text,

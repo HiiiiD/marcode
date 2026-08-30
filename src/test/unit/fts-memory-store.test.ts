@@ -123,6 +123,35 @@ suite('FtsMemoryStore', () => {
   }
 });
 
+suite('FtsMemoryStore schema version', () => {
+  test('a schema-version bump drops and rebuilds the table, discarding old rows', async () => {
+    const dbPath = await tempDbPath();
+    const first = new FtsMemoryStore(dbPath, new ExtractiveSummarizer(), noopReader, 1);
+    await first.index({
+      sessionId: 's1', providerId: 'claude', cwd: '/repo', title: 'Untitled', closedAt: 1000,
+      items: [userItem('u1', 'Investigate the flaky login test on CI')],
+    });
+    assert.strictEqual((await first.search('flaky login')).length, 1);
+
+    const second = new FtsMemoryStore(dbPath, new ExtractiveSummarizer(), noopReader, 2);
+    const hits = await second.search('flaky login');
+    assert.strictEqual(hits.length, 0);
+  });
+
+  test('reopening with the same schema version keeps prior rows', async () => {
+    const dbPath = await tempDbPath();
+    const first = new FtsMemoryStore(dbPath, new ExtractiveSummarizer(), noopReader, 1);
+    await first.index({
+      sessionId: 's1', providerId: 'claude', cwd: '/repo', title: 'Untitled', closedAt: 1000,
+      items: [userItem('u1', 'Investigate the flaky login test on CI')],
+    });
+
+    const second = new FtsMemoryStore(dbPath, new ExtractiveSummarizer(), noopReader, 1);
+    const hits = await second.search('flaky login');
+    assert.strictEqual(hits.length, 1);
+  });
+});
+
 function fakeReader(items: TranscriptItem[]): { tail: (id: string, limit?: number) => Promise<{ items: TranscriptItem[]; hasMore: boolean }> } {
   return {
     tail: async (_id, limit = 100) => {
