@@ -396,7 +396,7 @@ export async function activate(context: vscode.ExtensionContext) {
   provider = new PanelViewProvider(
     context.extensionUri, manager, defaultCwd, editorHost, attachments, picker,
     () => { review.open(); },
-    () => { fleet.open(); },
+    (focus) => { fleet.open(focus); },
     fileIndex,
     agentsMdNudge,
     favoriteModels,

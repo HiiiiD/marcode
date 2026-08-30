@@ -20,7 +20,7 @@ export class PanelViewProvider implements vscode.WebviewViewProvider {
     private readonly attachments: AttachmentStore | undefined,
     private readonly picker: AttachmentHost | undefined,
     private readonly onOpenReview: () => void,
-    private readonly onOpenFleet: () => void,
+    private readonly onOpenFleet: (focus?: { sessionId: SessionId; itemId: string }) => void,
     private readonly fileSearch?: FileSearch,
     private readonly agentsMdNudge?: AgentsMdNudgeController,
     /** `marcode.favoriteModels`, read fresh each time the view resolves. */
@@ -93,6 +93,10 @@ export class PanelViewProvider implements vscode.WebviewViewProvider {
         }
         if (raw?.t === 'open-fleet') {
           this.onOpenFleet();
+          return;
+        }
+        if (raw?.t === 'open-fleet-subagent') {
+          this.onOpenFleet({ sessionId: raw.sessionId, itemId: raw.itemId });
           return;
         }
         // Same reason as open-file: this needs workspaceState/fs, which
