@@ -1,6 +1,6 @@
 import * as assert from 'assert';
 import type {
-  HostToWebview, StaleTree, TranscriptItem, WebviewToHost,
+  HostToWebview, SessionId, StaleTree, TranscriptItem, WebviewToHost,
 } from '../../protocol/messages';
 
 function assertNever(x: never): never {
@@ -44,6 +44,7 @@ function describeInbound(m: WebviewToHost): string {
     case 'open-review': return 'open-review';
     case 'open-fleet': return 'open-fleet';
     case 'focus-session': return 'focus-session';
+    case 'open-fleet-subagent': return 'open-fleet-subagent';
     case 'open-file-diff': return 'open-file-diff';
     case 'refresh-catalog': return 'refresh-catalog';
     case 'open-settings': return 'open-settings';
@@ -81,6 +82,7 @@ function describeOutbound(m: HostToWebview): string {
     case 'agents-md-nudge': return 'agents-md-nudge';
     case 'favorite-models': return 'favorite-models';
     case 'layout-changed': return 'layout-changed';
+    case 'fleet-focus-subagent': return 'fleet-focus-subagent';
     default: return assertNever(m);
   }
 }
@@ -106,6 +108,20 @@ suite('protocol', () => {
         servers: [{ name: 'github', state: 'connected', toolCount: 12 }],
       }),
       'session-mcp',
+    );
+  });
+
+  test('open-fleet-subagent is an inbound variant carrying a target subagent', () => {
+    assert.strictEqual(
+      describeInbound({ t: 'open-fleet-subagent', sessionId: 's1' as SessionId, itemId: 't1' }),
+      'open-fleet-subagent',
+    );
+  });
+
+  test('fleet-focus-subagent is an outbound variant carrying a target subagent', () => {
+    assert.strictEqual(
+      describeOutbound({ t: 'fleet-focus-subagent', sessionId: 's1' as SessionId, itemId: 't1' }),
+      'fleet-focus-subagent',
     );
   });
 
