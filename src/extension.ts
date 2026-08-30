@@ -18,6 +18,8 @@ import { SessionManager } from './host/session-manager';
 import { TranscriptStore } from './host/transcript-store';
 import { createVscodeEditorSource } from './host/vscode-editor-source';
 import { createWorkspaceFileIndex } from './host/workspace-file-index';
+import { ExtractiveSummarizer } from './memory/extractive-summarizer';
+import { FtsMemoryStore } from './memory/fts-memory-store';
 import { ClaudeProvider } from './providers/claude/claude-provider';
 import { CodexProvider } from './providers/codex/codex-provider';
 import { FakeProvider } from './providers/fake/fake-provider';
@@ -181,6 +183,11 @@ export async function activate(context: vscode.ExtensionContext) {
   const rootDir = context.storageUri?.fsPath ?? context.globalStorageUri.fsPath;
   const store = new TranscriptStore(rootDir);
   const attachments = new AttachmentStore(rootDir);
+  const memory = new FtsMemoryStore(
+    path.join(rootDir, 'memory.sqlite'),
+    new ExtractiveSummarizer(),
+    { tail: (id, limit) => store.tail(id, limit) },
+  );
 
   // Order matters: SessionPicker uses state.catalog[0] for the New button,
   // so Claude — the real provider — is registered first.
@@ -203,7 +210,7 @@ export async function activate(context: vscode.ExtensionContext) {
   const bus = new PostBus();
   const manager = new SessionManager(
     store, providers, (msg) => bus.post(msg), undefined, warnAboutProfile, attachments,
-    reviewFileCap(), reviewBaseRefs(),
+    reviewFileCap(), reviewBaseRefs(), memory,
   );
 
   // Constructed against `manager` via closures — `SessionManagerLike`
@@ -213,7 +220,7 @@ export async function activate(context: vscode.ExtensionContext) {
   const selfControlServer = new SelfControlMcpServer({
     catalog: () => manager.catalog(),
     create: (providerId, cwd, model, effort, mode) => manager.create(providerId, cwd, model, effort, mode),
-  });
+  }, memory);
   let selfControlConfig: SelfControlMcpConfig | undefined;
   try {
     selfControlConfig = await selfControlServer.start();
