@@ -331,9 +331,12 @@ suite('PaneGroup', () => {
     );
   });
 
-  test('opening a subagent transcript replaces the pane, and the breadcrumb returns', async () => {
+  test('opening a subagent posts open-fleet-subagent instead of drilling the pane in place', async () => {
     renderApp();
-    const children: TranscriptItem[] = Array.from({ length: 25 }, (_, i) => ({
+    // Over the SUBAGENT_CHILD_WINDOW so the card's "Open full transcript"
+    // affordance actually renders — it only appears once the card's own
+    // window is truncating children.
+    const children: TranscriptItem[] = Array.from({ length: 11 }, (_, i) => ({
       id: `c${i}`, ts: i + 1, role: 'tool', toolId: `c${i}`,
       tool: { kind: 'other', label: `Tool${i}`, raw: {} }, state: 'ok',
     }));
@@ -355,50 +358,12 @@ suite('PaneGroup', () => {
     await userEvent.click(screen.getByRole('button', { name: /explore/i }));
     fireEvent.click(screen.getByRole('button', { name: /open full transcript/i }));
 
-    assert.strictEqual(screen.getByRole('button', { name: /back to/i }) !== null, true);
-    // The session's own composer is gone while drilled in — replaced in
-    // place, not split.
-    assert.strictEqual(screen.queryAllByRole('textbox').length, 0);
-
-    fireEvent.click(screen.getByRole('button', { name: /back to/i }));
+    // The pane itself is untouched — no breadcrumb, composer still present —
+    // and the request went to the host instead.
+    assert.strictEqual(screen.queryByRole('button', { name: /back to/i }) === null, true);
     assert.strictEqual(screen.queryAllByRole('textbox').length, 1);
-  });
-
-  test('a subagent transcript shows a visible session title and the model, and offers no dead fork', async () => {
-    renderApp();
-    const children: TranscriptItem[] = Array.from({ length: 25 }, (_, i) => ({
-      id: `c${i}`, ts: i + 1, role: 'tool', toolId: `c${i}`,
-      tool: { kind: 'other', label: `Tool${i}`, raw: {} }, state: 'ok',
-    }));
-    const subagentItem: TranscriptItem = {
-      id: 't1', ts: 1000, role: 'tool', toolId: 'task1',
-      tool: { kind: 'subagent', label: 'Task', action: 'spawn', agent: 'Explore', model: 'opus' },
-      state: 'ok', children,
-    };
-    // Idle, so TranscriptItemView would offer "Fork from here" on every
-    // top-level 'tool' item if these children were ever routed through it —
-    // exactly the bug this pane must not reintroduce.
-    sendFromHost({
-      t: 'hydrate',
-      sessions: [summary('a', { title: 'My Session', status: 'idle' })],
-      layout: layoutOf('a'),
-      snapshots: [snapshot('a', { title: 'My Session', status: 'idle', items: [subagentItem] })],
-      catalog: catalog(),
-      unavailable: [],
-      usage: {},
-    });
-
-    await userEvent.click(screen.getByRole('button', { name: /explore/i }));
-    fireEvent.click(screen.getByRole('button', { name: /open full transcript/i }));
-
-    // The session title is visible text, not only an aria-label.
-    assert.strictEqual(screen.getByText('My Session') !== undefined, true);
-    // The model rides along on the "Subagent: …" line.
-    assert.strictEqual(screen.getByText(/subagent:.*explore.*opus/i) !== undefined, true);
-    // No child offers a fork: subagent children aren't top-level JSONL
-    // items, so TranscriptStore.upTo() can never find one and the control
-    // would silently do nothing.
-    assert.strictEqual(screen.queryAllByRole('button', { name: /fork from here/i }).length, 0);
+    const messages = posted().filter((m) => m.t === 'open-fleet-subagent');
+    assert.deepStrictEqual(messages, [{ t: 'open-fleet-subagent', sessionId: 'a', itemId: 't1' }]);
   });
 
   test('a layout-changed echo reveals a pane for a session already known but hidden', () => {
