@@ -46,7 +46,15 @@ export class FleetPanel {
 
   open(focus?: { sessionId: SessionId; itemId: string }): void {
     if (this.panel) {
-      this.panel.reveal(vscode.ViewColumn.Beside);
+      // No viewColumn argument — `reveal(viewColumn)` MOVES the panel to
+      // that column even when it's already showing (it isn't a no-op
+      // "bring to front"). Passing `Beside` here computed a column relative
+      // to whatever was currently active, which after the first reveal is
+      // the panel itself: every subsequent open() call kept "revealing
+      // beside itself," churning editor groups and leaving a blank one
+      // behind. `Beside` belongs only on first creation, below, where there
+      // is no existing panel yet to move.
+      this.panel.reveal();
       if (focus) {
         // `retainContextWhenHidden: false` means a backgrounded Fleet tab has
         // had its webview torn down; `reveal()` triggers an async reload of
