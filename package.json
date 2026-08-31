@@ -76,6 +76,84 @@
           "default": "",
           "description": "Path to the opencode binary. Empty means use opencode from PATH."
         },
+        "marcode.providerInstances": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "kind", "displayName"],
+            "properties": {
+              "id": {
+                "type": "string",
+                "description": "Unique instance id, distinct from claude/codex/opencode/fake."
+              },
+              "kind": {
+                "type": "string",
+                "enum": ["claude", "codex", "opencode"],
+                "description": "Which existing backend this instance wraps."
+              },
+              "displayName": {
+                "type": "string",
+                "description": "Shown in the roster and model picker in place of the base name."
+              },
+              "binPath": {
+                "type": "string",
+                "description": "Override binary/executable path for this instance."
+              },
+              "envMap": {
+                "type": "object",
+                "additionalProperties": { "type": "string" },
+                "description": "Subprocess env var name -> OS env var name to source its value from. Secrets stay in OS env vars, never in this file."
+              }
+            },
+            "allOf": [
+              {
+                "if": { "properties": { "kind": { "const": "claude" } } },
+                "then": {
+                  "properties": {
+                    "envMap": {
+                      "properties": {
+                        "ANTHROPIC_API_KEY": { "type": "string" },
+                        "ANTHROPIC_BASE_URL": { "type": "string" },
+                        "ANTHROPIC_AUTH_TOKEN": { "type": "string" },
+                        "CLAUDE_CONFIG_DIR": { "type": "string" }
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "if": { "properties": { "kind": { "const": "codex" } } },
+                "then": {
+                  "properties": {
+                    "envMap": {
+                      "properties": {
+                        "OPENAI_API_KEY": { "type": "string" },
+                        "CODEX_HOME": { "type": "string" }
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "if": { "properties": { "kind": { "const": "opencode" } } },
+                "then": {
+                  "properties": {
+                    "envMap": {
+                      "properties": {
+                        "OPENCODE_CONFIG": { "type": "string" },
+                        "OPENCODE_CONFIG_DIR": { "type": "string" },
+                        "OPENCODE_CONFIG_CONTENT": { "type": "string" }
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          "default": [],
+          "scope": "window",
+          "markdownDescription": "Extra named instances of an existing provider kind — e.g. a second Claude account, or an OpenCode instance pointed at a different config/provider. Non-secret only; secrets stay in OS env vars referenced by `envMap`. Takes effect after a window reload."
+        },
         "marcode.review.fileCap": {
           "type": "number",
           "default": 500,
