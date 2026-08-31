@@ -40,7 +40,14 @@ export class ReviewPanel {
 
   open(): void {
     if (this.panel) {
-      this.panel.reveal(vscode.ViewColumn.Beside);
+      // No viewColumn argument — `reveal(viewColumn)` MOVES the panel to
+      // that column even when it's already showing, rather than a no-op
+      // "bring to front". `Beside` is relative to whatever editor is
+      // currently active, which after the first reveal is this panel
+      // itself — every subsequent open() call would keep "revealing beside
+      // itself", churning editor groups. `Beside` belongs only on first
+      // creation, below, where there is no existing panel yet to move.
+      this.panel.reveal();
       return;
     }
     const panel = vscode.window.createWebviewPanel(

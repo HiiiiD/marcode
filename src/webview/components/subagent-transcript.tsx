@@ -11,18 +11,18 @@ import type { SessionId, TranscriptItem } from '../../protocol/messages';
 type ToolItem = Extract<TranscriptItem, { role: 'tool' }>;
 
 /**
- * A subagent's complete tool-call history, unwindowed — the drill-in
- * `PaneGroup` swaps a pane's `SessionHeader`+`Transcript` for when a
- * `SubagentCard` asks to open its full transcript. No `hasMore`/pagination:
- * a subagent's children are a fixed list already fully present in
- * `item.children`, never paged from the host.
+ * A subagent's complete tool-call history, unwindowed. Rendered only by
+ * `src/fleet/fleet-app.tsx`, in place of `SubagentList` once a subagent is
+ * selected there — `PaneGroup` no longer renders this component at all; a
+ * `SubagentCard` in the sidebar instead asks the host to open the Fleet tab
+ * on this subagent (see subagent-drill-in-context.ts). No `hasMore`/
+ * pagination: a subagent's children are a fixed list already fully present
+ * in `item.children`, never paged from the host.
  *
- * Renders inside the same `MessageScrollerProvider` `PaneGroup` already
- * mounts around the whole pane (see pane-group.tsx) — only one of
- * `SubagentTranscript` or the normal header+`Transcript` is ever mounted at
- * a time, so there is never more than one `MessageScroller.Root` registered
- * with that provider at once, and this component needs no provider of its
- * own.
+ * `FleetApp` mounts its own `MessageScrollerProvider` around this component
+ * (it is not a pane, and has no `PaneGroup` provider to inherit), so this
+ * needs no provider of its own — it just has to render inside whichever one
+ * its caller supplies.
  *
  * Children render through `ToolCard`/`PermissionCard` directly — the same
  * pair `SubagentCard` itself uses for its inline window — rather than

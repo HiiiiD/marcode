@@ -680,6 +680,20 @@ suite('MessageRouter', () => {
     assert.deepStrictEqual(sent, []);
   });
 
+  test('open-fleet-subagent survives the wire guard as a deliberate no-op, same as open-fleet', async () => {
+    sent.length = 0;
+    const errors: unknown[] = [];
+    const originalError = console.error;
+    console.error = (...args: unknown[]) => { errors.push(args); };
+    try {
+      await router.handle({ t: 'open-fleet-subagent', sessionId: 's1' as any, itemId: 't1' });
+    } finally {
+      console.error = originalError;
+    }
+    assert.deepStrictEqual(sent, []);
+    assert.deepStrictEqual(errors, [], 'a known tag must not log as malformed');
+  });
+
   test('focus-session survives the wire guard as a deliberate no-op, same as open-review', async () => {
     // Same trap as `answer-relocation` above: a tag missing from
     // KNOWN_MESSAGE_TAGS is silently dropped as "malformed" at runtime while

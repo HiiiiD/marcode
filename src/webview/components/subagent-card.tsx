@@ -96,19 +96,31 @@ export function SubagentCard({ item, sessionId }: { item: ToolItem; sessionId: S
 
         {expanded && (
           <div id={panelId} className="border-t border-border px-2 py-1">
-            {children.length > shown.length && (
-              <div className="flex items-center justify-between pb-1 text-muted-foreground">
+            {/*
+              "Open full transcript" used to appear only once the inline
+              window truncated something — but it doesn't just show more
+              rows anymore, it opens the Fleet tab's read-only view (live
+              permission-answering included), which is worth reaching for
+              any subagent, not only a long-running one. Always offered
+              while expanded; the "showing last N of M" text alone is
+              conditional on truncation actually being in effect.
+            */}
+            <div className="flex items-center justify-between pb-1 text-muted-foreground">
+              {children.length > shown.length && (
                 <p>showing last {shown.length} of {children.length}</p>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 px-2 text-xs font-normal"
-                  onClick={() => openTranscript(item.id)}
-                >
-                  Open full transcript
-                </Button>
-              </div>
-            )}
+              )}
+              <Button
+                variant="ghost"
+                size="sm"
+                className={cn(
+                  'h-6 px-2 text-xs font-normal',
+                  children.length <= shown.length && 'ml-auto',
+                )}
+                onClick={() => openTranscript(item.id)}
+              >
+                Open full transcript
+              </Button>
+            </div>
             <div className={cn('flex flex-col gap-1')}>
               {shown.map((child) =>
                 child.role === 'permission' ? (

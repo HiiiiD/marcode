@@ -24,11 +24,22 @@ suite('PostBus', () => {
     assert.strictEqual(REVIEW_WANTS({ t: 'sessions-changed' } as unknown as HostToWebview), true);
   });
 
-  test('FLEET_WANTS admits only sessions-changed and session-status', () => {
+  test('FLEET_WANTS admits sessions-changed, session-status, session-patch, layout-changed, session-snapshot', () => {
     assert.strictEqual(FLEET_WANTS({ t: 'sessions-changed', sessions: [] } as unknown as HostToWebview), true);
     assert.strictEqual(FLEET_WANTS({ t: 'session-status', id: 's1' as SessionId, status: 'idle' } as HostToWebview), true);
+    assert.strictEqual(
+      FLEET_WANTS({ t: 'session-patch', id: 's1' as SessionId, patch: { op: 'append', item: {} } } as unknown as HostToWebview),
+      true,
+    );
+    assert.strictEqual(
+      FLEET_WANTS({ t: 'layout-changed', layout: { orientation: 'vertical', panes: [] } } as HostToWebview),
+      true,
+    );
+    assert.strictEqual(
+      FLEET_WANTS({ t: 'session-snapshot', session: { id: 's1' } } as unknown as HostToWebview),
+      true,
+    );
     assert.strictEqual(FLEET_WANTS({ t: 'fleet-diff', trees: [] } as unknown as HostToWebview), false);
-    assert.strictEqual(FLEET_WANTS({ t: 'session-patch', id: 's1' as SessionId, ops: [] } as unknown as HostToWebview), false);
   });
 
   test('remove stops delivery', () => {

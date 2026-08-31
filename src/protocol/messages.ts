@@ -411,6 +411,17 @@ export type WebviewToHost =
    * container needs the `vscode` API this module must not import.
    */
   | { t: 'focus-session'; id: SessionId }
+  /**
+   * A sidebar `SubagentCard`'s "Open full transcript" affordance, asking the
+   * host to open (or reveal) the Fleet tab focused on this subagent, rather
+   * than drilling the sidebar pane itself in place — see the fleet-view
+   * subagent-filter design for why the in-pane drill-in was retired.
+   *
+   * Handled in `PanelViewProvider`, not `MessageRouter` — same interception
+   * `open-fleet` already gets, and for the same reason (needs the `vscode`
+   * API to reach `FleetPanel`).
+   */
+  | { t: 'open-fleet-subagent'; sessionId: SessionId; itemId: string }
   | { t: 'close-session'; id: SessionId }
   | { t: 'delete-session'; id: SessionId }
   | { t: 'send'; id: SessionId; text: string; refs?: SessionRef[]; fileRefs?: FileRef[] }
@@ -654,6 +665,14 @@ export type HostToWebview =
    * initiate itself.
    */
   | { t: 'layout-changed'; layout: PaneLayout }
+  /**
+   * Pushes a specific subagent open in the Fleet tab — the answer to
+   * `open-fleet-subagent`. Sent directly by `FleetPanel` (its own
+   * `MessageRouter`'s `emit`, or a direct `postMessage` when the panel
+   * already exists), never through `PostBus`: it addresses one already-open
+   * client in direct reply to its own request, not a broadcast.
+   */
+  | { t: 'fleet-focus-subagent'; sessionId: SessionId; itemId: string }
   | { t: 'session-snapshot'; session: SessionSnapshot }
   | { t: 'session-patch'; id: SessionId; patch: TranscriptPatch }
   | { t: 'session-prepend'; id: SessionId; items: TranscriptItem[]; hasMore: boolean }

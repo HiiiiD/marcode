@@ -70,11 +70,25 @@ suite('SubagentCard', () => {
     assert.strictEqual(screen.queryByText('Tool14'), null, 'the eleventh-from-last is not');
   });
 
-  test('offers to open the full transcript once past the window', async () => {
+  test('offers to open the full transcript once expanded, window or not', async () => {
     const children = Array.from({ length: 25 }, (_, i) => child(`c${i}`, `Tool${i}`));
     renderWithStore(<SubagentCard item={subagent(children)} sessionId="s1" />);
     await userEvent.click(screen.getByRole('button', { expanded: false }));
 
+    assert.strictEqual(
+      screen.getByRole('button', { name: /open full transcript/i }) !== null,
+      true,
+    );
+  });
+
+  test('still offers to open the full transcript when nothing is truncated', async () => {
+    // Opening Fleet's read-only view is worth reaching for any subagent, not
+    // just a long-running one — a short run (or one with no children at all)
+    // must not lose its only route into that view.
+    renderWithStore(<SubagentCard item={subagent([child('c1', 'Read')])} sessionId="s1" />);
+    await userEvent.click(screen.getByRole('button', { expanded: false }));
+
+    assert.strictEqual(screen.queryByText(/showing last/i), null, 'nothing is truncated here');
     assert.strictEqual(
       screen.getByRole('button', { name: /open full transcript/i }) !== null,
       true,

@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { cn } from "@/lib/utils";
 import { LogInIcon, RefreshCwIcon, SettingsIcon } from "lucide-react";
-import { Fragment, useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef } from "react";
 // react-resizable-panels ships ESM-only; a type-only import from a CommonJS
 // module needs an explicit resolution-mode attribute (TS 5.3+) or tsc's
 // per-file CJS/ESM interop check rejects it outright (TS1541) — see the
@@ -19,7 +19,6 @@ import { SessionCreateMenu } from "./session-create-menu";
 import { MessageScrollerProvider } from "@/components/ui/message-scroller";
 import { SessionHeader } from "./session-header";
 import { SubagentDrillInContext } from "./subagent-drill-in-context";
-import { SubagentTranscript } from "./subagent-transcript";
 import { Transcript } from "./transcript";
 
 interface PaneGroupProps {
@@ -79,14 +78,6 @@ export function PaneGroup({ narrow }: PaneGroupProps) {
   // focusable control here uses (see `button.tsx`).
   const rootRef = useRef<HTMLDivElement>(null);
   const prevCount = useRef(panes.length);
-
-  // A pane's reading position, not part of the pane's own layout — keyed by
-  // sessionId (not pane index) so a session's drill-in survives the pane
-  // reordering `evenlySizedPanes` can do, and is cleared, never restored, on
-  // reload: a restored drill-in would describe a reading position nobody
-  // checked this launch, the same reason review's collapse/opened-row state
-  // stays ephemeral (see the review-tab invariant in CLAUDE.md).
-  const [drilledIn, setDrilledIn] = useState<Record<string, string>>({});
 
   // With N panes rendered at identical weight there was no indication of
   // which one a keyboard or pointer user was actually acting in. It lives in
@@ -284,65 +275,36 @@ export function PaneGroup({ narrow }: PaneGroupProps) {
                     conversation. One provider per pane, so two panes never
                     share a scroll position. */}
                 <MessageScrollerProvider autoScroll defaultScrollPosition="end">
-                  {(() => {
-                    const openItemId = drilledIn[pane.sessionId];
-                    const openItem = openItemId
-                      ? paneState.items.find((i) => i.id === openItemId)
-                      : undefined;
-                    // `SubagentTranscript` swaps in whenever a drill-in is
-                    // recorded AND still resolves to a `tool`-role item on
-                    // this pane — a stale id (the item aged out of the
-                    // window, or the session's history was reset) just falls
-                    // through to the normal pane instead of throwing.
-                    if (openItem && openItem.role === "tool") {
-                      return (
-                        <SubagentTranscript
-                          item={openItem}
-                          sessionId={paneState.summary.id}
-                          title={paneState.summary.title}
-                          onBack={() =>
-                            setDrilledIn((prev) => {
-                              const next = { ...prev };
-                              delete next[pane.sessionId];
-                              return next;
+                  <div className="flex h-full flex-col">
+                    <SessionHeader
+                      pane={paneState}
+                      accessibleTitle={names.get(paneState.summary.id)!}
+                    />
+                    <SubagentDrillInContext.Provider
+                      value={(itemId) =>
+                        post({ t: "open-fleet-subagent", sessionId: pane.sessionId, itemId })
+                      }
+                    >
+                      <div className="min-h-0 flex-1">
+                        <Transcript
+                          pane={paneState}
+                          onLoadMore={(beforeItemId) =>
+                            post({
+                              t: "load-more",
+                              id: pane.sessionId,
+                              beforeItemId,
                             })
                           }
                         />
-                      );
-                    }
-                    return (
-                      <div className="flex h-full flex-col">
-                        <SessionHeader
-                          pane={paneState}
-                          accessibleTitle={names.get(paneState.summary.id)!}
-                        />
-                        <SubagentDrillInContext.Provider
-                          value={(itemId) =>
-                            setDrilledIn((prev) => ({ ...prev, [pane.sessionId]: itemId }))
-                          }
-                        >
-                          <div className="min-h-0 flex-1">
-                            <Transcript
-                              pane={paneState}
-                              onLoadMore={(beforeItemId) =>
-                                post({
-                                  t: "load-more",
-                                  id: pane.sessionId,
-                                  beforeItemId,
-                                })
-                              }
-                            />
-                          </div>
-                        </SubagentDrillInContext.Provider>
-                        <Composer
-                          pane={paneState}
-                          model={model}
-                          models={provider?.models ?? []}
-                          unavailableReason={unavailabilityFor(state, paneState.summary.providerId)}
-                        />
                       </div>
-                    );
-                  })()}
+                    </SubagentDrillInContext.Provider>
+                    <Composer
+                      pane={paneState}
+                      model={model}
+                      models={provider?.models ?? []}
+                      unavailableReason={unavailabilityFor(state, paneState.summary.providerId)}
+                    />
+                  </div>
                 </MessageScrollerProvider>
               </ResizablePanel>
             </Fragment>
