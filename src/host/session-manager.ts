@@ -1546,8 +1546,20 @@ export class SessionManager implements SessionSink {
     // every session has actually finished disposing.
     this.disposed = true;
     this.queuedMoves.clear();
-    await Promise.all([...this.live.values()].map((s) => s.dispose()));
+    const liveSessions = [...this.live.values()];
+    await Promise.all(liveSessions.map((s) => s.dispose()));
     this.live.clear();
+    // A window reload/quit tears down every live session the same way an
+    // explicit Archive does, memory-wise: a session the user never got
+    // around to closing must not lose the only chance `MemoryStore` ever
+    // gets to index it. Runs after the disposals above, once each session's
+    // transcript has actually flushed, and reuses each session's own
+    // `state` object rather than `archive()` — this is shutdown, not a
+    // lifecycle transition the user chose, so `archived` must stay exactly
+    // what it was and the roster comes back unchanged on relaunch.
+    await Promise.all(
+      liveSessions.map((s) => this.indexForMemory(s.state.id, s.state)),
+    );
     if (this.persistTimer) { clearTimeout(this.persistTimer); }
     await this.persist();
   }
