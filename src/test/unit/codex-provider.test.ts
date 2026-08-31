@@ -128,6 +128,40 @@ suite('CodexProvider', () => {
     assert.deepStrictEqual(new CodexProvider({ spawn: () => stubChild() }).listModels(), []);
   });
 
+  test('an instance override sets id/displayName and merges env into the spawned process', () => {
+    let capturedEnv: NodeJS.ProcessEnv | undefined;
+    const child = stubChild();
+    const provider = new CodexProvider({
+      spawn: (bin, env) => { capturedEnv = env; return child; },
+      id: 'codex-work', displayName: 'Codex (work)',
+      env: { OPENAI_API_KEY: 'sk-work' } as NodeJS.ProcessEnv,
+    });
+    assert.strictEqual(provider.id, 'codex-work');
+    assert.strictEqual(provider.displayName, 'Codex (work)');
+    provider.start({ cwd: '/repo', permissionMode: 'default' });
+    assert.strictEqual(capturedEnv?.OPENAI_API_KEY, 'sk-work');
+  });
+
+  test('id/displayName default to codex/Codex when no instance override is given', () => {
+    const provider = new CodexProvider({ spawn: () => stubChild() });
+    assert.strictEqual(provider.id, 'codex');
+    assert.strictEqual(provider.displayName, 'Codex');
+    assert.strictEqual(provider.loginKind, undefined);
+  });
+
+  test('instance env and selfControlMcp env both reach the spawned process', () => {
+    let capturedEnv: NodeJS.ProcessEnv | undefined;
+    const child = stubChild();
+    const provider = new CodexProvider({
+      spawn: (bin, env) => { capturedEnv = env; return child; },
+      env: { OPENAI_API_KEY: 'sk-work' } as NodeJS.ProcessEnv,
+      selfControlMcp: { url: 'http://localhost:1', token: 'tok' },
+    });
+    provider.start({ cwd: '/repo', permissionMode: 'default' });
+    assert.strictEqual(capturedEnv?.OPENAI_API_KEY, 'sk-work');
+    assert.strictEqual(capturedEnv?.MARCODE_SELF_CONTROL_TOKEN, 'tok');
+  });
+
   test('fetchModels maps the catalog and hides hidden rows', async () => {
     const { provider, respondTo } = providerWithStub();
     const probe = provider.fetchModels('/repo');

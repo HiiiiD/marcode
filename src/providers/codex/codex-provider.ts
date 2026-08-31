@@ -156,8 +156,9 @@ class ThreadView implements CodexConnection {
  * One process serves every Codex session, ref-counted by live runs.
  */
 export class CodexProvider implements AgentProvider {
-  readonly id = 'codex';
-  readonly displayName = 'Codex';
+  readonly id: string;
+  readonly displayName: string;
+  readonly loginKind?: 'oauth' | 'none';
   /**
    * Measured, not assumed: a thread started in one directory and resumed from
    * another kept its conversation, against codex-cli 0.147.0. Threads are
@@ -217,15 +218,26 @@ export class CodexProvider implements AgentProvider {
    */
   private readonly teardownGraceMs: number;
 
+  /** Instance env override, merged into every spawned `app-server` process's env. */
+  private readonly env?: NodeJS.ProcessEnv;
+
   constructor(private readonly opts: {
+    id?: string;
+    displayName?: string;
     binPath?: string;
     spawn?: (bin: string, env?: NodeJS.ProcessEnv) => Duplex;
     teardownGraceMs?: number;
     /** The loopback MCP server this provider's threads should connect to, if any. */
     selfControlMcp?: SelfControlMcpConfig;
+    env?: NodeJS.ProcessEnv;
+    loginKind?: 'oauth' | 'none';
   } = {}) {
+    this.id = opts.id ?? 'codex';
+    this.displayName = opts.displayName ?? 'Codex';
     this.binPath = opts.binPath;
     this.teardownGraceMs = opts.teardownGraceMs ?? 5000;
+    this.env = opts.env;
+    this.loginKind = opts.loginKind;
   }
 
   listModels(): ModelInfo[] { return this.models; }
@@ -253,8 +265,13 @@ export class CodexProvider implements AgentProvider {
 
   private async connect(): Promise<AppServer> {
     const bin = this.binPath ?? 'codex';
-    const env = this.opts.selfControlMcp
-      ? { ...process.env, MARCODE_SELF_CONTROL_TOKEN: this.opts.selfControlMcp.token }
+    const hasOverrides = this.env !== undefined || this.opts.selfControlMcp !== undefined;
+    const env = hasOverrides
+      ? {
+          ...process.env,
+          ...(this.env ?? {}),
+          ...(this.opts.selfControlMcp ? { MARCODE_SELF_CONTROL_TOKEN: this.opts.selfControlMcp.token } : {}),
+        }
       : undefined;
     let child: Duplex;
     try {
