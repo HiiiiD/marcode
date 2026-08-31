@@ -60,11 +60,15 @@ involved at all.
 
 - **claude**: `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`,
   `CLAUDE_CONFIG_DIR`
-- **codex**: `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `CODEX_HOME` — **unverified**: not
-  referenced anywhere in `src/providers/codex/`; confirm the real `codex` CLI's config-dir
-  env var name before implementation locks this list.
-- **opencode**: none well-known yet (OpenCode reads its own config file/auth store) —
-  `envMap` stays open with no suggested keys for this kind until one is identified.
+- **codex**: `OPENAI_API_KEY`, `CODEX_HOME` (confirmed against `openai/codex` docs:
+  `CODEX_HOME` holds `auth.json`, defaults `~/.codex`). No `OPENAI_BASE_URL` — Codex
+  configures providers via `config.toml`'s `model_providers`, not a plain env var; base-URL
+  override for a codex instance is out of scope for this design (see Open items).
+- **opencode**: `OPENCODE_CONFIG` (custom config file path), `OPENCODE_CONFIG_DIR` (custom
+  config dir, same layout as `.opencode`), `OPENCODE_CONFIG_CONTENT` (inline config,
+  highest precedence) — confirmed against the OpenCode docs. This is the lever for
+  "OpenCode instance pointed at Grok": point `OPENCODE_CONFIG`/`_DIR` at a profile whose own
+  `opencode.json` selects a different model provider.
 
 `KNOWN_PROVIDER_IDS` / `marcode.enabledProviders` are unchanged — they govern the four base
 kinds. `providerInstances` is purely additive.
@@ -101,23 +105,32 @@ constants, so making them ctor-supplied is not an interface change.
 
 Two distinct auth shapes exist per instance, and the login card must tell them apart:
 
-- **OAuth/CLI-session instances** (`envMap` has no key-shaped variable — e.g. only
-  `CLAUDE_CONFIG_DIR`, or nothing): login is `claude auth login` / `codex login` run in a
-  terminal. `LOGIN_COMMANDS` (today `kind → command`, static) becomes an `instanceId →
-  {command, env}` table built alongside the providers map. `openLoginTerminal` gains an
-  `env` param (VS Code `createTerminal` already supports one) so the terminal's OAuth
-  session lands in *this instance's* config dir, not the default `~/.claude`.
-- **API-key instances** (`envMap` sets `ANTHROPIC_API_KEY`/`OPENAI_API_KEY` directly): no
-  login flow exists — a terminal running `claude auth login` would write an OAuth session
-  nobody reads and would not fix the actual problem (a missing/bad OS env var). The failure
-  card must not offer a Login button for these; it shows the reason text only.
+- **Claude, OAuth/CLI-session** (`envMap` has no key-shaped variable — e.g. only
+  `CLAUDE_CONFIG_DIR`, or nothing): login is `claude auth login` run in a terminal.
+- **Claude, API-key instance** (`envMap` sets `ANTHROPIC_API_KEY` directly): no login flow
+  exists — a terminal running `claude auth login` would write an OAuth session nobody reads
+  and would not fix the actual problem (a missing/bad OS env var). The failure card must not
+  offer a Login button for these; it shows the reason text only.
+- **Codex, always terminal-login, command depends on `envMap`**: unlike Claude, an
+  `OPENAI_API_KEY` in `envMap` doesn't make codex key-based-with-no-login — the key still
+  has to be persisted into that instance's `CODEX_HOME/auth.json` via a login command,
+  just a different one: `printenv OPENAI_API_KEY | codex login --with-api-key` (piped, using
+  the resolved value) instead of plain `codex login` (browser OAuth) when no key is set.
+  Both are scoped to the instance's `CODEX_HOME`.
+
+`LOGIN_COMMANDS` (today `kind → command`, static) becomes an `instanceId → {command, env}`
+table built alongside the providers map, where `command` for codex is chosen per-instance
+(with-api-key vs plain) from whether its resolved `envMap` has `OPENAI_API_KEY`.
+`openLoginTerminal` gains an `env` param (VS Code `createTerminal` already supports one) so
+the terminal's session lands in *this instance's* config dir
+(`CLAUDE_CONFIG_DIR`/`CODEX_HOME`), not the default one.
 
 This means the webview's `isSignInFailure` regex heuristic is no longer sufficient on its
 own to decide whether to render the Login button. Catalog/`unavailable()` payloads gain a
-per-instance `loginKind: 'oauth' | 'none'`, computed once at construction from whether
-`envMap` defines a key-shaped variable for that kind, and threaded to `pane-group.tsx` /
-`transcript-item.tsx` to gate the button. Base (non-custom) `claude`/`codex` instances keep
-`loginKind: 'oauth'`, unchanged behavior.
+per-instance `loginKind: 'oauth' | 'none'` — `'none'` only for a Claude API-key instance,
+`'oauth'` for everything else including every codex instance — computed once at
+construction and threaded to `pane-group.tsx` / `transcript-item.tsx` to gate the button.
+Base (non-custom) `claude`/`codex` instances keep `loginKind: 'oauth'`, unchanged behavior.
 
 ## UI
 
@@ -142,8 +155,7 @@ options. The existing "open settings" deep-link button (`pane-group.tsx`) is poi
 
 ## Open items before implementation
 
-- Confirm the real `codex` CLI's config-dir env var name (assumed `CODEX_HOME` above,
-  unverified in this repo).
-- Identify whether OpenCode has any config-dir/profile env var worth suggesting in
-  `envMap`'s schema for that kind, or whether `binPath` (pointing at a wrapper script that
-  sets `OPENCODE_CONFIG` itself) is the only lever for now.
+- Codex base-URL override (a codex instance pointed at a non-OpenAI-compatible proxy) is
+  out of scope here — no env var for it, only `config.toml`'s `model_providers`. If needed
+  later, the lever is `binPath` pointing at a wrapper that writes/selects a `config.toml`
+  before exec, not `envMap`.
