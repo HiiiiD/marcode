@@ -240,6 +240,7 @@ export class SessionManager implements SessionSink {
         displayName: p.displayName,
         models: this.modelsFor(p),
         permissionModes: p.listPermissionModes(),
+        ...(p.loginKind ? { loginKind: p.loginKind } : {}),
       }))
       .filter((p) => p.models.length > 0);
   }
@@ -279,6 +280,7 @@ export class SessionManager implements SessionSink {
       .filter((p) => this.modelsFor(p).length === 0 && this.probeFailures.has(p.id))
       .map((p) => ({
         id: p.id, displayName: p.displayName, reason: this.probeFailures.get(p.id)!,
+        ...(p.loginKind ? { loginKind: p.loginKind } : {}),
       }));
   }
 

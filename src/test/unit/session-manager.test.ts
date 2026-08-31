@@ -1153,10 +1153,13 @@ suite('SessionManager', () => {
    * A provider whose model list is only correct after `fetchModels` — the
    * shape of every real backend, where the catalog lives in the CLI.
    */
-  function modelProvider(id: string, onFetch?: () => Promise<never>): AgentProvider {
+  function modelProvider(
+    id: string, onFetch?: () => Promise<never>, loginKind?: 'oauth' | 'none',
+  ): AgentProvider {
     let models: ModelInfo[] = [{ id: 'stale', displayName: 'Stale' }];
     return {
       id, displayName: id, threadScope: 'cwd',
+      ...(loginKind ? { loginKind } : {}),
       listModels: () => models,
       listPermissionModes: () => [],
       fetchModels: async (cwd: string) => {
@@ -1167,6 +1170,17 @@ suite('SessionManager', () => {
       start: () => { throw new Error('not used'); },
     };
   }
+
+  test('catalog() passes through a provider\'s loginKind', async () => {
+    const m = new SessionManager(
+      new TranscriptStore(dir), new Map([['claude', modelProvider('claude', undefined, 'none')]]), () => {},
+    );
+    await m.init();
+
+    const entry = m.catalog().find((p) => p.id === 'claude');
+    assert.strictEqual(entry?.loginKind, 'none');
+    await m.dispose();
+  });
 
   test('refreshModels probes the providers and re-announces the catalog', async () => {
     const emitted: HostToWebview[] = [];
@@ -1212,15 +1226,30 @@ suite('SessionManager', () => {
   });
 
   /** A provider that can offer nothing until — and unless — a probe succeeds. */
-  function unavailableProvider(id: string, reason: string): AgentProvider {
+  function unavailableProvider(id: string, reason: string, loginKind?: 'oauth' | 'none'): AgentProvider {
     return {
       id, displayName: id, threadScope: 'cwd',
+      ...(loginKind ? { loginKind } : {}),
       listModels: () => [],
       listPermissionModes: () => [],
       fetchModels: () => Promise.reject(new Error(reason)),
       start: () => { throw new Error('not used'); },
     };
   }
+
+  test('unavailable() passes through a provider\'s loginKind', async () => {
+    const m = new SessionManager(
+      new TranscriptStore(dir),
+      new Map([['claude', unavailableProvider('claude', 'Claude Code CLI not found.', 'oauth')]]),
+      () => {},
+    );
+    await m.init();
+    await m.refreshModels('/repo');
+
+    const entry = m.unavailable().find((p) => p.id === 'claude');
+    assert.strictEqual(entry?.loginKind, 'oauth');
+    await m.dispose();
+  });
 
   test('a provider with no models is not in the catalog', async () => {
     const m = new SessionManager(
