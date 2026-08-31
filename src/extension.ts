@@ -324,13 +324,24 @@ export async function activate(context: vscode.ExtensionContext) {
   // See docs/superpowers/specs/2026-08-31-provider-instances-design.md.
   const { valid: instanceConfigs, warnings: instanceWarnings } = validateProviderInstances(
     vscode.workspace.getConfiguration().get<unknown>(PROVIDER_INSTANCES_SETTING),
-    [...providers.keys()],
+    KNOWN_PROVIDER_IDS,
   );
   for (const warning of instanceWarnings) {
     void vscode.window.showWarningMessage(warning);
   }
   for (const cfg of instanceConfigs) {
     const resolvedEnv = resolveEnvMap(cfg.envMap, process.env);
+    // resolveEnvMap silently omits any subprocess var whose named OS var is
+    // unset — proceeding with no signal would leave e.g. a "claude-work"
+    // instance running as the default account. Cheap loop, instance id and
+    // OS var name only, never a value.
+    for (const [, osVarName] of Object.entries(cfg.envMap ?? {})) {
+      if (process.env[osVarName] === undefined) {
+        void vscode.window.showWarningMessage(
+          `Provider instance "${cfg.id}": OS environment variable "${osVarName}" is not set.`,
+        );
+      }
+    }
     const mergedEnv = { ...process.env, ...resolvedEnv };
     const loginKind = computeLoginKind(cfg.kind, resolvedEnv);
     if (cfg.kind === 'claude') {
@@ -358,7 +369,7 @@ export async function activate(context: vscode.ExtensionContext) {
     } else {
       providers.set(cfg.id, new OpenCodeProvider({
         id: cfg.id, displayName: cfg.displayName, binPath: cfg.binPath,
-        env: mergedEnv, selfControlMcp: selfControlConfig,
+        env: mergedEnv, selfControlMcp: selfControlConfig, loginKind,
       }));
     }
   }
