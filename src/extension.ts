@@ -27,8 +27,11 @@ import { FakeProvider } from './providers/fake/fake-provider';
 import { OpenCodeProvider } from './providers/opencode/opencode-provider';
 import type { DiffBase } from './protocol/messages';
 import {
-  DEFAULT_PROVIDER_IDS, ENABLED_PROVIDERS_SETTING, KNOWN_PROVIDER_IDS,
+  DEFAULT_PROVIDER_IDS, ENABLED_PROVIDERS_SETTING, KNOWN_PROVIDER_IDS, PROVIDER_INSTANCES_SETTING,
 } from './shared/settings';
+import {
+  claudeLoginCommand, codexLoginCommand, computeLoginKind, resolveEnvMap, validateProviderInstances,
+} from './shared/provider-instances';
 import type { AgentProvider, SelfControlMcpConfig } from './providers/types';
 
 /**
@@ -307,6 +310,70 @@ export async function activate(context: vscode.ExtensionContext) {
     },
   )); }
 
+  /** One instance id -> the terminal command that signs it in, and the env that terminal runs with. */
+  type LoginRecipe = { terminalName: string; command: string; env: NodeJS.ProcessEnv };
+  const loginRecipes = new Map<string, LoginRecipe>();
+  if (enabled.has('claude')) {
+    loginRecipes.set('claude', { terminalName: 'Claude login', command: 'claude auth login', env: process.env });
+  }
+  if (codexProvider) {
+    loginRecipes.set('codex', { terminalName: 'Codex login', command: 'codex login', env: process.env });
+  }
+
+  // Extra named instances of an existing kind — additive to `enabled` above.
+  // See docs/superpowers/specs/2026-08-31-provider-instances-design.md.
+  const { valid: instanceConfigs, warnings: instanceWarnings } = validateProviderInstances(
+    vscode.workspace.getConfiguration().get<unknown>(PROVIDER_INSTANCES_SETTING),
+    KNOWN_PROVIDER_IDS,
+  );
+  for (const warning of instanceWarnings) {
+    void vscode.window.showWarningMessage(warning);
+  }
+  for (const cfg of instanceConfigs) {
+    const resolvedEnv = resolveEnvMap(cfg.envMap, process.env);
+    // resolveEnvMap silently omits any subprocess var whose named OS var is
+    // unset — proceeding with no signal would leave e.g. a "claude-work"
+    // instance running as the default account. Cheap loop, instance id and
+    // OS var name only, never a value.
+    for (const [, osVarName] of Object.entries(cfg.envMap ?? {})) {
+      if (process.env[osVarName] === undefined) {
+        void vscode.window.showWarningMessage(
+          `Provider instance "${cfg.id}": OS environment variable "${osVarName}" is not set.`,
+        );
+      }
+    }
+    const mergedEnv = { ...process.env, ...resolvedEnv };
+    const loginKind = computeLoginKind(cfg.kind, resolvedEnv);
+    if (cfg.kind === 'claude') {
+      providers.set(cfg.id, new ClaudeProvider(undefined, selfControlConfig, {
+        id: cfg.id, displayName: cfg.displayName, env: mergedEnv,
+        pathToClaudeCodeExecutable: cfg.binPath, loginKind,
+      }));
+      if (loginKind === 'oauth') {
+        loginRecipes.set(cfg.id, {
+          terminalName: `${cfg.displayName} login`,
+          command: claudeLoginCommand(cfg.binPath),
+          env: mergedEnv,
+        });
+      }
+    } else if (cfg.kind === 'codex') {
+      providers.set(cfg.id, new CodexProvider({
+        id: cfg.id, displayName: cfg.displayName, binPath: cfg.binPath,
+        env: mergedEnv, selfControlMcp: selfControlConfig, loginKind,
+      }));
+      loginRecipes.set(cfg.id, {
+        terminalName: `${cfg.displayName} login`,
+        command: codexLoginCommand(cfg.binPath, resolvedEnv),
+        env: mergedEnv,
+      });
+    } else {
+      providers.set(cfg.id, new OpenCodeProvider({
+        id: cfg.id, displayName: cfg.displayName, binPath: cfg.binPath,
+        env: mergedEnv, selfControlMcp: selfControlConfig, loginKind,
+      }));
+    }
+  }
+
   // Never `process.cwd()` — for an extension host that is VS Code's own
   // install directory, and a session inherits it silently. See
   // `host/default-cwd.ts`.
@@ -345,13 +412,13 @@ export async function activate(context: vscode.ExtensionContext) {
       void exportCsv(csv);
     },
     login: (providerId: string) => {
-      // `providerId` names the backend a "not signed in" reason called out
-      // (see LOGIN_COMMANDS), not an arbitrary string — a provider with no
-      // login command (or a typo reaching this from a future provider) is a
-      // no-op rather than a thrown error, the same tolerance `revealFile`
-      // and `openFileDiff` give a dead reference.
-      const command = LOGIN_COMMANDS[providerId];
-      if (command) { void vscode.commands.executeCommand(command); }
+      // `providerId` names a registered instance's login recipe — a provider
+      // with none (no login flow, e.g. a key-based instance, or a typo
+      // reaching this from a future provider) is a no-op rather than a thrown
+      // error, the same tolerance `revealFile` and `openFileDiff` give a dead
+      // reference.
+      const recipe = loginRecipes.get(providerId);
+      if (recipe) { openLoginTerminal(recipe.terminalName, recipe.command, recipe.env); }
     },
   };
 
@@ -449,10 +516,12 @@ export async function activate(context: vscode.ExtensionContext) {
     { dispose: () => { review.dispose(); } },
     { dispose: () => { fleet.dispose(); } },
     vscode.commands.registerCommand('marcode.codex.login', () => {
-      openLoginTerminal('Codex login', 'codex login');
+      const recipe = loginRecipes.get('codex');
+      if (recipe) { openLoginTerminal(recipe.terminalName, recipe.command, recipe.env); }
     }),
     vscode.commands.registerCommand('marcode.claude.login', () => {
-      openLoginTerminal('Claude login', 'claude auth login');
+      const recipe = loginRecipes.get('claude');
+      if (recipe) { openLoginTerminal(recipe.terminalName, recipe.command, recipe.env); }
     }),
     // A changed path is a different install: point the provider at it, then
     // re-probe — which is also how the provider recovers from 'unavailable'.
@@ -477,6 +546,16 @@ export async function activate(context: vscode.ExtensionContext) {
         const reload = 'Reload window';
         void vscode.window.showInformationMessage(
           'The enabled agent providers changed. Reload the window to apply it.',
+          reload,
+        ).then((choice) => {
+          if (choice !== reload) { return; }
+          void vscode.commands.executeCommand('workbench.action.reloadWindow');
+        });
+      }
+      if (e.affectsConfiguration(PROVIDER_INSTANCES_SETTING)) {
+        const reload = 'Reload window';
+        void vscode.window.showInformationMessage(
+          'Provider instances changed. Reload the window to apply it.',
           reload,
         ).then((choice) => {
           if (choice !== reload) { return; }
@@ -559,20 +638,17 @@ async function openFileDiff(root: string, target: string, base: DiffBase): Promi
   }
 }
 
-/** `providerId` (from `UnavailableProvider.id` / a session's `providerId`) → the command that signs it back in. */
-const LOGIN_COMMANDS: Record<string, string> = {
-  codex: 'marcode.codex.login',
-  claude: 'marcode.claude.login',
-};
-
 /**
- * `codex login` / `claude auth login` each open a browser flow and need a
- * real TTY, so this hands the user a terminal rather than trying to drive
- * it. Re-probing afterward is the existing "Check again" retry — nothing
- * here waits for the terminal to close or the login to succeed.
+ * `claude auth login` / `codex login` (or their instance-scoped variants)
+ * each open a browser flow and need a real TTY, so this hands the user a
+ * terminal rather than trying to drive it. Re-probing afterward is the
+ * existing "Check again" retry — nothing here waits for the terminal to
+ * close or the login to succeed. `env`, when given, is what scopes the
+ * session to a custom instance's own `CLAUDE_CONFIG_DIR`/`CODEX_HOME` rather
+ * than the default one.
  */
-function openLoginTerminal(terminalName: string, command: string): void {
-  const terminal = vscode.window.createTerminal(terminalName);
+function openLoginTerminal(terminalName: string, command: string, env?: NodeJS.ProcessEnv): void {
+  const terminal = vscode.window.createTerminal({ name: terminalName, ...(env ? { env } : {}) });
   terminal.show();
   terminal.sendText(command);
 }

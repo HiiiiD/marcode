@@ -4,15 +4,19 @@ import userEvent from '@testing-library/user-event';
 import { TranscriptItemView } from '@/components/transcript-item';
 import { catalog, layoutOf, snapshot, summary } from '../fixtures/protocol';
 import { posted, renderApp, renderWithStore, sendFromHost } from './harness';
-import type { TranscriptItem } from '../../protocol/messages';
+import type { ProviderInfo, TranscriptItem } from '../../protocol/messages';
 
-function hydrateWithItems(items: TranscriptItem[], summaryOver: Parameters<typeof summary>[1] = {}) {
+function hydrateWithItems(
+  items: TranscriptItem[],
+  over: Parameters<typeof summary>[1] & { catalog?: ProviderInfo[] } = {},
+) {
+  const { catalog: catalogOver, ...summaryOver } = over;
   sendFromHost({
     t: 'hydrate',
     sessions: [summary('a', summaryOver)],
     layout: layoutOf('a'),
     snapshots: [snapshot('a', { ...summaryOver, items })],
-    catalog: catalog(),
+    catalog: catalogOver ?? catalog(),
     unavailable: [],
     usage: {},
   });
@@ -67,6 +71,15 @@ suite('TranscriptItemView', () => {
     await userEvent.click(screen.getByRole('button', { name: /log in/i }));
 
     assert.deepStrictEqual(posted().at(-1), { t: 'login-provider', providerId: 'claude' });
+  });
+
+  test('a sign-in error for a loginKind "none" provider offers no login action', () => {
+    renderApp();
+    hydrateWithItems(
+      [{ id: '3', ts: 3, role: 'error', message: 'Not signed in to Claude. Run `claude auth login`.' }],
+      { providerId: 'claude-work', catalog: [{ id: 'claude-work', displayName: 'Claude (work)', models: [], permissionModes: [], loginKind: 'none' }] },
+    );
+    assert.strictEqual(screen.queryByRole('button', { name: /log in/i }) === null, true);
   });
 
   test('an error unrelated to sign-in offers no login action', () => {

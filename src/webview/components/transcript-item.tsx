@@ -11,7 +11,7 @@ import { RelocationCard } from './relocation-card';
 import { SubagentCard } from './subagent-card';
 import { ToolCard } from './tool-card';
 import { TranscriptItemShell } from './transcript-item-shell';
-import { isSignInFailure } from '../lib/provider-login';
+import { shouldOfferLogin } from '../lib/provider-login';
 import { useStore } from '../store';
 import type { FileRef, SessionId, SessionRef, TranscriptItem } from '../../protocol/messages';
 
@@ -65,17 +65,20 @@ export function TranscriptItemView({
         : <ToolCard item={item} onFork={onFork} />;
 
     case 'error': {
-      // Only offered when the message reads as a sign-in failure (see
-      // isSignInFailure) — a dead binary or an unrecognized failure would
+      // Only offered when the message reads as a sign-in failure, or the
+      // session's provider says otherwise via its own loginKind (see
+      // shouldOfferLogin) — a dead binary or an unrecognized failure would
       // not be fixed by a login terminal. The provider to sign in to is the
       // session's own, not parsed back out of the message text.
       const providerId = state.byId[sessionId]?.summary.providerId;
+      const loginKind = state.catalog.find((p) => p.id === providerId)?.loginKind
+        ?? state.unavailable.find((p) => p.id === providerId)?.loginKind;
       return (
         <TranscriptItemShell role="error" label="Error" ts={item.ts}>
           <div className="max-h-48 overflow-auto rounded border border-destructive px-2 py-1 text-xs wrap-break-word whitespace-pre-wrap text-destructive">
             {item.message}
           </div>
-          {isSignInFailure(item.message) && providerId !== undefined && (
+          {shouldOfferLogin(item.message, loginKind) && providerId !== undefined && (
             <Button
               size="sm"
               variant="outline"

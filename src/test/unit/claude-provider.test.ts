@@ -34,6 +34,8 @@ function fakeLoadQuery(opts: {
   setModel?: (model?: string) => Promise<void>;
   /** What `supportedModels()` answers, for a test that seeds the catalog. */
   models?: unknown[];
+  /** Observes the `options` object passed to every fake `query()` call. */
+  onQuery?: (options: unknown) => void;
 } = {}) {
   const calls: { options: Record<string, unknown>; prompt: AsyncIterable<unknown> }[] = [];
   /** Every model pushed at the *running* query, in order. */
@@ -44,6 +46,7 @@ function fakeLoadQuery(opts: {
 
   const queryFn = (params: { prompt: AsyncIterable<unknown>; options: Record<string, unknown> }) => {
     calls.push({ options: params.options, prompt: params.prompt });
+    opts.onQuery?.(params.options);
     // A minimal stand-in for the real Query: a real async generator (so
     // `for await` over it behaves correctly and terminates) with the extra
     // Query-interface methods claude-provider.ts calls bolted on.
@@ -1372,5 +1375,55 @@ suite('ClaudeProvider permission metadata', () => {
     await tick();
     await permissionPromise;
     await run.dispose();
+  });
+});
+
+suite('ClaudeProvider instance overrides', () => {
+  test('an instance override sets id, displayName and merges env/pathToClaudeCodeExecutable into Options', async () => {
+    let capturedOptions: Record<string, unknown> | undefined;
+    const fake = fakeLoadQuery({
+      onQuery: (options) => { capturedOptions = options as Record<string, unknown>; },
+    });
+    const provider = new ClaudeProvider(fake.load as never, undefined, {
+      id: 'claude-work', displayName: 'Claude (work)',
+      env: { ANTHROPIC_API_KEY: 'sk-work' } as NodeJS.ProcessEnv,
+      pathToClaudeCodeExecutable: '/opt/claude-work/claude',
+    });
+    assert.strictEqual(provider.id, 'claude-work');
+    assert.strictEqual(provider.displayName, 'Claude (work)');
+    const run = provider.start({ cwd: '/repo', permissionMode: 'default' });
+    run.send('hi');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.strictEqual((capturedOptions?.env as Record<string, string> | undefined)?.ANTHROPIC_API_KEY, 'sk-work');
+    assert.strictEqual(capturedOptions?.pathToClaudeCodeExecutable, '/opt/claude-work/claude');
+    await run.dispose();
+  });
+
+  test('an instance override merges env/pathToClaudeCodeExecutable into the probe path (fetchModels)', async () => {
+    let capturedOptions: Record<string, unknown> | undefined;
+    const fake = fakeLoadQuery({
+      onQuery: (options) => { capturedOptions = options as Record<string, unknown>; },
+      models: [],
+    });
+    const provider = new ClaudeProvider(fake.load as never, undefined, {
+      id: 'claude-work', displayName: 'Claude (work)',
+      env: { ANTHROPIC_API_KEY: 'sk-work' } as NodeJS.ProcessEnv,
+      pathToClaudeCodeExecutable: '/opt/claude-work/claude',
+    });
+    await provider.fetchModels('/repo');
+    assert.strictEqual((capturedOptions?.env as Record<string, string> | undefined)?.ANTHROPIC_API_KEY, 'sk-work');
+    assert.strictEqual(capturedOptions?.pathToClaudeCodeExecutable, '/opt/claude-work/claude');
+  });
+
+  test('id/displayName default to claude/Claude when no instance override is given', () => {
+    const provider = new ClaudeProvider(fakeLoadQuery().load as never);
+    assert.strictEqual(provider.id, 'claude');
+    assert.strictEqual(provider.displayName, 'Claude');
+    assert.strictEqual(provider.loginKind, undefined);
+  });
+
+  test('loginKind passes through from the instance override', () => {
+    const provider = new ClaudeProvider(fakeLoadQuery().load as never, undefined, { loginKind: 'none' });
+    assert.strictEqual(provider.loginKind, 'none');
   });
 });

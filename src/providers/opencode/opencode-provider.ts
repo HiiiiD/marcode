@@ -29,10 +29,10 @@ interface AcpProbeConnection {
  * shim, and Node 22 refuses to spawn one directly (EINVAL) since the
  * command-injection hardening in 20.x.
  */
-export function spawnOpenCodeAcp(binPath?: string): AcpChild {
+export function spawnOpenCodeAcp(binPath?: string, env?: NodeJS.ProcessEnv): AcpChild {
   const bin = binPath ?? 'opencode';
   const child = spawnChildProcess(bin, ['acp'], {
-    stdio: ['pipe', 'pipe', 'pipe'], shell: true, windowsHide: true,
+    stdio: ['pipe', 'pipe', 'pipe'], shell: true, windowsHide: true, ...(env ? { env } : {}),
   });
   let tail = '';
   child.stderr?.on('data', (chunk: Buffer) => {
@@ -70,19 +70,22 @@ const OPENCODE_MODES: PermissionModeInfo[] = [
 ];
 
 export class OpenCodeProvider implements AgentProvider {
-  readonly id = 'opencode';
-  readonly displayName = 'OpenCode';
+  readonly id: string;
+  readonly displayName: string;
   /**
    * Measured on 1.18.18: a `session/load` from a directory other than the one
    * that created the session replays the full history and then never answers.
    * Relocation therefore reseeds by replay rather than resuming natively.
    */
   readonly threadScope: ThreadScope = 'cwd';
+  readonly loginKind?: 'oauth' | 'none';
 
   private models: ModelInfo[] = [];
   private readonly binPath?: string;
-  private readonly spawn: (bin: string) => AcpChild;
+  private readonly spawn: (bin: string, env?: NodeJS.ProcessEnv) => AcpChild;
   private readonly selfControlMcp?: SelfControlMcpConfig;
+  /** Instance env override, merged into every spawned `opencode acp` process's env. */
+  private readonly env?: NodeJS.ProcessEnv;
 
   /**
    * Deliberately never assigned. ACP carries no plan-usage data, so this
@@ -95,11 +98,26 @@ export class OpenCodeProvider implements AgentProvider {
   readonly fetchUsage?: AgentProvider['fetchUsage'];
 
   constructor(opts: {
-    binPath?: string; spawn?: (bin: string) => AcpChild; selfControlMcp?: SelfControlMcpConfig;
+    id?: string;
+    displayName?: string;
+    binPath?: string;
+    spawn?: (bin: string, env?: NodeJS.ProcessEnv) => AcpChild;
+    selfControlMcp?: SelfControlMcpConfig;
+    env?: NodeJS.ProcessEnv;
+    loginKind?: 'oauth' | 'none';
   } = {}) {
+    this.id = opts.id ?? 'opencode';
+    this.displayName = opts.displayName ?? 'OpenCode';
     this.binPath = opts.binPath;
-    this.spawn = opts.spawn ?? ((bin) => spawnOpenCodeAcp(bin));
+    this.spawn = opts.spawn ?? ((bin, env) => spawnOpenCodeAcp(bin, env));
     this.selfControlMcp = opts.selfControlMcp;
+    this.env = opts.env;
+    this.loginKind = opts.loginKind;
+  }
+
+  /** Instance env merged over `process.env`, or `undefined` when there is no override. */
+  private mergedEnv(): NodeJS.ProcessEnv | undefined {
+    return this.env ? { ...process.env, ...this.env } : undefined;
   }
 
   listModels(): ModelInfo[] { return this.models; }
@@ -122,7 +140,7 @@ export class OpenCodeProvider implements AgentProvider {
   async fetchModels(cwd: string): Promise<ModelInfo[]> {
     let child: AcpChild;
     try {
-      child = this.spawn(this.binPath ?? 'opencode');
+      child = this.spawn(this.binPath ?? 'opencode', this.mergedEnv());
     } catch {
       this.models = [];
       throw new Error('opencode not found. Install it, or set marcode.opencode.path.');
@@ -164,7 +182,7 @@ export class OpenCodeProvider implements AgentProvider {
   }
 
   start(opts: StartOptions): AgentRun {
-    const child = this.spawn(this.binPath ?? 'opencode');
+    const child = this.spawn(this.binPath ?? 'opencode', this.mergedEnv());
     return new AcpRun(child, {
       cwd: opts.cwd,
       model: opts.model,

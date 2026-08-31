@@ -77,6 +77,16 @@ suite('OpenCodeProvider', () => {
     assert.strictEqual(provider.threadScope, 'cwd');
   });
 
+  test('loginKind reflects the constructor option', () => {
+    const provider = new OpenCodeProvider({ spawn: scriptedSpawn().spawn, loginKind: 'none' });
+    assert.strictEqual(provider.loginKind, 'none');
+  });
+
+  test('loginKind is undefined when the constructor option is omitted', () => {
+    const provider = new OpenCodeProvider({ spawn: scriptedSpawn().spawn });
+    assert.strictEqual(provider.loginKind, undefined);
+  });
+
   test('offers exactly the four modes it can enforce', () => {
     const provider = new OpenCodeProvider({ spawn: scriptedSpawn().spawn });
     assert.deepStrictEqual(provider.listPermissionModes().map((m) => m.id),
@@ -166,5 +176,28 @@ suite('OpenCodeProvider', () => {
       },
     ]);
     await run.dispose();
+  });
+
+  test('an instance override sets id/displayName and merges env into the spawned process', async () => {
+    let capturedEnv: NodeJS.ProcessEnv | undefined;
+    const { spawn: scripted } = scriptedSpawn();
+    const provider = new OpenCodeProvider({
+      id: 'opencode-grok', displayName: 'OpenCode (Grok)',
+      env: { OPENCODE_CONFIG_DIR: '/home/user/.config/opencode-grok' } as NodeJS.ProcessEnv,
+      spawn: (bin, env) => {
+        capturedEnv = env;
+        return scripted();
+      },
+    });
+    assert.strictEqual(provider.id, 'opencode-grok');
+    assert.strictEqual(provider.displayName, 'OpenCode (Grok)');
+    provider.start({ cwd: '/repo', permissionMode: 'default' });
+    assert.strictEqual(capturedEnv?.OPENCODE_CONFIG_DIR, '/home/user/.config/opencode-grok');
+  });
+
+  test('id/displayName default to opencode/OpenCode when no instance override is given', () => {
+    const provider = new OpenCodeProvider({ spawn: scriptedSpawn().spawn });
+    assert.strictEqual(provider.id, 'opencode');
+    assert.strictEqual(provider.displayName, 'OpenCode');
   });
 });

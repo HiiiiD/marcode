@@ -270,9 +270,10 @@ function errorMessage(err: unknown): string {
 const CANCELLED: QuestionAnswers = Object.freeze({ __cancelled__: [] }) as QuestionAnswers;
 
 export class ClaudeProvider implements AgentProvider {
-  readonly id = 'claude';
-  readonly displayName = 'Claude';
+  readonly id: string;
+  readonly displayName: string;
   readonly threadScope: ThreadScope = 'cwd';
+  readonly loginKind?: 'oauth' | 'none';
 
   /**
    * The last answer from `fetchModels()`, and the whole of what this provider
@@ -284,10 +285,28 @@ export class ClaudeProvider implements AgentProvider {
    */
   private models: ModelInfo[] = [];
 
+  /** Instance env override, merged into every `Options.env` this provider builds. */
+  private readonly env?: NodeJS.ProcessEnv;
+  /** Instance binary override — a second Claude Code install, not just a second account. */
+  private readonly pathToClaudeCodeExecutable?: string;
+
   constructor(
     private readonly loadQueryFn: () => Promise<QueryFn> = loadQuery,
     private readonly selfControlMcp?: SelfControlMcpConfig,
-  ) {}
+    instance?: {
+      id?: string;
+      displayName?: string;
+      env?: NodeJS.ProcessEnv;
+      pathToClaudeCodeExecutable?: string;
+      loginKind?: 'oauth' | 'none';
+    },
+  ) {
+    this.id = instance?.id ?? 'claude';
+    this.displayName = instance?.displayName ?? 'Claude';
+    this.env = instance?.env;
+    this.pathToClaudeCodeExecutable = instance?.pathToClaudeCodeExecutable;
+    this.loginKind = instance?.loginKind;
+  }
 
   listModels(): ModelInfo[] { return this.models; }
 
@@ -368,7 +387,14 @@ export class ClaudeProvider implements AgentProvider {
     // for `prompt`, and this one ends without ever yielding a message.
     const prompts = new Channel<SDKUserMessage>();
     prompts.close();
-    const probe = query({ prompt: prompts, options: { cwd } });
+    const probe = query({
+      prompt: prompts,
+      options: {
+        cwd,
+        ...(this.env ? { env: this.env } : {}),
+        ...(this.pathToClaudeCodeExecutable ? { pathToClaudeCodeExecutable: this.pathToClaudeCodeExecutable } : {}),
+      },
+    });
     try {
       return await ask(probe);
     } finally {
@@ -528,6 +554,8 @@ export class ClaudeProvider implements AgentProvider {
         // Safe on models without adaptive thinking — verified on Haiku, which
         // takes the same option and returns a summary.
         thinking: { type: 'adaptive', display: 'summarized' },
+        ...(this.env ? { env: this.env } : {}),
+        ...(this.pathToClaudeCodeExecutable ? { pathToClaudeCodeExecutable: this.pathToClaudeCodeExecutable } : {}),
         ...(effort !== undefined ? { effort: effort as SdkEffortLevel } : {}),
         ...(isBypassMode ? { allowDangerouslySkipPermissions: true } : {}),
         ...(this.selfControlMcp ? {

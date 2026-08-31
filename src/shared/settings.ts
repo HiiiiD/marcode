@@ -11,6 +11,13 @@
 /** Which providers this install registers. See `package.json`'s contribution. */
 export const ENABLED_PROVIDERS_SETTING = 'marcode.enabledProviders';
 
+/**
+ * Extra named instances of an existing provider kind (claude/codex/opencode),
+ * additive to `ENABLED_PROVIDERS_SETTING`. See `provider-instances.ts` for
+ * the shape each array entry takes and its validation.
+ */
+export const PROVIDER_INSTANCES_SETTING = 'marcode.providerInstances';
+
 /** The provider ids that setting accepts, and the ones enabled by default. */
 export const KNOWN_PROVIDER_IDS = ['claude', 'codex', 'opencode', 'fake'] as const;
 

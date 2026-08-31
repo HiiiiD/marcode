@@ -361,6 +361,16 @@ export interface AgentProvider {
   readonly displayName: string;
   readonly threadScope: ThreadScope;
   /**
+   * Whether a terminal login flow exists for this instance, and if so what
+   * kind. `undefined` for a provider that predates this field — the webview
+   * falls back to its old message-text heuristic in that case (see
+   * `shouldOfferLogin` in `webview/lib/provider-login.ts`). Set explicitly by
+   * `ClaudeProvider`/`CodexProvider` for a custom instance (see
+   * `provider-instances.ts#computeLoginKind`); base instances leave it unset,
+   * unchanged from today's behavior.
+   */
+  readonly loginKind?: 'oauth' | 'none';
+  /**
    * What is known about this provider's models *right now* — a cache, not a
    * source of truth. Synchronous because session creation and the roster read
    * it inline; providers that can discover their real catalog implement

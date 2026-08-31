@@ -9,9 +9,9 @@ import { Fragment, useEffect, useRef } from "react";
 // similar note on the value import in the vendored resizable.tsx.
 import type { Layout, LayoutChangedMeta } from "react-resizable-panels" with { "resolution-mode": "import" };
 import { findModel } from "../../shared/model-catalog";
-import { ENABLED_PROVIDERS_SETTING } from "../../shared/settings";
+import { ENABLED_PROVIDERS_SETTING, PROVIDER_INSTANCES_SETTING } from "../../shared/settings";
 import { unavailabilityFor } from "../lib/provider-availability";
-import { isSignInFailure } from "../lib/provider-login";
+import { shouldOfferLogin } from "../lib/provider-login";
 import { useStore } from "../store";
 import { Composer } from "./composer";
 import { accessibleTitles, rosterSessionIds, visiblePanes } from "./pane-layout";
@@ -155,7 +155,7 @@ export function PaneGroup({ narrow }: PaneGroupProps) {
                   terminal — only offered when the reason names a specific
                   provider's sign-in state, never for a dead binary or an
                   unrecognized failure a login would not fix. */}
-              {isSignInFailure(p.reason) && (
+              {shouldOfferLogin(p.reason, p.loginKind) && (
                 <Button
                   size="sm"
                   variant="outline"
@@ -175,7 +175,10 @@ export function PaneGroup({ narrow }: PaneGroupProps) {
             <Button
               size="sm"
               variant="outline"
-              onClick={() => post({ t: "open-settings", section: ENABLED_PROVIDERS_SETTING })}
+              onClick={() => post({
+                t: "open-settings",
+                section: `${ENABLED_PROVIDERS_SETTING} ${PROVIDER_INSTANCES_SETTING}`,
+              })}
             >
               <SettingsIcon aria-hidden />
               Open settings

@@ -1,6 +1,7 @@
 import * as assert from 'assert';
 import type {
-  HostToWebview, SessionId, StaleTree, TranscriptItem, WebviewToHost,
+  HostToWebview, ProviderInfo, SessionId, StaleTree, TranscriptItem, UnavailableProvider,
+  WebviewToHost,
 } from '../../protocol/messages';
 
 function assertNever(x: never): never {
@@ -217,5 +218,17 @@ suite('protocol', () => {
       },
     };
     assert.strictEqual(item.role, 'user');
+  });
+
+  test('ProviderInfo and UnavailableProvider carry an optional loginKind', () => {
+    const info: ProviderInfo = {
+      id: 'claude-work', displayName: 'Claude (work)', models: [], permissionModes: [],
+      loginKind: 'none',
+    };
+    const unavailable: UnavailableProvider = {
+      id: 'claude-work', displayName: 'Claude (work)', reason: 'x', loginKind: 'oauth',
+    };
+    assert.strictEqual(info.loginKind, 'none');
+    assert.strictEqual(unavailable.loginKind, 'oauth');
   });
 });
