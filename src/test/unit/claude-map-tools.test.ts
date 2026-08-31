@@ -99,6 +99,18 @@ suite('claude toToolCall', () => {
     });
   });
 
+  test('a background Agent spawn carries background: true; a foreground one carries neither', () => {
+    const background = toToolCall('Agent', {
+      subagent_type: 'Explore', prompt: 'find it', run_in_background: true,
+    });
+    assert.deepStrictEqual(background, {
+      kind: 'subagent', label: 'Agent', action: 'spawn',
+      agent: 'Explore', prompt: 'find it', background: true,
+    });
+    const foreground = toToolCall('Agent', { subagent_type: 'Explore', prompt: 'find it' });
+    assert.strictEqual('background' in foreground, false);
+  });
+
   test('Skill carries the invoked skill name and its args', () => {
     const call = toToolCall('Skill', { skill: 'superpowers:brainstorming', args: 'feature design' });
     assert.deepStrictEqual(call, {

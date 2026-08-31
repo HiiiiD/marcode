@@ -1,6 +1,6 @@
 import * as assert from 'assert';
 import {
-  SUBAGENT_CHILD_WINDOW, formatElapsed, summarizeSubagent, windowChildren,
+  SUBAGENT_CHILD_WINDOW, formatElapsed, isBackgroundDispatch, summarizeSubagent, windowChildren,
 } from '../../webview/components/subagent-window';
 import type { TranscriptItem } from '../../protocol/messages';
 
@@ -69,6 +69,16 @@ suite('subagent window', () => {
     } as TranscriptItem & { children: TranscriptItem[] };
     settled.children[0] = { ...settled.children[0], ts: 3000 };
     assert.strictEqual(summarizeSubagent(settled as never, 99999).elapsedMs, 2000);
+  });
+
+  test('a background dispatch is flagged; a synchronous one is not', () => {
+    const background = {
+      ...parent([]), tool: { kind: 'subagent' as const, label: 'Agent', action: 'spawn' as const, background: true },
+    };
+    assert.strictEqual(isBackgroundDispatch(background as never), true);
+    assert.strictEqual(isBackgroundDispatch(parent([]) as never), false);
+    const plain = child('a');
+    assert.strictEqual(isBackgroundDispatch(plain as never), false);
   });
 
   test('elapsed reads as minutes and seconds past a minute', () => {

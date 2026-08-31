@@ -5,7 +5,7 @@ import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
 import { filterSubagents } from './filter-subagents';
 import {
-  formatElapsed, subagentLabel, subagentStateLabel, summarizeSubagent,
+  formatElapsed, isBackgroundDispatch, subagentLabel, subagentStateLabel, summarizeSubagent,
 } from '../webview/components/subagent-window';
 import type { PaneState } from '../webview/reducer';
 
@@ -92,8 +92,17 @@ export function SubagentList({
                   <ChevronRightIcon aria-hidden className="shrink-0 size-3.5 text-muted-foreground" />
                 </span>
                 <span className="text-muted-foreground">
-                  {summary.toolCount} {summary.toolCount === 1 ? 'tool' : 'tools'}
-                  {' · '}{formatElapsed(summary.elapsedMs)}
+                  {isBackgroundDispatch(item) ? (
+                    // Same reasoning as SubagentCard's header: this dispatch
+                    // never gains nested children, so "0 tools · 0s" would
+                    // misread as stuck rather than "running elsewhere."
+                    'Running in background'
+                  ) : (
+                    <>
+                      {summary.toolCount} {summary.toolCount === 1 ? 'tool' : 'tools'}
+                      {' · '}{formatElapsed(summary.elapsedMs)}
+                    </>
+                  )}
                 </span>
               </Button>
             );
