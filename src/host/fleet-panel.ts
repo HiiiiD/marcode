@@ -48,7 +48,17 @@ export class FleetPanel {
     if (this.panel) {
       this.panel.reveal(vscode.ViewColumn.Beside);
       if (focus) {
+        // `retainContextWhenHidden: false` means a backgrounded Fleet tab has
+        // had its webview torn down; `reveal()` triggers an async reload of
+        // it, so the post below can land on a dead webview and be silently
+        // dropped. Set `pendingFocus` too — not instead — so the reloaded
+        // client's `ready` handler (below) flushes it once the webview is
+        // actually back, covering the torn-down case the immediate post
+        // can't. If the webview was genuinely still live, this post already
+        // delivered and `pendingFocus` is a harmless no-op unless a `ready`
+        // also fires for it, which does not happen in normal operation.
         void this.panel.webview.postMessage({ t: 'fleet-focus-subagent', ...focus });
+        this.pendingFocus = focus;
       }
       return;
     }

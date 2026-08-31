@@ -111,4 +111,23 @@ suite('FleetApp', () => {
     assert.strictEqual(screen.getByText(summary('a').title) !== undefined, true);
     assert.strictEqual(screen.queryByText(summary('b').title) === null, true);
   });
+
+  test('a session added to the sidebar split after hydrate appears once its session-snapshot arrives', () => {
+    renderFleet();
+    hydrateWith(['a']);
+    assert.strictEqual(screen.getByText(summary('a').title) !== undefined, true);
+    assert.strictEqual(screen.queryByText(summary('c').title) === null, true);
+
+    // The sidebar's split grew to include 'c' — layout-changed alone puts the
+    // pane in `layout.panes`, but SessionPicker also needs the matching
+    // `byId` entry (it returns null for a pane with none), which only
+    // session-snapshot creates outside hydrate.
+    sendFromHost({ t: 'layout-changed', layout: layoutOf('a', 'c') });
+    assert.strictEqual(screen.queryByText(summary('c').title) === null, true);
+
+    sendFromHost({ t: 'session-snapshot', session: snapshot('c') });
+
+    assert.strictEqual(screen.getByText(summary('a').title) !== undefined, true);
+    assert.strictEqual(screen.getByText(summary('c').title) !== undefined, true);
+  });
 });

@@ -24,7 +24,7 @@ suite('PostBus', () => {
     assert.strictEqual(REVIEW_WANTS({ t: 'sessions-changed' } as unknown as HostToWebview), true);
   });
 
-  test('FLEET_WANTS admits sessions-changed, session-status, session-patch, layout-changed', () => {
+  test('FLEET_WANTS admits sessions-changed, session-status, session-patch, layout-changed, session-snapshot', () => {
     assert.strictEqual(FLEET_WANTS({ t: 'sessions-changed', sessions: [] } as unknown as HostToWebview), true);
     assert.strictEqual(FLEET_WANTS({ t: 'session-status', id: 's1' as SessionId, status: 'idle' } as HostToWebview), true);
     assert.strictEqual(
@@ -33,6 +33,10 @@ suite('PostBus', () => {
     );
     assert.strictEqual(
       FLEET_WANTS({ t: 'layout-changed', layout: { orientation: 'vertical', panes: [] } } as HostToWebview),
+      true,
+    );
+    assert.strictEqual(
+      FLEET_WANTS({ t: 'session-snapshot', session: { id: 's1' } } as unknown as HostToWebview),
       true,
     );
     assert.strictEqual(FLEET_WANTS({ t: 'fleet-diff', trees: [] } as unknown as HostToWebview), false);

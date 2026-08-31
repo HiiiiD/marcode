@@ -36,14 +36,26 @@ export const REVIEW_WANTS = (msg: HostToWebview): boolean =>
  * rather than just roster status: both are already gated to the sidebar's
  * visible-pane set (`session-patch` by `SessionManager`, `layout-changed`
  * simply by carrying the current `PaneLayout` itself), so admitting them here
- * inherits that scope for free rather than deciding it a second time. Never
- * `fleet-diff` — Fleet has no diff surface — so a new message type still
- * defaults to not reaching this client, the same discipline `REVIEW_WANTS`
- * documents.
+ * inherits that scope for free rather than deciding it a second time.
+ *
+ * `session-snapshot` joined for the same reason: it is the only message that
+ * creates a `byId` entry outside `hydrate` (`sessions-changed` explicitly
+ * skips ids with no existing pane, and `session-patch` returns early on a
+ * missing one), and `SessionManager.setVisible()` is the only place that
+ * emits it — always for a session it just revealed, i.e. one already in the
+ * scope `layout-changed` carries. Without it, a session added to the
+ * sidebar's split after Fleet has already hydrated shows up in the layout but
+ * never gets a `byId` entry, so `SessionPicker`'s `if (!paneState) return
+ * null` guard hides it forever.
+ *
+ * Never `fleet-diff` — Fleet has no diff surface — so a new message type
+ * still defaults to not reaching this client, the same discipline
+ * `REVIEW_WANTS` documents.
  */
 export const FLEET_WANTS = (msg: HostToWebview): boolean =>
   msg.t === 'sessions-changed' || msg.t === 'session-status'
-  || msg.t === 'session-patch' || msg.t === 'layout-changed';
+  || msg.t === 'session-patch' || msg.t === 'layout-changed'
+  || msg.t === 'session-snapshot';
 
 export class PostBus {
   private readonly clients = new Set<PostClient>();
