@@ -170,7 +170,7 @@
     "codex:bindings": "codex app-server generate-ts --out .codex-bindings"
   },
   "devDependencies": {
-    "@anthropic-ai/sdk": "^0.117.1",
+    "@anthropic-ai/sdk": "^0.122.0",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "@tailwindcss/cli": "^4.3.3",
     "@testing-library/dom": "^10.4.1",
