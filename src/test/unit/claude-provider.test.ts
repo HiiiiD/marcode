@@ -1059,6 +1059,69 @@ suite('ClaudeProvider (cancellation)', () => {
     );
   });
 
+  test('a late genuine result message for an interrupted turn does not end a newer turn already in flight', async () => {
+    // interrupt() pushes its own synthetic turn-end immediately, but the SDK's
+    // real `result` message for the interrupted turn (terminal_reason:
+    // 'aborted_streaming') can still arrive later, over the SAME persistent
+    // `for await` loop that serves every turn in the conversation. If a
+    // queued message was drained and a new turn is already running by the
+    // time that late message shows up, it must not be mistaken for that new
+    // turn's own end.
+    let releaseLateResult!: () => void;
+    const lateResult = new Promise<void>((resolve) => { releaseLateResult = resolve; });
+    let stop!: () => void;
+    const stopSignal = new Promise<void>((resolve) => { stop = resolve; });
+    const queryFn = (params: { prompt: AsyncIterable<unknown>; options: unknown }) => {
+      void params;
+      const gen = (async function* () {
+        await lateResult;
+        yield {
+          type: 'result', subtype: 'error_during_execution',
+          terminal_reason: 'aborted_streaming', errors: [],
+          uuid: 'u1', session_id: 's1',
+        };
+        await stopSignal;
+      })() as AsyncGenerator<unknown, void> & {
+        interrupt: () => Promise<undefined>;
+        setPermissionMode: () => Promise<void>;
+        applyFlagSettings: () => Promise<void>;
+        close: () => void;
+        mcpServerStatus: () => Promise<unknown[]>;
+      };
+      gen.interrupt = async () => undefined;
+      gen.setPermissionMode = async () => { /* no-op fake */ };
+      gen.applyFlagSettings = async () => { /* no-op fake */ };
+      gen.close = () => { stop(); releaseLateResult(); };
+      gen.mcpServerStatus = async () => [];
+      return gen;
+    };
+
+    const provider = new ClaudeProvider((async () => queryFn) as never);
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+    const events = collect(run);
+    run.send('hi');
+    await tick();
+
+    await run.interrupt();
+    const turnEndsAfterInterrupt = events().filter((e) => e.kind === 'turn-end').length;
+    assert.strictEqual(turnEndsAfterInterrupt, 1, 'interrupt() self-resolves the first turn once');
+
+    // Stands in for AgentSession.drainQueued() re-delivering the parked
+    // message once the synthetic turn-end above went through.
+    run.send('second');
+    await tick();
+
+    releaseLateResult();
+    await tick();
+
+    assert.strictEqual(
+      events().filter((e) => e.kind === 'turn-end').length,
+      turnEndsAfterInterrupt,
+      'the late result message belongs to the interrupted turn and must not end the newer turn',
+    );
+    await run.dispose();
+  });
+
   test('interrupt() stops every tracked background task before interrupting the foreground turn', async () => {
     // A backgrounded task (Ctrl+B semantics) survives Query.interrupt() by
     // design — the SDK reports its id via `background_tasks_changed` and
