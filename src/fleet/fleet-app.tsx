@@ -1,5 +1,6 @@
 // src/fleet/fleet-app.tsx
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { onHostMessage } from '@/vscode-api';
 import { MessageScrollerProvider } from '@/components/ui/message-scroller';
 import { useStore } from '../webview/store';
 import { SubagentTranscript } from '../webview/components/subagent-transcript';
@@ -12,6 +13,19 @@ export function FleetApp() {
   const [selectedSessionId, setSelectedSessionId] = useState<SessionId | null>(null);
   const [selectedSubagentId, setSelectedSubagentId] = useState<string | null>(null);
   const [showSettled, setShowSettled] = useState(false);
+
+  // Independent of the ClientState reducer's own onHostMessage subscription
+  // (mounted by StoreProvider) — this is Fleet-only UI state with no home in
+  // ClientState, so it listens for the one message type that reducer has no
+  // case for (and correctly no-ops on, via its exhaustive switch's default
+  // branch) rather than routing it through dispatch.
+  useEffect(() => {
+    return onHostMessage((msg) => {
+      if (msg.t !== 'fleet-focus-subagent') { return; }
+      setSelectedSessionId(msg.sessionId);
+      setSelectedSubagentId(msg.itemId);
+    });
+  }, []);
 
   if (!state.ready) {
     return <div className="p-4 text-sm text-muted-foreground">Loading…</div>;
