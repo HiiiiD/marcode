@@ -270,6 +270,8 @@ export interface ProviderInfo {
    * offer one provider's modes for another's session.
    */
   permissionModes: PermissionModeInfo[];
+  /** See `AgentProvider.loginKind` — passed through verbatim by `SessionManager.catalog()`. */
+  loginKind?: 'oauth' | 'none';
 }
 
 /**
@@ -286,6 +288,8 @@ export interface UnavailableProvider {
   displayName: string;
   /** One line, provider-authored and already redacted. Shown verbatim. */
   reason: string;
+  /** See `AgentProvider.loginKind` — passed through verbatim by `SessionManager.unavailable()`. */
+  loginKind?: 'oauth' | 'none';
 }
 
 export type ContextResult =
