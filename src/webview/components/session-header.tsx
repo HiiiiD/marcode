@@ -107,30 +107,45 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
         that teaches the user it is empty; this one appears exactly when the
         session is in a worktree, which is also when it means something.
       */}
+      {/*
+        Mounted unconditionally, unlike the `canBringBack`-gated content
+        inside it: Archive belongs here too, not only in the roster row's own
+        menu, because a user acting from the pane has no reason to go find
+        that session in the roster first. It posts the same `close-session`
+        message that row does — same operation, second entry point, exactly
+        how the pane's own Hide button already mirrors the roster's checkbox.
+      */}
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={<Button variant="ghost" size="icon-xs" className="shrink-0" />}
+          // "Pane actions", not the roster row's own "More actions for
+          // {title}": both mount at once when a session is both open in a
+          // pane and visible in the roster picker, and identical labels
+          // would leave `getByLabelText` unable to tell them apart.
+          aria-label={`More pane actions for ${accessibleTitle}`}
+        >
+          <MoreHorizontalIcon aria-hidden />
+        </DropdownMenuTrigger>
+        {/* `w-auto`, overriding the menu's default `w-(--anchor-width)`:
+            anchored to a 24px icon button, `min-w-32` is all that stops
+            the item from being narrower than the phrase it has to be read
+            by, and 128px still wraps it. Same fix as StaleTrees' row menu. */}
+        <DropdownMenuContent className="w-auto">
+          {canBringBack && (
+            // The ellipsis is the promise that this opens a confirmation
+            // rather than deleting a directory on the way up from the
+            // click — the same contract the roster's `Delete…` keeps.
+            <DropdownMenuItem onClick={() => setBringBackOpen(true)}>
+              Bring branch back…
+            </DropdownMenuItem>
+          )}
+          <DropdownMenuItem onClick={() => post({ t: "close-session", id: s.id })}>
+            Archive {accessibleTitle}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
       {canBringBack && (
-        <>
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={<Button variant="ghost" size="icon-xs" className="shrink-0" />}
-              aria-label={`More actions for ${accessibleTitle}`}
-            >
-              <MoreHorizontalIcon aria-hidden />
-            </DropdownMenuTrigger>
-            {/* `w-auto`, overriding the menu's default `w-(--anchor-width)`:
-                anchored to a 24px icon button, `min-w-32` is all that stops
-                the item from being narrower than the phrase it has to be read
-                by, and 128px still wraps it. Same fix as StaleTrees' row menu. */}
-            <DropdownMenuContent className="w-auto">
-              {/* The ellipsis is the promise that this opens a confirmation
-                  rather than deleting a directory on the way up from the
-                  click — the same contract the roster's `Delete…` keeps. */}
-              <DropdownMenuItem onClick={() => setBringBackOpen(true)}>
-                Bring branch back…
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <BringBackDialog pane={pane} open={bringBackOpen} onOpenChange={setBringBackOpen} />
-        </>
+        <BringBackDialog pane={pane} open={bringBackOpen} onOpenChange={setBringBackOpen} />
       )}
       <Button
         variant="ghost"

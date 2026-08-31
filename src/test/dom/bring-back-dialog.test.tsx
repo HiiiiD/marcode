@@ -28,7 +28,7 @@ async function openDialog(plan: BringBackPlan) {
   renderApp();
   hydrateInWorktree();
   sendFromHost({ t: 'bring-back-plan', id: 'a', plan });
-  await userEvent.click(screen.getByLabelText('More actions for Session a'));
+  await userEvent.click(screen.getByLabelText('More pane actions for Session a'));
   // `findBy`, not `getBy`: Base UI portals its menu asynchronously — every
   // other menu suite here opens one the same way.
   await userEvent.click(await screen.findByRole('menuitem', { name: /Bring branch back/ }));
@@ -43,13 +43,16 @@ suite('BringBackDialog', () => {
     assert.strictEqual(asked[0].t === 'request-bring-back' && asked[0].id, 'a');
   });
 
-  test('no door until the host has answered', () => {
+  test('no door until the host has answered', async () => {
     renderApp();
     hydrateInWorktree();
-    assert.strictEqual(screen.queryByLabelText('More actions for Session a') === null, true);
+    // The pane menu itself is always there now (Archive lives in it too) —
+    // only the "Bring branch back…" item inside it is gated on the plan.
+    await userEvent.click(screen.getByLabelText('More pane actions for Session a'));
+    assert.strictEqual(screen.queryByText(/Bring branch back/) === null, true);
   });
 
-  test('no door for a session that is not in a worktree', () => {
+  test('no door for a session that is not in a worktree', async () => {
     renderApp();
     hydrateInWorktree();
     sendFromHost({
@@ -57,7 +60,8 @@ suite('BringBackDialog', () => {
       id: 'a',
       plan: { ok: false, isWorktree: false, reason: 'This directory is the main working tree.' },
     });
-    assert.strictEqual(screen.queryByLabelText('More actions for Session a') === null, true);
+    await userEvent.click(screen.getByLabelText('More pane actions for Session a'));
+    assert.strictEqual(screen.queryByText(/Bring branch back/) === null, true);
   });
 
   test('the dialog names both steps and the branch they act on', async () => {

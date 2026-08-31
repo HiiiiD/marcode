@@ -84,4 +84,31 @@ suite('SessionManager memory indexing', () => {
     assert.strictEqual(memory.indexed.length, 1);
     assert.deepStrictEqual(memory.forgotten, [session.state.id]);
   });
+
+  test('dispose() indexes still-open sessions instead of losing them on reload', async () => {
+    const store = new TranscriptStore(await tempRoot());
+    const providers = new Map<string, AgentProvider>([['fake', new FakeProvider()]]);
+    const memory = new RecordingMemoryStore();
+    const manager = new SessionManager(
+      store, providers, () => {}, undefined, undefined, undefined, undefined, undefined, memory,
+    );
+    const session = await manager.create('fake', '/repo');
+    session.send('Investigate the flaky login test');
+    // Never closed — this is the reload/quit path, not `close()`.
+    await manager.dispose();
+    assert.strictEqual(memory.indexed.length, 1);
+    assert.strictEqual(memory.indexed[0].sessionId, session.state.id);
+  });
+
+  test('dispose() does not index an untitled, empty session', async () => {
+    const store = new TranscriptStore(await tempRoot());
+    const providers = new Map<string, AgentProvider>([['fake', new FakeProvider()]]);
+    const memory = new RecordingMemoryStore();
+    const manager = new SessionManager(
+      store, providers, () => {}, undefined, undefined, undefined, undefined, undefined, memory,
+    );
+    await manager.create('fake', '/repo');
+    await manager.dispose();
+    assert.strictEqual(memory.indexed.length, 0);
+  });
 });

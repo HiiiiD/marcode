@@ -231,6 +231,16 @@ suite("SessionHeader status", () => {
     );
   });
 
+  test("the pane's own menu can archive the session, not just hide it", async () => {
+    renderApp();
+    hydrate();
+
+    await userEvent.click(screen.getByLabelText("More pane actions for Session a"));
+    await userEvent.click(screen.getByText("Archive Session a"));
+
+    assert.ok(posted().some((m) => m.t === "close-session" && m.id === "a"));
+  });
+
   test("the pane X removes the pane without archiving the session", async () => {
     renderApp();
     hydrateTwoPanes();
