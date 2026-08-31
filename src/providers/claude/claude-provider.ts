@@ -447,6 +447,22 @@ export class ClaudeProvider implements AgentProvider {
     // below stops each of these explicitly: `Query.interrupt()` only cancels
     // the foreground turn, and a backgrounded task survives it by design.
     let backgroundTaskIds: string[] = [];
+    // Bumped on every send() — the ordinal of the turn currently in flight.
+    // Needed because `session` (the `for await` loop below) is ONE persistent
+    // loop for the whole conversation, not one per turn: `interrupt()` pushes
+    // a synthetic `turn-end` the moment the SDK accepts the request, but the
+    // SDK's own `result` message for that same interrupted turn can still
+    // arrive later, over that same loop. If a queued message was drained and
+    // delivered in between, a newer turn is already running by the time that
+    // late message shows up, and mapping it to a second `turn-end` would
+    // wrongly end the newer turn instead of the one it actually belongs to.
+    // See `interrupt()` and the `for await` loop below.
+    let turnGen = 0;
+    // The turn generation `interrupt()` last self-resolved, so the loop below
+    // can recognize a late genuine echo of that same turn-end and drop it
+    // once `turnGen` has moved on. `undefined` once consumed or once a fresh
+    // interrupt has not happened for the current turn.
+    let interruptedGen: number | undefined;
 
     const canUseTool: CanUseTool = async (toolName, input, options) => {
       const id = options.toolUseID;
@@ -577,6 +593,17 @@ export class ClaudeProvider implements AgentProvider {
           for await (const msg of session) {
             for (const event of mapEvent(msg)) {
               if (event.kind === 'background-tasks-changed') { backgroundTaskIds = event.taskIds; }
+              // A genuine echo of a turn `interrupt()` already self-resolved:
+              // harmless while the session is still idle (drainQueued() finds
+              // nothing to spend), but a newer turn started since — turnGen
+              // moved past what interrupt() captured — means this belongs to
+              // the OLD turn and must not be mistaken for the new one's end.
+              // See the turnGen doc comment above.
+              if (
+                event.kind === 'turn-end' && event.reason === 'interrupted'
+                && interruptedGen !== undefined && interruptedGen !== turnGen
+              ) { continue; }
+              if (event.kind === 'turn-end' && event.reason === 'interrupted') { interruptedGen = undefined; }
               events.push(event);
             }
           }
@@ -596,6 +623,7 @@ export class ClaudeProvider implements AgentProvider {
     return {
       events,
       send: (text: string, context?: EditorContext, attachments?: Attachment[]) => {
+        turnGen += 1;
         ensureStarted();
         const body = context ? `${formatEditorContext(context)}\n\n${text}` : text;
         const content: ContentBlockParam[] = [
@@ -759,7 +787,10 @@ export class ClaudeProvider implements AgentProvider {
           // done nothing visible. Pushed unconditionally on the success path,
           // same as codex-run.ts's `interrupt()` — a later genuine result
           // message still arriving is a harmless second `turn-end` onto an
-          // already-idle, already-drained session.
+          // already-idle, already-drained session — UNLESS a newer turn has
+          // started by the time it shows up, which is what `interruptedGen`
+          // (checked in the `for await` loop above) exists to catch.
+          interruptedGen = turnGen;
           events.push({ kind: 'turn-end', reason: 'interrupted' });
         } catch (err) {
           events.push({ kind: 'turn-end', reason: 'error', error: errorMessage(err) });
