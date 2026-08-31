@@ -85,6 +85,22 @@ suite('SessionManager memory indexing', () => {
     assert.deepStrictEqual(memory.forgotten, [session.state.id]);
   });
 
+  test('hiding a session (the pane X, or an unchecked roster row) indexes it without archiving', async () => {
+    const store = new TranscriptStore(await tempRoot());
+    const providers = new Map<string, AgentProvider>([['fake', new FakeProvider()]]);
+    const memory = new RecordingMemoryStore();
+    const manager = new SessionManager(
+      store, providers, () => {}, undefined, undefined, undefined, undefined, undefined, memory,
+    );
+    const session = await manager.create('fake', '/repo');
+    session.send('Investigate the flaky login test');
+    await manager.setVisible([session.state.id]); // reveal, as opening a pane does
+    await manager.setVisible([]); // hide — set-layout/set-visible, never close-session
+    assert.strictEqual(memory.indexed.length, 1);
+    assert.strictEqual(memory.indexed[0].sessionId, session.state.id);
+    assert.strictEqual(session.state.archived, false, 'hiding must never archive');
+  });
+
   test('dispose() indexes still-open sessions instead of losing them on reload', async () => {
     const store = new TranscriptStore(await tempRoot());
     const providers = new Map<string, AgentProvider>([['fake', new FakeProvider()]]);

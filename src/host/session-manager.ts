@@ -1406,7 +1406,15 @@ export class SessionManager implements SessionSink {
       // reading a transcript the in-flight fetch is already reading.
       if (this.snapshotting.has(id)) { continue; }
       const state = this.meta.get(id);
-      if (state && await this.isDiscardable(id, state)) { await this.remove(id); }
+      if (!state) { continue; }
+      if (await this.isDiscardable(id, state)) { await this.remove(id); continue; }
+      // Hiding a pane (the header's X, or unchecking the roster row) is the
+      // moment a user is "done for now" without making the deliberate
+      // Archive choice — index it opportunistically here too, so memory
+      // does not depend on remembering the separate action. Never touches
+      // `archived` or disposes the live session: it stays exactly as open
+      // as it was, just re-indexed with whatever is on disk right now.
+      await this.indexForMemory(id, state);
     }
   }
 
