@@ -65,7 +65,7 @@ suite('PaneGroup', () => {
     await userEvent.click(screen.getByRole('button', { name: /open settings/i }));
 
     assert.deepStrictEqual(posted().at(-1), {
-      t: 'open-settings', section: 'marcode.enabledProviders',
+      t: 'open-settings', section: 'marcode.enabledProviders marcode.providerInstances',
     });
   });
 
@@ -134,7 +134,7 @@ suite('PaneGroup', () => {
     assert.strictEqual(screen.queryByRole('button', { name: /log in/i }) === null, true);
   });
 
-  test('an unavailable provider with loginKind "oauth" offers a login action even with unrelated reason text', async () => {
+  test('an unavailable provider with loginKind "oauth" offers no login action for an unrelated reason', () => {
     renderApp();
     sendFromHost({
       t: 'hydrate',
@@ -142,6 +142,22 @@ suite('PaneGroup', () => {
       catalog: [],
       unavailable: [{
         id: 'codex-work', displayName: 'Codex (work)', reason: 'connection refused', loginKind: 'oauth',
+      }],
+      probing: false,
+      usage: {},
+    });
+    assert.strictEqual(screen.queryByRole('button', { name: /log in/i }) === null, true);
+  });
+
+  test('an unavailable provider with loginKind "oauth" offers a login action for a sign-in-shaped reason', async () => {
+    renderApp();
+    sendFromHost({
+      t: 'hydrate',
+      sessions: [], layout: layoutOf(), snapshots: [],
+      catalog: [],
+      unavailable: [{
+        id: 'codex-work', displayName: 'Codex (work)',
+        reason: 'Not signed in to Codex. Run `codex login`.', loginKind: 'oauth',
       }],
       probing: false,
       usage: {},

@@ -19,16 +19,16 @@ export function isSignInFailure(reason: string | undefined): boolean {
 /**
  * Whether the Login action belongs on this failure.
  *
- * `loginKind` is authoritative when a provider set it (custom instances
- * always do — see `AgentProvider.loginKind`): `'none'` suppresses the button
+ * `loginKind` is a GATE, never a FORCER: `'none'` suppresses the button
  * regardless of the message text (an API-key claude instance's failure is
- * never fixed by a terminal login), `'oauth'` always offers it (a codex
- * instance's login command varies by whether a key is configured, but a
- * login flow always exists). `undefined` — every base, non-custom provider
- * today — falls back to the old message-text heuristic, unchanged behavior.
+ * never fixed by a terminal login), and every other value — `'oauth'` or
+ * `undefined` — falls through to the message-text heuristic. Both providers
+ * already normalize genuine sign-in failures to text `isSignInFailure`
+ * matches, so an oauth-kind instance still gets the button for those; it is
+ * just no longer forced on for an unrelated failure (a tool error, a
+ * dropped connection) that a login flow would not fix.
  */
 export function shouldOfferLogin(reason: string | undefined, loginKind: 'oauth' | 'none' | undefined): boolean {
   if (loginKind === 'none') { return false; }
-  if (loginKind === 'oauth') { return true; }
   return isSignInFailure(reason);
 }

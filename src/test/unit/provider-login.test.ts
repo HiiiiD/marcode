@@ -27,8 +27,15 @@ suite('shouldOfferLogin', () => {
     );
   });
 
-  test('loginKind "oauth" offers the button even with unrelated text', () => {
-    assert.strictEqual(shouldOfferLogin('some other failure', 'oauth'), true);
+  test('loginKind "oauth" does NOT offer the button for an unrelated reason', () => {
+    assert.strictEqual(shouldOfferLogin('some other failure', 'oauth'), false);
+  });
+
+  test('loginKind "oauth" still offers the button for a sign-in-shaped reason', () => {
+    assert.strictEqual(
+      shouldOfferLogin('Not signed in to Claude. Run `claude auth login`.', 'oauth'),
+      true,
+    );
   });
 
   test('undefined loginKind falls back to the message-text heuristic', () => {
