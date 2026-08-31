@@ -180,6 +180,24 @@ function warnAboutProfile(profile: string): void {
   });
 }
 
+/**
+ * `deactivate()` is the one hook VS Code actually awaits (up to a timeout)
+ * before tearing down the extension host — on "Reload Window" that teardown
+ * can happen shortly after. `context.subscriptions`' own `dispose()` calls
+ * are NOT awaited by VS Code: a subscription's `dispose()` returns `void`,
+ * so a `{ dispose: () => { void manager.dispose(); } }` entry discards the
+ * very promise that would let anyone wait for it. `SessionManager.dispose()`
+ * flushes every live session's buffered transcript writes to disk (see
+ * `AgentSession.dispose()` -> `scheduleFlush()`), so racing it against
+ * process teardown is exactly how a subagent's just-settled tool calls (or
+ * any other pending write) get lost on reload. Captured here and awaited in
+ * `deactivate()` so the flush actually finishes first; the subscriptions
+ * below still call `dispose()` too, but that is a harmless no-op on an
+ * already-disposed manager (see `SessionManager.dispose()`'s own guard),
+ * kept as a backstop for host shutdown paths that skip `deactivate()`.
+ */
+let pendingDeactivate: (() => Promise<void>) | undefined;
+
 export async function activate(context: vscode.ExtensionContext) {
   const rootDir = context.storageUri?.fsPath ?? context.globalStorageUri.fsPath;
   const store = new TranscriptStore(rootDir);
@@ -468,6 +486,11 @@ export async function activate(context: vscode.ExtensionContext) {
     }),
   );
 
+  pendingDeactivate = async () => {
+    await manager.dispose();
+    await selfControlServer.dispose();
+  };
+
   try {
     await manager.init();
   } catch (err) {
@@ -479,7 +502,9 @@ export async function activate(context: vscode.ExtensionContext) {
   }
 }
 
-export function deactivate() {}
+export async function deactivate() {
+  await pendingDeactivate?.();
+}
 
 /**
  * Opens the file behind a transcript chip. `target` is whatever the chip
