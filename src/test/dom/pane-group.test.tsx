@@ -117,6 +117,39 @@ suite('PaneGroup', () => {
     assert.strictEqual(screen.queryByRole('button', { name: /log in/i }) === null, true);
   });
 
+  test('an unavailable provider with loginKind "none" offers no login action even with sign-in text', () => {
+    renderApp();
+    sendFromHost({
+      t: 'hydrate',
+      sessions: [], layout: layoutOf(), snapshots: [],
+      catalog: [],
+      unavailable: [{
+        id: 'claude-work', displayName: 'Claude (work)',
+        reason: 'Not signed in to Claude. Run `claude auth login`.',
+        loginKind: 'none',
+      }],
+      probing: false,
+      usage: {},
+    });
+    assert.strictEqual(screen.queryByRole('button', { name: /log in/i }) === null, true);
+  });
+
+  test('an unavailable provider with loginKind "oauth" offers a login action even with unrelated reason text', async () => {
+    renderApp();
+    sendFromHost({
+      t: 'hydrate',
+      sessions: [], layout: layoutOf(), snapshots: [],
+      catalog: [],
+      unavailable: [{
+        id: 'codex-work', displayName: 'Codex (work)', reason: 'connection refused', loginKind: 'oauth',
+      }],
+      probing: false,
+      usage: {},
+    });
+    await userEvent.click(screen.getByRole('button', { name: /log in/i }));
+    assert.deepStrictEqual(posted().at(-1), { t: 'login-provider', providerId: 'codex-work' });
+  });
+
   test('the empty state stays a plain invitation while the providers still work', () => {
     renderApp();
     sendFromHost({
