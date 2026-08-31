@@ -1,6 +1,8 @@
 // src/fleet/subagent-list.tsx
 import { ChevronLeftIcon, ChevronRightIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
+import { cn } from '@/lib/utils';
 import { filterSubagents } from './filter-subagents';
 import {
   formatElapsed, subagentLabel, subagentStateLabel, summarizeSubagent,
@@ -12,6 +14,12 @@ import type { PaneState } from '../webview/reducer';
  * finished/failed ones too. Each row's summary line is computed the same way
  * `SubagentCard`'s collapsed header is, so this list and the sidebar's
  * inline card never describe one subagent two different ways.
+ *
+ * The header is two rows, not one: a breadcrumb (where you are) and a status
+ * line (what you're looking at, and the one control that changes it). Fusing
+ * them into a single flex row reads as one cramped sentence at 300px — this
+ * gives each its own line and its own job, the same split `SessionHeader`
+ * uses for title vs. status elsewhere in the panel.
  */
 export function SubagentList({
   pane, showSettled, onToggleSettled, onOpen, onBack,
@@ -27,25 +35,29 @@ export function SubagentList({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between gap-2 border-b border-border px-2 py-1 text-xs">
+      <div className="flex flex-col gap-1 border-b border-border pb-1.5">
         <Button
           variant="ghost"
           size="sm"
           onClick={onBack}
-          className="h-6 gap-1 px-1 font-normal text-muted-foreground"
+          className="h-7 w-full justify-start gap-1 px-1.5 font-normal text-muted-foreground"
         >
-          <ChevronLeftIcon aria-hidden className="size-3.5" />
-          <span className="truncate">{pane.summary.title}</span>
+          <ChevronLeftIcon aria-hidden className="size-3.5 shrink-0" />
+          <span className="truncate text-foreground">{pane.summary.title}</span>
         </Button>
-        <Button
-          variant={showSettled ? 'secondary' : 'ghost'}
-          size="sm"
-          aria-pressed={showSettled}
-          className="h-6 px-2 font-normal"
-          onClick={onToggleSettled}
-        >
-          {showSettled ? 'Showing all' : 'Running only'}
-        </Button>
+        <div className="flex items-center justify-between gap-2 px-2 text-xs text-muted-foreground">
+          <span>
+            {subagents.length} {subagents.length === 1 ? 'subagent' : 'subagents'}
+          </span>
+          <label className="flex items-center gap-1.5">
+            <span>Show finished</span>
+            <Switch
+              checked={showSettled}
+              onCheckedChange={onToggleSettled}
+              className="h-4 w-7"
+            />
+          </label>
+        </div>
       </div>
       {subagents.length === 0 ? (
         <div className="p-4 text-sm text-muted-foreground">
@@ -59,23 +71,30 @@ export function SubagentList({
               <Button
                 key={item.id}
                 variant="outline"
-                className="flex h-auto w-full items-center justify-between gap-2 p-2 text-left text-xs font-normal"
+                className="flex h-auto w-full flex-col items-stretch gap-1 p-2 text-left text-xs font-normal"
                 onClick={() => onOpen(item.id)}
               >
-                <span className="flex min-w-0 items-center gap-2">
-                  <span className="truncate font-medium">{subagentLabel(item)}</span>
-                  <span className="sr-only">{subagentStateLabel(item, summary.blocked)}</span>
-                  {summary.blocked && (
-                    <span className="shrink-0 rounded-full border border-primary/40 bg-primary/10 px-1.5 py-0.5 font-medium">
-                      Needs you
-                    </span>
-                  )}
+                <span className="flex min-w-0 items-center justify-between gap-2">
+                  <span className="flex min-w-0 items-center gap-2">
+                    <span className="truncate font-medium">{subagentLabel(item)}</span>
+                    <span className="sr-only">{subagentStateLabel(item, summary.blocked)}</span>
+                    {summary.blocked && (
+                      <span
+                        className={cn(
+                          'shrink-0 rounded-full border border-primary/40',
+                          'bg-primary/10 px-1.5 py-0.5 font-medium text-foreground',
+                        )}
+                      >
+                        Needs you
+                      </span>
+                    )}
+                  </span>
+                  <ChevronRightIcon aria-hidden className="shrink-0 size-3.5 text-muted-foreground" />
                 </span>
-                <span className="shrink-0 text-muted-foreground">
+                <span className="text-muted-foreground">
                   {summary.toolCount} {summary.toolCount === 1 ? 'tool' : 'tools'}
                   {' · '}{formatElapsed(summary.elapsedMs)}
                 </span>
-                <ChevronRightIcon aria-hidden className="shrink-0 size-3.5 text-muted-foreground" />
               </Button>
             );
           })}

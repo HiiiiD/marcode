@@ -61,7 +61,7 @@ suite('FleetApp', () => {
       a: [subagent('s1', 1, 'running', 'Explore'), subagent('s2', 2, 'ok', 'Plan')],
     });
     await userEvent.click(screen.getByText(summary('a').title));
-    await userEvent.click(screen.getByRole('button', { name: /running only/i }));
+    await userEvent.click(screen.getByRole('switch', { name: /show finished/i }));
 
     assert.strictEqual(screen.getByText(/explore/i) !== undefined, true);
     assert.strictEqual(screen.getByText(/plan/i) !== undefined, true);
