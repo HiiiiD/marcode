@@ -260,6 +260,34 @@ suite('AgentSession subagent nesting', () => {
     await session.dispose();
   });
 
+  test('snapshot merges a still-running subagent\'s buffered children', async () => {
+    // No tool-end for task1 or c1: the subagent and its child are still
+    // running when snapshot() is called, exactly like a fresh hydrate
+    // (e.g. Fleet's webview reloading) landing mid-subagent. The buffered
+    // child lives only in AgentSession.childrenByParent at this point —
+    // TranscriptStore.append() was never called for it (only tool-end's
+    // replaceItem/replaceChild write children to disk) — so a snapshot that
+    // reads only the store would see an empty `children` on task1.
+    const provider = new FakeProvider(() => [
+      { kind: 'tool-start', id: 'task1', tool: TASK },
+      { kind: 'tool-start', id: 'c1', tool: READ, parentId: 'task1' },
+      // Deliberately no tool-end and no turn-end: task1 stays 'running'.
+    ]);
+    const session = new AgentSession(baseState(), provider, store, sink);
+    session.send('explore');
+    await settle();
+
+    const snap = await session.snapshot();
+    const tools = toolItems(snap.items);
+    assert.strictEqual(tools.length, 1);
+    assert.strictEqual(tools[0].state, 'running');
+    assert.strictEqual(tools[0].children?.length, 1, 'buffered child merged into the snapshot');
+    assert.strictEqual(
+      (tools[0].children![0] as Extract<TranscriptItem, { role: 'tool' }>).tool.label, 'Read',
+    );
+    await session.dispose();
+  });
+
   test('a plain tool call still produces no children field at all', async () => {
     const provider = new FakeProvider(() => [
       { kind: 'tool-start', id: 't1', tool: READ },

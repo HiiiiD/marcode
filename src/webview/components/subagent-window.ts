@@ -77,6 +77,21 @@ export function subagentStateLabel(item: ToolItem, blocked: boolean): string {
 }
 
 /**
+ * A `spawn` dispatched with `run_in_background: true` — see `ToolCall`'s
+ * `background` field. It settles almost immediately with a "launched"
+ * acknowledgement and can never gain nested children the way a synchronous
+ * Task subagent does: its actual tool activity runs in a separate spawned
+ * session/process this host never sees. `summarizeSubagent`'s "N tools ·
+ * Xs" is a true reading of the data either way, but for one of these it
+ * always reads "0 tools · 0s" and is misread as a stuck or idle subagent —
+ * this is the flag callers use to swap that line for one that says what is
+ * actually true: the work is elsewhere, not absent.
+ */
+export function isBackgroundDispatch(item: ToolItem): boolean {
+  return item.tool.kind === 'subagent' && item.tool.background === true;
+}
+
+/**
  * The agent type from a spawned subagent call, when it carries one. This is
  * the identifying fact — "Explore" tells the user what is running, where
  * "Agent" is only SDK vocabulary. The digging for `subagent_type` now happens

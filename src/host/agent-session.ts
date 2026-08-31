@@ -828,12 +828,33 @@ export class AgentSession {
     await this.scheduleFlush();
     const { items, hasMore } = await this.store.tail(this._state.id);
     return {
-      ...this._state, items, hasMore, pending: [...this.pending.values()],
+      ...this._state, items: items.map((i) => this.withBufferedChildren(i)), hasMore,
+      pending: [...this.pending.values()],
       pendingQuestions: [...this.pendingQuestions.values()],
       invocables: this.invocableEntries,
       mcpServers: this.mcpServers,
       pendingAttachments: this.pendingAttachments,
     };
+  }
+
+  /**
+   * A running subagent's children live only in `childrenByParent` until it
+   * settles — `tool-start` for a nested child streams a patch but never
+   * calls `store.append` (see the 'tool-start' handler above), so
+   * `store.tail()` returns that subagent with an empty (or stale) `children`
+   * array for as long as it keeps running. A snapshot is a fresh read (the
+   * only route a just-(re)opened client has — Fleet's webview in particular,
+   * torn down and rebuilt by `retainContextWhenHidden: false` on every
+   * background/reveal cycle), so without this it would show 0 tools and 0s
+   * elapsed for any subagent still in flight, while a pane that stayed
+   * mounted the whole time shows the right numbers because it only ever
+   * applies live patches and never re-reads the store. Settled items are
+   * left alone: their children were already written through at tool-end.
+   */
+  private withBufferedChildren(item: TranscriptItem): TranscriptItem {
+    if (item.role !== 'tool' || item.state !== 'running') { return item; }
+    const buffered = this.childrenByParent.get(item.toolId);
+    return buffered && buffered.length > 0 ? { ...item, children: [...buffered] } : item;
   }
 
   async loadMore(beforeItemId: string) {

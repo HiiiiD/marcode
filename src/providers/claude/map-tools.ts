@@ -139,6 +139,7 @@ export function toToolCall(name: string, input: unknown): ToolCall {
         isolation: str(record.isolation),
         prompt: str(record.prompt),
         summary: str(record.description),
+        background: record.run_in_background === true ? true : undefined,
       });
 
     case 'SendMessage':

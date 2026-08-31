@@ -44,7 +44,16 @@ export type ToolCall =
   | { kind: 'plan'; label: string; text: string }
   | { kind: 'subagent'; label: string; action: 'spawn' | 'message' | 'collect';
       agent?: string; model?: string; isolation?: string; target?: string;
-      summary?: string; prompt?: string; fields?: Field[] }
+      summary?: string; prompt?: string; fields?: Field[];
+      // A `spawn` dispatched with `run_in_background: true` settles almost
+      // immediately with a "launched" acknowledgement — its actual tool
+      // activity happens in a separate spawned session/process this host
+      // never sees, so it can never gain nested children the way a
+      // synchronous Task subagent does. Distinct from `state: 'running'`
+      // (that's THIS call's own settle state, which flips to 'ok' the
+      // instant the dispatch acknowledges) — this says the underlying work
+      // is structurally invisible here, not that it's unfinished.
+      background?: boolean }
   | { kind: 'mcp'; label: string; server: string; tool: string }
   | { kind: 'other'; label: string; fields?: Field[]; raw: unknown };
 

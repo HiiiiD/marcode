@@ -6,7 +6,8 @@ import { PermissionCard } from './permission-card';
 import { ToolCard } from './tool-card';
 import { TranscriptItemShell } from './transcript-item-shell';
 import {
-  formatElapsed, subagentLabel, subagentStateLabel, summarizeSubagent, windowChildren,
+  formatElapsed, isBackgroundDispatch, subagentLabel, subagentStateLabel, summarizeSubagent,
+  windowChildren,
 } from './subagent-window';
 import { useOpenSubagentTranscript } from './subagent-drill-in-context';
 import type { SessionId, TranscriptItem } from '../../protocol/messages';
@@ -65,8 +66,18 @@ export function SubagentCard({ item, sessionId }: { item: ToolItem; sessionId: S
           {expanded ? <ChevronDownIcon aria-hidden /> : <ChevronRightIcon aria-hidden />}
           <span className="truncate font-medium">{subagentLabel(item)}</span>
           <span className="shrink-0 text-muted-foreground">
-            {summary.toolCount} {summary.toolCount === 1 ? 'tool' : 'tools'}
-            {' · '}{formatElapsed(summary.elapsedMs)}
+            {isBackgroundDispatch(item) ? (
+              // No "N tools · Xs" claim here — this dispatch settles almost
+              // immediately and never gains nested children, so that line
+              // would always read "0 tools · 0s" and look stuck rather than
+              // "running somewhere this card can't see."
+              'Running in background'
+            ) : (
+              <>
+                {summary.toolCount} {summary.toolCount === 1 ? 'tool' : 'tools'}
+                {' · '}{formatElapsed(summary.elapsedMs)}
+              </>
+            )}
             {/* Only present when the spawn call named a model explicitly —
                 most subagents inherit the session's, and this is not the
                 place to guess one. Printed as the SDK gave it: this is not a
