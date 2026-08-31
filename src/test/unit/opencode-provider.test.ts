@@ -77,6 +77,16 @@ suite('OpenCodeProvider', () => {
     assert.strictEqual(provider.threadScope, 'cwd');
   });
 
+  test('loginKind reflects the constructor option', () => {
+    const provider = new OpenCodeProvider({ spawn: scriptedSpawn().spawn, loginKind: 'none' });
+    assert.strictEqual(provider.loginKind, 'none');
+  });
+
+  test('loginKind is undefined when the constructor option is omitted', () => {
+    const provider = new OpenCodeProvider({ spawn: scriptedSpawn().spawn });
+    assert.strictEqual(provider.loginKind, undefined);
+  });
+
   test('offers exactly the four modes it can enforce', () => {
     const provider = new OpenCodeProvider({ spawn: scriptedSpawn().spawn });
     assert.deepStrictEqual(provider.listPermissionModes().map((m) => m.id),

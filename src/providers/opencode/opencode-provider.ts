@@ -78,6 +78,7 @@ export class OpenCodeProvider implements AgentProvider {
    * Relocation therefore reseeds by replay rather than resuming natively.
    */
   readonly threadScope: ThreadScope = 'cwd';
+  readonly loginKind?: 'oauth' | 'none';
 
   private models: ModelInfo[] = [];
   private readonly binPath?: string;
@@ -103,6 +104,7 @@ export class OpenCodeProvider implements AgentProvider {
     spawn?: (bin: string, env?: NodeJS.ProcessEnv) => AcpChild;
     selfControlMcp?: SelfControlMcpConfig;
     env?: NodeJS.ProcessEnv;
+    loginKind?: 'oauth' | 'none';
   } = {}) {
     this.id = opts.id ?? 'opencode';
     this.displayName = opts.displayName ?? 'OpenCode';
@@ -110,6 +112,7 @@ export class OpenCodeProvider implements AgentProvider {
     this.spawn = opts.spawn ?? ((bin, env) => spawnOpenCodeAcp(bin, env));
     this.selfControlMcp = opts.selfControlMcp;
     this.env = opts.env;
+    this.loginKind = opts.loginKind;
   }
 
   /** Instance env merged over `process.env`, or `undefined` when there is no override. */
