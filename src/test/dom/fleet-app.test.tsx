@@ -67,6 +67,21 @@ suite('FleetApp', () => {
     assert.strictEqual(screen.getByText(/plan/i) !== undefined, true);
   });
 
+  test('the root establishes a height anchor, since SubagentTranscript depends on one', () => {
+    // SessionPicker/SubagentList never depend on ancestor height, so this
+    // regression is invisible to every other test in this file — only
+    // SubagentTranscript's `h-full` root needs an `h-screen` (or equivalent)
+    // ancestor to resolve against, the same anchor `App`'s own root
+    // establishes for the sidebar. Losing this renders SubagentTranscript at
+    // zero height: present in the DOM, invisible on screen. jsdom has no
+    // layout engine to catch that directly, so this asserts the anchor
+    // class itself is still present on FleetApp's root.
+    const { container } = renderFleet();
+    const root = container.firstElementChild;
+    assert.strictEqual(root !== null, true);
+    assert.strictEqual(root!.className.includes('h-screen'), true);
+  });
+
   test('opening a subagent shows its transcript, and back returns to the list, not the picker', async () => {
     renderFleet();
     hydrateWith(['a'], { a: [subagent('s1', 1, 'running', 'Explore')] });
