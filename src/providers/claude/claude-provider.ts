@@ -387,7 +387,14 @@ export class ClaudeProvider implements AgentProvider {
     // for `prompt`, and this one ends without ever yielding a message.
     const prompts = new Channel<SDKUserMessage>();
     prompts.close();
-    const probe = query({ prompt: prompts, options: { cwd } });
+    const probe = query({
+      prompt: prompts,
+      options: {
+        cwd,
+        ...(this.env ? { env: this.env } : {}),
+        ...(this.pathToClaudeCodeExecutable ? { pathToClaudeCodeExecutable: this.pathToClaudeCodeExecutable } : {}),
+      },
+    });
     try {
       return await ask(probe);
     } finally {

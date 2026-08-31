@@ -1399,6 +1399,22 @@ suite('ClaudeProvider instance overrides', () => {
     await run.dispose();
   });
 
+  test('an instance override merges env/pathToClaudeCodeExecutable into the probe path (fetchModels)', async () => {
+    let capturedOptions: Record<string, unknown> | undefined;
+    const fake = fakeLoadQuery({
+      onQuery: (options) => { capturedOptions = options as Record<string, unknown>; },
+      models: [],
+    });
+    const provider = new ClaudeProvider(fake.load as never, undefined, {
+      id: 'claude-work', displayName: 'Claude (work)',
+      env: { ANTHROPIC_API_KEY: 'sk-work' } as NodeJS.ProcessEnv,
+      pathToClaudeCodeExecutable: '/opt/claude-work/claude',
+    });
+    await provider.fetchModels('/repo');
+    assert.strictEqual((capturedOptions?.env as Record<string, string> | undefined)?.ANTHROPIC_API_KEY, 'sk-work');
+    assert.strictEqual(capturedOptions?.pathToClaudeCodeExecutable, '/opt/claude-work/claude');
+  });
+
   test('id/displayName default to claude/Claude when no instance override is given', () => {
     const provider = new ClaudeProvider(fakeLoadQuery().load as never);
     assert.strictEqual(provider.id, 'claude');
