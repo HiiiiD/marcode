@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import {
   BotIcon, ChevronDownIcon, ChevronRightIcon, FilePenIcon, FilePlusIcon, FileTextIcon,
-  FolderSearchIcon, GitForkIcon, GlobeIcon, ListTodoIcon, Loader2Icon, SearchIcon, SendIcon,
-  TerminalIcon, WrenchIcon,
+  FolderSearchIcon, GitForkIcon, GlobeIcon, ImageIcon, ListTodoIcon, Loader2Icon, SearchIcon,
+  SendIcon, TerminalIcon, WrenchIcon,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -24,6 +24,7 @@ const GLYPHS: Record<ToolGlyph, typeof TerminalIcon> = {
   'bot': BotIcon,
   'send': SendIcon,
   'wrench': WrenchIcon,
+  'image': ImageIcon,
 };
 
 export function ToolCard({ item, onFork }: { item: ToolItem; onFork?: () => void }) {

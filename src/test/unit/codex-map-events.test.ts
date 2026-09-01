@@ -319,9 +319,43 @@ suite('mapNotification', () => {
 
   test('an unknown item kind is ignored, not thrown', () => {
     assert.deepStrictEqual(
-      mapNotification('item/started', { item: { type: 'imageGeneration', id: 'it_9' } }),
+      mapNotification('item/started', { item: { type: 'sleep', id: 'it_9' } }),
       [],
     );
+  });
+
+  test('an in-progress imageGeneration surfaces as a tool-start', () => {
+    const events = mapNotification('item/started', {
+      item: { type: 'imageGeneration', id: 'ig_1', status: 'inProgress', revisedPrompt: null },
+    });
+    assert.deepStrictEqual(events, [{
+      kind: 'tool-start', id: 'ig_1', tool: { kind: 'image', label: 'Image' },
+    }]);
+  });
+
+  test('a completed imageGeneration carries its bytes as a data URI', () => {
+    const events = mapNotification('item/completed', {
+      item: {
+        type: 'imageGeneration', id: 'ig_1', status: 'completed',
+        revisedPrompt: 'a red bicycle', result: 'AAAA',
+      },
+    });
+    assert.deepStrictEqual(events, [{
+      kind: 'tool-end', id: 'ig_1', ok: true,
+      tool: { kind: 'image', label: 'Image', note: 'a red bicycle' },
+      output: { kind: 'image', dataUri: 'data:image/png;base64,AAAA' },
+    }]);
+  });
+
+  test('a failed imageGeneration ends the card with no output', () => {
+    const events = mapNotification('item/completed', {
+      item: { type: 'imageGeneration', id: 'ig_2', status: 'failed', revisedPrompt: null },
+    });
+    assert.deepStrictEqual(events, [{
+      kind: 'tool-end', id: 'ig_2', ok: false,
+      tool: { kind: 'image', label: 'Image' },
+      output: { kind: 'none' },
+    }]);
   });
 });
 

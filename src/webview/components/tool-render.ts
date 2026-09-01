@@ -13,7 +13,7 @@ import type { FileEdit, TodoStatus, ToolCall, ToolOutput } from '../../protocol/
 /** Which lucide glyph the card draws. Resolved to a component in tool-body.tsx. */
 export type ToolGlyph =
   | 'terminal' | 'file-pen' | 'file-plus' | 'file-text' | 'search'
-  | 'folder-search' | 'globe' | 'list-todo' | 'bot' | 'send' | 'wrench';
+  | 'folder-search' | 'globe' | 'list-todo' | 'bot' | 'send' | 'wrench' | 'image';
 
 export interface ToolHeader {
   glyph: ToolGlyph;
@@ -47,7 +47,9 @@ export type ToolBlock =
   | { kind: 'todos'; items: { status: TodoStatus; text: string }[] }
   /** Free text shown in the editor font, clamped by the card. */
   | { kind: 'lines'; text: string; tone: 'output' | 'error' | 'code' }
-  | { kind: 'json'; text: string };
+  | { kind: 'json'; text: string }
+  /** A `data:` URI, already self-contained — no webview resource root needed. */
+  | { kind: 'image'; dataUri: string };
 
 /** Last two path segments — a bare basename loses the only disambiguator at 300px. */
 export function shortPath(path: string): string {
@@ -142,6 +144,9 @@ export function describeTool(tool: ToolCall): ToolHeader {
 
     case 'other':
       return header('wrench', tool.label, tool.fields?.[0]?.value ?? '', false);
+
+    case 'image':
+      return header('image', tool.label, tool.note ?? '', false);
   }
 }
 
@@ -249,6 +254,10 @@ export function describeInput(tool: ToolCall): ToolBlock[] {
       if (!empty) { blocks.push({ kind: 'json', text: safeStringify(tool.raw) }); }
       break;
     }
+
+    case 'image':
+      if (tool.note) { blocks.push({ kind: 'note', text: tool.note }); }
+      break;
   }
 
   return blocks;
@@ -268,6 +277,8 @@ export function describeOutput(
   }
 
   if (output.kind === 'json') { return [{ kind: 'json', text: safeStringify(output.value) }]; }
+
+  if (output.kind === 'image') { return [{ kind: 'image', dataUri: output.dataUri }]; }
 
   if (output.text.trim().length === 0) {
     return state === 'error'

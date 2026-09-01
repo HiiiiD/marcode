@@ -134,6 +134,23 @@ suite('codex toToolCall', () => {
       agent: 'reviewer', target: 'th_child',
     });
   });
+
+  test('imageGeneration carries the revised prompt as a note', () => {
+    const item = {
+      type: 'imageGeneration', id: 'i11', status: 'completed',
+      revisedPrompt: 'a red bicycle', result: 'AAAA',
+    } as unknown as ThreadItem;
+    assert.deepStrictEqual(toToolCall(item), {
+      kind: 'image', label: 'Image', note: 'a red bicycle',
+    });
+  });
+
+  test('imageGeneration with no revised prompt omits the note', () => {
+    const item = {
+      type: 'imageGeneration', id: 'i12', status: 'inProgress', revisedPrompt: null,
+    } as unknown as ThreadItem;
+    assert.deepStrictEqual(toToolCall(item), { kind: 'image', label: 'Image' });
+  });
 });
 
 suite('codex toToolOutput', () => {
@@ -184,6 +201,22 @@ suite('codex toToolOutput', () => {
     const item = {
       type: 'subAgentActivity', id: 'i7', kind: 'started',
       agentThreadId: 'th_child', agentPath: 'reviewer',
+    } as unknown as ThreadItem;
+    assert.deepStrictEqual(toToolOutput(item), { kind: 'none' });
+  });
+
+  test('a completed imageGeneration becomes a data URI', () => {
+    const item = {
+      type: 'imageGeneration', id: 'i8', status: 'completed', result: 'AAAA',
+    } as unknown as ThreadItem;
+    assert.deepStrictEqual(toToolOutput(item), {
+      kind: 'image', dataUri: 'data:image/png;base64,AAAA',
+    });
+  });
+
+  test('a failed imageGeneration with no result is none', () => {
+    const item = {
+      type: 'imageGeneration', id: 'i9', status: 'failed',
     } as unknown as ThreadItem;
     assert.deepStrictEqual(toToolOutput(item), { kind: 'none' });
   });

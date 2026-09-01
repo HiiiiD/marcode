@@ -124,7 +124,7 @@ suite('FakeProvider', () => {
   test('every canonical kind has a fixture that renders a header', () => {
     const kinds: ToolCall['kind'][] = [
       'command', 'file-edit', 'file-read', 'search', 'web',
-      'todos', 'plan', 'subagent', 'mcp', 'other',
+      'todos', 'plan', 'subagent', 'mcp', 'image', 'other',
     ];
     for (const kind of kinds) {
       const call = SAMPLE_TOOL_CALLS[kind];

@@ -100,6 +100,18 @@ suite('describeTool', () => {
       kind: 'command', label: 'Bash', command: long,
     }).full, long);
   });
+
+  test('an image shows its revised prompt as the primary', () => {
+    const header = describeTool({ kind: 'image', label: 'Image', note: 'a red bicycle' });
+    assert.deepStrictEqual(
+      { glyph: header.glyph, verb: header.verb, primary: header.primary },
+      { glyph: 'image', verb: 'Image', primary: 'a red bicycle' },
+    );
+  });
+
+  test('an image with no revised prompt has an empty primary', () => {
+    assert.strictEqual(describeTool({ kind: 'image', label: 'Image' }).primary, '');
+  });
 });
 
 suite('describeInput', () => {
@@ -258,6 +270,17 @@ suite('describeInput', () => {
     assert.strictEqual(blocks.length, 1);
     assert.strictEqual(blocks[0].kind, 'json');
   });
+
+  test('an image with a revised prompt yields one note block', () => {
+    assert.deepStrictEqual(
+      describeInput({ kind: 'image', label: 'Image', note: 'a red bicycle' }),
+      [{ kind: 'note', text: 'a red bicycle' }],
+    );
+  });
+
+  test('an image with no revised prompt yields no block', () => {
+    assert.deepStrictEqual(describeInput({ kind: 'image', label: 'Image' }), []);
+  });
 });
 
 suite('describeOutput', () => {
@@ -294,5 +317,12 @@ suite('describeOutput', () => {
   test('a json result renders as pretty JSON', () => {
     const blocks = describeOutput('mcp', { kind: 'json', value: { a: 1 } }, 'ok');
     assert.strictEqual(blocks[0].kind, 'json');
+  });
+
+  test('an image result renders as an image block', () => {
+    assert.deepStrictEqual(
+      describeOutput('image', { kind: 'image', dataUri: 'data:image/png;base64,AAAA' }, 'ok'),
+      [{ kind: 'image', dataUri: 'data:image/png;base64,AAAA' }],
+    );
   });
 });
