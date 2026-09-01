@@ -162,6 +162,21 @@ suite('ToolCard', () => {
     screen.getByText('Explore');
   });
 
+  test('an image card shows its revised prompt', () => {
+    renderWithStore(<ToolCard item={tool({ tool: SAMPLE_TOOL_CALLS['image'] })} />);
+    screen.getByText('a red bicycle');
+  });
+
+  test('an image card renders its data URI as an img once expanded', async () => {
+    renderWithStore(<ToolCard item={tool({
+      tool: SAMPLE_TOOL_CALLS['image'],
+      output: { kind: 'image', dataUri: 'data:image/png;base64,AAAA' },
+    })} />);
+    await expand();
+    const img = screen.getByAltText('Generated image');
+    assert.strictEqual(img.getAttribute('src'), 'data:image/png;base64,AAAA');
+  });
+
   test('an mcp card shows the server chip and the tool alone as the primary', () => {
     renderWithStore(<ToolCard item={tool({ tool: SAMPLE_TOOL_CALLS['mcp'] })} />);
     screen.getByText('github');

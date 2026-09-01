@@ -142,6 +142,11 @@ export function toToolCall(item: ThreadItem): ToolCall | undefined {
       };
     }
 
+    case 'imageGeneration': {
+      const i = item as Extract<ThreadItem, { type: 'imageGeneration' }>;
+      return compact({ kind: 'image', label: 'Image', note: str(i.revisedPrompt ?? undefined) });
+    }
+
     // Every other item kind is deliberately not a tool. Parsing stays
     // tolerant: an unknown item is ignored rather than rendered.
     default:
@@ -191,6 +196,11 @@ export function toToolOutput(item: ThreadItem): ToolOutput {
   // A fileChange's diffs belong to the call, not to its result: the completed
   // item revises the ToolCall, and there is nothing left to show here.
   if (item.type === 'fileChange') { return { kind: 'none' }; }
+
+  if (item.type === 'imageGeneration') {
+    const i = item as Extract<ThreadItem, { type: 'imageGeneration' }>;
+    return i.result ? { kind: 'image', dataUri: `data:image/png;base64,${i.result}` } : { kind: 'none' };
+  }
 
   if (item.type === 'mcpToolCall') {
     const m = item as Extract<ThreadItem, { type: 'mcpToolCall' }>;

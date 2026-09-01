@@ -153,6 +153,15 @@ export type ThreadItem =
   | { type: 'subAgentActivity'; id: string;
       kind: 'started' | 'interacted' | 'interrupted';
       agentThreadId: string; agentPath: string }
+  // `result` is raw base64 PNG bytes, no `data:` prefix (unconfirmed against
+  // live traffic — no vendored doc comment on `.codex-bindings/ImageGenerationItem.ts`
+  // — but the shape mirrors OpenAI's image-gen response, `revisedPrompt` /
+  // `b64_json` included). `status` has no dedicated enum binding either; every
+  // sibling statused item converges on `'inProgress' | 'completed' | 'failed'`,
+  // and this is read the same way. `savedPath` is on Codex's own disk, not
+  // ours, and unused here.
+  | { type: 'imageGeneration'; id: string; status?: string;
+      revisedPrompt?: string | null; result?: string }
   // Every other kind is deliberately unmodelled: parsing is tolerant, and an
   // unknown item is ignored rather than thrown.
   | { type: string; id: string };

@@ -90,6 +90,18 @@ function Block({ block }: { block: ToolBlock }) {
           {block.text}
         </pre>
       );
+
+    case 'image':
+      // `dataUri` is self-contained (already base64-embedded on the wire), so
+      // this needs no webview resource root or asWebviewUri round-trip — the
+      // CSP's `img-src ... data:` already covers it.
+      return (
+        <img
+          src={block.dataUri}
+          alt="Generated image"
+          className="max-h-64 max-w-full rounded border border-border object-contain"
+        />
+      );
   }
 }
 

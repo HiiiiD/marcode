@@ -36,5 +36,6 @@ export const SAMPLE_TOOL_CALLS: Record<ToolCall['kind'], ToolCall> = {
     agent: 'Explore', model: 'sonnet', prompt: 'Find every call site.',
   },
   'mcp': { kind: 'mcp', label: 'create_issue', server: 'github', tool: 'create_issue' },
+  'image': { kind: 'image', label: 'Image', note: 'a red bicycle' },
   'other': { kind: 'other', label: 'Bananas', raw: { peeled: true } },
 };

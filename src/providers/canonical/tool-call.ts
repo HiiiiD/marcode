@@ -55,6 +55,7 @@ export type ToolCall =
       // is structurally invisible here, not that it's unfinished.
       background?: boolean }
   | { kind: 'mcp'; label: string; server: string; tool: string }
+  | { kind: 'image'; label: string; note?: string }
   | { kind: 'other'; label: string; fields?: Field[]; raw: unknown };
 
 /**
@@ -66,7 +67,8 @@ export type ToolCall =
 export type ToolOutput =
   | { kind: 'none' }
   | { kind: 'text'; text: string }
-  | { kind: 'json'; value: unknown };
+  | { kind: 'json'; value: unknown }
+  | { kind: 'image'; dataUri: string };
 
 const MCP_PREFIX = 'mcp__';
 const MCP_SEP = '__';
