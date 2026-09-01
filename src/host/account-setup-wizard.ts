@@ -1,9 +1,11 @@
+import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
+import * as path from 'node:path';
 import * as vscode from 'vscode';
 
 import {
-  CONFIG_DIR_ENV_KEY, ENV_MAP_KEYS, isDuplicateInstanceId, resolveSourceConfigDir,
-  supportsSkillsCopy,
+  buildProviderInstanceConfig, CONFIG_DIR_ENV_KEY, ENV_MAP_KEYS, isDuplicateInstanceId,
+  resolveSourceConfigDir, supportsSkillsCopy,
 } from '../shared/account-setup';
 import {
   PROVIDER_INSTANCE_KINDS, validateProviderInstances,
@@ -78,21 +80,27 @@ export async function runAccountSetupWizard(baseIds: readonly string[]): Promise
   const osVarNames = [...new Set(Object.values(envMap))];
   if (osVarNames.length > 0) {
     const loginCmd = kind === 'claude' ? 'claude login' : kind === 'codex' ? 'codex login' : undefined;
+    const setCmd = process.platform === 'win32'
+      ? osVarNames.map((v) => `\`setx ${v} "..."\``).join(' and ')
+      : osVarNames.map((v) => `\`export ${v}="..."\` (add it to your shell profile)`).join(' and ');
     void vscode.window.showInformationMessage(
-      `Next: run ${osVarNames.map((v) => `\`setx ${v} "..."\``).join(' and ')} in a shell, restart VS Code`
+      `Next: run ${setCmd} in a shell, restart VS Code`
       + (loginCmd ? `, then sign in once with \`${loginCmd}\` in a shell that has ${osVarNames.join(', ')} set.` : '.'),
     );
   }
 
-  const newEntry: ProviderInstanceConfig = {
-    id: id.trim(),
-    kind,
-    displayName: displayName.trim(),
-    ...(Object.keys(envMap).length > 0 ? { envMap } : {}),
-  };
+  const newEntry: ProviderInstanceConfig = buildProviderInstanceConfig(kind, id, displayName, envMap);
   try {
+    // `existing` is the merged (workspace+user), *validated* array — correct
+    // for the collision check above, but writing it back to Global would
+    // (a) duplicate any workspace-scoped entries into user settings, where
+    // an unmerged array is shadowed by the workspace value and never takes
+    // effect, and (b) silently drop any malformed entry `existing` filtered
+    // out. The write instead appends to the raw, unvalidated Global-scope
+    // array, preserving anything already stored there as-is.
+    const rawGlobal = config.inspect<ProviderInstanceConfig[]>(PROVIDER_INSTANCES_SETTING)?.globalValue ?? [];
     await config.update(
-      PROVIDER_INSTANCES_SETTING, [...existing, newEntry], vscode.ConfigurationTarget.Global,
+      PROVIDER_INSTANCES_SETTING, [...rawGlobal, newEntry], vscode.ConfigurationTarget.Global,
     );
     // extension.ts's existing onDidChangeConfiguration listener for
     // PROVIDER_INSTANCES_SETTING shows its own "Reload the window to apply
@@ -102,6 +110,19 @@ export async function runAccountSetupWizard(baseIds: readonly string[]): Promise
       `Could not save the new provider instance: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
+}
+
+/** True when `<targetDir>/skills` or `<targetDir>/plugins` already exists and has at least one entry. Missing directories read as empty. */
+async function hasExistingContent(targetDir: string): Promise<boolean> {
+  for (const sub of ['skills', 'plugins']) {
+    try {
+      const entries = await fs.readdir(path.join(targetDir, sub));
+      if (entries.length > 0) { return true; }
+    } catch {
+      // ENOENT (or any other read failure) reads as "nothing here yet".
+    }
+  }
+  return false;
 }
 
 /**
@@ -117,12 +138,6 @@ async function maybeCopySkillsAndPlugins(
   const configDirOsVar = envMap[CONFIG_DIR_ENV_KEY[kind]];
   if (configDirOsVar === undefined) { return; }
 
-  const choice = await vscode.window.showQuickPick(['Yes', 'No'], {
-    title: 'Copy skills/plugins from your main account?',
-    placeHolder: `Copies skills/ and plugins/ into this instance's ${CONFIG_DIR_ENV_KEY[kind]}`,
-  });
-  if (choice !== 'Yes') { return; }
-
   const targetDir = process.env[configDirOsVar];
   if (targetDir === undefined || targetDir.trim() === '') {
     void vscode.window.showWarningMessage(
@@ -133,6 +148,23 @@ async function maybeCopySkillsAndPlugins(
   }
 
   const sourceDir = resolveSourceConfigDir(kind, process.env, os.homedir());
+
+  const choice = await vscode.window.showQuickPick(['Yes', 'No'], {
+    title: 'Copy skills/plugins from your main account?',
+    placeHolder: `Copies skills/ and plugins/ from ${sourceDir} to ${targetDir}`,
+  });
+  if (choice !== 'Yes') { return; }
+
+  if (await hasExistingContent(targetDir)) {
+    const overwrite = await vscode.window.showWarningMessage(
+      `${targetDir}'s skills/ and/or plugins/ directory already has files. `
+      + 'Copying now will overwrite anything with the same name.',
+      { modal: true },
+      'Overwrite', 'Skip',
+    );
+    if (overwrite !== 'Overwrite') { return; }
+  }
+
   try {
     const { copied } = await copySkillsAndPlugins(sourceDir, targetDir);
     void vscode.window.showInformationMessage(

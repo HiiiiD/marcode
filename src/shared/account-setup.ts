@@ -52,3 +52,15 @@ export function isDuplicateInstanceId(
   const trimmed = id.trim();
   return baseIds.includes(trimmed) || existing.some((cfg) => cfg.id === trimmed);
 }
+
+/** Builds a `ProviderInstanceConfig` from collected wizard answers, trimming `id`/`displayName` and omitting `envMap` when empty. */
+export function buildProviderInstanceConfig(
+  kind: ProviderInstanceKind, id: string, displayName: string, envMap: Record<string, string>,
+): ProviderInstanceConfig {
+  return {
+    id: id.trim(),
+    kind,
+    displayName: displayName.trim(),
+    ...(Object.keys(envMap).length > 0 ? { envMap } : {}),
+  };
+}

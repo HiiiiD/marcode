@@ -3,7 +3,7 @@ import * as path from 'node:path';
 import { test, suite } from 'mocha';
 import {
   CONFIG_DIR_ENV_KEY, ENV_MAP_KEYS, supportsSkillsCopy, defaultConfigDir,
-  resolveSourceConfigDir, isDuplicateInstanceId,
+  resolveSourceConfigDir, isDuplicateInstanceId, buildProviderInstanceConfig,
 } from '../../shared/account-setup';
 
 suite('shared/account-setup', () => {
@@ -67,6 +67,23 @@ suite('shared/account-setup', () => {
     });
     test('config-dir env key names', () => {
       assert.deepStrictEqual(CONFIG_DIR_ENV_KEY, { claude: 'CLAUDE_CONFIG_DIR', codex: 'CODEX_HOME' });
+    });
+  });
+
+  suite('buildProviderInstanceConfig', () => {
+    test('trims id and displayName', () => {
+      const cfg = buildProviderInstanceConfig('claude', '  claude-work  ', '  Work  ', {});
+      assert.strictEqual(cfg.id, 'claude-work');
+      assert.strictEqual(cfg.displayName, 'Work');
+    });
+    test('omits envMap entirely when the map is empty', () => {
+      const cfg = buildProviderInstanceConfig('codex', 'codex-personal', 'Personal', {});
+      assert.strictEqual('envMap' in cfg, false);
+    });
+    test('includes envMap when non-empty', () => {
+      const envMap = { OPENAI_API_KEY: 'MY_KEY' };
+      const cfg = buildProviderInstanceConfig('codex', 'codex-personal', 'Personal', envMap);
+      assert.deepStrictEqual(cfg.envMap, envMap);
     });
   });
 });
