@@ -4,8 +4,8 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 
 import {
-  buildProviderInstanceConfig, CONFIG_DIR_ENV_KEY, deriveConfigDirVarName, ENV_MAP_KEYS,
-  isDuplicateInstanceId, resolveSourceConfigDir, supportsSkillsCopy,
+  buildProviderInstanceConfig, CONFIG_DIR_ENV_KEY, ENV_MAP_KEYS, isDuplicateInstanceId,
+  resolveSourceConfigDir, resolveUniqueConfigDirVarName, supportsSkillsCopy,
 } from '../shared/account-setup';
 import {
   PROVIDER_INSTANCE_KINDS, validateProviderInstances,
@@ -67,6 +67,10 @@ export async function runAccountSetupWizard(baseIds: readonly string[]): Promise
   // user to invent an OS var name of their own. See docs/superpowers/specs/
   // 2026-09-01-account-setup-wizard-design.md.
   const configDirKey = supportsSkillsCopy(kind) ? CONFIG_DIR_ENV_KEY[kind] : undefined;
+  // Every OS var name already claimed by an existing instance's envMap —
+  // the config-dir key's derived name must never collide with one of
+  // these, or two instances end up sharing a config dir at runtime.
+  const usedVarNames = new Set(existing.flatMap((cfg) => Object.values(cfg.envMap ?? {})));
   const envMap: Record<string, string> = {};
   let configDirPath: string | undefined;
   let configDirVarName: string | undefined;
@@ -75,11 +79,22 @@ export async function runAccountSetupWizard(baseIds: readonly string[]): Promise
       const dirPath = await vscode.window.showInputBox({
         title: `Set up a provider account (5/5): ${key} directory`,
         prompt: `Absolute directory path for this instance's own ${key} — a plain path, not a secret`,
-        validateInput: (value) => (value.trim() === '' ? 'required' : undefined),
+        validateInput: (value) => {
+          const trimmed = value.trim();
+          if (trimmed === '') { return 'required'; }
+          if (!path.isAbsolute(trimmed)) { return 'must be an absolute path'; }
+          // This path is later interpolated into a `setx` command run in a
+          // real terminal (Windows) — reject anything a shell would treat
+          // specially, and a trailing slash/backslash, which would escape
+          // the command's closing quote.
+          if (/["`$&|^<>]/.test(trimmed)) { return 'must not contain " ` $ & | ^ < >'; }
+          if (/[/\\]$/.test(trimmed)) { return 'must not end with a trailing slash'; }
+          return undefined;
+        },
       });
       if (dirPath === undefined) { return; }
       configDirPath = dirPath.trim();
-      configDirVarName = deriveConfigDirVarName(key, id);
+      configDirVarName = resolveUniqueConfigDirVarName(key, id, usedVarNames);
       envMap[key] = configDirVarName;
       continue;
     }
@@ -122,7 +137,9 @@ export async function runAccountSetupWizard(baseIds: readonly string[]): Promise
   }
   if (manualSteps.length > 0) {
     const loginCmd = kind === 'claude' ? 'claude login' : kind === 'codex' ? 'codex login' : undefined;
-    const allVarNames = [...(configDirVarName !== undefined ? [configDirVarName] : []), ...secretOsVarNames];
+    const allVarNames = [...new Set([
+      ...(configDirVarName !== undefined ? [configDirVarName] : []), ...secretOsVarNames,
+    ])];
     void vscode.window.showInformationMessage(
       `Next: ${manualSteps.join(', ')}, then restart VS Code`
       + (loginCmd ? `, then sign in once with \`${loginCmd}\` in a shell that has ${allVarNames.join(', ')} set.` : '.'),

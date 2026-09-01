@@ -144,3 +144,19 @@ typed path directly. This removes the "not set yet, skipped" warning for the com
 tested. `src/host/account-setup-wizard.ts` gains `openSetxTerminal(varName, value): void`
 (Windows-only), and `maybeCopySkillsAndPlugins` takes the literal `targetDir` directly
 rather than resolving it from `envMap`/`process.env`.
+
+**Follow-up hardening (same review pass):** two gaps surfaced once this path became
+user-typed and machine-interpolated rather than sourced from an OS env var the user set up
+themselves:
+
+- The path is embedded into a `setx` command sent to a real terminal (`terminal.sendText`),
+  so an unquoted shell metacharacter or a trailing slash/backslash (which escapes the
+  command's closing quote) in the typed path breaks or misdirects the command. The
+  InputBox's `validateInput` now rejects `" \` $ & | ^ < >`, requires `path.isAbsolute`,
+  and rejects a trailing `/`/`\`.
+- Sanitizing an id for a var name is lossy — `claude-work` and `Claude Work` derive the
+  same base name. Two already-distinct instance ids could silently share one OS var (and
+  therefore one config dir) at runtime. `deriveConfigDirVarName` stays a pure derivation;
+  a new `resolveUniqueConfigDirVarName(key, id, usedVarNames)` appends `_2`, `_3`, ... until
+  the name is free of every OS var name already claimed by an existing instance's `envMap`,
+  and the wizard calls this instead of the raw deriver.

@@ -4,7 +4,7 @@ import { test, suite } from 'mocha';
 import {
   CONFIG_DIR_ENV_KEY, ENV_MAP_KEYS, supportsSkillsCopy, defaultConfigDir,
   resolveSourceConfigDir, isDuplicateInstanceId, buildProviderInstanceConfig,
-  deriveConfigDirVarName,
+  deriveConfigDirVarName, resolveUniqueConfigDirVarName,
 } from '../../shared/account-setup';
 
 suite('shared/account-setup', () => {
@@ -89,6 +89,33 @@ suite('shared/account-setup', () => {
         deriveConfigDirVarName('CLAUDE_CONFIG_DIR', '  -personal-  '),
         'CLAUDE_CONFIG_DIR_PERSONAL',
       );
+    });
+    test('falls back to a stable suffix when the id sanitizes to nothing', () => {
+      assert.strictEqual(deriveConfigDirVarName('CLAUDE_CONFIG_DIR', '---'), 'CLAUDE_CONFIG_DIR_INSTANCE');
+    });
+  });
+
+  suite('resolveUniqueConfigDirVarName', () => {
+    test('returns the derived name when it is not already used', () => {
+      const name = resolveUniqueConfigDirVarName('CLAUDE_CONFIG_DIR', 'claude-personal', new Set());
+      assert.strictEqual(name, 'CLAUDE_CONFIG_DIR_CLAUDE_PERSONAL');
+    });
+    test('appends _2 when the derived name is already used', () => {
+      const used = new Set(['CLAUDE_CONFIG_DIR_CLAUDE_PERSONAL']);
+      const name = resolveUniqueConfigDirVarName('CLAUDE_CONFIG_DIR', 'claude-personal', used);
+      assert.strictEqual(name, 'CLAUDE_CONFIG_DIR_CLAUDE_PERSONAL_2');
+    });
+    test('two ids that sanitize to the same base no longer collide', () => {
+      const used = new Set<string>();
+      const first = resolveUniqueConfigDirVarName('CLAUDE_CONFIG_DIR', 'claude work', used);
+      used.add(first);
+      const second = resolveUniqueConfigDirVarName('CLAUDE_CONFIG_DIR', 'Claude-Work', used);
+      assert.notStrictEqual(first, second);
+    });
+    test('keeps incrementing past an already-used suffix', () => {
+      const used = new Set(['CLAUDE_CONFIG_DIR_X', 'CLAUDE_CONFIG_DIR_X_2', 'CLAUDE_CONFIG_DIR_X_3']);
+      const name = resolveUniqueConfigDirVarName('CLAUDE_CONFIG_DIR', 'x', used);
+      assert.strictEqual(name, 'CLAUDE_CONFIG_DIR_X_4');
     });
   });
 

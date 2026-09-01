@@ -58,11 +58,33 @@ export function isDuplicateInstanceId(
  * instance id, so the wizard never needs to ask the user to invent one for
  * a value that isn't a secret — `id`, sanitized to `[A-Z0-9_]`, appended to
  * `key`. E.g. `('CLAUDE_CONFIG_DIR', 'claude-personal')` ->
- * `'CLAUDE_CONFIG_DIR_CLAUDE_PERSONAL'`.
+ * `'CLAUDE_CONFIG_DIR_CLAUDE_PERSONAL'`. Sanitizing is lossy (case and
+ * punctuation both collapse), so two different ids can derive the same
+ * name — callers that write the result must resolve that against
+ * `usedVarNames` themselves; see `resolveUniqueConfigDirVarName`.
  */
 export function deriveConfigDirVarName(key: string, id: string): string {
   const sanitizedId = id.trim().toUpperCase().replace(/[^A-Z0-9_]+/g, '_').replace(/^_+|_+$/g, '');
-  return `${key}_${sanitizedId}`;
+  return `${key}_${sanitizedId || 'INSTANCE'}`;
+}
+
+/**
+ * `deriveConfigDirVarName`, made collision-safe against `usedVarNames` — the
+ * OS var names already claimed by every `envMap` value across the user's
+ * existing `providerInstances` entries. Sanitizing an id for use in an env
+ * var name is lossy (`claude-work` and `Claude Work` derive the same base
+ * name), so without this check two distinct, already-unique instance ids
+ * could silently end up sharing one OS var — and therefore one config dir —
+ * at runtime. Appends `_2`, `_3`, ... until the name is free.
+ */
+export function resolveUniqueConfigDirVarName(
+  key: string, id: string, usedVarNames: ReadonlySet<string>,
+): string {
+  const base = deriveConfigDirVarName(key, id);
+  if (!usedVarNames.has(base)) { return base; }
+  let suffix = 2;
+  while (usedVarNames.has(`${base}_${suffix}`)) { suffix += 1; }
+  return `${base}_${suffix}`;
 }
 
 /** Builds a `ProviderInstanceConfig` from collected wizard answers, trimming `id`/`displayName` and omitting `envMap` when empty. */
