@@ -1,6 +1,7 @@
 import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
+import { runAccountSetupWizard } from './host/account-setup-wizard';
 import { AgentsMdNudgeController } from './host/agents-md-nudge';
 import { AttachmentStore } from './host/attachment-store';
 import { defaultCwdOf } from './host/default-cwd';
@@ -522,6 +523,9 @@ export async function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand('marcode.claude.login', () => {
       const recipe = loginRecipes.get('claude');
       if (recipe) { openLoginTerminal(recipe.terminalName, recipe.command, recipe.env); }
+    }),
+    vscode.commands.registerCommand('marcode.accountSetup.wizard', () => {
+      void runAccountSetupWizard(KNOWN_PROVIDER_IDS);
     }),
     // A changed path is a different install: point the provider at it, then
     // re-probe — which is also how the provider recovers from 'unavailable'.

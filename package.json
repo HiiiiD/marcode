@@ -199,6 +199,10 @@
         "title": "Marcode: Sign in to Claude"
       },
       {
+        "command": "marcode.accountSetup.wizard",
+        "title": "Marcode: Set up a provider account"
+      },
+      {
         "command": "marcode.review.open",
         "title": "Marcode: Review fleet changes"
       },
