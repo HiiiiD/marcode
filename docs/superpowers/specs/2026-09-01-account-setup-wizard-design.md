@@ -160,3 +160,19 @@ themselves:
   a new `resolveUniqueConfigDirVarName(key, id, usedVarNames)` appends `_2`, `_3`, ... until
   the name is free of every OS var name already claimed by an existing instance's `envMap`,
   and the wizard calls this instead of the raw deriver.
+
+## Amendment: claude's copy step also carries `commands/`
+
+Claude Code keeps custom slash commands under `~/.claude/commands` (or the equivalent
+`CLAUDE_CONFIG_DIR/commands`), alongside `skills/` and `plugins/` — verified against a real
+install. Codex has no such directory (verified against a real `~/.codex`) — this amendment
+is claude-only.
+
+`copySkillsAndPlugins` (`src/host/copy-skills-plugins.ts`) takes an explicit `subdirs`
+parameter now, defaulting to `DEFAULT_COPIED_SUBDIRS` (`skills/`+`plugins/`) so existing
+callers/tests are unaffected. `src/shared/account-setup.ts` gains
+`CONFIG_COPY_SUBDIRS: Record<'claude' | 'codex', readonly string[]>` —
+`{ claude: ['skills', 'plugins', 'commands'], codex: ['skills', 'plugins'] }` — and the
+wizard passes `CONFIG_COPY_SUBDIRS[kind]` through to both the copy call and the
+overwrite-guard's existing-content check, so `commands/` gets the same
+confirm-before-overwrite protection as the other two.

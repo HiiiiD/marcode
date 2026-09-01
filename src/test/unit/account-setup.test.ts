@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import * as path from 'node:path';
 import { test, suite } from 'mocha';
 import {
-  CONFIG_DIR_ENV_KEY, ENV_MAP_KEYS, supportsSkillsCopy, defaultConfigDir,
+  CONFIG_COPY_SUBDIRS, CONFIG_DIR_ENV_KEY, ENV_MAP_KEYS, supportsSkillsCopy, defaultConfigDir,
   resolveSourceConfigDir, isDuplicateInstanceId, buildProviderInstanceConfig,
   deriveConfigDirVarName, resolveUniqueConfigDirVarName,
 } from '../../shared/account-setup';
@@ -68,6 +68,13 @@ suite('shared/account-setup', () => {
     });
     test('config-dir env key names', () => {
       assert.deepStrictEqual(CONFIG_DIR_ENV_KEY, { claude: 'CLAUDE_CONFIG_DIR', codex: 'CODEX_HOME' });
+    });
+  });
+
+  suite('CONFIG_COPY_SUBDIRS', () => {
+    test('claude includes commands, codex does not', () => {
+      assert.deepStrictEqual(CONFIG_COPY_SUBDIRS.claude, ['skills', 'plugins', 'commands']);
+      assert.deepStrictEqual(CONFIG_COPY_SUBDIRS.codex, ['skills', 'plugins']);
     });
   });
 

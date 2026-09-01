@@ -52,4 +52,21 @@ suite('host/copy-skills-plugins', () => {
 
     await assert.rejects(fs.access(path.join(target, 'auth.json')));
   });
+
+  test('copies an explicit subdirs list instead of the default', async () => {
+    const source = await makeTempDir();
+    const target = await makeTempDir();
+    await fs.mkdir(path.join(source, 'commands'), { recursive: true });
+    await fs.writeFile(path.join(source, 'commands', 'foo.md'), '# foo');
+    await fs.mkdir(path.join(source, 'plugins'), { recursive: true });
+
+    const result = await copySkillsAndPlugins(source, target, ['commands']);
+
+    assert.deepStrictEqual(result.copied, ['commands']);
+    assert.strictEqual(
+      await fs.readFile(path.join(target, 'commands', 'foo.md'), 'utf8'),
+      '# foo',
+    );
+    await assert.rejects(fs.access(path.join(target, 'plugins')));
+  });
 });

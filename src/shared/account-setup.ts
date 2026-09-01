@@ -22,6 +22,17 @@ export const ENV_MAP_KEYS: Record<ProviderInstanceKind, readonly string[]> = {
   opencode: ['OPENCODE_CONFIG', 'OPENCODE_CONFIG_DIR', 'OPENCODE_CONFIG_CONTENT'],
 };
 
+/**
+ * Which subdirectories the copy step carries over, per kind. Both share
+ * `skills/`+`plugins/`; claude additionally has `commands/` (custom slash
+ * commands under `~/.claude/commands`) with no codex equivalent — verified
+ * against a real `~/.codex` layout, which has no `commands/` directory.
+ */
+export const CONFIG_COPY_SUBDIRS: Record<'claude' | 'codex', readonly string[]> = {
+  claude: ['skills', 'plugins', 'commands'],
+  codex: ['skills', 'plugins'],
+};
+
 /** Whether the copy-skills-and-plugins wizard step applies to this kind (see `CONFIG_DIR_ENV_KEY` doc). */
 export function supportsSkillsCopy(kind: ProviderInstanceKind): kind is 'claude' | 'codex' {
   return kind === 'claude' || kind === 'codex';

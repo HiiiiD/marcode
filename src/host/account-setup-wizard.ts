@@ -4,8 +4,8 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 
 import {
-  buildProviderInstanceConfig, CONFIG_DIR_ENV_KEY, ENV_MAP_KEYS, isDuplicateInstanceId,
-  resolveSourceConfigDir, resolveUniqueConfigDirVarName, supportsSkillsCopy,
+  buildProviderInstanceConfig, CONFIG_COPY_SUBDIRS, CONFIG_DIR_ENV_KEY, ENV_MAP_KEYS,
+  isDuplicateInstanceId, resolveSourceConfigDir, resolveUniqueConfigDirVarName, supportsSkillsCopy,
 } from '../shared/account-setup';
 import {
   PROVIDER_INSTANCE_KINDS, validateProviderInstances,
@@ -108,7 +108,7 @@ export async function runAccountSetupWizard(baseIds: readonly string[]): Promise
   }
 
   if (supportsSkillsCopy(kind)) {
-    await maybeCopySkillsAndPlugins(kind, configDirPath);
+    await maybeCopySkillsAndPlugins(kind, configDirPath, CONFIG_COPY_SUBDIRS[kind]);
   }
 
   const secretOsVarNames = [...new Set(
@@ -169,9 +169,9 @@ export async function runAccountSetupWizard(baseIds: readonly string[]): Promise
   }
 }
 
-/** True when `<targetDir>/skills` or `<targetDir>/plugins` already exists and has at least one entry. Missing directories read as empty. */
-async function hasExistingContent(targetDir: string): Promise<boolean> {
-  for (const sub of ['skills', 'plugins']) {
+/** True when any of `subdirs` under `targetDir` already exists and has at least one entry. Missing directories read as empty. */
+async function hasExistingContent(targetDir: string, subdirs: readonly string[]): Promise<boolean> {
+  for (const sub of subdirs) {
     try {
       const entries = await fs.readdir(path.join(targetDir, sub));
       if (entries.length > 0) { return true; }
@@ -202,21 +202,22 @@ function openSetxTerminal(varName: string, value: string): void {
  * Warns (never throws) on any copy failure.
  */
 async function maybeCopySkillsAndPlugins(
-  kind: 'claude' | 'codex', targetDir: string | undefined,
+  kind: 'claude' | 'codex', targetDir: string | undefined, subdirs: readonly string[],
 ): Promise<void> {
   if (targetDir === undefined) { return; }
 
   const sourceDir = resolveSourceConfigDir(kind, process.env, os.homedir());
+  const subdirsLabel = subdirs.join(', ');
 
   const choice = await vscode.window.showQuickPick(['Yes', 'No'], {
-    title: 'Copy skills/plugins from your main account?',
-    placeHolder: `Copies skills/ and plugins/ from ${sourceDir} to ${targetDir}`,
+    title: `Copy ${subdirsLabel} from your main account?`,
+    placeHolder: `Copies ${subdirsLabel} from ${sourceDir} to ${targetDir}`,
   });
   if (choice !== 'Yes') { return; }
 
-  if (await hasExistingContent(targetDir)) {
+  if (await hasExistingContent(targetDir, subdirs)) {
     const overwrite = await vscode.window.showWarningMessage(
-      `${targetDir}'s skills/ and/or plugins/ directory already has files. `
+      `${targetDir}'s ${subdirsLabel} directories already have files. `
       + 'Copying now will overwrite anything with the same name.',
       { modal: true },
       'Overwrite', 'Skip',
@@ -225,15 +226,15 @@ async function maybeCopySkillsAndPlugins(
   }
 
   try {
-    const { copied } = await copySkillsAndPlugins(sourceDir, targetDir);
+    const { copied } = await copySkillsAndPlugins(sourceDir, targetDir, subdirs);
     void vscode.window.showInformationMessage(
       copied.length > 0
         ? `Copied ${copied.join(', ')} from ${sourceDir} to ${targetDir}.`
-        : `Nothing to copy: ${sourceDir} has no skills/ or plugins/ directory.`,
+        : `Nothing to copy: ${sourceDir} has none of ${subdirsLabel}.`,
     );
   } catch (err) {
     void vscode.window.showWarningMessage(
-      `Could not copy skills/plugins from ${sourceDir}: ${err instanceof Error ? err.message : String(err)}`,
+      `Could not copy ${subdirsLabel} from ${sourceDir}: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
 }
