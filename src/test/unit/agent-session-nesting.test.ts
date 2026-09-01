@@ -288,6 +288,39 @@ suite('AgentSession subagent nesting', () => {
     await session.dispose();
   });
 
+  test('a child arriving after its parent already settled is still persisted', async () => {
+    // The real-world case: an async-dispatched subagent (Claude's `Agent`/
+    // `Task` tool with `background: true`) settles its OWN tool-end almost
+    // immediately with a "launched" acknowledgement — see
+    // `providers/claude/map-tools.ts` — long before its actual nested tool
+    // activity streams in, tagged with the same parentId. `replaceChild`'s
+    // "children land in the store when the parent settles" assumption is
+    // false here: the parent already settled with no children, and will
+    // never settle again, so a child arriving afterward must write through
+    // to the store itself rather than waiting for a settle that already
+    // happened.
+    const provider = new FakeProvider(() => [
+      { kind: 'tool-start', id: 'task1', tool: TASK },
+      { kind: 'tool-end', id: 'task1', ok: true, output: { kind: 'text', text: 'launched' } },
+      { kind: 'tool-start', id: 'c1', tool: READ, parentId: 'task1' },
+      { kind: 'tool-end', id: 'c1', ok: true, output: { kind: 'text', text: 'contents' } },
+      { kind: 'turn-end', reason: 'done' },
+    ]);
+    const session = new AgentSession(baseState(), provider, store, sink);
+    session.send('explore');
+    await settle();
+
+    const snap = await session.snapshot();
+    const tools = toolItems(snap.items);
+    assert.strictEqual(tools.length, 1, 'the late child nests, it does not become a second top-level item');
+    assert.strictEqual(tools[0].state, 'ok');
+    assert.strictEqual(tools[0].children?.length, 1, 'child persisted even though the parent already settled');
+    assert.strictEqual(
+      (tools[0].children![0] as Extract<TranscriptItem, { role: 'tool' }>).tool.label, 'Read',
+    );
+    await session.dispose();
+  });
+
   test('a plain tool call still produces no children field at all', async () => {
     const provider = new FakeProvider(() => [
       { kind: 'tool-start', id: 't1', tool: READ },
