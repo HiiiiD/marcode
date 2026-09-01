@@ -100,8 +100,10 @@ suite('claude toToolCall', () => {
   });
 
   test('a background Agent spawn carries background: true; a foreground one carries neither', () => {
+    // The SDK's own Task/Agent tool input field is `background` (sdk.d.ts),
+    // not `run_in_background` — that name belongs to Bash's own input shape.
     const background = toToolCall('Agent', {
-      subagent_type: 'Explore', prompt: 'find it', run_in_background: true,
+      subagent_type: 'Explore', prompt: 'find it', background: true,
     });
     assert.deepStrictEqual(background, {
       kind: 'subagent', label: 'Agent', action: 'spawn',

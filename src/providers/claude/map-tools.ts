@@ -139,7 +139,10 @@ export function toToolCall(name: string, input: unknown): ToolCall {
         isolation: str(record.isolation),
         prompt: str(record.prompt),
         summary: str(record.description),
-        background: record.run_in_background === true ? true : undefined,
+        // The Agent/Task tool's own input field is `background` (sdk.d.ts) —
+        // distinct from Bash's `run_in_background` above, a different tool
+        // with its own input shape.
+        background: record.background === true ? true : undefined,
       });
 
     case 'SendMessage':

@@ -1263,17 +1263,28 @@ export class AgentSession {
    * the store yet — they land there inline when the parent settles — so
    * this just updates the buffer and streams a patch, with no store write.
    *
-   * But `flushUnsettledTools` can have already settled the parent (e.g.
-   * an interrupt mid-subagent) and cleared the buffer, while a permission
-   * raised inside it is still outstanding and answered later. In that case
-   * the parent's persisted `children` array is the only durable copy, so
-   * this rebuilds the parent item with the child updated in place and
-   * writes it through `replaceItem` — one store write and one patch that
-   * swaps the whole parent, children included.
+   * That assumption breaks for an async-dispatched subagent (Claude's
+   * `Agent`/`Task` tool with `background: true`): its own tool-end settles
+   * almost immediately with a "launched" acknowledgement, well before its
+   * real nested tool activity streams in tagged with the same parentId —
+   * see `providers/claude/map-tools.ts`. The parent will never settle
+   * again, so a child arriving after it already has must write through to
+   * the store itself; waiting for a settle that already happened would
+   * mean it never lands on disk at all (only the live patch would show it,
+   * which is exactly what made Fleet and a reloaded window read 0 tools
+   * for a subagent the sidebar showed working correctly the whole time).
+   *
+   * `flushUnsettledTools` reaching an already-settled parent (e.g. an
+   * interrupt mid-subagent that cleared the buffer, or the same
+   * already-settled-parent case above) hits the same "parent settled"
+   * branch below, for the same reason.
    */
   private replaceChild(parentRoot: string, item: TranscriptItem): void {
+    const parent = this.toolItems.get(parentRoot);
+    const parentSettled = parent?.role === 'tool' && parent.state !== 'running';
     const buffered = this.childrenByParent.get(parentRoot);
-    if (buffered) {
+
+    if (buffered && !parentSettled) {
       const at = buffered.findIndex((c) => c.id === item.id);
       if (at >= 0) { buffered[at] = item; } else { buffered.push(item); }
       const parentItemId = this.parentItemIdFor(parentRoot);
@@ -1282,13 +1293,16 @@ export class AgentSession {
       return;
     }
 
-    const parent = this.toolItems.get(parentRoot);
     if (!parent || parent.role !== 'tool') { return; }
-    const existingChildren = parent.children ?? [];
+    // The buffer, when present, is the more current source — it can hold
+    // updates a prior write-through (this same branch, for an earlier
+    // sibling) hasn't synced back into `parent.children` yet.
+    const existingChildren = buffered ?? parent.children ?? [];
     const at = existingChildren.findIndex((c) => c.id === item.id);
     const children = at >= 0
       ? existingChildren.map((c, i) => (i === at ? item : c))
       : [...existingChildren, item];
+    if (buffered) { this.childrenByParent.set(parentRoot, children); }
     const settledParent: TranscriptItem = { ...parent, children };
     this.toolItems.set(parentRoot, settledParent);
     this.replaceItem(settledParent);
