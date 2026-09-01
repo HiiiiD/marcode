@@ -4,6 +4,7 @@ import { test, suite } from 'mocha';
 import {
   CONFIG_DIR_ENV_KEY, ENV_MAP_KEYS, supportsSkillsCopy, defaultConfigDir,
   resolveSourceConfigDir, isDuplicateInstanceId, buildProviderInstanceConfig,
+  deriveConfigDirVarName,
 } from '../../shared/account-setup';
 
 suite('shared/account-setup', () => {
@@ -67,6 +68,27 @@ suite('shared/account-setup', () => {
     });
     test('config-dir env key names', () => {
       assert.deepStrictEqual(CONFIG_DIR_ENV_KEY, { claude: 'CLAUDE_CONFIG_DIR', codex: 'CODEX_HOME' });
+    });
+  });
+
+  suite('deriveConfigDirVarName', () => {
+    test('appends the sanitized, uppercased id to the key', () => {
+      assert.strictEqual(
+        deriveConfigDirVarName('CLAUDE_CONFIG_DIR', 'claude-personal'),
+        'CLAUDE_CONFIG_DIR_CLAUDE_PERSONAL',
+      );
+    });
+    test('replaces non-alphanumeric runs with a single underscore', () => {
+      assert.strictEqual(
+        deriveConfigDirVarName('CODEX_HOME', 'codex  work!!acct'),
+        'CODEX_HOME_CODEX_WORK_ACCT',
+      );
+    });
+    test('trims leading/trailing separators produced by sanitizing', () => {
+      assert.strictEqual(
+        deriveConfigDirVarName('CLAUDE_CONFIG_DIR', '  -personal-  '),
+        'CLAUDE_CONFIG_DIR_PERSONAL',
+      );
     });
   });
 

@@ -116,3 +116,31 @@ Steps:
 None outstanding — kind scope (`claude`+`codex`), copy contents (`skills/`+`plugins/`
 only), settings target (user scope), and reload handling (explicit action) are all
 resolved above.
+
+## Amendment: config-dir key is a path, not a secret
+
+Post-implementation feedback: `CLAUDE_CONFIG_DIR`/`CODEX_HOME` are plain directory paths,
+not credentials, so routing them through the same "invent an OS var name, `setx` it,
+restart VS Code" ceremony as `ANTHROPIC_API_KEY`/`OPENAI_API_KEY` is friction the value
+doesn't warrant. Every other `envMap` key stays OS-var-name-only — this amendment is
+scoped to the config-dir key alone.
+
+Revised step 4/5 for that one key: the wizard asks for the **literal directory path**
+directly, instead of an OS var name. It then derives a deterministic OS var name from the
+key and the instance id (`deriveConfigDirVarName`, e.g. `CLAUDE_CONFIG_DIR_CLAUDE_PERSONAL`)
+so `envMap`'s on-disk shape is unchanged — still `subprocess-var -> OS-var-name`, `resolveEnvMap`
+untouched. On Windows, the wizard runs `setx <derived-var> "<path>"` in an opened terminal
+on the user's behalf (matching the existing `openLoginTerminal` precedent for login flows);
+on POSIX there's no unattended equivalent (`terminal.sendText('export ...')` only affects
+that one terminal session, not future shells), so it stays a manual `export`/profile-edit
+instruction, same as every other manual env var.
+
+Because the wizard now holds the literal target path from the moment it's typed, the
+copy step no longer needs to read `process.env[configDirOsVar]` (which was usually still
+unset in-process, since `setx`/`export` only take effect for new shells) — it uses the
+typed path directly. This removes the "not set yet, skipped" warning for the common case.
+
+`src/shared/account-setup.ts` gains `deriveConfigDirVarName(key, id): string`, unit
+tested. `src/host/account-setup-wizard.ts` gains `openSetxTerminal(varName, value): void`
+(Windows-only), and `maybeCopySkillsAndPlugins` takes the literal `targetDir` directly
+rather than resolving it from `envMap`/`process.env`.

@@ -53,6 +53,18 @@ export function isDuplicateInstanceId(
   return baseIds.includes(trimmed) || existing.some((cfg) => cfg.id === trimmed);
 }
 
+/**
+ * Derives a deterministic OS env-var name for a config-dir key from the
+ * instance id, so the wizard never needs to ask the user to invent one for
+ * a value that isn't a secret — `id`, sanitized to `[A-Z0-9_]`, appended to
+ * `key`. E.g. `('CLAUDE_CONFIG_DIR', 'claude-personal')` ->
+ * `'CLAUDE_CONFIG_DIR_CLAUDE_PERSONAL'`.
+ */
+export function deriveConfigDirVarName(key: string, id: string): string {
+  const sanitizedId = id.trim().toUpperCase().replace(/[^A-Z0-9_]+/g, '_').replace(/^_+|_+$/g, '');
+  return `${key}_${sanitizedId}`;
+}
+
 /** Builds a `ProviderInstanceConfig` from collected wizard answers, trimming `id`/`displayName` and omitting `envMap` when empty. */
 export function buildProviderInstanceConfig(
   kind: ProviderInstanceKind, id: string, displayName: string, envMap: Record<string, string>,
