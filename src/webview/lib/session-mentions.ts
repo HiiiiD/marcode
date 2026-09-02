@@ -60,23 +60,24 @@ export function sessionMentions(
   }
 
   const referable = sessions.filter((s) => s.id !== selfId && !s.archived);
-  // Every session starts titled `Untitled`, so two rows reading the same word
-  // with the same hint is the common case, not the edge one — and the only
-  // thing telling them apart otherwise is a collision suffix inside a token
-  // the user has not looked at yet.
+  // Sessions are labeled by their `name`, which is unique by construction
+  // (enforced in `SessionManager.rename()`). Two sessions can only collide if
+  // they both still hold their default auto-generated names — unlikely but
+  // possible if `defaultName`'s counter ever repeats across a reload. The
+  // suffix logic stays as a safety net.
   const seen = new Map<string, number>();
-  for (const s of referable) { seen.set(s.title, (seen.get(s.title) ?? 0) + 1); }
+  for (const s of referable) { seen.set(s.name, (seen.get(s.name) ?? 0) + 1); }
 
   for (const s of referable) {
     options.push({
       id: s.id,
-      label: (seen.get(s.title) ?? 0) > 1 ? `${s.title} (${shortId(s.id)})` : s.title,
+      label: (seen.get(s.name) ?? 0) > 1 ? `${s.name} (${shortId(s.id)})` : s.name,
       hint: 'last reply',
       group: 'Sessions',
-      baseToken: slug(s.title),
+      baseToken: slug(s.name),
       payload: {
         kind: 'session-ref',
-        ref: { sessionId: s.id, kind: 'message', title: s.title },
+        ref: { sessionId: s.id, kind: 'message', title: s.name },
       },
     });
   }
