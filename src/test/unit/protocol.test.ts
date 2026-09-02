@@ -1,8 +1,10 @@
-import * as assert from 'assert';
+import * as assert from 'node:assert';
+import { suite, test } from 'mocha';
 import type {
-  HostToWebview, ProviderInfo, SessionId, StaleTree, TranscriptItem, UnavailableProvider,
+  HostToWebview, ProviderInfo, SessionId, SessionState, StaleTree, TranscriptItem, UnavailableProvider,
   WebviewToHost,
 } from '../../protocol/messages';
+import type { StartOptions } from '../../providers/types';
 
 function assertNever(x: never): never {
   throw new Error(`unhandled: ${JSON.stringify(x)}`);
@@ -22,6 +24,7 @@ function describeInbound(m: WebviewToHost): string {
     case 'set-effort': return 'set-effort';
     case 'set-permission-mode': return 'set-permission-mode';
     case 'set-include-context': return 'set-include-context';
+    case 'rename-session': return 'rename-session';
     case 'attach-paste': return 'attach-paste';
     case 'attach-pick': return 'attach-pick';
     case 'attach-drop': return 'attach-drop';
@@ -231,5 +234,34 @@ suite('protocol', () => {
     };
     assert.strictEqual(info.loginKind, 'none');
     assert.strictEqual(unavailable.loginKind, 'oauth');
+  });
+});
+
+suite('cross-session messaging protocol shapes', () => {
+  test('SessionState carries an optional name', () => {
+    const state: SessionState = {
+      id: 's1', providerId: 'claude', model: 'sonnet', title: 'Untitled', name: 'a',
+      cwd: '/tmp', status: 'idle', permissionMode: 'default', includeEditorContext: true,
+      resumeTokens: {}, usage: { inputTokens: 0, outputTokens: 0 },
+      archived: false, createdAt: 0, updatedAt: 0,
+    };
+    assert.strictEqual(state.name, 'a');
+  });
+
+  test('a user transcript item can carry a from sender', () => {
+    const item: TranscriptItem = {
+      id: 'u1', ts: 0, role: 'user', text: 'hi', from: { sessionId: 's2', name: 'b' },
+    };
+    assert.strictEqual(item.role === 'user' && item.from?.name, 'b');
+  });
+
+  test('rename-session is a WebviewToHost message', () => {
+    const msg: WebviewToHost = { t: 'rename-session', id: 's1', name: 'a' };
+    assert.strictEqual(msg.t, 'rename-session');
+  });
+
+  test('StartOptions carries a sessionId', () => {
+    const opts: StartOptions = { cwd: '/tmp', permissionMode: 'default', sessionId: 's1' };
+    assert.strictEqual(opts.sessionId, 's1');
   });
 });

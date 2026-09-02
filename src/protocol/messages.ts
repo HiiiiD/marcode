@@ -64,6 +64,14 @@ export type TranscriptItem =
        * native image input, and a file goes as a path line the provider adds.
        */
       attachments?: Attachment[];
+      /**
+       * Present when this turn was delivered by another session's
+       * `marcode__send_message` call rather than typed by the human.
+       * Captured at delivery time and never re-looked-up — same rule as
+       * `SessionRef.title`: a transcript item describes what was true when
+       * it was written.
+       */
+      from?: { sessionId: SessionId; name: string };
     })
   | (ItemBase & { role: 'assistant'; text: string; thinking?: string })
   | (ItemBase & {
@@ -160,6 +168,13 @@ export interface SessionState {
   model: string;
   effort?: EffortLevel;
   title: string;
+  /**
+   * User-set label, distinct from `title` (still auto-derived from the
+   * first message). Defaults at creation so every session is addressable by
+   * name before anyone renames it — see `SessionManager.create()`. Unique
+   * per window, case-insensitive; enforced in `SessionManager.rename()`.
+   */
+  name: string;
   cwd: string;
   status: SessionStatus;
   /**
@@ -445,6 +460,7 @@ export type WebviewToHost =
   | { t: 'set-effort'; id: SessionId; effort: EffortLevel }
   | { t: 'set-permission-mode'; id: SessionId; mode: PermissionMode }
   | { t: 'set-include-context'; id: SessionId; on: boolean }
+  | { t: 'rename-session'; id: SessionId; name: string }
   /**
    * Pasted bytes cross the wire once; the host persists them and mints the
    * attachment.
