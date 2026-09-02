@@ -128,6 +128,17 @@ means human-typed (today's shape, no migration needed for existing JSONL).
 Present renders a distinct pill ("Message from A") in `transcript-item.tsx`
 instead of the default user avatar.
 
+The `from` field is host/UI state — it never reaches the model on its own,
+the same way `context`/`refs` already don't. What the model actually reads
+is `AgentSession.deliver()`'s `outgoing` string, and that has to carry the
+sender explicitly or B has no way to know who sent the turn it is answering,
+same gap as A's own self-identification problem (`marcode__list_sessions`'
+`self: true`, below). `deliver()` prepends `[Message from session "<name>"]`
+ahead of the text when `from` is present, using the same seed-line
+mechanism already used for handoff/fork context — recorded into `outgoing`,
+never into the transcript item's own `text`, so a human reading the
+transcript back sees the message, not host plumbing.
+
 **On A (the sender):** `send_message` is a real MCP tool call the model made,
 so it already produces a normal `role: 'tool'` item — permission card,
 running/ok/error states, all for free, same machinery as every other tool
