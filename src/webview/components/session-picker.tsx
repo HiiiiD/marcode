@@ -65,7 +65,22 @@ export function SessionPicker({ narrow, onReview, onFleet }: SessionPickerProps)
    * across that gap.
    */
   const [renamingId, setRenamingId] = useState<SessionId | null>(null);
-  const renaming = state.sessions.find((s) => s.id === renamingId);
+  /**
+   * The last id `renamingId` held while non-null — set alongside it on open,
+   * but never cleared when `renamingId` goes back to `null` on close. The
+   * dialog mounts on this instead of on `renamingId` itself so that closing
+   * it doesn't unmount `RenameSessionDialog` in the same render as the `open`
+   * prop going false; that's what leaves Base UI's close animation a render
+   * to actually play, the same way `SessionHeader`'s `canBringBack` (derived
+   * from the stable `plan`, not from `bringBackOpen`) keeps `BringBackDialog`
+   * mounted through its own close animation.
+   */
+  const [renameTargetId, setRenameTargetId] = useState<SessionId | null>(null);
+  const renaming = state.sessions.find((s) => s.id === renameTargetId);
+  const openRename = (id: SessionId) => {
+    setRenamingId(id);
+    setRenameTargetId(id);
+  };
   // Asked once per set of directories the roster occupies, and never for an
   // empty roster: with no session there is nothing that could have left a
   // tree behind, and the sweep shells out to git per directory. The entry
@@ -109,7 +124,7 @@ export function SessionPicker({ narrow, onReview, onFleet }: SessionPickerProps)
               session={s}
               open={open.has(s.id)}
               onToggle={() => toggle(s.id)}
-              onRename={() => setRenamingId(s.id)}
+              onRename={() => openRename(s.id)}
             />
           ))}
           {archived.length > 0 && (
@@ -130,7 +145,7 @@ export function SessionPicker({ narrow, onReview, onFleet }: SessionPickerProps)
                     session={s}
                     open={open.has(s.id)}
                     onToggle={() => toggle(s.id)}
-                    onRename={() => setRenamingId(s.id)}
+                    onRename={() => openRename(s.id)}
                   />
                 ))}
               </DropdownMenuGroup>
@@ -186,8 +201,12 @@ export function SessionPicker({ narrow, onReview, onFleet }: SessionPickerProps)
       {/* Mounted beside the roster `DropdownMenu`, not inside a row: a row
           lives in the menu's own `DropdownMenuContent`, which unmounts the
           moment the "Rename…" click closes the root menu — see the comment
-          on `SessionRow`'s `onRename` prop. `renaming` stays defined through
-          the close animation the same way `BringBackDialog`'s `pane` does. */}
+          on `SessionRow`'s `onRename` prop. `renaming` is derived from
+          `renameTargetId`, not from `renamingId` — that id is deliberately
+          never cleared on close, so this subtree (and the dialog inside it)
+          stays mounted through the close animation instead of unmounting in
+          the same render `open` goes false. See the comment on
+          `renameTargetId` above. */}
       {renaming && (
         <RenameSessionDialog
           session={renaming}
