@@ -54,7 +54,14 @@ export type ToolCall =
       // instant the dispatch acknowledges) — this says the underlying work
       // is structurally invisible here, not that it's unfinished.
       background?: boolean }
-  | { kind: 'mcp'; label: string; server: string; tool: string }
+  // `input` carries the call's raw arguments only when the provider's own
+  // wire schema actually has them — Codex's `mcpToolCall` item never does
+  // (server/tool/status/result only, confirmed against codex-cli 0.147.0's
+  // `v2/ThreadItem.ts`), so it stays undefined there. It exists for the one
+  // deliberate exception in `tool-render.ts` (`marcode__send_message`), not
+  // as a general-purpose payload — most `'mcp'` rendering still ignores it.
+  | { kind: 'mcp'; label: string; server: string; tool: string;
+      input?: Record<string, unknown> }
   | { kind: 'image'; label: string; note?: string }
   | { kind: 'other'; label: string; fields?: Field[]; raw: unknown };
 

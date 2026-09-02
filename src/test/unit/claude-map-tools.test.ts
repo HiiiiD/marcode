@@ -125,12 +125,20 @@ suite('claude toToolCall', () => {
     });
   });
 
-  test('an mcp__ name becomes an mcp call, carrying no raw arguments', () => {
+  test('an mcp__ name becomes an mcp call, carrying its raw arguments as input', () => {
     const call = toToolCall('mcp__github__create_issue', { title: 'bug' });
     assert.deepStrictEqual(call, {
       kind: 'mcp', label: 'create_issue', server: 'github', tool: 'create_issue',
+      input: { title: 'bug' },
     });
-    assert.strictEqual('args' in call, false);
+  });
+
+  test('an mcp__ call with no arguments carries no input field', () => {
+    const call = toToolCall('mcp__github__create_issue', undefined);
+    assert.deepStrictEqual(call, {
+      kind: 'mcp', label: 'create_issue', server: 'github', tool: 'create_issue',
+    });
+    assert.strictEqual('input' in call, false);
   });
 
   test('an unknown tool falls through to other with its raw input', () => {

@@ -136,11 +136,24 @@ export function describeTool(tool: ToolCall): ToolHeader {
         tool.agent ?? tool.summary ?? tool.target ?? '', false,
       );
 
-    case 'mcp':
+    case 'mcp': {
+      // The one deliberate exception to "nothing here branches on a tool's
+      // name" — see the spec's section D. `marcode__send_message` is this
+      // panel's own cross-session messaging tool, not a third-party MCP
+      // server's, and "Sent to <name>" reads the call the way the rest of
+      // this file reads every other kind: off a typed field, not a name a
+      // user would recognize as a tool at all. A second tool needing
+      // name-specific rendering should become a `ToolCall` kind of its own
+      // instead of a second exception here.
+      if (tool.tool === 'marcode__send_message') {
+        const to = typeof tool.input?.to === 'string' ? tool.input.to : '';
+        return header('send', tool.label, `Sent to ${to}`, false);
+      }
       // The server already has its own chip in `tool-card.tsx`, inches to the
       // left — repeating it here read as `[wrench] github Call tool github ·
       // list_repos` at 300px. The tool name alone is the primary.
       return header('wrench', tool.label, tool.tool, false);
+    }
 
     case 'other':
       return header('wrench', tool.label, tool.fields?.[0]?.value ?? '', false);
@@ -243,6 +256,11 @@ export function describeInput(tool: ToolCall): ToolBlock[] {
       break;
 
     case 'mcp':
+      if (tool.tool === 'marcode__send_message') {
+        const text = typeof tool.input?.text === 'string' ? tool.input.text : '';
+        if (text) { blocks.push({ kind: 'note', text }); }
+        break;
+      }
       if (tool.server) { blocks.push({ kind: 'field', label: 'server', value: tool.server }); }
       if (tool.tool) { blocks.push({ kind: 'field', label: 'tool', value: tool.tool }); }
       break;

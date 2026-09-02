@@ -61,7 +61,13 @@ export function toToolCall(name: string, input: unknown): ToolCall {
 
   const mcp = parseMcpName(name);
   if (mcp) {
-    return { kind: 'mcp', label: mcp.tool, server: mcp.server, tool: mcp.tool };
+    // `record` is the call's raw arguments as the SDK gave them — passed
+    // through unconditionally. Every `'mcp'` tool other than
+    // `marcode__send_message` still ignores `input` in `tool-render.ts`.
+    return {
+      kind: 'mcp', label: mcp.tool, server: mcp.server, tool: mcp.tool,
+      ...(Object.keys(record).length > 0 ? { input: record } : {}),
+    };
   }
 
   switch (name) {
