@@ -116,7 +116,9 @@ export function toToolCall(item: ThreadItem): ToolCall | undefined {
     case 'mcpToolCall': {
       const m = item as Extract<ThreadItem, { type: 'mcpToolCall' }>;
       const tool = str(m.tool) ?? '';
-      const input = (m.arguments && typeof m.arguments === 'object') ? m.arguments : undefined;
+      const input = (m.arguments && typeof m.arguments === 'object' && Object.keys(m.arguments).length > 0)
+        ? m.arguments
+        : undefined;
       return compact({ kind: 'mcp', label: tool || m.server, server: m.server, tool, input });
     }
 
