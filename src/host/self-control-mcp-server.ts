@@ -249,7 +249,15 @@ export class SelfControlMcpServer {
         }
         await session.interrupt();
         session.send(text, undefined, undefined, undefined, { sessionId: from.id, name: from.name });
-        return { content: [{ type: 'text', text: JSON.stringify({ delivered: true }) }] };
+        // Codex's `mcpToolCall` wire item never carries the call's arguments
+        // (verified against codex-cli 0.147.0's `v2/ThreadItem.ts` — server/
+        // tool/status/result only), so `map-tools.ts` has nothing to read
+        // `to`/`text` off of for that arm's tool card. Echoing both back in
+        // the result is the only channel Codex's `item/completed` actually
+        // carries, and matches the established pattern for that arm's
+        // `webSearch` item, whose `query` is likewise blank at `item/started`
+        // and only filled in once the completed item revises the card.
+        return { content: [{ type: 'text', text: JSON.stringify({ delivered: true, to: target.name, text }) }] };
       },
     );
 

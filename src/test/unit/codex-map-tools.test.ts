@@ -76,6 +76,30 @@ suite('codex toToolCall', () => {
     });
   });
 
+  test('mcpToolCall recovers `input` from marcode__send_message\'s own completed result', () => {
+    const item = {
+      type: 'mcpToolCall', id: 'i3b', server: 'marcode-self-control', tool: 'marcode__send_message',
+      result: [{ type: 'text', text: JSON.stringify({ delivered: true, to: 'Otter', text: 'hi' }) }],
+    } as unknown as ThreadItem;
+    assert.deepStrictEqual(toToolCall(item), {
+      kind: 'mcp', label: 'marcode__send_message', server: 'marcode-self-control', tool: 'marcode__send_message',
+      input: { delivered: true, to: 'Otter', text: 'hi' },
+    });
+  });
+
+  test('mcpToolCall with no result yet, or a non-JSON/non-object result, carries no `input`', () => {
+    const started = {
+      type: 'mcpToolCall', id: 'i3c', server: 'marcode-self-control', tool: 'marcode__send_message',
+    } as unknown as ThreadItem;
+    assert.strictEqual((toToolCall(started) as { input?: unknown }).input, undefined);
+
+    const nonJson = {
+      type: 'mcpToolCall', id: 'i3d', server: 'github', tool: 'create_issue',
+      result: [{ type: 'text', text: 'not json' }],
+    } as unknown as ThreadItem;
+    assert.strictEqual((toToolCall(nonJson) as { input?: unknown }).input, undefined);
+  });
+
   test('webSearch carries the query it has', () => {
     const item = { type: 'webSearch', id: 'i4', query: 'effect schema' } as unknown as ThreadItem;
     assert.deepStrictEqual(toToolCall(item), {

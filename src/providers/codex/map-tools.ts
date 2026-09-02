@@ -96,6 +96,32 @@ function fileEdits(changes: unknown): FileEdit[] {
     }));
 }
 
+/**
+ * `marcode__send_message`'s completed result, read back as the call's
+ * `input` — see `toToolCall`'s `mcpToolCall` case. Codex's wire never gives
+ * this arm the call's real arguments (only `server`/`tool`/`status`/
+ * `result`), so the one MCP tool this panel special-cases in
+ * `tool-render.ts` (`marcode__send_message`) echoes `to`/`text` back into its
+ * own result JSON for this to recover. Any result that isn't that shape
+ * (a third-party MCP tool, or `{ isError: true, ... }`) yields `undefined`
+ * rather than a guess.
+ */
+function mcpResultInput(m: Extract<ThreadItem, { type: 'mcpToolCall' }>): Record<string, unknown> | undefined {
+  if (!Array.isArray(m.result)) { return undefined; }
+  const text = m.result
+    .map((block) => str(asRecord(block).text))
+    .find((part): part is string => part !== undefined);
+  if (!text) { return undefined; }
+  try {
+    const parsed: unknown = JSON.parse(text);
+    return (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed))
+      ? parsed as Record<string, unknown>
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function toToolCall(item: ThreadItem): ToolCall | undefined {
   switch (item.type) {
     case 'commandExecution': {
@@ -116,7 +142,7 @@ export function toToolCall(item: ThreadItem): ToolCall | undefined {
     case 'mcpToolCall': {
       const m = item as Extract<ThreadItem, { type: 'mcpToolCall' }>;
       const tool = str(m.tool) ?? '';
-      return { kind: 'mcp', label: tool || m.server, server: m.server, tool };
+      return compact({ kind: 'mcp', label: tool || m.server, server: m.server, tool, input: mcpResultInput(m) });
     }
 
     case 'webSearch': {
