@@ -405,4 +405,47 @@ suite('SelfControlMcpServer cross-session messaging', () => {
     assert.strictEqual(unknown.isError, true);
     await server.dispose();
   });
+
+  test('a real send_message call delivers into the target session\'s real transcript, tagged with from', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mar-self-control-msg-'));
+    const store = new TranscriptStore(dir);
+    const provider = new FakeProvider(() => [
+      { kind: 'text', delta: 'ok' },
+      { kind: 'turn-end', reason: 'done' },
+    ]);
+    const providers = new Map<string, AgentProvider>([['fake', provider]]);
+    const manager = new SessionManager(store, providers, () => { });
+    await manager.init();
+
+    try {
+      const a = await manager.create('fake', process.cwd());
+      const b = await manager.create('fake', process.cwd());
+      manager.rename(a.state.id, 'sender');
+      manager.rename(b.state.id, 'receiver');
+
+      const server = new SelfControlMcpServer(manager);
+      const config = await server.start();
+      const res = await fetch(`${config.url}?sid=${a.state.id}`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json', accept: 'application/json, text/event-stream',
+          authorization: `Bearer ${config.token}`,
+        },
+        body: JSON.stringify({
+          jsonrpc: '2.0', id: 1, method: 'tools/call',
+          params: { name: 'marcode__send_message', arguments: { to: 'receiver', text: 'please do X' } },
+        }),
+      });
+      const body = await res.json() as { result: { isError?: boolean } };
+      assert.strictEqual(body.result.isError, undefined);
+
+      const snapshot = await manager.get(b.state.id)!.snapshot();
+      const item = snapshot.items.find((i) => i.role === 'user' && i.text === 'please do X');
+      assert.strictEqual(item?.role === 'user' && item.from?.name, 'sender');
+      await server.dispose();
+    } finally {
+      await manager.dispose();
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
 });
