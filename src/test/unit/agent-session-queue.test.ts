@@ -13,7 +13,7 @@ import type { UsageWindow } from '../../providers/types';
 function baseState(): SessionState {
   return {
     id: 's1', providerId: 'fake', model: 'fake-large', effort: 'medium',
-    title: 'Untitled', cwd: '/repo', status: 'idle', permissionMode: 'default',
+    title: 'Untitled', name: 'Untitled', cwd: '/repo', status: 'idle', permissionMode: 'default',
     includeEditorContext: true,
     resumeTokens: {},
     usage: { inputTokens: 0, outputTokens: 0 },

@@ -721,7 +721,7 @@ suite('SessionManager', () => {
 
   function storedSession(over: Partial<SessionState> = {}): SessionState {
     return {
-      id: 's1', providerId: 'fake', model: 'fake-1', title: 'Restored',
+      id: 's1', providerId: 'fake', model: 'fake-1', title: 'Restored', name: 'Restored',
       cwd: '/tmp', status: 'idle', permissionMode: 'default',
       includeEditorContext: true, resumeTokens: {},
       usage: { inputTokens: 0, outputTokens: 0 },
