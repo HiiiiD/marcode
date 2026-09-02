@@ -120,6 +120,7 @@ suite('MessageRouter', () => {
       openSettings: (section) => sections.push(section),
       openExternal: () => {},
       exportCsv: () => {},
+      exportImage: () => {},
       login: () => {},
     });
 
@@ -137,6 +138,7 @@ suite('MessageRouter', () => {
       openSettings: () => {},
       openExternal: () => {},
       exportCsv: () => {},
+      exportImage: () => {},
       login: (providerId) => providers.push(providerId),
     });
 
@@ -154,6 +156,7 @@ suite('MessageRouter', () => {
       openSettings: () => {},
       openExternal: (url) => urls.push(url),
       exportCsv: () => {},
+      exportImage: () => {},
       login: () => {},
     });
 
@@ -171,6 +174,7 @@ suite('MessageRouter', () => {
       openSettings: () => {},
       openExternal: () => {},
       exportCsv: (csv) => csvs.push(csv),
+      exportImage: () => {},
       login: () => {},
     });
 
@@ -718,6 +722,7 @@ suite('MessageRouter', () => {
       openSettings: () => {},
       openExternal: () => {},
       exportCsv: () => {},
+      exportImage: () => {},
       login: () => {},
     });
 
@@ -741,6 +746,7 @@ suite('MessageRouter', () => {
       openSettings: () => {},
       openExternal: () => {},
       exportCsv: () => {},
+      exportImage: () => {},
       login: () => {},
     });
 
@@ -788,6 +794,7 @@ suite('MessageRouter', () => {
       openSettings: () => {},
       openExternal: () => {},
       exportCsv: () => {},
+      exportImage: () => {},
       login: () => {},
     });
 
@@ -883,6 +890,7 @@ suite('MessageRouter', () => {
       openSettings: () => {},
       openExternal: () => {},
       exportCsv: () => {},
+      exportImage: () => {},
       login: () => {},
     });
 

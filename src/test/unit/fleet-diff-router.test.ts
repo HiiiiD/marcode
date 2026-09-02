@@ -18,6 +18,7 @@ function routerWith() {
     openSettings: () => {},
     openExternal: () => {},
     exportCsv: () => {},
+    exportImage: () => {},
     login: () => {},
   };
   const emitted: HostToWebview[] = [];

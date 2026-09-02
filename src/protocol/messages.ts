@@ -598,6 +598,13 @@ export type WebviewToHost =
    */
   | { t: 'export-table-csv'; csv: string }
   /**
+   * A tool-output image's self-contained `data:` URI, for the host to decode
+   * and save to disk. Not session-addressed, same reason `export-table-csv`
+   * is not — the image exists in rendered transcript output, not session
+   * state the host needs to look up.
+   */
+  | { t: 'export-image'; dataUri: string }
+  /**
    * Migrate (or dismiss) the AGENTS.md/CLAUDE.md nudge card's rows. `dirs`
    * is workspace-relative POSIX, always sent by the webview regardless of
    * whether the action came from a row button or a card-level bulk button —

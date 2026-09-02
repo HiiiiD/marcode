@@ -412,6 +412,9 @@ export async function activate(context: vscode.ExtensionContext) {
     exportCsv: (csv: string) => {
       void exportCsv(csv);
     },
+    exportImage: (dataUri: string) => {
+      void exportImage(dataUri);
+    },
     login: (providerId: string) => {
       // `providerId` names a registered instance's login recipe — a provider
       // with none (no login flow, e.g. a key-based instance, or a typo
@@ -690,6 +693,42 @@ async function exportCsv(csv: string): Promise<void> {
     await vscode.workspace.fs.writeFile(target, new TextEncoder().encode(csv));
   } catch (err) {
     // Errors are state, never exceptions — same posture as openExternal.
+    console.error('[mar-code] could not save', target.fsPath, err);
+    void vscode.window.showErrorMessage(`Could not save ${target.fsPath}.`);
+  }
+}
+
+const IMAGE_EXT: Record<string, string> = {
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/gif': 'gif',
+  'image/webp': 'webp',
+  'image/svg+xml': 'svg',
+};
+
+/**
+ * Saves a tool-output image's `data:` URI to a file the user picks. Same
+ * shape as `exportCsv`, decoding base64 instead of encoding text, and
+ * picking the save dialog's default extension off the URI's own mime type
+ * rather than assuming PNG.
+ */
+async function exportImage(dataUri: string): Promise<void> {
+  const match = /^data:([^;,]+);base64,(.*)$/s.exec(dataUri);
+  if (!match) {
+    console.error('[mar-code] malformed image data URI');
+    return;
+  }
+  const [, mime, base64] = match;
+  const ext = IMAGE_EXT[mime] ?? 'png';
+  const target = await vscode.window.showSaveDialog({
+    filters: { 'Image': [ext] },
+    defaultUri: vscode.Uri.file(`image.${ext}`),
+  });
+  if (!target) { return; }
+  try {
+    await vscode.workspace.fs.writeFile(target, Buffer.from(base64, 'base64'));
+  } catch (err) {
+    // Errors are state, never exceptions — same posture as exportCsv.
     console.error('[mar-code] could not save', target.fsPath, err);
     void vscode.window.showErrorMessage(`Could not save ${target.fsPath}.`);
   }
