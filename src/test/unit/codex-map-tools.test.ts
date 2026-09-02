@@ -76,28 +76,22 @@ suite('codex toToolCall', () => {
     });
   });
 
-  test('mcpToolCall recovers `input` from marcode__send_message\'s own completed result', () => {
+  test('mcpToolCall reads `input` off `arguments` — real shape, not in the generated typedef', () => {
     const item = {
-      type: 'mcpToolCall', id: 'i3b', server: 'marcode-self-control', tool: 'marcode__send_message',
-      result: [{ type: 'text', text: JSON.stringify({ delivered: true, to: 'Otter', text: 'hi' }) }],
+      type: 'mcpToolCall', id: 'i3b', server: 'marcode_self_control', tool: 'marcode__send_message',
+      arguments: { to: 'Otter', text: 'hi' },
     } as unknown as ThreadItem;
     assert.deepStrictEqual(toToolCall(item), {
-      kind: 'mcp', label: 'marcode__send_message', server: 'marcode-self-control', tool: 'marcode__send_message',
-      input: { delivered: true, to: 'Otter', text: 'hi' },
+      kind: 'mcp', label: 'marcode__send_message', server: 'marcode_self_control', tool: 'marcode__send_message',
+      input: { to: 'Otter', text: 'hi' },
     });
   });
 
-  test('mcpToolCall with no result yet, or a non-JSON/non-object result, carries no `input`', () => {
-    const started = {
-      type: 'mcpToolCall', id: 'i3c', server: 'marcode-self-control', tool: 'marcode__send_message',
+  test('mcpToolCall with no `arguments` carries no `input`', () => {
+    const item = {
+      type: 'mcpToolCall', id: 'i3c', server: 'github', tool: 'create_issue',
     } as unknown as ThreadItem;
-    assert.strictEqual((toToolCall(started) as { input?: unknown }).input, undefined);
-
-    const nonJson = {
-      type: 'mcpToolCall', id: 'i3d', server: 'github', tool: 'create_issue',
-      result: [{ type: 'text', text: 'not json' }],
-    } as unknown as ThreadItem;
-    assert.strictEqual((toToolCall(nonJson) as { input?: unknown }).input, undefined);
+    assert.strictEqual((toToolCall(item) as { input?: unknown }).input, undefined);
   });
 
   test('webSearch carries the query it has', () => {
@@ -205,10 +199,13 @@ suite('codex toToolOutput', () => {
     assert.deepStrictEqual(toToolOutput(item), { kind: 'none' });
   });
 
-  test('an mcpToolCall unwraps an Anthropic-style content array to text', () => {
+  test('an mcpToolCall unwraps the real CallToolResult envelope\'s content to text', () => {
     const item = {
       type: 'mcpToolCall', id: 'i5', server: 'github', tool: 'list_prs',
-      result: [{ type: 'text', text: 'PR #1' }, { type: 'text', text: 'PR #2' }],
+      result: {
+        content: [{ type: 'text', text: 'PR #1' }, { type: 'text', text: 'PR #2' }],
+        structuredContent: null, _meta: null,
+      },
     } as unknown as ThreadItem;
     assert.deepStrictEqual(toToolOutput(item), { kind: 'text', text: 'PR #1\nPR #2' });
   });

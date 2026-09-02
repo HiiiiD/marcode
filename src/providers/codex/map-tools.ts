@@ -96,32 +96,6 @@ function fileEdits(changes: unknown): FileEdit[] {
     }));
 }
 
-/**
- * `marcode__send_message`'s completed result, read back as the call's
- * `input` — see `toToolCall`'s `mcpToolCall` case. Codex's wire never gives
- * this arm the call's real arguments (only `server`/`tool`/`status`/
- * `result`), so the one MCP tool this panel special-cases in
- * `tool-render.ts` (`marcode__send_message`) echoes `to`/`text` back into its
- * own result JSON for this to recover. Any result that isn't that shape
- * (a third-party MCP tool, or `{ isError: true, ... }`) yields `undefined`
- * rather than a guess.
- */
-function mcpResultInput(m: Extract<ThreadItem, { type: 'mcpToolCall' }>): Record<string, unknown> | undefined {
-  if (!Array.isArray(m.result)) { return undefined; }
-  const text = m.result
-    .map((block) => str(asRecord(block).text))
-    .find((part): part is string => part !== undefined);
-  if (!text) { return undefined; }
-  try {
-    const parsed: unknown = JSON.parse(text);
-    return (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed))
-      ? parsed as Record<string, unknown>
-      : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
 export function toToolCall(item: ThreadItem): ToolCall | undefined {
   switch (item.type) {
     case 'commandExecution': {
@@ -142,7 +116,8 @@ export function toToolCall(item: ThreadItem): ToolCall | undefined {
     case 'mcpToolCall': {
       const m = item as Extract<ThreadItem, { type: 'mcpToolCall' }>;
       const tool = str(m.tool) ?? '';
-      return compact({ kind: 'mcp', label: tool || m.server, server: m.server, tool, input: mcpResultInput(m) });
+      const input = (m.arguments && typeof m.arguments === 'object') ? m.arguments : undefined;
+      return compact({ kind: 'mcp', label: tool || m.server, server: m.server, tool, input });
     }
 
     case 'webSearch': {
@@ -230,12 +205,16 @@ export function toToolOutput(item: ThreadItem): ToolOutput {
 
   if (item.type === 'mcpToolCall') {
     const m = item as Extract<ThreadItem, { type: 'mcpToolCall' }>;
-    if (m.result === undefined) { return { kind: 'none' }; }
-    // An Anthropic-style content array, unwrapped the same way the Claude
-    // adapter does — a raw JSON dump of a `content[].text` array is a screen
-    // of escaped JSON in a sidebar for a shape that is really just text.
-    if (Array.isArray(m.result)) {
-      const text = m.result
+    if (m.result === undefined || m.result === null) { return { kind: 'none' }; }
+    // `result` is the raw MCP `CallToolResult` envelope —
+    // `{ content: [...], structuredContent, _meta }` — NOT a bare content
+    // array; verified 2026-09-02 off a live session's row in
+    // `~/.codex/thread_history_1.sqlite`. Reading `Array.isArray(m.result)`
+    // here (as an earlier version of this function did) is always false for
+    // real traffic, so every mcp tool's output fell to the raw JSON dump
+    // below instead of unwrapping to text.
+    if (Array.isArray(m.result.content)) {
+      const text = m.result.content
         .map((block) => str(asRecord(block).text))
         .filter((part): part is string => part !== undefined)
         .join('\n');

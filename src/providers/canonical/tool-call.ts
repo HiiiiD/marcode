@@ -54,14 +54,11 @@ export type ToolCall =
       // instant the dispatch acknowledges) — this says the underlying work
       // is structurally invisible here, not that it's unfinished.
       background?: boolean }
-  // `input` carries the call's raw arguments only when the provider's own
-  // wire schema actually has them. Codex's `mcpToolCall` item never does
-  // (server/tool/status/result only, confirmed against codex-cli 0.147.0's
-  // `v2/ThreadItem.ts`) — `map-tools.ts`'s `mcpResultInput` recovers `to`/
-  // `text` for `marcode__send_message` only by reading them back out of
-  // that tool's own completed `result`, so on the Codex arm `input` stays
-  // undefined until `item/completed` and is undefined for every other MCP
-  // tool. It exists for the one deliberate exception in `tool-render.ts`
+  // `input` carries the call's raw arguments — Codex's `mcpToolCall` item
+  // carries them as `arguments` (present but absent from the generated
+  // `v2/ThreadItem.ts` typedef `map-tools.ts` otherwise tracks; verified
+  // 2026-09-02 off a live session row in `~/.codex/thread_history_1.sqlite`).
+  // It exists for the one deliberate exception in `tool-render.ts`
   // (`marcode__send_message`), not as a general-purpose payload — most
   // `'mcp'` rendering still ignores it.
   | { kind: 'mcp'; label: string; server: string; tool: string;
