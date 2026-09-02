@@ -1353,6 +1353,28 @@ suite('AgentSession permission metadata', () => {
   });
 });
 
+suite('AgentSession constructor', () => {
+  let dir: string;
+  let store: TranscriptStore;
+  let sink: RecordingSink;
+
+  setup(async () => {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mar-constructor-'));
+    store = new TranscriptStore(dir);
+    sink = new RecordingSink();
+  });
+
+  teardown(async () => { await fs.rm(dir, { recursive: true, force: true }); });
+
+  test('constructor starts the provider with this session\'s own id', async () => {
+    const state = baseState();
+    const provider = new FakeProvider();
+    const session = new AgentSession(state, provider, store, sink);
+    assert.strictEqual(provider.lastStart?.sessionId, state.id);
+    await session.dispose();
+  });
+});
+
 suite('AgentSession activityLabel', () => {
   let dir: string;
   let store: TranscriptStore;
@@ -1369,14 +1391,6 @@ suite('AgentSession activityLabel', () => {
   test('starts Idle before any event', async () => {
     const session = new AgentSession(baseState(), new FakeProvider(() => []), store, sink);
     assert.strictEqual(session.state.activityLabel, 'Idle');
-    await session.dispose();
-  });
-
-  test('constructor starts the provider with this session\'s own id', async () => {
-    const state = baseState();
-    const provider = new FakeProvider();
-    const session = new AgentSession(state, provider, store, sink);
-    assert.strictEqual(provider.lastStart?.sessionId, state.id);
     await session.dispose();
   });
 
