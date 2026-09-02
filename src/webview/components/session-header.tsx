@@ -11,6 +11,7 @@ import { useStore } from "../store";
 import { ActiveSubagentBadge } from "./active-subagent-badge";
 import { BringBackDialog } from "./bring-back-dialog";
 import { evenlySizedPanes } from "./pane-layout";
+import { RenameSessionDialog } from "./rename-session-dialog";
 import { StatusBadge } from "./status-badge";
 
 interface SessionHeaderProps {
@@ -30,6 +31,13 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
   // with a single backend configured, naming it on every pane is noise.
   const providerLabel = state.catalog.find((p) => p.id === s.providerId)?.displayName;
   const [bringBackOpen, setBringBackOpen] = useState(false);
+  // Local state is safe here, unlike the roster row's own rename trigger:
+  // this dropdown's items are children of *this* component's menu, not of
+  // a row nested inside a different component's root menu, so selecting an
+  // item here never unmounts `SessionHeader` itself — see
+  // `RenameSessionDialog`'s own note on `SessionPicker`'s lifted state for
+  // the case where that distinction matters.
+  const [renameOpen, setRenameOpen] = useState(false);
 
   // Asked once per directory, on mount and on every move. It is a read-only
   // git probe, and it is the only way the panel can know whether this session
@@ -131,6 +139,15 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
             the item from being narrower than the phrase it has to be read
             by, and 128px still wraps it. Same fix as StaleTrees' row menu. */}
         <DropdownMenuContent className="w-auto">
+          {/*
+            Mounted unconditionally, same reasoning as Archive below: renaming
+            from the roster means finding this session in a picker menu
+            first, and a user already looking at the pane has no reason to
+            go do that.
+          */}
+          <DropdownMenuItem onClick={() => setRenameOpen(true)}>
+            Rename…
+          </DropdownMenuItem>
           {canBringBack && (
             // The ellipsis is the promise that this opens a confirmation
             // rather than deleting a directory on the way up from the
@@ -147,6 +164,7 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
       {canBringBack && (
         <BringBackDialog pane={pane} open={bringBackOpen} onOpenChange={setBringBackOpen} />
       )}
+      <RenameSessionDialog session={s} open={renameOpen} onOpenChange={setRenameOpen} />
       <Button
         variant="ghost"
         size="icon-xs"
