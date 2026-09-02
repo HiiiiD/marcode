@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import {
-  CheckIcon, CircleDotIcon, CircleIcon,
+  CheckIcon, CircleDotIcon, CircleIcon, CopyIcon, DownloadIcon,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useStore } from '../store';
@@ -95,13 +96,61 @@ function Block({ block }: { block: ToolBlock }) {
       // `dataUri` is self-contained (already base64-embedded on the wire), so
       // this needs no webview resource root or asWebviewUri round-trip — the
       // CSP's `img-src ... data:` already covers it.
-      return (
-        <img
-          src={block.dataUri}
-          alt="Generated image"
-          className="max-h-64 max-w-full rounded border border-border object-contain"
-        />
-      );
+      return <ImageBlock dataUri={block.dataUri} />;
+  }
+}
+
+/**
+ * A tool-output image plus copy (system clipboard, for pasting elsewhere)
+ * and download (via the host's save dialog) actions — same pairing and
+ * placement as `CodeBlock`'s copy button in markdown.tsx, one file over.
+ */
+function ImageBlock({ dataUri }: { dataUri: string }) {
+  const { post } = useStore();
+  return (
+    <div className="relative">
+      <img
+        src={dataUri}
+        alt="Generated image"
+        className="max-h-64 max-w-full rounded border border-border object-contain"
+      />
+      <div className="absolute top-1 right-1 flex gap-0.5">
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          aria-label="Copy image"
+          onClick={() => { void copyImage(dataUri); }}
+          className="bg-(--vscode-editor-background)/70 text-muted-foreground"
+        >
+          <CopyIcon />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          aria-label="Download image"
+          onClick={() => post({ t: 'export-image', dataUri })}
+          className="bg-(--vscode-editor-background)/70 text-muted-foreground"
+        >
+          <DownloadIcon />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * `navigator.clipboard.write` wants a live `ClipboardItem`, not a
+ * `data:` string — a self-fetch of the same-document URI is the standard
+ * way to get the `Blob` back out, no network round-trip involved.
+ */
+async function copyImage(dataUri: string): Promise<void> {
+  try {
+    const blob = await (await fetch(dataUri)).blob();
+    await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
+    toast('Image copied');
+  } catch (err) {
+    console.error('[mar-code] could not copy image', err);
+    toast('Copy failed');
   }
 }
 

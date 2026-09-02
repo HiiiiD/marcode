@@ -37,6 +37,7 @@ suite('PanelViewProvider CSP', () => {
     current: () => null, reveal: () => {}, openDiff: () => {}, openSettings: () => {},
     openExternal: () => {},
     exportCsv: () => {},
+    exportImage: () => {},
     login: () => {},
   };
 

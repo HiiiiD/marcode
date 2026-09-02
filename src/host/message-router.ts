@@ -78,6 +78,11 @@ export interface EditorContextHost {
    */
   exportCsv(csv: string): void;
   /**
+   * Saves an image `data:` URI to a file the user picks. Here for the same
+   * reason `exportCsv` is — it needs `vscode.window.showSaveDialog`.
+   */
+  exportImage(dataUri: string): void;
+  /**
    * Opens a terminal and runs the given provider's sign-in flow. Here for
    * the same reason `openSettings` is — it needs `vscode.window.createTerminal`,
    * which this module must not import. Login is a browser/TTY flow the
@@ -95,6 +100,7 @@ const NO_EDITOR: EditorContextHost = {
   openSettings: () => {},
   openExternal: () => {},
   exportCsv: () => {},
+  exportImage: () => {},
   login: () => {},
 };
 
@@ -475,6 +481,10 @@ export class MessageRouter {
         this.editor.exportCsv(msg.csv);
         return;
 
+      case 'export-image':
+        this.editor.exportImage(msg.dataUri);
+        return;
+
       case 'set-favorite-models':
         this.favoriteModels = msg.ids;
         this.configHost.setFavoriteModels(msg.ids);
@@ -627,6 +637,7 @@ const KNOWN_MESSAGE_TAGS = new Set<WebviewToHost['t']>([
   'request-fleet-diff', 'open-file-diff', 'open-review', 'open-fleet', 'open-fleet-subagent',
   'focus-session',
   'refresh-catalog', 'open-settings', 'login-provider', 'open-external', 'export-table-csv',
+  'export-image',
   'file-search', 'set-favorite-models',
 ]);
 

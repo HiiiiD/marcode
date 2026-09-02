@@ -52,6 +52,7 @@ function describeInbound(m: WebviewToHost): string {
     case 'login-provider': return 'login-provider';
     case 'open-external': return 'open-external';
     case 'export-table-csv': return 'export-table-csv';
+    case 'export-image': return 'export-image';
     case 'file-search': return 'file-search';
     case 'agents-md-nudge-action': return 'agents-md-nudge-action';
     case 'set-favorite-models': return 'set-favorite-models';

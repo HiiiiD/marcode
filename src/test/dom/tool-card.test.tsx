@@ -177,6 +177,19 @@ suite('ToolCard', () => {
     assert.strictEqual(img.getAttribute('src'), 'data:image/png;base64,AAAA');
   });
 
+  test('an image card\'s download button saves the data URI through the host', async () => {
+    renderWithStore(<ToolCard item={tool({
+      tool: SAMPLE_TOOL_CALLS['image'],
+      output: { kind: 'image', dataUri: 'data:image/png;base64,AAAA' },
+    })} />);
+    await expand();
+    await userEvent.click(screen.getByRole('button', { name: 'Download image' }));
+    assert.deepStrictEqual(
+      posted().filter((m) => m.t === 'export-image'),
+      [{ t: 'export-image', dataUri: 'data:image/png;base64,AAAA' }],
+    );
+  });
+
   test('an mcp card shows the server chip and the tool alone as the primary', () => {
     renderWithStore(<ToolCard item={tool({ tool: SAMPLE_TOOL_CALLS['mcp'] })} />);
     screen.getByText('github');
