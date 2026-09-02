@@ -26,7 +26,7 @@ import { ClaudeProvider } from './providers/claude/claude-provider';
 import { CodexProvider } from './providers/codex/codex-provider';
 import { FakeProvider } from './providers/fake/fake-provider';
 import { OpenCodeProvider } from './providers/opencode/opencode-provider';
-import type { DiffBase } from './protocol/messages';
+import type { DiffBase, SessionId } from './protocol/messages';
 import {
   DEFAULT_PROVIDER_IDS, ENABLED_PROVIDERS_SETTING, KNOWN_PROVIDER_IDS, PROVIDER_INSTANCES_SETTING,
 } from './shared/settings';
@@ -254,6 +254,8 @@ export async function activate(context: vscode.ExtensionContext) {
   const selfControlServer = new SelfControlMcpServer({
     catalog: () => manager.catalog(),
     create: (providerId, cwd, model, effort, mode) => manager.create(providerId, cwd, model, effort, mode),
+    summaries: () => manager.summaries(),
+    get: (id) => manager.get(id as SessionId),
   }, memory);
   let selfControlConfig: SelfControlMcpConfig | undefined;
   try {

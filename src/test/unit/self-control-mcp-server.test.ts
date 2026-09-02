@@ -16,6 +16,8 @@ function fakeManager(overrides: Partial<SessionManagerLike> = {}): SessionManage
       { id: 'claude', models: [{ id: 'sonnet' }], permissionModes: [{ id: 'default' }] },
     ],
     create: async () => ({ state: { id: 's-fake-1' } }),
+    summaries: () => [],
+    get: () => undefined,
     ...overrides,
   };
 }
@@ -24,6 +26,24 @@ async function callTool(
   config: SelfControlMcpConfig, name: string, args: Record<string, unknown>,
 ): Promise<{ isError?: boolean; content: { type: string; text: string }[] }> {
   const res = await fetch(config.url, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json', accept: 'application/json, text/event-stream',
+      authorization: `Bearer ${config.token}`,
+    },
+    body: JSON.stringify({
+      jsonrpc: '2.0', id: 1, method: 'tools/call',
+      params: { name, arguments: args },
+    }),
+  });
+  const body = await res.json() as { result: { isError?: boolean; content: { type: string; text: string }[] } };
+  return body.result;
+}
+
+async function callToolAs(
+  config: SelfControlMcpConfig, sid: string, name: string, args: Record<string, unknown>,
+): Promise<{ isError?: boolean; content: { type: string; text: string }[] }> {
+  const res = await fetch(`${config.url}?sid=${sid}`, {
     method: 'POST',
     headers: {
       'content-type': 'application/json', accept: 'application/json, text/event-stream',
@@ -312,6 +332,77 @@ suite('SelfControlMcpServer memory tools', () => {
     const config = await server.start();
     const result = await callTool(config, 'marcode__recall', { query: 'login' });
     assert.strictEqual(result.isError, true);
+    await server.dispose();
+  });
+});
+
+suite('SelfControlMcpServer cross-session messaging', () => {
+  test('marcode__list_sessions returns name/providerId/status/cwd for non-archived sessions', async () => {
+    const manager = fakeManager({
+      summaries: () => [
+        { id: 's1', name: 'a', providerId: 'claude', status: 'idle', cwd: '/w1', archived: false } as never,
+        { id: 's2', name: 'b', providerId: 'codex', status: 'running', cwd: '/w2', archived: true } as never,
+      ],
+    });
+    const server = new SelfControlMcpServer(manager);
+    const config = await server.start();
+    const result = await callTool(config, 'marcode__list_sessions', {});
+    const list = JSON.parse(result.content[0].text) as { name: string }[];
+    assert.deepStrictEqual(list.map((s) => s.name), ['a']);
+    await server.dispose();
+  });
+
+  test('send_message resolves the caller from sid, delivers to the named target', async () => {
+    let interrupted = false;
+    let sent: unknown[] = [];
+    const target = { interrupt: async () => { interrupted = true; }, send: (...args: unknown[]) => { sent = args; } };
+    const manager = fakeManager({
+      summaries: () => [
+        { id: 's-caller', name: 'a', providerId: 'claude', status: 'idle', cwd: '/w', archived: false } as never,
+        { id: 's-target', name: 'b', providerId: 'codex', status: 'idle', cwd: '/w', archived: false } as never,
+      ],
+      get: (id: string) => (id === 's-target' ? target as never : undefined),
+    });
+    const server = new SelfControlMcpServer(manager);
+    const config = await server.start();
+    const result = await callToolAs(config, 's-caller', 'marcode__send_message', { to: 'b', text: 'do the thing' });
+    assert.strictEqual(result.isError, undefined);
+    assert.strictEqual(interrupted, true);
+    assert.strictEqual(sent[0], 'do the thing');
+    assert.deepStrictEqual(sent[4], { sessionId: 's-caller', name: 'a' });
+    await server.dispose();
+  });
+
+  test('send_message errors on an unknown target name', async () => {
+    const manager = fakeManager({
+      summaries: () => [{ id: 's-caller', name: 'a', providerId: 'claude', status: 'idle', cwd: '/w', archived: false } as never],
+    });
+    const server = new SelfControlMcpServer(manager);
+    const config = await server.start();
+    const result = await callToolAs(config, 's-caller', 'marcode__send_message', { to: 'nobody', text: 'hi' });
+    assert.strictEqual(result.isError, true);
+    await server.dispose();
+  });
+
+  test('send_message errors when to equals the caller\'s own name', async () => {
+    const manager = fakeManager({
+      summaries: () => [{ id: 's-caller', name: 'a', providerId: 'claude', status: 'idle', cwd: '/w', archived: false } as never],
+    });
+    const server = new SelfControlMcpServer(manager);
+    const config = await server.start();
+    const result = await callToolAs(config, 's-caller', 'marcode__send_message', { to: 'a', text: 'hi' });
+    assert.strictEqual(result.isError, true);
+    await server.dispose();
+  });
+
+  test('send_message errors when sid is missing or unrecognized', async () => {
+    const manager = fakeManager();
+    const server = new SelfControlMcpServer(manager);
+    const config = await server.start();
+    const missing = await callTool(config, 'marcode__send_message', { to: 'b', text: 'hi' });
+    assert.strictEqual(missing.isError, true);
+    const unknown = await callToolAs(config, 's-ghost', 'marcode__send_message', { to: 'b', text: 'hi' });
+    assert.strictEqual(unknown.isError, true);
     await server.dispose();
   });
 });
