@@ -318,6 +318,11 @@ export class MessageRouter {
         return;
       }
 
+      case 'rename-session': {
+        this.manager.rename(msg.id, msg.name);
+        return;
+      }
+
       case 'set-model': {
         const session = this.manager.get(msg.id) ?? await this.reopen(msg.id);
         session?.setModel(msg.model);
@@ -626,7 +631,7 @@ export class MessageRouter {
 const KNOWN_MESSAGE_TAGS = new Set<WebviewToHost['t']>([
   'ready', 'create-session', 'set-visible', 'set-layout', 'close-session',
   'delete-session', 'send', 'interrupt', 'cancel-queued',
-  'set-effort', 'set-permission-mode',
+  'set-effort', 'set-permission-mode', 'rename-session',
   'set-model', 'permission-decision', 'question-answer', 'load-more',
   'answer-relocation', 'cancel-relocation', 'fork-session',
   'set-include-context', 'reveal-file',

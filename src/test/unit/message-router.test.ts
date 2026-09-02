@@ -603,6 +603,15 @@ suite('MessageRouter', () => {
     assert.strictEqual(session!.state.permissionMode, 'bypass');
   });
 
+  test('rename-session calls manager.rename with the id and name', async () => {
+    const calls: [string, string][] = [];
+    manager.rename = (id, name) => { calls.push([id, name]); return { ok: true }; };
+
+    await router.handle({ t: 'rename-session', id: 's1', name: 'new-name' });
+
+    assert.deepStrictEqual(calls, [['s1', 'new-name']]);
+  });
+
   test('set-model reaches the session', async () => {
     await router.handle({ t: 'create-session', providerId: 'fake', cwd: '/tmp' });
     const id = manager.summaries()[0].id;
