@@ -167,11 +167,11 @@ suite('OpenCodeProvider', () => {
     const provider = new OpenCodeProvider({
       spawn, selfControlMcp: { url: 'http://x/mcp', token: 't' },
     });
-    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default', sessionId: 's-under-test' });
     const created = await waitFor(seen, 'session/new');
     assert.deepStrictEqual((created.params as { mcpServers: unknown }).mcpServers, [
       {
-        type: 'http', name: 'marcode-self-control', url: 'http://x/mcp',
+        type: 'http', name: 'marcode-self-control', url: 'http://x/mcp?sid=s-under-test',
         headers: [{ name: 'Authorization', value: 'Bearer t' }],
       },
     ]);
@@ -191,7 +191,7 @@ suite('OpenCodeProvider', () => {
     });
     assert.strictEqual(provider.id, 'opencode-grok');
     assert.strictEqual(provider.displayName, 'OpenCode (Grok)');
-    provider.start({ cwd: '/repo', permissionMode: 'default' });
+    provider.start({ cwd: '/repo', permissionMode: 'default', sessionId: 'test-session' });
     assert.strictEqual(capturedEnv?.OPENCODE_CONFIG_DIR, '/home/user/.config/opencode-grok');
   });
 

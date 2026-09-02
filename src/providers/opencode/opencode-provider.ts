@@ -188,6 +188,7 @@ export class OpenCodeProvider implements AgentProvider {
       model: opts.model,
       permissionMode: opts.permissionMode,
       resumeToken: opts.resumeToken,
+      sessionId: opts.sessionId,
       tools: openCodeTools,
       modeId: openCodeModeId,
       clientName: 'mar-code',

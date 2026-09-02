@@ -41,7 +41,7 @@ const tick = (): Promise<void> => new Promise((r) => setImmediate(r));
 async function started(
   server: AppServer, threadId: string, opts: Partial<StartOptions> = {},
 ): Promise<CodexRun> {
-  const run = new CodexRun(server, { cwd: '/repo', permissionMode: 'default', ...opts });
+  const run = new CodexRun(server, { cwd: '/repo', permissionMode: 'default', sessionId: 'test-session', ...opts });
   run.send('hi');
   await tick();
   server.ingest(`${JSON.stringify({ id: 1, result: { thread: { id: threadId } } })}\n`);
@@ -61,7 +61,7 @@ function collect(run: CodexRun): () => AgentEvent[] {
 suite('CodexRun', () => {
   test('the first send starts a thread with the mode settings', async () => {
     const { server, sent } = stub();
-    const run = new CodexRun(server, { cwd: '/repo', permissionMode: 'plan', model: 'gpt-5-codex' });
+    const run = new CodexRun(server, { cwd: '/repo', permissionMode: 'plan', model: 'gpt-5-codex', sessionId: 'test-session', });
     run.send('hello');
     await tick();
     const start = sent().find((f) => f.method === 'thread/start');
@@ -74,7 +74,7 @@ suite('CodexRun', () => {
   test('a resume token resumes instead of starting', async () => {
     const { server, sent } = stub();
     const run = new CodexRun(server, {
-      cwd: '/repo', permissionMode: 'default', resumeToken: 'th_old',
+      cwd: '/repo', permissionMode: 'default', resumeToken: 'th_old', sessionId: 'test-session',
     });
     run.send('hi');
     await tick();
@@ -84,7 +84,7 @@ suite('CodexRun', () => {
 
   test('auto routes approvals to the guardian', async () => {
     const { server, sent } = stub();
-    new CodexRun(server, { cwd: '/repo', permissionMode: 'auto' }).send('hi');
+    new CodexRun(server, { cwd: '/repo', permissionMode: 'auto', sessionId: 'test-session', }).send('hi');
     await tick();
     const start = sent().find((f) => f.method === 'thread/start');
     assert.strictEqual(start.params.approvalsReviewer, 'auto_review');
@@ -100,7 +100,7 @@ suite('CodexRun', () => {
   test('a resumed thread takes its id from the response and sends the turn', async () => {
     const { server, sent } = stub();
     const run = new CodexRun(server, {
-      cwd: '/repo', permissionMode: 'default', resumeToken: 'th_old',
+      cwd: '/repo', permissionMode: 'default', resumeToken: 'th_old', sessionId: 'test-session',
     });
     run.send('hi');
     await tick();
@@ -142,7 +142,7 @@ suite('CodexRun', () => {
 
   test('the start response alone carries the resume token', async () => {
     const { server } = stub();
-    const run = new CodexRun(server, { cwd: '/repo', permissionMode: 'default' });
+    const run = new CodexRun(server, { cwd: '/repo', permissionMode: 'default', sessionId: 'test-session', });
     const events = collect(run);
     run.send('hi');
     await tick();
@@ -473,7 +473,7 @@ suite('CodexRun', () => {
     // nothing is the thing a future reader trusts. Effort reaches the model
     // on turn/start, which does declare it (asserted above).
     const { server, sent } = stub();
-    new CodexRun(server, { cwd: '/repo', permissionMode: 'default', effort: 'high' }).send('hi');
+    new CodexRun(server, { cwd: '/repo', permissionMode: 'default', effort: 'high', sessionId: 'test-session', }).send('hi');
     await tick();
     const start = sent().find((f) => f.method === 'thread/start');
     assert.strictEqual('effort' in start.params, false);

@@ -20,7 +20,7 @@ suite('FakeProvider', () => {
       { kind: 'text', delta: 'hi' },
       { kind: 'turn-end', reason: 'done' },
     ]);
-    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default', sessionId: 'test-session' });
     run.send('hello');
 
     const events = await drain(run, 3);
@@ -34,7 +34,7 @@ suite('FakeProvider', () => {
     const provider = new FakeProvider(() => [
       { kind: 'permission', id: 'p1', tool: { kind: 'command', label: 'Bash', command: 'ls' } },
     ]);
-    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default', sessionId: 'test-session' });
     run.send('run ls');
     await drain(run, 2);
 
@@ -45,7 +45,7 @@ suite('FakeProvider', () => {
 
   test('setPermissionMode records the mode, mirroring how decisions records tool decisions', async () => {
     const provider = new FakeProvider(() => []);
-    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default', sessionId: 'test-session' });
 
     run.setPermissionMode('bypass');
     run.setPermissionMode('plan');
@@ -56,7 +56,7 @@ suite('FakeProvider', () => {
 
   test('interrupt emits turn-end with reason interrupted', async () => {
     const provider = new FakeProvider(() => [{ kind: 'text', delta: 'working' }]);
-    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default', sessionId: 'test-session' });
     run.send('go');
     await drain(run, 2);
 
@@ -68,7 +68,7 @@ suite('FakeProvider', () => {
 
   test('a run can emit events outside of send()', async () => {
     const provider = new FakeProvider(() => []);
-    provider.start({ cwd: '/tmp', permissionMode: 'default' });
+    provider.start({ cwd: '/tmp', permissionMode: 'default', sessionId: 'test-session' });
     const run = provider.runs[0];
 
     run.emit({ kind: 'invocables', entries: [{ name: 'init' }] });

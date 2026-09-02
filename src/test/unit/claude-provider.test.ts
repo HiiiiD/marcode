@@ -156,7 +156,7 @@ suite('ClaudeProvider (lazy start)', () => {
   test('does not construct a query until the first send()', async () => {
     const fake = fakeLoadQuery();
     const provider = new ClaudeProvider(fake.load as never);
-    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default', sessionId: 'test-session' });
 
     assert.strictEqual(fake.calls.length, 0);
 
@@ -170,7 +170,7 @@ suite('ClaudeProvider (lazy start)', () => {
   test("setPermissionMode('bypass') before the first send() sets both the mode and the flag at construction", async () => {
     const fake = fakeLoadQuery();
     const provider = new ClaudeProvider(fake.load as never);
-    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default', sessionId: 'test-session' });
 
     run.setPermissionMode('bypass');
     assert.strictEqual(fake.calls.length, 0, 'must not construct a query just from a mode change');
@@ -187,7 +187,7 @@ suite('ClaudeProvider (lazy start)', () => {
   test('a session that never changes mode gets no allowDangerouslySkipPermissions key at all', async () => {
     const fake = fakeLoadQuery();
     const provider = new ClaudeProvider(fake.load as never);
-    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default', sessionId: 'test-session' });
 
     run.send('go');
     await flushMicrotasks();
@@ -201,7 +201,7 @@ suite('ClaudeProvider (lazy start)', () => {
   test('dispose() before any send() resolves cleanly and starts nothing', async () => {
     const fake = fakeLoadQuery();
     const provider = new ClaudeProvider(fake.load as never);
-    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default', sessionId: 'test-session' });
 
     await assert.doesNotReject(() => run.dispose());
     assert.strictEqual(fake.calls.length, 0);
@@ -217,7 +217,7 @@ suite('ClaudeProvider (lazy start)', () => {
   test('interrupt() before any send() is a no-op that does not throw', async () => {
     const fake = fakeLoadQuery();
     const provider = new ClaudeProvider(fake.load as never);
-    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default', sessionId: 'test-session' });
 
     await assert.doesNotReject(() => run.interrupt());
     assert.strictEqual(fake.calls.length, 0);
@@ -227,7 +227,7 @@ suite('ClaudeProvider (lazy start)', () => {
   test('a model chosen before the first send is the one the query is built with', async () => {
     const fake = fakeLoadQuery();
     const provider = new ClaudeProvider(fake.load as never);
-    const run = provider.start({ cwd: '/tmp', model: 'opus', permissionMode: 'default' });
+    const run = provider.start({ cwd: '/tmp', model: 'opus', permissionMode: 'default', sessionId: 'test-session' });
 
     run.setModel('haiku');
     run.send('go');
@@ -244,7 +244,7 @@ suite('ClaudeProvider (lazy start)', () => {
   test('setModel() after the first send pushes the model at the running query', async () => {
     const fake = fakeLoadQuery();
     const provider = new ClaudeProvider(fake.load as never);
-    const run = provider.start({ cwd: '/tmp', model: 'opus', permissionMode: 'default' });
+    const run = provider.start({ cwd: '/tmp', model: 'opus', permissionMode: 'default', sessionId: 'test-session' });
 
     run.send('go');
     await flushMicrotasks();
@@ -263,7 +263,7 @@ suite('ClaudeProvider (lazy start)', () => {
   test('setModel() before the first send does not touch a query that does not exist yet', async () => {
     const fake = fakeLoadQuery();
     const provider = new ClaudeProvider(fake.load as never);
-    const run = provider.start({ cwd: '/tmp', model: 'opus', permissionMode: 'default' });
+    const run = provider.start({ cwd: '/tmp', model: 'opus', permissionMode: 'default', sessionId: 'test-session' });
 
     run.setModel('haiku');
     await flushMicrotasks();
@@ -279,7 +279,7 @@ suite('ClaudeProvider (lazy start)', () => {
     // reach `events` and nothing may reject at the caller.
     const fake = fakeLoadQuery({ setModel: () => Promise.reject(new Error('nope')) });
     const provider = new ClaudeProvider(fake.load as never);
-    const run = provider.start({ cwd: '/tmp', model: 'opus', permissionMode: 'default' });
+    const run = provider.start({ cwd: '/tmp', model: 'opus', permissionMode: 'default', sessionId: 'test-session' });
 
     run.send('go');
     await flushMicrotasks();
@@ -294,7 +294,7 @@ suite('ClaudeProvider (lazy start)', () => {
   test('a synchronously throwing setModel() does not throw at the caller', async () => {
     const fake = fakeLoadQuery({ setModel: () => { throw new Error('torn down'); } });
     const provider = new ClaudeProvider(fake.load as never);
-    const run = provider.start({ cwd: '/tmp', model: 'opus', permissionMode: 'default' });
+    const run = provider.start({ cwd: '/tmp', model: 'opus', permissionMode: 'default', sessionId: 'test-session' });
 
     run.send('go');
     await flushMicrotasks();
@@ -314,8 +314,7 @@ suite('ClaudeProvider (lazy start)', () => {
     // host does before any session can be created against this provider.
     await provider.fetchModels('/tmp');
     const run = provider.start({
-      cwd: '/tmp', model: 'haiku', effort: 'max', permissionMode: 'default',
-    });
+      cwd: '/tmp', model: 'haiku', effort: 'max', permissionMode: 'default', sessionId: 'test-session' });
 
     run.send('go');
     await flushMicrotasks();
@@ -331,8 +330,7 @@ suite('ClaudeProvider (lazy start)', () => {
     const provider = new ClaudeProvider(fake.load as never);
     await provider.fetchModels('/tmp');
     const run = provider.start({
-      cwd: '/tmp', model: 'claude-opus-5', effort: 'low', permissionMode: 'default',
-    });
+      cwd: '/tmp', model: 'claude-opus-5', effort: 'low', permissionMode: 'default', sessionId: 'test-session' });
 
     run.send('go');
     await flushMicrotasks();
@@ -351,8 +349,7 @@ suite('ClaudeProvider (lazy start)', () => {
     const fake = fakeLoadQuery();
     const provider = new ClaudeProvider(fake.load as never);
     const run = provider.start({
-      cwd: '/tmp', model: 'claude-opus-5', effort: 'high', permissionMode: 'default',
-    });
+      cwd: '/tmp', model: 'claude-opus-5', effort: 'high', permissionMode: 'default', sessionId: 'test-session' });
 
     run.send('go');
     await flushMicrotasks();
@@ -368,8 +365,7 @@ suite('ClaudeProvider (lazy start)', () => {
     const fake = fakeLoadQuery();
     const provider = new ClaudeProvider(fake.load as never);
     const run = provider.start({
-      cwd: '/tmp', model: 'some-future-model', effort: 'max', permissionMode: 'default',
-    });
+      cwd: '/tmp', model: 'some-future-model', effort: 'max', permissionMode: 'default', sessionId: 'test-session' });
 
     run.send('go');
     await flushMicrotasks();
@@ -381,7 +377,7 @@ suite('ClaudeProvider (lazy start)', () => {
   test('setEffort()/interrupt() before send() do not construct a query either', async () => {
     const fake = fakeLoadQuery();
     const provider = new ClaudeProvider(fake.load as never);
-    const run = provider.start({ cwd: '/tmp', permissionMode: 'default', effort: 'low' });
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default', effort: 'low', sessionId: 'test-session' });
 
     run.setEffort('high');
     await run.interrupt();
@@ -400,8 +396,7 @@ suite('ClaudeProvider (lazy start)', () => {
     const provider = new ClaudeProvider(fake.load as never);
     await provider.fetchModels('/tmp');
     const run = provider.start({
-      cwd: '/tmp', model: 'claude-opus-5', effort: 'low', permissionMode: 'default',
-    });
+      cwd: '/tmp', model: 'claude-opus-5', effort: 'low', permissionMode: 'default', sessionId: 'test-session' });
 
     run.send('go');
     await flushMicrotasks();
@@ -441,7 +436,7 @@ suite('ClaudeProvider (lazy start)', () => {
     };
 
     const provider = new ClaudeProvider((async () => queryFn) as never);
-    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default', sessionId: 'test-session' });
     run.send('go');
     await flushMicrotasks();
 
@@ -468,7 +463,7 @@ suite('ClaudeProvider (lazy start)', () => {
   test('never enables forwardSubagentText on the real Options handed to query()', async () => {
     const fake = fakeLoadQuery();
     const provider = new ClaudeProvider(fake.load as never);
-    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default', sessionId: 'test-session' });
 
     run.send('hello');
     await flushMicrotasks();
@@ -488,7 +483,7 @@ suite('ClaudeProvider (lazy start)', () => {
 
     const fake = fakeLoadQuery();
     const provider = new ClaudeProvider(fake.load as never);
-    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default', sessionId: 'test-session' });
 
     try {
       run.send('look', undefined, [
@@ -515,7 +510,7 @@ suite('ClaudeProvider (lazy start)', () => {
   test('contextBreakdown() rejects before the first send()', async () => {
     const fake = fakeLoadQuery();
     const provider = new ClaudeProvider(fake.load as never);
-    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default', sessionId: 'test-session' });
 
     await assert.rejects(() => run.contextBreakdown!(), /has not started yet/);
     await run.dispose();
@@ -527,7 +522,7 @@ suite('ClaudeProvider (lazy start)', () => {
       fake.load as never,
       { url: 'http://127.0.0.1:1234/mcp', token: 'tok' },
     );
-    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default', sessionId: 's-under-test' });
 
     run.send('hi');
     await flushMicrotasks();
@@ -535,16 +530,25 @@ suite('ClaudeProvider (lazy start)', () => {
     assert.strictEqual(fake.calls.length, 1);
     assert.deepStrictEqual(fake.calls[0].options.mcpServers, {
       marcode_self_control: {
-        type: 'http', url: 'http://127.0.0.1:1234/mcp', headers: { authorization: 'Bearer tok' },
+        type: 'http',
+        url: 'http://127.0.0.1:1234/mcp?sid=s-under-test',
+        headers: { authorization: 'Bearer tok' },
       },
     });
+    const built = fake.calls[0].options as {
+      mcpServers?: { marcode_self_control?: { url?: string } };
+    };
+    assert.strictEqual(
+      built.mcpServers?.marcode_self_control?.url,
+      'http://127.0.0.1:1234/mcp?sid=s-under-test',
+    );
     await run.dispose();
   });
 
   test('start() omits mcpServers when no self-control config was given', async () => {
     const fake = fakeLoadQuery();
     const provider = new ClaudeProvider(fake.load as never);
-    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default', sessionId: 'test-session' });
 
     run.send('hi');
     await flushMicrotasks();
@@ -651,7 +655,7 @@ suite('ClaudeProvider mcpServerStatus pull', () => {
       ],
     });
     const provider = new ClaudeProvider(fake.load as never);
-    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default', sessionId: 'test-session' });
 
     run.send('go');
     await flushMacrotask();
@@ -670,7 +674,7 @@ suite('ClaudeProvider mcpServerStatus pull', () => {
   test('an empty server list pushes no event', async () => {
     const fake = fakeLoadQuery({ mcpServerStatus: async () => [] });
     const provider = new ClaudeProvider(fake.load as never);
-    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default', sessionId: 'test-session' });
 
     run.send('go');
     await flushMacrotask();
@@ -686,7 +690,7 @@ suite('ClaudeProvider mcpServerStatus pull', () => {
   test('a rejected pull is swallowed: no turn-end error, no unhandled rejection', async () => {
     const fake = fakeLoadQuery({ mcpServerStatus: async () => { throw new Error('boom'); } });
     const provider = new ClaudeProvider(fake.load as never);
-    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default', sessionId: 'test-session' });
 
     run.send('go');
     await flushMacrotask();
@@ -703,7 +707,7 @@ suite('ClaudeProvider mcpServerStatus pull', () => {
     const provider = new ClaudeProvider((async () => {
       throw new Error('Failed to authenticate: OAuth session expired and could not be refreshed');
     }) as never);
-    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default', sessionId: 'test-session' });
 
     run.send('go');
     await flushMacrotask();
@@ -742,7 +746,7 @@ suite('ClaudeProvider mcpServerStatus pull', () => {
     };
 
     const provider = new ClaudeProvider((async () => queryFn) as never);
-    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default', sessionId: 'test-session' });
 
     run.send('go');
     await flushMacrotask();
@@ -758,7 +762,7 @@ suite('ClaudeProvider mcpServerStatus pull', () => {
       mcpServerStatus: () => new Promise((resolve) => { resolveStatus = resolve; }),
     });
     const provider = new ClaudeProvider(fake.load as never);
-    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default', sessionId: 'test-session' });
 
     run.send('go');
     await flushMacrotask();
@@ -952,7 +956,7 @@ suite('ClaudeProvider (questions)', () => {
   test('AskUserQuestion emits a question event rather than a permission', async () => {
     const fake = fakeLoadQuery();
     const provider = new ClaudeProvider(fake.load as never);
-    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default', sessionId: 'test-session' });
     const events = collect(run);
     run.send('hi');
     await tick();
@@ -981,7 +985,7 @@ suite('ClaudeProvider (questions)', () => {
   test('respondToQuestion resolves with answers spread over the original input', async () => {
     const fake = fakeLoadQuery();
     const provider = new ClaudeProvider(fake.load as never);
-    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default', sessionId: 'test-session' });
     collect(run);
     run.send('hi');
     await tick();
@@ -1006,7 +1010,7 @@ suite('ClaudeProvider (questions)', () => {
   test('a malformed questions payload degrades to a permission card', async () => {
     const fake = fakeLoadQuery();
     const provider = new ClaudeProvider(fake.load as never);
-    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default', sessionId: 'test-session' });
     const events = collect(run);
     run.send('hi');
     await tick();
@@ -1025,7 +1029,7 @@ suite('ClaudeProvider (cancellation)', () => {
   test('interrupt settles a parked permission — it does not strand the card', async () => {
     const fake = fakeLoadQuery();
     const provider = new ClaudeProvider(fake.load as never);
-    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default', sessionId: 'test-session' });
     const events = collect(run);
     run.send('hi');
     await tick();
@@ -1048,7 +1052,7 @@ suite('ClaudeProvider (cancellation)', () => {
     // wedged at 'running' with a queued message parked behind it forever.
     const fake = fakeLoadQuery();
     const provider = new ClaudeProvider(fake.load as never);
-    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default', sessionId: 'test-session' });
     const events = collect(run);
     run.send('hi');
     await tick();
@@ -1100,7 +1104,7 @@ suite('ClaudeProvider (cancellation)', () => {
     };
 
     const provider = new ClaudeProvider((async () => queryFn) as never);
-    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default', sessionId: 'test-session' });
     const events = collect(run);
     run.send('hi');
     await tick();
@@ -1163,7 +1167,7 @@ suite('ClaudeProvider (cancellation)', () => {
     };
 
     const provider = new ClaudeProvider((async () => queryFn) as never);
-    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default', sessionId: 'test-session' });
     run.send('go');
     await tick();
 
@@ -1212,7 +1216,7 @@ suite('ClaudeProvider (cancellation)', () => {
     };
 
     const provider = new ClaudeProvider((async () => queryFn) as never);
-    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default', sessionId: 'test-session' });
     run.send('go');
     await tick();
 
@@ -1225,7 +1229,7 @@ suite('ClaudeProvider (cancellation)', () => {
   test('an aborted question resolves deny, never null', async () => {
     const fake = fakeLoadQuery();
     const provider = new ClaudeProvider(fake.load as never);
-    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default', sessionId: 'test-session' });
     collect(run);
     run.send('hi');
     await tick();
@@ -1244,7 +1248,7 @@ suite('ClaudeProvider (cancellation)', () => {
   test('an abort followed by interrupt settles once and emits one cancellation', async () => {
     const fake = fakeLoadQuery();
     const provider = new ClaudeProvider(fake.load as never);
-    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default', sessionId: 'test-session' });
     const events = collect(run);
     run.send('hi');
     await tick();
@@ -1263,7 +1267,7 @@ suite('ClaudeProvider (cancellation)', () => {
   test('a request that arrives on an already-aborted signal denies instead of parking', async () => {
     const fake = fakeLoadQuery();
     const provider = new ClaudeProvider(fake.load as never);
-    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default', sessionId: 'test-session' });
     const events = collect(run);
     run.send('hi');
     await tick();
@@ -1285,7 +1289,7 @@ suite('ClaudeProvider (cancellation)', () => {
   test('dispose denies a parked question — never "allow with no answers"', async () => {
     const fake = fakeLoadQuery();
     const provider = new ClaudeProvider(fake.load as never);
-    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default', sessionId: 'test-session' });
     collect(run);
     run.send('hi');
     await tick();
@@ -1314,7 +1318,7 @@ suite('ClaudeProvider permission metadata', () => {
   test('a permission event carries the bridge-rendered title and reason', async () => {
     const fake = fakeLoadQuery();
     const provider = new ClaudeProvider(fake.load as never);
-    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default', sessionId: 'test-session' });
     run.send('hi');
     await tick();
 
@@ -1350,7 +1354,7 @@ suite('ClaudeProvider permission metadata', () => {
   test('a permission event omits meta entirely when the bridge sends none', async () => {
     const fake = fakeLoadQuery();
     const provider = new ClaudeProvider(fake.load as never);
-    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default', sessionId: 'test-session' });
     run.send('hi');
     await tick();
 
@@ -1391,7 +1395,7 @@ suite('ClaudeProvider instance overrides', () => {
     });
     assert.strictEqual(provider.id, 'claude-work');
     assert.strictEqual(provider.displayName, 'Claude (work)');
-    const run = provider.start({ cwd: '/repo', permissionMode: 'default' });
+    const run = provider.start({ cwd: '/repo', permissionMode: 'default', sessionId: 'test-session' });
     run.send('hi');
     await new Promise((resolve) => setTimeout(resolve, 0));
     assert.strictEqual((capturedOptions?.env as Record<string, string> | undefined)?.ANTHROPIC_API_KEY, 'sk-work');

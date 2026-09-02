@@ -138,7 +138,7 @@ suite('CodexProvider', () => {
     });
     assert.strictEqual(provider.id, 'codex-work');
     assert.strictEqual(provider.displayName, 'Codex (work)');
-    provider.start({ cwd: '/repo', permissionMode: 'default' });
+    provider.start({ cwd: '/repo', permissionMode: 'default', sessionId: 'test-session' });
     assert.strictEqual(capturedEnv?.OPENAI_API_KEY, 'sk-work');
   });
 
@@ -157,7 +157,7 @@ suite('CodexProvider', () => {
       env: { OPENAI_API_KEY: 'sk-work' } as NodeJS.ProcessEnv,
       selfControlMcp: { url: 'http://localhost:1', token: 'tok' },
     });
-    provider.start({ cwd: '/repo', permissionMode: 'default' });
+    provider.start({ cwd: '/repo', permissionMode: 'default', sessionId: 'test-session' });
     assert.strictEqual(capturedEnv?.OPENAI_API_KEY, 'sk-work');
     assert.strictEqual(capturedEnv?.MARCODE_SELF_CONTROL_TOKEN, 'tok');
   });
@@ -297,15 +297,15 @@ suite('CodexProvider', () => {
   test('two sessions share one process', () => {
     let spawns = 0;
     const provider = new CodexProvider({ spawn: () => { spawns += 1; return stubChild(); } });
-    provider.start({ cwd: '/a', permissionMode: 'default' });
-    provider.start({ cwd: '/b', permissionMode: 'plan' });
+    provider.start({ cwd: '/a', permissionMode: 'default', sessionId: 'test-session' });
+    provider.start({ cwd: '/b', permissionMode: 'plan', sessionId: 'test-session' });
     assert.strictEqual(spawns, 1);
   });
 
   test('the process is torn down when the last run is disposed', async () => {
     const { provider, killed } = providerWithStub({ teardownGraceMs: 1 });
-    const first = provider.start({ cwd: '/a', permissionMode: 'default' });
-    const second = provider.start({ cwd: '/b', permissionMode: 'default' });
+    const first = provider.start({ cwd: '/a', permissionMode: 'default', sessionId: 'test-session' });
+    const second = provider.start({ cwd: '/b', permissionMode: 'default', sessionId: 'test-session' });
     await first.dispose();
     assert.strictEqual(killed(), false);
     await second.dispose();
@@ -325,9 +325,9 @@ suite('CodexProvider', () => {
       spawn: () => { spawns += 1; return child; },
       teardownGraceMs: 20,
     });
-    const before = provider.start({ cwd: '/a', permissionMode: 'default' });
+    const before = provider.start({ cwd: '/a', permissionMode: 'default', sessionId: 'test-session' });
     await before.dispose();
-    const after = provider.start({ cwd: '/b', permissionMode: 'default' });
+    const after = provider.start({ cwd: '/b', permissionMode: 'default', sessionId: 'test-session' });
 
     assert.strictEqual(spawns, 1);
     // And the armed teardown is dropped rather than merely outrun: the new
@@ -390,17 +390,17 @@ suite('CodexProvider', () => {
       binPath: 'codex-old',
       spawn: (bin) => { spawnedBins.push(bin); return stubChild(); },
     });
-    provider.start({ cwd: '/a', permissionMode: 'default' });
+    provider.start({ cwd: '/a', permissionMode: 'default', sessionId: 'test-session' });
     assert.deepStrictEqual(spawnedBins, ['codex-old']);
 
     provider.setBinPath('codex-new');
-    provider.start({ cwd: '/a', permissionMode: 'default' });
+    provider.start({ cwd: '/a', permissionMode: 'default', sessionId: 'test-session' });
     assert.deepStrictEqual(spawnedBins, ['codex-old', 'codex-new']);
   });
 
   test('setBinPath tears down a live connection even with an active run, and that run ends in error rather than an unhandled rejection', async () => {
     const { provider, respondTo, killCount } = providerWithStub();
-    const run = provider.start({ cwd: '/a', permissionMode: 'default' });
+    const run = provider.start({ cwd: '/a', permissionMode: 'default', sessionId: 'test-session' });
     run.send('hi');
     await respondTo('thread/start', { thread: { id: 'th_1' } });
 
@@ -454,7 +454,7 @@ suite('CodexProvider', () => {
       throw new Error(`drain('${method}') timed out`);
     }
 
-    const run = provider.start({ cwd: '/a', permissionMode: 'default' });
+    const run = provider.start({ cwd: '/a', permissionMode: 'default', sessionId: 'test-session' });
     // The handshake SUCCEEDS first. A process that dies before `initialize`
     // answers is already handled — connect()'s catch clears the cache on that
     // rejection. The hole is a process that dies after a good handshake,
@@ -467,7 +467,7 @@ suite('CodexProvider', () => {
     await tick();
 
     // A session started afterwards must get a live process, not the corpse.
-    const next = provider.start({ cwd: '/b', permissionMode: 'default' });
+    const next = provider.start({ cwd: '/b', permissionMode: 'default', sessionId: 'test-session' });
     await tick();
     assert.strictEqual(children.length, 2, 'expected a fresh spawn after the old process died');
 
@@ -524,13 +524,16 @@ suite('CodexProvider', () => {
     const { provider, respondTo, sent } = providerWithStub({
       selfControlMcp: { url: 'http://127.0.0.1:1/mcp', token: 'tok' },
     });
-    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default', sessionId: 's-under-test' });
     run.send('hi');
     await respondTo('thread/start', { thread: { id: 'th_1' } });
     const started = sent().find((f) => f.method === 'thread/start');
     assert.deepStrictEqual((started?.params as { config?: unknown }).config, {
       mcp_servers: {
-        marcode_self_control: { url: 'http://127.0.0.1:1/mcp', bearer_token_env_var: 'MARCODE_SELF_CONTROL_TOKEN' },
+        marcode_self_control: {
+          url: 'http://127.0.0.1:1/mcp?sid=s-under-test',
+          bearer_token_env_var: 'MARCODE_SELF_CONTROL_TOKEN',
+        },
       },
     });
   });
@@ -541,13 +544,13 @@ suite('CodexProvider', () => {
       spawn: (_bin, env) => { capturedEnv = env; return stubChild(); },
       selfControlMcp: { url: 'http://x/mcp', token: 'tok' },
     });
-    provider.start({ cwd: '/tmp', permissionMode: 'default' });
+    provider.start({ cwd: '/tmp', permissionMode: 'default', sessionId: 'test-session' });
     assert.strictEqual(capturedEnv?.MARCODE_SELF_CONTROL_TOKEN, 'tok');
   });
 
   test('no config override is sent when self-control is not configured', async () => {
     const { provider, respondTo, sent } = providerWithStub();
-    const run = provider.start({ cwd: '/tmp', permissionMode: 'default' });
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default', sessionId: 'test-session' });
     run.send('hi');
     await respondTo('thread/start', { thread: { id: 'th_1' } });
     const started = sent().find((f) => f.method === 'thread/start');
@@ -556,8 +559,8 @@ suite('CodexProvider', () => {
 
   test('two concurrent runs each receive only their own thread\'s events', async () => {
     const { provider, respondTo, send } = providerWithStub();
-    const first = provider.start({ cwd: '/a', permissionMode: 'default' });
-    const second = provider.start({ cwd: '/b', permissionMode: 'default' });
+    const first = provider.start({ cwd: '/a', permissionMode: 'default', sessionId: 'test-session' });
+    const second = provider.start({ cwd: '/b', permissionMode: 'default', sessionId: 'test-session' });
 
     const firstEvents: string[] = [];
     const secondEvents: string[] = [];
