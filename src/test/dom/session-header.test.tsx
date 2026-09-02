@@ -236,7 +236,9 @@ suite("SessionHeader status", () => {
     hydrate();
 
     await userEvent.click(screen.getByLabelText("More pane actions for Session a"));
-    await userEvent.click(screen.getByText("Archive Session a"));
+    // `findBy`, not `getBy`: Base UI portals its menu asynchronously — every
+    // other menu suite here opens one the same way.
+    await userEvent.click(await screen.findByText("Archive Session a"));
 
     assert.ok(posted().some((m) => m.t === "close-session" && m.id === "a"));
   });
