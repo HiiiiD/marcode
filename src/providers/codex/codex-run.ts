@@ -446,7 +446,7 @@ export class CodexRun implements AgentRun {
         config: {
           mcp_servers: {
             marcode_self_control: {
-              url: this.opts.selfControlMcp.url,
+              url: `${this.opts.selfControlMcp.url}?sid=${encodeURIComponent(this.opts.sessionId)}`,
               bearer_token_env_var: 'MARCODE_SELF_CONTROL_TOKEN',
             },
           },

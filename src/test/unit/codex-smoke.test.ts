@@ -114,7 +114,7 @@ suite('codex smoke (opt-in)', function () {
     // Plan mode is approvalPolicy 'never' + sandbox 'read-only' (map-settings.ts)
     // — this run cannot write to the repo it runs in, and it is spawned
     // against a scratch cwd on top of that as a second line of defense.
-    const run = provider.start({ cwd, permissionMode: 'plan' });
+    const run = provider.start({ cwd, permissionMode: 'plan', sessionId: 'test-session' });
     try {
       run.send('Reply with exactly the word hi and nothing else.');
       const events = await collectUntilTurnEnd(run, 60_000);

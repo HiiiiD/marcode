@@ -1,5 +1,6 @@
 import { attachmentLines, imageAttachments, readBase64 } from '../attachment-payload';
 import { formatEditorContext } from '../format-editor-context';
+import type { SessionId } from '../../protocol/messages';
 import type {
   AgentEvent, AgentRun, Attachment, ContextBreakdown, EditorContext,
   EffortLevel, PermissionMode, QuestionAnswers, SelfControlMcpConfig, ToolDecision,
@@ -49,6 +50,8 @@ export interface AcpRunOptions {
    */
   modeId(mode: PermissionMode): string | undefined;
   clientName: string;
+  /** This run's owning session — appended to the self-control URL below. */
+  sessionId: SessionId;
   /** The loopback MCP server this run's agent should connect to, if any. */
   selfControlMcp?: SelfControlMcpConfig;
 }
@@ -59,10 +62,11 @@ export interface AcpRunOptions {
  * their own agent config regardless, so an empty list here never means "no
  * MCP servers for this session", only "this client injected none of its own".
  */
-function mcpServersFor(config: SelfControlMcpConfig | undefined): unknown[] {
+function mcpServersFor(config: SelfControlMcpConfig | undefined, sessionId: SessionId): unknown[] {
   if (!config) { return []; }
   return [{
-    type: 'http', name: 'marcode-self-control', url: config.url,
+    type: 'http', name: 'marcode-self-control',
+    url: `${config.url}?sid=${encodeURIComponent(sessionId)}`,
     headers: [{ name: 'Authorization', value: `Bearer ${config.token}` }],
   }];
 }
@@ -279,7 +283,7 @@ export class AcpRun implements AgentRun {
       // server is exactly that. The user's own servers still load from their
       // own agent config regardless, so this never doubles them.
       const created = await conn.newSession({
-        cwd: this.opts.cwd, mcpServers: mcpServersFor(this.opts.selfControlMcp),
+        cwd: this.opts.cwd, mcpServers: mcpServersFor(this.opts.selfControlMcp, this.opts.sessionId),
       });
       this.sessionId = created.sessionId;
       this.applyConfigOptions(created.configOptions);
@@ -337,7 +341,7 @@ export class AcpRun implements AgentRun {
     // on it. The catch is attached here, at creation, so a rejection that
     // arrives AFTER the idle timer already won the race is still handled.
     const rpc = conn.loadSession({
-      sessionId, cwd: this.opts.cwd, mcpServers: mcpServersFor(this.opts.selfControlMcp),
+      sessionId, cwd: this.opts.cwd, mcpServers: mcpServersFor(this.opts.selfControlMcp, this.opts.sessionId),
     })
       .then((reply) => { this.applyConfigOptions(reply?.configOptions); });
     rpc.catch(() => { /* handled by the race below, or already settled */ });

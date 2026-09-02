@@ -3,9 +3,9 @@ import { sessionMentions, sessionRefsOf, type SessionMentionPayload } from '../.
 import type { SessionSummary } from '../../protocol/messages';
 import type { PendingMention } from '../../webview/lib/mention-menu';
 
-function summary(id: string, title: string): SessionSummary {
+function summary(id: string, title: string, name?: string): SessionSummary {
   return {
-    id, providerId: 'fake', model: 'm', title, cwd: '/w',
+    id, providerId: 'fake', model: 'm', title, name: name ?? title, cwd: '/w',
     status: 'idle', permissionMode: 'default', includeEditorContext: true,
     resumeTokens: {},
     usage: { inputTokens: 0, outputTokens: 0 },
@@ -105,6 +105,26 @@ suite('session mentions', () => {
     );
     const ref = rows.find((r) => r.payload.kind === 'session-ref');
     assert.strictEqual(ref?.label, 'refactor store');
+  });
+
+  test('sessionMentions labels a renamed session by its name, not its title', () => {
+    const sessions: SessionSummary[] = [
+      summary('s1', 'Untitled', 'renamed-one'),
+    ];
+    const options = sessionMentions(sessions, 's-self', false);
+    assert.strictEqual(options.find((o) => o.id === 's1')?.label, 'renamed-one');
+  });
+
+  test('sessionMentions still disambiguates two sessions sharing a default name', () => {
+    const sessions: SessionSummary[] = [
+      summary('s1', 'Untitled', 'claude-1'),
+      summary('s2', 'Untitled', 'claude-1'),
+    ];
+    const options = sessionMentions(sessions, 's-self', false);
+    assert.notStrictEqual(
+      options.find((o) => o.id === 's1')?.label,
+      options.find((o) => o.id === 's2')?.label,
+    );
   });
 
   test('sessionRefsOf keeps only the session-ref payloads, in order', () => {

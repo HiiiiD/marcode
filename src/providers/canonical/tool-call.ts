@@ -54,7 +54,15 @@ export type ToolCall =
       // instant the dispatch acknowledges) — this says the underlying work
       // is structurally invisible here, not that it's unfinished.
       background?: boolean }
-  | { kind: 'mcp'; label: string; server: string; tool: string }
+  // `input` carries the call's raw arguments — Codex's `mcpToolCall` item
+  // carries them as `arguments` (present but absent from the generated
+  // `v2/ThreadItem.ts` typedef `map-tools.ts` otherwise tracks; verified
+  // 2026-09-02 off a live session row in `~/.codex/thread_history_1.sqlite`).
+  // It exists for the one deliberate exception in `tool-render.ts`
+  // (`marcode__send_message`), not as a general-purpose payload — most
+  // `'mcp'` rendering still ignores it.
+  | { kind: 'mcp'; label: string; server: string; tool: string;
+      input?: Record<string, unknown> }
   | { kind: 'image'; label: string; note?: string }
   | { kind: 'other'; label: string; fields?: Field[]; raw: unknown };
 

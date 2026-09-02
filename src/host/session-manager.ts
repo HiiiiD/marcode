@@ -29,6 +29,8 @@ function newSessionId(): string {
   return `s-${Date.now().toString(36)}-${(counter++).toString(36)}`;
 }
 
+let nameCounter = 0;
+
 /**
  * Rejects with `reason` if `work` has not settled within `ms`. The timer is
  * cleared either way: a pending `setTimeout` would otherwise keep the
@@ -207,6 +209,14 @@ export class SessionManager implements SessionSink {
         // read in its constructor would throw on undefined. Empty is also the
         // exact truth: a session with no recorded threads has no tokens.
         resumeTokens: state.resumeTokens ?? {},
+        // Same story again for `name`, added after this index's version last
+        // moved: a pre-branch `index.json` restores it as `undefined`, and
+        // both `defaultName()`'s dedup loop and `rename()`'s uniqueness check
+        // call `.toLowerCase()` on every session's name unconditionally.
+        // `defaultName()` reads `this.meta` incrementally as this loop fills
+        // it, so calling it here dedupes correctly against sessions already
+        // restored (and named) earlier in the same pass.
+        name: state.name ?? this.defaultName(state.providerId),
       });
     }
     this.paneLayout = index.layout;
@@ -404,6 +414,56 @@ export class SessionManager implements SessionSink {
     return [...this.meta.values()].sort((a, b) => b.updatedAt - a.updatedAt);
   }
 
+  /**
+   * The panes shown right now — the same set `setVisible()` maintains for
+   * patch fan-out. Exposed for `marcode__list_sessions`: a window can carry
+   * a long history of past sessions restored from disk, and an agent
+   * addressing a target almost always means one open in front of the human
+   * right now, not that whole history. The caller's own session stays
+   * discoverable regardless — see the self-control server's own filter.
+   */
+  visibleIds(): SessionId[] {
+    return [...this.visible];
+  }
+
+  /**
+   * `${providerId}-<short>` — every session is addressable by name from creation, before
+   * anyone renames it. `nameCounter` restarts at 0 every activation, but a window reload
+   * restores prior sessions (with their persisted names) straight into `this.meta` without
+   * seeding it — so a freshly minted candidate can collide with a restored, never-renamed
+   * session. Checked against `this.meta`'s current names, the same case-insensitive
+   * comparison `rename()` uses, and incremented until it lands on one that's free, rather
+   * than trusting the counter alone.
+   */
+  private defaultName(providerId: string): string {
+    let candidate: string;
+    do {
+      candidate = `${providerId}-${(nameCounter++).toString(36)}`;
+    } while ([...this.meta.values()].some((s) => s.name.toLowerCase() === candidate.toLowerCase()));
+    return candidate;
+  }
+
+  /**
+   * Renames a session. Unique per window, case-insensitive — the `@` mention
+   * menu and `marcode__send_message` both address a session by this name, and
+   * a collision would make one of two same-named rows silently unreachable.
+   * A session keeping its own current name (any case) is not a collision.
+   */
+  rename(id: SessionId, name: string): { ok: true } | { ok: false; reason: string } {
+    const state = this.meta.get(id);
+    if (!state) { return { ok: false, reason: 'Unknown session.' }; }
+    const trimmed = name.trim();
+    if (trimmed.length === 0) { return { ok: false, reason: 'Name cannot be empty.' }; }
+    const taken = [...this.meta.values()].some(
+      (s) => s.id !== id && s.name.toLowerCase() === trimmed.toLowerCase(),
+    );
+    if (taken) { return { ok: false, reason: `"${trimmed}" is already in use.` }; }
+    state.name = trimmed;
+    state.updatedAt = Date.now();
+    this.changed();
+    return { ok: true };
+  }
+
   layout(): PaneLayout { return this.paneLayout; }
 
   private keyOf(state: SessionState): string {
@@ -491,7 +551,7 @@ export class SessionManager implements SessionSink {
     const now = Date.now();
     const state: SessionState = {
       id: newSessionId(), providerId, model: chosen.id, effort: resolvedEffort,
-      title: 'Untitled', cwd, status: 'idle', permissionMode: resolvedMode,
+      title: 'Untitled', name: this.defaultName(providerId), cwd, status: 'idle', permissionMode: resolvedMode,
       includeEditorContext: true,
       resumeTokens: {},
       usage: { inputTokens: 0, outputTokens: 0 },
@@ -542,7 +602,8 @@ export class SessionManager implements SessionSink {
     const now = Date.now();
     const forkState: SessionState = {
       id: newSessionId(), providerId: state.providerId, model: state.model,
-      effort: state.effort, title: `Fork of ${state.title}`, cwd: state.cwd,
+      effort: state.effort, title: `Fork of ${state.title}`,
+      name: this.defaultName(state.providerId), cwd: state.cwd,
       status: 'idle', permissionMode: state.permissionMode,
       includeEditorContext: state.includeEditorContext,
       resumeTokens: {},

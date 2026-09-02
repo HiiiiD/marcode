@@ -183,7 +183,7 @@ suite('relocation smoke (opt-in)', function () {
     const provider = new CodexProvider({});
     await provider.fetchModels(dirA);
 
-    const first = provider.start({ cwd: dirA, permissionMode: 'plan' });
+    const first = provider.start({ cwd: dirA, permissionMode: 'plan', sessionId: 'test-session' });
     let token: string | undefined;
     try {
       first.send(`Remember this codeword: ${CODEWORD}. Reply with just "ok".`);
@@ -202,7 +202,7 @@ suite('relocation smoke (opt-in)', function () {
     // *any* directory would make the cross-directory result meaningless — it
     // would be measuring our own resume path failing, not codex's thread
     // scope. Ask in the directory the thread was born in first.
-    const control = provider.start({ cwd: dirA, permissionMode: 'plan', resumeToken: token });
+    const control = provider.start({ cwd: dirA, permissionMode: 'plan', resumeToken: token, sessionId: 'test-session' });
     let controlReply = '';
     try {
       control.send('What codeword did I ask you to remember? Reply with the codeword and nothing else.');
@@ -222,7 +222,7 @@ suite('relocation smoke (opt-in)', function () {
       return;
     }
 
-    const second = provider.start({ cwd: dirB, permissionMode: 'plan', resumeToken: token });
+    const second = provider.start({ cwd: dirB, permissionMode: 'plan', resumeToken: token, sessionId: 'test-session' });
     let reply = '';
     let outcome = 'no turn-end within the deadline';
     try {

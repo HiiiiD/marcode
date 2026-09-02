@@ -14,11 +14,36 @@ import type { SelfControlMcpConfig } from '../providers/types';
  * import in its graph and stays unit-testable with a fake — the same
  * boundary `message-router.ts` keeps for the same reason.
  */
+/** What `get()` hands back for a resolved session — see its doc for why the result may be sync or async. */
+type LiveSessionLike = {
+  interrupt(): Promise<void>;
+  send(text: string, context?: unknown, refs?: unknown, fileRefs?: unknown,
+    from?: { sessionId: string; name: string }): void;
+} | undefined;
+
 export interface SessionManagerLike {
   catalog(): { id: string; models: { id: string }[]; permissionModes: { id: string }[] }[];
   create(
     providerId: string, cwd: string, model?: string, effort?: undefined, mode?: PermissionMode,
   ): Promise<{ state: { id: string } }>;
+  /** Every non-archived session's addressable identity — see `marcode__list_sessions`. */
+  summaries(): { id: string; name: string; providerId: string; status: string; cwd: string; archived: boolean }[];
+  /** The ids of sessions with an open pane right now — see `marcode__list_sessions`. */
+  visibleIds(): string[];
+  /**
+   * Materializes and returns the session, if it exists — used to resolve the
+   * caller's own identity and to deliver to a target. `summaries()` spans
+   * every non-archived session, live or merely restored from disk, so a
+   * target `marcode__list_sessions` just named may have no live
+   * `AgentSession` yet. The real implementation (`extension.ts`'s closure)
+   * is expected to open one, mirroring `message-router.ts`'s own `reopen()`,
+   * so `marcode__send_message` can actually reach it rather than reporting
+   * "not available" for a session it just advertised. Sync-or-Promise
+   * (rather than always `Promise`) so `SessionManager.get()` itself — always
+   * synchronous, and used directly as a `SessionManagerLike` in tests —
+   * still satisfies this structurally; the one call site always `await`s it.
+   */
+  get(id: string): Promise<LiveSessionLike> | LiveSessionLike;
 }
 
 const PORT_ATTEMPTS = 5;
@@ -55,8 +80,15 @@ export class SelfControlMcpServer {
    * is cheap — one function, no per-connection state — so rebuilding it per
    * request costs nothing that matters.
    */
-  private buildMcpServer(): McpServer {
+  private buildMcpServer(sid: string | undefined): McpServer {
     const mcp = new McpServer({ name: 'marcode-self-control', version: '1.0.0' });
+
+    /** The calling session's own name, resolved from `sid` — undefined if `sid` is missing or stale. */
+    const caller = () => {
+      if (!sid) { return undefined; }
+      return this.sessionManager.summaries().find((s) => s.id === sid && !s.archived);
+    };
+
     mcp.registerTool(
       'marcode__spawn_session',
       {
@@ -162,6 +194,65 @@ export class SelfControlMcpServer {
         return { content: [{ type: 'text', text: JSON.stringify(detail) }] };
       },
     );
+
+    mcp.registerTool(
+      'marcode__list_sessions',
+      {
+        title: 'List Marcode sessions',
+        description: 'Lists the sessions currently open in a split pane, so marcode__send_message can '
+          + 'address one. Your own entry is marked "self": true — call this to find out your own name.',
+        inputSchema: {},
+      },
+      async () => {
+        const visible = new Set(this.sessionManager.visibleIds());
+        const sessions = this.sessionManager.summaries()
+          .filter((s) => !s.archived && (visible.has(s.id) || s.id === sid))
+          .map((s) => ({
+            name: s.name, providerId: s.providerId, status: s.status, cwd: s.cwd,
+            ...(s.id === sid ? { self: true } : {}),
+          }));
+        return { content: [{ type: 'text', text: JSON.stringify(sessions) }] };
+      },
+    );
+
+    mcp.registerTool(
+      'marcode__send_message',
+      {
+        title: 'Send a message to another Marcode session',
+        description: 'Delivers text to a named session, interrupting it if it is mid-turn. Delivery is '
+          + 'immediate and does not wait for a reply — a reply, if any, is that session calling '
+          + 'marcode__send_message back.',
+        inputSchema: {
+          to: z.string().describe('The target session\'s name, from marcode__list_sessions.'),
+          text: z.string().describe('The message to deliver.'),
+        },
+      },
+      async ({ to, text }) => {
+        const from = caller();
+        if (!from) {
+          return { isError: true, content: [{ type: 'text', text: 'Could not identify the calling session.' }] };
+        }
+        // Case-insensitive, matching `SessionManager.rename()`'s own
+        // uniqueness rule: names are unique per window without regard to
+        // case, so resolution here must agree with what a collision means.
+        if (to.toLowerCase() === from.name.toLowerCase()) {
+          return { isError: true, content: [{ type: 'text', text: 'Cannot send a message to yourself.' }] };
+        }
+        const target = this.sessionManager.summaries()
+          .find((s) => s.name.toLowerCase() === to.toLowerCase() && !s.archived);
+        if (!target) {
+          return { isError: true, content: [{ type: 'text', text: `Unknown session: ${to}` }] };
+        }
+        const session = await this.sessionManager.get(target.id);
+        if (!session) {
+          return { isError: true, content: [{ type: 'text', text: `Session ${to} is not available.` }] };
+        }
+        await session.interrupt();
+        session.send(text, undefined, undefined, undefined, { sessionId: from.id, name: from.name });
+        return { content: [{ type: 'text', text: JSON.stringify({ delivered: true }) }] };
+      },
+    );
+
     return mcp;
   }
 
@@ -177,7 +268,8 @@ export class SelfControlMcpServer {
       // never collide across concurrent sessions' clients. `res.on('close')`
       // closes the transport once the response is done, whether it finished
       // normally or the client disconnected early, so nothing leaks.
-      const mcp = this.buildMcpServer();
+      const sid = new URL(req.url ?? '', 'http://127.0.0.1').searchParams.get('sid') ?? undefined;
+      const mcp = this.buildMcpServer(sid);
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: undefined,
         // The test client (and the callers this mirrors: a provider's MCP client

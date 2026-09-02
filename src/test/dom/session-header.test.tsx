@@ -243,6 +243,21 @@ suite("SessionHeader status", () => {
     assert.ok(posted().some((m) => m.t === "close-session" && m.id === "a"));
   });
 
+  test("the pane's own menu can rename the session", async () => {
+    renderApp();
+    hydrate();
+
+    await userEvent.click(screen.getByLabelText("More pane actions for Session a"));
+    await userEvent.click(await screen.findByText("Rename…"));
+
+    const input = await screen.findByLabelText("New name");
+    await userEvent.clear(input);
+    await userEvent.type(input, "renamed-a");
+    await userEvent.click(screen.getByText("Save"));
+
+    assert.ok(posted().some((m) => m.t === "rename-session" && m.id === "a" && m.name === "renamed-a"));
+  });
+
   test("the pane X removes the pane without archiving the session", async () => {
     renderApp();
     hydrateTwoPanes();

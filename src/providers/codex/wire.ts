@@ -138,8 +138,19 @@ export type ThreadItem =
   // `tool`, NOT `toolName` — verified against the codex-cli 0.147.0 generated
   // `v2/ThreadItem.ts`. Reading `toolName` here yields undefined and drops the
   // only identifying half of the header.
+  //
+  // `arguments` and `result` are NOT in the generated `v2/ThreadItem.ts`
+  // typedef this file otherwise tracks — they were missing from an earlier
+  // reading of that generator output, which is what left this arm's `'mcp'`
+  // tool cards blank. Both are real: verified 2026-09-02 straight off a live
+  // session's row in `~/.codex/thread_history_1.sqlite` (`thread_items`),
+  // which persists the same item shape the wire sends. `result` is the raw
+  // MCP `CallToolResult` envelope, NOT a bare content array —
+  // `{ content: [...], structuredContent, _meta }` — so `toToolOutput` reads
+  // `result.content`, not `result` itself.
   | { type: 'mcpToolCall'; id: string; server: string; tool?: string;
-      status?: string; result?: unknown }
+      status?: string; arguments?: Record<string, unknown> | null;
+      result?: { content?: unknown[]; structuredContent?: unknown } | null }
   // `query` is `''` at `item/started` and only carries the real search on
   // `item/completed` — which is why the tool-end event revises the input.
   | { type: 'webSearch'; id: string; query?: string; results?: unknown[] }

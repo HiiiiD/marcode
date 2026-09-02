@@ -1,4 +1,5 @@
 import type { ToolCall, ToolOutput } from './canonical/tool-call';
+import type { SessionId } from '../protocol/messages';
 
 export type { FileEdit, TodoStatus, ToolCall, ToolOutput } from './canonical/tool-call';
 
@@ -130,6 +131,13 @@ export interface StartOptions {
   permissionMode: PermissionMode;
   /** Provider-opaque. Never parsed by callers. */
   resumeToken?: string;
+  /**
+   * This run's owning session. Not provider-opaque like `resumeToken` — used
+   * to identify the caller on the self-control MCP server, appended as a
+   * `?sid=` query param onto that server's URL by each provider's own
+   * self-control wiring. See `self-control-mcp-server.ts`.
+   */
+  sessionId: SessionId;
 }
 
 /**

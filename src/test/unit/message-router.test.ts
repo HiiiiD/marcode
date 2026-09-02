@@ -603,6 +603,53 @@ suite('MessageRouter', () => {
     assert.strictEqual(session!.state.permissionMode, 'bypass');
   });
 
+  test('rename-session calls manager.rename with the id and name', async () => {
+    const calls: [string, string][] = [];
+    manager.rename = (id, name) => { calls.push([id, name]); return { ok: true }; };
+
+    await router.handle({ t: 'rename-session', id: 's1', name: 'new-name' });
+
+    assert.deepStrictEqual(calls, [['s1', 'new-name']]);
+  });
+
+  test('rename-session records an error when rename fails', async () => {
+    await router.handle({ t: 'create-session', providerId: 'fake', cwd: '/tmp' });
+    const id = manager.summaries()[0].id;
+    await router.handle({ t: 'set-visible', sessionIds: [id] });
+
+    manager.rename = () => ({ ok: false, reason: 'Name already in use.' });
+
+    await router.handle({ t: 'rename-session', id, name: 'taken-name' });
+
+    const items = (await manager.get(id)!.snapshot()).items;
+    const error = items.find((i) => i.role === 'error');
+    assert.strictEqual(error?.role === 'error' && error.message, 'Name already in use.');
+  });
+
+  test('rename-session does not revive an archived session, on success or on failure', async () => {
+    // Needs a transcript — close() discards an unused session outright,
+    // which would make "still archived after rename" trivially true for the
+    // wrong reason.
+    await router.handle({ t: 'create-session', providerId: 'fake', cwd: '/tmp' });
+    const id = manager.summaries()[0].id;
+    await router.handle({ t: 'set-visible', sessionIds: [id] });
+    await router.handle({ t: 'send', id, text: 'hello' });
+    await settle();
+    await manager.close(id);
+    assert.strictEqual(manager.get(id), undefined, 'session must not be live before the rename');
+
+    await router.handle({ t: 'rename-session', id, name: 'archived-rename' });
+
+    assert.strictEqual(manager.get(id), undefined, 'a successful rename must not revive the session');
+    assert.strictEqual(manager.summaries().find((s) => s.id === id)?.name, 'archived-rename');
+
+    // Now the failure path: the rename fails, and reporting it must not
+    // revive the session either — there is no live pane to show the error to.
+    manager.rename = () => ({ ok: false, reason: 'Name already in use.' });
+    await router.handle({ t: 'rename-session', id, name: 'taken-name' });
+    assert.strictEqual(manager.get(id), undefined, 'a failed rename must not revive the session either');
+  });
+
   test('set-model reaches the session', async () => {
     await router.handle({ t: 'create-session', providerId: 'fake', cwd: '/tmp' });
     const id = manager.summaries()[0].id;

@@ -74,8 +74,7 @@ suite('AcpRun', () => {
     const p = peer();
     const run = new AcpRun(p.child, {
       cwd: '/w', permissionMode: 'default', tools: openCodeTools,
-      modeId: openCodeModeId, clientName: 'mar-code',
-    });
+      modeId: openCodeModeId, clientName: 'mar-code', sessionId: 'test-session', });
     const init = await p.waitFor('initialize');
     assert.deepStrictEqual((init.params as { clientCapabilities: unknown }).clientCapabilities, {
       fs: { readTextFile: false, writeTextFile: false }, terminal: false,
@@ -89,8 +88,7 @@ suite('AcpRun', () => {
     const events: AgentEvent[] = [];
     const run = new AcpRun(p.child, {
       cwd: '/w', permissionMode: 'default', tools: openCodeTools,
-      modeId: openCodeModeId, clientName: 'mar-code',
-    });
+      modeId: openCodeModeId, clientName: 'mar-code', sessionId: 'test-session', });
     collect(run, events);
     const init = await p.waitFor('initialize');
     p.emit({ jsonrpc: '2.0', id: init.id, result: frames.initialize });
@@ -106,18 +104,20 @@ suite('AcpRun', () => {
     const p = peer();
     const run = new AcpRun(p.child, {
       cwd: '/w', permissionMode: 'default', tools: openCodeTools,
-      modeId: openCodeModeId, clientName: 'mar-code',
+      modeId: openCodeModeId, clientName: 'mar-code', sessionId: 's-under-test',
       selfControlMcp: { url: 'http://127.0.0.1:9/mcp', token: 't' },
     });
     const init = await p.waitFor('initialize');
     p.emit({ jsonrpc: '2.0', id: init.id, result: frames.initialize });
     const created = await p.waitFor('session/new');
-    assert.deepStrictEqual((created.params as { mcpServers: unknown }).mcpServers, [
+    const mcpServers = (created.params as { mcpServers: { url: string }[] }).mcpServers;
+    assert.deepStrictEqual(mcpServers, [
       {
-        type: 'http', name: 'marcode-self-control', url: 'http://127.0.0.1:9/mcp',
+        type: 'http', name: 'marcode-self-control', url: 'http://127.0.0.1:9/mcp?sid=s-under-test',
         headers: [{ name: 'Authorization', value: 'Bearer t' }],
       },
     ]);
+    assert.strictEqual(mcpServers[0].url.endsWith('?sid=s-under-test'), true);
     p.emit({ jsonrpc: '2.0', id: created.id, result: frames.newSession });
     await run.dispose();
   });
@@ -126,8 +126,7 @@ suite('AcpRun', () => {
     const p = peer();
     const run = new AcpRun(p.child, {
       cwd: '/w', permissionMode: 'default', tools: openCodeTools,
-      modeId: openCodeModeId, clientName: 'mar-code',
-    });
+      modeId: openCodeModeId, clientName: 'mar-code', sessionId: 'test-session', });
     const init = await p.waitFor('initialize');
     p.emit({ jsonrpc: '2.0', id: init.id, result: frames.initialize });
     const created = await p.waitFor('session/new');
@@ -141,8 +140,7 @@ suite('AcpRun', () => {
     const events: AgentEvent[] = [];
     const run = new AcpRun(p.child, {
       cwd: '/w', permissionMode: 'default', tools: openCodeTools,
-      modeId: openCodeModeId, clientName: 'mar-code',
-    });
+      modeId: openCodeModeId, clientName: 'mar-code', sessionId: 'test-session', });
     collect(run, events);
     const init = await p.waitFor('initialize');
     p.emit({ jsonrpc: '2.0', id: init.id, result: frames.initialize });
@@ -161,8 +159,7 @@ suite('AcpRun', () => {
     const events: AgentEvent[] = [];
     const run = new AcpRun(p.child, {
       cwd: '/w', permissionMode: 'default', tools: openCodeTools,
-      modeId: openCodeModeId, clientName: 'mar-code',
-    });
+      modeId: openCodeModeId, clientName: 'mar-code', sessionId: 'test-session', });
     collect(run, events);
     await handshake(p);
     for (const update of [frames.updates.readToolCall, frames.updates.readToolCallInProgress,
@@ -184,8 +181,7 @@ suite('AcpRun', () => {
     const events: AgentEvent[] = [];
     const run = new AcpRun(p.child, {
       cwd: '/w', permissionMode: 'default', tools: openCodeTools,
-      modeId: openCodeModeId, clientName: 'mar-code',
-    });
+      modeId: openCodeModeId, clientName: 'mar-code', sessionId: 'test-session', });
     collect(run, events);
     const init = await p.waitFor('initialize');
     p.emit({ jsonrpc: '2.0', id: init.id, result: frames.initialize });
@@ -210,8 +206,7 @@ suite('AcpRun', () => {
     const events: AgentEvent[] = [];
     const run = new AcpRun(p.child, {
       cwd: '/w', permissionMode: 'bypass', tools: openCodeTools,
-      modeId: openCodeModeId, clientName: 'mar-code',
-    });
+      modeId: openCodeModeId, clientName: 'mar-code', sessionId: 'test-session', });
     collect(run, events);
     const init = await p.waitFor('initialize');
     p.emit({ jsonrpc: '2.0', id: init.id, result: frames.initialize });
@@ -232,8 +227,7 @@ suite('AcpRun', () => {
     const p = peer();
     const run = new AcpRun(p.child, {
       cwd: '/w', permissionMode: 'default', tools: openCodeTools,
-      modeId: openCodeModeId, clientName: 'mar-code',
-    });
+      modeId: openCodeModeId, clientName: 'mar-code', sessionId: 'test-session', });
     collect(run, []);
     const init = await p.waitFor('initialize');
     p.emit({ jsonrpc: '2.0', id: init.id, result: frames.initialize });
@@ -255,8 +249,7 @@ suite('AcpRun', () => {
     const run = new AcpRun(p.child, {
       cwd: '/w', permissionMode: 'default', tools: openCodeTools,
       modeId: openCodeModeId, clientName: 'mar-code',
-      resumeToken: 'ses_old',
-    });
+      resumeToken: 'ses_old', sessionId: 'test-session', });
     collect(run, events);
     const init = await p.waitFor('initialize');
     p.emit({ jsonrpc: '2.0', id: init.id, result: frames.initialize });
@@ -272,8 +265,7 @@ suite('AcpRun', () => {
     const p = peer();
     const run = new AcpRun(p.child, {
       cwd: '/w', permissionMode: 'default', tools: openCodeTools,
-      modeId: openCodeModeId, clientName: 'mar-code',
-    });
+      modeId: openCodeModeId, clientName: 'mar-code', sessionId: 'test-session', });
     collect(run, []);
     await handshake(p);
     run.setModel('opencode/hy3-free');
@@ -288,8 +280,7 @@ suite('AcpRun', () => {
     const p = peer();
     const run = new AcpRun(p.child, {
       cwd: '/w', permissionMode: 'default', tools: openCodeTools,
-      modeId: openCodeModeId, clientName: 'mar-code',
-    });
+      modeId: openCodeModeId, clientName: 'mar-code', sessionId: 'test-session', });
     collect(run, []);
     await handshake(p);
     run.setModel('nope');
@@ -306,8 +297,7 @@ suite('AcpRun', () => {
     const events: AgentEvent[] = [];
     const run = new AcpRun(p.child, {
       cwd: '/w', permissionMode: 'default', tools: openCodeTools,
-      modeId: openCodeModeId, clientName: 'mar-code',
-    });
+      modeId: openCodeModeId, clientName: 'mar-code', sessionId: 'test-session', });
     collect(run, events);
     const init = await p.waitFor('initialize');
     p.emit({ jsonrpc: '2.0', id: init.id,
@@ -330,8 +320,7 @@ suite('AcpRun', () => {
     const p = peer();
     const run = new AcpRun(p.child, {
       cwd: '/w', permissionMode: 'plan', tools: openCodeTools,
-      modeId: openCodeModeId, clientName: 'mar-code',
-    });
+      modeId: openCodeModeId, clientName: 'mar-code', sessionId: 'test-session', });
     collect(run, []);
     // ACP's session/new carries no mode, and AgentSession only calls
     // setPermissionMode on a user CHANGE — so without this write a session
@@ -355,8 +344,7 @@ suite('AcpRun', () => {
       cwd: '/w', permissionMode: 'plan', tools: openCodeTools,
       // A mapper written against some other ACP agent. The neutral layer
       // checks the vendor's answer against the ids session/new advertised.
-      modeId: () => 'architect', clientName: 'mar-code',
-    });
+      modeId: () => 'architect', clientName: 'mar-code', sessionId: 'test-session', });
     collect(run, []);
     const init = await p.waitFor('initialize');
     p.emit({ jsonrpc: '2.0', id: init.id, result: frames.initialize });
@@ -372,8 +360,7 @@ suite('AcpRun', () => {
     const events: AgentEvent[] = [];
     const run = new AcpRun(p.child, {
       cwd: '/w', permissionMode: 'default', tools: openCodeTools,
-      modeId: openCodeModeId, clientName: 'mar-code',
-    });
+      modeId: openCodeModeId, clientName: 'mar-code', sessionId: 'test-session', });
     collect(run, events);
     await handshake(p);
     run.send('edit the file');
@@ -418,8 +405,7 @@ suite('AcpRun', () => {
     const events: AgentEvent[] = [];
     const run = new AcpRun(p.child, {
       cwd: '/w', permissionMode: 'default', tools: openCodeTools,
-      modeId: openCodeModeId, clientName: 'mar-code',
-    });
+      modeId: openCodeModeId, clientName: 'mar-code', sessionId: 'test-session', });
     collect(run, events);
     await handshake(p);
     run.send('edit the file');
@@ -440,8 +426,7 @@ suite('AcpRun', () => {
     const events: AgentEvent[] = [];
     const run = new AcpRun(p.child, {
       cwd: '/w', permissionMode: 'default', tools: openCodeTools,
-      modeId: openCodeModeId, clientName: 'mar-code',
-    });
+      modeId: openCodeModeId, clientName: 'mar-code', sessionId: 'test-session', });
     collect(run, events);
     await handshake(p);
     run.send('build it');
@@ -462,8 +447,7 @@ suite('AcpRun', () => {
     const p = peer();
     const run = new AcpRun(p.child, {
       cwd: '/w', permissionMode: 'default', tools: openCodeTools,
-      modeId: openCodeModeId, clientName: 'mar-code',
-    });
+      modeId: openCodeModeId, clientName: 'mar-code', sessionId: 'test-session', });
     collect(run, []);
     await p.waitFor('initialize');
     // Never answered. `send` parks on a startup promise that will never
@@ -497,8 +481,7 @@ suite('AcpRun', () => {
     };
     const run = new AcpRun(child, {
       cwd: '/w', permissionMode: 'default', tools: openCodeTools,
-      modeId: openCodeModeId, clientName: 'mar-code',
-    });
+      modeId: openCodeModeId, clientName: 'mar-code', sessionId: 'test-session', });
     const events: AgentEvent[] = [];
     collect(run, events);
     setImmediate(() => { fail("opencode acp exited (code 1): 'opencode' is not recognized"); });

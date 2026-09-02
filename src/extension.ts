@@ -26,7 +26,7 @@ import { ClaudeProvider } from './providers/claude/claude-provider';
 import { CodexProvider } from './providers/codex/codex-provider';
 import { FakeProvider } from './providers/fake/fake-provider';
 import { OpenCodeProvider } from './providers/opencode/opencode-provider';
-import type { DiffBase } from './protocol/messages';
+import type { DiffBase, SessionId } from './protocol/messages';
 import {
   DEFAULT_PROVIDER_IDS, ENABLED_PROVIDERS_SETTING, KNOWN_PROVIDER_IDS, PROVIDER_INSTANCES_SETTING,
 } from './shared/settings';
@@ -254,6 +254,21 @@ export async function activate(context: vscode.ExtensionContext) {
   const selfControlServer = new SelfControlMcpServer({
     catalog: () => manager.catalog(),
     create: (providerId, cwd, model, effort, mode) => manager.create(providerId, cwd, model, effort, mode),
+    summaries: () => manager.summaries(),
+    visibleIds: () => manager.visibleIds(),
+    // `summaries()` spans every non-archived session, including one restored
+    // from disk that no pane has opened this launch — `manager.get()` alone
+    // only reaches a live one. `open()` materializes it, mirroring
+    // `message-router.ts`'s own `reopen()` helper: swallow a genuinely
+    // unknown/unknown-state id into `undefined` rather than let it reject
+    // here, where errors are state.
+    get: async (id) => {
+      try {
+        return await manager.open(id as SessionId);
+      } catch {
+        return undefined;
+      }
+    },
   }, memory);
   let selfControlConfig: SelfControlMcpConfig | undefined;
   try {

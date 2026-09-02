@@ -123,23 +123,27 @@ suite('SessionPicker', () => {
     );
 
     await userEvent.keyboard('{ArrowRight}');
-    const archiveItem = await screen.findByRole('menuitem', { name: 'Archive Session b' });
+    // `.textContent`, never the node itself — a mismatched raw-node compare
+    // hands jsdom's element (and everything it reaches: parents, the fiber
+    // tree, the whole document) to `assert`'s `util.inspect` on failure. See
+    // the DOM-null-assert rule in the project's CLAUDE.md.
+    await screen.findByRole('menuitem', { name: 'Rename…' });
     assert.strictEqual(
-      document.activeElement, archiveItem,
-      'ArrowRight must focus "Archive" first — it is the first, non-nested item in the actions menu',
+      document.activeElement?.textContent, 'Rename…',
+      'ArrowRight must focus "Rename…" first — it is the first, non-nested item in the actions menu',
     );
 
-    await userEvent.keyboard('{ArrowDown}');
-    const deleteTrigger = await screen.findByLabelText('Delete session Session b');
+    await userEvent.keyboard('{ArrowDown}{ArrowDown}');
+    await screen.findByLabelText('Delete session Session b');
     assert.strictEqual(
-      document.activeElement, deleteTrigger,
-      'the next roving-focus stop is the nested delete trigger, not a menu item that deletes',
+      document.activeElement?.getAttribute('aria-label'), 'Delete session Session b',
+      'the next roving-focus stop after Archive is the nested delete trigger, not a menu item that deletes',
     );
 
     await userEvent.keyboard('{ArrowRight}');
-    const keepIt = await screen.findByRole('menuitem', { name: 'Keep it' });
+    await screen.findByRole('menuitem', { name: 'Keep it' });
     assert.strictEqual(
-      document.activeElement, keepIt,
+      document.activeElement?.textContent, 'Keep it',
       'ArrowRight must focus "Keep it" first — Delete must never be the default '
         + 'focus a keyboard user lands on when opening the delete confirm, even one level '
         + 'deeper than before',
@@ -164,13 +168,14 @@ suite('SessionPicker', () => {
     await screen.findByRole('menu');
     await userEvent.keyboard('{ArrowDown}{ArrowDown}{ArrowDown}{ArrowDown}');
     await userEvent.keyboard('{ArrowRight}');
-    await screen.findByRole('menuitem', { name: 'Archive Session b' });
-    await userEvent.keyboard('{ArrowDown}{ArrowRight}');
+    await screen.findByRole('menuitem', { name: 'Rename…' });
+    await userEvent.keyboard('{ArrowDown}{ArrowDown}{ArrowRight}');
     await screen.findByRole('menuitem', { name: 'Keep it' });
 
     await userEvent.keyboard('{ArrowDown}');
-    const deleteItem = await screen.findByRole('menuitem', { name: 'Delete Session b' });
-    assert.strictEqual(document.activeElement, deleteItem);
+    await screen.findByRole('menuitem', { name: 'Delete Session b' });
+    // `.textContent`, not the node itself — see the same rule applied above.
+    assert.strictEqual(document.activeElement?.textContent, 'Delete Session b');
 
     await userEvent.keyboard('{Enter}');
     assert.deepStrictEqual(posted().at(-1), { t: 'delete-session', id: 'b' });

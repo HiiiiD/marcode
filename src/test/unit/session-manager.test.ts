@@ -113,6 +113,26 @@ suite('SessionManager', () => {
     assert.ok(manager.summaries().some((s) => s.id === forked!.state.id));
   });
 
+  test('fork gives the new session its own default name, and rename() still works with a fork in the roster', async () => {
+    const session = await manager.create('fake', '/tmp');
+    session!.send('first');
+    await settle();
+    const targetId = (await session!.snapshot()).items[0].id;
+
+    const forked = await manager.fork(session!.state.id, targetId);
+    assert.ok(forked);
+    assert.strictEqual(forked!.state.name.length > 0, true);
+    assert.notStrictEqual(forked!.state.name, session!.state.name);
+
+    // Regression: `rename()` reads `.name` off every entry in the roster
+    // unconditionally. A forked session whose state never got a `name`
+    // crashed this with `TypeError: Cannot read properties of undefined
+    // (reading 'toLowerCase')` the moment any rename was attempted while
+    // that fork sat in `this.meta`.
+    const result = manager.rename(session!.state.id, 'renamed-with-fork-present');
+    assert.deepStrictEqual(result, { ok: true });
+  });
+
   test('fork of an unknown session is a no-op', async () => {
     assert.strictEqual(await manager.fork('missing', 'i0'), undefined);
   });
@@ -222,6 +242,79 @@ suite('SessionManager', () => {
     // A mode the provider DOES declare still survives untouched.
     const kept = await manager.create('fake', '/tmp', undefined, undefined, 'plan');
     assert.strictEqual(kept.state.permissionMode, 'plan');
+  });
+
+  test('create() gives every session a default, unique name', async () => {
+    const s1 = await manager.create('fake', process.cwd());
+    const s2 = await manager.create('fake', process.cwd());
+    assert.strictEqual(s1.state.name.length > 0, true);
+    assert.notStrictEqual(s1.state.name, s2.state.name);
+  });
+
+  test('rename() sets the name and reports it via summaries()', async () => {
+    const s = await manager.create('fake', process.cwd());
+    const result = manager.rename(s.state.id, 'my-session');
+    assert.deepStrictEqual(result, { ok: true });
+    assert.strictEqual(manager.summaries().find((x) => x.id === s.state.id)?.name, 'my-session');
+  });
+
+  test('rename() rejects a name already in use, case-insensitively', async () => {
+    const s1 = await manager.create('fake', process.cwd());
+    const s2 = await manager.create('fake', process.cwd());
+    manager.rename(s1.state.id, 'taken');
+    const result = manager.rename(s2.state.id, 'TAKEN');
+    assert.strictEqual(result.ok, false);
+    assert.strictEqual(manager.summaries().find((x) => x.id === s2.state.id)?.name === 'TAKEN', false);
+  });
+
+  test('rename() allows a session to keep its own current name unchanged', async () => {
+    const s = await manager.create('fake', process.cwd());
+    manager.rename(s.state.id, 'mine');
+    const result = manager.rename(s.state.id, 'mine');
+    assert.deepStrictEqual(result, { ok: true });
+  });
+
+  test('rename() errors for an unknown session id', () => {
+    const result = manager.rename('s-does-not-exist', 'x');
+    assert.strictEqual(result.ok, false);
+  });
+
+  test('create() skips a default name a restored session already holds', async () => {
+    // The name counter is module-level and does not reset between manager
+    // instances within a process, so pin down the exact name the *next*
+    // create() would mint, then pre-seed a fresh manager's restored roster
+    // with a session already holding that name — simulating the real hazard:
+    // after a reload, the counter restarts while a restored session's
+    // persisted name survives, and the very first post-reload create() could
+    // otherwise mint that same name again.
+    const probe = await manager.create('fake', process.cwd());
+    const suffix = probe.state.name.slice('fake-'.length);
+    const collidingName = `fake-${(parseInt(suffix, 36) + 1).toString(36)}`;
+
+    const rdir = await fs.mkdtemp(path.join(os.tmpdir(), 'mar-manager-'));
+    const rstore = new TranscriptStore(rdir);
+    await rstore.writeIndex({
+      version: 2,
+      sessions: [{
+        id: 'restored', providerId: 'fake', model: 'fake-1', title: 'Restored',
+        name: collidingName, cwd: '/tmp', status: 'idle', permissionMode: 'default',
+        includeEditorContext: true, resumeTokens: {},
+        usage: { inputTokens: 0, outputTokens: 0 },
+        archived: false, createdAt: 1, updatedAt: 1,
+      } as SessionState],
+      layout: { orientation: 'vertical', panes: [] },
+    });
+    const restoredManager = new SessionManager(
+      rstore, new Map<string, AgentProvider>([['fake', new FakeProvider(() => [])]]), () => {},
+    );
+    await restoredManager.init();
+
+    const created = await restoredManager.create('fake', process.cwd());
+    assert.notStrictEqual(created.state.name, collidingName,
+      'a fresh default name must never collide with a restored session still holding it');
+
+    await restoredManager.dispose();
+    await fs.rm(rdir, { recursive: true, force: true });
   });
 
   test('patches reach visible sessions only', async () => {
@@ -628,7 +721,7 @@ suite('SessionManager', () => {
 
   function storedSession(over: Partial<SessionState> = {}): SessionState {
     return {
-      id: 's1', providerId: 'fake', model: 'fake-1', title: 'Restored',
+      id: 's1', providerId: 'fake', model: 'fake-1', title: 'Restored', name: 'Restored',
       cwd: '/tmp', status: 'idle', permissionMode: 'default',
       includeEditorContext: true, resumeTokens: {},
       usage: { inputTokens: 0, outputTokens: 0 },
@@ -1146,6 +1239,38 @@ suite('SessionManager', () => {
     await restored.init();
     const session = await restored.open('pre-tokens');
     assert.deepStrictEqual(session.state.resumeTokens, {});
+    await restored.dispose();
+  });
+
+  test('a session restored without a name is backfilled one, and create()/rename() do not throw', async () => {
+    const store2 = new TranscriptStore(dir);
+    // Written at the current version by a build that predates `name`
+    // (SessionState.name is a required field added later on this branch).
+    await store2.writeIndex({
+      version: 2,
+      sessions: [{
+        id: 'pre-name', providerId: 'fake', model: 'fake-small', title: 'Old',
+        cwd: '/tmp', status: 'idle', permissionMode: 'default',
+        includeEditorContext: true,
+        resumeTokens: {},
+        usage: { inputTokens: 0, outputTokens: 0 },
+        archived: false, createdAt: 1, updatedAt: 1,
+      } as unknown as SessionState],
+      layout: { orientation: 'vertical', panes: [] },
+    });
+
+    const restored = new SessionManager(store2, providers, () => {});
+    await restored.init();
+
+    const summary = restored.summaries().find((s) => s.id === 'pre-name');
+    assert.strictEqual(typeof summary?.name, 'string');
+    assert.ok(summary!.name.length > 0);
+
+    // Both call `.toLowerCase()` on every session's name unconditionally —
+    // before the backfill, either would throw a TypeError on `undefined`.
+    await assert.doesNotReject(() => restored.create('fake', '/tmp'));
+    assert.doesNotThrow(() => restored.rename('pre-name', 'renamed-ok'));
+
     await restored.dispose();
   });
 

@@ -140,7 +140,12 @@ function UserItem({
   const { prose, blocks } = splitComposed(item.text, item.refs ?? [], item.fileRefs ?? []);
 
   return (
-    <TranscriptItemShell role="user" label="You" ts={item.ts} onFork={onFork}>
+    <TranscriptItemShell
+      role="user"
+      label={item.from ? `Message from ${item.from.name}` : 'You'}
+      ts={item.ts}
+      onFork={onFork}
+    >
       {ctx && (
         <div className="mb-1 flex">
           <EditorContextChip

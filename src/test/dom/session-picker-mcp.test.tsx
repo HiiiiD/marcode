@@ -6,7 +6,7 @@ import type { SessionSnapshot } from '../../protocol/messages';
 
 function snapshot(over: Partial<SessionSnapshot> = {}): SessionSnapshot {
   return {
-    id: 's1', providerId: 'claude', model: 'claude-opus-5', title: 'mar-code',
+    id: 's1', providerId: 'claude', model: 'claude-opus-5', title: 'mar-code', name: 'mar-code',
     cwd: '/work/mar-code', status: 'idle', permissionMode: 'default',
     usage: { inputTokens: 0, outputTokens: 0 }, resumeTokens: {},
     archived: false, createdAt: 1, updatedAt: 1, includeEditorContext: true,

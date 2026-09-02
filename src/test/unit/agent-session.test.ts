@@ -114,7 +114,7 @@ class ThrowingProvider implements AgentProvider {
 function baseState(): SessionState {
   return {
     id: 's1', providerId: 'fake', model: 'fake-large', effort: 'medium',
-    title: 'Untitled', cwd: '/tmp', status: 'idle', permissionMode: 'default',
+    title: 'Untitled', name: 'Untitled', cwd: '/tmp', status: 'idle', permissionMode: 'default',
     includeEditorContext: true,
     resumeTokens: {},
     usage: { inputTokens: 0, outputTokens: 0 },
@@ -217,6 +217,51 @@ suite('AgentSession', () => {
     assert.strictEqual(session.state.title, 'Refactor the auth module');
     const snap = await session.snapshot();
     assert.strictEqual(snap.items[0].role, 'user');
+    await session.dispose();
+  });
+
+  test('send() with a from sender appends a user item carrying it', async () => {
+    const provider = new FakeProvider(() => [{ kind: 'turn-end', reason: 'done' }]);
+    const session = new AgentSession(baseState(), provider, store, sink);
+    session.send('hi from A', undefined, undefined, undefined, { sessionId: 's-a', name: 'a' });
+    await settle();
+
+    const snap = await session.snapshot();
+    const item = snap.items.find((i) => i.role === 'user' && i.text === 'hi from A');
+    assert.strictEqual(item?.role === 'user' && item.from?.name, 'a');
+    await session.dispose();
+  });
+
+  test('send() with a from sender tells the model who sent it, without polluting the transcript', async () => {
+    const provider = new FakeProvider(() => [{ kind: 'turn-end', reason: 'done' }]);
+    const session = new AgentSession(baseState(), provider, store, sink);
+    session.send('hi from A', undefined, undefined, undefined, { sessionId: 's-a', name: 'a' });
+    await settle();
+
+    // The transcript's own `text` is exactly what was sent — unprefixed, so
+    // a human reading it back sees the message, not host-side plumbing.
+    const snap = await session.snapshot();
+    const item = snap.items.find((i) => i.role === 'user');
+    assert.strictEqual(item?.role === 'user' && item.text, 'hi from A');
+
+    // What actually reached the provider carries the sender identity —
+    // otherwise the model has no way to know who sent this turn.
+    assert.strictEqual(
+      provider.sent[0].text,
+      '[Delegated request from session "a", via Marcode\'s inter-session tool.]\n\nhi from A',
+    );
+    await session.dispose();
+  });
+
+  test('send() with no from sender omits the field entirely', async () => {
+    const provider = new FakeProvider(() => [{ kind: 'turn-end', reason: 'done' }]);
+    const session = new AgentSession(baseState(), provider, store, sink);
+    session.send('typed by human');
+    await settle();
+
+    const snap = await session.snapshot();
+    const item = snap.items.find((i) => i.role === 'user' && i.text === 'typed by human');
+    assert.strictEqual(item?.role === 'user' && 'from' in item, false);
     await session.dispose();
   });
 
@@ -1325,6 +1370,28 @@ suite('AgentSession permission metadata', () => {
     const jsonl = await fs.readFile(path.join(dir, 'sessions', 's1.jsonl'), 'utf8');
     assert.strictEqual(jsonl.includes('"title":"Run ls"'), true);
     assert.strictEqual(jsonl.includes('"decisionReason":"not in the allowlist"'), true);
+    await session.dispose();
+  });
+});
+
+suite('AgentSession constructor', () => {
+  let dir: string;
+  let store: TranscriptStore;
+  let sink: RecordingSink;
+
+  setup(async () => {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mar-constructor-'));
+    store = new TranscriptStore(dir);
+    sink = new RecordingSink();
+  });
+
+  teardown(async () => { await fs.rm(dir, { recursive: true, force: true }); });
+
+  test('constructor starts the provider with this session\'s own id', async () => {
+    const state = baseState();
+    const provider = new FakeProvider();
+    const session = new AgentSession(state, provider, store, sink);
+    assert.strictEqual(provider.lastStart?.sessionId, state.id);
     await session.dispose();
   });
 });

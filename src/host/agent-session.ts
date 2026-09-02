@@ -223,6 +223,7 @@ export class AgentSession {
       model: _state.model,
       effort: _state.effort,
       permissionMode: _state.permissionMode,
+      sessionId: _state.id,
       resumeToken: _state.resumeTokens[
         threadKey(provider.id, provider.threadScope, _state.cwd)
       ],
@@ -317,7 +318,10 @@ export class AgentSession {
    * one behind the rest, rather than overwriting words the user already
    * committed to.
    */
-  send(text: string, context?: EditorContext, refs?: SessionRef[], fileRefs?: FileRef[]): void {
+  send(
+    text: string, context?: EditorContext, refs?: SessionRef[], fileRefs?: FileRef[],
+    from?: { sessionId: SessionId; name: string },
+  ): void {
     if (!this.busy) { this.drainQueued(); }
     if (this.busy) {
       // Captured now, not at eventual delivery: the pending set belongs to
@@ -331,6 +335,7 @@ export class AgentSession {
         ...(refs && refs.length > 0 ? { refs } : {}),
         ...(fileRefs && fileRefs.length > 0 ? { fileRefs } : {}),
         ...(attachments.length > 0 ? { attachments } : {}),
+        ...(from ? { from } : {}),
       };
       this._state.queued = [...(this._state.queued ?? []), entry];
       this.queuedContext.set(entry.id, context);
@@ -338,7 +343,7 @@ export class AgentSession {
       this.sink.changed();
       return;
     }
-    this.deliver(text, context, refs, fileRefs, this.drainLiveAttachments());
+    this.deliver(text, context, refs, fileRefs, this.drainLiveAttachments(), from);
   }
 
   /**
@@ -372,7 +377,7 @@ export class AgentSession {
     // The queued attachments, captured when this message was parked — not
     // the live set, which by now belongs to whatever the user has composed
     // since. See `send`'s queueing branch.
-    this.deliver(head.text, context, head.refs, head.fileRefs, head.attachments ?? []);
+    this.deliver(head.text, context, head.refs, head.fileRefs, head.attachments ?? [], head.from);
   }
 
   /**
@@ -398,7 +403,7 @@ export class AgentSession {
 
   private deliver(
     text: string, context?: EditorContext, refs?: SessionRef[], fileRefs?: FileRef[],
-    attachments: Attachment[] = [],
+    attachments: Attachment[] = [], from?: { sessionId: SessionId; name: string },
   ): void {
     if (this._state.title === 'Untitled' && text.trim().length > 0) {
       this._state.title = text.trim().slice(0, TITLE_MAX);
@@ -409,6 +414,7 @@ export class AgentSession {
       ...(refs && refs.length > 0 ? { refs } : {}),
       ...(fileRefs && fileRefs.length > 0 ? { fileRefs } : {}),
       ...(attachments.length > 0 ? { attachments } : {}),
+      ...(from ? { from } : {}),
     };
     this.appendItem(item);
     this.closeAssistant();
@@ -418,8 +424,15 @@ export class AgentSession {
     // The transcript item above deliberately recorded `text`, never
     // `outgoing`: a seed is context handed to the provider, not something the
     // user wrote, and writing it into the transcript would both duplicate the
-    // history it summarizes and put words in the user's mouth.
-    const outgoing = this.seed ? `${this.seed}\n\n---\n\n${text}` : text;
+    // history it summarizes and put words in the user's mouth. `from` gets
+    // the same treatment for the same reason — the pill the transcript shows
+    // is host-side rendering, not something the sender wrote, so the model
+    // itself only learns who sent this from the line prepended here, never
+    // from the recorded `text`.
+    const withSender = from
+      ? `[Delegated request from session "${from.name}", via Marcode's inter-session tool.]\n\n${text}`
+      : text;
+    const outgoing = this.seed ? `${this.seed}\n\n---\n\n${withSender}` : withSender;
     this.seed = undefined;
     try {
       this.run.send(outgoing, context, attachments.length > 0 ? attachments : undefined);

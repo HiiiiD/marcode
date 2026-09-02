@@ -562,7 +562,7 @@ export class ClaudeProvider implements AgentProvider {
           mcpServers: {
             marcode_self_control: {
               type: 'http' as const,
-              url: this.selfControlMcp.url,
+              url: `${this.selfControlMcp.url}?sid=${encodeURIComponent(opts.sessionId)}`,
               headers: { authorization: `Bearer ${this.selfControlMcp.token}` },
             },
           },

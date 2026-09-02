@@ -30,7 +30,7 @@ function hydrated() {
     unavailable: [],
     usage: {},
     snapshots: [{
-      id: 's1', providerId: 'fake', model: 'fake-large', title: 'T', cwd: '/tmp',
+      id: 's1', providerId: 'fake', model: 'fake-large', title: 'T', name: 'T', cwd: '/tmp',
       status: 'idle', permissionMode: 'default',
       resumeTokens: {},
       usage: { inputTokens: 0, outputTokens: 0 },

@@ -76,6 +76,24 @@ suite('codex toToolCall', () => {
     });
   });
 
+  test('mcpToolCall reads `input` off `arguments` — real shape, not in the generated typedef', () => {
+    const item = {
+      type: 'mcpToolCall', id: 'i3b', server: 'marcode_self_control', tool: 'marcode__send_message',
+      arguments: { to: 'Otter', text: 'hi' },
+    } as unknown as ThreadItem;
+    assert.deepStrictEqual(toToolCall(item), {
+      kind: 'mcp', label: 'marcode__send_message', server: 'marcode_self_control', tool: 'marcode__send_message',
+      input: { to: 'Otter', text: 'hi' },
+    });
+  });
+
+  test('mcpToolCall with no `arguments` carries no `input`', () => {
+    const item = {
+      type: 'mcpToolCall', id: 'i3c', server: 'github', tool: 'create_issue',
+    } as unknown as ThreadItem;
+    assert.strictEqual((toToolCall(item) as { input?: unknown }).input, undefined);
+  });
+
   test('webSearch carries the query it has', () => {
     const item = { type: 'webSearch', id: 'i4', query: 'effect schema' } as unknown as ThreadItem;
     assert.deepStrictEqual(toToolCall(item), {
@@ -181,10 +199,13 @@ suite('codex toToolOutput', () => {
     assert.deepStrictEqual(toToolOutput(item), { kind: 'none' });
   });
 
-  test('an mcpToolCall unwraps an Anthropic-style content array to text', () => {
+  test('an mcpToolCall unwraps the real CallToolResult envelope\'s content to text', () => {
     const item = {
       type: 'mcpToolCall', id: 'i5', server: 'github', tool: 'list_prs',
-      result: [{ type: 'text', text: 'PR #1' }, { type: 'text', text: 'PR #2' }],
+      result: {
+        content: [{ type: 'text', text: 'PR #1' }, { type: 'text', text: 'PR #2' }],
+        structuredContent: null, _meta: null,
+      },
     } as unknown as ThreadItem;
     assert.deepStrictEqual(toToolOutput(item), { kind: 'text', text: 'PR #1\nPR #2' });
   });

@@ -19,11 +19,22 @@ import type { SessionSummary } from '../../protocol/messages';
  * deeper behind its own confirm because it is not.
  */
 export function SessionRow({
-  session, open, onToggle,
+  session, open, onToggle, onRename,
 }: {
   session: SessionSummary;
   open: boolean;
   onToggle: () => void;
+  /**
+   * Owned by `SessionPicker`, not local state here: this row lives inside
+   * the roster's own `DropdownMenuContent`, and clicking a plain
+   * `DropdownMenuItem` (unlike a `DropdownMenuSubTrigger`) closes the whole
+   * root menu — unmounting this row, and any `open` state on it, before a
+   * dialog rendered from it could ever show. `SessionPicker` mounts
+   * `RenameSessionDialog` as a sibling of the roster `DropdownMenu` itself,
+   * the same place `session-header.tsx` mounts `BringBackDialog` beside its
+   * own menu, so the dialog survives the click that opens it.
+   */
+  onRename: () => void;
 }) {
   const { post } = useStore();
 
@@ -48,12 +59,19 @@ export function SessionRow({
 
       <DropdownMenuSub>
         <DropdownMenuSubTrigger
-          aria-label={`More actions for ${session.title}`}
+          // `session.name`, not `session.title`: `name` is always present
+          // and unique, unlike `title`, which starts as `'Untitled'` for
+          // every session and stays that way until a first send — a shared
+          // title would collide across rows and make this label ambiguous.
+          aria-label={`More actions for ${session.name}`}
           className="shrink-0 opacity-0 [&>svg:last-child]:hidden group-hover/row:opacity-100 focus:opacity-100 data-popup-open:opacity-100"
         >
           <MoreHorizontalIcon aria-hidden />
         </DropdownMenuSubTrigger>
         <DropdownMenuSubContent>
+          <DropdownMenuItem onClick={onRename}>
+            Rename…
+          </DropdownMenuItem>
           <DropdownMenuItem onClick={() => post({ t: 'close-session', id: session.id })}>
             Archive {session.title}
           </DropdownMenuItem>
