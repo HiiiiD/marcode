@@ -220,6 +220,30 @@ suite('AgentSession', () => {
     await session.dispose();
   });
 
+  test('send() with a from sender appends a user item carrying it', async () => {
+    const provider = new FakeProvider(() => [{ kind: 'turn-end', reason: 'done' }]);
+    const session = new AgentSession(baseState(), provider, store, sink);
+    session.send('hi from A', undefined, undefined, undefined, { sessionId: 's-a', name: 'a' });
+    await settle();
+
+    const snap = await session.snapshot();
+    const item = snap.items.find((i) => i.role === 'user' && i.text === 'hi from A');
+    assert.strictEqual(item?.role === 'user' && item.from?.name, 'a');
+    await session.dispose();
+  });
+
+  test('send() with no from sender omits the field entirely', async () => {
+    const provider = new FakeProvider(() => [{ kind: 'turn-end', reason: 'done' }]);
+    const session = new AgentSession(baseState(), provider, store, sink);
+    session.send('typed by human');
+    await settle();
+
+    const snap = await session.snapshot();
+    const item = snap.items.find((i) => i.role === 'user' && i.text === 'typed by human');
+    assert.strictEqual(item?.role === 'user' && 'from' in item, false);
+    await session.dispose();
+  });
+
   test('a permission event parks the session and respondToPermission settles it', async () => {
     const provider = new FakeProvider(() => [
       { kind: 'permission', id: 'r1', tool: { kind: 'command', label: 'Bash', command: 'ls' } },

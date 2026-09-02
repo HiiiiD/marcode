@@ -317,7 +317,10 @@ export class AgentSession {
    * one behind the rest, rather than overwriting words the user already
    * committed to.
    */
-  send(text: string, context?: EditorContext, refs?: SessionRef[], fileRefs?: FileRef[]): void {
+  send(
+    text: string, context?: EditorContext, refs?: SessionRef[], fileRefs?: FileRef[],
+    from?: { sessionId: SessionId; name: string },
+  ): void {
     if (!this.busy) { this.drainQueued(); }
     if (this.busy) {
       // Captured now, not at eventual delivery: the pending set belongs to
@@ -331,6 +334,7 @@ export class AgentSession {
         ...(refs && refs.length > 0 ? { refs } : {}),
         ...(fileRefs && fileRefs.length > 0 ? { fileRefs } : {}),
         ...(attachments.length > 0 ? { attachments } : {}),
+        ...(from ? { from } : {}),
       };
       this._state.queued = [...(this._state.queued ?? []), entry];
       this.queuedContext.set(entry.id, context);
@@ -338,7 +342,7 @@ export class AgentSession {
       this.sink.changed();
       return;
     }
-    this.deliver(text, context, refs, fileRefs, this.drainLiveAttachments());
+    this.deliver(text, context, refs, fileRefs, this.drainLiveAttachments(), from);
   }
 
   /**
@@ -372,7 +376,7 @@ export class AgentSession {
     // The queued attachments, captured when this message was parked — not
     // the live set, which by now belongs to whatever the user has composed
     // since. See `send`'s queueing branch.
-    this.deliver(head.text, context, head.refs, head.fileRefs, head.attachments ?? []);
+    this.deliver(head.text, context, head.refs, head.fileRefs, head.attachments ?? [], head.from);
   }
 
   /**
@@ -398,7 +402,7 @@ export class AgentSession {
 
   private deliver(
     text: string, context?: EditorContext, refs?: SessionRef[], fileRefs?: FileRef[],
-    attachments: Attachment[] = [],
+    attachments: Attachment[] = [], from?: { sessionId: SessionId; name: string },
   ): void {
     if (this._state.title === 'Untitled' && text.trim().length > 0) {
       this._state.title = text.trim().slice(0, TITLE_MAX);
@@ -409,6 +413,7 @@ export class AgentSession {
       ...(refs && refs.length > 0 ? { refs } : {}),
       ...(fileRefs && fileRefs.length > 0 ? { fileRefs } : {}),
       ...(attachments.length > 0 ? { attachments } : {}),
+      ...(from ? { from } : {}),
     };
     this.appendItem(item);
     this.closeAssistant();

@@ -160,6 +160,7 @@ export interface QueuedMessage {
   refs?: SessionRef[];
   fileRefs?: FileRef[];
   attachments?: Attachment[];
+  from?: { sessionId: SessionId; name: string };
 }
 
 export interface SessionState {
