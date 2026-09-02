@@ -113,6 +113,26 @@ suite('SessionManager', () => {
     assert.ok(manager.summaries().some((s) => s.id === forked!.state.id));
   });
 
+  test('fork gives the new session its own default name, and rename() still works with a fork in the roster', async () => {
+    const session = await manager.create('fake', '/tmp');
+    session!.send('first');
+    await settle();
+    const targetId = (await session!.snapshot()).items[0].id;
+
+    const forked = await manager.fork(session!.state.id, targetId);
+    assert.ok(forked);
+    assert.strictEqual(forked!.state.name.length > 0, true);
+    assert.notStrictEqual(forked!.state.name, session!.state.name);
+
+    // Regression: `rename()` reads `.name` off every entry in the roster
+    // unconditionally. A forked session whose state never got a `name`
+    // crashed this with `TypeError: Cannot read properties of undefined
+    // (reading 'toLowerCase')` the moment any rename was attempted while
+    // that fork sat in `this.meta`.
+    const result = manager.rename(session!.state.id, 'renamed-with-fork-present');
+    assert.deepStrictEqual(result, { ok: true });
+  });
+
   test('fork of an unknown session is a no-op', async () => {
     assert.strictEqual(await manager.fork('missing', 'i0'), undefined);
   });
@@ -257,6 +277,44 @@ suite('SessionManager', () => {
   test('rename() errors for an unknown session id', () => {
     const result = manager.rename('s-does-not-exist', 'x');
     assert.strictEqual(result.ok, false);
+  });
+
+  test('create() skips a default name a restored session already holds', async () => {
+    // The name counter is module-level and does not reset between manager
+    // instances within a process, so pin down the exact name the *next*
+    // create() would mint, then pre-seed a fresh manager's restored roster
+    // with a session already holding that name — simulating the real hazard:
+    // after a reload, the counter restarts while a restored session's
+    // persisted name survives, and the very first post-reload create() could
+    // otherwise mint that same name again.
+    const probe = await manager.create('fake', process.cwd());
+    const suffix = probe.state.name.slice('fake-'.length);
+    const collidingName = `fake-${(parseInt(suffix, 36) + 1).toString(36)}`;
+
+    const rdir = await fs.mkdtemp(path.join(os.tmpdir(), 'mar-manager-'));
+    const rstore = new TranscriptStore(rdir);
+    await rstore.writeIndex({
+      version: 2,
+      sessions: [{
+        id: 'restored', providerId: 'fake', model: 'fake-1', title: 'Restored',
+        name: collidingName, cwd: '/tmp', status: 'idle', permissionMode: 'default',
+        includeEditorContext: true, resumeTokens: {},
+        usage: { inputTokens: 0, outputTokens: 0 },
+        archived: false, createdAt: 1, updatedAt: 1,
+      } as SessionState],
+      layout: { orientation: 'vertical', panes: [] },
+    });
+    const restoredManager = new SessionManager(
+      rstore, new Map<string, AgentProvider>([['fake', new FakeProvider(() => [])]]), () => {},
+    );
+    await restoredManager.init();
+
+    const created = await restoredManager.create('fake', process.cwd());
+    assert.notStrictEqual(created.state.name, collidingName,
+      'a fresh default name must never collide with a restored session still holding it');
+
+    await restoredManager.dispose();
+    await fs.rm(rdir, { recursive: true, force: true });
   });
 
   test('patches reach visible sessions only', async () => {
