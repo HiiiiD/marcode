@@ -10,6 +10,7 @@ import {
 import { cn } from '@/lib/utils';
 import { aggregateServers, isUnhealthy, worstState } from './mcp-status';
 import { evenlySizedPanes } from './pane-layout';
+import { RenameSessionDialog } from './rename-session-dialog';
 import { SessionCreateMenu } from './session-create-menu';
 import { SessionRow } from './session-row';
 import { StaleTreesDialog } from './stale-trees';
@@ -57,6 +58,14 @@ export function SessionPicker({ narrow, onReview, onFleet }: SessionPickerProps)
   const archived = state.sessions.filter((s) => s.archived);
 
   const [treesOpen, setTreesOpen] = useState(false);
+  /**
+   * The id, not the `SessionSummary` itself: the roster can rename or
+   * archive between the click that opens this and the render after, and an
+   * id re-reads `state.sessions` fresh rather than carrying a stale copy
+   * across that gap.
+   */
+  const [renamingId, setRenamingId] = useState<SessionId | null>(null);
+  const renaming = state.sessions.find((s) => s.id === renamingId);
   // Asked once per set of directories the roster occupies, and never for an
   // empty roster: with no session there is nothing that could have left a
   // tree behind, and the sweep shells out to git per directory. The entry
@@ -95,7 +104,13 @@ export function SessionPicker({ narrow, onReview, onFleet }: SessionPickerProps)
             <DropdownMenuItem disabled>No sessions yet</DropdownMenuItem>
           )}
           {live.map((s) => (
-            <SessionRow key={s.id} session={s} open={open.has(s.id)} onToggle={() => toggle(s.id)} />
+            <SessionRow
+              key={s.id}
+              session={s}
+              open={open.has(s.id)}
+              onToggle={() => toggle(s.id)}
+              onRename={() => setRenamingId(s.id)}
+            />
           ))}
           {archived.length > 0 && (
             <>
@@ -110,7 +125,13 @@ export function SessionPicker({ narrow, onReview, onFleet }: SessionPickerProps)
               <DropdownMenuGroup>
                 <DropdownMenuLabel>{`Archived (${archived.length})`}</DropdownMenuLabel>
                 {archived.map((s) => (
-                  <SessionRow key={s.id} session={s} open={open.has(s.id)} onToggle={() => toggle(s.id)} />
+                  <SessionRow
+                    key={s.id}
+                    session={s}
+                    open={open.has(s.id)}
+                    onToggle={() => toggle(s.id)}
+                    onRename={() => setRenamingId(s.id)}
+                  />
                 ))}
               </DropdownMenuGroup>
             </>
@@ -161,6 +182,19 @@ export function SessionPicker({ narrow, onReview, onFleet }: SessionPickerProps)
           )}
         </DropdownMenuContent>
       </DropdownMenu>
+
+      {/* Mounted beside the roster `DropdownMenu`, not inside a row: a row
+          lives in the menu's own `DropdownMenuContent`, which unmounts the
+          moment the "Rename…" click closes the root menu — see the comment
+          on `SessionRow`'s `onRename` prop. `renaming` stays defined through
+          the close animation the same way `BringBackDialog`'s `pane` does. */}
+      {renaming && (
+        <RenameSessionDialog
+          session={renaming}
+          open={renamingId !== null}
+          onOpenChange={(next) => { if (!next) { setRenamingId(null); } }}
+        />
+      )}
 
       {/*
         Its own control, not an item in the menu above. That trigger says "in

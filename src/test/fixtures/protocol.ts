@@ -27,6 +27,7 @@ export function summary(id: string, over: Partial<SessionSummary> = {}): Session
     providerId: 'fake',
     model: 'fake-large',
     title: `Session ${id}`,
+    name: `Session ${id}`,
     cwd: '/tmp',
     status: 'idle',
     permissionMode: 'default',
