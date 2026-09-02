@@ -29,6 +29,12 @@ function newSessionId(): string {
   return `s-${Date.now().toString(36)}-${(counter++).toString(36)}`;
 }
 
+let nameCounter = 0;
+/** `${providerId}-<short>` — every session is addressable by name from creation, before anyone renames it. */
+function defaultName(providerId: string): string {
+  return `${providerId}-${(nameCounter++).toString(36)}`;
+}
+
 /**
  * Rejects with `reason` if `work` has not settled within `ms`. The timer is
  * cleared either way: a pending `setTimeout` would otherwise keep the
@@ -404,6 +410,27 @@ export class SessionManager implements SessionSink {
     return [...this.meta.values()].sort((a, b) => b.updatedAt - a.updatedAt);
   }
 
+  /**
+   * Renames a session. Unique per window, case-insensitive — the `@` mention
+   * menu and `marcode__send_message` both address a session by this name, and
+   * a collision would make one of two same-named rows silently unreachable.
+   * A session keeping its own current name (any case) is not a collision.
+   */
+  rename(id: SessionId, name: string): { ok: true } | { ok: false; reason: string } {
+    const state = this.meta.get(id);
+    if (!state) { return { ok: false, reason: 'Unknown session.' }; }
+    const trimmed = name.trim();
+    if (trimmed.length === 0) { return { ok: false, reason: 'Name cannot be empty.' }; }
+    const taken = [...this.meta.values()].some(
+      (s) => s.id !== id && s.name.toLowerCase() === trimmed.toLowerCase(),
+    );
+    if (taken) { return { ok: false, reason: `"${trimmed}" is already in use.` }; }
+    state.name = trimmed;
+    state.updatedAt = Date.now();
+    this.changed();
+    return { ok: true };
+  }
+
   layout(): PaneLayout { return this.paneLayout; }
 
   private keyOf(state: SessionState): string {
@@ -491,7 +518,7 @@ export class SessionManager implements SessionSink {
     const now = Date.now();
     const state: SessionState = {
       id: newSessionId(), providerId, model: chosen.id, effort: resolvedEffort,
-      title: 'Untitled', cwd, status: 'idle', permissionMode: resolvedMode,
+      title: 'Untitled', name: defaultName(providerId), cwd, status: 'idle', permissionMode: resolvedMode,
       includeEditorContext: true,
       resumeTokens: {},
       usage: { inputTokens: 0, outputTokens: 0 },

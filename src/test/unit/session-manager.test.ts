@@ -224,6 +224,41 @@ suite('SessionManager', () => {
     assert.strictEqual(kept.state.permissionMode, 'plan');
   });
 
+  test('create() gives every session a default, unique name', async () => {
+    const s1 = await manager.create('fake', process.cwd());
+    const s2 = await manager.create('fake', process.cwd());
+    assert.strictEqual(s1.state.name.length > 0, true);
+    assert.notStrictEqual(s1.state.name, s2.state.name);
+  });
+
+  test('rename() sets the name and reports it via summaries()', async () => {
+    const s = await manager.create('fake', process.cwd());
+    const result = manager.rename(s.state.id, 'my-session');
+    assert.deepStrictEqual(result, { ok: true });
+    assert.strictEqual(manager.summaries().find((x) => x.id === s.state.id)?.name, 'my-session');
+  });
+
+  test('rename() rejects a name already in use, case-insensitively', async () => {
+    const s1 = await manager.create('fake', process.cwd());
+    const s2 = await manager.create('fake', process.cwd());
+    manager.rename(s1.state.id, 'taken');
+    const result = manager.rename(s2.state.id, 'TAKEN');
+    assert.strictEqual(result.ok, false);
+    assert.strictEqual(manager.summaries().find((x) => x.id === s2.state.id)?.name === 'TAKEN', false);
+  });
+
+  test('rename() allows a session to keep its own current name unchanged', async () => {
+    const s = await manager.create('fake', process.cwd());
+    manager.rename(s.state.id, 'mine');
+    const result = manager.rename(s.state.id, 'mine');
+    assert.deepStrictEqual(result, { ok: true });
+  });
+
+  test('rename() errors for an unknown session id', () => {
+    const result = manager.rename('s-does-not-exist', 'x');
+    assert.strictEqual(result.ok, false);
+  });
+
   test('patches reach visible sessions only', async () => {
     const a = await manager.create('fake', '/tmp');
     const b = await manager.create('fake', '/tmp');
