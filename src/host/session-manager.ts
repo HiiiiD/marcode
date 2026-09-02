@@ -209,6 +209,14 @@ export class SessionManager implements SessionSink {
         // read in its constructor would throw on undefined. Empty is also the
         // exact truth: a session with no recorded threads has no tokens.
         resumeTokens: state.resumeTokens ?? {},
+        // Same story again for `name`, added after this index's version last
+        // moved: a pre-branch `index.json` restores it as `undefined`, and
+        // both `defaultName()`'s dedup loop and `rename()`'s uniqueness check
+        // call `.toLowerCase()` on every session's name unconditionally.
+        // `defaultName()` reads `this.meta` incrementally as this loop fills
+        // it, so calling it here dedupes correctly against sessions already
+        // restored (and named) earlier in the same pass.
+        name: state.name ?? this.defaultName(state.providerId),
       });
     }
     this.paneLayout = index.layout;

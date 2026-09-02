@@ -17,7 +17,7 @@ function fakeManager(overrides: Partial<SessionManagerLike> = {}): SessionManage
     ],
     create: async () => ({ state: { id: 's-fake-1' } }),
     summaries: () => [],
-    get: () => undefined,
+    get: async () => undefined,
     ...overrides,
   };
 }
@@ -361,7 +361,7 @@ suite('SelfControlMcpServer cross-session messaging', () => {
         { id: 's-caller', name: 'a', providerId: 'claude', status: 'idle', cwd: '/w', archived: false } as never,
         { id: 's-target', name: 'b', providerId: 'codex', status: 'idle', cwd: '/w', archived: false } as never,
       ],
-      get: (id: string) => (id === 's-target' ? target as never : undefined),
+      get: async (id: string) => (id === 's-target' ? target as never : undefined),
     });
     const server = new SelfControlMcpServer(manager);
     const config = await server.start();
@@ -370,6 +370,35 @@ suite('SelfControlMcpServer cross-session messaging', () => {
     assert.strictEqual(interrupted, true);
     assert.strictEqual(sent[0], 'do the thing');
     assert.deepStrictEqual(sent[4], { sessionId: 's-caller', name: 'a' });
+    await server.dispose();
+  });
+
+  test('send_message resolves the target case-insensitively, matching rename()\'s own rule', async () => {
+    let sent: unknown[] = [];
+    const target = { interrupt: async () => {}, send: (...args: unknown[]) => { sent = args; } };
+    const manager = fakeManager({
+      summaries: () => [
+        { id: 's-caller', name: 'a', providerId: 'claude', status: 'idle', cwd: '/w', archived: false } as never,
+        { id: 's-target', name: 'Receiver', providerId: 'codex', status: 'idle', cwd: '/w', archived: false } as never,
+      ],
+      get: async (id: string) => (id === 's-target' ? target as never : undefined),
+    });
+    const server = new SelfControlMcpServer(manager);
+    const config = await server.start();
+    const result = await callToolAs(config, 's-caller', 'marcode__send_message', { to: 'RECEIVER', text: 'hi' });
+    assert.strictEqual(result.isError, undefined);
+    assert.strictEqual(sent[0], 'hi');
+    await server.dispose();
+  });
+
+  test('send_message errors when to equals the caller\'s own name case-insensitively', async () => {
+    const manager = fakeManager({
+      summaries: () => [{ id: 's-caller', name: 'Alice', providerId: 'claude', status: 'idle', cwd: '/w', archived: false } as never],
+    });
+    const server = new SelfControlMcpServer(manager);
+    const config = await server.start();
+    const result = await callToolAs(config, 's-caller', 'marcode__send_message', { to: 'alice', text: 'hi' });
+    assert.strictEqual(result.isError, true);
     await server.dispose();
   });
 
@@ -404,6 +433,78 @@ suite('SelfControlMcpServer cross-session messaging', () => {
     const unknown = await callToolAs(config, 's-ghost', 'marcode__send_message', { to: 'b', text: 'hi' });
     assert.strictEqual(unknown.isError, true);
     await server.dispose();
+  });
+
+  test('send_message reaches a session list_sessions advertises but no pane has opened this launch', async () => {
+    // Important #3's regression: `manager.get()` alone only reaches a LIVE
+    // session, but `summaries()` (and so `marcode__list_sessions`) spans
+    // every non-archived session in `this.meta`, including one restored from
+    // disk that no pane has opened yet. `get` here mirrors the real
+    // `extension.ts` wiring: it goes through `manager.open()`, which
+    // materializes a restored session on demand.
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mar-self-control-reach-'));
+    const store = new TranscriptStore(dir);
+    const provider = new FakeProvider(() => [
+      { kind: 'text', delta: 'ok' },
+      { kind: 'turn-end', reason: 'done' },
+    ]);
+    const providers = new Map<string, AgentProvider>([['fake', provider]]);
+
+    const first = new SessionManager(store, providers, () => {});
+    await first.init();
+    const receiver = await first.create('fake', process.cwd());
+    first.rename(receiver.state.id, 'receiver');
+    const sender = await first.create('fake', process.cwd());
+    first.rename(sender.state.id, 'sender');
+    // Shutdown without archiving either session — the same posture a window
+    // reload takes: `archived` is left exactly as it was, so both come back
+    // non-archived but with no live AgentSession until something opens one.
+    await first.dispose();
+
+    const second = new SessionManager(store, providers, () => {});
+    await second.init();
+    assert.strictEqual(second.get(receiver.state.id), undefined, 'restored session must not be live yet');
+    assert.strictEqual(second.get(sender.state.id), undefined, 'restored session must not be live yet');
+
+    try {
+      const server = new SelfControlMcpServer({
+        catalog: () => second.catalog(),
+        create: (providerId, cwd, model, effort, mode) => second.create(providerId, cwd, model, effort, mode),
+        summaries: () => second.summaries(),
+        get: async (id) => {
+          try { return await second.open(id); } catch { return undefined; }
+        },
+      });
+      const config = await server.start();
+
+      const listed = await callTool(config, 'marcode__list_sessions', {});
+      const names = (JSON.parse(listed.content[0].text) as { name: string }[]).map((s) => s.name);
+      assert.deepStrictEqual(names.sort(), ['receiver', 'sender']);
+
+      const res = await fetch(`${config.url}?sid=${sender.state.id}`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json', accept: 'application/json, text/event-stream',
+          authorization: `Bearer ${config.token}`,
+        },
+        body: JSON.stringify({
+          jsonrpc: '2.0', id: 1, method: 'tools/call',
+          params: { name: 'marcode__send_message', arguments: { to: 'receiver', text: 'still reachable' } },
+        }),
+      });
+      const body = await res.json() as { result: { isError?: boolean; content: { type: string; text: string }[] } };
+      assert.strictEqual(body.result.isError, undefined);
+
+      const snapshot = await second.get(receiver.state.id)!.snapshot();
+      assert.strictEqual(
+        snapshot.items.some((i) => i.role === 'user' && i.text === 'still reachable'),
+        true,
+      );
+      await server.dispose();
+    } finally {
+      await second.dispose();
+      await fs.rm(dir, { recursive: true, force: true });
+    }
   });
 
   test('a real send_message call delivers into the target session\'s real transcript, tagged with from', async () => {

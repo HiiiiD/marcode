@@ -231,7 +231,7 @@ export class MessageRouter {
               this.resolveFileRefsFor(session, fileRefs),
             ]);
           if (sMissing.length > 0 || fMissing.length > 0) {
-            session.noteError(this.missingMessage(sMissing, fMissing));
+            void session.noteError(this.missingMessage(sMissing, fMissing));
           } else {
             const context = session.state.includeEditorContext
               ? this.editor.current() ?? undefined
@@ -286,7 +286,7 @@ export class MessageRouter {
         // no plan above is an invitation to invent one, which is worse than
         // not sending at all.
         if (sMissing.length > 0 || fMissing.length > 0) {
-          session.noteError(this.missingMessage(sMissing, fMissing));
+          void session.noteError(this.missingMessage(sMissing, fMissing));
           return;
         }
         session.send(
@@ -318,11 +318,16 @@ export class MessageRouter {
         return;
       }
 
+      // Rename is a `this.meta` mutation and needs no live session — resolving
+      // one first (via `reopen()`) would revive an archived session, spawning
+      // its provider run, purely to report a possible failure. Only on
+      // failure do we try to surface it, and only to a session that is
+      // ALREADY live: reviving one just to show it an error it never asked
+      // for is the same mistake in miniature.
       case 'rename-session': {
-        const session = this.manager.get(msg.id) ?? await this.reopen(msg.id);
         const result = this.manager.rename(msg.id, msg.name);
         if (!result.ok) {
-          session?.noteError(result.reason);
+          void this.manager.get(msg.id)?.noteError(result.reason);
         }
         return;
       }

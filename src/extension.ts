@@ -255,7 +255,19 @@ export async function activate(context: vscode.ExtensionContext) {
     catalog: () => manager.catalog(),
     create: (providerId, cwd, model, effort, mode) => manager.create(providerId, cwd, model, effort, mode),
     summaries: () => manager.summaries(),
-    get: (id) => manager.get(id as SessionId),
+    // `summaries()` spans every non-archived session, including one restored
+    // from disk that no pane has opened this launch — `manager.get()` alone
+    // only reaches a live one. `open()` materializes it, mirroring
+    // `message-router.ts`'s own `reopen()` helper: swallow a genuinely
+    // unknown/unknown-state id into `undefined` rather than let it reject
+    // here, where errors are state.
+    get: async (id) => {
+      try {
+        return await manager.open(id as SessionId);
+      } catch {
+        return undefined;
+      }
+    },
   }, memory);
   let selfControlConfig: SelfControlMcpConfig | undefined;
   try {

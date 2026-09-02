@@ -1242,6 +1242,38 @@ suite('SessionManager', () => {
     await restored.dispose();
   });
 
+  test('a session restored without a name is backfilled one, and create()/rename() do not throw', async () => {
+    const store2 = new TranscriptStore(dir);
+    // Written at the current version by a build that predates `name`
+    // (SessionState.name is a required field added later on this branch).
+    await store2.writeIndex({
+      version: 2,
+      sessions: [{
+        id: 'pre-name', providerId: 'fake', model: 'fake-small', title: 'Old',
+        cwd: '/tmp', status: 'idle', permissionMode: 'default',
+        includeEditorContext: true,
+        resumeTokens: {},
+        usage: { inputTokens: 0, outputTokens: 0 },
+        archived: false, createdAt: 1, updatedAt: 1,
+      } as unknown as SessionState],
+      layout: { orientation: 'vertical', panes: [] },
+    });
+
+    const restored = new SessionManager(store2, providers, () => {});
+    await restored.init();
+
+    const summary = restored.summaries().find((s) => s.id === 'pre-name');
+    assert.strictEqual(typeof summary?.name, 'string');
+    assert.ok(summary!.name.length > 0);
+
+    // Both call `.toLowerCase()` on every session's name unconditionally —
+    // before the backfill, either would throw a TypeError on `undefined`.
+    await assert.doesNotReject(() => restored.create('fake', '/tmp'));
+    assert.doesNotThrow(() => restored.rename('pre-name', 'renamed-ok'));
+
+    await restored.dispose();
+  });
+
   /**
    * A provider whose model list is only correct after `fetchModels` — the
    * shape of every real backend, where the catalog lives in the CLI.
