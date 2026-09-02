@@ -223,6 +223,7 @@ export class AgentSession {
       model: _state.model,
       effort: _state.effort,
       permissionMode: _state.permissionMode,
+      sessionId: _state.id,
       resumeToken: _state.resumeTokens[
         threadKey(provider.id, provider.threadScope, _state.cwd)
       ],

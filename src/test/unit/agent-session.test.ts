@@ -1372,6 +1372,14 @@ suite('AgentSession activityLabel', () => {
     await session.dispose();
   });
 
+  test('constructor starts the provider with this session\'s own id', async () => {
+    const state = baseState();
+    const provider = new FakeProvider();
+    const session = new AgentSession(state, provider, store, sink);
+    assert.strictEqual(provider.lastStart?.sessionId, state.id);
+    await session.dispose();
+  });
+
   test('reports the running tool by its label while one is in flight', async () => {
     const provider = new FakeProvider(() => [
       { kind: 'tool-start', id: 't1', tool: { kind: 'command', label: 'Bash', command: 'ls' } },
