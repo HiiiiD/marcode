@@ -612,6 +612,20 @@ suite('MessageRouter', () => {
     assert.deepStrictEqual(calls, [['s1', 'new-name']]);
   });
 
+  test('rename-session records an error when rename fails', async () => {
+    await router.handle({ t: 'create-session', providerId: 'fake', cwd: '/tmp' });
+    const id = manager.summaries()[0].id;
+    await router.handle({ t: 'set-visible', sessionIds: [id] });
+
+    manager.rename = () => ({ ok: false, reason: 'Name already in use.' });
+
+    await router.handle({ t: 'rename-session', id, name: 'taken-name' });
+
+    const items = (await manager.get(id)!.snapshot()).items;
+    const error = items.find((i) => i.role === 'error');
+    assert.strictEqual(error?.role === 'error' && error.message, 'Name already in use.');
+  });
+
   test('set-model reaches the session', async () => {
     await router.handle({ t: 'create-session', providerId: 'fake', cwd: '/tmp' });
     const id = manager.summaries()[0].id;

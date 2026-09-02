@@ -319,7 +319,11 @@ export class MessageRouter {
       }
 
       case 'rename-session': {
-        this.manager.rename(msg.id, msg.name);
+        const session = this.manager.get(msg.id) ?? await this.reopen(msg.id);
+        const result = this.manager.rename(msg.id, msg.name);
+        if (!result.ok) {
+          session?.noteError(result.reason);
+        }
         return;
       }
 
