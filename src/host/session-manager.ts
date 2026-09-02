@@ -415,6 +415,18 @@ export class SessionManager implements SessionSink {
   }
 
   /**
+   * The panes shown right now — the same set `setVisible()` maintains for
+   * patch fan-out. Exposed for `marcode__list_sessions`: a window can carry
+   * a long history of past sessions restored from disk, and an agent
+   * addressing a target almost always means one open in front of the human
+   * right now, not that whole history. The caller's own session stays
+   * discoverable regardless — see the self-control server's own filter.
+   */
+  visibleIds(): SessionId[] {
+    return [...this.visible];
+  }
+
+  /**
    * `${providerId}-<short>` — every session is addressable by name from creation, before
    * anyone renames it. `nameCounter` restarts at 0 every activation, but a window reload
    * restores prior sessions (with their persisted names) straight into `this.meta` without

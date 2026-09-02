@@ -255,6 +255,7 @@ export async function activate(context: vscode.ExtensionContext) {
     catalog: () => manager.catalog(),
     create: (providerId, cwd, model, effort, mode) => manager.create(providerId, cwd, model, effort, mode),
     summaries: () => manager.summaries(),
+    visibleIds: () => manager.visibleIds(),
     // `summaries()` spans every non-archived session, including one restored
     // from disk that no pane has opened this launch — `manager.get()` alone
     // only reaches a live one. `open()` materializes it, mirroring

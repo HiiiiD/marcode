@@ -17,6 +17,7 @@ function fakeManager(overrides: Partial<SessionManagerLike> = {}): SessionManage
     ],
     create: async () => ({ state: { id: 's-fake-1' } }),
     summaries: () => [],
+    visibleIds: () => [],
     get: async () => undefined,
     ...overrides,
   };
@@ -337,18 +338,40 @@ suite('SelfControlMcpServer memory tools', () => {
 });
 
 suite('SelfControlMcpServer cross-session messaging', () => {
-  test('marcode__list_sessions returns name/providerId/status/cwd for non-archived sessions', async () => {
+  test('marcode__list_sessions returns visible, non-archived sessions', async () => {
     const manager = fakeManager({
       summaries: () => [
         { id: 's1', name: 'a', providerId: 'claude', status: 'idle', cwd: '/w1', archived: false } as never,
         { id: 's2', name: 'b', providerId: 'codex', status: 'running', cwd: '/w2', archived: true } as never,
+        { id: 's3', name: 'c', providerId: 'claude', status: 'idle', cwd: '/w3', archived: false } as never,
       ],
+      // s1 has an open pane; s3 does not (restored history, or a background
+      // session nobody has looked at) — only s1 should be listed. s2 is
+      // archived, so it is excluded regardless of visibility.
+      visibleIds: () => ['s1'],
     });
     const server = new SelfControlMcpServer(manager);
     const config = await server.start();
     const result = await callTool(config, 'marcode__list_sessions', {});
     const list = JSON.parse(result.content[0].text) as { name: string }[];
     assert.deepStrictEqual(list.map((s) => s.name), ['a']);
+    await server.dispose();
+  });
+
+  test('marcode__list_sessions always includes the caller, marked self, even when not visible', async () => {
+    const manager = fakeManager({
+      summaries: () => [
+        { id: 's-caller', name: 'a', providerId: 'claude', status: 'idle', cwd: '/w', archived: false } as never,
+        { id: 's-other', name: 'b', providerId: 'claude', status: 'idle', cwd: '/w', archived: false } as never,
+      ],
+      // Neither session has an open pane.
+      visibleIds: () => [],
+    });
+    const server = new SelfControlMcpServer(manager);
+    const config = await server.start();
+    const result = await callToolAs(config, 's-caller', 'marcode__list_sessions', {});
+    const list = JSON.parse(result.content[0].text) as { name: string; self?: boolean }[];
+    assert.deepStrictEqual(list.map((s) => [s.name, s.self ?? false]), [['a', true]]);
     await server.dispose();
   });
 
@@ -471,15 +494,24 @@ suite('SelfControlMcpServer cross-session messaging', () => {
         catalog: () => second.catalog(),
         create: (providerId, cwd, model, effort, mode) => second.create(providerId, cwd, model, effort, mode),
         summaries: () => second.summaries(),
+        visibleIds: () => second.visibleIds(),
         get: async (id) => {
           try { return await second.open(id); } catch { return undefined; }
         },
       });
       const config = await server.start();
 
+      // Neither session has an open pane after the restore, so
+      // marcode__list_sessions — scoped to visible sessions plus the caller
+      // itself — advertises neither of them to an unidentified caller. This
+      // is the point of the assertion below: send_message can still reach a
+      // session by name that list_sessions never listed, as long as the
+      // caller already knows the name (told by the human, or recalled from
+      // an earlier turn) — discovery and reachability are separate
+      // guarantees.
       const listed = await callTool(config, 'marcode__list_sessions', {});
       const names = (JSON.parse(listed.content[0].text) as { name: string }[]).map((s) => s.name);
-      assert.deepStrictEqual(names.sort(), ['receiver', 'sender']);
+      assert.deepStrictEqual(names, []);
 
       const res = await fetch(`${config.url}?sid=${sender.state.id}`, {
         method: 'POST',

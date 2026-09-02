@@ -28,6 +28,8 @@ export interface SessionManagerLike {
   ): Promise<{ state: { id: string } }>;
   /** Every non-archived session's addressable identity — see `marcode__list_sessions`. */
   summaries(): { id: string; name: string; providerId: string; status: string; cwd: string; archived: boolean }[];
+  /** The ids of sessions with an open pane right now — see `marcode__list_sessions`. */
+  visibleIds(): string[];
   /**
    * Materializes and returns the session, if it exists — used to resolve the
    * caller's own identity and to deliver to a target. `summaries()` spans
@@ -197,13 +199,18 @@ export class SelfControlMcpServer {
       'marcode__list_sessions',
       {
         title: 'List Marcode sessions',
-        description: 'Lists this window\'s live sessions by name, so marcode__send_message can address one.',
+        description: 'Lists the sessions currently open in a split pane, so marcode__send_message can '
+          + 'address one. Your own entry is marked "self": true — call this to find out your own name.',
         inputSchema: {},
       },
       async () => {
+        const visible = new Set(this.sessionManager.visibleIds());
         const sessions = this.sessionManager.summaries()
-          .filter((s) => !s.archived)
-          .map((s) => ({ name: s.name, providerId: s.providerId, status: s.status, cwd: s.cwd }));
+          .filter((s) => !s.archived && (visible.has(s.id) || s.id === sid))
+          .map((s) => ({
+            name: s.name, providerId: s.providerId, status: s.status, cwd: s.cwd,
+            ...(s.id === sid ? { self: true } : {}),
+          }));
         return { content: [{ type: 'text', text: JSON.stringify(sessions) }] };
       },
     );
