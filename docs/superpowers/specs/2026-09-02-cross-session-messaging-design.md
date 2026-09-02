@@ -39,26 +39,42 @@ governs it (a mention outlives the session it points to).
 ## B. Per-session identity on the self-control server
 
 `send_message` needs to know which session is calling — today it can't tell.
-`SelfControlMcpConfig` (`{ url, token }`) is minted once per *provider
-instance* at `activate()` and shared by every session that provider runs; the
-server has no way to map an inbound call back to a session.
+`SelfControlMcpConfig` (`{ url, token }`) is minted once per window at
+`activate()` and shared by every session every provider runs; the server has
+no way to map an inbound call back to a session.
 
-Fix: mint one token per **session**, not per provider. `SelfControlMcpServer`
-gains `mintToken(sessionId): SelfControlMcpConfig` and a `token → sessionId`
-map, consulted on every request the same place the existing bearer check
-already runs. A token is minted when a session starts (first `send()`, same
-moment a Claude run is constructed lazily today) and revoked when the session
-closes or is deleted.
+**Not solved with a per-session token.** That was the first design here, and
+it doesn't fit Codex: its self-control config reaches the spawned process
+through a shared env var (`MARCODE_SELF_CONTROL_TOKEN`), read once by the
+process-wide app-server and referenced by every thread that process runs
+(`codex-run.ts`'s `bearer_token_env_var: 'MARCODE_SELF_CONTROL_TOKEN'`) — a
+single `CodexProvider` instance's threads share one process and so can't each
+carry a distinct token.
 
-This moves `selfControlMcp` off every provider's constructor and onto
-`StartOptions` (`StartOptions.selfControlMcp?: SelfControlMcpConfig`), read
-per-run instead of per-instance. Touches `claude-provider.ts`,
-`codex-provider.ts` / `codex-run.ts`, `acp-run.ts` (and so
-`opencode-provider.ts` for free, since it goes through `AcpRun`), plus
-`extension.ts`'s wiring and each provider's existing self-control tests. This
-is the largest single piece of the change, and it is a pure plumbing move —
-no behavior changes for `spawn_session`, `recall`, or `recall_fetch`, which
-never needed caller identity.
+**Fix: identify the caller by URL, not by token.** The shared window-level
+token stays exactly as it is today — it keeps gating whether a caller may
+talk to the server at all, unchanged. What's new is `StartOptions` gaining a
+plain `sessionId: SessionId` field (not part of `SelfControlMcpConfig`),
+and every provider's *existing* per-run self-control URL construction
+appending it as a query param: `${config.url}?sid=<sessionId>`. This is
+already a per-run site in every provider that has one —
+`claude-provider.ts`'s `buildOptions()` closure (closes over `opts:
+StartOptions` already), `codex-run.ts`'s `startThread()` (reads
+`this.opts`, built per-run by `CodexProvider.start()`), and `acp-run.ts`'s
+`mcpServersFor()` (called per `newSession`/`loadSession`, gains a second
+`sessionId` parameter) — so no provider constructor or `extension.ts`'s
+provider wiring changes at all. `SelfControlMcpServer`'s request handler
+parses `sid` off `req.url`; an absent or unrecognized `sid` (an id
+`SessionManager` doesn't currently know) fails `send_message`/`list_sessions`
+resolution with the same "unavailable" posture as no self-control config at
+all — the bearer token remains the sole auth boundary, `sid` is routing
+only, not a new secret.
+
+This is a small, uniform addition to five already-per-run read sites plus
+`StartOptions` and one new sender-resolution branch in
+`self-control-mcp-server.ts` — not the provider-constructor refactor
+originally sketched here. No behavior changes for `spawn_session`, `recall`,
+or `recall_fetch`, which never needed caller identity.
 
 ## C. Two new self-control tools
 
@@ -69,9 +85,8 @@ never needed caller identity.
 
 - **`marcode__send_message({ to, text })`** — `to` is a session `name`.
   Handler:
-  1. Resolve the caller's `sessionId` from its bearer token (the map from
-     section B). No mapping → the token predates a session that has since
-     closed; respond with an error.
+  1. Resolve the caller's `sessionId` from the request's `sid` query param
+     (section B). Missing or unrecognized → respond with an error.
   2. Resolve `to` by name. Unknown name, or `to === caller's own name` →
      error. (Names are unique by construction, so no ambiguity case.)
   3. `target.interrupt()` (no-op if idle) then
@@ -103,10 +118,20 @@ instead of the default user avatar.
 **On A (the sender):** `send_message` is a real MCP tool call the model made,
 so it already produces a normal `role: 'tool'` item — permission card,
 running/ok/error states, all for free, same machinery as every other tool
-call. What changes is *rendering only*: `tool-render.ts` gets a case for
-`marcode__send_message` (mirroring the fact that no such case exists yet for
-`spawn_session` either, so this sets the pattern) that shows "Sent to B:
-&lt;text&gt;" instead of raw JSON input/output.
+call. What changes is *rendering only*.
+
+An MCP tool call arrives as `ToolCall` kind `'mcp'` (`{ kind: 'mcp'; label;
+server; tool }`, `tool-call.ts`), and `tool-render.ts` deliberately never
+branches on a tool's *name* — only on `kind` — so its generic `'mcp'` case
+today shows every MCP call, `send_message` included, the same way. This
+change is the one narrow, explicit exception: `describeTool`'s and
+`describeInput`'s `'mcp'` cases gain a check for
+`tool.tool === 'marcode__send_message'` (the one name this file will ever
+compare against) and render "Sent to `<to>`: `<text>`" from the call's input
+instead of the generic server/tool chip. Called out here because it is a
+deliberate, minimal crack in that invariant, not an oversight — a second
+tool needing name-specific rendering should be reconsidered as a `ToolCall`
+kind of its own instead of a second exception here.
 
 `name` is captured into `from` at delivery time and never re-looked-up — same
 rule as `SessionRef.title`: a transcript item describes what was true when it
@@ -119,16 +144,16 @@ history.
   transcript item written on either side beyond the failed tool call itself.
 - Rename to a name already in use → error surfaced in the roster UI, no state
   change.
-- Server fails to mint a token (shouldn't happen; mirrors the "self-control
-  server failed to bind" posture already documented in `types.ts`) → session
-  simply has no self-control tools that turn, same as today's failed-bind
-  case.
+- Missing/unrecognized `sid` on a request (self-control server never started,
+  or a stale/malformed value) → `send_message`/`list_sessions` respond with a
+  tool error; other tools (`spawn_session`, `recall`, `recall_fetch`) are
+  unaffected, since they never needed caller identity.
 
 ## Testing
 
-- Unit: `self-control-mcp-server.test.ts` — token minting/revocation,
-  `list_sessions` filtering, `send_message` resolution (unknown/self/ok) and
-  interrupt+send sequencing.
+- Unit: `self-control-mcp-server.test.ts` — `sid`-based sender resolution
+  (missing/unknown/ok), `list_sessions` filtering, `send_message` resolution
+  (unknown/self/ok) and interrupt+send sequencing.
 - Unit: `agent-session.test.ts` — `send()` threading `from` onto the appended
   item; `interrupt()` before `send()` composing correctly when a turn is live.
 - Unit: `session-manager.test.ts` — `rename()`, uniqueness, default name at
@@ -136,6 +161,7 @@ history.
 - Unit: `message-router.test.ts` — the `rename` op.
 - Per-provider: existing self-control tests (`claude-provider.test.ts`,
   `codex-provider.test.ts`, `acp-run.test.ts`, `opencode-provider.test.ts`)
-  updated for `selfControlMcp` moving from constructor to `StartOptions`.
+  updated to assert the built URL carries `?sid=<sessionId>` from
+  `StartOptions.sessionId`.
 - DOM: rename control in the roster; `from`-pill rendering in the transcript;
   `marcode__send_message` card rendering in `tool-render`/`tool-body`.
