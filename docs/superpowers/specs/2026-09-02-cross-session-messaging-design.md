@@ -19,9 +19,12 @@ delivery (the server, and the whole roster, are one window's).
 `SessionState` gains `name?: string`, user-set, distinct from the existing
 `title` (still auto-derived, unchanged). Every session gets a default name at
 creation — `${providerId}-${shortId}` — so it is addressable by tool before
-anyone renames it; the roster shows a rename control (inline edit, matching
-the panel's existing card-editing pattern) that sends a new
-`WebviewToHost` `rename` message, handled by `SessionManager.rename(id, name)`.
+anyone renames it. A rename control lives in two places, mirroring how
+`Archive` already does — the roster row's actions menu, and the pane's own
+"More pane actions" menu (`SessionHeader`), so a user working in a pane
+never has to go find that session in the roster first. Both post the same
+`WebviewToHost` `rename-session` message, handled by
+`SessionManager.rename(id, name)`.
 Names are unique per window, case-insensitive; renaming to a name already in
 use fails with an error surfaced the same way other roster actions report
 failure. `name` persists in `index.json` alongside the rest of `SessionState`
@@ -79,9 +82,19 @@ or `recall_fetch`, which never needed caller identity.
 ## C. Two new self-control tools
 
 - **`marcode__list_sessions`** — no input. Returns
-  `{ name, providerId, status, cwd }[]` for this window's live, non-archived
-  sessions (same filter `session-mentions.ts` already applies). Lets an agent
-  discover a target without the human pasting a name into the prompt.
+  `{ name, providerId, status, cwd, self? }[]`, scoped to sessions with an
+  open pane right now (`SessionManager.visibleIds()`) plus the caller's own
+  session always, regardless of visibility, marked `self: true` — the only
+  way an agent has to learn its own name, since nothing else identifies a
+  session to the model running inside it. A window's full roster can span a
+  long history of past sessions restored from disk; an agent addressing a
+  target almost always means one open in front of the human right now, not
+  that whole history, so the tool narrows to it rather than dropping the
+  human into a large, mostly-irrelevant list. `send_message`'s own target
+  resolution is unaffected by this scoping — it still searches every
+  non-archived session, so a target the human names directly is reachable
+  even if `list_sessions` never advertised it (discovery and reachability
+  are separate guarantees).
 
 - **`marcode__send_message({ to, text })`** — `to` is a session `name`.
   Handler:
