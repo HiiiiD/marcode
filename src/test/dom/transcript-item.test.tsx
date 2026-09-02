@@ -222,3 +222,22 @@ suite('TranscriptItemView user context', () => {
     });
   });
 });
+
+suite('TranscriptItemView from sender', () => {
+  test('a message delivered by another session shows "Message from <name>" instead of "You"', () => {
+    const delivered: TranscriptItem = {
+      id: 'u1', ts: 1, role: 'user', text: 'do the thing',
+      from: { sessionId: 'b', name: 'sender' },
+    };
+    renderWithStore(<TranscriptItemView item={delivered} sessionId="a" />);
+
+    assert.ok(screen.getByText('Message from sender'));
+    assert.strictEqual(screen.queryByText('You') === null, true);
+  });
+
+  test('a human-typed message still shows "You"', () => {
+    renderWithStore(<TranscriptItemView item={PLAIN} sessionId="a" />);
+
+    assert.ok(screen.getByText('You'));
+  });
+});
