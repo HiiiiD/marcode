@@ -424,8 +424,13 @@ export class AgentSession {
     // The transcript item above deliberately recorded `text`, never
     // `outgoing`: a seed is context handed to the provider, not something the
     // user wrote, and writing it into the transcript would both duplicate the
-    // history it summarizes and put words in the user's mouth.
-    const outgoing = this.seed ? `${this.seed}\n\n---\n\n${text}` : text;
+    // history it summarizes and put words in the user's mouth. `from` gets
+    // the same treatment for the same reason — the pill the transcript shows
+    // is host-side rendering, not something the sender wrote, so the model
+    // itself only learns who sent this from the line prepended here, never
+    // from the recorded `text`.
+    const withSender = from ? `[Message from session "${from.name}"]\n\n${text}` : text;
+    const outgoing = this.seed ? `${this.seed}\n\n---\n\n${withSender}` : withSender;
     this.seed = undefined;
     try {
       this.run.send(outgoing, context, attachments.length > 0 ? attachments : undefined);

@@ -232,6 +232,24 @@ suite('AgentSession', () => {
     await session.dispose();
   });
 
+  test('send() with a from sender tells the model who sent it, without polluting the transcript', async () => {
+    const provider = new FakeProvider(() => [{ kind: 'turn-end', reason: 'done' }]);
+    const session = new AgentSession(baseState(), provider, store, sink);
+    session.send('hi from A', undefined, undefined, undefined, { sessionId: 's-a', name: 'a' });
+    await settle();
+
+    // The transcript's own `text` is exactly what was sent — unprefixed, so
+    // a human reading it back sees the message, not host-side plumbing.
+    const snap = await session.snapshot();
+    const item = snap.items.find((i) => i.role === 'user');
+    assert.strictEqual(item?.role === 'user' && item.text, 'hi from A');
+
+    // What actually reached the provider carries the sender identity —
+    // otherwise the model has no way to know who sent this turn.
+    assert.strictEqual(provider.sent[0].text, '[Message from session "a"]\n\nhi from A');
+    await session.dispose();
+  });
+
   test('send() with no from sender omits the field entirely', async () => {
     const provider = new FakeProvider(() => [{ kind: 'turn-end', reason: 'done' }]);
     const session = new AgentSession(baseState(), provider, store, sink);
