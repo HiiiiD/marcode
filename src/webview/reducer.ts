@@ -101,8 +101,11 @@ export interface ClientState {
    * host and never persisted. It answers "which session is the user actually
    * working in", which is what a new session inherits its provider, model,
    * effort and permission mode from, and what the split renders its active
-   * ring on. `null` until something in a pane has been focused, which is the
-   * honest answer on a fresh load: nothing has been worked in yet.
+   * ring on. `null` until something in a pane has been focused — briefly true
+   * on a fresh load or right after the last pane closes, since nothing has
+   * been worked in yet, but `PaneGroup` lands real focus in the first visible
+   * pane as soon as one exists and nothing else claimed focus, so `+ New`
+   * rarely sees this null in practice.
    */
   focusedSessionId: SessionId | null;
   /** Last transient attachment failure for each composer, one line per refused file. */
