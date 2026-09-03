@@ -408,9 +408,14 @@ suite('PaneGroup', () => {
     fireEvent.click(screen.getByRole('button', { name: /open full transcript/i }));
 
     // The pane itself is untouched — no breadcrumb, composer still present —
-    // and the request went to the host instead.
+    // and the request went to the host instead. Counted by tag, not just
+    // role: the header's own inline session-name field is a native `<input>`,
+    // which carries the same implicit `textbox` role as the composer's
+    // `<textarea>`, so a plain role count would pass even if the composer
+    // itself had vanished.
     assert.strictEqual(screen.queryByRole('button', { name: /back to/i }) === null, true);
-    assert.strictEqual(screen.queryAllByRole('textbox').length, 1);
+    const textareas = screen.queryAllByRole('textbox').filter((el) => el.tagName === 'TEXTAREA');
+    assert.strictEqual(textareas.length, 1);
     const messages = posted().filter((m) => m.t === 'open-fleet-subagent');
     assert.deepStrictEqual(messages, [{ t: 'open-fleet-subagent', sessionId: 'a', itemId: 't1' }]);
   });

@@ -127,13 +127,13 @@ suite('SessionPicker', () => {
     // hands jsdom's element (and everything it reaches: parents, the fiber
     // tree, the whole document) to `assert`'s `util.inspect` on failure. See
     // the DOM-null-assert rule in the project's CLAUDE.md.
-    await screen.findByRole('menuitem', { name: 'Rename…' });
+    await screen.findByRole('menuitem', { name: 'Archive Session b' });
     assert.strictEqual(
-      document.activeElement?.textContent, 'Rename…',
-      'ArrowRight must focus "Rename…" first — it is the first, non-nested item in the actions menu',
+      document.activeElement?.textContent, 'Archive Session b',
+      'ArrowRight must focus "Archive" first — it is the first, non-nested item in the actions menu',
     );
 
-    await userEvent.keyboard('{ArrowDown}{ArrowDown}');
+    await userEvent.keyboard('{ArrowDown}');
     await screen.findByLabelText('Delete session Session b');
     assert.strictEqual(
       document.activeElement?.getAttribute('aria-label'), 'Delete session Session b',
@@ -168,8 +168,8 @@ suite('SessionPicker', () => {
     await screen.findByRole('menu');
     await userEvent.keyboard('{ArrowDown}{ArrowDown}{ArrowDown}{ArrowDown}');
     await userEvent.keyboard('{ArrowRight}');
-    await screen.findByRole('menuitem', { name: 'Rename…' });
-    await userEvent.keyboard('{ArrowDown}{ArrowDown}{ArrowRight}');
+    await screen.findByRole('menuitem', { name: 'Archive Session b' });
+    await userEvent.keyboard('{ArrowDown}{ArrowRight}');
     await screen.findByRole('menuitem', { name: 'Keep it' });
 
     await userEvent.keyboard('{ArrowDown}');

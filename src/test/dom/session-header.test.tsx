@@ -243,19 +243,40 @@ suite("SessionHeader status", () => {
     assert.ok(posted().some((m) => m.t === "close-session" && m.id === "a"));
   });
 
-  test("the pane's own menu can rename the session", async () => {
+  test("the name is plain text until the pencil is clicked", () => {
     renderApp();
     hydrate();
 
-    await userEvent.click(screen.getByLabelText("More pane actions for Session a"));
-    await userEvent.click(await screen.findByText("Rename…"));
+    assert.strictEqual(screen.queryByLabelText("Session name for Session a") === null, true);
+    screen.getByTitle("Session a");
+  });
 
-    const input = await screen.findByLabelText("New name");
+  test("clicking the pencil, editing the name and pressing Enter posts rename-session", async () => {
+    renderApp();
+    hydrate();
+
+    await userEvent.click(screen.getByLabelText("Rename Session a"));
+    const input = screen.getByLabelText("Session name for Session a");
     await userEvent.clear(input);
-    await userEvent.type(input, "renamed-a");
-    await userEvent.click(screen.getByText("Save"));
+    await userEvent.type(input, "renamed-a{Enter}");
 
     assert.ok(posted().some((m) => m.t === "rename-session" && m.id === "a" && m.name === "renamed-a"));
+    // Back to plain text — Enter closes the editor, it doesn't just commit.
+    assert.strictEqual(screen.queryByLabelText("Session name for Session a") === null, true);
+  });
+
+  test("pressing Escape in the header's name field reverts without posting", async () => {
+    renderApp();
+    hydrate();
+
+    await userEvent.click(screen.getByLabelText("Rename Session a"));
+    const input = screen.getByLabelText("Session name for Session a");
+    await userEvent.clear(input);
+    await userEvent.type(input, "abandoned{Escape}");
+
+    assert.strictEqual(posted().some((m) => m.t === "rename-session"), false);
+    assert.strictEqual(screen.queryByLabelText("Session name for Session a") === null, true);
+    screen.getByTitle("Session a");
   });
 
   test("the pane X removes the pane without archiving the session", async () => {

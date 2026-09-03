@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { resolve } from 'node:path';
 import { AgentSession, type SessionSink } from './agent-session';
 import type { AttachmentStore } from './attachment-store';
@@ -29,7 +30,19 @@ function newSessionId(): string {
   return `s-${Date.now().toString(36)}-${(counter++).toString(36)}`;
 }
 
-let nameCounter = 0;
+const NAME_SUFFIX_ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789';
+
+/**
+ * 8 random lowercase-alnum characters — non-progressive on purpose. A
+ * sequential suffix (`claude-0`, `claude-1`, …) is easy to mistake for one
+ * session's turn count and tells you nothing about which session is which;
+ * a random one is a name you can actually recognize at a glance across a
+ * roster of several.
+ */
+function randomNameSuffix(): string {
+  const bytes = randomBytes(8);
+  return Array.from(bytes, (b) => NAME_SUFFIX_ALPHABET[b % NAME_SUFFIX_ALPHABET.length]).join('');
+}
 
 /**
  * Rejects with `reason` if `work` has not settled within `ms`. The timer is
@@ -188,6 +201,14 @@ export class SessionManager implements SessionSink {
      * takes for a missing `AttachmentStore`.
      */
     private readonly memory?: MemoryStore,
+    /**
+     * Mints the random 8-character suffix `defaultName()` appends to a
+     * provider id. Injected, defaulting to the real `crypto`-backed
+     * generator, purely so a test can hand it a deterministic (even
+     * colliding) sequence — asserting the dedup loop actually retries would
+     * otherwise mean predicting real randomness.
+     */
+    private readonly randomSuffix: () => string = randomNameSuffix,
   ) {}
 
   async init(): Promise<void> {
@@ -427,18 +448,18 @@ export class SessionManager implements SessionSink {
   }
 
   /**
-   * `${providerId}-<short>` — every session is addressable by name from creation, before
-   * anyone renames it. `nameCounter` restarts at 0 every activation, but a window reload
-   * restores prior sessions (with their persisted names) straight into `this.meta` without
-   * seeding it — so a freshly minted candidate can collide with a restored, never-renamed
-   * session. Checked against `this.meta`'s current names, the same case-insensitive
-   * comparison `rename()` uses, and incremented until it lands on one that's free, rather
-   * than trusting the counter alone.
+   * `${providerId}-<random>` — every session is addressable by name from creation, before
+   * anyone renames it. The suffix is 8 random characters, not a counter: a window reload
+   * restores prior sessions (with their persisted names) straight into `this.meta`, and a
+   * counter restarting at 0 every activation could re-mint a name a restored, never-renamed
+   * session already holds. Checked against `this.meta`'s current names anyway, the same
+   * case-insensitive comparison `rename()` uses, and redrawn until it lands on one that's
+   * free — cheap insurance against the astronomically unlikely collision.
    */
   private defaultName(providerId: string): string {
     let candidate: string;
     do {
-      candidate = `${providerId}-${(nameCounter++).toString(36)}`;
+      candidate = `${providerId}-${this.randomSuffix()}`;
     } while ([...this.meta.values()].some((s) => s.name.toLowerCase() === candidate.toLowerCase()));
     return candidate;
   }

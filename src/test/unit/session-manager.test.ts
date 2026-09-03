@@ -280,16 +280,17 @@ suite('SessionManager', () => {
   });
 
   test('create() skips a default name a restored session already holds', async () => {
-    // The name counter is module-level and does not reset between manager
-    // instances within a process, so pin down the exact name the *next*
-    // create() would mint, then pre-seed a fresh manager's restored roster
-    // with a session already holding that name — simulating the real hazard:
-    // after a reload, the counter restarts while a restored session's
-    // persisted name survives, and the very first post-reload create() could
-    // otherwise mint that same name again.
-    const probe = await manager.create('fake', process.cwd());
-    const suffix = probe.state.name.slice('fake-'.length);
-    const collidingName = `fake-${(parseInt(suffix, 36) + 1).toString(36)}`;
+    // The real generator is random, so forcing an actual collision here
+    // would mean predicting `crypto.randomBytes` — instead, a stubbed
+    // `randomSuffix` hands out 'aaaaaaaa' first, then 'bbbbbbbb'. Pre-seeding
+    // the restored roster with the first name simulates the real hazard —
+    // a restored, never-renamed session already holding a name a freshly
+    // minted candidate could otherwise collide with — and proves
+    // `defaultName()`'s dedup loop actually retries rather than trusting the
+    // generator alone.
+    const collidingName = 'fake-aaaaaaaa';
+    const suffixes = ['aaaaaaaa', 'bbbbbbbb'];
+    const randomSuffix = () => suffixes.shift()!;
 
     const rdir = await fs.mkdtemp(path.join(os.tmpdir(), 'mar-manager-'));
     const rstore = new TranscriptStore(rdir);
@@ -305,13 +306,16 @@ suite('SessionManager', () => {
       layout: { orientation: 'vertical', panes: [] },
     });
     const restoredManager = new SessionManager(
-      rstore, new Map<string, AgentProvider>([['fake', new FakeProvider(() => [])]]), () => {},
+      rstore, new Map<string, AgentProvider>([['fake', new FakeProvider(() => [])]]),
+      () => {}, undefined, undefined, undefined, undefined, undefined, undefined, randomSuffix,
     );
     await restoredManager.init();
 
     const created = await restoredManager.create('fake', process.cwd());
     assert.notStrictEqual(created.state.name, collidingName,
       'a fresh default name must never collide with a restored session still holding it');
+    assert.strictEqual(created.state.name, 'fake-bbbbbbbb',
+      'the dedup loop must retry the generator rather than accepting the colliding first draw');
 
     await restoredManager.dispose();
     await fs.rm(rdir, { recursive: true, force: true });
