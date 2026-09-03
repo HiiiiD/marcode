@@ -128,6 +128,14 @@ jobs:
           path: marcode-${{ matrix.target }}.vsix
           retention-days: 1 # superseded by the GitHub release the publish job creates
 
+  # One leg per target, mirroring the `vsix` matrix. A single `vsce publish
+  # --packagePath marcode-*.vsix` used to publish all 8 targets sequentially
+  # in one process: the first glob-expanded (alphabetical) target that failed
+  # aborted every target after it, and a retry of that same command failed
+  # immediately on whichever earlier target had already gone through —
+  # "already exists" — since vsce doesn't skip a target already published at
+  # this version. Splitting into a matrix means one target's failure — or a
+  # from-scratch retry after a partial run — can't block or re-fail the rest.
   publish:
     needs: vsix
     runs-on: ubuntu-latest
@@ -136,7 +144,59 @@ jobs:
     environment: marketplace-publish
     permissions:
       id-token: write
-      contents: write # gh release create needs this; the top-level block stays read-only
+    strategy:
+      # Let every target attempt regardless of an earlier one's outcome, so a
+      # rerun of this job is safe and a single bad target doesn't hide the
+      # others' results in the run summary.
+      fail-fast: false
+      matrix:
+        target:
+          - win32-x64
+          - win32-arm64
+          - linux-x64
+          - linux-arm64
+          - alpine-x64
+          - alpine-arm64
+          - darwin-x64
+          - darwin-arm64
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: vsix-${{ matrix.target }}
+
+      # Entra ID workload identity federation — no PAT, no stored secret.
+      # Azure DevOps retires global PATs on 2026-12-01.
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          allow-no-subscriptions: true
+
+      # Idempotent: a target already published at this version (a prior
+      # partial run got this far) is a no-op, not a failure — the eventual
+      # `needs: publish` release step must be reachable by re-running this
+      # job as-is, with no manual bookkeeping about what already went out.
+      - name: Publish ${{ matrix.target }}
+        run: |
+          set +e
+          output=$(npx @vscode/vsce publish --packagePath "marcode-${{ matrix.target }}.vsix" --azure-credential 2>&1)
+          status=$?
+          echo "$output"
+          if [ $status -ne 0 ] && echo "$output" | grep -q "already exists"; then
+            echo "::notice::${{ matrix.target }} already published at this version, skipping"
+            exit 0
+          fi
+          exit $status
+
+  # Decoupled from `publish` itself: creating the release is not a marketplace
+  # call, so it shouldn't share fate with any single target's flakiness, and
+  # it needs every vsix in one place regardless of which legs actually ran
+  # `vsce publish` this time versus were already done in a prior attempt.
+  release:
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       # gh release create --generate-notes shells out to git to diff against
       # the previous tag; without a checkout there is no .git and it fails.
@@ -147,20 +207,18 @@ jobs:
           pattern: vsix-*
           merge-multiple: true
 
-      # Entra ID workload identity federation — no PAT, no stored secret.
-      # Azure DevOps retires global PATs on 2026-12-01.
-      - uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          allow-no-subscriptions: true
-
-      - run: npx @vscode/vsce publish --packagePath marcode-*.vsix --azure-credential
-
       # Marketplace has no download page for older/specific versions; the
       # release is where the per-platform .vsix files (and a diff-able
-      # changelog) actually live afterwards.
+      # changelog) actually live afterwards. Idempotent for the same reason
+      # `publish` is: a rerun after a partial failure must not choke on a tag
+      # that already has a release from the earlier attempt.
       - name: Attach vsix files to a GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release create "${{ github.ref_name }}" marcode-*.vsix --generate-notes
+        run: |
+          if gh release view "${{ github.ref_name }}" >/dev/null 2>&1; then
+            echo "::notice::release ${{ github.ref_name }} already exists, uploading any missing assets"
+            gh release upload "${{ github.ref_name }}" marcode-*.vsix --clobber
+          else
+            gh release create "${{ github.ref_name }}" marcode-*.vsix --generate-notes
+          fi
