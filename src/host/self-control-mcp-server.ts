@@ -93,7 +93,10 @@ export class SelfControlMcpServer {
       'marcode__spawn_session',
       {
         title: 'Spawn a new Marcode session',
-        description: 'Creates a new agent session in Marcode and sends it an initial prompt. '
+        description: 'Marcode-specific: creates a new top-level Marcode session (its own pane, '
+          + 'own provider/model, own conversation) and sends it an initial prompt — NOT a '
+          + 'subagent of this conversation and unrelated to any built-in Task/subagent tool you '
+          + 'have. Use this to hand off independent work to a separate, freestanding session. '
           + 'Returns the new session\'s id.',
         inputSchema: {
           provider: z.string().describe('A provider id from this window\'s catalog, e.g. "claude".'),
@@ -157,9 +160,12 @@ export class SelfControlMcpServer {
       'marcode__recall',
       {
         title: 'Search past Marcode sessions',
-        description: 'Searches this workspace\'s closed Marcode sessions for a keyword or '
-          + 'phrase. Returns short snippets, not full transcripts — call marcode__recall_fetch '
-          + 'on a specific result to read more.',
+        description: 'Marcode-specific: searches OTHER, previously closed Marcode sessions in '
+          + 'this workspace (any provider) for a keyword or phrase — not your own conversation '
+          + 'history and unrelated to any built-in memory/recall tool you have, which only sees '
+          + 'this one conversation. Use this to find what a different session already figured '
+          + 'out. Returns short snippets, not full transcripts — call marcode__recall_fetch on a '
+          + 'specific result to read more.',
         inputSchema: {
           query: z.string().describe('Keywords to search for.'),
           providerId: z.string().optional().describe('Restrict to one provider, e.g. "claude".'),
@@ -179,8 +185,10 @@ export class SelfControlMcpServer {
       'marcode__recall_fetch',
       {
         title: 'Fetch a past session\'s transcript slice',
-        description: 'Reads a bounded slice of one past session\'s transcript, anchored at a '
-          + 'result from marcode__recall. Never call this speculatively — call marcode__recall first.',
+        description: 'Marcode-specific companion to marcode__recall: reads a bounded slice of '
+          + 'that OTHER session\'s transcript, anchored at one of its results. Never call this '
+          + 'speculatively or with an id you invented — always call marcode__recall first and '
+          + 'pass back its sessionId/itemId.',
         inputSchema: {
           sessionId: z.string().describe('A sessionId from a marcode__recall result.'),
           itemId: z.string().describe('The itemId from that same result.'),
@@ -199,8 +207,12 @@ export class SelfControlMcpServer {
       'marcode__list_sessions',
       {
         title: 'List Marcode sessions',
-        description: 'Lists the sessions currently open in a split pane, so marcode__send_message can '
-          + 'address one. Your own entry is marked "self": true — call this to find out your own name.',
+        description: 'Marcode-specific: lists the OTHER Marcode sessions (any provider) currently '
+          + 'open in a split pane in this window, so marcode__send_message can address one — not '
+          + 'a list of files, tabs, or anything editor-related, and not the same thing as a generic '
+          + '"ListAgents"/"list my teammates" harness tool, which lists your own harness\'s agents, '
+          + 'not the sessions in this VS Code panel. Your own entry is marked "self": true — call '
+          + 'this to find out your own name.',
         inputSchema: {},
       },
       async () => {
@@ -219,9 +231,14 @@ export class SelfControlMcpServer {
       'marcode__send_message',
       {
         title: 'Send a message to another Marcode session',
-        description: 'Delivers text to a named session, interrupting it if it is mid-turn. Delivery is '
-          + 'immediate and does not wait for a reply — a reply, if any, is that session calling '
-          + 'marcode__send_message back.',
+        description: 'Marcode-specific: delivers text to a DIFFERENT, independent Marcode session '
+          + '(possibly a different provider entirely — Claude, Codex, OpenCode), interrupting it '
+          + 'if it is mid-turn. If your harness also offers a generic "SendMessage"/"message another '
+          + 'agent" tool, that one is unrelated — it addresses your own harness\'s agents, not the '
+          + 'sessions in this VS Code panel; use marcode__send_message for those. This is not a '
+          + 'message to yourself, the user, or a subagent of this conversation. Get the target name '
+          + 'from marcode__list_sessions first. Delivery is immediate and does not wait for a reply '
+          + '— a reply, if any, is that session calling marcode__send_message back.',
         inputSchema: {
           to: z.string().describe('The target session\'s name, from marcode__list_sessions.'),
           text: z.string().describe('The message to deliver.'),
