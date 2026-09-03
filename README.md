@@ -13,7 +13,12 @@ loop.
 - Cross-session messaging: a session can list the sessions open in a split pane
   (`marcode__list_sessions`) and send one a message (`marcode__send_message`) — across
   providers, so a Claude session can hand work to a Codex or OpenCode session, or check in
-  on it, without you relaying anything by hand.
+  on it, without you relaying anything by hand. Ask for it by naming the pane/session, not
+  just "the other agent" — that phrasing can get confused with your harness's own
+  agent-to-agent messaging, if it has one:
+  - "Message the codex-2 pane and ask if it's finished the migration."
+  - "Ask the other session in this panel whether it's still running tests."
+  - "Tell the OpenCode session to pull latest before it starts."
 - A roster of concurrent agent sessions, each its own conversation with its own status,
   model, effort level and permission mode.
 - Split panes over the visible subset of that roster, with a persisted layout.
