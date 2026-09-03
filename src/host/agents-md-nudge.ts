@@ -11,6 +11,23 @@ export interface AgentsMdNudgeHit {
 
 const STUB_CONTENT = '@AGENTS.md\n';
 
+const DEFAULT_EXCLUDE_GLOBS = ['**/node_modules/**', '**/.git/**', '**/dist/**', '**/out/**'];
+
+/**
+ * Pure: default excludes plus caller-supplied extra globs (from
+ * `marcode.agentsMdNudge.excludePaths`), folded into one `findFiles`
+ * exclude pattern. Bare directory names (no `*` or `/`) are treated as a
+ * path segment anywhere in the tree, e.g. `.claude/worktrees` ->
+ * `**\/.claude/worktrees/**`, matching what the default globs already do.
+ */
+export function buildExcludeGlob(extra: string[]): string {
+  const normalized = extra
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0)
+    .map((p) => (p.includes('*') ? p : `**/${p.replace(/^\/+|\/+$/g, '')}/**`));
+  return `{${[...DEFAULT_EXCLUDE_GLOBS, ...normalized].join(',')}}`;
+}
+
 export interface AgentsMdHitPaths {
   claudeMdPath: string;
   agentsMdPath: string;
