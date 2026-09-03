@@ -1,5 +1,6 @@
 import { attachmentLines, imageAttachments } from '../attachment-payload';
 import { formatEditorContext } from '../format-editor-context';
+import { withMarcodeIntro } from '../marcode-context';
 import type {
   AgentEvent, AgentRun, Attachment, ContextBreakdown, EditorContext, EffortLevel, McpServerStatus,
   PermissionMode, QuestionAnswers, SelfControlMcpConfig, StartOptions, ToolDecision, UsageWindow,
@@ -134,6 +135,8 @@ export class CodexRun implements AgentRun {
 
   /** Set once `send()` has been called; guards against starting a thread twice. */
   private startPromise: Promise<string | undefined> | undefined;
+  /** Set true after the first `send()`; guards `withMarcodeIntro`. */
+  private introduced = false;
   private disposed = false;
 
   /**
@@ -483,7 +486,9 @@ export class CodexRun implements AgentRun {
   }
 
   send(text: string, context?: EditorContext, attachments?: Attachment[]): void {
-    const body = context ? `${formatEditorContext(context)}\n\n${text}` : text;
+    const body0 = context ? `${formatEditorContext(context)}\n\n${text}` : text;
+    const body = withMarcodeIntro(body0, this.introduced, Boolean(this.opts.resumeToken));
+    this.introduced = true;
     const input: UserInput[] = [
       { type: 'text', text: `${body}${attachmentLines(attachments)}`, text_elements: [] },
     ];

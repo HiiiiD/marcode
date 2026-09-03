@@ -1,5 +1,6 @@
 import { attachmentLines, imageAttachments, readBase64 } from '../attachment-payload';
 import { formatEditorContext } from '../format-editor-context';
+import { withMarcodeIntro } from '../marcode-context';
 import type { SessionId } from '../../protocol/messages';
 import type {
   AgentEvent, AgentRun, Attachment, ContextBreakdown, EditorContext,
@@ -179,6 +180,8 @@ export class AcpRun implements AgentRun {
   private readonly startup: Promise<void>;
   /** Set by `interrupt()`, cleared by the next `send()`. See `runPrompt`. */
   private interrupted = false;
+  /** Set true after the first `send()`; guards `withMarcodeIntro`. */
+  private introduced = false;
   /**
    * Why startup failed, if it did. Re-reported by every later `send()`: the
    * `turn-end` `start()` pushes is a one-off at construction, and a session
@@ -448,7 +451,9 @@ export class AcpRun implements AgentRun {
   // -------------------------------------------------------------- outgoing
 
   send(text: string, context?: EditorContext, attachments?: Attachment[]): void {
-    const body = context ? `${formatEditorContext(context)}\n\n${text}` : text;
+    const body0 = context ? `${formatEditorContext(context)}\n\n${text}` : text;
+    const body = withMarcodeIntro(body0, this.introduced, Boolean(this.opts.resumeToken));
+    this.introduced = true;
     const blocks: unknown[] = [{ type: 'text', text: body }];
     for (const image of imageAttachments(attachments)) {
       const data = readBase64(image);

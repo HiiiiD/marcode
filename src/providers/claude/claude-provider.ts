@@ -121,6 +121,7 @@ import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/messages' wi
 import { findModel, resolveEffort } from '../../shared/model-catalog';
 import { attachmentLines, imageAttachments, readBase64 } from '../attachment-payload';
 import { formatEditorContext } from '../format-editor-context';
+import { withMarcodeIntro } from '../marcode-context';
 import type {
   AgentEvent, AgentProvider, AgentRun, Attachment,
   ContextBreakdown,
@@ -444,6 +445,7 @@ export class ClaudeProvider implements AgentProvider {
     };
     let disposed = false;
     let started = false;
+    let introduced = false;
     let queryRef: Query | undefined;
     // Effective mode/effort for a query not yet constructed. Read by
     // ensureStarted() -> buildOptions() at the moment the query actually
@@ -653,7 +655,9 @@ export class ClaudeProvider implements AgentProvider {
       send: (text: string, context?: EditorContext, attachments?: Attachment[]) => {
         turnGen += 1;
         ensureStarted();
-        const body = context ? `${formatEditorContext(context)}\n\n${text}` : text;
+        const body0 = context ? `${formatEditorContext(context)}\n\n${text}` : text;
+        const body = withMarcodeIntro(body0, introduced, Boolean(opts.resumeToken));
+        introduced = true;
         const content: ContentBlockParam[] = [
           { type: 'text', text: `${body}${attachmentLines(attachments)}` },
         ];
