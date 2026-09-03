@@ -108,6 +108,30 @@ export function PaneGroup({ narrow }: PaneGroupProps) {
     prevCount.current = panes.length;
   }, [panes.length]);
 
+  // Nothing is "active" until something has actually been focused (see
+  // `focusedSessionId`'s doc comment) — but on first load, or right after
+  // the last pane closes and a new one opens, that honest `null` left `+
+  // New` inheriting from nothing: `settingsFor` fell back to the catalog's
+  // first provider, silently, with no ring on any pane to say so. Landing
+  // real focus in the first pane's composer the moment panes exist and
+  // nothing else claimed focus makes `activeId` true as soon as there is
+  // an obvious answer, the same way a freshly opened document focuses its
+  // first field. Guarded by `document.activeElement === document.body` so
+  // this never steals focus the user already put somewhere else (the
+  // roster, an open dialog) while sessions were still arriving.
+  useEffect(() => {
+    if (
+      state.focusedSessionId === null &&
+      panes.length > 0 &&
+      document.activeElement === document.body
+    ) {
+      const target = rootRef.current?.querySelector<HTMLElement>(
+        '[data-slot="input-group-textarea"]',
+      );
+      target?.focus();
+    }
+  }, [state.focusedSessionId, panes.length > 0]);
+
   // Nothing can be created. Three readings of one empty catalog, and they are
   // not interchangeable:
   //  - `probing`: nobody has answered yet. Not a verdict, so it is shown as a
