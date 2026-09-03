@@ -10,6 +10,10 @@ loop.
 
 ## Features
 
+- Cross-session messaging: a session can list the sessions open in a split pane
+  (`marcode__list_sessions`) and send one a message (`marcode__send_message`) — across
+  providers, so a Claude session can hand work to a Codex or OpenCode session, or check in
+  on it, without you relaying anything by hand.
 - A roster of concurrent agent sessions, each its own conversation with its own status,
   model, effort level and permission mode.
 - Split panes over the visible subset of that roster, with a persisted layout.
@@ -35,6 +39,11 @@ loop.
 - One-click reauth from the panel when a Claude or Codex login expires — no need to leave
   the extension to run the CLI's sign-in flow.
 - Context-usage and plan-usage indicators per session and per panel.
+- A CLAUDE.md/AGENTS.md drift nudge: flags directories where the two have drifted (one
+  has real content, the other is missing) and offers a one-click migrate to make
+  AGENTS.md the source of truth with CLAUDE.md as a `@AGENTS.md` stub. Scanned paths
+  beyond the built-in node_modules/.git/dist/out excludes are configurable via
+  `marcode.agentsMdNudge.excludePaths`.
 
 ## Install
 

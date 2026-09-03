@@ -2,7 +2,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { runAccountSetupWizard } from './host/account-setup-wizard';
-import { AgentsMdNudgeController } from './host/agents-md-nudge';
+import { AgentsMdNudgeController, buildExcludeGlob } from './host/agents-md-nudge';
 import { AttachmentStore } from './host/attachment-store';
 import { defaultCwdOf } from './host/default-cwd';
 import { diffUri, registerDiffContentProvider } from './host/diff-content-provider';
@@ -467,9 +467,11 @@ export async function activate(context: vscode.ExtensionContext) {
 
   const agentsMdNudge = new AgentsMdNudgeController({
     findRelativePaths: async () => {
+      const excludePaths = vscode.workspace.getConfiguration('marcode')
+        .get<string[]>('agentsMdNudge.excludePaths', []);
       const uris = await vscode.workspace.findFiles(
         '**/{CLAUDE.md,AGENTS.md}',
-        '{**/node_modules/**,**/.git/**,**/dist/**,**/out/**}',
+        buildExcludeGlob(excludePaths),
       );
       return uris.map((u) => vscode.workspace.asRelativePath(u, false).split(path.sep).join('/'));
     },

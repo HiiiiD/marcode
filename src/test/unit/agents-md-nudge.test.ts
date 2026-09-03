@@ -1,8 +1,38 @@
 import * as assert from 'assert';
 import {
-  AgentsMdNudgeController, applyHit, groupIntoDirEntries, scanForHits,
+  AgentsMdNudgeController, applyHit, buildExcludeGlob, groupIntoDirEntries, scanForHits,
 } from '../../host/agents-md-nudge';
 import type { HostToWebview } from '../../protocol/messages';
+
+suite('buildExcludeGlob', () => {
+  test('with no extras, is just the built-in excludes', () => {
+    assert.strictEqual(
+      buildExcludeGlob([]),
+      '{**/node_modules/**,**/.git/**,**/dist/**,**/out/**}',
+    );
+  });
+
+  test('treats a bare path segment as matching anywhere in the tree', () => {
+    assert.strictEqual(
+      buildExcludeGlob(['.claude/worktrees']),
+      '{**/node_modules/**,**/.git/**,**/dist/**,**/out/**,**/.claude/worktrees/**}',
+    );
+  });
+
+  test('passes an entry containing "*" through untouched', () => {
+    assert.strictEqual(
+      buildExcludeGlob(['**/vendor/**']),
+      '{**/node_modules/**,**/.git/**,**/dist/**,**/out/**,**/vendor/**}',
+    );
+  });
+
+  test('trims whitespace, strips leading/trailing slashes, drops empty entries', () => {
+    assert.strictEqual(
+      buildExcludeGlob([' /tmp/ ', '']),
+      '{**/node_modules/**,**/.git/**,**/dist/**,**/out/**,**/tmp/**}',
+    );
+  });
+});
 
 suite('scanForHits', () => {
   test('flags a dir with CLAUDE.md but no AGENTS.md as migrate', () => {

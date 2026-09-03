@@ -178,6 +178,15 @@
           "description": "Extra branch names (e.g. \"develop\", \"trunk\") the review tab tries as a working tree's comparison base, after the auto-detected default branch and before the built-in fallbacks (origin/main, origin/master, main, master). Takes effect after a window reload.",
           "scope": "window"
         },
+        "marcode.agentsMdNudge.excludePaths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Extra paths the CLAUDE.md/AGENTS.md drift scan skips, on top of the built-in node_modules/.git/dist/out. A plain segment (e.g. \".claude/worktrees\") matches that path anywhere in the tree; an entry containing \"*\" is used as a raw glob.",
+          "scope": "window"
+        },
         "marcode.favoriteModels": {
           "type": "array",
           "items": {
