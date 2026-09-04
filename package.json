@@ -80,7 +80,11 @@
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["id", "kind", "displayName"],
+            "required": [
+              "id",
+              "kind",
+              "displayName"
+            ],
             "properties": {
               "id": {
                 "type": "string",
@@ -88,7 +92,11 @@
               },
               "kind": {
                 "type": "string",
-                "enum": ["claude", "codex", "opencode"],
+                "enum": [
+                  "claude",
+                  "codex",
+                  "opencode"
+                ],
                 "description": "Which existing backend this instance wraps."
               },
               "displayName": {
@@ -101,48 +109,86 @@
               },
               "envMap": {
                 "type": "object",
-                "additionalProperties": { "type": "string" },
+                "additionalProperties": {
+                  "type": "string"
+                },
                 "description": "Subprocess env var name -> OS env var name to source its value from. Secrets stay in OS env vars, never in this file."
               }
             },
             "allOf": [
               {
-                "if": { "properties": { "kind": { "const": "claude" } } },
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "const": "claude"
+                    }
+                  }
+                },
                 "then": {
                   "properties": {
                     "envMap": {
                       "properties": {
-                        "ANTHROPIC_API_KEY": { "type": "string" },
-                        "ANTHROPIC_BASE_URL": { "type": "string" },
-                        "ANTHROPIC_AUTH_TOKEN": { "type": "string" },
-                        "CLAUDE_CONFIG_DIR": { "type": "string" }
+                        "ANTHROPIC_API_KEY": {
+                          "type": "string"
+                        },
+                        "ANTHROPIC_BASE_URL": {
+                          "type": "string"
+                        },
+                        "ANTHROPIC_AUTH_TOKEN": {
+                          "type": "string"
+                        },
+                        "CLAUDE_CONFIG_DIR": {
+                          "type": "string"
+                        }
                       }
                     }
                   }
                 }
               },
               {
-                "if": { "properties": { "kind": { "const": "codex" } } },
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "const": "codex"
+                    }
+                  }
+                },
                 "then": {
                   "properties": {
                     "envMap": {
                       "properties": {
-                        "OPENAI_API_KEY": { "type": "string" },
-                        "CODEX_HOME": { "type": "string" }
+                        "OPENAI_API_KEY": {
+                          "type": "string"
+                        },
+                        "CODEX_HOME": {
+                          "type": "string"
+                        }
                       }
                     }
                   }
                 }
               },
               {
-                "if": { "properties": { "kind": { "const": "opencode" } } },
+                "if": {
+                  "properties": {
+                    "kind": {
+                      "const": "opencode"
+                    }
+                  }
+                },
                 "then": {
                   "properties": {
                     "envMap": {
                       "properties": {
-                        "OPENCODE_CONFIG": { "type": "string" },
-                        "OPENCODE_CONFIG_DIR": { "type": "string" },
-                        "OPENCODE_CONFIG_CONTENT": { "type": "string" }
+                        "OPENCODE_CONFIG": {
+                          "type": "string"
+                        },
+                        "OPENCODE_CONFIG_DIR": {
+                          "type": "string"
+                        },
+                        "OPENCODE_CONFIG_CONTENT": {
+                          "type": "string"
+                        }
                       }
                     }
                   }
@@ -272,7 +318,7 @@
     "@types/node": "24.x",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.5",
-    "@types/vscode": "^1.134.0",
+    "@types/vscode": "1.125.0",
     "@vscode/test-cli": "^0.0.15",
     "@vscode/test-electron": "^3.0.0",
     "esbuild": "^0.28.1",
