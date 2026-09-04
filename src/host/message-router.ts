@@ -9,6 +9,7 @@ import type {
 } from '../protocol/messages';
 import { fsPathOfUri } from './file-uri';
 import { composePrompt, resolveFileRefs } from './session-refs';
+import { isNewer } from '../providers/update-check';
 
 /**
  * Why a message with references was not sent. One function, called from both
@@ -117,6 +118,17 @@ export interface ConfigHost { setFavoriteModels(ids: string[]): void }
 
 const NO_CONFIG: ConfigHost = { setFavoriteModels: () => {} };
 
+/**
+ * Surfaces a stale-provider-binary notification. Here for the same reason
+ * `EditorContextHost` exists — showing a VS Code notification needs the
+ * `vscode` API, which this module must not import.
+ */
+export interface UpdateNotifyHost {
+  notify(displayName: string, current: string, latest: string): void;
+}
+
+export const NO_UPDATE_NOTIFY: UpdateNotifyHost = { notify: () => {} };
+
 export class MessageRouter {
   constructor(
     private readonly manager: SessionManager,
@@ -140,6 +152,7 @@ export class MessageRouter {
      */
     private favoriteModels: string[] = [],
     private readonly configHost: ConfigHost = NO_CONFIG,
+    private readonly updateNotify: UpdateNotifyHost = NO_UPDATE_NOTIFY,
   ) {}
 
   /**
@@ -216,6 +229,13 @@ export class MessageRouter {
         // probes settle; see SessionManager.seededModels.
         void this.manager.refreshModels(this.defaultCwd);
         void this.manager.refreshUsage(this.defaultCwd);
+        void this.manager.checkForUpdates().then((stale) => {
+          for (const { displayName, info } of stale) {
+            if (isNewer(info.latest, info.current)) {
+              this.updateNotify.notify(displayName, info.current, info.latest);
+            }
+          }
+        });
         return;
       }
 
