@@ -1431,3 +1431,46 @@ suite('ClaudeProvider instance overrides', () => {
     assert.strictEqual(provider.loginKind, 'none');
   });
 });
+
+suite('checkForUpdate', () => {
+  test('resolves current/latest on success', async () => {
+    const provider = new ClaudeProvider(undefined, undefined, {
+      execVersion: async () => ({ stdout: '2.1.259\n' }),
+      fetchLatest: (async () => ({
+        ok: true, json: async () => ({ version: '2.1.260' }),
+      })) as any,
+    });
+    assert.deepStrictEqual(await provider.checkForUpdate(), { current: '2.1.259', latest: '2.1.260' });
+  });
+
+  test('resolves undefined when the local version cannot be determined', async () => {
+    const provider = new ClaudeProvider(undefined, undefined, {
+      execVersion: async () => { throw new Error('ENOENT'); },
+      fetchLatest: (async () => ({
+        ok: true, json: async () => ({ version: '2.1.260' }),
+      })) as any,
+    });
+    assert.strictEqual(await provider.checkForUpdate(), undefined);
+  });
+
+  test('resolves undefined when the remote fetch fails', async () => {
+    const provider = new ClaudeProvider(undefined, undefined, {
+      execVersion: async () => ({ stdout: '2.1.259\n' }),
+      fetchLatest: (async () => { throw new Error('network'); }) as any,
+    });
+    assert.strictEqual(await provider.checkForUpdate(), undefined);
+  });
+
+  test('runs the configured executable path, not the bare binary name', async () => {
+    let seenBin: string | undefined;
+    const provider = new ClaudeProvider(undefined, undefined, {
+      pathToClaudeCodeExecutable: '/opt/claude/claude',
+      execVersion: async (bin) => { seenBin = bin; return { stdout: '2.1.259\n' }; },
+      fetchLatest: (async () => ({
+        ok: true, json: async () => ({ version: '2.1.260' }),
+      })) as any,
+    });
+    await provider.checkForUpdate();
+    assert.strictEqual(seenBin, '/opt/claude/claude');
+  });
+});
