@@ -70,9 +70,54 @@ Each implementation:
    either side — resolves `undefined` and logs one `console.warn` (the existing
    probe-failure pattern: a developer-facing trace, never a thrown exception, never a
    user-facing error state). A stale-but-undetermined provider is silent, not "up to date".
-4. On success, compares semver and resolves `{ current, latest }` only — comparison (is
-   `latest` actually newer?) happens at the call site, not here, so the method's contract
-   stays "what I found" rather than "what I concluded."
+4. On success, resolves `{ current, latest }` only — comparison (is `latest` actually
+   newer?) happens at the call site via `isNewer(latest, current)`, a shared pure function
+   (see below), not inside `checkForUpdate` itself, so the method's contract stays "what I
+   found" rather than "what I concluded."
+
+## Shared helper module
+
+`src/providers/update-check.ts` — the one place all three providers' `checkForUpdate`
+implementations pull from, so the child-process/network mechanics and the version-comparison
+logic exist once. Everything here is a pure function or takes its side effect
+(`execFile`/`fetch`) as an injectable parameter defaulting to the real implementation — the
+same shape `spawn` takes on `OpenCodeProvider`/`CodexProvider` today, and for the same
+reason: tests inject a fake, production gets the default.
+
+```ts
+export interface UpdateInfo { current: string; latest: string; }
+
+export type ExecVersionFn = (bin: string, args: string[]) => Promise<{ stdout: string }>;
+export type FetchFn = typeof fetch;
+
+/** First `x.y.z` substring found, or undefined. Both `--version` output and a
+ *  GitHub tag_name can carry a leading name/prefix this strips implicitly. */
+export function extractVersion(text: string): string | undefined;
+
+/** Dotted-numeric compare. True when `latest` is strictly newer than `current`.
+ *  Malformed input on either side returns false — never a false "update available". */
+export function isNewer(latest: string, current: string): boolean;
+
+/** Runs `<bin> --version`(or the given args) via `execVersionFn`, extracts a version.
+ *  Resolves undefined on any spawn failure or unparseable output — never rejects. */
+export function localVersion(
+  bin: string, args?: string[], execVersionFn?: ExecVersionFn,
+): Promise<string | undefined>;
+
+/** `GET https://registry.npmjs.org/<pkg>/latest`, reads `.version`.
+ *  Resolves undefined on any fetch failure or missing field — never rejects. */
+export function npmLatestVersion(pkg: string, fetchFn?: FetchFn): Promise<string | undefined>;
+
+/** `GET https://api.github.com/repos/<repo>/releases/latest`, reads `.tag_name`,
+ *  strips `tagPrefix` if present. Resolves undefined on any fetch failure,
+ *  missing field, or a non-2xx response — never rejects. */
+export function githubLatestVersion(
+  repo: string, tagPrefix: string, fetchFn?: FetchFn,
+): Promise<string | undefined>;
+```
+
+`isNewer` is exported for reuse at the `MessageRouter` call site too (see Surfacing below) —
+one comparison function, not a duplicate in the host layer.
 
 ## Trigger
 
@@ -102,40 +147,71 @@ Wrapped in `Promise.resolve().then()` for the same reason `refreshModels` is: th
 only promises a `Promise` return, not an `async` function, so a synchronously-throwing
 provider (legal against the type) must not throw out of `checkForUpdates`' own body.
 
-Called once from `extension.ts`'s `activate()`, fire-and-forget, alongside the existing
-`manager.refreshModels(defaultCwd)` kickoff — not gated on it, not gating anything else:
+Called from `MessageRouter`'s `hydrate` handling (the `case 'ready'` branch in
+`src/host/message-router.ts`), fire-and-forget, right alongside the existing
+`void this.manager.refreshModels(this.defaultCwd)` / `refreshUsage` kickoff — **not**
+from `extension.ts activate()`. `refreshModels`/`refreshUsage` are not actually kicked off
+at activation; they fire when the webview sends `ready` (panel opened), and this reuses
+that exact moment rather than inventing a second one. "Every window/panel open, not every
+extension activation" is a difference that only matters for a workspace where the panel is
+opened more than once per VS Code session — each `ready` re-runs the check, same as it
+re-runs `refreshModels`.
+
+`message-router.ts` may not import `vscode` (hard project invariant — it is what keeps this
+file unit-testable outside the extension host), so the toast cannot be issued from inside
+the `ready` handler directly. This follows the same pattern already used for
+`EditorContextHost`/`ConfigHost`: a small host interface, injected via the constructor,
+with a no-op default so existing tests need no change.
 
 ```ts
-void manager.checkForUpdates().then((stale) => {
+// src/host/message-router.ts
+export interface UpdateNotifyHost {
+  notify(displayName: string, current: string, latest: string): void;
+}
+export const NO_UPDATE_NOTIFY: UpdateNotifyHost = { notify: () => {} };
+
+// constructor gains: private readonly updateNotify: UpdateNotifyHost = NO_UPDATE_NOTIFY,
+
+// inside case 'ready', alongside the existing two refresh calls:
+void this.manager.checkForUpdates().then((stale) => {
   for (const { displayName, info } of stale) {
-    if (semverGt(info.latest, info.current)) {
-      void vscode.window.showInformationMessage(
-        `${displayName} ${info.current} → ${info.latest} available.`
-      );
+    if (isNewer(info.latest, info.current)) {
+      this.updateNotify.notify(displayName, info.current, info.latest);
     }
   }
 });
 ```
 
+```ts
+// extension.ts — the real implementation, constructed at activate() and passed
+// into `new MessageRouter(...)` alongside the existing `editor`/`configHost` adapters
+const updateNotify: UpdateNotifyHost = {
+  notify: (displayName, current, latest) => {
+    void vscode.window.showInformationMessage(`${displayName} ${current} → ${latest} available.`);
+  },
+};
+```
+
 ## Surfacing
 
-Purely host-side, no protocol involvement — see the `activate()` snippet above. One
+Purely host-side, no protocol involvement — see the `UpdateNotifyHost` snippet above. One
 `showInformationMessage` per stale provider (parallel notifications, not batched into one
-message) — same call used elsewhere in `activate()` for other one-time notices. No
+message) — same call used elsewhere in `extension.ts` for other one-time notices. No
 link/action button in v1; the message names the provider and both versions, and the user
 updates through whatever channel they normally use.
 
 ## Data flow
 
 ```
-activate()
+MessageRouter, case 'ready' (webview hydrate)
   └─ manager.checkForUpdates()          (fire-and-forget, parallel to refreshModels/refreshUsage)
        └─ per provider: checkForUpdate()
-            ├─ spawn `<binary> --version`
+            ├─ run `<binary> --version`
             ├─ fetch latest-version source
             └─ resolve {current, latest} | undefined
-       └─ .then(stale => ...)           (back in extension.ts)
-            └─ per stale entry: vscode.window.showInformationMessage(...)
+       └─ .then(stale => ...)           (back in MessageRouter)
+            └─ per stale entry, isNewer(latest, current) → this.updateNotify.notify(...)
+                 └─ extension.ts's UpdateNotifyHost → vscode.window.showInformationMessage(...)
 ```
 
 No wire message, no `PostBus` involvement, no `ProviderInfo`/`UnavailableProvider` field
