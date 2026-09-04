@@ -9,7 +9,6 @@ import { MoreHorizontalIcon, PencilIcon, XIcon } from "lucide-react";
 import { folderName } from "../format";
 import type { PaneState } from "../reducer";
 import { useStore } from "../store";
-import { ActiveSubagentBadge } from "./active-subagent-badge";
 import { BringBackDialog } from "./bring-back-dialog";
 import { evenlySizedPanes } from "./pane-layout";
 import { StatusBadge } from "./status-badge";
@@ -68,10 +67,6 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
   return (
     <div className="flex items-center gap-2 border-b border-border px-2 py-1 text-xs">
       <StatusBadge status={s.status} />
-      {/* Beside the status, not instead of it: "Working" says the session is
-          busy, this says what with and takes you there. Absent whenever
-          nothing is running, which is most of the time. */}
-      <ActiveSubagentBadge items={pane.items} />
       {/*
         `h2`, not `h1`: this panel is a view inside VS Code's own document,
         not a page with its own top-level heading. One per pane gives a

@@ -9,11 +9,17 @@ const DOT: Record<StatusView['tone'], string> = {
   failed: 'bg-destructive',
 };
 
+// Padding lives here, not in the shared base className: idle/busy carry no
+// border or background, so padding only ever added height a plain sibling
+// (the session name, the folder) doesn't have — `items-center` then centers
+// that taller box, landing the dot and label a few px lower than the text
+// beside it. attention/failed are an actual pill and need the padding to
+// read as one.
 const CHIP: Record<StatusView['tone'], string> = {
   idle: 'text-muted-foreground',
   busy: 'text-muted-foreground',
-  attention: 'border border-primary/40 bg-primary/10 text-foreground',
-  failed: 'border border-destructive/40 bg-destructive/10 text-destructive',
+  attention: 'border border-primary/40 bg-primary/10 px-1.5 py-0.5 text-foreground',
+  failed: 'border border-destructive/40 bg-destructive/10 px-1.5 py-0.5 text-destructive',
 };
 
 /**
@@ -46,7 +52,11 @@ export function StatusBadge({ status, hideIdle }: { status: SessionStatus; hideI
     <span
       aria-live="polite"
       className={cn(
-        'flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[0.7rem] font-medium',
+        // No size override: `text-[0.7rem]` set a font-size the row's own
+        // `text-xs` didn't have, and mismatched font sizes on flex siblings
+        // is what actually misaligned the dot and "Working" against the
+        // plain-text name and folder next to them — not the padding above.
+        'flex shrink-0 items-center gap-1 rounded-full font-medium',
         CHIP[view.tone],
       )}
     >
