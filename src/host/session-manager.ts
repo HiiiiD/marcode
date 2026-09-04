@@ -12,7 +12,9 @@ import { buildSeed } from './replay';
 import { findPayload, type ResolvedBlock } from './session-refs';
 import { TRANSCRIPT_VERSION, type StoredIndex, type TranscriptStore } from './transcript-store';
 import type { MemoryStore } from '../memory/types';
-import type { AgentProvider, EffortLevel, Invocable, ModelInfo, UsageWindow } from '../providers/types';
+import type {
+  AgentProvider, EffortLevel, Invocable, ModelInfo, UpdateInfo, UsageWindow,
+} from '../providers/types';
 import { findModel, resolveEffort } from '../shared/model-catalog';
 import { FILE_CAP } from '../shared/file-cap';
 import { resolvePermissionMode } from '../shared/permission-catalog';
@@ -429,6 +431,38 @@ export class SessionManager implements SessionSink {
           console.warn('[mar-code] session-manager: usage probe failed for', p.id, err);
         },
       )));
+  }
+
+  /**
+   * Asks every provider that can answer for a stale-binary check, with no
+   * session required. Fire-and-forget by design at the call site (this method
+   * itself is awaited by its one caller, `MessageRouter`'s `ready` handling,
+   * but nothing upstream of that waits on it) — same reasoning as
+   * `refreshModels`/`refreshUsage`: a CLI `--version` spawn and a network
+   * fetch must never hold up panel startup.
+   *
+   * Returns only the providers that came back stale — an up-to-date provider
+   * and a provider with no answer are indistinguishable to the caller, and
+   * both are "nothing to tell the user."
+   */
+  async checkForUpdates(): Promise<{ id: string; displayName: string; info: UpdateInfo }[]> {
+    const results = await Promise.all([...this.providers.values()]
+      .filter((p) => p.checkForUpdate)
+      // Wrapped in Promise.resolve().then(...) for the same reason
+      // refreshModels wraps its own probe call: the interface only promises a
+      // Promise return, not an async function, so a provider that throws
+      // synchronously (legal against the type) must not throw out of
+      // checkForUpdates' own body.
+      .map((p) => Promise.resolve().then(() => p.checkForUpdate!()).then(
+        (info) => (info ? { id: p.id, displayName: p.displayName, info } : undefined),
+        (err: unknown) => {
+          console.warn('[mar-code] session-manager: update check failed for', p.id, err);
+          return undefined;
+        },
+      )));
+    return results.filter(
+      (r): r is { id: string; displayName: string; info: UpdateInfo } => r !== undefined,
+    );
   }
 
   summaries(): SessionSummary[] {
