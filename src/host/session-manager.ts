@@ -441,9 +441,11 @@ export class SessionManager implements SessionSink {
    * `refreshModels`/`refreshUsage`: a CLI `--version` spawn and a network
    * fetch must never hold up panel startup.
    *
-   * Returns only the providers that came back stale — an up-to-date provider
-   * and a provider with no answer are indistinguishable to the caller, and
-   * both are "nothing to tell the user."
+   * Returns every provider that answered with a version pair — not only the
+   * stale ones. A provider that came back up to date and a provider with no
+   * answer at all are indistinguishable at this layer; deciding which
+   * answered pairs are actually newer is `isNewer`'s job, done by the caller
+   * (`MessageRouter`'s `ready` handling).
    */
   async checkForUpdates(): Promise<{ id: string; displayName: string; info: UpdateInfo }[]> {
     const results = await Promise.all([...this.providers.values()]

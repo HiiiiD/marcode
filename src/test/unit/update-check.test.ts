@@ -114,5 +114,95 @@ suite('update-check', () => {
       const fetchFn = (async () => { throw new Error('network'); }) as unknown as typeof fetch;
       assert.strictEqual(await githubLatestVersion('openai/codex', 'rust-v', fetchFn), undefined);
     });
+    test('runs extractVersion on the stripped tag, dropping a trailing suffix', async () => {
+      const fetchFn = (async () => ({
+        ok: true, json: async () => ({ tag_name: 'rust-v0.153.2-beta' }),
+      })) as unknown as typeof fetch;
+      assert.strictEqual(
+        await githubLatestVersion('openai/codex', 'rust-v', fetchFn), '0.153.2',
+      );
+    });
+    test('resolves undefined when the stripped tag has no version-shaped substring', async () => {
+      const fetchFn = (async () => ({
+        ok: true, json: async () => ({ tag_name: 'rust-vnightly' }),
+      })) as unknown as typeof fetch;
+      assert.strictEqual(
+        await githubLatestVersion('openai/codex', 'rust-v', fetchFn), undefined,
+      );
+    });
+  });
+
+  suite('failure logging', () => {
+    let warnCalls: unknown[][];
+    let originalWarn: typeof console.warn;
+
+    setup(() => {
+      warnCalls = [];
+      originalWarn = console.warn;
+      console.warn = (...args: unknown[]) => { warnCalls.push(args); };
+    });
+
+    teardown(() => {
+      console.warn = originalWarn;
+    });
+
+    test('localVersion logs a console.warn on spawn failure', async () => {
+      const exec = async () => { throw new Error('ENOENT'); };
+      await localVersion('claude', ['--version'], exec);
+      assert.strictEqual(warnCalls.length, 1);
+      assert.strictEqual(warnCalls[0][0], '[mar-code] update-check: local version probe failed for');
+      assert.strictEqual(warnCalls[0][1], 'claude');
+    });
+
+    test('npmLatestVersion logs a console.warn when fetch rejects', async () => {
+      const fetchFn = (async () => { throw new Error('network'); }) as unknown as typeof fetch;
+      await npmLatestVersion('@anthropic-ai/claude-code', fetchFn);
+      assert.strictEqual(warnCalls.length, 1);
+      assert.strictEqual(
+        warnCalls[0][0], '[mar-code] update-check: npm latest-version lookup failed for',
+      );
+      assert.strictEqual(warnCalls[0][1], '@anthropic-ai/claude-code');
+    });
+
+    test('githubLatestVersion logs a console.warn when fetch rejects', async () => {
+      const fetchFn = (async () => { throw new Error('network'); }) as unknown as typeof fetch;
+      await githubLatestVersion('openai/codex', 'rust-v', fetchFn);
+      assert.strictEqual(warnCalls.length, 1);
+      assert.strictEqual(
+        warnCalls[0][0], '[mar-code] update-check: github latest-release lookup failed for',
+      );
+      assert.strictEqual(warnCalls[0][1], 'openai/codex');
+    });
+  });
+
+  suite('timeouts', () => {
+    test('realExecVersion is not exported, but localVersion still resolves undefined on a timeout-shaped error', async () => {
+      // execFile's own `timeout` handles the process kill; this exercises the
+      // same rejection path localVersion already covers via ExecVersionFn,
+      // confirming a timeout-style error (ETIMEDOUT) resolves undefined
+      // rather than throwing.
+      const exec = async () => { const e = new Error('ETIMEDOUT'); throw e; };
+      assert.strictEqual(await localVersion('claude', ['--version'], exec), undefined);
+    });
+
+    test('npmLatestVersion passes an AbortSignal to fetchFn', async () => {
+      let sawSignal: AbortSignal | undefined;
+      const fetchFn = (async (_url: string, init?: RequestInit) => {
+        sawSignal = init?.signal ?? undefined;
+        return { ok: true, json: async () => ({ version: '1.0.0' }) };
+      }) as unknown as typeof fetch;
+      await npmLatestVersion('pkg', fetchFn);
+      assert.strictEqual(sawSignal instanceof AbortSignal, true);
+    });
+
+    test('githubLatestVersion passes an AbortSignal to fetchFn', async () => {
+      let sawSignal: AbortSignal | undefined;
+      const fetchFn = (async (_url: string, init?: RequestInit) => {
+        sawSignal = init?.signal ?? undefined;
+        return { ok: true, json: async () => ({ tag_name: '1.0.0' }) };
+      }) as unknown as typeof fetch;
+      await githubLatestVersion('openai/codex', 'rust-v', fetchFn);
+      assert.strictEqual(sawSignal instanceof AbortSignal, true);
+    });
   });
 });

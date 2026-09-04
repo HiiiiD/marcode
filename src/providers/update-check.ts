@@ -44,7 +44,7 @@ export type FetchFn = typeof fetch;
  * shims that a direct (non-shell) spawn refuses to launch.
  */
 const realExecVersion: ExecVersionFn = (bin, args) => new Promise((resolve, reject) => {
-  execFile(bin, args, { shell: true, windowsHide: true }, (err, stdout) => {
+  execFile(bin, args, { shell: true, windowsHide: true, timeout: 5000 }, (err, stdout) => {
     if (err) { reject(err); return; }
     resolve({ stdout });
   });
@@ -61,7 +61,8 @@ export async function localVersion(
   try {
     const { stdout } = await execVersionFn(bin, args);
     return extractVersion(stdout);
-  } catch {
+  } catch (err) {
+    console.warn('[mar-code] update-check: local version probe failed for', bin, err);
     return undefined;
   }
 }
@@ -71,11 +72,14 @@ export async function npmLatestVersion(
   pkg: string, fetchFn: FetchFn = fetch,
 ): Promise<string | undefined> {
   try {
-    const res = await fetchFn(`https://registry.npmjs.org/${pkg}/latest`);
+    const res = await fetchFn(
+      `https://registry.npmjs.org/${pkg}/latest`, { signal: AbortSignal.timeout(5000) },
+    );
     if (!res.ok) { return undefined; }
     const json = await res.json() as { version?: string };
     return json.version;
-  } catch {
+  } catch (err) {
+    console.warn('[mar-code] update-check: npm latest-version lookup failed for', pkg, err);
     return undefined;
   }
 }
@@ -88,12 +92,17 @@ export async function githubLatestVersion(
   repo: string, tagPrefix: string, fetchFn: FetchFn = fetch,
 ): Promise<string | undefined> {
   try {
-    const res = await fetchFn(`https://api.github.com/repos/${repo}/releases/latest`);
+    const res = await fetchFn(
+      `https://api.github.com/repos/${repo}/releases/latest`, { signal: AbortSignal.timeout(5000) },
+    );
     if (!res.ok) { return undefined; }
     const json = await res.json() as { tag_name?: string };
     if (!json.tag_name) { return undefined; }
-    return json.tag_name.startsWith(tagPrefix) ? json.tag_name.slice(tagPrefix.length) : json.tag_name;
-  } catch {
+    const stripped = json.tag_name.startsWith(tagPrefix)
+      ? json.tag_name.slice(tagPrefix.length) : json.tag_name;
+    return extractVersion(stripped);
+  } catch (err) {
+    console.warn('[mar-code] update-check: github latest-release lookup failed for', repo, err);
     return undefined;
   }
 }

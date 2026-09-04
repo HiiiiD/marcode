@@ -229,13 +229,24 @@ export class MessageRouter {
         // probes settle; see SessionManager.seededModels.
         void this.manager.refreshModels(this.defaultCwd);
         void this.manager.refreshUsage(this.defaultCwd);
-        void this.manager.checkForUpdates().then((stale) => {
-          for (const { displayName, info } of stale) {
-            if (isNewer(info.latest, info.current)) {
-              this.updateNotify.notify(displayName, info.current, info.latest);
+        // Skipped entirely — not just the notification — when nobody is
+        // listening: Fleet and Review each construct their own MessageRouter
+        // with no real UpdateNotifyHost (NO_UPDATE_NOTIFY), so without this
+        // guard every `ready` from either tab would still spawn the
+        // `--version` child processes and hit the two unauthenticated GitHub
+        // API calls purely to throw the answer away.
+        if (this.updateNotify !== NO_UPDATE_NOTIFY) {
+          void this.manager.checkForUpdates().then((answered) => {
+            // `answered` is every provider that returned a version pair, not
+            // only the stale ones — `isNewer` below is the actual staleness
+            // filter.
+            for (const { displayName, info } of answered) {
+              if (isNewer(info.latest, info.current)) {
+                this.updateNotify.notify(displayName, info.current, info.latest);
+              }
             }
-          }
-        });
+          });
+        }
         return;
       }
 

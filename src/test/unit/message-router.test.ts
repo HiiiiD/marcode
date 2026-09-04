@@ -1199,4 +1199,31 @@ suite('MessageRouter', () => {
     assert.deepStrictEqual(notified, []);
     await m.dispose();
   });
+
+  test('ready does not run checkForUpdates when no real update-notify host is configured', async () => {
+    const staleProvider = new FakeProvider(() => []) as unknown as AgentProvider & {
+      checkForUpdate(): Promise<{ current: string; latest: string } | undefined>;
+    };
+    (staleProvider as { id: string }).id = 'fake';
+    (staleProvider as { displayName: string }).displayName = 'Fake';
+    let calls = 0;
+    staleProvider.checkForUpdate = async () => {
+      calls += 1;
+      return { current: '1.0.0', latest: '1.1.0' };
+    };
+
+    const providers = new Map<string, AgentProvider>([['fake', staleProvider]]);
+    const m = new SessionManager(new TranscriptStore(dir), providers, (msg) => sent.push(msg));
+    await m.init();
+
+    // No updateNotify argument — defaults to NO_UPDATE_NOTIFY, exactly as
+    // FleetPanel and ReviewPanel construct their own MessageRouter.
+    const r = new MessageRouter(m, (msg) => sent.push(msg), '/tmp', undefined, attachments);
+
+    await r.handle({ t: 'ready' });
+    await settle();
+
+    assert.strictEqual(calls, 0);
+    await m.dispose();
+  });
 });

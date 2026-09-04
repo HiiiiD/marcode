@@ -448,8 +448,19 @@ export async function activate(context: vscode.ExtensionContext) {
     },
   };
 
+  // Activation-scoped, not persisted: the sidebar WebviewView has no
+  // `retainContextWhenHidden`, so it's torn down and rebuilt on every
+  // hide/reveal cycle, re-posting `ready` each time. Without this a stale
+  // binary would re-show the same toast on every reveal for as long as it
+  // stayed stale. Keyed on provider id, not id+version — the spec's
+  // non-goal of never persisting a "last notified version" only rules out
+  // surviving a restart, but re-showing per-`ready` within one activation
+  // is exactly the repeat this dedup exists to stop.
+  const notifiedProviders = new Set<string>();
   const updateNotify: UpdateNotifyHost = {
     notify: (displayName, current, latest) => {
+      if (notifiedProviders.has(displayName)) { return; }
+      notifiedProviders.add(displayName);
       void vscode.window.showInformationMessage(`${displayName} ${current} → ${latest} available.`);
     },
   };
