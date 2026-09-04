@@ -3,6 +3,9 @@ import type {
   AgentProvider, AgentRun, Invocable, ModelInfo, PermissionModeInfo, SelfControlMcpConfig, StartOptions,
   ThreadScope, UsageWindow,
 } from '../types';
+import {
+  localVersion, githubLatestVersion, type ExecVersionFn, type FetchFn, type UpdateInfo,
+} from '../update-check';
 import { AppServer, type Duplex, type RequestId } from './app-server';
 import { CodexRun, type CodexConnection } from './codex-run';
 import { CODEX_MODES, effortLevelsOf } from './map-settings';
@@ -231,6 +234,8 @@ export class CodexProvider implements AgentProvider {
     selfControlMcp?: SelfControlMcpConfig;
     env?: NodeJS.ProcessEnv;
     loginKind?: 'oauth' | 'none';
+    execVersion?: ExecVersionFn;
+    fetchLatest?: FetchFn;
   } = {}) {
     this.id = opts.id ?? 'codex';
     this.displayName = opts.displayName ?? 'Codex';
@@ -241,6 +246,16 @@ export class CodexProvider implements AgentProvider {
   }
 
   listModels(): ModelInfo[] { return this.models; }
+
+  async checkForUpdate(): Promise<UpdateInfo | undefined> {
+    const bin = this.binPath ?? 'codex';
+    const [current, latest] = await Promise.all([
+      localVersion(bin, ['--version'], this.opts.execVersion),
+      githubLatestVersion('openai/codex', 'rust-v', this.opts.fetchLatest),
+    ]);
+    if (!current || !latest) { return undefined; }
+    return { current, latest };
+  }
 
   /**
    * The five modes Codex can honor. See map-settings.ts for why

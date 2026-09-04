@@ -583,4 +583,47 @@ suite('CodexProvider', () => {
     assert.deepStrictEqual(firstEvents, ['to-first']);
     assert.deepStrictEqual(secondEvents, ['to-second']);
   });
+
+  suite('checkForUpdate', () => {
+    test('resolves current/latest, stripping the rust-v tag prefix', async () => {
+      const provider = new CodexProvider({
+        execVersion: async () => ({ stdout: 'codex-cli 0.153.1\n' }),
+        fetchLatest: (async () => ({
+          ok: true, json: async () => ({ tag_name: 'rust-v0.153.2' }),
+        })) as unknown as typeof fetch,
+      });
+      assert.deepStrictEqual(await provider.checkForUpdate(), { current: '0.153.1', latest: '0.153.2' });
+    });
+
+    test('resolves undefined when the local version cannot be determined', async () => {
+      const provider = new CodexProvider({
+        execVersion: async () => { throw new Error('ENOENT'); },
+        fetchLatest: (async () => ({
+          ok: true, json: async () => ({ tag_name: 'rust-v0.153.2' }),
+        })) as unknown as typeof fetch,
+      });
+      assert.strictEqual(await provider.checkForUpdate(), undefined);
+    });
+
+    test('resolves undefined when the remote fetch fails', async () => {
+      const provider = new CodexProvider({
+        execVersion: async () => ({ stdout: 'codex-cli 0.153.1\n' }),
+        fetchLatest: (async () => ({ ok: false, json: async () => ({}) })) as unknown as typeof fetch,
+      });
+      assert.strictEqual(await provider.checkForUpdate(), undefined);
+    });
+
+    test('runs the configured binPath, not the bare binary name', async () => {
+      let seenBin: string | undefined;
+      const provider = new CodexProvider({
+        binPath: '/opt/codex/codex',
+        execVersion: async (bin: string) => { seenBin = bin; return { stdout: '0.153.1\n' }; },
+        fetchLatest: (async () => ({
+          ok: true, json: async () => ({ tag_name: 'rust-v0.153.2' }),
+        })) as unknown as typeof fetch,
+      });
+      await provider.checkForUpdate();
+      assert.strictEqual(seenBin, '/opt/codex/codex');
+    });
+  });
 });
