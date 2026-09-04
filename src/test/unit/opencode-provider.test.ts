@@ -200,4 +200,39 @@ suite('OpenCodeProvider', () => {
     assert.strictEqual(provider.id, 'opencode');
     assert.strictEqual(provider.displayName, 'OpenCode');
   });
+
+  suite('checkForUpdate', () => {
+    test('resolves current/latest, stripping the v tag prefix', async () => {
+      const provider = new OpenCodeProvider({
+        execVersion: async () => ({ stdout: '1.18.26\n' }),
+        fetchLatest: (async () => ({
+          ok: true, json: async () => ({ tag_name: 'v1.18.27' }),
+        })) as unknown as typeof fetch,
+      });
+      assert.deepStrictEqual(await provider.checkForUpdate(), { current: '1.18.26', latest: '1.18.27' });
+    });
+
+    test('resolves undefined when the local version cannot be determined', async () => {
+      const provider = new OpenCodeProvider({
+        execVersion: async () => { throw new Error('ENOENT'); },
+        fetchLatest: (async () => ({
+          ok: true, json: async () => ({ tag_name: 'v1.18.27' }),
+        })) as unknown as typeof fetch,
+      });
+      assert.strictEqual(await provider.checkForUpdate(), undefined);
+    });
+
+    test('runs the configured binPath, not the bare binary name', async () => {
+      let seenBin: string | undefined;
+      const provider = new OpenCodeProvider({
+        binPath: '/opt/opencode/opencode',
+        execVersion: async (bin) => { seenBin = bin; return { stdout: '1.18.26\n' }; },
+        fetchLatest: (async () => ({
+          ok: true, json: async () => ({ tag_name: 'v1.18.27' }),
+        })) as unknown as typeof fetch,
+      });
+      await provider.checkForUpdate();
+      assert.strictEqual(seenBin, '/opt/opencode/opencode');
+    });
+  });
 });

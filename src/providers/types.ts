@@ -1,7 +1,9 @@
 import type { ToolCall, ToolOutput } from './canonical/tool-call';
 import type { SessionId } from '../protocol/messages';
+import type { UpdateInfo } from './update-check';
 
 export type { FileEdit, TodoStatus, ToolCall, ToolOutput } from './canonical/tool-call';
+export type { UpdateInfo } from './update-check';
 
 export type EffortLevel = 'low' | 'medium' | 'high' | 'xhigh' | 'max' | 'ultra';
 /**
@@ -413,6 +415,15 @@ export interface AgentProvider {
    * propagate; the caller decides retry policy.
    */
   fetchUsage?(cwd: string): Promise<UsageWindow[] | undefined>;
+  /**
+   * Compares the locally installed binary against its latest published
+   * version. Optional: a provider with no standalone binary (`fake`) omits
+   * it. `undefined` means "could not determine" — a parse failure or a
+   * network miss is not evidence of staleness and must never be reported as
+   * one. Rejections propagate; the caller treats a throw the same as
+   * `undefined`.
+   */
+  checkForUpdate?(): Promise<UpdateInfo | undefined>;
   start(opts: StartOptions): AgentRun;
   /**
    * The catalog for a working directory, with NO session required.

@@ -11,7 +11,7 @@ import { FleetPanel, FLEET_VIEW_TYPE } from './host/fleet-panel';
 import { clampCap } from './host/fleet-diff';
 import { PanelViewProvider } from './host/panel-view-provider';
 import { PostBus } from './host/post-bus';
-import type { AttachmentHost, ConfigHost } from './host/message-router';
+import type { AttachmentHost, ConfigHost, UpdateNotifyHost } from './host/message-router';
 import { PROFILE_GUARD_SNIPPET } from './host/profile-noise';
 import { ReviewPanel, REVIEW_VIEW_TYPE } from './host/review-panel';
 import { SelfControlMcpServer } from './host/self-control-mcp-server';
@@ -448,6 +448,23 @@ export async function activate(context: vscode.ExtensionContext) {
     },
   };
 
+  // Activation-scoped, not persisted: the sidebar WebviewView has no
+  // `retainContextWhenHidden`, so it's torn down and rebuilt on every
+  // hide/reveal cycle, re-posting `ready` each time. Without this a stale
+  // binary would re-show the same toast on every reveal for as long as it
+  // stayed stale. Keyed on provider id, not id+version — the spec's
+  // non-goal of never persisting a "last notified version" only rules out
+  // surviving a restart, but re-showing per-`ready` within one activation
+  // is exactly the repeat this dedup exists to stop.
+  const notifiedProviders = new Set<string>();
+  const updateNotify: UpdateNotifyHost = {
+    notify: (displayName, current, latest) => {
+      if (notifiedProviders.has(displayName)) { return; }
+      notifiedProviders.add(displayName);
+      void vscode.window.showInformationMessage(`${displayName} ${current} → ${latest} available.`);
+    },
+  };
+
   const picker: AttachmentHost = {
     pick: async () => {
       const chosen = await vscode.window.showOpenDialog({
@@ -507,6 +524,7 @@ export async function activate(context: vscode.ExtensionContext) {
     agentsMdNudge,
     favoriteModels,
     configHost,
+    updateNotify,
   );
   // The sidebar is the client that wants everything. Registered here rather
   // than inside PanelViewProvider so there is one place that says which

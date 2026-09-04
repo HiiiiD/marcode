@@ -1704,4 +1704,67 @@ suite('SessionManager', () => {
     assert.strictEqual(errors.length, 1);
     assert.strictEqual(session.state.status, 'idle');
   });
+
+  suite('checkForUpdates', () => {
+    test('returns only providers whose checkForUpdate resolved a result', async () => {
+      const stale: AgentProvider = {
+        id: 'stale', displayName: 'Stale', threadScope: 'cwd',
+        listModels: () => [], listPermissionModes: () => [{ id: 'default' }],
+        start: () => { throw new Error('not used'); },
+        checkForUpdate: async () => ({ current: '1.0.0', latest: '1.1.0' }),
+      };
+      const upToDate: AgentProvider = {
+        id: 'current', displayName: 'Current', threadScope: 'cwd',
+        listModels: () => [], listPermissionModes: () => [{ id: 'default' }],
+        start: () => { throw new Error('not used'); },
+        checkForUpdate: async () => undefined,
+      };
+      const noCheck: AgentProvider = {
+        id: 'fake', displayName: 'Fake', threadScope: 'cwd',
+        listModels: () => [], listPermissionModes: () => [{ id: 'default' }],
+        start: () => { throw new Error('not used'); },
+      };
+      const testProviders = new Map<string, AgentProvider>([
+        ['stale', stale], ['current', upToDate], ['fake', noCheck],
+      ]);
+      const m = new SessionManager(new TranscriptStore(dir), testProviders, () => {});
+      await m.init();
+      const result = await m.checkForUpdates();
+      assert.deepStrictEqual(result, [
+        { id: 'stale', displayName: 'Stale', info: { current: '1.0.0', latest: '1.1.0' } },
+      ]);
+      await m.dispose();
+    });
+
+    test('a rejecting provider does not stop the others', async () => {
+      const failing: AgentProvider = {
+        id: 'failing', displayName: 'Failing', threadScope: 'cwd',
+        listModels: () => [], listPermissionModes: () => [{ id: 'default' }],
+        start: () => { throw new Error('not used'); },
+        checkForUpdate: async () => { throw new Error('boom'); },
+      };
+      const stale: AgentProvider = {
+        id: 'stale', displayName: 'Stale', threadScope: 'cwd',
+        listModels: () => [], listPermissionModes: () => [{ id: 'default' }],
+        start: () => { throw new Error('not used'); },
+        checkForUpdate: async () => ({ current: '1.0.0', latest: '1.1.0' }),
+      };
+      const testProviders = new Map<string, AgentProvider>([['failing', failing], ['stale', stale]]);
+      const m = new SessionManager(new TranscriptStore(dir), testProviders, () => {});
+      await m.init();
+      const result = await m.checkForUpdates();
+      assert.deepStrictEqual(result, [
+        { id: 'stale', displayName: 'Stale', info: { current: '1.0.0', latest: '1.1.0' } },
+      ]);
+      await m.dispose();
+    });
+
+    test('resolves an empty array when no provider implements checkForUpdate', async () => {
+      const testProviders = new Map<string, AgentProvider>([['fake', provider]]);
+      const m = new SessionManager(new TranscriptStore(dir), testProviders, () => {});
+      await m.init();
+      assert.deepStrictEqual(await m.checkForUpdates(), []);
+      await m.dispose();
+    });
+  });
 });

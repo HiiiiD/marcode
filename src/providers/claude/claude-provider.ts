@@ -122,6 +122,9 @@ import { findModel, resolveEffort } from '../../shared/model-catalog';
 import { attachmentLines, imageAttachments, readBase64 } from '../attachment-payload';
 import { formatEditorContext } from '../format-editor-context';
 import { withMarcodeIntro } from '../marcode-context';
+import {
+  localVersion, npmLatestVersion, type ExecVersionFn, type FetchFn, type UpdateInfo,
+} from '../update-check';
 import type {
   AgentEvent, AgentProvider, AgentRun, Attachment,
   ContextBreakdown,
@@ -290,6 +293,10 @@ export class ClaudeProvider implements AgentProvider {
   private readonly env?: NodeJS.ProcessEnv;
   /** Instance binary override — a second Claude Code install, not just a second account. */
   private readonly pathToClaudeCodeExecutable?: string;
+  /** Test seam: overrides localVersion's default execFile call. */
+  private readonly execVersion?: ExecVersionFn;
+  /** Test seam: overrides npmLatestVersion's default fetch call. */
+  private readonly fetchLatest?: FetchFn;
 
   constructor(
     private readonly loadQueryFn: () => Promise<QueryFn> = loadQuery,
@@ -300,6 +307,8 @@ export class ClaudeProvider implements AgentProvider {
       env?: NodeJS.ProcessEnv;
       pathToClaudeCodeExecutable?: string;
       loginKind?: 'oauth' | 'none';
+      execVersion?: ExecVersionFn;
+      fetchLatest?: FetchFn;
     },
   ) {
     this.id = instance?.id ?? 'claude';
@@ -307,9 +316,21 @@ export class ClaudeProvider implements AgentProvider {
     this.env = instance?.env;
     this.pathToClaudeCodeExecutable = instance?.pathToClaudeCodeExecutable;
     this.loginKind = instance?.loginKind;
+    this.execVersion = instance?.execVersion;
+    this.fetchLatest = instance?.fetchLatest;
   }
 
   listModels(): ModelInfo[] { return this.models; }
+
+  async checkForUpdate(): Promise<UpdateInfo | undefined> {
+    const bin = this.pathToClaudeCodeExecutable ?? 'claude';
+    const [current, latest] = await Promise.all([
+      localVersion(bin, ['--version'], this.execVersion),
+      npmLatestVersion('@anthropic-ai/claude-code', this.fetchLatest),
+    ]);
+    if (!current || !latest) { return undefined; }
+    return { current, latest };
+  }
 
   /**
    * The CLI's own model catalog, from the same session-free probe the

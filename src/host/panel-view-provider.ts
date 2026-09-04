@@ -3,6 +3,7 @@ import type { AgentsMdNudgeController } from './agents-md-nudge';
 import type { AttachmentStore } from './attachment-store';
 import {
   MessageRouter, type AttachmentHost, type ConfigHost, type EditorContextHost, type FileSearch,
+  type UpdateNotifyHost,
 } from './message-router';
 import type { SessionManager } from './session-manager';
 import { renderWebviewHtml } from './webview-html';
@@ -26,6 +27,7 @@ export class PanelViewProvider implements vscode.WebviewViewProvider {
     /** `marcode.favoriteModels`, read fresh each time the view resolves. */
     private readonly favoriteModels?: () => string[],
     private readonly configHost?: ConfigHost,
+    private readonly updateNotify?: UpdateNotifyHost,
   ) {}
 
   post(msg: HostToWebview): void {
@@ -75,7 +77,7 @@ export class PanelViewProvider implements vscode.WebviewViewProvider {
 
     const router = new MessageRouter(
       this.manager, (m) => this.post(m), this.defaultCwd, this.editor, this.attachments, this.picker,
-      undefined, this.fileSearch, this.favoriteModels?.() ?? [], this.configHost,
+      undefined, this.fileSearch, this.favoriteModels?.() ?? [], this.configHost, this.updateNotify,
     );
     view.webview.onDidReceiveMessage(async (raw: WebviewToHost) => {
       try {
