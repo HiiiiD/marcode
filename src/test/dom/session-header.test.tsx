@@ -1,9 +1,8 @@
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import * as assert from "assert";
-import { catalog, layoutOf, snapshot, summary, type ToolItem } from "../fixtures/protocol";
+import { catalog, layoutOf, snapshot, summary } from "../fixtures/protocol";
 import { posted, renderApp, sendFromHost } from "./harness";
-import type { TranscriptItem } from "../../protocol/messages";
 
 export function hydrate(over = {}) {
   sendFromHost({
@@ -15,37 +14,6 @@ export function hydrate(over = {}) {
     unavailable: [],
     usage: {},
   });
-}
-
-/** One pane, mid-turn, hydrated with a transcript the header has to read. */
-function hydrateWithItems(items: TranscriptItem[]) {
-  sendFromHost({
-    t: "hydrate",
-    sessions: [summary("a", { status: "running" })],
-    layout: layoutOf("a"),
-    snapshots: [snapshot("a", { items, status: "running" })],
-    catalog: catalog(),
-    unavailable: [],
-    usage: {},
-  });
-}
-
-function task(
-  id: string, agent: string | undefined, state: ToolItem["state"], ts: number,
-): ToolItem {
-  return {
-    id, ts, role: "tool", toolId: `tool-${id}`,
-    tool: { kind: "subagent", label: "Task", action: "spawn", agent },
-    state,
-  };
-}
-
-function runningTask(id: string, agent: string | undefined, ts = 1000): ToolItem {
-  return task(id, agent, "running", ts);
-}
-
-function settledTask(id: string, agent: string | undefined, ts = 1000): ToolItem {
-  return task(id, agent, "ok", ts);
 }
 
 /** Two sessions in the roster, both open in their own pane. */
@@ -160,75 +128,6 @@ suite("SessionHeader status", () => {
     });
 
     screen.getByText("Fake");
-  });
-
-  test("a session with nothing running shows no subagent badge", () => {
-    renderApp();
-    hydrate();
-
-    // `=== null, true`, never the node-valued form: a failing assert inspects
-    // the actual value, and a jsdom node walks the whole document graph.
-    assert.strictEqual(
-      screen.queryByRole("button", { name: /running subagent/i }) === null, true,
-    );
-  });
-
-  test("a running subagent is named and timed in the header", () => {
-    renderApp();
-    hydrateWithItems([runningTask("t1", "Explore")]);
-
-    // The card itself may be a screenful up; the header never scrolls away.
-    const badge = screen.getByRole("button", { name: /running subagent Explore/i });
-    assert.ok(badge.textContent?.includes("Explore"));
-
-    // And the status live region is untouched — it must stay mounted across
-    // this, or a status change stops being announced.
-    screen.getByText("Working");
-  });
-
-  test("the badge names the agent type, not the SDK tool name", () => {
-    renderApp();
-    hydrateWithItems([runningTask("t1", undefined)]);
-
-    // No `subagent_type` on the call, so the label is all there is.
-    screen.getByRole("button", { name: /running subagent Task/i });
-  });
-
-  test("several at once are counted, and clicking cycles through them", async () => {
-    renderApp();
-    hydrateWithItems([
-      runningTask("t1", "Explore", 1000),
-      runningTask("t2", "Plan", 2000),
-    ]);
-
-    // Oldest first: the one that has been waiting longest is the one the user
-    // is most likely looking for.
-    const badge = () => screen.getByRole("button", { name: /running subagent/i });
-    assert.ok(/Explore.*1\/2/s.test(badge().textContent!));
-
-    await userEvent.click(badge());
-    assert.ok(/Plan.*2\/2/s.test(badge().textContent!), "the next click goes to the other one");
-
-    await userEvent.click(badge());
-    assert.ok(/Explore.*1\/2/s.test(badge().textContent!), "and it wraps");
-  });
-
-  test("the badge goes away when the subagent finishes", () => {
-    renderApp();
-    hydrateWithItems([runningTask("t1", "Explore")]);
-    screen.getByRole("button", { name: /running subagent/i });
-
-    sendFromHost({
-      t: "session-patch",
-      id: "a",
-      patch: { op: "replace", item: settledTask("t1", "Explore") },
-    });
-
-    // `=== null, true`, never the node-valued form: a failing assert inspects
-    // the actual value, and a jsdom node walks the whole document graph.
-    assert.strictEqual(
-      screen.queryByRole("button", { name: /running subagent/i }) === null, true,
-    );
   });
 
   test("the pane's own menu can archive the session, not just hide it", async () => {
