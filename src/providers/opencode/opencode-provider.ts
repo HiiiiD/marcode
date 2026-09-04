@@ -4,6 +4,9 @@ import { toModels, type ConfigOption } from '../acp/config-options';
 import { AcpRun } from '../acp/acp-run';
 import { openCodeModeId } from './map-modes';
 import { openCodeTools } from './map-tools';
+import {
+  localVersion, githubLatestVersion, type ExecVersionFn, type FetchFn, type UpdateInfo,
+} from '../update-check';
 import type {
   AgentProvider, AgentRun, ModelInfo, PermissionModeInfo, SelfControlMcpConfig,
   StartOptions, ThreadScope,
@@ -86,6 +89,8 @@ export class OpenCodeProvider implements AgentProvider {
   private readonly selfControlMcp?: SelfControlMcpConfig;
   /** Instance env override, merged into every spawned `opencode acp` process's env. */
   private readonly env?: NodeJS.ProcessEnv;
+  private readonly execVersion?: ExecVersionFn;
+  private readonly fetchLatest?: FetchFn;
 
   /**
    * Deliberately never assigned. ACP carries no plan-usage data, so this
@@ -105,6 +110,8 @@ export class OpenCodeProvider implements AgentProvider {
     selfControlMcp?: SelfControlMcpConfig;
     env?: NodeJS.ProcessEnv;
     loginKind?: 'oauth' | 'none';
+    execVersion?: ExecVersionFn;
+    fetchLatest?: FetchFn;
   } = {}) {
     this.id = opts.id ?? 'opencode';
     this.displayName = opts.displayName ?? 'OpenCode';
@@ -113,6 +120,8 @@ export class OpenCodeProvider implements AgentProvider {
     this.selfControlMcp = opts.selfControlMcp;
     this.env = opts.env;
     this.loginKind = opts.loginKind;
+    this.execVersion = opts.execVersion;
+    this.fetchLatest = opts.fetchLatest;
   }
 
   /** Instance env merged over `process.env`, or `undefined` when there is no override. */
@@ -122,6 +131,16 @@ export class OpenCodeProvider implements AgentProvider {
 
   listModels(): ModelInfo[] { return this.models; }
   listPermissionModes(): PermissionModeInfo[] { return OPENCODE_MODES; }
+
+  async checkForUpdate(): Promise<UpdateInfo | undefined> {
+    const bin = this.binPath ?? 'opencode';
+    const [current, latest] = await Promise.all([
+      localVersion(bin, ['--version'], this.execVersion),
+      githubLatestVersion('anomalyco/opencode', 'v', this.fetchLatest),
+    ]);
+    if (!current || !latest) { return undefined; }
+    return { current, latest };
+  }
 
   /**
    * The catalog arrives with `session/new`, so the probe opens a session and
