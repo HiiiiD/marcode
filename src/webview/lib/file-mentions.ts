@@ -34,13 +34,12 @@ function directoryOf(path: string): string {
 }
 
 /**
- * The file references among `pending`, in order. Mirrors `sessionRefsOf`.
+ * The file references among `pending`, in order.
  *
- * Generic over `P`, the same way `sessionRefsOf` is: the composer's pending
- * array holds every source's payload in one union (`SessionMentionPayload |
- * FileMentionPayload`), and `Extract` is what lets this function narrow its
- * own arm out of that union without the two source modules importing each
- * other's payload types.
+ * Generic over `P`: the composer's pending array holds every source's
+ * payload in one union (`SessionMentionPayload | FileMentionPayload`), and
+ * `Extract` is what lets this function narrow its own arm out of that union
+ * without importing the other source's payload type.
  */
 export function fileRefsOf<P extends { kind: string }>(
   pending: PendingMention<P>[],

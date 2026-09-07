@@ -67,7 +67,7 @@ export function inheritedSettings(state: ClientState): CreateSettings | undefine
 /** The wire message for `settings`. `cwd: ''` means the workspace root. */
 export function createMessage(
   settings: CreateSettings,
-  seed?: { text: string; refs: SessionRef[]; fileRefs?: FileRef[] },
+  seed?: { text: string; refs?: SessionRef[]; fileRefs?: FileRef[] },
 ): WebviewToHost {
   return {
     t: "create-session",

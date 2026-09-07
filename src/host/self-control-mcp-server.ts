@@ -5,7 +5,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { z } from 'zod';
 import type { MemoryStore } from '../memory/types';
-import type { PermissionMode } from '../protocol/messages';
+import type { PermissionMode, TranscriptItem } from '../protocol/messages';
 import type { SelfControlMcpConfig } from '../providers/types';
 
 /**
@@ -44,6 +44,15 @@ export interface SessionManagerLike {
    * still satisfies this structurally; the one call site always `await`s it.
    */
   get(id: string): Promise<LiveSessionLike> | LiveSessionLike;
+  /**
+   * A bounded, most-recent-last slice of a session's own transcript — live
+   * or merely known (restored from disk, not yet reopened this launch). See
+   * `SessionManager.transcriptTail()`. `undefined` only for an id this
+   * window has never heard of; `marcode__get_session_context` has already
+   * resolved the id from `summaries()` before calling this, so that case is
+   * defensive here.
+   */
+  transcriptTail(id: string, limit?: number): Promise<{ items: TranscriptItem[] } | undefined>;
 }
 
 const PORT_ATTEMPTS = 5;
@@ -267,6 +276,41 @@ export class SelfControlMcpServer {
         await session.interrupt();
         session.send(text, undefined, undefined, undefined, { sessionId: from.id, name: from.name });
         return { content: [{ type: 'text', text: JSON.stringify({ delivered: true }) }] };
+      },
+    );
+
+    mcp.registerTool(
+      'marcode__get_session_context',
+      {
+        title: 'Read another Marcode session\'s recent activity',
+        description: 'Marcode-specific: reads a bounded, raw slice of a DIFFERENT Marcode '
+          + 'session\'s own transcript (its messages and tool calls, most recent last) — not a '
+          + 'summary, and unrelated to any built-in memory/context tool you have, which only sees '
+          + 'this conversation. Get the target name from marcode__list_sessions first. Nothing '
+          + 'about another session is ever pulled in automatically — call this yourself whenever '
+          + 'you decide you need to know what it did or said.',
+        inputSchema: {
+          name: z.string().describe('The target session\'s name, from marcode__list_sessions.'),
+          limit: z.number().optional().describe(
+            'Max transcript items to return, most recent. Defaults to 30, hard-capped at 200.',
+          ),
+        },
+      },
+      async ({ name, limit }) => {
+        const from = caller();
+        if (from && name.toLowerCase() === from.name.toLowerCase()) {
+          return { isError: true, content: [{ type: 'text', text: 'Cannot fetch your own context; you already have it.' }] };
+        }
+        const target = this.sessionManager.summaries()
+          .find((s) => s.name.toLowerCase() === name.toLowerCase() && !s.archived);
+        if (!target) {
+          return { isError: true, content: [{ type: 'text', text: `Unknown session: ${name}` }] };
+        }
+        const tail = await this.sessionManager.transcriptTail(target.id, limit ?? 30);
+        if (!tail) {
+          return { isError: true, content: [{ type: 'text', text: `Session ${name} is not available.` }] };
+        }
+        return { content: [{ type: 'text', text: JSON.stringify({ items: tail.items }) }] };
       },
     );
 

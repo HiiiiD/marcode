@@ -1694,6 +1694,104 @@ suite('SessionManager', () => {
     assert.strictEqual(missing.length, 1);
   });
 
+  test('transcriptTail returns a live session\'s own items, most recent last', async () => {
+    const session = await manager.create('fake', dir);
+    session.send('hello');
+    await settle();
+
+    const tail = await manager.transcriptTail(session.state.id);
+
+    assert.strictEqual(tail !== undefined, true);
+    assert.strictEqual(tail!.items.some((i) => i.role === 'user' && i.text === 'hello'), true);
+  });
+
+  test('transcriptTail caps a live session\'s items to limit, keeping the most recent', async () => {
+    const session = await manager.create('fake', dir);
+    session.send('one');
+    await settle();
+    session.send('two');
+    await settle();
+    session.send('three');
+    await settle();
+
+    const tail = await manager.transcriptTail(session.state.id, 2);
+
+    assert.strictEqual(tail!.items.length, 2);
+    assert.strictEqual(tail!.items[0].role === 'user' && tail!.items[0].text, 'three');
+  });
+
+  test('transcriptTail reads a known-but-not-live session from the store', async () => {
+    const created = await manager.create('fake', dir);
+    created.send('hi from before restart');
+    await settle();
+    await manager.dispose();
+
+    const restored = new SessionManager(store, providers, () => {});
+    await restored.init();
+    try {
+      assert.strictEqual(restored.get(created.state.id), undefined, 'must not be live yet');
+      const tail = await restored.transcriptTail(created.state.id);
+      assert.strictEqual(tail !== undefined, true);
+      assert.strictEqual(
+        tail!.items.some((i) => i.role === 'user' && i.text === 'hi from before restart'),
+        true,
+      );
+    } finally {
+      await restored.dispose();
+    }
+  });
+
+  test('transcriptTail returns undefined for an id this window has never heard of', async () => {
+    const tail = await manager.transcriptTail('nope' as never);
+    assert.strictEqual(tail, undefined);
+  });
+
+  test('transcriptTail clamps a live session\'s limit of 0 rather than returning everything', async () => {
+    const session = await manager.create('fake', dir);
+    session.send('one');
+    await settle();
+    session.send('two');
+    await settle();
+    session.send('three');
+    await settle();
+
+    const tail = await manager.transcriptTail(session.state.id, 0);
+    const whole = await session.snapshot();
+
+    // slice(-0) is slice(0) in JS — the whole array. The clamp must not
+    // reproduce that quirk: 0 is floored up to the 1-item minimum, and the
+    // full transcript (several items long by now) is much longer than that.
+    assert.strictEqual(tail!.items.length, 1);
+    assert.strictEqual(whole.items.length > 1, true);
+    assert.deepStrictEqual(tail!.items[0], whole.items[whole.items.length - 1]);
+  });
+
+  test('transcriptTail clamps a negative limit to at least 1 item', async () => {
+    const session = await manager.create('fake', dir);
+    session.send('only message');
+    await settle();
+
+    const tail = await manager.transcriptTail(session.state.id, -5);
+
+    assert.strictEqual(tail!.items.length, 1);
+  });
+
+  test('transcriptTail caps a huge limit at 200, not the raw argument', async () => {
+    const session = await manager.create('fake', dir);
+    for (let i = 0; i < 5; i++) {
+      session.send(`message ${i}`);
+      await settle();
+    }
+
+    const tail = await manager.transcriptTail(session.state.id, 10000);
+
+    // Fewer than 200 items exist, so the cap never actually binds here — this
+    // just proves a huge limit does not throw and returns the real, small
+    // transcript rather than something derived from the raw 10000.
+    assert.strictEqual(tail!.items.length <= 200, true);
+    assert.strictEqual(tail!.items.some((i) => i.role === 'user' && i.text === 'message 4'), true);
+  });
+
   test('noteError appends an error item without ending the session', async () => {
     const session = await manager.create('fake', dir);
     session.noteError('could not resolve');

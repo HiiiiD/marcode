@@ -109,7 +109,7 @@ suite('session handoff', () => {
     assert.strictEqual(screen.getAllByText('handoff').length, 1);
   });
 
-  test('picking a session inserts a token and sends refs with the message', () => {
+  test('picking a session inserts a token and sends no refs — @ only autocompletes the name', () => {
     renderApp();
     hydrateTwoSessions();
 
@@ -122,11 +122,40 @@ suite('session handoff', () => {
 
     const sends = posted().filter((m) => m.t === 'send');
     assert.strictEqual(sends.length, 1);
-    const sent = sends[0] as { text: string; refs?: { sessionId: string; kind: string }[] };
-    assert.strictEqual(sent.refs?.length, 1);
-    assert.strictEqual(sent.refs?.[0].sessionId, 's-2');
-    assert.strictEqual(sent.refs?.[0].kind, 'message');
+    const sent = sends[0] as { text: string; refs?: unknown[] };
+    assert.strictEqual(sent.refs, undefined);
     assert.strictEqual(sent.text.includes('@refactor-store'), true);
+  });
+
+  /**
+   * A session-row pick carries no wire payload, so it must not be tracked in
+   * `refs`' collision-avoidance list — doing so would make a SECOND pick of
+   * the SAME session collide with its own first pick and insert `@name-2`,
+   * text naming a session that does not exist.
+   */
+  test('picking the same session mention twice inserts the same token both times', () => {
+    renderApp();
+    hydrateTwoSessions();
+
+    const box = messageBox();
+    fireEvent.change(box, { target: { value: 'Ask @refac' } });
+    fireEvent.keyDown(box, { key: 'Enter' });
+
+    fireEvent.change(box, { target: { value: `${(box as HTMLTextAreaElement).value} and also @refac` } });
+    fireEvent.keyDown(box, { key: 'Enter' });
+
+    fireEvent.change(box, { target: { value: `${(box as HTMLTextAreaElement).value} now` } });
+    fireEvent.keyDown(box, { key: 'Enter' });
+
+    const sends = posted().filter((m) => m.t === 'send');
+    assert.strictEqual(sends.length, 1);
+    const sent = sends[0] as { text: string; refs?: unknown[] };
+    assert.strictEqual(sent.refs, undefined);
+    // Both picks inserted the bare token — neither suffixed, since neither
+    // pick is tracked in `refs`' taken-list.
+    assert.strictEqual(sent.text.includes('@refactor-store-2'), false);
+    const occurrences = sent.text.split('@refactor-store').length - 1;
+    assert.strictEqual(occurrences, 2);
   });
 
   /**
@@ -135,9 +164,9 @@ suite('session handoff', () => {
    * they never exercise the state machine's own close. This one does: the
    * caret sits at the end of the freshly inserted token, so the query matches
    * again and the menu re-renders over the row just picked. Left open, the
-   * next Enter re-enters the pick and attaches the SAME source twice.
+   * next Enter re-enters the pick and inserts the SAME token twice.
    */
-  test('Enter straight after a pick sends once, with one ref', () => {
+  test('Enter straight after a pick sends once, with the token inserted once', () => {
     renderApp();
     hydrateTwoSessions();
 
@@ -148,8 +177,9 @@ suite('session handoff', () => {
 
     const sends = posted().filter((m) => m.t === 'send');
     assert.strictEqual(sends.length, 1, 'the second Enter must send, not re-pick');
-    const sent = sends[0] as { refs?: unknown[] };
-    assert.strictEqual(sent.refs?.length, 1, 'the source must be attached once');
+    const sent = sends[0] as { text: string };
+    const occurrences = sent.text.split('@refactor-store').length - 1;
+    assert.strictEqual(occurrences, 1, 'the token must be inserted once');
   });
 
   /**
@@ -278,9 +308,9 @@ suite('session handoff', () => {
 
     const creates = posted().filter((m) => m.t === 'create-session');
     assert.strictEqual(creates.length, 1);
-    const sent = creates[0] as { seed?: { text: string; refs: unknown[] } };
+    const sent = creates[0] as { seed?: { text: string; refs?: unknown[] } };
     assert.strictEqual(sent.seed?.text, 'Execute the plan in docs/x.md');
-    assert.strictEqual(sent.seed?.refs.length, 0);
+    assert.strictEqual(sent.seed?.refs, undefined);
   });
 
   test('the handoff dialog inherits the source session provider and model', () => {

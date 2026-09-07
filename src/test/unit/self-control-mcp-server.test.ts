@@ -19,6 +19,7 @@ function fakeManager(overrides: Partial<SessionManagerLike> = {}): SessionManage
     summaries: () => [],
     visibleIds: () => [],
     get: async () => undefined,
+    transcriptTail: async () => ({ items: [] }),
     ...overrides,
   };
 }
@@ -498,6 +499,7 @@ suite('SelfControlMcpServer cross-session messaging', () => {
         get: async (id) => {
           try { return await second.open(id); } catch { return undefined; }
         },
+        transcriptTail: (id, limit) => second.transcriptTail(id as never, limit),
       });
       const config = await server.start();
 
@@ -575,6 +577,96 @@ suite('SelfControlMcpServer cross-session messaging', () => {
       const snapshot = await manager.get(b.state.id)!.snapshot();
       const item = snapshot.items.find((i) => i.role === 'user' && i.text === 'please do X');
       assert.strictEqual(item?.role === 'user' && item.from?.name, 'sender');
+      await server.dispose();
+    } finally {
+      await manager.dispose();
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+suite('SelfControlMcpServer session context', () => {
+  test('marcode__get_session_context returns the target session\'s transcript tail', async () => {
+    const items = [{ id: 'u1', ts: 1, role: 'user', text: 'hi' } as never];
+    let seenId: string | undefined;
+    let seenLimit: number | undefined;
+    const manager = fakeManager({
+      summaries: () => [
+        { id: 's-caller', name: 'a', providerId: 'claude', status: 'idle', cwd: '/w', archived: false } as never,
+        { id: 's-target', name: 'b', providerId: 'claude', status: 'idle', cwd: '/w', archived: false } as never,
+      ],
+      transcriptTail: async (id, limit) => { seenId = id; seenLimit = limit; return { items }; },
+    });
+    const server = new SelfControlMcpServer(manager);
+    const config = await server.start();
+    const result = await callTool(config, 'marcode__get_session_context', { name: 'b' });
+    const body = JSON.parse(result.content[0].text) as { items: unknown[] };
+    assert.deepStrictEqual(body.items, items);
+    assert.strictEqual(seenId, 's-target');
+    assert.strictEqual(seenLimit, 30);
+    await server.dispose();
+  });
+
+  test('marcode__get_session_context passes a custom limit through', async () => {
+    let seenLimit: number | undefined;
+    const manager = fakeManager({
+      summaries: () => [{ id: 's-target', name: 'b', providerId: 'claude', status: 'idle', cwd: '/w', archived: false } as never],
+      transcriptTail: async (_id, limit) => { seenLimit = limit; return { items: [] }; },
+    });
+    const server = new SelfControlMcpServer(manager);
+    const config = await server.start();
+    await callTool(config, 'marcode__get_session_context', { name: 'b', limit: 5 });
+    assert.strictEqual(seenLimit, 5);
+    await server.dispose();
+  });
+
+  test('marcode__get_session_context errors on an unknown session name', async () => {
+    const server = new SelfControlMcpServer(fakeManager());
+    const config = await server.start();
+    const result = await callTool(config, 'marcode__get_session_context', { name: 'nobody' });
+    assert.strictEqual(result.isError, true);
+    await server.dispose();
+  });
+
+  test('marcode__get_session_context errors when the name is the caller\'s own, case-insensitively', async () => {
+    const manager = fakeManager({
+      summaries: () => [{ id: 's-caller', name: 'Alice', providerId: 'claude', status: 'idle', cwd: '/w', archived: false } as never],
+    });
+    const server = new SelfControlMcpServer(manager);
+    const config = await server.start();
+    const result = await callToolAs(config, 's-caller', 'marcode__get_session_context', { name: 'alice' });
+    assert.strictEqual(result.isError, true);
+    await server.dispose();
+  });
+
+  test('a real call against a real SessionManager returns the live session\'s own transcript', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mar-self-control-ctx-'));
+    const store = new TranscriptStore(dir);
+    const provider = new FakeProvider(() => [
+      { kind: 'text', delta: 'ok' },
+      { kind: 'turn-end', reason: 'done' },
+    ]);
+    const providers = new Map<string, AgentProvider>([['fake', provider]]);
+    const manager = new SessionManager(store, providers, () => {});
+    await manager.init();
+
+    try {
+      const target = await manager.create('fake', process.cwd());
+      manager.rename(target.state.id, 'target');
+      target.send('hello');
+
+      const server = new SelfControlMcpServer({
+        catalog: () => manager.catalog(),
+        create: (providerId, cwd, model, effort, mode) => manager.create(providerId, cwd, model, effort, mode),
+        summaries: () => manager.summaries(),
+        visibleIds: () => manager.visibleIds(),
+        get: async (id) => manager.get(id as never),
+        transcriptTail: (id, limit) => manager.transcriptTail(id as never, limit),
+      });
+      const config = await server.start();
+      const result = await callTool(config, 'marcode__get_session_context', { name: 'target' });
+      const body = JSON.parse(result.content[0].text) as { items: { role: string; text?: string }[] };
+      assert.strictEqual(body.items.some((i) => i.role === 'user' && i.text === 'hello'), true);
       await server.dispose();
     } finally {
       await manager.dispose();

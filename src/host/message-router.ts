@@ -255,10 +255,11 @@ export class MessageRouter {
           msg.providerId, msg.cwd || this.defaultCwd, msg.model, msg.effort, msg.mode,
         );
         if (msg.seed) {
+          const seedRefs = msg.seed.refs ?? [];
           const fileRefs = msg.seed.fileRefs ?? [];
           const [{ blocks: sBlocks, missing: sMissing }, { blocks: fBlocks, missing: fMissing }] =
             await Promise.all([
-              this.manager.resolveRefs(msg.seed.refs),
+              this.manager.resolveRefs(seedRefs),
               this.resolveFileRefsFor(session, fileRefs),
             ]);
           if (sMissing.length > 0 || fMissing.length > 0) {
@@ -269,7 +270,7 @@ export class MessageRouter {
               : undefined;
             session.send(
               composePrompt(msg.seed.text, [...sBlocks, ...fBlocks]), context,
-              msg.seed.refs.length > 0 ? msg.seed.refs : undefined,
+              seedRefs.length > 0 ? seedRefs : undefined,
               fileRefs.length > 0 ? fileRefs : undefined,
             );
           }
