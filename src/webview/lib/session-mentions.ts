@@ -1,13 +1,25 @@
-import type { SessionId, SessionRef, SessionSummary } from '../../protocol/messages';
-import type { MentionOption, PendingMention } from './mention-menu';
+import type { SessionId, SessionSummary } from '../../protocol/messages';
+import type { MentionOption } from './mention-menu';
 
 /**
  * What a row from this source means. Lives here, not in the menu machinery:
  * a source owns its own payload, which is what lets another source be added
  * beside this one without the machinery learning about either.
+ *
+ * A session row's payload carries nothing beyond its own kind: picking one
+ * inserts the session's name as literal text and nothing else. Earlier this
+ * carried a `SessionRef` that the host resolved into a recap and appended to
+ * the outgoing message — that pull is gone. Pulling another session's
+ * content is now something the agent does itself, mid-turn, through
+ * `marcode__get_session_context` — never something the host attaches
+ * silently because the user typed a name. `RefKind`/`SessionRef` still exist
+ * on the wire (see `../../protocol/messages.ts`) and `session-refs.ts` still
+ * resolves them — transcripts written before this change carry
+ * `SessionRef{kind:'message'|'plan'}` entries and replaying those still has
+ * to work.
  */
 export type SessionMentionPayload =
-  | { kind: 'session-ref'; ref: SessionRef }
+  | { kind: 'name' }
   | { kind: 'action'; action: 'handoff' };
 
 /**
@@ -24,16 +36,9 @@ function slug(title: string): string {
 
 /**
  * The rows sessions contribute to the `@` menu: the handoff gesture, then one
- * row for each other live session.
- *
- * One row per session, not one per `RefKind`. Crossing the two put a pair of
- * rows on screen carrying the same title, separated only by a hint in the
- * right margin of a 300px pane — and the `plan` half of every pair referenced
- * something most sessions have never produced, so picking it got the message
- * refused at send time. `message` is the kind a session always has if it has
- * anything at all, and it is now the only kind this menu offers. `RefKind`
- * keeps its other arm: transcripts written before this change still carry
- * plan references, and the host still resolves and renders them.
+ * row for each other live session — a fast way to type a session's name,
+ * nothing more. Picking a row inserts its slugged name and attaches no
+ * payload beyond `{kind: 'name'}`; nothing about the pick reaches the wire.
  *
  * One of possibly several sources — the composer concatenates what each
  * source offers, so adding file tagging later means adding a module beside
@@ -75,10 +80,7 @@ export function sessionMentions(
       hint: 'last reply',
       group: 'Sessions',
       baseToken: slug(s.name),
-      payload: {
-        kind: 'session-ref',
-        ref: { sessionId: s.id, kind: 'message', title: s.name },
-      },
+      payload: { kind: 'name' },
     });
   }
   return options;
@@ -91,28 +93,4 @@ export function sessionMentions(
  */
 function shortId(id: SessionId): string {
   return id.slice(-4);
-}
-
-/**
- * The session references among `pending`, in order.
- *
- * The composer sends `SessionRef[]` on the wire, and only some payload kinds
- * are references — an action row is a gesture, not a reference.
- *
- * The predicate is doing real work: a plain boolean filter does not narrow
- * the mapped element, which is what forced an unchecked cast here before. With
- * the predicate the compiler keeps the filter and the projection in step, so a
- * payload arm added later cannot silently fall through as `undefined`.
- *
- * Generic over `P` for the same reason `fileRefsOf` is: the composer's
- * pending array unions every source's payload, and `Extract` narrows this
- * source's own arm out of it without importing another source's types.
- */
-export function sessionRefsOf<P extends { kind: string }>(
-  pending: PendingMention<P>[],
-): SessionRef[] {
-  return pending
-    .filter((p): p is PendingMention<Extract<P, { kind: 'session-ref'; ref: SessionRef }>> =>
-      p.payload.kind === 'session-ref')
-    .map((p) => p.payload.ref);
 }
