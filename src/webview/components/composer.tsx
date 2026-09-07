@@ -16,7 +16,7 @@ import {
   type MentionOption, type PendingMention,
 } from "../lib/mention-menu";
 import {
-  sessionMentions, sessionRefsOf, type SessionMentionPayload,
+  sessionMentions, type SessionMentionPayload,
 } from "../lib/session-mentions";
 import { useMentionMenu } from "../lib/use-mention-menu";
 import { base64Of, urisOf } from "../lib/read-attachment";
@@ -238,11 +238,9 @@ export function Composer({
     } else {
       // `ghost` is presentation only — the arg hint is never part of the message.
       const pruned = pruneMentions(trimmed, refs);
-      const carried = sessionRefsOf(pruned);
       const fileCarried = fileRefsOf(pruned);
       post({
         t: "send", id: pane.summary.id, text: trimmed,
-        ...(carried.length > 0 ? { refs: carried } : {}),
         ...(fileCarried.length > 0 ? { fileRefs: fileCarried } : {}),
       });
     }
@@ -677,11 +675,9 @@ export function Composer({
           seedable
           onCreate={(chosen, seed) => {
             const pruned = pruneMentions(seed ?? "", refs);
-            const carried = sessionRefsOf(pruned);
             const fileCarried = fileRefsOf(pruned);
             post(createMessage(chosen, {
               text: seed ?? "",
-              refs: carried,
               ...(fileCarried.length > 0 ? { fileRefs: fileCarried } : {}),
             }));
             setHandoffOpen(false);

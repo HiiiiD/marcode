@@ -421,7 +421,7 @@ export type WebviewToHost =
        * made it — a two-step version would have to wait for the snapshot and
        * would lose the seed if the panel reloaded in between.
        */
-      seed?: { text: string; refs: SessionRef[]; fileRefs?: FileRef[] } }
+      seed?: { text: string; refs?: SessionRef[]; fileRefs?: FileRef[] } }
   | { t: 'set-visible'; sessionIds: SessionId[] }
   | { t: 'set-layout'; layout: PaneLayout }
   /**
