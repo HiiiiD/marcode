@@ -1694,6 +1694,58 @@ suite('SessionManager', () => {
     assert.strictEqual(missing.length, 1);
   });
 
+  test('transcriptTail returns a live session\'s own items, most recent last', async () => {
+    const session = await manager.create('fake', dir);
+    session.send('hello');
+    await settle();
+
+    const tail = await manager.transcriptTail(session.state.id);
+
+    assert.strictEqual(tail !== undefined, true);
+    assert.strictEqual(tail!.items.some((i) => i.role === 'user' && i.text === 'hello'), true);
+  });
+
+  test('transcriptTail caps a live session\'s items to limit, keeping the most recent', async () => {
+    const session = await manager.create('fake', dir);
+    session.send('one');
+    await settle();
+    session.send('two');
+    await settle();
+    session.send('three');
+    await settle();
+
+    const tail = await manager.transcriptTail(session.state.id, 2);
+
+    assert.strictEqual(tail!.items.length, 2);
+    assert.strictEqual(tail!.items[0].role === 'user' && tail!.items[0].text, 'three');
+  });
+
+  test('transcriptTail reads a known-but-not-live session from the store', async () => {
+    const created = await manager.create('fake', dir);
+    created.send('hi from before restart');
+    await settle();
+    await manager.dispose();
+
+    const restored = new SessionManager(store, providers, () => {});
+    await restored.init();
+    try {
+      assert.strictEqual(restored.get(created.state.id), undefined, 'must not be live yet');
+      const tail = await restored.transcriptTail(created.state.id);
+      assert.strictEqual(tail !== undefined, true);
+      assert.strictEqual(
+        tail!.items.some((i) => i.role === 'user' && i.text === 'hi from before restart'),
+        true,
+      );
+    } finally {
+      await restored.dispose();
+    }
+  });
+
+  test('transcriptTail returns undefined for an id this window has never heard of', async () => {
+    const tail = await manager.transcriptTail('nope' as never);
+    assert.strictEqual(tail, undefined);
+  });
+
   test('noteError appends an error item without ending the session', async () => {
     const session = await manager.create('fake', dir);
     session.noteError('could not resolve');

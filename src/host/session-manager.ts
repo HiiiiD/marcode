@@ -1389,6 +1389,30 @@ export class SessionManager implements SessionSink {
   }
 
   /**
+   * A bounded, most-recent-last slice of `id`'s own transcript, raw and
+   * unsummarized — for `marcode__get_session_context`, which reads a
+   * session's activity itself rather than through `resolveRefs()`'s
+   * host-built recap. Same live/dead split as `resolveRefs`: a live
+   * session's `snapshot()` already flushes pending writes and holds
+   * everything appended this launch, sliced to `limit` here since
+   * `snapshot()` itself does not cap; a merely-known session (restored from
+   * disk, not reopened this launch) reads its tail straight from the store,
+   * which already caps. `undefined` only for an id this window has never
+   * heard of.
+   */
+  async transcriptTail(
+    id: SessionId, limit = 30,
+  ): Promise<{ items: TranscriptItem[] } | undefined> {
+    if (!this.meta.has(id)) { return undefined; }
+    const live = this.live.get(id);
+    if (live) {
+      const { items } = await live.snapshot();
+      return { items: items.slice(-limit) };
+    }
+    return this.store.tail(id, limit);
+  }
+
+  /**
    * Every provider's current window set, ordered for display and with
    * already-reset windows dropped. The pruning happens on read rather than
    * on a timer: nothing re-renders between reads anyway, and a timer would
