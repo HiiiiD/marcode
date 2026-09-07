@@ -23,10 +23,10 @@ suite('session mentions', () => {
     assert.strictEqual(sessionRow?.group, 'Sessions');
   });
 
-  test('hints "last reply" for a session row', () => {
+  test('hints "session" for a session row', () => {
     const rows = sessionMentions([summary('s-1', 'me'), summary('s-2', 'refactor store')], 's-1', true);
     const row = rows.find((r) => r.payload.kind === 'name');
-    assert.strictEqual(row?.hint, 'last reply');
+    assert.strictEqual(row?.hint, 'session');
   });
 
   test('omits the session doing the referencing', () => {

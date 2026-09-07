@@ -1399,17 +1399,27 @@ export class SessionManager implements SessionSink {
    * disk, not reopened this launch) reads its tail straight from the store,
    * which already caps. `undefined` only for an id this window has never
    * heard of.
+   *
+   * `limit` is untrusted input — this is reachable from an agent-facing MCP
+   * tool (`marcode__get_session_context`), not just internal code — so it is
+   * clamped to `[1, 200]` before use. 200 is a hard cap, regardless of what
+   * the caller asked for: `0` would otherwise take the whole transcript on
+   * the live path (`Array.prototype.slice(-0)` is `slice(0)`, a JS quirk)
+   * while behaving differently on the dead/store path, negative and huge
+   * values are unclamped, and the two paths would disagree at every one of
+   * those boundaries for the same input.
    */
   async transcriptTail(
     id: SessionId, limit = 30,
   ): Promise<{ items: TranscriptItem[] } | undefined> {
     if (!this.meta.has(id)) { return undefined; }
+    const cappedLimit = Math.max(1, Math.min(Math.floor(limit), 200));
     const live = this.live.get(id);
     if (live) {
       const { items } = await live.snapshot();
-      return { items: items.slice(-limit) };
+      return { items: items.slice(-cappedLimit) };
     }
-    return this.store.tail(id, limit);
+    return this.store.tail(id, cappedLimit);
   }
 
   /**

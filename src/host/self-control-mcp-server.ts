@@ -291,7 +291,9 @@ export class SelfControlMcpServer {
           + 'you decide you need to know what it did or said.',
         inputSchema: {
           name: z.string().describe('The target session\'s name, from marcode__list_sessions.'),
-          limit: z.number().optional().describe('Max transcript items to return, most recent. Defaults to 30.'),
+          limit: z.number().optional().describe(
+            'Max transcript items to return, most recent. Defaults to 30, hard-capped at 200.',
+          ),
         },
       },
       async ({ name, limit }) => {

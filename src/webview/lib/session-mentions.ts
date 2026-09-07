@@ -77,7 +77,7 @@ export function sessionMentions(
     options.push({
       id: s.id,
       label: (seen.get(s.name) ?? 0) > 1 ? `${s.name} (${shortId(s.id)})` : s.name,
-      hint: 'last reply',
+      hint: 'session',
       group: 'Sessions',
       baseToken: slug(s.name),
       payload: { kind: 'name' },

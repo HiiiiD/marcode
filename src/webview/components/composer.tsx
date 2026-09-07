@@ -216,6 +216,21 @@ export function Composer({
       setHandoffOpen(true);
       return;
     }
+    if (option.payload.kind === 'name') {
+      // A session-row payload carries no wire meaning — picking one only
+      // autocompletes plain text. It still checks `refs`' tokens to avoid
+      // colliding with a real file-ref already in the box, but it must NOT
+      // be tracked in `refs` itself: `tokenFor`'s collision suffix exists to
+      // disambiguate two DIFFERENT sources sharing a token, and feeding a
+      // session pick's own token back into that list would make a SECOND
+      // pick of the SAME session collide with its first, inserting
+      // `@name-2` — text naming a session that does not exist.
+      const token = tokenFor(option, refs.map((r) => r.token));
+      const next = spliceMention(text, refHit.start, caret, token);
+      setText(next.text);
+      setCaret(next.caret);
+      return;
+    }
     const token = tokenFor(option, refs.map((r) => r.token));
     const next = spliceMention(text, refHit.start, caret, token);
     setText(next.text);
@@ -489,7 +504,7 @@ export function Composer({
           // button and `@` has nowhere else to be announced, and a second
           // button would push a control row that already wraps at 300px onto
           // another line.
-          placeholder="Message the agent… @ references a session, paste or drop files"
+          placeholder="Message the agent… @ names a session or file, paste or drop files"
           aria-label="Message"
           disabled={disabled}
           aria-describedby={disabled ? blockedReasonId : undefined}

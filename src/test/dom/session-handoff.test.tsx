@@ -128,6 +128,37 @@ suite('session handoff', () => {
   });
 
   /**
+   * A session-row pick carries no wire payload, so it must not be tracked in
+   * `refs`' collision-avoidance list — doing so would make a SECOND pick of
+   * the SAME session collide with its own first pick and insert `@name-2`,
+   * text naming a session that does not exist.
+   */
+  test('picking the same session mention twice inserts the same token both times', () => {
+    renderApp();
+    hydrateTwoSessions();
+
+    const box = messageBox();
+    fireEvent.change(box, { target: { value: 'Ask @refac' } });
+    fireEvent.keyDown(box, { key: 'Enter' });
+
+    fireEvent.change(box, { target: { value: `${(box as HTMLTextAreaElement).value} and also @refac` } });
+    fireEvent.keyDown(box, { key: 'Enter' });
+
+    fireEvent.change(box, { target: { value: `${(box as HTMLTextAreaElement).value} now` } });
+    fireEvent.keyDown(box, { key: 'Enter' });
+
+    const sends = posted().filter((m) => m.t === 'send');
+    assert.strictEqual(sends.length, 1);
+    const sent = sends[0] as { text: string; refs?: unknown[] };
+    assert.strictEqual(sent.refs, undefined);
+    // Both picks inserted the bare token — neither suffixed, since neither
+    // pick is tracked in `refs`' taken-list.
+    assert.strictEqual(sent.text.includes('@refactor-store-2'), false);
+    const occurrences = sent.text.split('@refactor-store').length - 1;
+    assert.strictEqual(occurrences, 2);
+  });
+
+  /**
    * The picking tests above type a trailing space before the second Enter,
    * which closes the menu through the whitespace rule in `mentionQuery` — so
    * they never exercise the state machine's own close. This one does: the
