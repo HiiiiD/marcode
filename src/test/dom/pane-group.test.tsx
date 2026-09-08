@@ -295,7 +295,7 @@ suite('PaneGroup', () => {
     // to remove — the same starting point as the header-hide tests above.
     screen.getByLabelText('Hide Session a from the split').focus();
 
-    await userEvent.click(screen.getByText(/1 of 1 in split/i));
+    await userEvent.click(screen.getByRole('button', { name: /manage which sessions are shown/i }));
     await userEvent.click(await screen.findByLabelText('More actions for Session a'));
     await userEvent.click(await screen.findByLabelText('Delete session Session a'));
     await userEvent.click(await screen.findByRole('menuitem', { name: 'Delete Session a' }));

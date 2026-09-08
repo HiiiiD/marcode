@@ -1,5 +1,5 @@
 import * as assert from 'assert';
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderApp, resetHost, sendFromHost } from './harness';
 import type { SessionSnapshot } from '../../protocol/messages';
@@ -27,19 +27,17 @@ function hydrate(snap: SessionSnapshot) {
   });
 }
 
-suite('roster MCP group', () => {
+suite('MCP servers control', () => {
   setup(() => { resetHost(); });
 
-  test('no group and no trigger warning when there are no servers', async () => {
+  test('no button when there are no servers', async () => {
     renderApp();
     hydrate(snapshot());
 
-    assert.strictEqual(screen.queryByText(/MCP:/), null);
-    await userEvent.click(screen.getByRole('button', { name: /in split/i }));
-    assert.strictEqual(screen.queryByText(/MCP servers/i), null);
+    assert.strictEqual(screen.queryByRole('button', { name: /mcp servers/i }), null);
   });
 
-  test('healthy servers are listed but do not warn on the trigger', async () => {
+  test('healthy servers are listed but do not warn on the button', async () => {
     renderApp();
     hydrate(snapshot());
     sendFromHost({
@@ -47,13 +45,15 @@ suite('roster MCP group', () => {
       servers: [{ name: 'github', state: 'connected', toolCount: 12 }],
     });
 
-    assert.strictEqual(screen.queryByText(/MCP:/), null, 'silent when healthy');
-    await userEvent.click(screen.getByRole('button', { name: /in split/i }));
+    const button = screen.getByRole('button', { name: 'MCP servers' });
+    assert.strictEqual(screen.queryByText(/failed|needs auth/i), null, 'silent when healthy');
+
+    await userEvent.click(button);
     assert.ok(await screen.findByText('github'));
     assert.ok(screen.getByText('12 tools'));
   });
 
-  test('a failed server warns on the trigger and explains itself in the list', async () => {
+  test('a failed server warns on the button and explains itself in the popover', async () => {
     renderApp();
     hydrate(snapshot());
     sendFromHost({
@@ -61,8 +61,10 @@ suite('roster MCP group', () => {
       servers: [{ name: 'stripe', state: 'failed', error: 'spawn ENOENT' }],
     });
 
-    assert.ok(screen.getByText('MCP: failed'));
-    await userEvent.click(screen.getByRole('button', { name: /in split/i }));
+    const button = screen.getByRole('button', { name: /mcp servers/i });
+    assert.ok(within(button).getByText('failed'));
+
+    await userEvent.click(button);
     assert.ok(await screen.findByText('spawn ENOENT'));
   });
 
@@ -73,12 +75,12 @@ suite('roster MCP group', () => {
       t: 'session-mcp', id: 's1', servers: [{ name: 'drive', state: 'needs-auth' }],
     });
 
-    await userEvent.click(screen.getByRole('button', { name: /in split/i }));
+    await userEvent.click(screen.getByRole('button', { name: /mcp servers/i }));
     assert.ok(await screen.findByText(/Authorize in a terminal/i));
     assert.strictEqual(screen.queryByRole('button', { name: /authorize/i }), null);
   });
 
-  test('a blocked agent outranks a broken server in the trigger slot', async () => {
+  test('a blocked agent and a broken server warn independently, on their own controls', async () => {
     renderApp();
     hydrate(snapshot({ status: 'awaiting-approval' }));
     sendFromHost({
@@ -86,25 +88,25 @@ suite('roster MCP group', () => {
     });
 
     assert.ok(screen.getByText('1 needs you'));
-    assert.strictEqual(screen.queryByText('MCP: failed'), null);
+    const button = screen.getByRole('button', { name: /mcp servers/i });
+    assert.ok(within(button).getByText('failed'));
   });
 
   test('an OpenCode session explains why MCP servers cannot be listed, even with none reported', async () => {
     renderApp();
     hydrate(snapshot({ providerId: 'opencode' }));
 
-    await userEvent.click(screen.getByRole('button', { name: /in split/i }));
+    await userEvent.click(screen.getByRole('button', { name: /mcp servers/i }));
     assert.ok(await screen.findByText(
       "MCP servers load from your opencode.json. OpenCode doesn't report their status, so they can't be listed here.",
     ));
     assert.strictEqual(screen.queryByText(/unsupported/i), null);
   });
 
-  test('a non-OpenCode session does not show the OpenCode MCP explanation', async () => {
+  test('a non-OpenCode session with no servers shows no MCP control', async () => {
     renderApp();
     hydrate(snapshot({ providerId: 'claude' }));
 
-    await userEvent.click(screen.getByRole('button', { name: /in split/i }));
-    assert.strictEqual(screen.queryByText(/opencode\.json/i), null);
+    assert.strictEqual(screen.queryByRole('button', { name: /mcp servers/i }), null);
   });
 });

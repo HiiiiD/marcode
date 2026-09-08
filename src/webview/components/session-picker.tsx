@@ -7,6 +7,8 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem,
   DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { aggregateServers, isUnhealthy, worstState } from './mcp-status';
 import { evenlySizedPanes } from './pane-layout';
@@ -69,27 +71,33 @@ export function SessionPicker({ narrow, onReview, onFleet }: SessionPickerProps)
   }, [cwdKey, post]);
 
   return (
+    <TooltipProvider>
     <div className="flex items-center gap-2 border-b border-border px-2 py-1 text-xs">
       <DropdownMenu>
-        <DropdownMenuTrigger
-          render={<Button variant="outline" size="sm" className="min-w-0 flex-1 justify-start" />}
+        <Tooltip>
+        <TooltipTrigger
+          render={(
+            <DropdownMenuTrigger
+              render={<Button variant="outline" size="sm" className="min-w-0 flex-1 justify-start" />}
+            />
+          )}
         >
           <ColumnsIcon aria-hidden />
-          {open.size} of {state.sessions.length} in split
-          {needing > 0 ? (
+          {/*
+            Icon-only: the roster of open panes is visible in the split
+            itself, so restating it here as "X of Y in split" only repeated
+            what the panel already shows. What isn't otherwise visible is
+            whether anything here needs the user — that stays.
+          */}
+          <span className="sr-only">Manage which sessions are shown</span>
+          {needing > 0 && (
             <span className="ml-auto text-primary">
               {needing} needs you
             </span>
-          ) : serversNeedAttention && (
-            // Only when something is actually wrong. Every server is
-            // `pending` at startup and connected thereafter, so a permanent
-            // health chip would spend the narrowest row in the app on a
-            // value that is almost always "fine".
-            <span className="ml-auto text-destructive">
-              MCP: {worst === 'needs-auth' ? 'needs auth' : 'failed'}
-            </span>
           )}
-        </DropdownMenuTrigger>
+        </TooltipTrigger>
+        <TooltipContent>Manage which sessions are shown</TooltipContent>
+        </Tooltip>
         <DropdownMenuContent align="start" className="max-h-80 w-72 overflow-y-auto">
           {state.sessions.length === 0 && (
             <DropdownMenuItem disabled>No sessions yet</DropdownMenuItem>
@@ -125,71 +133,118 @@ export function SessionPicker({ narrow, onReview, onFleet }: SessionPickerProps)
               </DropdownMenuGroup>
             </>
           )}
-          {(servers.length > 0 || hasOpenCodeSession) && (
-            <>
-              <DropdownMenuSeparator />
-              <DropdownMenuGroup>
-                <DropdownMenuLabel>MCP servers (open sessions)</DropdownMenuLabel>
-                {hasOpenCodeSession && (
-                  <DropdownMenuItem disabled className="flex-col items-start gap-0.5 whitespace-normal text-muted-foreground">
-                    MCP servers load from your opencode.json. OpenCode doesn&apos;t
-                    report their status, so they can&apos;t be listed here.
-                  </DropdownMenuItem>
-                )}
-                {servers.map((server) => (
-                  <DropdownMenuItem key={server.name} disabled className="flex-col items-start gap-0.5">
-                    <span className="flex w-full items-center gap-2">
-                      <PlugZapIcon aria-hidden />
-                      <span className="truncate font-medium">{server.name}</span>
-                      <span className={cn(
-                        'ml-auto shrink-0',
-                        isUnhealthy(server.state) ? 'text-destructive' : 'text-muted-foreground',
-                      )}>
-                        {server.state === 'needs-auth' ? 'needs auth' : server.state}
-                      </span>
-                    </span>
-                    {server.toolCount !== undefined && (
-                      <span className="text-muted-foreground">
-                        {server.toolCount} {server.toolCount === 1 ? 'tool' : 'tools'}
-                      </span>
-                    )}
-                    {server.state === 'needs-auth' && (
-                      // No button: the extension host cannot run an OAuth
-                      // flow, so a control here would be a lie. The honest
-                      // action is a terminal one.
-                      <span className="text-muted-foreground">
-                        Authorize in a terminal, then reopen the session.
-                      </span>
-                    )}
-                    {server.error && (
-                      <span className="wrap-break-word text-destructive">{server.error}</span>
-                    )}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuGroup>
-            </>
-          )}
         </DropdownMenuContent>
       </DropdownMenu>
 
       {/*
-        Its own control, not an item in the menu above. That trigger says "in
-        split" and the menu already answers three other questions; filing
-        destructive filesystem management as a fourth, ungrouped entry inside
-        it hides the one action in this panel that deletes a directory behind
-        a word about layout. Mounted only when the sweep is non-empty, for the
-        same reason the pane header's bring-back door is.
+        MCP gets its own control rather than a group inside the roster menu:
+        that menu answers "which sessions", and server health is a different
+        question with its own destination (a link out to a terminal, an
+        error string) that doesn't belong nested under layout. Mounted only
+        when there is something to show, the same as working trees below —
+        a permanently-present button that opens onto nothing teaches the
+        user to stop checking it.
+      */}
+      {(servers.length > 0 || hasOpenCodeSession) && (
+        <Tooltip>
+        <Popover>
+        <TooltipTrigger
+          render={(
+            <PopoverTrigger
+              render={(
+                <Button
+                  variant="outline"
+                  size="icon-sm"
+                  className="shrink-0"
+                  aria-label="MCP servers"
+                />
+              )}
+            />
+          )}
+        >
+          <PlugZapIcon aria-hidden className={cn(serversNeedAttention && 'text-destructive')} />
+          {serversNeedAttention && (
+            // Only when something is actually wrong — every server is
+            // `pending` at startup and connects thereafter, so a permanent
+            // health chip on this button would spend it on a value that is
+            // almost always "fine". See `isUnhealthy`.
+            <span className="text-destructive">
+              {worst === 'needs-auth' ? 'needs auth' : 'failed'}
+            </span>
+          )}
+        </TooltipTrigger>
+        <TooltipContent>MCP servers</TooltipContent>
+        <PopoverContent align="start" className="w-72">
+          <div className="px-2 py-1 text-xs font-medium text-muted-foreground">
+            MCP servers (open sessions)
+          </div>
+          {hasOpenCodeSession && (
+            <div className="flex flex-col items-start gap-0.5 whitespace-normal px-2 py-1.5 text-xs text-muted-foreground">
+              MCP servers load from your opencode.json. OpenCode doesn&apos;t
+              report their status, so they can&apos;t be listed here.
+            </div>
+          )}
+          {servers.map((server) => (
+            <div key={server.name} className="flex flex-col items-start gap-0.5 px-2 py-1.5 text-xs">
+              <span className="flex w-full items-center gap-2">
+                <PlugZapIcon aria-hidden />
+                <span className="truncate font-medium">{server.name}</span>
+                <span className={cn(
+                  'ml-auto shrink-0',
+                  isUnhealthy(server.state) ? 'text-destructive' : 'text-muted-foreground',
+                )}>
+                  {server.state === 'needs-auth' ? 'needs auth' : server.state}
+                </span>
+              </span>
+              {server.toolCount !== undefined && (
+                <span className="text-muted-foreground">
+                  {server.toolCount} {server.toolCount === 1 ? 'tool' : 'tools'}
+                </span>
+              )}
+              {server.state === 'needs-auth' && (
+                // No button: the extension host cannot run an OAuth
+                // flow, so a control here would be a lie. The honest
+                // action is a terminal one.
+                <span className="text-muted-foreground">
+                  Authorize in a terminal, then reopen the session.
+                </span>
+              )}
+              {server.error && (
+                <span className="wrap-break-word text-destructive">{server.error}</span>
+              )}
+            </div>
+          ))}
+        </PopoverContent>
+        </Popover>
+        </Tooltip>
+      )}
+
+      {/*
+        Its own control, not an item in the menu above. That trigger only
+        manages which sessions are shown and the menu already answers three
+        other questions; filing destructive filesystem management as a
+        fourth, ungrouped entry inside it hides the one action in this panel
+        that deletes a directory behind a word about layout. Mounted only
+        when the sweep is non-empty, for the same reason the pane header's
+        bring-back door is.
       */}
       {state.staleTrees.length > 0 && (
-        <Button
-          variant="outline"
-          size="icon-sm"
-          className="shrink-0"
-          aria-label={`Working trees (${state.staleTrees.length}): review and remove the worktrees this panel still touches`}
-          onClick={() => { setTreesOpen(true); }}
+        <Tooltip>
+        <TooltipTrigger
+          render={(
+            <Button
+              variant="outline"
+              size="icon-sm"
+              className="shrink-0"
+              aria-label={`Working trees (${state.staleTrees.length}): review and remove the worktrees this panel still touches`}
+              onClick={() => { setTreesOpen(true); }}
+            />
+          )}
         >
           <FolderGit2Icon aria-hidden />
-        </Button>
+        </TooltipTrigger>
+        <TooltipContent>{`Working trees (${state.staleTrees.length})`}</TooltipContent>
+        </Tooltip>
       )}
 
       {/*
@@ -201,15 +256,22 @@ export function SessionPicker({ narrow, onReview, onFleet }: SessionPickerProps)
         Always enabled: the surface it opens is an editor tab, not a panel
         takeover, so there is no panel width it could fail to fit in.
       */}
-      <Button
-        variant="outline"
-        size="icon-sm"
-        className="shrink-0"
-        aria-label="Review fleet changes in an editor tab"
-        onClick={onReview}
+      <Tooltip>
+      <TooltipTrigger
+        render={(
+          <Button
+            variant="outline"
+            size="icon-sm"
+            className="shrink-0"
+            aria-label="Review fleet changes in an editor tab"
+            onClick={onReview}
+          />
+        )}
       >
         <GitCompareIcon aria-hidden />
-      </Button>
+      </TooltipTrigger>
+      <TooltipContent>Review fleet changes</TooltipContent>
+      </Tooltip>
 
       {/*
         Its own control, beside the review one, for the same reason that one
@@ -218,44 +280,58 @@ export function SessionPicker({ narrow, onReview, onFleet }: SessionPickerProps)
         review's diff, and filing it inside another control's menu would hide
         it behind a word that names neither.
       */}
-      <Button
-        variant="outline"
-        size="icon-sm"
-        className="shrink-0"
-        aria-label="Open the fleet view in an editor tab"
-        onClick={onFleet}
+      <Tooltip>
+      <TooltipTrigger
+        render={(
+          <Button
+            variant="outline"
+            size="icon-sm"
+            className="shrink-0"
+            aria-label="Open the fleet view in an editor tab"
+            onClick={onFleet}
+          />
+        )}
       >
         <LayoutGridIcon aria-hidden />
-      </Button>
+      </TooltipTrigger>
+      <TooltipContent>Fleet view</TooltipContent>
+      </Tooltip>
 
       {/* Mounted whether or not the button is: the last removal empties the
           sweep, and the dialog that is still open is where the user reads
           that it happened. Unmounting it here would close it instead. */}
       <StaleTreesDialog open={treesOpen} onOpenChange={setTreesOpen} />
 
-      <Button
-        variant="outline"
-        size="icon-sm"
-        aria-label={`Split direction: ${horizontal ? 'side by side' : 'stacked'}`}
-        aria-pressed={horizontal}
-        disabled={narrow}
-        // A `title` on a disabled button is reachable by neither keyboard
-        // focus nor most screen readers — disabled elements are pulled out
-        // of both. `aria-describedby` plus real, rendered (if visually
-        // hidden) text is the same remedy as the composer's disabled bypass
-        // option.
-        aria-describedby={narrow ? 'orientation-reason' : undefined}
-        className="shrink-0"
-        onClick={() => post({
-          t: 'set-layout',
-          layout: {
-            ...state.layout,
-            orientation: state.layout.orientation === 'vertical' ? 'horizontal' : 'vertical',
-          },
-        })}
+      <Tooltip>
+      <TooltipTrigger
+        render={(
+          <Button
+            variant="outline"
+            size="icon-sm"
+            aria-label={`Split direction: ${horizontal ? 'side by side' : 'stacked'}`}
+            aria-pressed={horizontal}
+            disabled={narrow}
+            // A `title` on a disabled button is reachable by neither keyboard
+            // focus nor most screen readers — disabled elements are pulled out
+            // of both. `aria-describedby` plus real, rendered (if visually
+            // hidden) text is the same remedy as the composer's disabled bypass
+            // option.
+            aria-describedby={narrow ? 'orientation-reason' : undefined}
+            className="shrink-0"
+            onClick={() => post({
+              t: 'set-layout',
+              layout: {
+                ...state.layout,
+                orientation: state.layout.orientation === 'vertical' ? 'horizontal' : 'vertical',
+              },
+            })}
+          />
+        )}
       >
         {horizontal ? <ColumnsIcon aria-hidden /> : <RowsIcon aria-hidden />}
-      </Button>
+      </TooltipTrigger>
+      <TooltipContent>{`Split direction: ${horizontal ? 'side by side' : 'stacked'}`}</TooltipContent>
+      </Tooltip>
       {narrow && (
         // sr-only rather than visible: at the width where this applies,
         // there is no room for a sentence in the toolbar, and the control is
@@ -267,5 +343,6 @@ export function SessionPicker({ narrow, onReview, onFleet }: SessionPickerProps)
 
       <SessionCreateMenu />
     </div>
+    </TooltipProvider>
   );
 }
