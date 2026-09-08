@@ -67,6 +67,9 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
   const plan = state.bringBackBySession[id];
   const canBringBack = plan !== undefined && (plan.ok || plan.isWorktree);
 
+  const worstMcpState = worstState(pane.mcpServers);
+  const mcpNeedsAttention = worstMcpState !== undefined && isUnhealthy(worstMcpState);
+
   return (
     <div className="flex items-center gap-2 border-b border-border px-2 py-1 text-xs">
       <StatusBadge status={s.status} />
@@ -172,76 +175,70 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
         vanishes exactly when you'd reach for it to confirm that is worse
         than one that opens onto an honest empty state.
       */}
-      {(() => {
-        const worst = worstState(pane.mcpServers);
-        const needsAttention = worst !== undefined && isUnhealthy(worst);
-        return (
-          <Tooltip>
-          <Popover>
-          <TooltipTrigger
+      <Tooltip>
+      <Popover>
+      <TooltipTrigger
+        render={(
+          <PopoverTrigger
             render={(
-              <PopoverTrigger
-                render={(
-                  <Button
-                    variant="ghost"
-                    size="icon-xs"
-                    className="shrink-0"
-                    aria-label={`MCP servers for ${accessibleTitle}`}
-                  />
-                )}
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                className="shrink-0"
+                aria-label={`MCP servers for ${accessibleTitle}`}
               />
             )}
-          >
-            <PlugZapIcon aria-hidden className={cn("size-3.5", needsAttention && "text-destructive")} />
-          </TooltipTrigger>
-          <TooltipContent>MCP servers</TooltipContent>
-          <PopoverContent align="start" side="bottom" className="w-72">
-            {s.providerId === "opencode" && (
-              <div className="flex flex-col items-start gap-0.5 whitespace-normal px-2 py-1.5 text-xs text-muted-foreground">
-                MCP servers load from your opencode.json. OpenCode doesn&apos;t
-                report their status, so they can&apos;t be listed here.
-              </div>
+          />
+        )}
+      >
+        <PlugZapIcon aria-hidden className={cn("size-3.5", mcpNeedsAttention && "text-destructive")} />
+      </TooltipTrigger>
+      <TooltipContent>MCP servers</TooltipContent>
+      <PopoverContent align="start" side="bottom" className="w-72">
+        {s.providerId === "opencode" && (
+          <div className="flex flex-col items-start gap-0.5 whitespace-normal px-2 py-1.5 text-xs text-muted-foreground">
+            MCP servers load from your opencode.json. OpenCode doesn&apos;t
+            report their status, so they can&apos;t be listed here.
+          </div>
+        )}
+        {s.providerId !== "opencode" && pane.mcpServers.length === 0 && (
+          <div className="px-2 py-1.5 text-xs text-muted-foreground">
+            No MCP servers configured for this session.
+          </div>
+        )}
+        {pane.mcpServers.map((server) => (
+          <div key={server.name} className="flex flex-col items-start gap-0.5 px-2 py-1.5 text-xs">
+            <span className="flex w-full items-center gap-2">
+              <PlugZapIcon aria-hidden />
+              <span className="truncate font-medium">{server.name}</span>
+              <span className={cn(
+                "ml-auto shrink-0",
+                isUnhealthy(server.state) ? "text-destructive" : "text-muted-foreground",
+              )}>
+                {server.state === "needs-auth" ? "needs auth" : server.state}
+              </span>
+            </span>
+            {server.toolCount !== undefined && (
+              <span className="text-muted-foreground">
+                {server.toolCount} {server.toolCount === 1 ? "tool" : "tools"}
+              </span>
             )}
-            {s.providerId !== "opencode" && pane.mcpServers.length === 0 && (
-              <div className="px-2 py-1.5 text-xs text-muted-foreground">
-                No MCP servers configured for this session.
-              </div>
+            {server.state === "needs-auth" && (
+              // No button: the extension host cannot run an OAuth
+              // flow, so a control here would be a lie. The honest
+              // action is a terminal one.
+              <span className="text-muted-foreground">
+                Authorize in a terminal, then reopen the session.
+              </span>
             )}
-            {pane.mcpServers.map((server) => (
-              <div key={server.name} className="flex flex-col items-start gap-0.5 px-2 py-1.5 text-xs">
-                <span className="flex w-full items-center gap-2">
-                  <PlugZapIcon aria-hidden />
-                  <span className="truncate font-medium">{server.name}</span>
-                  <span className={cn(
-                    "ml-auto shrink-0",
-                    isUnhealthy(server.state) ? "text-destructive" : "text-muted-foreground",
-                  )}>
-                    {server.state === "needs-auth" ? "needs auth" : server.state}
-                  </span>
-                </span>
-                {server.toolCount !== undefined && (
-                  <span className="text-muted-foreground">
-                    {server.toolCount} {server.toolCount === 1 ? "tool" : "tools"}
-                  </span>
-                )}
-                {server.state === "needs-auth" && (
-                  // No button: the extension host cannot run an OAuth
-                  // flow, so a control here would be a lie. The honest
-                  // action is a terminal one.
-                  <span className="text-muted-foreground">
-                    Authorize in a terminal, then reopen the session.
-                  </span>
-                )}
-                {server.error && (
-                  <span className="wrap-break-word text-destructive">{server.error}</span>
-                )}
-              </div>
-            ))}
-          </PopoverContent>
-          </Popover>
-          </Tooltip>
-        );
-      })()}
+            {server.error && (
+              <span className="wrap-break-word text-destructive">{server.error}</span>
+            )}
+          </div>
+        ))}
+      </PopoverContent>
+      </Popover>
+      </Tooltip>
       {/*
         Mounted only when there is something in it: with Archive now living
         solely in the roster row's own menu (one entry point, not two), the

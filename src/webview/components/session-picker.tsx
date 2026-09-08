@@ -42,6 +42,13 @@ export function SessionPicker({ narrow, onReview, onFleet }: SessionPickerProps)
   const live = state.sessions.filter((s) => !s.archived);
   const archived = state.sessions.filter((s) => s.archived);
 
+  // One string for both `aria-label` and the tooltip below — a sighted
+  // hover and a screen reader hear the same thing, rather than the tooltip
+  // trimming the destination a keyboard/screen-reader user still gets in
+  // full.
+  const workingTreesLabel =
+    `Working trees (${state.staleTrees.length}): review and remove the worktrees this panel still touches`;
+
   const [treesOpen, setTreesOpen] = useState(false);
   // Asked once per set of directories the roster occupies, and never for an
   // empty roster: with no session there is nothing that could have left a
@@ -153,31 +160,24 @@ export function SessionPicker({ narrow, onReview, onFleet }: SessionPickerProps)
         when the sweep is non-empty, for the same reason the pane header's
         bring-back door is.
       */}
-      {state.staleTrees.length > 0 && (() => {
-        // One string for both `aria-label` and the tooltip — a sighted
-        // hover and a screen reader hear the same thing, rather than the
-        // tooltip trimming the destination a keyboard/screen-reader user
-        // still gets in full.
-        const label = `Working trees (${state.staleTrees.length}): review and remove the worktrees this panel still touches`;
-        return (
-          <Tooltip>
-          <TooltipTrigger
-            render={(
-              <Button
-                variant="outline"
-                size="icon-sm"
-                className="shrink-0"
-                aria-label={label}
-                onClick={() => { setTreesOpen(true); }}
-              />
-            )}
-          >
-            <FolderGit2Icon aria-hidden />
-          </TooltipTrigger>
-          <TooltipContent>{label}</TooltipContent>
-          </Tooltip>
-        );
-      })()}
+      {state.staleTrees.length > 0 && (
+        <Tooltip>
+        <TooltipTrigger
+          render={(
+            <Button
+              variant="outline"
+              size="icon-sm"
+              className="shrink-0"
+              aria-label={workingTreesLabel}
+              onClick={() => { setTreesOpen(true); }}
+            />
+          )}
+        >
+          <FolderGit2Icon aria-hidden />
+        </TooltipTrigger>
+        <TooltipContent>{workingTreesLabel}</TooltipContent>
+        </Tooltip>
+      )}
 
       {/*
         Its own control, beside the working-trees one, for the same reason
