@@ -1,5 +1,5 @@
 import {
-  ColumnsIcon, FolderGit2Icon, GitCompareIcon, LayersIcon, LayoutGridIcon, PlugZapIcon, RowsIcon,
+  ColumnsIcon, FolderGit2Icon, GitCompareIcon, LayersIcon, LayoutGridIcon, RowsIcon,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -7,10 +7,7 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem,
   DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { cn } from '@/lib/utils';
-import { aggregateServers, isUnhealthy, worstState } from './mcp-status';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { evenlySizedPanes } from './pane-layout';
 import { SessionCreateMenu } from './session-create-menu';
 import { SessionRow } from './session-row';
@@ -32,19 +29,6 @@ export function SessionPicker({ narrow, onReview, onFleet }: SessionPickerProps)
   const open = new Set(state.layout.panes.map((p) => p.sessionId));
   const horizontal = state.layout.orientation === 'horizontal';
   const needing = state.sessions.filter((s) => statusView(s.status).needsUser).length;
-  const servers = aggregateServers(state.byId);
-  const worst = worstState(servers);
-  const serversNeedAttention = worst !== undefined && isUnhealthy(worst);
-  // ACP carries no MCP status notification, so an OpenCode session's servers
-  // never populate `mcpServers` even though they load and work normally from
-  // the user's opencode.json. The group renders anyway for that provider —
-  // with an explanatory line in place of rows we simply never receive —
-  // rather than silently dropping the whole section, which would read as
-  // "no servers configured" and send the user chasing a problem that isn't
-  // theirs to fix.
-  const hasOpenCodeSession = state.sessions.some(
-    (s) => open.has(s.id) && s.providerId === 'opencode',
-  );
 
   const setPanes = (ids: SessionId[]) => {
     post({ t: 'set-layout', layout: evenlySizedPanes(ids, state.layout.orientation) });
@@ -71,7 +55,6 @@ export function SessionPicker({ narrow, onReview, onFleet }: SessionPickerProps)
   }, [cwdKey, post]);
 
   return (
-    <TooltipProvider>
     <div className="flex items-center justify-between gap-2 border-b border-border px-2 py-1 text-xs">
       <DropdownMenu>
         <Tooltip>
@@ -160,93 +143,6 @@ export function SessionPicker({ narrow, onReview, onFleet }: SessionPickerProps)
         happens to end.
       */}
       <div className="flex items-center gap-2">
-
-      {/*
-        MCP gets its own control rather than a group inside the roster menu:
-        that menu answers "which sessions", and server health is a different
-        question with its own destination (a link out to a terminal, an
-        error string) that doesn't belong nested under layout. Mounted only
-        when there is something to show, the same as working trees below —
-        a permanently-present button that opens onto nothing teaches the
-        user to stop checking it.
-      */}
-      {(servers.length > 0 || hasOpenCodeSession) && (
-        <Tooltip>
-        <Popover>
-        <TooltipTrigger
-          render={(
-            <PopoverTrigger
-              // `size="sm"`, not `icon-sm`: `icon-sm` is a fixed square and
-              // the destructive badge below is text, not an icon — a fixed
-              // box clips it instead of growing to fit. `sm`'s auto width
-              // keeps this icon-only in the common (healthy) case and only
-              // widens when there is something to warn about.
-              render={<Button variant="outline" size="sm" className="shrink-0" aria-label="MCP servers" />}
-            />
-          )}
-        >
-          <PlugZapIcon aria-hidden className={cn(serversNeedAttention && 'text-destructive')} />
-          {serversNeedAttention && (
-            // Only when something is actually wrong — every server is
-            // `pending` at startup and connects thereafter, so a permanent
-            // health chip on this button would spend it on a value that is
-            // almost always "fine". See `isUnhealthy`.
-            <span className="text-destructive">
-              {worst === 'needs-auth' ? 'needs auth' : 'failed'}
-            </span>
-          )}
-        </TooltipTrigger>
-        <TooltipContent>MCP servers</TooltipContent>
-        {/* `side="bottom"` explicit: this popover is the first control in
-            the panel's root flex column, with nothing above it, so `Popover`'s
-            own default of `side="top"` would have nowhere to open — it only
-            renders correctly today because Base UI's collision detection
-            flips it. The sibling `DropdownMenu` right next to it already
-            states its side explicitly for the same reason. */}
-        <PopoverContent align="start" side="bottom" className="w-72">
-          <div className="px-2 py-1 text-xs font-medium text-muted-foreground">
-            MCP servers (open sessions)
-          </div>
-          {hasOpenCodeSession && (
-            <div className="flex flex-col items-start gap-0.5 whitespace-normal px-2 py-1.5 text-xs text-muted-foreground">
-              MCP servers load from your opencode.json. OpenCode doesn&apos;t
-              report their status, so they can&apos;t be listed here.
-            </div>
-          )}
-          {servers.map((server) => (
-            <div key={server.name} className="flex flex-col items-start gap-0.5 px-2 py-1.5 text-xs">
-              <span className="flex w-full items-center gap-2">
-                <PlugZapIcon aria-hidden />
-                <span className="truncate font-medium">{server.name}</span>
-                <span className={cn(
-                  'ml-auto shrink-0',
-                  isUnhealthy(server.state) ? 'text-destructive' : 'text-muted-foreground',
-                )}>
-                  {server.state === 'needs-auth' ? 'needs auth' : server.state}
-                </span>
-              </span>
-              {server.toolCount !== undefined && (
-                <span className="text-muted-foreground">
-                  {server.toolCount} {server.toolCount === 1 ? 'tool' : 'tools'}
-                </span>
-              )}
-              {server.state === 'needs-auth' && (
-                // No button: the extension host cannot run an OAuth
-                // flow, so a control here would be a lie. The honest
-                // action is a terminal one.
-                <span className="text-muted-foreground">
-                  Authorize in a terminal, then reopen the session.
-                </span>
-              )}
-              {server.error && (
-                <span className="wrap-break-word text-destructive">{server.error}</span>
-              )}
-            </div>
-          ))}
-        </PopoverContent>
-        </Popover>
-        </Tooltip>
-      )}
 
       {/*
         Its own control, not an item in the menu above. That trigger only
@@ -380,6 +276,5 @@ export function SessionPicker({ narrow, onReview, onFleet }: SessionPickerProps)
       <SessionCreateMenu />
       </div>
     </div>
-    </TooltipProvider>
   );
 }

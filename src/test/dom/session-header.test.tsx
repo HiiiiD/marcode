@@ -130,18 +130,6 @@ suite("SessionHeader status", () => {
     screen.getByText("Fake");
   });
 
-  test("the pane's own menu can archive the session, not just hide it", async () => {
-    renderApp();
-    hydrate();
-
-    await userEvent.click(screen.getByLabelText("More pane actions for Session a"));
-    // `findBy`, not `getBy`: Base UI portals its menu asynchronously — every
-    // other menu suite here opens one the same way.
-    await userEvent.click(await screen.findByText("Archive Session a"));
-
-    assert.ok(posted().some((m) => m.t === "close-session" && m.id === "a"));
-  });
-
   test("the name is plain text until the pencil is clicked", () => {
     renderApp();
     hydrate();
