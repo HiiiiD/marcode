@@ -140,12 +140,25 @@ function ImageBlock({ dataUri }: { dataUri: string }) {
 
 /**
  * `navigator.clipboard.write` wants a live `ClipboardItem`, not a
- * `data:` string — a self-fetch of the same-document URI is the standard
- * way to get the `Blob` back out, no network round-trip involved.
+ * `data:` string. A self-`fetch` of the URI would be the usual way to get a
+ * `Blob` back out, but the panel's CSP is `default-src 'none'` with no
+ * `connect-src` — even a same-document `data:` fetch is a network request as
+ * far as CSP is concerned, so it's refused. Decode the base64 payload by
+ * hand instead; no network involved either way.
  */
 async function copyImage(dataUri: string): Promise<void> {
   try {
-    const blob = await (await fetch(dataUri)).blob();
+    const match = /^data:([^;,]+)?(;base64)?,(.*)$/s.exec(dataUri);
+    if (!match) {
+      throw new Error('not a data: URI');
+    }
+    const [, mime = 'application/octet-stream', isBase64, payload] = match;
+    const binary = isBase64 ? atob(payload) : decodeURIComponent(payload);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    const blob = new Blob([bytes], { type: mime });
     await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
     toast('Image copied');
   } catch (err) {
