@@ -19,18 +19,18 @@ function hydrateAOpen() {
 }
 
 suite('SessionPicker', () => {
-  test('the roster trigger says what checking a row does', () => {
+  test('the roster trigger says what it does', () => {
     renderApp();
     hydrateAOpen();
 
-    screen.getByRole('button', { name: /1 of 2 in split/i });
+    screen.getByRole('button', { name: /manage which sessions are shown/i });
   });
 
   test('checking a closed session posts set-layout and set-visible for both', async () => {
     renderApp();
     hydrateAOpen();
 
-    await userEvent.click(screen.getByText(/1 of 2 in split/i));
+    await userEvent.click(screen.getByRole('button', { name: /manage which sessions are shown/i }));
     await userEvent.click(await screen.findByText('Session b'));
 
     const layouts = posted().filter((m) => m.t === 'set-layout');
@@ -47,7 +47,7 @@ suite('SessionPicker', () => {
     renderApp();
     hydrateAOpen();
 
-    await userEvent.click(screen.getByText(/1 of 2 in split/i));
+    await userEvent.click(screen.getByRole('button', { name: /manage which sessions are shown/i }));
     assert.strictEqual(
       (await screen.findAllByText('Session b')).length, 1,
       'the roster listed every session twice: once to toggle, once to delete',
@@ -58,7 +58,7 @@ suite('SessionPicker', () => {
     renderApp();
     hydrateAOpen();
 
-    await userEvent.click(screen.getByText(/1 of 2 in split/i));
+    await userEvent.click(screen.getByRole('button', { name: /manage which sessions are shown/i }));
     await userEvent.click(await screen.findByLabelText('More actions for Session b'));
     await userEvent.click(await screen.findByRole('menuitem', { name: 'Archive Session b' }));
 
@@ -69,7 +69,7 @@ suite('SessionPicker', () => {
     renderApp();
     hydrateAOpen();
 
-    await userEvent.click(screen.getByText(/1 of 2 in split/i));
+    await userEvent.click(screen.getByRole('button', { name: /manage which sessions are shown/i }));
     await userEvent.click(await screen.findByLabelText('More actions for Session b'));
     await userEvent.click(await screen.findByLabelText('Delete session Session b'));
 
@@ -86,7 +86,7 @@ suite('SessionPicker', () => {
     renderApp();
     hydrateAOpen();
 
-    await userEvent.click(screen.getByText(/1 of 2 in split/i));
+    await userEvent.click(screen.getByRole('button', { name: /manage which sessions are shown/i }));
     await userEvent.click(await screen.findByLabelText('More actions for Session b'));
     await userEvent.click(await screen.findByLabelText('Delete session Session b'));
     await userEvent.click(await screen.findByRole('menuitem', { name: 'Keep it' }));
@@ -109,7 +109,7 @@ suite('SessionPicker', () => {
     renderApp();
     hydrateAOpen();
 
-    await userEvent.click(screen.getByText(/1 of 2 in split/i));
+    await userEvent.click(screen.getByRole('button', { name: /manage which sessions are shown/i }));
     // Same async `Menu.Positioner` commit as the menu-open races fixed
     // elsewhere in this file (see the "the confirm offers a way out" test):
     // the roving-focus items this keyboard sequence walks aren't in the DOM
@@ -162,7 +162,7 @@ suite('SessionPicker', () => {
     renderApp();
     hydrateAOpen();
 
-    await userEvent.click(screen.getByText(/1 of 2 in split/i));
+    await userEvent.click(screen.getByRole('button', { name: /manage which sessions are shown/i }));
     // Same async `Menu.Positioner` commit race as above — the roving-focus
     // targets below aren't mounted until this pass resolves.
     await screen.findByRole('menu');
@@ -193,7 +193,7 @@ suite('SessionPicker', () => {
       usage: {},
     });
 
-    await userEvent.click(screen.getByText(/1 of 2 in split/i));
+    await userEvent.click(screen.getByRole('button', { name: /manage which sessions are shown/i }));
     // Every other assertion in this file that follows a menu-opening click
     // uses `findBy*` (see `checking a closed session...`, `archive is an
     // explicit...`, etc.), not `getBy*`: Base UI's `Menu.Positioner` commits
@@ -209,7 +209,7 @@ suite('SessionPicker', () => {
     renderApp();
     hydrateAOpen();
 
-    await userEvent.click(screen.getByText(/1 of 2 in split/i));
+    await userEvent.click(screen.getByRole('button', { name: /manage which sessions are shown/i }));
     await userEvent.click(await screen.findByRole('menuitemcheckbox', { name: /Session b/ }));
 
     assert.deepStrictEqual(posted().filter((m) => m.t === 'set-visible').at(-1), {
@@ -297,7 +297,7 @@ suite('SessionPicker', () => {
     });
 
     screen.getByRole('button', { name: /^Working trees \(1\)/ });
-    await userEvent.click(screen.getByText(/1 of 2 in split/i));
+    await userEvent.click(screen.getByRole('button', { name: /manage which sessions are shown/i }));
     await screen.findByRole('menu');
     assert.strictEqual(screen.queryByRole('menuitem', { name: /Working trees/ }) === null, true);
   });

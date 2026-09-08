@@ -4,12 +4,15 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { InputGroup, InputGroupInput } from "@/components/ui/input-group";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { MoreHorizontalIcon, PencilIcon, XIcon } from "lucide-react";
+import { MoreHorizontalIcon, PencilIcon, PlugZapIcon, XIcon } from "lucide-react";
 import { folderName } from "../format";
 import type { PaneState } from "../reducer";
 import { useStore } from "../store";
 import { BringBackDialog } from "./bring-back-dialog";
+import { isUnhealthy, worstState } from "./mcp-status";
 import { evenlySizedPanes } from "./pane-layout";
 import { StatusBadge } from "./status-badge";
 
@@ -63,6 +66,9 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
   // "not now", and the dialog is where the user reads why.
   const plan = state.bringBackBySession[id];
   const canBringBack = plan !== undefined && (plan.ok || plan.isWorktree);
+
+  const worstMcpState = worstState(pane.mcpServers);
+  const mcpNeedsAttention = worstMcpState !== undefined && isUnhealthy(worstMcpState);
 
   return (
     <div className="flex items-center gap-2 border-b border-border px-2 py-1 text-xs">
@@ -158,48 +164,110 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
         )}
       </span>
       {/*
-        Mounted only when there is something in it. An overflow menu on every
-        pane whose single item is absent nine times out of ten is a control
-        that teaches the user it is empty; this one appears exactly when the
-        session is in a worktree, which is also when it means something.
+        MCP status, per pane: this pane's own `mcpServers`, not the roster
+        aggregate — a control that summed across every open pane could not
+        say which session a failure belonged to, and went silent the moment
+        this pane's own report was still empty. Always mounted, unlike the
+        working-trees/bring-back doors: those open onto a destructive or
+        one-shot action that is genuinely absent nine times out of ten, but
+        MCP is a standing fact about this session worth being able to check
+        even when the answer is "nothing configured" — an entry point that
+        vanishes exactly when you'd reach for it to confirm that is worse
+        than one that opens onto an honest empty state.
       */}
+      <Tooltip>
+      <Popover>
+      <TooltipTrigger
+        render={(
+          <PopoverTrigger
+            render={(
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                className="shrink-0"
+                aria-label={`MCP servers for ${accessibleTitle}`}
+              />
+            )}
+          />
+        )}
+      >
+        <PlugZapIcon aria-hidden className={cn("size-3.5", mcpNeedsAttention && "text-destructive")} />
+      </TooltipTrigger>
+      <TooltipContent>MCP servers</TooltipContent>
+      <PopoverContent align="start" side="bottom" className="w-72">
+        {s.providerId === "opencode" && (
+          <div className="flex flex-col items-start gap-0.5 whitespace-normal px-2 py-1.5 text-xs text-muted-foreground">
+            MCP servers load from your opencode.json. OpenCode doesn&apos;t
+            report their status, so they can&apos;t be listed here.
+          </div>
+        )}
+        {s.providerId !== "opencode" && pane.mcpServers.length === 0 && (
+          <div className="px-2 py-1.5 text-xs text-muted-foreground">
+            No MCP servers configured for this session.
+          </div>
+        )}
+        {pane.mcpServers.map((server) => (
+          <div key={server.name} className="flex flex-col items-start gap-0.5 px-2 py-1.5 text-xs">
+            <span className="flex w-full items-center gap-2">
+              <PlugZapIcon aria-hidden />
+              <span className="truncate font-medium">{server.name}</span>
+              <span className={cn(
+                "ml-auto shrink-0",
+                isUnhealthy(server.state) ? "text-destructive" : "text-muted-foreground",
+              )}>
+                {server.state === "needs-auth" ? "needs auth" : server.state}
+              </span>
+            </span>
+            {server.toolCount !== undefined && (
+              <span className="text-muted-foreground">
+                {server.toolCount} {server.toolCount === 1 ? "tool" : "tools"}
+              </span>
+            )}
+            {server.state === "needs-auth" && (
+              // No button: the extension host cannot run an OAuth
+              // flow, so a control here would be a lie. The honest
+              // action is a terminal one.
+              <span className="text-muted-foreground">
+                Authorize in a terminal, then reopen the session.
+              </span>
+            )}
+            {server.error && (
+              <span className="wrap-break-word text-destructive">{server.error}</span>
+            )}
+          </div>
+        ))}
+      </PopoverContent>
+      </Popover>
+      </Tooltip>
       {/*
-        Mounted unconditionally, unlike the `canBringBack`-gated content
-        inside it: Archive belongs here too, not only in the roster row's own
-        menu, because a user acting from the pane has no reason to go find
-        that session in the roster first. It posts the same `close-session`
-        message that row does — same operation, second entry point, exactly
-        how the pane's own Hide button already mirrors the roster's checkbox.
+        Mounted only when there is something in it: with Archive now living
+        solely in the roster row's own menu (one entry point, not two), the
+        only thing this can ever hold is the bring-back door, so it is gated
+        the same way that door already was — an overflow menu whose single
+        item is absent nine times out of ten teaches the user it is empty.
       */}
-      <DropdownMenu>
-        <DropdownMenuTrigger
-          render={<Button variant="ghost" size="icon-xs" className="shrink-0" />}
-          // "Pane actions", not the roster row's own "More actions for
-          // {title}": both mount at once when a session is both open in a
-          // pane and visible in the roster picker, and identical labels
-          // would leave `getByLabelText` unable to tell them apart.
-          aria-label={`More pane actions for ${accessibleTitle}`}
-        >
-          <MoreHorizontalIcon aria-hidden />
-        </DropdownMenuTrigger>
-        {/* `w-auto`, overriding the menu's default `w-(--anchor-width)`:
-            anchored to a 24px icon button, `min-w-32` is all that stops
-            the item from being narrower than the phrase it has to be read
-            by, and 128px still wraps it. Same fix as StaleTrees' row menu. */}
-        <DropdownMenuContent className="w-auto">
-          {canBringBack && (
-            // The ellipsis is the promise that this opens a confirmation
-            // rather than deleting a directory on the way up from the
-            // click — the same contract the roster's `Delete…` keeps.
+      {canBringBack && (
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={<Button variant="ghost" size="icon-xs" className="shrink-0" />}
+            aria-label={`More pane actions for ${accessibleTitle}`}
+          >
+            <MoreHorizontalIcon aria-hidden />
+          </DropdownMenuTrigger>
+          {/* `w-auto`, overriding the menu's default `w-(--anchor-width)`:
+              anchored to a 24px icon button, `min-w-32` is all that stops
+              the item from being narrower than the phrase it has to be read
+              by, and 128px still wraps it. Same fix as StaleTrees' row menu. */}
+          <DropdownMenuContent className="w-auto">
+            {/* The ellipsis is the promise that this opens a confirmation
+                rather than deleting a directory on the way up from the
+                click — the same contract the roster's `Delete…` keeps. */}
             <DropdownMenuItem onClick={() => setBringBackOpen(true)}>
               Bring branch back…
             </DropdownMenuItem>
-          )}
-          <DropdownMenuItem onClick={() => post({ t: "close-session", id: s.id })}>
-            Archive {accessibleTitle}
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
       {canBringBack && (
         <BringBackDialog pane={pane} open={bringBackOpen} onOpenChange={setBringBackOpen} />
       )}

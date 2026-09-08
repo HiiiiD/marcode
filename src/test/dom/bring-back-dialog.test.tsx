@@ -43,16 +43,16 @@ suite('BringBackDialog', () => {
     assert.strictEqual(asked[0].t === 'request-bring-back' && asked[0].id, 'a');
   });
 
-  test('no door until the host has answered', async () => {
+  test('no door until the host has answered', () => {
     renderApp();
     hydrateInWorktree();
-    // The pane menu itself is always there now (Archive lives in it too) —
-    // only the "Bring branch back…" item inside it is gated on the plan.
-    await userEvent.click(screen.getByLabelText('More pane actions for Session a'));
-    assert.strictEqual(screen.queryByText(/Bring branch back/) === null, true);
+    // The pane menu's only item is the bring-back door, so with no plan yet
+    // (canBringBack false) the menu itself doesn't mount — an overflow menu
+    // that opens onto nothing teaches the user it is empty.
+    assert.strictEqual(screen.queryByLabelText('More pane actions for Session a') === null, true);
   });
 
-  test('no door for a session that is not in a worktree', async () => {
+  test('no door for a session that is not in a worktree', () => {
     renderApp();
     hydrateInWorktree();
     sendFromHost({
@@ -60,8 +60,7 @@ suite('BringBackDialog', () => {
       id: 'a',
       plan: { ok: false, isWorktree: false, reason: 'This directory is the main working tree.' },
     });
-    await userEvent.click(screen.getByLabelText('More pane actions for Session a'));
-    assert.strictEqual(screen.queryByText(/Bring branch back/) === null, true);
+    assert.strictEqual(screen.queryByLabelText('More pane actions for Session a') === null, true);
   });
 
   test('the dialog names both steps and the branch they act on', async () => {
