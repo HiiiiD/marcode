@@ -72,7 +72,7 @@ export function SessionPicker({ narrow, onReview, onFleet }: SessionPickerProps)
 
   return (
     <TooltipProvider>
-    <div className="flex items-center gap-2 border-b border-border px-2 py-1 text-xs">
+    <div className="flex items-center justify-end gap-2 border-b border-border px-2 py-1 text-xs">
       <DropdownMenu>
         <Tooltip>
         <TooltipTrigger
