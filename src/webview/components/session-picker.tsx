@@ -1,5 +1,5 @@
 import {
-  ColumnsIcon, FolderGit2Icon, GitCompareIcon, LayoutGridIcon, PlugZapIcon, RowsIcon,
+  ColumnsIcon, FolderGit2Icon, GitCompareIcon, LayersIcon, LayoutGridIcon, PlugZapIcon, RowsIcon,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -78,20 +78,36 @@ export function SessionPicker({ narrow, onReview, onFleet }: SessionPickerProps)
         <TooltipTrigger
           render={(
             <DropdownMenuTrigger
-              render={<Button variant="outline" size="sm" className="min-w-0 flex-1 justify-start" />}
+              // `size="sm"` rather than a fixed `icon-sm`: this trigger is
+              // icon-only most of the time but still has to make room for
+              // the "N needs you" badge, and `icon-sm` is a fixed square
+              // that clips overflow text (see the same choice on the MCP
+              // trigger below). `sm`'s auto width keeps the icon-only state
+              // close to the row's other icon buttons and only widens when
+              // it actually has something to say.
+              render={<Button variant="outline" size="sm" className="min-w-0 shrink-0" />}
             />
           )}
         >
-          <ColumnsIcon aria-hidden />
           {/*
-            Icon-only: the roster of open panes is visible in the split
-            itself, so restating it here as "X of Y in split" only repeated
-            what the panel already shows. What isn't otherwise visible is
-            whether anything here needs the user — that stays.
+            A distinct glyph, not `ColumnsIcon` — that icon is reserved for
+            the orientation toggle a few controls to the right (`Columns`
+            for side-by-side, `Rows` for stacked). Reusing it here for an
+            unrelated concept let two controls in the same row share one
+            icon.
+          */}
+          <LayersIcon aria-hidden />
+          {/*
+            No visible label beyond the icon in the common case: the roster
+            of open panes is visible in the split itself, so restating it
+            here as "X of Y in split" only repeated what the panel already
+            shows. What isn't otherwise visible is whether anything here
+            needs the user — that stays, and is the only thing that widens
+            this control.
           */}
           <span className="sr-only">Manage which sessions are shown</span>
           {needing > 0 && (
-            <span className="ml-auto text-primary">
+            <span className="text-primary">
               {needing} needs you
             </span>
           )}
@@ -151,14 +167,12 @@ export function SessionPicker({ narrow, onReview, onFleet }: SessionPickerProps)
         <TooltipTrigger
           render={(
             <PopoverTrigger
-              render={(
-                <Button
-                  variant="outline"
-                  size="icon-sm"
-                  className="shrink-0"
-                  aria-label="MCP servers"
-                />
-              )}
+              // `size="sm"`, not `icon-sm`: `icon-sm` is a fixed square and
+              // the destructive badge below is text, not an icon — a fixed
+              // box clips it instead of growing to fit. `sm`'s auto width
+              // keeps this icon-only in the common (healthy) case and only
+              // widens when there is something to warn about.
+              render={<Button variant="outline" size="sm" className="shrink-0" aria-label="MCP servers" />}
             />
           )}
         >
@@ -174,7 +188,13 @@ export function SessionPicker({ narrow, onReview, onFleet }: SessionPickerProps)
           )}
         </TooltipTrigger>
         <TooltipContent>MCP servers</TooltipContent>
-        <PopoverContent align="start" className="w-72">
+        {/* `side="bottom"` explicit: this popover is the first control in
+            the panel's root flex column, with nothing above it, so `Popover`'s
+            own default of `side="top"` would have nowhere to open — it only
+            renders correctly today because Base UI's collision detection
+            flips it. The sibling `DropdownMenu` right next to it already
+            states its side explicitly for the same reason. */}
+        <PopoverContent align="start" side="bottom" className="w-72">
           <div className="px-2 py-1 text-xs font-medium text-muted-foreground">
             MCP servers (open sessions)
           </div>
@@ -228,24 +248,31 @@ export function SessionPicker({ narrow, onReview, onFleet }: SessionPickerProps)
         when the sweep is non-empty, for the same reason the pane header's
         bring-back door is.
       */}
-      {state.staleTrees.length > 0 && (
-        <Tooltip>
-        <TooltipTrigger
-          render={(
-            <Button
-              variant="outline"
-              size="icon-sm"
-              className="shrink-0"
-              aria-label={`Working trees (${state.staleTrees.length}): review and remove the worktrees this panel still touches`}
-              onClick={() => { setTreesOpen(true); }}
-            />
-          )}
-        >
-          <FolderGit2Icon aria-hidden />
-        </TooltipTrigger>
-        <TooltipContent>{`Working trees (${state.staleTrees.length})`}</TooltipContent>
-        </Tooltip>
-      )}
+      {state.staleTrees.length > 0 && (() => {
+        // One string for both `aria-label` and the tooltip — a sighted
+        // hover and a screen reader hear the same thing, rather than the
+        // tooltip trimming the destination a keyboard/screen-reader user
+        // still gets in full.
+        const label = `Working trees (${state.staleTrees.length}): review and remove the worktrees this panel still touches`;
+        return (
+          <Tooltip>
+          <TooltipTrigger
+            render={(
+              <Button
+                variant="outline"
+                size="icon-sm"
+                className="shrink-0"
+                aria-label={label}
+                onClick={() => { setTreesOpen(true); }}
+              />
+            )}
+          >
+            <FolderGit2Icon aria-hidden />
+          </TooltipTrigger>
+          <TooltipContent>{label}</TooltipContent>
+          </Tooltip>
+        );
+      })()}
 
       {/*
         Its own control, beside the working-trees one, for the same reason
@@ -270,7 +297,7 @@ export function SessionPicker({ narrow, onReview, onFleet }: SessionPickerProps)
       >
         <GitCompareIcon aria-hidden />
       </TooltipTrigger>
-      <TooltipContent>Review fleet changes</TooltipContent>
+      <TooltipContent>Review fleet changes in an editor tab</TooltipContent>
       </Tooltip>
 
       {/*
@@ -294,7 +321,7 @@ export function SessionPicker({ narrow, onReview, onFleet }: SessionPickerProps)
       >
         <LayoutGridIcon aria-hidden />
       </TooltipTrigger>
-      <TooltipContent>Fleet view</TooltipContent>
+      <TooltipContent>Open the fleet view in an editor tab</TooltipContent>
       </Tooltip>
 
       {/* Mounted whether or not the button is: the last removal empties the
