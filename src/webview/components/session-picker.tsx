@@ -72,7 +72,7 @@ export function SessionPicker({ narrow, onReview, onFleet }: SessionPickerProps)
 
   return (
     <TooltipProvider>
-    <div className="flex items-center justify-end gap-2 border-b border-border px-2 py-1 text-xs">
+    <div className="flex items-center justify-between gap-2 border-b border-border px-2 py-1 text-xs">
       <DropdownMenu>
         <Tooltip>
         <TooltipTrigger
@@ -151,6 +151,15 @@ export function SessionPicker({ narrow, onReview, onFleet }: SessionPickerProps)
           )}
         </DropdownMenuContent>
       </DropdownMenu>
+
+      {/*
+        Everything past the roster trigger groups on the row's other edge:
+        `justify-between` on the row now that neither side fills the middle
+        with a stretched control, so the two ends anchor to the panel's
+        corners instead of leaving one dead gap wherever the shorter side
+        happens to end.
+      */}
+      <div className="flex items-center gap-2">
 
       {/*
         MCP gets its own control rather than a group inside the roster menu:
@@ -369,6 +378,7 @@ export function SessionPicker({ narrow, onReview, onFleet }: SessionPickerProps)
       )}
 
       <SessionCreateMenu />
+      </div>
     </div>
     </TooltipProvider>
   );
