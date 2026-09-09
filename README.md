@@ -150,9 +150,15 @@ appears in the panel. Changing the setting requires a window reload.
 
 ### Provider instances: setting secrets
 
-`marcode.providerInstances` holds no secrets itself — each entry's `envMap` maps a
-subprocess env var name to the name of an **OS environment variable** to read the real
-value from at launch. The value never sits in `settings.json`.
+`marcode.providerInstances` holds no secrets itself. Each entry's `envMap` maps a
+subprocess env var name to one of two shapes:
+
+- `{ "type": "env", "value": "<OS var name>" }` — read the real value from that **OS
+  environment variable** at launch. The value never sits in `settings.json`. Required for
+  any credential (`ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `OPENAI_API_KEY`,
+  `OPENCODE_CONFIG_CONTENT` — the setting's schema restricts these keys to `"env"` only).
+- `{ "type": "plain", "value": "<literal value>" }` — written into `settings.json` as-is.
+  Only for non-secret keys — a plain directory path or base URL, for example.
 
 1. Set the OS env var first, then start (or restart) VS Code from that same environment —
    a shell already open before you set it won't see the change:
@@ -174,7 +180,7 @@ value from at launch. The value never sits in `settings.json`.
        "kind": "claude",
        "displayName": "Claude (work)",
        "envMap": {
-         "ANTHROPIC_API_KEY": "ANTHROPIC_API_KEY_WORK"
+         "ANTHROPIC_API_KEY": { "type": "env", "value": "ANTHROPIC_API_KEY_WORK" }
        }
      }
    ]
@@ -191,7 +197,8 @@ the full per-backend list (e.g. `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`,
 
 `envMap` values don't have to be secrets — `CLAUDE_CONFIG_DIR` just points at a directory,
 useful for keeping a second account's `claude login` state (credentials, settings) fully
-separate from your default one:
+separate from your default one. Being non-secret, it can use `plain` directly — no OS var,
+no `setx`, no restart:
 
 ```jsonc
 "marcode.providerInstances": [
@@ -200,16 +207,15 @@ separate from your default one:
     "kind": "claude",
     "displayName": "Claude (personal)",
     "envMap": {
-      "CLAUDE_CONFIG_DIR": "CLAUDE_CONFIG_DIR_PERSONAL"
+      "CLAUDE_CONFIG_DIR": { "type": "plain", "value": "C:\\Users\\you\\.claude-personal" }
     }
   }
 ]
 ```
 
-with `CLAUDE_CONFIG_DIR_PERSONAL` set (e.g. `setx CLAUDE_CONFIG_DIR_PERSONAL
-"C:\Users\you\.claude-personal"`) to an empty folder — run `claude login` once with that
-same env var set in the shell to populate it, before starting a session on that instance
-from Marcode.
+with `C:\Users\you\.claude-personal` an empty folder — run `claude login` once with
+`CLAUDE_CONFIG_DIR` set to that path in the shell to populate it, before starting a
+session on that instance from Marcode.
 
 ## What v1 does not do
 

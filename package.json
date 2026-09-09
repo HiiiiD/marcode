@@ -110,9 +110,20 @@
               "envMap": {
                 "type": "object",
                 "additionalProperties": {
-                  "type": "string"
+                  "type": "object",
+                  "required": ["type", "value"],
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "enum": ["plain", "env"]
+                    },
+                    "value": {
+                      "type": "string"
+                    }
+                  },
+                  "description": "\"plain\": value is used as-is. \"env\": value is the name of an OS env var to read the real value from."
                 },
-                "description": "Subprocess env var name -> OS env var name to source its value from. Secrets stay in OS env vars, never in this file."
+                "description": "Subprocess env var name -> { type: 'plain', value } for a literal value, or { type: 'env', value: <OS var name> } to source it from the OS environment. Secrets must use \"env\", never \"plain\"."
               }
             },
             "allOf": [
@@ -129,16 +140,42 @@
                     "envMap": {
                       "properties": {
                         "ANTHROPIC_API_KEY": {
-                          "type": "string"
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "enum": ["env"]
+                            }
+                          },
+                          "description": "Secret — must be \"env\", never \"plain\"."
                         },
                         "ANTHROPIC_BASE_URL": {
-                          "type": "string"
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "enum": ["plain", "env"]
+                            }
+                          }
                         },
                         "ANTHROPIC_AUTH_TOKEN": {
-                          "type": "string"
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "enum": ["env"]
+                            }
+                          },
+                          "description": "Secret — must be \"env\", never \"plain\"."
                         },
                         "CLAUDE_CONFIG_DIR": {
-                          "type": "string"
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "enum": ["plain", "env"]
+                            }
+                          }
                         }
                       }
                     }
@@ -158,10 +195,23 @@
                     "envMap": {
                       "properties": {
                         "OPENAI_API_KEY": {
-                          "type": "string"
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "enum": ["env"]
+                            }
+                          },
+                          "description": "Secret — must be \"env\", never \"plain\"."
                         },
                         "CODEX_HOME": {
-                          "type": "string"
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "enum": ["plain", "env"]
+                            }
+                          }
                         }
                       }
                     }
@@ -181,13 +231,32 @@
                     "envMap": {
                       "properties": {
                         "OPENCODE_CONFIG": {
-                          "type": "string"
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "enum": ["plain", "env"]
+                            }
+                          }
                         },
                         "OPENCODE_CONFIG_DIR": {
-                          "type": "string"
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "enum": ["plain", "env"]
+                            }
+                          }
                         },
                         "OPENCODE_CONFIG_CONTENT": {
-                          "type": "string"
+                          "type": "object",
+                          "properties": {
+                            "type": {
+                              "type": "string",
+                              "enum": ["env"]
+                            }
+                          },
+                          "description": "Secret — must be \"env\", never \"plain\"."
                         }
                       }
                     }

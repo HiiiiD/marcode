@@ -10,13 +10,23 @@ export type ProviderInstanceKind = 'claude' | 'codex' | 'opencode';
 
 export const PROVIDER_INSTANCE_KINDS: readonly ProviderInstanceKind[] = ['claude', 'codex', 'opencode'];
 
+/**
+ * One `envMap` value: either a literal, non-secret value (`plain`) written
+ * straight into settings.json, or the name of an OS environment variable to
+ * read the real value from at provider-construction time (`env`) — never a
+ * secret itself. See `resolveEnvMap`.
+ */
+export type EnvMapValue =
+  | { type: 'plain'; value: string }
+  | { type: 'env'; value: string };
+
 /** One entry of the `marcode.providerInstances` setting, once validated. */
 export interface ProviderInstanceConfig {
   id: string;
   kind: ProviderInstanceKind;
   displayName: string;
   binPath?: string;
-  envMap?: Record<string, string>;
+  envMap?: Record<string, EnvMapValue>;
 }
 
 export interface ProviderInstanceValidation {
@@ -24,9 +34,15 @@ export interface ProviderInstanceValidation {
   warnings: string[];
 }
 
-function isStringRecord(value: unknown): value is Record<string, string> {
+function isEnvMapValue(value: unknown): value is EnvMapValue {
+  if (typeof value !== 'object' || value === null) { return false; }
+  const { type, value: v } = value as Record<string, unknown>;
+  return (type === 'plain' || type === 'env') && typeof v === 'string' && v !== '';
+}
+
+function isEnvMapRecord(value: unknown): value is Record<string, EnvMapValue> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) { return false; }
-  return Object.values(value).every((v) => typeof v === 'string');
+  return Object.values(value).every(isEnvMapValue);
 }
 
 /**
@@ -83,7 +99,13 @@ export function validateProviderInstances(
     }
     const binPath = typeof record.binPath === 'string' && record.binPath.trim() !== ''
       ? record.binPath.trim() : undefined;
-    const envMap = isStringRecord(record.envMap) ? record.envMap : undefined;
+    const envMap = isEnvMapRecord(record.envMap) ? record.envMap : undefined;
+    if (record.envMap !== undefined && envMap === undefined) {
+      warnings.push(
+        `marcode.providerInstances[${index}] ("${id}") has a malformed envMap; dropping the entry.`,
+      );
+      continue;
+    }
     seenIds.add(id);
     valid.push({
       id, kind: kind as ProviderInstanceKind, displayName,
@@ -94,18 +116,23 @@ export function validateProviderInstances(
 }
 
 /**
- * Resolves an instance's `envMap` (subprocess var name -> OS var name to
- * read the value from) against the real OS environment into concrete
- * values. A referenced OS variable that is unset is simply omitted — not a
- * config-time error; it surfaces later as a normal auth failure.
+ * Resolves an instance's `envMap` against the real OS environment into
+ * concrete values. A `plain` entry resolves to its literal `value`,
+ * unconditionally. An `env` entry reads `osEnv[value]`; when that OS
+ * variable is unset it is simply omitted — not a config-time error, it
+ * surfaces later as a normal auth failure.
  */
 export function resolveEnvMap(
-  envMap: Record<string, string> | undefined,
+  envMap: Record<string, EnvMapValue> | undefined,
   osEnv: NodeJS.ProcessEnv,
 ): Record<string, string> {
   const resolved: Record<string, string> = {};
-  for (const [subprocessVar, osVarName] of Object.entries(envMap ?? {})) {
-    const value = osEnv[osVarName];
+  for (const [subprocessVar, entry] of Object.entries(envMap ?? {})) {
+    if (entry.type === 'plain') {
+      resolved[subprocessVar] = entry.value;
+      continue;
+    }
+    const value = osEnv[entry.value];
     if (value !== undefined) { resolved[subprocessVar] = value; }
   }
   return resolved;

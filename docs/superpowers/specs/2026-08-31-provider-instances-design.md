@@ -159,3 +159,38 @@ options. The existing "open settings" deep-link button (`pane-group.tsx`) is poi
   out of scope here — no env var for it, only `config.toml`'s `model_providers`. If needed
   later, the lever is `binPath` pointing at a wrapper that writes/selects a `config.toml`
   before exec, not `envMap`.
+
+## Amendment: `envMap` values carry a `plain` | `env` type
+
+Post-implementation feedback: routing every `envMap` key through an OS environment
+variable was right for secrets, but wrong for a value like `CLAUDE_CONFIG_DIR` that's just
+a directory path — forcing an OS var + `setx` + restart for something no more sensitive
+than `binPath` is friction the value doesn't warrant, and `binPath` already sits in
+`settings.json` as a literal string with no such ceremony.
+
+`envMap`'s value type changes from a bare string (implicitly "OS var name") to
+`EnvMapValue = { type: 'plain', value: string } | { type: 'env', value: string }`:
+
+- `env` — unchanged behavior: `value` is the OS var name, resolved against `process.env` at
+  provider-construction time, omitted (not a config-time error) when unset.
+- `plain` — `value` is the literal value, used as-is, unconditionally.
+
+No back-compat: an old bare-string `envMap` value now fails `isEnvMapRecord` and drops the
+whole entry with a warning, same posture as any other malformed entry.
+
+Which keys may use `plain` is a per-key policy, not a per-kind one — `SECRET_ENV_MAP_KEYS`
+(`src/shared/account-setup.ts`) lists the keys that must stay `env`-only:
+`ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `OPENAI_API_KEY` (credentials), and
+`OPENCODE_CONFIG_CONTENT` (inline config content that commonly embeds a provider's own
+API key). Every other key — `ANTHROPIC_BASE_URL`, `CLAUDE_CONFIG_DIR`, `CODEX_HOME`,
+`OPENCODE_CONFIG`, `OPENCODE_CONFIG_DIR` — is a plain non-secret value (a URL or a path)
+and may be either. `package.json`'s schema mirrors this: the generic `additionalProperties`
+fallback (for keys not in `ENV_MAP_KEYS`) allows both types; each known secret key's
+sub-schema restricts `type` to `enum: ["env"]`.
+
+`resolveEnvMap` and `validateProviderInstances` (`src/shared/provider-instances.ts`) are the
+only runtime enforcement points — the schema is IntelliSense, not a security boundary,
+matching this design's existing posture of "additive, permissive validation." See the
+account-setup wizard design doc's own amendment for what this means for the wizard's
+`envMap`-collection step (`CLAUDE_CONFIG_DIR`/`CODEX_HOME` no longer need a derived OS var
+or a `setx` terminal at all).
