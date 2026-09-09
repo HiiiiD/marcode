@@ -41,7 +41,7 @@ export type ToolCall =
       scope?: string; filters?: Field[] }
   | { kind: 'web'; label: string; query?: string; url?: string; note?: string }
   | { kind: 'todos'; label: string; items: { status: TodoStatus; text: string }[] }
-  | { kind: 'plan'; label: string; text: string }
+  | { kind: 'plan'; label: string; text: string; path?: string }
   | { kind: 'subagent'; label: string; action: 'spawn' | 'message' | 'collect';
       agent?: string; model?: string; isolation?: string; target?: string;
       summary?: string; prompt?: string; fields?: Field[];
@@ -74,6 +74,7 @@ export type ToolCall =
  */
 export type ToolOutput =
   | { kind: 'none' }
+  | { kind: 'plan'; plan?: string; filePath?: string }
   | { kind: 'text'; text: string }
   | { kind: 'json'; value: unknown }
   | { kind: 'image'; dataUri: string };

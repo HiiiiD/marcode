@@ -238,6 +238,7 @@ export function describeInput(tool: ToolCall): ToolBlock[] {
       break;
 
     case 'plan':
+      if (tool.path) { blocks.push({ kind: 'path', path: tool.path, hint: 'Markdown plan' }); }
       blocks.push({ kind: 'lines', text: tool.text, tone: 'output' });
       break;
 
@@ -292,6 +293,13 @@ export function describeOutput(
     return state === 'error'
       ? [{ kind: 'note', text: 'Failed with no output.' }]
       : [{ kind: 'note', text: 'No output.' }];
+  }
+
+  if (output.kind === 'plan') {
+    const blocks: ToolBlock[] = [];
+    if (output.filePath) { blocks.push({ kind: 'path', path: output.filePath, hint: 'Markdown plan' }); }
+    if (output.plan) { blocks.push({ kind: 'lines', text: output.plan, tone: 'output' }); }
+    return blocks.length > 0 ? blocks : [{ kind: 'note', text: 'Plan approved.' }];
   }
 
   if (output.kind === 'json') { return [{ kind: 'json', text: safeStringify(output.value) }]; }
