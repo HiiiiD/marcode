@@ -256,6 +256,15 @@ suite('describeInput', () => {
     }), [{ kind: 'todos', items: [{ status: 'completed', text: 'one' }] }]);
   });
 
+  test('a plan exposes its Markdown path before the plan text', () => {
+    assert.deepStrictEqual(describeInput({
+      kind: 'plan', label: 'ExitPlanMode', path: 'docs/plan.md', text: '# Feed',
+    }), [
+      { kind: 'path', path: 'docs/plan.md', hint: 'Markdown plan' },
+      { kind: 'lines', text: '# Feed', tone: 'output' },
+    ]);
+  });
+
   test('a spawned subagent shows its brief last', () => {
     assert.deepStrictEqual(describeInput({
       kind: 'subagent', label: 'Agent', action: 'spawn',

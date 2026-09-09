@@ -134,6 +134,12 @@ export function toToolCall(name: string, input: unknown): ToolCall {
       };
     }
 
+    case 'ExitPlanMode':
+      return compact({
+        kind: 'plan', label: name,
+        text: str(record.plan) ?? '',
+      });
+
     case 'Agent':
     case 'Task':
       return compact({
@@ -218,6 +224,13 @@ export function toToolOutput(content: unknown): ToolOutput {
   }
 
   const record = asRecord(content);
+  const plan = str(record.plan);
+  const filePath = str(record.filePath);
+  // `filePath` is also present on ordinary file-edit/write results. The plan
+  // field is the discriminator; the path is optional metadata on a plan.
+  if (plan !== undefined) {
+    return compact({ kind: 'plan', plan, filePath });
+  }
   const direct = str(record.text);
   if (direct) { return { kind: 'text', text: direct }; }
   const streams = [str(record.stdout), str(record.stderr)]

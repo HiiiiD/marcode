@@ -1,5 +1,5 @@
 import * as assert from 'assert';
-import { screen } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ToolCard } from '@/components/tool-card';
 import { SAMPLE_TOOL_CALLS } from '../../providers/fake/sample-tools';
@@ -155,6 +155,28 @@ suite('ToolCard', () => {
   test('a plan card shows its text', () => {
     renderWithStore(<ToolCard item={tool({ tool: SAMPLE_TOOL_CALLS['plan'] })} />);
     screen.getByText('Map, render, then contract.');
+  });
+
+  test('a completed plan opens the SDK-reported Markdown file', async () => {
+    renderWithStore(<ToolCard item={tool({
+      tool: SAMPLE_TOOL_CALLS['plan'],
+      output: { kind: 'plan', plan: '# Feed', filePath: '/repo/.claude/plans/feed.md' },
+    })} />);
+
+    await waitFor(() => assert.deepStrictEqual(
+      posted().filter((message) => message.t === 'reveal-file'),
+      [{ t: 'reveal-file', path: '/repo/.claude/plans/feed.md' }],
+    ));
+  });
+
+  test('a failed plan does not open its Markdown file', () => {
+    renderWithStore(<ToolCard item={tool({
+      tool: SAMPLE_TOOL_CALLS['plan'],
+      state: 'error',
+      output: { kind: 'plan', plan: '# Feed', filePath: '/repo/.claude/plans/feed.md' },
+    })} />);
+
+    assert.deepStrictEqual(posted().filter((message) => message.t === 'reveal-file'), []);
   });
 
   test('a subagent card shows the agent name', () => {

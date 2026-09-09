@@ -79,6 +79,16 @@ suite('claude toToolCall', () => {
     });
   });
 
+  test('ExitPlanMode becomes a Markdown plan', () => {
+    const call = toToolCall('ExitPlanMode', {
+      plan: '# Feed\\n\\n- Add the endpoint',
+      path: 'docs/plan.md',
+    });
+    assert.deepStrictEqual(call, {
+      kind: 'plan', label: 'ExitPlanMode', text: '# Feed\\n\\n- Add the endpoint',
+    });
+  });
+
   test('Agent spawns, SendMessage messages, TaskOutput collects', () => {
     assert.strictEqual(toToolCall('Agent', {}).kind, 'subagent');
     const spawn = toToolCall('Agent', {
@@ -155,6 +165,20 @@ suite('claude toToolCall', () => {
 });
 
 suite('claude toToolOutput', () => {
+  test('ExitPlanMode output preserves the SDK plan file path', () => {
+    assert.deepStrictEqual(toToolOutput({
+      plan: '# Feed', filePath: '/repo/.claude/plans/feed.md',
+    }), {
+      kind: 'plan', plan: '# Feed', filePath: '/repo/.claude/plans/feed.md',
+    });
+  });
+
+  test('a file output with a path is not mistaken for a plan', () => {
+    assert.deepStrictEqual(toToolOutput({ filePath: '/repo/src/feed.ts' }), {
+      kind: 'json', value: { filePath: '/repo/src/feed.ts' },
+    });
+  });
+
   test('a bare string is text', () => {
     assert.deepStrictEqual(toToolOutput('done'), { kind: 'text', text: 'done' });
   });

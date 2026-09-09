@@ -130,6 +130,41 @@ export function PermissionCard({
     });
   };
 
+  if (tool.kind === 'plan') {
+    return (
+      <div className="my-0 rounded border border-border bg-muted/20 p-2 text-xs">
+        <div className="mb-1 flex items-baseline gap-2">
+          <span className="font-medium">Plan ready</span>
+          <span className="truncate text-muted-foreground" title={cwd}>{folderName(cwd)}</span>
+        </div>
+        <div className="mb-2 flex flex-col gap-1.5">
+          <p>Review the plan before implementation begins.</p>
+          <p className="text-muted-foreground">
+            Starting implementation will leave read-only Plan mode and allow file changes.
+          </p>
+          <ToolBody blocks={request} />
+        </div>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={answered}
+            onClick={() => decide(false)}
+          >
+            Keep planning
+          </Button>
+          <Button
+            size="sm"
+            disabled={answered}
+            onClick={() => decide(true)}
+          >
+            Start implementation
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="my-0 rounded border-2 border-destructive bg-destructive/10 p-2 text-xs">
       <div className="mb-1 flex items-baseline gap-2">

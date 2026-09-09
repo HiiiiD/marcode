@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   BotIcon, ChevronDownIcon, ChevronRightIcon, FilePenIcon, FilePlusIcon, FileTextIcon,
   FolderSearchIcon, GitForkIcon, GlobeIcon, ImageIcon, ListTodoIcon, Loader2Icon, SearchIcon,
@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { TranscriptItem } from '../../protocol/messages';
 import { ToolBody } from './tool-body';
+import { useStore } from '../store';
 import { describeInput, describeOutput, describeTool, type ToolGlyph } from './tool-render';
 
 type ToolItem = Extract<TranscriptItem, { role: 'tool' }>;
@@ -29,7 +30,12 @@ const GLYPHS: Record<ToolGlyph, typeof TerminalIcon> = {
 
 export function ToolCard({ item, onFork }: { item: ToolItem; onFork?: () => void }) {
   const [open, setOpen] = useState(false);
+  const { post } = useStore();
   const tool = item.tool;
+  const planPath = item.output?.kind === 'plan' ? item.output.filePath : undefined;
+  useEffect(() => {
+    if (item.state === 'ok' && planPath) { post({ t: 'reveal-file', path: planPath }); }
+  }, [item.state, planPath, post]);
   const server = tool.kind === 'mcp' ? tool.server : undefined;
   const header = describeTool(tool);
   // A settled check mark on every row is noise in a column this narrow: the
