@@ -2,9 +2,8 @@ import assert from 'node:assert/strict';
 import * as path from 'node:path';
 import { test, suite } from 'mocha';
 import {
-  CONFIG_COPY_SUBDIRS, CONFIG_DIR_ENV_KEY, ENV_MAP_KEYS, supportsSkillsCopy, defaultConfigDir,
-  resolveSourceConfigDir, isDuplicateInstanceId, buildProviderInstanceConfig,
-  deriveConfigDirVarName, resolveUniqueConfigDirVarName,
+  CONFIG_COPY_SUBDIRS, CONFIG_DIR_ENV_KEY, ENV_MAP_KEYS, SECRET_ENV_MAP_KEYS, supportsSkillsCopy,
+  defaultConfigDir, resolveSourceConfigDir, isDuplicateInstanceId, buildProviderInstanceConfig,
 } from '../../shared/account-setup';
 
 suite('shared/account-setup', () => {
@@ -78,51 +77,22 @@ suite('shared/account-setup', () => {
     });
   });
 
-  suite('deriveConfigDirVarName', () => {
-    test('appends the sanitized, uppercased id to the key', () => {
-      assert.strictEqual(
-        deriveConfigDirVarName('CLAUDE_CONFIG_DIR', 'claude-personal'),
-        'CLAUDE_CONFIG_DIR_CLAUDE_PERSONAL',
-      );
+  suite('SECRET_ENV_MAP_KEYS', () => {
+    test('claude: only the two credential keys are secret-only', () => {
+      assert.deepStrictEqual(SECRET_ENV_MAP_KEYS.claude, ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN']);
     });
-    test('replaces non-alphanumeric runs with a single underscore', () => {
-      assert.strictEqual(
-        deriveConfigDirVarName('CODEX_HOME', 'codex  work!!acct'),
-        'CODEX_HOME_CODEX_WORK_ACCT',
-      );
+    test('codex: only the api key is secret-only', () => {
+      assert.deepStrictEqual(SECRET_ENV_MAP_KEYS.codex, ['OPENAI_API_KEY']);
     });
-    test('trims leading/trailing separators produced by sanitizing', () => {
-      assert.strictEqual(
-        deriveConfigDirVarName('CLAUDE_CONFIG_DIR', '  -personal-  '),
-        'CLAUDE_CONFIG_DIR_PERSONAL',
-      );
+    test('opencode: only inline config content is secret-only', () => {
+      assert.deepStrictEqual(SECRET_ENV_MAP_KEYS.opencode, ['OPENCODE_CONFIG_CONTENT']);
     });
-    test('falls back to a stable suffix when the id sanitizes to nothing', () => {
-      assert.strictEqual(deriveConfigDirVarName('CLAUDE_CONFIG_DIR', '---'), 'CLAUDE_CONFIG_DIR_INSTANCE');
-    });
-  });
-
-  suite('resolveUniqueConfigDirVarName', () => {
-    test('returns the derived name when it is not already used', () => {
-      const name = resolveUniqueConfigDirVarName('CLAUDE_CONFIG_DIR', 'claude-personal', new Set());
-      assert.strictEqual(name, 'CLAUDE_CONFIG_DIR_CLAUDE_PERSONAL');
-    });
-    test('appends _2 when the derived name is already used', () => {
-      const used = new Set(['CLAUDE_CONFIG_DIR_CLAUDE_PERSONAL']);
-      const name = resolveUniqueConfigDirVarName('CLAUDE_CONFIG_DIR', 'claude-personal', used);
-      assert.strictEqual(name, 'CLAUDE_CONFIG_DIR_CLAUDE_PERSONAL_2');
-    });
-    test('two ids that sanitize to the same base no longer collide', () => {
-      const used = new Set<string>();
-      const first = resolveUniqueConfigDirVarName('CLAUDE_CONFIG_DIR', 'claude work', used);
-      used.add(first);
-      const second = resolveUniqueConfigDirVarName('CLAUDE_CONFIG_DIR', 'Claude-Work', used);
-      assert.notStrictEqual(first, second);
-    });
-    test('keeps incrementing past an already-used suffix', () => {
-      const used = new Set(['CLAUDE_CONFIG_DIR_X', 'CLAUDE_CONFIG_DIR_X_2', 'CLAUDE_CONFIG_DIR_X_3']);
-      const name = resolveUniqueConfigDirVarName('CLAUDE_CONFIG_DIR', 'x', used);
-      assert.strictEqual(name, 'CLAUDE_CONFIG_DIR_X_4');
+    test('every secret key for a kind is also one of its envMap keys', () => {
+      for (const kind of ['claude', 'codex', 'opencode'] as const) {
+        for (const key of SECRET_ENV_MAP_KEYS[kind]) {
+          assert.strictEqual(ENV_MAP_KEYS[kind].includes(key), true);
+        }
+      }
     });
   });
 
@@ -137,7 +107,12 @@ suite('shared/account-setup', () => {
       assert.strictEqual('envMap' in cfg, false);
     });
     test('includes envMap when non-empty', () => {
-      const envMap = { OPENAI_API_KEY: 'MY_KEY' };
+      const envMap = { OPENAI_API_KEY: { type: 'env' as const, value: 'MY_KEY' } };
+      const cfg = buildProviderInstanceConfig('codex', 'codex-personal', 'Personal', envMap);
+      assert.deepStrictEqual(cfg.envMap, envMap);
+    });
+    test('includes a plain-type envMap value as-is', () => {
+      const envMap = { CODEX_HOME: { type: 'plain' as const, value: '/home/marco/.codex-work' } };
       const cfg = buildProviderInstanceConfig('codex', 'codex-personal', 'Personal', envMap);
       assert.deepStrictEqual(cfg.envMap, envMap);
     });

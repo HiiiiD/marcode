@@ -23,14 +23,61 @@ suite('shared/provider-instances', () => {
         [{
           id: 'claude-work', kind: 'claude', displayName: 'Claude (work)',
           binPath: '/usr/local/bin/claude',
-          envMap: { ANTHROPIC_API_KEY: 'WORK_KEY' },
+          envMap: { ANTHROPIC_API_KEY: { type: 'env', value: 'WORK_KEY' } },
         }],
         ['claude'],
       );
       assert.deepStrictEqual(result.valid, [{
         id: 'claude-work', kind: 'claude', displayName: 'Claude (work)',
-        binPath: '/usr/local/bin/claude', envMap: { ANTHROPIC_API_KEY: 'WORK_KEY' },
+        binPath: '/usr/local/bin/claude', envMap: { ANTHROPIC_API_KEY: { type: 'env', value: 'WORK_KEY' } },
       }]);
+    });
+
+    test('accepts a plain-type envMap value', () => {
+      const result = validateProviderInstances(
+        [{
+          id: 'claude-work', kind: 'claude', displayName: 'Claude (work)',
+          envMap: { CLAUDE_CONFIG_DIR: { type: 'plain', value: '/home/marco/.claude-work' } },
+        }],
+        ['claude'],
+      );
+      assert.deepStrictEqual(
+        result.valid[0].envMap, { CLAUDE_CONFIG_DIR: { type: 'plain', value: '/home/marco/.claude-work' } },
+      );
+      assert.deepStrictEqual(result.warnings, []);
+    });
+
+    test('drops an entry whose envMap value is a bare string (no back-compat)', () => {
+      const result = validateProviderInstances(
+        [{ id: 'claude-work', kind: 'claude', displayName: 'Claude (work)', envMap: { ANTHROPIC_API_KEY: 'WORK_KEY' } }],
+        ['claude'],
+      );
+      assert.deepStrictEqual(result.valid, []);
+      assert.strictEqual(result.warnings.length, 1);
+    });
+
+    test('drops an entry whose envMap value has an unknown type', () => {
+      const result = validateProviderInstances(
+        [{
+          id: 'claude-work', kind: 'claude', displayName: 'Claude (work)',
+          envMap: { ANTHROPIC_API_KEY: { type: 'secret', value: 'WORK_KEY' } },
+        }],
+        ['claude'],
+      );
+      assert.deepStrictEqual(result.valid, []);
+      assert.strictEqual(result.warnings.length, 1);
+    });
+
+    test('drops an entry whose envMap value has an empty value string', () => {
+      const result = validateProviderInstances(
+        [{
+          id: 'claude-work', kind: 'claude', displayName: 'Claude (work)',
+          envMap: { ANTHROPIC_API_KEY: { type: 'env', value: '' } },
+        }],
+        ['claude'],
+      );
+      assert.deepStrictEqual(result.valid, []);
+      assert.strictEqual(result.warnings.length, 1);
     });
 
     test('ignores a non-array value with a warning', () => {
@@ -89,7 +136,7 @@ suite('shared/provider-instances', () => {
   suite('resolveEnvMap', () => {
     test('reads each subprocess var from the named OS var', () => {
       const resolved = resolveEnvMap(
-        { ANTHROPIC_API_KEY: 'WORK_KEY', ANTHROPIC_BASE_URL: 'WORK_URL' },
+        { ANTHROPIC_API_KEY: { type: 'env', value: 'WORK_KEY' }, ANTHROPIC_BASE_URL: { type: 'env', value: 'WORK_URL' } },
         { WORK_KEY: 'sk-123', WORK_URL: 'https://proxy.example' },
       );
       assert.deepStrictEqual(resolved, {
@@ -98,12 +145,20 @@ suite('shared/provider-instances', () => {
     });
 
     test('omits a subprocess var whose OS var is unset', () => {
-      const resolved = resolveEnvMap({ ANTHROPIC_API_KEY: 'MISSING' }, {});
+      const resolved = resolveEnvMap({ ANTHROPIC_API_KEY: { type: 'env', value: 'MISSING' } }, {});
       assert.deepStrictEqual(resolved, {});
     });
 
     test('an undefined envMap resolves to an empty object', () => {
       assert.deepStrictEqual(resolveEnvMap(undefined, { X: 'y' }), {});
+    });
+
+    test('a plain value resolves as-is, ignoring the OS environment', () => {
+      const resolved = resolveEnvMap(
+        { CLAUDE_CONFIG_DIR: { type: 'plain', value: '/home/marco/.claude-work' } },
+        {},
+      );
+      assert.deepStrictEqual(resolved, { CLAUDE_CONFIG_DIR: '/home/marco/.claude-work' });
     });
   });
 

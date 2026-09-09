@@ -176,3 +176,38 @@ callers/tests are unaffected. `src/shared/account-setup.ts` gains
 wizard passes `CONFIG_COPY_SUBDIRS[kind]` through to both the copy call and the
 overwrite-guard's existing-content check, so `commands/` gets the same
 confirm-before-overwrite protection as the other two.
+
+## Amendment: `envMap` values may be `plain`, dropping the derived-var/`setx` machinery
+
+Follows `envMap`'s own type change (see the provider-instances design doc's amendment) —
+`envMap` values are now `{type:'plain', value}` or `{type:'env', value}`, and secret keys
+are named explicitly (`SECRET_ENV_MAP_KEYS`) rather than the config-dir key being the one
+hardcoded exception.
+
+Step 4/5 revises again, superseding the earlier "config-dir key is a path, not a secret"
+amendment's mechanism (the *conclusion* — config-dir keys are non-secret — stands, but the
+`deriveConfigDirVarName`/`setx`-terminal path it built no longer exists):
+
+- Secret keys (`SECRET_ENV_MAP_KEYS[kind]`): unchanged — an `InputBox` asks for the OS var
+  name only (`askEnvVarName`), always `{type:'env', value: osVarName}`.
+- Every other selected key: a `QuickPick` first asks **"Plain value" or "OS env var
+  name"** (`askPlainOrEnvValue`). "OS env var name" behaves like the secret path above.
+  "Plain value" opens an `InputBox` for the literal value — for the config-dir key
+  specifically, this is the same absolute-path-with-no-shell-metacharacters validation the
+  old flow used for its `setx` target (the value can still end up interpolated into a
+  copy-step path, just never into a shell command anymore); for every other plain-allowed
+  key it's a plain non-empty-string check.
+
+Because the config-dir key's `plain` answer is stored as the literal path directly, the
+wizard no longer derives an OS var name (`deriveConfigDirVarName`,
+`resolveUniqueConfigDirVarName` — both removed from `src/shared/account-setup.ts`) or opens
+a `setx` terminal (`openSetxTerminal` — removed) for it. The copy step's target directory
+comes from that literal when the answer was `plain`; when the user instead chose `env` for
+the config-dir key (an existing OS var they already manage), the target is read from
+`process.env` at wizard-run time exactly as it was before the original config-dir
+amendment — `undefined`, and the copy step silently skipped, if that var isn't visible to
+this VS Code process yet.
+
+The end-of-wizard "next steps" message now lists a `setx`/`export` reminder only for keys
+that actually resolved to `type:'env'` — a `plain` answer needs no such reminder, since its
+value is already written into `settings.json`.

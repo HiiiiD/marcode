@@ -352,10 +352,10 @@ export async function activate(context: vscode.ExtensionContext) {
     // unset — proceeding with no signal would leave e.g. a "claude-work"
     // instance running as the default account. Cheap loop, instance id and
     // OS var name only, never a value.
-    for (const [, osVarName] of Object.entries(cfg.envMap ?? {})) {
-      if (process.env[osVarName] === undefined) {
+    for (const entry of Object.values(cfg.envMap ?? {})) {
+      if (entry.type === 'env' && process.env[entry.value] === undefined) {
         void vscode.window.showWarningMessage(
-          `Provider instance "${cfg.id}": OS environment variable "${osVarName}" is not set.`,
+          `Provider instance "${cfg.id}": OS environment variable "${entry.value}" is not set.`,
         );
       }
     }

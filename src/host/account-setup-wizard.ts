@@ -4,12 +4,12 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 
 import {
-  buildProviderInstanceConfig, CONFIG_COPY_SUBDIRS, CONFIG_DIR_ENV_KEY, ENV_MAP_KEYS,
-  isDuplicateInstanceId, resolveSourceConfigDir, resolveUniqueConfigDirVarName, supportsSkillsCopy,
+  buildProviderInstanceConfig, CONFIG_COPY_SUBDIRS, CONFIG_DIR_ENV_KEY, ENV_MAP_KEYS, SECRET_ENV_MAP_KEYS,
+  isDuplicateInstanceId, resolveSourceConfigDir, supportsSkillsCopy,
 } from '../shared/account-setup';
 import {
   PROVIDER_INSTANCE_KINDS, validateProviderInstances,
-  type ProviderInstanceConfig, type ProviderInstanceKind,
+  type EnvMapValue, type ProviderInstanceConfig, type ProviderInstanceKind,
 } from '../shared/provider-instances';
 import { PROVIDER_INSTANCES_SETTING } from '../shared/settings';
 import { copySkillsAndPlugins } from './copy-skills-plugins';
@@ -62,87 +62,43 @@ export async function runAccountSetupWizard(baseIds: readonly string[]): Promise
   );
   if (selectedKeys === undefined) { return; }
 
-  // The config-dir key (CLAUDE_CONFIG_DIR/CODEX_HOME) is a plain directory
-  // path, not a secret — unlike every other envMap key, it never needs the
-  // user to invent an OS var name of their own. See docs/superpowers/specs/
-  // 2026-09-01-account-setup-wizard-design.md.
+  // The config-dir key (CLAUDE_CONFIG_DIR/CODEX_HOME) drives the optional
+  // skills/plugins copy step below — it needs a literal target directory,
+  // which only a `plain` answer (or an `env` answer whose OS var already
+  // happens to be set in this VS Code process) can supply synchronously.
+  // See docs/superpowers/specs/2026-09-01-account-setup-wizard-design.md.
   const configDirKey = supportsSkillsCopy(kind) ? CONFIG_DIR_ENV_KEY[kind] : undefined;
-  // Every OS var name already claimed by an existing instance's envMap —
-  // the config-dir key's derived name must never collide with one of
-  // these, or two instances end up sharing a config dir at runtime.
-  const usedVarNames = new Set(existing.flatMap((cfg) => Object.values(cfg.envMap ?? {})));
-  const envMap: Record<string, string> = {};
+  const secretKeys = SECRET_ENV_MAP_KEYS[kind];
+  const envMap: Record<string, EnvMapValue> = {};
   let configDirPath: string | undefined;
-  let configDirVarName: string | undefined;
   for (const { label: key } of selectedKeys) {
+    const entry = secretKeys.includes(key)
+      ? await askEnvVarName(key)
+      : await askPlainOrEnvValue(key, key === configDirKey);
+    if (entry === undefined) { return; }
+    envMap[key] = entry;
     if (key === configDirKey) {
-      const dirPath = await vscode.window.showInputBox({
-        title: `Set up a provider account (5/5): ${key} directory`,
-        prompt: `Absolute directory path for this instance's own ${key} — a plain path, not a secret`,
-        validateInput: (value) => {
-          const trimmed = value.trim();
-          if (trimmed === '') { return 'required'; }
-          if (!path.isAbsolute(trimmed)) { return 'must be an absolute path'; }
-          // This path is later interpolated into a `setx` command run in a
-          // real terminal (Windows) — reject anything a shell would treat
-          // specially, and a trailing slash/backslash, which would escape
-          // the command's closing quote.
-          if (/["`$&|^<>]/.test(trimmed)) { return 'must not contain " ` $ & | ^ < >'; }
-          if (/[/\\]$/.test(trimmed)) { return 'must not end with a trailing slash'; }
-          return undefined;
-        },
-      });
-      if (dirPath === undefined) { return; }
-      configDirPath = dirPath.trim();
-      configDirVarName = resolveUniqueConfigDirVarName(key, id, usedVarNames);
-      envMap[key] = configDirVarName;
-      continue;
+      configDirPath = entry.type === 'plain' ? entry.value : process.env[entry.value];
     }
-    const osVarName = await vscode.window.showInputBox({
-      title: `Set up a provider account (5/5): OS env var for ${key}`,
-      prompt: `Name of the OS environment variable that holds ${key}'s value (not the value itself)`,
-      validateInput: (value) => (value.trim() === '' ? 'required' : undefined),
-    });
-    if (osVarName === undefined) { return; }
-    envMap[key] = osVarName.trim();
   }
 
   if (supportsSkillsCopy(kind)) {
     await maybeCopySkillsAndPlugins(kind, configDirPath, CONFIG_COPY_SUBDIRS[kind]);
   }
 
-  const secretOsVarNames = [...new Set(
-    Object.entries(envMap).filter(([key]) => key !== configDirKey).map(([, v]) => v),
+  // Only `env` entries need a manual OS-var-name reminder — a `plain`
+  // entry's value is already written straight into settings.json below.
+  const osVarNames = [...new Set(
+    Object.values(envMap).filter((v) => v.type === 'env').map((v) => v.value),
   )];
-  const manualSteps: string[] = [];
-  if (configDirVarName !== undefined && configDirPath !== undefined) {
-    if (process.platform === 'win32') {
-      // setx persists across future shells/processes; unlike the manual
-      // secret vars below, there's nothing sensitive here, so the wizard
-      // can run it on the user's behalf instead of handing over a command
-      // to retype.
-      openSetxTerminal(configDirVarName, configDirPath);
-      manualSteps.push(`${configDirVarName} is being set via the terminal that just opened`);
-    } else {
-      // A `terminal.sendText('export ...')` only affects that one terminal
-      // session, not future shells — there's no POSIX equivalent of `setx`
-      // this wizard can run unattended, so it stays a manual step here.
-      manualSteps.push(`\`export ${configDirVarName}="${configDirPath}"\` (add it to your shell profile)`);
-    }
-  }
-  for (const v of secretOsVarNames) {
-    manualSteps.push(
-      process.platform === 'win32' ? `\`setx ${v} "..."\`` : `\`export ${v}="..."\` (add it to your shell profile)`,
-    );
-  }
-  if (manualSteps.length > 0) {
+  if (osVarNames.length > 0) {
     const loginCmd = kind === 'claude' ? 'claude login' : kind === 'codex' ? 'codex login' : undefined;
-    const allVarNames = [...new Set([
-      ...(configDirVarName !== undefined ? [configDirVarName] : []), ...secretOsVarNames,
-    ])];
+    const setSteps = osVarNames.map(
+      (v) => (process.platform === 'win32' ? `\`setx ${v} "..."\`` : `\`export ${v}="..."\` (add it to your shell profile)`),
+    );
     void vscode.window.showInformationMessage(
-      `Next: ${manualSteps.join(', ')}, then restart VS Code`
-      + (loginCmd ? `, then sign in once with \`${loginCmd}\` in a shell that has ${allVarNames.join(', ')} set.` : '.'),
+      `Next: ${setSteps.join(', ')}, then restart VS Code`
+      + (loginCmd ? `, then sign in once with \`${loginCmd}\` in a shell that has ${osVarNames.join(', ')} set.` : '.'),
     );
   }
 
@@ -182,16 +138,50 @@ async function hasExistingContent(targetDir: string, subdirs: readonly string[])
   return false;
 }
 
+/** Asks for the OS env var name that holds `key`'s secret value — never the value itself. `undefined` on cancel. */
+async function askEnvVarName(key: string): Promise<EnvMapValue | undefined> {
+  const osVarName = await vscode.window.showInputBox({
+    title: `Set up a provider account (5/5): OS env var for ${key}`,
+    prompt: `Name of the OS environment variable that holds ${key}'s value (not the value itself)`,
+    validateInput: (value) => (value.trim() === '' ? 'required' : undefined),
+  });
+  return osVarName === undefined ? undefined : { type: 'env', value: osVarName.trim() };
+}
+
 /**
- * Opens a terminal that runs `setx VAR "value"` on the user's behalf.
- * Windows-only — `setx` persists to the registry for future
- * shells/processes; there is no POSIX equivalent this wizard can run
- * unattended (see the caller's comment).
+ * Asks whether `key` (non-secret) should be a literal value written into
+ * settings.json, or sourced from an OS env var, then collects it.
+ * `isConfigDirKey` swaps the plain-value prompt for the config-dir path
+ * validation (absolute path, no shell metacharacters, no trailing
+ * slash/backslash — this path may later be read back as a literal
+ * directory by the skills/plugins copy step). `undefined` on cancel.
  */
-function openSetxTerminal(varName: string, value: string): void {
-  const terminal = vscode.window.createTerminal({ name: `Set ${varName}` });
-  terminal.show();
-  terminal.sendText(`setx ${varName} "${value}"`);
+async function askPlainOrEnvValue(key: string, isConfigDirKey: boolean): Promise<EnvMapValue | undefined> {
+  const choice = await vscode.window.showQuickPick(
+    [
+      { label: 'Plain value', value: 'plain' as const },
+      { label: 'OS env var name', value: 'env' as const },
+    ],
+    { title: `Set up a provider account (5/5): ${key}`, placeHolder: `Is ${key} a plain value, or read from an OS env var?` },
+  );
+  if (choice === undefined) { return undefined; }
+  if (choice.value === 'env') { return askEnvVarName(key); }
+
+  const value = await vscode.window.showInputBox({
+    title: `Set up a provider account (5/5): ${key} value`,
+    prompt: isConfigDirKey
+      ? `Absolute directory path for this instance's own ${key} — a plain path, not a secret`
+      : `Literal value for ${key} — not a secret, written into settings.json as-is`,
+    validateInput: isConfigDirKey ? (value) => {
+      const trimmed = value.trim();
+      if (trimmed === '') { return 'required'; }
+      if (!path.isAbsolute(trimmed)) { return 'must be an absolute path'; }
+      if (/["`$&|^<>]/.test(trimmed)) { return 'must not contain " ` $ & | ^ < >'; }
+      if (/[/\\]$/.test(trimmed)) { return 'must not end with a trailing slash'; }
+      return undefined;
+    } : (value) => (value.trim() === '' ? 'required' : undefined),
+  });
+  return value === undefined ? undefined : { type: 'plain', value: value.trim() };
 }
 
 /**

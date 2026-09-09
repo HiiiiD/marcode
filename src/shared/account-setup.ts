@@ -1,6 +1,6 @@
 import * as path from 'node:path';
 
-import type { ProviderInstanceConfig, ProviderInstanceKind } from './provider-instances';
+import type { EnvMapValue, ProviderInstanceConfig, ProviderInstanceKind } from './provider-instances';
 
 /**
  * Only claude and codex have a config-dir `envMap` key whose directory holds
@@ -20,6 +20,19 @@ export const ENV_MAP_KEYS: Record<ProviderInstanceKind, readonly string[]> = {
   claude: ['ANTHROPIC_API_KEY', 'ANTHROPIC_BASE_URL', 'ANTHROPIC_AUTH_TOKEN', 'CLAUDE_CONFIG_DIR'],
   codex: ['OPENAI_API_KEY', 'CODEX_HOME'],
   opencode: ['OPENCODE_CONFIG', 'OPENCODE_CONFIG_DIR', 'OPENCODE_CONFIG_CONTENT'],
+};
+
+/**
+ * The subset of each kind's `ENV_MAP_KEYS` that must stay `type: 'env'` —
+ * a value the wizard never offers to store as `plain` in settings.json,
+ * because it's a credential or (for `OPENCODE_CONFIG_CONTENT`) inline
+ * config content that commonly embeds one. Every other key (base URLs,
+ * config-dir/file paths) is a plain non-secret value and may be either.
+ */
+export const SECRET_ENV_MAP_KEYS: Record<ProviderInstanceKind, readonly string[]> = {
+  claude: ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN'],
+  codex: ['OPENAI_API_KEY'],
+  opencode: ['OPENCODE_CONFIG_CONTENT'],
 };
 
 /**
@@ -64,43 +77,9 @@ export function isDuplicateInstanceId(
   return baseIds.includes(trimmed) || existing.some((cfg) => cfg.id === trimmed);
 }
 
-/**
- * Derives a deterministic OS env-var name for a config-dir key from the
- * instance id, so the wizard never needs to ask the user to invent one for
- * a value that isn't a secret — `id`, sanitized to `[A-Z0-9_]`, appended to
- * `key`. E.g. `('CLAUDE_CONFIG_DIR', 'claude-personal')` ->
- * `'CLAUDE_CONFIG_DIR_CLAUDE_PERSONAL'`. Sanitizing is lossy (case and
- * punctuation both collapse), so two different ids can derive the same
- * name — callers that write the result must resolve that against
- * `usedVarNames` themselves; see `resolveUniqueConfigDirVarName`.
- */
-export function deriveConfigDirVarName(key: string, id: string): string {
-  const sanitizedId = id.trim().toUpperCase().replace(/[^A-Z0-9_]+/g, '_').replace(/^_+|_+$/g, '');
-  return `${key}_${sanitizedId || 'INSTANCE'}`;
-}
-
-/**
- * `deriveConfigDirVarName`, made collision-safe against `usedVarNames` — the
- * OS var names already claimed by every `envMap` value across the user's
- * existing `providerInstances` entries. Sanitizing an id for use in an env
- * var name is lossy (`claude-work` and `Claude Work` derive the same base
- * name), so without this check two distinct, already-unique instance ids
- * could silently end up sharing one OS var — and therefore one config dir —
- * at runtime. Appends `_2`, `_3`, ... until the name is free.
- */
-export function resolveUniqueConfigDirVarName(
-  key: string, id: string, usedVarNames: ReadonlySet<string>,
-): string {
-  const base = deriveConfigDirVarName(key, id);
-  if (!usedVarNames.has(base)) { return base; }
-  let suffix = 2;
-  while (usedVarNames.has(`${base}_${suffix}`)) { suffix += 1; }
-  return `${base}_${suffix}`;
-}
-
 /** Builds a `ProviderInstanceConfig` from collected wizard answers, trimming `id`/`displayName` and omitting `envMap` when empty. */
 export function buildProviderInstanceConfig(
-  kind: ProviderInstanceKind, id: string, displayName: string, envMap: Record<string, string>,
+  kind: ProviderInstanceKind, id: string, displayName: string, envMap: Record<string, EnvMapValue>,
 ): ProviderInstanceConfig {
   return {
     id: id.trim(),
