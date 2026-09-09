@@ -90,7 +90,24 @@ export class SelfControlMcpServer {
    * request costs nothing that matters.
    */
   private buildMcpServer(sid: string | undefined): McpServer {
-    const mcp = new McpServer({ name: 'marcode-self-control', version: '1.0.0' });
+    const mcp = new McpServer({ name: 'marcode-self-control', version: '1.0.0' }, {
+      // Server-level `instructions`, per the MCP `initialize` result — not a
+      // tool description, so it reaches the model even before it has decided
+      // to look at any one tool's schema. Each tool's own description still
+      // carries the operational detail (inputs, errors); this is the framing
+      // a per-tool description can't carry on its own: that this whole
+      // *session* is one pane among several run by the same user in the same
+      // Marcode window, and these tools are how it reaches the others.
+      instructions: 'You are one of several agent sessions running side by side in Marcode, a VS '
+        + 'Code panel. Each session is its own pane, possibly a different provider (Claude, Codex, '
+        + 'OpenCode) and a different working directory. These marcode__* tools are how you interact '
+        + 'with the panel itself, not with files or the user directly: marcode__list_sessions to see '
+        + 'who else is running, marcode__send_message to message another session, marcode__spawn_session '
+        + 'to start a new one, and marcode__recall/marcode__recall_fetch to search what past sessions '
+        + 'already figured out. Check marcode__list_sessions whenever coordinating with, or delegating '
+        + 'to, another session would help — do not assume you are alone just because nothing mentioned '
+        + 'these tools yet.',
+    });
 
     /** The calling session's own name, resolved from `sid` — undefined if `sid` is missing or stale. */
     const caller = () => {
