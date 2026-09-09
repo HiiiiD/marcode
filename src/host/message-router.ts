@@ -466,11 +466,17 @@ export class MessageRouter {
 
       // Awaited for the same reason: `fork` writes the new session's
       // transcript to disk before returning, and a `void` here would put
-      // that rejection outside `handle()`'s catch-all. No reply beyond the
-      // `sessions-changed` `fork()` already fires through `changed()`.
-      case 'fork-session':
-        await this.manager.fork(msg.id, msg.itemId);
+      // that rejection outside `handle()`'s catch-all. `sessions-changed`
+      // alone (fired through `changed()`) is not enough: it only mirrors
+      // onto an *existing* `byId` pane, so the new session would never enter
+      // `byId` and `reconcilePaneLayout` would never treat it as newly
+      // arrived — same reason `create-session` below also emits
+      // `session-snapshot` for the session it just made.
+      case 'fork-session': {
+        const forked = await this.manager.fork(msg.id, msg.itemId);
+        if (forked) { this.emit({ t: 'session-snapshot', session: await forked.snapshot() }); }
         return;
+      }
 
       // Both awaited for the same reason as `answer-relocation`: they shell
       // out to git and touch the filesystem, and a `void` here would put a
