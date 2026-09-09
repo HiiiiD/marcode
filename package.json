@@ -40,6 +40,11 @@
     "configuration": {
       "title": "Marcode",
       "properties": {
+        "marcode.debug": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable additional Marcode diagnostic logging."
+        },
         "marcode.enabledProviders": {
           "type": "array",
           "items": {

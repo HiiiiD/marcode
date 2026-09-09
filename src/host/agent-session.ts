@@ -20,6 +20,7 @@ import { profileNoiseIn } from './profile-noise';
 import { persistableAnswers } from './question-persistence';
 import type { TranscriptStore } from './transcript-store';
 import { detectWorktreeAdd } from './worktree-detect';
+import { lifecycleDebug } from '../shared/lifecycle-debug';
 
 export interface SessionSink {
   patch(id: SessionId, patch: TranscriptPatch): void;
@@ -1100,6 +1101,13 @@ export class AgentSession {
 
       case 'background-tasks-changed':
         this.activeBackgroundTasks = new Set(event.taskIds);
+        lifecycleDebug('session.background-tasks', {
+          sessionId: this._state.id,
+          taskIds: event.taskIds,
+          taskCount: event.taskIds.length,
+          turnActive: this.turnActive,
+          status: this._state.status,
+        });
         this.recomputeWaitingStatus(this.turnActive ? 'running' : 'idle');
         // The foreground turn can have already ended while this task was
         // still the only thing keeping the session busy (recomputeWaitingStatus
@@ -1113,6 +1121,13 @@ export class AgentSession {
         return;
 
       case 'turn-end':
+        lifecycleDebug('session.turn-end', {
+          sessionId: this._state.id,
+          reason: event.reason,
+          turnActive: this.turnActive,
+          taskIds: [...this.activeBackgroundTasks],
+          status: this._state.status,
+        });
         this.turnActive = false;
         this.closeAssistant();
         this.flushUnsettledTools();
@@ -1380,6 +1395,13 @@ export class AgentSession {
 
   private setStatus(status: SessionStatus): void {
     if (this._state.status === status) { return; }
+    lifecycleDebug('session.status', {
+      sessionId: this._state.id,
+      from: this._state.status,
+      to: status,
+      turnActive: this.turnActive,
+      taskCount: this.activeBackgroundTasks.size,
+    });
     this._state.status = status;
     this._state.updatedAt = Date.now();
     this.sink.status(this._state.id, status);
