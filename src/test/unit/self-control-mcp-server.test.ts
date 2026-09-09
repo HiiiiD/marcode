@@ -175,6 +175,52 @@ suite('SelfControlMcpServer', () => {
     await server.dispose();
   });
 
+  test('spawn_session inherits an alias-covered model id (resolvedModel match)', async () => {
+    let seenArgs: unknown[] = [];
+    const server = new SelfControlMcpServer(fakeManager({
+      catalog: () => [{
+        id: 'claude',
+        models: [{ id: 'sonnet', resolvedModel: 'claude-sonnet-5', effort: { levels: ['low', 'high'], default: 'low' } }],
+        permissionModes: [{ id: 'default' }],
+      }],
+      // A session persisted under the canonical wire id, not the alias —
+      // exactly what a pre-dynamic-catalog session carries.
+      summaries: () => [{
+        id: 'caller', name: 'Caller', providerId: 'claude', model: 'claude-sonnet-5',
+        permissionMode: 'default', status: 'idle', cwd: '/tmp', archived: false,
+      }],
+      create: async (...args) => { seenArgs = args; return { state: { id: 's-alias' } }; },
+    }));
+    const config = await server.start();
+    const result = await callToolAs(config, 'caller', 'marcode__spawn_session', {
+      cwd: '/tmp/work', prompt: 'delegate this',
+    });
+    assert.strictEqual(result.isError, undefined);
+    assert.deepStrictEqual(seenArgs.slice(0, 3), ['claude', '/tmp/work', 'claude-sonnet-5']);
+    await server.dispose();
+  });
+
+  test('spawn_session drops an inherited bypass mode to the provider default instead of rejecting', async () => {
+    let seenArgs: unknown[] = [];
+    const server = new SelfControlMcpServer(fakeManager({
+      catalog: () => [
+        { id: 'claude', models: [{ id: 'sonnet' }], permissionModes: [{ id: 'default' }, { id: 'bypass' }] },
+      ],
+      summaries: () => [{
+        id: 'caller', name: 'Caller', providerId: 'claude', model: 'sonnet',
+        permissionMode: 'bypass', status: 'idle', cwd: '/tmp', archived: false,
+      }],
+      create: async (...args) => { seenArgs = args; return { state: { id: 's-downgraded' } }; },
+    }));
+    const config = await server.start();
+    const result = await callToolAs(config, 'caller', 'marcode__spawn_session', {
+      cwd: '/tmp/work', prompt: 'delegate this',
+    });
+    assert.strictEqual(result.isError, undefined);
+    assert.deepStrictEqual(seenArgs.slice(0, 5), ['claude', '/tmp/work', 'sonnet', undefined, undefined]);
+    await server.dispose();
+  });
+
   test('spawn_session rejects an incompatible effective configuration before create()', async () => {
     let created = false;
     const server = new SelfControlMcpServer(fakeManager({

@@ -24,7 +24,12 @@ type LiveSessionLike = {
 export interface SessionManagerLike {
   catalog(): {
     id: string;
-    models: { id: string; effort?: { levels: string[] } }[];
+    // `resolvedModel` mirrors `ModelInfo`'s own field — see
+    // `findModel()` in shared/model-catalog.ts. An alias row (`sonnet` ->
+    // `claude-sonnet-5`) must still match a session that persisted the
+    // canonical id, or inheriting that session's model here would reject a
+    // model `sessionManager.create()` resolves just fine.
+    models: { id: string; resolvedModel?: string; effort?: { levels: string[] } }[];
     permissionModes: { id: string }[];
   }[];
   create(
@@ -132,8 +137,10 @@ export class SelfControlMcpServer {
           + 'subagent of this conversation and unrelated to any built-in Task/subagent tool you '
           + 'have. Use this to hand off independent work to a separate, freestanding session. '
           + 'Omitted provider, model, effort, and permission mode each inherit independently from '
-          + 'the calling session; incompatible combinations are rejected. The new session is opened '
-          + 'in a pane. Returns the new session\'s id.',
+          + 'the calling session; incompatible combinations are rejected. `mode: "bypass"` is always '
+          + 'rejected, even when only inherited from a bypass-mode caller — inheritance falls back '
+          + 'to the provider default in that case instead of failing. The new session is opened in '
+          + 'a pane. Returns the new session\'s id.',
         inputSchema: {
           provider: z.string().optional().describe('A provider id from this window\'s catalog. Omit to inherit the caller\'s provider.'),
           model: z.string().optional().describe('A model id the chosen provider offers. Omit to inherit the caller\'s model.'),
@@ -155,10 +162,16 @@ export class SelfControlMcpServer {
           return { isError: true, content: [{ type: 'text', text: `Unknown or unavailable provider: ${providerId}` }] };
         }
         const effectiveModel = model ?? from?.model;
-        const validationModel = effectiveModel ?? entry.models[0]?.id;
-        const modelEntry = validationModel === undefined
-          ? undefined
-          : entry.models.find((m) => m.id === validationModel);
+        // Alias-aware, like `findModel()` in shared/model-catalog.ts (that
+        // helper itself isn't reused here — its `ModelInfo` requires fields,
+        // e.g. `displayName`, this file's structural `SessionManagerLike`
+        // deliberately doesn't carry). A caller's persisted `model` can be a
+        // canonical/wire id that only an alias row's `resolvedModel` covers
+        // (any session predating the dynamic catalog); matching on `id`
+        // alone would reject a model `sessionManager.create()` resolves fine.
+        const modelEntry = effectiveModel === undefined
+          ? entry.models[0]
+          : entry.models.find((m) => m.id === effectiveModel || m.resolvedModel === effectiveModel);
         if (effectiveModel !== undefined && !modelEntry) {
           return { isError: true, content: [{ type: 'text', text: `Provider ${providerId} has no model ${effectiveModel}` }] };
         }
@@ -167,24 +180,31 @@ export class SelfControlMcpServer {
           && (!modelEntry?.effort || !modelEntry.effort.levels.includes(effectiveEffort))) {
           return {
             isError: true,
-            content: [{ type: 'text', text: `Model ${validationModel ?? '(provider default)'} does not support effort ${effectiveEffort}` }],
+            content: [{ type: 'text', text: `Model ${modelEntry?.id ?? effectiveModel ?? '(provider default)'} does not support effort ${effectiveEffort}` }],
           };
         }
-        const modeId = (mode ?? from?.permissionMode) as PermissionMode | undefined;
+        const explicitMode = mode as PermissionMode | undefined;
+        let modeId = (explicitMode ?? from?.permissionMode) as PermissionMode | undefined;
         if (modeId !== undefined && !entry.permissionModes.some((m) => m.id === modeId)) {
           return { isError: true, content: [{ type: 'text', text: `Provider ${providerId} has no mode ${modeId}` }] };
         }
-        // `bypass` skips every permission check. A session running in a
-        // restricted mode (e.g. `plan`) must not be able to delegate around
-        // its own restriction by spawning a `bypass` child — regardless of
-        // whether the target provider's own catalog happens to list `bypass`
-        // among its modes.
-        if (modeId === 'bypass') {
+        // `bypass` skips every permission check. An explicit request for it
+        // is refused outright — a session running in a restricted mode
+        // (e.g. `plan`) must not be able to delegate around its own
+        // restriction by spawning a `bypass` child, regardless of whether
+        // the target provider's own catalog happens to list `bypass` among
+        // its modes. A caller that merely *is* bypass itself and left `mode`
+        // unset never asked for that; propagating it silently would be a
+        // surprise a plain inherit shouldn't cause, so it is dropped back to
+        // the provider's own default (see `resolvePermissionMode`) instead
+        // of blocking the spawn outright.
+        if (explicitMode === 'bypass') {
           return {
             isError: true,
             content: [{ type: 'text', text: 'spawn_session cannot create bypass-mode sessions' }],
           };
         }
+        if (modeId === 'bypass') { modeId = undefined; }
         // Absolute-path check only: this module deliberately carries no
         // `vscode` import (see the class doc), so it has no clean way to
         // consult `vscode.workspace.workspaceFolders` without introducing
