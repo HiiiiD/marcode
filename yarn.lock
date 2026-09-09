@@ -957,9 +957,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@shadcn/react@npm:^0.3.0":
-  version: 0.3.0
-  resolution: "@shadcn/react@npm:0.3.0"
+"@shadcn/react@npm:^0.3.1":
+  version: 0.3.1
+  resolution: "@shadcn/react@npm:0.3.1"
   peerDependencies:
     "@types/react": ">=19"
     react: ">=19"
@@ -968,7 +968,7 @@ __metadata:
       optional: true
     react:
       optional: true
-  checksum: 10c0/31488078f81b3d688a1c03ef94bde68cac5212f169600651d741ac229d2662602ab0214e3a74fe88d3bb557144543e54746834370b572b07f9ed9b76cc85b197
+  checksum: 10c0/4de4cdb36adcae9965707471b24826fa60b98553344ab48c551b92009d18923d09a8db6e4e2982e8544a1e8eb772f6ed2534dee5ac5fc67b20f04391e520c1d2
   languageName: node
   linkType: hard
 
@@ -4255,7 +4255,7 @@ __metadata:
     "@headless-tree/core": "npm:1.7.0"
     "@headless-tree/react": "npm:1.7.0"
     "@modelcontextprotocol/sdk": "npm:^1.30.0"
-    "@shadcn/react": "npm:^0.3.0"
+    "@shadcn/react": "npm:^0.3.1"
     "@tailwindcss/cli": "npm:^4.3.3"
     "@testing-library/dom": "npm:^10.4.1"
     "@testing-library/react": "npm:^16.3.2"
