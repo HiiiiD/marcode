@@ -6,7 +6,7 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { z } from 'zod';
 import type { MemoryStore } from '../memory/types';
 import type { PermissionMode, TranscriptItem } from '../protocol/messages';
-import type { SelfControlMcpConfig } from '../providers/types';
+import type { EffortLevel, SelfControlMcpConfig } from '../providers/types';
 
 /**
  * The slice of `SessionManager` this server needs. Declared structurally, not
@@ -22,12 +22,20 @@ type LiveSessionLike = {
 } | undefined;
 
 export interface SessionManagerLike {
-  catalog(): { id: string; models: { id: string }[]; permissionModes: { id: string }[] }[];
+  catalog(): {
+    id: string;
+    models: { id: string; effort?: { levels: string[] } }[];
+    permissionModes: { id: string }[];
+  }[];
   create(
-    providerId: string, cwd: string, model?: string, effort?: undefined, mode?: PermissionMode,
+    providerId: string, cwd: string, model?: string, effort?: EffortLevel, mode?: PermissionMode,
   ): Promise<{ state: { id: string } }>;
+  setVisible(ids: string[]): Promise<void>;
   /** Every non-archived session's addressable identity — see `marcode__list_sessions`. */
-  summaries(): { id: string; name: string; providerId: string; status: string; cwd: string; archived: boolean }[];
+  summaries(): {
+    id: string; name: string; providerId: string; model: string; effort?: EffortLevel;
+    permissionMode: PermissionMode; status: string; cwd: string; archived: boolean;
+  }[];
   /** The ids of sessions with an open pane right now — see `marcode__list_sessions`. */
   visibleIds(): string[];
   /**
@@ -123,26 +131,48 @@ export class SelfControlMcpServer {
           + 'own provider/model, own conversation) and sends it an initial prompt — NOT a '
           + 'subagent of this conversation and unrelated to any built-in Task/subagent tool you '
           + 'have. Use this to hand off independent work to a separate, freestanding session. '
-          + 'Returns the new session\'s id.',
+          + 'Omitted provider, model, effort, and permission mode each inherit independently from '
+          + 'the calling session; incompatible combinations are rejected. The new session is opened '
+          + 'in a pane. Returns the new session\'s id.',
         inputSchema: {
-          provider: z.string().describe('A provider id from this window\'s catalog, e.g. "claude".'),
-          model: z.string().optional().describe('A model id the chosen provider offers. Omit for its default.'),
-          mode: z.string().optional().describe('A permission mode id the chosen provider offers. Omit for "default".'),
+          provider: z.string().optional().describe('A provider id from this window\'s catalog. Omit to inherit the caller\'s provider.'),
+          model: z.string().optional().describe('A model id the chosen provider offers. Omit to inherit the caller\'s model.'),
+          effort: z.enum(['low', 'medium', 'high', 'xhigh', 'max', 'ultra']).optional()
+            .describe('The model effort level. Omit to inherit the caller\'s effort.'),
+          mode: z.string().optional().describe('A permission mode id the chosen provider offers. Omit to inherit the caller\'s mode.'),
           cwd: z.string().describe('Absolute working directory for the new session.'),
           prompt: z.string().describe('The first message sent to the new session.'),
         },
       },
-      async ({ provider, model, mode, cwd, prompt }) => {
-        const entry = this.sessionManager.catalog().find((p) => p.id === provider);
+      async ({ provider, model, effort, mode, cwd, prompt }) => {
+        const from = caller();
+        const providerId = provider ?? from?.providerId;
+        if (!providerId) {
+          return { isError: true, content: [{ type: 'text', text: 'provider is required when the calling session cannot be identified' }] };
+        }
+        const entry = this.sessionManager.catalog().find((p) => p.id === providerId);
         if (!entry) {
-          return { isError: true, content: [{ type: 'text', text: `Unknown or unavailable provider: ${provider}` }] };
+          return { isError: true, content: [{ type: 'text', text: `Unknown or unavailable provider: ${providerId}` }] };
         }
-        if (model !== undefined && !entry.models.some((m) => m.id === model)) {
-          return { isError: true, content: [{ type: 'text', text: `Provider ${provider} has no model ${model}` }] };
+        const effectiveModel = model ?? from?.model;
+        const validationModel = effectiveModel ?? entry.models[0]?.id;
+        const modelEntry = validationModel === undefined
+          ? undefined
+          : entry.models.find((m) => m.id === validationModel);
+        if (effectiveModel !== undefined && !modelEntry) {
+          return { isError: true, content: [{ type: 'text', text: `Provider ${providerId} has no model ${effectiveModel}` }] };
         }
-        const modeId = mode as PermissionMode | undefined;
+        const effectiveEffort = effort ?? from?.effort;
+        if (effectiveEffort !== undefined
+          && (!modelEntry?.effort || !modelEntry.effort.levels.includes(effectiveEffort))) {
+          return {
+            isError: true,
+            content: [{ type: 'text', text: `Model ${validationModel ?? '(provider default)'} does not support effort ${effectiveEffort}` }],
+          };
+        }
+        const modeId = (mode ?? from?.permissionMode) as PermissionMode | undefined;
         if (modeId !== undefined && !entry.permissionModes.some((m) => m.id === modeId)) {
-          return { isError: true, content: [{ type: 'text', text: `Provider ${provider} has no mode ${mode}` }] };
+          return { isError: true, content: [{ type: 'text', text: `Provider ${providerId} has no mode ${modeId}` }] };
         }
         // `bypass` skips every permission check. A session running in a
         // restricted mode (e.g. `plan`) must not be able to delegate around
@@ -166,7 +196,7 @@ export class SelfControlMcpServer {
           return { isError: true, content: [{ type: 'text', text: `cwd must be an absolute path: ${cwd}` }] };
         }
         try {
-          const session = await this.sessionManager.create(provider, cwd, model, undefined, modeId);
+          const session = await this.sessionManager.create(providerId, cwd, effectiveModel, effectiveEffort, modeId);
           // `send` is deliberately not part of `SessionManagerLike`: the manager
           // hands back a live session object, and this is the same shape
           // `MessageRouter`'s 'send' case calls — see agent-session.ts's `send`.
@@ -175,6 +205,7 @@ export class SelfControlMcpServer {
           // `AgentSession` behind it) doesn't blow up delivering the prompt.
           const sendable = session as unknown as { send?: (text: string) => void };
           if (typeof sendable.send === 'function') { sendable.send(prompt); }
+          await this.sessionManager.setVisible([...new Set([...this.sessionManager.visibleIds(), session.state.id])]);
           return { content: [{ type: 'text', text: JSON.stringify({ sessionId: session.state.id }) }] };
         } catch (err) {
           return { isError: true, content: [{ type: 'text', text: err instanceof Error ? err.message : String(err) }] };

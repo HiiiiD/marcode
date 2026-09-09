@@ -18,6 +18,7 @@ function fakeManager(overrides: Partial<SessionManagerLike> = {}): SessionManage
     create: async () => ({ state: { id: 's-fake-1' } }),
     summaries: () => [],
     visibleIds: () => [],
+    setVisible: async () => {},
     get: async () => undefined,
     transcriptTail: async () => ({ items: [] }),
     ...overrides,
@@ -120,6 +121,10 @@ suite('SelfControlMcpServer', () => {
   test('spawn_session calls create() with the requested provider/cwd/prompt and returns a sessionId', async () => {
     let seenArgs: unknown[] = [];
     const server = new SelfControlMcpServer(fakeManager({
+      catalog: () => [{
+        id: 'claude', models: [{ id: 'sonnet', effort: { levels: ['low', 'high'], default: 'low' } }],
+        permissionModes: [{ id: 'default' }, { id: 'plan' }],
+      }],
       create: async (...args) => { seenArgs = args; return { state: { id: 's-new-1' } }; },
     }));
     const config = await server.start();
@@ -133,14 +138,63 @@ suite('SelfControlMcpServer', () => {
         jsonrpc: '2.0', id: 1, method: 'tools/call',
         params: {
           name: 'marcode__spawn_session',
-          arguments: { provider: 'claude', model: 'sonnet', mode: 'default', cwd: '/tmp/work', prompt: 'do the thing' },
+          arguments: { provider: 'claude', model: 'sonnet', effort: 'high', mode: 'plan', cwd: '/tmp/work', prompt: 'do the thing' },
         },
       }),
     });
     const body = await res.json() as { result: { content: { type: string; text: string }[] } };
     const parsed = JSON.parse(body.result.content[0].text) as { sessionId: string };
     assert.strictEqual(parsed.sessionId, 's-new-1');
-    assert.deepStrictEqual(seenArgs.slice(0, 4), ['claude', '/tmp/work', 'sonnet', undefined]);
+    assert.deepStrictEqual(seenArgs.slice(0, 5), ['claude', '/tmp/work', 'sonnet', 'high', 'plan']);
+    await server.dispose();
+  });
+
+  test('spawn_session inherits omitted settings from the calling session and opens its pane', async () => {
+    let seenArgs: unknown[] = [];
+    let visible: string[] = [];
+    const server = new SelfControlMcpServer(fakeManager({
+      catalog: () => [{
+        id: 'claude', models: [{ id: 'sonnet', effort: { levels: ['low', 'high'], default: 'low' } }],
+        permissionModes: [{ id: 'default' }, { id: 'plan' }],
+      }],
+      summaries: () => [{
+        id: 'caller', name: 'Caller', providerId: 'claude', model: 'sonnet', effort: 'high',
+        permissionMode: 'plan', status: 'idle', cwd: '/tmp', archived: false,
+      }],
+      visibleIds: () => ['caller'],
+      setVisible: async (ids) => { visible = ids; },
+      create: async (...args) => { seenArgs = args; return { state: { id: 's-inherited' } }; },
+    }));
+    const config = await server.start();
+    const result = await callToolAs(config, 'caller', 'marcode__spawn_session', {
+      cwd: '/tmp/work', prompt: 'delegate this',
+    });
+    assert.strictEqual(result.isError, undefined);
+    assert.deepStrictEqual(seenArgs, ['claude', '/tmp/work', 'sonnet', 'high', 'plan']);
+    assert.deepStrictEqual(visible, ['caller', 's-inherited']);
+    await server.dispose();
+  });
+
+  test('spawn_session rejects an incompatible effective configuration before create()', async () => {
+    let created = false;
+    const server = new SelfControlMcpServer(fakeManager({
+      catalog: () => [
+        { id: 'claude', models: [{ id: 'sonnet' }], permissionModes: [{ id: 'default' }] },
+        { id: 'codex', models: [{ id: 'gpt' }], permissionModes: [{ id: 'default' }] },
+      ],
+      summaries: () => [{
+        id: 'caller', name: 'Caller', providerId: 'claude', model: 'sonnet',
+        permissionMode: 'default', status: 'idle', cwd: '/tmp', archived: false,
+      }],
+      create: async () => { created = true; return { state: { id: 'x' } }; },
+    }));
+    const config = await server.start();
+    const result = await callToolAs(config, 'caller', 'marcode__spawn_session', {
+      provider: 'codex', cwd: '/tmp/work', prompt: 'delegate this',
+    });
+    assert.strictEqual(result.isError, true);
+    assert.match(result.content[0].text, /model.*sonnet|no model/i);
+    assert.strictEqual(created, false);
     await server.dispose();
   });
 
@@ -496,6 +550,7 @@ suite('SelfControlMcpServer cross-session messaging', () => {
         create: (providerId, cwd, model, effort, mode) => second.create(providerId, cwd, model, effort, mode),
         summaries: () => second.summaries(),
         visibleIds: () => second.visibleIds(),
+        setVisible: (ids) => second.setVisible(ids as never),
         get: async (id) => {
           try { return await second.open(id); } catch { return undefined; }
         },
@@ -660,6 +715,7 @@ suite('SelfControlMcpServer session context', () => {
         create: (providerId, cwd, model, effort, mode) => manager.create(providerId, cwd, model, effort, mode),
         summaries: () => manager.summaries(),
         visibleIds: () => manager.visibleIds(),
+        setVisible: (ids) => manager.setVisible(ids as never),
         get: async (id) => manager.get(id as never),
         transcriptTail: (id, limit) => manager.transcriptTail(id as never, limit),
       });

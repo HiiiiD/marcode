@@ -256,6 +256,7 @@ export async function activate(context: vscode.ExtensionContext) {
   const selfControlServer = new SelfControlMcpServer({
     catalog: () => manager.catalog(),
     create: (providerId, cwd, model, effort, mode) => manager.create(providerId, cwd, model, effort, mode),
+    setVisible: (ids) => manager.setVisible(ids as SessionId[]),
     summaries: () => manager.summaries(),
     visibleIds: () => manager.visibleIds(),
     // `summaries()` spans every non-archived session, including one restored
