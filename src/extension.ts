@@ -33,6 +33,7 @@ import {
 import {
   claudeLoginCommand, codexLoginCommand, computeLoginKind, resolveEnvMap, validateProviderInstances,
 } from './shared/provider-instances';
+import { setLifecycleDebug } from './shared/lifecycle-debug';
 import type { AgentProvider, SelfControlMcpConfig } from './providers/types';
 
 /**
@@ -203,6 +204,7 @@ function warnAboutProfile(profile: string): void {
 let pendingDeactivate: (() => Promise<void>) | undefined;
 
 export async function activate(context: vscode.ExtensionContext) {
+  setLifecycleDebug(vscode.workspace.getConfiguration('marcode').get<boolean>('debug', false));
   const rootDir = context.storageUri?.fsPath ?? context.globalStorageUri.fsPath;
   const store = new TranscriptStore(rootDir);
   const attachments = new AttachmentStore(rootDir);
@@ -577,6 +579,9 @@ export async function activate(context: vscode.ExtensionContext) {
     // sessions land in 'error' with a transcript item (CodexRun's onClose
     // handling), not silently on the old process.
     vscode.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration('marcode.debug')) {
+        setLifecycleDebug(vscode.workspace.getConfiguration('marcode').get<boolean>('debug', false));
+      }
       if (codexProvider && e.affectsConfiguration('marcode.codex.path')) {
         codexProvider.setBinPath(codexBinPath());
         void manager.refreshModels(defaultCwd);

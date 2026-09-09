@@ -138,6 +138,7 @@ import { mapEvent } from './map-events';
 import { toPermissionMeta, toQuestionSpecs, toSdkAnswers } from './map-questions';
 import { toToolCall } from './map-tools';
 import { redactSecrets } from './redact';
+import { lifecycleDebug } from '../../shared/lifecycle-debug';
 
 /**
  * The SDK's own failure text, turned into something a panel can show.
@@ -642,8 +643,24 @@ export class ClaudeProvider implements AgentProvider {
             // exactly as non-fatal as an async rejection.
           }
           for await (const msg of session) {
+            lifecycleDebug('claude.sdk-message', {
+              sessionId: opts.sessionId,
+              type: typeof (msg as { type?: unknown }).type === 'string'
+                ? (msg as { type: string }).type : 'unknown',
+              subtype: typeof (msg as { subtype?: unknown }).subtype === 'string'
+                ? (msg as { subtype: string }).subtype : undefined,
+              turnGeneration: turnGen,
+            });
             for (const event of mapEvent(msg)) {
               if (event.kind === 'background-tasks-changed') { backgroundTaskIds = event.taskIds; }
+              lifecycleDebug('claude.mapped-event', {
+                sessionId: opts.sessionId,
+                kind: event.kind,
+                ...(event.kind === 'turn-end' ? { reason: event.reason } : {}),
+                ...(event.kind === 'background-tasks-changed'
+                  ? { taskIds: event.taskIds, taskCount: event.taskIds.length } : {}),
+                turnGeneration: turnGen,
+              });
               // A genuine echo of a turn `interrupt()` already self-resolved:
               // harmless while the session is still idle (drainQueued() finds
               // nothing to spend), but a newer turn started since — turnGen
@@ -675,6 +692,10 @@ export class ClaudeProvider implements AgentProvider {
       events,
       send: (text: string, context?: EditorContext, attachments?: Attachment[]) => {
         turnGen += 1;
+        lifecycleDebug('claude.send', {
+          sessionId: opts.sessionId,
+          turnGeneration: turnGen,
+        });
         ensureStarted();
         const body0 = context ? `${formatEditorContext(context)}\n\n${text}` : text;
         const body = withMarcodeIntro(body0, introduced, Boolean(opts.resumeToken));
@@ -813,6 +834,11 @@ export class ClaudeProvider implements AgentProvider {
         return toContextBreakdown(res as unknown as ContextUsageLike);
       },
       interrupt: async () => {
+        lifecycleDebug('claude.interrupt.requested', {
+          sessionId: opts.sessionId,
+          turnGeneration: turnGen,
+          backgroundTaskIds: [...backgroundTaskIds],
+        });
         for (const id of [...parked.keys()]) { cancelParked(id); }
         if (!queryRef) { return; } // nothing has ever run: a no-op, not a failure.
         try {
@@ -844,6 +870,10 @@ export class ClaudeProvider implements AgentProvider {
           // started by the time it shows up, which is what `interruptedGen`
           // (checked in the `for await` loop above) exists to catch.
           interruptedGen = turnGen;
+          lifecycleDebug('claude.interrupt.synthetic-turn-end', {
+            sessionId: opts.sessionId,
+            turnGeneration: turnGen,
+          });
           events.push({ kind: 'turn-end', reason: 'interrupted' });
         } catch (err) {
           events.push({ kind: 'turn-end', reason: 'error', error: errorMessage(err) });
