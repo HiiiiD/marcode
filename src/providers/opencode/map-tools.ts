@@ -1,5 +1,6 @@
 import type { FileEdit, ToolCall, ToolOutput } from '../types';
 import type { AcpToolCall, ToolMapper } from '../acp/map-updates';
+import { toTodoStatus } from '../canonical/tool-call';
 
 /** Absolute paths reach the transcript with POSIX separators — the spelling
  *  `claim-paths.ts` expects when it attributes a fleet-diff row. */
@@ -43,6 +44,22 @@ function parseSkillTitle(title: string | undefined): string | undefined {
   return title?.startsWith(SKILL_TITLE_PREFIX) ? title.slice(SKILL_TITLE_PREFIX.length) : undefined;
 }
 
+/**
+ * OpenCode's native `todowrite` tool (`packages/opencode/src/tool/todo.ts`)
+ * takes exactly one parameter, `todos: Todo.Info[]` — that shape is the
+ * signal, not `title` (`\`${n} todos\`` counts only the non-completed ones,
+ * so it can misleadingly read "0 todos" on a freshly-completed list) or
+ * `kind` (opencode sends no distinguishing kind for it at all).
+ */
+function parseTodos(rawInput: unknown): { status: ReturnType<typeof toTodoStatus>; text: string }[] | undefined {
+  const todos = (rawInput as { todos?: unknown } | undefined)?.todos;
+  if (!Array.isArray(todos)) { return undefined; }
+  return todos
+    .map((t) => t as { content?: unknown; status?: unknown })
+    .map((t) => ({ status: toTodoStatus(t.status), text: typeof t.content === 'string' ? t.content : '' }))
+    .filter((item) => item.text.length > 0);
+}
+
 export function toToolCall(c: AcpToolCall): ToolCall {
   const raw = (c.rawInput ?? {}) as {
     command?: string; cwd?: string; filePath?: string; pattern?: string; path?: string;
@@ -50,6 +67,9 @@ export function toToolCall(c: AcpToolCall): ToolCall {
   };
   const skill = parseSkillTitle(c.title);
   if (skill) { return { kind: 'command', label: 'Skill', command: '', skill: raw.name ?? skill }; }
+
+  const todos = parseTodos(c.rawInput);
+  if (todos) { return { kind: 'todos', label: 'Todos', items: todos }; }
 
   const mcp = parseSelfControlTitle(c.title);
   if (mcp) {
@@ -137,6 +157,10 @@ export function toToolCall(c: AcpToolCall): ToolCall {
 
 export function toToolOutput(c: AcpToolCall): ToolOutput {
   if (c.kind === 'edit') { return { kind: 'none' }; }
+  // Same reasoning as `edit`: the todo list is already the card's `items`
+  // block, so re-showing opencode's JSON dump of that same array as text
+  // output would just duplicate it.
+  if (parseTodos(c.rawInput)) { return { kind: 'none' }; }
   const text = (c.content ?? [])
     .filter((b): b is ContentBlock => (b as ContentBlock)?.type === 'content')
     .map((b) => b.content?.text ?? '')
