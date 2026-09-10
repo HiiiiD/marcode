@@ -583,4 +583,73 @@ suite('AcpRun', () => {
     assert.strictEqual(failed?.error?.includes('ACP connection closed'), false);
     await run.dispose();
   });
+
+  test('childEvents source is merged into the run\'s own event stream', async () => {
+    const p = peer();
+    const events: AgentEvent[] = [];
+    async function* source(): AsyncGenerator<AgentEvent> {
+      yield { kind: 'text', delta: 'from a child' };
+    }
+    const run = new AcpRun(p.child, {
+      cwd: '/w', permissionMode: 'default', tools: openCodeTools,
+      modeId: openCodeModeId, clientName: 'mar-code', sessionId: 'test-session',
+      childEvents: source(),
+    });
+    collect(run, events);
+    await handshake(p);
+    await new Promise((r) => setTimeout(r, 20));
+    assert.strictEqual(events.some((e) => e.kind === 'text' && e.delta === 'from a child'), true);
+    await run.dispose();
+  });
+
+  test('onSessionId fires once, with the session id session/new answered', async () => {
+    const p = peer();
+    const seen: string[] = [];
+    const run = new AcpRun(p.child, {
+      cwd: '/w', permissionMode: 'default', tools: openCodeTools,
+      modeId: openCodeModeId, clientName: 'mar-code', sessionId: 'test-session',
+      onSessionId: (id) => seen.push(id),
+    });
+    await handshake(p);
+    assert.deepStrictEqual(seen, ['ses_ff0400c8affe2kYFjqc6OUHpG3']);
+    await run.dispose();
+  });
+
+  test('onDispose runs during dispose()', async () => {
+    const p = peer();
+    let disposed = false;
+    const run = new AcpRun(p.child, {
+      cwd: '/w', permissionMode: 'default', tools: openCodeTools,
+      modeId: openCodeModeId, clientName: 'mar-code', sessionId: 'test-session',
+      onDispose: () => { disposed = true; },
+    });
+    await handshake(p);
+    await run.dispose();
+    assert.strictEqual(disposed, true);
+  });
+
+  test('handleAuxiliaryPermission auto-decides under bypass mode without parking', async () => {
+    const p = peer();
+    const run = new AcpRun(p.child, {
+      cwd: '/w', permissionMode: 'bypass', tools: openCodeTools,
+      modeId: openCodeModeId, clientName: 'mar-code', sessionId: 'test-session',
+    });
+    await handshake(p);
+    const decision = await run.handleAuxiliaryPermission('child_1:req_1', { kind: 'other', label: 'x', raw: {} });
+    assert.deepStrictEqual(decision, { allow: true });
+    await run.dispose();
+  });
+
+  test('handleAuxiliaryPermission parks and resolves via respondToTool', async () => {
+    const p = peer();
+    const run = new AcpRun(p.child, {
+      cwd: '/w', permissionMode: 'default', tools: openCodeTools,
+      modeId: openCodeModeId, clientName: 'mar-code', sessionId: 'test-session',
+    });
+    await handshake(p);
+    const pending = run.handleAuxiliaryPermission('child_1:req_1', { kind: 'other', label: 'x', raw: {} });
+    run.respondToTool('child_1:req_1', { allow: true });
+    assert.deepStrictEqual(await pending, { allow: true });
+    await run.dispose();
+  });
 });

@@ -4,7 +4,8 @@ import { withMarcodeIntro } from '../marcode-context';
 import type { SessionId } from '../../protocol/messages';
 import type {
   AgentEvent, AgentRun, Attachment, ContextBreakdown, EditorContext,
-  EffortLevel, PermissionMode, QuestionAnswers, SelfControlMcpConfig, ToolDecision,
+  EffortLevel, PermissionMeta, PermissionMode, QuestionAnswers,
+  SelfControlMcpConfig, ToolCall, ToolDecision,
 } from '../types';
 import { CLIENT_CAPABILITIES, connectAcp, PROTOCOL_VERSION, type AcpChild } from './acp-client';
 import { currentModelId, effortConfigId, modelConfigId, toModeIds, type ConfigOption } from './config-options';
@@ -62,6 +63,17 @@ export interface AcpRunOptions {
   sessionId: SessionId;
   /** The loopback MCP server this run's agent should connect to, if any. */
   selfControlMcp?: SelfControlMcpConfig;
+  /**
+   * A second, vendor-supplied source of events to merge into this run's own
+   * stream — e.g. OpenCode's subagent watcher, which observes child-session
+   * activity ACP itself never forwards. Generic on purpose: nothing here
+   * names OpenCode. Absent means no auxiliary source.
+   */
+  childEvents?: AsyncIterable<AgentEvent>;
+  /** Fired once, the instant this run's own session id is known. */
+  onSessionId?: (id: string) => void;
+  /** Fired during `dispose()`, alongside this run's own teardown. */
+  onDispose?: () => Promise<void> | void;
 }
 
 /**
@@ -228,6 +240,15 @@ export class AcpRun implements AgentRun {
     this.mode = opts.permissionMode;
     this.model = opts.model;
     this.startup = this.start();
+    if (this.opts.childEvents) { void this.pumpChildEvents(this.opts.childEvents); }
+  }
+
+  /** Forwards a vendor-supplied auxiliary event source into this run's own channel. */
+  private async pumpChildEvents(source: AsyncIterable<AgentEvent>): Promise<void> {
+    for await (const event of source) {
+      if (this.disposed) { return; }
+      this.events.push(event);
+    }
   }
 
   /** Notified whenever this session's config catalog changes; fired immediately if one is known. */
@@ -286,6 +307,7 @@ export class AcpRun implements AgentRun {
 
     if (this.opts.resumeToken) {
       this.sessionId = this.opts.resumeToken;
+      this.opts.onSessionId?.(this.sessionId);
       await this.loadGated(conn, this.opts.resumeToken);
     } else {
       // This is where the self-control server rides: `mcpServers` is for a
@@ -296,6 +318,7 @@ export class AcpRun implements AgentRun {
         cwd: this.opts.cwd, mcpServers: mcpServersFor(this.opts.selfControlMcp, this.opts.sessionId),
       });
       this.sessionId = created.sessionId;
+      this.opts.onSessionId?.(this.sessionId);
       this.applyConfigOptions(created.configOptions);
     }
     if (this.disposed || !this.sessionId) { return; }
@@ -485,6 +508,30 @@ export class AcpRun implements AgentRun {
     if (this.parked.get(id) === own) { this.parked.delete(id); }
     if (!decision) { return { outcome: { outcome: 'cancelled' } }; }
     return chooseOption(options, decision);
+  }
+
+  /**
+   * The entry point an auxiliary event source (a subagent watcher) uses to
+   * ask this run's own permission policy about a request it caught outside
+   * ACP. Same decision path as `onRequestPermission` — `autoDecision(mode)`
+   * first, a real parked promise and a `permission` event only if that's
+   * `undefined` — so `bypass`/`dontAsk` on this session apply to whatever
+   * called in here too, and a real decision answers through the existing
+   * `respondToTool` path with zero new UI.
+   */
+  async handleAuxiliaryPermission(
+    id: string, tool: ToolCall, meta?: PermissionMeta, parentId?: string,
+  ): Promise<ToolDecision | undefined> {
+    const auto = autoDecision(this.mode);
+    if (auto) { return auto; }
+    return new Promise<ToolDecision | undefined>((resolve) => {
+      const previous = this.parked.get(id);
+      this.parked.set(id, resolve);
+      if (previous) { previous(undefined); }
+      this.events.push({
+        kind: 'permission', id, tool, ...(meta ? { meta } : {}), ...(parentId ? { parentId } : {}),
+      });
+    });
   }
 
   // -------------------------------------------------------------- outgoing
@@ -720,6 +767,7 @@ export class AcpRun implements AgentRun {
   async dispose(): Promise<void> {
     if (this.disposed) { return; }
     this.disposed = true;
+    if (this.opts.onDispose) { await this.opts.onDispose(); }
     // Release the load gate before anything else, so a `start()` parked on it
     // unwinds rather than holding a 2s timer on a session that is gone.
     this.clearLoadTimer();
