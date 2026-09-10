@@ -73,7 +73,7 @@ export interface AcpRunOptions {
 function mcpServersFor(config: SelfControlMcpConfig | undefined, sessionId: SessionId): unknown[] {
   if (!config) { return []; }
   return [{
-    type: 'http', name: 'marcode-self-control',
+    type: 'http', name: 'marcode_self_control',
     url: `${config.url}?sid=${encodeURIComponent(sessionId)}`,
     headers: [{ name: 'Authorization', value: `Bearer ${config.token}` }],
   }];
