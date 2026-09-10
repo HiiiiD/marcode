@@ -34,8 +34,17 @@ suite('acp toAgentEvents', () => {
     assert.strictEqual((events[0] as { id: string }).id, 'call_149d4cd4e9d34517851b27d4');
   });
 
-  test('an in_progress update emits nothing', () => {
-    assert.deepStrictEqual(toAgentEvents(frames.updates.bashToolCallInProgress, tools, new ToolCallLog()), []);
+  test('an in_progress update emits tool-update once the real command is known', () => {
+    const events = toAgentEvents(frames.updates.bashToolCallInProgress, tools, new ToolCallLog());
+    assert.strictEqual(events.length, 1);
+    assert.strictEqual(events[0].kind, 'tool-update');
+    assert.strictEqual((events[0] as { id: string }).id, 'call_149d4cd4e9d34517851b27d4');
+  });
+
+  test('an in_progress update for read emits tool-update once the path is known', () => {
+    const events = toAgentEvents(frames.updates.readToolCallInProgress, tools, new ToolCallLog());
+    assert.strictEqual(events.length, 1);
+    assert.strictEqual(events[0].kind, 'tool-update');
   });
 
   test('a completed update becomes tool-end and re-sends the tool', () => {

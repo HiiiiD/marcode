@@ -262,6 +262,14 @@ export type AgentEvent =
   | { kind: 'thinking'; delta: string }
   | { kind: 'tool-start'; id: string; tool: ToolCall; parentId?: string }
   /**
+   * A live-refresh of a still-running call — an ACP `tool_call_update` while
+   * `status: 'in_progress'` is the only frame carrying opencode's real bash
+   * command or a read's resolved path; `tool_call` itself has neither. Same
+   * "present replaces" rule as `tool-end`'s `tool`, but the item stays
+   * `running` — nothing here ever settles a card.
+   */
+  | { kind: 'tool-update'; id: string; tool: ToolCall; parentId?: string }
+  /**
    * `tool`, when present, REPLACES what tool-start reported. A backend may
    * only learn a call's real arguments when it finishes — Codex's `webSearch`
    * carries `query: ''` while running and the actual search only on
