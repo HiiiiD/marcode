@@ -462,10 +462,21 @@ export class AcpRun implements AgentRun {
       // first, whose RPC then hangs unanswered for the rest of the session.
       // Cancelled, not denied — nobody decided anything about it.
       if (previous) { previous(undefined); }
+      // Not folded through `merge()` like a real `tool_call`/`tool_call_update`
+      // frame: observed live (opencode 1.18.30), a permission gate for a path
+      // outside the session's cwd sends its own synthetic `toolCall` for the
+      // same id — `kind: 'other'`, `title` the raw absolute path, `rawInput`
+      // reshaped (`filepath`/`parentDir`, not the real call's `filePath`).
+      // Merging that in would overwrite the log's already-known real kind
+      // (`read`) with `other`, and since this permission event's `tool` is
+      // captured once and never re-derived, the card would carry that wrong
+      // classification forever — even though the underlying tool call heals
+      // itself on its own next frame. Prefer whatever the log already knows;
+      // only fall back to this request's own toolCall when nothing is known
+      // yet (a permission gate firing before any `tool_call` at all).
+      const known = this.calls.peek(id) ?? this.calls.merge(call);
       this.events.push({
-        // Merged like any other frame: a permission request's `toolCall` is
-        // as partial as the updates around it, and it shares their id.
-        kind: 'permission', id, tool: this.opts.tools.call(this.calls.merge(call)),
+        kind: 'permission', id, tool: this.opts.tools.call(known),
         meta: { title: call.title },
       });
     });

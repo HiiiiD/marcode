@@ -195,6 +195,31 @@
       "cost": { "amount": 0, "currency": "USD" }
     }
   },
+  "readToolCallOutsideCwd": {
+    "sessionUpdate": "tool_call_update",
+    "toolCallId": "call_81143f9f388148e2b7db4f58",
+    "status": "in_progress",
+    "kind": "read",
+    "title": "read",
+    "locations": [{ "path": "C:\\Users\\Marco\\.claude\\commands" }],
+    "rawInput": { "filePath": "C:\\Users\\Marco\\.claude\\commands" }
+  },
+  "requestPermissionOutsideCwd": {
+    "sessionId": "ses_f73ec2ef0ffeAA7r3C5c1wWYCH",
+    "toolCall": {
+      "toolCallId": "call_81143f9f388148e2b7db4f58",
+      "kind": "other",
+      "status": "pending",
+      "title": "C:\\Users\\Marco\\.claude\\commands",
+      "locations": [{ "path": "C:\\Users\\Marco\\.claude\\commands" }],
+      "rawInput": { "filepath": "C:\\Users\\Marco\\.claude\\commands", "parentDir": "C:\\Users\\Marco\\.claude\\commands" }
+    },
+    "options": [
+      { "optionId": "once", "kind": "allow_once", "name": "Allow once" },
+      { "optionId": "always", "kind": "allow_always", "name": "Always allow" },
+      { "optionId": "reject", "kind": "reject_once", "name": "Reject" }
+    ]
+  },
   "requestPermission": {
     "sessionId": "ses_ff03f902affeyFUbwdSgzPrCT2",
     "toolCall": {

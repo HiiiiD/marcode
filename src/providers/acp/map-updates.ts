@@ -51,6 +51,11 @@ export class ToolCallLog {
     this.calls.set(update.toolCallId, merged);
     return merged;
   }
+
+  /** What this id has said so far, without folding anything new in. */
+  peek(toolCallId: string): AcpToolCall | undefined {
+    return this.calls.get(toolCallId);
+  }
 }
 
 export function toAgentEvents(
