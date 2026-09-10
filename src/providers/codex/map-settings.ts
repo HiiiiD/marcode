@@ -56,13 +56,21 @@ export const CODEX_MODES: PermissionModeInfo[] = [
  * how a mid-session mode change is applied — takes the `SandboxPolicy`
  * struct. Same decision, two shapes, so both live here rather than being
  * open-coded at each call site.
+ *
+ * `workspaceWrite` carries `networkAccess: true`. Filesystem confinement
+ * (writableRoots) is the axis these modes actually gate on; blocking the
+ * network too meant `npm install`/`git fetch`/`curl` failed under every
+ * prompted mode (default, auto, dontAsk), leaving `bypass` — no sandbox,
+ * no prompts at all — as the only way to do ordinary networked dev work.
+ * `readOnly` (plan) keeps `networkAccess: false`: it never writes, so
+ * there is nothing a network call could exfiltrate a change into.
  */
 export function sandboxPolicyOf(mode: PermissionMode): SandboxPolicy {
   switch (codexSettings(mode).sandbox) {
     case 'danger-full-access': return { type: 'dangerFullAccess' };
     case 'read-only': return { type: 'readOnly', networkAccess: false };
     default: return {
-      type: 'workspaceWrite', writableRoots: [], networkAccess: false,
+      type: 'workspaceWrite', writableRoots: [], networkAccess: true,
       excludeTmpdirEnvVar: false, excludeSlashTmp: false,
     };
   }
