@@ -64,6 +64,28 @@ export const CODEX_MODES: PermissionModeInfo[] = [
  * no prompts at all — as the only way to do ordinary networked dev work.
  * `readOnly` (plan) keeps `networkAccess: false`: it never writes, so
  * there is nothing a network call could exfiltrate a change into.
+ *
+ * WINDOWS: even with the knobs above set as loosely as this function ever
+ * sets them, `workspace-write`/`read-only` sandboxing on codex-cli
+ * 0.153.4/win32 breaks any command that shells out through Cygwin/MSYS
+ * (Git Bash) or WSL's `bash.exe` stub — this is codex-cli's own sandbox
+ * enforcement, upstream of anything this file controls. Measured live:
+ * `codex`'s spawned process prepends a `.sbx-denybin` shim dir to `PATH`
+ * and strips `Git\usr\bin` from it entirely, so `bash` resolves to
+ * `System32\bash.exe` (the WSL launcher) instead of Git Bash, and calling
+ * it fails talking to the LxssManager COM service
+ * (`Bash/Service/CreateInstance/E_ACCESSDENIED`). Invoking real Git Bash by
+ * full path fails differently: `CreateFileMapping ... Win32 error 5`
+ * (ACCESS_DENIED) — Cygwin/MSYS needs a named shared-memory mapping to
+ * emulate fork(), and codex's restricted token can't create one. Deeper
+ * still, `git`/`node child_process.spawn` calls made by an *already
+ * running* command (e.g. a test suite shelling out to git) fail with
+ * `spawn EPERM`, sandbox mode notwithstanding — seatbelt/landlock on
+ * mac/linux still let a sandboxed process spawn children and gate their
+ * syscalls; codex's Windows sandbox instead blocks further process
+ * creation outright. None of `approvalPolicy`/`sandbox`/`approvalsReviewer`
+ * changes this — `bypass` is the only mode that avoids it, because it is
+ * the only one that skips codex's Windows sandboxing altogether.
  */
 export function sandboxPolicyOf(mode: PermissionMode): SandboxPolicy {
   switch (codexSettings(mode).sandbox) {
