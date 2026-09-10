@@ -29,6 +29,19 @@ export interface FleetDiffRequests {
   /** Past this, doubling forever would leave "Show more" on screen as a
    * permanent no-op: the host keeps clamping to `MAX_FILE_CAP` regardless. */
   atCeiling: boolean;
+  /**
+   * Tree root → the ref the user picked from that tree's base-ref combobox,
+   * overriding auto-detection for this review tab session only. Owned here,
+   * alongside `cap`, because every request this hook posts has to carry both
+   * or a `showMore`/`refresh` mid-override would silently drop back to
+   * auto-detect the same way an early `cap`-less Refresh used to drop the
+   * raised cap.
+   */
+  overrides: Record<string, string>;
+  /** Sets or clears (`ref === undefined`) one root's override and re-requests
+   * immediately — an override is a deliberate action, not something to wait
+   * 750ms of debounce to see the effect of. */
+  setOverride: (root: string, ref: string | undefined) => void;
 }
 
 /**
@@ -65,6 +78,10 @@ export function useFleetDiffRequests(
   const capRef = useRef(cap);
   capRef.current = cap;
 
+  const [overrides, setOverrides] = useState<Record<string, string>>({});
+  const overridesRef = useRef(overrides);
+  overridesRef.current = overrides;
+
   // Ask once on mount: the surface is the only thing that wants this, so it
   // is the only thing that asks for it.
   useEffect(() => { post({ t: 'request-fleet-diff' }); }, [post]);
@@ -86,7 +103,7 @@ export function useFleetDiffRequests(
   useEffect(() => {
     if (!visible || dirty === 0) { return; }
     const timer = setTimeout(() => {
-      post({ t: 'request-fleet-diff', cap: capRef.current });
+      post({ t: 'request-fleet-diff', cap: capRef.current, overrides: overridesRef.current });
     }, pollIntervalMs);
     return () => { clearTimeout(timer); };
   }, [visible, dirty, post, pollIntervalMs]);
@@ -101,12 +118,24 @@ export function useFleetDiffRequests(
     // fixed at `MAX_FILE_CAP`.
     const next = nextCap(capRef.current);
     setCap(next);
-    post({ t: 'request-fleet-diff', cap: next });
+    post({ t: 'request-fleet-diff', cap: next, overrides: overridesRef.current });
   }, [post]);
 
   const refresh = useCallback(() => {
-    post({ t: 'request-fleet-diff', cap: capRef.current });
+    post({ t: 'request-fleet-diff', cap: capRef.current, overrides: overridesRef.current });
   }, [post]);
 
-  return { cap, showMore, refresh, atCeiling };
+  const setOverride = useCallback((root: string, ref: string | undefined) => {
+    setOverrides((prev) => {
+      const next = { ...prev };
+      if (ref === undefined) { delete next[root]; } else { next[root] = ref; }
+      overridesRef.current = next;
+      post({ t: 'request-fleet-diff', cap: capRef.current, overrides: next });
+      return next;
+    });
+  }, [post]);
+
+  return {
+    cap, showMore, refresh, atCeiling, overrides, setOverride,
+  };
 }

@@ -28,7 +28,8 @@ export interface PostClient {
  * does — so listing it would claim a fan-out path that does not exist.
  */
 export const REVIEW_WANTS = (msg: HostToWebview): boolean =>
-  msg.t === 'sessions-changed' || msg.t === 'session-status' || msg.t === 'fleet-diff';
+  msg.t === 'sessions-changed' || msg.t === 'session-status' || msg.t === 'fleet-diff'
+  || msg.t === 'branch-refs';
 
 /**
  * The fleet view's allow-list. `session-patch` and `layout-changed` joined

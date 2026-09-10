@@ -551,8 +551,20 @@ export type WebviewToHost =
    * `cap` raises the per-tree file cap past the host's default (`FILE_CAP`
    * in `src/host/fleet-diff.ts`). The host clamps it to `MAX_FILE_CAP`
    * regardless of what is asked for; an absent `cap` means the default.
+   *
+   * `overrides` (tree root → ref) is the review tab's per-session base-ref
+   * picker: a root present here skips auto-detection entirely and resolves
+   * only the named ref, surfacing a `TreeDiff.reason` if it does not exist.
+   * Ephemeral client state, never persisted — see `ReviewState`/the picker in
+   * `src/review/fleet-diff.tsx`.
    */
-  | { t: 'request-fleet-diff'; cap?: number }
+  | { t: 'request-fleet-diff'; cap?: number; overrides?: Record<string, string> }
+  /**
+   * "Which branches could this tree be diffed against?" — populates the
+   * review tab's base-ref picker for one root, lazily, the first time its
+   * combobox opens. Answered by `branch-refs`.
+   */
+  | { t: 'request-branch-refs'; root: string }
   /**
    * Open the review tab. Unaddressed, like `request-fleet-diff`: review is a
    * fleet-wide surface, not a session's.
@@ -782,6 +794,9 @@ export type HostToWebview =
        * on screen.
        */
       reason?: string }
+  /** The answer to `request-branch-refs`. Local branches then remotes,
+   * already ordered by recency — see `listBranchRefs` in `fleet-diff.ts`. */
+  | { t: 'branch-refs'; root: string; refs: string[] }
   /**
    * Whether the review tab is on screen.
    *

@@ -10,6 +10,7 @@ function routerWith() {
   const opened: { root: string; path: string }[] = [];
   const manager = {
     requestFleetDiff: async () => { calls.push('requestFleetDiff'); },
+    requestBranchRefs: async (root: string) => { calls.push(`requestBranchRefs:${root}`); },
   } as unknown as ConstructorParameters<typeof MessageRouter>[0];
   const editor: EditorContextHost = {
     current: () => null,
@@ -33,6 +34,12 @@ suite('fleet-diff routing', () => {
     const { router, calls } = routerWith();
     await router.handle({ t: 'request-fleet-diff' });
     assert.deepStrictEqual(calls, ['requestFleetDiff']);
+  });
+
+  test('request-branch-refs reaches the manager with the root', async () => {
+    const { router, calls } = routerWith();
+    await router.handle({ t: 'request-branch-refs', root: '/repo' });
+    assert.deepStrictEqual(calls, ['requestBranchRefs:/repo']);
   });
 
   test('open-file-diff reaches the editor host', async () => {

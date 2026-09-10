@@ -45,6 +45,7 @@ function describeInbound(m: WebviewToHost): string {
     case 'request-stale-trees': return 'request-stale-trees';
     case 'remove-stale-tree': return 'remove-stale-tree';
     case 'request-fleet-diff': return 'request-fleet-diff';
+    case 'request-branch-refs': return 'request-branch-refs';
     case 'open-review': return 'open-review';
     case 'open-fleet': return 'open-fleet';
     case 'focus-session': return 'focus-session';
@@ -82,6 +83,7 @@ function describeOutbound(m: HostToWebview): string {
     case 'bring-back-plan': return 'bring-back-plan';
     case 'stale-trees': return 'stale-trees';
     case 'fleet-diff': return 'fleet-diff';
+    case 'branch-refs': return 'branch-refs';
     case 'review-visibility': return 'review-visibility';
     case 'file-search-result': return 'file-search-result';
     case 'agents-md-nudge': return 'agents-md-nudge';
@@ -222,6 +224,18 @@ suite('protocol', () => {
       },
     };
     assert.strictEqual(item.role, 'user');
+  });
+
+  test('the review base-ref picker rides request-fleet-diff overrides and branch-refs', () => {
+    const toHost: WebviewToHost[] = [
+      { t: 'request-fleet-diff', overrides: { '/repo': 'develop' } },
+      { t: 'request-branch-refs', root: '/repo' },
+    ];
+    assert.strictEqual(toHost.length, 2);
+    assert.strictEqual(
+      describeOutbound({ t: 'branch-refs', root: '/repo', refs: ['main', 'origin/develop'] }),
+      'branch-refs',
+    );
   });
 
   test('ProviderInfo and UnavailableProvider carry an optional loginKind', () => {

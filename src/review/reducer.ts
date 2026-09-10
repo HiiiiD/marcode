@@ -32,6 +32,15 @@ export interface ReviewState {
    * debounces at the same cadence the host will actually answer with.
    */
   pollIntervalMs: number;
+  /**
+   * Branches offered by each tree's base-ref picker, keyed by root, lazily
+   * populated the first time that tree's combobox opens (`request-branch-refs`
+   * / `branch-refs`). Host-answered, unlike the override itself — the picked
+   * ref is ephemeral client state owned by `useFleetDiffRequests`, but the
+   * list of what *can* be picked comes from git and belongs here like every
+   * other host answer.
+   */
+  branchRefs: Record<string, string[]>;
 }
 
 export const initialReviewState: ReviewState = {
@@ -42,6 +51,7 @@ export const initialReviewState: ReviewState = {
   fleetDiffDirty: 0,
   visible: true,
   pollIntervalMs: 750,
+  branchRefs: {},
 };
 
 export function reduceReview(state: ReviewState, msg: HostToWebview): ReviewState {
@@ -69,6 +79,9 @@ export function reduceReview(state: ReviewState, msg: HostToWebview): ReviewStat
 
     case 'review-visibility':
       return { ...state, visible: msg.visible };
+
+    case 'branch-refs':
+      return { ...state, branchRefs: { ...state.branchRefs, [msg.root]: msg.refs } };
 
     // Anything else is a message this client never subscribed to. Ignoring it
     // is the second layer behind REVIEW_WANTS, not a substitute for it.

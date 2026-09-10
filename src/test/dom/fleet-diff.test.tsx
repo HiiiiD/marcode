@@ -51,6 +51,46 @@ suite('fleet diff surface', () => {
     assert.strictEqual(screen.getAllByText('Session one').length >= 1, true);
   });
 
+  test('the base caption ships with a picker defaulting to Auto-detect', () => {
+    renderReview();
+    sendFromHost(hydrate());
+    sendFromHost({ t: 'fleet-diff', trees: [TREE] });
+
+    assert.strictEqual(screen.getByRole('combobox', { name: 'Diff base for /repo' }) !== null, true);
+    assert.strictEqual(screen.getByText('Auto-detect').textContent, 'Auto-detect');
+  });
+
+  test('opening the picker asks the host for this tree\'s branches, once', async () => {
+    renderReview();
+    sendFromHost(hydrate());
+    sendFromHost({ t: 'fleet-diff', trees: [TREE] });
+    resetHost();
+
+    await userEvent.click(screen.getByRole('combobox', { name: 'Diff base for /repo' }));
+    await screen.findByRole('listbox');
+
+    const requests = posted().filter((m) => m.t === 'request-branch-refs');
+    assert.deepStrictEqual(requests, [{ t: 'request-branch-refs', root: '/repo' }]);
+  });
+
+  test('picking a branch overrides the base and re-requests the diff for it', async () => {
+    renderReview();
+    sendFromHost(hydrate());
+    sendFromHost({ t: 'fleet-diff', trees: [TREE] });
+    sendFromHost({ t: 'branch-refs', root: '/repo', refs: ['develop'] });
+    resetHost();
+
+    await userEvent.click(screen.getByRole('combobox', { name: 'Diff base for /repo' }));
+    await screen.findByRole('listbox');
+    await userEvent.click(await screen.findByRole('option', { name: 'develop' }));
+
+    const requests = posted().filter((m) => m.t === 'request-fleet-diff');
+    assert.strictEqual(requests.length, 1);
+    assert.deepStrictEqual(
+      (requests[0] as { overrides?: Record<string, string> }).overrides, { '/repo': 'develop' },
+    );
+  });
+
   test('an unclaimed change is listed as unattributed', () => {
     renderReview();
     sendFromHost(hydrate());
