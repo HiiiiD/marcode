@@ -59,9 +59,19 @@ suite('sandboxPolicyOf', () => {
     assert.deepStrictEqual(sandboxPolicyOf('plan'), { type: 'readOnly', networkAccess: false });
     assert.deepStrictEqual(sandboxPolicyOf('bypass'), { type: 'dangerFullAccess' });
     assert.deepStrictEqual(sandboxPolicyOf('default'), {
-      type: 'workspaceWrite', writableRoots: [], networkAccess: false,
+      type: 'workspaceWrite', writableRoots: [], networkAccess: true,
       excludeTmpdirEnvVar: false, excludeSlashTmp: false,
     });
+  });
+
+  test('workspace-write allows network so prompted modes can still fetch/install', () => {
+    // Filesystem confinement (writableRoots) is the axis default/auto/dontAsk
+    // gate on. Blocking the network too left bypass as the only mode that
+    // could run `npm install` or `git fetch` at all.
+    const auto = sandboxPolicyOf('auto');
+    const dontAsk = sandboxPolicyOf('dontAsk');
+    assert.strictEqual(auto.type === 'workspaceWrite' && auto.networkAccess, true);
+    assert.strictEqual(dontAsk.type === 'workspaceWrite' && dontAsk.networkAccess, true);
   });
 });
 

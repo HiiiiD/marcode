@@ -268,8 +268,11 @@ clean scan over an under-designed surface is exactly what the 2026-08-13 critiqu
 
 ## Test RAM guard
 
-`yarn test:unit` and `yarn test:dom` run through `scripts/run-tests-ram-guard.sh`,
-which polls the real mocha process's memory (RSS / `WorkingSet64`, not the V8 heap —
+`yarn test:unit` and `yarn test:dom` run through `scripts/run-tests-ram-guard.mjs`
+(plain `node`, no shell — a bash shim used to front it and broke test runs under
+any sandboxed shell whose PATH doesn't resolve a working `bash`, for no benefit:
+the guard's own path resolution and Windows memory/kill calls were already pure
+Node), which polls the real mocha process's memory (RSS / `WorkingSet64`, not the V8 heap —
 a heap cap does not bound this) and kills the whole process tree if it crosses
 2048MB, instead of a bad assertion (e.g. handing a DOM node/list straight to
 `assert.strictEqual(..., null)` — see `scripts/check-dom-null-asserts.mjs`) taking
