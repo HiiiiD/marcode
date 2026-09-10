@@ -244,6 +244,75 @@ suite('SelfControlMcpServer', () => {
     await server.dispose();
   });
 
+  test('spawn_session falls back an unsupported explicit effort to the model default instead of erroring', async () => {
+    let seenArgs: unknown[] = [];
+    const server = new SelfControlMcpServer(fakeManager({
+      catalog: () => [
+        { id: 'claude', models: [{ id: 'sonnet' }], permissionModes: [{ id: 'default' }] },
+      ],
+      summaries: () => [{
+        id: 'caller', name: 'Caller', providerId: 'claude', model: 'sonnet',
+        permissionMode: 'default', status: 'idle', cwd: '/tmp', archived: false,
+      }],
+      create: async (...args) => { seenArgs = args; return { state: { id: 'x' } }; },
+    }));
+    const config = await server.start();
+    const result = await callToolAs(config, 'caller', 'marcode__spawn_session', {
+      model: 'sonnet', effort: 'high', cwd: '/tmp/work', prompt: 'delegate this',
+    });
+    assert.strictEqual(result.isError, undefined);
+    // 'sonnet' has no effort control at all, so the request is dropped
+    // rather than rejected — the create() call sees `undefined`, not 'high'.
+    assert.strictEqual(seenArgs[3], undefined);
+    await server.dispose();
+  });
+
+  test('spawn_session falls back an effort inherited onto a model with no effort support', async () => {
+    let seenArgs: unknown[] = [];
+    const server = new SelfControlMcpServer(fakeManager({
+      catalog: () => [
+        { id: 'claude', models: [{ id: 'sonnet' }], permissionModes: [{ id: 'default' }] },
+      ],
+      summaries: () => [{
+        id: 'caller', name: 'Caller', providerId: 'claude', model: 'sonnet', effort: 'high',
+        permissionMode: 'default', status: 'idle', cwd: '/tmp', archived: false,
+      }],
+      create: async (...args) => { seenArgs = args; return { state: { id: 'x' } }; },
+    }));
+    const config = await server.start();
+    const result = await callToolAs(config, 'caller', 'marcode__spawn_session', {
+      cwd: '/tmp/work', prompt: 'delegate this',
+    });
+    assert.strictEqual(result.isError, undefined);
+    assert.strictEqual(seenArgs[3], undefined);
+    await server.dispose();
+  });
+
+  test('spawn_session falls back an unsupported effort to the model\'s own default when it has other levels', async () => {
+    let seenArgs: unknown[] = [];
+    const server = new SelfControlMcpServer(fakeManager({
+      catalog: () => [
+        {
+          id: 'claude',
+          models: [{ id: 'sonnet', effort: { levels: ['low', 'high'], default: 'low' } }],
+          permissionModes: [{ id: 'default' }],
+        },
+      ],
+      summaries: () => [{
+        id: 'caller', name: 'Caller', providerId: 'claude', model: 'sonnet',
+        permissionMode: 'default', status: 'idle', cwd: '/tmp', archived: false,
+      }],
+      create: async (...args) => { seenArgs = args; return { state: { id: 'x' } }; },
+    }));
+    const config = await server.start();
+    const result = await callToolAs(config, 'caller', 'marcode__spawn_session', {
+      model: 'sonnet', effort: 'medium', cwd: '/tmp/work', prompt: 'delegate this',
+    });
+    assert.strictEqual(result.isError, undefined);
+    assert.strictEqual(seenArgs[3], 'low');
+    await server.dispose();
+  });
+
   test('a real tool call against a real SessionManager creates a session and delivers the prompt', async () => {
     // Same fixture pattern as session-manager.test.ts's suite-level setup(): a
     // fresh temp dir, a real TranscriptStore, and a FakeProvider scripted to

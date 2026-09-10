@@ -29,7 +29,7 @@ export interface SessionManagerLike {
     // `claude-sonnet-5`) must still match a session that persisted the
     // canonical id, or inheriting that session's model here would reject a
     // model `sessionManager.create()` resolves just fine.
-    models: { id: string; resolvedModel?: string; effort?: { levels: string[] } }[];
+    models: { id: string; resolvedModel?: string; effort?: { levels: string[]; default: string } }[];
     permissionModes: { id: string }[];
   }[];
   create(
@@ -137,7 +137,9 @@ export class SelfControlMcpServer {
           + 'subagent of this conversation and unrelated to any built-in Task/subagent tool you '
           + 'have. Use this to hand off independent work to a separate, freestanding session. '
           + 'Omitted provider, model, effort, and permission mode each inherit independently from '
-          + 'the calling session; incompatible combinations are rejected. `mode: "bypass"` is always '
+          + 'the calling session; an incompatible provider or model is rejected. An effort the '
+          + 'chosen model does not publish falls back to that model\'s own default instead of '
+          + 'failing, whether requested explicitly or only inherited. `mode: "bypass"` is always '
           + 'rejected, even when only inherited from a bypass-mode caller — inheritance falls back '
           + 'to the provider default in that case instead of failing. The new session is opened in '
           + 'a pane. Returns the new session\'s id.',
@@ -175,14 +177,20 @@ export class SelfControlMcpServer {
         if (effectiveModel !== undefined && !modelEntry) {
           return { isError: true, content: [{ type: 'text', text: `Provider ${providerId} has no model ${effectiveModel}` }] };
         }
-        const effectiveEffort = effort ?? from?.effort;
-        if (effectiveEffort !== undefined
-          && (!modelEntry?.effort || !modelEntry.effort.levels.includes(effectiveEffort))) {
-          return {
-            isError: true,
-            content: [{ type: 'text', text: `Model ${modelEntry?.id ?? effectiveModel ?? '(provider default)'} does not support effort ${effectiveEffort}` }],
-          };
-        }
+        // Mirrors `resolveEffort()` in shared/model-catalog.ts (not reused
+        // directly for the same structural-typing reason `findModel` isn't,
+        // a few lines up): effort is a property of the model, not something
+        // a caller can force onto one that doesn't have it. A model with no
+        // effort control takes none at all; one that has it but doesn't
+        // publish the requested level falls back to its own default — the
+        // same graceful-downgrade treatment `mode: "bypass"` gets below,
+        // rather than rejecting the spawn outright.
+        const requestedEffort = effort ?? from?.effort;
+        const effectiveEffort = modelEntry?.effort
+          ? (requestedEffort && modelEntry.effort.levels.includes(requestedEffort)
+            ? requestedEffort
+            : modelEntry.effort.default as EffortLevel)
+          : undefined;
         const explicitMode = mode as PermissionMode | undefined;
         let modeId = (explicitMode ?? from?.permissionMode) as PermissionMode | undefined;
         if (modeId !== undefined && !entry.permissionModes.some((m) => m.id === modeId)) {
