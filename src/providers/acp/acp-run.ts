@@ -64,10 +64,11 @@ export interface AcpRunOptions {
   /** The loopback MCP server this run's agent should connect to, if any. */
   selfControlMcp?: SelfControlMcpConfig;
   /**
-   * A second, vendor-supplied source of events to merge into this run's own
-   * stream — e.g. OpenCode's subagent watcher, which observes child-session
-   * activity ACP itself never forwards. Generic on purpose: nothing here
-   * names OpenCode. Absent means no auxiliary source.
+   * A second source of events to merge into this run's own stream — a
+   * vendor-specific layer can observe activity ACP itself never forwards
+   * (e.g. a child session's own tool calls) and republish it here without
+   * this file knowing anything about that vendor. Absent means no
+   * auxiliary source.
    */
   childEvents?: AsyncIterable<AgentEvent>;
   /** Fired once, the instant this run's own session id is known. */
@@ -511,9 +512,9 @@ export class AcpRun implements AgentRun {
   }
 
   /**
-   * The entry point an auxiliary event source (a subagent watcher) uses to
-   * ask this run's own permission policy about a request it caught outside
-   * ACP. Same decision path as `onRequestPermission` — `autoDecision(mode)`
+   * The entry point an external event source uses to ask this run's own
+   * permission policy about a request it caught outside ACP. Same decision
+   * path as `onRequestPermission` — `autoDecision(mode)`
    * first, a real parked promise and a `permission` event only if that's
    * `undefined` — so `bypass`/`dontAsk` on this session apply to whatever
    * called in here too, and a real decision answers through the existing
