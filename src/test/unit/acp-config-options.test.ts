@@ -1,6 +1,6 @@
 import * as assert from 'assert';
 import * as frames from '../fixtures/opencode-acp-frames.json';
-import { currentModelId, modelConfigId, toModeIds, toModels }
+import { currentModelId, effortConfigId, modelConfigId, toEffort, toModeIds, toModels }
   from '../../providers/acp/config-options';
 import type { ConfigOption } from '../../providers/acp/config-options';
 
@@ -35,5 +35,51 @@ suite('acp config options', () => {
 
   test('no mode option means no modes rather than an invented default', () => {
     assert.deepStrictEqual(toModeIds([{ id: 'model', category: 'model', options: [] }]), []);
+  });
+
+  test('a thought_level option becomes effort levels and a default', () => {
+    const opts: ConfigOption[] = [{
+      id: 'effort', category: 'thought_level', currentValue: 'low',
+      options: [{ value: 'minimal' }, { value: 'low' }, { value: 'high' }],
+    }];
+    assert.deepStrictEqual(toEffort(opts), { levels: ['minimal', 'low', 'high'], default: 'low' });
+  });
+
+  test('a reasoning-category option is read the same way as thought_level', () => {
+    const opts: ConfigOption[] = [{
+      id: 'reasoning', category: 'reasoning', currentValue: 'high',
+      options: [{ value: 'low' }, { value: 'high' }],
+    }];
+    assert.deepStrictEqual(toEffort(opts), { levels: ['low', 'high'], default: 'high' });
+  });
+
+  test('no effort option means no effort control', () => {
+    assert.deepStrictEqual(toEffort(options), undefined);
+  });
+
+  test('a level the shared union does not know is dropped, not thrown', () => {
+    const opts: ConfigOption[] = [{
+      id: 'effort', category: 'thought_level', currentValue: 'potato',
+      options: [{ value: 'low' }, { value: 'potato' }, { value: 'high' }],
+    }];
+    assert.deepStrictEqual(toEffort(opts), { levels: ['low', 'high'], default: 'low' });
+  });
+
+  test('every level dropped means no effort control rather than an empty list', () => {
+    const opts: ConfigOption[] = [{
+      id: 'effort', category: 'thought_level', currentValue: 'potato',
+      options: [{ value: 'potato' }],
+    }];
+    assert.deepStrictEqual(toEffort(opts), undefined);
+  });
+
+  test('effortConfigId reports the id to pass to set_config_option', () => {
+    const opts: ConfigOption[] = [
+      { id: 'effort', category: 'thought_level', options: [{ value: 'low' }] }];
+    assert.strictEqual(effortConfigId(opts), 'effort');
+  });
+
+  test('no effort option means no effortConfigId', () => {
+    assert.strictEqual(effortConfigId(options), undefined);
   });
 });

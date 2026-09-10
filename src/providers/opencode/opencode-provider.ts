@@ -1,6 +1,6 @@
 import { spawn as spawnChildProcess } from 'node:child_process';
 import { connectAcp, CLIENT_CAPABILITIES, PROTOCOL_VERSION, type AcpChild } from '../acp/acp-client';
-import { toModels, type ConfigOption } from '../acp/config-options';
+import { modelConfigId, toEffort, toModels, type ConfigOption } from '../acp/config-options';
 import { AcpRun } from '../acp/acp-run';
 import { openCodeModeId } from './map-modes';
 import { openCodeTools } from './map-tools';
@@ -24,8 +24,19 @@ const STDERR_TAIL_BYTES = 2000;
 interface AcpProbeConnection {
   initialize(params: unknown): Promise<unknown>;
   newSession(params: unknown): Promise<{ sessionId: string; configOptions?: ConfigOption[] }>;
+  setSessionConfigOption(params: unknown): Promise<{ configOptions?: ConfigOption[] } | undefined>;
   closeSession(params: unknown): Promise<unknown>;
 }
+
+/**
+ * How long the effort sweep (see `probe`) waits for one model's config write
+ * before moving on. Measured cost of the whole sweep on a real install
+ * (opencode 1.18.30, 380 models) was ~300ms total — this bounds the failure
+ * case, not the happy path: a single model that never answers must not hang
+ * the entire catalog, the way one slow model previously could have hung
+ * `fetchModels` outright.
+ */
+const CONFIG_OPTION_TIMEOUT_MS = 3000;
 
 /**
  * `shell: true` is not optional on Windows: `opencode` resolves to a `.cmd`
@@ -91,6 +102,8 @@ export class OpenCodeProvider implements AgentProvider {
   private readonly env?: NodeJS.ProcessEnv;
   private readonly execVersion?: ExecVersionFn;
   private readonly fetchLatest?: FetchFn;
+  /** Test-only override for `CONFIG_OPTION_TIMEOUT_MS` — see `probe`. */
+  private readonly configOptionTimeoutMs: number;
 
   /**
    * Deliberately never assigned. ACP carries no plan-usage data, so this
@@ -112,6 +125,7 @@ export class OpenCodeProvider implements AgentProvider {
     loginKind?: 'oauth' | 'none';
     execVersion?: ExecVersionFn;
     fetchLatest?: FetchFn;
+    configOptionTimeoutMs?: number;
   } = {}) {
     this.id = opts.id ?? 'opencode';
     this.displayName = opts.displayName ?? 'OpenCode';
@@ -122,6 +136,7 @@ export class OpenCodeProvider implements AgentProvider {
     this.loginKind = opts.loginKind;
     this.execVersion = opts.execVersion;
     this.fetchLatest = opts.fetchLatest;
+    this.configOptionTimeoutMs = opts.configOptionTimeoutMs ?? CONFIG_OPTION_TIMEOUT_MS;
   }
 
   /** Instance env merged over `process.env`, or `undefined` when there is no override. */
@@ -190,7 +205,26 @@ export class OpenCodeProvider implements AgentProvider {
       clientInfo: { name: 'mar-code-probe', version: '0.0.1' },
     });
     const session = await connection.newSession({ cwd, mcpServers: [] });
-    this.models = toModels(session.configOptions ?? []);
+    const base = toModels(session.configOptions ?? []);
+    // Effort is a property of the SELECTED model, not of the catalog: it
+    // only shows up in `configOptions` once a reasoning-capable model is
+    // actually switched to — see `toEffort`. So the catalog answer alone
+    // never carries it; this sweeps every model through the same session,
+    // one config write each, and reads the reply back. Measured on a real
+    // install (opencode 1.18.30, 380 models): ~300ms for the whole sweep,
+    // on top of the ~1.4s the handshake above already costs — cheap enough
+    // to do unconditionally rather than only on demand.
+    const configId = modelConfigId(session.configOptions ?? []) ?? 'model';
+    // Sequential, not parallel: every write lands on the same session, and
+    // concurrent switches would race each other's replies against a single
+    // piece of live agent state.
+    const models: ModelInfo[] = [];
+    for (const model of base) {
+      const options = await this.switchAndRead(connection, session.sessionId, configId, model.id);
+      const effort = toEffort(options);
+      models.push(effort ? { ...model, effort } : model);
+    }
+    this.models = models;
     try {
       await connection.closeSession({ sessionId: session.sessionId });
     } catch {
@@ -200,11 +234,31 @@ export class OpenCodeProvider implements AgentProvider {
     return this.models;
   }
 
+  /**
+   * One model's config write during the effort sweep, bounded by
+   * `configOptionTimeoutMs` so a single unresponsive model cannot hang the
+   * whole catalog probe. Never throws: a rejected or timed-out write just
+   * means this model's effort stays unknown, exactly like a model whose
+   * `session/new` reply carried no `thought_level` option at all.
+   */
+  private async switchAndRead(
+    connection: AcpProbeConnection, sessionId: string, configId: string, modelId: string,
+  ): Promise<ConfigOption[]> {
+    const write = connection.setSessionConfigOption({ sessionId, configId, value: modelId })
+      .then((reply) => reply?.configOptions ?? [])
+      .catch(() => [] as ConfigOption[]);
+    const timeout = new Promise<ConfigOption[]>((resolve) => {
+      setTimeout(() => resolve([]), this.configOptionTimeoutMs);
+    });
+    return Promise.race([write, timeout]);
+  }
+
   start(opts: StartOptions): AgentRun {
     const child = this.spawn(this.binPath ?? 'opencode', this.mergedEnv());
     return new AcpRun(child, {
       cwd: opts.cwd,
       model: opts.model,
+      effort: opts.effort,
       permissionMode: opts.permissionMode,
       resumeToken: opts.resumeToken,
       sessionId: opts.sessionId,

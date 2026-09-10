@@ -7,7 +7,7 @@ import type {
   EffortLevel, PermissionMode, QuestionAnswers, SelfControlMcpConfig, ToolDecision,
 } from '../types';
 import { CLIENT_CAPABILITIES, connectAcp, PROTOCOL_VERSION, type AcpChild } from './acp-client';
-import { currentModelId, modelConfigId, toModeIds, type ConfigOption } from './config-options';
+import { currentModelId, effortConfigId, modelConfigId, toModeIds, type ConfigOption } from './config-options';
 import {
   ToolCallLog, toAgentEvents, toContextBreakdown,
   type AcpToolCall, type ToolMapper,
@@ -36,6 +36,13 @@ interface PromptUsage { inputTokens: number; outputTokens: number }
 export interface AcpRunOptions {
   cwd: string;
   model?: string;
+  /**
+   * Asserted at startup right after the model write, never before: the
+   * effort config option (if the model offers one at all) does not exist in
+   * `configOptions` until the model that offers it is actually selected —
+   * see `config-options.ts`'s `effortConfigId`.
+   */
+  effort?: EffortLevel;
   permissionMode: PermissionMode;
   resumeToken?: string;
   tools: ToolMapper;
@@ -330,6 +337,27 @@ export class AcpRun implements AgentRun {
         // session, not a dead one, and must not read as a failed startup.
       }
     }
+    // Read AFTER the model write above, not before: the effort option does
+    // not exist in `configOptions` until the model that offers it is
+    // actually selected. A requested effort the resolved model has no
+    // control for is silently dropped, same as `setEffort` — a config
+    // option this session never advertised is a guess, and a failed guess
+    // is indistinguishable from a real setting that did not take.
+    if (this.opts.effort) {
+      const effortConfig = effortConfigId(this.configOptions);
+      if (effortConfig) {
+        try {
+          const reply = await conn.setSessionConfigOption(
+            { sessionId: this.sessionId, configId: effortConfig, value: this.opts.effort },
+          );
+          this.applyConfigOptions(reply?.configOptions);
+        } catch {
+          // Its own catch, same reasoning as the model write above: an
+          // effort level the agent will not take leaves a working session
+          // on the model's own default, not a dead one.
+        }
+      }
+    }
   }
 
   /**
@@ -562,12 +590,9 @@ export class AcpRun implements AgentRun {
    * would be indistinguishable from a real setting that did not take.
    */
   setEffort(effort: EffortLevel): void {
-    const option = this.configOptions.find(
-      (o) => o.category === 'thought_level' || o.category === 'reasoning'
-        || o.id === 'thought_level' || o.id === 'reasoning',
-    );
-    if (!option) { return; }
-    this.writeConfigOption(option.id, effort);
+    const configId = effortConfigId(this.configOptions);
+    if (!configId) { return; }
+    this.writeConfigOption(configId, effort);
   }
 
   /**
