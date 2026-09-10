@@ -38,6 +38,35 @@ const waitFor = async (
   throw new Error(`no ${method} was sent`);
 };
 
+/** A scripted `AcpChild` whose failure is triggered on demand — same shape as
+ *  the inline fake the "async spawn failure" test above already uses, just
+ *  reusable across two attempts for the retry test. */
+function fakeAcpChild() {
+  const toAgent = new PassThrough();
+  const toClient = new PassThrough();
+  let notify: (reason: string) => void = () => {};
+  return {
+    child: {
+      stdin: toAgent, stdout: toClient,
+      kill: () => { toClient.end(); },
+      onFailure: (cb: (reason: string) => void) => { notify = cb; },
+    },
+    failWith: (reason: string) => { notify(reason); },
+  };
+}
+
+/**
+ * `provider.start(...)` returns synchronously, but the actual spawn happens
+ * after an awaited `reservePort()` — at least one microtask away. A plain
+ * synchronous assertion right after `start()` would read stale state.
+ * `setImmediate` reliably drains the whole microtask queue first (Node
+ * always exhausts microtasks before the next macrotask phase), regardless
+ * of how many `await`/`queueMicrotask` hops the retry chain takes.
+ */
+function flush(): Promise<void> {
+  return new Promise((resolve) => { setImmediate(resolve); });
+}
+
 /** A spawn stub that answers initialize + session/new from the fixtures and
  *  records the frames it received. */
 function scriptedSpawn() {
@@ -297,14 +326,51 @@ suite('OpenCodeProvider', () => {
     });
     assert.strictEqual(provider.id, 'opencode-grok');
     assert.strictEqual(provider.displayName, 'OpenCode (Grok)');
-    provider.start({ cwd: '/repo', permissionMode: 'default', sessionId: 'test-session' });
+    const run = provider.start({ cwd: '/repo', permissionMode: 'default', sessionId: 'test-session' });
+    // start() reserves a port (async) before spawning — the env merge only
+    // lands after that microtask hop, so this assertion waits for it.
+    await flush();
     assert.strictEqual(capturedEnv?.OPENCODE_CONFIG_DIR, '/home/user/.config/opencode-grok');
+    await run.dispose();
   });
 
   test('id/displayName default to opencode/OpenCode when no instance override is given', () => {
     const provider = new OpenCodeProvider({ spawn: scriptedSpawn().spawn });
     assert.strictEqual(provider.id, 'opencode');
     assert.strictEqual(provider.displayName, 'OpenCode');
+  });
+
+  test('start() spawns opencode acp with a pinned port and an injected server password', async () => {
+    let capturedEnv: NodeJS.ProcessEnv | undefined;
+    const provider = new OpenCodeProvider({
+      spawn: (bin, env) => { capturedEnv = env; return fakeAcpChild().child; },
+      reservePort: async () => 54321,
+    });
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default', sessionId: 'sid' });
+    await flush();
+    assert.strictEqual(capturedEnv?.OPENCODE_SERVER_PASSWORD?.length, 48); // randomBytes(24).toString('hex')
+    // Otherwise the SubagentWatch this run opened keeps retrying its (fake,
+    // unreachable) server connection in the background forever — see
+    // subagent-watch.ts's own `close()`.
+    await run.dispose();
+  });
+
+  test('a port collision on spawn is retried with a new port, bounded', async () => {
+    let attempts = 0;
+    const ports: number[] = [];
+    const provider = new OpenCodeProvider({
+      reservePort: async () => { ports.push(++attempts); return attempts; },
+      spawn: () => {
+        const fake = fakeAcpChild();
+        if (attempts < 2) { queueMicrotask(() => fake.failWith('EADDRINUSE')); }
+        return fake.child;
+      },
+    });
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default', sessionId: 'sid' });
+    await flush();
+    // Proves a retry actually happened: reservePort was called more than once.
+    assert.ok(ports.length >= 2);
+    await run.dispose();
   });
 
   suite('checkForUpdate', () => {

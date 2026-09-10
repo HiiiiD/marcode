@@ -36,11 +36,17 @@ export interface SubagentSdk {
 /**
  * `@opencode-ai/sdk` ships ESM-only — dynamic `import()`, same reasoning and
  * shape as `acp-client.ts`'s `connectAcp`.
+ *
+ * `signal` is threaded into the client as a `RequestInit` default: the
+ * generated SSE transport (`global.event()`) retries a dropped connection
+ * forever on its own (exponential backoff up to 30s) unless handed a signal
+ * it can check — `close()` aborting it is the only thing that ever stops
+ * that loop once a server is unreachable, in production and in a test alike.
  */
-async function connectSdk(baseUrl: string, token: string): Promise<SubagentSdk> {
+async function connectSdk(baseUrl: string, token: string, signal?: AbortSignal): Promise<SubagentSdk> {
   const { createOpencodeClient } = await import('@opencode-ai/sdk/v2');
   const client = createOpencodeClient({
-    baseUrl, headers: { Authorization: `Basic ${Buffer.from(`opencode:${token}`).toString('base64')}` },
+    baseUrl, signal, headers: { Authorization: `Basic ${Buffer.from(`opencode:${token}`).toString('base64')}` },
   });
   return {
     globalEvent: () => client.global.event() as unknown as Promise<{ stream: AsyncIterable<{ payload?: unknown }> }>,
@@ -79,7 +85,7 @@ class EventChannel implements AsyncIterable<AgentEvent> {
 
 export interface SubagentWatchOptions {
   /** Injected so a test never opens a real socket. Defaults to `connectSdk`. */
-  connect?: (baseUrl: string, token: string) => Promise<SubagentSdk>;
+  connect?: (baseUrl: string, token: string, signal?: AbortSignal) => Promise<SubagentSdk>;
 }
 
 /**
@@ -101,6 +107,8 @@ export class SubagentWatch {
     | undefined;
   private closed = false;
   private sdk: SubagentSdk | undefined;
+  /** Aborts the real SSE connection's own retry loop — see `run`/`close`. */
+  private abortController: AbortController | undefined;
 
   constructor(private readonly opts: SubagentWatchOptions = {}) {}
 
@@ -113,7 +121,13 @@ export class SubagentWatch {
    * before reaching this point, nothing further to guard.
    */
   open(baseUrl: string, token: string): void {
-    void this.run(baseUrl, token);
+    // A retried spawn (`opencode-provider.ts`'s `attemptSpawn`) calls `open`
+    // again with a fresh port — abort whatever connection attempt is still
+    // pending against the port that just failed, or it leaks forever
+    // alongside the new one.
+    this.abortController?.abort();
+    this.abortController = new AbortController();
+    void this.run(baseUrl, token, this.abortController.signal);
   }
 
   setRootSessionId(id: string): void {
@@ -136,13 +150,14 @@ export class SubagentWatch {
 
   close(): void {
     this.closed = true;
+    this.abortController?.abort();
     this.events.close();
   }
 
-  private async run(baseUrl: string, token: string): Promise<void> {
+  private async run(baseUrl: string, token: string, signal: AbortSignal): Promise<void> {
     const connect = this.opts.connect ?? connectSdk;
     try {
-      this.sdk = await connect(baseUrl, token);
+      this.sdk = await connect(baseUrl, token, signal);
       const { stream } = await this.sdk.globalEvent();
       for await (const envelope of stream) {
         if (this.closed) { return; }
