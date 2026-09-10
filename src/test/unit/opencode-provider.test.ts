@@ -277,7 +277,7 @@ suite('OpenCodeProvider', () => {
     const created = await waitFor(seen, 'session/new');
     assert.deepStrictEqual((created.params as { mcpServers: unknown }).mcpServers, [
       {
-        type: 'http', name: 'marcode-self-control', url: 'http://x/mcp?sid=s-under-test',
+        type: 'http', name: 'marcode_self_control', url: 'http://x/mcp?sid=s-under-test',
         headers: [{ name: 'Authorization', value: 'Bearer t' }],
       },
     ]);

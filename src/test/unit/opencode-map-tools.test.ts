@@ -72,6 +72,39 @@ suite('opencode toToolCall', () => {
     assert.deepStrictEqual(toToolCall(call),
       { kind: 'other', label: 'grab it', raw: { url: 'https://x' } });
   });
+
+  // Observed live: opencode sends the self-control call as kind 'other'
+  // with title `${mcpServerName}_${toolId}` and no separate marker for the
+  // join, unlike Claude's self-delimiting `mcp__server__tool`.
+  test('a self-control call is recognised from its title, not its kind', () => {
+    const call = {
+      toolCallId: 't', kind: 'other', title: 'marcode_self_control_marcode__list_sessions',
+      rawInput: {},
+    } as unknown as AcpToolCall;
+    assert.deepStrictEqual(toToolCall(call), {
+      kind: 'mcp', label: 'marcode__list_sessions',
+      server: 'marcode_self_control', tool: 'marcode__list_sessions',
+    });
+  });
+
+  test('a self-control call carries its input when non-empty', () => {
+    const call = {
+      toolCallId: 't', kind: 'other', title: 'marcode_self_control_marcode__send_message',
+      rawInput: { to: 'claude-n', text: 'hi' },
+    } as unknown as AcpToolCall;
+    assert.deepStrictEqual(toToolCall(call), {
+      kind: 'mcp', label: 'marcode__send_message',
+      server: 'marcode_self_control', tool: 'marcode__send_message',
+      input: { to: 'claude-n', text: 'hi' },
+    });
+  });
+
+  test('a third-party MCP call with an unrecognised tool id is not misclassified', () => {
+    const call = {
+      toolCallId: 't', kind: 'other', title: 'github_list_repos', rawInput: {},
+    } as unknown as AcpToolCall;
+    assert.deepStrictEqual(toToolCall(call), { kind: 'other', label: 'github_list_repos', raw: {} });
+  });
 });
 
 suite('opencode toToolOutput', () => {

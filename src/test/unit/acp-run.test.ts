@@ -124,7 +124,7 @@ suite('AcpRun', () => {
     const mcpServers = (created.params as { mcpServers: { url: string }[] }).mcpServers;
     assert.deepStrictEqual(mcpServers, [
       {
-        type: 'http', name: 'marcode-self-control', url: 'http://127.0.0.1:9/mcp?sid=s-under-test',
+        type: 'http', name: 'marcode_self_control', url: 'http://127.0.0.1:9/mcp?sid=s-under-test',
         headers: [{ name: 'Authorization', value: 'Bearer t' }],
       },
     ]);

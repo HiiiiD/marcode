@@ -11,8 +11,36 @@ interface ContentBlock { type: 'content'; content?: { type?: string; text?: stri
 const diffs = (c: AcpToolCall): DiffBlock[] =>
   (c.content ?? []).filter((b): b is DiffBlock => (b as DiffBlock)?.type === 'diff');
 
+/**
+ * The self-control server's own tool ids — see `self-control-mcp-server.ts`.
+ * Unlike Claude's SDK tool names (`mcp__<server>__<tool>`, self-delimiting),
+ * OpenCode's ACP `title` for an MCP call is just `<server>_<tool>` with no
+ * marker for where the join is, so an id list is the only way to split it
+ * back out without guessing.
+ */
+const SELF_CONTROL_TOOLS = [
+  'marcode__spawn_session', 'marcode__send_message', 'marcode__list_sessions',
+  'marcode__get_session_context', 'marcode__recall', 'marcode__recall_fetch',
+];
+
+function parseSelfControlTitle(title: string | undefined): { server: string; tool: string } | undefined {
+  if (!title) { return undefined; }
+  const tool = SELF_CONTROL_TOOLS.find((t) => title.endsWith(`_${t}`));
+  if (!tool) { return undefined; }
+  return { server: title.slice(0, title.length - tool.length - 1), tool };
+}
+
 export function toToolCall(c: AcpToolCall): ToolCall {
   const raw = (c.rawInput ?? {}) as { command?: string; cwd?: string; filePath?: string };
+  const mcp = parseSelfControlTitle(c.title);
+  if (mcp) {
+    const record = (c.rawInput ?? {}) as Record<string, unknown>;
+    return {
+      kind: 'mcp', label: mcp.tool, server: mcp.server, tool: mcp.tool,
+      ...(Object.keys(record).length > 0 ? { input: record } : {}),
+    };
+  }
+
   switch (c.kind) {
     case 'execute': {
       // `tool_call` arrives with no command and only `cwd`; the command lands
