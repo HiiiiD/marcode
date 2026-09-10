@@ -30,11 +30,27 @@ function parseSelfControlTitle(title: string | undefined): { server: string; too
   return { server: title.slice(0, title.length - tool.length - 1), tool };
 }
 
+/**
+ * OpenCode's native `skill` tool (`packages/opencode/src/tool/skill.ts`)
+ * hardcodes this exact template for every invocation — `title: \`Loaded
+ * skill: ${info.name}\`` — with no distinguishing `kind`. Same title-not-kind
+ * reasoning as `parseSelfControlTitle`, just a fixed prefix instead of a
+ * known-tool-id list, since a skill's name is arbitrary.
+ */
+const SKILL_TITLE_PREFIX = 'Loaded skill: ';
+
+function parseSkillTitle(title: string | undefined): string | undefined {
+  return title?.startsWith(SKILL_TITLE_PREFIX) ? title.slice(SKILL_TITLE_PREFIX.length) : undefined;
+}
+
 export function toToolCall(c: AcpToolCall): ToolCall {
   const raw = (c.rawInput ?? {}) as {
     command?: string; cwd?: string; filePath?: string; pattern?: string; path?: string;
-    content?: string;
+    content?: string; name?: string;
   };
+  const skill = parseSkillTitle(c.title);
+  if (skill) { return { kind: 'command', label: 'Skill', command: '', skill: raw.name ?? skill }; }
+
   const mcp = parseSelfControlTitle(c.title);
   if (mcp) {
     const record = (c.rawInput ?? {}) as Record<string, unknown>;

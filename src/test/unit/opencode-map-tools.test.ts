@@ -140,6 +140,25 @@ suite('opencode toToolCall', () => {
     });
   });
 
+  // Observed live (opencode 1.18.30): the native `skill` tool always titles
+  // itself `Loaded skill: <name>`, kind 'other', rawInput `{ name }`.
+  test('a skill invocation is recognised from its title, not its kind', () => {
+    const call = {
+      toolCallId: 't', kind: 'other', title: 'Loaded skill: pr-summary',
+      rawInput: { name: 'pr-summary' },
+    } as unknown as AcpToolCall;
+    assert.deepStrictEqual(toToolCall(call),
+      { kind: 'command', label: 'Skill', command: '', skill: 'pr-summary' });
+  });
+
+  test('a skill invocation falls back to the title suffix when rawInput lacks name', () => {
+    const call = {
+      toolCallId: 't', kind: 'other', title: 'Loaded skill: pr-summary', rawInput: {},
+    } as unknown as AcpToolCall;
+    assert.deepStrictEqual(toToolCall(call),
+      { kind: 'command', label: 'Skill', command: '', skill: 'pr-summary' });
+  });
+
   test('a third-party MCP call with an unrecognised tool id is not misclassified', () => {
     const call = {
       toolCallId: 't', kind: 'other', title: 'github_list_repos', rawInput: {},
