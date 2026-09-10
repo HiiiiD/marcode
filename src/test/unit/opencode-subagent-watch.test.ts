@@ -90,10 +90,19 @@ suite('SubagentWatch', () => {
     watch.open('http://x', 't');
     watch.setRootSessionId('root');
     watch.setParentToolCallId('child_1', 'task_root');
-    watch.setPermissionHandler(async () => ({ allow: true }));
-    await collect(watch.events, 1); // the 'permission' AgentEvent itself
-    // Give the async reply a turn to run.
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    let handlerCalled: { id: string; parentId: string | undefined } | undefined;
+    watch.setPermissionHandler(async (id, _tool, _meta, parentId) => {
+      handlerCalled = { id, parentId };
+      return { allow: true };
+    });
+    // No event ever arrives on watch.events for a permission ask — that
+    // belongs to whatever run.handleAuxiliaryPermission (the real handler,
+    // once Task 5 wires it) pushes onto its OWN channel. watch.events only
+    // ever carries tool-call activity. Poll for the reply instead.
+    for (let i = 0; i < 50 && replies.length === 0; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
     assert.deepStrictEqual(replies, [{ requestID: 'req_1', reply: 'once', directory: undefined }]);
+    assert.deepStrictEqual(handlerCalled, { id: 'child_1:req_1', parentId: 'task_root' });
   });
 });

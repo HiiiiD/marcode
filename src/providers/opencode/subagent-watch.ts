@@ -204,7 +204,11 @@ export class SubagentWatch {
     if (!parentId || !this.permissionHandler) { return; }
     const namespacedId = `${properties.sessionID}:${properties.id}`;
     const tool: ToolCall = { kind: 'other', label: properties.permission, raw: properties.metadata };
-    this.events.push({ kind: 'permission', id: namespacedId, tool, parentId, meta: { title: properties.permission } });
+    // Permission events are emitted by the run's own handleAuxiliaryPermission
+    // (Task 2), not here — this class only republishes tool activity. The
+    // handler callback IS that run's method, which parks the decision and
+    // pushes a permission event onto the run's channel. We only need to call
+    // the handler and relay the decision back to the SDK.
     void this.permissionHandler(namespacedId, tool, { title: properties.permission }, parentId)
       .then((decision) => this.replyPermission(properties.id, decision))
       .catch(() => this.replyPermission(properties.id, undefined));
