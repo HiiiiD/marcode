@@ -278,7 +278,8 @@ export class OpenCodeProvider implements AgentProvider {
   start(opts: StartOptions): AgentRun {
     const token = randomBytes(24).toString('hex');
     const watch = new SubagentWatch(); // opened once a real child has actually spawned — see attemptSpawn
-    const run = new AcpRun(this.spawnWithPort(token, watch), {
+    const { child, markStarted } = this.spawnWithPort(token, watch);
+    const run = new AcpRun(child, {
       cwd: opts.cwd,
       model: opts.model,
       effort: opts.effort,
@@ -290,7 +291,11 @@ export class OpenCodeProvider implements AgentProvider {
       clientName: 'mar-code',
       selfControlMcp: this.selfControlMcp,
       childEvents: watch.events,
-      onSessionId: (id) => watch.setRootSessionId(id),
+      // `onSessionId` fires once, the moment a real opencode session id
+      // exists (see `AcpRunOptions`) — the earliest point a fresh process
+      // could no longer silently replace this one without losing state, so
+      // it also marks `attemptSpawn`'s own "genuinely active" flag.
+      onSessionId: (id) => { watch.setRootSessionId(id); markStarted(); },
       onSubagentSpawned: (taskToolCallId, childSessionId) => watch.setParentToolCallId(childSessionId, taskToolCallId),
       onDispose: () => watch.close(),
     });
@@ -307,36 +312,51 @@ export class OpenCodeProvider implements AgentProvider {
    * synchronous/async seam. Retries `SPAWN_PORT_ATTEMPTS` times on a spawn
    * failure (`AcpChild.onFailure`), each with a freshly reserved port.
    */
-  private spawnWithPort(token: string, watch: SubagentWatch): AcpChild {
+  private spawnWithPort(token: string, watch: SubagentWatch): { child: AcpChild; markStarted: () => void } {
     const stdin = new PassThrough();
     const stdout = new PassThrough();
-    let notifyFailure: (reason: string) => void = () => {};
     let killed = false;
-    // Shared across every retry attempt so the placeholder's own `kill()` —
-    // the only reference `AcpRun.dispose()` ever holds — can still reach
-    // whichever real child process is currently running. `attemptSpawn`'s
-    // own `child` is otherwise a purely local variable dispose() never sees.
+    // Both boxes exist for the same reason: `attemptSpawn` is invoked here,
+    // synchronously, before `new AcpRun(...)` has even started running its
+    // own constructor — so a plain captured variable/parameter would still
+    // be bound to `placeholder`'s default no-op `onFailure` handler forever,
+    // never the real one `AcpRun` registers a moment later. Reading through
+    // a shared, mutable box at call time (not a value captured at spawn
+    // time) is what lets every `notify.current(...)` below actually reach
+    // AcpRun once it exists. `active` extends the same pattern across every
+    // retry attempt, for `kill()` — see its own comment below.
+    const notify: { current: (reason: string) => void } = { current: () => {} };
     const active: { child?: AcpChild } = {};
+    // `active.child` alone can't tell a startup attempt that hasn't
+    // finished handshaking yet (still safe to retry) from a genuinely
+    // running session (a crash on THIS must be terminal, not retried) — a
+    // brand new attempt becomes `active.child` immediately, on spawn, well
+    // before any ACP handshake completes. `started` is the second half of
+    // that distinction: it flips true exactly once, when `markStarted` is
+    // called (wired to `AcpRun`'s own `onSessionId` in `start()`), and never
+    // resets — a real opencode session id existing at all is the earliest
+    // point a retry would silently orphan server-side state.
+    const started = { value: false };
     const placeholder: AcpChild = {
       stdin, stdout,
       kill: () => { killed = true; active.child?.kill(); },
-      onFailure: (cb) => { notifyFailure = cb; },
+      onFailure: (cb) => { notify.current = cb; },
     };
-    void this.attemptSpawn(token, watch, stdin, stdout, () => killed, notifyFailure, SPAWN_PORT_ATTEMPTS, active);
-    return placeholder;
+    void this.attemptSpawn(token, watch, stdin, stdout, () => killed, notify, SPAWN_PORT_ATTEMPTS, active, started);
+    return { child: placeholder, markStarted: () => { started.value = true; } };
   }
 
   private async attemptSpawn(
     token: string, watch: SubagentWatch, stdin: PassThrough, stdout: PassThrough,
-    isKilled: () => boolean, notifyFailure: (reason: string) => void, attemptsLeft: number,
-    active: { child?: AcpChild },
+    isKilled: () => boolean, notify: { current: (reason: string) => void }, attemptsLeft: number,
+    active: { child?: AcpChild }, started: { value: boolean },
   ): Promise<void> {
     if (isKilled()) { return; }
     let port: number;
     try {
       port = await this.reservePort();
     } catch (err) {
-      notifyFailure(`could not reserve a port for opencode acp (${errorMessage(err)})`);
+      notify.current(`could not reserve a port for opencode acp (${errorMessage(err)})`);
       return;
     }
     const env = { ...this.mergedEnv(), OPENCODE_SERVER_PASSWORD: token };
@@ -345,7 +365,7 @@ export class OpenCodeProvider implements AgentProvider {
     try {
       child = this.spawn(bin, env, port);
     } catch (err) {
-      notifyFailure(`opencode acp failed to start (${errorMessage(err)})`);
+      notify.current(`opencode acp failed to start (${errorMessage(err)})`);
       return;
     }
     active.child = child;
@@ -359,13 +379,36 @@ export class OpenCodeProvider implements AgentProvider {
       // the shared streams before a retry reuses them, or its own stdout
       // reaching EOF (default `pipe` behavior) would `.end()` the shared
       // `stdout` out from under the NEXT, successful attempt.
+      // `active.child === child` alone would also be true for a brand new
+      // attempt that has not even finished handshaking yet — `started`
+      // (see `spawnWithPort`) is what narrows this to a genuine, running
+      // session, not merely "the most recent attempt".
+      const isGenuineCrash = active.child === child && started.value;
       child.stdout.unpipe(stdout);
       stdin.unpipe(child.stdin);
+      if (isGenuineCrash) {
+        active.child = undefined;
+        // `{ end: false }` above exists so a failed STARTUP attempt never
+        // severs the stream a retry still needs — but this child had
+        // already become the active, running session, so this is a real
+        // post-startup crash, not a startup casualty. Nothing else will
+        // ever end the shared `stdout` now, so `AcpRun`'s own reader
+        // (`connectAcp`'s `Readable.toWeb`) would otherwise never learn the
+        // connection died and just hang forever — end it ourselves, the
+        // same signal a plain `.pipe()` gave it before retries existed.
+        // Terminal, not retried: an already-active session has transcript
+        // history and state a fresh `opencode acp` process cannot silently
+        // resume, so this always reports failure rather than reusing
+        // `attemptsLeft` to swap in a blank replacement behind it.
+        stdout.end();
+        notify.current(reason);
+        return;
+      }
       if (active.child === child) { active.child = undefined; }
       if (attemptsLeft > 1 && /port|EADDRINUSE/i.test(reason)) {
-        void this.attemptSpawn(token, watch, stdin, stdout, isKilled, notifyFailure, attemptsLeft - 1, active);
+        void this.attemptSpawn(token, watch, stdin, stdout, isKilled, notify, attemptsLeft - 1, active, started);
       } else {
-        notifyFailure(reason);
+        notify.current(reason);
       }
     });
     // `end: false`: a failed attempt's own child exiting must not end these

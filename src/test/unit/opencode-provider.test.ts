@@ -3,6 +3,7 @@ import { PassThrough } from 'node:stream';
 import * as frames from '../fixtures/opencode-acp-frames.json';
 import { DEFAULT_PROVIDER_IDS } from '../../shared/settings';
 import { OpenCodeProvider } from '../../providers/opencode/opencode-provider';
+import type { AgentEvent } from '../../providers/types';
 
 /** A scripted spawn that answers `initialize` so `session/new` gets sent, then
  *  records every frame it received without answering it — enough to inspect
@@ -391,6 +392,41 @@ suite('OpenCodeProvider', () => {
     await flush();
     await run.dispose();
     assert.strictEqual(realChildKilled, true);
+  });
+
+  test("a crash on the already-active child still ends the shared stream, so AcpRun's own turn reports it", async () => {
+    // scriptedSpawnWithEffort answers session/set_mode too — needed for
+    // startInner() to actually resolve, which send() awaits before it can
+    // write session/prompt at all.
+    const scripted = scriptedSpawnWithEffort();
+    let notify: (reason: string) => void = () => {};
+    let realStdout: PassThrough | undefined;
+    const provider = new OpenCodeProvider({
+      reservePort: async () => 1,
+      spawn: () => {
+        const base = scripted.spawn();
+        realStdout = base.stdout as PassThrough;
+        // scriptedSpawn's own fake has no onFailure — add one, the same
+        // shape `spawnOpenCodeAcp` gives a real child.
+        return { ...base, onFailure: (cb: (reason: string) => void) => { notify = cb; } };
+      },
+    });
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default', sessionId: 'sid' });
+    const events: AgentEvent[] = [];
+    void (async () => { for await (const e of run.events) { events.push(e); } })();
+    await waitFor(scripted.seen, 'session/new');
+    run.send('build it');
+    await waitFor(scripted.seen, 'session/prompt');
+    // The real process crashing post-startup — same shape as
+    // `spawnOpenCodeAcp`'s own `fail()`: notify, then its own stdout hits EOF.
+    notify('opencode acp exited (code 1): out of memory');
+    realStdout!.end();
+    await flush();
+    const failed = events.find(
+      (e): e is Extract<AgentEvent, { kind: 'turn-end' }> => e.kind === 'turn-end' && e.reason === 'error',
+    );
+    assert.strictEqual(failed?.error, 'opencode acp exited (code 1): out of memory');
+    await run.dispose();
   });
 
   suite('checkForUpdate', () => {
