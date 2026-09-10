@@ -70,10 +70,13 @@ export function toAgentEvents(
       return [{ kind: 'tool-start', id: call.toolCallId, tool: tools.call(call) }];
     }
     case 'tool_call_update': {
-      // Merged before the status check: `in_progress` emits nothing, but it is
-      // the only frame carrying a read's path or a bash call's command.
+      // Merged before the status check: `in_progress` is the only frame
+      // carrying a read's path or a bash call's command, so it live-patches
+      // the still-running card instead of being dropped.
       const call = calls.merge(update as unknown as AcpToolCall);
-      if (call.status !== 'completed' && call.status !== 'failed') { return []; }
+      if (call.status !== 'completed' && call.status !== 'failed') {
+        return [{ kind: 'tool-update', id: call.toolCallId, tool: tools.call(call) }];
+      }
       // `tool` is re-sent deliberately: opencode's `tool_call` for bash carries
       // no command at all, and only a later frame has `rawInput.command`.
       return [{

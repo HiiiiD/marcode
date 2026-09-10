@@ -969,6 +969,21 @@ export class AgentSession {
         return;
       }
 
+      case 'tool-update': {
+        const existing = this.toolItems.get(event.id);
+        if (!existing || existing.role !== 'tool' || existing.state !== 'running') { return; }
+        const updated: TranscriptItem = { ...existing, tool: event.tool };
+        this.toolItems.set(event.id, updated);
+
+        const parentRoot = this.childOf.get(event.id);
+        if (parentRoot) {
+          this.replaceChild(parentRoot, updated);
+          return;
+        }
+        this.replaceItem(updated);
+        return;
+      }
+
       case 'tool-end': {
         const existing = this.toolItems.get(event.id);
         if (!existing || existing.role !== 'tool') { return; }

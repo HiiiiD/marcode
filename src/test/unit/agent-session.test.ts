@@ -343,6 +343,56 @@ suite('AgentSession', () => {
     await session.dispose();
   });
 
+  test('tool-update live-patches a running card without settling it', async () => {
+    const provider = new FakeProvider(() => [
+      { kind: 'tool-start', id: 't1', tool: { kind: 'command', label: 'Shell', command: 'bash' } },
+      { kind: 'tool-update', id: 't1', tool: { kind: 'command', label: 'Shell', command: 'echo hi' } },
+      { kind: 'tool-end', id: 't1', ok: true, output: { kind: 'text', text: 'hi' } },
+      { kind: 'turn-end', reason: 'done' },
+    ]);
+    const session = new AgentSession(baseState(), provider, store, sink);
+    session.send('run it');
+    await settle();
+
+    const patched = sink.patches.some((p) => p.patch.op === 'replace'
+      && p.patch.item.role === 'tool'
+      && (p.patch.item as { tool: { command?: string } }).tool.command === 'echo hi'
+      && (p.patch.item as { state: string }).state === 'running');
+    assert.strictEqual(patched, true);
+    await session.dispose();
+  });
+
+  test('tool-update for an unknown id is ignored', async () => {
+    const provider = new FakeProvider(() => [
+      { kind: 'tool-update', id: 'ghost', tool: { kind: 'command', label: 'Shell', command: 'ls' } },
+      { kind: 'turn-end', reason: 'done' },
+    ]);
+    const session = new AgentSession(baseState(), provider, store, sink);
+    session.send('run it');
+    await settle();
+
+    const snap = await session.snapshot();
+    assert.strictEqual(snap.items.some((i) => i.role === 'tool'), false);
+    await session.dispose();
+  });
+
+  test('tool-update after tool-end no longer changes the settled card', async () => {
+    const provider = new FakeProvider(() => [
+      { kind: 'tool-start', id: 't1', tool: { kind: 'command', label: 'Shell', command: 'ls' } },
+      { kind: 'tool-end', id: 't1', ok: true, output: { kind: 'text', text: 'a.ts' } },
+      { kind: 'tool-update', id: 't1', tool: { kind: 'command', label: 'Shell', command: 'stale' } },
+      { kind: 'turn-end', reason: 'done' },
+    ]);
+    const session = new AgentSession(baseState(), provider, store, sink);
+    session.send('run it');
+    await settle();
+
+    const snap = await session.snapshot();
+    const tool = snap.items.find((i) => i.role === 'tool') as { tool: { command: string } };
+    assert.strictEqual(tool.tool.command, 'ls');
+    await session.dispose();
+  });
+
   test('a tool-end that carries a tool revises the call the card renders', async () => {
     // Codex's `webSearch` item starts with an empty `query` and only carries
     // the real one on completion, so a provider must be able to correct the
