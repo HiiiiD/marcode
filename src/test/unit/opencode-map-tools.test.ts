@@ -32,6 +32,26 @@ suite('opencode toToolCall', () => {
       });
   });
 
+  test('a write with no diff block still becomes a file-edit, from locations/rawInput', () => {
+    assert.deepStrictEqual(
+      toToolCall(frames.updates.writeToolCallCreate as unknown as AcpToolCall), {
+        kind: 'file-edit', label: 'Edit',
+        files: [{
+          path: 'E:/Efebia/hiiiid-code/scratch/spike-note.txt',
+          op: 'create',
+          edits: [{ after: 'hello\n' }],
+        }],
+      });
+  });
+
+  test('a write with no diff block over an existing file is a modify, with no fabricated diff', () => {
+    assert.deepStrictEqual(
+      toToolCall(frames.updates.writeToolCallModify as unknown as AcpToolCall), {
+        kind: 'file-edit', label: 'Edit',
+        files: [{ path: 'E:/Efebia/hiiiid-code/scratch/spike-note.txt', op: 'modify' }],
+      });
+  });
+
   test('an edit over existing text is a modify, not a create', () => {
     const call = {
       toolCallId: 't', kind: 'edit', title: 'a.ts',

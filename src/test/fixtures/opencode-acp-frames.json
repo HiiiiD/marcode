@@ -85,6 +85,32 @@
         "oldText": null, "newText": "hi" }],
       "rawOutput": { "output": "Wrote file successfully." }
     },
+    "writeToolCallCreate": {
+      "sessionUpdate": "tool_call_update",
+      "toolCallId": "call_e60fc1b747b04271ad502d66",
+      "status": "completed",
+      "kind": "edit",
+      "title": "scratch\\spike-note.txt",
+      "locations": [{ "path": "E:\\Efebia\\hiiiid-code\\scratch\\spike-note.txt" }],
+      "content": [{ "type": "content", "content": { "type": "text", "text": "Wrote file successfully." } }],
+      "rawInput": { "filePath": "E:\\Efebia\\hiiiid-code\\scratch\\spike-note.txt", "content": "hello\n" },
+      "rawOutput": { "output": "Wrote file successfully.",
+        "metadata": { "diagnostics": {}, "filepath": "E:\\Efebia\\hiiiid-code\\scratch\\spike-note.txt",
+          "exists": false, "truncated": false } }
+    },
+    "writeToolCallModify": {
+      "sessionUpdate": "tool_call_update",
+      "toolCallId": "call_8f603a14acbd485cb5b639f5",
+      "status": "completed",
+      "kind": "edit",
+      "title": "scratch\\spike-note.txt",
+      "locations": [{ "path": "E:\\Efebia\\hiiiid-code\\scratch\\spike-note.txt" }],
+      "content": [{ "type": "content", "content": { "type": "text", "text": "Wrote file successfully." } }],
+      "rawInput": { "filePath": "E:\\Efebia\\hiiiid-code\\scratch\\spike-note.txt", "content": "hello\nagain\n" },
+      "rawOutput": { "output": "Wrote file successfully.",
+        "metadata": { "diagnostics": {}, "filepath": "E:\\Efebia\\hiiiid-code\\scratch\\spike-note.txt",
+          "exists": true, "truncated": false } }
+    },
     "readToolCall": {
       "sessionUpdate": "tool_call",
       "toolCallId": "call_420b060b6c63426c9fe09987",

@@ -33,6 +33,7 @@ function parseSelfControlTitle(title: string | undefined): { server: string; too
 export function toToolCall(c: AcpToolCall): ToolCall {
   const raw = (c.rawInput ?? {}) as {
     command?: string; cwd?: string; filePath?: string; pattern?: string; path?: string;
+    content?: string;
   };
   const mcp = parseSelfControlTitle(c.title);
   if (mcp) {
@@ -54,13 +55,32 @@ export function toToolCall(c: AcpToolCall): ToolCall {
         : { kind: 'command', label: 'Shell', command };
     }
     case 'edit': {
-      const files: FileEdit[] = diffs(c).map((d) => ({
+      const diffFiles: FileEdit[] = diffs(c).map((d) => ({
         path: posix(d.path),
         op: d.oldText ? 'modify' : 'create',
         edits: [d.oldText ? { before: d.oldText, after: d.newText ?? '' }
                           : { after: d.newText ?? '' }],
       }));
-      return { kind: 'file-edit', label: 'Edit', files };
+      if (diffFiles.length > 0) { return { kind: 'file-edit', label: 'Edit', files: diffFiles }; }
+      // Observed live (opencode 1.18.30): a write/edit never sends a `diff`
+      // content block at all — `content` is just the text confirmation
+      // ("Wrote file successfully."), and the path only ever shows up in
+      // `locations`/`rawInput.filePath`, same lag as `read` above. Without
+      // that fallback the card shows the glyph and the word "Edit" with no
+      // path and no diff at all.
+      const path = c.locations?.[0]?.path ?? raw.filePath;
+      if (!path) { return { kind: 'file-edit', label: 'Edit', files: [] }; }
+      const output = (c.rawOutput ?? {}) as { metadata?: { exists?: boolean } };
+      // `exists` is opencode's own answer to "was there a file here before
+      // this write" — the only signal available, since there is no before
+      // text to diff against either way. Missing (a `read`'s error frame
+      // reused as a signal, or a vendor version that omits it) reads as
+      // `modify`: the safer default is not to claim a create it can't back.
+      const op: FileEdit['op'] = output.metadata?.exists === false ? 'create' : 'modify';
+      const file: FileEdit = op === 'create' && raw.content !== undefined
+        ? { path: posix(path), op, edits: [{ after: raw.content }] }
+        : { path: posix(path), op };
+      return { kind: 'file-edit', label: 'Edit', files: [file] };
     }
     case 'read': {
       // The opening `tool_call` carries an empty `locations` and an empty
