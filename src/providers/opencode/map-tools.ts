@@ -31,7 +31,9 @@ function parseSelfControlTitle(title: string | undefined): { server: string; too
 }
 
 export function toToolCall(c: AcpToolCall): ToolCall {
-  const raw = (c.rawInput ?? {}) as { command?: string; cwd?: string; filePath?: string };
+  const raw = (c.rawInput ?? {}) as {
+    command?: string; cwd?: string; filePath?: string; pattern?: string; path?: string;
+  };
   const mcp = parseSelfControlTitle(c.title);
   if (mcp) {
     const record = (c.rawInput ?? {}) as Record<string, unknown>;
@@ -69,6 +71,25 @@ export function toToolCall(c: AcpToolCall): ToolCall {
       // Known kind, unknown path: the vendor's own title here is the literal
       // word `read`, and the card says what the call is either way.
       return { kind: 'other', label: 'Read', raw: c.rawInput };
+    }
+    case 'search': {
+      // Observed live (opencode 1.18.30): the glob tool reports `kind:
+      // 'search'` with `title: 'glob'` and `rawInput: { pattern, path }` —
+      // the opening `tool_call` carries neither yet, same lag as `read`
+      // above, so the pattern arrives on the `in_progress` frame. Nothing
+      // observed yet distinguishes a content search (grep-like) from a
+      // files search (glob-like) other than the vendor's own title, so that
+      // is the only signal used here — never a name-substring guess on
+      // anything else.
+      const pattern = raw.pattern;
+      if (pattern) {
+        return {
+          kind: 'search', label: c.title ?? 'Search', pattern,
+          mode: c.title === 'grep' ? 'content' : 'files',
+          ...(raw.path ? { scope: posix(raw.path) } : {}),
+        };
+      }
+      return { kind: 'other', label: c.title ?? 'Search', raw: c.rawInput };
     }
     default:
       break;

@@ -65,6 +65,27 @@ suite('opencode toToolCall', () => {
       { kind: 'other', label: 'Read', raw: {} });
   });
 
+  test('a glob call becomes a files search from its pattern and path', () => {
+    assert.deepStrictEqual(
+      toToolCall(frames.updates.globToolCallInProgress as unknown as AcpToolCall), {
+        kind: 'search', label: 'glob', pattern: '*.md', mode: 'files',
+        scope: 'E:/Efebia/hiiiid-code/.claude/commands',
+      });
+  });
+
+  test('a grep-titled search call is a content search, not a files search', () => {
+    const call = {
+      toolCallId: 't', kind: 'search', title: 'grep', rawInput: { pattern: 'TODO' },
+    } as unknown as AcpToolCall;
+    assert.deepStrictEqual(toToolCall(call),
+      { kind: 'search', label: 'grep', pattern: 'TODO', mode: 'content' });
+  });
+
+  test('a search call with no pattern yet falls through to other, not a hidden empty pattern', () => {
+    const call = { toolCallId: 't', kind: 'search', title: 'glob', rawInput: {} } as unknown as AcpToolCall;
+    assert.deepStrictEqual(toToolCall(call), { kind: 'other', label: 'glob', raw: {} });
+  });
+
   test('an unknown kind falls through to other, carrying its raw input', () => {
     const call = {
       toolCallId: 't', kind: 'fetch', title: 'grab it', rawInput: { url: 'https://x' },

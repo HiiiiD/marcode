@@ -127,6 +127,34 @@
         "output": "<path>C:\\Users\\dev\\AppData\\Local\\Temp\\oc-read-spike\\notes.txt</path>\n<type>file</type>"
       }
     },
+    "globToolCall": {
+      "sessionUpdate": "tool_call",
+      "toolCallId": "call_9bfab634c8f747d9bf1577e8",
+      "title": "glob",
+      "kind": "search",
+      "status": "pending",
+      "locations": [],
+      "rawInput": {}
+    },
+    "globToolCallInProgress": {
+      "sessionUpdate": "tool_call_update",
+      "toolCallId": "call_9bfab634c8f747d9bf1577e8",
+      "status": "in_progress",
+      "kind": "search",
+      "title": "glob",
+      "locations": [{ "path": "E:\\Efebia\\hiiiid-code\\.claude\\commands" }],
+      "rawInput": { "pattern": "*.md", "path": "E:\\Efebia\\hiiiid-code\\.claude\\commands" }
+    },
+    "globToolCallCompleted": {
+      "sessionUpdate": "tool_call_update",
+      "toolCallId": "call_9bfab634c8f747d9bf1577e8",
+      "status": "completed",
+      "title": ".claude\\commands",
+      "content": [{ "type": "content",
+        "content": { "type": "text", "text": "E:\\Efebia\\hiiiid-code\\.claude\\commands\\release.md" } }],
+      "rawOutput": { "output": "E:\\Efebia\\hiiiid-code\\.claude\\commands\\release.md",
+        "metadata": { "count": 1, "truncated": false } }
+    },
     "availableCommands": {
       "sessionUpdate": "available_commands_update",
       "availableCommands": [
