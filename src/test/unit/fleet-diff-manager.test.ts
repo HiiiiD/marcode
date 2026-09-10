@@ -341,6 +341,49 @@ suite('SessionManager.fleetDiff', function () {
     if (trees[0].base.kind === 'merge-base') { assert.strictEqual(trees[0].base.ref, 'trunk'); }
   });
 
+  test('a per-tree override reaches treeChanges and wins over auto-detect', async () => {
+    const repo = await tempDir();
+    await initRepo(repo);
+    await run('git', ['checkout', '-b', 'develop'], { cwd: repo, windowsHide: true });
+    await run('git', ['checkout', 'main'], { cwd: repo, windowsHide: true });
+    await run('git', ['checkout', '-b', 'work'], { cwd: repo, windowsHide: true });
+    await fs.writeFile(join(repo, 'work.ts'), 'a\n');
+    await run('git', ['add', '-A'], { cwd: repo, windowsHide: true });
+    await run('git', ['commit', '-m', 'work'], { cwd: repo, windowsHide: true });
+
+    const { manager } = await managerWith(() => [{ kind: 'turn-end', reason: 'done' }]);
+    const session = await manager.create('fake', repo);
+    await manager.setVisible([session.state.id]);
+    await settle();
+
+    const trees = await manager.fleetDiff(undefined, { [repo]: 'develop' });
+    assert.strictEqual(trees[0].base.kind, 'merge-base');
+    if (trees[0].base.kind === 'merge-base') { assert.strictEqual(trees[0].base.ref, 'develop'); }
+  });
+
+  test('a bad override surfaces as that tree\'s reason, not a rejection', async () => {
+    const repo = await tempDir();
+    await initRepo(repo);
+    const { manager } = await managerWith(() => [{ kind: 'turn-end', reason: 'done' }]);
+    const session = await manager.create('fake', repo);
+    await manager.setVisible([session.state.id]);
+    await settle();
+
+    const trees = await manager.fleetDiff(undefined, { [repo]: 'does-not-exist' });
+    assert.match(trees[0].reason ?? '', /Base ref not found/);
+  });
+
+  test('requestBranchRefs emits the tree\'s branches on the wire', async () => {
+    const repo = await tempDir();
+    await initRepo(repo);
+    const { manager, emitted } = await managerWith(() => [{ kind: 'turn-end', reason: 'done' }]);
+    await manager.requestBranchRefs(repo);
+
+    const msg = emitted().filter((m) => m.t === 'branch-refs').pop();
+    assert.strictEqual(msg?.t === 'branch-refs' && msg.root, repo);
+    assert.strictEqual(msg?.t === 'branch-refs' && msg.refs.includes('main'), true);
+  });
+
   test('a failed read answers with a reason rather than rejecting', async () => {
     // Errors are state, never exceptions: a rejection here would leave the
     // surface on "Reading the working trees…" forever, since the message that

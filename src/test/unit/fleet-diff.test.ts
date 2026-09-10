@@ -10,7 +10,9 @@ import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
-import { parseNumstat, resolveBase, treeChanges } from '../../host/fleet-diff';
+import {
+  listBranchRefs, parseNumstat, resolveBase, treeChanges,
+} from '../../host/fleet-diff';
 
 const run = promisify(execFile);
 const roots: string[] = [];
@@ -134,6 +136,69 @@ suite('fleet-diff git plumbing', function () {
     const dir = await tempDir();
     const result = await treeChanges(dir);
     assert.strictEqual('reason' in result, true);
+  });
+
+  test('an explicit override wins over both auto-detect and extraRefs', async () => {
+    const dir = await tempDir();
+    await initRepo(dir);
+    await run('git', ['checkout', '-b', 'develop'], { cwd: dir, windowsHide: true });
+    await run('git', ['checkout', 'main'], { cwd: dir, windowsHide: true });
+    await run('git', ['checkout', '-b', 'work'], { cwd: dir, windowsHide: true });
+    await fs.writeFile(join(dir, 'work.ts'), 'a\n');
+    await commitAll(dir, 'work');
+
+    const base = await resolveBase(dir, ['main'], 'develop');
+    assert.strictEqual(base.kind, 'merge-base');
+    if (base.kind === 'merge-base') { assert.strictEqual(base.ref, 'develop'); }
+  });
+
+  test('an override that does not exist throws rather than silently falling back', async () => {
+    const dir = await tempDir();
+    await initRepo(dir);
+
+    await assert.rejects(resolveBase(dir, [], 'does-not-exist'), /Base ref not found/);
+  });
+
+  test('treeChanges surfaces a bad override as this tree\'s reason', async () => {
+    const dir = await tempDir();
+    await initRepo(dir);
+
+    const result = await treeChanges(dir, undefined, [], 'nope');
+    assert.strictEqual('reason' in result, true);
+    if (!('reason' in result)) { return; }
+    assert.match(result.reason, /Base ref not found: nope/);
+  });
+
+  test('treeChanges honors a valid override over auto-detection', async () => {
+    const dir = await tempDir();
+    await initRepo(dir);
+    await run('git', ['checkout', '-b', 'develop'], { cwd: dir, windowsHide: true });
+    await run('git', ['checkout', 'main'], { cwd: dir, windowsHide: true });
+    await run('git', ['checkout', '-b', 'work'], { cwd: dir, windowsHide: true });
+    await fs.writeFile(join(dir, 'work.ts'), 'a\n');
+    await commitAll(dir, 'work');
+
+    const result = await treeChanges(dir, undefined, [], 'develop');
+    if ('reason' in result) { assert.fail(result.reason); }
+    assert.strictEqual(result.base.kind, 'merge-base');
+    if (result.base.kind === 'merge-base') { assert.strictEqual(result.base.ref, 'develop'); }
+  });
+
+  test('listBranchRefs lists local and remote branches, most recent first, without origin/HEAD', async () => {
+    const dir = await tempDir();
+    await initRepo(dir);
+    await run('git', ['checkout', '-b', 'feature'], { cwd: dir, windowsHide: true });
+    await run('git', ['checkout', 'main'], { cwd: dir, windowsHide: true });
+
+    const refs = await listBranchRefs(dir);
+    assert.strictEqual(refs.includes('main'), true);
+    assert.strictEqual(refs.includes('feature'), true);
+    assert.strictEqual(refs.includes('origin/HEAD'), false);
+  });
+
+  test('listBranchRefs answers empty rather than throwing for a non-repository', async () => {
+    const dir = await tempDir();
+    assert.deepStrictEqual(await listBranchRefs(dir), []);
   });
 
   test('the file cap reports what it omitted', async () => {

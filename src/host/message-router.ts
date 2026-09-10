@@ -504,7 +504,13 @@ export class MessageRouter {
       // unaddressed for the same reason too: a working tree is the unit git
       // can answer for, and two sessions in one tree share one answer.
       case 'request-fleet-diff':
-        await this.manager.requestFleetDiff(msg.cap);
+        await this.manager.requestFleetDiff(msg.cap, msg.overrides);
+        return;
+
+      // Awaited for the same reason: it shells out to git for one root's
+      // branch list, on demand when the review tab's base picker opens.
+      case 'request-branch-refs':
+        await this.manager.requestBranchRefs(msg.root);
         return;
 
       case 'open-file-diff':
@@ -686,7 +692,8 @@ const KNOWN_MESSAGE_TAGS = new Set<WebviewToHost['t']>([
   'request-context', 'open-file',
   'request-bring-back', 'bring-back',
   'request-stale-trees', 'remove-stale-tree',
-  'request-fleet-diff', 'open-file-diff', 'open-review', 'open-fleet', 'open-fleet-subagent',
+  'request-fleet-diff', 'request-branch-refs', 'open-file-diff', 'open-review', 'open-fleet',
+  'open-fleet-subagent',
   'focus-session',
   'refresh-catalog', 'open-settings', 'login-provider', 'open-external', 'export-table-csv',
   'export-image',

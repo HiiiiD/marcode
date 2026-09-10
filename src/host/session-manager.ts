@@ -4,7 +4,7 @@ import { AgentSession, type SessionSink } from './agent-session';
 import type { AttachmentStore } from './attachment-store';
 import { catalogKey, CatalogService } from './catalog-service';
 import { claimedPaths, toRepoRelative } from './claim-paths';
-import { treeChanges } from './fleet-diff';
+import { listBranchRefs, treeChanges } from './fleet-diff';
 import {
   bringBack as runBringBack, bringBackPlan, samePath, treeStatus, type TreeStatus,
 } from './git-worktree';
@@ -1063,7 +1063,7 @@ export class SessionManager implements SessionSink {
    * saying so is noise. A directory that *is* a repository but cannot be read
    * stays, carrying why — that one is a fault worth surfacing.
    */
-  async fleetDiff(cap?: number): Promise<TreeDiff[]> {
+  async fleetDiff(cap?: number, overrides?: Record<string, string>): Promise<TreeDiff[]> {
     // Every directory's `treeStatus` is independent — each is its own chain
     // of git spawns, and awaiting them one directory at a time serialises
     // work that has nothing to do with each other. Reading them together is
@@ -1101,7 +1101,9 @@ export class SessionManager implements SessionSink {
     // Each tree's `treeChanges` + claim lookups are independent of every
     // other tree's, for the same reason the status reads above are.
     const rows = await Promise.all(occupied.map(async ({ status, occupants }) => {
-      const changes = await treeChanges(status.root, cap ?? this.defaultFileCap, this.extraBaseRefs);
+      const changes = await treeChanges(
+        status.root, cap ?? this.defaultFileCap, this.extraBaseRefs, overrides?.[status.root],
+      );
       if ('reason' in changes) {
         return {
           root: status.root, branch: status.branch, sessions: occupants,
@@ -1177,10 +1179,10 @@ export class SessionManager implements SessionSink {
    * Errors are state — the same contract `TreeDiff.reason` already keeps for
    * a single tree, kept here for the call as a whole.
    */
-  async requestFleetDiff(cap?: number): Promise<void> {
+  async requestFleetDiff(cap?: number, overrides?: Record<string, string>): Promise<void> {
     let trees: TreeDiff[];
     try {
-      trees = await this.fleetDiff(cap);
+      trees = await this.fleetDiff(cap, overrides);
     } catch (err) {
       if (this.disposed) { return; }
       const detail = err instanceof Error ? err.message : String(err);
@@ -1192,6 +1194,22 @@ export class SessionManager implements SessionSink {
     }
     if (this.disposed) { return; }
     this.emit({ t: 'fleet-diff', trees });
+  }
+
+  /**
+   * Answers the review tab's base-ref picker for one root. Never rejects —
+   * same contract as `requestFleetDiff` — an empty list is a real answer
+   * (a fresh repo with one branch) as much as a failure would be.
+   */
+  async requestBranchRefs(root: string): Promise<void> {
+    let refs: string[];
+    try {
+      refs = await listBranchRefs(root);
+    } catch {
+      refs = [];
+    }
+    if (this.disposed) { return; }
+    this.emit({ t: 'branch-refs', root, refs });
   }
 
   /**

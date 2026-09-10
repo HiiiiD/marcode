@@ -9,6 +9,9 @@ import {
 } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+  Combobox, ComboboxContent, ComboboxItem, ComboboxTrigger, ComboboxValue,
+} from '@/components/ui/combobox';
 import { Input } from '@/components/ui/input';
 import { StatusBadge } from '@/components/status-badge';
 import {
@@ -198,7 +201,9 @@ export function FleetDiff() {
   const { state, post } = useStore();
   const trees = state.fleetDiff;
 
-  const { showMore, refresh, atCeiling } = useFleetDiffRequests(
+  const {
+    showMore, refresh, atCeiling, overrides, setOverride,
+  } = useFleetDiffRequests(
     post, state.visible, state.fleetDiffDirty, state.pollIntervalMs,
   );
 
@@ -492,6 +497,10 @@ export function FleetDiff() {
                 collapsed={collapsed}
                 toggle={toggle}
                 nav={nav}
+                override={overrides[tree.root]}
+                onOverride={(ref) => setOverride(tree.root, ref)}
+                branchRefs={state.branchRefs[tree.root]}
+                onLoadBranchRefs={() => post({ t: 'request-branch-refs', root: tree.root })}
               />
             ))
         )}
@@ -500,11 +509,22 @@ export function FleetDiff() {
   );
 }
 
+/** The combobox's own sentinel for "no override" — `Combobox` needs a string
+ * value, and the empty string can never collide with a real ref name. */
+const AUTO_DETECT = '';
+
 function Tree({
   tree, sessions, onShowMore, atCeiling, collapsed, toggle, nav,
+  override, onOverride, branchRefs, onLoadBranchRefs,
 }: {
   tree: TreeDiff; sessions: SessionSummary[]; onShowMore: () => void; atCeiling: boolean;
   collapsed: Set<string>; toggle: (key: string) => void; nav: RowNav;
+  /** This tree's picked base ref, or undefined for auto-detect. */
+  override: string | undefined;
+  onOverride: (ref: string | undefined) => void;
+  /** Undefined until `onLoadBranchRefs` has been called at least once. */
+  branchRefs: string[] | undefined;
+  onLoadBranchRefs: () => void;
 }) {
   const groups = groupTree(tree);
   const treeKey = `tree:${tree.root}`;
@@ -553,12 +573,42 @@ function Tree({
         </div>
         {/* Named, never implied. `head` means uncommitted work only, and a
             list that let that pass for "everything this session did" would
-            quietly under-report a session that had committed as it went. */}
-        <p className="pl-6 text-muted-foreground">
-          {tree.base.kind === 'merge-base'
-            ? `Since ${tree.base.ref} (${tree.base.sha.slice(0, 7)})`
-            : 'Uncommitted changes only — nothing to compare a branch point against.'}
-        </p>
+            quietly under-report a session that had committed as it went. The
+            combobox lets a wrong auto-detected default (a repo whose
+            declared default branch is neither `origin/HEAD` nor one of the
+            built-in fallbacks) be overridden per-tree, for this tab only. */}
+        <div className="flex min-w-0 items-center gap-1.5 pl-6">
+          <p className="min-w-0 flex-1 truncate text-muted-foreground">
+            {tree.base.kind === 'merge-base'
+              ? `Since ${tree.base.ref} (${tree.base.sha.slice(0, 7)})`
+              : 'Uncommitted changes only — nothing to compare a branch point against.'}
+          </p>
+          <Combobox
+            items={[
+              { value: AUTO_DETECT, label: 'Auto-detect' },
+              ...(branchRefs ?? []).map((ref) => ({ value: ref, label: ref })),
+            ]}
+            value={override ?? AUTO_DETECT}
+            onValueChange={(value) => onOverride(value === AUTO_DETECT ? undefined : value as string)}
+            onOpenChange={(open) => { if (open && branchRefs === undefined) { onLoadBranchRefs(); } }}
+          >
+            <ComboboxTrigger
+              size="sm"
+              className="h-6 shrink-0 px-1.5 text-xs"
+              aria-label={`Diff base for ${tree.root}`}
+              render={<Button variant="ghost" />}
+            >
+              <ComboboxValue className="truncate" />
+            </ComboboxTrigger>
+            <ComboboxContent placeholder="Search branches…" className="w-auto min-w-40 max-w-(--available-width)">
+              {(item: { value: string; label: string }) => (
+                <ComboboxItem key={item.value} value={item.value}>
+                  {item.label}
+                </ComboboxItem>
+              )}
+            </ComboboxContent>
+          </Combobox>
+        </div>
       </div>
 
       {isCollapsed ? null : (

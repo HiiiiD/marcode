@@ -83,8 +83,32 @@ const FALLBACK_REFS = ['origin/main', 'origin/master', 'main', 'master'];
  * They sit between the two: still less confident than the repo's own
  * declared default, still more confident than a guess this module ships
  * with for every install.
+ *
+ * `overrideRef` is a user's explicit pick from the review tab's per-tree base
+ * picker. It short-circuits the whole candidate list above — auto-detection
+ * exists only to guess what the user has not told this module — and its
+ * failure is never silently absorbed into a lower-confidence guess: an
+ * override that does not resolve throws, so the caller can surface exactly
+ * what the user asked for and why it did not work, rather than quietly
+ * diffing against a ref they never chose.
  */
-export async function resolveBase(dir: string, extraRefs: string[] = []): Promise<DiffBase> {
+export async function resolveBase(
+  dir: string, extraRefs: string[] = [], overrideRef?: string,
+): Promise<DiffBase> {
+  if (overrideRef !== undefined) {
+    const exists = await git(dir, ['rev-parse', '--verify', '--quiet', `${overrideRef}^{commit}`]);
+    if (!exists.ok || exists.out === '') {
+      throw new Error(`Base ref not found: ${overrideRef}`);
+    }
+    const mergeBase = await git(dir, ['merge-base', overrideRef, 'HEAD']);
+    if (!mergeBase.ok || mergeBase.out === '') {
+      throw new Error(`No common history with ${overrideRef}`);
+    }
+    const head = await git(dir, ['rev-parse', 'HEAD']);
+    if (head.ok && head.out === mergeBase.out) { return { kind: 'head' }; }
+    return { kind: 'merge-base', ref: overrideRef, sha: mergeBase.out };
+  }
+
   const candidates: string[] = [];
 
   const symbolic = await git(dir, ['symbolic-ref', '--quiet', 'refs/remotes/origin/HEAD']);
@@ -107,6 +131,23 @@ export async function resolveBase(dir: string, extraRefs: string[] = []): Promis
   }
 
   return { kind: 'head' };
+}
+
+/**
+ * Local and remote branches for the review tab's base-ref picker, most
+ * recently committed first. Remote-tracking `origin/HEAD` is filtered out —
+ * it is a symbolic pointer, not a ref a user picks to diff against, and
+ * `resolveBase` already tries it first on its own.
+ */
+export async function listBranchRefs(dir: string): Promise<string[]> {
+  const result = await git(dir, [
+    'for-each-ref', '--format=%(refname:short)', '--sort=-committerdate',
+    'refs/heads', 'refs/remotes',
+  ]);
+  if (!result.ok || result.out === '') { return []; }
+  return result.out.split('\n')
+    .map((line) => line.trim())
+    .filter((ref) => ref !== '' && ref !== 'origin/HEAD' && !ref.endsWith('/HEAD'));
 }
 
 /** `src/{old => new}.ts` and `old.ts => new.ts` are both git rename spellings. */
@@ -167,13 +208,19 @@ export async function treeChanges(
   dir: string,
   cap?: number,
   extraBaseRefs: string[] = [],
+  overrideRef?: string,
 ): Promise<{ base: DiffBase; files: RawChange[]; omitted: number } | { reason: string }> {
   const inside = await git(dir, ['rev-parse', '--is-inside-work-tree']);
   if (!inside.ok || inside.out !== 'true') {
     return { reason: `${dir} is not a git repository.` };
   }
 
-  const base = await resolveBase(dir, extraBaseRefs);
+  let base: DiffBase;
+  try {
+    base = await resolveBase(dir, extraBaseRefs, overrideRef);
+  } catch (err) {
+    return { reason: err instanceof Error ? err.message : String(err) };
+  }
   const against = base.kind === 'merge-base' ? base.sha : 'HEAD';
 
   const diff = await git(dir, ['diff', '--numstat', '-M', against]);
