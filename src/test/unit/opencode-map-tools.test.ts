@@ -159,6 +159,38 @@ suite('opencode toToolCall', () => {
       { kind: 'command', label: 'Skill', command: '', skill: 'pr-summary' });
   });
 
+  // Observed live (opencode 1.18.30): the native `todowrite` tool titles
+  // itself `${n} todos` (n = non-completed count) and kind 'other', but the
+  // signal used here is the param shape (`rawInput.todos`), not that title —
+  // a fully-completed list still reads "0 todos" and would misclassify.
+  test('a todowrite call is recognised from its param shape, not its kind or title', () => {
+    const call = {
+      toolCallId: 't', kind: 'other', title: '2 todos',
+      rawInput: {
+        todos: [
+          { content: 'Inspect commits and diff against origin/master', status: 'in_progress', priority: 'high' },
+          { content: 'Compose raw markdown PR summary', status: 'pending', priority: 'high' },
+        ],
+      },
+    } as unknown as AcpToolCall;
+    assert.deepStrictEqual(toToolCall(call), {
+      kind: 'todos', label: 'Todos',
+      items: [
+        { status: 'in_progress', text: 'Inspect commits and diff against origin/master' },
+        { status: 'pending', text: 'Compose raw markdown PR summary' },
+      ],
+    });
+  });
+
+  test('a fully-completed todowrite call is still todos, not misread from its "0 todos" title', () => {
+    const call = {
+      toolCallId: 't', kind: 'other', title: '0 todos',
+      rawInput: { todos: [{ content: 'Ship it', status: 'completed', priority: 'high' }] },
+    } as unknown as AcpToolCall;
+    assert.deepStrictEqual(toToolCall(call),
+      { kind: 'todos', label: 'Todos', items: [{ status: 'completed', text: 'Ship it' }] });
+  });
+
   test('a third-party MCP call with an unrecognised tool id is not misclassified', () => {
     const call = {
       toolCallId: 't', kind: 'other', title: 'github_list_repos', rawInput: {},
@@ -182,5 +214,13 @@ suite('opencode toToolOutput', () => {
 
   test('a call with no content at all reports none', () => {
     assert.deepStrictEqual(toToolOutput({ toolCallId: 't' }), { kind: 'none' });
+  });
+
+  test('a todowrite call reports none — its list belongs to the call, not the output', () => {
+    const call = {
+      toolCallId: 't', rawInput: { todos: [{ content: 'Ship it', status: 'completed' }] },
+      content: [{ type: 'content', content: { type: 'text', text: '[{"content":"Ship it"}]' } }],
+    } as unknown as AcpToolCall;
+    assert.deepStrictEqual(toToolOutput(call), { kind: 'none' });
   });
 });
