@@ -312,18 +312,24 @@ export class OpenCodeProvider implements AgentProvider {
     const stdout = new PassThrough();
     let notifyFailure: (reason: string) => void = () => {};
     let killed = false;
+    // Shared across every retry attempt so the placeholder's own `kill()` —
+    // the only reference `AcpRun.dispose()` ever holds — can still reach
+    // whichever real child process is currently running. `attemptSpawn`'s
+    // own `child` is otherwise a purely local variable dispose() never sees.
+    const active: { child?: AcpChild } = {};
     const placeholder: AcpChild = {
       stdin, stdout,
-      kill: () => { killed = true; },
+      kill: () => { killed = true; active.child?.kill(); },
       onFailure: (cb) => { notifyFailure = cb; },
     };
-    void this.attemptSpawn(token, watch, stdin, stdout, () => killed, notifyFailure, SPAWN_PORT_ATTEMPTS);
+    void this.attemptSpawn(token, watch, stdin, stdout, () => killed, notifyFailure, SPAWN_PORT_ATTEMPTS, active);
     return placeholder;
   }
 
   private async attemptSpawn(
     token: string, watch: SubagentWatch, stdin: PassThrough, stdout: PassThrough,
     isKilled: () => boolean, notifyFailure: (reason: string) => void, attemptsLeft: number,
+    active: { child?: AcpChild },
   ): Promise<void> {
     if (isKilled()) { return; }
     let port: number;
@@ -342,26 +348,31 @@ export class OpenCodeProvider implements AgentProvider {
       notifyFailure(`opencode acp failed to start (${errorMessage(err)})`);
       return;
     }
+    active.child = child;
     // Only now — a real child process exists for this port — does the
     // watcher's own connection attempt make sense. Opening earlier (right
     // after reservation) would let a retried attempt leave a prior `open()`
     // racing a port nothing ever bound to.
     watch.open(`http://127.0.0.1:${port}`, token);
-    let failed = false;
     child.onFailure?.((reason) => {
-      failed = true;
+      // This attempt's own child already exited on its own — unpipe it from
+      // the shared streams before a retry reuses them, or its own stdout
+      // reaching EOF (default `pipe` behavior) would `.end()` the shared
+      // `stdout` out from under the NEXT, successful attempt.
+      child.stdout.unpipe(stdout);
+      stdin.unpipe(child.stdin);
+      if (active.child === child) { active.child = undefined; }
       if (attemptsLeft > 1 && /port|EADDRINUSE/i.test(reason)) {
-        void this.attemptSpawn(token, watch, stdin, stdout, isKilled, notifyFailure, attemptsLeft - 1);
+        void this.attemptSpawn(token, watch, stdin, stdout, isKilled, notifyFailure, attemptsLeft - 1, active);
       } else {
         notifyFailure(reason);
       }
     });
-    child.stdout.pipe(stdout);
-    stdin.pipe(child.stdin);
+    // `end: false`: a failed attempt's own child exiting must not end these
+    // shared PassThroughs — the next retry (or `dispose()`, via `stdin`)
+    // still needs them live.
+    child.stdout.pipe(stdout, { end: false });
+    stdin.pipe(child.stdin, { end: false });
     if (isKilled()) { child.kill(); }
-    // A failure detected between the checks above and here is still caught
-    // by the `onFailure` listener just attached — nothing here needs its
-    // own race, unlike `fetchModels`'s probe.
-    void failed;
   }
 }

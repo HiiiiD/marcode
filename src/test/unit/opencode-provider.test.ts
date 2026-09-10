@@ -373,6 +373,26 @@ suite('OpenCodeProvider', () => {
     await run.dispose();
   });
 
+  test('dispose() kills the real spawned process, not just the placeholder AcpRun holds', async () => {
+    let realChildKilled = false;
+    const provider = new OpenCodeProvider({
+      spawn: () => {
+        const toAgent = new PassThrough();
+        const toClient = new PassThrough();
+        return {
+          stdin: toAgent, stdout: toClient,
+          kill: () => { realChildKilled = true; toClient.end(); },
+          onFailure: () => {},
+        };
+      },
+      reservePort: async () => 54321,
+    });
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default', sessionId: 'sid' });
+    await flush();
+    await run.dispose();
+    assert.strictEqual(realChildKilled, true);
+  });
+
   suite('checkForUpdate', () => {
     test('resolves current/latest, stripping the v tag prefix', async () => {
       const provider = new OpenCodeProvider({
