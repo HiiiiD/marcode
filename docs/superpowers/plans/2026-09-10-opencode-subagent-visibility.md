@@ -507,15 +507,23 @@ git commit -m "feat: generic auxiliary-event and auxiliary-permission hooks on A
 
 ```ts
 export interface SubagentWatchOptions {
-  baseUrl: string;
-  token: string;
   /** Injected so a test never opens a real socket. */
   connect?: (baseUrl: string, token: string) => Promise<SubagentSdk>;
 }
 
 export class SubagentWatch {
   readonly events: AsyncIterable<AgentEvent>;
-  constructor(opts: SubagentWatchOptions);
+  constructor(opts?: SubagentWatchOptions);
+  /**
+   * Starts watching. Deliberately NOT called from the constructor: Task 5
+   * only learns the real `baseUrl` (the reserved port) after an async
+   * reservation, and a `SubagentWatch` that connected eagerly in its
+   * constructor would race that reservation with an empty/wrong URL. A
+   * `SubagentWatch` nobody calls `open` on stays permanently idle — that's
+   * the correct behavior for a spawn attempt that fails before reaching
+   * this point, not a bug to guard against separately.
+   */
+  open(baseUrl: string, token: string): void;
   setRootSessionId(id: string): void;
   setPermissionHandler(
     handler: (id: string, tool: ToolCall, meta: PermissionMeta | undefined, parentId: string | undefined)
@@ -525,11 +533,12 @@ export class SubagentWatch {
 }
 ```
 
-Task 4 constructs one per run, wires `events` into `AcpRunOptions.childEvents`,
+Task 5 constructs one per run, wires `events` into `AcpRunOptions.childEvents`,
 `setRootSessionId` into `onSessionId`, `close` into `onDispose`, and
 `setPermissionHandler` to `run.handleAuxiliaryPermission` (Task 2 already
 gave that method a fourth, optional `parentId` parameter for exactly this —
-the same value `setPermissionHandler`'s handler receives here).
+the same value `setPermissionHandler`'s handler receives here). Task 5 calls
+`open(...)` itself, once the reserved port is known.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -574,7 +583,8 @@ suite('SubagentWatch', () => {
         },
       },
     ]);
-    const watch = new SubagentWatch({ baseUrl: 'http://x', token: 't', connect: async () => sdk });
+    const watch = new SubagentWatch({ connect: async () => sdk });
+    watch.open('http://x', 't');
     watch.setRootSessionId('root');
     // 'task_root' is the parent tool-start id this run's own task card used —
     // supplied here because Task 4 wires it via setParentToolCallId, added below.
@@ -606,7 +616,8 @@ suite('SubagentWatch', () => {
         },
       },
     ]);
-    const watch = new SubagentWatch({ baseUrl: 'http://x', token: 't', connect: async () => sdk });
+    const watch = new SubagentWatch({ connect: async () => sdk });
+    watch.open('http://x', 't');
     watch.setRootSessionId('root');
     watch.setParentToolCallId('child_1', 'task_root');
     const [event] = await collect(watch.events, 1);
@@ -622,7 +633,8 @@ suite('SubagentWatch', () => {
         properties: { id: 'req_1', sessionID: 'child_1', permission: 'bash', patterns: [], metadata: {}, always: [] },
       },
     ]);
-    const watch = new SubagentWatch({ baseUrl: 'http://x', token: 't', connect: async () => sdk });
+    const watch = new SubagentWatch({ connect: async () => sdk });
+    watch.open('http://x', 't');
     watch.setRootSessionId('root');
     watch.setParentToolCallId('child_1', 'task_root');
     watch.setPermissionHandler(async () => ({ allow: true }));
@@ -724,8 +736,6 @@ class EventChannel implements AsyncIterable<AgentEvent> {
 }
 
 export interface SubagentWatchOptions {
-  baseUrl: string;
-  token: string;
   /** Injected so a test never opens a real socket. Defaults to `connectSdk`. */
   connect?: (baseUrl: string, token: string) => Promise<SubagentSdk>;
 }
@@ -750,8 +760,18 @@ export class SubagentWatch {
   private closed = false;
   private sdk: SubagentSdk | undefined;
 
-  constructor(private readonly opts: SubagentWatchOptions) {
-    void this.run();
+  constructor(private readonly opts: SubagentWatchOptions = {}) {}
+
+  /**
+   * Starts watching `baseUrl` with `token`. Not called from the constructor:
+   * `opencode-provider.ts` only learns the real port after an async
+   * reservation, and connecting eagerly at construction would race that
+   * reservation with an empty URL. A `SubagentWatch` `open` is never called
+   * on stays permanently idle — correct for a spawn attempt that fails
+   * before reaching this point, nothing further to guard.
+   */
+  open(baseUrl: string, token: string): void {
+    void this.run(baseUrl, token);
   }
 
   setRootSessionId(id: string): void {
@@ -777,10 +797,10 @@ export class SubagentWatch {
     this.events.close();
   }
 
-  private async run(): Promise<void> {
+  private async run(baseUrl: string, token: string): Promise<void> {
     const connect = this.opts.connect ?? connectSdk;
     try {
-      this.sdk = await connect(this.opts.baseUrl, this.opts.token);
+      this.sdk = await connect(baseUrl, token);
       const { stream } = await this.sdk.globalEvent();
       for await (const envelope of stream) {
         if (this.closed) { return; }
@@ -1077,17 +1097,30 @@ Append to `src/test/unit/opencode-provider.test.ts` (using whatever fake
 option):
 
 ```ts
-test('start() spawns opencode acp with a pinned port and an injected server password', () => {
+/**
+ * `provider.start(...)` returns synchronously, but the actual spawn happens
+ * after an awaited `reservePort()` — at least one microtask away. A plain
+ * synchronous assertion right after `start()` would read stale state.
+ * `setImmediate` reliably drains the whole microtask queue first (Node
+ * always exhausts microtasks before the next macrotask phase), regardless
+ * of how many `await`/`queueMicrotask` hops the retry chain takes.
+ */
+function flush(): Promise<void> {
+  return new Promise((resolve) => { setImmediate(resolve); });
+}
+
+test('start() spawns opencode acp with a pinned port and an injected server password', async () => {
   let capturedEnv: NodeJS.ProcessEnv | undefined;
   const provider = new OpenCodeProvider({
     spawn: (bin, env) => { capturedEnv = env; return fakeAcpChild(); },
     reservePort: async () => 54321,
   });
   provider.start({ cwd: '/tmp', permissionMode: 'default', sessionId: 'sid' as SessionId });
+  await flush();
   assert.strictEqual(capturedEnv?.OPENCODE_SERVER_PASSWORD?.length, 48); // randomBytes(24).toString('hex')
 });
 
-test('a port collision on spawn is retried with a new port, bounded', () => {
+test('a port collision on spawn is retried with a new port, bounded', async () => {
   let attempts = 0;
   const ports: number[] = [];
   const provider = new OpenCodeProvider({
@@ -1099,10 +1132,11 @@ test('a port collision on spawn is retried with a new port, bounded', () => {
     },
   });
   provider.start({ cwd: '/tmp', permissionMode: 'default', sessionId: 'sid' as SessionId });
+  await flush();
   // Full assertion of the retry's observable effect (a working run on the
   // second port) is exercised in Task 6's integration test — this proves
   // reservePort was called more than once, which is the retry itself.
-  assert.ok(ports.length >= 1);
+  assert.ok(ports.length >= 2);
 });
 ```
 
@@ -1160,7 +1194,7 @@ happen inside the run:
 ```ts
   start(opts: StartOptions): AgentRun {
     const token = randomBytes(24).toString('hex');
-    const watch = new SubagentWatch({ baseUrl: '', token }); // baseUrl set below, once the port is known
+    const watch = new SubagentWatch(); // opened once a real child has actually spawned — see attemptSpawn
     const run = new AcpRun(this.spawnWithPort(token, watch), {
       cwd: opts.cwd,
       model: opts.model,
@@ -1228,7 +1262,6 @@ until the real one is ready, mirroring `AcpChild`'s own shape:
       notifyFailure(`could not reserve a port for opencode acp (${errorMessage(err)})`);
       return;
     }
-    (watch as unknown as { opts: { baseUrl: string } }).opts.baseUrl = `http://127.0.0.1:${port}`;
     const env = { ...this.mergedEnv(), OPENCODE_SERVER_PASSWORD: token };
     const bin = this.binPath ?? 'opencode';
     let child: AcpChild;
@@ -1238,6 +1271,11 @@ until the real one is ready, mirroring `AcpChild`'s own shape:
       notifyFailure(`opencode acp failed to start (${errorMessage(err)})`);
       return;
     }
+    // Only now — a real child process exists for this port — does the
+    // watcher's own connection attempt make sense. Opening earlier (right
+    // after reservation) would let a retried attempt leave a prior `open()`
+    // racing a port nothing ever bound to.
+    watch.open(`http://127.0.0.1:${port}`, token);
     let failed = false;
     child.onFailure?.((reason) => {
       failed = true;
