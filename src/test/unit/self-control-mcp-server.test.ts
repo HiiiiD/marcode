@@ -244,6 +244,49 @@ suite('SelfControlMcpServer', () => {
     await server.dispose();
   });
 
+  test('spawn_session rejects an unsupported effort without throwing, before create()', async () => {
+    let created = false;
+    const server = new SelfControlMcpServer(fakeManager({
+      catalog: () => [
+        { id: 'claude', models: [{ id: 'sonnet' }], permissionModes: [{ id: 'default' }] },
+      ],
+      summaries: () => [{
+        id: 'caller', name: 'Caller', providerId: 'claude', model: 'sonnet',
+        permissionMode: 'default', status: 'idle', cwd: '/tmp', archived: false,
+      }],
+      create: async () => { created = true; return { state: { id: 'x' } }; },
+    }));
+    const config = await server.start();
+    const result = await callToolAs(config, 'caller', 'marcode__spawn_session', {
+      model: 'sonnet', effort: 'high', cwd: '/tmp/work', prompt: 'delegate this',
+    });
+    assert.strictEqual(result.isError, true);
+    assert.match(result.content[0].text, /sonnet.*effort high/i);
+    assert.strictEqual(created, false);
+    await server.dispose();
+  });
+
+  test('spawn_session rejects an effort inherited from the caller onto a model with no effort support', async () => {
+    let created = false;
+    const server = new SelfControlMcpServer(fakeManager({
+      catalog: () => [
+        { id: 'claude', models: [{ id: 'sonnet' }], permissionModes: [{ id: 'default' }] },
+      ],
+      summaries: () => [{
+        id: 'caller', name: 'Caller', providerId: 'claude', model: 'sonnet', effort: 'high',
+        permissionMode: 'default', status: 'idle', cwd: '/tmp', archived: false,
+      }],
+      create: async () => { created = true; return { state: { id: 'x' } }; },
+    }));
+    const config = await server.start();
+    const result = await callToolAs(config, 'caller', 'marcode__spawn_session', {
+      cwd: '/tmp/work', prompt: 'delegate this',
+    });
+    assert.strictEqual(result.isError, true);
+    assert.strictEqual(created, false);
+    await server.dispose();
+  });
+
   test('a real tool call against a real SessionManager creates a session and delivers the prompt', async () => {
     // Same fixture pattern as session-manager.test.ts's suite-level setup(): a
     // fresh temp dir, a real TranscriptStore, and a FakeProvider scripted to
