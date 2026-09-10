@@ -58,6 +58,17 @@ const modeWrites = async (
   throw new Error(`fewer than ${n} session/set_mode were sent`);
 };
 
+const configOptionWrites = async (
+  p: ReturnType<typeof peer>, n: number,
+): Promise<Record<string, unknown>[]> => {
+  for (let i = 0; i < 200; i++) {
+    const hits = p.sent.filter((f) => f.method === 'session/set_config_option');
+    if (hits.length >= n) { return hits; }
+    await new Promise((r) => setTimeout(r, 5));
+  }
+  throw new Error(`fewer than ${n} session/set_config_option were sent`);
+};
+
 const handshake = async (p: ReturnType<typeof peer>): Promise<Record<string, unknown>> => {
   const init = await p.waitFor('initialize');
   p.emit({ jsonrpc: '2.0', id: init.id, result: frames.initialize });
@@ -273,6 +284,56 @@ suite('AcpRun', () => {
     assert.deepStrictEqual(set.params, {
       sessionId: 'ses_ff0400c8affe2kYFjqc6OUHpG3', configId: 'model', value: 'opencode/hy3-free',
     });
+    await run.dispose();
+  });
+
+  test('a requested effort is asserted at startup, after the model that offers it', async () => {
+    const p = peer();
+    const run = new AcpRun(p.child, {
+      cwd: '/w', permissionMode: 'default', model: 'opencode/hy3-free', effort: 'high',
+      tools: openCodeTools, modeId: openCodeModeId, clientName: 'mar-code', sessionId: 'test-session', });
+    collect(run, []);
+    const init = await p.waitFor('initialize');
+    p.emit({ jsonrpc: '2.0', id: init.id, result: frames.initialize });
+    const created = await p.waitFor('session/new');
+    p.emit({ jsonrpc: '2.0', id: created.id, result: frames.newSession });
+    const mode = await p.waitFor('session/set_mode');
+    p.emit({ jsonrpc: '2.0', id: mode.id, result: {} });
+
+    const [modelWrite] = await configOptionWrites(p, 1);
+    assert.deepStrictEqual(modelWrite.params, {
+      sessionId: 'ses_ff0400c8affe2kYFjqc6OUHpG3', configId: 'model', value: 'opencode/hy3-free',
+    });
+    p.emit({
+      jsonrpc: '2.0', id: modelWrite.id,
+      result: {
+        configOptions: [
+          { id: 'model', category: 'model', currentValue: 'opencode/hy3-free', options: [] },
+          {
+            id: 'effort', category: 'thought_level', currentValue: 'minimal',
+            options: [{ value: 'minimal' }, { value: 'low' }, { value: 'high' }],
+          },
+        ],
+      },
+    });
+
+    const writes = await configOptionWrites(p, 2);
+    assert.deepStrictEqual(writes[1].params, {
+      sessionId: 'ses_ff0400c8affe2kYFjqc6OUHpG3', configId: 'effort', value: 'high',
+    });
+    await run.dispose();
+  });
+
+  test('a requested effort the resolved model has no control for is never written', async () => {
+    const p = peer();
+    const run = new AcpRun(p.child, {
+      cwd: '/w', permissionMode: 'default', effort: 'high',
+      tools: openCodeTools, modeId: openCodeModeId, clientName: 'mar-code', sessionId: 'test-session', });
+    collect(run, []);
+    // No `model` requested, so the model-write block never runs and
+    // `configOptions` stays exactly the fixture's — no `thought_level`.
+    await handshake(p);
+    assert.strictEqual(p.sent.some((f) => f.method === 'session/set_config_option'), false);
     await run.dispose();
   });
 

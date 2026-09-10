@@ -56,6 +56,65 @@ function scriptedSpawn() {
         if (frame.method === 'session/new') {
           toClient.write(`${JSON.stringify({ jsonrpc: '2.0', id: frame.id, result: frames.newSession })}\n`);
         }
+        if (frame.method === 'session/set_config_option') {
+          // Echoes the same catalog back for every model — none of the
+          // fixture's models declare a `thought_level` option, so the effort
+          // sweep this answers never changes what `fetchModels` reports.
+          toClient.write(`${JSON.stringify({ jsonrpc: '2.0', id: frame.id, result: { configOptions: frames.newSession.configOptions } })}\n`);
+        }
+        if (frame.method === 'session/close') {
+          toClient.write(`${JSON.stringify({ jsonrpc: '2.0', id: frame.id, result: {} })}\n`);
+        }
+      }
+    });
+    return { stdin: toAgent, stdout: toClient, kill: () => { toClient.end(); } };
+  };
+  return { spawn, seen };
+}
+
+/**
+ * Like `scriptedSpawn`, but the effort sweep's `session/set_config_option`
+ * answers per model: `opencode/hy3-free` reports a `thought_level` option,
+ * `opencode/big-pickle` does not — proving the probe attaches effort to the
+ * one model that actually offers it, not to every row uniformly.
+ *
+ * `neverAnswerFor`, when given, drops that one model's config-write reply
+ * entirely — every other frame still answers — to exercise the sweep's own
+ * per-write timeout without hanging the whole test.
+ */
+function scriptedSpawnWithEffort(neverAnswerFor?: string) {
+  const seen: Record<string, unknown>[] = [];
+  const spawn = () => {
+    const toAgent = new PassThrough();
+    const toClient = new PassThrough();
+    toAgent.on('data', (chunk: Buffer) => {
+      for (const line of chunk.toString().split('\n')) {
+        if (!line.trim()) { continue; }
+        const frame = JSON.parse(line) as Record<string, unknown>;
+        seen.push(frame);
+        if (frame.method === 'initialize') {
+          toClient.write(`${JSON.stringify({ jsonrpc: '2.0', id: frame.id, result: frames.initialize })}\n`);
+        }
+        if (frame.method === 'session/new') {
+          toClient.write(`${JSON.stringify({ jsonrpc: '2.0', id: frame.id, result: frames.newSession })}\n`);
+        }
+        if (frame.method === 'session/set_mode') {
+          toClient.write(`${JSON.stringify({ jsonrpc: '2.0', id: frame.id, result: {} })}\n`);
+        }
+        if (frame.method === 'session/set_config_option') {
+          const value = (frame.params as { value: string }).value;
+          if (value === neverAnswerFor) { continue; }
+          const configOptions = value === 'opencode/hy3-free'
+            ? [
+              ...frames.newSession.configOptions,
+              {
+                id: 'effort', name: 'Effort', category: 'thought_level', type: 'select', currentValue: 'low',
+                options: [{ value: 'low' }, { value: 'high' }],
+              },
+            ]
+            : frames.newSession.configOptions;
+          toClient.write(`${JSON.stringify({ jsonrpc: '2.0', id: frame.id, result: { configOptions } })}\n`);
+        }
         if (frame.method === 'session/close') {
           toClient.write(`${JSON.stringify({ jsonrpc: '2.0', id: frame.id, result: {} })}\n`);
         }
@@ -109,6 +168,32 @@ suite('OpenCodeProvider', () => {
     assert.deepStrictEqual(provider.listModels(), models);
   });
 
+  test('fetchModels sweeps every model and attaches effort to the ones that offer it', async () => {
+    const scripted = scriptedSpawnWithEffort();
+    const provider = new OpenCodeProvider({ spawn: scripted.spawn });
+    const models = await provider.fetchModels('/w');
+    assert.deepStrictEqual(models, [
+      { id: 'opencode/big-pickle', displayName: 'OpenCode Zen/Big Pickle' },
+      {
+        id: 'opencode/hy3-free', displayName: 'OpenCode Zen/Hy3 Free',
+        effort: { levels: ['low', 'high'], default: 'low' },
+      },
+    ]);
+  });
+
+  test('a model whose config write never answers does not block the rest of the sweep', async () => {
+    const scripted = scriptedSpawnWithEffort('opencode/big-pickle');
+    const provider = new OpenCodeProvider({ spawn: scripted.spawn, configOptionTimeoutMs: 30 });
+    const models = await provider.fetchModels('/w');
+    assert.deepStrictEqual(models, [
+      { id: 'opencode/big-pickle', displayName: 'OpenCode Zen/Big Pickle' },
+      {
+        id: 'opencode/hy3-free', displayName: 'OpenCode Zen/Hy3 Free',
+        effort: { levels: ['low', 'high'], default: 'low' },
+      },
+    ]);
+  });
+
   test('the probe closes the session it opened rather than littering history', async () => {
     const scripted = scriptedSpawn();
     await new OpenCodeProvider({ spawn: scripted.spawn }).fetchModels('/w');
@@ -121,6 +206,27 @@ suite('OpenCodeProvider', () => {
       assert.strictEqual(err.message.includes('opencode'), true);
       return true;
     });
+  });
+
+  test('start() threads a requested effort through to the AcpRun it builds', async () => {
+    const scripted = scriptedSpawnWithEffort();
+    const provider = new OpenCodeProvider({ spawn: scripted.spawn });
+    const run = provider.start({
+      cwd: '/w', permissionMode: 'default', sessionId: 'test-session',
+      model: 'opencode/hy3-free', effort: 'high',
+    });
+    for (let i = 0; i < 200; i++) {
+      const writes = scripted.seen.filter((f) => f.method === 'session/set_config_option');
+      if (writes.length >= 2) {
+        assert.deepStrictEqual(writes[1].params, {
+          sessionId: 'ses_ff0400c8affe2kYFjqc6OUHpG3', configId: 'effort', value: 'high',
+        });
+        await run.dispose();
+        return;
+      }
+      await new Promise((r) => setTimeout(r, 5));
+    }
+    throw new Error('fewer than 2 session/set_config_option were sent');
   });
 
   /**

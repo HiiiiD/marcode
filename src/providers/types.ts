@@ -5,7 +5,7 @@ import type { UpdateInfo } from './update-check';
 export type { FileEdit, TodoStatus, ToolCall, ToolOutput } from './canonical/tool-call';
 export type { UpdateInfo } from './update-check';
 
-export type EffortLevel = 'low' | 'medium' | 'high' | 'xhigh' | 'max' | 'ultra';
+export type EffortLevel = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max' | 'ultra';
 /**
  * 'default'     — prompt on anything that falls through to a prompt
  * 'acceptEdits' — auto-accept file edits, still prompt for everything else
