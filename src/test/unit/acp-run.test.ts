@@ -652,4 +652,50 @@ suite('AcpRun', () => {
     assert.deepStrictEqual(await pending, { allow: true });
     await run.dispose();
   });
+
+  test('onSubagentSpawned fires with the task tool-call id and the child session id', async () => {
+    const p = peer();
+    const seen: { taskToolCallId: string; childSessionId: string }[] = [];
+    const run = new AcpRun(p.child, {
+      cwd: '/w', permissionMode: 'default', tools: openCodeTools,
+      modeId: openCodeModeId, clientName: 'mar-code', sessionId: 'test-session',
+      onSubagentSpawned: (taskToolCallId, childSessionId) => seen.push({ taskToolCallId, childSessionId }),
+    });
+    await handshake(p);
+    p.emit({ jsonrpc: '2.0', method: 'session/update', params: {
+      sessionId: 'ses_ff0400c8affe2kYFjqc6OUHpG3',
+      update: { sessionUpdate: 'tool_call', toolCallId: 'call_task_1', kind: 'think', title: 'Task', status: 'pending', rawInput: {} },
+    } });
+    p.emit({ jsonrpc: '2.0', method: 'session/update', params: {
+      sessionId: 'ses_ff0400c8affe2kYFjqc6OUHpG3',
+      update: { sessionUpdate: 'tool_call_update', toolCallId: 'call_task_1', status: 'completed',
+        rawOutput: { output: 'done', metadata: { sessionId: 'child_1', parentSessionId: 'root' } } },
+    } });
+    await new Promise((r) => setTimeout(r, 20));
+    assert.deepStrictEqual(seen, [{ taskToolCallId: 'call_task_1', childSessionId: 'child_1' }]);
+    await run.dispose();
+  });
+
+  test('onSubagentSpawned does not fire for an ordinary completed tool call', async () => {
+    const p = peer();
+    const seen: unknown[] = [];
+    const run = new AcpRun(p.child, {
+      cwd: '/w', permissionMode: 'default', tools: openCodeTools,
+      modeId: openCodeModeId, clientName: 'mar-code', sessionId: 'test-session',
+      onSubagentSpawned: (taskToolCallId, childSessionId) => seen.push({ taskToolCallId, childSessionId }),
+    });
+    await handshake(p);
+    p.emit({ jsonrpc: '2.0', method: 'session/update', params: {
+      sessionId: 'ses_ff0400c8affe2kYFjqc6OUHpG3',
+      update: { sessionUpdate: 'tool_call', toolCallId: 'call_bash_1', kind: 'execute', title: 'Shell', status: 'pending', rawInput: { command: 'ls' } },
+    } });
+    p.emit({ jsonrpc: '2.0', method: 'session/update', params: {
+      sessionId: 'ses_ff0400c8affe2kYFjqc6OUHpG3',
+      update: { sessionUpdate: 'tool_call_update', toolCallId: 'call_bash_1', status: 'completed',
+        rawOutput: { output: 'file1\nfile2' } },
+    } });
+    await new Promise((r) => setTimeout(r, 20));
+    assert.deepStrictEqual(seen, []);
+    await run.dispose();
+  });
 });

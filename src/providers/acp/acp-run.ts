@@ -75,6 +75,14 @@ export interface AcpRunOptions {
   onSessionId?: (id: string) => void;
   /** Fired during `dispose()`, alongside this run's own teardown. */
   onDispose?: () => Promise<void> | void;
+  /**
+   * Fired once a `task` tool call completes with a child session id in its
+   * `rawOutput.metadata` — the only point the ACP wire ever names a
+   * subagent's own session (see the design doc). Lets an auxiliary watcher
+   * learn which child session belongs to which of this run's own tool-call
+   * cards, without `acp-run.ts` knowing anything about what a subagent is.
+   */
+  onSubagentSpawned?: (taskToolCallId: string, childSessionId: string) => void;
 }
 
 /**
@@ -441,6 +449,7 @@ export class AcpRun implements AgentRun {
     for (const event of toAgentEvents(p.update, this.opts.tools, this.calls)) {
       this.events.push(event);
     }
+    this.detectSubagentSpawn(p.update);
   }
 
   /** `usage_update` feeds `contextBreakdown` and emits nothing — it is not a transcript item. */
@@ -452,6 +461,23 @@ export class AcpRun implements AgentRun {
       // has been assigned, and nothing clears it back to undefined.
       this.contextBreakdown = (): Promise<ContextBreakdown> =>
         Promise.resolve(this.lastBreakdown as ContextBreakdown);
+    }
+  }
+
+  /**
+   * `p.update.rawOutput` is `unknown` on the wire — this narrows defensively
+   * rather than casting, since a non-`task` completed call (the overwhelming
+   * majority) has no `metadata.sessionId` at all and must be a silent no-op,
+   * not a throw.
+   */
+  private detectSubagentSpawn(update: Record<string, unknown>): void {
+    if (!this.opts.onSubagentSpawned) { return; }
+    if (update.sessionUpdate !== 'tool_call_update' || update.status !== 'completed') { return; }
+    const toolCallId = update.toolCallId;
+    const rawOutput = update.rawOutput as { metadata?: { sessionId?: unknown } } | undefined;
+    const childSessionId = rawOutput?.metadata?.sessionId;
+    if (typeof toolCallId === 'string' && typeof childSessionId === 'string') {
+      this.opts.onSubagentSpawned(toolCallId, childSessionId);
     }
   }
 
