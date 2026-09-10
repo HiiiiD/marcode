@@ -405,8 +405,8 @@
     "test": "yarn run pretest && vscode-test",
     "test:unit:raw": "mocha --ui tdd --require tsx/cjs \"src/test/unit/**/*.test.ts\"",
     "test:dom:raw": "mocha --ui tdd --require tsx/cjs --require global-jsdom/register --require src/test/dom/setup.ts \"src/test/dom/**/*.test.tsx\"",
-    "test:unit": "bash scripts/run-tests-ram-guard.sh unit",
-    "test:dom": "bash scripts/run-tests-ram-guard.sh dom",
+    "test:unit": "node scripts/run-tests-ram-guard.mjs unit",
+    "test:dom": "node scripts/run-tests-ram-guard.mjs dom",
     "codex:bindings": "codex app-server generate-ts --out .codex-bindings"
   },
   "devDependencies": {
