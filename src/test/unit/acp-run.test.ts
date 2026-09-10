@@ -187,6 +187,34 @@ suite('AcpRun', () => {
     await run.dispose();
   });
 
+  test("a permission gate for a path outside cwd keeps the read's own kind, not its own synthetic one", async () => {
+    // Observed live (opencode 1.18.30): the permission request for a read
+    // outside the session's cwd carries its own toolCall — kind 'other',
+    // title the raw path, a reshaped rawInput — for the same id the earlier
+    // `read` frames already classified. Folding that in through the shared
+    // merge would flip the log's kind to 'other' and the permission card
+    // would show the bare path with no verb forever, since this event's
+    // `tool` is captured once and never re-derived.
+    const p = peer();
+    const events: AgentEvent[] = [];
+    const run = new AcpRun(p.child, {
+      cwd: '/w', permissionMode: 'default', tools: openCodeTools,
+      modeId: openCodeModeId, clientName: 'mar-code', sessionId: 'test-session', });
+    collect(run, events);
+    await handshake(p);
+    p.emit({ jsonrpc: '2.0', method: 'session/update', params: {
+      sessionId: 'ses_ff0400c8affe2kYFjqc6OUHpG3', update: frames.readToolCallOutsideCwd } });
+    await new Promise((r) => setTimeout(r, 20));
+    p.emit({ jsonrpc: '2.0', id: 903, method: 'session/request_permission',
+             params: frames.requestPermissionOutsideCwd });
+    await new Promise((r) => setTimeout(r, 20));
+    const parked = events.find((e) => e.kind === 'permission') as { tool?: unknown } | undefined;
+    assert.deepStrictEqual(parked?.tool,
+      { kind: 'file-read', label: 'Read', path: 'C:/Users/Marco/.claude/commands' });
+    run.respondToTool((parked as { id: string }).id, { allow: true });
+    await run.dispose();
+  });
+
   test('a permission request under default mode parks as a permission event', async () => {
     const p = peer();
     const events: AgentEvent[] = [];

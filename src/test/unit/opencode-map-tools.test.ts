@@ -32,6 +32,26 @@ suite('opencode toToolCall', () => {
       });
   });
 
+  test('a write with no diff block still becomes a file-edit, from locations/rawInput', () => {
+    assert.deepStrictEqual(
+      toToolCall(frames.updates.writeToolCallCreate as unknown as AcpToolCall), {
+        kind: 'file-edit', label: 'Edit',
+        files: [{
+          path: 'E:/Efebia/hiiiid-code/scratch/spike-note.txt',
+          op: 'create',
+          edits: [{ after: 'hello\n' }],
+        }],
+      });
+  });
+
+  test('a write with no diff block over an existing file is a modify, with no fabricated diff', () => {
+    assert.deepStrictEqual(
+      toToolCall(frames.updates.writeToolCallModify as unknown as AcpToolCall), {
+        kind: 'file-edit', label: 'Edit',
+        files: [{ path: 'E:/Efebia/hiiiid-code/scratch/spike-note.txt', op: 'modify' }],
+      });
+  });
+
   test('an edit over existing text is a modify, not a create', () => {
     const call = {
       toolCallId: 't', kind: 'edit', title: 'a.ts',
@@ -63,6 +83,27 @@ suite('opencode toToolCall', () => {
     assert.deepStrictEqual(
       toToolCall(frames.updates.readToolCall as unknown as AcpToolCall),
       { kind: 'other', label: 'Read', raw: {} });
+  });
+
+  test('a glob call becomes a files search from its pattern and path', () => {
+    assert.deepStrictEqual(
+      toToolCall(frames.updates.globToolCallInProgress as unknown as AcpToolCall), {
+        kind: 'search', label: 'glob', pattern: '*.md', mode: 'files',
+        scope: 'E:/Efebia/hiiiid-code/.claude/commands',
+      });
+  });
+
+  test('a grep-titled search call is a content search, not a files search', () => {
+    const call = {
+      toolCallId: 't', kind: 'search', title: 'grep', rawInput: { pattern: 'TODO' },
+    } as unknown as AcpToolCall;
+    assert.deepStrictEqual(toToolCall(call),
+      { kind: 'search', label: 'grep', pattern: 'TODO', mode: 'content' });
+  });
+
+  test('a search call with no pattern yet falls through to other, not a hidden empty pattern', () => {
+    const call = { toolCallId: 't', kind: 'search', title: 'glob', rawInput: {} } as unknown as AcpToolCall;
+    assert.deepStrictEqual(toToolCall(call), { kind: 'other', label: 'glob', raw: {} });
   });
 
   test('an unknown kind falls through to other, carrying its raw input', () => {
@@ -97,6 +138,25 @@ suite('opencode toToolCall', () => {
       server: 'marcode_self_control', tool: 'marcode__send_message',
       input: { to: 'claude-n', text: 'hi' },
     });
+  });
+
+  // Observed live (opencode 1.18.30): the native `skill` tool always titles
+  // itself `Loaded skill: <name>`, kind 'other', rawInput `{ name }`.
+  test('a skill invocation is recognised from its title, not its kind', () => {
+    const call = {
+      toolCallId: 't', kind: 'other', title: 'Loaded skill: pr-summary',
+      rawInput: { name: 'pr-summary' },
+    } as unknown as AcpToolCall;
+    assert.deepStrictEqual(toToolCall(call),
+      { kind: 'command', label: 'Skill', command: '', skill: 'pr-summary' });
+  });
+
+  test('a skill invocation falls back to the title suffix when rawInput lacks name', () => {
+    const call = {
+      toolCallId: 't', kind: 'other', title: 'Loaded skill: pr-summary', rawInput: {},
+    } as unknown as AcpToolCall;
+    assert.deepStrictEqual(toToolCall(call),
+      { kind: 'command', label: 'Skill', command: '', skill: 'pr-summary' });
   });
 
   test('a third-party MCP call with an unrecognised tool id is not misclassified', () => {

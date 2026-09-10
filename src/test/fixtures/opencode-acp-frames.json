@@ -85,6 +85,32 @@
         "oldText": null, "newText": "hi" }],
       "rawOutput": { "output": "Wrote file successfully." }
     },
+    "writeToolCallCreate": {
+      "sessionUpdate": "tool_call_update",
+      "toolCallId": "call_e60fc1b747b04271ad502d66",
+      "status": "completed",
+      "kind": "edit",
+      "title": "scratch\\spike-note.txt",
+      "locations": [{ "path": "E:\\Efebia\\hiiiid-code\\scratch\\spike-note.txt" }],
+      "content": [{ "type": "content", "content": { "type": "text", "text": "Wrote file successfully." } }],
+      "rawInput": { "filePath": "E:\\Efebia\\hiiiid-code\\scratch\\spike-note.txt", "content": "hello\n" },
+      "rawOutput": { "output": "Wrote file successfully.",
+        "metadata": { "diagnostics": {}, "filepath": "E:\\Efebia\\hiiiid-code\\scratch\\spike-note.txt",
+          "exists": false, "truncated": false } }
+    },
+    "writeToolCallModify": {
+      "sessionUpdate": "tool_call_update",
+      "toolCallId": "call_8f603a14acbd485cb5b639f5",
+      "status": "completed",
+      "kind": "edit",
+      "title": "scratch\\spike-note.txt",
+      "locations": [{ "path": "E:\\Efebia\\hiiiid-code\\scratch\\spike-note.txt" }],
+      "content": [{ "type": "content", "content": { "type": "text", "text": "Wrote file successfully." } }],
+      "rawInput": { "filePath": "E:\\Efebia\\hiiiid-code\\scratch\\spike-note.txt", "content": "hello\nagain\n" },
+      "rawOutput": { "output": "Wrote file successfully.",
+        "metadata": { "diagnostics": {}, "filepath": "E:\\Efebia\\hiiiid-code\\scratch\\spike-note.txt",
+          "exists": true, "truncated": false } }
+    },
     "readToolCall": {
       "sessionUpdate": "tool_call",
       "toolCallId": "call_420b060b6c63426c9fe09987",
@@ -127,6 +153,34 @@
         "output": "<path>C:\\Users\\dev\\AppData\\Local\\Temp\\oc-read-spike\\notes.txt</path>\n<type>file</type>"
       }
     },
+    "globToolCall": {
+      "sessionUpdate": "tool_call",
+      "toolCallId": "call_9bfab634c8f747d9bf1577e8",
+      "title": "glob",
+      "kind": "search",
+      "status": "pending",
+      "locations": [],
+      "rawInput": {}
+    },
+    "globToolCallInProgress": {
+      "sessionUpdate": "tool_call_update",
+      "toolCallId": "call_9bfab634c8f747d9bf1577e8",
+      "status": "in_progress",
+      "kind": "search",
+      "title": "glob",
+      "locations": [{ "path": "E:\\Efebia\\hiiiid-code\\.claude\\commands" }],
+      "rawInput": { "pattern": "*.md", "path": "E:\\Efebia\\hiiiid-code\\.claude\\commands" }
+    },
+    "globToolCallCompleted": {
+      "sessionUpdate": "tool_call_update",
+      "toolCallId": "call_9bfab634c8f747d9bf1577e8",
+      "status": "completed",
+      "title": ".claude\\commands",
+      "content": [{ "type": "content",
+        "content": { "type": "text", "text": "E:\\Efebia\\hiiiid-code\\.claude\\commands\\release.md" } }],
+      "rawOutput": { "output": "E:\\Efebia\\hiiiid-code\\.claude\\commands\\release.md",
+        "metadata": { "count": 1, "truncated": false } }
+    },
     "availableCommands": {
       "sessionUpdate": "available_commands_update",
       "availableCommands": [
@@ -140,6 +194,31 @@
       "size": 200000,
       "cost": { "amount": 0, "currency": "USD" }
     }
+  },
+  "readToolCallOutsideCwd": {
+    "sessionUpdate": "tool_call_update",
+    "toolCallId": "call_81143f9f388148e2b7db4f58",
+    "status": "in_progress",
+    "kind": "read",
+    "title": "read",
+    "locations": [{ "path": "C:\\Users\\Marco\\.claude\\commands" }],
+    "rawInput": { "filePath": "C:\\Users\\Marco\\.claude\\commands" }
+  },
+  "requestPermissionOutsideCwd": {
+    "sessionId": "ses_f73ec2ef0ffeAA7r3C5c1wWYCH",
+    "toolCall": {
+      "toolCallId": "call_81143f9f388148e2b7db4f58",
+      "kind": "other",
+      "status": "pending",
+      "title": "C:\\Users\\Marco\\.claude\\commands",
+      "locations": [{ "path": "C:\\Users\\Marco\\.claude\\commands" }],
+      "rawInput": { "filepath": "C:\\Users\\Marco\\.claude\\commands", "parentDir": "C:\\Users\\Marco\\.claude\\commands" }
+    },
+    "options": [
+      { "optionId": "once", "kind": "allow_once", "name": "Allow once" },
+      { "optionId": "always", "kind": "allow_always", "name": "Always allow" },
+      { "optionId": "reject", "kind": "reject_once", "name": "Reject" }
+    ]
   },
   "requestPermission": {
     "sessionId": "ses_ff03f902affeyFUbwdSgzPrCT2",

@@ -30,8 +30,27 @@ function parseSelfControlTitle(title: string | undefined): { server: string; too
   return { server: title.slice(0, title.length - tool.length - 1), tool };
 }
 
+/**
+ * OpenCode's native `skill` tool (`packages/opencode/src/tool/skill.ts`)
+ * hardcodes this exact template for every invocation — `title: \`Loaded
+ * skill: ${info.name}\`` — with no distinguishing `kind`. Same title-not-kind
+ * reasoning as `parseSelfControlTitle`, just a fixed prefix instead of a
+ * known-tool-id list, since a skill's name is arbitrary.
+ */
+const SKILL_TITLE_PREFIX = 'Loaded skill: ';
+
+function parseSkillTitle(title: string | undefined): string | undefined {
+  return title?.startsWith(SKILL_TITLE_PREFIX) ? title.slice(SKILL_TITLE_PREFIX.length) : undefined;
+}
+
 export function toToolCall(c: AcpToolCall): ToolCall {
-  const raw = (c.rawInput ?? {}) as { command?: string; cwd?: string; filePath?: string };
+  const raw = (c.rawInput ?? {}) as {
+    command?: string; cwd?: string; filePath?: string; pattern?: string; path?: string;
+    content?: string; name?: string;
+  };
+  const skill = parseSkillTitle(c.title);
+  if (skill) { return { kind: 'command', label: 'Skill', command: '', skill: raw.name ?? skill }; }
+
   const mcp = parseSelfControlTitle(c.title);
   if (mcp) {
     const record = (c.rawInput ?? {}) as Record<string, unknown>;
@@ -52,13 +71,32 @@ export function toToolCall(c: AcpToolCall): ToolCall {
         : { kind: 'command', label: 'Shell', command };
     }
     case 'edit': {
-      const files: FileEdit[] = diffs(c).map((d) => ({
+      const diffFiles: FileEdit[] = diffs(c).map((d) => ({
         path: posix(d.path),
         op: d.oldText ? 'modify' : 'create',
         edits: [d.oldText ? { before: d.oldText, after: d.newText ?? '' }
                           : { after: d.newText ?? '' }],
       }));
-      return { kind: 'file-edit', label: 'Edit', files };
+      if (diffFiles.length > 0) { return { kind: 'file-edit', label: 'Edit', files: diffFiles }; }
+      // Observed live (opencode 1.18.30): a write/edit never sends a `diff`
+      // content block at all — `content` is just the text confirmation
+      // ("Wrote file successfully."), and the path only ever shows up in
+      // `locations`/`rawInput.filePath`, same lag as `read` above. Without
+      // that fallback the card shows the glyph and the word "Edit" with no
+      // path and no diff at all.
+      const path = c.locations?.[0]?.path ?? raw.filePath;
+      if (!path) { return { kind: 'file-edit', label: 'Edit', files: [] }; }
+      const output = (c.rawOutput ?? {}) as { metadata?: { exists?: boolean } };
+      // `exists` is opencode's own answer to "was there a file here before
+      // this write" — the only signal available, since there is no before
+      // text to diff against either way. Missing (a `read`'s error frame
+      // reused as a signal, or a vendor version that omits it) reads as
+      // `modify`: the safer default is not to claim a create it can't back.
+      const op: FileEdit['op'] = output.metadata?.exists === false ? 'create' : 'modify';
+      const file: FileEdit = op === 'create' && raw.content !== undefined
+        ? { path: posix(path), op, edits: [{ after: raw.content }] }
+        : { path: posix(path), op };
+      return { kind: 'file-edit', label: 'Edit', files: [file] };
     }
     case 'read': {
       // The opening `tool_call` carries an empty `locations` and an empty
@@ -69,6 +107,25 @@ export function toToolCall(c: AcpToolCall): ToolCall {
       // Known kind, unknown path: the vendor's own title here is the literal
       // word `read`, and the card says what the call is either way.
       return { kind: 'other', label: 'Read', raw: c.rawInput };
+    }
+    case 'search': {
+      // Observed live (opencode 1.18.30): the glob tool reports `kind:
+      // 'search'` with `title: 'glob'` and `rawInput: { pattern, path }` —
+      // the opening `tool_call` carries neither yet, same lag as `read`
+      // above, so the pattern arrives on the `in_progress` frame. Nothing
+      // observed yet distinguishes a content search (grep-like) from a
+      // files search (glob-like) other than the vendor's own title, so that
+      // is the only signal used here — never a name-substring guess on
+      // anything else.
+      const pattern = raw.pattern;
+      if (pattern) {
+        return {
+          kind: 'search', label: c.title ?? 'Search', pattern,
+          mode: c.title === 'grep' ? 'content' : 'files',
+          ...(raw.path ? { scope: posix(raw.path) } : {}),
+        };
+      }
+      return { kind: 'other', label: c.title ?? 'Search', raw: c.rawInput };
     }
     default:
       break;
