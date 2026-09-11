@@ -24,13 +24,9 @@ type RawEvent =
 type RawPart = ({ type: 'tool' } & RawToolPart) | { type: string };
 
 /**
- * `state.metadata.sessionId` off a `task` tool part — present from `running`
- * onward (opencode's own `task` tool writes it via `ctx.metadata()` before
- * `runTask()` starts, so it is already there the instant the part leaves
- * `pending`), and again, unchanged, on `completed`/`error`. Same shape for a
- * resumed task (opencode's `task_id` param): the metadata object always names
- * the session actually running, whether freshly created or resumed, so no
- * separate resume case exists to handle here.
+ * `state.metadata.sessionId` off a `task` tool part — opencode writes it the
+ * moment the part leaves `pending`, before the subagent runs anything, and a
+ * resumed task (`task_id`) carries the same field naming its own session.
  */
 function taskChildSessionId(part: RawToolPart): string | undefined {
   const { state } = part;
@@ -129,23 +125,10 @@ export class SubagentWatch {
   private readonly parentSession = new Map<string, string>();
   /**
    * Events already translated for a watched child whose nesting target isn't
-   * known yet — flushed, `parentId` filled in, the instant
-   * `setParentToolCallId` learns it. Permission asks are never buffered here;
-   * only tool-call events.
-   *
-   * In the common case this buffer is nearly always empty: `handlePart` learns
-   * the correlation directly off the `task` tool's own part the moment
-   * opencode marks it `running` — before the subagent has done anything, since
-   * opencode's own `task` tool writes that metadata before `runTask()` starts
-   * (see the design doc's research trail). What lands here is only the handful
-   * of events published in the window between that part first appearing on
-   * this connection and the correlating frame being processed — normally one
-   * event-loop tick, not "the whole subagent's runtime". `onSubagentSpawned`
-   * (`AcpRunOptions`, wired from the *primary* ACP connection's completed
-   * frame) is the fallback for when this connection's own tap missed the
-   * running frame entirely — e.g. it was still connecting/retrying when the
-   * subagent ran fast enough to reach `completed` first. Without either path,
-   * every event for a still-running subagent would be dropped on the floor.
+   * known yet — flushed once `setParentToolCallId` learns it. Nearly always
+   * empty: `handlePart`'s live correlation (see `taskChildSessionId`) usually
+   * settles this within one event; `onSubagentSpawned` is the slower fallback
+   * for the events between.
    */
   private readonly pending = new Map<string, NestableToolEvent[]>();
   private rootSessionId: string | undefined;
@@ -276,15 +259,11 @@ export class SubagentWatch {
   private handlePart(sessionId: string, part: RawPart): void {
     if (part.type !== 'tool') { return; }
     const toolPart = part as RawToolPart;
-    // A narrow carve-out from the root-exclusion guard below: a `task` tool
-    // part carries its own child's session id in `state.metadata` as soon as
-    // opencode marks it `running`, well before the `completed` frame ACP's
-    // own wire waits for. Read it here — off ANY session we already watch,
-    // root included — purely to learn the correlation early. This must never
-    // fall through to publishing THIS part as a nested event: the root's own
-    // task card already renders via ACP's normal path (guarded below), and a
-    // watched child's own `task` call still gets its ordinary nested-card
-    // treatment further down, unaffected by this lookup.
+    // Narrow carve-out from the root-exclusion guard below: read a `task`
+    // part's own correlation metadata off any session we watch, root
+    // included, without publishing the part itself — the root's own card
+    // already renders via ACP, and a watched child's `task` call still gets
+    // its ordinary nested-card treatment further down.
     if ((sessionId === this.rootSessionId || this.watched.has(sessionId)) && toolPart.tool.toLowerCase() === 'task') {
       const childSessionId = taskChildSessionId(toolPart);
       if (childSessionId) {

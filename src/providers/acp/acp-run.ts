@@ -77,14 +77,9 @@ export interface AcpRunOptions {
   onDispose?: () => Promise<void> | void;
   /**
    * Fired once `tools.subagentSpawn` recognizes a completed tool call as
-   * naming a child session — on THIS connection, the only point a subagent's
-   * own session id is ever knowable, since a completed frame is the one
-   * `ToolMapper.subagentSpawn` implementation this project ships checks for.
-   * Lets an auxiliary watcher learn which child session belongs to which of
-   * this run's own tool-call cards, without `acp-run.ts` knowing anything
-   * about what a subagent is; a watcher with its own, earlier-arriving source
-   * for the same correlation may treat this as a fallback rather than its
-   * only signal.
+   * naming a child session — the only correlation this connection alone can
+   * ever produce. An auxiliary watcher with its own, earlier-arriving source
+   * for the same correlation may treat this as a fallback.
    */
   onSubagentSpawned?: (taskToolCallId: string, childSessionId: string) => void;
 }
