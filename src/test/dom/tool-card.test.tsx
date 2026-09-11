@@ -127,9 +127,9 @@ suite('ToolCard', () => {
     screen.getByText('yarn test:unit');
   });
 
-  test('a file-edit card shows the shortened path', () => {
+  test('a file-edit card shows the shortened path and changed line counts', () => {
     renderWithStore(<ToolCard item={tool({ tool: SAMPLE_TOOL_CALLS['file-edit'] })} />);
-    screen.getByText('…/components/tool-render.ts');
+    screen.getByText('…/components/tool-render.ts +1 -1');
   });
 
   test('a file-read card shows the shortened path', () => {
