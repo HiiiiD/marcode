@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useStore } from '../store';
-import { clampLines, shortPath, type ToolBlock } from './tool-render';
+import { clampLines, type ToolBlock } from './tool-render';
 
 /**
  * Renders the typed blocks produced by tool-render.ts. Every block is laid out
@@ -184,7 +184,7 @@ function PathRow({ path, hint }: { path: string; hint?: string }) {
       // height — the same discipline as tool-card.tsx's disclosure row.
       className="flex w-full items-center justify-start gap-1.5 px-1.5 font-normal"
     >
-      <span className="min-w-0 truncate font-mono">{shortPath(path)}</span>
+      <span className="min-w-0 wrap-break-word text-left font-mono">{path}</span>
       {hint && <span className="shrink-0 text-muted-foreground">{hint}</span>}
       <span className="sr-only">Open in editor</span>
     </Button>

@@ -521,9 +521,13 @@ export class AcpRun implements AgentRun {
       // only fall back to this request's own toolCall when nothing is known
       // yet (a permission gate firing before any `tool_call` at all).
       const known = this.calls.peek(id) ?? this.calls.merge(call);
+      const title = call.title;
       this.events.push({
         kind: 'permission', id, tool: this.opts.tools.call(known),
-        meta: { title: call.title },
+        // OpenCode's synthetic outside-cwd gate puts a raw filesystem path in
+        // `title`. The card already renders that path as an actionable row;
+        // repeating it as wrapped prose obscures the actual request.
+        ...(title && !/^(?:[A-Za-z]:[\\/]|[\\/])/.test(title) ? { meta: { title } } : {}),
       });
     });
     // Only if this call still owns the slot: an orphaned predecessor unwinding
