@@ -446,9 +446,16 @@ export class SessionManager implements SessionSink {
       if (mirror.sourceProviderId !== providerId || !pattern.test(model)) { continue; }
       const target = this.providers.get(mirror.targetProviderId);
       if (!target?.fetchUsage) { continue; }
-      void Promise.resolve().then(() => target.fetchUsage!(this.meta.get(_id)?.cwd ?? ''))
-        .then((windows) => { if (!this.disposed) { this.usageWindows(mirror.usageProviderId, windows, mirror.displayName); } })
-        .catch((err: unknown) => console.warn('[mar-code] usage mirror failed for', mirror.usageProviderId, err));
+      void this.refreshMirroredUsage(target, this.meta.get(_id)?.cwd ?? '', mirror);
+    }
+  }
+
+  private async refreshMirroredUsage(target: AgentProvider, cwd: string, mirror: UsageMirror): Promise<void> {
+    try {
+      const windows = await target.fetchUsage!(cwd);
+      if (!this.disposed) { this.usageWindows(mirror.usageProviderId, windows, mirror.displayName); }
+    } catch (err: unknown) {
+      console.warn('[mar-code] usage mirror failed for', mirror.usageProviderId, err);
     }
   }
 

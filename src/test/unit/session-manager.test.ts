@@ -1700,6 +1700,27 @@ suite('SessionManager', () => {
     await m.dispose();
   });
 
+  test('turnFinished contains synchronous usage-mirror failures', async () => {
+    const target: AgentProvider = {
+      id: 'codex', displayName: 'Codex', threadScope: 'cwd',
+      listModels: () => [],
+      listPermissionModes: () => [],
+      start: () => { throw new Error('not used'); },
+      fetchUsage: (): Promise<UsageWindow[] | undefined> => { throw new Error('CLI is broken'); },
+    };
+    const m = new SessionManager(
+      new TranscriptStore(dir), new Map([['codex', target]]), () => {}, undefined, undefined,
+      undefined, undefined, [], undefined, undefined,
+      [{ sourceProviderId: 'source', modelPattern: '^openai/', targetProviderId: 'codex',
+        usageProviderId: 'source-openai', displayName: 'OpenCode (OpenAI)' }],
+    );
+    await m.init();
+
+    assert.doesNotThrow(() => m.turnFinished('missing' as never, 'source', 'openai/gpt-5'));
+    await settle();
+    await m.dispose();
+  });
+
   test('resolveRefs returns the source session\'s last assistant message', async () => {
     const session = await manager.create('fake', dir);
     session.send('hello');
