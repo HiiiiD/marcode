@@ -52,6 +52,31 @@ suite('opencode toToolCall', () => {
       });
   });
 
+  test('an edit names the file from its output metadata when input and locations are absent', () => {
+    const call = {
+      toolCallId: 't', kind: 'edit', title: 'Edit',
+      rawOutput: { metadata: { filepath: 'E:\\Efebia\\hiiiid-code\\src\\extension.ts', exists: true } },
+    } as unknown as AcpToolCall;
+    assert.deepStrictEqual(toToolCall(call), {
+      kind: 'file-edit', label: 'Edit',
+      files: [{ path: 'E:/Efebia/hiiiid-code/src/extension.ts', op: 'modify' }],
+    });
+  });
+
+  test('an apply_patch edit derives its files from the patch headers', () => {
+    const call = {
+      toolCallId: 't', kind: 'edit', title: 'Edit',
+      rawInput: { patchText: '*** Begin Patch\n*** Update File: src/a.ts\n*** Add File: src/b.ts\n*** Delete File: src/c.ts\n*** End Patch' },
+    } as unknown as AcpToolCall;
+    assert.deepStrictEqual(toToolCall(call), {
+      kind: 'file-edit', label: 'Edit', files: [
+        { path: 'src/a.ts', op: 'modify' },
+        { path: 'src/b.ts', op: 'create' },
+        { path: 'src/c.ts', op: 'delete' },
+      ],
+    });
+  });
+
   test('an edit over existing text is a modify, not a create', () => {
     const call = {
       toolCallId: 't', kind: 'edit', title: 'a.ts',

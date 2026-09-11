@@ -89,8 +89,9 @@ suite('ToolCard', () => {
 
     screen.getByText('-one');
     screen.getByText('+two');
+    screen.getByText('/repo/src/a.ts');
 
-    // The row shows a shortened path; the full one is what the host gets.
+    // The full path stays visible while the action still sends that exact path.
     await userEvent.click(screen.getByTitle('/repo/src/a.ts'));
     assert.deepStrictEqual(posted().at(-1), { t: 'reveal-file', path: '/repo/src/a.ts' });
   });
@@ -221,14 +222,12 @@ suite('ToolCard', () => {
     assert.strictEqual(screen.queryByText(/create_issue.*·/) === null, true);
   });
 
-  test('an other card shows its label and falls back to its raw JSON', async () => {
+  test('an other card shows its label and scalar arguments', async () => {
     renderWithStore(<ToolCard item={tool({ tool: SAMPLE_TOOL_CALLS['other'] })} />);
     screen.getByText('Bananas');
 
     await expand();
-    // `raw: { peeled: true }` is the fixture's own payload — only the
-    // `other` arm falls back to a JSON dump, so this fails if `describeTool`
-    // ever stops routing 'other' calls there.
-    screen.getByText('"peeled": true', { exact: false });
+    screen.getByText('peeled');
+    screen.getByText('true');
   });
 });

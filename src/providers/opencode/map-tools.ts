@@ -12,6 +12,18 @@ interface ContentBlock { type: 'content'; content?: { type?: string; text?: stri
 const diffs = (c: AcpToolCall): DiffBlock[] =>
   (c.content ?? []).filter((b): b is DiffBlock => (b as DiffBlock)?.type === 'diff');
 
+function patchFiles(patchText: unknown): FileEdit[] {
+  if (typeof patchText !== 'string') { return []; }
+  const files: FileEdit[] = [];
+  for (const match of patchText.matchAll(/^\*\*\* (Add|Update|Delete) File: (.+?)\r?$/gm)) {
+    files.push({
+      path: posix(match[2]),
+      op: match[1] === 'Add' ? 'create' : match[1] === 'Delete' ? 'delete' : 'modify',
+    });
+  }
+  return files;
+}
+
 /**
  * The self-control server's own tool ids — see `self-control-mcp-server.ts`.
  * Unlike Claude's SDK tool names (`mcp__<server>__<tool>`, self-delimiting),
@@ -63,7 +75,7 @@ function parseTodos(rawInput: unknown): { status: ReturnType<typeof toTodoStatus
 export function toToolCall(c: AcpToolCall): ToolCall {
   const raw = (c.rawInput ?? {}) as {
     command?: string; cwd?: string; filePath?: string; pattern?: string; path?: string;
-    content?: string; name?: string;
+    filepath?: string; file_path?: string; file?: string; content?: string; name?: string; patchText?: string;
   };
   const skill = parseSkillTitle(c.title);
   if (skill) { return { kind: 'command', label: 'Skill', command: '', skill: raw.name ?? skill }; }
@@ -98,15 +110,23 @@ export function toToolCall(c: AcpToolCall): ToolCall {
                           : { after: d.newText ?? '' }],
       }));
       if (diffFiles.length > 0) { return { kind: 'file-edit', label: 'Edit', files: diffFiles }; }
+      const appliedFiles = patchFiles(raw.patchText);
+      if (appliedFiles.length > 0) { return { kind: 'file-edit', label: 'Edit', files: appliedFiles }; }
       // Observed live (opencode 1.18.30): a write/edit never sends a `diff`
       // content block at all — `content` is just the text confirmation
       // ("Wrote file successfully."), and the path only ever shows up in
       // `locations`/`rawInput.filePath`, same lag as `read` above. Without
       // that fallback the card shows the glyph and the word "Edit" with no
       // path and no diff at all.
-      const path = c.locations?.[0]?.path ?? raw.filePath;
+      const output = (c.rawOutput ?? {}) as {
+        metadata?: { exists?: boolean; filePath?: string; filepath?: string; file_path?: string; path?: string; file?: string }
+      };
+      // The completion frame may only name its target in output metadata. This
+      // is common for native Edit calls, which do not emit locations or a diff.
+      const path = c.locations?.[0]?.path ?? raw.filePath ?? raw.filepath ?? raw.file_path ?? raw.path ?? raw.file
+        ?? output.metadata?.filePath ?? output.metadata?.filepath ?? output.metadata?.file_path
+        ?? output.metadata?.path ?? output.metadata?.file;
       if (!path) { return { kind: 'file-edit', label: 'Edit', files: [] }; }
-      const output = (c.rawOutput ?? {}) as { metadata?: { exists?: boolean } };
       // `exists` is opencode's own answer to "was there a file here before
       // this write" — the only signal available, since there is no before
       // text to diff against either way. Missing (a `read`'s error frame

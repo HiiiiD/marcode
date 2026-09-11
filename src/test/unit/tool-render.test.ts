@@ -11,12 +11,12 @@ suite('shortPath', () => {
   });
 
   test('a longer path is truncated to its last two segments', () => {
-    assert.strictEqual(shortPath('/repo/src/components/a.ts'), '…/components/a.ts');
+    assert.strictEqual(shortPath('/repo/src/components/a.ts'), '/…/components/a.ts');
   });
 
   test('Windows backslash separators are split the same as POSIX ones', () => {
     assert.strictEqual(
-      shortPath('C:\\repo\\src\\components\\a.ts'), '…/components/a.ts',
+      shortPath('C:\\repo\\src\\components\\a.ts'), 'C:/…/components/a.ts',
     );
   });
 });
@@ -51,7 +51,7 @@ suite('describeTool', () => {
         edits: [{ before: 'old line', after: 'new line\nanother line' }],
       }],
     });
-    assert.strictEqual(header.primary, '…/b/c.ts +2 -1');
+    assert.strictEqual(header.primary, '/…/b/c.ts +2 -1');
   });
 
   test('a multi-file edit counts files instead of naming one', () => {
@@ -317,10 +317,24 @@ suite('describeInput', () => {
     assert.deepStrictEqual(describeInput({ kind: 'other', label: 'X', raw: {} }), []);
   });
 
-  test('a populated other falls back to pretty JSON', () => {
+  test('a populated other renders its scalar arguments as fields', () => {
     const blocks = describeInput({ kind: 'other', label: 'X', raw: { a: 1 } });
     assert.strictEqual(blocks.length, 1);
-    assert.strictEqual(blocks[0].kind, 'json');
+    assert.deepStrictEqual(blocks[0], { kind: 'field', label: 'a', value: '1' });
+  });
+
+  test('an other call extracts paths and scalar arguments before its JSON fallback', () => {
+    assert.deepStrictEqual(describeInput({
+      kind: 'other', label: 'Read', raw: {
+        filepath: '/tmp/a.txt', parentDir: '/tmp', line: 3, followSymlinks: false, metadata: { source: 'ACP' },
+      },
+    }), [
+      { kind: 'path', path: '/tmp/a.txt' },
+      { kind: 'path', path: '/tmp', hint: 'directory' },
+      { kind: 'field', label: 'line', value: '3' },
+      { kind: 'field', label: 'follow Symlinks', value: 'false' },
+      { kind: 'json', text: '{\n  "metadata": {\n    "source": "ACP"\n  }\n}' },
+    ]);
   });
 
   test('an image with a revised prompt yields one note block', () => {
