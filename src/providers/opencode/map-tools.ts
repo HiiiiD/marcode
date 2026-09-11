@@ -140,12 +140,12 @@ export function toToolCall(c: AcpToolCall): ToolCall {
       const pattern = raw.pattern;
       if (pattern) {
         return {
-          kind: 'search', label: c.title ?? 'Search', pattern,
+          kind: 'search', label: 'Search', pattern,
           mode: c.title === 'grep' ? 'content' : 'files',
           ...(raw.path ? { scope: posix(raw.path) } : {}),
         };
       }
-      return { kind: 'other', label: c.title ?? 'Search', raw: c.rawInput };
+      return { kind: 'other', label: 'Search', raw: c.rawInput };
     }
     default:
       break;
