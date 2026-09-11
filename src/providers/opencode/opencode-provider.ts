@@ -337,19 +337,29 @@ export class OpenCodeProvider implements AgentProvider {
     // resets — a real opencode session id existing at all is the earliest
     // point a retry would silently orphan server-side state.
     const started = { value: false };
+    // AcpRun's `initialize` (and everything else it writes before a session
+    // actually starts) goes out over `stdin` exactly once — a retry's fresh
+    // child never saw any of it, since Node streams aren't rewindable and
+    // the bytes were already consumed by whichever attempt was piped in at
+    // the time. Buffering everything written before `started` flips, and
+    // replaying it into each new attempt's real stdin before piping resumes
+    // live, is what lets a retry recover an in-flight handshake instead of
+    // hanging forever on a reply that can never arrive.
+    const replay: Buffer[] = [];
+    stdin.on('data', (chunk: Buffer) => { if (!started.value) { replay.push(chunk); } });
     const placeholder: AcpChild = {
       stdin, stdout,
       kill: () => { killed = true; active.child?.kill(); },
       onFailure: (cb) => { notify.current = cb; },
     };
-    void this.attemptSpawn(token, watch, stdin, stdout, () => killed, notify, SPAWN_PORT_ATTEMPTS, active, started);
+    void this.attemptSpawn(token, watch, stdin, stdout, () => killed, notify, SPAWN_PORT_ATTEMPTS, active, started, replay);
     return { child: placeholder, markStarted: () => { started.value = true; } };
   }
 
   private async attemptSpawn(
     token: string, watch: SubagentWatch, stdin: PassThrough, stdout: PassThrough,
     isKilled: () => boolean, notify: { current: (reason: string) => void }, attemptsLeft: number,
-    active: { child?: AcpChild }, started: { value: boolean },
+    active: { child?: AcpChild }, started: { value: boolean }, replay: Buffer[],
   ): Promise<void> {
     if (isKilled()) { return; }
     let port: number;
@@ -359,7 +369,12 @@ export class OpenCodeProvider implements AgentProvider {
       notify.current(`could not reserve a port for opencode acp (${errorMessage(err)})`);
       return;
     }
-    const env = { ...this.mergedEnv(), OPENCODE_SERVER_PASSWORD: token };
+    // `?? process.env`, not a bare spread: `mergedEnv()` answers `undefined`
+    // when there is no instance override (the default provider), and
+    // `{ ...undefined }` is `{}` — a child spawned with no PATH at all, which
+    // under `shell: true` cannot even resolve `opencode`. `fetchModels` passes
+    // `mergedEnv()` straight through and so never notices.
+    const env = { ...(this.mergedEnv() ?? process.env), OPENCODE_SERVER_PASSWORD: token };
     const bin = this.binPath ?? 'opencode';
     let child: AcpChild;
     try {
@@ -406,11 +421,17 @@ export class OpenCodeProvider implements AgentProvider {
       }
       if (active.child === child) { active.child = undefined; }
       if (attemptsLeft > 1 && /port|EADDRINUSE/i.test(reason)) {
-        void this.attemptSpawn(token, watch, stdin, stdout, isKilled, notify, attemptsLeft - 1, active, started);
+        void this.attemptSpawn(token, watch, stdin, stdout, isKilled, notify, attemptsLeft - 1, active, started, replay);
       } else {
         notify.current(reason);
       }
     });
+    // Replay whatever AcpRun already wrote (nothing, on the first attempt;
+    // at minimum `initialize`, on any retry) into this attempt's real child
+    // before piping future writes live — order preserved, since these
+    // synchronous `write()` calls complete before `.pipe()` starts
+    // forwarding anything new.
+    for (const chunk of replay) { child.stdin.write(chunk); }
     // `end: false`: a failed attempt's own child exiting must not end these
     // shared PassThroughs — the next retry (or `dispose()`, via `stdin`)
     // still needs them live.

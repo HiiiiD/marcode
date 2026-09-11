@@ -350,6 +350,11 @@ suite('OpenCodeProvider', () => {
     const run = provider.start({ cwd: '/tmp', permissionMode: 'default', sessionId: 'sid' });
     await flush();
     assert.strictEqual(capturedEnv?.OPENCODE_SERVER_PASSWORD?.length, 48); // randomBytes(24).toString('hex')
+    // The password must be ADDED to the real environment, not be the whole of
+    // it: a spawn env with no PATH cannot resolve `opencode` under
+    // `shell: true` at all, and the model probe (which passes `mergedEnv()`
+    // straight through) would never notice. `Path` is Windows' own casing.
+    assert.ok(capturedEnv?.PATH ?? capturedEnv?.Path);
     // Otherwise the SubagentWatch this run opened keeps retrying its (fake,
     // unreachable) server connection in the background forever — see
     // subagent-watch.ts's own `close()`.
@@ -371,6 +376,43 @@ suite('OpenCodeProvider', () => {
     await flush();
     // Proves a retry actually happened: reservePort was called more than once.
     assert.ok(ports.length >= 2);
+    await run.dispose();
+  });
+
+  /**
+   * The dangerous window: `AcpRun` writes `initialize` into the shared stdin
+   * exactly once, the dying attempt's own child consumes those bytes, and Node
+   * streams are not rewindable — so without a replay buffer the retry's fresh
+   * child never receives the handshake and the session hangs forever on a
+   * reply that can never arrive.
+   *
+   * Deterministic because the failure trigger IS the consumption: attempt one
+   * dies the instant it observes a write, which is precisely the state that
+   * loses the bytes.
+   */
+  test('a retry replays the handshake the first attempt already consumed', async () => {
+    let attempts = 0;
+    const received: string[][] = [];
+    const provider = new OpenCodeProvider({
+      reservePort: async () => 40000 + (++attempts),
+      spawn: () => {
+        const fake = fakeAcpChild();
+        const mine: string[] = [];
+        const index = received.push(mine) - 1;
+        let failedOnce = false;
+        (fake.child.stdin as PassThrough).on('data', (chunk: Buffer) => {
+          mine.push(chunk.toString());
+          if (index === 0 && !failedOnce) { failedOnce = true; fake.failWith('EADDRINUSE'); }
+        });
+        return fake.child;
+      },
+    });
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default', sessionId: 'sid' });
+    for (let i = 0; i < 200 && !received[1]?.length; i++) {
+      await new Promise((r) => setTimeout(r, 5));
+    }
+    assert.strictEqual(received[0]?.join('').includes('"method":"initialize"'), true);
+    assert.strictEqual(received[1]?.join('').includes('"method":"initialize"'), true);
     await run.dispose();
   });
 
