@@ -168,4 +168,22 @@ export function toToolOutput(c: AcpToolCall): ToolOutput {
   return text ? { kind: 'text', text } : { kind: 'none' };
 }
 
-export const openCodeTools: ToolMapper = { call: toToolCall, output: toToolOutput };
+/**
+ * OpenCode's `task` tool answers with the child session it ran in, under
+ * `rawOutput.metadata.sessionId` — the only point the ACP wire ever names a
+ * subagent's own session. Narrowed defensively rather than cast: the
+ * overwhelming majority of completed calls carry no `metadata.sessionId` at
+ * all and must be a silent no-op.
+ */
+function subagentSpawn(update: Record<string, unknown>): { taskToolCallId: string; childSessionId: string } | undefined {
+  if (update.sessionUpdate !== 'tool_call_update' || update.status !== 'completed') { return undefined; }
+  const toolCallId = update.toolCallId;
+  const rawOutput = update.rawOutput as { metadata?: { sessionId?: unknown } } | undefined;
+  const childSessionId = rawOutput?.metadata?.sessionId;
+  if (typeof toolCallId === 'string' && typeof childSessionId === 'string') {
+    return { taskToolCallId: toolCallId, childSessionId };
+  }
+  return undefined;
+}
+
+export const openCodeTools: ToolMapper = { call: toToolCall, output: toToolOutput, subagentSpawn };

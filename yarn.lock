@@ -806,6 +806,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@opencode-ai/sdk@npm:^1.18.30":
+  version: 1.18.30
+  resolution: "@opencode-ai/sdk@npm:1.18.30"
+  dependencies:
+    cross-spawn: "npm:7.0.6"
+  checksum: 10c0/9d64819a7cf63bacaf6a45cfb6e46aa78cdf8d9775c0e1fde259d739c6de44ed8870477cc61185a74421e943cca73a58cf245d6ab78e51b05b2b77433ac7b7d8
+  languageName: node
+  linkType: hard
+
 "@parcel/watcher-android-arm64@npm:2.5.1":
   version: 2.5.1
   resolution: "@parcel/watcher-android-arm64@npm:2.5.1"
@@ -2129,6 +2138,17 @@ __metadata:
   languageName: node
   linkType: hard
 
+"cross-spawn@npm:7.0.6, cross-spawn@npm:^7.0.5, cross-spawn@npm:^7.0.6":
+  version: 7.0.6
+  resolution: "cross-spawn@npm:7.0.6"
+  dependencies:
+    path-key: "npm:^3.1.0"
+    shebang-command: "npm:^2.0.0"
+    which: "npm:^2.0.1"
+  checksum: 10c0/053ea8b2135caff68a9e81470e845613e374e7309a47731e81639de3eaeb90c3d01af0e0b44d2ab9d50b43467223b88567dfeb3262db942dc063b9976718ffc1
+  languageName: node
+  linkType: hard
+
 "cross-spawn@npm:^6.0.5":
   version: 6.0.6
   resolution: "cross-spawn@npm:6.0.6"
@@ -2139,17 +2159,6 @@ __metadata:
     shebang-command: "npm:^1.2.0"
     which: "npm:^1.2.9"
   checksum: 10c0/bf61fb890e8635102ea9bce050515cf915ff6a50ccaa0b37a17dc82fded0fb3ed7af5478b9367b86baee19127ad86af4be51d209f64fd6638c0862dca185fe1d
-  languageName: node
-  linkType: hard
-
-"cross-spawn@npm:^7.0.5, cross-spawn@npm:^7.0.6":
-  version: 7.0.6
-  resolution: "cross-spawn@npm:7.0.6"
-  dependencies:
-    path-key: "npm:^3.1.0"
-    shebang-command: "npm:^2.0.0"
-    which: "npm:^2.0.1"
-  checksum: 10c0/053ea8b2135caff68a9e81470e845613e374e7309a47731e81639de3eaeb90c3d01af0e0b44d2ab9d50b43467223b88567dfeb3262db942dc063b9976718ffc1
   languageName: node
   linkType: hard
 
@@ -4255,6 +4264,7 @@ __metadata:
     "@headless-tree/core": "npm:1.7.0"
     "@headless-tree/react": "npm:1.7.0"
     "@modelcontextprotocol/sdk": "npm:^1.30.0"
+    "@opencode-ai/sdk": "npm:^1.18.30"
     "@shadcn/react": "npm:^0.3.1"
     "@tailwindcss/cli": "npm:^4.3.3"
     "@testing-library/dom": "npm:^10.4.1"

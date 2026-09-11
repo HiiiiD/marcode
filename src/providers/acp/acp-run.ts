@@ -4,7 +4,8 @@ import { withMarcodeIntro } from '../marcode-context';
 import type { SessionId } from '../../protocol/messages';
 import type {
   AgentEvent, AgentRun, Attachment, ContextBreakdown, EditorContext,
-  EffortLevel, PermissionMode, QuestionAnswers, SelfControlMcpConfig, ToolDecision,
+  EffortLevel, PermissionMeta, PermissionMode, QuestionAnswers,
+  SelfControlMcpConfig, ToolCall, ToolDecision,
 } from '../types';
 import { CLIENT_CAPABILITIES, connectAcp, PROTOCOL_VERSION, type AcpChild } from './acp-client';
 import { currentModelId, effortConfigId, modelConfigId, toModeIds, type ConfigOption } from './config-options';
@@ -62,6 +63,25 @@ export interface AcpRunOptions {
   sessionId: SessionId;
   /** The loopback MCP server this run's agent should connect to, if any. */
   selfControlMcp?: SelfControlMcpConfig;
+  /**
+   * A second source of events to merge into this run's own stream — a
+   * vendor-specific layer can observe activity ACP itself never forwards
+   * (e.g. a child session's own tool calls) and republish it here without
+   * this file knowing anything about that vendor. Absent means no
+   * auxiliary source.
+   */
+  childEvents?: AsyncIterable<AgentEvent>;
+  /** Fired once, the instant this run's own session id is known. */
+  onSessionId?: (id: string) => void;
+  /** Fired during `dispose()`, alongside this run's own teardown. */
+  onDispose?: () => Promise<void> | void;
+  /**
+   * Fired once `tools.subagentSpawn` recognizes a completed tool call as
+   * naming a child session — the only correlation this connection alone can
+   * ever produce. An auxiliary watcher with its own, earlier-arriving source
+   * for the same correlation may treat this as a fallback.
+   */
+  onSubagentSpawned?: (taskToolCallId: string, childSessionId: string) => void;
 }
 
 /**
@@ -228,6 +248,15 @@ export class AcpRun implements AgentRun {
     this.mode = opts.permissionMode;
     this.model = opts.model;
     this.startup = this.start();
+    if (this.opts.childEvents) { void this.pumpChildEvents(this.opts.childEvents); }
+  }
+
+  /** Forwards a vendor-supplied auxiliary event source into this run's own channel. */
+  private async pumpChildEvents(source: AsyncIterable<AgentEvent>): Promise<void> {
+    for await (const event of source) {
+      if (this.disposed) { return; }
+      this.events.push(event);
+    }
   }
 
   /** Notified whenever this session's config catalog changes; fired immediately if one is known. */
@@ -286,6 +315,7 @@ export class AcpRun implements AgentRun {
 
     if (this.opts.resumeToken) {
       this.sessionId = this.opts.resumeToken;
+      this.opts.onSessionId?.(this.sessionId);
       await this.loadGated(conn, this.opts.resumeToken);
     } else {
       // This is where the self-control server rides: `mcpServers` is for a
@@ -296,6 +326,7 @@ export class AcpRun implements AgentRun {
         cwd: this.opts.cwd, mcpServers: mcpServersFor(this.opts.selfControlMcp, this.opts.sessionId),
       });
       this.sessionId = created.sessionId;
+      this.opts.onSessionId?.(this.sessionId);
       this.applyConfigOptions(created.configOptions);
     }
     if (this.disposed || !this.sessionId) { return; }
@@ -417,6 +448,7 @@ export class AcpRun implements AgentRun {
     for (const event of toAgentEvents(p.update, this.opts.tools, this.calls)) {
       this.events.push(event);
     }
+    this.detectSubagentSpawn(p.update);
   }
 
   /** `usage_update` feeds `contextBreakdown` and emits nothing — it is not a transcript item. */
@@ -429,6 +461,20 @@ export class AcpRun implements AgentRun {
       this.contextBreakdown = (): Promise<ContextBreakdown> =>
         Promise.resolve(this.lastBreakdown as ContextBreakdown);
     }
+  }
+
+  /**
+   * Delegates to the injected `ToolMapper`. WHERE an update names a child
+   * session is the vendor's own convention — opencode puts it under
+   * `rawOutput.metadata.sessionId` on the `task` tool's completed frame — and
+   * this file may not know that, the same reason it does not know what a tool
+   * call is. A mapper with no subagent concept omits the hook and this is a
+   * no-op.
+   */
+  private detectSubagentSpawn(update: Record<string, unknown>): void {
+    if (!this.opts.onSubagentSpawned) { return; }
+    const spawn = this.opts.tools.subagentSpawn?.(update);
+    if (spawn) { this.opts.onSubagentSpawned(spawn.taskToolCallId, spawn.childSessionId); }
   }
 
   /**
@@ -485,6 +531,30 @@ export class AcpRun implements AgentRun {
     if (this.parked.get(id) === own) { this.parked.delete(id); }
     if (!decision) { return { outcome: { outcome: 'cancelled' } }; }
     return chooseOption(options, decision);
+  }
+
+  /**
+   * The entry point an external event source uses to ask this run's own
+   * permission policy about a request it caught outside ACP. Same decision
+   * path as `onRequestPermission` — `autoDecision(mode)`
+   * first, a real parked promise and a `permission` event only if that's
+   * `undefined` — so `bypass`/`dontAsk` on this session apply to whatever
+   * called in here too, and a real decision answers through the existing
+   * `respondToTool` path with zero new UI.
+   */
+  async handleAuxiliaryPermission(
+    id: string, tool: ToolCall, meta?: PermissionMeta, parentId?: string,
+  ): Promise<ToolDecision | undefined> {
+    const auto = autoDecision(this.mode);
+    if (auto) { return auto; }
+    return new Promise<ToolDecision | undefined>((resolve) => {
+      const previous = this.parked.get(id);
+      this.parked.set(id, resolve);
+      if (previous) { previous(undefined); }
+      this.events.push({
+        kind: 'permission', id, tool, ...(meta ? { meta } : {}), ...(parentId ? { parentId } : {}),
+      });
+    });
   }
 
   // -------------------------------------------------------------- outgoing
@@ -720,6 +790,11 @@ export class AcpRun implements AgentRun {
   async dispose(): Promise<void> {
     if (this.disposed) { return; }
     this.disposed = true;
+    // Wrapped: a vendor callback that throws must not skip `child.kill()`
+    // below and leak the process for the rest of the window's life.
+    if (this.opts.onDispose) {
+      try { await this.opts.onDispose(); } catch { /* teardown is best-effort */ }
+    }
     // Release the load gate before anything else, so a `start()` parked on it
     // unwinds rather than holding a 2s timer on a session that is gone.
     this.clearLoadTimer();
