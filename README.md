@@ -148,6 +148,69 @@ Which providers this window registers is controlled by `marcode.enabledProviders
 (default `["claude", "codex", "opencode"]`); a provider left out is not probed and never
 appears in the panel. Changing the setting requires a window reload.
 
+### Windows: use OpenCode for OpenAI models
+
+On Windows, prefer connecting your OpenAI account to OpenCode and selecting its
+`openai/...` models in Marcode instead of running those tasks through the Codex provider.
+Codex's Windows sandbox restricts child-process creation in every mode except `bypass`;
+Git Bash/MSYS, WSL's `bash.exe`, and tools that spawn `git` or other commands from within a
+running process can therefore fail even when the initial command was allowed. This is a
+Codex CLI limitation, not a setting Marcode can relax.
+
+1. Run `opencode` in a terminal and use `/connect` to add the **OpenAI** provider. Follow
+   its authentication flow, then use `/models` to confirm the OpenAI models are available.
+   See the [OpenCode provider documentation](https://opencode.ai/docs/providers/) for its
+   current authentication and configuration options.
+2. Restart VS Code if OpenCode was installed or configured after VS Code started, then
+   reload the window so Marcode probes the updated OpenCode catalog.
+3. Create a Marcode session with provider **OpenCode** and choose the discovered
+   `openai/...` model.
+
+OpenCode owns the credentials and provider configuration; Marcode only starts its ACP
+server. To isolate an OpenCode account or configuration, use an OpenCode provider instance
+with `OPENCODE_CONFIG` or `OPENCODE_CONFIG_DIR` as described below.
+
+### Mirror Codex plan usage for OpenCode
+
+OpenCode's ACP interface does not expose plan-usage windows. If its `openai/...` model uses
+the same OpenAI account as Codex, Marcode can query Codex after each matching OpenCode turn
+and show the result as an OpenCode row. Enable both providers, authenticate Codex to that
+same account, then add this to VS Code `settings.json`:
+
+```jsonc
+"marcode.usageMirrors": [
+  {
+    "sourceProviderId": "opencode",
+    "modelPattern": "^openai/",
+    "targetProviderId": "codex",
+    "usageProviderId": "opencode-openai",
+    "displayName": "OpenCode (OpenAI)"
+  }
+]
+```
+
+Reload the window after changing the setting. The mirror refreshes when an OpenCode turn
+using a matching model finishes; it does not make Codex run the turn or transfer credentials
+to OpenCode. Use a different `usageProviderId` for every mirror, and only use this when both
+backends represent the same plan/account.
+
+### Provider behavior and quirks
+
+- OpenCode's **default** mode is its build mode. Its own `opencode.json` decides which tool
+  calls prompt. Marcode's **plan** mode selects OpenCode plan mode and disallows edits;
+  **bypass** answers OpenCode permission requests with allow, while **don't ask** rejects
+  them. There is no OpenCode `auto` mode in Marcode because ACP provides no classifier for
+  it.
+- Codex loads your PowerShell profile for every shell command on Windows. A profile that
+  assumes an interactive console, commonly through PSReadLine setup, can add errors to the
+  agent's command output even when the command succeeds. Marcode warns when it recognizes
+  this and offers a profile guard to copy.
+- Model catalogs are live probes. Install or reconfigure a CLI before opening/reloading the
+  VS Code window; use the panel retry action to probe again when a provider is unavailable.
+- OpenCode does not currently supply plan-usage windows or question cards through ACP.
+  Usage mirroring above covers the former for shared OpenAI accounts; questions remain
+  unavailable for that backend.
+
 ### Provider instances: setting secrets
 
 `marcode.providerInstances` holds no secrets itself. Each entry's `envMap` maps a
