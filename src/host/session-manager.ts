@@ -13,7 +13,7 @@ import { findPayload, type ResolvedBlock } from './session-refs';
 import { TRANSCRIPT_VERSION, type StoredIndex, type TranscriptStore } from './transcript-store';
 import type { MemoryStore } from '../memory/types';
 import type {
-  AgentProvider, EffortLevel, Invocable, ModelInfo, UpdateInfo, UsageWindow,
+  AgentProvider, EffortLevel, Invocable, ModelInfo, UpdateInfo, UsageMirror, UsageWindow,
 } from '../providers/types';
 import { findModel, resolveEffort } from '../shared/model-catalog';
 import { FILE_CAP } from '../shared/file-cap';
@@ -211,7 +211,14 @@ export class SessionManager implements SessionSink {
      * otherwise mean predicting real randomness.
      */
     private readonly randomSuffix: () => string = randomNameSuffix,
-  ) {}
+    private readonly usageMirrors: UsageMirror[] = [],
+  ) {
+    this.compiledUsageMirrors = usageMirrors.flatMap((mirror) => {
+      try { return [{ mirror, pattern: new RegExp(mirror.modelPattern) }]; } catch { return []; }
+    });
+  }
+
+  private readonly compiledUsageMirrors: { mirror: UsageMirror; pattern: RegExp }[];
 
   async init(): Promise<void> {
     const index = await this.store.readIndex();
@@ -431,6 +438,18 @@ export class SessionManager implements SessionSink {
           console.warn('[mar-code] session-manager: usage probe failed for', p.id, err);
         },
       )));
+  }
+
+  /** Refreshes account usage for a provider represented by a completed turn. */
+  turnFinished(_id: SessionId, providerId: string, model: string): void {
+    for (const { mirror, pattern } of this.compiledUsageMirrors) {
+      if (mirror.sourceProviderId !== providerId || !pattern.test(model)) { continue; }
+      const target = this.providers.get(mirror.targetProviderId);
+      if (!target?.fetchUsage) { continue; }
+      void Promise.resolve().then(() => target.fetchUsage!(this.meta.get(_id)?.cwd ?? ''))
+        .then((windows) => { if (!this.disposed) { this.usageWindows(mirror.usageProviderId, windows, mirror.displayName); } })
+        .catch((err: unknown) => console.warn('[mar-code] usage mirror failed for', mirror.usageProviderId, err));
+    }
   }
 
   /**
@@ -1454,6 +1473,10 @@ export class SessionManager implements SessionSink {
     return out;
   }
 
+  usageDisplayNames(): Record<string, string> {
+    return Object.fromEntries(this.usageMirrors.map((mirror) => [mirror.usageProviderId, mirror.displayName]));
+  }
+
   private windowsFor(providerId: string): UsageWindow[] {
     const known = this.usage.get(providerId);
     if (!known) { return []; }
@@ -1819,7 +1842,7 @@ export class SessionManager implements SessionSink {
     this.catalogSvc.set(this.keyOf(state), entries);
   }
 
-  usageWindows(providerId: string, windows: UsageWindow[] | undefined): void {
+  usageWindows(providerId: string, windows: UsageWindow[] | undefined, displayName?: string): void {
     // A pull is a snapshot, so it REPLACES the provider's map rather than
     // upserting into it — that is what lets a window the account stopped
     // reporting actually disappear. (The old push carried one window at a
@@ -1844,7 +1867,7 @@ export class SessionManager implements SessionSink {
     } else {
       this.usage.set(providerId, new Map(next.map((w) => [w.id, w])));
     }
-    this.emit({ t: 'usage-windows', providerId, windows: this.windowsFor(providerId) });
+    this.emit({ t: 'usage-windows', providerId, windows: this.windowsFor(providerId), ...(displayName ? { displayName } : {}) });
     this.schedulePersist();
   }
 

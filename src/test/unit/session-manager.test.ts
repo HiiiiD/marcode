@@ -1657,6 +1657,49 @@ suite('SessionManager', () => {
     await m.dispose();
   });
 
+  test('turnFinished mirrors matching model usage under its configured display name', async () => {
+    const source = new FakeProvider(() => []);
+    const target = new FakeProvider(() => [], {
+      windows: [{ id: 'five-hour', label: 'Session (5h)', usedPercent: 33 }],
+    });
+    const emitted: HostToWebview[] = [];
+    const m = new SessionManager(
+      new TranscriptStore(dir),
+      new Map<string, AgentProvider>([['source', source], ['codex', target]]),
+      (msg) => emitted.push(msg), undefined, undefined, undefined, undefined, [], undefined, undefined,
+      [{ sourceProviderId: 'source', modelPattern: '^openai/', targetProviderId: 'codex',
+        usageProviderId: 'source-openai', displayName: 'OpenCode (OpenAI)' }],
+    );
+    await m.init();
+    const session = await m.create('source', '/mirror-cwd', 'openai/gpt-5');
+    assert.ok(session);
+
+    m.turnFinished(session.state.id, 'source', 'openai/gpt-5');
+    await settle();
+
+    const update = emitted.find((msg) => msg.t === 'usage-windows') as
+      Extract<HostToWebview, { t: 'usage-windows' }>;
+    assert.strictEqual(update.providerId, 'source-openai');
+    assert.strictEqual(update.displayName, 'OpenCode (OpenAI)');
+    assert.strictEqual(target.fetchUsageCalls[0], '/mirror-cwd');
+    await m.dispose();
+  });
+
+  test('turnFinished ignores models outside the mirror pattern', async () => {
+    const target = new FakeProvider(() => []);
+    const m = new SessionManager(
+      new TranscriptStore(dir), new Map([['codex', target]]), () => {}, undefined, undefined,
+      undefined, undefined, [], undefined, undefined,
+      [{ sourceProviderId: 'source', modelPattern: '^openai/', targetProviderId: 'codex',
+        usageProviderId: 'source-openai', displayName: 'OpenCode (OpenAI)' }],
+    );
+    await m.init();
+    m.turnFinished('missing' as never, 'source', 'anthropic/claude');
+    await settle();
+    assert.strictEqual(target.fetchUsageCalls.length, 0);
+    await m.dispose();
+  });
+
   test('resolveRefs returns the source session\'s last assistant message', async () => {
     const session = await manager.create('fake', dir);
     session.send('hello');

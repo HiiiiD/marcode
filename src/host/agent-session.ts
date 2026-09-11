@@ -49,6 +49,7 @@ export interface SessionSink {
    * window, because a pull is a snapshot — see SessionManager.usageWindows.
    */
   usageWindows(providerId: string, windows: UsageWindow[] | undefined): void;
+  turnFinished?(id: SessionId, providerId: string, model: string): void;
   /**
    * A shell command came back carrying a PowerShell profile's own load
    * failure. Optional: a sink that has nowhere to put the advice may ignore
@@ -1174,6 +1175,7 @@ export class AgentSession {
           void this.scheduleFlush();
           void this.refreshContextPercent();
           void this.refreshUsage();
+          this.sink.turnFinished?.(this._state.id, this._state.providerId, this._state.model);
         }
         return;
     }
