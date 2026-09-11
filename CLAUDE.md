@@ -63,9 +63,10 @@ extension.ts
 | `src/providers/acp/map-updates.ts` | `session/update` → `AgentEvent`; the `ToolMapper` seam is where a vendor plugs in its own tool shapes |
 | `src/providers/acp/config-options.ts` | `session/new`'s `configOptions` → `ModelInfo[]` and mode ids |
 | `src/providers/acp/permissions.ts` | Permission-option selection off the request's real `optionId`/`kind`, plus `bypass`/`dontAsk` auto-answer policy |
-| `src/providers/acp/acp-run.ts` | `AcpRun implements AgentRun` — one ACP session: prompt, cancel, model/mode switches, permission relay |
+| `src/providers/acp/acp-run.ts` | `AcpRun implements AgentRun` — one ACP session: prompt, cancel, model/mode switches, permission relay; also merges a vendor's auxiliary event source (`childEvents`), answers its out-of-band permission asks (`handleAuxiliaryPermission`) and delegates subagent-spawn detection to `ToolMapper.subagentSpawn` |
 | `src/providers/opencode/opencode-provider.ts` | `OpenCodeProvider implements AgentProvider`: spawns `opencode acp`, probes models, `threadScope: 'cwd'` |
 | `src/providers/opencode/map-tools.ts` | OpenCode's ACP tool calls → this project's canonical `ToolCall` — the `ToolMapper` for this vendor |
+| `src/providers/opencode/reserve-port.ts` | Binds an OS-assigned loopback port, reads it back, closes — `opencode acp` never prints the port it chose, so one has to be handed to it via `--port`. Inherently racy; the spawn retry in `opencode-provider.ts` is the safety net |
 | `src/providers/opencode/subagent-watch.ts` | A second `@opencode-ai/sdk` connection to the same `opencode acp` server, watching for task-tool child sessions ACP itself never forwards; republishes their tool calls and permission asks as nested `AgentEvent`s |
 | `src/providers/opencode/map-subagent-tools.ts` | Raw `ToolPart` → the same `AcpToolCall` shape the ACP bridge already produces, so classification stays in `map-tools.ts` alone |
 | `src/shared/usage-windows.ts` | Fixed display order for usage windows; shared so neither provider nor host owns the other's table |

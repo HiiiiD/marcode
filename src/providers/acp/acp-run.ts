@@ -465,20 +465,17 @@ export class AcpRun implements AgentRun {
   }
 
   /**
-   * `p.update.rawOutput` is `unknown` on the wire — this narrows defensively
-   * rather than casting, since a non-`task` completed call (the overwhelming
-   * majority) has no `metadata.sessionId` at all and must be a silent no-op,
-   * not a throw.
+   * Delegates to the injected `ToolMapper`. WHERE an update names a child
+   * session is the vendor's own convention — opencode puts it under
+   * `rawOutput.metadata.sessionId` on the `task` tool's completed frame — and
+   * this file may not know that, the same reason it does not know what a tool
+   * call is. A mapper with no subagent concept omits the hook and this is a
+   * no-op.
    */
   private detectSubagentSpawn(update: Record<string, unknown>): void {
     if (!this.opts.onSubagentSpawned) { return; }
-    if (update.sessionUpdate !== 'tool_call_update' || update.status !== 'completed') { return; }
-    const toolCallId = update.toolCallId;
-    const rawOutput = update.rawOutput as { metadata?: { sessionId?: unknown } } | undefined;
-    const childSessionId = rawOutput?.metadata?.sessionId;
-    if (typeof toolCallId === 'string' && typeof childSessionId === 'string') {
-      this.opts.onSubagentSpawned(toolCallId, childSessionId);
-    }
+    const spawn = this.opts.tools.subagentSpawn?.(update);
+    if (spawn) { this.opts.onSubagentSpawned(spawn.taskToolCallId, spawn.childSessionId); }
   }
 
   /**
@@ -794,7 +791,11 @@ export class AcpRun implements AgentRun {
   async dispose(): Promise<void> {
     if (this.disposed) { return; }
     this.disposed = true;
-    if (this.opts.onDispose) { await this.opts.onDispose(); }
+    // Wrapped: a vendor callback that throws must not skip `child.kill()`
+    // below and leak the process for the rest of the window's life.
+    if (this.opts.onDispose) {
+      try { await this.opts.onDispose(); } catch { /* teardown is best-effort */ }
+    }
     // Release the load gate before anything else, so a `start()` parked on it
     // unwinds rather than holding a 2s timer on a session that is gone.
     this.clearLoadTimer();

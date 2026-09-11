@@ -20,6 +20,14 @@ export interface AcpToolCall {
 export interface ToolMapper {
   call(c: AcpToolCall): ToolCall;
   output(c: AcpToolCall): ToolOutput;
+  /**
+   * Whether a completed tool-call update names a subagent it spawned, and
+   * which child session it got — opencode's own convention
+   * (`rawOutput.metadata.sessionId` on the `task` tool's completed frame).
+   * Optional: a vendor with no subagent concept, or no ACP-visible way to
+   * name one, omits it.
+   */
+  subagentSpawn?(update: Record<string, unknown>): { taskToolCallId: string; childSessionId: string } | undefined;
 }
 
 const textOf = (content: unknown): string | undefined => {

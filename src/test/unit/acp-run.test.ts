@@ -698,4 +698,30 @@ suite('AcpRun', () => {
     assert.deepStrictEqual(seen, []);
     await run.dispose();
   });
+
+  /**
+   * The invariant, tested: `rawOutput.metadata.sessionId` is opencode's own
+   * convention, not ACP's, so it must live behind the `ToolMapper` seam. A
+   * mapper that declines to answer the question sees nothing — even handed the
+   * exact payload opencode sends.
+   */
+  test('a ToolMapper with no subagentSpawn hook never fires onSubagentSpawned', async () => {
+    const p = peer();
+    const seen: unknown[] = [];
+    const run = new AcpRun(p.child, {
+      cwd: '/w', permissionMode: 'default',
+      tools: { call: openCodeTools.call, output: openCodeTools.output },
+      modeId: openCodeModeId, clientName: 'mar-code', sessionId: 'test-session',
+      onSubagentSpawned: (taskToolCallId, childSessionId) => seen.push({ taskToolCallId, childSessionId }),
+    });
+    await handshake(p);
+    p.emit({ jsonrpc: '2.0', method: 'session/update', params: {
+      sessionId: 'ses_ff0400c8affe2kYFjqc6OUHpG3',
+      update: { sessionUpdate: 'tool_call_update', toolCallId: 'call_task_1', status: 'completed',
+        rawOutput: { output: 'done', metadata: { sessionId: 'child_1' } } },
+    } });
+    await new Promise((r) => setTimeout(r, 20));
+    assert.deepStrictEqual(seen, []);
+    await run.dispose();
+  });
 });
