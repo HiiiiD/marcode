@@ -208,9 +208,12 @@ suite('AcpRun', () => {
     p.emit({ jsonrpc: '2.0', id: 903, method: 'session/request_permission',
              params: frames.requestPermissionOutsideCwd });
     await new Promise((r) => setTimeout(r, 20));
-    const parked = events.find((e) => e.kind === 'permission') as { tool?: unknown } | undefined;
+    const parked = events.find((e) => e.kind === 'permission') as {
+      tool?: unknown; meta?: unknown;
+    } | undefined;
     assert.deepStrictEqual(parked?.tool,
       { kind: 'file-read', label: 'Read', path: 'C:/Users/Marco/.claude/commands' });
+    assert.strictEqual(parked?.meta, undefined);
     run.respondToTool((parked as { id: string }).id, { allow: true });
     await run.dispose();
   });

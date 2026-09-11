@@ -51,10 +51,14 @@ export type ToolBlock =
   /** A `data:` URI, already self-contained — no webview resource root needed. */
   | { kind: 'image'; dataUri: string };
 
-/** Last two path segments — a bare basename loses the only disambiguator at 300px. */
+/** Keep the path root and last two segments — both matter at 300px. */
 export function shortPath(path: string): string {
   const parts = path.split(/[\\/]/).filter(Boolean);
-  return parts.length <= 2 ? path : `…/${parts.slice(-2).join('/')}`;
+  if (parts.length <= 2) { return path; }
+  const prefix = /^[A-Za-z]:[\\/]/.test(path)
+    ? `${path.slice(0, 2)}/…`
+    : path.startsWith('/') ? '/…' : '…';
+  return `${prefix}/${parts.slice(-2).join('/')}`;
 }
 
 export interface Clamped {
@@ -210,6 +214,40 @@ function editBlocks(file: FileEdit): ToolBlock[] {
   return blocks;
 }
 
+const PATH_KEYS = new Set([
+  'path', 'file', 'filePath', 'file_path', 'filepath', 'filename',
+  'parentDir', 'parent_dir', 'directory', 'dir', 'cwd', 'workingDirectory', 'working_directory',
+]);
+const DIRECTORY_PATH_KEYS = new Set([
+  'parentDir', 'parent_dir', 'directory', 'dir', 'cwd', 'workingDirectory', 'working_directory',
+]);
+
+/**
+ * ACP permission fallbacks can arrive before the associated tool call and only
+ * expose a vendor-shaped object such as `{ filepath, parentDir }`. Pull paths
+ * out of that otherwise opaque input so the approval names a location instead
+ * of making the user read JSON. The rest of a flat payload is rendered as
+ * labelled scalar arguments; only nested data remains in the JSON fallback.
+ */
+function otherBlocks(raw: unknown): { blocks: ToolBlock[]; remainder: unknown } {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return { blocks: [], remainder: raw };
+  }
+
+  const remainder: Record<string, unknown> = {};
+  const blocks: ToolBlock[] = [];
+  for (const [key, value] of Object.entries(raw)) {
+    if (PATH_KEYS.has(key) && typeof value === 'string' && value.length > 0) {
+      blocks.push({ kind: 'path', path: value, ...(DIRECTORY_PATH_KEYS.has(key) ? { hint: 'directory' } : {}) });
+    } else if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+      blocks.push({ kind: 'field', label: key.replace(/([a-z])([A-Z])/g, '$1 $2').replaceAll('_', ' '), value: String(value) });
+    } else {
+      remainder[key] = value;
+    }
+  }
+  return { blocks, remainder };
+}
+
 export function describeInput(tool: ToolCall): ToolBlock[] {
   const blocks: ToolBlock[] = [];
 
@@ -289,9 +327,12 @@ export function describeInput(tool: ToolCall): ToolBlock[] {
 
     case 'other': {
       for (const field of tool.fields ?? []) { blocks.push({ kind: 'field', ...field }); }
-      const empty = tool.raw === null || tool.raw === undefined
-        || (typeof tool.raw === 'object' && Object.keys(tool.raw as object).length === 0);
-      if (!empty) { blocks.push({ kind: 'json', text: safeStringify(tool.raw) }); }
+      const other = otherBlocks(tool.raw);
+      blocks.push(...other.blocks);
+      const { remainder } = other;
+      const empty = remainder === null || remainder === undefined
+        || (typeof remainder === 'object' && Object.keys(remainder as object).length === 0);
+      if (!empty) { blocks.push({ kind: 'json', text: safeStringify(remainder) }); }
       break;
     }
 

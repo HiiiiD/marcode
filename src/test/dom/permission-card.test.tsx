@@ -85,6 +85,21 @@ suite('PermissionCard', () => {
     assert.strictEqual(pre!.textContent, '-one+two');
   });
 
+  test('a fallback permission renders its filepath as an openable path, not JSON', async () => {
+    const tool: ToolCall = {
+      kind: 'other', label: 'Read', raw: { filepath: '/tmp/a.txt', parentDir: '/tmp', followSymlinks: false },
+    };
+    renderWithStore(<PermissionCard item={permission({ tool })} sessionId="a" />);
+    hydrateWith([{ requestId: 'r1', tool }]);
+
+    const path = screen.getByTitle('/tmp/a.txt');
+    screen.getByText('follow Symlinks');
+    screen.getByText('false');
+    assert.strictEqual(document.querySelector('pre') === null, true);
+    await userEvent.click(path);
+    assert.deepStrictEqual(posted().at(-1), { t: 'reveal-file', path: '/tmp/a.txt' });
+  });
+
   test('the live card shows the session folder next to the tool name', () => {
     renderWithStore(<PermissionCard item={permission()} sessionId="a" />);
     hydrateWith(LIVE);
