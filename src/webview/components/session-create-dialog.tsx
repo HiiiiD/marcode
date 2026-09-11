@@ -14,7 +14,7 @@ import { findModel, isFavorite, modelKey, resolveEffort } from "../../shared/mod
 import { resolvePermissionMode } from "../../shared/permission-catalog";
 import { useStore } from "../store";
 import { EffortSlider } from "./effort-slider";
-import { modesFor } from "./permission-modes";
+import { modeRowsForProvider } from "./permission-modes";
 import type { CreateSettings } from "./session-create-settings";
 
 /**
@@ -173,7 +173,7 @@ function CreateForm({
   const model = findModel(provider?.models ?? [], modelId) ?? provider?.models[0];
   const scale = model?.effort;
   const level = resolveEffort(model, effort ?? undefined);
-  const rows = modesFor(provider?.permissionModes);
+  const rows = modeRowsForProvider(provider?.id, provider?.permissionModes);
   // Derived, not stored — the same shape as `level` above, and for the same
   // reason: a mode belongs to the provider, so one chosen against a previous
   // provider is not a choice about this one. Switching the model radio from
