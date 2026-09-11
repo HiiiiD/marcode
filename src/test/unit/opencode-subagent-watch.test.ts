@@ -246,4 +246,208 @@ suite('SubagentWatch', () => {
     assert.strictEqual(seen.length, 0);
     watch.close();
   });
+
+  /**
+   * The realistic order production actually reaches, unlike every test above:
+   * nothing here calls `setParentToolCallId` by hand. opencode's own `task`
+   * tool writes `state.metadata.sessionId` the moment the part leaves
+   * `pending` — before the subagent has done anything — so this correlation
+   * must be readable off that `running` frame alone, with no
+   * `onSubagentSpawned` fallback involved at all.
+   */
+  test("a running task part on the root correlates its child before the task call completes", async () => {
+    const { sdk } = fakeSdk([
+      {
+        type: 'message.part.updated',
+        properties: {
+          sessionID: 'root',
+          part: {
+            type: 'tool', callID: 'task_1', tool: 'task',
+            state: { status: 'running', input: {}, metadata: { sessionId: 'child_1' }, time: { start: 0 } },
+          },
+        },
+      },
+      {
+        type: 'message.part.updated',
+        properties: {
+          sessionID: 'child_1',
+          part: { type: 'tool', callID: 'call_1', tool: 'bash', state: { status: 'pending', input: { command: 'ls' }, raw: '' } },
+        },
+      },
+    ]);
+    const watch = new SubagentWatch({ connect: async () => sdk });
+    watch.open('http://x', 't');
+    watch.setRootSessionId('root');
+    const seen = drain(watch.events);
+    await settle();
+    // Exactly one event: the child's own tool-start, correctly nested. The
+    // root's own `task` part is read for correlation but never itself
+    // republished — it already renders down ACP's normal path.
+    assert.strictEqual(seen.length, 1);
+    const event = seen[0];
+    assert.strictEqual(event.kind, 'tool-start');
+    if (event.kind === 'tool-start') {
+      assert.strictEqual(event.parentId, 'task_1');
+      assert.strictEqual(event.id, 'child_1:call_1');
+    }
+    watch.close();
+  });
+
+  test("the child's own session.created arriving BEFORE the live correlation still nests correctly", async () => {
+    const { sdk } = fakeSdk([
+      { type: 'session.created', properties: { sessionID: 'child_1', info: { id: 'child_1', parentID: 'root' } } },
+      {
+        type: 'message.part.updated',
+        properties: {
+          sessionID: 'root',
+          part: {
+            type: 'tool', callID: 'task_1', tool: 'task',
+            state: { status: 'running', input: {}, metadata: { sessionId: 'child_1' }, time: { start: 0 } },
+          },
+        },
+      },
+      {
+        type: 'message.part.updated',
+        properties: {
+          sessionID: 'child_1',
+          part: { type: 'tool', callID: 'call_1', tool: 'bash', state: { status: 'pending', input: {}, raw: '' } },
+        },
+      },
+    ]);
+    const watch = new SubagentWatch({ connect: async () => sdk });
+    watch.open('http://x', 't');
+    watch.setRootSessionId('root');
+    const seen = drain(watch.events);
+    await settle();
+    assert.strictEqual(seen.length, 1);
+    const event = seen[0];
+    assert.strictEqual(event.kind === 'tool-start' && event.parentId, 'task_1');
+    assert.strictEqual(event.kind === 'tool-start' && event.id, 'child_1:call_1');
+    watch.close();
+  });
+
+  test("the child's own session.created arriving AFTER the live correlation is a harmless no-op", async () => {
+    const { sdk } = fakeSdk([
+      {
+        type: 'message.part.updated',
+        properties: {
+          sessionID: 'root',
+          part: {
+            type: 'tool', callID: 'task_1', tool: 'task',
+            state: { status: 'running', input: {}, metadata: { sessionId: 'child_1' }, time: { start: 0 } },
+          },
+        },
+      },
+      // Arrives after `setParentToolCallId` has already enrolled `child_1` —
+      // `handle`'s `!this.watched.has(sessionID)` guard must make this a
+      // no-op rather than overwriting the already-correct nesting target.
+      { type: 'session.created', properties: { sessionID: 'child_1', info: { id: 'child_1', parentID: 'root' } } },
+      {
+        type: 'message.part.updated',
+        properties: {
+          sessionID: 'child_1',
+          part: { type: 'tool', callID: 'call_1', tool: 'bash', state: { status: 'pending', input: {}, raw: '' } },
+        },
+      },
+    ]);
+    const watch = new SubagentWatch({ connect: async () => sdk });
+    watch.open('http://x', 't');
+    watch.setRootSessionId('root');
+    const seen = drain(watch.events);
+    await settle();
+    assert.strictEqual(seen.length, 1);
+    const event = seen[0];
+    assert.strictEqual(event.kind === 'tool-start' && event.parentId, 'task_1');
+    assert.strictEqual(event.kind === 'tool-start' && event.id, 'child_1:call_1');
+    watch.close();
+  });
+
+  /**
+   * opencode's `task_id` resume param reuses an existing session rather than
+   * creating one — no `session.created` is ever published for it on this
+   * connection. Discovery must not depend on that event: `setParentToolCallId`
+   * (called here purely by the live correlation, not by hand) enrolls the
+   * child into `watched` itself.
+   */
+  test('the live correlation discovers a resumed task\'s session with no session.created at all', async () => {
+    const { sdk } = fakeSdk([
+      {
+        type: 'message.part.updated',
+        properties: {
+          sessionID: 'root',
+          part: {
+            type: 'tool', callID: 'task_1', tool: 'task',
+            state: { status: 'running', input: {}, metadata: { sessionId: 'child_1' }, time: { start: 0 } },
+          },
+        },
+      },
+      {
+        type: 'message.part.updated',
+        properties: {
+          sessionID: 'child_1',
+          part: { type: 'tool', callID: 'call_1', tool: 'bash', state: { status: 'pending', input: {}, raw: '' } },
+        },
+      },
+    ]);
+    const watch = new SubagentWatch({ connect: async () => sdk });
+    watch.open('http://x', 't');
+    watch.setRootSessionId('root');
+    const seen = drain(watch.events);
+    await settle();
+    assert.strictEqual(seen.length, 1);
+    assert.strictEqual(seen[0].kind === 'tool-start' && seen[0].id, 'child_1:call_1');
+    watch.close();
+  });
+
+  /**
+   * The same live mechanism applies uniformly to a watched (non-root)
+   * session's own `task` part — a subagent spawning a further subagent —
+   * without any special-casing: `handlePart`'s carve-out checks "is this a
+   * session we watch", not "is this the root".
+   */
+  test('a live task part on a watched child correlates its own grandchild the same way', async () => {
+    const { sdk } = fakeSdk([
+      { type: 'session.created', properties: { sessionID: 'child_1', info: { id: 'child_1', parentID: 'root' } } },
+      {
+        type: 'message.part.updated',
+        properties: {
+          sessionID: 'child_1',
+          part: { type: 'tool', callID: 'task_g', tool: 'task', state: { status: 'pending', input: {}, raw: '' } },
+        },
+      },
+      {
+        type: 'message.part.updated',
+        properties: {
+          sessionID: 'child_1',
+          part: {
+            type: 'tool', callID: 'task_g', tool: 'task',
+            state: { status: 'running', input: {}, metadata: { sessionId: 'grand_1' }, time: { start: 0 } },
+          },
+        },
+      },
+      {
+        type: 'message.part.updated',
+        properties: {
+          sessionID: 'grand_1',
+          part: { type: 'tool', callID: 'call_g', tool: 'bash', state: { status: 'pending', input: {}, raw: '' } },
+        },
+      },
+    ]);
+    const watch = new SubagentWatch({ connect: async () => sdk });
+    watch.open('http://x', 't');
+    watch.setRootSessionId('root');
+    // The child's OWN nesting target still has to come from somewhere — the
+    // live mechanism only ever learns a session's CHILD's target, never its
+    // own. Supplied here exactly as `onSubagentSpawned` would in production.
+    watch.setParentToolCallId('child_1', 'task_root');
+    const seen = drain(watch.events);
+    await settle();
+    const childTaskCard = seen.find((e) => e.kind === 'tool-start' && e.id === 'child_1:task_g');
+    const grandchildCard = seen.find((e) => e.kind === 'tool-start' && e.id === 'grand_1:call_g');
+    assert.ok(childTaskCard);
+    assert.ok(grandchildCard);
+    assert.strictEqual(childTaskCard?.kind === 'tool-start' && childTaskCard.parentId, 'task_root');
+    assert.strictEqual(grandchildCard?.kind === 'tool-start' && grandchildCard.parentId, 'child_1:task_g');
+    watch.close();
+  });
 });

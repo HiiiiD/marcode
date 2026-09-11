@@ -23,6 +23,22 @@ type RawEvent =
 
 type RawPart = ({ type: 'tool' } & RawToolPart) | { type: string };
 
+/**
+ * `state.metadata.sessionId` off a `task` tool part — present from `running`
+ * onward (opencode's own `task` tool writes it via `ctx.metadata()` before
+ * `runTask()` starts, so it is already there the instant the part leaves
+ * `pending`), and again, unchanged, on `completed`/`error`. Same shape for a
+ * resumed task (opencode's `task_id` param): the metadata object always names
+ * the session actually running, whether freshly created or resumed, so no
+ * separate resume case exists to handle here.
+ */
+function taskChildSessionId(part: RawToolPart): string | undefined {
+  const { state } = part;
+  if (state.status === 'pending') { return undefined; }
+  const sessionId = state.metadata?.sessionId;
+  return typeof sessionId === 'string' ? sessionId : undefined;
+}
+
 /** The three `AgentEvent` kinds this file ever produces — all nestable. */
 type NestableToolEvent = Extract<AgentEvent, { kind: 'tool-start' | 'tool-update' | 'tool-end' }>;
 
@@ -117,14 +133,19 @@ export class SubagentWatch {
    * `setParentToolCallId` learns it. Permission asks are never buffered here;
    * only tool-call events.
    *
-   * This is not live streaming, and must not be described as such: the child's
-   * session id first appears on the wire in the parent `task` call's
-   * *completed* frame (see `AcpRunOptions.onSubagentSpawned`), so a running
-   * subagent's activity accumulates here and arrives as one burst at
-   * completion. That ceiling is ACP's own wire design, not a shortcut taken
-   * here. What this buffer buys is that the activity arrives at all, and under
-   * the right parent — before it, every event for a still-running subagent was
-   * dropped on the floor forever.
+   * In the common case this buffer is nearly always empty: `handlePart` learns
+   * the correlation directly off the `task` tool's own part the moment
+   * opencode marks it `running` — before the subagent has done anything, since
+   * opencode's own `task` tool writes that metadata before `runTask()` starts
+   * (see the design doc's research trail). What lands here is only the handful
+   * of events published in the window between that part first appearing on
+   * this connection and the correlating frame being processed — normally one
+   * event-loop tick, not "the whole subagent's runtime". `onSubagentSpawned`
+   * (`AcpRunOptions`, wired from the *primary* ACP connection's completed
+   * frame) is the fallback for when this connection's own tap missed the
+   * running frame entirely — e.g. it was still connecting/retrying when the
+   * subagent ran fast enough to reach `completed` first. Without either path,
+   * every event for a still-running subagent would be dropped on the floor.
    */
   private readonly pending = new Map<string, NestableToolEvent[]>();
   private rootSessionId: string | undefined;
@@ -254,11 +275,27 @@ export class SubagentWatch {
 
   private handlePart(sessionId: string, part: RawPart): void {
     if (part.type !== 'tool') { return; }
+    const toolPart = part as RawToolPart;
+    // A narrow carve-out from the root-exclusion guard below: a `task` tool
+    // part carries its own child's session id in `state.metadata` as soon as
+    // opencode marks it `running`, well before the `completed` frame ACP's
+    // own wire waits for. Read it here — off ANY session we already watch,
+    // root included — purely to learn the correlation early. This must never
+    // fall through to publishing THIS part as a nested event: the root's own
+    // task card already renders via ACP's normal path (guarded below), and a
+    // watched child's own `task` call still gets its ordinary nested-card
+    // treatment further down, unaffected by this lookup.
+    if ((sessionId === this.rootSessionId || this.watched.has(sessionId)) && toolPart.tool.toLowerCase() === 'task') {
+      const childSessionId = taskChildSessionId(toolPart);
+      if (childSessionId) {
+        const correlationId = sessionId === this.rootSessionId ? toolPart.callID : `${sessionId}:${toolPart.callID}`;
+        this.setParentToolCallId(childSessionId, correlationId);
+      }
+    }
     // The root is in `watched` too (see `setRootSessionId`), but its own tool
     // calls already reach the transcript down ACP's normal path — republishing
     // them here would double every card the user sees.
     if (sessionId === this.rootSessionId || !this.watched.has(sessionId)) { return; }
-    const toolPart = part as RawToolPart;
     const tool = subagentToolCall(toolPart);
     // Namespaced like the permission ids below: `callID` is only unique within
     // its own session, and an unnamespaced collision with the root's own tool

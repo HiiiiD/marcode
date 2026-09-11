@@ -296,6 +296,12 @@ export class OpenCodeProvider implements AgentProvider {
       // could no longer silently replace this one without losing state, so
       // it also marks `attemptSpawn`'s own "genuinely active" flag.
       onSessionId: (id) => { watch.setRootSessionId(id); markStarted(); },
+      // Fallback, not the primary path: `watch` normally learns this same
+      // correlation itself, live, off the root's own `task` part the moment
+      // opencode marks it `running` — see `subagent-watch.ts`'s `handlePart`.
+      // This fires later (only once the PRIMARY ACP connection's completed
+      // frame arrives) and is what catches a subagent fast enough to finish
+      // before `watch`'s own, separate SDK connection ever came up.
       onSubagentSpawned: (taskToolCallId, childSessionId) => watch.setParentToolCallId(childSessionId, taskToolCallId),
       onDispose: () => watch.close(),
     });
