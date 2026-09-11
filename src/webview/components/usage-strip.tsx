@@ -117,7 +117,7 @@ export function UsageStrip() {
       {reporting.map((id) => (
         <ProviderUsage
           key={id}
-          displayName={state.catalog.find((p) => p.id === id)?.displayName ?? id}
+          displayName={state.usageDisplayNames[id] ?? state.catalog.find((p) => p.id === id)?.displayName ?? id}
           windows={state.usageByProvider[id]}
         />
       ))}

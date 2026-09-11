@@ -444,3 +444,12 @@ export interface AgentProvider {
    */
   listInvocables?(cwd: string): Promise<Invocable[]>;
 }
+
+/** Copies account usage from one provider for turns using a matching model. */
+export interface UsageMirror {
+  sourceProviderId: string;
+  modelPattern: string;
+  targetProviderId: string;
+  usageProviderId: string;
+  displayName: string;
+}

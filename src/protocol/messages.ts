@@ -667,6 +667,7 @@ export type HostToWebview =
       probing?: boolean;
       /** Per provider, the last window set the host knew. Empty on a fresh install. */
       usage: Record<string, UsageWindow[]>;
+      usageDisplayNames?: Record<string, string>;
       /**
        * `marcode.review.pollIntervalMs`. Only the review tab reads this
        * (see `ReviewState.pollIntervalMs`) — carried on the shared `hydrate`
@@ -762,7 +763,7 @@ export type HostToWebview =
    * There is no not-ok arm: under a push there is no request that can fail,
    * and "nothing has been reported" is a state, not an error.
    */
-  | { t: 'usage-windows'; providerId: string; windows: UsageWindow[] }
+  | { t: 'usage-windows'; providerId: string; windows: UsageWindow[]; displayName?: string }
   /**
    * The answer to `request-bring-back`, and also what a *failed* `bring-back`
    * replies with — a refusal is the same shape whether it was found by asking

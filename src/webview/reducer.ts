@@ -64,6 +64,7 @@ export interface ClientState {
    * invent a value.
    */
   usageByProvider: Record<string, UsageWindow[] | undefined>;
+  usageDisplayNames: Record<string, string>;
   /**
    * Every working tree the host's last sweep found, in the order it sent
    * them. Panel-wide rather than per session, because the rows that matter
@@ -145,6 +146,7 @@ export const initialState: ClientState = {
   contextBySession: {},
   bringBackBySession: {},
   usageByProvider: {},
+  usageDisplayNames: {},
   staleTrees: [],
   fleetDiff: undefined,
   fleetDiffReason: undefined,
@@ -224,6 +226,7 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
         // git state at one instant, and a reload is exactly the event after
         // which nothing in the client may still claim to know that.
         contextBySession: {}, bringBackBySession: {}, usageByProvider: msg.usage,
+        usageDisplayNames: msg.usageDisplayNames ?? {},
         // Cleared for the same reason the plans are: a sweep describes the
         // disk at one instant, and a reload is exactly the event after which
         // nothing in the client may still claim to know it.
@@ -328,6 +331,9 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
       return {
         ...state,
         usageByProvider: { ...state.usageByProvider, [msg.providerId]: msg.windows },
+        usageDisplayNames: msg.displayName
+          ? { ...state.usageDisplayNames, [msg.providerId]: msg.displayName }
+          : state.usageDisplayNames,
       };
 
     case 'catalog':

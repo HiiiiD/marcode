@@ -215,6 +215,7 @@ export class MessageRouter {
           // something to tell the user about.
           probing: this.manager.willProbe(),
           usage: this.manager.usageSnapshot(),
+          usageDisplayNames: this.manager.usageDisplayNames(),
           reviewPollIntervalMs: this.reviewPollIntervalMs,
           favoriteModels: this.favoriteModels,
         });

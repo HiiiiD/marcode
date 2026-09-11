@@ -34,7 +34,7 @@ import {
   claudeLoginCommand, codexLoginCommand, computeLoginKind, resolveEnvMap, validateProviderInstances,
 } from './shared/provider-instances';
 import { setLifecycleDebug } from './shared/lifecycle-debug';
-import type { AgentProvider, SelfControlMcpConfig } from './providers/types';
+import type { AgentProvider, SelfControlMcpConfig, UsageMirror } from './providers/types';
 
 /**
  * `marcode.codex.path` defaults to `""` (see package.json) so the
@@ -110,6 +110,22 @@ function favoriteModels(): string[] {
   const configured = vscode.workspace.getConfiguration('marcode').get<unknown>('favoriteModels');
   if (!Array.isArray(configured)) { return []; }
   return configured.filter((id): id is string => typeof id === 'string' && id.trim() !== '');
+}
+
+/** Reads explicit account-usage mirrors without allowing malformed settings into the host. */
+function configuredUsageMirrors(): UsageMirror[] {
+  const configured = vscode.workspace.getConfiguration('marcode').get<unknown>('usageMirrors');
+  if (!Array.isArray(configured)) { return []; }
+  return configured.flatMap((entry): UsageMirror[] => {
+    if (!entry || typeof entry !== 'object') { return []; }
+    const value = entry as Record<string, unknown>;
+    const fields = ['sourceProviderId', 'modelPattern', 'targetProviderId', 'usageProviderId', 'displayName'];
+    if (!fields.every((field) => typeof value[field] === 'string' && (value[field] as string).trim() !== '')) {
+      return [];
+    }
+    try { new RegExp(value.modelPattern as string); } catch { return []; }
+    return [value as unknown as UsageMirror];
+  });
 }
 
 /**
@@ -234,6 +250,7 @@ export async function activate(context: vscode.ExtensionContext) {
   // asked for this backend" is not a diagnosis of it. Emptying the setting is
   // therefore how the no-provider empty state is reached on purpose.
   const enabled = enabledProviderIds();
+  const usageMirrors = configuredUsageMirrors();
   // Empty at construction — `manager` needs this Map to build, but the
   // self-control server (constructed just below, from `manager`) needs to
   // resolve its config before providers can be built with it. `.set()` below
@@ -246,7 +263,7 @@ export async function activate(context: vscode.ExtensionContext) {
   const bus = new PostBus();
   const manager = new SessionManager(
     store, providers, (msg) => bus.post(msg), undefined, warnAboutProfile, attachments,
-    reviewFileCap(), reviewBaseRefs(), memory,
+    reviewFileCap(), reviewBaseRefs(), memory, undefined, usageMirrors,
   );
 
   // Constructed against `manager` via closures — `SessionManagerLike`

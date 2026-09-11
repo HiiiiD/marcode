@@ -81,6 +81,44 @@
           "default": "",
           "description": "Path to the opencode binary. Empty means use opencode from PATH."
         },
+        "marcode.usageMirrors": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "sourceProviderId",
+              "modelPattern",
+              "targetProviderId",
+              "usageProviderId",
+              "displayName"
+            ],
+            "properties": {
+              "sourceProviderId": {
+                "type": "string",
+                "description": "Provider whose completed turns trigger the usage refresh."
+              },
+              "modelPattern": {
+                "type": "string",
+                "description": "Regular expression matched against the model id, for example ^openai/."
+              },
+              "targetProviderId": {
+                "type": "string",
+                "description": "Provider whose fetchUsage implementation supplies the usage windows, for example codex."
+              },
+              "usageProviderId": {
+                "type": "string",
+                "description": "Unique id used for the mirrored usage row."
+              },
+              "displayName": {
+                "type": "string",
+                "description": "Label shown for the mirrored usage row."
+              }
+            }
+          },
+          "default": [],
+          "description": "Copies plan usage from one provider after matching turns in another. Example: ^openai/ usage via Codex, displayed as OpenCode (OpenAI). Takes effect after a window reload.",
+          "scope": "window"
+        },
         "marcode.providerInstances": {
           "type": "array",
           "items": {
