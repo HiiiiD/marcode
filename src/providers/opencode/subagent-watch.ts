@@ -23,6 +23,9 @@ type RawEvent =
 
 type RawPart = ({ type: 'tool' } & RawToolPart) | { type: string };
 
+/** The three `AgentEvent` kinds this file ever produces — all nestable. */
+type NestableToolEvent = Extract<AgentEvent, { kind: 'tool-start' | 'tool-update' | 'tool-end' }>;
+
 /**
  * `sdk.global.event()`/`sdk.permission.reply(...)`, narrowed to the two
  * calls this file makes — same structural-narrowing move `AcpConnection`
@@ -100,6 +103,30 @@ export class SubagentWatch {
   private readonly watched = new Set<string>();
   /** Watched child session id -> the parent tool-start id its events nest under. */
   private readonly parentToolCallId = new Map<string, string>();
+  /**
+   * Watched session id -> the session that spawned it, from `session.created`.
+   * A grandchild's nesting target is its nearest ancestor's, and that ancestor
+   * only learns its own long after the grandchild exists — so the link is
+   * recorded when it is known and resolved when it is needed. See
+   * `nestingIdFor`.
+   */
+  private readonly parentSession = new Map<string, string>();
+  /**
+   * Events already translated for a watched child whose nesting target isn't
+   * known yet — flushed, `parentId` filled in, the instant
+   * `setParentToolCallId` learns it. Permission asks are never buffered here;
+   * only tool-call events.
+   *
+   * This is not live streaming, and must not be described as such: the child's
+   * session id first appears on the wire in the parent `task` call's
+   * *completed* frame (see `AcpRunOptions.onSubagentSpawned`), so a running
+   * subagent's activity accumulates here and arrives as one burst at
+   * completion. That ceiling is ACP's own wire design, not a shortcut taken
+   * here. What this buffer buys is that the activity arrives at all, and under
+   * the right parent — before it, every event for a still-running subagent was
+   * dropped on the floor forever.
+   */
+  private readonly pending = new Map<string, NestableToolEvent[]>();
   private rootSessionId: string | undefined;
   private permissionHandler:
     | ((id: string, tool: ToolCall, meta: PermissionMeta | undefined, parentId: string | undefined)
@@ -139,6 +166,31 @@ export class SubagentWatch {
   setParentToolCallId(childId: string, toolStartId: string): void {
     this.parentToolCallId.set(childId, toolStartId);
     this.watched.add(childId);
+    // Every buffered session, not just `childId`: a grandchild's target is its
+    // nearest ancestor's, so learning one can settle several at once.
+    for (const [sessionId, buffered] of [...this.pending]) {
+      const parentId = this.nestingIdFor(sessionId);
+      if (!parentId) { continue; }
+      this.pending.delete(sessionId);
+      for (const event of buffered) { this.events.push({ ...event, parentId }); }
+    }
+  }
+
+  /**
+   * The tool-start id this session's events nest under — its own, or the
+   * nearest ancestor's, since every watched descendant nests under the same
+   * top-level `task` card. `undefined` while no ancestor knows one yet, which
+   * is the whole first half of a subagent's life. The hop cap is the same
+   * malformed-cycle guard `agent-session.ts`'s `resolveParent` uses.
+   */
+  private nestingIdFor(sessionId: string): string | undefined {
+    let current: string | undefined = sessionId;
+    for (let hops = 0; current !== undefined && hops < 8; hops++) {
+      const known = this.parentToolCallId.get(current);
+      if (known) { return known; }
+      current = this.parentSession.get(current);
+    }
+    return undefined;
   }
 
   setPermissionHandler(
@@ -157,8 +209,13 @@ export class SubagentWatch {
   private async run(baseUrl: string, token: string, signal: AbortSignal): Promise<void> {
     const connect = this.opts.connect ?? connectSdk;
     try {
-      this.sdk = await connect(baseUrl, token, signal);
-      const { stream } = await this.sdk.globalEvent();
+      const sdk = await connect(baseUrl, token, signal);
+      // An older attempt's `connect` resolving late would otherwise install a
+      // client pointed at the port that already failed, over the one `open()`
+      // just replaced it with.
+      if (this.closed || signal.aborted) { return; }
+      this.sdk = sdk;
+      const { stream } = await sdk.globalEvent();
       for await (const envelope of stream) {
         if (this.closed) { return; }
         if (envelope.payload) { this.handle(envelope.payload as RawEvent); }
@@ -174,11 +231,13 @@ export class SubagentWatch {
     if (event.type === 'session.created') {
       const props = event.properties as Extract<RawEvent, { type: 'session.created' }>['properties'];
       const { sessionID, info } = props;
-      if (info.parentID && this.watched.has(info.parentID) && !this.parentToolCallId.has(sessionID)) {
-        // A grandchild inherits its parent's own nesting target — every
-        // watched descendant nests under the same top-level `task` card.
-        const parentToolStart = this.parentToolCallId.get(info.parentID);
-        if (parentToolStart) { this.setParentToolCallId(sessionID, parentToolStart); }
+      // Parentage alone enrolls a session: "is this one of ours" is a
+      // different question from "where do its events nest", and the second
+      // has no answer until the parent's `task` call completes. Gating
+      // enrollment on the second is what made every live event unreachable.
+      if (info.parentID && this.watched.has(info.parentID) && !this.watched.has(sessionID)) {
+        this.watched.add(sessionID);
+        this.parentSession.set(sessionID, info.parentID);
       }
       return;
     }
@@ -195,19 +254,31 @@ export class SubagentWatch {
 
   private handlePart(sessionId: string, part: RawPart): void {
     if (part.type !== 'tool') { return; }
+    // The root is in `watched` too (see `setRootSessionId`), but its own tool
+    // calls already reach the transcript down ACP's normal path — republishing
+    // them here would double every card the user sees.
+    if (sessionId === this.rootSessionId || !this.watched.has(sessionId)) { return; }
     const toolPart = part as RawToolPart;
-    const parentId = this.parentToolCallId.get(sessionId);
-    if (!parentId) { return; }
     const tool = subagentToolCall(toolPart);
-    if (toolPart.state.status === 'pending') {
-      this.events.push({ kind: 'tool-start', id: toolPart.callID, tool, parentId });
-    } else if (toolPart.state.status === 'running') {
-      this.events.push({ kind: 'tool-update', id: toolPart.callID, tool, parentId });
+    // Namespaced like the permission ids below: `callID` is only unique within
+    // its own session, and an unnamespaced collision with the root's own tool
+    // call would fold two unrelated cards into one.
+    const id = `${sessionId}:${toolPart.callID}`;
+    const event: NestableToolEvent = toolPart.state.status === 'pending'
+      ? { kind: 'tool-start', id, tool }
+      : toolPart.state.status === 'running'
+        ? { kind: 'tool-update', id, tool }
+        : {
+            kind: 'tool-end', id, ok: toolPart.state.status === 'completed',
+            output: subagentToolOutput(toolPart), tool,
+          };
+    const parentId = this.nestingIdFor(sessionId);
+    if (parentId) {
+      this.events.push({ ...event, parentId });
     } else {
-      this.events.push({
-        kind: 'tool-end', id: toolPart.callID, ok: toolPart.state.status === 'completed',
-        output: subagentToolOutput(toolPart), tool, parentId,
-      });
+      const buffered = this.pending.get(sessionId) ?? [];
+      buffered.push(event);
+      this.pending.set(sessionId, buffered);
     }
   }
 
@@ -215,10 +286,19 @@ export class SubagentWatch {
     id: string; sessionID: string; permission: string; metadata: Record<string, unknown>;
     tool?: { messageID: string; callID: string };
   }): void {
-    const parentId = this.parentToolCallId.get(properties.sessionID);
-    if (!parentId || !this.permissionHandler) { return; }
+    // Same root exclusion as `handlePart`: the root's own asks already travel
+    // ACP's `session/request_permission` path, and relaying them here too
+    // would raise a second card nothing can ever answer.
+    if (properties.sessionID === this.rootSessionId || !this.watched.has(properties.sessionID)) { return; }
+    if (!this.permissionHandler) { return; }
     const namespacedId = `${properties.sessionID}:${properties.id}`;
     const tool: ToolCall = { kind: 'other', label: properties.permission, raw: properties.metadata };
+    // Never buffered, unlike `handlePart`: a child blocked on an unanswered
+    // permission never reaches the `task` completion that would reveal where
+    // to nest it, so waiting for a nesting target is a deadlock. An ask that
+    // fires before completion renders top-level for its own lifetime; the
+    // child's other events still nest correctly once completion resolves.
+    const parentId = this.nestingIdFor(properties.sessionID);
     // Permission events are emitted by the run's own handleAuxiliaryPermission
     // (Task 2), not here — this class only republishes tool activity. The
     // handler callback IS that run's method, which parks the decision and
