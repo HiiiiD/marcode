@@ -317,7 +317,18 @@ export async function activate(context: vscode.ExtensionContext) {
     : undefined;
   if (openCodeProvider) { providers.set('opencode', openCodeProvider); }
   if (enabled.has('fake')) { providers.set('fake', new FakeProvider(
-    (text) => (text.includes('rm')
+    (text) => (text.includes('permission fixture')
+      ? [{
+          kind: 'permission', id: `p-${Date.now()}`,
+          tool: {
+            kind: 'other', label: 'Read',
+            raw: {
+              filepath: '/fake/workspace/src/example.ts', parentDir: '/fake/workspace/src',
+              encoding: 'utf8', maxBytes: 4096, followSymlinks: false,
+            },
+          },
+        }]
+      : text.includes('rm')
       ? [{
           kind: 'permission', id: `p-${Date.now()}`,
           tool: { kind: 'command', label: 'Bash', command: text },
