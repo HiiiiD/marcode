@@ -14,7 +14,7 @@ import type { ModelInfo, PermissionMode } from "../../protocol/messages";
 import type { PaneState } from "../reducer";
 import { useStore } from "../store";
 import { EffortSlider } from "./effort-slider";
-import { MODE_OF, modesFor } from "./permission-modes";
+import { MODE_OF, modeRowsForProvider } from "./permission-modes";
 
 /**
  * Permission mode and effort in one control. They were two triggers side by
@@ -36,8 +36,8 @@ export function ModeMenu({
 }) {
   const { post, state } = useStore();
   const provider = state.catalog.find((p) => p.id === pane.summary.providerId);
-  const rows = modesFor(provider?.permissionModes);
-  const mode = MODE_OF(pane.summary.permissionMode);
+  const rows = modeRowsForProvider(pane.summary.providerId, provider?.permissionModes);
+  const mode = rows.find((row) => row.value === pane.summary.permissionMode) ?? MODE_OF(pane.summary.permissionMode);
   const bypassing = pane.summary.permissionMode === "bypass";
   /**
    * The Claude provider can only honor 'bypass' at query construction —

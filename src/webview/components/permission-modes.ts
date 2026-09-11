@@ -81,3 +81,15 @@ export function modesFor(declared: PermissionModeInfo[] | undefined): ModeRow[] 
       return description ? { ...m, description } : m;
     });
 }
+
+/** OpenCode calls its normal permission mode Build, not Ask. */
+export function modeRowsForProvider(
+  providerId: string | undefined,
+  declared: PermissionModeInfo[] | undefined,
+): ModeRow[] {
+  const rows = modesFor(declared);
+  if (providerId !== "opencode") { return rows; }
+  return rows.map((row) => row.value === "default"
+    ? { ...row, label: "Build", description: "OpenCode decides permissions using your opencode.json." }
+    : row);
+}
