@@ -1098,6 +1098,17 @@ export class AgentSession {
         return;
 
       case 'usage':
+        // Per-turn cost trace for usage-drain investigations: the cache
+        // read/creation split is the whole signal (see AgentEvent's usage
+        // doc comment), so it goes to the debug log even though the state
+        // snapshot keeps only the headline numbers.
+        lifecycleDebug('session.turn-usage', {
+          sessionId: this._state.id,
+          inputTokens: event.inputTokens,
+          outputTokens: event.outputTokens,
+          cacheReadTokens: event.cacheReadTokens,
+          cacheCreationTokens: event.cacheCreationTokens,
+        });
         this._state.usage = {
           inputTokens: event.inputTokens, outputTokens: event.outputTokens,
         };
