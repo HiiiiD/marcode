@@ -1405,10 +1405,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/vscode@npm:1.125.0":
-  version: 1.125.0
-  resolution: "@types/vscode@npm:1.125.0"
-  checksum: 10c0/f183f16fd5ae287e1743d06841db78fecdf628ffb36e806eba63b1072a5be40ea310be46bf77ac260269899ddf68fe5c0ecc2a739924e0aa039630f6079fea99
+"@types/vscode@npm:1.136.0":
+  version: 1.136.0
+  resolution: "@types/vscode@npm:1.136.0"
+  checksum: 10c0/be7dedd914cbdb4f95e2847f1f97592a6d06bbe57afa9ff40ac5e848d1e7ac33da5601c9651999e71174273e750da2a0cf8fa88e91420ec1250d5cd5ccb9acdb
   languageName: node
   linkType: hard
 
@@ -4364,7 +4364,7 @@ __metadata:
     "@types/node": "npm:24.x"
     "@types/react": "npm:^19.2.18"
     "@types/react-dom": "npm:^19.2.5"
-    "@types/vscode": "npm:1.125.0"
+    "@types/vscode": "npm:1.136.0"
     "@vscode/test-cli": "npm:^0.0.15"
     "@vscode/test-electron": "npm:^3.0.0"
     class-variance-authority: "npm:^0.7.1"
