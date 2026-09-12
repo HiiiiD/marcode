@@ -264,12 +264,21 @@ export function mapEvent(msg: unknown): AgentEvent[] {
 
   if (type === 'result') {
     const out: AgentEvent[] = [];
-    const usage = (msg as { usage?: { input_tokens?: number; output_tokens?: number } }).usage;
+    const usage = (msg as {
+      usage?: {
+        input_tokens?: number; output_tokens?: number;
+        cache_read_input_tokens?: number; cache_creation_input_tokens?: number;
+      };
+    }).usage;
     if (usage) {
       out.push({
         kind: 'usage',
         inputTokens: usage.input_tokens ?? 0,
         outputTokens: usage.output_tokens ?? 0,
+        ...(usage.cache_read_input_tokens !== undefined
+          ? { cacheReadTokens: usage.cache_read_input_tokens } : {}),
+        ...(usage.cache_creation_input_tokens !== undefined
+          ? { cacheCreationTokens: usage.cache_creation_input_tokens } : {}),
       });
     }
     const subtype = (msg as { subtype?: string }).subtype;

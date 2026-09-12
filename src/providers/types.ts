@@ -282,7 +282,14 @@ export type AgentEvent =
   | { kind: 'question'; id: string; questions: QuestionSpec[]; blocking: boolean; parentId?: string }
   | { kind: 'request-cancelled'; id: string }
   | { kind: 'turn-end'; reason: 'done' | 'interrupted' | 'error'; error?: string }
-  | { kind: 'usage'; inputTokens: number; outputTokens: number }
+  // Cache fields are Claude-only diagnostics: cacheReadTokens is billed ~0.1x,
+  // cacheCreationTokens ~1.25x — the split is what tells a "why is usage
+  // draining" investigation whether turns land warm or cold. Absent when the
+  // backend does not report them.
+  | {
+    kind: 'usage'; inputTokens: number; outputTokens: number;
+    cacheReadTokens?: number; cacheCreationTokens?: number;
+  }
   /**
    * The provider believes its plan usage has moved and a pull is due.
    *
