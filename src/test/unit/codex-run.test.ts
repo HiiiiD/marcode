@@ -479,6 +479,35 @@ suite('CodexRun', () => {
     assert.strictEqual('effort' in start.params, false);
   });
 
+  test('a systemPrompt override is sent as base_instructions on thread/start', async () => {
+    const { server, sent } = stub();
+    new CodexRun(server, {
+      cwd: '/repo', permissionMode: 'default', sessionId: 'test-session', systemPrompt: 'Be terse.',
+    }).send('hi');
+    await tick();
+    const start = sent().find((f) => f.method === 'thread/start');
+    assert.strictEqual(start.params.base_instructions, 'Be terse.');
+  });
+
+  test('a systemPrompt override is also sent as base_instructions on thread/resume', async () => {
+    const { server, sent } = stub();
+    new CodexRun(server, {
+      cwd: '/repo', permissionMode: 'default', resumeToken: 'th_old', sessionId: 'test-session',
+      systemPrompt: 'Be terse.',
+    }).send('hi');
+    await tick();
+    const resume = sent().find((f) => f.method === 'thread/resume');
+    assert.strictEqual(resume.params.base_instructions, 'Be terse.');
+  });
+
+  test('no systemPrompt override means no base_instructions key at all', async () => {
+    const { server, sent } = stub();
+    new CodexRun(server, { cwd: '/repo', permissionMode: 'default', sessionId: 'test-session' }).send('hi');
+    await tick();
+    const start = sent().find((f) => f.method === 'thread/start');
+    assert.strictEqual('base_instructions' in start.params, false);
+  });
+
   test('usageWindows sends unit params and reads the nested snapshot', async () => {
     // Two bugs in one call, both invisible to a name-only check: `{ cwd }`
     // is a hard protocol error against a `params: undefined` request, and

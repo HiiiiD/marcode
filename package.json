@@ -346,6 +346,40 @@
           "scope": "window",
           "markdownDescription": "Extra named instances of an existing provider kind — e.g. a second Claude account, or an OpenCode instance pointed at a different config/provider. Non-secret only; secrets stay in OS env vars referenced by `envMap`. Takes effect after a window reload."
         },
+        "marcode.systemPrompts": {
+          "type": "object",
+          "additionalProperties": {
+            "oneOf": [
+              {
+                "type": "string",
+                "description": "Replaces the provider's own default system prompt outright."
+              },
+              {
+                "type": "object",
+                "required": [
+                  "preset"
+                ],
+                "properties": {
+                  "preset": {
+                    "type": "string",
+                    "enum": [
+                      "claude_code"
+                    ],
+                    "description": "Claude only: keep Claude Code's own default system prompt."
+                  },
+                  "append": {
+                    "type": "string",
+                    "description": "Extra instructions appended after the preset prompt."
+                  }
+                },
+                "additionalProperties": false
+              }
+            ]
+          },
+          "default": {},
+          "scope": "window",
+          "markdownDescription": "Custom system prompt per provider or provider instance, keyed by id (`claude`, `codex`, or an id from `marcode.providerInstances`). A plain string replaces the provider's default prompt outright. Claude also accepts `{\"preset\": \"claude_code\"}` (optionally with `append`) to keep Claude Code's own default prompt instead of writing one from scratch. OpenCode has no equivalent wire-level hook and is not a valid key here. Takes effect after a window reload."
+        },
         "marcode.review.fileCap": {
           "type": "number",
           "default": 500,

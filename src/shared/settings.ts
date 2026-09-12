@@ -18,6 +18,12 @@ export const ENABLED_PROVIDERS_SETTING = 'marcode.enabledProviders';
  */
 export const PROVIDER_INSTANCES_SETTING = 'marcode.providerInstances';
 
+/**
+ * Per-provider custom system prompts, keyed by provider/instance id. See
+ * `system-prompts.ts` for the shape each value takes and its validation.
+ */
+export const SYSTEM_PROMPTS_SETTING = 'marcode.systemPrompts';
+
 /** The provider ids that setting accepts, and the ones enabled by default. */
 export const KNOWN_PROVIDER_IDS = ['claude', 'codex', 'opencode', 'fake'] as const;
 

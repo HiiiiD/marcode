@@ -29,10 +29,13 @@ import { OpenCodeProvider } from './providers/opencode/opencode-provider';
 import type { DiffBase, SessionId } from './protocol/messages';
 import {
   DEFAULT_PROVIDER_IDS, ENABLED_PROVIDERS_SETTING, KNOWN_PROVIDER_IDS, PROVIDER_INSTANCES_SETTING,
+  SYSTEM_PROMPTS_SETTING,
 } from './shared/settings';
 import {
   claudeLoginCommand, codexLoginCommand, computeLoginKind, resolveEnvMap, validateProviderInstances,
 } from './shared/provider-instances';
+import type { ProviderInstanceKind } from './shared/provider-instances';
+import { validateSystemPrompts } from './shared/system-prompts';
 import { setLifecycleDebug } from './shared/lifecycle-debug';
 import type { AgentProvider, SelfControlMcpConfig, UsageMirror } from './providers/types';
 
@@ -312,12 +315,39 @@ export async function activate(context: vscode.ExtensionContext) {
     console.warn('[mar-code] self-control MCP server failed to start; spawn_session will be unavailable', err);
   }
 
-  if (enabled.has('claude')) { providers.set('claude', new ClaudeProvider(undefined, selfControlConfig)); }
+  // Extra named instances of an existing kind — additive to `enabled` above.
+  // See docs/superpowers/specs/2026-08-31-provider-instances-design.md.
+  // Validated ahead of every provider construction below (base and instance
+  // alike) because `marcode.systemPrompts` needs every id's kind up front —
+  // an id it doesn't recognize, or an opencode id, is warned about once here
+  // rather than re-derived per construction site.
+  const { valid: instanceConfigs, warnings: instanceWarnings } = validateProviderInstances(
+    vscode.workspace.getConfiguration().get<unknown>(PROVIDER_INSTANCES_SETTING),
+    KNOWN_PROVIDER_IDS,
+  );
+  for (const warning of instanceWarnings) {
+    void vscode.window.showWarningMessage(warning);
+  }
+  const kindOf: Record<string, ProviderInstanceKind> = { claude: 'claude', codex: 'codex', opencode: 'opencode' };
+  for (const cfg of instanceConfigs) { kindOf[cfg.id] = cfg.kind; }
+  const { prompts: systemPrompts, warnings: systemPromptWarnings } = validateSystemPrompts(
+    vscode.workspace.getConfiguration().get<unknown>(SYSTEM_PROMPTS_SETTING),
+    kindOf,
+  );
+  for (const warning of systemPromptWarnings) {
+    void vscode.window.showWarningMessage(warning);
+  }
+
+  if (enabled.has('claude')) {
+    providers.set('claude', new ClaudeProvider(undefined, selfControlConfig, {
+      systemPrompt: systemPrompts.claude,
+    }));
+  }
   // Constructed only when enabled — it owns a CLI subprocess, and building
   // one nobody asked for would spawn a backend to answer a question the panel
   // never puts to it. `undefined` is why the path listener below is guarded.
   const codexProvider = enabled.has('codex')
-    ? new CodexProvider({ binPath: codexBinPath(), selfControlMcp: selfControlConfig })
+    ? new CodexProvider({ binPath: codexBinPath(), selfControlMcp: selfControlConfig, systemPrompt: systemPrompts.codex as string | undefined })
     : undefined;
   if (codexProvider) { providers.set('codex', codexProvider); }
   // Constructed only when enabled — it owns a CLI subprocess, and building
@@ -379,15 +409,6 @@ export async function activate(context: vscode.ExtensionContext) {
     loginRecipes.set('codex', { terminalName: 'Codex login', command: 'codex login', env: process.env });
   }
 
-  // Extra named instances of an existing kind — additive to `enabled` above.
-  // See docs/superpowers/specs/2026-08-31-provider-instances-design.md.
-  const { valid: instanceConfigs, warnings: instanceWarnings } = validateProviderInstances(
-    vscode.workspace.getConfiguration().get<unknown>(PROVIDER_INSTANCES_SETTING),
-    KNOWN_PROVIDER_IDS,
-  );
-  for (const warning of instanceWarnings) {
-    void vscode.window.showWarningMessage(warning);
-  }
   for (const cfg of instanceConfigs) {
     const resolvedEnv = resolveEnvMap(cfg.envMap, process.env);
     // resolveEnvMap silently omits any subprocess var whose named OS var is
@@ -406,7 +427,7 @@ export async function activate(context: vscode.ExtensionContext) {
     if (cfg.kind === 'claude') {
       providers.set(cfg.id, new ClaudeProvider(undefined, selfControlConfig, {
         id: cfg.id, displayName: cfg.displayName, env: mergedEnv,
-        pathToClaudeCodeExecutable: cfg.binPath, loginKind,
+        pathToClaudeCodeExecutable: cfg.binPath, loginKind, systemPrompt: systemPrompts[cfg.id],
       }));
       if (loginKind === 'oauth') {
         loginRecipes.set(cfg.id, {
@@ -419,6 +440,7 @@ export async function activate(context: vscode.ExtensionContext) {
       providers.set(cfg.id, new CodexProvider({
         id: cfg.id, displayName: cfg.displayName, binPath: cfg.binPath,
         env: mergedEnv, selfControlMcp: selfControlConfig, loginKind,
+        systemPrompt: systemPrompts[cfg.id] as string | undefined,
       }));
       loginRecipes.set(cfg.id, {
         terminalName: `${cfg.displayName} login`,

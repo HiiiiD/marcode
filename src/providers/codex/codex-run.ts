@@ -51,6 +51,8 @@ export interface CodexConnection {
 export interface CodexRunOptions extends StartOptions {
   /** The loopback MCP server this thread should connect to, if any. */
   selfControlMcp?: SelfControlMcpConfig;
+  /** Sent as `base_instructions` on `thread/start`/`thread/resume`, if set. */
+  systemPrompt?: string;
 }
 
 /** Same async-iterable pattern as `FakeProvider`'s — the house idiom for an `AgentRun.events`. */
@@ -437,6 +439,10 @@ export class CodexRun implements AgentRun {
       ...settings,
       cwd: this.opts.cwd,
       model: this.model,
+      // Genuine wire field on both `ThreadStartParams` and `ThreadResumeParams`
+      // (codex-rs `app-server-protocol`), verified against source rather than
+      // guessed — unlike the OpenCode ACP path, which has no equivalent.
+      ...(this.opts.systemPrompt ? { base_instructions: this.opts.systemPrompt } : {}),
       // Codex's own app-server protocol has no `mcpServers` field on
       // `ThreadStartParams`/`ThreadResumeParams` — only this raw config
       // override map, matching the same dotted-path shape as `codex mcp add`

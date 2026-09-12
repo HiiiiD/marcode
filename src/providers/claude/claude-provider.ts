@@ -298,6 +298,8 @@ export class ClaudeProvider implements AgentProvider {
   private readonly execVersion?: ExecVersionFn;
   /** Test seam: overrides npmLatestVersion's default fetch call. */
   private readonly fetchLatest?: FetchFn;
+  /** Instance system-prompt override — a literal string, or the CLI's own preset. */
+  private readonly systemPrompt?: string | { preset: 'claude_code'; append?: string };
 
   constructor(
     private readonly loadQueryFn: () => Promise<QueryFn> = loadQuery,
@@ -310,6 +312,7 @@ export class ClaudeProvider implements AgentProvider {
       loginKind?: 'oauth' | 'none';
       execVersion?: ExecVersionFn;
       fetchLatest?: FetchFn;
+      systemPrompt?: string | { preset: 'claude_code'; append?: string };
     },
   ) {
     this.id = instance?.id ?? 'claude';
@@ -319,6 +322,7 @@ export class ClaudeProvider implements AgentProvider {
     this.loginKind = instance?.loginKind;
     this.execVersion = instance?.execVersion;
     this.fetchLatest = instance?.fetchLatest;
+    this.systemPrompt = instance?.systemPrompt;
   }
 
   listModels(): ModelInfo[] { return this.models; }
@@ -578,6 +582,11 @@ export class ClaudeProvider implements AgentProvider {
         // Safe on models without adaptive thinking — verified on Haiku, which
         // takes the same option and returns a summary.
         thinking: { type: 'adaptive', display: 'summarized' },
+        ...(this.systemPrompt !== undefined ? {
+          systemPrompt: typeof this.systemPrompt === 'string'
+            ? this.systemPrompt
+            : { type: 'preset' as const, ...this.systemPrompt },
+        } : {}),
         ...(this.env ? { env: this.env } : {}),
         ...(this.pathToClaudeCodeExecutable ? { pathToClaudeCodeExecutable: this.pathToClaudeCodeExecutable } : {}),
         ...(effort !== undefined ? { effort: effort as SdkEffortLevel } : {}),
