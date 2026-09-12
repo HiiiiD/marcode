@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Clock } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 /** Minutes-only cadence, matching native: `${m}m` under an hour, `${h}h ${m}m` under a day. */
 function idleLabel(ms: number): string {
@@ -23,6 +24,11 @@ function sentenceFor(state: CacheState): string {
   return state.kind === 'warm'
     ? `Prompt cache warm, about ${state.minutesLeft} min left.`
     : `Prompt cache likely expired (idle ${idleLabel(state.idleMs)}).`;
+}
+
+/** The badge's own visible text — always shown, color carries warm/cold, not presence. */
+function labelFor(state: CacheState): string {
+  return state.kind === 'warm' ? `${state.minutesLeft}m` : idleLabel(state.idleMs);
 }
 
 /**
@@ -57,10 +63,16 @@ export function CacheTimer({ window }: { window?: { anchorAt: number; ttlMs: num
       aria-label={sentence}
       title={sentence}
       data-cache-window={state.kind}
-      className="flex items-center gap-1 text-xs text-muted-foreground data-[cache-window=cold]:opacity-60"
+      // Color is the only signal for warm/cold — the icon and label never
+      // change shape, so a colorblind-unsafe read still has the tooltip's
+      // full sentence as the real answer, same as StatusBadge's dot+text.
+      className={cn(
+        'flex items-center gap-1 text-xs tabular-nums',
+        state.kind === 'warm' ? 'text-foreground' : 'text-muted-foreground',
+      )}
     >
       <Clock className="size-3.5" aria-hidden />
-      {state.kind === 'warm' && <span className="tabular-nums">{state.minutesLeft}m</span>}
+      {labelFor(state)}
     </span>
   );
 }

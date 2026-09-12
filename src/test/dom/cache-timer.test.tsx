@@ -15,9 +15,16 @@ suite('CacheTimer', () => {
     assert.strictEqual(el.getAttribute('title'), 'Prompt cache warm, about 60 min left.');
   });
 
-  test('an expired window drops the minute label but keeps the status', () => {
+  test('an expired window still shows idle time, in a dimmer color than warm', () => {
     render(<CacheTimer window={{ anchorAt: Date.now() - 3_700_000, ttlMs: 3_600_000 }} />);
     const el = screen.getByRole('status', { name: /Prompt cache likely expired/ });
-    assert.strictEqual(el.textContent, '');
+    assert.strictEqual(el.textContent, '1m');
+    assert.strictEqual(el.className.includes('text-muted-foreground'), true);
+  });
+
+  test('a warm window is colored differently from a cold one', () => {
+    render(<CacheTimer window={{ anchorAt: Date.now(), ttlMs: 3_600_000 }} />);
+    const el = screen.getByRole('status', { name: /Prompt cache warm/ });
+    assert.strictEqual(el.className.includes('text-foreground'), true);
   });
 });
