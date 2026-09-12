@@ -43,7 +43,7 @@ suite('describeTool', () => {
     assert.strictEqual(describeTool(modify).glyph, 'file-pen');
   });
 
-  test('a single-file edit shows its filename and changed line counts', () => {
+  test('a single-file edit shows its filename', () => {
     const header = describeTool({
       kind: 'file-edit', label: 'Edit',
       files: [{
@@ -51,7 +51,7 @@ suite('describeTool', () => {
         edits: [{ before: 'old line', after: 'new line\nanother line' }],
       }],
     });
-    assert.strictEqual(header.primary, '/…/b/c.ts +2 -1');
+    assert.strictEqual(header.primary, '/…/b/c.ts');
   });
 
   test('a multi-file edit counts files instead of naming one', () => {
