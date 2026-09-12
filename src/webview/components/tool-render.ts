@@ -7,8 +7,8 @@
 // module only renders the canonical shape it produces. Nothing here branches
 // on a tool's name.
 
-import { safeStringify } from './tool-card-format';
 import type { FileEdit, TodoStatus, ToolCall, ToolOutput } from '../../protocol/messages';
+import { safeStringify } from './tool-card-format';
 
 /** Which lucide glyph the card draws. Resolved to a component in tool-body.tsx. */
 export type ToolGlyph =
@@ -91,21 +91,6 @@ function header(glyph: ToolGlyph, verb: string, primary: string, mono: boolean):
   return { glyph, verb, mono, primary, ...(primary.length > 40 ? { full: primary } : {}) };
 }
 
-function editLineCounts(file: FileEdit): { added: number; removed: number } {
-  let added = 0;
-  let removed = 0;
-  for (const edit of file.edits ?? []) {
-    if (edit.before !== undefined) { removed += edit.before.split('\n').length; }
-    if (edit.after !== undefined) { added += edit.after.split('\n').length; }
-  }
-  for (const line of file.unifiedDiff?.split('\n') ?? []) {
-    if (line.startsWith('+++') || line.startsWith('---')) { continue; }
-    if (line.startsWith('+')) { added++; }
-    if (line.startsWith('-')) { removed++; }
-  }
-  return { added, removed };
-}
-
 export function describeTool(tool: ToolCall): ToolHeader {
   switch (tool.kind) {
     case 'command':
@@ -122,12 +107,7 @@ export function describeTool(tool: ToolCall): ToolHeader {
         ? 'file-plus'
         : 'file-pen';
       let primary = tool.files.length === 1 ? shortPath(tool.files[0].path) : '';
-      if (tool.files.length === 1) {
-        const counts = editLineCounts(tool.files[0]);
-        if (counts.added > 0 || counts.removed > 0) {
-          primary += ` +${counts.added} -${counts.removed}`;
-        }
-      } else if (tool.files.length > 1) {
+      if (tool.files.length > 1) {
         primary = `${tool.files.length} files`;
       }
       return header(glyph, tool.label, primary, true);
