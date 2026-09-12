@@ -26,6 +26,7 @@ class RecordingSink implements SessionSink {
   patch(_id: SessionId, patch: TranscriptPatch) { this.patches.push(patch); }
   status(_id: SessionId, _status: SessionStatus) { /* not asserted here */ }
   mcp(_id: SessionId, _servers: unknown[]) { /* not asserted here */ }
+  cacheWindow(_id: SessionId, _window: unknown) { /* not asserted here */ }
   changed() { /* not asserted here */ }
   invocables(_id: SessionId, _entries: Invocable[]) { /* not asserted here */ }
   usageWindows(_providerId: string, _windows: UsageWindow[] | undefined) { /* not asserted */ }

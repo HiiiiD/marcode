@@ -28,6 +28,7 @@ class RecordingSink implements SessionSink {
   patch(id: SessionId, patch: TranscriptPatch) { this.patches.push({ id, patch }); }
   status(_id: SessionId, status: SessionStatus) { this.statuses.push(status); }
   mcp(_id: SessionId, servers: unknown[]) { this.servers.push(servers); }
+  cacheWindow(_id: SessionId, _window: unknown) { /* not asserted here */ }
   invocables(_id: SessionId, entries: Invocable[]) { this.invocablesLog.push(entries); }
   // This suite is about tool nesting; usage never arrives here, but the sink
   // must still satisfy the interface.

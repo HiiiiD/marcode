@@ -299,6 +299,16 @@ export type AgentEvent =
    * `AgentRun.usageWindows()`.
    */
   | { kind: 'usage-stale' }
+  /**
+   * A prompt-cache write just landed, with the TTL the backend actually used.
+   * Claude-only: read off the raw Anthropic `cache_creation` breakdown on the
+   * assistant message's own `usage` (`ephemeral_1h_input_tokens` /
+   * `ephemeral_5m_input_tokens`), NOT the Agent SDK's summarized `result`
+   * usage, which flattens that split away — see map-events.ts. Carries no
+   * anchor timestamp; the receiving host stamps `Date.now()` on arrival,
+   * matching every other wall-clock field on `AgentSession`.
+   */
+  | { kind: 'cache-window'; ttlMs: number }
   /** Full replacement list, not a delta. Emitted whenever the provider notices a change. */
   | { kind: 'invocables'; entries: Invocable[] }
   /** Full replacement list, not a delta — same snapshot semantics as `invocables`. */

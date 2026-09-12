@@ -273,6 +273,14 @@ export interface SessionSnapshot extends SessionState {
    * outlive a webview reload, because the extension host does.
    */
   pendingAttachments: Attachment[];
+  /**
+   * The prompt cache's live warm/cold state, Claude-only. Live provider
+   * state, not persisted — same reasoning as `mcpServers`: a restored
+   * anchor would describe a cache nobody checked this launch. Absent means
+   * "nothing reported yet", not "cold" — the UI reads a missing field as
+   * unknown, same convention as `contextPercent`.
+   */
+  cacheWindow?: { anchorAt: number; ttlMs: number };
 }
 
 export interface ProviderInfo {
@@ -685,7 +693,15 @@ export type HostToWebview =
        * reason `probing` is — every hand-built `hydrate` fixture predating
        * this field stays valid, and the reducer treats an absent list as
        * empty rather than as "unknown". */
-      favoriteModels?: string[] }
+      favoriteModels?: string[];
+      /**
+       * `marcode.showCacheTimer`. Off by default — see `CacheTimer`'s doc
+       * comment for why. Optional for the same reason `favoriteModels` is:
+       * every hand-built `hydrate` fixture predating this field stays valid,
+       * and the reducer treats an absent value as `false`, matching the
+       * setting's own default rather than inventing a third state.
+       */
+      showCacheTimer?: boolean }
   /**
    * The `marcode.favoriteModels` setting, after `set-favorite-models` wrote
    * it. Broadcast rather than a reply to whichever pane sent it: the New
@@ -721,6 +737,7 @@ export type HostToWebview =
   | { t: 'sessions-changed'; sessions: SessionSummary[] }
   | { t: 'session-invocables'; id: SessionId; entries: Invocable[] }
   | { t: 'session-mcp'; id: SessionId; servers: McpServerStatus[] }
+  | { t: 'session-cache-window'; id: SessionId; window: { anchorAt: number; ttlMs: number } }
   /** Full replacement of the host-owned pending attachment set. */
   | { t: 'session-attachments'; id: SessionId; attachments: Attachment[] }
   /**

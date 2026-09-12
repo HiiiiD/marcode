@@ -44,6 +44,8 @@ loop.
 - One-click reauth from the panel when a Claude or Codex login expires — no need to leave
   the extension to run the CLI's sign-in flow.
 - Context-usage and plan-usage indicators per session and per panel.
+- An optional prompt-cache warm/cold timer badge in the composer (Claude sessions only),
+  off by default — see [Prompt-cache timer](#prompt-cache-timer) under Requirements.
 - A CLAUDE.md/AGENTS.md drift nudge: flags directories where the two have drifted (one
   has real content, the other is missing) and offers a one-click migrate to make
   AGENTS.md the source of truth with CLAUDE.md as a `@AGENTS.md` stub. Scanned paths
@@ -147,6 +149,31 @@ this extension does not manage or prompt for authentication itself, except where
 Which providers this window registers is controlled by `marcode.enabledProviders`
 (default `["claude", "codex", "opencode"]`); a provider left out is not probed and never
 appears in the panel. Changing the setting requires a window reload.
+
+### Prompt-cache timer
+
+Claude's prompt cache is billed at different rates depending on whether a turn lands as a
+cache read (~0.1x) or a cache write (~1.25x, or more for a 1-hour write) — replying within
+the cache's TTL keeps turns cheap, replying after it expires re-writes the whole context at
+the expensive rate. `marcode.showCacheTimer` (default `false`) adds a small clock badge
+next to the context ring in the composer, showing how long the cache should stay warm and
+switching color once it's likely expired.
+
+It's off by default because the number is a client-side estimate, not a confirmed one:
+Marcode reads which TTL a turn's cache write actually used
+(`ephemeral_1h_input_tokens`/`ephemeral_5m_input_tokens` on the assistant message's own
+usage — the Claude Agent SDK's summarized turn-end usage drops this split, so it has to
+come from the raw per-message usage instead) and starts the countdown from when *this
+window* received that message, not from a timestamp the server confirms later. Good enough
+to judge "should I reply now to keep this warm", not precise enough to present as fact to
+everyone by default. Enable it per window in `settings.json`:
+
+```jsonc
+"marcode.showCacheTimer": true
+```
+
+Reload the window after changing it. Claude sessions only — no other backend exposes an
+equivalent signal today.
 
 ### Windows: use OpenCode for OpenAI models
 

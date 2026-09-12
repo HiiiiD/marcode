@@ -75,6 +75,24 @@ suite('MessageRouter', () => {
     assert.deepStrictEqual(hydrate.favoriteModels, ['fake gpt-9']);
   });
 
+  test('hydrate carries showCacheTimer: false when not configured', async () => {
+    await router.handle({ t: 'ready' });
+    const hydrate = sent.find((m) => m.t === 'hydrate') as
+      Extract<HostToWebview, { t: 'hydrate' }>;
+    assert.strictEqual(hydrate.showCacheTimer, false);
+  });
+
+  test('hydrate carries showCacheTimer: true when configured on', async () => {
+    const configured = new MessageRouter(
+      manager, (m) => sent.push(m), '/tmp', undefined, attachments, undefined, 750, undefined,
+      [], undefined, undefined, true,
+    );
+    await configured.handle({ t: 'ready' });
+    const hydrate = sent.find((m) => m.t === 'hydrate') as
+      Extract<HostToWebview, { t: 'hydrate' }>;
+    assert.strictEqual(hydrate.showCacheTimer, true);
+  });
+
   test('set-favorite-models persists via the config host and echoes the new list', async () => {
     const persisted: string[][] = [];
     const r = new MessageRouter(

@@ -22,6 +22,7 @@ import { useMentionMenu } from "../lib/use-mention-menu";
 import { base64Of, urisOf } from "../lib/read-attachment";
 import type { PaneState } from "../reducer";
 import { useStore } from "../store";
+import { CacheTimer } from "./cache-timer";
 import { ContextRing } from "./context-ring";
 import { AttachmentChip, AttachmentChips } from "./attachment-chips";
 import { EditorContextToggle } from "./editor-context-toggle";
@@ -678,6 +679,7 @@ export function Composer({
               The agent is working. This message is sent when the turn ends, or as soon as you stop it.
             </span>
           )}
+          {state.showCacheTimer && <CacheTimer window={pane.cacheWindow} />}
           <ContextRing pane={pane} open={contextOpen} onOpenChange={setContextOpen} />
         </InputGroupAddon>
       </InputGroup>

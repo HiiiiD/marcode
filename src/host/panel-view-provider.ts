@@ -28,6 +28,8 @@ export class PanelViewProvider implements vscode.WebviewViewProvider {
     private readonly favoriteModels?: () => string[],
     private readonly configHost?: ConfigHost,
     private readonly updateNotify?: UpdateNotifyHost,
+    /** `marcode.showCacheTimer`. Static like `enabledProviders` — a change needs a reload. */
+    private readonly showCacheTimer: boolean = false,
   ) {}
 
   post(msg: HostToWebview): void {
@@ -78,6 +80,7 @@ export class PanelViewProvider implements vscode.WebviewViewProvider {
     const router = new MessageRouter(
       this.manager, (m) => this.post(m), this.defaultCwd, this.editor, this.attachments, this.picker,
       undefined, this.fileSearch, this.favoriteModels?.() ?? [], this.configHost, this.updateNotify,
+      this.showCacheTimer,
     );
     view.webview.onDidReceiveMessage(async (raw: WebviewToHost) => {
       try {

@@ -242,6 +242,24 @@ export function mapEvent(msg: unknown): AgentEvent[] {
         });
       }
     }
+    // Raw `BetaCacheCreation`, present only on the assistant message's own
+    // usage — the summarized `result` usage read elsewhere in this file
+    // flattens it away. Whichever ephemeral bucket is non-zero is the TTL
+    // this write actually used.
+    const cacheCreation = (msg as {
+      message?: { usage?: {
+        cache_creation?: {
+          ephemeral_1h_input_tokens?: number; ephemeral_5m_input_tokens?: number;
+        } | null;
+      } };
+    }).message?.usage?.cache_creation;
+    if (cacheCreation) {
+      if ((cacheCreation.ephemeral_1h_input_tokens ?? 0) > 0) {
+        out.push({ kind: 'cache-window', ttlMs: 3_600_000 });
+      } else if ((cacheCreation.ephemeral_5m_input_tokens ?? 0) > 0) {
+        out.push({ kind: 'cache-window', ttlMs: 300_000 });
+      }
+    }
     return out;
   }
 

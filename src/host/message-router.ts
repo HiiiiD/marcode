@@ -153,6 +153,8 @@ export class MessageRouter {
     private favoriteModels: string[] = [],
     private readonly configHost: ConfigHost = NO_CONFIG,
     private readonly updateNotify: UpdateNotifyHost = NO_UPDATE_NOTIFY,
+    /** `marcode.showCacheTimer`, read once at construction — reload to change, like `enabledProviders`. */
+    private readonly showCacheTimer: boolean = false,
   ) {}
 
   /**
@@ -218,6 +220,7 @@ export class MessageRouter {
           usageDisplayNames: this.manager.usageDisplayNames(),
           reviewPollIntervalMs: this.reviewPollIntervalMs,
           favoriteModels: this.favoriteModels,
+          showCacheTimer: this.showCacheTimer,
         });
         this.emit({ t: 'editor-context', ctx: this.editor.current() });
         // Not awaited: hydrate must not wait on a CLI handshake. The catalog

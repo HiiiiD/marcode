@@ -112,6 +112,17 @@ function favoriteModels(): string[] {
   return configured.filter((id): id is string => typeof id === 'string' && id.trim() !== '');
 }
 
+/**
+ * `marcode.showCacheTimer` — off by default. See package.json's description
+ * and CacheTimer's doc comment for why: the badge is a self-computed
+ * approximation (anchored at receipt, not confirmed by a later server read),
+ * and showing it unconditionally would present that approximation as fact to
+ * users who never asked for it.
+ */
+function showCacheTimer(): boolean {
+  return vscode.workspace.getConfiguration('marcode').get<boolean>('showCacheTimer', false);
+}
+
 /** Reads explicit account-usage mirrors without allowing malformed settings into the host. */
 function configuredUsageMirrors(): UsageMirror[] {
   const configured = vscode.workspace.getConfiguration('marcode').get<unknown>('usageMirrors');
@@ -557,6 +568,7 @@ export async function activate(context: vscode.ExtensionContext) {
     favoriteModels,
     configHost,
     updateNotify,
+    showCacheTimer(),
   );
   // The sidebar is the client that wants everything. Registered here rather
   // than inside PanelViewProvider so there is one place that says which

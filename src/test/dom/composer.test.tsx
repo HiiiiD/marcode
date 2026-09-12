@@ -59,6 +59,37 @@ async function settle(): Promise<void> {
 }
 
 suite("Composer", () => {
+  test("no cache window on the pane renders no cache timer", () => {
+    renderWithStore(<Composer pane={pane()} model={NO_EFFORT} models={[]} />);
+    assert.strictEqual(screen.queryByRole("status", { name: /Prompt cache/ }), null);
+  });
+
+  test("marcode.showCacheTimer off hides the badge even with a cache window", () => {
+    renderWithStore(
+      <Composer
+        pane={{ ...pane(), cacheWindow: { anchorAt: Date.now(), ttlMs: 3_600_000 } }}
+        model={NO_EFFORT}
+        models={[]}
+      />,
+    );
+    assert.strictEqual(screen.queryByRole("status", { name: /Prompt cache/ }), null);
+  });
+
+  test("marcode.showCacheTimer on renders the cache timer when the pane has a window", () => {
+    renderWithStore(
+      <Composer
+        pane={{ ...pane(), cacheWindow: { anchorAt: Date.now(), ttlMs: 3_600_000 } }}
+        model={NO_EFFORT}
+        models={[]}
+      />,
+    );
+    sendFromHost({
+      t: "hydrate", sessions: [], layout: { orientation: "vertical", panes: [] },
+      snapshots: [], catalog: [], unavailable: [], usage: {}, showCacheTimer: true,
+    });
+    screen.getByRole("status", { name: /Prompt cache warm/ });
+  });
+
   test("Enter posts send and clears the textarea", async () => {
     renderWithStore(<Composer pane={pane()} model={NO_EFFORT} models={[]} />);
     const box = screen.getByLabelText("Message") as HTMLTextAreaElement;

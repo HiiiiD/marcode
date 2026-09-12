@@ -143,6 +143,8 @@ class RecordingSink implements SessionSink {
   patch(id: SessionId, patch: TranscriptPatch) { this.patches.push({ id, patch }); }
   status(_id: SessionId, status: SessionStatus) { this.statuses.push(status); }
   mcp(_id: SessionId, servers: unknown[]) { this.servers.push(servers); }
+  cacheWindows: unknown[] = [];
+  cacheWindow(_id: SessionId, window: unknown) { this.cacheWindows.push(window); }
   changed() { this.changes++; }
   invocables(_id: SessionId, entries: Invocable[]) { this.invocablesLog.push(entries); }
   usageWindows(providerId: string, windows: UsageWindow[] | undefined) {
@@ -835,6 +837,49 @@ suite('AgentSession', () => {
     await session.dispose();
   });
 
+  test('a cache-window event reaches the sink and the snapshot, anchored at receipt', async () => {
+    const provider = new FakeProvider(() => [
+      { kind: 'cache-window', ttlMs: 3_600_000 },
+      { kind: 'turn-end', reason: 'done' },
+    ]);
+    const session = new AgentSession(baseState(), provider, store, sink);
+    const before = Date.now();
+    session.send('go');
+    await settle();
+    const after = Date.now();
+
+    assert.strictEqual(sink.cacheWindows.length, 1);
+    const sunk = sink.cacheWindows[0] as { anchorAt: number; ttlMs: number };
+    assert.strictEqual(sunk.ttlMs, 3_600_000);
+    assert.ok(sunk.anchorAt >= before && sunk.anchorAt <= after);
+
+    const snap = await session.snapshot();
+    assert.deepStrictEqual(snap.cacheWindow, sunk);
+    await session.dispose();
+  });
+
+  test('a later cache-window event replaces the previous one wholesale', async () => {
+    const provider = new FakeProvider(() => [
+      { kind: 'cache-window', ttlMs: 300_000 },
+      { kind: 'cache-window', ttlMs: 3_600_000 },
+      { kind: 'turn-end', reason: 'done' },
+    ]);
+    const session = new AgentSession(baseState(), provider, store, sink);
+    session.send('go');
+    await settle();
+
+    assert.strictEqual(sink.cacheWindows.length, 2);
+    const snap = await session.snapshot();
+    assert.strictEqual(snap.cacheWindow?.ttlMs, 3_600_000);
+    await session.dispose();
+  });
+
+  test('a session with no cache-window event has none in its snapshot', async () => {
+    const { session } = await makeSession();
+    const snap = await session.snapshot();
+    assert.strictEqual(snap.cacheWindow, undefined);
+  });
+
   test('an invocables event is reported to the sink', async () => {
     const { provider, sink } = await makeSession();
 
@@ -1095,7 +1140,7 @@ suite('AgentSession', () => {
       { kind: 'turn-end', reason: 'done' },
     ]);
     const bare: SessionSink = {
-      patch: () => {}, status: () => {}, mcp: () => {}, changed: () => {},
+      patch: () => {}, status: () => {}, mcp: () => {}, cacheWindow: () => {}, changed: () => {},
       invocables: () => {}, usageWindows: () => {},
     };
     const session = new AgentSession(baseState(), provider, store, bare);
