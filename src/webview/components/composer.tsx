@@ -580,7 +580,6 @@ export function Composer({
             </span>
           )}
           <EditorContextToggle pane={pane} />
-          <CacheTimer window={pane.cacheWindow} />
           {/* Permission mode and effort share one trigger: two adjacent
               word-labels spent a third of the row on jargon and still left
               the modes unexplained. See mode-menu.tsx. */}
@@ -680,6 +679,7 @@ export function Composer({
               The agent is working. This message is sent when the turn ends, or as soon as you stop it.
             </span>
           )}
+          <CacheTimer window={pane.cacheWindow} />
           <ContextRing pane={pane} open={contextOpen} onOpenChange={setContextOpen} />
         </InputGroupAddon>
       </InputGroup>
