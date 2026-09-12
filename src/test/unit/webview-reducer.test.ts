@@ -355,6 +355,45 @@ suite('webview reducer', () => {
     assert.strictEqual(after, before);
   });
 
+  test('session-cache-window sets the pane cache window', () => {
+    const state = reduce(hydrated(), {
+      t: 'session-cache-window', id: 's1', window: { anchorAt: 1000, ttlMs: 3_600_000 },
+    });
+    assert.deepStrictEqual(state.byId['s1'].cacheWindow, { anchorAt: 1000, ttlMs: 3_600_000 });
+  });
+
+  test('a later session-cache-window replaces the previous one wholesale', () => {
+    let state = reduce(hydrated(), {
+      t: 'session-cache-window', id: 's1', window: { anchorAt: 1000, ttlMs: 300_000 },
+    });
+    state = reduce(state, {
+      t: 'session-cache-window', id: 's1', window: { anchorAt: 2000, ttlMs: 3_600_000 },
+    });
+    assert.deepStrictEqual(state.byId['s1'].cacheWindow, { anchorAt: 2000, ttlMs: 3_600_000 });
+  });
+
+  test('session-cache-window for an unknown session is ignored', () => {
+    const before = hydrated();
+    const after = reduce(before, {
+      t: 'session-cache-window', id: 'nope', window: { anchorAt: 1000, ttlMs: 300_000 },
+    });
+    assert.strictEqual(after, before);
+  });
+
+  test('a snapshot carries cacheWindow onto the pane', () => {
+    const state = reduce(initialState, {
+      t: 'session-snapshot',
+      session: { ...snapshot('s1'), cacheWindow: { anchorAt: 500, ttlMs: 300_000 } },
+    });
+
+    assert.deepStrictEqual(state.byId['s1'].cacheWindow, { anchorAt: 500, ttlMs: 300_000 });
+  });
+
+  test('a snapshot with no cacheWindow leaves the pane field absent', () => {
+    const state = reduce(initialState, { t: 'session-snapshot', session: snapshot('s1') });
+    assert.strictEqual(state.byId['s1'].cacheWindow, undefined);
+  });
+
   test('a snapshot carries invocables onto the pane', () => {
     const state = reduce(initialState, {
       t: 'session-snapshot',

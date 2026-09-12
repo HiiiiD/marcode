@@ -72,6 +72,7 @@ function describeOutbound(m: HostToWebview): string {
     case 'session-prepend': return 'session-prepend';
     case 'session-status': return 'session-status';
     case 'session-mcp': return 'session-mcp';
+    case 'session-cache-window': return 'session-cache-window';
     case 'session-attachments': return 'session-attachments';
     case 'attachments-rejected': return 'attachments-rejected';
     case 'sessions-changed': return 'sessions-changed';
@@ -115,6 +116,17 @@ suite('protocol', () => {
         servers: [{ name: 'github', state: 'connected', toolCount: 12 }],
       }),
       'session-mcp',
+    );
+  });
+
+  test('session-cache-window is an outbound variant carrying a warm/cold anchor', () => {
+    assert.strictEqual(
+      describeOutbound({
+        t: 'session-cache-window',
+        id: 's1',
+        window: { anchorAt: 1000, ttlMs: 3_600_000 },
+      }),
+      'session-cache-window',
     );
   });
 

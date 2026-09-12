@@ -22,6 +22,7 @@ import { useMentionMenu } from "../lib/use-mention-menu";
 import { base64Of, urisOf } from "../lib/read-attachment";
 import type { PaneState } from "../reducer";
 import { useStore } from "../store";
+import { CacheTimer } from "./cache-timer";
 import { ContextRing } from "./context-ring";
 import { AttachmentChip, AttachmentChips } from "./attachment-chips";
 import { EditorContextToggle } from "./editor-context-toggle";
@@ -579,6 +580,7 @@ export function Composer({
             </span>
           )}
           <EditorContextToggle pane={pane} />
+          <CacheTimer window={pane.cacheWindow} />
           {/* Permission mode and effort share one trigger: two adjacent
               word-labels spent a third of the row on jargon and still left
               the modes unexplained. See mode-menu.tsx. */}

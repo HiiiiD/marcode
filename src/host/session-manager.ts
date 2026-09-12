@@ -1887,6 +1887,13 @@ export class SessionManager implements SessionSink {
     this.emit({ t: 'session-mcp', id, servers });
   }
 
+  cacheWindow(id: SessionId, window: { anchorAt: number; ttlMs: number }): void {
+    // Same visibility gate as mcp(): a background pane's composer renders
+    // nowhere, and a pane made visible later gets it from the snapshot.
+    if (!this.visible.has(id)) { return; }
+    this.emit({ t: 'session-cache-window', id, window });
+  }
+
   pendingAttachments(id: SessionId, pending: Attachment[]): void {
     // Gated on visibility exactly like mcp(): a background session's composer
     // is rendered nowhere, and a pane made visible later is built from the

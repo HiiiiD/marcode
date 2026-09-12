@@ -26,6 +26,13 @@ export interface SessionSink {
   patch(id: SessionId, patch: TranscriptPatch): void;
   status(id: SessionId, status: SessionStatus): void;
   mcp(id: SessionId, servers: McpServerStatus[]): void;
+  /**
+   * A prompt-cache write landed, anchored at receipt. Claude-only, like
+   * `mcp()` — live provider state, not persisted, gated on visibility by the
+   * implementation the same way. `undefined` is never sent; the window simply
+   * stops updating once a session goes idle, same as native's own indicator.
+   */
+  cacheWindow(id: SessionId, window: { anchorAt: number; ttlMs: number }): void;
   changed(): void;
   /**
    * The pending attachment set changed. Separate from `changed()` because
@@ -171,6 +178,7 @@ export class AgentSession {
    * An archived session reports none, because there is no run to ask.
    */
   private mcpServers: McpServerStatus[] = [];
+  private cacheWindow?: { anchorAt: number; ttlMs: number };
   /**
    * How many transcript items this run has appended. Counted here rather
    * than read back from the store so `isEmpty` stays synchronous and needs
@@ -849,6 +857,7 @@ export class AgentSession {
       invocables: this.invocableEntries,
       mcpServers: this.mcpServers,
       pendingAttachments: this.pendingAttachments,
+      cacheWindow: this.cacheWindow,
     };
   }
 
@@ -1117,6 +1126,11 @@ export class AgentSession {
 
       case 'usage-stale':
         void this.refreshUsage();
+        return;
+
+      case 'cache-window':
+        this.cacheWindow = { anchorAt: Date.now(), ttlMs: event.ttlMs };
+        this.sink.cacheWindow(this._state.id, this.cacheWindow);
         return;
 
       case 'mcp-servers':

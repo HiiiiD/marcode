@@ -61,6 +61,43 @@ suite('mapEvent', () => {
     ]);
   });
 
+  test('an assistant message with a 1h cache write emits a cache-window event', () => {
+    const events = mapEvent({
+      type: 'assistant',
+      message: { content: [{ type: 'text', text: 'hi' }],
+        usage: { cache_creation: { ephemeral_1h_input_tokens: 500, ephemeral_5m_input_tokens: 0 } } },
+    } as never);
+    assert.deepStrictEqual(events, [
+      { kind: 'text', delta: 'hi' },
+      { kind: 'cache-window', ttlMs: 3_600_000 },
+    ]);
+  });
+
+  test('an assistant message with a 5m cache write emits a cache-window event', () => {
+    const events = mapEvent({
+      type: 'assistant',
+      message: { content: [],
+        usage: { cache_creation: { ephemeral_1h_input_tokens: 0, ephemeral_5m_input_tokens: 500 } } },
+    } as never);
+    assert.deepStrictEqual(events, [{ kind: 'cache-window', ttlMs: 300_000 }]);
+  });
+
+  test('an assistant message with no cache write emits no cache-window event', () => {
+    const events = mapEvent({
+      type: 'assistant',
+      message: { content: [], usage: { cache_creation: null } },
+    } as never);
+    assert.deepStrictEqual(events, []);
+  });
+
+  test('an assistant message with no usage at all emits no cache-window event', () => {
+    const events = mapEvent({
+      type: 'assistant',
+      message: { content: [] },
+    } as never);
+    assert.deepStrictEqual(events, []);
+  });
+
   test('user tool_result blocks become tool-end events', () => {
     const events = mapEvent({
       type: 'user',

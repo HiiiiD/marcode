@@ -59,6 +59,22 @@ async function settle(): Promise<void> {
 }
 
 suite("Composer", () => {
+  test("no cache window on the pane renders no cache timer", () => {
+    renderWithStore(<Composer pane={pane()} model={NO_EFFORT} models={[]} />);
+    assert.strictEqual(screen.queryByRole("status", { name: /Prompt cache/ }), null);
+  });
+
+  test("a cache window on the pane renders the cache timer", () => {
+    renderWithStore(
+      <Composer
+        pane={{ ...pane(), cacheWindow: { anchorAt: Date.now(), ttlMs: 3_600_000 } }}
+        model={NO_EFFORT}
+        models={[]}
+      />,
+    );
+    screen.getByRole("status", { name: /Prompt cache warm/ });
+  });
+
   test("Enter posts send and clears the textarea", async () => {
     renderWithStore(<Composer pane={pane()} model={NO_EFFORT} models={[]} />);
     const box = screen.getByLabelText("Message") as HTMLTextAreaElement;

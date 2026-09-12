@@ -17,6 +17,8 @@ export interface PaneState {
   /** The cwd's catalog. Absent until the host has one; see the spec's States. */
   invocables?: Invocable[];
   mcpServers: McpServerStatus[];
+  /** The prompt cache's live warm/cold state, Claude-only. Absent = unknown. */
+  cacheWindow?: { anchorAt: number; ttlMs: number };
   /** Composed but not sent. Host state mirrored for this pane. */
   attachments: Attachment[];
   pendingQuestions: QuestionRequest[];
@@ -200,6 +202,7 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
           summary: s, items: s.items, hasMore: s.hasMore, pending: s.pending,
           invocables: s.invocables,
           mcpServers: s.mcpServers ?? [],
+          cacheWindow: s.cacheWindow,
           attachments: s.pendingAttachments ?? [],
           pendingQuestions: s.pendingQuestions,
         };
@@ -361,6 +364,7 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
             summary: s, items: s.items, hasMore: s.hasMore, pending: s.pending,
             invocables: s.invocables,
             mcpServers: s.mcpServers ?? [],
+            cacheWindow: s.cacheWindow,
             attachments: s.pendingAttachments ?? [],
             pendingQuestions: s.pendingQuestions,
           },
@@ -472,6 +476,15 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
       return {
         ...state,
         byId: { ...state.byId, [msg.id]: { ...pane, mcpServers: msg.servers } },
+      };
+    }
+
+    case 'session-cache-window': {
+      const pane = state.byId[msg.id];
+      if (!pane) { return state; }
+      return {
+        ...state,
+        byId: { ...state.byId, [msg.id]: { ...pane, cacheWindow: msg.window } },
       };
     }
 
