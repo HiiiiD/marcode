@@ -1430,6 +1430,49 @@ suite('ClaudeProvider instance overrides', () => {
     const provider = new ClaudeProvider(fakeLoadQuery().load as never, undefined, { loginKind: 'none' });
     assert.strictEqual(provider.loginKind, 'none');
   });
+
+  test('a string systemPrompt override passes through to Options verbatim', async () => {
+    let capturedOptions: Record<string, unknown> | undefined;
+    const fake = fakeLoadQuery({
+      onQuery: (options) => { capturedOptions = options as Record<string, unknown>; },
+    });
+    const provider = new ClaudeProvider(fake.load as never, undefined, { systemPrompt: 'Be terse.' });
+    const run = provider.start({ cwd: '/repo', permissionMode: 'default', sessionId: 'test-session' });
+    run.send('hi');
+    await flushMicrotasks();
+    assert.strictEqual(capturedOptions?.systemPrompt, 'Be terse.');
+    await run.dispose();
+  });
+
+  test('a claude_code preset override becomes the SDK preset shape', async () => {
+    let capturedOptions: Record<string, unknown> | undefined;
+    const fake = fakeLoadQuery({
+      onQuery: (options) => { capturedOptions = options as Record<string, unknown>; },
+    });
+    const provider = new ClaudeProvider(fake.load as never, undefined, {
+      systemPrompt: { preset: 'claude_code', append: 'Always run yarn lint first.' },
+    });
+    const run = provider.start({ cwd: '/repo', permissionMode: 'default', sessionId: 'test-session' });
+    run.send('hi');
+    await flushMicrotasks();
+    assert.deepStrictEqual(capturedOptions?.systemPrompt, {
+      type: 'preset', preset: 'claude_code', append: 'Always run yarn lint first.',
+    });
+    await run.dispose();
+  });
+
+  test('no systemPrompt override means no systemPrompt key at all', async () => {
+    let capturedOptions: Record<string, unknown> | undefined;
+    const fake = fakeLoadQuery({
+      onQuery: (options) => { capturedOptions = options as Record<string, unknown>; },
+    });
+    const provider = new ClaudeProvider(fake.load as never);
+    const run = provider.start({ cwd: '/repo', permissionMode: 'default', sessionId: 'test-session' });
+    run.send('hi');
+    await flushMicrotasks();
+    assert.strictEqual('systemPrompt' in (capturedOptions ?? {}), false);
+    await run.dispose();
+  });
 });
 
 suite('checkForUpdate', () => {

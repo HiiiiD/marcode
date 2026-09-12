@@ -236,6 +236,8 @@ export class CodexProvider implements AgentProvider {
     loginKind?: 'oauth' | 'none';
     execVersion?: ExecVersionFn;
     fetchLatest?: FetchFn;
+    /** Sent as `base_instructions` on `thread/start`/`thread/resume`, if set. */
+    systemPrompt?: string;
   } = {}) {
     this.id = opts.id ?? 'codex';
     this.displayName = opts.displayName ?? 'Codex';
@@ -452,7 +454,9 @@ export class CodexProvider implements AgentProvider {
     });
     const view = new ThreadView(() => this.connection());
     this.views.add(view);
-    return new CodexRun(view, { ...opts, selfControlMcp: this.opts.selfControlMcp }, () => {
+    return new CodexRun(view, {
+      ...opts, selfControlMcp: this.opts.selfControlMcp, systemPrompt: this.opts.systemPrompt,
+    }, () => {
       this.views.delete(view);
       if (this.views.size === 0) { this.scheduleTeardown(); }
     });

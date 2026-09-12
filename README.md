@@ -221,6 +221,28 @@ using a matching model finishes; it does not make Codex run the turn or transfer
 to OpenCode. Use a different `usageProviderId` for every mirror, and only use this when both
 backends represent the same plan/account.
 
+### Custom system prompts
+
+`marcode.systemPrompts` overrides the system prompt per provider or provider instance,
+keyed by id (`claude`, `codex`, or an id from `marcode.providerInstances`):
+
+```jsonc
+"marcode.systemPrompts": {
+  "claude": "You are a terse pair programmer. Never explain what you didn't change.",
+  "claude-work": { "preset": "claude_code", "append": "Always run yarn lint before committing." },
+  "codex": "Prefer editing existing files over creating new ones."
+}
+```
+
+A plain string replaces the provider's own default prompt outright. Claude also accepts
+`{"preset": "claude_code"}` (optionally with `append`) to keep Claude Code's own default
+prompt instead of writing one from scratch — Codex has no equivalent preset, only the
+plain-string form. Reload the window after changing the setting.
+
+OpenCode is not a valid key here: neither its ACP `session/new` call nor its system-prompt
+assembly exposes a per-session override, so there is nothing for Marcode to set. Use
+OpenCode's own `opencode.json`/agent files for that backend instead.
+
 ### Provider behavior and quirks
 
 - OpenCode's **default** mode is its build mode. Its own `opencode.json` decides which tool
