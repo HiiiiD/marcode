@@ -134,6 +134,12 @@ export interface ClientState {
    * same list.
    */
   favoriteModels: string[];
+  /**
+   * `marcode.showCacheTimer`. Off by default — the badge stays out of the
+   * composer entirely rather than rendering a muted/hidden state, matching
+   * how `enabledProviders` removes a backend rather than graying it out.
+   */
+  showCacheTimer: boolean;
 }
 
 export const initialState: ClientState = {
@@ -158,6 +164,7 @@ export const initialState: ClientState = {
   fileSearchBySession: {},
   agentsMdNudgeHits: [],
   favoriteModels: [],
+  showCacheTimer: false,
 };
 
 /**
@@ -255,6 +262,7 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
         // forward" — same posture as `probing`: a host that predates this
         // field (or a hand-built fixture) has not said otherwise.
         favoriteModels: msg.favoriteModels ?? [],
+        showCacheTimer: msg.showCacheTimer ?? false,
       };
     }
 

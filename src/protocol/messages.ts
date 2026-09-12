@@ -693,7 +693,15 @@ export type HostToWebview =
        * reason `probing` is — every hand-built `hydrate` fixture predating
        * this field stays valid, and the reducer treats an absent list as
        * empty rather than as "unknown". */
-      favoriteModels?: string[] }
+      favoriteModels?: string[];
+      /**
+       * `marcode.showCacheTimer`. Off by default — see `CacheTimer`'s doc
+       * comment for why. Optional for the same reason `favoriteModels` is:
+       * every hand-built `hydrate` fixture predating this field stays valid,
+       * and the reducer treats an absent value as `false`, matching the
+       * setting's own default rather than inventing a third state.
+       */
+      showCacheTimer?: boolean }
   /**
    * The `marcode.favoriteModels` setting, after `set-favorite-models` wrote
    * it. Broadcast rather than a reply to whichever pane sent it: the New

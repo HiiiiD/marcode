@@ -506,6 +506,20 @@ suite('webview reducer', () => {
     assert.deepStrictEqual(withoutList.favoriteModels, []);
   });
 
+  test('hydrate seeds showCacheTimer, defaulting to false when the host omits it', () => {
+    const on = reduce(initialState, {
+      t: 'hydrate', sessions: [], layout: { orientation: 'vertical', panes: [] },
+      snapshots: [], catalog: [], unavailable: [], usage: {}, showCacheTimer: true,
+    });
+    assert.strictEqual(on.showCacheTimer, true);
+
+    const off = reduce(initialState, {
+      t: 'hydrate', sessions: [], layout: { orientation: 'vertical', panes: [] },
+      snapshots: [], catalog: [], unavailable: [], usage: {},
+    });
+    assert.strictEqual(off.showCacheTimer, false);
+  });
+
   test('favorite-models replaces the list wholesale', () => {
     const seeded = reduce(initialState, {
       t: 'hydrate', sessions: [], layout: { orientation: 'vertical', panes: [] },

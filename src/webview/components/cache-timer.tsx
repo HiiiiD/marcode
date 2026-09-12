@@ -32,6 +32,14 @@ function labelFor(state: CacheState): string {
 }
 
 /**
+ * Gated behind `marcode.showCacheTimer` (off by default) in composer.tsx —
+ * not here, so this component stays testable on its own. Off by default
+ * because the countdown is a client-side approximation: `anchorAt` is when
+ * the host received the cache-write signal, not a timestamp the server
+ * confirmed, and `ttlMs` is read back from the write that already happened
+ * rather than measured against a later read. Good enough for "should I keep
+ * this session warm", not precise enough to show unconditionally as fact.
+ *
  * Read-only status, not a control — same `role="status"` treatment as the
  * attachment-error live region in composer.tsx. `aria-live="off"`: this
  * ticks every 15s while a turn is fresh, and a live region here would turn a

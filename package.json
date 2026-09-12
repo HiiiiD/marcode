@@ -71,6 +71,11 @@
           "description": "Which agent providers this window registers. A provider left out is not probed and does not appear in the panel. Takes effect after a window reload.",
           "scope": "window"
         },
+        "marcode.showCacheTimer": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show a warm/cold prompt-cache timer badge in the composer, next to the context ring (Claude sessions only). Off by default: the countdown is a client-side approximation anchored when the cache write is observed, not a value confirmed by a later server read, and showing it by default would present that estimate as fact. Takes effect after a window reload."
+        },
         "marcode.codex.path": {
           "type": "string",
           "default": "",

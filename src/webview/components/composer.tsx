@@ -679,7 +679,7 @@ export function Composer({
               The agent is working. This message is sent when the turn ends, or as soon as you stop it.
             </span>
           )}
-          <CacheTimer window={pane.cacheWindow} />
+          {state.showCacheTimer && <CacheTimer window={pane.cacheWindow} />}
           <ContextRing pane={pane} open={contextOpen} onOpenChange={setContextOpen} />
         </InputGroupAddon>
       </InputGroup>

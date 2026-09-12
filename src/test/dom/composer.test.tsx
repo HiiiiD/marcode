@@ -64,7 +64,7 @@ suite("Composer", () => {
     assert.strictEqual(screen.queryByRole("status", { name: /Prompt cache/ }), null);
   });
 
-  test("a cache window on the pane renders the cache timer", () => {
+  test("marcode.showCacheTimer off hides the badge even with a cache window", () => {
     renderWithStore(
       <Composer
         pane={{ ...pane(), cacheWindow: { anchorAt: Date.now(), ttlMs: 3_600_000 } }}
@@ -72,6 +72,21 @@ suite("Composer", () => {
         models={[]}
       />,
     );
+    assert.strictEqual(screen.queryByRole("status", { name: /Prompt cache/ }), null);
+  });
+
+  test("marcode.showCacheTimer on renders the cache timer when the pane has a window", () => {
+    renderWithStore(
+      <Composer
+        pane={{ ...pane(), cacheWindow: { anchorAt: Date.now(), ttlMs: 3_600_000 } }}
+        model={NO_EFFORT}
+        models={[]}
+      />,
+    );
+    sendFromHost({
+      t: "hydrate", sessions: [], layout: { orientation: "vertical", panes: [] },
+      snapshots: [], catalog: [], unavailable: [], usage: {}, showCacheTimer: true,
+    });
     screen.getByRole("status", { name: /Prompt cache warm/ });
   });
 
