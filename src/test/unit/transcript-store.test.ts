@@ -2,7 +2,7 @@ import * as assert from 'assert';
 import * as fs from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
-import { TranscriptStore } from '../../host/transcript-store';
+import { TranscriptStore, TRANSCRIPT_VERSION } from '../../host/transcript-store';
 import type { TranscriptItem } from '../../protocol/messages';
 
 function item(id: string, text: string): TranscriptItem {
@@ -92,20 +92,20 @@ suite('TranscriptStore', () => {
         usage: { inputTokens: 0, outputTokens: 0 },
         archived: false, createdAt: 1, updatedAt: 1,
       }],
-      layout: { orientation: 'vertical', panes: [{ sessionId: 's1', size: 100 }] },
+      layout: { root: { kind: 'split', orientation: 'vertical', size: 100, children: [{ kind: 'leaf', sessionId: 's1', size: 100 }] }, presets: [] },
     });
 
     const fresh = new TranscriptStore(dir);
     const index = await fresh.readIndex();
     assert.strictEqual(index.sessions.length, 1);
     assert.strictEqual(index.sessions[0].id, 's1');
-    assert.strictEqual(index.layout.panes[0].sessionId, 's1');
+    assert.strictEqual((index.layout.root as { children: { sessionId: string }[] }).children[0].sessionId, 's1');
   });
 
   test('readIndex on a fresh directory returns an empty index', async () => {
     const index = await store.readIndex();
     assert.deepStrictEqual(index.sessions, []);
-    assert.deepStrictEqual(index.layout, { orientation: 'vertical', panes: [] });
+    assert.deepStrictEqual(index.layout, { root: { kind: 'leaf', sessionId: null, size: 100 }, presets: [] });
   });
 
   test('an index written by an older format is discarded whole', async () => {
@@ -117,7 +117,7 @@ suite('TranscriptStore', () => {
     const store = new TranscriptStore(dir);
     const index = await store.readIndex();
     assert.strictEqual(index.sessions.length, 0);
-    assert.strictEqual(index.layout.panes.length, 0);
+    assert.deepStrictEqual(index.layout, { root: { kind: 'leaf', sessionId: null, size: 100 }, presets: [] });
   });
 
   test('two discarded reads never share the same sessions array or layout object', async () => {
@@ -130,11 +130,11 @@ suite('TranscriptStore', () => {
 
     const first = await store.readIndex();
     first.sessions.push({ id: 'intruder', providerId: 'fake', model: 'm', title: 't', cwd: '/x' } as never);
-    first.layout.panes.push({ sessionId: 'intruder', size: 1 });
+    (first.layout.presets as unknown[]).push({ id: 'intruder' });
 
     const second = await store.readIndex();
     assert.deepStrictEqual(second.sessions, []);
-    assert.deepStrictEqual(second.layout, { orientation: 'vertical', panes: [] });
+    assert.deepStrictEqual(second.layout, { root: { kind: 'leaf', sessionId: null, size: 100 }, presets: [] });
   });
 
   test('two reads of a fresh (missing) index also get independent objects', async () => {
@@ -148,10 +148,66 @@ suite('TranscriptStore', () => {
   test('an index at the current version round-trips', async () => {
     const store = new TranscriptStore(dir);
     await store.writeIndex({
-      version: 2, sessions: [], layout: { orientation: 'vertical', panes: [] },
+      version: 2, sessions: [], layout: { root: { kind: 'leaf', sessionId: null, size: 100 }, presets: [] },
     });
     const index = await store.readIndex();
     assert.strictEqual(index.version, 2);
+  });
+
+  suite('legacy layout migration', () => {
+    test('readIndex wraps a legacy {orientation, panes} shape into a LayoutNode tree', async () => {
+      const legacy = {
+        version: TRANSCRIPT_VERSION,
+        sessions: [],
+        layout: { orientation: 'horizontal', panes: [{ sessionId: 'a', size: 60 }, { sessionId: 'b', size: 40 }] },
+      };
+      await fs.writeFile(path.join(dir, 'index.json'), JSON.stringify(legacy), 'utf8');
+
+      const fresh = new TranscriptStore(dir);
+      const index = await fresh.readIndex();
+
+      assert.deepStrictEqual(index.layout, {
+        root: {
+          kind: 'split', orientation: 'horizontal', size: 100,
+          children: [
+            { kind: 'leaf', sessionId: 'a', size: 60 },
+            { kind: 'leaf', sessionId: 'b', size: 40 },
+          ],
+        },
+        presets: [],
+      });
+    });
+
+    test('readIndex wraps a legacy shape with no panes into an empty leaf', async () => {
+      const legacy = {
+        version: TRANSCRIPT_VERSION,
+        sessions: [],
+        layout: { orientation: 'vertical', panes: [] },
+      };
+      await fs.writeFile(path.join(dir, 'index.json'), JSON.stringify(legacy), 'utf8');
+
+      const fresh = new TranscriptStore(dir);
+      const index = await fresh.readIndex();
+
+      assert.deepStrictEqual(index.layout, { root: { kind: 'leaf', sessionId: null, size: 100 }, presets: [] });
+    });
+
+    test('readIndex passes a modern {root, presets} shape through unchanged', async () => {
+      const modern = {
+        version: TRANSCRIPT_VERSION,
+        sessions: [],
+        layout: {
+          root: { kind: 'leaf', sessionId: 'a', size: 100 },
+          presets: [{ id: 'p1', name: 'Mine', builtin: false, root: { kind: 'leaf', sessionId: null, size: 100 } }],
+        },
+      };
+      await fs.writeFile(path.join(dir, 'index.json'), JSON.stringify(modern), 'utf8');
+
+      const fresh = new TranscriptStore(dir);
+      const index = await fresh.readIndex();
+
+      assert.deepStrictEqual(index.layout, modern.layout);
+    });
   });
 
   test('usage round-trips through its own file', async () => {

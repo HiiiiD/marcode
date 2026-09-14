@@ -31,8 +31,32 @@ export interface StoredCatalog {
 const emptyIndex = (): StoredIndex => ({
   version: TRANSCRIPT_VERSION,
   sessions: [],
-  layout: { orientation: 'vertical', panes: [] },
+  layout: { root: { kind: 'leaf', sessionId: null, size: 100 }, presets: [] },
 });
+
+/**
+ * Upgrades a legacy `{orientation, panes}` layout (single row/column, no
+ * tree) into the current `{root, presets}` shape on first read. Applied
+ * once, here; the on-disk shape is rewritten in the new form the next time
+ * the index is saved through the existing `writeIndex` path — no dedicated
+ * migration script or version bump, the loader just recognizes the absence
+ * of `root` as "this is the old shape."
+ */
+function migrateLayout(layout: unknown): PaneLayout | undefined {
+  if (layout === undefined || layout === null || typeof layout !== 'object') { return undefined; }
+  if ('root' in layout) { return layout as PaneLayout; }
+  const legacy = layout as { orientation: 'vertical' | 'horizontal'; panes: { sessionId: string; size: number }[] };
+  if (legacy.panes.length === 0) {
+    return { root: { kind: 'leaf', sessionId: null, size: 100 }, presets: [] };
+  }
+  return {
+    root: {
+      kind: 'split', orientation: legacy.orientation, size: 100,
+      children: legacy.panes.map((p) => ({ kind: 'leaf' as const, sessionId: p.sessionId, size: p.size })),
+    },
+    presets: [],
+  };
+}
 
 /**
  * Narrows a parsed `usage.json` into something `SessionManager.init()` can
@@ -413,12 +437,12 @@ export class TranscriptStore {
   async readIndex(): Promise<StoredIndex> {
     try {
       const raw = await fs.readFile(path.join(this.rootDir, 'index.json'), 'utf8');
-      const parsed = JSON.parse(raw) as Partial<StoredIndex>;
+      const parsed = JSON.parse(raw) as Partial<StoredIndex> & { layout?: unknown };
       if (parsed.version !== TRANSCRIPT_VERSION) { return emptyIndex(); }
       return {
         version: TRANSCRIPT_VERSION,
         sessions: parsed.sessions ?? [],
-        layout: parsed.layout ?? emptyIndex().layout,
+        layout: migrateLayout(parsed.layout) ?? emptyIndex().layout,
       };
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === 'ENOENT') { return emptyIndex(); }
