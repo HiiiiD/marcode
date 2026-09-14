@@ -12,8 +12,8 @@ import { folderName } from "../format";
 import type { PaneState } from "../reducer";
 import { useStore } from "../store";
 import { BringBackDialog } from "./bring-back-dialog";
+import { removeSession } from "./layout-tree";
 import { isUnhealthy, worstState } from "./mcp-status";
-import { evenlySizedPanes } from "./pane-layout";
 import { StatusBadge } from "./status-badge";
 
 interface SessionHeaderProps {
@@ -280,8 +280,10 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
           // row in the roster, and posts the same message, so the two entry
           // points cannot drift. Archiving is a deliberate choice and lives
           // in the roster row's actions menu, under its own word.
-          const remaining = state.layout.panes.map((p) => p.sessionId).filter((id) => id !== s.id);
-          post({ t: "set-layout", layout: evenlySizedPanes(remaining, state.layout.orientation) });
+          post({
+            t: "set-layout",
+            layout: { ...state.layout, root: removeSession(state.layout.root, s.id) },
+          });
         }}
         className="shrink-0"
       >

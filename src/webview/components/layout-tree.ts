@@ -38,7 +38,7 @@ export function slotCount(node: LayoutNode): number {
   return flattenLeaves(node).length;
 }
 
-function at(node: LayoutNode, path: number[]): LayoutNode {
+export function at(node: LayoutNode, path: number[]): LayoutNode {
   let cur = node;
   for (const i of path) {
     if (cur.kind !== 'split') { throw new Error('layout-tree: path runs through a leaf'); }
@@ -48,7 +48,7 @@ function at(node: LayoutNode, path: number[]): LayoutNode {
 }
 
 /** Immutable replace of the node at `path`, keeping every sibling's `size` untouched. */
-function replaceAt(node: LayoutNode, path: number[], next: LayoutNode): LayoutNode {
+export function replaceAt(node: LayoutNode, path: number[], next: LayoutNode): LayoutNode {
   if (path.length === 0) { return next; }
   if (node.kind !== 'split') { throw new Error('layout-tree: path runs through a leaf'); }
   const [head, ...rest] = path;

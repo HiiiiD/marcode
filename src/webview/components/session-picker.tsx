@@ -8,7 +8,7 @@ import {
   DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { evenlySizedPanes } from './pane-layout';
+import { leafSessionIds, removeSession } from './layout-tree';
 import { SessionCreateMenu } from './session-create-menu';
 import { SessionRow } from './session-row';
 import { StaleTreesDialog } from './stale-trees';
@@ -26,17 +26,32 @@ interface SessionPickerProps {
 
 export function SessionPicker({ narrow, onReview, onFleet }: SessionPickerProps) {
   const { state, post } = useStore();
-  const open = new Set(state.layout.panes.map((p) => p.sessionId));
-  const horizontal = state.layout.orientation === 'horizontal';
+  const root = state.layout.root;
+  const open = new Set(leafSessionIds(root));
+  const horizontal = root.kind === 'split' && root.orientation === 'horizontal';
   const needing = state.sessions.filter((s) => statusView(s.status).needsUser).length;
 
-  const setPanes = (ids: SessionId[]) => {
-    post({ t: 'set-layout', layout: evenlySizedPanes(ids, state.layout.orientation) });
-    post({ t: 'set-visible', sessionIds: ids });
-  };
-
+  // Mirrors `reconcilePaneLayout`'s own "wrap a bare leaf or extend an
+  // existing vertical split" append rule (pane-layout.ts) — a bare-metal
+  // stand-in for the `appendAtTop` helper Task 10 factors that logic into,
+  // kept local here rather than duplicated into `pane-layout.ts` ahead of
+  // that task.
   const toggle = (id: SessionId) => {
-    setPanes(open.has(id) ? [...open].filter((x) => x !== id) : [...open, id]);
+    let next: typeof root;
+    if (open.has(id)) {
+      next = removeSession(root, id);
+    } else if (root.kind === 'leaf' && root.sessionId === null) {
+      next = { kind: 'leaf', sessionId: id, size: 100 };
+    } else {
+      const siblings = root.kind === 'split' && root.orientation === 'vertical' ? root.children : [root];
+      const children = [...siblings, { kind: 'leaf' as const, sessionId: id, size: 0 }];
+      next = {
+        kind: 'split', orientation: 'vertical', size: 100,
+        children: children.map((child) => ({ ...child, size: 100 / children.length })),
+      };
+    }
+    post({ t: 'set-layout', layout: { ...state.layout, root: next } });
+    post({ t: 'set-visible', sessionIds: leafSessionIds(next) });
   };
 
   const live = state.sessions.filter((s) => !s.archived);
@@ -250,13 +265,16 @@ export function SessionPicker({ narrow, onReview, onFleet }: SessionPickerProps)
             // option.
             aria-describedby={narrow ? 'orientation-reason' : undefined}
             className="shrink-0"
-            onClick={() => post({
-              t: 'set-layout',
-              layout: {
-                ...state.layout,
-                orientation: state.layout.orientation === 'vertical' ? 'horizontal' : 'vertical',
-              },
-            })}
+            onClick={() => {
+              if (root.kind !== 'split') { return; }
+              post({
+                t: 'set-layout',
+                layout: {
+                  ...state.layout,
+                  root: { ...root, orientation: root.orientation === 'vertical' ? 'horizontal' : 'vertical' },
+                },
+              });
+            }}
           />
         )}
       >

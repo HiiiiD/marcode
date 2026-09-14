@@ -10,7 +10,7 @@ function hydrate(paneIds: string[], rosterIds = paneIds) {
   sendFromHost({
     t: 'hydrate',
     sessions: rosterIds.map((id) => summary(id)),
-    layout: layoutOf(...paneIds),
+    layout: layoutOf(paneIds),
     snapshots: rosterIds.map((id) => snapshot(id)),
     catalog: catalog(),
     unavailable: [],
@@ -23,7 +23,7 @@ suite('PaneGroup', () => {
     renderApp();
     sendFromHost({
       t: 'hydrate',
-      sessions: [], layout: layoutOf(), snapshots: [],
+      sessions: [], layout: layoutOf([]), snapshots: [],
       catalog: [],
       unavailable: [{ id: 'claude', displayName: 'Claude', reason: 'Claude Code CLI not found.' }],
       probing: false,
@@ -39,7 +39,7 @@ suite('PaneGroup', () => {
     renderApp();
     sendFromHost({
       t: 'hydrate',
-      sessions: [], layout: layoutOf(), snapshots: [],
+      sessions: [], layout: layoutOf([]), snapshots: [],
       catalog: [], unavailable: [], probing: true, usage: {},
     });
 
@@ -53,7 +53,7 @@ suite('PaneGroup', () => {
     renderApp();
     sendFromHost({
       t: 'hydrate',
-      sessions: [], layout: layoutOf(), snapshots: [],
+      sessions: [], layout: layoutOf([]), snapshots: [],
       catalog: [], unavailable: [], probing: false, usage: {},
     });
 
@@ -73,7 +73,7 @@ suite('PaneGroup', () => {
     renderApp();
     sendFromHost({
       t: 'hydrate',
-      sessions: [], layout: layoutOf(), snapshots: [],
+      sessions: [], layout: layoutOf([]), snapshots: [],
       catalog: [],
       unavailable: [{ id: 'claude', displayName: 'Claude', reason: 'Claude Code CLI not found.' }],
       probing: false,
@@ -91,7 +91,7 @@ suite('PaneGroup', () => {
     renderApp();
     sendFromHost({
       t: 'hydrate',
-      sessions: [], layout: layoutOf(), snapshots: [],
+      sessions: [], layout: layoutOf([]), snapshots: [],
       catalog: [],
       unavailable: [{ id: 'claude', displayName: 'Claude', reason: 'Not signed in to Claude. Run `claude auth login`.' }],
       probing: false,
@@ -107,7 +107,7 @@ suite('PaneGroup', () => {
     renderApp();
     sendFromHost({
       t: 'hydrate',
-      sessions: [], layout: layoutOf(), snapshots: [],
+      sessions: [], layout: layoutOf([]), snapshots: [],
       catalog: [],
       unavailable: [{ id: 'claude', displayName: 'Claude', reason: 'Claude Code CLI not found.' }],
       probing: false,
@@ -121,7 +121,7 @@ suite('PaneGroup', () => {
     renderApp();
     sendFromHost({
       t: 'hydrate',
-      sessions: [], layout: layoutOf(), snapshots: [],
+      sessions: [], layout: layoutOf([]), snapshots: [],
       catalog: [],
       unavailable: [{
         id: 'claude-work', displayName: 'Claude (work)',
@@ -138,7 +138,7 @@ suite('PaneGroup', () => {
     renderApp();
     sendFromHost({
       t: 'hydrate',
-      sessions: [], layout: layoutOf(), snapshots: [],
+      sessions: [], layout: layoutOf([]), snapshots: [],
       catalog: [],
       unavailable: [{
         id: 'codex-work', displayName: 'Codex (work)', reason: 'connection refused', loginKind: 'oauth',
@@ -153,7 +153,7 @@ suite('PaneGroup', () => {
     renderApp();
     sendFromHost({
       t: 'hydrate',
-      sessions: [], layout: layoutOf(), snapshots: [],
+      sessions: [], layout: layoutOf([]), snapshots: [],
       catalog: [],
       unavailable: [{
         id: 'codex-work', displayName: 'Codex (work)',
@@ -170,7 +170,7 @@ suite('PaneGroup', () => {
     renderApp();
     sendFromHost({
       t: 'hydrate',
-      sessions: [], layout: layoutOf(), snapshots: [],
+      sessions: [], layout: layoutOf([]), snapshots: [],
       catalog: catalog(), unavailable: [], usage: {},
     });
 
@@ -226,7 +226,7 @@ suite('PaneGroup', () => {
     sendFromHost({
       t: 'hydrate',
       sessions: [summary('a')],
-      layout: layoutOf('a', 'b'),
+      layout: layoutOf(['a', 'b']),
       snapshots: [snapshot('a'), snapshot('b')],
       catalog: catalog(),
       unavailable: [],
@@ -353,7 +353,7 @@ suite('PaneGroup', () => {
     sendFromHost({
       t: 'hydrate',
       sessions: [summary('a', { title: 'Untitled' }), summary('b', { title: 'Untitled' })],
-      layout: layoutOf('a', 'b'),
+      layout: layoutOf(['a', 'b']),
       snapshots: [snapshot('a', { title: 'Untitled' }), snapshot('b', { title: 'Untitled' })],
       catalog: catalog(),
       unavailable: [],
@@ -397,7 +397,7 @@ suite('PaneGroup', () => {
     sendFromHost({
       t: 'hydrate',
       sessions: [summary('a')],
-      layout: layoutOf('a'),
+      layout: layoutOf(['a']),
       snapshots: [snapshot('a', { items: [subagentItem] })],
       catalog: catalog(),
       unavailable: [],
@@ -435,14 +435,73 @@ suite('PaneGroup', () => {
     // The host echoes a layout that dropped 'b' (e.g. the user closed its
     // pane) — both sessions are already "known" by this point, so this does
     // not itself trigger the reconcile effect to bring 'b' back.
-    sendFromHost({ t: 'layout-changed', layout: layoutOf('a') });
+    sendFromHost({ t: 'layout-changed', layout: layoutOf(['a']) });
     screen.getByLabelText('Session: Session a');
     assert.strictEqual(screen.queryByLabelText('Session: Session b') === null, true);
 
     // The fix under test: SessionManager.setLayout()'s echo — what
     // FleetPanel's focus-session handler now triggers — brings 'b' back.
-    sendFromHost({ t: 'layout-changed', layout: layoutOf('a', 'b') });
+    sendFromHost({ t: 'layout-changed', layout: layoutOf(['a', 'b']) });
     screen.getByLabelText('Session: Session a');
     screen.getByLabelText('Session: Session b');
+  });
+
+  test('a split root renders every leaf as its own pane', () => {
+    renderApp();
+    hydrate(['s1', 's2']);
+    assert.strictEqual(screen.getAllByRole('region', { name: /Session:/ }).length, 2);
+  });
+
+  test('a nested split renders a leaf at any depth', () => {
+    renderApp();
+    sendFromHost({
+      t: 'hydrate',
+      sessions: [summary('s1'), summary('s2'), summary('s3')],
+      layout: {
+        root: {
+          kind: 'split', orientation: 'horizontal', size: 100,
+          children: [
+            { kind: 'leaf', sessionId: 's1', size: 50 },
+            {
+              kind: 'split', orientation: 'vertical', size: 50,
+              children: [
+                { kind: 'leaf', sessionId: 's2', size: 50 },
+                { kind: 'leaf', sessionId: 's3', size: 50 },
+              ],
+            },
+          ],
+        },
+        presets: [],
+      },
+      snapshots: [snapshot('s1'), snapshot('s2'), snapshot('s3')],
+      catalog: catalog(),
+      unavailable: [],
+      usage: {},
+    });
+    assert.strictEqual(screen.getAllByRole('region', { name: /Session:/ }).length, 3);
+  });
+
+  test('an empty leaf renders the assign-slot placeholder, not a pane', () => {
+    renderApp();
+    sendFromHost({
+      t: 'hydrate',
+      sessions: [summary('s1'), summary('s2')],
+      layout: {
+        root: {
+          kind: 'split', orientation: 'vertical', size: 100,
+          children: [
+            { kind: 'leaf', sessionId: 's1', size: 50 },
+            { kind: 'leaf', sessionId: null, size: 50 },
+          ],
+        },
+        presets: [],
+      },
+      snapshots: [snapshot('s1')],
+      catalog: catalog(),
+      unavailable: [],
+      usage: {},
+    });
+    assert.strictEqual(screen.getAllByRole('region', { name: /Session:/ }).length, 1);
+    assert.strictEqual(screen.getByRole('button', { name: /Assign a session/i }) !== undefined, true);
   });
 });

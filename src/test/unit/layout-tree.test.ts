@@ -2,6 +2,7 @@ import * as assert from 'assert';
 import {
   emptyRoot, flattenLeaves, leafSessionIds, findPath, slotCount,
   splitAt, assignAt, removeSession, replaceLeafSession, fillShape, stripSessionIds,
+  at, replaceAt,
 } from '../../webview/components/layout-tree';
 
 suite('layout-tree read helpers', () => {
@@ -120,6 +121,44 @@ suite('layout-tree assignAt', () => {
         { kind: 'leaf', sessionId: 'b', size: 50 },
       ],
     });
+  });
+});
+
+suite('layout-tree at/replaceAt', () => {
+  test('at walks a path down to the target node', () => {
+    const root = {
+      kind: 'split' as const, orientation: 'vertical' as const, size: 100,
+      children: [
+        { kind: 'leaf' as const, sessionId: 'a', size: 50 },
+        { kind: 'leaf' as const, sessionId: 'b', size: 50 },
+      ],
+    };
+    assert.deepStrictEqual(at(root, [1]), { kind: 'leaf', sessionId: 'b', size: 50 });
+    assert.deepStrictEqual(at(root, []), root);
+  });
+
+  test('replaceAt swaps the node at path, leaving siblings\' size untouched', () => {
+    const root = {
+      kind: 'split' as const, orientation: 'vertical' as const, size: 100,
+      children: [
+        { kind: 'leaf' as const, sessionId: 'a', size: 50 },
+        { kind: 'leaf' as const, sessionId: 'b', size: 50 },
+      ],
+    };
+    const next = replaceAt(root, [1], { kind: 'leaf', sessionId: 'c', size: 50 });
+    assert.deepStrictEqual(next, {
+      kind: 'split', orientation: 'vertical', size: 100,
+      children: [
+        { kind: 'leaf', sessionId: 'a', size: 50 },
+        { kind: 'leaf', sessionId: 'c', size: 50 },
+      ],
+    });
+  });
+
+  test('replaceAt at an empty path replaces the whole tree', () => {
+    const root = { kind: 'leaf' as const, sessionId: 'a', size: 100 };
+    const next = replaceAt(root, [], { kind: 'leaf', sessionId: 'b', size: 100 });
+    assert.deepStrictEqual(next, { kind: 'leaf', sessionId: 'b', size: 100 });
   });
 });
 

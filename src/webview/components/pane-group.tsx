@@ -1,25 +1,20 @@
 import { Button } from "@/components/ui/button";
-import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { cn } from "@/lib/utils";
 import { LogInIcon, RefreshCwIcon, SettingsIcon } from "lucide-react";
-import { Fragment, useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 // react-resizable-panels ships ESM-only; a type-only import from a CommonJS
 // module needs an explicit resolution-mode attribute (TS 5.3+) or tsc's
 // per-file CJS/ESM interop check rejects it outright (TS1541) — see the
 // similar note on the value import in the vendored resizable.tsx.
 import type { Layout, LayoutChangedMeta } from "react-resizable-panels" with { "resolution-mode": "import" };
-import { findModel } from "../../shared/model-catalog";
 import { ENABLED_PROVIDERS_SETTING, PROVIDER_INSTANCES_SETTING } from "../../shared/settings";
-import { unavailabilityFor } from "../lib/provider-availability";
+import type { LayoutNode } from "../../protocol/messages";
 import { shouldOfferLogin } from "../lib/provider-login";
 import { useStore } from "../store";
-import { Composer } from "./composer";
-import { accessibleTitles, rosterSessionIds, visiblePanes } from "./pane-layout";
+import { at, assignAt, leafSessionIds, replaceAt } from "./layout-tree";
+import { LayoutNodeView } from "./layout-node-view";
+import { accessibleTitles, leafDisplayState, rosterSessionIds, visibleLeaves } from "./pane-layout";
 import { SessionCreateMenu } from "./session-create-menu";
-import { MessageScrollerProvider } from "@/components/ui/message-scroller";
-import { SessionHeader } from "./session-header";
-import { SubagentDrillInContext } from "./subagent-drill-in-context";
-import { Transcript } from "./transcript";
 
 interface PaneGroupProps {
   /** Whether the panel is too narrow to split side by side. Measured once,
@@ -38,13 +33,39 @@ export function PaneGroup({ narrow }: PaneGroupProps) {
   // arrived snapshot.
   const roster = rosterSessionIds(state.sessions);
   const snapshotArrived = new Set(Object.keys(state.byId));
-  const panes = visiblePanes(state.layout.panes, roster, snapshotArrived);
-  const orientation = narrow ? "vertical" : state.layout.orientation;
+  const leaves = visibleLeaves(state.layout.root, roster, snapshotArrived);
+  const readyLeaves = leaves.filter((l) => l.state === "ready");
   // Disambiguates title-derived accessible names (close button, resize
   // handles) when two or more visible panes share a title — most commonly
   // two freshly created sessions, both still 'Untitled'. See
   // accessibleTitles' doc comment in pane-layout.ts.
-  const names = accessibleTitles(panes.map((p) => ({ id: p.sessionId, title: state.byId[p.sessionId].summary.title })));
+  const names = accessibleTitles(
+    readyLeaves.map((l) => ({ id: l.sessionId!, title: state.byId[l.sessionId!].summary.title })),
+  );
+
+  // `state.sessions` is already `SessionSummary[]` — no need to round-trip
+  // through `byId`, which is keyed only by sessions with an arrived
+  // snapshot and would silently drop a roster session as "unassignable"
+  // before its snapshot lands.
+  const assignableSessions = state.sessions
+    .filter((s) => !leafSessionIds(state.layout.root).includes(s.id));
+
+  const handleAssign = (path: number[], sessionId: string) => {
+    post({ t: "set-layout", layout: { ...state.layout, root: assignAt(state.layout.root, path, sessionId) } });
+  };
+
+  const handleLayoutChanged = (path: number[], layout: Layout, meta: LayoutChangedMeta, children: LayoutNode[]) => {
+    if (!meta.isUserInteraction) { return; }
+    const target = at(state.layout.root, path);
+    if (target.kind !== "split") { return; }
+    const resized: LayoutNode = {
+      kind: "split",
+      orientation: target.orientation,
+      size: target.size,
+      children: children.map((child, i) => ({ ...child, size: layout[`${path.join("-")}-${i}`] ?? child.size })),
+    };
+    post({ t: "set-layout", layout: { ...state.layout, root: replaceAt(state.layout.root, path, resized) } });
+  };
 
   // Hiding a pane or deleting its session unmounts the pane. If the element
   // that held focus (e.g. the pane's own "Hide … from the split" button)
@@ -77,7 +98,7 @@ export function PaneGroup({ narrow }: PaneGroupProps) {
   // but *visible* to a sighted keyboard user — the same ring every other
   // focusable control here uses (see `button.tsx`).
   const rootRef = useRef<HTMLDivElement>(null);
-  const prevCount = useRef(panes.length);
+  const prevCount = useRef(readyLeaves.length);
 
   // With N panes rendered at identical weight there was no indication of
   // which one a keyboard or pointer user was actually acting in. It lives in
@@ -98,15 +119,15 @@ export function PaneGroup({ narrow }: PaneGroupProps) {
   // stays active, which is the reading a user would want anyway.
   const activeId = state.focusedSessionId;
   useEffect(() => {
-    if (panes.length < prevCount.current && document.activeElement === document.body) {
+    if (readyLeaves.length < prevCount.current && document.activeElement === document.body) {
       const target =
         rootRef.current?.querySelector<HTMLElement>('[data-slot="input-group-textarea"]') ??
         rootRef.current?.querySelector<HTMLElement>('[data-slot="button"]') ??
         rootRef.current;
       target?.focus();
     }
-    prevCount.current = panes.length;
-  }, [panes.length]);
+    prevCount.current = readyLeaves.length;
+  }, [readyLeaves.length]);
 
   // Nothing is "active" until something has actually been focused (see
   // `focusedSessionId`'s doc comment) — but on first load, or right after
@@ -122,7 +143,7 @@ export function PaneGroup({ narrow }: PaneGroupProps) {
   useEffect(() => {
     if (
       state.focusedSessionId === null &&
-      panes.length > 0 &&
+      readyLeaves.length > 0 &&
       document.activeElement === document.body
     ) {
       const target = rootRef.current?.querySelector<HTMLElement>(
@@ -130,7 +151,7 @@ export function PaneGroup({ narrow }: PaneGroupProps) {
       );
       target?.focus();
     }
-  }, [state.focusedSessionId, panes.length > 0]);
+  }, [state.focusedSessionId, readyLeaves.length > 0]);
 
   // Nothing can be created. Three readings of one empty catalog, and they are
   // not interchangeable:
@@ -144,7 +165,7 @@ export function PaneGroup({ narrow }: PaneGroupProps) {
   const noneEnabled = noProviders && state.unavailable.length === 0;
   const checking = state.catalog.length === 0 && state.probing;
 
-  if (panes.length === 0) {
+  if (readyLeaves.length === 0) {
     return (
       <div
         ref={rootRef}
@@ -231,113 +252,19 @@ export function PaneGroup({ narrow }: PaneGroupProps) {
       tabIndex={-1}
       className={cn("h-full outline-none", "focus-visible:ring-2 focus-visible:ring-ring")}
     >
-      <ResizablePanelGroup
-        orientation={orientation}
-        aria-label="Open agent sessions"
-        // `onLayoutChange` is deprecated and, for pointer-driven resizes,
-        // fires on every pointermove — each call posts to the host AND
-        // dispatches a local-layout re-render of every pane's Transcript
-        // and Composer, turning a drag into a render/post storm.
-        // `onLayoutChanged` fires once per completed change (pointer
-        // release, or a single programmatic update) and reports whether it
-        // was user-driven; skip the non-interactive call it also makes on
-        // mount, since that one only echoes the layout already in state.
-        onLayoutChanged={(layout: Layout, meta: LayoutChangedMeta) => {
-          if (!meta.isUserInteraction) {
-            return;
-          }
-          post({
-            t: "set-layout",
-            layout: {
-              orientation: state.layout.orientation,
-              panes: panes.map((p) => ({ sessionId: p.sessionId, size: layout[p.sessionId] ?? p.size })),
-            },
-          });
-        }}
-      >
-        {panes.map((pane, index) => {
-          const paneState = state.byId[pane.sessionId];
-          const provider = state.catalog.find((p) => p.id === paneState.summary.providerId);
-          const model = findModel(provider?.models ?? [], paneState.summary.model);
-          return (
-            <Fragment key={pane.sessionId}>
-              {index > 0 && (
-                <ResizableHandle
-                  aria-label={`Resize between ${names.get(panes[index - 1].sessionId)} and ${names.get(paneState.summary.id)}`}
-                  withHandle
-                />
-              )}
-              <ResizablePanel
-                id={pane.sessionId}
-                aria-label={`Session: ${names.get(paneState.summary.id)}`}
-                defaultSize={`${pane.size}%`}
-                minSize="15%"
-                collapsible
-                data-active={activeId === pane.sessionId}
-                onFocusCapture={() => focus(pane.sessionId)}
-                className={cn(
-                  "transition-colors",
-                  // A ring, not a background: at 300px a filled active pane
-                  // would compete with the permission card, which must stay
-                  // the loudest thing on screen — it's the only transcript
-                  // item demanding an action.
-                  activeId === pane.sessionId && "ring-1 ring-ring/40 ring-inset",
-                )}
-              >
-                {/* No `key` on the header or the composer: the Fragment
-                    above is already keyed by sessionId, so the whole subtree
-                    remounts when a pane changes session. Keying them
-                    individually gave two siblings of the same children list
-                    the same key ("Encountered two children with the same key,
-                    s-…"), which lets React drop one of them. */}
-                {/* The scroller's context wraps the whole pane, not just the
-                    transcript: the header's active-subagent badge reveals an
-                    item in this pane's transcript, and it is a sibling of the
-                    transcript rather than a descendant. Chat-shaped, not
-                    document-shaped — the latest item is pinned to the bottom
-                    edge and history grows upward off the top. `end` rather
-                    than `last-anchor`, which parks the newest user message at
-                    the *top* of the viewport and streams the reply beneath
-                    it: that reads as a document scrolling past, not a
-                    conversation. One provider per pane, so two panes never
-                    share a scroll position. */}
-                <MessageScrollerProvider autoScroll defaultScrollPosition="end">
-                  <div className="flex h-full flex-col">
-                    <SessionHeader
-                      pane={paneState}
-                      accessibleTitle={names.get(paneState.summary.id)!}
-                    />
-                    <SubagentDrillInContext.Provider
-                      value={(itemId) =>
-                        post({ t: "open-fleet-subagent", sessionId: pane.sessionId, itemId })
-                      }
-                    >
-                      <div className="min-h-0 flex-1">
-                        <Transcript
-                          pane={paneState}
-                          onLoadMore={(beforeItemId) =>
-                            post({
-                              t: "load-more",
-                              id: pane.sessionId,
-                              beforeItemId,
-                            })
-                          }
-                        />
-                      </div>
-                    </SubagentDrillInContext.Provider>
-                    <Composer
-                      pane={paneState}
-                      model={model}
-                      models={provider?.models ?? []}
-                      unavailableReason={unavailabilityFor(state, paneState.summary.providerId)}
-                    />
-                  </div>
-                </MessageScrollerProvider>
-              </ResizablePanel>
-            </Fragment>
-          );
-        })}
-      </ResizablePanelGroup>
+      <LayoutNodeView
+        node={state.layout.root}
+        path={[]}
+        topLevel
+        narrow={narrow}
+        leafState={(sessionId) => leafDisplayState(sessionId, roster, snapshotArrived)}
+        names={names}
+        activeId={activeId}
+        assignableSessions={assignableSessions}
+        onAssign={handleAssign}
+        onLayoutChanged={handleLayoutChanged}
+        onFocusCapture={focus}
+      />
     </div>
   );
 }

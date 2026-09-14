@@ -5,6 +5,7 @@ import { AgentsMdNudgeCard } from './components/agents-md-nudge-card';
 import { PaneGroup } from './components/pane-group';
 import { SessionPicker } from './components/session-picker';
 import { NARROW_PX, usePanelWidth } from './components/use-is-narrow';
+import { leafSessionIds } from './components/layout-tree';
 import { reconcilePaneLayout, rosterSessionIds } from './components/pane-layout';
 import { UsageStrip } from './components/usage-strip';
 import { useStore } from './store';
@@ -27,7 +28,7 @@ export function App() {
 
   const byIdKeys = Object.keys(state.byId);
   const rosterKey = state.sessions.map((s) => s.id).join(',');
-  const paneIdsKey = state.layout.panes.map((p) => p.sessionId).join(',');
+  const paneIdsKey = leafSessionIds(state.layout.root).join(',');
   // Session ids this client has already offered a pane at least once (see
   // reconcilePaneLayout's doc comment): once a session is "known", removing
   // its pane is the user's choice (roster checkbox / close) and reconcile
@@ -46,11 +47,11 @@ export function App() {
   useEffect(() => {
     const roster = rosterSessionIds(state.sessions);
     const result = reconcilePaneLayout(
-      state.layout, roster, byIdKeys, knownSessionIdsRef.current,
+      state.layout.root, roster, byIdKeys, knownSessionIdsRef.current,
     );
     knownSessionIdsRef.current = result.knownSessionIds;
-    if (result.layout) {
-      post({ t: 'set-layout', layout: result.layout });
+    if (result.root) {
+      post({ t: 'set-layout', layout: { ...state.layout, root: result.root } });
     }
   }, [byIdKeys.join(','), rosterKey, paneIdsKey]);
 
@@ -64,7 +65,7 @@ export function App() {
   // alone so it doesn't re-fire on every render, only when the shown pane
   // set actually changes.
   useEffect(() => {
-    post({ t: 'set-visible', sessionIds: state.layout.panes.map((p) => p.sessionId) });
+    post({ t: 'set-visible', sessionIds: leafSessionIds(state.layout.root) });
   }, [paneIdsKey]);
 
   // `rootRef` is attached to a div that mounts unconditionally — including
