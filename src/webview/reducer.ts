@@ -145,7 +145,7 @@ export interface ClientState {
 export const initialState: ClientState = {
   ready: false,
   sessions: [],
-  layout: { orientation: 'vertical', panes: [] },
+  layout: { root: { kind: 'leaf', sessionId: null, size: 100 }, presets: [] },
   catalog: [],
   unavailable: [],
   probing: true,
