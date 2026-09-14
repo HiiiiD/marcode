@@ -9,6 +9,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { leafSessionIds, removeSession } from './layout-tree';
+import { LayoutPresetsMenu } from './layout-presets-menu';
 import { appendAtTop } from './pane-layout';
 import { SessionCreateMenu } from './session-create-menu';
 import { SessionRow } from './session-row';
@@ -286,6 +287,8 @@ export function SessionPicker({ narrow, onReview, onFleet }: SessionPickerProps)
           There's only one pane open; there's nothing to reorient yet.
         </span>
       )}
+
+      <LayoutPresetsMenu />
 
       <SessionCreateMenu />
       </div>
