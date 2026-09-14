@@ -571,6 +571,39 @@ suite('PaneGroup', () => {
     });
   });
 
+  test('dropping on a pane\'s left edge puts the dragged pane on that side', () => {
+    renderApp();
+    hydrate(['s1', 's2']);
+
+    const target = screen.getByLabelText('Session: Session s2');
+    const handle = screen.getByLabelText('Drag Session s1 to move or split');
+
+    dragStart(handle);
+    const dropZone = within(target).getByTestId('drop-zone-left');
+    fireEvent.dragOver(dropZone);
+    fireEvent.drop(dropZone);
+
+    // Same starting tree and same horizontal (side-by-side) split as the
+    // right-edge case above, but dropped on the LEFT edge this time: the
+    // dragged pane (s1) must land first, on the side it was dropped on, not
+    // always after the target — matching VS Code's own editor-group
+    // convention.
+    const last = posted().filter((m) => m.t === 'set-layout').at(-1)!;
+    assert.deepStrictEqual(last, {
+      t: 'set-layout',
+      layout: {
+        presets: [],
+        root: {
+          kind: 'split', orientation: 'horizontal', size: 100,
+          children: [
+            { kind: 'leaf', sessionId: 's1', size: 50 },
+            { kind: 'leaf', sessionId: 's2', size: 50 },
+          ],
+        },
+      },
+    });
+  });
+
   test('dragging a session onto itself is a no-op', () => {
     renderApp();
     hydrate(['s1', 's2']);
@@ -581,7 +614,7 @@ suite('PaneGroup', () => {
     dragStart(handle);
     // No drop zones render over the leaf a session is itself being dragged
     // from — there is nothing sensible to drop it onto there.
-    assert.strictEqual(within(target).queryByTestId('drop-zone-right'), null);
+    assert.strictEqual(within(target).queryByTestId('drop-zone-right') === null, true);
   });
 
   test('dropping on an empty leaf assigns directly, no split created', () => {

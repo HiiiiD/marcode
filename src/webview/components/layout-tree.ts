@@ -62,16 +62,26 @@ function evenSizes(count: number): number[] {
   return count > 0 ? Array(count).fill(100 / count) : [];
 }
 
-/** Splits the leaf at `path` into a 2-child split of [existing leaf, new leaf(newSessionId)], 50/50. */
+/**
+ * Splits the leaf at `path` into a 2-child split of the existing leaf and a
+ * new leaf(newSessionId), 50/50. `insertBefore` puts the new leaf first —
+ * the drag-to-split UI passes this for a left/top edge drop, so the dragged
+ * pane lands on the side it was dropped on, matching VS Code's own
+ * editor-group convention. Defaults to appending (existing, new), the
+ * original behavior, so every pre-drag-and-drop caller is unaffected.
+ */
 export function splitAt(
   root: LayoutNode, path: number[], orientation: 'vertical' | 'horizontal', newSessionId: string,
+  insertBefore = false,
 ): LayoutNode {
   const target = at(root, path);
   if (target.kind !== 'split' && target.kind !== 'leaf') { throw new Error('unreachable'); }
   const size = target.size;
+  const existing = { ...target, size: 50 };
+  const inserted: LayoutNode = { kind: 'leaf', sessionId: newSessionId, size: 50 };
   const next: LayoutNode = {
     kind: 'split', orientation, size,
-    children: [{ ...target, size: 50 }, { kind: 'leaf', sessionId: newSessionId, size: 50 }],
+    children: insertBefore ? [inserted, existing] : [existing, inserted],
   };
   return replaceAt(root, path, next);
 }

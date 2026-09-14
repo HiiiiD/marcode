@@ -86,12 +86,17 @@ export function PaneGroup({ narrow }: PaneGroupProps) {
   // Drag-to-split: the dragged session's own old leaf is removed first (it
   // may be the last pane the edge's own target leaf currently touches — see
   // `freshTargetPath`'s doc comment), then the target's post-removal path is
-  // used to split it 50/50 in the edge's orientation.
-  const handleSplit = (path: number[], orientation: "vertical" | "horizontal", draggedSessionId: string) => {
+  // used to split it 50/50 in the edge's orientation. `insertBefore` — true
+  // for a left/top edge — puts the dragged pane on the side it was dropped
+  // on rather than always after the target, matching VS Code's own
+  // editor-group convention.
+  const handleSplit = (
+    path: number[], orientation: "vertical" | "horizontal", draggedSessionId: string, insertBefore: boolean,
+  ) => {
     const withoutDragged = removeSession(state.layout.root, draggedSessionId);
     const freshPath = freshTargetPath(state.layout.root, path, draggedSessionId, withoutDragged);
     if (!freshPath) { return; } // target vanished mid-drag — no-op, matches "errors are state"
-    const next = splitAt(withoutDragged, freshPath, orientation, draggedSessionId);
+    const next = splitAt(withoutDragged, freshPath, orientation, draggedSessionId, insertBefore);
     post({ t: "set-layout", layout: { ...state.layout, root: next } });
   };
 

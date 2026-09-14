@@ -25,6 +25,11 @@ function edgeOrientation(edge: Edge): "vertical" | "horizontal" {
   return edge === "left" || edge === "right" ? "horizontal" : "vertical";
 }
 
+/** Drop on the leading edge (left/top) puts the dragged pane on that side, matching the drop gesture — the far/right or bottom edge appends it after the target instead, per VS Code's own editor-group convention. */
+function edgeInsertsBefore(edge: Edge): boolean {
+  return edge === "left" || edge === "top";
+}
+
 interface LayoutNodeViewProps {
   node: LayoutNode;
   path: number[];
@@ -36,8 +41,10 @@ interface LayoutNodeViewProps {
   onAssign: (path: number[], sessionId: string) => void;
   onLayoutChanged: (path: number[], layout: Layout, meta: LayoutChangedMeta, children: LayoutNode[]) => void;
   onFocusCapture: (sessionId: string) => void;
-  /** A session's grab handle was dropped on this (ready) leaf's edge — split it 50/50 in the edge's orientation. */
-  onSplit: (path: number[], orientation: "vertical" | "horizontal", draggedSessionId: string) => void;
+  /** A session's grab handle was dropped on this (ready) leaf's edge — split it 50/50 in the edge's orientation, with the dragged pane on the dropped side. */
+  onSplit: (
+    path: number[], orientation: "vertical" | "horizontal", draggedSessionId: string, insertBefore: boolean,
+  ) => void;
   /** A session's grab handle was dropped directly on this empty leaf — assign it there, no split. */
   onDropAssign: (path: number[], draggedSessionId: string) => void;
   /**
@@ -101,7 +108,13 @@ function LeafContent({ node, path, ctx }: { node: LeafNode; path: number[]; ctx:
         className="relative h-full"
         data-testid={isDropTarget ? "drop-zone-empty" : undefined}
         onDragOver={(e) => { if (!isDropTarget) { return; } e.preventDefault(); setEmptyHover(true); }}
-        onDragLeave={() => setEmptyHover(false)}
+        // `dragleave` bubbles: crossing onto `EmptySlot`'s own button content
+        // (a child of this div) would otherwise fire it and clear the
+        // highlight while the pointer is still over the drop target. Same
+        // guard as composer.tsx's file-drop zone.
+        onDragLeave={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) { setEmptyHover(false); }
+        }}
         onDrop={(e) => {
           if (!isDropTarget || draggingId === null) { return; }
           e.preventDefault();
@@ -132,7 +145,7 @@ function LeafContent({ node, path, ctx }: { node: LeafNode; path: number[]; ctx:
     if (draggingId === null) { return; }
     setHoverEdge(null);
     setDraggingId(null);
-    ctx.onSplit(path, edgeOrientation(edge), draggingId);
+    ctx.onSplit(path, edgeOrientation(edge), draggingId, edgeInsertsBefore(edge));
   };
 
   return (
