@@ -587,6 +587,33 @@ suite('MessageRouter', () => {
     assert.ok(hydrate, 'ready should still hydrate after a malformed set-layout');
   });
 
+  test('a malformed layout tree does not brick subsequent ready calls', async () => {
+    const malformedRoots = [
+      { kind: 'leaf', sessionId: 1, size: 100 },
+      { kind: 'leaf', sessionId: null, size: Infinity },
+      {
+        kind: 'split', orientation: 'diagonal', size: 100,
+        children: [
+          { kind: 'leaf', sessionId: null, size: 50 },
+          { kind: 'leaf', sessionId: null, size: 50 },
+        ],
+      },
+      {
+        kind: 'split', orientation: 'vertical', size: 100,
+        children: [{ kind: 'leaf', sessionId: null, size: 100 }],
+      },
+    ];
+    for (const root of malformedRoots) {
+      await router.handle({ t: 'set-layout', layout: { root, presets: [] } } as never);
+    }
+    sent.length = 0;
+
+    await router.handle({ t: 'ready' });
+
+    const hydrate = sent.find((m) => m.t === 'hydrate');
+    assert.ok(hydrate, 'ready should still hydrate after malformed layout trees');
+  });
+
   test('set-effort for a restored-but-not-live session lands in persisted state', async () => {
     await router.handle({ t: 'create-session', providerId: 'fake', cwd: '/tmp' });
     const id = manager.summaries()[0].id;

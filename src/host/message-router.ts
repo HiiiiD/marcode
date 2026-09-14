@@ -717,6 +717,28 @@ const KNOWN_MESSAGE_TAGS = new Set<WebviewToHost['t']>([
   'file-search', 'set-favorite-models',
 ]);
 
+function isLayoutNode(node: unknown, seen = new Set<object>()): boolean {
+  if (typeof node !== 'object' || node === null || seen.has(node)) { return false; }
+  seen.add(node);
+  const value = node as {
+    kind?: unknown;
+    sessionId?: unknown;
+    orientation?: unknown;
+    size?: unknown;
+    children?: unknown;
+  };
+  if (value.kind === 'leaf') {
+    return (typeof value.sessionId === 'string' || value.sessionId === null)
+      && typeof value.size === 'number' && Number.isFinite(value.size);
+  }
+  if (value.kind !== 'split' || (value.orientation !== 'vertical' && value.orientation !== 'horizontal')) {
+    return false;
+  }
+  return typeof value.size === 'number' && Number.isFinite(value.size)
+    && Array.isArray(value.children) && value.children.length >= 2
+    && value.children.every((child) => isLayoutNode(child, seen));
+}
+
 /**
  * A minimal shape guard for messages arriving over `webview.postMessage`,
  * which — unlike a same-process call — hands us `unknown` at runtime no
@@ -738,7 +760,8 @@ function isWireMessage(msg: unknown): msg is WebviewToHost {
   if (t === 'set-layout') {
     const layout = (msg as { layout?: unknown }).layout;
     if (typeof layout !== 'object' || layout === null) { return false; }
-    if (typeof (layout as { root?: unknown }).root !== 'object' || (layout as { root?: unknown }).root === null) {
+    const { root, presets } = layout as { root?: unknown; presets?: unknown };
+    if (!isLayoutNode(root) || !Array.isArray(presets)) {
       return false;
     }
   }
