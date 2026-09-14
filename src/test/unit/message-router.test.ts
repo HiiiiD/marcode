@@ -630,6 +630,33 @@ suite('MessageRouter', () => {
     assert.deepStrictEqual(calls, [['s1', 'new-name']]);
   });
 
+  test('replace-session delegates to manager.replaceSession', async () => {
+    const calls: string[] = [];
+    manager.replaceSession = async (id) => { calls.push(id); };
+
+    await router.handle({ t: 'replace-session', id: 's1' });
+
+    assert.deepStrictEqual(calls, ['s1']);
+  });
+
+  test('save-preset delegates to manager.savePreset', async () => {
+    const calls: string[] = [];
+    manager.savePreset = async (name) => { calls.push(name); };
+
+    await router.handle({ t: 'save-preset', name: 'Mine' });
+
+    assert.deepStrictEqual(calls, ['Mine']);
+  });
+
+  test('delete-preset delegates to manager.deletePreset', async () => {
+    const calls: string[] = [];
+    manager.deletePreset = async (id) => { calls.push(id); };
+
+    await router.handle({ t: 'delete-preset', id: 'p1' });
+
+    assert.deepStrictEqual(calls, ['p1']);
+  });
+
   test('rename-session records an error when rename fails', async () => {
     await router.handle({ t: 'create-session', providerId: 'fake', cwd: '/tmp' });
     const id = manager.summaries()[0].id;

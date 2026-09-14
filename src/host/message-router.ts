@@ -299,6 +299,18 @@ export class MessageRouter {
         await this.manager.remove(msg.id);
         return;
 
+      case 'replace-session':
+        await this.manager.replaceSession(msg.id);
+        return;
+
+      case 'save-preset':
+        await this.manager.savePreset(msg.name);
+        return;
+
+      case 'delete-preset':
+        await this.manager.deletePreset(msg.id);
+        return;
+
       case 'send': {
         const session = this.manager.get(msg.id) ?? await this.reopen(msg.id);
         if (!session) { return; }
@@ -687,7 +699,7 @@ export class MessageRouter {
 
 const KNOWN_MESSAGE_TAGS = new Set<WebviewToHost['t']>([
   'ready', 'create-session', 'set-visible', 'set-layout', 'close-session',
-  'delete-session', 'send', 'interrupt', 'cancel-queued',
+  'delete-session', 'replace-session', 'save-preset', 'delete-preset', 'send', 'interrupt', 'cancel-queued',
   'set-effort', 'set-permission-mode', 'rename-session',
   'set-model', 'permission-decision', 'question-answer', 'load-more',
   'answer-relocation', 'cancel-relocation', 'fork-session',
