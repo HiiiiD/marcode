@@ -36,7 +36,7 @@ function hydrateOne() {
   sendFromHost({
     t: "hydrate",
     sessions: [summary("a")],
-    layout: layoutOf("a"),
+    layout: layoutOf(["a"]),
     snapshots: [snapshot("a")],
     catalog: catalog(),
     unavailable: [],
@@ -84,7 +84,7 @@ suite("Composer", () => {
       />,
     );
     sendFromHost({
-      t: "hydrate", sessions: [], layout: { orientation: "vertical", panes: [] },
+      t: "hydrate", sessions: [], layout: layoutOf([]),
       snapshots: [], catalog: [], unavailable: [], usage: {}, showCacheTimer: true,
     });
     screen.getByRole("status", { name: /Prompt cache warm/ });
@@ -625,7 +625,7 @@ suite("Composer", () => {
       sendFromHost({
         t: "hydrate",
         sessions: [summary("a")],
-        layout: layoutOf("a"),
+        layout: layoutOf(["a"]),
         snapshots: [snapshot("a")],
         catalog: [],
         unavailable: [{ id: "fake", displayName: "Fake", reason: "Fake CLI not found." }],
@@ -666,7 +666,7 @@ suite("Composer", () => {
       sendFromHost({
         t: "hydrate",
         sessions: [summary("a")],
-        layout: layoutOf("a"),
+        layout: layoutOf(["a"]),
         snapshots: [snapshot("a", {
           items: [{ id: "u1", ts: 1, role: "user", text: "refactor the parser" }],
         })],
@@ -684,7 +684,7 @@ suite("Composer", () => {
       sendFromHost({
         t: "hydrate",
         sessions: [summary("a")],
-        layout: layoutOf("a"),
+        layout: layoutOf(["a"]),
         snapshots: [snapshot("a", { pendingQuestions })],
         catalog: catalog(),
         unavailable: [],
@@ -696,7 +696,7 @@ suite("Composer", () => {
       sendFromHost({
         t: "hydrate",
         sessions: [summary("a")],
-        layout: layoutOf("a"),
+        layout: layoutOf(["a"]),
         snapshots: [snapshot("a", { pending })],
         catalog: catalog(),
         unavailable: [],

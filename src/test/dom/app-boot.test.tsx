@@ -7,7 +7,7 @@ function hydrate(ids: string[]) {
   sendFromHost({
     t: 'hydrate',
     sessions: ids.map((id) => summary(id)),
-    layout: layoutOf(...ids),
+    layout: layoutOf(ids),
     snapshots: ids.map((id) => snapshot(id)),
     catalog: catalog(),
     unavailable: [],

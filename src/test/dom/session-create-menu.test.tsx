@@ -24,7 +24,7 @@ function hydrate(sessions = [summary('a')], providers = catalog()) {
   sendFromHost({
     t: 'hydrate',
     sessions,
-    layout: layoutOf(...sessions.map((s) => s.id)),
+    layout: layoutOf(sessions.map((s) => s.id)),
     snapshots: sessions.map((s) => snapshot(s.id, s)),
     catalog: providers,
     unavailable: [],
@@ -298,7 +298,7 @@ suite('SessionCreateMenu', () => {
     sendFromHost({
       t: 'hydrate',
       sessions: [],
-      layout: { orientation: 'vertical', panes: [] },
+      layout: layoutOf([]),
       snapshots: [],
       catalog: [],
       unavailable: [],

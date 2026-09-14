@@ -10,6 +10,7 @@ import { FakeProvider } from '../../providers/fake/fake-provider';
 import type {
   AgentProvider, ModelInfo, PermissionModeInfo, UsageWindow,
 } from '../../providers/types';
+import { layoutOf } from '../fixtures/protocol';
 
 async function settle() {
   for (let i = 0; i < 10; i++) { await new Promise((r) => setImmediate(r)); }
@@ -367,7 +368,7 @@ suite('SessionManager', () => {
         usage: { inputTokens: 0, outputTokens: 0 },
         archived: false, createdAt: 1, updatedAt: 1,
       } as SessionState],
-      layout: { orientation: 'vertical', panes: [] },
+      layout: layoutOf([]),
     });
     const restoredManager = new SessionManager(
       rstore, new Map<string, AgentProvider>([['fake', new FakeProvider(() => [])]]),
@@ -652,16 +653,14 @@ suite('SessionManager', () => {
 
   test('init restores sessions and layout from the index', async () => {
     const a = await manager.create('fake', '/tmp');
-    manager.setLayout({
-      orientation: 'horizontal',
-      panes: [{ sessionId: a.state.id, size: 100 }],
-    });
+    manager.setLayout(layoutOf([a.state.id], 'horizontal'));
     await manager.dispose();
 
     const fresh = new SessionManager(new TranscriptStore(dir), providers, () => {});
     await fresh.init();
     assert.strictEqual(fresh.summaries().length, 1);
-    assert.strictEqual(fresh.layout().orientation, 'horizontal');
+    const restoredRoot = fresh.layout().root;
+    assert.strictEqual(restoredRoot.kind === 'split' && restoredRoot.orientation, 'horizontal');
     assert.strictEqual(fresh.get(a.state.id), undefined,
       'restored sessions are not live until opened');
     await fresh.dispose();
@@ -807,7 +806,7 @@ suite('SessionManager', () => {
     await store2.writeIndex({
       version: 2,
       sessions: [storedSession()],
-      layout: { orientation: 'vertical', panes: [] },
+      layout: layoutOf([]),
     });
     const local = new SessionManager(
       store2, new Map([['fake', new FakeProvider(() => [])]]), () => {},
@@ -828,7 +827,7 @@ suite('SessionManager', () => {
     await store2.writeIndex({
       version: 2,
       sessions: [storedSession()],
-      layout: { orientation: 'vertical', panes: [] },
+      layout: layoutOf([]),
     });
     const local = new SessionManager(
       store2, new Map([['fake', new FakeProvider(() => [])]]), () => {},
@@ -1277,7 +1276,7 @@ suite('SessionManager', () => {
         usage: { inputTokens: 0, outputTokens: 0 },
         archived: false, createdAt: 1, updatedAt: 1,
       } as unknown as SessionState],
-      layout: { orientation: 'vertical', panes: [] },
+      layout: layoutOf([]),
     });
 
     const restored = new SessionManager(store2, providers, () => {});
@@ -1300,7 +1299,7 @@ suite('SessionManager', () => {
         usage: { inputTokens: 0, outputTokens: 0 },
         archived: false, createdAt: 1, updatedAt: 1,
       } as unknown as SessionState],
-      layout: { orientation: 'vertical', panes: [] },
+      layout: layoutOf([]),
     });
 
     const restored = new SessionManager(store2, providers, () => {});
@@ -1324,7 +1323,7 @@ suite('SessionManager', () => {
         usage: { inputTokens: 0, outputTokens: 0 },
         archived: false, createdAt: 1, updatedAt: 1,
       } as unknown as SessionState],
-      layout: { orientation: 'vertical', panes: [] },
+      layout: layoutOf([]),
     });
 
     const restored = new SessionManager(store2, providers, () => {});

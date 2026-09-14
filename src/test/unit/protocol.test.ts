@@ -60,6 +60,9 @@ function describeInbound(m: WebviewToHost): string {
     case 'file-search': return 'file-search';
     case 'agents-md-nudge-action': return 'agents-md-nudge-action';
     case 'set-favorite-models': return 'set-favorite-models';
+    case 'save-preset': return 'save-preset';
+    case 'delete-preset': return 'delete-preset';
+    case 'replace-session': return 'replace-session';
     default: return assertNever(m);
   }
 }

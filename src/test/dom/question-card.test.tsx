@@ -10,7 +10,7 @@ function hydrateWith(pendingQuestions: QuestionRequest[]) {
   sendFromHost({
     t: 'hydrate',
     sessions: [summary('a')],
-    layout: layoutOf('a'),
+    layout: layoutOf(['a']),
     snapshots: [snapshot('a', { pendingQuestions })],
     catalog: catalog(),
     unavailable: [],
@@ -396,7 +396,7 @@ suite('QuestionCard', () => {
     sendFromHost({
       t: 'hydrate',
       sessions: [summary('a')],
-      layout: layoutOf('a'),
+      layout: layoutOf(['a']),
       snapshots: [snapshot('a', { items: [question()], pendingQuestions: LIVE })],
       catalog: catalog(),
       unavailable: [],

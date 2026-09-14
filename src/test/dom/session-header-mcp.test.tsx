@@ -9,7 +9,7 @@ function hydrate(over: Partial<SessionSnapshot> = {}) {
   sendFromHost({
     t: 'hydrate',
     sessions: [summary('a', over)],
-    layout: layoutOf('a'),
+    layout: layoutOf(['a']),
     snapshots: [snapshot('a', over)],
     catalog: catalog(),
     unavailable: [],
@@ -78,7 +78,7 @@ suite('SessionHeader MCP', () => {
     sendFromHost({
       t: 'hydrate',
       sessions: [summary('a'), summary('b')],
-      layout: layoutOf('a', 'b'),
+      layout: layoutOf(['a', 'b']),
       snapshots: [
         snapshot('a', { mcpServers: [{ name: 'github', state: 'connected' }] }),
         snapshot('b', { mcpServers: [{ name: 'stripe', state: 'failed' }] }),

@@ -5,6 +5,7 @@
 import * as assert from 'assert';
 import { initialState, reduce } from '../../webview/reducer';
 import type { TreeDiff } from '../../protocol/messages';
+import { layoutOf } from '../fixtures/protocol';
 
 const TREE: TreeDiff = {
   root: '/repo', branch: 'main', sessions: ['s1'],
@@ -87,7 +88,7 @@ suite('fleet diff reducer', () => {
       { t: 'session-status', id: 's1', status: 'idle' },
     );
     const fresh = reduce(dirty, {
-      t: 'hydrate', sessions: [], layout: { orientation: 'vertical', panes: [] },
+      t: 'hydrate', sessions: [], layout: layoutOf([]),
       snapshots: [], catalog: [], unavailable: [], usage: {},
     });
     assert.strictEqual(fresh.fleetDiff, undefined);

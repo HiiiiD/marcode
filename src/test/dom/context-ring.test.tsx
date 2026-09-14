@@ -24,7 +24,7 @@ function mount(contextPercent?: number): void {
   sendFromHost({
     t: 'hydrate',
     sessions: [summary('a', { contextPercent })],
-    layout: layoutOf('a'),
+    layout: layoutOf(['a']),
     snapshots: [snapshot('a', { contextPercent })],
     catalog: catalog(),
     unavailable: [],

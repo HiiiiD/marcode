@@ -9,7 +9,7 @@ function hydrateTwoPanes() {
   sendFromHost({
     t: 'hydrate',
     sessions: [summary('a'), summary('b')],
-    layout: layoutOf('a', 'b'),
+    layout: layoutOf(['a', 'b']),
     snapshots: [snapshot('a'), snapshot('b')],
     catalog: catalog(),
     unavailable: [],
@@ -22,7 +22,7 @@ function hydrateOne() {
   sendFromHost({
     t: 'hydrate',
     sessions: [summary('a')],
-    layout: layoutOf('a'),
+    layout: layoutOf(['a']),
     snapshots: [snapshot('a')],
     catalog: catalog(),
     unavailable: [],

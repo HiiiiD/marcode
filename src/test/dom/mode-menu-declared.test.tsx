@@ -18,7 +18,7 @@ async function bootWithProvider(provider: Omit<ProviderInfo, "models"> & {
   sendFromHost({
     t: "hydrate",
     sessions: [summary("a", { providerId: provider.id, model: provider.models[0].id })],
-    layout: layoutOf("a"),
+    layout: layoutOf(["a"]),
     snapshots: [snapshot("a", { providerId: provider.id, model: provider.models[0].id })],
     catalog: [provider],
     unavailable: [],
