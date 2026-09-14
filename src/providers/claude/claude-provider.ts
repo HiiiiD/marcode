@@ -662,12 +662,20 @@ export class ClaudeProvider implements AgentProvider {
             });
             for (const event of mapEvent(msg)) {
               if (event.kind === 'background-tasks-changed') { backgroundTaskIds = event.taskIds; }
+              // Keep this local mirror in sync with the same per-task edge
+              // agent-session.ts pairs against its own set: otherwise
+              // interrupt() would still try to stopTask() an id the SDK
+              // already settled (harmless — best-effort — but stale).
+              if (event.kind === 'task-settled') {
+                backgroundTaskIds = backgroundTaskIds.filter((id) => id !== event.taskId);
+              }
               lifecycleDebug('claude.mapped-event', {
                 sessionId: opts.sessionId,
                 kind: event.kind,
                 ...(event.kind === 'turn-end' ? { reason: event.reason } : {}),
                 ...(event.kind === 'background-tasks-changed'
                   ? { taskIds: event.taskIds, taskCount: event.taskIds.length } : {}),
+                ...(event.kind === 'task-settled' ? { taskId: event.taskId } : {}),
                 turnGeneration: turnGen,
               });
               // A genuine echo of a turn `interrupt()` already self-resolved:

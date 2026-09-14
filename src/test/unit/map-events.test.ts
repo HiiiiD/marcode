@@ -356,6 +356,26 @@ suite('mapEvent', () => {
 
     assert.deepStrictEqual(out, [{ kind: 'background-tasks-changed', taskIds: [] }]);
   });
+
+  test('a task_notification with a terminal status becomes a task-settled event', () => {
+    const out = mapEvent({
+      type: 'system', subtype: 'task_notification', task_id: 't1', status: 'completed',
+      output_file: '/tmp/t1.output', summary: 'done', uuid: 'u', session_id: 's',
+    } as never);
+
+    assert.deepStrictEqual(out, [{ kind: 'task-settled', taskId: 't1' }]);
+  });
+
+  test('a task_notification maps to task-settled regardless of which terminal status it carries', () => {
+    for (const status of ['completed', 'failed', 'stopped']) {
+      const out = mapEvent({
+        type: 'system', subtype: 'task_notification', task_id: 't1', status,
+        output_file: '/tmp/t1.output', summary: 'done', uuid: 'u', session_id: 's',
+      } as never);
+
+      assert.deepStrictEqual(out, [{ kind: 'task-settled', taskId: 't1' }]);
+    }
+  });
 });
 
 suite('rate_limit_event', () => {

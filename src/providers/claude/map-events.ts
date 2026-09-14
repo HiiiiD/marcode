@@ -26,8 +26,8 @@
 // assistant, user, result/*, task/*, hook/*, etc). We only map the variants
 // that matter to the UI and defensively drop everything else:
 //   - `{ type: 'system', subtype: 'init', session_id, ... }` — session id.
-//     (Other `type: 'system'` subtypes — 'status', 'task_notification',
-//     'session_state_changed', etc. — also carry a `session_id`, so gating on
+//     (Other `type: 'system'` subtypes — 'status', 'session_state_changed',
+//     etc. — also carry a `session_id`, so gating on
 //     `subtype === 'init'` specifically, rather than "any system message with
 //     a session_id", avoids emitting a spurious `session` event on every
 //     later system heartbeat. The plan's pseudocode did not gate on subtype.)
@@ -182,11 +182,10 @@ export function mapEvent(msg: unknown): AgentEvent[] {
     }
     if (subtype === 'background_tasks_changed') {
       // Level signal, not an edge: REPLACE semantics per the SDK's own doc
-      // comment (sdk.d.ts, SDKBackgroundTasksChangedMessage) — a consumer
-      // that only needs "is background work running" swaps its set for this
-      // payload rather than pairing this against task_notification's
-      // start/settle edges, so a missed edge can never wedge a stale
-      // running indicator.
+      // comment (sdk.d.ts, SDKBackgroundTasksChangedMessage) — the primary
+      // source of truth for the whole set. `task_notification` below is
+      // paired against it anyway, as a second, per-task edge: belt and
+      // suspenders against this snapshot's own settle update getting lost.
       const tasks = (msg as { tasks?: { task_id?: unknown }[] }).tasks;
       return [{
         kind: 'background-tasks-changed',
@@ -194,6 +193,15 @@ export function mapEvent(msg: unknown): AgentEvent[] {
           ? tasks.map((t) => t.task_id).filter((id): id is string => typeof id === 'string')
           : [],
       }];
+    }
+    if (subtype === 'task_notification') {
+      // The SDK's per-task settle edge — emitted unconditionally whenever a
+      // task (backgrounded or not) reaches a terminal state, independent of
+      // the next background-tasks-changed snapshot. See the AgentEvent
+      // doc comment (providers/types.ts) for why this is defense-in-depth
+      // rather than the primary signal.
+      const taskId = (msg as { task_id?: unknown }).task_id;
+      return typeof taskId === 'string' ? [{ kind: 'task-settled', taskId }] : [];
     }
     if (subtype !== 'init') { return []; }
     const out: AgentEvent[] = [];

@@ -1226,6 +1226,56 @@ suite('ClaudeProvider (cancellation)', () => {
     await run.dispose();
   });
 
+  test('a task_notification settle edge also drops its id, even without a background-tasks-changed drain', async () => {
+    const stoppedTaskIds: string[] = [];
+    let stop!: () => void;
+    const stopSignal = new Promise<void>((resolve) => { stop = resolve; });
+    const queryFn = (params: { prompt: AsyncIterable<unknown>; options: unknown }) => {
+      void params;
+      const gen = (async function* () {
+        yield {
+          type: 'system', subtype: 'background_tasks_changed',
+          tasks: [
+            { task_id: 'bg-1', task_type: 'agent', description: 'Investigating' },
+            { task_id: 'bg-2', task_type: 'bash', description: 'Running tests' },
+          ],
+          uuid: 'u1', session_id: 's1',
+        };
+        // bg-1's own settle notification arrives — no matching
+        // background_tasks_changed snapshot follows it in this script.
+        yield {
+          type: 'system', subtype: 'task_notification', task_id: 'bg-1', status: 'completed',
+          output_file: '/tmp/bg-1.output', summary: 'done', uuid: 'u2', session_id: 's1',
+        };
+        await stopSignal;
+      })() as AsyncGenerator<unknown, void> & {
+        interrupt: () => Promise<undefined>;
+        setPermissionMode: () => Promise<void>;
+        applyFlagSettings: () => Promise<void>;
+        close: () => void;
+        mcpServerStatus: () => Promise<unknown[]>;
+        stopTask: (taskId: string) => Promise<void>;
+      };
+      gen.interrupt = async () => undefined;
+      gen.setPermissionMode = async () => { /* no-op fake */ };
+      gen.applyFlagSettings = async () => { /* no-op fake */ };
+      gen.close = () => { stop(); };
+      gen.mcpServerStatus = async () => [];
+      gen.stopTask = async (taskId: string) => { stoppedTaskIds.push(taskId); };
+      return gen;
+    };
+
+    const provider = new ClaudeProvider((async () => queryFn) as never);
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default', sessionId: 'test-session' });
+    run.send('go');
+    await tick();
+
+    await run.interrupt();
+
+    assert.deepStrictEqual(stoppedTaskIds, ['bg-2'], 'bg-1 already settled; only bg-2 is still live to stop');
+    await run.dispose();
+  });
+
   test('an aborted question resolves deny, never null', async () => {
     const fake = fakeLoadQuery();
     const provider = new ClaudeProvider(fake.load as never);
