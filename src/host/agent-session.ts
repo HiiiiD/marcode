@@ -732,6 +732,14 @@ export class AgentSession {
       return 'Waiting for your answer';
     }
     if (status === 'running') {
+      // Once the foreground turn itself has ended, a background task is
+      // the only thing that can still be holding status at 'running' (see
+      // the `busy` override in recomputeWaitingStatus) — currentToolLabel()
+      // finds nothing, so the generic fallback below used to misreport
+      // this as "Running a tool" with nothing actually running.
+      if (!this.turnActive && this.activeBackgroundTasks.size > 0) {
+        return 'Background task running';
+      }
       return `Running ${this.currentToolLabel() ?? 'a tool'}`;
     }
     return 'Idle';

@@ -1582,6 +1582,24 @@ suite('AgentSession activityLabel', () => {
     await session.dispose();
   });
 
+  test('a background task keeping status running names itself, not a generic tool', async () => {
+    // Turn has fully ended (turnActive false); only the background task
+    // set keeps status at 'running'. currentToolLabel() has nothing to
+    // find, so the old fallback misreported this as "Running a tool" with
+    // nothing actually running.
+    const provider = new FakeProvider(() => [
+      { kind: 'background-tasks-changed', taskIds: ['bg-1'] },
+      { kind: 'turn-end', reason: 'done' },
+    ]);
+    const session = new AgentSession(baseState(), provider, store, sink);
+    session.send('kick off a background task');
+    await settle();
+
+    assert.strictEqual(session.state.status, 'running');
+    assert.strictEqual(session.state.activityLabel, 'Background task running');
+    await session.dispose();
+  });
+
   test('a pending question describes waiting on an answer, not on a tool', async () => {
     const provider = new FakeProvider();
     const session = new AgentSession(baseState(), provider, store, sink);
