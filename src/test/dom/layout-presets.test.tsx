@@ -49,4 +49,29 @@ suite('layout presets menu', () => {
     const stack2 = screen.getByRole('menuitem', { name: /2 rows/i });
     assert.strictEqual(stack2.getAttribute('aria-disabled'), 'true');
   });
+
+  test('save current layout as preset posts save-preset with the entered name', async () => {
+    renderApp();
+    hydrateTwo();
+    fireEvent.click(screen.getByRole('button', { name: /Layout presets/i }));
+    fireEvent.click(screen.getByRole('menuitem', { name: /Save current layout/i }));
+    fireEvent.change(screen.getByLabelText(/preset name/i), { target: { value: 'My grid' } });
+    fireEvent.click(screen.getByRole('button', { name: /^Save$/i }));
+    const last = posted().at(-1);
+    assert.deepStrictEqual(last, { t: 'save-preset', name: 'My grid' });
+  });
+
+  test('a saved preset appears in the menu after a layout-changed echo carrying it, and can be deleted', () => {
+    renderApp();
+    hydrateTwo();
+    sendFromHost({
+      t: 'layout-changed',
+      layout: { root: { kind: 'leaf', sessionId: 's1', size: 100 }, presets: [{ id: 'p1', name: 'My grid', builtin: false, root: { kind: 'leaf', sessionId: null, size: 100 } }] },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Layout presets/i }));
+    assert.strictEqual(screen.getByRole('menuitem', { name: /My grid/i }) !== undefined, true);
+    fireEvent.click(screen.getByRole('button', { name: /Delete My grid/i }));
+    const last = posted().at(-1);
+    assert.deepStrictEqual(last, { t: 'delete-preset', id: 'p1' });
+  });
 });
