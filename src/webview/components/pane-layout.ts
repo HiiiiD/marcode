@@ -124,6 +124,28 @@ export interface ReconcileResult {
  * This module has no way to enforce that invariant (it lives on the host),
  * so: know this before changing what `ready` hydrates.
  */
+/**
+ * Appends a leaf for `sessionId` at the top split level: fills a bare empty
+ * root directly, otherwise adds it as a sibling — wrapping the existing root
+ * in a fresh vertical split only when it isn't already one — and re-splits
+ * sizes evenly across the resulting sibling set. The append rule
+ * `reconcilePaneLayout` uses for a newly-arrived session, extracted so
+ * `session-picker.tsx`'s roster checkbox (an explicit user action, not a
+ * reconcile pass) can share it instead of duplicating it.
+ */
+export function appendAtTop(root: LayoutNode, sessionId: string): LayoutNode {
+  if (root.kind === 'leaf' && root.sessionId === null) {
+    return { kind: 'leaf', sessionId, size: 100 };
+  }
+  const siblings: LayoutNode[] = root.kind === 'split' && root.orientation === 'vertical' ? root.children : [root];
+  const newLeaf: LayoutNode = { kind: 'leaf', sessionId, size: 0 };
+  const children = [...siblings, newLeaf];
+  return {
+    kind: 'split', orientation: 'vertical', size: 100,
+    children: children.map((child) => ({ ...child, size: 100 / children.length })),
+  };
+}
+
 export function reconcilePaneLayout(
   root: LayoutNode, roster: ReadonlySet<string>, snapshotArrivedIds: string[], knownSessionIds: ReadonlySet<string>,
 ): ReconcileResult {
@@ -139,17 +161,7 @@ export function reconcilePaneLayout(
   );
   for (const id of newlyArrived) {
     changed = true;
-    if (next.kind === 'leaf' && next.sessionId === null) {
-      next = { kind: 'leaf', sessionId: id, size: 100 };
-      continue;
-    }
-    const siblings: LayoutNode[] = next.kind === 'split' && next.orientation === 'vertical' ? next.children : [next];
-    const newLeaf: LayoutNode = { kind: 'leaf', sessionId: id, size: 0 };
-    const children = [...siblings, newLeaf];
-    next = {
-      kind: 'split', orientation: 'vertical', size: 100,
-      children: children.map((child) => ({ ...child, size: 100 / children.length })),
-    };
+    next = appendAtTop(next, id);
   }
 
   const nextKnown = new Set(knownSessionIds);

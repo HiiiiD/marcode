@@ -1,7 +1,7 @@
 import * as assert from 'assert';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { catalog, layoutOf, snapshot, summary } from '../fixtures/protocol';
+import { catalog, layoutOf, singlePaneLayout, snapshot, summary } from '../fixtures/protocol';
 import { posted, renderApp, sendFromHost } from './harness';
 import { resizeTo } from './setup';
 
@@ -10,7 +10,7 @@ function hydrateAOpen() {
   sendFromHost({
     t: 'hydrate',
     sessions: [summary('a'), summary('b')],
-    layout: layoutOf('a'),
+    layout: layoutOf(['a']),
     snapshots: [snapshot('a')],
     catalog: catalog(),
     unavailable: [],
@@ -36,7 +36,13 @@ suite('SessionPicker', () => {
     const layouts = posted().filter((m) => m.t === 'set-layout');
     assert.deepStrictEqual(layouts.at(-1), {
       t: 'set-layout',
-      layout: { orientation: 'vertical', panes: [{ sessionId: 'a', size: 50 }, { sessionId: 'b', size: 50 }] },
+      layout: {
+        presets: [],
+        root: {
+          kind: 'split', orientation: 'vertical', size: 100,
+          children: [{ kind: 'leaf', sessionId: 'a', size: 50 }, { kind: 'leaf', sessionId: 'b', size: 50 }],
+        },
+      },
     });
 
     const visible = posted().filter((m) => m.t === 'set-visible');
@@ -186,7 +192,7 @@ suite('SessionPicker', () => {
     sendFromHost({
       t: 'hydrate',
       sessions: [summary('a'), summary('b', { archived: true })],
-      layout: layoutOf('a'),
+      layout: layoutOf(['a']),
       snapshots: [snapshot('a')],
       catalog: catalog(),
       unavailable: [],
@@ -224,7 +230,8 @@ suite('SessionPicker', () => {
     await userEvent.click(screen.getByLabelText(/split direction/i));
 
     const layouts = posted().filter((m) => m.t === 'set-layout');
-    assert.strictEqual(layouts.at(-1)!.layout.orientation, 'horizontal');
+    const root = layouts.at(-1)!.layout.root;
+    assert.strictEqual(root.kind === 'split' ? root.orientation : undefined, 'horizontal');
   });
 
   test('the orientation toggle announces its current state', () => {
@@ -254,7 +261,7 @@ suite('SessionPicker', () => {
     sendFromHost({
       t: 'hydrate',
       sessions: [summary('a'), summary('b')],
-      layout: { orientation: 'horizontal', panes: [{ sessionId: 'a', size: 50 }, { sessionId: 'b', size: 50 }] },
+      layout: layoutOf(['a', 'b'], 'horizontal'),
       snapshots: [snapshot('a'), snapshot('b')],
       catalog: catalog(),
       unavailable: [],
@@ -285,6 +292,28 @@ suite('SessionPicker', () => {
     );
   });
 
+  test('a single open pane disables the orientation toggle and explains why', () => {
+    renderApp();
+    sendFromHost({
+      t: 'hydrate',
+      sessions: [summary('a'), summary('b')],
+      layout: singlePaneLayout('a'), // a bare leaf root: only 'a' is open, nothing to reorient
+      snapshots: [snapshot('a')],
+      catalog: catalog(),
+      unavailable: [],
+      usage: {},
+    });
+
+    const toggle = screen.getByLabelText(/split direction/i);
+    assert.strictEqual((toggle as HTMLButtonElement).disabled, true);
+    const describedBy = toggle.getAttribute('aria-describedby');
+    assert.ok(describedBy, 'the disabled toggle must point at its reason via aria-describedby');
+    assert.match(
+      document.getElementById(describedBy!)?.textContent ?? '',
+      /one pane/i,
+    );
+  });
+
   // The trigger names one concept — what is in the split. Working trees are
   // a fourth, and the destructive one; they get their own control in the row
   // rather than an ungrouped item filed under a word about layout.
@@ -305,7 +334,7 @@ suite('SessionPicker', () => {
   test('the picker asks the host to open the review tab', async () => {
     renderApp();
     sendFromHost({
-      t: 'hydrate', sessions: [], layout: { orientation: 'vertical', panes: [] },
+      t: 'hydrate', sessions: [], layout: layoutOf([]),
       snapshots: [], catalog: catalog(), unavailable: [], usage: {},
     });
 
@@ -317,7 +346,7 @@ suite('SessionPicker', () => {
   test('the picker asks the host to open the fleet view', async () => {
     renderApp();
     sendFromHost({
-      t: 'hydrate', sessions: [], layout: { orientation: 'vertical', panes: [] },
+      t: 'hydrate', sessions: [], layout: layoutOf([]),
       snapshots: [], catalog: catalog(), unavailable: [], usage: {},
     });
 
@@ -329,7 +358,7 @@ suite('SessionPicker', () => {
   test('the empty state offers the way out', () => {
     renderApp();
     sendFromHost({
-      t: 'hydrate', sessions: [], layout: { orientation: 'vertical', panes: [] },
+      t: 'hydrate', sessions: [], layout: layoutOf([]),
       snapshots: [], catalog: catalog(), unavailable: [], usage: {},
     });
 

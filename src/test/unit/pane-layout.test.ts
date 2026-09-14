@@ -1,6 +1,6 @@
 import * as assert from 'assert';
 import {
-  accessibleTitles, leafDisplayState, reconcilePaneLayout, rosterSessionIds, visibleLeaves,
+  accessibleTitles, appendAtTop, leafDisplayState, reconcilePaneLayout, rosterSessionIds, visibleLeaves,
 } from '../../webview/components/pane-layout';
 import type { LayoutNode } from '../../webview/components/layout-tree';
 
@@ -154,6 +154,68 @@ suite('pane-layout reconcilePaneLayout', () => {
     };
     const result = reconcilePaneLayout(root, new Set(['a', 'b', 'c']), ['a', 'b', 'c'], new Set(['a', 'b']));
     assert.deepStrictEqual(result.root, {
+      kind: 'split', orientation: 'vertical', size: 100,
+      children: [
+        {
+          kind: 'split', orientation: 'horizontal', size: 50,
+          children: [
+            { kind: 'leaf', sessionId: 'a', size: 50 },
+            { kind: 'leaf', sessionId: 'b', size: 50 },
+          ],
+        },
+        { kind: 'leaf', sessionId: 'c', size: 50 },
+      ],
+    });
+  });
+});
+
+suite('pane-layout appendAtTop', () => {
+  // Same rule `reconcilePaneLayout` uses for a newly-arrived session, now
+  // exported so `session-picker.tsx`'s roster checkbox can call it directly
+  // instead of duplicating it.
+  test('fills a bare empty root directly, without wrapping it in a split', () => {
+    const root: LayoutNode = { kind: 'leaf', sessionId: null, size: 100 };
+    assert.deepStrictEqual(appendAtTop(root, 'a'), { kind: 'leaf', sessionId: 'a', size: 100 });
+  });
+
+  test('wraps a bare occupied leaf in a fresh vertical split, sized evenly', () => {
+    const root: LayoutNode = { kind: 'leaf', sessionId: 'a', size: 100 };
+    assert.deepStrictEqual(appendAtTop(root, 'b'), {
+      kind: 'split', orientation: 'vertical', size: 100,
+      children: [
+        { kind: 'leaf', sessionId: 'a', size: 50 },
+        { kind: 'leaf', sessionId: 'b', size: 50 },
+      ],
+    });
+  });
+
+  test('appends a sibling to an existing vertical split, reflowing all children evenly', () => {
+    const root: LayoutNode = {
+      kind: 'split', orientation: 'vertical', size: 100,
+      children: [
+        { kind: 'leaf', sessionId: 'a', size: 50 },
+        { kind: 'leaf', sessionId: 'b', size: 50 },
+      ],
+    };
+    assert.deepStrictEqual(appendAtTop(root, 'c'), {
+      kind: 'split', orientation: 'vertical', size: 100,
+      children: [
+        { kind: 'leaf', sessionId: 'a', size: 100 / 3 },
+        { kind: 'leaf', sessionId: 'b', size: 100 / 3 },
+        { kind: 'leaf', sessionId: 'c', size: 100 / 3 },
+      ],
+    });
+  });
+
+  test('wraps a non-vertical top split rather than merging into it', () => {
+    const root: LayoutNode = {
+      kind: 'split', orientation: 'horizontal', size: 100,
+      children: [
+        { kind: 'leaf', sessionId: 'a', size: 50 },
+        { kind: 'leaf', sessionId: 'b', size: 50 },
+      ],
+    };
+    assert.deepStrictEqual(appendAtTop(root, 'c'), {
       kind: 'split', orientation: 'vertical', size: 100,
       children: [
         {

@@ -9,6 +9,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { leafSessionIds, removeSession } from './layout-tree';
+import { appendAtTop } from './pane-layout';
 import { SessionCreateMenu } from './session-create-menu';
 import { SessionRow } from './session-row';
 import { StaleTreesDialog } from './stale-trees';
@@ -31,25 +32,10 @@ export function SessionPicker({ narrow, onReview, onFleet }: SessionPickerProps)
   const horizontal = root.kind === 'split' && root.orientation === 'horizontal';
   const needing = state.sessions.filter((s) => statusView(s.status).needsUser).length;
 
-  // Mirrors `reconcilePaneLayout`'s own "wrap a bare leaf or extend an
-  // existing vertical split" append rule (pane-layout.ts) — a bare-metal
-  // stand-in for the `appendAtTop` helper Task 10 factors that logic into,
-  // kept local here rather than duplicated into `pane-layout.ts` ahead of
-  // that task.
+  // Shares `reconcilePaneLayout`'s own append rule via `appendAtTop`
+  // (pane-layout.ts) rather than duplicating it here.
   const toggle = (id: SessionId) => {
-    let next: typeof root;
-    if (open.has(id)) {
-      next = removeSession(root, id);
-    } else if (root.kind === 'leaf' && root.sessionId === null) {
-      next = { kind: 'leaf', sessionId: id, size: 100 };
-    } else {
-      const siblings = root.kind === 'split' && root.orientation === 'vertical' ? root.children : [root];
-      const children = [...siblings, { kind: 'leaf' as const, sessionId: id, size: 0 }];
-      next = {
-        kind: 'split', orientation: 'vertical', size: 100,
-        children: children.map((child) => ({ ...child, size: 100 / children.length })),
-      };
-    }
+    const next = open.has(id) ? removeSession(root, id) : appendAtTop(root, id);
     post({ t: 'set-layout', layout: { ...state.layout, root: next } });
     post({ t: 'set-visible', sessionIds: leafSessionIds(next) });
   };
@@ -257,13 +243,18 @@ export function SessionPicker({ narrow, onReview, onFleet }: SessionPickerProps)
             size="icon-sm"
             aria-label={`Split direction: ${horizontal ? 'side by side' : 'stacked'}`}
             aria-pressed={horizontal}
-            disabled={narrow}
+            disabled={narrow || root.kind !== 'split'}
             // A `title` on a disabled button is reachable by neither keyboard
             // focus nor most screen readers — disabled elements are pulled out
             // of both. `aria-describedby` plus real, rendered (if visually
             // hidden) text is the same remedy as the composer's disabled bypass
-            // option.
-            aria-describedby={narrow ? 'orientation-reason' : undefined}
+            // option. Both reasons can hold at once (a narrow panel with only
+            // one pane open), so this points at whichever apply.
+            aria-describedby={
+              [narrow && 'orientation-reason', root.kind !== 'split' && 'orientation-single-pane-reason']
+                .filter((id): id is string => Boolean(id))
+                .join(' ') || undefined
+            }
             className="shrink-0"
             onClick={() => {
               if (root.kind !== 'split') { return; }
@@ -288,6 +279,11 @@ export function SessionPicker({ narrow, onReview, onFleet }: SessionPickerProps)
         // already visibly disabled.
         <span id="orientation-reason" className="sr-only">
           The panel is too narrow to split side by side; panes stack until it is wider.
+        </span>
+      )}
+      {root.kind !== 'split' && (
+        <span id="orientation-single-pane-reason" className="sr-only">
+          There's only one pane open; there's nothing to reorient yet.
         </span>
       )}
 
