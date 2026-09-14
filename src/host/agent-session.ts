@@ -1169,6 +1169,26 @@ export class AgentSession {
         this.drainQueued();
         return;
 
+      case 'task-settled':
+        // Per-task edge, paired against the 'background-tasks-changed'
+        // snapshot above rather than replacing it: a no-op if this id was
+        // never tracked as backgrounded (a foreground subagent task, or
+        // one already cleared by that snapshot), and otherwise the same
+        // idle/drain follow-up as the snapshot draining to empty — this is
+        // what keeps a lost snapshot update from wedging status at
+        // 'running' behind a task the SDK itself already closed out.
+        if (!this.activeBackgroundTasks.delete(event.taskId)) { return; }
+        lifecycleDebug('session.task-settled', {
+          sessionId: this._state.id,
+          taskId: event.taskId,
+          remaining: [...this.activeBackgroundTasks],
+          turnActive: this.turnActive,
+          status: this._state.status,
+        });
+        this.recomputeWaitingStatus(this.turnActive ? 'running' : 'idle');
+        this.drainQueued();
+        return;
+
       case 'turn-end':
         lifecycleDebug('session.turn-end', {
           sessionId: this._state.id,

@@ -1201,6 +1201,43 @@ suite('AgentSession background tasks', () => {
     await session.dispose();
   });
 
+  test('a task-settled event clears just its own id, even if background-tasks-changed never drains', async () => {
+    // The snapshot's own settle update never arrives — only the SDK's
+    // per-task edge does. Status must still recover: this is the whole
+    // point of pairing task-settled against background-tasks-changed
+    // instead of trusting the snapshot alone.
+    const provider = new FakeProvider(() => [
+      { kind: 'background-tasks-changed', taskIds: ['bg-1'] },
+      { kind: 'turn-end', reason: 'done' },
+    ]);
+    const session = new AgentSession(baseState(), provider, store, sink);
+    session.send('kick off a background task');
+    await settle();
+    assert.strictEqual(session.state.status, 'running');
+
+    provider.runs[0].emit({ kind: 'task-settled', taskId: 'bg-1' });
+    await settle();
+
+    assert.strictEqual(session.state.status, 'idle');
+    await session.dispose();
+  });
+
+  test('a task-settled event for an untracked id is a no-op', async () => {
+    const provider = new FakeProvider(() => [
+      { kind: 'background-tasks-changed', taskIds: ['bg-1'] },
+      { kind: 'turn-end', reason: 'done' },
+    ]);
+    const session = new AgentSession(baseState(), provider, store, sink);
+    session.send('kick off a background task');
+    await settle();
+
+    provider.runs[0].emit({ kind: 'task-settled', taskId: 'some-other-task' });
+    await settle();
+
+    assert.strictEqual(session.state.status, 'running', 'bg-1 is still live; an unrelated settle changes nothing');
+    await session.dispose();
+  });
+
   test('a background task that starts and drains mid-turn does not end the turn early', async () => {
     const provider = new FakeProvider(() => [
       { kind: 'background-tasks-changed', taskIds: ['bg-1'] },

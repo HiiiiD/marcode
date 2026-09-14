@@ -322,7 +322,21 @@ export type AgentEvent =
    * must not lose its Stop control — until this drains to `[]`. Claude-only
    * today; a provider with no such concept never emits it.
    */
-  | { kind: 'background-tasks-changed'; taskIds: string[] };
+  | { kind: 'background-tasks-changed'; taskIds: string[] }
+  /**
+   * One specific background task reached a terminal state (settled,
+   * failed, or was stopped) — the SDK's own per-task edge, emitted
+   * unconditionally whenever a backgrounded task ends, independent of the
+   * next `background-tasks-changed` snapshot. A defense-in-depth signal,
+   * not a replacement: `background-tasks-changed` is still the source of
+   * truth for the whole set, but if *that* snapshot's own settle update
+   * were ever lost, this per-task edge still clears the one id it names,
+   * so a session can never wedge at `running` behind a task the SDK
+   * itself has already closed out. Harmless to receive for a task id this
+   * session never tracked as backgrounded (a plain removal from a set
+   * that never had it).
+   */
+  | { kind: 'task-settled'; taskId: string };
 
 export interface AgentRun {
   /**
