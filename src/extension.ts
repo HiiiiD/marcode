@@ -304,6 +304,7 @@ export async function activate(context: vscode.ExtensionContext) {
       }
     },
     transcriptTail: (id, limit) => manager.transcriptTail(id as SessionId, limit),
+    close: (id) => manager.close(id as SessionId),
   }, memory);
   let selfControlConfig: SelfControlMcpConfig | undefined;
   try {

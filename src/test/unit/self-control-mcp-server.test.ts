@@ -21,6 +21,7 @@ function fakeManager(overrides: Partial<SessionManagerLike> = {}): SessionManage
     setVisible: async () => {},
     get: async () => undefined,
     transcriptTail: async () => ({ items: [] }),
+    close: async () => {},
     ...overrides,
   };
 }
@@ -670,6 +671,7 @@ suite('SelfControlMcpServer cross-session messaging', () => {
           try { return await second.open(id); } catch { return undefined; }
         },
         transcriptTail: (id, limit) => second.transcriptTail(id as never, limit),
+        close: (id) => second.close(id as never),
       });
       const config = await server.start();
 
@@ -747,6 +749,126 @@ suite('SelfControlMcpServer cross-session messaging', () => {
       const snapshot = await manager.get(b.state.id)!.snapshot();
       const item = snapshot.items.find((i) => i.role === 'user' && i.text === 'please do X');
       assert.strictEqual(item?.role === 'user' && item.from?.name, 'sender');
+      await server.dispose();
+    } finally {
+      await manager.dispose();
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+suite('SelfControlMcpServer close_session', () => {
+  test('close_session resolves the caller from sid, closes the named target', async () => {
+    let closedId: string | undefined;
+    const manager = fakeManager({
+      summaries: () => [
+        { id: 's-caller', name: 'a', providerId: 'claude', status: 'idle', cwd: '/w', archived: false } as never,
+        { id: 's-target', name: 'b', providerId: 'codex', status: 'idle', cwd: '/w', archived: false } as never,
+      ],
+      close: async (id) => { closedId = id; },
+    });
+    const server = new SelfControlMcpServer(manager);
+    const config = await server.start();
+    const result = await callToolAs(config, 's-caller', 'marcode__close_session', { to: 'b' });
+    assert.strictEqual(result.isError, undefined);
+    assert.strictEqual(closedId, 's-target');
+    await server.dispose();
+  });
+
+  test('close_session resolves the target case-insensitively, matching rename()\'s own rule', async () => {
+    let closedId: string | undefined;
+    const manager = fakeManager({
+      summaries: () => [
+        { id: 's-caller', name: 'a', providerId: 'claude', status: 'idle', cwd: '/w', archived: false } as never,
+        { id: 's-target', name: 'Worker', providerId: 'codex', status: 'idle', cwd: '/w', archived: false } as never,
+      ],
+      close: async (id) => { closedId = id; },
+    });
+    const server = new SelfControlMcpServer(manager);
+    const config = await server.start();
+    const result = await callToolAs(config, 's-caller', 'marcode__close_session', { to: 'WORKER' });
+    assert.strictEqual(result.isError, undefined);
+    assert.strictEqual(closedId, 's-target');
+    await server.dispose();
+  });
+
+  test('close_session errors when to equals the caller\'s own name case-insensitively', async () => {
+    let closed = false;
+    const manager = fakeManager({
+      summaries: () => [{ id: 's-caller', name: 'Alice', providerId: 'claude', status: 'idle', cwd: '/w', archived: false } as never],
+      close: async () => { closed = true; },
+    });
+    const server = new SelfControlMcpServer(manager);
+    const config = await server.start();
+    const result = await callToolAs(config, 's-caller', 'marcode__close_session', { to: 'alice' });
+    assert.strictEqual(result.isError, true);
+    assert.strictEqual(closed, false);
+    await server.dispose();
+  });
+
+  test('close_session errors on an unknown target name', async () => {
+    let closed = false;
+    const manager = fakeManager({
+      summaries: () => [{ id: 's-caller', name: 'a', providerId: 'claude', status: 'idle', cwd: '/w', archived: false } as never],
+      close: async () => { closed = true; },
+    });
+    const server = new SelfControlMcpServer(manager);
+    const config = await server.start();
+    const result = await callToolAs(config, 's-caller', 'marcode__close_session', { to: 'nobody' });
+    assert.strictEqual(result.isError, true);
+    assert.strictEqual(closed, false);
+    await server.dispose();
+  });
+
+  test('close_session errors when sid is missing or unrecognized', async () => {
+    let closed = false;
+    const manager = fakeManager({ close: async () => { closed = true; } });
+    const server = new SelfControlMcpServer(manager);
+    const config = await server.start();
+    const missing = await callTool(config, 'marcode__close_session', { to: 'b' });
+    assert.strictEqual(missing.isError, true);
+    const unknown = await callToolAs(config, 's-ghost', 'marcode__close_session', { to: 'b' });
+    assert.strictEqual(unknown.isError, true);
+    assert.strictEqual(closed, false);
+    await server.dispose();
+  });
+
+  test('a real close_session call archives the target session in a real SessionManager', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mar-self-control-close-'));
+    const store = new TranscriptStore(dir);
+    const provider = new FakeProvider(() => [
+      { kind: 'text', delta: 'ok' },
+      { kind: 'turn-end', reason: 'done' },
+    ]);
+    const providers = new Map<string, AgentProvider>([['fake', provider]]);
+    const manager = new SessionManager(store, providers, () => { });
+    await manager.init();
+
+    try {
+      const root = await manager.create('fake', process.cwd());
+      const worker = await manager.create('fake', process.cwd());
+      manager.rename(root.state.id, 'root');
+      manager.rename(worker.state.id, 'worker');
+      worker.send('hello');
+
+      const server = new SelfControlMcpServer(manager);
+      const config = await server.start();
+      const res = await fetch(`${config.url}?sid=${root.state.id}`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json', accept: 'application/json, text/event-stream',
+          authorization: `Bearer ${config.token}`,
+        },
+        body: JSON.stringify({
+          jsonrpc: '2.0', id: 1, method: 'tools/call',
+          params: { name: 'marcode__close_session', arguments: { to: 'worker' } },
+        }),
+      });
+      const body = await res.json() as { result: { isError?: boolean } };
+      assert.strictEqual(body.result.isError, undefined);
+
+      const summary = manager.summaries().find((s) => s.id === worker.state.id);
+      assert.strictEqual(summary?.archived, true);
       await server.dispose();
     } finally {
       await manager.dispose();
@@ -833,6 +955,7 @@ suite('SelfControlMcpServer session context', () => {
         setVisible: (ids) => manager.setVisible(ids as never),
         get: async (id) => manager.get(id as never),
         transcriptTail: (id, limit) => manager.transcriptTail(id as never, limit),
+        close: (id) => manager.close(id as never),
       });
       const config = await server.start();
       const result = await callTool(config, 'marcode__get_session_context', { name: 'target' });
