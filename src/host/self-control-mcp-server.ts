@@ -66,6 +66,11 @@ export interface SessionManagerLike {
    * defensive here.
    */
   transcriptTail(id: string, limit?: number): Promise<{ items: TranscriptItem[] } | undefined>;
+  /**
+   * Archives (or discards, if empty/untitled) the target session — the same
+   * rule the roster's close button takes. See `marcode__close_session`.
+   */
+  close(id: string): Promise<void>;
 }
 
 const PORT_ATTEMPTS = 5;
@@ -116,7 +121,8 @@ export class SelfControlMcpServer {
         + 'OpenCode) and a different working directory. These marcode__* tools are how you interact '
         + 'with the panel itself, not with files or the user directly: marcode__list_sessions to see '
         + 'who else is running, marcode__send_message to message another session, marcode__spawn_session '
-        + 'to start a new one, and marcode__recall/marcode__recall_fetch to search what past sessions '
+        + 'to start a new one, marcode__close_session to close one (e.g. a worker you spawned once it '
+        + 'has reported back), and marcode__recall/marcode__recall_fetch to search what past sessions '
         + 'already figured out. Check marcode__list_sessions whenever coordinating with, or delegating '
         + 'to, another session would help — do not assume you are alone just because nothing mentioned '
         + 'these tools yet.',
@@ -352,6 +358,38 @@ export class SelfControlMcpServer {
         await session.interrupt();
         session.send(text, undefined, undefined, undefined, { sessionId: from.id, name: from.name });
         return { content: [{ type: 'text', text: JSON.stringify({ delivered: true }) }] };
+      },
+    );
+
+    mcp.registerTool(
+      'marcode__close_session',
+      {
+        title: 'Close another Marcode session',
+        description: 'Marcode-specific: closes a DIFFERENT Marcode session\'s pane (archives its '
+          + 'transcript, or discards it outright if it never received or sent anything) — not your '
+          + 'own conversation, and not reversible from here. Typical use: a worker session you '
+          + 'spawned with marcode__spawn_session has sent its result back via marcode__send_message '
+          + 'and is done; close it to clean up its pane. Get the target name from '
+          + 'marcode__list_sessions first.',
+        inputSchema: {
+          to: z.string().describe('The target session\'s name, from marcode__list_sessions.'),
+        },
+      },
+      async ({ to }) => {
+        const from = caller();
+        if (!from) {
+          return { isError: true, content: [{ type: 'text', text: 'Could not identify the calling session.' }] };
+        }
+        if (to.toLowerCase() === from.name.toLowerCase()) {
+          return { isError: true, content: [{ type: 'text', text: 'Cannot close yourself.' }] };
+        }
+        const target = this.sessionManager.summaries()
+          .find((s) => s.name.toLowerCase() === to.toLowerCase() && !s.archived);
+        if (!target) {
+          return { isError: true, content: [{ type: 'text', text: `Unknown session: ${to}` }] };
+        }
+        await this.sessionManager.close(target.id);
+        return { content: [{ type: 'text', text: JSON.stringify({ closed: true }) }] };
       },
     );
 
