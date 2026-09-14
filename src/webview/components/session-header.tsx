@@ -7,13 +7,14 @@ import { InputGroup, InputGroupInput } from "@/components/ui/input-group";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { MoreHorizontalIcon, PencilIcon, PlugZapIcon, XIcon } from "lucide-react";
+import { GripVerticalIcon, MoreHorizontalIcon, PencilIcon, PlugZapIcon, XIcon } from "lucide-react";
 import { folderName } from "../format";
 import type { PaneState } from "../reducer";
 import { useStore } from "../store";
 import { BringBackDialog } from "./bring-back-dialog";
 import { removeSession } from "./layout-tree";
 import { isUnhealthy, worstState } from "./mcp-status";
+import { usePaneDrag } from "./pane-drag-context";
 import { StatusBadge } from "./status-badge";
 
 interface SessionHeaderProps {
@@ -69,6 +70,8 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
 
   const worstMcpState = worstState(pane.mcpServers);
   const mcpNeedsAttention = worstMcpState !== undefined && isUnhealthy(worstMcpState);
+
+  const { setDraggingId } = usePaneDrag();
 
   return (
     <div className="flex items-center gap-2 border-b border-border px-2 py-1 text-xs">
@@ -271,6 +274,23 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
       {canBringBack && (
         <BringBackDialog pane={pane} open={bringBackOpen} onOpenChange={setBringBackOpen} />
       )}
+      {/*
+        Grab handle for drag-to-split: its own control rather than making the
+        whole header draggable, since the header also hosts click targets
+        (rename, MCP popover, bring-back menu) that a `draggable` ancestor
+        would fight for pointer events on every click.
+      */}
+      <Button
+        variant="ghost"
+        size="icon-xs"
+        aria-label={`Drag ${accessibleTitle} to move or split`}
+        draggable
+        onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; setDraggingId(s.id); }}
+        onDragEnd={() => setDraggingId(null)}
+        className="shrink-0 cursor-grab active:cursor-grabbing"
+      >
+        <GripVerticalIcon aria-hidden />
+      </Button>
       <Button
         variant="ghost"
         size="icon-xs"

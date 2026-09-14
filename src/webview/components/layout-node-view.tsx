@@ -1,4 +1,4 @@
-import { Fragment } from "react";
+import { Fragment, useState } from "react";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { cn } from "@/lib/utils";
 // react-resizable-panels ships ESM-only; a type-only import from a CommonJS
@@ -9,7 +9,21 @@ import type { Layout, LayoutChangedMeta } from "react-resizable-panels" with { "
 import type { LayoutNode, SessionSummary } from "../../protocol/messages";
 import { EmptySlot } from "./empty-slot";
 import { PaneContent } from "./pane-content";
+import { usePaneDrag } from "./pane-drag-context";
 import type { LeafDisplayState } from "./pane-layout";
+
+type Edge = "top" | "bottom" | "left" | "right";
+const EDGES: Edge[] = ["top", "bottom", "left", "right"];
+
+/**
+ * VS Code's own editor-group convention: top/bottom stack panes into rows
+ * (this codebase's `orientation: 'vertical'` — see `resizable.tsx`'s
+ * `flex-col` on that value), left/right line them up side by side
+ * (`orientation: 'horizontal'`, the `flex-row` default).
+ */
+function edgeOrientation(edge: Edge): "vertical" | "horizontal" {
+  return edge === "left" || edge === "right" ? "horizontal" : "vertical";
+}
 
 interface LayoutNodeViewProps {
   node: LayoutNode;
@@ -22,6 +36,10 @@ interface LayoutNodeViewProps {
   onAssign: (path: number[], sessionId: string) => void;
   onLayoutChanged: (path: number[], layout: Layout, meta: LayoutChangedMeta, children: LayoutNode[]) => void;
   onFocusCapture: (sessionId: string) => void;
+  /** A session's grab handle was dropped on this (ready) leaf's edge — split it 50/50 in the edge's orientation. */
+  onSplit: (path: number[], orientation: "vertical" | "horizontal", draggedSessionId: string) => void;
+  /** A session's grab handle was dropped directly on this empty leaf — assign it there, no split. */
+  onDropAssign: (path: number[], draggedSessionId: string) => void;
   /**
    * Set only on the call `pane-group.tsx` makes directly. Governs the
    * root's own aria-label ("Open agent sessions" vs. a nested split's
@@ -60,22 +78,84 @@ function siblingLabel(node: LayoutNode, ctx: LayoutNodeViewProps): string {
   return "panes";
 }
 
-function renderLeafContent(node: LeafNode, path: number[], ctx: LayoutNodeViewProps) {
+/**
+ * A leaf's own content, plus (when something is being dragged) its drop
+ * targets. Pulled out as its own component rather than a plain helper
+ * function because it needs `usePaneDrag` and per-leaf hover state — a
+ * lowercase helper called inline from the parent's render body cannot own
+ * hooks under the rules-of-hooks lint, which keys off the calling function's
+ * name.
+ */
+function LeafContent({ node, path, ctx }: { node: LeafNode; path: number[]; ctx: LayoutNodeViewProps }) {
+  const { draggingId, setDraggingId } = usePaneDrag();
+  const [hoverEdge, setHoverEdge] = useState<Edge | null>(null);
+  const [emptyHover, setEmptyHover] = useState(false);
   const state = ctx.leafState(node.sessionId);
+  // A leaf can't be dropped onto the very session being dragged off it —
+  // there is nothing sensible to split or assign in that case.
+  const isDropTarget = draggingId !== null && draggingId !== node.sessionId;
+
   if (state === "empty") {
     return (
-      <EmptySlot
-        assignable={ctx.assignableSessions}
-        onAssign={(id) => ctx.onAssign(path, id)}
-      />
+      <div
+        className="relative h-full"
+        data-testid={isDropTarget ? "drop-zone-empty" : undefined}
+        onDragOver={(e) => { if (!isDropTarget) { return; } e.preventDefault(); setEmptyHover(true); }}
+        onDragLeave={() => setEmptyHover(false)}
+        onDrop={(e) => {
+          if (!isDropTarget || draggingId === null) { return; }
+          e.preventDefault();
+          setEmptyHover(false);
+          setDraggingId(null);
+          ctx.onDropAssign(path, draggingId);
+        }}
+      >
+        <EmptySlot
+          assignable={ctx.assignableSessions}
+          onAssign={(id) => ctx.onAssign(path, id)}
+        />
+        {isDropTarget && (
+          <div
+            aria-hidden
+            className={cn("pointer-events-none absolute inset-0", emptyHover && "bg-ring/30")}
+          />
+        )}
+      </div>
     );
   }
   if (state === "pending") {
     // Transient — corrected by the next reconcile pass, never interactive.
     return <div className="h-full" />;
   }
+
+  const handleDrop = (edge: Edge) => {
+    if (draggingId === null) { return; }
+    setHoverEdge(null);
+    setDraggingId(null);
+    ctx.onSplit(path, edgeOrientation(edge), draggingId);
+  };
+
   return (
-    <PaneContent sessionId={node.sessionId!} accessibleTitle={ctx.names.get(node.sessionId!)!} />
+    <div className="relative h-full">
+      <PaneContent sessionId={node.sessionId!} accessibleTitle={ctx.names.get(node.sessionId!)!} />
+      {isDropTarget && EDGES.map((edge) => (
+        <div
+          key={edge}
+          data-testid={`drop-zone-${edge}`}
+          className={cn(
+            "absolute z-10",
+            edge === "top" && "inset-x-0 top-0 h-1/4",
+            edge === "bottom" && "inset-x-0 bottom-0 h-1/4",
+            edge === "left" && "inset-y-0 left-0 w-1/4",
+            edge === "right" && "inset-y-0 right-0 w-1/4",
+            hoverEdge === edge && "bg-ring/30",
+          )}
+          onDragOver={(e) => { e.preventDefault(); setHoverEdge(edge); }}
+          onDragLeave={() => setHoverEdge((cur) => (cur === edge ? null : cur))}
+          onDrop={(e) => { e.preventDefault(); handleDrop(edge); }}
+        />
+      ))}
+    </div>
   );
 }
 
@@ -93,7 +173,7 @@ export function LayoutNodeView(props: LayoutNodeViewProps) {
   const { node, path, topLevel, narrow, onLayoutChanged } = props;
 
   if (node.kind === "leaf") {
-    const content = renderLeafContent(node, path, props);
+    const content = <LeafContent node={node} path={path} ctx={props} />;
     if (!topLevel) { return content; }
     return (
       <ResizablePanelGroup orientation="vertical" aria-label="Open agent sessions">

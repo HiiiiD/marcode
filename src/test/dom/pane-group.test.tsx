@@ -1,10 +1,15 @@
 import * as assert from 'assert';
-import { act, fireEvent, screen } from '@testing-library/react';
+import { act, fireEvent, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { catalog, layoutOf, snapshot, summary } from '../fixtures/protocol';
 import { posted, renderApp, renderWithStore, sendFromHost } from './harness';
 import { PaneGroup } from '@/components/pane-group';
 import type { TranscriptItem } from '../../protocol/messages';
+
+/** A minimal stand-in `DataTransfer` — jsdom's drag events carry no real one, and the handlers under test only ever set `effectAllowed`, never read a payload back off it. */
+function dragStart(el: HTMLElement) {
+  fireEvent.dragStart(el, { dataTransfer: { effectAllowed: '' } });
+}
 
 function hydrate(paneIds: string[], rosterIds = paneIds) {
   sendFromHost({
@@ -530,5 +535,92 @@ suite('PaneGroup', () => {
     const [survivingB, shiftedC] = screen.getAllByLabelText('Message');
     assert.strictEqual((survivingB as HTMLTextAreaElement).value, 'still drafting this');
     assert.strictEqual((shiftedC as HTMLTextAreaElement).value, '');
+  });
+
+  test('dropping on a pane\'s right edge splits it into a horizontal pair', () => {
+    renderApp();
+    hydrate(['s1', 's2']);
+
+    const target = screen.getByLabelText('Session: Session s2');
+    const handle = screen.getByLabelText('Drag Session s1 to move or split');
+
+    dragStart(handle);
+    const dropZone = within(target).getByTestId('drop-zone-right');
+    fireEvent.dragOver(dropZone);
+    fireEvent.drop(dropZone);
+
+    // Starting layout is a vertical (row-stacked) split of [s1, s2]. s1's own
+    // leaf collapses away (its only sibling was the whole root), so s2's old
+    // leaf — now the whole tree — becomes a horizontal (side-by-side) split
+    // of [s2, s1]. Not necessarily the very last posted message: dropping
+    // unmounts the dragged pane's own leaf, and `App`'s visible-set reconcile
+    // effect can post `set-visible` in response one render later.
+    const last = posted().filter((m) => m.t === 'set-layout').at(-1)!;
+    assert.deepStrictEqual(last, {
+      t: 'set-layout',
+      layout: {
+        presets: [],
+        root: {
+          kind: 'split', orientation: 'horizontal', size: 100,
+          children: [
+            { kind: 'leaf', sessionId: 's2', size: 50 },
+            { kind: 'leaf', sessionId: 's1', size: 50 },
+          ],
+        },
+      },
+    });
+  });
+
+  test('dragging a session onto itself is a no-op', () => {
+    renderApp();
+    hydrate(['s1', 's2']);
+
+    const target = screen.getByLabelText('Session: Session s1');
+    const handle = screen.getByLabelText('Drag Session s1 to move or split');
+
+    dragStart(handle);
+    // No drop zones render over the leaf a session is itself being dragged
+    // from — there is nothing sensible to drop it onto there.
+    assert.strictEqual(within(target).queryByTestId('drop-zone-right'), null);
+  });
+
+  test('dropping on an empty leaf assigns directly, no split created', () => {
+    renderApp();
+    sendFromHost({
+      t: 'hydrate',
+      sessions: [summary('s1'), summary('s2')],
+      layout: {
+        root: {
+          kind: 'split', orientation: 'vertical', size: 100,
+          children: [
+            { kind: 'leaf', sessionId: 's1', size: 50 },
+            { kind: 'leaf', sessionId: null, size: 50 },
+          ],
+        },
+        presets: [],
+      },
+      snapshots: [snapshot('s1')],
+      catalog: catalog(),
+      unavailable: [],
+      usage: {},
+    });
+
+    const handle = screen.getByLabelText('Drag Session s1 to move or split');
+
+    // The empty leaf only grows its `drop-zone-empty` wrapper once a drag is
+    // live — look it up after `dragStart`, not before.
+    dragStart(handle);
+    const emptySlot = screen.getByRole('button', { name: /Assign a session/i });
+    const dropZone = emptySlot.closest('[data-testid="drop-zone-empty"]') as HTMLElement;
+    fireEvent.dragOver(dropZone);
+    fireEvent.drop(dropZone);
+
+    // s1's own (now-only-sibling) leaf collapses away entirely, leaving the
+    // formerly-empty leaf — now holding s1 — as the whole tree: no new split
+    // node, just a plain assigned leaf.
+    assert.deepStrictEqual(posted().filter((m) => m.t === 'set-layout').at(-1), {
+      t: 'set-layout',
+      layout: { presets: [], root: { kind: 'leaf', sessionId: 's1', size: 100 } },
+    });
   });
 });

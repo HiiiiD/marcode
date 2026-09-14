@@ -11,10 +11,39 @@ import { ENABLED_PROVIDERS_SETTING, PROVIDER_INSTANCES_SETTING } from "../../sha
 import type { LayoutNode } from "../../protocol/messages";
 import { shouldOfferLogin } from "../lib/provider-login";
 import { useStore } from "../store";
-import { at, assignAt, leafSessionIds, replaceAt } from "./layout-tree";
+import { at, assignAt, flattenLeaves, leafSessionIds, removeSession, replaceAt, splitAt } from "./layout-tree";
 import { LayoutNodeView } from "./layout-node-view";
+import { PaneDragProvider } from "./pane-drag-context";
 import { accessibleTitles, leafDisplayState, rosterSessionIds, visibleLeaves } from "./pane-layout";
 import { SessionCreateMenu } from "./session-create-menu";
+
+/**
+ * The drop target's path, recomputed against the tree with the dragged
+ * session's own old leaf already removed. `removeSession` can shift or
+ * collapse indices anywhere along its former ancestor chain, so the
+ * pre-removal `path` can no longer be trusted for the target — including an
+ * *empty* target leaf, which (unlike a session's own leaf) carries no id
+ * `findPath` could re-locate it by. `flattenLeaves` visits every leaf, empty
+ * or not, in one fixed depth-first order that removing a single leaf never
+ * reorders — it only shifts everything after it back by one — so the
+ * target's position in that order, adjusted for whether the dragged leaf
+ * came before it, is a stable way to re-find the same leaf after the
+ * removal, whether or not it has a session id of its own.
+ */
+function freshTargetPath(
+  root: LayoutNode, targetPath: number[], draggedSessionId: string, withoutDragged: LayoutNode,
+): number[] | undefined {
+  const before = flattenLeaves(root);
+  const draggedIndex = before.findIndex((l) => l.sessionId === draggedSessionId);
+  const targetIndex = before.findIndex((l) => samePath(l.path, targetPath));
+  if (draggedIndex === -1 || targetIndex === -1) { return undefined; }
+  const adjusted = targetIndex > draggedIndex ? targetIndex - 1 : targetIndex;
+  return flattenLeaves(withoutDragged)[adjusted]?.path;
+}
+
+function samePath(a: number[], b: number[]): boolean {
+  return a.length === b.length && a.every((v, i) => v === b[i]);
+}
 
 interface PaneGroupProps {
   /** Whether the panel is too narrow to split side by side. Measured once,
@@ -52,6 +81,29 @@ export function PaneGroup({ narrow }: PaneGroupProps) {
 
   const handleAssign = (path: number[], sessionId: string) => {
     post({ t: "set-layout", layout: { ...state.layout, root: assignAt(state.layout.root, path, sessionId) } });
+  };
+
+  // Drag-to-split: the dragged session's own old leaf is removed first (it
+  // may be the last pane the edge's own target leaf currently touches — see
+  // `freshTargetPath`'s doc comment), then the target's post-removal path is
+  // used to split it 50/50 in the edge's orientation.
+  const handleSplit = (path: number[], orientation: "vertical" | "horizontal", draggedSessionId: string) => {
+    const withoutDragged = removeSession(state.layout.root, draggedSessionId);
+    const freshPath = freshTargetPath(state.layout.root, path, draggedSessionId, withoutDragged);
+    if (!freshPath) { return; } // target vanished mid-drag — no-op, matches "errors are state"
+    const next = splitAt(withoutDragged, freshPath, orientation, draggedSessionId);
+    post({ t: "set-layout", layout: { ...state.layout, root: next } });
+  };
+
+  // Drag-to-assign: dropping directly on an empty leaf places the dragged
+  // session there with no new split node — the same removal-then-recompute
+  // as handleSplit, but assigning rather than splitting the target.
+  const handleDropAssign = (path: number[], draggedSessionId: string) => {
+    const withoutDragged = removeSession(state.layout.root, draggedSessionId);
+    const freshPath = freshTargetPath(state.layout.root, path, draggedSessionId, withoutDragged);
+    if (!freshPath) { return; }
+    const next = assignAt(withoutDragged, freshPath, draggedSessionId);
+    post({ t: "set-layout", layout: { ...state.layout, root: next } });
   };
 
   const handleLayoutChanged = (path: number[], layout: Layout, meta: LayoutChangedMeta, children: LayoutNode[]) => {
@@ -252,19 +304,23 @@ export function PaneGroup({ narrow }: PaneGroupProps) {
       tabIndex={-1}
       className={cn("h-full outline-none", "focus-visible:ring-2 focus-visible:ring-ring")}
     >
-      <LayoutNodeView
-        node={state.layout.root}
-        path={[]}
-        topLevel
-        narrow={narrow}
-        leafState={(sessionId) => leafDisplayState(sessionId, roster, snapshotArrived)}
-        names={names}
-        activeId={activeId}
-        assignableSessions={assignableSessions}
-        onAssign={handleAssign}
-        onLayoutChanged={handleLayoutChanged}
-        onFocusCapture={focus}
-      />
+      <PaneDragProvider>
+        <LayoutNodeView
+          node={state.layout.root}
+          path={[]}
+          topLevel
+          narrow={narrow}
+          leafState={(sessionId) => leafDisplayState(sessionId, roster, snapshotArrived)}
+          names={names}
+          activeId={activeId}
+          assignableSessions={assignableSessions}
+          onAssign={handleAssign}
+          onLayoutChanged={handleLayoutChanged}
+          onFocusCapture={focus}
+          onSplit={handleSplit}
+          onDropAssign={handleDropAssign}
+        />
+      </PaneDragProvider>
     </div>
   );
 }
