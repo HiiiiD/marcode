@@ -406,9 +406,21 @@ export interface TreeDiff {
   reason?: string;
 }
 
+export type LayoutNode =
+  | { kind: 'leaf'; sessionId: SessionId | null; size: number }
+  | { kind: 'split'; orientation: 'vertical' | 'horizontal'; children: LayoutNode[]; size: number };
+
+export interface LayoutPreset {
+  id: string;
+  name: string;
+  builtin: boolean;
+  root: LayoutNode;
+}
+
 export interface PaneLayout {
-  orientation: 'vertical' | 'horizontal';
-  panes: { sessionId: SessionId; size: number }[];
+  root: LayoutNode;
+  /** User-saved presets only — built-ins are code constants, never sent over the wire. */
+  presets: LayoutPreset[];
 }
 
 export type WebviewToHost =
@@ -432,6 +444,8 @@ export type WebviewToHost =
       seed?: { text: string; refs?: SessionRef[]; fileRefs?: FileRef[] } }
   | { t: 'set-visible'; sessionIds: SessionId[] }
   | { t: 'set-layout'; layout: PaneLayout }
+  | { t: 'save-preset'; name: string }
+  | { t: 'delete-preset'; id: string }
   /**
    * Sent only by the fleet view: bring a session into the sidebar's visible
    * split. Intercepted by `FleetPanel` before `MessageRouter.handle` (same
@@ -452,6 +466,7 @@ export type WebviewToHost =
   | { t: 'open-fleet-subagent'; sessionId: SessionId; itemId: string }
   | { t: 'close-session'; id: SessionId }
   | { t: 'delete-session'; id: SessionId }
+  | { t: 'replace-session'; id: SessionId }
   | { t: 'send'; id: SessionId; text: string; refs?: SessionRef[]; fileRefs?: FileRef[] }
   /**
    * "What files match this?" — fired as the user types after `@`, debounced
