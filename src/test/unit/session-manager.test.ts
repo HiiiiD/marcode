@@ -72,6 +72,70 @@ suite('SessionManager', () => {
     return { manager: mmanager, provider, emitted, store: mstore };
   }
 
+  test('remove() drops the session leaf and collapses its split', async () => {
+    const a = await manager.create('fake', '/tmp');
+    const b = await manager.create('fake', '/tmp');
+    manager.setLayout({
+      root: {
+        kind: 'split', orientation: 'vertical', size: 100,
+        children: [
+          { kind: 'leaf', sessionId: a.state.id, size: 50 },
+          { kind: 'leaf', sessionId: b.state.id, size: 50 },
+        ],
+      },
+      presets: [],
+    });
+
+    await manager.remove(a.state.id);
+
+    assert.deepStrictEqual(manager.layout().root, {
+      kind: 'leaf', sessionId: b.state.id, size: 100,
+    });
+  });
+
+  test('replaceSession creates a matching session and swaps its leaf before closing the old one', async () => {
+    const old = await manager.create('fake', '/tmp', 'fake-large', undefined, 'default');
+    manager.setLayout({
+      root: { kind: 'leaf', sessionId: old.state.id, size: 100 },
+      presets: [],
+    });
+
+    await manager.replaceSession(old.state.id);
+
+    const root = manager.layout().root;
+    assert.strictEqual(root.kind, 'leaf');
+    assert.notStrictEqual(root.sessionId, old.state.id);
+    const replacement = manager.summaries().find((session) => session.id === root.sessionId);
+    assert.strictEqual(replacement?.providerId, 'fake');
+    assert.strictEqual(replacement?.model, 'fake-large');
+    assert.strictEqual(replacement?.cwd, '/tmp');
+    assert.strictEqual(manager.get(old.state.id), undefined);
+  });
+
+  test('savePreset strips session ids from the current tree', async () => {
+    const session = await manager.create('fake', '/tmp');
+    manager.setLayout({
+      root: { kind: 'leaf', sessionId: session.state.id, size: 100 },
+      presets: [],
+    });
+
+    await manager.savePreset('My layout');
+
+    const [preset] = manager.layout().presets;
+    assert.strictEqual(preset.name, 'My layout');
+    assert.strictEqual(preset.builtin, false);
+    assert.deepStrictEqual(preset.root, { kind: 'leaf', sessionId: null, size: 100 });
+  });
+
+  test('deletePreset removes a preset by id', async () => {
+    await manager.savePreset('One');
+    const [preset] = manager.layout().presets;
+
+    await manager.deletePreset(preset.id);
+
+    assert.strictEqual(manager.layout().presets.length, 0);
+  });
+
   test('fork copies the transcript up to the chosen item into a new session', async () => {
     const session = await manager.create('fake', '/tmp');
     session!.send('first');

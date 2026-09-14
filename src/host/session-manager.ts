@@ -20,8 +20,9 @@ import { FILE_CAP } from '../shared/file-cap';
 import { resolvePermissionMode } from '../shared/permission-catalog';
 import { threadKey, threadKeyCwd } from '../shared/thread-key';
 import { orderWindows } from '../shared/usage-windows';
+import { removeSession, replaceLeafSession, stripSessionIds } from '../webview/components/layout-tree';
 import type {
-  Attachment,
+  Attachment, LayoutPreset,
   ContextResult, HostToWebview, McpServerStatus, PaneLayout, PermissionMode, ProviderInfo, SessionId,
   SessionRef, SessionSnapshot, SessionState, SessionStatus, SessionSummary, StaleTree,
   TranscriptItem, TranscriptPatch, TreeDiff, UnavailableProvider,
@@ -75,7 +76,10 @@ export class SessionManager implements SessionSink {
    * `AgentSession.claimedPaths` for why a stored claim would be a lie.
    */
   private readonly backfilled = new Map<SessionId, Set<string>>();
-  private paneLayout: PaneLayout = { orientation: 'vertical', panes: [] };
+  private paneLayout: PaneLayout = {
+    root: { kind: 'leaf', sessionId: null, size: 100 },
+    presets: [],
+  };
   private persistTimer: NodeJS.Timeout | undefined;
   private disposed = false;
   /**
@@ -1678,6 +1682,43 @@ export class SessionManager implements SessionSink {
     await this.archive(id);
   }
 
+  /** Replaces a pane's session without changing the pane's place or shape. */
+  async replaceSession(id: SessionId): Promise<void> {
+    const state = this.meta.get(id);
+    if (!state) { return; }
+
+    // Create before changing the existing pane, so a failed creation preserves it.
+    const fresh = await this.create(
+      state.providerId, state.cwd, state.model, state.effort, state.permissionMode,
+    );
+    this.paneLayout = {
+      ...this.paneLayout,
+      root: replaceLeafSession(this.paneLayout.root, id, fresh.state.id),
+    };
+    await this.close(id);
+    this.setLayout(this.paneLayout);
+  }
+
+  async savePreset(name: string): Promise<void> {
+    const preset: LayoutPreset = {
+      id: newSessionId(),
+      name,
+      builtin: false,
+      root: stripSessionIds(this.paneLayout.root),
+    };
+    this.setLayout({
+      ...this.paneLayout,
+      presets: [...this.paneLayout.presets, preset],
+    });
+  }
+
+  async deletePreset(id: string): Promise<void> {
+    this.setLayout({
+      ...this.paneLayout,
+      presets: this.paneLayout.presets.filter((preset) => preset.id !== id),
+    });
+  }
+
   private async archive(id: SessionId): Promise<void> {
     // Before the dispose below, which can report a final status: a closed
     // session must not relocate on its way out.
@@ -1737,10 +1778,7 @@ export class SessionManager implements SessionSink {
     } catch (err) {
       console.error('[mar-code] memory forget failed', err);
     }
-    this.paneLayout = {
-      ...this.paneLayout,
-      panes: this.paneLayout.panes.filter((p) => p.sessionId !== id),
-    };
+    this.paneLayout = { ...this.paneLayout, root: removeSession(this.paneLayout.root, id) };
     this.changed();
   }
 
