@@ -7,7 +7,7 @@ import { InputGroup, InputGroupInput } from "@/components/ui/input-group";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { GripVerticalIcon, MoreHorizontalIcon, PencilIcon, PlugZapIcon, XIcon } from "lucide-react";
+import { GripVerticalIcon, MoreHorizontalIcon, PencilIcon, PlugZapIcon, RefreshCwIcon, XIcon } from "lucide-react";
 import { folderName } from "../format";
 import type { PaneState } from "../reducer";
 import { useStore } from "../store";
@@ -290,6 +290,15 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
         className="shrink-0 cursor-grab active:cursor-grabbing"
       >
         <GripVerticalIcon aria-hidden />
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon-xs"
+        aria-label={`Replace ${accessibleTitle}`}
+        onClick={() => post({ t: "replace-session", id: s.id })}
+        className="shrink-0"
+      >
+        <RefreshCwIcon aria-hidden />
       </Button>
       <Button
         variant="ghost"

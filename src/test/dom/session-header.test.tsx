@@ -8,7 +8,7 @@ export function hydrate(over = {}) {
   sendFromHost({
     t: "hydrate",
     sessions: [summary("a", over)],
-    layout: layoutOf("a"),
+    layout: layoutOf(["a"]),
     snapshots: [snapshot("a", over)],
     catalog: catalog(),
     unavailable: [],
@@ -21,7 +21,7 @@ function hydrateTwoPanes() {
   sendFromHost({
     t: "hydrate",
     sessions: [summary("a"), summary("b")],
-    layout: layoutOf("a", "b"),
+    layout: layoutOf(["a", "b"]),
     snapshots: [snapshot("a"), snapshot("b")],
     catalog: catalog(),
     unavailable: [],
@@ -120,7 +120,7 @@ suite("SessionHeader status", () => {
     sendFromHost({
       t: "hydrate",
       sessions: [summary("a")],
-      layout: layoutOf("a"),
+      layout: layoutOf(["a"]),
       snapshots: [snapshot("a")],
       catalog: [...catalog(), { id: "other", displayName: "Other", models: [], permissionModes: [] }],
       unavailable: [],
@@ -173,13 +173,22 @@ suite("SessionHeader status", () => {
     await userEvent.click(screen.getByLabelText("Hide Session a from the split"));
 
     const layouts = posted().filter((m) => m.t === "set-layout");
-    assert.deepStrictEqual(
-      layouts.at(-1)!.layout.panes.map((p) => p.sessionId),
-      ["b"],
-    );
+    const finalLayout = layouts.at(-1)!.layout;
+    const paneIds = finalLayout.root.kind === "split"
+      ? finalLayout.root.children.map((child) => child.kind === "leaf" ? child.sessionId : null)
+      : [finalLayout.root.sessionId];
+    assert.deepStrictEqual(paneIds, ["b"]);
     assert.ok(
       !posted().some((m) => m.t === "close-session"),
       "X means hide; archiving is a deliberate choice made from the roster",
     );
+  });
+
+  test("Replace posts replace-session for this pane's session", async () => {
+    renderApp();
+    hydrate();
+
+    await userEvent.click(screen.getByRole("button", { name: /Replace/i }));
+    assert.deepStrictEqual(posted().at(-1), { t: "replace-session", id: "a" });
   });
 });
