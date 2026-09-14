@@ -504,4 +504,31 @@ suite('PaneGroup', () => {
     assert.strictEqual(screen.getAllByRole('region', { name: /Session:/ }).length, 1);
     assert.strictEqual(screen.getByRole('button', { name: /Assign a session/i }) !== undefined, true);
   });
+
+  test('a departed session\'s composer draft does not leak into the sibling that shifts into its slot', async () => {
+    // Regression for keying a split's children by array index: removing an
+    // earlier sibling (here, 'a', at index 0) shifts 'b' and 'c' down a
+    // slot each. `Composer` keeps its draft in local `useState` with no
+    // reset effect keyed on the session id, so an index-keyed `Fragment`
+    // would let React reuse 'b'\'s `Composer` instance — draft and all —
+    // for 'c'\'s data once 'c' lands in what used to be 'b'\'s slot.
+    renderApp();
+    hydrate(['a', 'b', 'c']);
+
+    const [, boxB] = screen.getAllByLabelText('Message') as HTMLTextAreaElement[];
+    // `fireEvent.change`, not `userEvent.type`: with three panes (two
+    // resize handles), react-resizable-panels' document-level capturing
+    // `pointerdown` listener hit-tests against every handle's
+    // `getBoundingClientRect()`, which jsdom collapses to (0,0,0,0) — the
+    // same spurious "hit" and swallowed focus documented on "the focused
+    // pane is visually distinguished" above, which is why that test also
+    // avoids `userEvent.click`/`.type` and drives the DOM directly.
+    fireEvent.change(boxB, { target: { value: 'still drafting this' } });
+
+    await userEvent.click(screen.getByLabelText('Hide Session a from the split'));
+
+    const [survivingB, shiftedC] = screen.getAllByLabelText('Message');
+    assert.strictEqual((survivingB as HTMLTextAreaElement).value, 'still drafting this');
+    assert.strictEqual((shiftedC as HTMLTextAreaElement).value, '');
+  });
 });

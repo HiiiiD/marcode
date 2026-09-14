@@ -124,7 +124,16 @@ export function LayoutNodeView(props: LayoutNodeViewProps) {
       onLayoutChanged={(layout, meta) => onLayoutChanged(path, layout, meta, node.children)}
     >
       {node.children.map((child, i) => (
-        <Fragment key={i}>
+        // Keyed by session id (for a leaf), not by index: `removeSession`
+        // (or the roster-uncheck path) can drop an earlier sibling and
+        // shift a later leaf's session into this same array slot. `Composer`
+        // keeps `text`/`ghost`/`refs`/`caret` in local `useState` with no
+        // reset effect keyed on the session id — an index key would let
+        // React reuse that `Composer`/`Transcript` instance across the
+        // session swap and leak the departed session's half-typed draft
+        // into the new one's pane. A split child has no such stateful
+        // subtree, so it stays keyed by its structural position.
+        <Fragment key={child.kind === "leaf" ? (child.sessionId ?? `empty-${i}`) : `split-${i}`}>
           {i > 0 && (
             <ResizableHandle
               aria-label={`Resize between ${siblingLabel(node.children[i - 1], props)} and ${siblingLabel(child, props)}`}
