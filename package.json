@@ -487,7 +487,7 @@
     "codex:bindings": "codex app-server generate-ts --out .codex-bindings"
   },
   "devDependencies": {
-    "@anthropic-ai/sdk": "^0.124.0",
+    "@anthropic-ai/sdk": "^0.125.0",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "@tailwindcss/cli": "^4.3.3",
     "@testing-library/dom": "^10.4.1",
@@ -520,7 +520,7 @@
   "packageManager": "yarn@4.18.0",
   "dependencies": {
     "@agentclientprotocol/sdk": "^1.4.0",
-    "@anthropic-ai/claude-agent-sdk": "^0.3.266",
+    "@anthropic-ai/claude-agent-sdk": "^0.3.270",
     "@base-ui/react": "^1.7.0",
     "@headless-tree/core": "1.7.0",
     "@headless-tree/react": "1.7.0",
