@@ -10,6 +10,7 @@ import type {
 import { fsPathOfUri } from './file-uri';
 import { composePrompt, resolveFileRefs } from './session-refs';
 import { isNewer } from '../providers/update-check';
+import { leafSessionIds } from '../webview/components/layout-tree';
 
 /**
  * Why a message with references was not sent. One function, called from both
@@ -198,9 +199,9 @@ export class MessageRouter {
         const archived = new Set(
           this.manager.summaries().filter((s) => s.archived).map((s) => s.id),
         );
-        for (const pane of layout.panes) {
-          if (archived.has(pane.sessionId)) { continue; }
-          const session = this.manager.get(pane.sessionId) ?? await this.reopen(pane.sessionId);
+        for (const sessionId of leafSessionIds(layout.root)) {
+          if (archived.has(sessionId)) { continue; }
+          const session = this.manager.get(sessionId) ?? await this.reopen(sessionId);
           if (session) { snapshots.push(await session.snapshot()); }
         }
         this.emit({
@@ -720,7 +721,7 @@ const KNOWN_MESSAGE_TAGS = new Set<WebviewToHost['t']>([
  * A minimal shape guard for messages arriving over `webview.postMessage`,
  * which — unlike a same-process call — hands us `unknown` at runtime no
  * matter what `WebviewToHost` claims at compile time. `route()`'s switch
- * dereferences `msg.t` (and, for `set-layout`, `msg.layout.panes` by way of
+ * dereferences `msg.t` (and, for `set-layout`, `msg.layout.root` by way of
  * `SessionManager.layout()`/`setLayout()`) unconditionally; a `null` message
  * or a malformed `set-layout` would otherwise either throw before the
  * try/catch even reaches a case (fine, since `handle()` catches it) or —
@@ -737,7 +738,9 @@ function isWireMessage(msg: unknown): msg is WebviewToHost {
   if (t === 'set-layout') {
     const layout = (msg as { layout?: unknown }).layout;
     if (typeof layout !== 'object' || layout === null) { return false; }
-    if (!Array.isArray((layout as { panes?: unknown }).panes)) { return false; }
+    if (typeof (layout as { root?: unknown }).root !== 'object' || (layout as { root?: unknown }).root === null) {
+      return false;
+    }
   }
   return true;
 }

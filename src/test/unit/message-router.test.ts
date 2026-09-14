@@ -509,7 +509,7 @@ suite('MessageRouter', () => {
     await settle();
     await router.handle({
       t: 'set-layout',
-      layout: { orientation: 'vertical', panes: [{ sessionId: id, size: 1 }] },
+      layout: { root: { kind: 'leaf', sessionId: id, size: 100 }, presets: [] },
     });
     // Flush everything to disk and tear down the live session, simulating a
     // window/extension-host reload: index.json + transcript exist on disk,
@@ -548,7 +548,7 @@ suite('MessageRouter', () => {
     // next `ready`, just pointing at an archived session.
     await router.handle({
       t: 'set-layout',
-      layout: { orientation: 'vertical', panes: [{ sessionId: id, size: 1 }] },
+      layout: { root: { kind: 'leaf', sessionId: id, size: 100 }, presets: [] },
     });
     await router.handle({ t: 'close-session', id });
     await manager.dispose();
