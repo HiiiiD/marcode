@@ -113,6 +113,44 @@ suite('SessionManager', () => {
     assert.strictEqual(manager.get(old.state.id), undefined);
   });
 
+  test('replaceSession leaves the old session and its leaf untouched when creating the replacement fails', async () => {
+    // Creation fails before replaceSession ever reaches close() on the old
+    // session, so whether the old session is otherwise discardable plays no
+    // part here — this exercises the "untouched" contract itself, not
+    // close()'s own archive/discard branching.
+    let modelsAvailable = true;
+    const models: ModelInfo[] = [{ id: 'flaky-model', displayName: 'Flaky' }];
+    const flaky: AgentProvider = {
+      id: 'flaky',
+      displayName: 'Flaky',
+      threadScope: 'cwd',
+      listModels: () => (modelsAvailable ? models : []),
+      listPermissionModes: (): PermissionModeInfo[] => [{ id: 'default' }],
+      // The old session is genuinely created and its `AgentSession` calls
+      // `start()` eagerly in its constructor — only the *replacement's*
+      // `create()` needs to fail here, which `modelsAvailable` alone drives.
+      start: (opts) => new FakeProvider(() => []).start(opts),
+    };
+    providers.set('flaky', flaky);
+
+    const old = await manager.create('flaky', '/tmp');
+    manager.setLayout({
+      root: { kind: 'leaf', sessionId: old.state.id, size: 100 },
+      presets: [],
+    });
+
+    // The provider's install "goes away" between the old session's creation
+    // and the replace click — the next create() call throws.
+    modelsAvailable = false;
+
+    const fresh = await manager.replaceSession(old.state.id);
+
+    assert.strictEqual(fresh, undefined, 'no exception escapes, and there is no fresh session to report');
+    assert.deepStrictEqual(manager.layout().root, { kind: 'leaf', sessionId: old.state.id, size: 100 });
+    assert.strictEqual(manager.summaries().length, 1, 'no half-made replacement session was registered');
+    assert.strictEqual(manager.get(old.state.id), old, 'the old session is still live and untouched');
+  });
+
   test('savePreset strips session ids from the current tree', async () => {
     const session = await manager.create('fake', '/tmp');
     manager.setLayout({

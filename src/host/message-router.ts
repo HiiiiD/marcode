@@ -300,9 +300,15 @@ export class MessageRouter {
         await this.manager.remove(msg.id);
         return;
 
-      case 'replace-session':
-        await this.manager.replaceSession(msg.id);
+      // Emits its own session-snapshot for the same reason fork-session does
+      // (see the comment there): sessions-changed alone only mirrors onto an
+      // *existing* byId pane, so without this the fresh replacement session
+      // would sit `pending` until a later set-visible round-trip found it.
+      case 'replace-session': {
+        const fresh = await this.manager.replaceSession(msg.id);
+        if (fresh) { this.emit({ t: 'session-snapshot', session: await fresh.snapshot() }); }
         return;
+      }
 
       case 'save-preset':
         await this.manager.savePreset(msg.name);

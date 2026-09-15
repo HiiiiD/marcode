@@ -659,11 +659,25 @@ suite('MessageRouter', () => {
 
   test('replace-session delegates to manager.replaceSession', async () => {
     const calls: string[] = [];
-    manager.replaceSession = async (id) => { calls.push(id); };
+    manager.replaceSession = async (id) => { calls.push(id); return undefined; };
 
     await router.handle({ t: 'replace-session', id: 's1' });
 
     assert.deepStrictEqual(calls, ['s1']);
+  });
+
+  test('replace-session emits a session-snapshot for the fresh session, the same as create-session', async () => {
+    await router.handle({ t: 'create-session', providerId: 'fake', cwd: '/tmp' });
+    const oldId = manager.summaries()[0].id;
+    sent.length = 0;
+
+    await router.handle({ t: 'replace-session', id: oldId });
+
+    const freshId = manager.summaries().find((s) => s.id !== oldId)!.id;
+    const snap = sent.find((m) => m.t === 'session-snapshot') as
+      Extract<HostToWebview, { t: 'session-snapshot' }> | undefined;
+    assert.ok(snap, 'replace-session should emit a session-snapshot for the fresh session');
+    assert.strictEqual(snap!.session.id, freshId);
   });
 
   test('save-preset delegates to manager.savePreset', async () => {
