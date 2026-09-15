@@ -208,6 +208,34 @@ suite('TranscriptStore', () => {
 
       assert.deepStrictEqual(index.layout, modern.layout);
     });
+
+    test('readIndex falls back to an empty layout for a legacy shape whose panes is not an array', async () => {
+      const malformed = {
+        version: TRANSCRIPT_VERSION,
+        sessions: [],
+        layout: { orientation: 'horizontal', panes: 'not-an-array' },
+      };
+      await fs.writeFile(path.join(dir, 'index.json'), JSON.stringify(malformed), 'utf8');
+
+      const fresh = new TranscriptStore(dir);
+      const index = await fresh.readIndex();
+
+      assert.deepStrictEqual(index.layout, { root: { kind: 'leaf', sessionId: null, size: 100 }, presets: [] });
+    });
+
+    test('readIndex falls back to an empty layout for a modern shape whose presets is not an array', async () => {
+      const malformed = {
+        version: TRANSCRIPT_VERSION,
+        sessions: [],
+        layout: { root: { kind: 'leaf', sessionId: 'a', size: 100 }, presets: 'not-an-array' },
+      };
+      await fs.writeFile(path.join(dir, 'index.json'), JSON.stringify(malformed), 'utf8');
+
+      const fresh = new TranscriptStore(dir);
+      const index = await fresh.readIndex();
+
+      assert.deepStrictEqual(index.layout, { root: { kind: 'leaf', sessionId: null, size: 100 }, presets: [] });
+    });
   });
 
   test('usage round-trips through its own file', async () => {

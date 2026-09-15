@@ -44,15 +44,26 @@ const emptyIndex = (): StoredIndex => ({
  */
 function migrateLayout(layout: unknown): PaneLayout | undefined {
   if (layout === undefined || layout === null || typeof layout !== 'object') { return undefined; }
-  if ('root' in layout) { return layout as PaneLayout; }
-  const legacy = layout as { orientation: 'vertical' | 'horizontal'; panes: { sessionId: string; size: number }[] };
+  if ('root' in layout) {
+    // `presets` is read as an array later (`savePreset` spreads it), so a
+    // hand-edited or corrupted index carrying anything else here must not
+    // reach that spread as a live throw — fall back to a fresh, empty layout
+    // the same way a version mismatch already does, rather than crash
+    // activation.
+    const modern = layout as Partial<PaneLayout>;
+    if (!Array.isArray(modern.presets)) { return emptyIndex().layout; }
+    return layout as PaneLayout;
+  }
+  const legacy = layout as { orientation: 'vertical' | 'horizontal'; panes: unknown };
+  if (!Array.isArray(legacy.panes)) { return emptyIndex().layout; }
   if (legacy.panes.length === 0) {
     return { root: { kind: 'leaf', sessionId: null, size: 100 }, presets: [] };
   }
   return {
     root: {
       kind: 'split', orientation: legacy.orientation, size: 100,
-      children: legacy.panes.map((p) => ({ kind: 'leaf' as const, sessionId: p.sessionId, size: p.size })),
+      children: (legacy.panes as { sessionId: string; size: number }[])
+        .map((p) => ({ kind: 'leaf' as const, sessionId: p.sessionId, size: p.size })),
     },
     presets: [],
   };
