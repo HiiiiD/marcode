@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 // per-file CJS/ESM interop check rejects it outright (TS1541) — see the
 // similar note in pane-group.tsx and the vendored resizable.tsx.
 import type { Layout, LayoutChangedMeta } from "react-resizable-panels" with { "resolution-mode": "import" };
-import type { LayoutNode, SessionSummary } from "../../protocol/messages";
+import type { LayoutNode } from "../../protocol/messages";
 import { EmptySlot } from "./empty-slot";
 import { leafSessionIds } from "./layout-tree";
 import { PaneContent } from "./pane-content";
@@ -38,8 +38,6 @@ interface LayoutNodeViewProps {
   leafState: (sessionId: string | null) => LeafDisplayState;
   names: Map<string, string>;
   activeId: string | null;
-  assignableSessions: SessionSummary[];
-  onAssign: (path: number[], sessionId: string) => void;
   onLayoutChanged: (path: number[], layout: Layout, meta: LayoutChangedMeta, children: LayoutNode[]) => void;
   onFocusCapture: (sessionId: string) => void;
   /** A session's grab handle was dropped on this (ready) leaf's edge — split it 50/50 in the edge's orientation, with the dragged pane on the dropped side. */
@@ -136,10 +134,7 @@ function LeafContent({ node, path, ctx }: { node: LeafNode; path: number[]; ctx:
           ctx.onDropAssign(path, draggingId);
         }}
       >
-        <EmptySlot
-          assignable={ctx.assignableSessions}
-          onAssign={(id) => ctx.onAssign(path, id)}
-        />
+        <EmptySlot path={path} />
         {isDropTarget && (
           <div
             aria-hidden

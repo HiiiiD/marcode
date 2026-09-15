@@ -11,7 +11,7 @@ import { ENABLED_PROVIDERS_SETTING, PROVIDER_INSTANCES_SETTING } from "../../sha
 import type { LayoutNode } from "../../protocol/messages";
 import { shouldOfferLogin } from "../lib/provider-login";
 import { useStore } from "../store";
-import { at, assignAt, freshTargetPath, leafSessionIds, removeSession, replaceAt, splitAt } from "./layout-tree";
+import { at, assignAt, freshTargetPath, removeSession, replaceAt, splitAt } from "./layout-tree";
 import { LayoutNodeView } from "./layout-node-view";
 import { PaneDragProvider } from "./pane-drag-context";
 import { accessibleTitles, leafDisplayState, rosterSessionIds, visibleLeaves } from "./pane-layout";
@@ -43,22 +43,6 @@ export function PaneGroup({ narrow }: PaneGroupProps) {
   const names = accessibleTitles(
     readyLeaves.map((l) => ({ id: l.sessionId!, title: state.byId[l.sessionId!].summary.title })),
   );
-
-  // `state.sessions` is already `SessionSummary[]` — no need to round-trip
-  // through `byId`, which is keyed only by sessions with an arrived
-  // snapshot and would silently drop a roster session as "unassignable"
-  // before its snapshot lands.
-  const assignableSessions = state.sessions
-    .filter((s) => !leafSessionIds(state.layout.root).includes(s.id));
-
-  const handleAssign = (path: number[], sessionId: string) => {
-    const next = assignAt(state.layout.root, path, sessionId);
-    // `path` was captured at render time — a `layout-changed` echo or a
-    // concurrent edit can make it stale by the time this fires. No-op rather
-    // than throw, matching `handleSplit`/`handleDropAssign` below.
-    if (!next) { return; }
-    post({ t: "set-layout", layout: { ...state.layout, root: next } });
-  };
 
   // Drag-to-split: the dragged session's own old leaf is removed first (it
   // may be the last pane the edge's own target leaf currently touches — see
@@ -296,8 +280,6 @@ export function PaneGroup({ narrow }: PaneGroupProps) {
           leafState={(sessionId) => leafDisplayState(sessionId, roster, snapshotArrived)}
           names={names}
           activeId={activeId}
-          assignableSessions={assignableSessions}
-          onAssign={handleAssign}
           onLayoutChanged={handleLayoutChanged}
           onFocusCapture={focus}
           onSplit={handleSplit}

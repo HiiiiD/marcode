@@ -1,45 +1,58 @@
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { PlusIcon } from "lucide-react";
-import type { SessionSummary } from "../../protocol/messages";
+import { useState } from "react";
+import { useStore } from "../store";
+import { createMessage, inheritedSettings } from "./session-create-settings";
+import { SessionCreateDialog } from "./session-create-dialog";
 
 interface EmptySlotProps {
-  /** Roster sessions not currently placed anywhere in the tree — the only sessions this slot can legally take. */
-  assignable: SessionSummary[];
-  onAssign: (sessionId: string) => void;
+  /** This leaf's own path — where the session the dialog creates should land, not wherever `+ New` would otherwise append it. */
+  path: number[];
 }
 
 /**
- * An empty leaf's placeholder — assign-picker only, no create-a-new-session
- * affordance here (that's `SessionCreateMenu`, in the toolbar, unrelated to
- * a specific leaf). If there is nothing left to assign, the button still
- * renders (a stable, always-real slot) but disabled with a reason, matching
- * this panel's "an action that can only ever refuse is worse than an absent
- * one" convention elsewhere — except here the refusal is transient (every
- * roster session is already placed) rather than permanent, so keeping the
- * door visible-but-disabled is honest instead of misleading.
+ * An empty leaf's placeholder: one "New" button, opening the same create
+ * dialog the toolbar's caret does. There is no assign-an-existing-session
+ * picker here anymore — dragging a session's header onto this leaf (see
+ * `layout-node-view.tsx`'s drop handling) is the way to place one that
+ * already exists; this button is for one that doesn't yet. Disabled, with
+ * no reason text of its own, exactly when the toolbar's own create controls
+ * are: `inheritedSettings` returning `undefined` means there is no provider
+ * to create against at all, a panel-wide fact the toolbar already surfaces.
  */
-export function EmptySlot({ assignable, onAssign }: EmptySlotProps) {
+export function EmptySlot({ path }: EmptySlotProps) {
+  const { state, post, setPendingSlot } = useStore();
+  const [open, setOpen] = useState(false);
+  const settings = inheritedSettings(state);
+
   return (
     <div className={cn("flex h-full items-center justify-center border border-dashed border-border/60")}>
-      <DropdownMenu>
-        <DropdownMenuTrigger
-          render={<Button variant="outline" size="sm" disabled={assignable.length === 0} />}
-        >
-          <PlusIcon aria-hidden />
-          {assignable.length === 0 ? "No sessions to assign" : "Assign a session…"}
-        </DropdownMenuTrigger>
-        <DropdownMenuContent>
-          {assignable.map((s) => (
-            <DropdownMenuItem key={s.id} onClick={() => onAssign(s.id)}>
-              {s.title}
-            </DropdownMenuItem>
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
+      <Button
+        variant="outline"
+        size="sm"
+        disabled={!settings}
+        onClick={() => setOpen(true)}
+      >
+        <PlusIcon aria-hidden />
+        New
+      </Button>
+      {settings && (
+        <SessionCreateDialog
+          open={open}
+          onOpenChange={setOpen}
+          catalog={state.catalog}
+          initial={settings}
+          onCreate={(chosen) => {
+            // Set before posting: `app.tsx`'s reconcile effect reads this the
+            // moment the new session's snapshot arrives, and that can race
+            // ahead of this component's own next render.
+            setPendingSlot(path);
+            post(createMessage(chosen));
+            setOpen(false);
+          }}
+        />
+      )}
     </div>
   );
 }

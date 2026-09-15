@@ -5,13 +5,13 @@ import { AgentsMdNudgeCard } from './components/agents-md-nudge-card';
 import { PaneGroup } from './components/pane-group';
 import { SessionPicker } from './components/session-picker';
 import { NARROW_PX, usePanelWidth } from './components/use-is-narrow';
-import { leafSessionIds } from './components/layout-tree';
+import { assignAt, leafSessionIds } from './components/layout-tree';
 import { reconcilePaneLayout, rosterSessionIds } from './components/pane-layout';
 import { UsageStrip } from './components/usage-strip';
 import { useStore } from './store';
 
 export function App() {
-  const { state, post } = useStore();
+  const { state, post, setPendingSlot } = useStore();
   // A single observer on the panel root, shared by both children: they used
   // to each run their own `ResizeObserver` against their own root element,
   // and because one root carries padding the other doesn't, `contentRect`
@@ -46,14 +46,34 @@ export function App() {
   // layout already matches, so this doesn't loop.
   useEffect(() => {
     const roster = rosterSessionIds(state.sessions);
-    const result = reconcilePaneLayout(
-      state.layout.root, roster, byIdKeys, knownSessionIdsRef.current,
-    );
+    let root = state.layout.root;
+    let filledPendingSlot = false;
+
+    // A session created via an empty slot's own "New" button, or via the
+    // toolbar's "+ New" while an empty slot exists, should land in that
+    // slot rather than get appended as a new top-level sibling by the
+    // reconcile pass below — see `ClientState.pendingSlotPath`. Consumed
+    // against the FIRST session that arrives newly-known, win or lose: a
+    // stale path (the slot filled or vanished in the meantime) just falls
+    // through to the ordinary append-at-top reconcile does for every other
+    // freshly created session, rather than retrying.
+    if (state.pendingSlotPath) {
+      const arriving = byIdKeys.find((id) => roster.has(id) && !knownSessionIdsRef.current.has(id));
+      if (arriving) {
+        const filled = assignAt(root, state.pendingSlotPath, arriving);
+        if (filled) { root = filled; filledPendingSlot = true; }
+        setPendingSlot(null);
+      }
+    }
+
+    const result = reconcilePaneLayout(root, roster, byIdKeys, knownSessionIdsRef.current);
     knownSessionIdsRef.current = result.knownSessionIds;
     if (result.root) {
       post({ t: 'set-layout', layout: { ...state.layout, root: result.root } });
+    } else if (filledPendingSlot) {
+      post({ t: 'set-layout', layout: { ...state.layout, root } });
     }
-  }, [byIdKeys.join(','), rosterKey, paneIdsKey]);
+  }, [byIdKeys.join(','), rosterKey, paneIdsKey, state.pendingSlotPath]);
 
   // `set-visible` must be posted whenever the *set of panes shown* changes,
   // independent of whether reconciliation above found anything to change —

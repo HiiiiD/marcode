@@ -3,6 +3,7 @@ import { ButtonGroup } from "@/components/ui/button-group";
 import { ChevronDownIcon, PlusIcon } from "lucide-react";
 import { useState } from "react";
 import { useStore } from "../store";
+import { flattenLeaves } from "./layout-tree";
 import { SessionCreateDialog } from "./session-create-dialog";
 import { createMessage, inheritedSettings } from "./session-create-settings";
 
@@ -15,11 +16,24 @@ import { createMessage, inheritedSettings } from "./session-create-settings";
  * caret opens the full form. This replaced a menu that made every creation
  * cost two clicks and a read, to answer questions whose answer was already
  * on screen.
+ *
+ * If an empty slot already exists anywhere in the layout, either path fills
+ * that slot instead of appending a new top-level pane — `flattenLeaves`
+ * walks the tree depth-first, so the first hit is the same reading-order
+ * slot a user scanning the grid would call "the empty one." See
+ * `ClientState.pendingSlotPath`.
  */
 export function SessionCreateMenu() {
-  const { state, post } = useStore();
+  const { state, post, setPendingSlot } = useStore();
   const [open, setOpen] = useState(false);
   const settings = inheritedSettings(state);
+
+  const create = (chosen: typeof settings) => {
+    if (!chosen) { return; }
+    const emptySlot = flattenLeaves(state.layout.root).find((l) => l.sessionId === null);
+    if (emptySlot) { setPendingSlot(emptySlot.path); }
+    post(createMessage(chosen));
+  };
 
   return (
     <>
@@ -28,7 +42,7 @@ export function SessionCreateMenu() {
           size="sm"
           aria-label="New session"
           disabled={!settings}
-          onClick={() => settings && post(createMessage(settings))}
+          onClick={() => create(settings)}
         >
           <PlusIcon aria-hidden />
           New
@@ -50,7 +64,7 @@ export function SessionCreateMenu() {
           catalog={state.catalog}
           initial={settings}
           onCreate={(chosen) => {
-            post(createMessage(chosen));
+            create(chosen);
             setOpen(false);
           }}
         />

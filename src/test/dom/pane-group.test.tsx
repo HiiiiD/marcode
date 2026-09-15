@@ -507,7 +507,7 @@ suite('PaneGroup', () => {
       usage: {},
     });
     assert.strictEqual(screen.getAllByRole('region', { name: /Session:/ }).length, 1);
-    assert.strictEqual(screen.getByRole('button', { name: /Assign a session/i }) !== undefined, true);
+    assert.strictEqual(screen.getByRole('button', { name: /^New$/i }) !== undefined, true);
   });
 
   test('a departed session\'s composer draft does not leak into the sibling that shifts into its slot', async () => {
@@ -752,7 +752,7 @@ suite('PaneGroup', () => {
     // The empty leaf only grows its `drop-zone-empty` wrapper once a drag is
     // live — look it up after `dragStart`, not before.
     dragStart(handle);
-    const emptySlot = screen.getByRole('button', { name: /Assign a session/i });
+    const emptySlot = screen.getByRole('button', { name: /^New$/i });
     const dropZone = emptySlot.closest('[data-testid="drop-zone-empty"]') as HTMLElement;
     fireEvent.dragOver(dropZone);
     fireEvent.drop(dropZone);
