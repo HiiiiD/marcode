@@ -15,7 +15,7 @@ function fakeManager(overrides: Partial<SessionManagerLike> = {}): SessionManage
     catalog: () => [
       { id: 'claude', models: [{ id: 'sonnet' }], permissionModes: [{ id: 'default' }] },
     ],
-    create: async () => ({ state: { id: 's-fake-1' } }),
+    create: async () => ({ state: { id: 's-fake-1', name: 'claude-fake1' } }),
     summaries: () => [],
     visibleIds: () => [],
     setVisible: async () => {},
@@ -84,7 +84,7 @@ suite('SelfControlMcpServer', () => {
   test('rejects an unknown provider without touching create()', async () => {
     let created = false;
     const server = new SelfControlMcpServer(fakeManager({
-      create: async () => { created = true; return { state: { id: 'x' } }; },
+      create: async () => { created = true; return { state: { id: 'x', name: 'claude-x' } }; },
     }));
     const config = await server.start();
     const res = await fetch(config.url, {
@@ -126,7 +126,7 @@ suite('SelfControlMcpServer', () => {
         id: 'claude', models: [{ id: 'sonnet', effort: { levels: ['low', 'high'], default: 'low' } }],
         permissionModes: [{ id: 'default' }, { id: 'plan' }],
       }],
-      create: async (...args) => { seenArgs = args; return { state: { id: 's-new-1' } }; },
+      create: async (...args) => { seenArgs = args; return { state: { id: 's-new-1', name: 'claude-new1' } }; },
     }));
     const config = await server.start();
     const res = await fetch(config.url, {
@@ -145,7 +145,7 @@ suite('SelfControlMcpServer', () => {
     });
     const body = await res.json() as { result: { content: { type: string; text: string }[] } };
     const parsed = JSON.parse(body.result.content[0].text) as { sessionId: string };
-    assert.strictEqual(parsed.sessionId, 's-new-1');
+    assert.strictEqual(parsed.sessionId, 'claude-new1');
     assert.deepStrictEqual(seenArgs.slice(0, 5), ['claude', '/tmp/work', 'sonnet', 'high', 'plan']);
     await server.dispose();
   });
@@ -164,7 +164,7 @@ suite('SelfControlMcpServer', () => {
       }],
       visibleIds: () => ['caller'],
       setVisible: async (ids) => { visible = ids; },
-      create: async (...args) => { seenArgs = args; return { state: { id: 's-inherited' } }; },
+      create: async (...args) => { seenArgs = args; return { state: { id: 's-inherited', name: 'claude-inherited' } }; },
     }));
     const config = await server.start();
     const result = await callToolAs(config, 'caller', 'marcode__spawn_session', {
@@ -190,7 +190,7 @@ suite('SelfControlMcpServer', () => {
         id: 'caller', name: 'Caller', providerId: 'claude', model: 'claude-sonnet-5',
         permissionMode: 'default', status: 'idle', cwd: '/tmp', archived: false,
       }],
-      create: async (...args) => { seenArgs = args; return { state: { id: 's-alias' } }; },
+      create: async (...args) => { seenArgs = args; return { state: { id: 's-alias', name: 'claude-alias' } }; },
     }));
     const config = await server.start();
     const result = await callToolAs(config, 'caller', 'marcode__spawn_session', {
@@ -211,7 +211,7 @@ suite('SelfControlMcpServer', () => {
         id: 'caller', name: 'Caller', providerId: 'claude', model: 'sonnet',
         permissionMode: 'bypass', status: 'idle', cwd: '/tmp', archived: false,
       }],
-      create: async (...args) => { seenArgs = args; return { state: { id: 's-downgraded' } }; },
+      create: async (...args) => { seenArgs = args; return { state: { id: 's-downgraded', name: 'claude-downgraded' } }; },
     }));
     const config = await server.start();
     const result = await callToolAs(config, 'caller', 'marcode__spawn_session', {
@@ -233,7 +233,7 @@ suite('SelfControlMcpServer', () => {
         id: 'caller', name: 'Caller', providerId: 'claude', model: 'sonnet',
         permissionMode: 'default', status: 'idle', cwd: '/tmp', archived: false,
       }],
-      create: async () => { created = true; return { state: { id: 'x' } }; },
+      create: async () => { created = true; return { state: { id: 'x', name: 'claude-x' } }; },
     }));
     const config = await server.start();
     const result = await callToolAs(config, 'caller', 'marcode__spawn_session', {
@@ -255,7 +255,7 @@ suite('SelfControlMcpServer', () => {
         id: 'caller', name: 'Caller', providerId: 'claude', model: 'sonnet',
         permissionMode: 'default', status: 'idle', cwd: '/tmp', archived: false,
       }],
-      create: async (...args) => { seenArgs = args; return { state: { id: 'x' } }; },
+      create: async (...args) => { seenArgs = args; return { state: { id: 'x', name: 'claude-x' } }; },
     }));
     const config = await server.start();
     const result = await callToolAs(config, 'caller', 'marcode__spawn_session', {
@@ -278,7 +278,7 @@ suite('SelfControlMcpServer', () => {
         id: 'caller', name: 'Caller', providerId: 'claude', model: 'sonnet', effort: 'high',
         permissionMode: 'default', status: 'idle', cwd: '/tmp', archived: false,
       }],
-      create: async (...args) => { seenArgs = args; return { state: { id: 'x' } }; },
+      create: async (...args) => { seenArgs = args; return { state: { id: 'x', name: 'claude-x' } }; },
     }));
     const config = await server.start();
     const result = await callToolAs(config, 'caller', 'marcode__spawn_session', {
@@ -303,7 +303,7 @@ suite('SelfControlMcpServer', () => {
         id: 'caller', name: 'Caller', providerId: 'claude', model: 'sonnet',
         permissionMode: 'default', status: 'idle', cwd: '/tmp', archived: false,
       }],
-      create: async (...args) => { seenArgs = args; return { state: { id: 'x' } }; },
+      create: async (...args) => { seenArgs = args; return { state: { id: 'x', name: 'claude-x' } }; },
     }));
     const config = await server.start();
     const result = await callToolAs(config, 'caller', 'marcode__spawn_session', {
@@ -349,11 +349,12 @@ suite('SelfControlMcpServer', () => {
       });
       const body = await res.json() as { result: { content: { type: string; text: string }[] } };
       const { sessionId } = JSON.parse(body.result.content[0].text) as { sessionId: string };
-      assert.strictEqual(manager.summaries().some((s) => s.id === sessionId), true);
+      const summary = manager.summaries().find((s) => s.name === sessionId);
+      assert.strictEqual(summary !== undefined, true);
       // Closes Important #3's assertion gap: the tool returning a sessionId
       // is not proof the prompt was delivered. Read the real session's own
       // transcript back and check the user message actually landed there.
-      const spawned = manager.get(sessionId);
+      const spawned = manager.get(summary!.id);
       assert.strictEqual(spawned !== undefined, true);
       const snapshot = await spawned!.snapshot();
       assert.strictEqual(
@@ -370,7 +371,7 @@ suite('SelfControlMcpServer', () => {
   test('rejects a relative cwd', async () => {
     let created = false;
     const server = new SelfControlMcpServer(fakeManager({
-      create: async () => { created = true; return { state: { id: 'x' } }; },
+      create: async () => { created = true; return { state: { id: 'x', name: 'claude-x' } }; },
     }));
     const config = await server.start();
     const res = await fetch(config.url, {
@@ -400,7 +401,7 @@ suite('SelfControlMcpServer', () => {
       catalog: () => [
         { id: 'claude', models: [{ id: 'sonnet' }], permissionModes: [{ id: 'default' }, { id: 'bypass' }] },
       ],
-      create: async () => { created = true; return { state: { id: 'x' } }; },
+      create: async () => { created = true; return { state: { id: 'x', name: 'claude-x' } }; },
     }));
     const config = await server.start();
     const res = await fetch(config.url, {
@@ -431,7 +432,7 @@ suite('SelfControlMcpServer', () => {
     // at id 1, so without per-request transports the second POST's id->stream
     // mapping overwrites the first's, misdelivering responses.
     const server = new SelfControlMcpServer(fakeManager({
-      create: async (providerId, cwd) => ({ state: { id: `s-${cwd}` } }),
+      create: async (providerId, cwd) => ({ state: { id: `s-${cwd}`, name: `claude-${cwd}` } }),
     }));
     const config = await server.start();
     const callFor = (cwd: string) => fetch(config.url, {
@@ -455,8 +456,8 @@ suite('SelfControlMcpServer', () => {
     const parsedA = JSON.parse(bodyA.result.content[0].text) as { sessionId: string };
     const parsedB = JSON.parse(bodyB.result.content[0].text) as { sessionId: string };
 
-    assert.strictEqual(parsedA.sessionId, 's-/tmp/a');
-    assert.strictEqual(parsedB.sessionId, 's-/tmp/b');
+    assert.strictEqual(parsedA.sessionId, 'claude-/tmp/a');
+    assert.strictEqual(parsedB.sessionId, 'claude-/tmp/b');
     await server.dispose();
   });
 

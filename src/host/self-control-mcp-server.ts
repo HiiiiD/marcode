@@ -34,7 +34,7 @@ export interface SessionManagerLike {
   }[];
   create(
     providerId: string, cwd: string, model?: string, effort?: EffortLevel, mode?: PermissionMode,
-  ): Promise<{ state: { id: string } }>;
+  ): Promise<{ state: { id: string; name: string } }>;
   setVisible(ids: string[]): Promise<void>;
   /** Every non-archived session's addressable identity — see `marcode__list_sessions`. */
   summaries(): {
@@ -240,7 +240,7 @@ export class SelfControlMcpServer {
           const sendable = session as unknown as { send?: (text: string) => void };
           if (typeof sendable.send === 'function') { sendable.send(prompt); }
           await this.sessionManager.setVisible([...new Set([...this.sessionManager.visibleIds(), session.state.id])]);
-          return { content: [{ type: 'text', text: JSON.stringify({ sessionId: session.state.id }) }] };
+          return { content: [{ type: 'text', text: JSON.stringify({ sessionId: session.state.name }) }] };
         } catch (err) {
           return { isError: true, content: [{ type: 'text', text: err instanceof Error ? err.message : String(err) }] };
         }
