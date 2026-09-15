@@ -537,6 +537,55 @@ suite('PaneGroup', () => {
     assert.strictEqual((shiftedC as HTMLTextAreaElement).value, '');
   });
 
+  test('a departed session\'s composer draft does not leak into a split subtree that shifts index when an earlier sibling is hidden', async () => {
+    // Regression for keying a split *child* by array index (`split-${i}`)
+    // rather than by its actual contents: three top-level children — leaf
+    // 'a', then a nested split of ['b', 'c'], then leaf 'd'. Hiding 'a'
+    // shifts the nested split from index 1 to index 0. An index-keyed
+    // Fragment would let React reuse the DOM node (and every Composer inside
+    // it) that used to belong to whatever sat at index 0 — here, nothing did
+    // yet, but the general shape is the same class of bug the leaf-level fix
+    // (commit a3d227e) closed only for individual leaves, not split subtrees.
+    renderApp();
+    sendFromHost({
+      t: 'hydrate',
+      sessions: [summary('a'), summary('b'), summary('c'), summary('d')],
+      layout: {
+        root: {
+          kind: 'split', orientation: 'vertical', size: 100,
+          children: [
+            { kind: 'leaf', sessionId: 'a', size: 34 },
+            {
+              kind: 'split', orientation: 'horizontal', size: 33,
+              children: [
+                { kind: 'leaf', sessionId: 'b', size: 50 },
+                { kind: 'leaf', sessionId: 'c', size: 50 },
+              ],
+            },
+            { kind: 'leaf', sessionId: 'd', size: 33 },
+          ],
+        },
+        presets: [],
+      },
+      snapshots: [snapshot('a'), snapshot('b'), snapshot('c'), snapshot('d')],
+      catalog: catalog(),
+      unavailable: [],
+      usage: {},
+    });
+
+    const boxes = screen.getAllByLabelText('Message') as HTMLTextAreaElement[];
+    // Order follows the tree's depth-first leaf order: a, b, c, d.
+    const [, boxB] = boxes;
+    fireEvent.change(boxB, { target: { value: 'still drafting this' } });
+
+    await userEvent.click(screen.getByLabelText('Hide Session a from the split'));
+
+    const survivingBoxes = screen.getAllByLabelText('Message') as HTMLTextAreaElement[];
+    const [survivingB, survivingC] = survivingBoxes;
+    assert.strictEqual(survivingB.value, 'still drafting this');
+    assert.strictEqual(survivingC.value, '');
+  });
+
   test('dropping on a pane\'s right edge splits it into a horizontal pair', () => {
     renderApp();
     hydrate(['s1', 's2']);
@@ -598,6 +647,66 @@ suite('PaneGroup', () => {
           children: [
             { kind: 'leaf', sessionId: 's1', size: 50 },
             { kind: 'leaf', sessionId: 's2', size: 50 },
+          ],
+        },
+      },
+    });
+  });
+
+  test('dropping on a pane\'s top edge splits it into a vertical pair, dragged pane first', () => {
+    // top/bottom -> 'vertical' is the exact mapping commit c62a8fe already
+    // got backwards once (a left/top insertion-side bug) — only left/right
+    // had DOM coverage before this, leaving the vertical orientation and its
+    // insertion order unverified.
+    renderApp();
+    hydrate(['s1', 's2']);
+
+    const target = screen.getByLabelText('Session: Session s2');
+    const handle = screen.getByLabelText('Drag Session s1 to split or reassign a pane');
+
+    dragStart(handle);
+    const dropZone = within(target).getByTestId('drop-zone-top');
+    fireEvent.dragOver(dropZone);
+    fireEvent.drop(dropZone);
+
+    const last = posted().filter((m) => m.t === 'set-layout').at(-1)!;
+    assert.deepStrictEqual(last, {
+      t: 'set-layout',
+      layout: {
+        presets: [],
+        root: {
+          kind: 'split', orientation: 'vertical', size: 100,
+          children: [
+            { kind: 'leaf', sessionId: 's1', size: 50 },
+            { kind: 'leaf', sessionId: 's2', size: 50 },
+          ],
+        },
+      },
+    });
+  });
+
+  test('dropping on a pane\'s bottom edge splits it into a vertical pair, dragged pane last', () => {
+    renderApp();
+    hydrate(['s1', 's2']);
+
+    const target = screen.getByLabelText('Session: Session s2');
+    const handle = screen.getByLabelText('Drag Session s1 to split or reassign a pane');
+
+    dragStart(handle);
+    const dropZone = within(target).getByTestId('drop-zone-bottom');
+    fireEvent.dragOver(dropZone);
+    fireEvent.drop(dropZone);
+
+    const last = posted().filter((m) => m.t === 'set-layout').at(-1)!;
+    assert.deepStrictEqual(last, {
+      t: 'set-layout',
+      layout: {
+        presets: [],
+        root: {
+          kind: 'split', orientation: 'vertical', size: 100,
+          children: [
+            { kind: 'leaf', sessionId: 's2', size: 50 },
+            { kind: 'leaf', sessionId: 's1', size: 50 },
           ],
         },
       },

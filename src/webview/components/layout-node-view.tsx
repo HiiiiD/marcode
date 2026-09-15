@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import type { Layout, LayoutChangedMeta } from "react-resizable-panels" with { "resolution-mode": "import" };
 import type { LayoutNode, SessionSummary } from "../../protocol/messages";
 import { EmptySlot } from "./empty-slot";
+import { leafSessionIds } from "./layout-tree";
 import { PaneContent } from "./pane-content";
 import { usePaneDrag } from "./pane-drag-context";
 import type { LeafDisplayState } from "./pane-layout";
@@ -75,6 +76,18 @@ function leafPanelExtras(node: LayoutNode, ctx: LayoutNodeViewProps) {
     // screen — it's the only transcript item demanding an action.
     className: cn("transition-colors", ctx.activeId === node.sessionId && "ring-1 ring-ring/40 ring-inset"),
   };
+}
+
+/**
+ * The `Fragment` key for a split's `i`-th child — session ids for a `split`
+ * child, so a subtree keeps its DOM/state identity by its actual contents
+ * rather than by array position; falls back to the index only when the
+ * subtree holds no sessions (nothing stateful there to protect).
+ */
+function splitChildKey(child: LayoutNode, i: number): string {
+  if (child.kind === "leaf") { return child.sessionId ?? `empty-${i}`; }
+  const ids = leafSessionIds(child);
+  return ids.length > 0 ? `split-${ids.join(",")}` : `split-${i}`;
 }
 
 /** The name a resize handle's aria-label should use for one side — a session's own title when that side is a single ready pane, a generic fallback when it's a subtree (a split, or an empty/pending leaf) with no one name to give. */
@@ -224,9 +237,14 @@ export function LayoutNodeView(props: LayoutNodeViewProps) {
         // reset effect keyed on the session id — an index key would let
         // React reuse that `Composer`/`Transcript` instance across the
         // session swap and leak the departed session's half-typed draft
-        // into the new one's pane. A split child has no such stateful
-        // subtree, so it stays keyed by its structural position.
-        <Fragment key={child.kind === "leaf" ? (child.sessionId ?? `empty-${i}`) : `split-${i}`}>
+        // into the new one's pane. A `split` child is not exempt from this:
+        // it holds its own stateful leaves (each with its own `Composer`),
+        // and an index-keyed `split-${i}` let a sibling removal upstream
+        // shift a split subtree into a DOM node React reuses for a
+        // *different* split subtree — the same draft-leak bug, one level up,
+        // that keying leaves by session id was supposed to close. See
+        // `splitChildKey` for the actual-membership key that replaces it.
+        <Fragment key={splitChildKey(child, i)}>
           {i > 0 && (
             <ResizableHandle
               aria-label={`Resize between ${siblingLabel(node.children[i - 1], props)} and ${siblingLabel(child, props)}`}
