@@ -192,6 +192,12 @@ suite("SessionHeader status", () => {
 
     assert.strictEqual(posted().some((m) => m.t === "replace-session"), false);
     screen.getByRole("button", { name: "Replace and close" });
+    // The copy must describe what actually happens: replaceSession's close()
+    // archives (transcript kept, reopenable) in the common case — only a
+    // discardable session is really lost, and that's not what this dialog is
+    // warning about.
+    assert.ok(screen.getByText(/is archived and a fresh one opens in its place/i));
+    assert.strictEqual(screen.queryByText(/transcript is gone for good/i) !== null, false);
   });
 
   test("cancelling the Replace confirm dialog posts nothing", async () => {
