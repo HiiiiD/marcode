@@ -208,7 +208,7 @@ suite("SessionHeader status", () => {
     await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
 
     assert.strictEqual(posted().some((m) => m.t === "replace-session"), false);
-    assert.strictEqual(screen.queryByRole("button", { name: "Replace and close" }), null);
+    assert.strictEqual(screen.queryByRole("button", { name: "Replace and close" }) === null, true);
   });
 
   test("confirming Replace posts replace-session for this pane's session", async () => {
