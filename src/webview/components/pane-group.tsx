@@ -11,39 +11,11 @@ import { ENABLED_PROVIDERS_SETTING, PROVIDER_INSTANCES_SETTING } from "../../sha
 import type { LayoutNode } from "../../protocol/messages";
 import { shouldOfferLogin } from "../lib/provider-login";
 import { useStore } from "../store";
-import { at, assignAt, flattenLeaves, leafSessionIds, removeSession, replaceAt, splitAt } from "./layout-tree";
+import { at, assignAt, freshTargetPath, leafSessionIds, removeSession, replaceAt, splitAt } from "./layout-tree";
 import { LayoutNodeView } from "./layout-node-view";
 import { PaneDragProvider } from "./pane-drag-context";
 import { accessibleTitles, leafDisplayState, rosterSessionIds, visibleLeaves } from "./pane-layout";
 import { SessionCreateMenu } from "./session-create-menu";
-
-/**
- * The drop target's path, recomputed against the tree with the dragged
- * session's own old leaf already removed. `removeSession` can shift or
- * collapse indices anywhere along its former ancestor chain, so the
- * pre-removal `path` can no longer be trusted for the target — including an
- * *empty* target leaf, which (unlike a session's own leaf) carries no id
- * `findPath` could re-locate it by. `flattenLeaves` visits every leaf, empty
- * or not, in one fixed depth-first order that removing a single leaf never
- * reorders — it only shifts everything after it back by one — so the
- * target's position in that order, adjusted for whether the dragged leaf
- * came before it, is a stable way to re-find the same leaf after the
- * removal, whether or not it has a session id of its own.
- */
-function freshTargetPath(
-  root: LayoutNode, targetPath: number[], draggedSessionId: string, withoutDragged: LayoutNode,
-): number[] | undefined {
-  const before = flattenLeaves(root);
-  const draggedIndex = before.findIndex((l) => l.sessionId === draggedSessionId);
-  const targetIndex = before.findIndex((l) => samePath(l.path, targetPath));
-  if (draggedIndex === -1 || targetIndex === -1) { return undefined; }
-  const adjusted = targetIndex > draggedIndex ? targetIndex - 1 : targetIndex;
-  return flattenLeaves(withoutDragged)[adjusted]?.path;
-}
-
-function samePath(a: number[], b: number[]): boolean {
-  return a.length === b.length && a.every((v, i) => v === b[i]);
-}
 
 interface PaneGroupProps {
   /** Whether the panel is too narrow to split side by side. Measured once,
@@ -80,7 +52,12 @@ export function PaneGroup({ narrow }: PaneGroupProps) {
     .filter((s) => !leafSessionIds(state.layout.root).includes(s.id));
 
   const handleAssign = (path: number[], sessionId: string) => {
-    post({ t: "set-layout", layout: { ...state.layout, root: assignAt(state.layout.root, path, sessionId) } });
+    const next = assignAt(state.layout.root, path, sessionId);
+    // `path` was captured at render time — a `layout-changed` echo or a
+    // concurrent edit can make it stale by the time this fires. No-op rather
+    // than throw, matching `handleSplit`/`handleDropAssign` below.
+    if (!next) { return; }
+    post({ t: "set-layout", layout: { ...state.layout, root: next } });
   };
 
   // Drag-to-split: the dragged session's own old leaf is removed first (it
@@ -108,13 +85,14 @@ export function PaneGroup({ narrow }: PaneGroupProps) {
     const freshPath = freshTargetPath(state.layout.root, path, draggedSessionId, withoutDragged);
     if (!freshPath) { return; }
     const next = assignAt(withoutDragged, freshPath, draggedSessionId);
+    if (!next) { return; }
     post({ t: "set-layout", layout: { ...state.layout, root: next } });
   };
 
   const handleLayoutChanged = (path: number[], layout: Layout, meta: LayoutChangedMeta, children: LayoutNode[]) => {
     if (!meta.isUserInteraction) { return; }
     const target = at(state.layout.root, path);
-    if (target.kind !== "split") { return; }
+    if (!target || target.kind !== "split") { return; }
     const resized: LayoutNode = {
       kind: "split",
       orientation: target.orientation,

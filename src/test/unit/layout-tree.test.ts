@@ -2,7 +2,7 @@ import * as assert from 'assert';
 import {
   emptyRoot, flattenLeaves, leafSessionIds, findPath, slotCount,
   splitAt, assignAt, removeSession, replaceLeafSession, fillShape, stripSessionIds,
-  at, replaceAt,
+  at, replaceAt, freshTargetPath,
 } from '../../webview/components/layout-tree';
 
 suite('layout-tree read helpers', () => {
@@ -122,6 +122,30 @@ suite('layout-tree assignAt', () => {
       ],
     });
   });
+
+  test('returns undefined, does not throw, for a path that runs through a leaf', () => {
+    const root = { kind: 'leaf' as const, sessionId: 'a', size: 100 };
+    assert.strictEqual(assignAt(root, [0], 'b'), undefined);
+  });
+
+  test('returns undefined, does not throw, for an out-of-range index', () => {
+    const root = {
+      kind: 'split' as const, orientation: 'vertical' as const, size: 100,
+      children: [{ kind: 'leaf' as const, sessionId: null, size: 100 }],
+    };
+    assert.strictEqual(assignAt(root, [5], 'b'), undefined);
+  });
+
+  test('returns undefined, does not throw, when the target already holds a session', () => {
+    const root = {
+      kind: 'split' as const, orientation: 'vertical' as const, size: 100,
+      children: [
+        { kind: 'leaf' as const, sessionId: 'a', size: 50 },
+        { kind: 'leaf' as const, sessionId: 'b', size: 50 },
+      ],
+    };
+    assert.strictEqual(assignAt(root, [1], 'c'), undefined);
+  });
 });
 
 suite('layout-tree at/replaceAt', () => {
@@ -135,6 +159,26 @@ suite('layout-tree at/replaceAt', () => {
     };
     assert.deepStrictEqual(at(root, [1]), { kind: 'leaf', sessionId: 'b', size: 50 });
     assert.deepStrictEqual(at(root, []), root);
+  });
+
+  test('at returns undefined, rather than throwing, for a stale/invalid path', () => {
+    const root = {
+      kind: 'split' as const, orientation: 'vertical' as const, size: 100,
+      children: [
+        { kind: 'leaf' as const, sessionId: 'a', size: 50 },
+        { kind: 'leaf' as const, sessionId: 'b', size: 50 },
+      ],
+    };
+    // Runs through a leaf: 'a' has no children to descend into.
+    assert.strictEqual(at(root, [0, 0]), undefined);
+    // Out-of-range index at the top level.
+    assert.strictEqual(at(root, [5]), undefined);
+    // Out-of-range index one level deeper.
+    const nested = {
+      kind: 'split' as const, orientation: 'vertical' as const, size: 100,
+      children: [root, { kind: 'leaf' as const, sessionId: 'c', size: 50 }],
+    };
+    assert.strictEqual(at(nested, [0, 5]), undefined);
   });
 
   test('replaceAt swaps the node at path, leaving siblings\' size untouched', () => {
@@ -288,5 +332,68 @@ suite('layout-tree stripSessionIds', () => {
         { kind: 'leaf', sessionId: null, size: 50 },
       ],
     });
+  });
+});
+
+suite('layout-tree freshTargetPath', () => {
+  test('dragging backward (target ordinal < dragged ordinal) needs no index adjustment', () => {
+    // Three top-level siblings: a(0), b(1), c(2). Dragging c onto a — the
+    // target's ordinal (0) is already less than the dragged session's own
+    // ordinal (2), so `adjusted` must stay exactly the target's own index,
+    // never decremented.
+    const root = {
+      kind: 'split' as const, orientation: 'vertical' as const, size: 100,
+      children: [
+        { kind: 'leaf' as const, sessionId: 'a', size: 34 },
+        { kind: 'leaf' as const, sessionId: 'b', size: 33 },
+        { kind: 'leaf' as const, sessionId: 'c', size: 33 },
+      ],
+    };
+    const withoutDragged = removeSession(root, 'c');
+    const path = freshTargetPath(root, [0], 'c', withoutDragged);
+    assert.deepStrictEqual(path, [0]);
+    assert.deepStrictEqual(at(withoutDragged, path!), { kind: 'leaf', sessionId: 'a', size: 50 });
+  });
+
+  test('removing the dragged leaf shifts a sibling subtree\'s indices, and the target is one of the shifted leaves', () => {
+    // Top-level siblings: dragged(0), split(leafC, leafD)(1), leafE(2).
+    // Removing `dragged` (a direct top-level child, one of 3+ siblings)
+    // filters the parent's children down to 2 rather than collapsing —
+    // the nested split shifts from index 1 to index 0, and so do its own
+    // children's leading path segments.
+    const root = {
+      kind: 'split' as const, orientation: 'vertical' as const, size: 100,
+      children: [
+        { kind: 'leaf' as const, sessionId: 'dragged', size: 34 },
+        {
+          kind: 'split' as const, orientation: 'horizontal' as const, size: 33,
+          children: [
+            { kind: 'leaf' as const, sessionId: 'leafC', size: 50 },
+            { kind: 'leaf' as const, sessionId: 'leafD', size: 50 },
+          ],
+        },
+        { kind: 'leaf' as const, sessionId: 'leafE', size: 33 },
+      ],
+    };
+    const withoutDragged = removeSession(root, 'dragged');
+    // leafD's path before removal is [1, 1].
+    const path = freshTargetPath(root, [1, 1], 'dragged', withoutDragged);
+    // After removal, the split holding leafC/leafD shifted from index 1 to
+    // index 0 — leafD's fresh path must reflect that shift, not the stale
+    // pre-removal one.
+    assert.deepStrictEqual(path, [0, 1]);
+    assert.deepStrictEqual(at(withoutDragged, path!), { kind: 'leaf', sessionId: 'leafD', size: 50 });
+  });
+
+  test('returns undefined when the dragged session or the target has vanished', () => {
+    const root = {
+      kind: 'split' as const, orientation: 'vertical' as const, size: 100,
+      children: [
+        { kind: 'leaf' as const, sessionId: 'a', size: 50 },
+        { kind: 'leaf' as const, sessionId: 'b', size: 50 },
+      ],
+    };
+    assert.strictEqual(freshTargetPath(root, [0], 'z', root), undefined);
+    assert.strictEqual(freshTargetPath(root, [9], 'a', root), undefined);
   });
 });
