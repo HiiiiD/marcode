@@ -86,8 +86,15 @@ function PresetRow({
   // than a `title`. Computed per preset — different shapes need different
   // counts, so a shared static string would lie about at least one of them.
   const reasonId = `preset-reason-${preset.id}`;
+  // `role="none"` on the wrapper, not a plain `<div>`: Base UI's roving-focus
+  // menu only manages `menuitem`-role children, and a wrapping element with
+  // no ARIA role of its own is invisible to that navigation while its two
+  // real `DropdownMenuItem` children — apply and delete — both stay reachable
+  // by arrow keys. A sibling `Button` here (the previous shape) was never a
+  // valid menu-item child, so arrow-key navigation could reach apply but
+  // never delete.
   return (
-    <div className="flex items-center">
+    <div role="none" className="flex items-center">
       <DropdownMenuItem
         disabled={disabled}
         onClick={() => apply(preset.root)}
@@ -103,14 +110,17 @@ function PresetRow({
         </span>
       )}
       {onDelete && (
-        <Button
-          variant="ghost"
-          size="icon-xs"
+        <DropdownMenuItem
+          variant="destructive"
           aria-label={`Delete ${preset.name}`}
+          className="w-auto shrink-0 justify-center px-1.5"
+          // Still required even as a sibling item, not a nested control: Base
+          // UI's menu can treat a click as selecting whichever item it
+          // bubbles through first if this doesn't stop it reaching apply's.
           onClick={(e) => { e.stopPropagation(); onDelete(); }}
         >
           <XIcon aria-hidden />
-        </Button>
+        </DropdownMenuItem>
       )}
     </div>
   );

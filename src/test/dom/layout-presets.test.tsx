@@ -74,8 +74,13 @@ suite('layout presets menu', () => {
       layout: { root: { kind: 'leaf', sessionId: 's1', size: 100 }, presets: [{ id: 'p1', name: 'My grid', builtin: false, root: { kind: 'leaf', sessionId: null, size: 100 } }] },
     });
     fireEvent.click(screen.getByRole('button', { name: /Layout presets/i }));
-    assert.strictEqual(screen.getByRole('menuitem', { name: /My grid/i }) !== undefined, true);
-    fireEvent.click(screen.getByRole('button', { name: /Delete My grid/i }));
+    // Anchored, not the old bare `/My grid/i`: apply and delete are now both
+    // `menuitem`s (see the keyboard-reachability fix in
+    // layout-presets-menu.tsx), and an unanchored match would hit both "My
+    // grid" (possibly "My grid ✓" when active) and "Delete My grid" once
+    // delete is no longer a plain `button` with its own distinct role.
+    assert.strictEqual(screen.getByRole('menuitem', { name: /^My grid/i }) !== undefined, true);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete My grid' }));
     const last = posted().at(-1);
     assert.deepStrictEqual(last, { t: 'delete-preset', id: 'p1' });
   });
