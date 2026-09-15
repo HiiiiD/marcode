@@ -10,6 +10,7 @@ import type {
 import { fsPathOfUri } from './file-uri';
 import { composePrompt, resolveFileRefs } from './session-refs';
 import { isNewer } from '../providers/update-check';
+import { leafSessionIds } from '../webview/components/layout-tree';
 
 /**
  * Why a message with references was not sent. One function, called from both
@@ -198,9 +199,9 @@ export class MessageRouter {
         const archived = new Set(
           this.manager.summaries().filter((s) => s.archived).map((s) => s.id),
         );
-        for (const pane of layout.panes) {
-          if (archived.has(pane.sessionId)) { continue; }
-          const session = this.manager.get(pane.sessionId) ?? await this.reopen(pane.sessionId);
+        for (const sessionId of leafSessionIds(layout.root)) {
+          if (archived.has(sessionId)) { continue; }
+          const session = this.manager.get(sessionId) ?? await this.reopen(sessionId);
           if (session) { snapshots.push(await session.snapshot()); }
         }
         this.emit({
@@ -297,6 +298,24 @@ export class MessageRouter {
 
       case 'delete-session':
         await this.manager.remove(msg.id);
+        return;
+
+      // Emits its own session-snapshot for the same reason fork-session does
+      // (see the comment there): sessions-changed alone only mirrors onto an
+      // *existing* byId pane, so without this the fresh replacement session
+      // would sit `pending` until a later set-visible round-trip found it.
+      case 'replace-session': {
+        const fresh = await this.manager.replaceSession(msg.id);
+        if (fresh) { this.emit({ t: 'session-snapshot', session: await fresh.snapshot() }); }
+        return;
+      }
+
+      case 'save-preset':
+        await this.manager.savePreset(msg.name);
+        return;
+
+      case 'delete-preset':
+        await this.manager.deletePreset(msg.id);
         return;
 
       case 'send': {
@@ -687,7 +706,7 @@ export class MessageRouter {
 
 const KNOWN_MESSAGE_TAGS = new Set<WebviewToHost['t']>([
   'ready', 'create-session', 'set-visible', 'set-layout', 'close-session',
-  'delete-session', 'send', 'interrupt', 'cancel-queued',
+  'delete-session', 'replace-session', 'save-preset', 'delete-preset', 'send', 'interrupt', 'cancel-queued',
   'set-effort', 'set-permission-mode', 'rename-session',
   'set-model', 'permission-decision', 'question-answer', 'load-more',
   'answer-relocation', 'cancel-relocation', 'fork-session',
@@ -704,11 +723,33 @@ const KNOWN_MESSAGE_TAGS = new Set<WebviewToHost['t']>([
   'file-search', 'set-favorite-models',
 ]);
 
+function isLayoutNode(node: unknown, seen = new Set<object>()): boolean {
+  if (typeof node !== 'object' || node === null || seen.has(node)) { return false; }
+  seen.add(node);
+  const value = node as {
+    kind?: unknown;
+    sessionId?: unknown;
+    orientation?: unknown;
+    size?: unknown;
+    children?: unknown;
+  };
+  if (value.kind === 'leaf') {
+    return (typeof value.sessionId === 'string' || value.sessionId === null)
+      && typeof value.size === 'number' && Number.isFinite(value.size);
+  }
+  if (value.kind !== 'split' || (value.orientation !== 'vertical' && value.orientation !== 'horizontal')) {
+    return false;
+  }
+  return typeof value.size === 'number' && Number.isFinite(value.size)
+    && Array.isArray(value.children) && value.children.length >= 2
+    && value.children.every((child) => isLayoutNode(child, seen));
+}
+
 /**
  * A minimal shape guard for messages arriving over `webview.postMessage`,
  * which — unlike a same-process call — hands us `unknown` at runtime no
  * matter what `WebviewToHost` claims at compile time. `route()`'s switch
- * dereferences `msg.t` (and, for `set-layout`, `msg.layout.panes` by way of
+ * dereferences `msg.t` (and, for `set-layout`, `msg.layout.root` by way of
  * `SessionManager.layout()`/`setLayout()`) unconditionally; a `null` message
  * or a malformed `set-layout` would otherwise either throw before the
  * try/catch even reaches a case (fine, since `handle()` catches it) or —
@@ -725,7 +766,10 @@ function isWireMessage(msg: unknown): msg is WebviewToHost {
   if (t === 'set-layout') {
     const layout = (msg as { layout?: unknown }).layout;
     if (typeof layout !== 'object' || layout === null) { return false; }
-    if (!Array.isArray((layout as { panes?: unknown }).panes)) { return false; }
+    const { root, presets } = layout as { root?: unknown; presets?: unknown };
+    if (!isLayoutNode(root) || !Array.isArray(presets)) {
+      return false;
+    }
   }
   return true;
 }

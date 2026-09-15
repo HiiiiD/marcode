@@ -14,7 +14,7 @@ function hydrateWithItems(
   sendFromHost({
     t: 'hydrate',
     sessions: [summary('a', summaryOver)],
-    layout: layoutOf('a'),
+    layout: layoutOf(['a']),
     snapshots: [snapshot('a', { ...summaryOver, items })],
     catalog: catalogOver ?? catalog(),
     unavailable: [],
@@ -121,7 +121,7 @@ suite('TranscriptItemView fork', () => {
     sendFromHost({
       t: 'hydrate',
       sessions: [summary('a', { status: 'running' })],
-      layout: layoutOf('a'),
+      layout: layoutOf(['a']),
       snapshots: [snapshot('a', {
         status: 'running',
         items: [{ id: 'u1', ts: 1, role: 'user', text: 'hello' }],

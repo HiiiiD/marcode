@@ -19,7 +19,7 @@ function hydrateWith(paneIds: string[], itemsBySession: Record<string, Transcrip
   sendFromHost({
     t: 'hydrate',
     sessions: paneIds.map((id) => summary(id)),
-    layout: layoutOf(...paneIds),
+    layout: layoutOf(paneIds),
     snapshots: paneIds.map((id) => snapshot(id, { items: itemsBySession[id] ?? [] })),
     catalog: catalog(),
     unavailable: [],
@@ -121,7 +121,7 @@ suite('FleetApp', () => {
     // receives this echo (Task 2's FLEET_WANTS) the same way the sidebar
     // does, and the picker (driven by `state.layout`, not a cached list)
     // must reflect it without a full re-`ready`.
-    sendFromHost({ t: 'layout-changed', layout: layoutOf('a') });
+    sendFromHost({ t: 'layout-changed', layout: layoutOf(['a']) });
 
     assert.strictEqual(screen.getByText(summary('a').title) !== undefined, true);
     assert.strictEqual(screen.queryByText(summary('b').title) === null, true);
@@ -137,7 +137,7 @@ suite('FleetApp', () => {
     // pane in `layout.panes`, but SessionPicker also needs the matching
     // `byId` entry (it returns null for a pane with none), which only
     // session-snapshot creates outside hydrate.
-    sendFromHost({ t: 'layout-changed', layout: layoutOf('a', 'c') });
+    sendFromHost({ t: 'layout-changed', layout: layoutOf(['a', 'c']) });
     assert.strictEqual(screen.queryByText(summary('c').title) === null, true);
 
     sendFromHost({ t: 'session-snapshot', session: snapshot('c') });

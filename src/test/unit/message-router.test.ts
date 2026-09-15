@@ -509,7 +509,7 @@ suite('MessageRouter', () => {
     await settle();
     await router.handle({
       t: 'set-layout',
-      layout: { orientation: 'vertical', panes: [{ sessionId: id, size: 1 }] },
+      layout: { root: { kind: 'leaf', sessionId: id, size: 100 }, presets: [] },
     });
     // Flush everything to disk and tear down the live session, simulating a
     // window/extension-host reload: index.json + transcript exist on disk,
@@ -548,7 +548,7 @@ suite('MessageRouter', () => {
     // next `ready`, just pointing at an archived session.
     await router.handle({
       t: 'set-layout',
-      layout: { orientation: 'vertical', panes: [{ sessionId: id, size: 1 }] },
+      layout: { root: { kind: 'leaf', sessionId: id, size: 100 }, presets: [] },
     });
     await router.handle({ t: 'close-session', id });
     await manager.dispose();
@@ -585,6 +585,33 @@ suite('MessageRouter', () => {
     await router.handle({ t: 'ready' });
     const hydrate = sent.find((m) => m.t === 'hydrate');
     assert.ok(hydrate, 'ready should still hydrate after a malformed set-layout');
+  });
+
+  test('a malformed layout tree does not brick subsequent ready calls', async () => {
+    const malformedRoots = [
+      { kind: 'leaf', sessionId: 1, size: 100 },
+      { kind: 'leaf', sessionId: null, size: Infinity },
+      {
+        kind: 'split', orientation: 'diagonal', size: 100,
+        children: [
+          { kind: 'leaf', sessionId: null, size: 50 },
+          { kind: 'leaf', sessionId: null, size: 50 },
+        ],
+      },
+      {
+        kind: 'split', orientation: 'vertical', size: 100,
+        children: [{ kind: 'leaf', sessionId: null, size: 100 }],
+      },
+    ];
+    for (const root of malformedRoots) {
+      await router.handle({ t: 'set-layout', layout: { root, presets: [] } } as never);
+    }
+    sent.length = 0;
+
+    await router.handle({ t: 'ready' });
+
+    const hydrate = sent.find((m) => m.t === 'hydrate');
+    assert.ok(hydrate, 'ready should still hydrate after malformed layout trees');
   });
 
   test('set-effort for a restored-but-not-live session lands in persisted state', async () => {
@@ -628,6 +655,47 @@ suite('MessageRouter', () => {
     await router.handle({ t: 'rename-session', id: 's1', name: 'new-name' });
 
     assert.deepStrictEqual(calls, [['s1', 'new-name']]);
+  });
+
+  test('replace-session delegates to manager.replaceSession', async () => {
+    const calls: string[] = [];
+    manager.replaceSession = async (id) => { calls.push(id); return undefined; };
+
+    await router.handle({ t: 'replace-session', id: 's1' });
+
+    assert.deepStrictEqual(calls, ['s1']);
+  });
+
+  test('replace-session emits a session-snapshot for the fresh session, the same as create-session', async () => {
+    await router.handle({ t: 'create-session', providerId: 'fake', cwd: '/tmp' });
+    const oldId = manager.summaries()[0].id;
+    sent.length = 0;
+
+    await router.handle({ t: 'replace-session', id: oldId });
+
+    const freshId = manager.summaries().find((s) => s.id !== oldId)!.id;
+    const snap = sent.find((m) => m.t === 'session-snapshot') as
+      Extract<HostToWebview, { t: 'session-snapshot' }> | undefined;
+    assert.ok(snap, 'replace-session should emit a session-snapshot for the fresh session');
+    assert.strictEqual(snap!.session.id, freshId);
+  });
+
+  test('save-preset delegates to manager.savePreset', async () => {
+    const calls: string[] = [];
+    manager.savePreset = async (name) => { calls.push(name); };
+
+    await router.handle({ t: 'save-preset', name: 'Mine' });
+
+    assert.deepStrictEqual(calls, ['Mine']);
+  });
+
+  test('delete-preset delegates to manager.deletePreset', async () => {
+    const calls: string[] = [];
+    manager.deletePreset = async (id) => { calls.push(id); };
+
+    await router.handle({ t: 'delete-preset', id: 'p1' });
+
+    assert.deepStrictEqual(calls, ['p1']);
   });
 
   test('rename-session records an error when rename fails', async () => {

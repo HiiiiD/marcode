@@ -10,6 +10,7 @@ import { FakeProvider } from '../../providers/fake/fake-provider';
 import type {
   AgentProvider, ModelInfo, PermissionModeInfo, UsageWindow,
 } from '../../providers/types';
+import { layoutOf } from '../fixtures/protocol';
 
 async function settle() {
   for (let i = 0; i < 10; i++) { await new Promise((r) => setImmediate(r)); }
@@ -71,6 +72,108 @@ suite('SessionManager', () => {
     extra.push({ manager: mmanager, dir: mdir });
     return { manager: mmanager, provider, emitted, store: mstore };
   }
+
+  test('remove() drops the session leaf and collapses its split', async () => {
+    const a = await manager.create('fake', '/tmp');
+    const b = await manager.create('fake', '/tmp');
+    manager.setLayout({
+      root: {
+        kind: 'split', orientation: 'vertical', size: 100,
+        children: [
+          { kind: 'leaf', sessionId: a.state.id, size: 50 },
+          { kind: 'leaf', sessionId: b.state.id, size: 50 },
+        ],
+      },
+      presets: [],
+    });
+
+    await manager.remove(a.state.id);
+
+    assert.deepStrictEqual(manager.layout().root, {
+      kind: 'leaf', sessionId: b.state.id, size: 100,
+    });
+  });
+
+  test('replaceSession creates a matching session and swaps its leaf before closing the old one', async () => {
+    const old = await manager.create('fake', '/tmp', 'fake-large', undefined, 'default');
+    manager.setLayout({
+      root: { kind: 'leaf', sessionId: old.state.id, size: 100 },
+      presets: [],
+    });
+
+    await manager.replaceSession(old.state.id);
+
+    const root = manager.layout().root;
+    assert.strictEqual(root.kind, 'leaf');
+    assert.notStrictEqual(root.sessionId, old.state.id);
+    const replacement = manager.summaries().find((session) => session.id === root.sessionId);
+    assert.strictEqual(replacement?.providerId, 'fake');
+    assert.strictEqual(replacement?.model, 'fake-large');
+    assert.strictEqual(replacement?.cwd, '/tmp');
+    assert.strictEqual(manager.get(old.state.id), undefined);
+  });
+
+  test('replaceSession leaves the old session and its leaf untouched when creating the replacement fails', async () => {
+    // Creation fails before replaceSession ever reaches close() on the old
+    // session, so whether the old session is otherwise discardable plays no
+    // part here — this exercises the "untouched" contract itself, not
+    // close()'s own archive/discard branching.
+    let modelsAvailable = true;
+    const models: ModelInfo[] = [{ id: 'flaky-model', displayName: 'Flaky' }];
+    const flaky: AgentProvider = {
+      id: 'flaky',
+      displayName: 'Flaky',
+      threadScope: 'cwd',
+      listModels: () => (modelsAvailable ? models : []),
+      listPermissionModes: (): PermissionModeInfo[] => [{ id: 'default' }],
+      // The old session is genuinely created and its `AgentSession` calls
+      // `start()` eagerly in its constructor — only the *replacement's*
+      // `create()` needs to fail here, which `modelsAvailable` alone drives.
+      start: (opts) => new FakeProvider(() => []).start(opts),
+    };
+    providers.set('flaky', flaky);
+
+    const old = await manager.create('flaky', '/tmp');
+    manager.setLayout({
+      root: { kind: 'leaf', sessionId: old.state.id, size: 100 },
+      presets: [],
+    });
+
+    // The provider's install "goes away" between the old session's creation
+    // and the replace click — the next create() call throws.
+    modelsAvailable = false;
+
+    const fresh = await manager.replaceSession(old.state.id);
+
+    assert.strictEqual(fresh, undefined, 'no exception escapes, and there is no fresh session to report');
+    assert.deepStrictEqual(manager.layout().root, { kind: 'leaf', sessionId: old.state.id, size: 100 });
+    assert.strictEqual(manager.summaries().length, 1, 'no half-made replacement session was registered');
+    assert.strictEqual(manager.get(old.state.id), old, 'the old session is still live and untouched');
+  });
+
+  test('savePreset strips session ids from the current tree', async () => {
+    const session = await manager.create('fake', '/tmp');
+    manager.setLayout({
+      root: { kind: 'leaf', sessionId: session.state.id, size: 100 },
+      presets: [],
+    });
+
+    await manager.savePreset('My layout');
+
+    const [preset] = manager.layout().presets;
+    assert.strictEqual(preset.name, 'My layout');
+    assert.strictEqual(preset.builtin, false);
+    assert.deepStrictEqual(preset.root, { kind: 'leaf', sessionId: null, size: 100 });
+  });
+
+  test('deletePreset removes a preset by id', async () => {
+    await manager.savePreset('One');
+    const [preset] = manager.layout().presets;
+
+    await manager.deletePreset(preset.id);
+
+    assert.strictEqual(manager.layout().presets.length, 0);
+  });
 
   test('fork copies the transcript up to the chosen item into a new session', async () => {
     const session = await manager.create('fake', '/tmp');
@@ -303,7 +406,7 @@ suite('SessionManager', () => {
         usage: { inputTokens: 0, outputTokens: 0 },
         archived: false, createdAt: 1, updatedAt: 1,
       } as SessionState],
-      layout: { orientation: 'vertical', panes: [] },
+      layout: layoutOf([]),
     });
     const restoredManager = new SessionManager(
       rstore, new Map<string, AgentProvider>([['fake', new FakeProvider(() => [])]]),
@@ -588,16 +691,14 @@ suite('SessionManager', () => {
 
   test('init restores sessions and layout from the index', async () => {
     const a = await manager.create('fake', '/tmp');
-    manager.setLayout({
-      orientation: 'horizontal',
-      panes: [{ sessionId: a.state.id, size: 100 }],
-    });
+    manager.setLayout(layoutOf([a.state.id], 'horizontal'));
     await manager.dispose();
 
     const fresh = new SessionManager(new TranscriptStore(dir), providers, () => {});
     await fresh.init();
     assert.strictEqual(fresh.summaries().length, 1);
-    assert.strictEqual(fresh.layout().orientation, 'horizontal');
+    const restoredRoot = fresh.layout().root;
+    assert.strictEqual(restoredRoot.kind === 'split' && restoredRoot.orientation, 'horizontal');
     assert.strictEqual(fresh.get(a.state.id), undefined,
       'restored sessions are not live until opened');
     await fresh.dispose();
@@ -743,7 +844,7 @@ suite('SessionManager', () => {
     await store2.writeIndex({
       version: 2,
       sessions: [storedSession()],
-      layout: { orientation: 'vertical', panes: [] },
+      layout: layoutOf([]),
     });
     const local = new SessionManager(
       store2, new Map([['fake', new FakeProvider(() => [])]]), () => {},
@@ -764,7 +865,7 @@ suite('SessionManager', () => {
     await store2.writeIndex({
       version: 2,
       sessions: [storedSession()],
-      layout: { orientation: 'vertical', panes: [] },
+      layout: layoutOf([]),
     });
     const local = new SessionManager(
       store2, new Map([['fake', new FakeProvider(() => [])]]), () => {},
@@ -1213,7 +1314,7 @@ suite('SessionManager', () => {
         usage: { inputTokens: 0, outputTokens: 0 },
         archived: false, createdAt: 1, updatedAt: 1,
       } as unknown as SessionState],
-      layout: { orientation: 'vertical', panes: [] },
+      layout: layoutOf([]),
     });
 
     const restored = new SessionManager(store2, providers, () => {});
@@ -1236,7 +1337,7 @@ suite('SessionManager', () => {
         usage: { inputTokens: 0, outputTokens: 0 },
         archived: false, createdAt: 1, updatedAt: 1,
       } as unknown as SessionState],
-      layout: { orientation: 'vertical', panes: [] },
+      layout: layoutOf([]),
     });
 
     const restored = new SessionManager(store2, providers, () => {});
@@ -1260,7 +1361,7 @@ suite('SessionManager', () => {
         usage: { inputTokens: 0, outputTokens: 0 },
         archived: false, createdAt: 1, updatedAt: 1,
       } as unknown as SessionState],
-      layout: { orientation: 'vertical', panes: [] },
+      layout: layoutOf([]),
     });
 
     const restored = new SessionManager(store2, providers, () => {});

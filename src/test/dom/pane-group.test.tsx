@@ -1,16 +1,21 @@
 import * as assert from 'assert';
-import { act, fireEvent, screen } from '@testing-library/react';
+import { act, fireEvent, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { catalog, layoutOf, snapshot, summary } from '../fixtures/protocol';
 import { posted, renderApp, renderWithStore, sendFromHost } from './harness';
 import { PaneGroup } from '@/components/pane-group';
 import type { TranscriptItem } from '../../protocol/messages';
 
+/** A minimal stand-in `DataTransfer` — jsdom's drag events carry no real one, and the handlers under test only ever set `effectAllowed`, never read a payload back off it. */
+function dragStart(el: HTMLElement) {
+  fireEvent.dragStart(el, { dataTransfer: { effectAllowed: '' } });
+}
+
 function hydrate(paneIds: string[], rosterIds = paneIds) {
   sendFromHost({
     t: 'hydrate',
     sessions: rosterIds.map((id) => summary(id)),
-    layout: layoutOf(...paneIds),
+    layout: layoutOf(paneIds),
     snapshots: rosterIds.map((id) => snapshot(id)),
     catalog: catalog(),
     unavailable: [],
@@ -23,7 +28,7 @@ suite('PaneGroup', () => {
     renderApp();
     sendFromHost({
       t: 'hydrate',
-      sessions: [], layout: layoutOf(), snapshots: [],
+      sessions: [], layout: layoutOf([]), snapshots: [],
       catalog: [],
       unavailable: [{ id: 'claude', displayName: 'Claude', reason: 'Claude Code CLI not found.' }],
       probing: false,
@@ -39,7 +44,7 @@ suite('PaneGroup', () => {
     renderApp();
     sendFromHost({
       t: 'hydrate',
-      sessions: [], layout: layoutOf(), snapshots: [],
+      sessions: [], layout: layoutOf([]), snapshots: [],
       catalog: [], unavailable: [], probing: true, usage: {},
     });
 
@@ -53,7 +58,7 @@ suite('PaneGroup', () => {
     renderApp();
     sendFromHost({
       t: 'hydrate',
-      sessions: [], layout: layoutOf(), snapshots: [],
+      sessions: [], layout: layoutOf([]), snapshots: [],
       catalog: [], unavailable: [], probing: false, usage: {},
     });
 
@@ -73,7 +78,7 @@ suite('PaneGroup', () => {
     renderApp();
     sendFromHost({
       t: 'hydrate',
-      sessions: [], layout: layoutOf(), snapshots: [],
+      sessions: [], layout: layoutOf([]), snapshots: [],
       catalog: [],
       unavailable: [{ id: 'claude', displayName: 'Claude', reason: 'Claude Code CLI not found.' }],
       probing: false,
@@ -91,7 +96,7 @@ suite('PaneGroup', () => {
     renderApp();
     sendFromHost({
       t: 'hydrate',
-      sessions: [], layout: layoutOf(), snapshots: [],
+      sessions: [], layout: layoutOf([]), snapshots: [],
       catalog: [],
       unavailable: [{ id: 'claude', displayName: 'Claude', reason: 'Not signed in to Claude. Run `claude auth login`.' }],
       probing: false,
@@ -107,7 +112,7 @@ suite('PaneGroup', () => {
     renderApp();
     sendFromHost({
       t: 'hydrate',
-      sessions: [], layout: layoutOf(), snapshots: [],
+      sessions: [], layout: layoutOf([]), snapshots: [],
       catalog: [],
       unavailable: [{ id: 'claude', displayName: 'Claude', reason: 'Claude Code CLI not found.' }],
       probing: false,
@@ -121,7 +126,7 @@ suite('PaneGroup', () => {
     renderApp();
     sendFromHost({
       t: 'hydrate',
-      sessions: [], layout: layoutOf(), snapshots: [],
+      sessions: [], layout: layoutOf([]), snapshots: [],
       catalog: [],
       unavailable: [{
         id: 'claude-work', displayName: 'Claude (work)',
@@ -138,7 +143,7 @@ suite('PaneGroup', () => {
     renderApp();
     sendFromHost({
       t: 'hydrate',
-      sessions: [], layout: layoutOf(), snapshots: [],
+      sessions: [], layout: layoutOf([]), snapshots: [],
       catalog: [],
       unavailable: [{
         id: 'codex-work', displayName: 'Codex (work)', reason: 'connection refused', loginKind: 'oauth',
@@ -153,7 +158,7 @@ suite('PaneGroup', () => {
     renderApp();
     sendFromHost({
       t: 'hydrate',
-      sessions: [], layout: layoutOf(), snapshots: [],
+      sessions: [], layout: layoutOf([]), snapshots: [],
       catalog: [],
       unavailable: [{
         id: 'codex-work', displayName: 'Codex (work)',
@@ -170,7 +175,7 @@ suite('PaneGroup', () => {
     renderApp();
     sendFromHost({
       t: 'hydrate',
-      sessions: [], layout: layoutOf(), snapshots: [],
+      sessions: [], layout: layoutOf([]), snapshots: [],
       catalog: catalog(), unavailable: [], usage: {},
     });
 
@@ -226,7 +231,7 @@ suite('PaneGroup', () => {
     sendFromHost({
       t: 'hydrate',
       sessions: [summary('a')],
-      layout: layoutOf('a', 'b'),
+      layout: layoutOf(['a', 'b']),
       snapshots: [snapshot('a'), snapshot('b')],
       catalog: catalog(),
       unavailable: [],
@@ -353,7 +358,7 @@ suite('PaneGroup', () => {
     sendFromHost({
       t: 'hydrate',
       sessions: [summary('a', { title: 'Untitled' }), summary('b', { title: 'Untitled' })],
-      layout: layoutOf('a', 'b'),
+      layout: layoutOf(['a', 'b']),
       snapshots: [snapshot('a', { title: 'Untitled' }), snapshot('b', { title: 'Untitled' })],
       catalog: catalog(),
       unavailable: [],
@@ -397,7 +402,7 @@ suite('PaneGroup', () => {
     sendFromHost({
       t: 'hydrate',
       sessions: [summary('a')],
-      layout: layoutOf('a'),
+      layout: layoutOf(['a']),
       snapshots: [snapshot('a', { items: [subagentItem] })],
       catalog: catalog(),
       unavailable: [],
@@ -435,14 +440,329 @@ suite('PaneGroup', () => {
     // The host echoes a layout that dropped 'b' (e.g. the user closed its
     // pane) — both sessions are already "known" by this point, so this does
     // not itself trigger the reconcile effect to bring 'b' back.
-    sendFromHost({ t: 'layout-changed', layout: layoutOf('a') });
+    sendFromHost({ t: 'layout-changed', layout: layoutOf(['a']) });
     screen.getByLabelText('Session: Session a');
     assert.strictEqual(screen.queryByLabelText('Session: Session b') === null, true);
 
     // The fix under test: SessionManager.setLayout()'s echo — what
     // FleetPanel's focus-session handler now triggers — brings 'b' back.
-    sendFromHost({ t: 'layout-changed', layout: layoutOf('a', 'b') });
+    sendFromHost({ t: 'layout-changed', layout: layoutOf(['a', 'b']) });
     screen.getByLabelText('Session: Session a');
     screen.getByLabelText('Session: Session b');
+  });
+
+  test('a split root renders every leaf as its own pane', () => {
+    renderApp();
+    hydrate(['s1', 's2']);
+    assert.strictEqual(screen.getAllByRole('region', { name: /Session:/ }).length, 2);
+  });
+
+  test('a nested split renders a leaf at any depth', () => {
+    renderApp();
+    sendFromHost({
+      t: 'hydrate',
+      sessions: [summary('s1'), summary('s2'), summary('s3')],
+      layout: {
+        root: {
+          kind: 'split', orientation: 'horizontal', size: 100,
+          children: [
+            { kind: 'leaf', sessionId: 's1', size: 50 },
+            {
+              kind: 'split', orientation: 'vertical', size: 50,
+              children: [
+                { kind: 'leaf', sessionId: 's2', size: 50 },
+                { kind: 'leaf', sessionId: 's3', size: 50 },
+              ],
+            },
+          ],
+        },
+        presets: [],
+      },
+      snapshots: [snapshot('s1'), snapshot('s2'), snapshot('s3')],
+      catalog: catalog(),
+      unavailable: [],
+      usage: {},
+    });
+    assert.strictEqual(screen.getAllByRole('region', { name: /Session:/ }).length, 3);
+  });
+
+  test('an empty leaf renders the assign-slot placeholder, not a pane', () => {
+    renderApp();
+    sendFromHost({
+      t: 'hydrate',
+      sessions: [summary('s1'), summary('s2')],
+      layout: {
+        root: {
+          kind: 'split', orientation: 'vertical', size: 100,
+          children: [
+            { kind: 'leaf', sessionId: 's1', size: 50 },
+            { kind: 'leaf', sessionId: null, size: 50 },
+          ],
+        },
+        presets: [],
+      },
+      snapshots: [snapshot('s1')],
+      catalog: catalog(),
+      unavailable: [],
+      usage: {},
+    });
+    assert.strictEqual(screen.getAllByRole('region', { name: /Session:/ }).length, 1);
+    assert.strictEqual(screen.getByRole('button', { name: /^New$/i }) !== undefined, true);
+  });
+
+  test('a departed session\'s composer draft does not leak into the sibling that shifts into its slot', async () => {
+    // Regression for keying a split's children by array index: removing an
+    // earlier sibling (here, 'a', at index 0) shifts 'b' and 'c' down a
+    // slot each. `Composer` keeps its draft in local `useState` with no
+    // reset effect keyed on the session id, so an index-keyed `Fragment`
+    // would let React reuse 'b'\'s `Composer` instance — draft and all —
+    // for 'c'\'s data once 'c' lands in what used to be 'b'\'s slot.
+    renderApp();
+    hydrate(['a', 'b', 'c']);
+
+    const [, boxB] = screen.getAllByLabelText('Message') as HTMLTextAreaElement[];
+    // `fireEvent.change`, not `userEvent.type`: with three panes (two
+    // resize handles), react-resizable-panels' document-level capturing
+    // `pointerdown` listener hit-tests against every handle's
+    // `getBoundingClientRect()`, which jsdom collapses to (0,0,0,0) — the
+    // same spurious "hit" and swallowed focus documented on "the focused
+    // pane is visually distinguished" above, which is why that test also
+    // avoids `userEvent.click`/`.type` and drives the DOM directly.
+    fireEvent.change(boxB, { target: { value: 'still drafting this' } });
+
+    await userEvent.click(screen.getByLabelText('Hide Session a from the split'));
+
+    const [survivingB, shiftedC] = screen.getAllByLabelText('Message');
+    assert.strictEqual((survivingB as HTMLTextAreaElement).value, 'still drafting this');
+    assert.strictEqual((shiftedC as HTMLTextAreaElement).value, '');
+  });
+
+  test('a departed session\'s composer draft does not leak into a split subtree that shifts index when an earlier sibling is hidden', async () => {
+    // Regression for keying a split *child* by array index (`split-${i}`)
+    // rather than by its actual contents: three top-level children — leaf
+    // 'a', then a nested split of ['b', 'c'], then leaf 'd'. Hiding 'a'
+    // shifts the nested split from index 1 to index 0. An index-keyed
+    // Fragment would let React reuse the DOM node (and every Composer inside
+    // it) that used to belong to whatever sat at index 0 — here, nothing did
+    // yet, but the general shape is the same class of bug the leaf-level fix
+    // (commit a3d227e) closed only for individual leaves, not split subtrees.
+    renderApp();
+    sendFromHost({
+      t: 'hydrate',
+      sessions: [summary('a'), summary('b'), summary('c'), summary('d')],
+      layout: {
+        root: {
+          kind: 'split', orientation: 'vertical', size: 100,
+          children: [
+            { kind: 'leaf', sessionId: 'a', size: 34 },
+            {
+              kind: 'split', orientation: 'horizontal', size: 33,
+              children: [
+                { kind: 'leaf', sessionId: 'b', size: 50 },
+                { kind: 'leaf', sessionId: 'c', size: 50 },
+              ],
+            },
+            { kind: 'leaf', sessionId: 'd', size: 33 },
+          ],
+        },
+        presets: [],
+      },
+      snapshots: [snapshot('a'), snapshot('b'), snapshot('c'), snapshot('d')],
+      catalog: catalog(),
+      unavailable: [],
+      usage: {},
+    });
+
+    const boxes = screen.getAllByLabelText('Message') as HTMLTextAreaElement[];
+    // Order follows the tree's depth-first leaf order: a, b, c, d.
+    const [, boxB] = boxes;
+    fireEvent.change(boxB, { target: { value: 'still drafting this' } });
+
+    await userEvent.click(screen.getByLabelText('Hide Session a from the split'));
+
+    const survivingBoxes = screen.getAllByLabelText('Message') as HTMLTextAreaElement[];
+    const [survivingB, survivingC] = survivingBoxes;
+    assert.strictEqual(survivingB.value, 'still drafting this');
+    assert.strictEqual(survivingC.value, '');
+  });
+
+  test('dropping on a pane\'s right edge splits it into a horizontal pair', () => {
+    renderApp();
+    hydrate(['s1', 's2']);
+
+    const target = screen.getByLabelText('Session: Session s2');
+    const handle = screen.getByLabelText('Drag Session s1 to split or reassign a pane');
+
+    dragStart(handle);
+    const dropZone = within(target).getByTestId('drop-zone-right');
+    fireEvent.dragOver(dropZone);
+    fireEvent.drop(dropZone);
+
+    // Starting layout is a vertical (row-stacked) split of [s1, s2]. s1's own
+    // leaf collapses away (its only sibling was the whole root), so s2's old
+    // leaf — now the whole tree — becomes a horizontal (side-by-side) split
+    // of [s2, s1]. Not necessarily the very last posted message: dropping
+    // unmounts the dragged pane's own leaf, and `App`'s visible-set reconcile
+    // effect can post `set-visible` in response one render later.
+    const last = posted().filter((m) => m.t === 'set-layout').at(-1)!;
+    assert.deepStrictEqual(last, {
+      t: 'set-layout',
+      layout: {
+        presets: [],
+        root: {
+          kind: 'split', orientation: 'horizontal', size: 100,
+          children: [
+            { kind: 'leaf', sessionId: 's2', size: 50 },
+            { kind: 'leaf', sessionId: 's1', size: 50 },
+          ],
+        },
+      },
+    });
+  });
+
+  test('dropping on a pane\'s left edge puts the dragged pane on that side', () => {
+    renderApp();
+    hydrate(['s1', 's2']);
+
+    const target = screen.getByLabelText('Session: Session s2');
+    const handle = screen.getByLabelText('Drag Session s1 to split or reassign a pane');
+
+    dragStart(handle);
+    const dropZone = within(target).getByTestId('drop-zone-left');
+    fireEvent.dragOver(dropZone);
+    fireEvent.drop(dropZone);
+
+    // Same starting tree and same horizontal (side-by-side) split as the
+    // right-edge case above, but dropped on the LEFT edge this time: the
+    // dragged pane (s1) must land first, on the side it was dropped on, not
+    // always after the target — matching VS Code's own editor-group
+    // convention.
+    const last = posted().filter((m) => m.t === 'set-layout').at(-1)!;
+    assert.deepStrictEqual(last, {
+      t: 'set-layout',
+      layout: {
+        presets: [],
+        root: {
+          kind: 'split', orientation: 'horizontal', size: 100,
+          children: [
+            { kind: 'leaf', sessionId: 's1', size: 50 },
+            { kind: 'leaf', sessionId: 's2', size: 50 },
+          ],
+        },
+      },
+    });
+  });
+
+  test('dropping on a pane\'s top edge splits it into a vertical pair, dragged pane first', () => {
+    // top/bottom -> 'vertical' is the exact mapping commit c62a8fe already
+    // got backwards once (a left/top insertion-side bug) — only left/right
+    // had DOM coverage before this, leaving the vertical orientation and its
+    // insertion order unverified.
+    renderApp();
+    hydrate(['s1', 's2']);
+
+    const target = screen.getByLabelText('Session: Session s2');
+    const handle = screen.getByLabelText('Drag Session s1 to split or reassign a pane');
+
+    dragStart(handle);
+    const dropZone = within(target).getByTestId('drop-zone-top');
+    fireEvent.dragOver(dropZone);
+    fireEvent.drop(dropZone);
+
+    const last = posted().filter((m) => m.t === 'set-layout').at(-1)!;
+    assert.deepStrictEqual(last, {
+      t: 'set-layout',
+      layout: {
+        presets: [],
+        root: {
+          kind: 'split', orientation: 'vertical', size: 100,
+          children: [
+            { kind: 'leaf', sessionId: 's1', size: 50 },
+            { kind: 'leaf', sessionId: 's2', size: 50 },
+          ],
+        },
+      },
+    });
+  });
+
+  test('dropping on a pane\'s bottom edge splits it into a vertical pair, dragged pane last', () => {
+    renderApp();
+    hydrate(['s1', 's2']);
+
+    const target = screen.getByLabelText('Session: Session s2');
+    const handle = screen.getByLabelText('Drag Session s1 to split or reassign a pane');
+
+    dragStart(handle);
+    const dropZone = within(target).getByTestId('drop-zone-bottom');
+    fireEvent.dragOver(dropZone);
+    fireEvent.drop(dropZone);
+
+    const last = posted().filter((m) => m.t === 'set-layout').at(-1)!;
+    assert.deepStrictEqual(last, {
+      t: 'set-layout',
+      layout: {
+        presets: [],
+        root: {
+          kind: 'split', orientation: 'vertical', size: 100,
+          children: [
+            { kind: 'leaf', sessionId: 's2', size: 50 },
+            { kind: 'leaf', sessionId: 's1', size: 50 },
+          ],
+        },
+      },
+    });
+  });
+
+  test('dragging a session onto itself is a no-op', () => {
+    renderApp();
+    hydrate(['s1', 's2']);
+
+    const target = screen.getByLabelText('Session: Session s1');
+    const handle = screen.getByLabelText('Drag Session s1 to split or reassign a pane');
+
+    dragStart(handle);
+    // No drop zones render over the leaf a session is itself being dragged
+    // from — there is nothing sensible to drop it onto there.
+    assert.strictEqual(within(target).queryByTestId('drop-zone-right') === null, true);
+  });
+
+  test('dropping on an empty leaf assigns directly, no split created', () => {
+    renderApp();
+    sendFromHost({
+      t: 'hydrate',
+      sessions: [summary('s1'), summary('s2')],
+      layout: {
+        root: {
+          kind: 'split', orientation: 'vertical', size: 100,
+          children: [
+            { kind: 'leaf', sessionId: 's1', size: 50 },
+            { kind: 'leaf', sessionId: null, size: 50 },
+          ],
+        },
+        presets: [],
+      },
+      snapshots: [snapshot('s1')],
+      catalog: catalog(),
+      unavailable: [],
+      usage: {},
+    });
+
+    const handle = screen.getByLabelText('Drag Session s1 to split or reassign a pane');
+
+    // The empty leaf only grows its `drop-zone-empty` wrapper once a drag is
+    // live — look it up after `dragStart`, not before.
+    dragStart(handle);
+    const emptySlot = screen.getByRole('button', { name: /^New$/i });
+    const dropZone = emptySlot.closest('[data-testid="drop-zone-empty"]') as HTMLElement;
+    fireEvent.dragOver(dropZone);
+    fireEvent.drop(dropZone);
+
+    // s1's own (now-only-sibling) leaf collapses away entirely, leaving the
+    // formerly-empty leaf — now holding s1 — as the whole tree: no new split
+    // node, just a plain assigned leaf.
+    assert.deepStrictEqual(posted().filter((m) => m.t === 'set-layout').at(-1), {
+      t: 'set-layout',
+      layout: { presets: [], root: { kind: 'leaf', sessionId: 's1', size: 100 } },
+    });
   });
 });

@@ -7,6 +7,7 @@ import { cleanup, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { posted, renderReview, resetHost, sendFromHost } from './review-harness';
 import type { HostToWebview, TreeDiff } from '../../protocol/messages';
+import { layoutOf } from '../fixtures/protocol';
 
 const TREE: TreeDiff = {
   root: '/repo', branch: 'feat-x', sessions: ['s1'],
@@ -28,7 +29,7 @@ function hydrate(): HostToWebview {
       id: 's2', title: 'Session two', providerId: 'fake', model: 'm',
       status: 'idle', cwd: '/repo', archived: false, updatedAt: 0,
     } as never],
-    layout: { orientation: 'vertical', panes: [] },
+    layout: layoutOf([]),
     snapshots: [], catalog: [], unavailable: [], usage: {},
   };
 }

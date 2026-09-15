@@ -29,7 +29,7 @@ suite('Attachment chips', () => {
     sendFromHost({
       t: 'hydrate',
       sessions: [summary('a')],
-      layout: layoutOf('a'),
+      layout: layoutOf(['a']),
       snapshots: [snapshot('a')],
       catalog: catalog(),
       unavailable: [],
@@ -281,7 +281,7 @@ suite('Attachment chips', () => {
     sendFromHost({
       t: 'hydrate',
       sessions: [summary('a')],
-      layout: layoutOf('a'),
+      layout: layoutOf(['a']),
       snapshots: [{
         ...snapshot('a'),
         items: [{
@@ -302,7 +302,7 @@ suite('Attachment chips', () => {
     sendFromHost({
       t: 'hydrate',
       sessions: [summary('a')],
-      layout: layoutOf('a'),
+      layout: layoutOf(['a']),
       snapshots: [{
         ...snapshot('a'),
         items: [{

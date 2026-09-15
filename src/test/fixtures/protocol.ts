@@ -1,5 +1,5 @@
 import type {
-  ContextBreakdown, PaneLayout, ProviderInfo, SessionSnapshot, SessionSummary, TranscriptItem,
+  ContextBreakdown, LayoutNode, PaneLayout, ProviderInfo, SessionId, SessionSnapshot, SessionSummary, TranscriptItem,
   UsageWindow,
 } from '../../protocol/messages';
 
@@ -49,11 +49,18 @@ export function snapshot(id: string, over: Partial<SessionSnapshot> = {}): Sessi
   };
 }
 
-export function layoutOf(...ids: string[]): PaneLayout {
-  return {
-    orientation: 'vertical',
-    panes: ids.map((sessionId) => ({ sessionId, size: 100 / ids.length })),
-  };
+/** A flat row (vertical) or column (horizontal) of the given session ids — the shape most existing tests want. */
+export function layoutOf(sessionIds: SessionId[], orientation: 'vertical' | 'horizontal' = 'vertical'): PaneLayout {
+  const size = sessionIds.length > 0 ? 100 / sessionIds.length : 100;
+  const root: LayoutNode = sessionIds.length === 0
+    ? { kind: 'leaf', sessionId: null, size: 100 }
+    : { kind: 'split', orientation, children: sessionIds.map((sessionId) => ({ kind: 'leaf' as const, sessionId, size })), size: 100 };
+  return { root, presets: [] };
+}
+
+/** A single-pane layout — shorthand used by tests that don't care about orientation. */
+export function singlePaneLayout(sessionId: SessionId): PaneLayout {
+  return { root: { kind: 'leaf', sessionId, size: 100 }, presets: [] };
 }
 
 export function catalog(): ProviderInfo[] {

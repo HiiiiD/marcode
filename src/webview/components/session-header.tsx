@@ -1,19 +1,23 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
+  Dialog, DialogClose, DialogContent, DialogFooter, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
+import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { InputGroup, InputGroupInput } from "@/components/ui/input-group";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { MoreHorizontalIcon, PencilIcon, PlugZapIcon, XIcon } from "lucide-react";
+import { GripVerticalIcon, MoreHorizontalIcon, PencilIcon, PlugZapIcon, RefreshCwIcon, XIcon } from "lucide-react";
 import { folderName } from "../format";
 import type { PaneState } from "../reducer";
 import { useStore } from "../store";
 import { BringBackDialog } from "./bring-back-dialog";
+import { removeSession } from "./layout-tree";
 import { isUnhealthy, worstState } from "./mcp-status";
-import { evenlySizedPanes } from "./pane-layout";
+import { usePaneDrag } from "./pane-drag-context";
 import { StatusBadge } from "./status-badge";
 
 interface SessionHeaderProps {
@@ -33,6 +37,7 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
   // with a single backend configured, naming it on every pane is noise.
   const providerLabel = state.catalog.find((p) => p.id === s.providerId)?.displayName;
   const [bringBackOpen, setBringBackOpen] = useState(false);
+  const [replaceOpen, setReplaceOpen] = useState(false);
   // The name field, edited inline right here instead of through a dialog —
   // `name` (not `title`) is what `SessionManager.rename()` actually governs
   // and the only field it guarantees unique, so it is what the pen changes.
@@ -69,6 +74,14 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
 
   const worstMcpState = worstState(pane.mcpServers);
   const mcpNeedsAttention = worstMcpState !== undefined && isUnhealthy(worstMcpState);
+
+  const { setDraggingId } = usePaneDrag();
+
+  // Shared between the aria-label and the tooltip, same as the roster's own
+  // one-string-for-both controls: a drag here always ends in a split (drop
+  // on a ready pane's edge) or a reassignment (drop on an empty slot), never
+  // a plain "move" — the label used to say the latter.
+  const dragLabel = `Drag ${accessibleTitle} to split or reassign a pane`;
 
   return (
     <div className="flex items-center gap-2 border-b border-border px-2 py-1 text-xs">
@@ -158,7 +171,6 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
         {state.catalog.length > 1 && providerLabel && (
           <span className="text-muted-foreground">
             <span>&nbsp;</span>
-            {/* <span>{` · ${providerLabel}`}</span> */}
             <span>{providerLabel}</span>
           </span>
         )}
@@ -271,6 +283,85 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
       {canBringBack && (
         <BringBackDialog pane={pane} open={bringBackOpen} onOpenChange={setBringBackOpen} />
       )}
+      {/*
+        Grab handle for drag-to-split: its own control rather than making the
+        whole header draggable, since the header also hosts click targets
+        (rename, MCP popover, bring-back menu) that a `draggable` ancestor
+        would fight for pointer events on every click.
+      */}
+      <Tooltip>
+      <TooltipTrigger
+        render={(
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            aria-label={dragLabel}
+            draggable
+            onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; setDraggingId(s.id); }}
+            onDragEnd={() => setDraggingId(null)}
+            className="shrink-0 cursor-grab active:cursor-grabbing"
+          />
+        )}
+      >
+        <GripVerticalIcon aria-hidden />
+      </TooltipTrigger>
+      <TooltipContent>{dragLabel}</TooltipContent>
+      </Tooltip>
+      <Button
+        variant="ghost"
+        size="icon-xs"
+        aria-label={`Replace ${accessibleTitle}`}
+        onClick={() => setReplaceOpen(true)}
+        className="shrink-0"
+      >
+        <RefreshCwIcon aria-hidden />
+      </Button>
+      {/*
+        Replace still gets a confirm, but not because it's destructive: it
+        isn't. `replaceSession` -> `close()` -> `archive()` in the common
+        case, which sets `archived: true` and keeps the transcript — the
+        session reopens from the roster's Archived group. Real data loss
+        (`remove()`) only happens for a discardable session (untitled, empty
+        transcript), the one case where there's nothing to lose. The dialog
+        still exists because this replaces a pane's active session out from
+        under the user without warning otherwise — a deliberate action worth
+        a beat, just not a scary one. The confirm button reads `default`, not
+        `destructive`, for the same reason: red is for the case with no
+        second chance, and this one has an Archived list. It stays a filled
+        button rather than `outline` (matching Cancel) so the deliberate
+        choice still reads as the louder of the two. A standalone dialog
+        rather than a nested submenu: this is a lone icon button, not a menu
+        item, and `BringBackDialog` is this file's own precedent for
+        confirming an action from one.
+      */}
+      <Dialog open={replaceOpen} onOpenChange={setReplaceOpen}>
+        <DialogContent className="gap-3 text-xs">
+          <DialogHeader>
+            <div className="border-b border-border pr-7 pb-2">
+              <DialogTitle className="text-sm">Replace {s.name}?</DialogTitle>
+            </div>
+          </DialogHeader>
+          <p className="text-muted-foreground">
+            The current session is archived and a fresh one opens in its place. You can reopen it
+            from the roster&apos;s Archived list.
+          </p>
+          <DialogFooter>
+            <DialogClose render={<Button variant="outline" size="sm" />}>
+              Cancel
+            </DialogClose>
+            <Button
+              variant="default"
+              size="sm"
+              onClick={() => {
+                post({ t: "replace-session", id: s.id });
+                setReplaceOpen(false);
+              }}
+            >
+              Replace and close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Button
         variant="ghost"
         size="icon-xs"
@@ -280,8 +371,10 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
           // row in the roster, and posts the same message, so the two entry
           // points cannot drift. Archiving is a deliberate choice and lives
           // in the roster row's actions menu, under its own word.
-          const remaining = state.layout.panes.map((p) => p.sessionId).filter((id) => id !== s.id);
-          post({ t: "set-layout", layout: evenlySizedPanes(remaining, state.layout.orientation) });
+          post({
+            t: "set-layout",
+            layout: { ...state.layout, root: removeSession(state.layout.root, s.id) },
+          });
         }}
         className="shrink-0"
       >

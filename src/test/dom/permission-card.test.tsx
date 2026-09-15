@@ -8,7 +8,7 @@ import { posted, renderWithStore, sendFromHost } from './harness';
 
 function hydrateWith(pending: { requestId: string; tool: ToolCall }[]) {
   sendFromHost({
-    t: 'hydrate', sessions: [summary('a')], layout: layoutOf('a'),
+    t: 'hydrate', sessions: [summary('a')], layout: layoutOf(['a']),
     snapshots: [snapshot('a', { pending })], catalog: catalog(), unavailable: [], usage: {},
   });
 }

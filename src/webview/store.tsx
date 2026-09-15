@@ -19,6 +19,8 @@ interface StoreValue {
    * host state a dismissal could correct.
    */
   dismissRejection: (id: SessionId) => void;
+  /** See `ClientState.pendingSlotPath`. */
+  setPendingSlot: (path: number[] | null) => void;
 }
 
 const StoreContext = createContext<StoreValue | undefined>(undefined);
@@ -51,9 +53,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const focus = (id: SessionId) => dispatch({ t: 'local-focus', id });
   const dismissRejection = (id: SessionId) => dispatch({ t: 'local-dismiss-rejection', id });
+  const setPendingSlot = (path: number[] | null) => dispatch({ t: 'local-pending-slot', path });
 
   return (
-    <StoreContext.Provider value={{ state, post, focus, dismissRejection }}>
+    <StoreContext.Provider value={{ state, post, focus, dismissRejection, setPendingSlot }}>
       {children}
     </StoreContext.Provider>
   );

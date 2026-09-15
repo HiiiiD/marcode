@@ -3,6 +3,7 @@ import { fireEvent, screen } from '@testing-library/react';
 import { posted, renderApp, resetHost, sendFromHost } from './harness';
 import type { ProviderInfo, SessionSummary } from '../../protocol/messages';
 import { composePrompt } from '../../host/session-refs';
+import { singlePaneLayout } from '../fixtures/protocol';
 
 function summary(id: string, title: string): SessionSummary {
   return {
@@ -25,7 +26,7 @@ function hydrateOneSession(): SessionSummary {
   sendFromHost({
     t: 'hydrate',
     sessions: [a],
-    layout: { orientation: 'vertical', panes: [{ sessionId: 's-1', size: 1 }] },
+    layout: singlePaneLayout('s-1'),
     snapshots: [{
       ...a, items: [], hasMore: false, pending: [], pendingQuestions: [], mcpServers: [],
       pendingAttachments: [],

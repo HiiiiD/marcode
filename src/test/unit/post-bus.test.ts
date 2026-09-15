@@ -1,6 +1,7 @@
 import * as assert from 'node:assert';
 import { PostBus, REVIEW_WANTS, FLEET_WANTS } from '../../host/post-bus';
 import type { HostToWebview, SessionId } from '../../protocol/messages';
+import { layoutOf } from '../fixtures/protocol';
 
 suite('PostBus', () => {
   test('delivers only what a client wants', () => {
@@ -32,7 +33,7 @@ suite('PostBus', () => {
       true,
     );
     assert.strictEqual(
-      FLEET_WANTS({ t: 'layout-changed', layout: { orientation: 'vertical', panes: [] } } as HostToWebview),
+      FLEET_WANTS({ t: 'layout-changed', layout: layoutOf([]) } as HostToWebview),
       true,
     );
     assert.strictEqual(

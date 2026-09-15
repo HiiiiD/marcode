@@ -14,7 +14,7 @@ function hydrate(status: SessionStatus, items: TranscriptItem[]) {
   sendFromHost({
     t: 'hydrate',
     sessions: [summary('a', { status })],
-    layout: layoutOf('a'),
+    layout: layoutOf(['a']),
     snapshots: [snapshot('a', { status, items })],
     catalog: catalog(),
     unavailable: [],

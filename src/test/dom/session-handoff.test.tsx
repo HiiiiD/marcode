@@ -7,6 +7,7 @@ import type { ProviderInfo, SessionSummary } from '../../protocol/messages';
 // a convention that only lives in a test fixture is one nobody checks. The
 // module has no `vscode` and no I/O, so it imports fine under jsdom.
 import { composePrompt } from '../../host/session-refs';
+import { layoutOf, singlePaneLayout } from '../fixtures/protocol';
 
 function summary(id: string, title: string): SessionSummary {
   return {
@@ -42,10 +43,7 @@ function hydrateTwoSessions(): void {
   sendFromHost({
     t: 'hydrate',
     sessions: [a, b],
-    layout: {
-      orientation: 'vertical',
-      panes: [{ sessionId: 's-1', size: 1 }, { sessionId: 's-2', size: 1 }],
-    },
+    layout: layoutOf(['s-1', 's-2']),
     snapshots: [snapshotOf(a), snapshotOf(b)],
     catalog: CATALOG,
     unavailable: [],
@@ -60,7 +58,7 @@ function hydrateOneVisible(): void {
   sendFromHost({
     t: 'hydrate',
     sessions: [a, b],
-    layout: { orientation: 'vertical', panes: [{ sessionId: 's-1', size: 1 }] },
+    layout: singlePaneLayout('s-1'),
     snapshots: [snapshotOf(a)],
     catalog: CATALOG,
     unavailable: [],

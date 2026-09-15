@@ -12,7 +12,7 @@ function hydrateOne() {
   sendFromHost({
     t: 'hydrate',
     sessions: [summary('a', { cwd: TREE })],
-    layout: layoutOf('a'),
+    layout: layoutOf(['a']),
     snapshots: [snapshot('a', { cwd: TREE })],
     catalog: catalog(),
     unavailable: [],

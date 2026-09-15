@@ -1,7 +1,8 @@
 import * as assert from 'assert';
 import type { SessionSummary } from '../../protocol/messages';
 import { initialState, reduce } from '../../webview/reducer';
-import { question, snapshot, summary } from '../fixtures/protocol';
+import { layoutOf, question, snapshot, summary } from '../fixtures/protocol';
+import { leafSessionIds } from '../../webview/components/layout-tree';
 
 /**
  * A state the host could actually produce for one session: a roster entry
@@ -13,7 +14,7 @@ function withSession(id: string) {
   return reduce(initialState, {
     t: 'hydrate',
     sessions: [summary(id)],
-    layout: { orientation: 'vertical', panes: [{ sessionId: id, size: 100 }] },
+    layout: layoutOf([id]),
     snapshots: [snapshot(id)],
     catalog: [],
     unavailable: [],
@@ -25,7 +26,7 @@ function hydrated() {
   return reduce(initialState, {
     t: 'hydrate',
     sessions: [],
-    layout: { orientation: 'vertical', panes: [] },
+    layout: layoutOf([]),
     catalog: [],
     unavailable: [],
     usage: {},
@@ -46,7 +47,7 @@ suite('webview reducer', () => {
     const next = reduce(initialState, {
       t: 'hydrate',
       sessions: [summary('s1')],
-      layout: { orientation: 'vertical', panes: [{ sessionId: 's1', size: 100 }] },
+      layout: layoutOf(['s1']),
       snapshots: [snapshot('s1')],
       catalog: [{ id: 'fake', displayName: 'Fake', models: [], permissionModes: [] }],
       unavailable: [],
@@ -55,13 +56,13 @@ suite('webview reducer', () => {
 
     assert.strictEqual(next.ready, true);
     assert.strictEqual(next.sessions.length, 1);
-    assert.strictEqual(next.layout.panes.length, 1);
+    assert.strictEqual(leafSessionIds(next.layout.root).length, 1);
     assert.ok(next.byId['s1']);
   });
 
   test('hydrate seeds usageByProvider so a reload paints immediately', () => {
     const state = reduce(initialState, {
-      t: 'hydrate', sessions: [], layout: { orientation: 'vertical', panes: [] },
+      t: 'hydrate', sessions: [], layout: layoutOf([]),
       snapshots: [], catalog: [], unavailable: [],
       usage: { fake: [{ id: 'five-hour', label: 'Session (5h)', usedPercent: 62 }] },
     });
@@ -201,10 +202,10 @@ suite('webview reducer', () => {
   test('local-layout applies a client-optimistic layout update', () => {
     const next = reduce(initialState, {
       t: 'local-layout',
-      layout: { orientation: 'horizontal', panes: [{ sessionId: 's1', size: 100 }] },
+      layout: layoutOf(['s1'], 'horizontal'),
     });
-    assert.strictEqual(next.layout.orientation, 'horizontal');
-    assert.deepStrictEqual(next.layout.panes, [{ sessionId: 's1', size: 100 }]);
+    assert.strictEqual(next.layout.root.kind === 'split' && next.layout.root.orientation, 'horizontal');
+    assert.deepStrictEqual(leafSessionIds(next.layout.root), ['s1']);
   });
 
   test('local-focus records which session the user is working in', () => {
@@ -217,7 +218,7 @@ suite('webview reducer', () => {
     state = reduce(state, {
       t: 'hydrate',
       sessions: [summary('s2')],
-      layout: { orientation: 'vertical', panes: [] },
+      layout: layoutOf([]),
       snapshots: [snapshot('s2')],
       catalog: [],
       unavailable: [],
@@ -324,7 +325,7 @@ suite('webview reducer', () => {
     const state = reduce(initialState, {
       t: 'hydrate',
       sessions: [summary('s1')],
-      layout: { orientation: 'vertical', panes: [{ sessionId: 's1', size: 100 }] },
+      layout: layoutOf(['s1']),
       snapshots: [{
         ...snapshot('s1'),
         pendingQuestions: [{ requestId: 'r1', blocking: true, questions: question().questions }],
@@ -425,7 +426,7 @@ suite('webview reducer', () => {
     const state = reduce(initialState, {
       t: 'hydrate',
       sessions: [summary('s1')],
-      layout: { orientation: 'vertical', panes: [{ sessionId: 's1', size: 100 }] },
+      layout: layoutOf(['s1']),
       snapshots: [{ ...snapshot('s1'), invocables: [{ name: 'init' }] }],
       catalog: [],
       unavailable: [],
@@ -493,14 +494,14 @@ suite('webview reducer', () => {
 
   test('hydrate seeds favoriteModels, defaulting to empty when the host omits it', () => {
     const withList = reduce(initialState, {
-      t: 'hydrate', sessions: [], layout: { orientation: 'vertical', panes: [] },
+      t: 'hydrate', sessions: [], layout: layoutOf([]),
       snapshots: [], catalog: [], unavailable: [], usage: {},
       favoriteModels: ['opencode gpt-9'],
     });
     assert.deepStrictEqual(withList.favoriteModels, ['opencode gpt-9']);
 
     const withoutList = reduce(initialState, {
-      t: 'hydrate', sessions: [], layout: { orientation: 'vertical', panes: [] },
+      t: 'hydrate', sessions: [], layout: layoutOf([]),
       snapshots: [], catalog: [], unavailable: [], usage: {},
     });
     assert.deepStrictEqual(withoutList.favoriteModels, []);
@@ -508,13 +509,13 @@ suite('webview reducer', () => {
 
   test('hydrate seeds showCacheTimer, defaulting to false when the host omits it', () => {
     const on = reduce(initialState, {
-      t: 'hydrate', sessions: [], layout: { orientation: 'vertical', panes: [] },
+      t: 'hydrate', sessions: [], layout: layoutOf([]),
       snapshots: [], catalog: [], unavailable: [], usage: {}, showCacheTimer: true,
     });
     assert.strictEqual(on.showCacheTimer, true);
 
     const off = reduce(initialState, {
-      t: 'hydrate', sessions: [], layout: { orientation: 'vertical', panes: [] },
+      t: 'hydrate', sessions: [], layout: layoutOf([]),
       snapshots: [], catalog: [], unavailable: [], usage: {},
     });
     assert.strictEqual(off.showCacheTimer, false);
@@ -522,7 +523,7 @@ suite('webview reducer', () => {
 
   test('favorite-models replaces the list wholesale', () => {
     const seeded = reduce(initialState, {
-      t: 'hydrate', sessions: [], layout: { orientation: 'vertical', panes: [] },
+      t: 'hydrate', sessions: [], layout: layoutOf([]),
       snapshots: [], catalog: [], unavailable: [], usage: {},
       favoriteModels: ['opencode gpt-9'],
     });
@@ -584,7 +585,7 @@ suite('webview reducer', () => {
       trees: [{ path: '/repo/trees/a', branch: 'a', clean: true }],
     });
     const after = reduce(swept, {
-      t: 'hydrate', sessions: [], layout: { orientation: 'vertical', panes: [] },
+      t: 'hydrate', sessions: [], layout: layoutOf([]),
       snapshots: [], catalog: [], unavailable: [], usage: {},
     });
     assert.strictEqual(after.staleTrees.length, 0);

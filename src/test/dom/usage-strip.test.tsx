@@ -14,7 +14,7 @@ function mountStrip() {
   sendFromHost({
     t: 'hydrate',
     sessions: [summary('a')],
-    layout: layoutOf('a'),
+    layout: layoutOf(['a']),
     snapshots: [snapshot('a')],
     catalog: catalog(),
     unavailable: [],
@@ -133,7 +133,7 @@ suite('UsageStrip', () => {
     sendFromHost({
       t: 'hydrate',
       sessions: [summary('a')],
-      layout: layoutOf('a'),
+      layout: layoutOf(['a']),
       snapshots: [snapshot('a')],
       catalog: [...catalog(), { id: 'other', displayName: 'Other', models: [], permissionModes: [] }],
       unavailable: [],

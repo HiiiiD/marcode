@@ -8,7 +8,9 @@ import {
   DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { evenlySizedPanes } from './pane-layout';
+import { leafSessionIds, removeSession } from './layout-tree';
+import { LayoutPresetsMenu } from './layout-presets-menu';
+import { appendAtTop } from './pane-layout';
 import { SessionCreateMenu } from './session-create-menu';
 import { SessionRow } from './session-row';
 import { StaleTreesDialog } from './stale-trees';
@@ -26,17 +28,17 @@ interface SessionPickerProps {
 
 export function SessionPicker({ narrow, onReview, onFleet }: SessionPickerProps) {
   const { state, post } = useStore();
-  const open = new Set(state.layout.panes.map((p) => p.sessionId));
-  const horizontal = state.layout.orientation === 'horizontal';
+  const root = state.layout.root;
+  const open = new Set(leafSessionIds(root));
+  const horizontal = root.kind === 'split' && root.orientation === 'horizontal';
   const needing = state.sessions.filter((s) => statusView(s.status).needsUser).length;
 
-  const setPanes = (ids: SessionId[]) => {
-    post({ t: 'set-layout', layout: evenlySizedPanes(ids, state.layout.orientation) });
-    post({ t: 'set-visible', sessionIds: ids });
-  };
-
+  // Shares `reconcilePaneLayout`'s own append rule via `appendAtTop`
+  // (pane-layout.ts) rather than duplicating it here.
   const toggle = (id: SessionId) => {
-    setPanes(open.has(id) ? [...open].filter((x) => x !== id) : [...open, id]);
+    const next = open.has(id) ? removeSession(root, id) : appendAtTop(root, id);
+    post({ t: 'set-layout', layout: { ...state.layout, root: next } });
+    post({ t: 'set-visible', sessionIds: leafSessionIds(next) });
   };
 
   const live = state.sessions.filter((s) => !s.archived);
@@ -242,21 +244,29 @@ export function SessionPicker({ narrow, onReview, onFleet }: SessionPickerProps)
             size="icon-sm"
             aria-label={`Split direction: ${horizontal ? 'side by side' : 'stacked'}`}
             aria-pressed={horizontal}
-            disabled={narrow}
+            disabled={narrow || root.kind !== 'split'}
             // A `title` on a disabled button is reachable by neither keyboard
             // focus nor most screen readers — disabled elements are pulled out
             // of both. `aria-describedby` plus real, rendered (if visually
             // hidden) text is the same remedy as the composer's disabled bypass
-            // option.
-            aria-describedby={narrow ? 'orientation-reason' : undefined}
+            // option. Both reasons can hold at once (a narrow panel with only
+            // one pane open), so this points at whichever apply.
+            aria-describedby={
+              [narrow && 'orientation-reason', root.kind !== 'split' && 'orientation-single-pane-reason']
+                .filter((id): id is string => Boolean(id))
+                .join(' ') || undefined
+            }
             className="shrink-0"
-            onClick={() => post({
-              t: 'set-layout',
-              layout: {
-                ...state.layout,
-                orientation: state.layout.orientation === 'vertical' ? 'horizontal' : 'vertical',
-              },
-            })}
+            onClick={() => {
+              if (root.kind !== 'split') { return; }
+              post({
+                t: 'set-layout',
+                layout: {
+                  ...state.layout,
+                  root: { ...root, orientation: root.orientation === 'vertical' ? 'horizontal' : 'vertical' },
+                },
+              });
+            }}
           />
         )}
       >
@@ -272,6 +282,13 @@ export function SessionPicker({ narrow, onReview, onFleet }: SessionPickerProps)
           The panel is too narrow to split side by side; panes stack until it is wider.
         </span>
       )}
+      {root.kind !== 'split' && (
+        <span id="orientation-single-pane-reason" className="sr-only">
+          There's only one pane open; there's nothing to reorient yet.
+        </span>
+      )}
+
+      <LayoutPresetsMenu />
 
       <SessionCreateMenu />
       </div>

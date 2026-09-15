@@ -11,6 +11,7 @@ import { fileMentions, fileRefsOf, type FileMentionPayload } from "../lib/file-m
 import { interceptFor } from "../lib/intercepts";
 import { insertionFor, menuQuery, menuView } from "../lib/invocable-menu";
 import { sortFavoritesFirst } from "../../shared/model-catalog";
+import { leafSessionIds } from "./layout-tree";
 import {
   filterMentions, mentionQuery, pruneMentions, spliceMention, tokenFor,
   type MentionOption, type PendingMention,
@@ -150,7 +151,7 @@ export function Composer({
    * menu with every session ever opened, and offer sources the user cannot
    * read to check what they are attaching.
    */
-  const onScreen = new Set(state.layout.panes.map((p) => p.sessionId));
+  const onScreen = new Set(leafSessionIds(state.layout.root));
   // The host's answer to the query currently live in the box — stale once
   // the user has typed past it, which is what comparing `query` against
   // `refHit.query` below catches without a separate id on the wire.

@@ -140,12 +140,25 @@ export interface ClientState {
    * how `enabledProviders` removes a backend rather than graying it out.
    */
   showCacheTimer: boolean;
+  /**
+   * A tree path the next freshly-created session should be assigned into,
+   * rather than appended as a new top-level sibling — set right before
+   * `create-session` is posted, by either an empty slot's own "New" button
+   * (targeting itself) or the toolbar's "+ New" when an empty slot exists
+   * anywhere in the tree (targeting the first one in reading order). Consumed
+   * exactly once, by `App`'s reconcile effect, the moment the new session's
+   * snapshot arrives — win or lose (the path can go stale if the tree
+   * changed in between), it is cleared right there rather than retried.
+   * Client-local: the host has no notion of "the next session goes here",
+   * only `set-layout` after the fact.
+   */
+  pendingSlotPath: number[] | null;
 }
 
 export const initialState: ClientState = {
   ready: false,
   sessions: [],
-  layout: { orientation: 'vertical', panes: [] },
+  layout: { root: { kind: 'leaf', sessionId: null, size: 100 }, presets: [] },
   catalog: [],
   unavailable: [],
   probing: true,
@@ -165,6 +178,7 @@ export const initialState: ClientState = {
   agentsMdNudgeHits: [],
   favoriteModels: [],
   showCacheTimer: false,
+  pendingSlotPath: null,
 };
 
 /**
@@ -189,7 +203,9 @@ export type ClientAction =
    * host emits rejections and forgets them — `rejectionBySession` is the only
    * place they live, so there is nothing on the host to tell.
    */
-  | { t: 'local-dismiss-rejection'; id: SessionId };
+  | { t: 'local-dismiss-rejection'; id: SessionId }
+  /** See `ClientState.pendingSlotPath`. */
+  | { t: 'local-pending-slot'; path: number[] | null };
 
 export function reduce(state: ClientState, msg: ClientAction): ClientState {
   switch (msg.t) {
@@ -201,6 +217,9 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
 
     case 'local-focus':
       return state.focusedSessionId === msg.id ? state : { ...state, focusedSessionId: msg.id };
+
+    case 'local-pending-slot':
+      return { ...state, pendingSlotPath: msg.path };
 
     case 'hydrate': {
       const byId: Record<SessionId, PaneState> = {};
@@ -263,6 +282,11 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
         // field (or a hand-built fixture) has not said otherwise.
         favoriteModels: msg.favoriteModels ?? [],
         showCacheTimer: msg.showCacheTimer ?? false,
+        // Not carried forward, same reasoning as `focusedSessionId`: it
+        // names a path into panes hydrate is about to rebuild from scratch,
+        // and a session created against a pre-reload path could land
+        // anywhere.
+        pendingSlotPath: null,
       };
     }
 

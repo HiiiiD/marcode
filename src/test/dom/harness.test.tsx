@@ -23,7 +23,7 @@ suite('harness', () => {
     sendFromHost({
       t: 'hydrate',
       sessions: [summary('a')],
-      layout: layoutOf('a'),
+      layout: layoutOf(['a']),
       snapshots: [snapshot('a')],
       catalog: catalog(),
       unavailable: [],
