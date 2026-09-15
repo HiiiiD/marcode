@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
+  Dialog, DialogClose, DialogContent, DialogFooter, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
+import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { InputGroup, InputGroupInput } from "@/components/ui/input-group";
@@ -34,6 +37,7 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
   // with a single backend configured, naming it on every pane is noise.
   const providerLabel = state.catalog.find((p) => p.id === s.providerId)?.displayName;
   const [bringBackOpen, setBringBackOpen] = useState(false);
+  const [replaceOpen, setReplaceOpen] = useState(false);
   // The name field, edited inline right here instead of through a dialog —
   // `name` (not `title`) is what `SessionManager.rename()` actually governs
   // and the only field it guarantees unique, so it is what the pen changes.
@@ -72,6 +76,12 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
   const mcpNeedsAttention = worstMcpState !== undefined && isUnhealthy(worstMcpState);
 
   const { setDraggingId } = usePaneDrag();
+
+  // Shared between the aria-label and the tooltip, same as the roster's own
+  // one-string-for-both controls: a drag here always ends in a split (drop
+  // on a ready pane's edge) or a reassignment (drop on an empty slot), never
+  // a plain "move" — the label used to say the latter.
+  const dragLabel = `Drag ${accessibleTitle} to split or reassign a pane`;
 
   return (
     <div className="flex items-center gap-2 border-b border-border px-2 py-1 text-xs">
@@ -161,7 +171,6 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
         {state.catalog.length > 1 && providerLabel && (
           <span className="text-muted-foreground">
             <span>&nbsp;</span>
-            {/* <span>{` · ${providerLabel}`}</span> */}
             <span>{providerLabel}</span>
           </span>
         )}
@@ -280,26 +289,68 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
         (rename, MCP popover, bring-back menu) that a `draggable` ancestor
         would fight for pointer events on every click.
       */}
-      <Button
-        variant="ghost"
-        size="icon-xs"
-        aria-label={`Drag ${accessibleTitle} to move or split`}
-        draggable
-        onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; setDraggingId(s.id); }}
-        onDragEnd={() => setDraggingId(null)}
-        className="shrink-0 cursor-grab active:cursor-grabbing"
+      <Tooltip>
+      <TooltipTrigger
+        render={(
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            aria-label={dragLabel}
+            draggable
+            onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; setDraggingId(s.id); }}
+            onDragEnd={() => setDraggingId(null)}
+            className="shrink-0 cursor-grab active:cursor-grabbing"
+          />
+        )}
       >
         <GripVerticalIcon aria-hidden />
-      </Button>
+      </TooltipTrigger>
+      <TooltipContent>{dragLabel}</TooltipContent>
+      </Tooltip>
       <Button
         variant="ghost"
         size="icon-xs"
         aria-label={`Replace ${accessibleTitle}`}
-        onClick={() => post({ t: "replace-session", id: s.id })}
+        onClick={() => setReplaceOpen(true)}
         className="shrink-0"
       >
         <RefreshCwIcon aria-hidden />
       </Button>
+      {/*
+        Replace is not recoverable — the old session closes and its
+        transcript is gone — so it gets the same confirm-before-acting
+        contract as the roster row's own Delete, not Archive's fire-directly
+        one. A standalone dialog rather than a nested submenu: this is a lone
+        icon button, not a menu item, and `BringBackDialog` is this file's
+        own precedent for confirming a destructive action from one.
+      */}
+      <Dialog open={replaceOpen} onOpenChange={setReplaceOpen}>
+        <DialogContent className="gap-3 text-xs">
+          <DialogHeader>
+            <div className="border-b border-border pr-7 pb-2">
+              <DialogTitle className="text-sm">Replace {s.name}?</DialogTitle>
+            </div>
+          </DialogHeader>
+          <p className="text-muted-foreground">
+            The current session closes and its transcript is gone for good. This can&apos;t be undone.
+          </p>
+          <DialogFooter>
+            <DialogClose render={<Button variant="outline" size="sm" />}>
+              Cancel
+            </DialogClose>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => {
+                post({ t: "replace-session", id: s.id });
+                setReplaceOpen(false);
+              }}
+            >
+              Replace and close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Button
         variant="ghost"
         size="icon-xs"

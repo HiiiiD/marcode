@@ -184,11 +184,47 @@ suite("SessionHeader status", () => {
     );
   });
 
-  test("Replace posts replace-session for this pane's session", async () => {
+  test("Replace opens a confirm dialog instead of posting immediately", async () => {
     renderApp();
     hydrate();
 
-    await userEvent.click(screen.getByRole("button", { name: /Replace/i }));
+    await userEvent.click(screen.getByRole("button", { name: "Replace Session a" }));
+
+    assert.strictEqual(posted().some((m) => m.t === "replace-session"), false);
+    screen.getByRole("button", { name: "Replace and close" });
+  });
+
+  test("cancelling the Replace confirm dialog posts nothing", async () => {
+    renderApp();
+    hydrate();
+
+    await userEvent.click(screen.getByRole("button", { name: "Replace Session a" }));
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+    assert.strictEqual(posted().some((m) => m.t === "replace-session"), false);
+    assert.strictEqual(screen.queryByRole("button", { name: "Replace and close" }), null);
+  });
+
+  test("confirming Replace posts replace-session for this pane's session", async () => {
+    renderApp();
+    hydrate();
+
+    await userEvent.click(screen.getByRole("button", { name: "Replace Session a" }));
+    await userEvent.click(screen.getByRole("button", { name: "Replace and close" }));
+
     assert.deepStrictEqual(posted().at(-1), { t: "replace-session", id: "a" });
+  });
+
+  test("the drag grip has a tooltip explaining what it does", async () => {
+    renderApp();
+    hydrate();
+
+    const grip = screen.getByLabelText("Drag Session a to split or reassign a pane");
+    await userEvent.hover(grip);
+    await screen.findByText(
+      "Drag Session a to split or reassign a pane",
+      {},
+      { timeout: 2000 },
+    );
   });
 });

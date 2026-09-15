@@ -48,6 +48,11 @@ suite('layout presets menu', () => {
     fireEvent.click(screen.getByRole('button', { name: /Layout presets/i }));
     const stack2 = screen.getByRole('menuitem', { name: /2 rows/i });
     assert.strictEqual(stack2.getAttribute('aria-disabled'), 'true');
+
+    const describedBy = stack2.getAttribute('aria-describedby');
+    assert.ok(describedBy, 'a disabled preset must point at its reason');
+    const reason = document.getElementById(describedBy!);
+    assert.strictEqual(reason?.textContent, 'Needs 2 panes; 3 are open');
   });
 
   test('save current layout as preset posts save-preset with the entered name', async () => {

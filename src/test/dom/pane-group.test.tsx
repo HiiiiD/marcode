@@ -542,7 +542,7 @@ suite('PaneGroup', () => {
     hydrate(['s1', 's2']);
 
     const target = screen.getByLabelText('Session: Session s2');
-    const handle = screen.getByLabelText('Drag Session s1 to move or split');
+    const handle = screen.getByLabelText('Drag Session s1 to split or reassign a pane');
 
     dragStart(handle);
     const dropZone = within(target).getByTestId('drop-zone-right');
@@ -576,7 +576,7 @@ suite('PaneGroup', () => {
     hydrate(['s1', 's2']);
 
     const target = screen.getByLabelText('Session: Session s2');
-    const handle = screen.getByLabelText('Drag Session s1 to move or split');
+    const handle = screen.getByLabelText('Drag Session s1 to split or reassign a pane');
 
     dragStart(handle);
     const dropZone = within(target).getByTestId('drop-zone-left');
@@ -609,7 +609,7 @@ suite('PaneGroup', () => {
     hydrate(['s1', 's2']);
 
     const target = screen.getByLabelText('Session: Session s1');
-    const handle = screen.getByLabelText('Drag Session s1 to move or split');
+    const handle = screen.getByLabelText('Drag Session s1 to split or reassign a pane');
 
     dragStart(handle);
     // No drop zones render over the leaf a session is itself being dragged
@@ -638,7 +638,7 @@ suite('PaneGroup', () => {
       usage: {},
     });
 
-    const handle = screen.getByLabelText('Drag Session s1 to move or split');
+    const handle = screen.getByLabelText('Drag Session s1 to split or reassign a pane');
 
     // The empty leaf only grows its `drop-zone-empty` wrapper once a drag is
     // live — look it up after `dragStart`, not before.

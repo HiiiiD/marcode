@@ -76,14 +76,32 @@ function PresetRow({
   apply: (shape: LayoutNode) => void;
   onDelete?: () => void;
 }) {
-  const disabled = visibleCount > slotCount(preset.root);
+  const needed = slotCount(preset.root);
+  const disabled = visibleCount > needed;
   const active = shapeMatches(state.layout.root, preset.root);
+  // Same remedy as the orientation toggle's own disabled reason
+  // (session-picker.tsx): a `disabled` menu item carries
+  // `disabled:pointer-events-none` and is unreachable by hover, so the "why"
+  // has to be real, rendered text an `aria-describedby` points at rather
+  // than a `title`. Computed per preset — different shapes need different
+  // counts, so a shared static string would lie about at least one of them.
+  const reasonId = `preset-reason-${preset.id}`;
   return (
     <div className="flex items-center">
-      <DropdownMenuItem disabled={disabled} onClick={() => apply(preset.root)} className="flex-1">
+      <DropdownMenuItem
+        disabled={disabled}
+        onClick={() => apply(preset.root)}
+        className="flex-1"
+        aria-describedby={disabled ? reasonId : undefined}
+      >
         {preset.name}
         {active && ' ✓'}
       </DropdownMenuItem>
+      {disabled && (
+        <span id={reasonId} className="sr-only">
+          {`Needs ${needed} panes; ${visibleCount} are open`}
+        </span>
+      )}
       {onDelete && (
         <Button
           variant="ghost"
