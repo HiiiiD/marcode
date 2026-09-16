@@ -94,7 +94,7 @@ suite('SessionManager', () => {
     });
   });
 
-  test('replaceSession creates a matching session and swaps its leaf before closing the old one', async () => {
+  test('replaceSession creates a matching session and swaps its leaf without touching the old one', async () => {
     const old = await manager.create('fake', '/tmp', 'fake-large', undefined, 'default');
     manager.setLayout({
       root: { kind: 'leaf', sessionId: old.state.id, size: 100 },
@@ -110,14 +110,16 @@ suite('SessionManager', () => {
     assert.strictEqual(replacement?.providerId, 'fake');
     assert.strictEqual(replacement?.model, 'fake-large');
     assert.strictEqual(replacement?.cwd, '/tmp');
-    assert.strictEqual(manager.get(old.state.id), undefined);
+    // Hidden from the split, not archived or removed — same as unchecking
+    // its row in the roster.
+    assert.strictEqual(manager.get(old.state.id), old);
+    assert.strictEqual(old.state.archived, false);
   });
 
   test('replaceSession leaves the old session and its leaf untouched when creating the replacement fails', async () => {
-    // Creation fails before replaceSession ever reaches close() on the old
-    // session, so whether the old session is otherwise discardable plays no
-    // part here — this exercises the "untouched" contract itself, not
-    // close()'s own archive/discard branching.
+    // Creation fails before replaceSession ever reaches the layout swap, so
+    // whether the old session is otherwise discardable plays no part here —
+    // this exercises the "untouched" contract itself.
     let modelsAvailable = true;
     const models: ModelInfo[] = [{ id: 'flaky-model', displayName: 'Flaky' }];
     const flaky: AgentProvider = {

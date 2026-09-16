@@ -317,21 +317,20 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
       </Button>
       {/*
         Replace still gets a confirm, but not because it's destructive: it
-        isn't. `replaceSession` -> `close()` -> `archive()` in the common
-        case, which sets `archived: true` and keeps the transcript — the
-        session reopens from the roster's Archived group. Real data loss
-        (`remove()`) only happens for a discardable session (untitled, empty
-        transcript), the one case where there's nothing to lose. The dialog
-        still exists because this replaces a pane's active session out from
-        under the user without warning otherwise — a deliberate action worth
-        a beat, just not a scary one. The confirm button reads `default`, not
-        `destructive`, for the same reason: red is for the case with no
-        second chance, and this one has an Archived list. It stays a filled
-        button rather than `outline` (matching Cancel) so the deliberate
-        choice still reads as the louder of the two. A standalone dialog
-        rather than a nested submenu: this is a lone icon button, not a menu
-        item, and `BringBackDialog` is this file's own precedent for
-        confirming an action from one.
+        isn't. `replaceSession` just swaps the pane's leaf to a fresh
+        session — the old one is never archived or removed, only hidden
+        from the split, the same as unchecking its row in the roster. It
+        stays live there and can be dragged back into a pane later. The
+        dialog still exists because this replaces a pane's active session
+        out from under the user without warning otherwise — a deliberate
+        action worth a beat, just not a scary one. The confirm button reads
+        `default`, not `destructive`, for the same reason: red is for the
+        case with no second chance, and this one loses nothing. It stays a
+        filled button rather than `outline` (matching Cancel) so the
+        deliberate choice still reads as the louder of the two. A
+        standalone dialog rather than a nested submenu: this is a lone icon
+        button, not a menu item, and `BringBackDialog` is this file's own
+        precedent for confirming an action from one.
       */}
       <Dialog open={replaceOpen} onOpenChange={setReplaceOpen}>
         <DialogContent className="gap-3 text-xs">
@@ -341,8 +340,8 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
             </div>
           </DialogHeader>
           <p className="text-muted-foreground">
-            The current session is archived and a fresh one opens in its place. You can reopen it
-            from the roster&apos;s Archived list.
+            A fresh session opens in its place. The current session isn&apos;t closed — it stays
+            in the roster, hidden from the split.
           </p>
           <DialogFooter>
             <DialogClose render={<Button variant="outline" size="sm" />}>
@@ -356,7 +355,7 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
                 setReplaceOpen(false);
               }}
             >
-              Replace and close
+              Replace
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -1687,6 +1687,11 @@ export class SessionManager implements SessionSink {
    * without it, a replaced pane sits in the `pending` (blank) render state
    * until `app.tsx`'s `set-visible` round-trip eventually pulls one.
    *
+   * The old session is never archived or removed — it just stops being the
+   * pane's session, the same as unchecking its row in the roster ("Hide
+   * from the split"). It stays live in the roster and can be dragged back
+   * into a pane later; nothing about it read as an ending.
+   *
    * Never rejects. Answered straight off the wire, where errors are state:
    * if the new session can't be created (an unknown provider, or one whose
    * last probe left it with no models), the old session and its leaf are
@@ -1711,7 +1716,6 @@ export class SessionManager implements SessionSink {
       ...this.paneLayout,
       root: replaceLeafSession(this.paneLayout.root, id, fresh.state.id),
     };
-    await this.close(id);
     this.setLayout(this.paneLayout);
     return fresh;
   }
