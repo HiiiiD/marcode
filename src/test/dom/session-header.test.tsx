@@ -191,12 +191,11 @@ suite("SessionHeader status", () => {
     await userEvent.click(screen.getByRole("button", { name: "Replace Session a" }));
 
     assert.strictEqual(posted().some((m) => m.t === "replace-session"), false);
-    screen.getByRole("button", { name: "Replace and close" });
-    // The copy must describe what actually happens: replaceSession's close()
-    // archives (transcript kept, reopenable) in the common case — only a
-    // discardable session is really lost, and that's not what this dialog is
-    // warning about.
-    assert.ok(screen.getByText(/is archived and a fresh one opens in its place/i));
+    screen.getByRole("button", { name: "Replace" });
+    // The copy must describe what actually happens: replaceSession only
+    // swaps the pane's leaf — the old session is never archived or removed,
+    // just hidden from the split, same as unchecking its roster row.
+    assert.ok(screen.getByText(/isn.t closed — it stays/i));
     assert.strictEqual(screen.queryByText(/transcript is gone for good/i) !== null, false);
   });
 
@@ -208,7 +207,7 @@ suite("SessionHeader status", () => {
     await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
 
     assert.strictEqual(posted().some((m) => m.t === "replace-session"), false);
-    assert.strictEqual(screen.queryByRole("button", { name: "Replace and close" }) === null, true);
+    assert.strictEqual(screen.queryByRole("button", { name: "Replace" }) === null, true);
   });
 
   test("confirming Replace posts replace-session for this pane's session", async () => {
@@ -216,7 +215,7 @@ suite("SessionHeader status", () => {
     hydrate();
 
     await userEvent.click(screen.getByRole("button", { name: "Replace Session a" }));
-    await userEvent.click(screen.getByRole("button", { name: "Replace and close" }));
+    await userEvent.click(screen.getByRole("button", { name: "Replace" }));
 
     assert.deepStrictEqual(posted().at(-1), { t: "replace-session", id: "a" });
   });
