@@ -2,10 +2,11 @@ import { attachmentLines, imageAttachments, readBase64 } from '../attachment-pay
 import { formatEditorContext } from '../format-editor-context';
 import { withMarcodeIntro } from '../marcode-context';
 import type { SessionId } from '../../protocol/messages';
+import { addUsageTotals } from '../../shared/usage-totals';
 import type {
   AgentEvent, AgentRun, Attachment, ContextBreakdown, EditorContext,
   EffortLevel, PermissionMeta, PermissionMode, QuestionAnswers,
-  SelfControlMcpConfig, ToolCall, ToolDecision,
+  SelfControlMcpConfig, ToolCall, ToolDecision, UsageTotals,
 } from '../types';
 import { CLIENT_CAPABILITIES, connectAcp, PROTOCOL_VERSION, type AcpChild } from './acp-client';
 import { currentModelId, effortConfigId, modelConfigId, toModeIds, type ConfigOption } from './config-options';
@@ -240,6 +241,9 @@ export class AcpRun implements AgentRun {
   /** One session's tool calls, folded across the partial frames that describe them. */
   private readonly calls = new ToolCallLog();
   contextBreakdown?: () => Promise<ContextBreakdown>;
+
+  /** Running cumulative total across every turn this run has sent. Never a subagent field — ACP's prompt reply has no per-thread concept to hang one off. */
+  private usageTotal: UsageTotals | undefined;
 
   constructor(
     private readonly child: AcpChild,
@@ -616,9 +620,14 @@ export class AcpRun implements AgentRun {
       if (this.disposed) { return; }
       const usage = reply?.usage;
       if (usage) {
-        this.events.push({
-          kind: 'usage', inputTokens: usage.inputTokens, outputTokens: usage.outputTokens,
+        // No cache fields on the wire (PromptUsage has none) — a real 0,
+        // not "unmeasured". Never a subagent field: ACP's prompt reply has
+        // no per-thread concept to attribute one to.
+        this.usageTotal = addUsageTotals(this.usageTotal, {
+          inputTokens: usage.inputTokens, outputTokens: usage.outputTokens,
+          cacheReadTokens: 0, cacheCreationTokens: 0,
         });
+        this.events.push({ kind: 'usage', normal: this.usageTotal });
       }
       this.events.push({ kind: 'turn-end', reason: turnEndReason(reply?.stopReason) });
     } catch (err) {
