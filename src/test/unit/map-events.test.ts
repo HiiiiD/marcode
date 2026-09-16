@@ -1,5 +1,5 @@
 import * as assert from 'assert';
-import { mapEvent } from '../../providers/claude/map-events';
+import { claudeUsageDelta, mapEvent } from '../../providers/claude/map-events';
 
 suite('mapEvent', () => {
   test('system init yields a session event carrying the session id', () => {
@@ -122,37 +122,42 @@ suite('mapEvent', () => {
     ]);
   });
 
-  test('a successful result yields usage and turn-end', () => {
+  test('a successful result no longer carries a usage event through mapEvent — turn-end only', () => {
     const events = mapEvent({
       type: 'result', subtype: 'success',
       usage: { input_tokens: 10, output_tokens: 20 },
     } as never);
-    assert.deepStrictEqual(events, [
-      { kind: 'usage', inputTokens: 10, outputTokens: 20 },
-      { kind: 'turn-end', reason: 'done' },
-    ]);
+    assert.deepStrictEqual(events, [{ kind: 'turn-end', reason: 'done' }]);
   });
 
-  test('a result with cache token fields carries them on the usage event', () => {
-    const events = mapEvent({
+  test('claudeUsageDelta reads the four fields off a result message', () => {
+    const delta = claudeUsageDelta({
       type: 'result', subtype: 'success',
       usage: {
         input_tokens: 10, output_tokens: 20,
         cache_read_input_tokens: 30_000, cache_creation_input_tokens: 4_000,
       },
     } as never);
-    assert.deepStrictEqual(events[0], {
-      kind: 'usage', inputTokens: 10, outputTokens: 20,
-      cacheReadTokens: 30_000, cacheCreationTokens: 4_000,
+    assert.deepStrictEqual(delta, {
+      inputTokens: 10, outputTokens: 20, cacheReadTokens: 30_000, cacheCreationTokens: 4_000,
     });
   });
 
-  test('a result without cache token fields omits them from the usage event', () => {
-    const events = mapEvent({
+  test('claudeUsageDelta defaults missing cache fields to 0, not undefined', () => {
+    const delta = claudeUsageDelta({
       type: 'result', subtype: 'success',
       usage: { input_tokens: 10, output_tokens: 20 },
     } as never);
-    assert.deepStrictEqual(events[0], { kind: 'usage', inputTokens: 10, outputTokens: 20 });
+    assert.deepStrictEqual(delta, {
+      inputTokens: 10, outputTokens: 20, cacheReadTokens: 0, cacheCreationTokens: 0,
+    });
+  });
+
+  test('claudeUsageDelta is undefined for a message with no usage block', () => {
+    assert.strictEqual(
+      claudeUsageDelta({ type: 'result', subtype: 'error_during_execution' } as never),
+      undefined,
+    );
   });
 
   test('an error result with no errors/terminal_reason falls back to subtype', () => {

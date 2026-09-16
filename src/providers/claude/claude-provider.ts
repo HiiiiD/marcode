@@ -119,6 +119,7 @@ import type {
 } from '@anthropic-ai/claude-agent-sdk' with { 'resolution-mode': 'import' };
 import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/messages' with { 'resolution-mode': 'import' };
 import { findModel, resolveEffort } from '../../shared/model-catalog';
+import { addUsageTotals } from '../../shared/usage-totals';
 import { attachmentLines, imageAttachments, readBase64 } from '../attachment-payload';
 import { formatEditorContext } from '../format-editor-context';
 import { withMarcodeIntro } from '../marcode-context';
@@ -130,11 +131,11 @@ import type {
   ContextBreakdown,
   EditorContext,
   EffortLevel, Invocable, ModelInfo, PermissionMode, PermissionModeInfo,
-  QuestionAnswers, SelfControlMcpConfig, StartOptions, ThreadScope, ToolDecision, UsageWindow,
+  QuestionAnswers, SelfControlMcpConfig, StartOptions, ThreadScope, ToolDecision, UsageTotals, UsageWindow,
 } from '../types';
 import { toInvocables } from './map-commands';
 import { toContextBreakdown, toUsageWindows, type ContextUsageLike, type UsageResponseLike } from './map-context';
-import { mapEvent } from './map-events';
+import { claudeUsageDelta, mapEvent } from './map-events';
 import { toPermissionMeta, toQuestionSpecs, toSdkAnswers } from './map-questions';
 import { toToolCall } from './map-tools';
 import { redactSecrets } from './redact';
@@ -501,6 +502,11 @@ export class ClaudeProvider implements AgentProvider {
     // below stops each of these explicitly: `Query.interrupt()` only cancels
     // the foreground turn, and a backgrounded task survives it by design.
     let backgroundTaskIds: string[] = [];
+    // Running cumulative total across every turn this run has sent —
+    // `claudeUsageDelta` reads a per-turn delta off each message; this is
+    // what accumulates it, since the host only ever assigns the latest
+    // `usage` event verbatim (see agent-session.ts).
+    let usageTotal: UsageTotals | undefined;
     // Bumped on every send() — the ordinal of the turn currently in flight.
     // Needed because `session` (the `for await` loop below) is ONE persistent
     // loop for the whole conversation, not one per turn: `interrupt()` pushes
@@ -660,6 +666,11 @@ export class ClaudeProvider implements AgentProvider {
                 ? (msg as { subtype: string }).subtype : undefined,
               turnGeneration: turnGen,
             });
+            const usageDelta = claudeUsageDelta(msg);
+            if (usageDelta) {
+              usageTotal = addUsageTotals(usageTotal, usageDelta);
+              events.push({ kind: 'usage', normal: usageTotal });
+            }
             for (const event of mapEvent(msg)) {
               if (event.kind === 'background-tasks-changed') { backgroundTaskIds = event.taskIds; }
               // Keep this local mirror in sync with the same per-task edge
