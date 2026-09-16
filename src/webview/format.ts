@@ -4,6 +4,15 @@ export function folderName(cwd: string): string {
   return parts[parts.length - 1] ?? cwd;
 }
 
+const compactTokens = new Intl.NumberFormat('en-US', {
+  notation: 'compact',
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 1,
+});
+
 export function formatTokens(n: number): string {
-  return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
+  if (n < 1000) {
+    return String(n);
+  }
+  return compactTokens.format(n);
 }
