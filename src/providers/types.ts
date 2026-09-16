@@ -256,6 +256,13 @@ export type McpServerStatus = {
   error?: string;
 };
 
+export interface UsageTotals {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheCreationTokens: number;
+}
+
 export type AgentEvent =
   | { kind: 'session'; resumeToken: string }
   | { kind: 'text'; delta: string }
@@ -282,14 +289,23 @@ export type AgentEvent =
   | { kind: 'question'; id: string; questions: QuestionSpec[]; blocking: boolean; parentId?: string }
   | { kind: 'request-cancelled'; id: string }
   | { kind: 'turn-end'; reason: 'done' | 'interrupted' | 'error'; error?: string }
-  // Cache fields are Claude-only diagnostics: cacheReadTokens is billed ~0.1x,
-  // cacheCreationTokens ~1.25x — the split is what tells a "why is usage
-  // draining" investigation whether turns land warm or cold. Absent when the
-  // backend does not report them.
-  | {
-    kind: 'usage'; inputTokens: number; outputTokens: number;
-    cacheReadTokens?: number; cacheCreationTokens?: number;
-  }
+  /**
+   * A running cumulative total, not a per-turn delta — each provider adapter
+   * accumulates its own native signal (a per-turn delta for Claude and ACP,
+   * an already-cumulative per-thread snapshot for Codex) before emitting
+   * this, so the host only ever assigns the latest value, never sums.
+   *
+   * `subagent` is present only when the provider's data can actually
+   * attribute spend to a spawned subagent — today, Codex only, because its
+   * subagents are separate threads each reporting their own usage. Absent
+   * means "this provider can't tell you," never a faked zero.
+   *
+   * Cache fields are billed differently per provider (cacheReadTokens
+   * ~0.1x, cacheCreationTokens ~1.25x on Claude) — a provider with no
+   * concept of a field (Codex has no cache-creation billing; ACP has
+   * neither) reports it as a real 0, not an omission.
+   */
+  | { kind: 'usage'; normal: UsageTotals; subagent?: UsageTotals }
   /**
    * The provider believes its plan usage has moved and a pull is due.
    *
