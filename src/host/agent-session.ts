@@ -1115,19 +1115,18 @@ export class AgentSession {
         return;
 
       case 'usage':
-        // Per-turn cost trace for usage-drain investigations: the cache
-        // read/creation split is the whole signal (see AgentEvent's usage
-        // doc comment), so it goes to the debug log even though the state
-        // snapshot keeps only the headline numbers.
+        // The adapter already accumulated this into a running total (see
+        // AgentEvent's usage doc comment) — this is a plain assignment, not
+        // a sum. `subagent` is only ever present when the provider's data
+        // can back the split (Codex today).
         lifecycleDebug('session.turn-usage', {
           sessionId: this._state.id,
-          inputTokens: event.inputTokens,
-          outputTokens: event.outputTokens,
-          cacheReadTokens: event.cacheReadTokens,
-          cacheCreationTokens: event.cacheCreationTokens,
+          normal: event.normal,
+          ...(event.subagent ? { subagent: event.subagent } : {}),
         });
         this._state.usage = {
-          inputTokens: event.inputTokens, outputTokens: event.outputTokens,
+          normal: event.normal,
+          ...(event.subagent ? { subagent: event.subagent } : {}),
         };
         this.sink.changed();
         return;

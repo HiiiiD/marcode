@@ -271,7 +271,7 @@ suite('cross-session messaging protocol shapes', () => {
     const state: SessionState = {
       id: 's1', providerId: 'claude', model: 'sonnet', title: 'Untitled', name: 'a',
       cwd: '/tmp', status: 'idle', permissionMode: 'default', includeEditorContext: true,
-      resumeTokens: {}, usage: { inputTokens: 0, outputTokens: 0 },
+      resumeTokens: {},
       archived: false, createdAt: 0, updatedAt: 0,
     };
     assert.strictEqual(state.name, 'a');

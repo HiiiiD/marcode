@@ -69,6 +69,17 @@ const configOptionWrites = async (
   throw new Error(`fewer than ${n} session/set_config_option were sent`);
 };
 
+const promptWrites = async (
+  p: ReturnType<typeof peer>, n: number,
+): Promise<Record<string, unknown>[]> => {
+  for (let i = 0; i < 200; i++) {
+    const hits = p.sent.filter((f) => f.method === 'session/prompt');
+    if (hits.length >= n) { return hits; }
+    await new Promise((r) => setTimeout(r, 5));
+  }
+  throw new Error(`fewer than ${n} session/prompt were sent`);
+};
+
 const handshake = async (p: ReturnType<typeof peer>): Promise<Record<string, unknown>> => {
   const init = await p.waitFor('initialize');
   p.emit({ jsonrpc: '2.0', id: init.id, result: frames.initialize });
@@ -483,6 +494,43 @@ suite('AcpRun', () => {
     );
     assert.strictEqual(
       events.some((e) => e.kind === 'turn-end' && e.reason === 'interrupted'), true);
+    await run.dispose();
+  });
+
+  test('accumulates usage across turns into a running normal total, never a subagent field', async () => {
+    const p = peer();
+    const events: AgentEvent[] = [];
+    const run = new AcpRun(p.child, {
+      cwd: '/w', permissionMode: 'default', tools: openCodeTools,
+      modeId: openCodeModeId, clientName: 'mar-code', sessionId: 'test-session', });
+    collect(run, events);
+    await handshake(p);
+
+    run.send('one');
+    const [first] = await promptWrites(p, 1);
+    p.emit({ jsonrpc: '2.0', id: first.id, result: { stopReason: 'end_turn', usage: { inputTokens: 10, outputTokens: 5 } } });
+    await new Promise((r) => setTimeout(r, 20));
+
+    run.send('two');
+    const [, second] = await promptWrites(p, 2);
+    p.emit({ jsonrpc: '2.0', id: second.id, result: { stopReason: 'end_turn', usage: { inputTokens: 3, outputTokens: 2 } } });
+    await new Promise((r) => setTimeout(r, 20));
+
+    const usageEvents = events.filter((e) => e.kind === 'usage');
+    assert.strictEqual(usageEvents.length, 2);
+    assert.deepStrictEqual(usageEvents[0], {
+      kind: 'usage',
+      normal: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, cacheCreationTokens: 0 },
+    });
+    assert.deepStrictEqual(usageEvents[1], {
+      kind: 'usage',
+      normal: { inputTokens: 13, outputTokens: 7, cacheReadTokens: 0, cacheCreationTokens: 0 },
+    });
+    assert.strictEqual(
+      usageEvents.every((e) => e.kind === 'usage' && e.subagent === undefined),
+      true,
+      'ACP never reports a subagent split',
+    );
     await run.dispose();
   });
 

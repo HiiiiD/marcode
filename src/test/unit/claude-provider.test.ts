@@ -1181,6 +1181,69 @@ suite('ClaudeProvider (cancellation)', () => {
     await run.dispose();
   });
 
+  test('accumulates usage across turns into a running normal total, never a subagent field', async () => {
+    // One persistent generator serves the whole conversation (see the
+    // LAZY START note atop claude-provider.ts) — two turns' `result`
+    // messages are yielded in sequence off the same generator, not two
+    // separate `query()` constructions.
+    let stop!: () => void;
+    const stopSignal = new Promise<void>((resolve) => { stop = resolve; });
+    const queryFn = (params: { prompt: AsyncIterable<unknown>; options: unknown }) => {
+      void params;
+      const gen = (async function* () {
+        yield {
+          type: 'result', subtype: 'success',
+          usage: { input_tokens: 10, output_tokens: 5 },
+          uuid: 'u1', session_id: 's1',
+        };
+        yield {
+          type: 'result', subtype: 'success',
+          usage: {
+            input_tokens: 3, output_tokens: 2,
+            cache_read_input_tokens: 100, cache_creation_input_tokens: 4,
+          },
+          uuid: 'u2', session_id: 's1',
+        };
+        await stopSignal;
+      })() as AsyncGenerator<unknown, void> & {
+        interrupt: () => Promise<undefined>;
+        setPermissionMode: () => Promise<void>;
+        applyFlagSettings: () => Promise<void>;
+        close: () => void;
+        mcpServerStatus: () => Promise<unknown[]>;
+      };
+      gen.interrupt = async () => undefined;
+      gen.setPermissionMode = async () => { /* no-op fake */ };
+      gen.applyFlagSettings = async () => { /* no-op fake */ };
+      gen.close = () => { stop(); };
+      gen.mcpServerStatus = async () => [];
+      return gen;
+    };
+
+    const provider = new ClaudeProvider((async () => queryFn) as never);
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default', sessionId: 'test-session' });
+    const events = collect(run);
+    run.send('hi');
+    await tick();
+
+    const usageEvents = events().filter((e) => e.kind === 'usage');
+    assert.strictEqual(usageEvents.length, 2);
+    assert.deepStrictEqual(usageEvents[0], {
+      kind: 'usage',
+      normal: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, cacheCreationTokens: 0 },
+    });
+    assert.deepStrictEqual(usageEvents[1], {
+      kind: 'usage',
+      normal: { inputTokens: 13, outputTokens: 7, cacheReadTokens: 100, cacheCreationTokens: 4 },
+    });
+    assert.strictEqual(
+      usageEvents.every((e) => e.kind === 'usage' && e.subagent === undefined),
+      true,
+      'Claude never reports a subagent split',
+    );
+    await run.dispose();
+  });
+
   test('a drained background-tasks-changed event (empty taskIds) leaves interrupt() with nothing to stop', async () => {
     const stoppedTaskIds: string[] = [];
     let stop!: () => void;

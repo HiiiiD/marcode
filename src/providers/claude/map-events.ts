@@ -123,7 +123,7 @@
 //     worth making, and `AgentRun.usageWindows()` (backed by the structured
 //     usage response, mapped through `toUsageWindows` in map-context.ts) is
 //     what actually answers with numbers.
-import type { AgentEvent, McpServerStatus } from '../types';
+import type { AgentEvent, McpServerStatus, UsageTotals } from '../types';
 import { toInvocables } from './map-commands';
 import { toToolCall, toToolOutput } from './map-tools';
 import { redactSecrets } from './redact';
@@ -165,6 +165,32 @@ function toServerState(raw: unknown): McpServerStatus['state'] {
 function parentIdOf(msg: unknown): string | undefined {
   const raw = (msg as { parent_tool_use_id?: string | null }).parent_tool_use_id;
   return typeof raw === 'string' && raw.length > 0 ? raw : undefined;
+}
+
+/**
+ * Reads one message's own usage, if it reports any — a per-turn delta, NOT a
+ * running total (the SDK's `result.usage` is scoped to that turn alone).
+ * `claude-provider.ts` is what accumulates these into `state.usage`; this
+ * function stays a pure reader so it can be tested without a live query.
+ * Missing cache fields become a real `0` (the field existed on the message,
+ * it was simply zero this turn) rather than a signal the backend doesn't
+ * report them at all — unlike the old per-event `cacheReadTokens?` which
+ * conflated "zero this turn" with "never reports this."
+ */
+export function claudeUsageDelta(msg: unknown): UsageTotals | undefined {
+  const usage = (msg as {
+    usage?: {
+      input_tokens?: number; output_tokens?: number;
+      cache_read_input_tokens?: number; cache_creation_input_tokens?: number;
+    };
+  }).usage;
+  if (!usage) { return undefined; }
+  return {
+    inputTokens: usage.input_tokens ?? 0,
+    outputTokens: usage.output_tokens ?? 0,
+    cacheReadTokens: usage.cache_read_input_tokens ?? 0,
+    cacheCreationTokens: usage.cache_creation_input_tokens ?? 0,
+  };
 }
 
 export function mapEvent(msg: unknown): AgentEvent[] {
@@ -290,23 +316,6 @@ export function mapEvent(msg: unknown): AgentEvent[] {
 
   if (type === 'result') {
     const out: AgentEvent[] = [];
-    const usage = (msg as {
-      usage?: {
-        input_tokens?: number; output_tokens?: number;
-        cache_read_input_tokens?: number; cache_creation_input_tokens?: number;
-      };
-    }).usage;
-    if (usage) {
-      out.push({
-        kind: 'usage',
-        inputTokens: usage.input_tokens ?? 0,
-        outputTokens: usage.output_tokens ?? 0,
-        ...(usage.cache_read_input_tokens !== undefined
-          ? { cacheReadTokens: usage.cache_read_input_tokens } : {}),
-        ...(usage.cache_creation_input_tokens !== undefined
-          ? { cacheCreationTokens: usage.cache_creation_input_tokens } : {}),
-      });
-    }
     const subtype = (msg as { subtype?: string }).subtype;
     if (subtype === 'success') {
       out.push({ kind: 'turn-end', reason: 'done' });

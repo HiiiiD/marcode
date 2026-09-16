@@ -68,16 +68,6 @@ export function mapNotification(method: string, params: unknown): AgentEvent[] {
       // Documented as a sparse rolling update: a signal that a pull is due,
       // never the numbers themselves.
       return [{ kind: 'usage-stale' }];
-    case 'thread/tokenUsage/updated': {
-      const total = (p as { tokenUsage?: { total?: { inputTokens?: number; outputTokens?: number } } })
-        .tokenUsage?.total;
-      if (!total) { return []; }
-      return [{
-        kind: 'usage',
-        inputTokens: total.inputTokens ?? 0,
-        outputTokens: total.outputTokens ?? 0,
-      }];
-    }
     default:
       return [];
   }
