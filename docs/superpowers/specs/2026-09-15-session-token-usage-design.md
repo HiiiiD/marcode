@@ -46,17 +46,22 @@ completely differently:
   each firing its own `thread/tokenUsage/updated` — but `codex-run.ts:245-255`
   currently drops a child thread's `usage` notifications entirely, forwarding
   only its `tool-start`/`tool-end`.
-- **OpenCode/ACP**: the only usage-shaped signal is `usage_update` →
-  `toContextBreakdown` (map-updates.ts:121-134), a `used`/`size` **context
-  occupancy** total — not real input/output/cache-read/write counts, and
-  explicitly "one undifferentiated total" per that file's own comment.
-  `subagent-watch.ts` never reads or forwards usage for child sessions.
+- **OpenCode/ACP**: two separate signals exist. `usage_update` →
+  `toContextBreakdown` (map-updates.ts:121-134) is context occupancy only, a
+  different concern. Separately, `acp-run.ts:614-621` already reads a real
+  **per-turn** `{ inputTokens, outputTokens }` off each `prompt()` reply and
+  emits it as a `usage` `AgentEvent` today — no cache-read/write fields exist
+  on the wire type (`PromptUsage`, acp-run.ts:35), and there's no thread/child
+  concept in ACP's prompt reply to hang a subagent split off. `subagent-watch.ts`
+  never reads or forwards usage for child sessions.
 
-Consequence: Claude and OpenCode cannot support a normal/subagent split from
-their data at all. Codex can, but only after a deliberate change to stop
-dropping child-thread usage. The design below treats "cumulative total" as
-the thing every provider can report (Claude, Codex: yes; OpenCode: no — see
-below) and "subagent split" as Codex-only for now.
+Consequence: OpenCode *can* report a cumulative normal total (input/output
+only, cache fields always 0 — the protocol has no such concept), same
+per-turn-delta shape as Claude, just no subagent split. Only Codex can
+support a normal/subagent split from its data, and only after a deliberate
+change to stop dropping child-thread usage. The design below treats
+"cumulative total" as something every provider can report, and "subagent
+split" as Codex-only for now.
 
 ## Data model
 
@@ -113,11 +118,13 @@ providers.
   `cachedInputTokens` (currently dropped) — `reasoningOutputTokens` is a
   Codex-specific reasoning breakdown, not one of the four tracked fields, and
   stays out of scope.
-- **OpenCode/ACP** (`src/providers/opencode/`, `src/providers/acp/`): no
-  `usage` `AgentEvent` is emitted at all — the underlying data isn't the
-  right shape (context occupancy, not token-type counts) to report honestly
-  as `UsageTotals`. `SessionState.usage` stays `undefined` for these
-  sessions.
+- **OpenCode/ACP** (`src/providers/acp/`): `AcpRun` keeps the same kind of
+  running accumulator as Claude's, adding each `prompt()` reply's per-turn
+  `{ inputTokens, outputTokens }` into it (`cacheReadTokens`/
+  `cacheCreationTokens` always `0` — the protocol has no such fields, which
+  is different from "not measured" and is reported as a real, honest zero).
+  No `subagent` field — ACP's prompt reply has no per-thread/per-child
+  concept to hang one off.
 
 ## Persistence
 
@@ -147,19 +154,21 @@ breakdown it already shows:
   spend has no natural denominator to be a percentage *of*).
 - A visually secondary sub-block, "Subagents," with the same four rows, shown
   only when `session.usage?.subagent` is present (Codex sessions with at
-  least one spawned subagent this run). Absent entirely for Claude/OpenCode
-  sessions and for Codex sessions that never spawned a subagent.
-- When `session.usage` is `undefined` entirely (OpenCode, or a session with
-  no turns yet), the section renders one line: "Not tracked for this
-  provider" / "No usage yet" — never a row of zeros standing in for "we
-  don't know."
+  least one spawned subagent this run). Absent for Claude/OpenCode sessions
+  and for Codex sessions that never spawned a subagent.
+- When `session.usage` is `undefined` (a session with no turns yet, on any
+  provider), the section renders one line: "No usage yet" — never a row of
+  zeros standing in for "we don't know."
 
 ## Testing
 
 - **Unit (`yarn test:unit`)**:
-  - `map-events.ts` (Claude): a multi-turn scripted sequence of `result`
-    messages accumulates correctly into a running `normal` total; no
-    `subagent` field ever appears.
+  - `map-events.ts` / `claude-provider.ts` (Claude): a multi-turn scripted
+    sequence of `result` messages accumulates correctly into a running
+    `normal` total; no `subagent` field ever appears.
+  - `acp-run.ts` (OpenCode/ACP): a multi-turn scripted sequence of `prompt()`
+    replies accumulates into a running `normal` total with `cacheReadTokens`/
+    `cacheCreationTokens` always `0`; no `subagent` field ever appears.
   - `map-events.ts` / `codex-run.ts` (Codex): a main-thread-only sequence
     reports `normal` only; a sequence with a rejoined subagent thread's
     `tokenUsage/updated` notifications reports both `normal` and `subagent`,
