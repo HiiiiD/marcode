@@ -16,7 +16,6 @@ function baseState(): SessionState {
     title: 'Untitled', name: 'Untitled', cwd: '/repo', status: 'idle', permissionMode: 'default',
     includeEditorContext: true,
     resumeTokens: {},
-    usage: { inputTokens: 0, outputTokens: 0 },
     archived: false, createdAt: 1, updatedAt: 1,
   };
 }

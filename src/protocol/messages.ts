@@ -1,13 +1,13 @@
 import type {
   Attachment, AttachmentKind, ContextBreakdown, EditorContext, EffortLevel, FileEdit, Invocable,
   McpServerStatus, ModelInfo, PermissionMeta, PermissionMode, PermissionModeInfo, QuestionAnswers,
-  QuestionOption, QuestionSpec, TodoStatus, ToolCall, ToolDecision, ToolOutput, UsageWindow,
+  QuestionOption, QuestionSpec, TodoStatus, ToolCall, ToolDecision, ToolOutput, UsageTotals, UsageWindow,
 } from '../providers/types';
 
 export type {
   Attachment, AttachmentKind, ContextBreakdown, EditorContext, EffortLevel, FileEdit, Invocable,
   McpServerStatus, ModelInfo, PermissionMeta, PermissionMode, PermissionModeInfo, QuestionAnswers,
-  QuestionOption, QuestionSpec, TodoStatus, ToolCall, ToolDecision, ToolOutput, UsageWindow,
+  QuestionOption, QuestionSpec, TodoStatus, ToolCall, ToolDecision, ToolOutput, UsageTotals, UsageWindow,
 };
 
 export type SessionId = string;
@@ -195,7 +195,13 @@ export interface SessionState {
    * it has already used is a native resume rather than a replay.
    */
   resumeTokens: Record<string, string>;
-  usage: { inputTokens: number; outputTokens: number };
+  /**
+   * Cumulative for the whole session, not a per-turn snapshot. `undefined`
+   * until the first `usage` event arrives — never defaulted to zeros at
+   * session creation, matching the "nobody answered yet" reading everywhere
+   * else in this codebase (`probing`, `contextPercent`).
+   */
+  usage?: { normal: UsageTotals; subagent?: UsageTotals };
   /**
    * Share of the model's context window in use, `100 - freePercent`.
    * Absent until the first turn ends, or forever for a provider that does

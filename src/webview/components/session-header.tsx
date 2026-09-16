@@ -32,7 +32,6 @@ interface SessionHeaderProps {
 export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
   const { state, post } = useStore();
   const s = pane.summary;
-  const total = s.usage.inputTokens + s.usage.outputTokens;
   // Shown only when there's more than one provider to distinguish between —
   // with a single backend configured, naming it on every pane is noise.
   const providerLabel = state.catalog.find((p) => p.id === s.providerId)?.displayName;

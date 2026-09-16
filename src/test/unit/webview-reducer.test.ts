@@ -34,7 +34,6 @@ function hydrated() {
       id: 's1', providerId: 'fake', model: 'fake-large', title: 'T', name: 'T', cwd: '/tmp',
       status: 'idle', permissionMode: 'default',
       resumeTokens: {},
-      usage: { inputTokens: 0, outputTokens: 0 },
       archived: false, createdAt: 1, updatedAt: 1, includeEditorContext: true,
       pendingQuestions: [],
       items: [], hasMore: false, pending: [], mcpServers: [], pendingAttachments: [],

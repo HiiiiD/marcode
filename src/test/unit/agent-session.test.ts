@@ -117,7 +117,6 @@ function baseState(): SessionState {
     title: 'Untitled', name: 'Untitled', cwd: '/tmp', status: 'idle', permissionMode: 'default',
     includeEditorContext: true,
     resumeTokens: {},
-    usage: { inputTokens: 0, outputTokens: 0 },
     archived: false, createdAt: 1, updatedAt: 1,
   };
 }
@@ -1021,6 +1020,52 @@ suite('AgentSession', () => {
     await settle();
 
     assert.deepStrictEqual(localSink.usageWindowSets, [{ providerId: 'fake', windows }]);
+    await session.dispose();
+  });
+
+  test('a usage event replaces state.usage with the event\'s totals, not a sum', async () => {
+    const provider = new FakeProvider();
+    const localSink = new RecordingSink();
+    const session = new AgentSession(baseState(), provider, store, localSink);
+
+    provider.runs[0].emit({
+      kind: 'usage',
+      normal: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, cacheCreationTokens: 0 },
+    });
+    await settle();
+    assert.deepStrictEqual(session.state.usage, {
+      normal: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, cacheCreationTokens: 0 },
+    });
+
+    provider.runs[0].emit({
+      kind: 'usage',
+      normal: { inputTokens: 25, outputTokens: 12, cacheReadTokens: 0, cacheCreationTokens: 0 },
+    });
+    await settle();
+    assert.deepStrictEqual(
+      session.state.usage?.normal,
+      { inputTokens: 25, outputTokens: 12, cacheReadTokens: 0, cacheCreationTokens: 0 },
+      'the host assigns the latest total verbatim — the adapter already accumulated it',
+    );
+    await session.dispose();
+  });
+
+  test('a usage event with a subagent bucket carries it through to state', async () => {
+    const provider = new FakeProvider();
+    const localSink = new RecordingSink();
+    const session = new AgentSession(baseState(), provider, store, localSink);
+
+    provider.runs[0].emit({
+      kind: 'usage',
+      normal: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 0, cacheCreationTokens: 0 },
+      subagent: { inputTokens: 100, outputTokens: 40, cacheReadTokens: 0, cacheCreationTokens: 0 },
+    });
+    await settle();
+
+    assert.deepStrictEqual(
+      session.state.usage?.subagent,
+      { inputTokens: 100, outputTokens: 40, cacheReadTokens: 0, cacheCreationTokens: 0 },
+    );
     await session.dispose();
   });
 

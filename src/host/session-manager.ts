@@ -641,7 +641,6 @@ export class SessionManager implements SessionSink {
       title: 'Untitled', name: this.defaultName(providerId), cwd, status: 'idle', permissionMode: resolvedMode,
       includeEditorContext: true,
       resumeTokens: {},
-      usage: { inputTokens: 0, outputTokens: 0 },
       archived: false, createdAt: now, updatedAt: now,
     };
 
@@ -694,7 +693,6 @@ export class SessionManager implements SessionSink {
       status: 'idle', permissionMode: state.permissionMode,
       includeEditorContext: state.includeEditorContext,
       resumeTokens: {},
-      usage: { inputTokens: 0, outputTokens: 0 },
       archived: false, createdAt: now, updatedAt: now,
     };
 
