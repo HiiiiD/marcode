@@ -6,7 +6,7 @@ import {
 import { cn } from '@/lib/utils';
 import { useStore } from '../store';
 import type { PaneState } from '../reducer';
-import type { ContextResult } from '../../protocol/messages';
+import type { ContextResult, SessionState } from '../../protocol/messages';
 
 /** Above this share of the window, colour alone stops carrying the signal. */
 export const DANGER_PERCENT = 80;
@@ -151,6 +151,42 @@ function MemoryRow({
   );
 }
 
+function UsageRow({ label, tokens }: { label: string; tokens: number }) {
+  return (
+    <div className="flex items-center gap-2 py-0.5">
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+      <span className="shrink-0 tabular-nums">{formatTokens(tokens)}</span>
+    </div>
+  );
+}
+
+function UsageSection({ usage }: { usage: SessionState['usage'] }) {
+  if (!usage) {
+    return <p className="py-0.5 text-muted-foreground">No usage yet</p>;
+  }
+  return (
+    <div className="space-y-2">
+      <div>
+        <UsageRow label="Input" tokens={usage.normal.inputTokens} />
+        <UsageRow label="Output" tokens={usage.normal.outputTokens} />
+        <UsageRow label="Cache read" tokens={usage.normal.cacheReadTokens} />
+        <UsageRow label="Cache write" tokens={usage.normal.cacheCreationTokens} />
+      </div>
+      {usage.subagent && (
+        <div className="border-t border-border pt-1.5">
+          {/* Secondary, not a fourth peer row group: this is a provider-specific
+              breakdown of the normal total above, not an independent figure. */}
+          <p className="pb-0.5 text-muted-foreground">Subagents</p>
+          <UsageRow label="Input" tokens={usage.subagent.inputTokens} />
+          <UsageRow label="Output" tokens={usage.subagent.outputTokens} />
+          <UsageRow label="Cache read" tokens={usage.subagent.cacheReadTokens} />
+          <UsageRow label="Cache write" tokens={usage.subagent.cacheCreationTokens} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Body({
   result, onOpenFile, onRetry,
 }: {
@@ -291,6 +327,10 @@ export function ContextDialog({
           onOpenFile={(path) => post({ t: 'open-file', id, path })}
           onRetry={() => post({ t: 'request-context', id })}
         />
+        <div className="space-y-1 border-t border-border pt-2">
+          <p className="text-muted-foreground">Token usage</p>
+          <UsageSection usage={pane.summary.usage} />
+        </div>
       </DialogContent>
     </Dialog>
   );

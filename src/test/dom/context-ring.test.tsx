@@ -5,6 +5,7 @@ import { ContextRing } from '@/components/context-ring';
 import { useStore } from '@/store';
 import { breakdown, catalog, layoutOf, snapshot, summary } from '../fixtures/protocol';
 import { posted, renderWithStore, resetHost, sendFromHost } from './harness';
+import type { SessionSummary } from '../../protocol/messages';
 
 /**
  * `ContextRing` takes its pane as a prop, but the prop must still be the
@@ -19,13 +20,13 @@ function RingUnderTest() {
   return pane ? <ContextRing pane={pane} /> : null;
 }
 
-function mount(contextPercent?: number): void {
+function mount(contextPercent?: number, usage?: SessionSummary['usage']): void {
   renderWithStore(<RingUnderTest />);
   sendFromHost({
     t: 'hydrate',
-    sessions: [summary('a', { contextPercent })],
+    sessions: [summary('a', { contextPercent, usage })],
     layout: layoutOf(['a']),
-    snapshots: [snapshot('a', { contextPercent })],
+    snapshots: [snapshot('a', { contextPercent, usage })],
     catalog: catalog(),
     unavailable: [],
     usage: {},
@@ -275,5 +276,46 @@ suite('ContextRing', () => {
 
     const trigger = screen.getByLabelText('Context 43% used');
     assert.strictEqual(trigger.textContent, '');
+  });
+
+  test('shows no usage yet when the session has not reported any', async () => {
+    mount(43);
+    await open('Context 43% used');
+
+    assert.ok(screen.getByText('No usage yet'));
+  });
+
+  test('renders the four normal usage rows once the session has usage', async () => {
+    mount(43, {
+      normal: { inputTokens: 1234, outputTokens: 567, cacheReadTokens: 8900, cacheCreationTokens: 12 },
+    });
+    await open('Context 43% used');
+
+    assert.ok(screen.getByText('Token usage'));
+    assert.ok(screen.getByText('1.2k'));
+    assert.ok(screen.getByText('567'));
+    assert.ok(screen.getByText('8.9k'));
+    assert.ok(screen.getByText('12'));
+  });
+
+  test('a subagent bucket renders as a secondary sub-block', async () => {
+    mount(43, {
+      normal: { inputTokens: 100, outputTokens: 50, cacheReadTokens: 0, cacheCreationTokens: 0 },
+      subagent: { inputTokens: 400, outputTokens: 90, cacheReadTokens: 0, cacheCreationTokens: 0 },
+    });
+    await open('Context 43% used');
+
+    assert.ok(screen.getByText('Subagents'));
+    assert.ok(screen.getByText('400'));
+    assert.ok(screen.getByText('90'));
+  });
+
+  test('no subagent bucket means no Subagents sub-block at all', async () => {
+    mount(43, {
+      normal: { inputTokens: 100, outputTokens: 50, cacheReadTokens: 0, cacheCreationTokens: 0 },
+    });
+    await open('Context 43% used');
+
+    assert.strictEqual(screen.queryByText('Subagents') === null, true);
   });
 });
