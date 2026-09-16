@@ -34,13 +34,19 @@ suite('formatTokens', () => {
     assert.strictEqual(formatTokens(999), '999');
   });
 
-  test('renders thousands with one decimal place and a k suffix', () => {
-    assert.strictEqual(formatTokens(1000), '1.0k');
-    assert.strictEqual(formatTokens(15400), '15.4k');
+  test('renders thousands with a K suffix, dropping the decimal for clean multiples', () => {
+    assert.strictEqual(formatTokens(1000), '1K');
+    assert.strictEqual(formatTokens(15400), '15.4K');
   });
 
   test('rounds to one decimal place for values that are not clean multiples', () => {
-    assert.strictEqual(formatTokens(12345), '12.3k');
-    assert.strictEqual(formatTokens(12360), '12.4k');
+    assert.strictEqual(formatTokens(12345), '12.3K');
+    assert.strictEqual(formatTokens(12360), '12.4K');
+  });
+
+  test('renders millions with an M suffix, dropping the decimal for clean multiples', () => {
+    assert.strictEqual(formatTokens(1_000_000), '1M');
+    assert.strictEqual(formatTokens(2_000_000), '2M');
+    assert.strictEqual(formatTokens(2_540_000), '2.5M');
   });
 });
