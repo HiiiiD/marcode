@@ -275,12 +275,12 @@ suite('mapNotification', () => {
     );
   });
 
-  test('token usage becomes an input/output usage event', () => {
+  test('token usage is no longer mapped generically — CodexRun handles it explicitly to tag own vs child threads', () => {
     assert.deepStrictEqual(
       mapNotification('thread/tokenUsage/updated', {
         tokenUsage: { total: { inputTokens: 100, outputTokens: 20 }, modelContextWindow: 200_000 },
       }),
-      [{ kind: 'usage', inputTokens: 100, outputTokens: 20 }],
+      [],
     );
   });
 

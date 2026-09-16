@@ -1,9 +1,10 @@
 import { attachmentLines, imageAttachments } from '../attachment-payload';
 import { formatEditorContext } from '../format-editor-context';
 import { withMarcodeIntro } from '../marcode-context';
+import { sumUsageTotals } from '../../shared/usage-totals';
 import type {
   AgentEvent, AgentRun, Attachment, ContextBreakdown, EditorContext, EffortLevel, McpServerStatus,
-  PermissionMode, QuestionAnswers, SelfControlMcpConfig, StartOptions, ToolDecision, UsageWindow,
+  PermissionMode, QuestionAnswers, SelfControlMcpConfig, StartOptions, ToolDecision, UsageTotals, UsageWindow,
 } from '../types';
 import type { RequestId } from './app-server';
 import { approvalEventOf, DECLINED_INPUT_METHODS, mapNotification, questionEventOf } from './map-events';
@@ -13,7 +14,7 @@ import { toContextBreakdown, toUsageWindows } from './map-usage';
 import type {
   FileChangeApprovalDecision, McpServerElicitationRequestResponse,
   PermissionsRequestApprovalResponse, RateLimitsReadResponse, SkillsListResponse,
-  ThreadResponse, ThreadTokenUsage, ToolRequestUserInputResponse, UserInput,
+  ThreadResponse, ThreadTokenUsage, TokenUsageBreakdown, ToolRequestUserInputResponse, UserInput,
 } from './wire';
 
 /**
@@ -188,6 +189,17 @@ export class CodexRun implements AgentRun {
    */
   private readonly childThreads = new Map<string, string>();
 
+  /** This run's own thread — latest cumulative total, replace not add (Codex already sums it). */
+  private ownUsageTotal: UsageTotals | undefined;
+
+  /**
+   * Every rejoined subagent thread's latest cumulative total, keyed by its
+   * `agentThreadId`. Deliberately NOT cleared in `leaveSubagentThread` — a
+   * closed subagent's last-known spend still happened and still counts
+   * toward this run's subagent total.
+   */
+  private readonly childUsageTotals = new Map<string, UsageTotals>();
+
   /**
    * Every MCP server this thread has heard a startup status for, by name.
    *
@@ -244,10 +256,13 @@ export class CodexRun implements AgentRun {
 
       if (fromChild !== undefined) {
         // A subagent's own thread — only its tool lifecycle nests under the
-        // spawn card; its `turn/completed`, usage, and text deltas are that
-        // thread's business, not this run's turn. `mapNotification` still
-        // does the item -> `ToolCall` translation; only `parentId` and the
-        // event-kind filter are specific to a child's traffic.
+        // spawn card; its `turn/completed` and text deltas are that thread's
+        // business, not this run's turn. Its token usage is the one
+        // exception: captured (not nested) so it can be tagged into this
+        // run's `subagent` bucket — see `captureChildUsage`.
+        if (method === 'thread/tokenUsage/updated') {
+          this.captureChildUsage(named as string, (params as { tokenUsage?: ThreadTokenUsage } | undefined)?.tokenUsage);
+        }
         for (const event of mapNotification(method, params)) {
           if (event.kind === 'tool-start' || event.kind === 'tool-end') {
             this.events.push({ ...event, parentId: fromChild });
@@ -257,7 +272,9 @@ export class CodexRun implements AgentRun {
       }
 
       if (method === 'thread/tokenUsage/updated') {
-        this.captureContextUsage((params as { tokenUsage?: ThreadTokenUsage } | undefined)?.tokenUsage);
+        const tokenUsage = (params as { tokenUsage?: ThreadTokenUsage } | undefined)?.tokenUsage;
+        this.captureContextUsage(tokenUsage);
+        this.captureOwnUsage(tokenUsage);
       }
       if (method === 'skills/changed') {
         // A pure invalidation signal — `SkillsChangedNotification` is
@@ -414,6 +431,45 @@ export class CodexRun implements AgentRun {
         return this.lastContextBreakdown as ContextBreakdown;
       };
     }
+  }
+
+  private toUsageTotals(b: TokenUsageBreakdown): UsageTotals {
+    // Codex has no cache-creation concept (automatic, unbilled) — a real 0,
+    // not "unmeasured". cachedInputTokens is the read-side equivalent.
+    return {
+      inputTokens: b.inputTokens, outputTokens: b.outputTokens,
+      cacheReadTokens: b.cachedInputTokens, cacheCreationTokens: 0,
+    };
+  }
+
+  /** This run's own thread reported usage — replaces (already cumulative), then re-emits. */
+  private captureOwnUsage(usage: ThreadTokenUsage | undefined): void {
+    if (!usage) { return; }
+    this.ownUsageTotal = this.toUsageTotals(usage.total);
+    this.emitUsage();
+  }
+
+  /** A rejoined subagent thread reported usage — replaces that thread's entry, then re-emits. */
+  private captureChildUsage(agentThreadId: string, usage: ThreadTokenUsage | undefined): void {
+    if (!usage) { return; }
+    this.childUsageTotals.set(agentThreadId, this.toUsageTotals(usage.total));
+    this.emitUsage();
+  }
+
+  /**
+   * Combines the own-thread total with every known subagent thread's total
+   * (summed) and pushes one `usage` event. No-op until the own thread has
+   * reported at least once — a `subagent` total with no `normal` yet would
+   * be a claim about a turn that has not started.
+   */
+  private emitUsage(): void {
+    if (!this.ownUsageTotal) { return; }
+    const subagentTotals = [...this.childUsageTotals.values()];
+    this.events.push({
+      kind: 'usage',
+      normal: this.ownUsageTotal,
+      ...(subagentTotals.length > 0 ? { subagent: sumUsageTotals(subagentTotals) } : {}),
+    });
   }
 
   /**

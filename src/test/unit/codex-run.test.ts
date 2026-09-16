@@ -720,6 +720,138 @@ suite('CodexRun', () => {
     assert.ok(unsub, 'expected the child thread to be unsubscribed once interrupted');
   });
 
+  test('own-thread token usage becomes a normal-only usage event', async () => {
+    const { server, send } = stub();
+    const run = await started(server, 'th_1');
+    const events = collect(run);
+
+    send({
+      method: 'thread/tokenUsage/updated',
+      params: {
+        threadId: 'th_1',
+        tokenUsage: {
+          total: { totalTokens: 30, inputTokens: 20, cachedInputTokens: 5, outputTokens: 10, reasoningOutputTokens: 0 },
+          last: { totalTokens: 30, inputTokens: 20, cachedInputTokens: 5, outputTokens: 10, reasoningOutputTokens: 0 },
+          modelContextWindow: 200_000,
+        },
+      },
+    });
+    await tick();
+
+    const usage = events().find((e) => e.kind === 'usage');
+    assert.deepStrictEqual(usage, {
+      kind: 'usage',
+      normal: { inputTokens: 20, outputTokens: 10, cacheReadTokens: 5, cacheCreationTokens: 0 },
+    });
+  });
+
+  test('a rejoined subagent thread\'s usage is tagged as the subagent bucket, not dropped', async () => {
+    const { server, send } = stub();
+    const run = await started(server, 'th_1');
+    const events = collect(run);
+
+    send({
+      method: 'item/started',
+      params: {
+        threadId: 'th_1',
+        item: {
+          type: 'subAgentActivity', id: 'sa_1', kind: 'started',
+          agentThreadId: 'th_child', agentPath: 'reviewer',
+        },
+      },
+    });
+    await tick();
+    send({
+      method: 'thread/tokenUsage/updated',
+      params: {
+        threadId: 'th_1',
+        tokenUsage: {
+          total: { totalTokens: 30, inputTokens: 20, cachedInputTokens: 0, outputTokens: 10, reasoningOutputTokens: 0 },
+          last: { totalTokens: 30, inputTokens: 20, cachedInputTokens: 0, outputTokens: 10, reasoningOutputTokens: 0 },
+          modelContextWindow: 200_000,
+        },
+      },
+    });
+    await tick();
+    send({
+      method: 'thread/tokenUsage/updated',
+      params: {
+        threadId: 'th_child',
+        tokenUsage: {
+          total: { totalTokens: 15, inputTokens: 12, cachedInputTokens: 0, outputTokens: 3, reasoningOutputTokens: 0 },
+          last: { totalTokens: 15, inputTokens: 12, cachedInputTokens: 0, outputTokens: 3, reasoningOutputTokens: 0 },
+          modelContextWindow: 200_000,
+        },
+      },
+    });
+    await tick();
+
+    const usage = events().filter((e) => e.kind === 'usage').at(-1);
+    assert.deepStrictEqual(usage, {
+      kind: 'usage',
+      normal: { inputTokens: 20, outputTokens: 10, cacheReadTokens: 0, cacheCreationTokens: 0 },
+      subagent: { inputTokens: 12, outputTokens: 3, cacheReadTokens: 0, cacheCreationTokens: 0 },
+    });
+  });
+
+  test('a closed subagent thread\'s last-known usage still counts toward the subagent bucket', async () => {
+    const { server, send } = stub();
+    const run = await started(server, 'th_1');
+    const events = collect(run);
+
+    send({
+      method: 'item/started',
+      params: {
+        threadId: 'th_1',
+        item: {
+          type: 'subAgentActivity', id: 'sa_1', kind: 'started',
+          agentThreadId: 'th_child', agentPath: 'reviewer',
+        },
+      },
+    });
+    await tick();
+    send({
+      method: 'thread/tokenUsage/updated',
+      params: {
+        threadId: 'th_child',
+        tokenUsage: {
+          total: { totalTokens: 15, inputTokens: 12, cachedInputTokens: 0, outputTokens: 3, reasoningOutputTokens: 0 },
+          last: { totalTokens: 15, inputTokens: 12, cachedInputTokens: 0, outputTokens: 3, reasoningOutputTokens: 0 },
+          modelContextWindow: 200_000,
+        },
+      },
+    });
+    await tick();
+    send({
+      method: 'item/completed',
+      params: {
+        threadId: 'th_1',
+        item: {
+          type: 'subAgentActivity', id: 'sa_1', kind: 'interrupted',
+          agentThreadId: 'th_child', agentPath: 'reviewer',
+        },
+      },
+    });
+    await tick();
+    send({
+      method: 'thread/tokenUsage/updated',
+      params: {
+        threadId: 'th_1',
+        tokenUsage: {
+          total: { totalTokens: 30, inputTokens: 20, cachedInputTokens: 0, outputTokens: 10, reasoningOutputTokens: 0 },
+          last: { totalTokens: 30, inputTokens: 20, cachedInputTokens: 0, outputTokens: 10, reasoningOutputTokens: 0 },
+          modelContextWindow: 200_000,
+        },
+      },
+    });
+    await tick();
+
+    const usage = events().filter((e) => e.kind === 'usage').at(-1);
+    assert.deepStrictEqual(usage?.kind === 'usage' ? usage.subagent : undefined,
+      { inputTokens: 12, outputTokens: 3, cacheReadTokens: 0, cacheCreationTokens: 0 },
+      'the child thread left, but its last-known usage still counts — see leaveSubagentThread');
+  });
+
   test('disposing unsubscribes every still-rejoined subagent thread', async () => {
     const { server, send, sent } = stub();
     const run = await started(server, 'th_1');
