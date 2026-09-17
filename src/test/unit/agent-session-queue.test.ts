@@ -279,3 +279,68 @@ suite('AgentSession queued message', () => {
     assert.strictEqual(session.state.status, 'running');
   });
 });
+
+suite('AgentSession send on a run that queues natively', () => {
+  let dir: string;
+  let store: TranscriptStore;
+  const open: AgentSession[] = [];
+
+  setup(async () => {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mar-queue-native-'));
+    store = new TranscriptStore(dir);
+  });
+
+  teardown(async () => {
+    while (open.length > 0) { await open.pop()!.dispose(); }
+    await fs.rm(dir, { recursive: true, force: true });
+  });
+
+  function makeSession() {
+    const provider = new FakeProvider(() => [], { queuesNatively: true });
+    const sink = new RecordingSink();
+    const session = new AgentSession(baseState(), provider, store, sink);
+    open.push(session);
+    return { provider, sink, session };
+  }
+
+  test('a send while the turn is running goes straight to the run, not the host queue', async () => {
+    const { provider, session } = makeSession();
+    session.send('first');
+    await settle();
+
+    session.send('second');
+    await settle();
+
+    // Both reached the run immediately — the backend's own streaming-input
+    // queue owns the ordering, not `_state.queued`.
+    assert.deepStrictEqual(provider.sent.map((s) => s.text), ['first', 'second']);
+    assert.strictEqual(session.state.queued, undefined);
+    const snap = await session.snapshot();
+    assert.strictEqual(snap.items.filter((i) => i.role === 'user').length, 2);
+  });
+
+  test('cancelQueued is a no-op: nothing was ever parked host-side', async () => {
+    const { provider, session } = makeSession();
+    session.send('first');
+    await settle();
+    session.send('second');
+    await settle();
+
+    session.cancelQueued('anything');
+    assert.strictEqual(session.state.queued, undefined);
+    assert.deepStrictEqual(provider.sent.map((s) => s.text), ['first', 'second']);
+  });
+
+  test('each send still carries its own editor context and live attachments', async () => {
+    const { provider, session } = makeSession();
+    session.send('first', { path: 'a.ts', languageId: 'typescript' });
+    await settle();
+    session.send('second', { path: 'b.ts', languageId: 'typescript' });
+    await settle();
+
+    assert.deepStrictEqual(provider.sent.map((s) => s.context), [
+      { path: 'a.ts', languageId: 'typescript' },
+      { path: 'b.ts', languageId: 'typescript' },
+    ]);
+  });
+});

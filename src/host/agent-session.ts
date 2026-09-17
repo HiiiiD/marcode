@@ -332,6 +332,15 @@ export class AgentSession {
     text: string, context?: EditorContext, refs?: SessionRef[], fileRefs?: FileRef[],
     from?: { sessionId: SessionId; name: string },
   ): void {
+    // A run that queues natively (currently: Claude, via the SDK's streaming-
+    // input command queue) takes a send at any time — busy or not — and
+    // orders it itself. Parking it here as well would just add a second,
+    // redundant queue the run's own would never see, so this session never
+    // populates `_state.queued` and `cancelQueued` has nothing to drop.
+    if (this.run.queuesNatively) {
+      this.deliver(text, context, refs, fileRefs, this.drainLiveAttachments(), from);
+      return;
+    }
     if (!this.busy) { this.drainQueued(); }
     if (this.busy) {
       // Captured now, not at eventual delivery: the pending set belongs to

@@ -402,6 +402,21 @@ export interface AgentRun {
    * cost one control request each and never a new subprocess.
    */
   usageWindows?(): Promise<UsageWindow[] | undefined>;
+  /**
+   * True for a run whose transport itself queues: `send()` may be called
+   * while a turn is in flight and the run's own backend orders and, where it
+   * chooses to, folds the new message into the turn already running (the
+   * Claude Agent SDK's streaming-input command queue) rather than requiring a
+   * new turn per message. `AgentSession` skips its own busy-park/drain
+   * bookkeeping for a run that sets this — every `send()` goes straight to
+   * `deliver()` — so there is no host-side `queued` list and no selective
+   * `cancelQueued` for these runs: the backend accepted the message the
+   * moment `send()` returned, and only a blunt whole-session `interrupt()`
+   * can still stop it. Unset (the default) keeps today's one-turn-per-message
+   * host queue, which is required for a run whose backend takes one prompt at
+   * a time (Codex, ACP, fake).
+   */
+  readonly queuesNatively?: boolean;
   dispose(): Promise<void>;
 }
 
