@@ -718,6 +718,12 @@ export class ClaudeProvider implements AgentProvider {
 
     return {
       events,
+      // The `prompts` Channel is the SDK's own streaming-input queue: pushing
+      // a second message before the first turn's result arrives does not
+      // race it, the CLI folds it into the running turn between tool rounds
+      // (or, if it can't, runs it as the next turn) on its own. See
+      // `AgentRun.queuesNatively`.
+      queuesNatively: true,
       send: (text: string, context?: EditorContext, attachments?: Attachment[]) => {
         turnGen += 1;
         lifecycleDebug('claude.send', {

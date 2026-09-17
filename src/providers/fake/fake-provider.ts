@@ -57,6 +57,8 @@ export interface FakeReports {
    * windows, `[]` does not.
    */
   usageUnavailable?: boolean;
+  /** Scripts every run this provider starts as `AgentRun.queuesNatively`. */
+  queuesNatively?: boolean;
 }
 
 export class FakeProvider implements AgentProvider {
@@ -136,6 +138,7 @@ export class FakeProvider implements AgentProvider {
 
     const run: FakeRun = {
       events: channel,
+      ...(this.reports.queuesNatively ? { queuesNatively: true as const } : {}),
       send: (text: string, context?: EditorContext, attachments?: Attachment[]) => {
         this.sent.push({ text, context, attachments, runIndex });
         if (!started) {
