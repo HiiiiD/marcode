@@ -598,6 +598,18 @@ export class AgentSession {
       if (parentRoot) { this.replaceChild(parentRoot, settled); }
       else { this.replaceItem(settled); }
       this.permissionItems.set(requestId, settled);
+      // ExitPlanMode approval ends plan mode on the real session (the CLI's
+      // own permission engine has already left it) but nothing else in this
+      // provider surface tells the host that happened — `setPermissionMode`
+      // is otherwise only ever called from a user's own mode-menu pick. Left
+      // alone, `_state.permissionMode` (and every UI reading it: the mode
+      // menu, the composer) stays stuck on 'plan' after the approval that
+      // just exited it. Only fires while still tracked as 'plan': a stray
+      // ExitPlanMode call approved after some other mode switch already
+      // happened must not clobber that later, unrelated choice.
+      if (existing.tool.kind === 'plan' && decision.allow && this._state.permissionMode === 'plan') {
+        this.setPermissionMode('default');
+      }
     }
     this.recomputeWaitingStatus();
   }
