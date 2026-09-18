@@ -129,6 +129,12 @@ suite('MessageRouter', () => {
     assert.strictEqual(catalogs[0].probing, false);
   });
 
+  test('refresh-usage re-probes plan usage for the default cwd', async () => {
+    await router.handle({ t: 'refresh-usage' });
+
+    assert.deepStrictEqual(provider.fetchUsageCalls, ['/tmp']);
+  });
+
   test('open-settings reaches the host with the section to reveal', async () => {
     const sections: string[] = [];
     const r = new MessageRouter(manager, (m) => sent.push(m), '/tmp', {

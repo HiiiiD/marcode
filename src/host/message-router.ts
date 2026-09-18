@@ -546,6 +546,13 @@ export class MessageRouter {
         await this.manager.refreshModels(this.defaultCwd);
         return;
 
+      // Awaited for the same reason as refresh-catalog: it was asked for,
+      // and the per-provider usage-windows emit it produces is the only
+      // feedback the button has.
+      case 'refresh-usage':
+        await this.manager.refreshUsage(this.defaultCwd);
+        return;
+
       case 'open-settings':
         this.editor.openSettings(msg.section);
         return;
@@ -718,7 +725,7 @@ const KNOWN_MESSAGE_TAGS = new Set<WebviewToHost['t']>([
   'request-fleet-diff', 'request-branch-refs', 'open-file-diff', 'open-review', 'open-fleet',
   'open-fleet-subagent',
   'focus-session',
-  'refresh-catalog', 'open-settings', 'login-provider', 'open-external', 'export-table-csv',
+  'refresh-catalog', 'refresh-usage', 'open-settings', 'login-provider', 'open-external', 'export-table-csv',
   'export-image',
   'file-search', 'set-favorite-models',
 ]);

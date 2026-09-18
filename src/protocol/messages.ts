@@ -625,6 +625,15 @@ export type WebviewToHost =
    */
   | { t: 'refresh-catalog' }
   /**
+   * "Ask every provider for plan usage again." The strip only ever updates
+   * from broadcasts tied to activation or a completed turn, so a session
+   * that has been quiet — or is reading a different account's usage than
+   * the one currently open — can sit stale for hours with nothing to
+   * correct it. This is the manual poke; it fires the same probe
+   * `refreshUsage` already runs at `ready`.
+   */
+  | { t: 'refresh-usage' }
+  /**
    * Open VS Code's settings UI at `section`. The webview cannot run a
    * command, and the one place it needs to is the empty state: with no
    * provider enabled, the setting that enables one is the only next step.

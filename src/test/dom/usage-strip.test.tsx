@@ -1,5 +1,5 @@
 import * as assert from 'assert';
-import { screen } from '@testing-library/react';
+import { fireEvent, screen } from '@testing-library/react';
 import { UsageStrip } from '@/components/usage-strip';
 import { catalog, layoutOf, snapshot, summary, windows } from '../fixtures/protocol';
 import { posted, renderWithStore, resetHost, sendFromHost } from './harness';
@@ -126,6 +126,15 @@ suite('UsageStrip', () => {
     // An API-key provider can never report. A permanent row it can never fill
     // is noise no action clears, so the strip does not render one.
     assert.strictEqual(container.textContent, '');
+  });
+
+  test('the refresh button posts a refresh-usage request', () => {
+    mountStrip();
+    sendFromHost({ t: 'usage-windows', providerId: 'fake', windows: windows() });
+
+    fireEvent.click(screen.getByLabelText('Refresh plan usage'));
+
+    assert.deepStrictEqual(posted().map((m) => m.t), ['ready', 'refresh-usage']);
   });
 
   test('two reporting providers are each labelled', () => {
