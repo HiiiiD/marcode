@@ -625,6 +625,15 @@ export type WebviewToHost =
    */
   | { t: 'refresh-catalog' }
   /**
+   * "Ask every provider for plan usage again." The strip only ever updates
+   * from broadcasts tied to activation or a completed turn, so a session
+   * that has been quiet — or is reading a different account's usage than
+   * the one currently open — can sit stale for hours with nothing to
+   * correct it. This is the manual poke; it fires the same probe
+   * `refreshUsage` already runs at `ready`.
+   */
+  | { t: 'refresh-usage' }
+  /**
    * Open VS Code's settings UI at `section`. The webview cannot run a
    * command, and the one place it needs to is the empty state: with no
    * provider enabled, the setting that enables one is the only next step.
@@ -802,6 +811,16 @@ export type HostToWebview =
    * and "nothing has been reported" is a state, not an error.
    */
   | { t: 'usage-windows'; providerId: string; windows: UsageWindow[]; displayName?: string }
+  /**
+   * Answers a `refresh-usage` request once every provider and mirror probe
+   * it fired has settled — the per-provider `usage-windows` messages above
+   * carry the numbers, but none of them says when the round is over, so the
+   * refresh button has nothing to time its spinner against without this.
+   * Not addressed to a request id: `refresh-usage` never overlaps itself
+   * client-side (the button is disabled for the duration), so there is only
+   * ever one round in flight to answer.
+   */
+  | { t: 'usage-refresh-done' }
   /**
    * The answer to `request-bring-back`, and also what a *failed* `bring-back`
    * replies with — a refusal is the same shape whether it was found by asking

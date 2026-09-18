@@ -52,6 +52,7 @@ function describeInbound(m: WebviewToHost): string {
     case 'open-fleet-subagent': return 'open-fleet-subagent';
     case 'open-file-diff': return 'open-file-diff';
     case 'refresh-catalog': return 'refresh-catalog';
+    case 'refresh-usage': return 'refresh-usage';
     case 'open-settings': return 'open-settings';
     case 'login-provider': return 'login-provider';
     case 'open-external': return 'open-external';
@@ -84,6 +85,7 @@ function describeOutbound(m: HostToWebview): string {
     case 'catalog': return 'catalog';
     case 'context-breakdown': return 'context-breakdown';
     case 'usage-windows': return 'usage-windows';
+    case 'usage-refresh-done': return 'usage-refresh-done';
     case 'bring-back-plan': return 'bring-back-plan';
     case 'stale-trees': return 'stale-trees';
     case 'fleet-diff': return 'fleet-diff';

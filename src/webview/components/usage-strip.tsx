@@ -1,4 +1,7 @@
+import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { cn } from '@/lib/utils';
+import { RefreshCwIcon } from 'lucide-react';
 import { Ring } from './ring';
 import { useStore } from '../store';
 import type { UsageWindow } from '../../protocol/messages';
@@ -93,7 +96,7 @@ function ProviderUsage({
 }
 
 export function UsageStrip() {
-  const { state } = useStore();
+  const { state, post } = useStore();
   // Providers that have actually reported, NOT providers that have sessions.
   // Usage belongs to the account: a second subscription is worth showing with
   // no session open for it, and a provider on an API key can never report at
@@ -114,13 +117,32 @@ export function UsageStrip() {
   // second provider actually reports.
   return (
     <div className="flex shrink-0 flex-col gap-1 border-t border-border px-2 py-1 text-xs">
-      {reporting.map((id) => (
-        <ProviderUsage
-          key={id}
-          displayName={state.usageDisplayNames[id] ?? state.catalog.find((p) => p.id === id)?.displayName ?? id}
-          windows={state.usageByProvider[id]}
-        />
-      ))}
+      <div className="flex items-start gap-1">
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          {reporting.map((id) => (
+            <ProviderUsage
+              key={id}
+              displayName={state.usageDisplayNames[id] ?? state.catalog.find((p) => p.id === id)?.displayName ?? id}
+              windows={state.usageByProvider[id]}
+            />
+          ))}
+        </div>
+        {/*
+          Numbers only move on activation or a completed turn — quiet across
+          a provider switch or a different project's session, exactly when a
+          stale reading is easy to miss. Manual poke, same probe `ready` runs.
+        */}
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          aria-label="Refresh plan usage"
+          onClick={() => post({ t: 'refresh-usage' })}
+          disabled={state.usageRefreshing}
+          className="shrink-0"
+        >
+          <RefreshCwIcon aria-hidden className={cn(state.usageRefreshing && 'animate-spin')} />
+        </Button>
+      </div>
     </div>
   );
 }
