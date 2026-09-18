@@ -68,6 +68,13 @@ export interface ClientState {
   usageByProvider: Record<string, UsageWindow[] | undefined>;
   usageDisplayNames: Record<string, string>;
   /**
+   * True from the moment the refresh button is clicked until `usage-windows`
+   * says the round it fired is done. Purely client-local UI state — no
+   * request id involved, because `refresh-usage` never overlaps itself
+   * client-side (the button disables for the duration).
+   */
+  usageRefreshing: boolean;
+  /**
    * Every working tree the host's last sweep found, in the order it sent
    * them. Panel-wide rather than per session, because the rows that matter
    * are the ones no session is in. Empty until something has asked — which is
@@ -168,6 +175,7 @@ export const initialState: ClientState = {
   bringBackBySession: {},
   usageByProvider: {},
   usageDisplayNames: {},
+  usageRefreshing: false,
   staleTrees: [],
   fleetDiff: undefined,
   fleetDiffReason: undefined,
@@ -205,7 +213,9 @@ export type ClientAction =
    */
   | { t: 'local-dismiss-rejection'; id: SessionId }
   /** See `ClientState.pendingSlotPath`. */
-  | { t: 'local-pending-slot'; path: number[] | null };
+  | { t: 'local-pending-slot'; path: number[] | null }
+  /** See `ClientState.usageRefreshing`. */
+  | { t: 'local-usage-refresh-start' };
 
 export function reduce(state: ClientState, msg: ClientAction): ClientState {
   switch (msg.t) {
@@ -220,6 +230,12 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
 
     case 'local-pending-slot':
       return { ...state, pendingSlotPath: msg.path };
+
+    case 'local-usage-refresh-start':
+      return { ...state, usageRefreshing: true };
+
+    case 'usage-refresh-done':
+      return { ...state, usageRefreshing: false };
 
     case 'hydrate': {
       const byId: Record<SessionId, PaneState> = {};
@@ -287,6 +303,9 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
         // and a session created against a pre-reload path could land
         // anywhere.
         pendingSlotPath: null,
+        // Not carried: it answers "is a round the client itself just fired
+        // still in flight", and a reload has no such round pending.
+        usageRefreshing: false,
       };
     }
 

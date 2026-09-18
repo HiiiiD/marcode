@@ -1755,6 +1755,32 @@ suite('SessionManager', () => {
     await m.dispose();
   });
 
+  test('refreshUsage also re-probes every configured usage mirror', async () => {
+    const source = new FakeProvider(() => []);
+    const target = new FakeProvider(() => [], {
+      windows: [{ id: 'five-hour', label: 'Session (5h)', usedPercent: 33 }],
+    });
+    const emitted: HostToWebview[] = [];
+    const m = new SessionManager(
+      new TranscriptStore(dir),
+      new Map<string, AgentProvider>([['source', source], ['codex', target]]),
+      (msg) => emitted.push(msg), undefined, undefined, undefined, undefined, [], undefined, undefined,
+      [{ sourceProviderId: 'source', modelPattern: '^openai/', targetProviderId: 'codex',
+        usageProviderId: 'source-openai', displayName: 'OpenCode (OpenAI)' }],
+    );
+    await m.init();
+
+    await m.refreshUsage('/repo');
+
+    const update = emitted.find((msg) => msg.t === 'usage-windows'
+      && (msg as Extract<HostToWebview, { t: 'usage-windows' }>).providerId === 'source-openai') as
+      Extract<HostToWebview, { t: 'usage-windows' }>;
+    assert.ok(update, 'expected the mirrored provider id to be emitted');
+    assert.strictEqual(update.displayName, 'OpenCode (OpenAI)');
+    assert.strictEqual(target.fetchUsageCalls.at(-1), '/repo');
+    await m.dispose();
+  });
+
   test('turnFinished mirrors matching model usage under its configured display name', async () => {
     const source = new FakeProvider(() => []);
     const target = new FakeProvider(() => [], {

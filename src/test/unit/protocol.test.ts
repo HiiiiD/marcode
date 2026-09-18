@@ -85,6 +85,7 @@ function describeOutbound(m: HostToWebview): string {
     case 'catalog': return 'catalog';
     case 'context-breakdown': return 'context-breakdown';
     case 'usage-windows': return 'usage-windows';
+    case 'usage-refresh-done': return 'usage-refresh-done';
     case 'bring-back-plan': return 'bring-back-plan';
     case 'stale-trees': return 'stale-trees';
     case 'fleet-diff': return 'fleet-diff';

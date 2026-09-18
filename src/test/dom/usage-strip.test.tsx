@@ -137,6 +137,18 @@ suite('UsageStrip', () => {
     assert.deepStrictEqual(posted().map((m) => m.t), ['ready', 'refresh-usage']);
   });
 
+  test('the refresh button disables itself until usage-refresh-done arrives', () => {
+    mountStrip();
+    sendFromHost({ t: 'usage-windows', providerId: 'fake', windows: windows() });
+    const button = screen.getByLabelText('Refresh plan usage');
+
+    fireEvent.click(button);
+    assert.strictEqual(button.hasAttribute('disabled'), true);
+
+    sendFromHost({ t: 'usage-refresh-done' });
+    assert.strictEqual(button.hasAttribute('disabled'), false);
+  });
+
   test('two reporting providers are each labelled', () => {
     renderWithStore(<UsageStrip />);
     sendFromHost({

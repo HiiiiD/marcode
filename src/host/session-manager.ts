@@ -421,27 +421,40 @@ export class SessionManager implements SessionSink {
    * batch into, and a fast provider should not wait behind a slow one.
    */
   async refreshUsage(cwd: string): Promise<void> {
-    await Promise.all([...this.providers.values()]
-      .filter((p) => p.fetchUsage)
-      // Wrapped in Promise.resolve().then(...) rather than calling
-      // fetchUsage(cwd) directly: the interface only promises a Promise
-      // return, not an async function, so a provider that throws
-      // synchronously (legal against the type) would otherwise throw here in
-      // refreshUsage's own synchronous body — rejecting refreshUsage() itself
-      // (fire-and-forget from the router, so an unhandled rejection) and
-      // skipping every provider queued after it, instead of being caught by
-      // the .then rejection handler below.
-      .map((p) => Promise.resolve().then(() => p.fetchUsage!(cwd)).then(
-        (windows) => { if (!this.disposed) { this.usageWindows(p.id, windows); } },
-        (err: unknown) => {
-          // Errors are state, never exceptions — and the state here is
-          // "whatever the last pull or the persisted file said still
-          // stands". Worth a developer-facing trace: a permanently broken
-          // CLI would otherwise be indistinguishable from an account that
-          // genuinely has no plan limits.
-          console.warn('[mar-code] session-manager: usage probe failed for', p.id, err);
-        },
-      )));
+    await Promise.all([
+      ...[...this.providers.values()]
+        .filter((p) => p.fetchUsage)
+        // Wrapped in Promise.resolve().then(...) rather than calling
+        // fetchUsage(cwd) directly: the interface only promises a Promise
+        // return, not an async function, so a provider that throws
+        // synchronously (legal against the type) would otherwise throw here
+        // in refreshUsage's own synchronous body — rejecting refreshUsage()
+        // itself (fire-and-forget from the router, so an unhandled
+        // rejection) and skipping every provider queued after it, instead
+        // of being caught by the .then rejection handler below.
+        .map((p) => Promise.resolve().then(() => p.fetchUsage!(cwd)).then(
+          (windows) => { if (!this.disposed) { this.usageWindows(p.id, windows); } },
+          (err: unknown) => {
+            // Errors are state, never exceptions — and the state here is
+            // "whatever the last pull or the persisted file said still
+            // stands". Worth a developer-facing trace: a permanently broken
+            // CLI would otherwise be indistinguishable from an account that
+            // genuinely has no plan limits.
+            console.warn('[mar-code] session-manager: usage probe failed for', p.id, err);
+          },
+        )),
+      // A mirror's row only otherwise updates off a completed turn on its
+      // source (turnFinished) — a session that has been quiet, or was never
+      // opened this launch, leaves it stale forever with no other trigger.
+      // The manual poke has no session to read a mirror's own cwd from, so
+      // every mirror is probed with the same cwd the direct providers just
+      // used above.
+      ...this.compiledUsageMirrors.map(({ mirror }) => {
+        const target = this.providers.get(mirror.targetProviderId);
+        if (!target?.fetchUsage) { return Promise.resolve(); }
+        return this.refreshMirroredUsage(target, cwd, mirror);
+      }),
+    ]);
   }
 
   /** Refreshes account usage for a provider represented by a completed turn. */

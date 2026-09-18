@@ -135,6 +135,14 @@ suite('MessageRouter', () => {
     assert.deepStrictEqual(provider.fetchUsageCalls, ['/tmp']);
   });
 
+  test('refresh-usage answers with usage-refresh-done once the round settles', async () => {
+    // The only signal the button has to stop spinning — one per request,
+    // sent after every provider/mirror probe the request fired has settled.
+    await router.handle({ t: 'refresh-usage' });
+
+    assert.deepStrictEqual(sent.filter((m) => m.t === 'usage-refresh-done'), [{ t: 'usage-refresh-done' }]);
+  });
+
   test('open-settings reaches the host with the section to reveal', async () => {
     const sections: string[] = [];
     const r = new MessageRouter(manager, (m) => sent.push(m), '/tmp', {

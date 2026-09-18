@@ -49,6 +49,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (msg.t === 'set-layout') {
       dispatch({ t: 'local-layout', layout: msg.layout });
     }
+    // Same reasoning: nothing echoes the click itself, only its eventual
+    // usage-refresh-done — so the spinner has to start optimistically here
+    // or it would never render for however long the round takes.
+    if (msg.t === 'refresh-usage') {
+      dispatch({ t: 'local-usage-refresh-start' });
+    }
   }, []);
 
   const focus = (id: SessionId) => dispatch({ t: 'local-focus', id });

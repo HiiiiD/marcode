@@ -1,5 +1,6 @@
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { cn } from '@/lib/utils';
 import { RefreshCwIcon } from 'lucide-react';
 import { Ring } from './ring';
 import { useStore } from '../store';
@@ -136,9 +137,10 @@ export function UsageStrip() {
           size="icon-xs"
           aria-label="Refresh plan usage"
           onClick={() => post({ t: 'refresh-usage' })}
+          disabled={state.usageRefreshing}
           className="shrink-0"
         >
-          <RefreshCwIcon aria-hidden />
+          <RefreshCwIcon aria-hidden className={cn(state.usageRefreshing && 'animate-spin')} />
         </Button>
       </div>
     </div>

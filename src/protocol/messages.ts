@@ -812,6 +812,16 @@ export type HostToWebview =
    */
   | { t: 'usage-windows'; providerId: string; windows: UsageWindow[]; displayName?: string }
   /**
+   * Answers a `refresh-usage` request once every provider and mirror probe
+   * it fired has settled — the per-provider `usage-windows` messages above
+   * carry the numbers, but none of them says when the round is over, so the
+   * refresh button has nothing to time its spinner against without this.
+   * Not addressed to a request id: `refresh-usage` never overlaps itself
+   * client-side (the button is disabled for the duration), so there is only
+   * ever one round in flight to answer.
+   */
+  | { t: 'usage-refresh-done' }
+  /**
    * The answer to `request-bring-back`, and also what a *failed* `bring-back`
    * replies with — a refusal is the same shape whether it was found by asking
    * or by trying, and the dialog that is still on screen should show it either

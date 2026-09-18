@@ -546,11 +546,13 @@ export class MessageRouter {
         await this.manager.refreshModels(this.defaultCwd);
         return;
 
-      // Awaited for the same reason as refresh-catalog: it was asked for,
-      // and the per-provider usage-windows emit it produces is the only
-      // feedback the button has.
+      // Awaited for the same reason as refresh-catalog. The per-provider
+      // usage-windows emits carry the numbers, but none of them says when
+      // the round is over — usage-refresh-done is that signal, and the only
+      // feedback the button has to stop spinning.
       case 'refresh-usage':
         await this.manager.refreshUsage(this.defaultCwd);
+        this.emit({ t: 'usage-refresh-done' });
         return;
 
       case 'open-settings':
