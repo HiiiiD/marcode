@@ -102,7 +102,7 @@ suite('ContextRing', () => {
     assert.ok(screen.getByRole('button', { name: /CLAUDE\.md/ }));
   });
 
-  test('names the window in tokens, so 17% of 258k is not read as 17% of 1M', async () => {
+  test('names the window in tokens, so 17% of 258K is not read as 17% of 1M', async () => {
     mount(17);
     await open('Context 17% used');
 
@@ -114,7 +114,7 @@ suite('ContextRing', () => {
       },
     });
 
-    assert.ok(screen.getByText('45.2k of 258k tokens'));
+    assert.ok(screen.getByText('45.2K of 258.4K tokens'));
   });
 
   test('a provider that cannot name its window shows no token line at all', async () => {
@@ -292,9 +292,9 @@ suite('ContextRing', () => {
     await open('Context 43% used');
 
     assert.ok(screen.getByText('Token usage'));
-    assert.ok(screen.getByText('1.2k'));
+    assert.ok(screen.getByText('1.2K'));
     assert.ok(screen.getByText('567'));
-    assert.ok(screen.getByText('8.9k'));
+    assert.ok(screen.getByText('8.9K'));
     assert.ok(screen.getByText('12'));
   });
 
