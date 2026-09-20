@@ -965,6 +965,9 @@ export class AgentSession {
 
       case 'text':
       case 'thinking': {
+        // ACP backends stream the compaction summary as ordinary agent text;
+        // the compaction card carries it, so a chat copy would duplicate it.
+        if (this.compactionItem?.state === 'running') { return; }
         const field = event.kind === 'text' ? 'text' : 'thinking';
         if (!this.openAssistantId) {
           const item: TranscriptItem = {
