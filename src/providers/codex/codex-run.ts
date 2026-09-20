@@ -748,14 +748,17 @@ export class CodexRun implements AgentRun {
   }
 
   async interrupt(): Promise<void> {
-    if (this._threadId) {
+    // Subagent threads are separate turns on the server; interrupting the
+    // parent alone leaves them running.
+    const threads = [...(this._threadId ? [this._threadId] : []), ...this.childThreads.keys()];
+    await Promise.all(threads.map(async (threadId) => {
       try {
-        await this.server.request('turn/interrupt', { threadId: this._threadId });
+        await this.server.request('turn/interrupt', { threadId });
       } catch {
         // Best-effort: whether or not Codex could act on it, the user's
         // intent was to stop, so the turn ends here either way.
       }
-    }
+    }));
     // Both maps, not just the questions: a parked approval belongs to the turn
     // being stopped exactly as much as a parked question does, and leaving it
     // pins the session at `awaiting-approval` for a turn that is gone.
