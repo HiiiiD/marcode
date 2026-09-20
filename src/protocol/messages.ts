@@ -128,6 +128,15 @@ export type TranscriptItem =
     })
   | (ItemBase & { role: 'error'; message: string })
   /**
+   * The conversation was compacted. `summary` is the text the provider itself
+   * wrote to replace the history, kept verbatim — the transcript is stored
+   * whole anyway, so this is the record of what the model was left with.
+   */
+  | (ItemBase & {
+      role: 'compaction'; state: 'running' | 'done' | 'failed';
+      trigger?: 'manual' | 'auto'; summary?: string; error?: string;
+    })
+  /**
    * A record that the model or effort level changed mid-conversation. `text`
    * is the full precomputed sentence — not the raw ids — so a later catalog
    * change (a model renamed or retired) can't reinterpret an old line: the

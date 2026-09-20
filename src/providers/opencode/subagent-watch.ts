@@ -113,6 +113,9 @@ export class SubagentWatch {
   readonly events = new EventChannel();
 
   private readonly watched = new Set<string>();
+  private readonly summaryMessages = new Set<string>();
+  private readonly summaryText = new Map<string, string>();
+  private compactionAuto: boolean | undefined;
   /** Watched child session id -> the parent tool-start id its events nest under. */
   private readonly parentToolCallId = new Map<string, string>();
   /**
@@ -247,13 +250,55 @@ export class SubagentWatch {
     }
     if (event.type === 'message.part.updated') {
       const props = event.properties as Extract<RawEvent, { type: 'message.part.updated' }>['properties'];
+      if (props.sessionID === this.rootSessionId && this.handleRootCompactionPart(props.part)) { return; }
       this.handlePart(props.sessionID, props.part);
+      return;
+    }
+    if (event.type === 'message.updated') {
+      const info = (event.properties as { info?: { id?: string; sessionID?: string; role?: string; summary?: boolean } })?.info;
+      if (info && info.sessionID === this.rootSessionId && info.role === 'assistant' && info.summary && info.id) {
+        this.summaryMessages.add(info.id);
+      }
+      return;
+    }
+    if (event.type === 'session.compacted') {
+      const sessionID = (event.properties as { sessionID?: string })?.sessionID;
+      if (sessionID !== this.rootSessionId) { return; }
+      const summary = [...this.summaryText.values()].join('\n\n').trim();
+      this.events.push({
+        kind: 'compaction', state: 'done',
+        ...(this.compactionAuto === undefined ? {} : { trigger: this.compactionAuto ? 'auto' as const : 'manual' as const }),
+        ...(summary ? { summary } : {}),
+      });
+      this.summaryMessages.clear();
+      this.summaryText.clear();
+      this.compactionAuto = undefined;
       return;
     }
     if (event.type === 'permission.asked') {
       const props = event.properties as Extract<RawEvent, { type: 'permission.asked' }>['properties'];
       this.handlePermission(props);
     }
+  }
+
+  /**
+   * Compaction is invisible to ACP, so the root session's own stream is the
+   * only source: a `compaction` part opens it, the summary is the text of the
+   * assistant message flagged `summary`, and `session.compacted` closes it.
+   * Returns true when the part was one of those and needs no further routing.
+   */
+  private handleRootCompactionPart(part: RawPart): boolean {
+    if (part.type === 'compaction') {
+      this.compactionAuto = (part as { auto?: boolean }).auto === true;
+      this.events.push({ kind: 'compaction', state: 'started' });
+      return true;
+    }
+    const text = part as { type: string; messageID?: string; id?: string; text?: string };
+    if (text.type === 'text' && text.messageID && text.id && this.summaryMessages.has(text.messageID)) {
+      this.summaryText.set(text.id, text.text ?? '');
+      return true;
+    }
+    return false;
   }
 
   private handlePart(sessionId: string, part: RawPart): void {

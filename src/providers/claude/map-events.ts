@@ -193,6 +193,22 @@ export function claudeUsageDelta(msg: unknown): UsageTotals | undefined {
   };
 }
 
+const COMPACTION_PREFIX = 'This session is being continued from a previous conversation';
+
+/** The synthetic user turn the CLI writes after compacting, minus its boilerplate lead-in. */
+function compactionSummary(msg: unknown): string | undefined {
+  const content = (msg as { message?: { content?: unknown } }).message?.content;
+  const text = typeof content === 'string'
+    ? content
+    : Array.isArray(content)
+      ? content.map((b) => (b as { text?: unknown }).text)
+        .filter((t): t is string => typeof t === 'string').join('\n')
+      : '';
+  if (!text.startsWith(COMPACTION_PREFIX)) { return undefined; }
+  const marker = text.indexOf('Summary:');
+  return redactSecrets((marker >= 0 ? text.slice(marker + 'Summary:'.length) : text).trim());
+}
+
 export function mapEvent(msg: unknown): AgentEvent[] {
   const type = (msg as { type?: string }).type;
 
@@ -228,6 +244,23 @@ export function mapEvent(msg: unknown): AgentEvent[] {
       // rather than the primary signal.
       const taskId = (msg as { task_id?: unknown }).task_id;
       return typeof taskId === 'string' ? [{ kind: 'task-settled', taskId }] : [];
+    }
+    if (subtype === 'status') {
+      const { status, compact_result: result, compact_error: error } = msg as {
+        status?: string | null; compact_result?: string; compact_error?: string;
+      };
+      if (status === 'compacting') { return [{ kind: 'compaction', state: 'started' }]; }
+      if (result === 'failed') {
+        return [{ kind: 'compaction', state: 'failed', ...(error ? { error: redactSecrets(error) } : {}) }];
+      }
+      return [];
+    }
+    if (subtype === 'compact_boundary') {
+      const trigger = (msg as { compact_metadata?: { trigger?: string } }).compact_metadata?.trigger;
+      return [{
+        kind: 'compaction', state: 'done',
+        ...(trigger === 'manual' || trigger === 'auto' ? { trigger } : {}),
+      }];
     }
     if (subtype !== 'init') { return []; }
     const out: AgentEvent[] = [];
@@ -298,6 +331,8 @@ export function mapEvent(msg: unknown): AgentEvent[] {
   }
 
   if (type === 'user') {
+    const summary = compactionSummary(msg);
+    if (summary !== undefined) { return [{ kind: 'compaction', state: 'done', summary }]; }
     const out: AgentEvent[] = [];
     const parentId = parentIdOf(msg);
     for (const block of blocks(msg)) {

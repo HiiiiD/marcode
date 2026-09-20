@@ -1209,7 +1209,12 @@ export class AgentSession {
         this.drainQueued();
         return;
 
+      case 'compaction':
+        this.applyCompaction(event);
+        return;
+
       case 'turn-end':
+        this.settleCompaction();
         lifecycleDebug('session.turn-end', {
           sessionId: this._state.id,
           reason: event.reason,
@@ -1252,6 +1257,43 @@ export class AgentSession {
         }
         return;
     }
+  }
+
+  private compactionItem: Extract<TranscriptItem, { role: 'compaction' }> | undefined;
+
+  private applyCompaction(event: Extract<AgentEvent, { kind: 'compaction' }>): void {
+    if (event.state === 'started' && this.compactionItem?.state === 'running') { return; }
+    if (!this.compactionItem || (event.state === 'started' && this.compactionItem.state !== 'running')) {
+      // A boundary with no preceding start (auto-compaction) still gets a record.
+      this.closeAssistant();
+      this.compactionItem = {
+        id: nextId('c'), ts: Date.now(), role: 'compaction', state: 'running',
+      };
+      this.appendItem(this.compactionItem);
+    }
+    if (event.state === 'started') { return; }
+    const current = this.compactionItem;
+    this.compactionItem = event.state === 'failed'
+      ? { ...current, state: 'failed', ...(event.error ? { error: event.error } : {}) }
+      : {
+        ...current, state: 'done',
+        ...(event.trigger ? { trigger: event.trigger } : {}),
+        ...(event.summary ? { summary: event.summary } : {}),
+      };
+    this.replaceItem(this.compactionItem);
+    void this.scheduleFlush();
+    // Compaction moves the context ring; waiting for turn-end leaves it stale
+    // for a mid-turn auto-compaction.
+    if (event.state === 'done' && !event.summary) { void this.refreshContextPercent(); }
+  }
+
+  /** A turn that ends mid-compaction must not leave a spinner in the persisted transcript. */
+  private settleCompaction(): void {
+    const current = this.compactionItem;
+    this.compactionItem = undefined;
+    if (current?.state !== 'running') { return; }
+    this.replaceItem({ ...current, state: 'done' });
+    void this.scheduleFlush();
   }
 
   /**

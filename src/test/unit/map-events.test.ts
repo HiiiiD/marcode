@@ -404,3 +404,39 @@ suite('rate_limit_event', () => {
     assert.deepStrictEqual(mapEvent({ type: 'rate_limit_event' }), [{ kind: 'usage-stale' }]);
   });
 });
+
+suite('compaction', () => {
+  test('status compacting starts one', () => {
+    assert.deepStrictEqual(mapEvent({ type: 'system', subtype: 'status', status: 'compacting' }),
+      [{ kind: 'compaction', state: 'started' }]);
+  });
+
+  test('a failed compact_result reports the error', () => {
+    assert.deepStrictEqual(
+      mapEvent({ type: 'system', subtype: 'status', status: null, compact_result: 'failed', compact_error: 'boom' }),
+      [{ kind: 'compaction', state: 'failed', error: 'boom' }]);
+  });
+
+  test('a successful status settle maps to nothing', () => {
+    assert.deepStrictEqual(
+      mapEvent({ type: 'system', subtype: 'status', status: null, compact_result: 'success' }), []);
+  });
+
+  test('compact_boundary carries the trigger', () => {
+    assert.deepStrictEqual(
+      mapEvent({ type: 'system', subtype: 'compact_boundary', compact_metadata: { trigger: 'auto' } }),
+      [{ kind: 'compaction', state: 'done', trigger: 'auto' }]);
+  });
+
+  test('the synthetic continuation turn becomes the summary', () => {
+    const content = 'This session is being continued from a previous conversation that ran out of context. '
+      + 'The summary below covers the earlier portion.\n\nSummary:\n1. Primary Request: x';
+    assert.deepStrictEqual(
+      mapEvent({ type: 'user', message: { role: 'user', content } }),
+      [{ kind: 'compaction', state: 'done', summary: '1. Primary Request: x' }]);
+  });
+
+  test('an ordinary string user turn stays ignored', () => {
+    assert.deepStrictEqual(mapEvent({ type: 'user', message: { role: 'user', content: 'hi' } }), []);
+  });
+});
