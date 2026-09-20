@@ -644,6 +644,28 @@ suite('CodexRun', () => {
     assert.ok(resume, 'expected a thread/resume rejoin for the child thread');
   });
 
+  test('interrupt stops the rejoined subagent threads, not just the parent', async () => {
+    const { server, send, sent } = stub();
+    const run = await started(server, 'th_1');
+    send({
+      method: 'item/started',
+      params: {
+        threadId: 'th_1',
+        item: { type: 'subAgentActivity', id: 'sa_1', kind: 'started', agentThreadId: 'th_child', agentPath: 'reviewer' },
+      },
+    });
+    await tick();
+
+    void run.interrupt();
+    await tick();
+    const stopped = sent().filter((f) => f.method === 'turn/interrupt').map((f) => f.params.threadId);
+    assert.deepStrictEqual(stopped.sort(), ['th_1', 'th_child']);
+    for (const f of sent().filter((r) => r.method === 'turn/interrupt')) {
+      server.ingest(`${JSON.stringify({ id: f.id, result: {} })}\n`);
+    }
+    await tick();
+  });
+
   test('a rejoined subagent thread nests its tool activity under the spawn card', async () => {
     const { server, send } = stub();
     const run = await started(server, 'th_1');
