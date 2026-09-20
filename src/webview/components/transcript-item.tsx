@@ -2,6 +2,7 @@ import { LogInIcon } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { AttachmentChip } from './attachment-chips';
+import { CompactionCard } from './compaction-card';
 import { EditorContextChip } from './editor-context-chip';
 import { Markdown } from './markdown';
 import { PermissionCard } from './permission-card';
@@ -101,6 +102,9 @@ export function TranscriptItemView({
 
     case 'relocation':
       return <RelocationCard item={item} sessionId={sessionId} />;
+
+    case 'compaction':
+      return <CompactionCard item={item} />;
 
     case 'switch': {
       const label = item.kind === 'model' ? 'Model' : item.kind === 'effort' ? 'Effort' : 'Worktree';

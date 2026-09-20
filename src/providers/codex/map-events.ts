@@ -116,6 +116,7 @@ export function mcpServerStatusOf(
 
 function startOf(item: ThreadItem | undefined): AgentEvent[] {
   if (!item) { return []; }
+  if (item.type === 'contextCompaction') { return [{ kind: 'compaction', state: 'started' }]; }
   // The user transcript item already records an echoed image.
   if (item.type === 'imageView') { return []; }
   const tool = toToolCall(item);
@@ -133,6 +134,7 @@ function startOf(item: ThreadItem | undefined): AgentEvent[] {
  */
 function endOf(item: ThreadItem | undefined): AgentEvent[] {
   if (!item) { return []; }
+  if (item.type === 'contextCompaction') { return [{ kind: 'compaction', state: 'done' }]; }
   // The user transcript item already records an echoed image.
   if (item.type === 'imageView') { return []; }
   const tool = toToolCall(item);

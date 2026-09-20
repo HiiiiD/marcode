@@ -451,3 +451,24 @@ suite('SubagentWatch', () => {
     watch.close();
   });
 });
+
+suite('SubagentWatch compaction', () => {
+  test('root compaction part, summary message and session.compacted become started then done', async () => {
+    const { sdk } = fakeSdk([
+      { type: 'message.part.updated', properties: { sessionID: 'root', part: { type: 'compaction', id: 'p1', messageID: 'm1', auto: true } } },
+      { type: 'message.updated', properties: { info: { id: 'm2', sessionID: 'root', role: 'assistant', summary: true } } },
+      { type: 'message.part.updated', properties: { sessionID: 'root', part: { type: 'text', id: 'p2', messageID: 'm2', text: 'the summary' } } },
+      { type: 'message.part.updated', properties: { sessionID: 'root', part: { type: 'text', id: 'p3', messageID: 'other', text: 'ignored' } } },
+      { type: 'session.compacted', properties: { sessionID: 'root' } },
+    ]);
+    const watch = new SubagentWatch({ connect: async () => sdk });
+    watch.open('http://x', 't');
+    watch.setRootSessionId('root');
+    const out = drain(watch.events);
+    await settle();
+    assert.deepEqual(out, [
+      { kind: 'compaction', state: 'started' },
+      { kind: 'compaction', state: 'done', trigger: 'auto', summary: 'the summary' },
+    ]);
+  });
+});

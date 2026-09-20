@@ -429,3 +429,11 @@ suite('codex map-events canonical tool', () => {
       { kind: 'text', text: 'T\nhttps://x.dev' });
   });
 });
+
+suite('codex compaction', () => {
+  test('contextCompaction item start and completion map to compaction events', () => {
+    const item = { type: 'contextCompaction', id: 'c1' };
+    assert.deepStrictEqual(mapNotification('item/started', { item }), [{ kind: 'compaction', state: 'started' }]);
+    assert.deepStrictEqual(mapNotification('item/completed', { item }), [{ kind: 'compaction', state: 'done' }]);
+  });
+});

@@ -156,6 +156,8 @@ export type ThreadItem =
   | { type: 'webSearch'; id: string; query?: string; results?: unknown[] }
   | { type: 'dynamicToolCall'; id: string; tool?: string; status?: string }
   | { type: 'plan'; id: string; text: string }
+  // Carries no summary text — Codex keeps the replacement history to itself.
+  | { type: 'contextCompaction'; id: string }
   // A subagent Codex delegated a turn to — `agentThreadId` names its own
   // thread (its tool calls arrive there, not nested here); `kind` is a
   // lifecycle marker, not a status: `'started'` opens the card,

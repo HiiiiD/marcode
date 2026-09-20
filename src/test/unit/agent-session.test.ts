@@ -1706,3 +1706,38 @@ suite('AgentSession activityLabel', () => {
     await session.dispose();
   });
 });
+
+suite('AgentSession compaction', () => {
+  test('one card carries the summary and text streamed mid-compaction is dropped', async () => {
+    const { session } = await makeSession(() => [
+      { kind: 'compaction', state: 'started' },
+      { kind: 'text', delta: 'summary streamed as chat' },
+      { kind: 'compaction', state: 'done', trigger: 'manual', summary: 'the summary' },
+      { kind: 'turn-end', reason: 'done' },
+    ]);
+    session.send('/compact');
+    await settle();
+
+    const snap = await session.snapshot();
+    assert.strictEqual(snap.items.filter((i) => i.role === 'assistant').length, 0);
+    const cards = snap.items.filter((i) => i.role === 'compaction');
+    assert.strictEqual(cards.length, 1);
+    assert.deepStrictEqual(
+      { state: (cards[0] as { state: string }).state, summary: (cards[0] as { summary?: string }).summary },
+      { state: 'done', summary: 'the summary' },
+    );
+    await session.dispose();
+  });
+
+  test('a turn ending mid-compaction settles the card instead of leaving it running', async () => {
+    const { session } = await makeSession(() => [
+      { kind: 'compaction', state: 'started' },
+      { kind: 'turn-end', reason: 'done' },
+    ]);
+    session.send('/compact');
+    await settle();
+    const card = (await session.snapshot()).items.find((i) => i.role === 'compaction');
+    assert.strictEqual((card as { state: string }).state, 'done');
+    await session.dispose();
+  });
+});

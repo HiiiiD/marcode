@@ -290,6 +290,14 @@ export type AgentEvent =
   | { kind: 'request-cancelled'; id: string }
   | { kind: 'turn-end'; reason: 'done' | 'interrupted' | 'error'; error?: string }
   /**
+   * Context compaction, manual or automatic. `done` may arrive twice: once
+   * when the backend marks the boundary, once more carrying the summary it
+   * wrote — the host merges the second into the same item.
+   */
+  | { kind: 'compaction'; state: 'started' }
+  | { kind: 'compaction'; state: 'done'; trigger?: 'manual' | 'auto'; summary?: string }
+  | { kind: 'compaction'; state: 'failed'; error?: string }
+  /**
    * A running cumulative total, not a per-turn delta — each provider adapter
    * accumulates its own native signal (a per-turn delta for Claude and ACP,
    * an already-cumulative per-thread snapshot for Codex) before emitting
