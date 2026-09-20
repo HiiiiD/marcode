@@ -969,3 +969,53 @@ suite('SelfControlMcpServer session context', () => {
     }
   });
 });
+
+suite('SelfControlMcpServer marcode__list_models', () => {
+  const catalog = () => [
+    {
+      id: 'claude', displayName: 'Claude',
+      models: [
+        { id: 'sonnet', displayName: 'Sonnet', resolvedModel: 'claude-sonnet-5', effort: { levels: ['low', 'high'], default: 'high' } },
+        { id: 'opus', displayName: 'Opus', resolvedModel: 'claude-opus-5' },
+      ],
+      permissionModes: [{ id: 'default' }],
+    },
+    { id: 'codex', displayName: 'Codex', models: [{ id: 'gpt-5-codex', displayName: 'GPT-5 Codex' }], permissionModes: [{ id: 'default' }] },
+  ];
+  const run = async (args: Record<string, unknown>) => {
+    const server = new SelfControlMcpServer(fakeManager({ catalog }));
+    const config = await server.start();
+    try {
+      const res = await callTool(config, 'marcode__list_models', args);
+      const text = res.content[0].text;
+      return { isError: res.isError, data: res.isError ? undefined : JSON.parse(text) };
+    } finally { await server.dispose(); }
+  };
+
+  test('no query lists every provider with id and name, no score', async () => {
+    const { data } = await run({});
+    assert.deepStrictEqual(data.map((p: { provider: string }) => p.provider), ['claude', 'codex']);
+    assert.deepStrictEqual(data[0].models[0], {
+      id: 'sonnet', name: 'Sonnet', resolvedModel: 'claude-sonnet-5', efforts: ['low', 'high'],
+    });
+  });
+
+  test('provider filter narrows the list', async () => {
+    const { data } = await run({ provider: 'codex' });
+    assert.strictEqual(data.length, 1);
+    assert.strictEqual(data[0].provider, 'codex');
+  });
+
+  test('unknown provider is an error', async () => {
+    const { isError } = await run({ provider: 'nope' });
+    assert.strictEqual(isError, true);
+  });
+
+  test('query returns scored, ranked lookalikes across providers', async () => {
+    const { data } = await run({ query: 'sonet' });
+    assert.strictEqual(data[0].provider, 'claude');
+    assert.strictEqual(data[0].models[0].id, 'sonnet');
+    assert.strictEqual(typeof data[0].models[0].score, 'number');
+    assert.strictEqual(data.some((p: { provider: string }) => p.provider === 'codex'), false);
+  });
+});

@@ -7,6 +7,7 @@ import { z } from 'zod';
 import type { MemoryStore } from '../memory/types';
 import type { PermissionMode, TranscriptItem } from '../protocol/messages';
 import type { EffortLevel, SelfControlMcpConfig } from '../providers/types';
+import { rankByQuery } from '../shared/fuzzy-score';
 
 /**
  * The slice of `SessionManager` this server needs. Declared structurally, not
@@ -24,12 +25,13 @@ type LiveSessionLike = {
 export interface SessionManagerLike {
   catalog(): {
     id: string;
+    displayName?: string;
     // `resolvedModel` mirrors `ModelInfo`'s own field — see
     // `findModel()` in shared/model-catalog.ts. An alias row (`sonnet` ->
     // `claude-sonnet-5`) must still match a session that persisted the
     // canonical id, or inheriting that session's model here would reject a
     // model `sessionManager.create()` resolves just fine.
-    models: { id: string; resolvedModel?: string; effort?: { levels: string[]; default: string } }[];
+    models: { id: string; displayName?: string; resolvedModel?: string; effort?: { levels: string[]; default: string } }[];
     permissionModes: { id: string }[];
   }[];
   create(
@@ -85,7 +87,7 @@ function randomPort(): number {
 /**
  * One loopback HTTP MCP server, shared by every session this window runs —
  * see the design doc for why one server beats a per-backend mechanism.
- * Exposes exactly one tool, `marcode__spawn_session`. `start()`/`dispose()`
+ * Exposes the `marcode__*` tools (spawn, list, recall, ...). `start()`/`dispose()`
  * bracket its lifetime; `activate()`/`deactivate()` are the only real caller.
  */
 export class SelfControlMcpServer {
@@ -121,7 +123,7 @@ export class SelfControlMcpServer {
         + 'OpenCode) and a different working directory. These marcode__* tools are how you interact '
         + 'with the panel itself, not with files or the user directly: marcode__list_sessions to see '
         + 'who else is running, marcode__send_message to message another session, marcode__spawn_session '
-        + 'to start a new one, marcode__close_session to close one (e.g. a worker you spawned once it '
+        + 'to start a new one (marcode__list_models finds the provider/model ids it accepts), marcode__close_session to close one (e.g. a worker you spawned once it '
         + 'has reported back), and marcode__recall/marcode__recall_fetch to search what past sessions '
         + 'already figured out. Check marcode__list_sessions whenever coordinating with, or delegating '
         + 'to, another session would help — do not assume you are alone just because nothing mentioned '
@@ -133,6 +135,50 @@ export class SelfControlMcpServer {
       if (!sid) { return undefined; }
       return this.sessionManager.summaries().find((s) => s.id === sid && !s.archived);
     };
+
+    mcp.registerTool(
+      'marcode__list_models',
+      {
+        title: 'List available models per provider',
+        description: 'Marcode-specific: lists, per provider, the model ids marcode__spawn_session accepts, '
+          + 'with each model\'s common name and effort levels. Pass `query` (an id, a name, or a '
+          + 'misspelling like "sonet 5") to get only lookalikes across providers, each with a 0-1 '
+          + '`score`, best first. Optional `provider` restricts the search to one provider.',
+        inputSchema: {
+          provider: z.string().optional().describe('A provider id from this window\'s catalog.'),
+          query: z.string().optional().describe('Fuzzy search over model id and name.'),
+        },
+      },
+      async ({ provider, query }) => {
+        let entries = this.sessionManager.catalog();
+        if (provider !== undefined) {
+          entries = entries.filter((p) => p.id === provider);
+          if (entries.length === 0) {
+            return { isError: true, content: [{ type: 'text', text: `Unknown or unavailable provider: ${provider}` }] };
+          }
+        }
+        const q = query?.trim();
+        const rowsOf = (p: typeof entries[number]) => p.models.map((m) => ({
+          id: m.id,
+          name: m.displayName ?? m.id,
+          ...(m.resolvedModel ? { resolvedModel: m.resolvedModel } : {}),
+          ...(m.effort ? { efforts: m.effort.levels } : {}),
+        }));
+        if (!q) {
+          const listed = entries.map((p) => ({ provider: p.id, models: rowsOf(p) }));
+          return { content: [{ type: 'text', text: JSON.stringify(listed) }] };
+        }
+        const out = entries
+          .map((p) => ({
+            provider: p.id,
+            models: rankByQuery(q, rowsOf(p), (m) => [m.id, m.name, m.resolvedModel])
+              .map((r) => ({ ...r.item, score: Math.round(r.score * 1000) / 1000 })),
+          }))
+          .filter((p) => p.models.length > 0)
+          .sort((a, b) => b.models[0].score - a.models[0].score);
+        return { content: [{ type: 'text', text: JSON.stringify(out) }] };
+      },
+    );
 
     mcp.registerTool(
       'marcode__spawn_session',
@@ -151,7 +197,7 @@ export class SelfControlMcpServer {
           + 'a pane. Returns the new session\'s id.',
         inputSchema: {
           provider: z.string().optional().describe('A provider id from this window\'s catalog. Omit to inherit the caller\'s provider.'),
-          model: z.string().optional().describe('A model id the chosen provider offers. Omit to inherit the caller\'s model.'),
+          model: z.string().optional().describe('A model id the chosen provider offers (see marcode__list_models). Omit to inherit the caller\'s model.'),
           effort: z.enum(['low', 'medium', 'high', 'xhigh', 'max', 'ultra']).optional()
             .describe('The model effort level. Omit to inherit the caller\'s effort.'),
           mode: z.string().optional().describe('A permission mode id the chosen provider offers. Omit to inherit the caller\'s mode.'),
