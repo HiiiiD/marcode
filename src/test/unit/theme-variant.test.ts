@@ -6,7 +6,10 @@ import * as path from 'path';
 const root = path.resolve(__dirname, '../../..');
 
 suite('dark variant', () => {
-  test('dark: utilities key off the VS Code body class, not prefers-color-scheme', () => {
+  // A real full build (every bundle, each spawning the Tailwind CLI): it sits
+  // near mocha's 2s default on a fast machine and over it on a CI runner.
+  test('dark: utilities key off the VS Code body class, not prefers-color-scheme', function () {
+    this.timeout(30000);
     execFileSync('node', ['esbuild.js'], { cwd: root, stdio: 'pipe' });
     const css = readFileSync(path.join(root, 'dist/webview.css'), 'utf8');
 
