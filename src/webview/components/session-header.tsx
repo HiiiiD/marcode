@@ -18,6 +18,7 @@ import { BringBackDialog } from "./bring-back-dialog";
 import { removeSession } from "./layout-tree";
 import { isUnhealthy, worstState } from "./mcp-status";
 import { usePaneDrag } from "./pane-drag-context";
+import { PinButton } from "./pin-button";
 import { StatusBadge } from "./status-badge";
 
 interface SessionHeaderProps {
@@ -282,6 +283,7 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
       {canBringBack && (
         <BringBackDialog pane={pane} open={bringBackOpen} onOpenChange={setBringBackOpen} />
       )}
+      <PinButton session={s} accessibleTitle={accessibleTitle} />
       {/*
         Grab handle for drag-to-split: its own control rather than making the
         whole header draggable, since the header also hosts click targets
