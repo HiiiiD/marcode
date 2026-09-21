@@ -11,6 +11,7 @@ import {
 import { buildSeed } from './replay';
 import { findPayload, type ResolvedBlock } from './session-refs';
 import { TRANSCRIPT_VERSION, type StoredIndex, type TranscriptStore } from './transcript-store';
+import { digestSession } from '../memory/session-digest';
 import type { MemoryStore } from '../memory/types';
 import type {
   AgentProvider, EffortLevel, Invocable, ModelInfo, UpdateInfo, UsageMirror, UsageWindow,
@@ -1802,6 +1803,34 @@ export class SessionManager implements SessionSink {
     } catch (err) {
       console.error('[mar-code] memory indexing failed', err);
     }
+  }
+
+  private summaryRun: Promise<void> | undefined;
+
+  /** Concurrent callers (sidebar + tab) share one run. */
+  ensureSummaries(): Promise<void> {
+    this.summaryRun ??= this.runSummaries().finally(() => { this.summaryRun = undefined; });
+    return this.summaryRun;
+  }
+
+  // Writes `summary` without touching `updatedAt`: that field is both the sort key and this cache's key.
+  private async runSummaries(): Promise<void> {
+    const stale = [...this.meta.values()].filter(
+      (s) => s.title !== 'Untitled' && s.summary?.forUpdatedAt !== s.updatedAt,
+    );
+    let touched = false;
+    for (const state of stale) {
+      if (this.disposed) { return; }
+      const forUpdatedAt = state.updatedAt;
+      try {
+        const { items } = await this.store.tail(state.id, Number.MAX_SAFE_INTEGER);
+        state.summary = { text: digestSession(items), forUpdatedAt };
+        touched = true;
+      } catch (err) {
+        console.error('[mar-code] summary failed for', state.id, err);
+      }
+    }
+    if (touched && !this.disposed) { this.changed(); }
   }
 
   async remove(id: SessionId): Promise<void> {

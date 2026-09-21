@@ -646,8 +646,8 @@ export class MessageRouter {
         this.manager.setPinned(msg.id, msg.pinned);
         return;
 
-      // Replaced by the real call in the summaries task.
       case 'request-history-summaries':
+        await this.manager.ensureSummaries();
         return;
 
       // PanelViewProvider intercepts this; a stray one is a no-op, not malformed.

@@ -6,6 +6,7 @@ function routerWith() {
   const calls: string[] = [];
   const manager = {
     setPinned: (id: string, pinned: boolean) => { calls.push(`setPinned:${id}:${pinned}`); },
+    ensureSummaries: async () => { calls.push('ensureSummaries'); },
   } as unknown as ConstructorParameters<typeof MessageRouter>[0];
   const editor: EditorContextHost = {
     current: () => null,
@@ -27,6 +28,12 @@ suite('history routing', () => {
     const { router, calls } = routerWith();
     await router.handle({ t: 'set-pinned', id: 's1', pinned: true });
     assert.deepStrictEqual(calls, ['setPinned:s1:true']);
+  });
+
+  test('request-history-summaries reaches the manager', async () => {
+    const { router, calls } = routerWith();
+    await router.handle({ t: 'request-history-summaries' });
+    assert.deepStrictEqual(calls, ['ensureSummaries']);
   });
 
   test('open-history is a silent no-op in the router', async () => {
