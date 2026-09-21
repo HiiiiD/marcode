@@ -18,7 +18,7 @@ export function HistoryToolbar({ query, onChange }: Props) {
         placeholder="Filter by title, model or summary"
         value={query.text}
         onChange={(e) => onChange({ ...query, text: e.target.value })}
-        className="max-w-sm min-w-48 flex-1"
+        className="h-7 max-w-sm min-w-48 flex-1 text-xs md:text-xs"
       />
       <Tabs
         value={query.status}
