@@ -39,9 +39,11 @@ with no dates, model or summary. Add a history browser and a pin flag so a sessi
 
 ## Sidebar
 
-- Picker gets a **Pinned** group listing all pinned sessions (open or not), removed from the
-  Live/Archived groups so no row appears twice.
-- Pin toggle on `SessionRow`; "History…" menu item opens the tab.
+- The picker's roster dropdown (layers icon) is replaced by a History button that opens the tab
+  and keeps the "N needs you" count. Toggling panes happens via the tab's Open button and each
+  pane's hide control. Archive and delete have no UI for now (the dropdown's `SessionRow` is
+  removed; recoverable from git). Amended 2026-09-21 at the user's request.
+- A pin toggle sits in each pane's session header, before the drag grip (`PinButton`).
 
 ## Testing
 

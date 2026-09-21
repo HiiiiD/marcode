@@ -19,214 +19,34 @@ function hydrateAOpen() {
 }
 
 suite('SessionPicker', () => {
-  test('the roster trigger says what it does', () => {
+  test('the trigger opens the history tab instead of a roster menu', async () => {
     renderApp();
     hydrateAOpen();
 
-    screen.getByRole('button', { name: /manage which sessions are shown/i });
+    await userEvent.click(screen.getByRole('button', { name: /Browse session history/ }));
+
+    assert.strictEqual(posted().some((m) => m.t === 'open-history'), true);
+    assert.strictEqual(screen.queryByRole('menu') === null, true);
   });
 
-  test('checking a closed session posts set-layout and set-visible for both', async () => {
+  test('the history button carries the count of sessions that need the user', () => {
     renderApp();
     hydrateAOpen();
+    sendFromHost({ t: 'session-status', id: 'a', status: 'awaiting-approval' });
 
-    await userEvent.click(screen.getByRole('button', { name: /manage which sessions are shown/i }));
-    await userEvent.click(await screen.findByText('Session b'));
-
-    const layouts = posted().filter((m) => m.t === 'set-layout');
-    assert.deepStrictEqual(layouts.at(-1), {
-      t: 'set-layout',
-      layout: {
-        presets: [],
-        root: {
-          kind: 'split', orientation: 'vertical', size: 100,
-          children: [{ kind: 'leaf', sessionId: 'a', size: 50 }, { kind: 'leaf', sessionId: 'b', size: 50 }],
-        },
-      },
-    });
-
-    const visible = posted().filter((m) => m.t === 'set-visible');
-    assert.deepStrictEqual(visible.at(-1), { t: 'set-visible', sessionIds: ['a', 'b'] });
+    const button = screen.getByRole('button', { name: /Browse session history/ });
+    assert.strictEqual((button.textContent ?? '').includes('1 needs you'), true);
   });
 
-  test('each session appears exactly once in the roster', async () => {
+  test('the working-trees control appears once a sweep names a tree', () => {
     renderApp();
     hydrateAOpen();
-
-    await userEvent.click(screen.getByRole('button', { name: /manage which sessions are shown/i }));
-    assert.strictEqual(
-      (await screen.findAllByText('Session b')).length, 1,
-      'the roster listed every session twice: once to toggle, once to delete',
-    );
-  });
-
-  test('archive is an explicit, labelled action in the roster row', async () => {
-    renderApp();
-    hydrateAOpen();
-
-    await userEvent.click(screen.getByRole('button', { name: /manage which sessions are shown/i }));
-    await userEvent.click(await screen.findByLabelText('More actions for Session b'));
-    await userEvent.click(await screen.findByRole('menuitem', { name: 'Archive Session b' }));
-
-    assert.deepStrictEqual(posted().at(-1), { t: 'close-session', id: 'b' });
-  });
-
-  test('delete is behind a per-row confirm and only fires on the second step', async () => {
-    renderApp();
-    hydrateAOpen();
-
-    await userEvent.click(screen.getByRole('button', { name: /manage which sessions are shown/i }));
-    await userEvent.click(await screen.findByLabelText('More actions for Session b'));
-    await userEvent.click(await screen.findByLabelText('Delete session Session b'));
-
-    assert.ok(
-      !posted().some((m) => m.t === 'delete-session'),
-      'opening the confirm must not delete anything',
-    );
-
-    await userEvent.click(await screen.findByRole('menuitem', { name: 'Delete Session b' }));
-    assert.deepStrictEqual(posted().at(-1), { t: 'delete-session', id: 'b' });
-  });
-
-  test('the confirm offers a way out', async () => {
-    renderApp();
-    hydrateAOpen();
-
-    await userEvent.click(screen.getByRole('button', { name: /manage which sessions are shown/i }));
-    await userEvent.click(await screen.findByLabelText('More actions for Session b'));
-    await userEvent.click(await screen.findByLabelText('Delete session Session b'));
-    await userEvent.click(await screen.findByRole('menuitem', { name: 'Keep it' }));
-
-    assert.ok(!posted().some((m) => m.t === 'delete-session'));
-    // Same async commit as the `findBy*` calls above, but on the way out:
-    // `Menu.Positioner` unmounts its `Popup` after an exit pass too, so the
-    // submenu item can still be in the DOM for the tick right after the
-    // click. A sync `queryByRole` here raced that unmount; `waitFor` polls
-    // until it actually clears.
-    await waitFor(() => {
-      assert.strictEqual(
-        screen.queryByRole('menuitem', { name: /Delete Session/ }), null,
-        'activating "Keep it" must close the submenu, not just decline to delete',
-      );
-    });
-  });
-
-  test('opening the actions submenu by keyboard lands on the safe item, not delete', async () => {
-    renderApp();
-    hydrateAOpen();
-
-    await userEvent.click(screen.getByRole('button', { name: /manage which sessions are shown/i }));
-    // Same async `Menu.Positioner` commit as the menu-open races fixed
-    // elsewhere in this file (see the "the confirm offers a way out" test):
-    // the roving-focus items this keyboard sequence walks aren't in the DOM
-    // until that pass resolves, so it has to be awaited before the first key.
-    await screen.findByRole('menu');
-    // a checkbox, a actions trigger, b checkbox, b actions trigger.
-    await userEvent.keyboard('{ArrowDown}{ArrowDown}{ArrowDown}{ArrowDown}');
-    assert.strictEqual(
-      document.activeElement?.getAttribute('aria-label'), 'More actions for Session b',
-      'roving focus must land on the submenu trigger without a mouse',
-    );
-
-    await userEvent.keyboard('{ArrowRight}');
-    // `.textContent`, never the node itself — a mismatched raw-node compare
-    // hands jsdom's element (and everything it reaches: parents, the fiber
-    // tree, the whole document) to `assert`'s `util.inspect` on failure. See
-    // the DOM-null-assert rule in the project's CLAUDE.md.
-    await screen.findByRole('menuitem', { name: 'Archive Session b' });
-    assert.strictEqual(
-      document.activeElement?.textContent, 'Archive Session b',
-      'ArrowRight must focus "Archive" first — it is the first, non-nested item in the actions menu',
-    );
-
-    await userEvent.keyboard('{ArrowDown}');
-    assert.strictEqual(
-      document.activeElement?.textContent, 'Pin Session b',
-      'Pin sits between Archive and Delete, so it is the second stop',
-    );
-
-    await userEvent.keyboard('{ArrowDown}');
-    await screen.findByLabelText('Delete session Session b');
-    assert.strictEqual(
-      document.activeElement?.getAttribute('aria-label'), 'Delete session Session b',
-      'the next roving-focus stop after Pin is the nested delete trigger, not a menu item that deletes',
-    );
-
-    await userEvent.keyboard('{ArrowRight}');
-    await screen.findByRole('menuitem', { name: 'Keep it' });
-    assert.strictEqual(
-      document.activeElement?.textContent, 'Keep it',
-      'ArrowRight must focus "Keep it" first — Delete must never be the default '
-        + 'focus a keyboard user lands on when opening the delete confirm, even one level '
-        + 'deeper than before',
-    );
-
-    // Enter here must be a no-op for deletion: it activates the highlighted
-    // "Keep it" item, not "Delete".
-    await userEvent.keyboard('{Enter}');
-    assert.ok(
-      !posted().some((m) => m.t === 'delete-session'),
-      'ArrowRight then Enter is the natural "open and activate" gesture and must not delete',
-    );
-  });
-
-  test('reaching delete by keyboard requires a further deliberate step', async () => {
-    renderApp();
-    hydrateAOpen();
-
-    await userEvent.click(screen.getByRole('button', { name: /manage which sessions are shown/i }));
-    // Same async `Menu.Positioner` commit race as above — the roving-focus
-    // targets below aren't mounted until this pass resolves.
-    await screen.findByRole('menu');
-    await userEvent.keyboard('{ArrowDown}{ArrowDown}{ArrowDown}{ArrowDown}');
-    await userEvent.keyboard('{ArrowRight}');
-    await screen.findByRole('menuitem', { name: 'Archive Session b' });
-    await userEvent.keyboard('{ArrowDown}{ArrowDown}{ArrowRight}');
-    await screen.findByRole('menuitem', { name: 'Keep it' });
-
-    await userEvent.keyboard('{ArrowDown}');
-    await screen.findByRole('menuitem', { name: 'Delete Session b' });
-    // `.textContent`, not the node itself — see the same rule applied above.
-    assert.strictEqual(document.activeElement?.textContent, 'Delete Session b');
-
-    await userEvent.keyboard('{Enter}');
-    assert.deepStrictEqual(posted().at(-1), { t: 'delete-session', id: 'b' });
-  });
-
-  test('archived sessions are grouped, not marked with a word', async () => {
-    renderApp();
     sendFromHost({
-      t: 'hydrate',
-      sessions: [summary('a'), summary('b', { archived: true })],
-      layout: layoutOf(['a']),
-      snapshots: [snapshot('a')],
-      catalog: catalog(),
-      unavailable: [],
-      usage: {},
+      t: 'stale-trees',
+      trees: [{ path: '/repo/trees/old-thing', branch: 'old-thing', clean: true }],
     });
 
-    await userEvent.click(screen.getByRole('button', { name: /manage which sessions are shown/i }));
-    // Every other assertion in this file that follows a menu-opening click
-    // uses `findBy*` (see `checking a closed session...`, `archive is an
-    // explicit...`, etc.), not `getBy*`: Base UI's `Menu.Positioner` commits
-    // its `Popup` after an async anchor-positioning pass (floating-ui's
-    // `computePosition` resolves via microtask), so the archived group can
-    // still be absent from the DOM in the same tick `userEvent.click`
-    // resolves in. `getByText` here was the one query in the suite that
-    // skipped that wait, which is exactly why only this test flaked.
-    await screen.findByText('Archived (1)');
-  });
-
-  test('toggling visibility still posts set-layout and set-visible', async () => {
-    renderApp();
-    hydrateAOpen();
-
-    await userEvent.click(screen.getByRole('button', { name: /manage which sessions are shown/i }));
-    await userEvent.click(await screen.findByRole('menuitemcheckbox', { name: /Session b/ }));
-
-    assert.deepStrictEqual(posted().filter((m) => m.t === 'set-visible').at(-1), {
-      t: 'set-visible', sessionIds: ['a', 'b'],
-    });
+    screen.getByRole('button', { name: /^Working trees \(1\)/ });
   });
 
   test('the orientation toggle posts the flipped layout', async () => {
@@ -320,23 +140,6 @@ suite('SessionPicker', () => {
     );
   });
 
-  // The trigger names one concept — what is in the split. Working trees are
-  // a fourth, and the destructive one; they get their own control in the row
-  // rather than an ungrouped item filed under a word about layout.
-  test('the roster menu does not carry working-tree management', async () => {
-    renderApp();
-    hydrateAOpen();
-    sendFromHost({
-      t: 'stale-trees',
-      trees: [{ path: '/repo/trees/old-thing', branch: 'old-thing', clean: true }],
-    });
-
-    screen.getByRole('button', { name: /^Working trees \(1\)/ });
-    await userEvent.click(screen.getByRole('button', { name: /manage which sessions are shown/i }));
-    await screen.findByRole('menu');
-    assert.strictEqual(screen.queryByRole('menuitem', { name: /Working trees/ }) === null, true);
-  });
-
   test('the picker asks the host to open the review tab', async () => {
     renderApp();
     sendFromHost({
@@ -359,71 +162,6 @@ suite('SessionPicker', () => {
     await userEvent.click(screen.getByRole('button', { name: /Open the fleet view/ }));
 
     assert.strictEqual(posted().some((m) => m.t === 'open-fleet'), true);
-  });
-
-  test('the picker asks the host to open the history tab', async () => {
-    renderApp();
-    sendFromHost({
-      t: 'hydrate', sessions: [], layout: layoutOf([]),
-      snapshots: [], catalog: catalog(), unavailable: [], usage: {},
-    });
-
-    await userEvent.click(screen.getByRole('button', { name: /Browse session history/ }));
-
-    assert.strictEqual(posted().some((m) => m.t === 'open-history'), true);
-  });
-
-  test('pinned sessions get their own group and leave the others', async () => {
-    renderApp();
-    sendFromHost({
-      t: 'hydrate',
-      sessions: [
-        summary('a'),
-        summary('b', { archived: true, pinned: true }),
-        summary('c', { pinned: true }),
-        summary('d', { archived: true }),
-      ],
-      // No open panes: an open pane's header repeats its title.
-      layout: layoutOf([]),
-      snapshots: [],
-      catalog: catalog(),
-      unavailable: [],
-      usage: {},
-    });
-
-    await userEvent.click(screen.getByRole('button', { name: /manage which sessions are shown/i }));
-    await screen.findByText('Pinned (2)');
-    await screen.findByText('Archived (1)');
-    for (const title of ['Session a', 'Session b', 'Session c', 'Session d']) {
-      assert.strictEqual((await screen.findAllByText(title)).length, 1, `${title} listed once`);
-    }
-  });
-
-  test('the row actions offer Pin, and Unpin for a pinned session', async () => {
-    renderApp();
-    sendFromHost({
-      t: 'hydrate',
-      sessions: [summary('a'), summary('b', { pinned: true })],
-      layout: layoutOf(['a']),
-      snapshots: [snapshot('a')],
-      catalog: catalog(),
-      unavailable: [],
-      usage: {},
-    });
-
-    await userEvent.click(screen.getByRole('button', { name: /manage which sessions are shown/i }));
-    await userEvent.click(await screen.findByLabelText('More actions for Session a'));
-    await userEvent.click(await screen.findByRole('menuitem', { name: 'Pin Session a' }));
-    assert.deepStrictEqual(posted().filter((m) => m.t === 'set-pinned').at(-1), {
-      t: 'set-pinned', id: 'a', pinned: true,
-    });
-
-    await userEvent.click(screen.getByRole('button', { name: /manage which sessions are shown/i }));
-    await userEvent.click(await screen.findByLabelText('More actions for Session b'));
-    await userEvent.click(await screen.findByRole('menuitem', { name: 'Unpin Session b' }));
-    assert.deepStrictEqual(posted().filter((m) => m.t === 'set-pinned').at(-1), {
-      t: 'set-pinned', id: 'b', pinned: false,
-    });
   });
 
   test('the empty state offers the way out', () => {
