@@ -112,6 +112,7 @@ export function App() {
               narrow={narrow}
               onReview={() => post({ t: 'open-review' })}
               onFleet={() => post({ t: 'open-fleet' })}
+              onHistory={() => post({ t: 'open-history' })}
             />
             <AgentsMdNudgeCard />
             <div className="min-h-0 flex-1">

@@ -292,24 +292,17 @@ suite('PaneGroup', () => {
     );
   });
 
-  test('deleting the session behind a focused pane does not drop focus to <body>', async () => {
+  test('a session removed by the host behind a focused pane does not drop focus to <body>', () => {
     renderApp();
     hydrate(['a']);
 
-    // Establishes that focus was live inside the pane the deletion is about
-    // to remove — the same starting point as the header-hide tests above.
+    // Establishes that focus was live inside the pane the removal is about
+    // to take out — the same starting point as the header-hide tests above.
     screen.getByLabelText('Hide Session a from the split').focus();
 
-    await userEvent.click(screen.getByRole('button', { name: /manage which sessions are shown/i }));
-    await userEvent.click(await screen.findByLabelText('More actions for Session a'));
-    await userEvent.click(await screen.findByLabelText('Delete session Session a'));
-    await userEvent.click(await screen.findByRole('menuitem', { name: 'Delete Session a' }));
-
-    // `delete-session` alone doesn't touch the roster locally — only the
-    // host's echo does (see pane-layout.ts's `reconcilePaneLayout` doc
-    // comment) — so this simulates that echo, which is what actually drops
-    // 'a' from the roster and, via App's reconcile effect one render later,
-    // from the layout.
+    // Only the host's `sessions-changed` echo drops 'a' from the roster and,
+    // via App's reconcile effect one render later, from the layout (see
+    // pane-layout.ts's `reconcilePaneLayout`).
     sendFromHost({ t: 'sessions-changed', sessions: [] });
 
     assert.strictEqual(screen.queryByLabelText('Session: Session a'), null);

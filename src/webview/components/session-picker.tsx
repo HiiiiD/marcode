@@ -1,22 +1,14 @@
 import {
-  ColumnsIcon, FolderGit2Icon, GitCompareIcon, LayersIcon, LayoutGridIcon, RowsIcon,
+  ColumnsIcon, FolderGit2Icon, GitCompareIcon, HistoryIcon, LayoutGridIcon, RowsIcon,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
-import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem,
-  DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { leafSessionIds, removeSession } from './layout-tree';
 import { LayoutPresetsMenu } from './layout-presets-menu';
-import { appendAtTop } from './pane-layout';
 import { SessionCreateMenu } from './session-create-menu';
-import { SessionRow } from './session-row';
 import { StaleTreesDialog } from './stale-trees';
 import { useStore } from '../store';
 import { statusView } from '../status';
-import type { SessionId } from '../../protocol/messages';
 
 interface SessionPickerProps {
   /** Whether the panel is too narrow to split side by side. Measured once,
@@ -24,25 +16,16 @@ interface SessionPickerProps {
   narrow: boolean;
   onReview: () => void;
   onFleet: () => void;
+  onHistory: () => void;
 }
 
-export function SessionPicker({ narrow, onReview, onFleet }: SessionPickerProps) {
+const historyLabel = 'Browse session history in an editor tab';
+
+export function SessionPicker({ narrow, onReview, onFleet, onHistory }: SessionPickerProps) {
   const { state, post } = useStore();
   const root = state.layout.root;
-  const open = new Set(leafSessionIds(root));
   const horizontal = root.kind === 'split' && root.orientation === 'horizontal';
   const needing = state.sessions.filter((s) => statusView(s.status).needsUser).length;
-
-  // Shares `reconcilePaneLayout`'s own append rule via `appendAtTop`
-  // (pane-layout.ts) rather than duplicating it here.
-  const toggle = (id: SessionId) => {
-    const next = open.has(id) ? removeSession(root, id) : appendAtTop(root, id);
-    post({ t: 'set-layout', layout: { ...state.layout, root: next } });
-    post({ t: 'set-visible', sessionIds: leafSessionIds(next) });
-  };
-
-  const live = state.sessions.filter((s) => !s.archived);
-  const archived = state.sessions.filter((s) => s.archived);
 
   // One string for both `aria-label` and the tooltip below — a sighted
   // hover and a screen reader hear the same thing, rather than the tooltip
@@ -65,84 +48,30 @@ export function SessionPicker({ narrow, onReview, onFleet }: SessionPickerProps)
 
   return (
     <div className="flex items-center justify-between gap-2 border-b border-border px-2 py-1 text-xs">
-      <DropdownMenu>
-        <Tooltip>
+      <Tooltip>
         <TooltipTrigger
           render={(
-            <DropdownMenuTrigger
-              // `size="sm"` rather than a fixed `icon-sm`: this trigger is
-              // icon-only most of the time but still has to make room for
-              // the "N needs you" badge, and `icon-sm` is a fixed square
-              // that clips overflow text (see the same choice on the MCP
-              // trigger below). `sm`'s auto width keeps the icon-only state
-              // close to the row's other icon buttons and only widens when
-              // it actually has something to say.
-              render={<Button variant="outline" size="sm" className="min-w-0 shrink-0" />}
+            <Button
+              variant="outline"
+              size="sm"
+              className="min-w-0 shrink-0"
+              aria-label={historyLabel}
+              onClick={onHistory}
             />
           )}
         >
-          {/*
-            A distinct glyph, not `ColumnsIcon` — that icon is reserved for
-            the orientation toggle a few controls to the right (`Columns`
-            for side-by-side, `Rows` for stacked). Reusing it here for an
-            unrelated concept let two controls in the same row share one
-            icon.
-          */}
-          <LayersIcon aria-hidden />
-          {/*
-            No visible label beyond the icon in the common case: the roster
-            of open panes is visible in the split itself, so restating it
-            here as "X of Y in split" only repeated what the panel already
-            shows. What isn't otherwise visible is whether anything here
-            needs the user — that stays, and is the only thing that widens
-            this control.
-          */}
-          <span className="sr-only">Manage which sessions are shown</span>
+          <HistoryIcon aria-hidden />
+          {/* The count survives the move off the old roster trigger: whether
+              anything needs the user is the one fact this row must keep
+              surfacing, and it is what widens the control. */}
           {needing > 0 && (
             <span className="text-primary">
               {needing} needs you
             </span>
           )}
         </TooltipTrigger>
-        <TooltipContent>Manage which sessions are shown</TooltipContent>
-        </Tooltip>
-        <DropdownMenuContent align="start" className="max-h-80 w-72 overflow-y-auto">
-          {state.sessions.length === 0 && (
-            <DropdownMenuItem disabled>No sessions yet</DropdownMenuItem>
-          )}
-          {live.map((s) => (
-            <SessionRow
-              key={s.id}
-              session={s}
-              open={open.has(s.id)}
-              onToggle={() => toggle(s.id)}
-            />
-          ))}
-          {archived.length > 0 && (
-            <>
-              <DropdownMenuSeparator />
-              {/*
-                `DropdownMenuLabel` renders Base UI's `Menu.GroupLabel`,
-                which calls `useMenuGroupRootContext()` and throws without a
-                `Menu.Group` ancestor — so the label and the archived rows it
-                names are wrapped in one `DropdownMenuGroup` rather than the
-                label standing alone.
-              */}
-              <DropdownMenuGroup>
-                <DropdownMenuLabel>{`Archived (${archived.length})`}</DropdownMenuLabel>
-                {archived.map((s) => (
-                  <SessionRow
-                    key={s.id}
-                    session={s}
-                    open={open.has(s.id)}
-                    onToggle={() => toggle(s.id)}
-                  />
-                ))}
-              </DropdownMenuGroup>
-            </>
-          )}
-        </DropdownMenuContent>
-      </DropdownMenu>
+        <TooltipContent>{historyLabel}</TooltipContent>
+      </Tooltip>
 
       {/*
         Everything past the roster trigger groups on the row's other edge:
@@ -154,13 +83,11 @@ export function SessionPicker({ narrow, onReview, onFleet }: SessionPickerProps)
       <div className="flex items-center gap-2">
 
       {/*
-        Its own control, not an item in the menu above. That trigger only
-        manages which sessions are shown and the menu already answers three
-        other questions; filing destructive filesystem management as a
-        fourth, ungrouped entry inside it hides the one action in this panel
-        that deletes a directory behind a word about layout. Mounted only
-        when the sweep is non-empty, for the same reason the pane header's
-        bring-back door is.
+        Its own control: destructive filesystem management filed inside
+        another control would hide the one action in this panel that deletes
+        a directory behind a word about something else. Mounted only when the
+        sweep is non-empty, for the same reason the pane header's bring-back
+        door is.
       */}
       {state.staleTrees.length > 0 && (
         <Tooltip>
@@ -183,9 +110,9 @@ export function SessionPicker({ narrow, onReview, onFleet }: SessionPickerProps)
 
       {/*
         Its own control, beside the working-trees one, for the same reason
-        that one is: the menu it sits next to answers questions about layout,
-        and filing "what did the fleet write" inside it would hide the only
-        surface that answers for the work itself behind a word about panes.
+        that one is: "what did the fleet write" is the only surface that
+        answers for the work itself, and filing it inside another control
+        would hide it behind a word about something else.
 
         Always enabled: the surface it opens is an editor tab, not a panel
         takeover, so there is no panel width it could fail to fit in.

@@ -233,3 +233,28 @@ suite("SessionHeader status", () => {
     );
   });
 });
+
+suite("SessionHeader pin", () => {
+  test("pinning posts set-pinned and the control flips once the host echoes it", async () => {
+    renderApp();
+    hydrate();
+
+    await userEvent.click(screen.getByRole("button", { name: "Pin Session a" }));
+    assert.deepStrictEqual(posted().filter((m) => m.t === "set-pinned"), [
+      { t: "set-pinned", id: "a", pinned: true },
+    ]);
+
+    sendFromHost({ t: "sessions-changed", sessions: [summary("a", { pinned: true })] });
+    await userEvent.click(screen.getByRole("button", { name: "Unpin Session a" }));
+    assert.deepStrictEqual(posted().filter((m) => m.t === "set-pinned").at(-1), {
+      t: "set-pinned", id: "a", pinned: false,
+    });
+  });
+
+  test("a pinned session's header offers Unpin from the start", () => {
+    renderApp();
+    hydrate({ pinned: true });
+    assert.strictEqual(screen.queryByRole("button", { name: "Pin Session a" }) === null, true);
+    screen.getByRole("button", { name: "Unpin Session a" });
+  });
+});

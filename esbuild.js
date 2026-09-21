@@ -123,11 +123,24 @@ async function main() {
 		plugins: [tailwindPlugin('src/fleet/index.css', 'dist/fleet.css'), ...common.plugins],
 	});
 
+	// The history tab. Same alias as review and fleet.
+	const historyCtx = await esbuild.context({
+		...common,
+		entryPoints: ['src/history/main.tsx'],
+		format: 'iife',
+		platform: 'browser',
+		outfile: 'dist/history.js',
+		loader: { '.tsx': 'tsx', '.ts': 'ts' },
+		alias: { '@': require('path').resolve(__dirname, 'src/webview') },
+		plugins: [tailwindPlugin('src/history/index.css', 'dist/history.css'), ...common.plugins],
+	});
+
+	const all = [hostCtx, webviewCtx, reviewCtx, fleetCtx, historyCtx];
 	if (watch) {
-		await Promise.all([hostCtx.watch(), webviewCtx.watch(), reviewCtx.watch(), fleetCtx.watch()]);
+		await Promise.all(all.map((c) => c.watch()));
 	} else {
-		await Promise.all([hostCtx.rebuild(), webviewCtx.rebuild(), reviewCtx.rebuild(), fleetCtx.rebuild()]);
-		await Promise.all([hostCtx.dispose(), webviewCtx.dispose(), reviewCtx.dispose(), fleetCtx.dispose()]);
+		await Promise.all(all.map((c) => c.rebuild()));
+		await Promise.all(all.map((c) => c.dispose()));
 	}
 }
 

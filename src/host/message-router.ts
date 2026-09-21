@@ -642,6 +642,18 @@ export class MessageRouter {
       case 'focus-session':
         return;
 
+      case 'set-pinned':
+        this.manager.setPinned(msg.id, msg.pinned);
+        return;
+
+      case 'request-history-summaries':
+        await this.manager.ensureSummaries();
+        return;
+
+      // PanelViewProvider intercepts this; a stray one is a no-op, not malformed.
+      case 'open-history':
+        return;
+
       case 'file-search': {
         const files = this.fileSearch ? await this.fileSearch.search(msg.query) : [];
         this.emit({ t: 'file-search-result', id: msg.id, query: msg.query, files });
@@ -726,7 +738,7 @@ const KNOWN_MESSAGE_TAGS = new Set<WebviewToHost['t']>([
   'request-stale-trees', 'remove-stale-tree',
   'request-fleet-diff', 'request-branch-refs', 'open-file-diff', 'open-review', 'open-fleet',
   'open-fleet-subagent',
-  'focus-session',
+  'focus-session', 'set-pinned', 'request-history-summaries', 'open-history',
   'refresh-catalog', 'refresh-usage', 'open-settings', 'login-provider', 'open-external', 'export-table-csv',
   'export-image',
   'file-search', 'set-favorite-models',
