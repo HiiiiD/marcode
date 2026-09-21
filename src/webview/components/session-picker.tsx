@@ -1,5 +1,5 @@
 import {
-  ColumnsIcon, FolderGit2Icon, GitCompareIcon, LayersIcon, LayoutGridIcon, RowsIcon,
+  ColumnsIcon, FolderGit2Icon, GitCompareIcon, HistoryIcon, LayersIcon, LayoutGridIcon, RowsIcon,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -24,9 +24,10 @@ interface SessionPickerProps {
   narrow: boolean;
   onReview: () => void;
   onFleet: () => void;
+  onHistory: () => void;
 }
 
-export function SessionPicker({ narrow, onReview, onFleet }: SessionPickerProps) {
+export function SessionPicker({ narrow, onReview, onFleet, onHistory }: SessionPickerProps) {
   const { state, post } = useStore();
   const root = state.layout.root;
   const open = new Set(leafSessionIds(root));
@@ -41,8 +42,10 @@ export function SessionPicker({ narrow, onReview, onFleet }: SessionPickerProps)
     post({ t: 'set-visible', sessionIds: leafSessionIds(next) });
   };
 
-  const live = state.sessions.filter((s) => !s.archived);
-  const archived = state.sessions.filter((s) => s.archived);
+  // A pinned session leaves Live/Archived so no row is listed twice.
+  const pinned = state.sessions.filter((s) => s.pinned === true);
+  const live = state.sessions.filter((s) => !s.archived && s.pinned !== true);
+  const archived = state.sessions.filter((s) => s.archived && s.pinned !== true);
 
   // One string for both `aria-label` and the tooltip below — a sighted
   // hover and a screen reader hear the same thing, rather than the tooltip
@@ -109,6 +112,22 @@ export function SessionPicker({ narrow, onReview, onFleet }: SessionPickerProps)
         <DropdownMenuContent align="start" className="max-h-80 w-72 overflow-y-auto">
           {state.sessions.length === 0 && (
             <DropdownMenuItem disabled>No sessions yet</DropdownMenuItem>
+          )}
+          {pinned.length > 0 && (
+            <>
+              <DropdownMenuGroup>
+                <DropdownMenuLabel>{`Pinned (${pinned.length})`}</DropdownMenuLabel>
+                {pinned.map((s) => (
+                  <SessionRow
+                    key={s.id}
+                    session={s}
+                    open={open.has(s.id)}
+                    onToggle={() => toggle(s.id)}
+                  />
+                ))}
+              </DropdownMenuGroup>
+              {(live.length > 0 || archived.length > 0) && <DropdownMenuSeparator />}
+            </>
           )}
           {live.map((s) => (
             <SessionRow
@@ -229,6 +248,25 @@ export function SessionPicker({ narrow, onReview, onFleet }: SessionPickerProps)
         <LayoutGridIcon aria-hidden />
       </TooltipTrigger>
       <TooltipContent>Open the fleet view in an editor tab</TooltipContent>
+      </Tooltip>
+
+      {/* Its own control for the same reason as review and fleet: it opens an
+          editor tab, and the roster menu only answers what is shown here. */}
+      <Tooltip>
+      <TooltipTrigger
+        render={(
+          <Button
+            variant="outline"
+            size="icon-sm"
+            className="shrink-0"
+            aria-label="Browse session history in an editor tab"
+            onClick={onHistory}
+          />
+        )}
+      >
+        <HistoryIcon aria-hidden />
+      </TooltipTrigger>
+      <TooltipContent>Browse session history in an editor tab</TooltipContent>
       </Tooltip>
 
       {/* Mounted whether or not the button is: the last removal empties the

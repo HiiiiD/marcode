@@ -140,10 +140,16 @@ suite('SessionPicker', () => {
     );
 
     await userEvent.keyboard('{ArrowDown}');
+    assert.strictEqual(
+      document.activeElement?.textContent, 'Pin Session b',
+      'Pin sits between Archive and Delete, so it is the second stop',
+    );
+
+    await userEvent.keyboard('{ArrowDown}');
     await screen.findByLabelText('Delete session Session b');
     assert.strictEqual(
       document.activeElement?.getAttribute('aria-label'), 'Delete session Session b',
-      'the next roving-focus stop after Archive is the nested delete trigger, not a menu item that deletes',
+      'the next roving-focus stop after Pin is the nested delete trigger, not a menu item that deletes',
     );
 
     await userEvent.keyboard('{ArrowRight}');
@@ -175,7 +181,7 @@ suite('SessionPicker', () => {
     await userEvent.keyboard('{ArrowDown}{ArrowDown}{ArrowDown}{ArrowDown}');
     await userEvent.keyboard('{ArrowRight}');
     await screen.findByRole('menuitem', { name: 'Archive Session b' });
-    await userEvent.keyboard('{ArrowDown}{ArrowRight}');
+    await userEvent.keyboard('{ArrowDown}{ArrowDown}{ArrowRight}');
     await screen.findByRole('menuitem', { name: 'Keep it' });
 
     await userEvent.keyboard('{ArrowDown}');
@@ -353,6 +359,71 @@ suite('SessionPicker', () => {
     await userEvent.click(screen.getByRole('button', { name: /Open the fleet view/ }));
 
     assert.strictEqual(posted().some((m) => m.t === 'open-fleet'), true);
+  });
+
+  test('the picker asks the host to open the history tab', async () => {
+    renderApp();
+    sendFromHost({
+      t: 'hydrate', sessions: [], layout: layoutOf([]),
+      snapshots: [], catalog: catalog(), unavailable: [], usage: {},
+    });
+
+    await userEvent.click(screen.getByRole('button', { name: /Browse session history/ }));
+
+    assert.strictEqual(posted().some((m) => m.t === 'open-history'), true);
+  });
+
+  test('pinned sessions get their own group and leave the others', async () => {
+    renderApp();
+    sendFromHost({
+      t: 'hydrate',
+      sessions: [
+        summary('a'),
+        summary('b', { archived: true, pinned: true }),
+        summary('c', { pinned: true }),
+        summary('d', { archived: true }),
+      ],
+      // No open panes: an open pane's header repeats its title.
+      layout: layoutOf([]),
+      snapshots: [],
+      catalog: catalog(),
+      unavailable: [],
+      usage: {},
+    });
+
+    await userEvent.click(screen.getByRole('button', { name: /manage which sessions are shown/i }));
+    await screen.findByText('Pinned (2)');
+    await screen.findByText('Archived (1)');
+    for (const title of ['Session a', 'Session b', 'Session c', 'Session d']) {
+      assert.strictEqual((await screen.findAllByText(title)).length, 1, `${title} listed once`);
+    }
+  });
+
+  test('the row actions offer Pin, and Unpin for a pinned session', async () => {
+    renderApp();
+    sendFromHost({
+      t: 'hydrate',
+      sessions: [summary('a'), summary('b', { pinned: true })],
+      layout: layoutOf(['a']),
+      snapshots: [snapshot('a')],
+      catalog: catalog(),
+      unavailable: [],
+      usage: {},
+    });
+
+    await userEvent.click(screen.getByRole('button', { name: /manage which sessions are shown/i }));
+    await userEvent.click(await screen.findByLabelText('More actions for Session a'));
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Pin Session a' }));
+    assert.deepStrictEqual(posted().filter((m) => m.t === 'set-pinned').at(-1), {
+      t: 'set-pinned', id: 'a', pinned: true,
+    });
+
+    await userEvent.click(screen.getByRole('button', { name: /manage which sessions are shown/i }));
+    await userEvent.click(await screen.findByLabelText('More actions for Session b'));
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Unpin Session b' }));
+    assert.deepStrictEqual(posted().filter((m) => m.t === 'set-pinned').at(-1), {
+      t: 'set-pinned', id: 'b', pinned: false,
+    });
   });
 
   test('the empty state offers the way out', () => {

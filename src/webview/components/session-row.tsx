@@ -1,4 +1,4 @@
-import { MoreHorizontalIcon } from 'lucide-react';
+import { MoreHorizontalIcon, PinIcon } from 'lucide-react';
 import {
   DropdownMenuCheckboxItem, DropdownMenuItem,
   DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger,
@@ -43,6 +43,7 @@ export function SessionRow({
         onCheckedChange={onToggle}
         className="min-w-0 flex-1"
       >
+        {session.pinned && <PinIcon aria-hidden className="size-3 shrink-0 text-muted-foreground" />}
         <span className="truncate">{session.title}</span>
       </DropdownMenuCheckboxItem>
 
@@ -60,6 +61,11 @@ export function SessionRow({
         <DropdownMenuSubContent>
           <DropdownMenuItem onClick={() => post({ t: 'close-session', id: session.id })}>
             Archive {session.title}
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() => post({ t: 'set-pinned', id: session.id, pinned: session.pinned !== true })}
+          >
+            {session.pinned ? 'Unpin' : 'Pin'} {session.title}
           </DropdownMenuItem>
 
           {/*
