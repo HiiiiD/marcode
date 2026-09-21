@@ -80,6 +80,11 @@ extension.ts
 | `src/host/webview-html.ts` | One CSP and nonce for every webview surface |
 | `src/host/post-bus.ts` | Fan-out to registered clients; `REVIEW_WANTS` is the review tab's allow-list |
 | `src/host/review-panel.ts` | The review editor tab: creation, restore, transport |
+| `src/host/history-panel.ts` | The session history editor tab: creation, restore, transport. Its bus allow-list (`HISTORY_WANTS`) is `sessions-changed` only — every column it shows is already on `SessionState` |
+| `src/host/focus-session.ts` | Adds a session to the sidebar split and reveals the sidebar; shared by the fleet and history tabs |
+| `src/memory/session-digest.ts` | Pure `digestSession(items)` → "goal → last reply · N files edited"; the history tab's summary text |
+| `src/history/` | The history client: its own narrow reducer, store and surface (toolbar, table, rows) |
+| `src/history/history-rows.ts` | Pure filter/sort/group of the roster into pinned and rest |
 | `src/host/fleet-diff.ts` | One tree's change set: base resolution, numstat + untracked parsing |
 | `src/host/claim-paths.ts` | Provider edit paths → git's repo-relative POSIX spelling |
 | `src/host/diff-content-provider.ts` | `mar-diff:` scheme — a file's content at the base ref, via `git show` |
@@ -92,9 +97,10 @@ extension.ts
 | `src/review/fleet-diff.tsx` | The fleet diff surface: trees, session groups, file rows |
 | `src/review/fleet-diff-groups.ts` | Pure grouping of a flat `TreeDiff` into session groups |
 
-**Build:** esbuild produces three bundles — `dist/extension.js` (node/CJS, the host) and two
-browser/IIFE webview bundles, one per surface: `dist/webview.js`/`.css` for the sidebar and
-`dist/review.js`/`.css` for the review tab. TypeScript, React 19, Tailwind v4.
+**Build:** esbuild produces five bundles — `dist/extension.js` (node/CJS, the host) and four
+browser/IIFE webview bundles, one per surface: `dist/webview.js`/`.css` for the sidebar,
+`dist/review.js`/`.css` for the review tab, `dist/fleet.js`/`.css` for the fleet tab and
+`dist/history.js`/`.css` for the history tab. TypeScript, React 19, Tailwind v4.
 
 **Tests:** mocha for unit tests (`yarn test:unit`, TDD-style `suite`/`test` globals, run
 straight from source through the `tsx/cjs` hook), mocha + jsdom for webview DOM tests
@@ -208,6 +214,13 @@ These are not style preferences. Breaking one breaks the design.
   else. Its view state (collapse, opened rows) is deliberately ephemeral: both
   describe a reading position in a list that re-reads itself while agents
   work, so a restored one would describe a tree nobody checked this launch.
+- **Pin and summary are host state on `SessionState`, and neither writes `updatedAt`.**
+  `updatedAt` is the history tab's sort key and the summary cache's key
+  (`summary.forUpdatedAt !== updatedAt` means stale), so a pin toggle or a summary refresh
+  that bumped it would reorder the list under the reader and invalidate the very cache it
+  just filled. The summary is a rebuildable cache derived from the JSONL, never a source of
+  truth. The history tab's sort/filter is deliberately ephemeral for the same reason the
+  review tab's collapse state is.
 - **ACP is the protocol layer, not a provider.** `src/providers/acp/` may not
   import anything vendor-specific; a new ACP agent is a spawn recipe plus a
   `map-tools.ts`. Client capabilities stay `false` for fs and terminal — an
