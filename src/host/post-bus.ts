@@ -58,6 +58,12 @@ export const FLEET_WANTS = (msg: HostToWebview): boolean =>
   || msg.t === 'session-patch' || msg.t === 'layout-changed'
   || msg.t === 'session-snapshot';
 
+/**
+ * The history tab reads the roster and nothing live: every column it shows is
+ * already on `SessionState`, so it never needs a patch, a status or a diff.
+ */
+export const HISTORY_WANTS = (msg: HostToWebview): boolean => msg.t === 'sessions-changed';
+
 export class PostBus {
   private readonly clients = new Set<PostClient>();
 

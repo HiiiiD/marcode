@@ -30,6 +30,7 @@ export class PanelViewProvider implements vscode.WebviewViewProvider {
     private readonly updateNotify?: UpdateNotifyHost,
     /** `marcode.showCacheTimer`. Static like `enabledProviders` — a change needs a reload. */
     private readonly showCacheTimer: boolean = false,
+    private readonly onOpenHistory: () => void = () => {},
   ) {}
 
   post(msg: HostToWebview): void {
@@ -94,6 +95,10 @@ export class PanelViewProvider implements vscode.WebviewViewProvider {
         }
         if (raw?.t === 'open-review') {
           this.onOpenReview();
+          return;
+        }
+        if (raw?.t === 'open-history') {
+          this.onOpenHistory();
           return;
         }
         if (raw?.t === 'open-fleet') {

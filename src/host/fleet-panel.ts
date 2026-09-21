@@ -3,17 +3,8 @@ import { MessageRouter, type EditorContextHost } from './message-router';
 import { PostBus, FLEET_WANTS } from './post-bus';
 import type { SessionManager } from './session-manager';
 import { renderWebviewHtml } from './webview-html';
+import { focusSession } from './focus-session';
 import type { SessionId, WebviewToHost } from '../protocol/messages';
-// Cross-import from the webview tree into the host bundle: verified safe.
-// `pane-layout.ts` and `layout-tree.ts` have zero imports of their own (no
-// `vscode`, no DOM, no React — see their own header comments, which keep
-// them dependency-free on purpose so the mocha unit-test harness can
-// require them directly), so they carry nothing the CJS/node `hostCtx`
-// esbuild target can't resolve. `LayoutNode`'s `sessionId` is a plain
-// `string | null`, structurally assignable to `PaneLayout['root']` without
-// a cast.
-import { appendAtTop } from '../webview/components/pane-layout';
-import { leafSessionIds } from '../webview/components/layout-tree';
 
 export const FLEET_VIEW_TYPE = 'mar-code.fleet';
 
@@ -128,15 +119,7 @@ export class FleetPanel {
         // intercepts: this needs the vscode API MessageRouter must not
         // import.
         if (raw?.t === 'focus-session') {
-          const ids = leafSessionIds(this.manager.layout().root);
-          if (!ids.includes(raw.id)) {
-            await this.manager.setVisible([...ids, raw.id]);
-            this.manager.setLayout({
-              ...this.manager.layout(),
-              root: appendAtTop(this.manager.layout().root, raw.id),
-            });
-          }
-          await vscode.commands.executeCommand('workbench.view.extension.mar-code');
+          await focusSession(this.manager, raw.id);
           return;
         }
         if (raw?.t === 'ready') {

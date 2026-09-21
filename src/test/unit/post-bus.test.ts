@@ -1,5 +1,5 @@
 import * as assert from 'node:assert';
-import { PostBus, REVIEW_WANTS, FLEET_WANTS } from '../../host/post-bus';
+import { PostBus, REVIEW_WANTS, FLEET_WANTS, HISTORY_WANTS } from '../../host/post-bus';
 import type { HostToWebview, SessionId } from '../../protocol/messages';
 import { layoutOf } from '../fixtures/protocol';
 
@@ -23,6 +23,13 @@ suite('PostBus', () => {
     assert.strictEqual(REVIEW_WANTS({ t: 'session-patch' } as HostToWebview), false);
     assert.strictEqual(REVIEW_WANTS({ t: 'fleet-diff', trees: [] } as HostToWebview), true);
     assert.strictEqual(REVIEW_WANTS({ t: 'sessions-changed' } as unknown as HostToWebview), true);
+  });
+
+  test('HISTORY_WANTS admits sessions-changed and nothing else', () => {
+    assert.strictEqual(HISTORY_WANTS({ t: 'sessions-changed', sessions: [] } as unknown as HostToWebview), true);
+    assert.strictEqual(HISTORY_WANTS({ t: 'session-status', id: 's1' as SessionId, status: 'idle' } as HostToWebview), false);
+    assert.strictEqual(HISTORY_WANTS({ t: 'session-patch' } as unknown as HostToWebview), false);
+    assert.strictEqual(HISTORY_WANTS({ t: 'fleet-diff', trees: [] } as HostToWebview), false);
   });
 
   test('FLEET_WANTS admits sessions-changed, session-status, session-patch, layout-changed, session-snapshot', () => {

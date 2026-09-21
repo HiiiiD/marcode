@@ -444,6 +444,10 @@
       {
         "command": "marcode.fleet.open",
         "title": "Marcode: Open fleet view"
+      },
+      {
+        "command": "marcode.history.open",
+        "title": "Marcode: Open session history"
       }
     ],
     "walkthroughs": [

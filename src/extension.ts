@@ -8,6 +8,7 @@ import { defaultCwdOf } from './host/default-cwd';
 import { diffUri, registerDiffContentProvider } from './host/diff-content-provider';
 import { EditorContextTracker } from './host/editor-context-tracker';
 import { FleetPanel, FLEET_VIEW_TYPE } from './host/fleet-panel';
+import { HistoryPanel, HISTORY_VIEW_TYPE } from './host/history-panel';
 import { clampCap } from './host/fleet-diff';
 import { PanelViewProvider } from './host/panel-view-provider';
 import { PostBus } from './host/post-bus';
@@ -545,6 +546,7 @@ export async function activate(context: vscode.ExtensionContext) {
     context.extensionUri, manager, bus, defaultCwd, editorHost, reviewPollIntervalMs(),
   );
   const fleet = new FleetPanel(context.extensionUri, manager, bus, defaultCwd, editorHost);
+  const history = new HistoryPanel(context.extensionUri, manager, bus, defaultCwd, editorHost);
 
   const fileIndex = createWorkspaceFileIndex(defaultCwd);
 
@@ -592,6 +594,7 @@ export async function activate(context: vscode.ExtensionContext) {
     configHost,
     updateNotify,
     showCacheTimer(),
+    () => { history.open(); },
   );
   // The sidebar is the client that wants everything. Registered here rather
   // than inside PanelViewProvider so there is one place that says which
@@ -610,6 +613,7 @@ export async function activate(context: vscode.ExtensionContext) {
     fileIndex,
     vscode.commands.registerCommand('marcode.review.open', () => { review.open(); }),
     vscode.commands.registerCommand('marcode.fleet.open', () => { fleet.open(); }),
+    vscode.commands.registerCommand('marcode.history.open', () => { history.open(); }),
     // Without a serializer VS Code restores the tab as a blank webview, which
     // is worse than not restoring it. The host owns whether the tab exists;
     // the client owns nothing durable, so re-attaching is the whole job.
@@ -619,6 +623,10 @@ export async function activate(context: vscode.ExtensionContext) {
     vscode.window.registerWebviewPanelSerializer(FLEET_VIEW_TYPE, {
       deserializeWebviewPanel: async (panel) => { fleet.restore(panel); },
     }),
+    vscode.window.registerWebviewPanelSerializer(HISTORY_VIEW_TYPE, {
+      deserializeWebviewPanel: async (panel) => { history.restore(panel); },
+    }),
+    { dispose: () => { history.dispose(); } },
     { dispose: () => { review.dispose(); } },
     { dispose: () => { fleet.dispose(); } },
     vscode.commands.registerCommand('marcode.codex.login', () => {
