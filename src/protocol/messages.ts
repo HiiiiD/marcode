@@ -248,6 +248,10 @@ export interface SessionState {
    * delivery.
    */
   queued?: QueuedMessage[];
+  /** Survives close/archive; absent means false so older index.json files load unchanged. */
+  pinned?: boolean;
+  /** Cache of `digestSession()`, stale once `forUpdatedAt !== updatedAt`. Never a source of truth. */
+  summary?: { text: string; forUpdatedAt: number };
   archived: boolean;
   createdAt: number;
   updatedAt: number;
@@ -468,6 +472,10 @@ export type WebviewToHost =
    * container needs the `vscode` API this module must not import.
    */
   | { t: 'focus-session'; id: SessionId }
+  | { t: 'set-pinned'; id: SessionId; pinned: boolean }
+  | { t: 'request-history-summaries' }
+  /** Intercepted by `PanelViewProvider` — opening the tab needs the `vscode` API. */
+  | { t: 'open-history' }
   /**
    * A sidebar `SubagentCard`'s "Open full transcript" affordance, asking the
    * host to open (or reveal) the Fleet tab focused on this subagent, rather

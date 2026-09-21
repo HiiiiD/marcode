@@ -564,6 +564,14 @@ export class SessionManager implements SessionSink {
     return { ok: true };
   }
 
+  /** Pinning is bookkeeping, not activity: it must not move `updatedAt`, which is the history sort key. */
+  setPinned(id: SessionId, pinned: boolean): void {
+    const state = this.meta.get(id);
+    if (!state || (state.pinned ?? false) === pinned) { return; }
+    state.pinned = pinned;
+    this.changed();
+  }
+
   layout(): PaneLayout { return this.paneLayout; }
 
   private keyOf(state: SessionState): string {
