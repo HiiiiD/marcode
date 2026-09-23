@@ -528,7 +528,7 @@ suite("Composer", () => {
 
     const trigger = screen.getByLabelText("Model");
     assert.ok(
-      /Opus \(1M context\)/.test(trigger.textContent ?? ""),
+      /Opus 5/.test(trigger.textContent ?? ""),
       `expected the row label, got ${JSON.stringify(trigger.textContent)}`,
     );
   });
