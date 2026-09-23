@@ -18,6 +18,22 @@ codex's restricted token, an AppContainer token does not block further child-pro
 `git`/bash chains work; unlike `danger-full-access`, everything outside the granted roots is denied
 at the OS level regardless of what the agent tries to run.
 
+**Confirmed upstream, not Marcode-specific.** Two things were checked before committing to this
+design, both ruling out a smaller fix: (1) codex-cli 0.156.1 already exposes a client-driven Windows
+sandbox setup handshake (`windowsSandbox/readiness`, `windowsSandbox/setupStart`,
+`windowsSandbox/setupCompleted` — see `codex-rs/app-server-protocol/src/protocol/v2/windows_sandbox.rs`)
+built on the same AppContainer-style capability-SID primitive this design independently arrived at.
+On this dev machine it already reports `"ready"` with zero setup ever run by any client, yet
+`bash -lc "git status"` still fails identically to the documented bug
+(`CreateFileMapping ... error 5`) — `"ready"` does not mean the fork-emulation path is fixed, for
+reasons not fully understood (possibly a further per-thread `activePermissionProfile` opt-in that
+came back `null` and was never exercised). (2) The same repro run against the **official Codex VS
+Code extension** (not Marcode) hit the sibling failure mode from the same doc comment —
+`Bash/Service/CreateInstance/E_ACCESSDENIED`, `PATH` resolving `bash` to the WSL stub instead of real
+Git Bash — while a plain `git status` (no fork) worked, matching Marcode's own behavior exactly. The
+bug is general and upstream; neither the existing handshake nor "use the official client's spawn
+recipe" is a smaller fix than this design.
+
 Validated by two spikes (see conversation 2026-09-23; scratch code at
 `%TEMP%\marcode-appcontainer-spike\Spike.cs`/`SpikeNet.cs`): nested spawn (`cmd.exe` → `git.exe`)
 works inside an AppContainer; folder-scoped ACL grant allows reads/writes inside, denies everywhere
