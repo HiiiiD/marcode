@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
 import { Star } from "lucide-react";
 import { useId, useState } from "react";
 import type { EffortLevel, ModelInfo, PermissionMode, ProviderInfo } from "../../protocol/messages";
-import { findModel, isFavorite, modelKey, resolveEffort } from "../../shared/model-catalog";
+import { expandedDisplayName, findModel, isFavorite, modelKey, resolveEffort } from "../../shared/model-catalog";
 import { resolvePermissionMode } from "../../shared/permission-catalog";
 import { useStore } from "../store";
 import { EffortSlider } from "./effort-slider";
@@ -76,13 +76,13 @@ function ModelRow({
       <div className="flex min-w-0 flex-1 flex-col px-1.5 py-1">
         <label className="flex min-w-0 cursor-pointer items-center gap-2">
           <RadioGroupItem value={value} />
-          <span className="min-w-0 truncate">{model.displayName}</span>
+          <span className="min-w-0 truncate">{expandedDisplayName(model)}</span>
         </label>
         {subtitle && (
           <span className="min-w-0 truncate pl-6 text-[0.65rem] text-muted-foreground">{subtitle}</span>
         )}
       </div>
-      <FavoriteToggle starred={starred} name={model.displayName} onClick={onToggleFavorite} />
+      <FavoriteToggle starred={starred} name={expandedDisplayName(model)} onClick={onToggleFavorite} />
     </div>
   );
 }

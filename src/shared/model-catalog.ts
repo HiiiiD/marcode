@@ -41,6 +41,41 @@ export function isFavorite(providerId: string, modelId: string, favorites: strin
 }
 
 /**
+ * `displayName`, with the resolved version folded in — `Opus` becomes
+ * `Opus 5.5`, `Default (recommended)` becomes `Default 5.5 (1M)`.
+ *
+ * An alias row's `displayName` is the SDK's own label and doesn't move when
+ * the alias starts resolving to a new point release, so the picker keeps
+ * showing "Opus" across an Opus 5 -> 5.5 bump with nothing distinguishing
+ * the two. `resolvedModel` (`claude-opus-5-5[1m]`) is where the real version
+ * actually lives — this pulls it back into the label rather than leaving it
+ * a click away in a tooltip.
+ *
+ * Any parenthetical on `displayName` (`(recommended)`, `(1M context)`) is
+ * dropped before appending, since the wire id's own bracket suffix
+ * (`[1m]` -> `(1M)`) already carries that distinction — keeping both would
+ * read as `Opus (1M context) 5.5 (1M)`.
+ */
+export function expandedDisplayName(model: ModelInfo): string {
+  const resolved = model.resolvedModel;
+  if (!resolved) { return model.displayName; }
+
+  const bracketMatch = resolved.match(/\[([^\]]+)\]$/);
+  const bracket = bracketMatch?.[1];
+  const withoutBracket = bracketMatch ? resolved.slice(0, -bracketMatch[0].length) : resolved;
+
+  let rest = withoutBracket.replace(/^claude-/, '');
+  const familyMatch = rest.match(/^[a-z]+-/);
+  if (familyMatch) { rest = rest.slice(familyMatch[0].length); }
+  const version = rest.split('-').filter(Boolean).join('.');
+  if (!version) { return model.displayName; }
+
+  const base = model.displayName.replace(/\s*\([^)]*\)\s*$/, '').trim();
+  const suffix = bracket ? ` (${bracket.toUpperCase()})` : '';
+  return `${base} ${version}${suffix}`;
+}
+
+/**
  * `models`, with starred rows moved to the front — a stable partition, so
  * ties (all-starred, none-starred) keep the catalog's own order rather than
  * being re-sorted alphabetically or by id.
