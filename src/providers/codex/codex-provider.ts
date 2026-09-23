@@ -76,7 +76,7 @@ const STDERR_TAIL_BYTES = 2048;
  */
 export function spawnAppServer(bin: string, env?: NodeJS.ProcessEnv): Duplex {
   const child = spawnChildProcess(bin, ['app-server'], {
-    stdio: ['pipe', 'pipe', 'pipe'], ...(env ? { env } : {}),
+    stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, ...(env ? { env } : {}),
   });
 
   let tail = '';
