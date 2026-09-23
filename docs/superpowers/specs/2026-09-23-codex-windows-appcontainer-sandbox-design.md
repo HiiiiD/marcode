@@ -18,11 +18,24 @@ codex's restricted token, an AppContainer token does not block further child-pro
 `git`/bash chains work; unlike `danger-full-access`, everything outside the granted roots is denied
 at the OS level regardless of what the agent tries to run.
 
-Validated by spike (`docs/superpowers/specs/` — see conversation 2026-09-23; scratch code at
-`%TEMP%\marcode-appcontainer-spike\Spike.cs`): nested spawn (`cmd.exe` → `git.exe`) works inside an
-AppContainer; folder-scoped ACL grant allows reads/writes inside, denies everywhere else including
-the process's own scratch directory; profile creation is ~10-19ms (once, cached), spawn+wait
-overhead is normal process-cold-start, no admin rights required, no AV interference observed.
+Validated by two spikes (see conversation 2026-09-23; scratch code at
+`%TEMP%\marcode-appcontainer-spike\Spike.cs`/`SpikeNet.cs`): nested spawn (`cmd.exe` → `git.exe`)
+works inside an AppContainer; folder-scoped ACL grant allows reads/writes inside, denies everywhere
+else including the process's own scratch directory; profile creation is ~10-19ms (once, cached),
+spawn+wait overhead is normal process-cold-start, no admin rights required, no AV interference
+observed; outbound network is blocked entirely with zero capabilities (`curl` fails DNS resolution
+instantly) but works identically to an unsandboxed process once the well-known `internetClient`
+capability (SID `S-1-15-3-1`) is granted.
+
+The second spike also found the write-only model below is not optional, it's necessary: Codex's own
+home-directory resolution (`codex login status`, needed before anything else runs) fails with
+`Could not find home directory` unless the container can at least see `%USERPROFILE%` — granting
+just `%USERPROFILE%\.codex` (where auth and skills live) was not enough, because the failure happens
+one level up, before Codex ever opens that folder. The same is true, more broadly, of any interpreter
+installed per-user rather than system-wide (`pyenv`/`nvm`-style Python/Node installs under
+`%LOCALAPPDATA%`/`%APPDATA%`, global npm packages) — `cmd.exe`/`git.exe` worked untouched in the
+first spike only because both happen to live under `Program Files`/`System32`, which Windows already
+ACLs for `ALL APPLICATION PACKAGES`; nothing under the user's own profile carries that by default.
 
 ## Non-goals
 
@@ -30,9 +43,15 @@ overhead is normal process-cold-start, no admin rights required, no AV interfere
   *it* spawns and wires that binary.
 - Not a replacement for macOS/Linux sandboxing — Seatbelt/Landlock already work correctly there via
   codex's own `sandbox`/`sandboxPolicy`; this is Windows-only.
-- Not full container-grade isolation (no network capability scoping beyond what `networkAccess`
-  already expresses, no registry/device isolation). Scope is filesystem: the one thing
-  `danger-full-access` currently leaves fully exposed.
+- **Not a confidentiality boundary. Deliberately.** The thing this design exists to stop is
+  `danger-full-access` letting an agent overwrite or delete anything on the machine — a **write**
+  concern, and the one literally raised as the reason to build this. It is not a read/exfiltration
+  boundary: `approvalPolicy` (untouched by this design — see below) already gates what an agent
+  *does* with anything it reads, on every mode except `bypass`, exactly as it does today without any
+  sandbox at all. Building a read boundary too would need blocking `.codex`, every per-user
+  interpreter install, and now network — three things a working Codex session cannot function
+  without — for a guarantee nothing asked for. See "Write confinement, not filesystem confinement"
+  below.
 - No visible windows. The spike's `CREATE_NEW_CONSOLE` flag is explicitly **not** carried into the
   real implementation — see the windowsHide bug this design supersedes
   (`codex-provider.ts` `spawnAppServer`, fixed on `fix/fix-windows-hide-on-codex` to at least stop
@@ -60,19 +79,47 @@ On win32, this changes to:
   instead of a writable one, so "nothing on disk changes" keeps meaning that.
 - macOS/Linux: no change. `sandboxPolicyOf` and `spawnAppServer` keep their current behavior.
 
-### Writable roots
+### Write confinement, not filesystem confinement
+
+The container's default-deny (verified by the spike against `%TEMP%`, `%USERPROFILE%\Documents`,
+and its own scratch directory) applies to both reads and writes. This design only wants the write
+half of that:
+
+- **Read+execute is granted broadly** — in practice the whole user profile, so `.codex` (auth,
+  skills), per-user interpreter installs, and anything else Codex or a shelled-out tool needs to
+  merely open resolves the same as it would unsandboxed. This is what fixes the home-directory
+  resolution failure and the PATH-interpreter problem in one move, without enumerating `PATH` or
+  reasoning about traverse-vs-read Windows ACL semantics per folder.
+- **Write stays scoped to the workspace root(s)** — this is the property that actually matters, and
+  the only one this design changes versus today's `danger-full-access`. `plan` mode grants no write
+  access anywhere (read+execute only, same as the rest of the profile), so "nothing on disk changes"
+  keeps meaning that.
+- **The `internetClient` capability (SID `S-1-15-3-1`) is granted by default** — zero capabilities
+  blocks all outbound network (DNS resolution itself fails), which would break `git fetch`/`push`,
+  `npm install`, and any API call. This is a network-only grant; the spike found no effect on the
+  filesystem ACL story from adding it.
 
 An AppContainer profile's ACL grant is set once, at profile-provisioning time, not per spawn. The
 provider is process-lifetime, ref-counted across every open Codex thread/session
 (`CodexProvider` doc comment, "One process serves every Codex session"), and Marcode does not
-know every thread's `cwd` before the first one starts a session. Root set is therefore:
+know every thread's `cwd` before the first one starts a session. The **write** grant (the only one
+that needs to track individual sessions — read is already broad) is therefore:
 
 - Granted eagerly at each thread's `cwd` (existing param already sent to `thread/start`).
-- A newly seen `cwd` mid-lifetime gets an ACL grant added to the *same* container profile (ACLs are
-  additive per-folder; no need to recreate the profile or respawn `app-server`).
-- Grants are never revoked while the provider process is alive — a stale grant on a closed
+- A newly seen `cwd` mid-lifetime gets a write ACL grant added to the *same* container profile
+  (ACLs are additive per-folder; no need to recreate the profile or respawn `app-server`).
+- Grants are never revoked while the provider process is alive — a stale write grant on a closed
   session's folder is a narrower, session-scoped version of the risk `danger-full-access` already
   accepts wholesale today, not a new one.
+
+### Accepted tradeoff
+
+Because read is broad and network is enabled, a compromised or malicious agent run could still
+*read* something sensitive elsewhere in the profile (SSH keys, browser data, other repos) and
+*exfiltrate* it over the network, even though it cannot overwrite or delete any of it. This is not a
+new exposure — `danger-full-access` has neither restriction either — and the existing control on
+what an agent actually does with a read is unchanged: `approvalPolicy`, live on every mode except
+`bypass`. It is named here once, deliberately, rather than left implicit.
 
 ### Fallback
 
@@ -106,15 +153,18 @@ per the file-size convention):
   Windows/.NET Framework install, verified by the spike), caching the binary under
   `context.globalStorageUri` so it compiles once per Marcode install, not once per window.
 - `acl.ts` — grants an AppContainer SID access to a folder (`icacls <path> /grant "*<SID>:(OI)(CI)<perm>"`,
-  `(OI)(CI)F` for workspace-write roots, `(OI)(CI)RX` for `plan` mode's read-only grant), verified
-  by the spike to need no elevation on a user-owned folder.
+  `(OI)(CI)F` for a workspace-write root, `(OI)(CI)RX` for the broad profile-wide read grant and for
+  `plan` mode's write-free sessions), verified by the spike to need no elevation on a user-owned
+  folder.
 
 ## Testing
 
 - Unit (win32-only gate, mirrors `src/test/unit/codex-gate.ts`'s pattern of skipping when the real
-  binary/platform isn't present): profile SID derivation is idempotent (create-or-derive), ACL grant
-  on a temp folder allows read/write inside and denies outside, nested spawn (`cmd.exe` → a real
-  child) succeeds inside the container.
+  binary/platform isn't present): profile SID derivation is idempotent (create-or-derive), a write
+  ACL grant on a temp folder allows read/write inside and denies *write* outside (read outside is
+  expected to succeed once the profile-wide read grant lands), nested spawn (`cmd.exe` → a real
+  child) succeeds inside the container, outbound network succeeds once `internetClient` is granted
+  and fails without it.
 - `sandboxPolicyOf` unit tests (`src/test/unit/codex-map-settings.test.ts`) gain a platform-branch
   case: on a mocked win32 platform, every `PermissionMode` maps to `dangerFullAccess`.
 - `codex-provider.test.ts`: `spawnAppServer`'s injected `spawn` seam already exists
@@ -124,10 +174,12 @@ per the file-size convention):
 
 ## Out of scope
 
-- Network capability scoping (AppContainer capability SIDs beyond the default "no extra
-  capabilities" the spike used) — `networkAccess` keeps meaning what it means today.
+- Any capability scoping beyond the single `internetClient` grant — no per-domain network
+  allowlist, no registry/device isolation. `networkAccess` keeps meaning what it means today.
 - A settings UI toggle. Ships as the win32 default behavior of `CodexProvider`, same as
   `sandboxPolicyOf` is not user-configurable today.
 - Extending this to the `opencode`/ACP or Claude providers. Codex is the only provider whose own
   Windows sandboxing is broken; the others don't send a `sandbox` policy over their wire protocols
   in the first place.
+- A read/confidentiality boundary — see "Non-goals" above. Not a deferred feature; a deliberate
+  non-target of this design.
