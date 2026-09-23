@@ -10,7 +10,7 @@ import type { Invocable, ModelInfo } from "../../protocol/messages";
 import { fileMentions, fileRefsOf, type FileMentionPayload } from "../lib/file-mentions";
 import { interceptFor } from "../lib/intercepts";
 import { insertionFor, menuQuery, menuView } from "../lib/invocable-menu";
-import { sortFavoritesFirst } from "../../shared/model-catalog";
+import { expandedDisplayName, sortFavoritesFirst } from "../../shared/model-catalog";
 import { leafSessionIds } from "./layout-tree";
 import {
   filterMentions, mentionQuery, pruneMentions, spliceMention, tokenFor,
@@ -587,7 +587,7 @@ export function Composer({
           <ModeMenu pane={pane} model={model} disabled={readOnly} />
 
           <Combobox
-            items={pickerModels.map((m) => ({ value: m.id, label: m.displayName }))}
+            items={pickerModels.map((m) => ({ value: m.id, label: expandedDisplayName(m) }))}
             // The one case where the model control does freeze: with the
             // provider gone so is its catalog, so there is nothing to switch
             // to that the host could honor.
