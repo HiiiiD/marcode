@@ -28,11 +28,11 @@ export function SessionCreateMenu() {
   const [open, setOpen] = useState(false);
   const settings = inheritedSettings(state);
 
-  const create = (chosen: typeof settings) => {
+  const create = (chosen: typeof settings, worktree?: { branch: string; base?: string }) => {
     if (!chosen) { return; }
     const emptySlot = flattenLeaves(state.layout.root).find((l) => l.sessionId === null);
     if (emptySlot) { setPendingSlot(emptySlot.path); }
-    post(createMessage(chosen));
+    post(createMessage(chosen, undefined, worktree));
   };
 
   return (
@@ -63,8 +63,8 @@ export function SessionCreateMenu() {
           onOpenChange={setOpen}
           catalog={state.catalog}
           initial={settings}
-          onCreate={(chosen) => {
-            create(chosen);
+          onCreate={(chosen, _seed, worktree) => {
+            create(chosen, worktree);
             setOpen(false);
           }}
         />

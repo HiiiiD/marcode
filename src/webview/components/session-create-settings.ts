@@ -68,6 +68,7 @@ export function inheritedSettings(state: ClientState): CreateSettings | undefine
 export function createMessage(
   settings: CreateSettings,
   seed?: { text: string; refs?: SessionRef[]; fileRefs?: FileRef[] },
+  worktree?: { branch: string; base?: string },
 ): WebviewToHost {
   return {
     t: "create-session",
@@ -77,5 +78,6 @@ export function createMessage(
     ...(settings.effort ? { effort: settings.effort } : {}),
     mode: settings.mode,
     ...(seed ? { seed } : {}),
+    ...(worktree ? { worktree } : {}),
   };
 }

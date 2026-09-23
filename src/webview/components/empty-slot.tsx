@@ -43,12 +43,12 @@ export function EmptySlot({ path }: EmptySlotProps) {
           onOpenChange={setOpen}
           catalog={state.catalog}
           initial={settings}
-          onCreate={(chosen) => {
+          onCreate={(chosen, _seed, worktree) => {
             // Set before posting: `app.tsx`'s reconcile effect reads this the
             // moment the new session's snapshot arrives, and that can race
             // ahead of this component's own next render.
             setPendingSlot(path);
-            post(createMessage(chosen));
+            post(createMessage(chosen, undefined, worktree));
             setOpen(false);
           }}
         />

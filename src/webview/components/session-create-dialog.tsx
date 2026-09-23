@@ -7,7 +7,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Tabs, TabsIndicator, TabsList, TabsPanel, TabsTab } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import { Star } from "lucide-react";
+import { GitBranch, Star } from "lucide-react";
 import { useId, useState } from "react";
 import type { EffortLevel, ModelInfo, PermissionMode, ProviderInfo } from "../../protocol/messages";
 import { expandedDisplayName, findModel, isFavorite, modelKey, resolveEffort } from "../../shared/model-catalog";
@@ -110,7 +110,9 @@ export function SessionCreateDialog({
   initial: CreateSettings;
   /** True for the handoff dialog: adds the first-message field and relabels. */
   seedable?: boolean;
-  onCreate: (settings: CreateSettings, seed?: string) => void;
+  onCreate: (
+    settings: CreateSettings, seed?: string, worktree?: { branch: string; base?: string },
+  ) => void;
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -148,12 +150,21 @@ function CreateForm({
   catalog: ProviderInfo[];
   initial: CreateSettings;
   seedable?: boolean;
-  onCreate: (settings: CreateSettings, seed?: string) => void;
+  onCreate: (
+    settings: CreateSettings, seed?: string, worktree?: { branch: string; base?: string },
+  ) => void;
 }) {
   const { state, post } = useStore();
   const [picked, setPicked] = useState(valueOf(initial.providerId, initial.model));
   const [mode, setMode] = useState<PermissionMode>(initial.mode);
   const [seedText, setSeedText] = useState("");
+  const [branch, setBranch] = useState("");
+  const [base, setBase] = useState("");
+  // Derived, not a separate toggle: a non-empty branch name IS the choice to
+  // use a worktree. A checkbox that gated the same two fields buried the
+  // feature behind an extra click and hid the exact thing — the branch name
+  // — someone opening this dialog to start isolated work wants to type first.
+  const inWorktree = branch.trim().length > 0;
   /** Filters the model rows below as the user types. Local — search position
    * is not something a reload needs to remember. */
   const [modelSearch, setModelSearch] = useState("");
@@ -236,6 +247,39 @@ function CreateForm({
           margins put the scrollbar on the popup's edge rather than inside its
           padding. */}
       <div className="-mx-4 flex min-h-0 flex-1 flex-col gap-3 overflow-x-hidden overflow-y-auto px-4">
+        <div className="flex flex-col gap-2 rounded-md border border-border bg-muted/30 p-2.5">
+          <div className="flex items-center gap-1.5 text-xs font-medium">
+            <GitBranch className="size-3.5 text-muted-foreground" aria-hidden />
+            New worktree
+          </div>
+          <div className="flex flex-col gap-1">
+            <label htmlFor={`${ids}-branch`} className="text-xs text-muted-foreground">
+              Branch name
+            </label>
+            <Input
+              id={`${ids}-branch`}
+              value={branch}
+              onChange={(e) => setBranch(e.target.value)}
+              placeholder="Leave empty to run here, in this workspace"
+              className="h-7 text-xs"
+            />
+          </div>
+          {inWorktree && (
+            <div className="flex flex-col gap-1">
+              <label htmlFor={`${ids}-base`} className="text-xs text-muted-foreground">
+                Base branch
+              </label>
+              <Input
+                id={`${ids}-base`}
+                value={base}
+                onChange={(e) => setBase(e.target.value)}
+                placeholder="current branch"
+                className="h-7 text-xs"
+              />
+            </div>
+          )}
+        </div>
+
         {seedable && (
           <div className="flex flex-col gap-2">
             <label htmlFor={`${ids}-seed`} className="text-xs font-medium text-muted-foreground">
@@ -410,7 +454,10 @@ function CreateForm({
               model: model.id,
               ...(level ? { effort: level } : {}),
               mode: effectiveMode,
-            }, seedable ? seedText.trim() : undefined);
+            }, seedable ? seedText.trim() : undefined,
+            inWorktree
+              ? { branch: branch.trim(), ...(base.trim() ? { base: base.trim() } : {}) }
+              : undefined);
           }}
         >
           {seedable ? "Create and send" : "Create session"}

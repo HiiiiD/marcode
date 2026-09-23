@@ -6,7 +6,7 @@ import { catalogKey, CatalogService } from './catalog-service';
 import { claimedPaths, toRepoRelative } from './claim-paths';
 import { listBranchRefs, treeChanges } from './fleet-diff';
 import {
-  bringBack as runBringBack, bringBackPlan, samePath, treeStatus, type TreeStatus,
+  bringBack as runBringBack, bringBackPlan, createWorktree, samePath, treeStatus, type TreeStatus,
 } from './git-worktree';
 import { buildSeed } from './replay';
 import { findPayload, type ResolvedBlock } from './session-refs';
@@ -624,6 +624,7 @@ export class SessionManager implements SessionSink {
   async create(
     providerId: string, cwd: string, model?: string, effort?: EffortLevel,
     mode: PermissionMode = 'default',
+    worktree?: { branch: string; base?: string },
   ): Promise<AgentSession> {
     const provider = this.providers.get(providerId);
     if (!provider) { throw new Error(`Unknown provider: ${providerId}`); }
@@ -657,10 +658,27 @@ export class SessionManager implements SessionSink {
     // `default` — the UI claiming one thing while the backend does another.
     const resolvedMode = resolvePermissionMode(provider.listPermissionModes(), mode);
 
+    // Resolved before the session exists, not deferred to the run: a session
+    // whose cwd changed out from under it mid-provider-startup is a harder
+    // bug to reason about than one that starts a beat late. A failure here is
+    // never thrown — the session is still created (against `cwd`, unchanged)
+    // and told about it the same way a missing seed ref is, below.
+    let resolvedCwd = cwd;
+    let worktreeError: string | undefined;
+    if (worktree) {
+      const main = await treeStatus(cwd);
+      if (!main.isRepo) {
+        worktreeError = `${cwd} is not a git repository, so no worktree could be created for ${worktree.branch}.`;
+      } else {
+        const created = await createWorktree(main.isWorktree && main.mainRoot ? main.mainRoot : main.root, worktree.branch, worktree.base);
+        if (created.ok) { resolvedCwd = created.path; } else { worktreeError = created.reason; }
+      }
+    }
+
     const now = Date.now();
     const state: SessionState = {
       id: newSessionId(), providerId, model: chosen.id, effort: resolvedEffort,
-      title: 'Untitled', name: this.defaultName(providerId), cwd, status: 'idle', permissionMode: resolvedMode,
+      title: 'Untitled', name: this.defaultName(providerId), cwd: resolvedCwd, status: 'idle', permissionMode: resolvedMode,
       includeEditorContext: true,
       resumeTokens: {},
       archived: false, createdAt: now, updatedAt: now,
@@ -673,6 +691,7 @@ export class SessionManager implements SessionSink {
     if (cached) { session.setInvocables(cached); }
     this.catalogSvc.ensure(this.keyOf(state), provider, state.cwd);
     this.changed();
+    if (worktreeError) { void session.noteError(worktreeError); }
     return session;
   }
 

@@ -9,7 +9,7 @@ import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import { join, resolve } from 'node:path';
 import { promisify } from 'node:util';
-import { bringBack, bringBackPlan, treeStatus } from '../../host/git-worktree';
+import { bringBack, bringBackPlan, createWorktree, treeStatus } from '../../host/git-worktree';
 
 const run = promisify(execFile);
 
@@ -161,5 +161,68 @@ suite('git-worktree', function () {
     assert.strictEqual(result.ok, false);
     assert.strictEqual(typeof result.reason === 'string' && result.reason.length > 0, true);
     assert.strictEqual((await treeStatus(repo)).branch, 'main');
+  });
+
+  suite('createWorktree', () => {
+    test('creates a new branch off HEAD when no base is given', async () => {
+      const repo = await tempRepo();
+      const result = await createWorktree(repo, 'feat-y');
+      assert.strictEqual(result.ok, true);
+      assert.strictEqual(
+        result.ok && resolve(result.path),
+        resolve(join(repo, '.worktrees', 'feat-y')),
+      );
+      const status = await treeStatus(result.ok ? result.path : '');
+      assert.strictEqual(status.isWorktree, true);
+      assert.strictEqual(status.branch, 'feat-y');
+      assert.strictEqual(status.mainRoot, repo);
+    });
+
+    test('creates a new branch off an explicit base', async () => {
+      const repo = await tempRepo();
+      await run('git', ['branch', 'base-branch'], { cwd: repo, windowsHide: true });
+      await fs.writeFile(join(repo, 'on-base.txt'), 'x');
+      await run('git', ['add', 'on-base.txt'], { cwd: repo, windowsHide: true });
+      await run('git', ['commit', '-m', 'on base'], { cwd: repo, windowsHide: true });
+      // main now has a commit base-branch does not: prove the new worktree
+      // branched off base-branch, not off HEAD.
+      const result = await createWorktree(repo, 'feat-z', 'base-branch');
+      assert.strictEqual(result.ok, true);
+      let hasOnBase = false;
+      try { await fs.stat(join(result.ok ? result.path : '', 'on-base.txt')); hasOnBase = true; } catch { /* absent */ }
+      assert.strictEqual(hasOnBase, false);
+    });
+
+    test('checks out an already-existing branch instead of recreating it', async () => {
+      const repo = await tempRepo();
+      await run('git', ['branch', 'feat-existing'], { cwd: repo, windowsHide: true });
+      const result = await createWorktree(repo, 'feat-existing');
+      assert.strictEqual(result.ok, true);
+      const status = await treeStatus(result.ok ? result.path : '');
+      assert.strictEqual(status.branch, 'feat-existing');
+    });
+
+    test('sanitizes slashes in the branch name into the worktree directory', async () => {
+      const repo = await tempRepo();
+      const result = await createWorktree(repo, 'feat/nested');
+      assert.strictEqual(result.ok, true);
+      assert.strictEqual(
+        result.ok && resolve(result.path),
+        resolve(join(repo, '.worktrees', 'feat-nested')),
+      );
+      const status = await treeStatus(result.ok ? result.path : '');
+      assert.strictEqual(status.branch, 'feat/nested');
+    });
+
+    test('reports a reason instead of throwing when git refuses', async () => {
+      const repo = await tempRepo();
+      const first = await createWorktree(repo, 'feat-dup');
+      assert.strictEqual(first.ok, true);
+      // Second call reuses the same branch, which is already checked out in a
+      // worktree — git refuses to check the same branch out twice.
+      const second = await createWorktree(repo, 'feat-dup');
+      assert.strictEqual(second.ok, false);
+      assert.strictEqual(second.ok === false && second.reason.length > 0, true);
+    });
   });
 });

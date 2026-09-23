@@ -257,7 +257,7 @@ export class MessageRouter {
 
       case 'create-session': {
         const session = await this.manager.create(
-          msg.providerId, msg.cwd || this.defaultCwd, msg.model, msg.effort, msg.mode,
+          msg.providerId, msg.cwd || this.defaultCwd, msg.model, msg.effort, msg.mode, msg.worktree,
         );
         if (msg.seed) {
           const seedRefs = msg.seed.refs ?? [];
