@@ -1420,13 +1420,294 @@ git add docs/superpowers/specs/2026-09-23-codex-windows-appcontainer-sandbox-des
 git commit -m "docs: record whether codex asks about out-of-root writes under dangerFullAccess"
 ```
 
-- [ ] **Step 4: Amend this plan with the implementation tasks**
+- [x] **Result (2026-09-23): outcome B.** No approval was raised under `danger-full-access`; the
+      `fileChange` `item/started` (path and diff) arrives only after the write. See Task 8.
+
+- [x] **Step 4: Amend this plan with the implementation tasks** (done: Task 8)
 
 Add Task 8 (the approval card, its three scopes — once / this session / always — and the
 `Sandbox.grant`/`revoke` calls it makes) in the shape the recorded outcome dictates, using the
 Task 1 tracker and Task 4 `Sandbox` interface already defined above. Do not start it before this
 step: the two outcomes intercept at different points (`CodexRun`'s server-request handler vs. its
 item-completed mapping) and share almost no code.
+
+---
+
+## Task 8: Reactive out-of-root ask (recorded outcome B from Task 7)
+
+Task 7 measured that codex raises no approval for an out-of-root write under `danger-full-access`
+and reports the path only after the write. So the ask is reactive: the container denies the write,
+the failed `fileChange` item names the path, Marcode asks, grants, and tells the agent to retry.
+
+**v1 scope cut, deliberately:** the card is allow / deny, and allow means "this session" (the grant
+lives until the `app-server` is torn down, exactly like the baseline). `ToolDecision`
+(`src/providers/types.ts:156`) is `{ allow: true } | { allow: false }`, so the spec's "once" and
+"always for this folder" scopes need a `ToolDecision` extension plus a card UI change (shadcn
+components, an impeccable pass) — a separate task, not smuggled into this one.
+
+**Files:**
+- Create: `src/providers/codex/windows-sandbox/out-of-root.ts`
+- Modify: `src/providers/codex/windows-sandbox/grants.ts` (add `writableFolders()`)
+- Modify: `src/providers/codex/windows-sandbox/index.ts` (add `Sandbox.writableRoots()`)
+- Modify: `src/providers/codex/codex-run.ts` (the `item/completed` handling near `:285`,
+  `respondToTool` at `:617`, the cancel/dispose loop near `:678`)
+- Modify: `src/providers/codex/codex-provider.ts` (build the guard from the sandbox, pass to `CodexRun`)
+- Test: `src/test/unit/windows-sandbox-out-of-root.test.ts`, `src/test/unit/codex-run.test.ts`
+- Fixture: `src/test/fixtures/codex-oor-denied.json` (recorded in Step 1)
+
+**Interfaces:**
+- Consumes: `Sandbox`, `GrantTracker` (Tasks 1 and 4); `ThreadItem` / `FileUpdateChange` from `wire.ts`
+  (`{ type: 'fileChange'; id; status?; changes?: { path; kind; diff }[] }`).
+- Produces (`out-of-root.ts`): `interface WriteGuard { roots(): string[]; grant(folder: string): Promise<void> }` and `deniedOutsideRoots(item: ThreadItem, roots: string[]): string | undefined` — the containing folder of the first change whose path is outside every root, only for a `fileChange` item whose status is present and not `completed`.
+
+- [ ] **Step 1: Record what a container-denied fileChange looks like (needs Tasks 1-5 working)**
+
+The spike only observed the *successful* unsandboxed write. Before writing any matching code, run
+the Task 7 probe (`%TEMP%\oor-scratch\oor.js`) against a Marcode-launched sandboxed `app-server`
+(`Sandbox.spawn` from Task 4, workspace granted, its parent not), same prompt. Save the raw
+`item/started` and `item/completed` notifications for the denied `fileChange` to
+`src/test/fixtures/codex-oor-denied.json`. If the recorded `status` is not what the code below
+expects (`failed`), fix the code and its tests, not the fixture.
+
+- [ ] **Step 2: Write the failing tests**
+
+```typescript
+// src/test/unit/windows-sandbox-out-of-root.test.ts
+import * as assert from 'assert';
+import { deniedOutsideRoots } from '../../providers/codex/windows-sandbox/out-of-root';
+
+const change = (p: string) => ({ path: p, kind: 'add', diff: 'x' });
+const item = (status: string | undefined, ...paths: string[]) =>
+  ({ type: 'fileChange', id: 'i1', status, changes: paths.map(change) }) as never;
+
+suite('deniedOutsideRoots', () => {
+  const roots = ['C:\\work\\repo'];
+
+  test('a failed change outside every root returns its containing folder', () => {
+    assert.strictEqual(deniedOutsideRoots(item('failed', 'C:\\work\\outside\\a.txt'), roots), 'C:\\work\\outside');
+  });
+
+  test('a failed change inside a root is not an out-of-root denial', () => {
+    assert.strictEqual(deniedOutsideRoots(item('failed', 'C:\\work\\repo\\src\\a.txt'), roots), undefined);
+  });
+
+  test('a completed change is never reported, even outside every root', () => {
+    assert.strictEqual(deniedOutsideRoots(item('completed', 'C:\\work\\outside\\a.txt'), roots), undefined);
+  });
+
+  test('a sibling that merely shares a prefix is outside (repo-old vs repo)', () => {
+    assert.strictEqual(deniedOutsideRoots(item('failed', 'C:\\work\\repo-old\\a.txt'), roots), 'C:\\work\\repo-old');
+  });
+
+  test('comparison ignores case and slash direction, as Windows does', () => {
+    assert.strictEqual(deniedOutsideRoots(item('failed', 'c:/WORK/Repo/a.txt'), roots), undefined);
+  });
+
+  test('a ../ escape that resolves outside the root is caught', () => {
+    assert.strictEqual(deniedOutsideRoots(item('failed', 'C:\\work\\repo\\..\\outside\\a.txt'), roots), 'C:\\work\\outside');
+  });
+
+  test('non-fileChange items and items with no status or no changes return undefined', () => {
+    assert.strictEqual(deniedOutsideRoots({ type: 'commandExecution', id: 'c' } as never, roots), undefined);
+    assert.strictEqual(deniedOutsideRoots({ type: 'fileChange', id: 'i', status: 'failed' } as never, roots), undefined);
+    assert.strictEqual(deniedOutsideRoots(item(undefined, 'C:\\work\\outside\\a.txt'), roots), undefined);
+  });
+});
+```
+
+```typescript
+// added to src/test/unit/codex-run.test.ts (uses that file's existing FakeServer harness)
+test('a denied out-of-root fileChange raises a grant card; allow grants the folder and asks the agent to retry', async () => {
+  const granted: string[] = [];
+  const { run, server, sent } = makeRun({   // makeRun: the file's existing helper; add a `guard` option
+    guard: { roots: () => ['C:\\work\\repo'], grant: async (f) => { granted.push(f); } },
+  });
+  const events = collect(run);
+  server.notify('item/completed', { threadId: 't1', item: {
+    type: 'fileChange', id: 'fc1', status: 'failed',
+    changes: [{ path: 'C:\\work\\outside\\a.txt', kind: 'add', diff: 'hello' }],
+  } });
+
+  const card = (await events.until((e) => e.kind === 'permission')) as { id: string; meta?: { blockedPath?: string } };
+  assert.strictEqual(card.meta?.blockedPath, 'C:\\work\\outside');
+
+  run.respondToTool(card.id, { allow: true });
+  await tick();
+  assert.deepStrictEqual(granted, ['C:\\work\\outside']);
+  assert.match(sent.at(-1)!.text, /access to C:\\work\\outside was granted.*retry/i);
+});
+
+test('deny grants nothing and sends nothing', async () => {
+  const granted: string[] = [];
+  const { run, server, sent } = makeRun({ guard: { roots: () => ['C:\\work\\repo'], grant: async (f) => { granted.push(f); } } });
+  const events = collect(run);
+  server.notify('item/completed', { threadId: 't1', item: {
+    type: 'fileChange', id: 'fc1', status: 'failed', changes: [{ path: 'C:\\work\\outside\\a.txt', kind: 'add', diff: 'x' }],
+  } });
+  const card = (await events.until((e) => e.kind === 'permission')) as { id: string };
+  run.respondToTool(card.id, { allow: false });
+  await tick();
+  assert.deepStrictEqual(granted, []);
+  assert.strictEqual(sent.length, 0);
+});
+
+test('a second denial for the same folder in one turn raises one card, not one per file', async () => {
+  const { run, server } = makeRun({ guard: { roots: () => ['C:\\work\\repo'], grant: async () => {} } });
+  const events = collect(run);
+  for (const id of ['fc1', 'fc2']) {
+    server.notify('item/completed', { threadId: 't1', item: {
+      type: 'fileChange', id, status: 'failed', changes: [{ path: `C:\\work\\outside\\${id}.txt`, kind: 'add', diff: 'x' }],
+    } });
+  }
+  await tick();
+  assert.strictEqual(events.all().filter((e) => e.kind === 'permission').length, 1);
+});
+
+test('with no guard (macOS/Linux, or a non-sandboxed run) a failed fileChange raises no card', async () => {
+  const { run, server } = makeRun({});
+  const events = collect(run);
+  server.notify('item/completed', { threadId: 't1', item: {
+    type: 'fileChange', id: 'fc1', status: 'failed', changes: [{ path: 'C:\\x\\a.txt', kind: 'add', diff: 'x' }],
+  } });
+  await tick();
+  assert.strictEqual(events.all().some((e) => e.kind === 'permission'), false);
+});
+
+test('dispose drops parked grant cards without answering any RPC', async () => {
+  const { run, server } = makeRun({ guard: { roots: () => ['C:\\work\\repo'], grant: async () => {} } });
+  const events = collect(run);
+  server.notify('item/completed', { threadId: 't1', item: {
+    type: 'fileChange', id: 'fc1', status: 'failed', changes: [{ path: 'C:\\work\\outside\\a.txt', kind: 'add', diff: 'x' }],
+  } });
+  await events.until((e) => e.kind === 'permission');
+  const before = server.responses.length;
+  run.dispose();
+  assert.strictEqual(server.responses.length, before, 'a grant card has no RPC id to answer');
+});
+```
+
+(The `makeRun` / `collect` / `tick` / `sent` / `server.responses` names stand for the harness helpers
+already in `codex-run.test.ts`; read the top of that file and use its real spelling rather than
+inventing new ones. The only harness change is a `guard` option threaded into the `CodexRun`
+constructor.)
+
+- [ ] **Step 3: Run tests to verify they fail**
+
+Run: `yarn test:unit:raw --grep "deniedOutsideRoots|out-of-root fileChange|grants nothing|same folder in one turn|no guard|parked grant"`
+Expected: FAIL — module and constructor option don't exist
+
+- [ ] **Step 4: Write the implementation**
+
+```typescript
+// src/providers/codex/windows-sandbox/out-of-root.ts
+import * as path from 'node:path';
+import type { ThreadItem } from '../wire';
+
+export interface WriteGuard {
+  roots(): string[];
+  grant(folder: string): Promise<void>;
+}
+
+// path.win32 on purpose: Windows treats case and both slash directions as
+// equal, and this file is unit-tested on every platform.
+const norm = (p: string): string => path.win32.resolve(p).toLowerCase();
+
+function inside(root: string, target: string): boolean {
+  const rel = path.win32.relative(norm(root), norm(target));
+  return rel === '' || (!rel.startsWith('..') && !path.win32.isAbsolute(rel));
+}
+
+/**
+ * The folder a denied write needs, or undefined when the item is not an
+ * out-of-root denial. `completed` is never reported: a write that succeeded
+ * outside every root means the container did not stop it, which is a bug to
+ * surface elsewhere, not a request to grant access.
+ */
+export function deniedOutsideRoots(item: ThreadItem, roots: string[]): string | undefined {
+  if (item.type !== 'fileChange' || item.status === undefined || item.status === 'completed') { return undefined; }
+  for (const change of item.changes ?? []) {
+    if (!roots.some((r) => inside(r, change.path))) {
+      return path.win32.dirname(path.win32.resolve(change.path));
+    }
+  }
+  return undefined;
+}
+```
+
+```typescript
+// grants.ts — add to GrantTracker
+writableFolders(): string[] {
+  return [...this.granted].filter(([, mode]) => mode === 'readwrite').map(([folder]) => folder);
+}
+
+// index.ts — add to the Sandbox interface, and to the returned object
+writableRoots(): string[];                                // interface
+writableRoots() { return tracker.writableFolders(); },    // implementation
+```
+
+In `codex-run.ts` (`CodexRun` gains an optional `guard?: WriteGuard` constructor option):
+
+```typescript
+// next to pendingApprovals (:170)
+private readonly pendingGrants = new Map<string, { folder: string }>();
+private readonly askedFolders = new Set<string>();     // one card per folder per turn
+
+// inside the notification loop, before `this.events.push(...)` (:297)
+if (this.guard && method === 'item/completed') {
+  const item = (params as { item?: ThreadItem }).item;
+  const folder = item && deniedOutsideRoots(item, this.guard.roots());
+  if (folder && !this.askedFolders.has(folder.toLowerCase())) {
+    this.askedFolders.add(folder.toLowerCase());
+    const id = `grant:${item!.id}`;
+    this.pendingGrants.set(id, { folder });
+    this.events.push({
+      kind: 'permission', id,
+      tool: { kind: 'other', label: 'Write outside the workspace', raw: { folder } },
+      meta: {
+        title: 'Allow writes outside the workspace?',
+        description: 'Codex tried to write here and was blocked. Allow writes to this folder until the session ends?',
+        blockedPath: folder,
+      },
+    });
+  }
+}
+
+// respondToTool (:617) — first lines
+const grant = this.pendingGrants.get(id);
+if (grant) {
+  this.pendingGrants.delete(id);
+  if (decision.allow && this.guard) {
+    void this.guard.grant(grant.folder)
+      .then(() => this.send(`Access to ${grant.folder} was granted. Please retry the previous file change.`))
+      .catch(() => {});
+  }
+  return;
+}
+
+// the cancel/dispose paths (near :678): also `this.pendingGrants.clear()`.
+// A grant card has no RPC id, so there is nothing to decline on the wire.
+// Clear `askedFolders` where a new turn's `turn/start` is sent.
+```
+
+In `codex-provider.ts`, where the run is constructed, pass
+`guard: this.sandbox && { roots: () => this.sandbox!.writableRoots(), grant: (f) => this.sandbox!.grant(f, 'readwrite') }`.
+
+- [ ] **Step 5: Run tests to verify they pass**
+
+Run: `yarn test:unit:raw --grep "deniedOutsideRoots|out-of-root fileChange|grants nothing|same folder in one turn|no guard|parked grant"`
+Expected: PASS
+
+- [ ] **Step 6: Run the full unit suite**
+
+Run: `yarn test:unit`
+Expected: PASS — every non-Windows path has `guard === undefined` and must behave exactly as before.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add src/providers/codex/windows-sandbox/out-of-root.ts src/providers/codex/windows-sandbox/grants.ts src/providers/codex/windows-sandbox/index.ts src/providers/codex/codex-run.ts src/providers/codex/codex-provider.ts src/test/unit/windows-sandbox-out-of-root.test.ts src/test/unit/codex-run.test.ts src/test/fixtures/codex-oor-denied.json
+git commit -m "feat: ask before granting a denied out-of-root write, then tell the agent to retry"
+```
 
 ---
 

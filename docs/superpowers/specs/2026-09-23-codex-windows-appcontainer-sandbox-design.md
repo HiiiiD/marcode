@@ -147,19 +147,23 @@ that needs to track individual sessions — read is already broad) is therefore:
 Codex cannot ask about a write outside the workspace: on Windows it is told `dangerFullAccess`, so it
 perceives no boundary to cross (see "Where enforcement moves"). Marcode owns the ask instead:
 
-- **Open question, gating this section:** whether Marcode sees the target path *before* codex writes.
-  `CodexRun` already parks `item/fileChange/requestApproval` server requests, but codex raises those
-  from its own sandbox's boundary detection, which is off under `dangerFullAccess`. Unverified
-  whether it still emits them for out-of-root paths in that state. The plan starts with a spike
-  (Task 7) that settles it, and this section describes the preferred flow plus the fallback:
-  - **Preferred (pre-execution):** a `file-edit` whose resolved target lies outside every granted
-    write root raises a Marcode approval card before the write; on approval Marcode grants the
-    containing folder to the window's container SID, then answers the pending request.
-  - **Fallback (reactive), if codex never asks:** the write fails with access denied, Marcode sees
-    the failed `fileChange` item naming the path, raises the same card, grants on approval, and
-    sends the agent a follow-up message that access was granted so it retries. Worse UX (one failed
-    attempt, a retry turn) but needs no cooperation from codex.
-- The card offers three scopes:
+- **Measured (spike, codex-cli 0.156.1, `danger-full-access` + `on-request`):** codex raises no
+  `item/*/requestApproval` for an out-of-root `apply_patch`; it writes the file, then emits
+  `item/started` (already carrying the resolved absolute path and the diff) and `item/completed`
+  about 4ms apart, both *after* the write. Under `workspace-write` the model itself refused before
+  patching, so no request was raised there either. A card **before** the write is therefore not
+  possible; the flow is reactive:
+  1. The write is denied by the container. Codex reports the `fileChange` item as failed, naming
+     the path in `changes[].path`. (What a container-denied item looks like on the wire is verified
+     in Task 8's first step, not assumed.)
+  2. Marcode recognises a failed `fileChange` whose path lies outside every granted write root and
+     raises its approval card.
+  3. On approval it grants the path's containing folder to the window's container SID, then sends
+     the agent a follow-up message that access was granted so it retries. Cost: one failed attempt
+     and one extra turn, and the agent may not retry exactly what the user approved.
+- **v1 ships allow / deny only, meaning "this session".** `ToolDecision` carries no scope today, so
+  the fuller card below needs a protocol change and a UI pass and is a later task.
+- The full card offers three scopes:
   - **Once:** grant, let the tool call run, revoke when it completes.
   - **This session:** recorded in the tracker, revoked on dispose (same lifetime as the baseline).
   - **Always for this folder:** the only scope that persists; chosen explicitly by the user, and
