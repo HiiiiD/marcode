@@ -293,6 +293,75 @@ suite('SessionCreateMenu', () => {
     assert.ok(await screen.findByRole('button', { name: 'Unstar Fake Large' }));
   });
 
+  test('the branch name field is visible without any extra toggle, and Create stays enabled empty', async () => {
+    renderApp();
+    hydrate([summary('a')], twoProviders());
+
+    await userEvent.click(optionsButton());
+
+    assert.ok(screen.getByLabelText('Branch name'));
+    assert.strictEqual(screen.queryByLabelText('Base branch'), null);
+    assert.strictEqual(
+      (screen.getByRole('button', { name: 'Create session' }) as HTMLButtonElement).disabled,
+      false,
+    );
+  });
+
+  test('typing a branch name reveals the base branch field', async () => {
+    renderApp();
+    hydrate([summary('a')], twoProviders());
+
+    await userEvent.click(optionsButton());
+    await userEvent.type(screen.getByLabelText('Branch name'), 'feat/thing');
+
+    assert.ok(screen.getByLabelText('Base branch'));
+  });
+
+  test('a non-empty branch name posts a worktree on create-session', async () => {
+    renderApp();
+    hydrate([summary('a')], twoProviders());
+
+    await userEvent.click(optionsButton());
+    await userEvent.type(screen.getByLabelText('Branch name'), 'feat/thing');
+    await userEvent.type(screen.getByLabelText('Base branch'), 'develop');
+    await userEvent.click(screen.getByRole('button', { name: 'Create session' }));
+
+    assert.deepStrictEqual(posted().at(-1), {
+      t: 'create-session',
+      providerId: 'fake',
+      cwd: '',
+      model: 'fake-large',
+      effort: 'medium',
+      mode: 'default',
+      worktree: { branch: 'feat/thing', base: 'develop' },
+    });
+  });
+
+  test('an empty base branch is omitted, not sent as a blank string', async () => {
+    renderApp();
+    hydrate([summary('a')], twoProviders());
+
+    await userEvent.click(optionsButton());
+    await userEvent.type(screen.getByLabelText('Branch name'), 'feat/thing');
+    await userEvent.click(screen.getByRole('button', { name: 'Create session' }));
+
+    const msg = posted().at(-1);
+    assert.strictEqual(msg?.t === 'create-session' && msg.worktree?.base, undefined);
+    assert.strictEqual(msg?.t === 'create-session' && msg.worktree?.branch, 'feat/thing');
+  });
+
+  test('a blank (whitespace-only) branch name creates without a worktree', async () => {
+    renderApp();
+    hydrate([summary('a')], twoProviders());
+
+    await userEvent.click(optionsButton());
+    await userEvent.type(screen.getByLabelText('Branch name'), '   ');
+    await userEvent.click(screen.getByRole('button', { name: 'Create session' }));
+
+    const msg = posted().at(-1);
+    assert.strictEqual(msg?.t === 'create-session' && 'worktree' in msg, false);
+  });
+
   test('both create controls are disabled when no provider is available', () => {
     renderApp();
     sendFromHost({

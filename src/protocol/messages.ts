@@ -460,7 +460,15 @@ export type WebviewToHost =
        * made it — a two-step version would have to wait for the snapshot and
        * would lose the seed if the panel reloaded in between.
        */
-      seed?: { text: string; refs?: SessionRef[]; fileRefs?: FileRef[] } }
+      seed?: { text: string; refs?: SessionRef[]; fileRefs?: FileRef[] };
+      /**
+       * Create the session in a fresh (or existing) linked worktree instead
+       * of `cwd`. `base` is the branch/ref to create `branch` off of when it
+       * does not already exist; omitted means HEAD. A worktree that fails to
+       * create does not fail the whole request — the session is still
+       * created, in `error` status with a transcript item, the same way any
+       * other provider failure surfaces. See `SessionManager.create`. */
+      worktree?: { branch: string; base?: string } }
   | { t: 'set-visible'; sessionIds: SessionId[] }
   | { t: 'set-layout'; layout: PaneLayout }
   | { t: 'save-preset'; name: string }

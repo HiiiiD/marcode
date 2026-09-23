@@ -15,7 +15,7 @@
 // No `vscode` import: this is unit-tested outside the extension host.
 
 import { execFile } from 'node:child_process';
-import { dirname, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import type { BringBackPlan } from '../protocol/messages';
 
@@ -165,6 +165,35 @@ export async function bringBackPlan(worktreeDir: string): Promise<BringBackPlan>
   }
 
   return { ok: true, branch: tree.branch, worktree: tree.root, mainRoot: main.root };
+}
+
+/**
+ * Creates (or checks out) a linked worktree for `branch`, under
+ * `<mainRoot>/.worktrees/<branch, slashes flattened>` — a directory per
+ * branch, not per call, so asking for the same branch twice lands on the same
+ * path instead of nesting or colliding on a `/` in the branch name.
+ *
+ * If `branch` already exists, it is checked out as-is and `base` is ignored —
+ * a base only makes sense for a branch that does not exist yet. Otherwise the
+ * branch is created off `base` (HEAD when `base` is omitted), matching plain
+ * `git worktree add -b`.
+ */
+export async function createWorktree(
+  mainRoot: string, branch: string, base?: string,
+): Promise<{ ok: true; path: string } | { ok: false; reason: string }> {
+  const dirName = branch.replace(/[\\/]+/g, '-');
+  const path = resolve(join(mainRoot, '.worktrees', dirName));
+
+  const exists = await git(mainRoot, ['show-ref', '--verify', '--quiet', `refs/heads/${branch}`]);
+  const args = exists.ok
+    ? ['worktree', 'add', path, branch]
+    : ['worktree', 'add', '-b', branch, path, ...(base ? [base] : [])];
+
+  const result = await git(mainRoot, args);
+  if (!result.ok) {
+    return { ok: false, reason: result.err || 'git worktree add failed' };
+  }
+  return { ok: true, path };
 }
 
 /**

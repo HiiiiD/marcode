@@ -691,13 +691,13 @@ export function Composer({
           catalog={state.catalog}
           initial={handoffSettings}
           seedable
-          onCreate={(chosen, seed) => {
+          onCreate={(chosen, seed, worktree) => {
             const pruned = pruneMentions(seed ?? "", refs);
             const fileCarried = fileRefsOf(pruned);
             post(createMessage(chosen, {
               text: seed ?? "",
               ...(fileCarried.length > 0 ? { fileRefs: fileCarried } : {}),
-            }));
+            }, worktree));
             setHandoffOpen(false);
           }}
         />
