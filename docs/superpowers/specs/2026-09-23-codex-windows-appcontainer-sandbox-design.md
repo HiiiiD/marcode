@@ -124,9 +124,50 @@ that needs to track individual sessions — read is already broad) is therefore:
 - Granted eagerly at each thread's `cwd` (existing param already sent to `thread/start`).
 - A newly seen `cwd` mid-lifetime gets a write ACL grant added to the *same* container profile
   (ACLs are additive per-folder; no need to recreate the profile or respawn `app-server`).
-- Grants are never revoked while the provider process is alive — a stale write grant on a closed
-  session's folder is a narrower, session-scoped version of the risk `danger-full-access` already
-  accepts wholesale today, not a new one.
+- Grants are tracked and revoked — see "Grant lifetime" below. An earlier draft of this spec said
+  grants were "never revoked while the provider process is alive"; that understated it. An `icacls`
+  grant is NTFS metadata keyed to the container SID, so with a fixed container name it outlives the
+  process, the VS Code window and reboots, and applies to every window and workspace on the machine.
+
+### Grant lifetime
+
+- **Per-window container name.** The AppContainer profile name is derived from something unique to
+  the provider process (`MarcodeCodexSandbox-<uuid>`), so its SID, and every ACE written for it,
+  belongs to exactly one window's `app-server`. Per-session scope is not achievable: one
+  `app-server` process serves every thread.
+- **Every grant is recorded** (folder, mode, scope) in a per-process tracker as it is made.
+- **Revoke on dispose.** Teardown runs `icacls <folder> /remove *<SID>` for each recorded grant and
+  deletes the profile (`DeleteAppContainerProfile`). A crash skips this, so activation also sweeps
+  profiles matching the name prefix whose owning process is gone. An orphaned ACE from a crashed run
+  is inert because its unique SID never recurs.
+- The baseline workspace-root write grant follows the same rules; it is not a special case.
+
+### Out-of-root writes: ask, then grant
+
+Codex cannot ask about a write outside the workspace: on Windows it is told `dangerFullAccess`, so it
+perceives no boundary to cross (see "Where enforcement moves"). Marcode owns the ask instead:
+
+- **Open question, gating this section:** whether Marcode sees the target path *before* codex writes.
+  `CodexRun` already parks `item/fileChange/requestApproval` server requests, but codex raises those
+  from its own sandbox's boundary detection, which is off under `dangerFullAccess`. Unverified
+  whether it still emits them for out-of-root paths in that state. The plan starts with a spike
+  (Task 7) that settles it, and this section describes the preferred flow plus the fallback:
+  - **Preferred (pre-execution):** a `file-edit` whose resolved target lies outside every granted
+    write root raises a Marcode approval card before the write; on approval Marcode grants the
+    containing folder to the window's container SID, then answers the pending request.
+  - **Fallback (reactive), if codex never asks:** the write fails with access denied, Marcode sees
+    the failed `fileChange` item naming the path, raises the same card, grants on approval, and
+    sends the agent a follow-up message that access was granted so it retries. Worse UX (one failed
+    attempt, a retry turn) but needs no cooperation from codex.
+- The card offers three scopes:
+  - **Once:** grant, let the tool call run, revoke when it completes.
+  - **This session:** recorded in the tracker, revoked on dispose (same lifetime as the baseline).
+  - **Always for this folder:** the only scope that persists; chosen explicitly by the user, and
+    recorded in Marcode's own state so it can be listed and removed. It is re-applied to the
+    per-window SID at each activation, never left on disk under an old one.
+- **Limit, stated once:** this only works where Marcode knows the target path before execution.
+  An opaque shell command (`npm install -g`, a script writing somewhere unpredictable) cannot be
+  pre-approved; it fails with access denied and offers no retry.
 
 ### Accepted tradeoff
 
@@ -168,6 +209,8 @@ per the file-size convention):
   `csc.exe` (`%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\csc.exe`, present on every supported
   Windows/.NET Framework install, verified by the spike), caching the binary under
   `context.globalStorageUri` so it compiles once per Marcode install, not once per window.
+- `grants.ts` — the per-process grant tracker: records each grant, exposes `revokeAll()` for dispose
+  and `revoke(folder)` for the "once" scope, and owns the startup sweep of stale profiles.
 - `acl.ts` — grants an AppContainer SID access to a folder (`icacls <path> /grant "*<SID>:(OI)(CI)<perm>"`,
   `(OI)(CI)F` for a workspace-write root, `(OI)(CI)RX` for the broad profile-wide read grant and for
   `plan` mode's write-free sessions), verified by the spike to need no elevation on a user-owned
@@ -181,6 +224,9 @@ per the file-size convention):
   expected to succeed once the profile-wide read grant lands), nested spawn (`cmd.exe` → a real
   child) succeeds inside the container, outbound network succeeds once `internetClient` is granted
   and fails without it.
+- Grant tracker (`grants.ts`): every grant is recorded; `revokeAll()` issues one `/remove` per
+  recorded folder and deletes the profile; the "once" scope revokes exactly one folder; the startup
+  sweep removes stale profiles whose owning process is gone and leaves live ones alone.
 - `sandboxPolicyOf` unit tests (`src/test/unit/codex-map-settings.test.ts`) gain a platform-branch
   case: on a mocked win32 platform, every `PermissionMode` maps to `dangerFullAccess`.
 - `codex-provider.test.ts`: `spawnAppServer`'s injected `spawn` seam already exists

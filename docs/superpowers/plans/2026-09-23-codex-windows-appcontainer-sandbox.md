@@ -48,6 +48,11 @@ the real binary.
   this design stops is destructive/unexpected **writes**, not reads, and `approvalPolicy` (untouched
   by this design) is still the control on what an agent does with a read, same as it is today with
   no sandbox at all. Only the **write** ACL grant (`F`) is scoped per-session `cwd`.
+- **Every ACL grant is temporary.** An `icacls` ACE is NTFS metadata keyed to the container SID and
+  outlives the process, the window and a reboot, so: the container name is unique per sandbox
+  (`marcode-codex-<pid>-<uuid>`, never a constant), every grant goes through `GrantTracker`, and
+  `Sandbox.dispose()` revokes them all and deletes the profile. Nothing calls `icacls` directly
+  outside `acl.ts`/`grants.ts`.
 - The `internetClient` capability (`S-1-15-3-1`) is always attached to the container — zero
   capabilities blocks all outbound network (DNS resolution itself fails), which would break every
   `git fetch`/`push`/`npm install`/API call a session makes.
@@ -68,6 +73,11 @@ the real binary.
   not just "does a file exist at this path".
 - `Duplex.kill()` called while the helper is still mid-startup (before the Job Object assignment
   happens) — killing must not leave an un-tracked, un-killed AppContainer'd `app-server` orphaned.
+- A window that crashes or is force-killed never reaches `teardown()`, so its grants stay on disk —
+  Task 4's startup sweep (`sweepStale`, keyed on a dead `pid` in the per-window record) is the only
+  thing that clears them, and it must not touch a still-running window's record.
+- Two VS Code windows open at once — each has its own container name and record file, so neither
+  may revoke, delete or overwrite the other's (Task 4 tests: distinct names, live record untouched).
 - Non-win32 platforms importing anything from `windows-sandbox/` at module-load time — the folder
   must be reachable only behind the `process.platform === 'win32'` branch, never imported
   unconditionally at the top of `codex-provider.ts` (Win32 API `DllImport` P/Invoke has no meaning
@@ -76,21 +86,23 @@ the real binary.
 
 ---
 
-## Task 1: Folder ACL grant/deny (`acl.ts`)
+## Task 1: Folder ACL grant/revoke and the grant tracker (`acl.ts`, `grants.ts`)
 
 **Files:**
 - Create: `src/providers/codex/windows-sandbox/acl.ts`
-- Test: `src/test/unit/windows-sandbox-acl.test.ts`
+- Create: `src/providers/codex/windows-sandbox/grants.ts`
+- Test: `src/test/unit/windows-sandbox-acl.test.ts`, `src/test/unit/windows-sandbox-grants.test.ts`
 
 **Interfaces:**
-- Produces: `grantFolderAccess(sid: string, folder: string, mode: 'readwrite' | 'readonly', run?: ExecFn): Promise<void>` where `type ExecFn = (cmd: string, args: string[]) => Promise<{ code: number; stderr: string }>`, injected so the test never shells a real `icacls`.
+- Produces: `grantFolderAccess(sid: string, folder: string, mode: 'readwrite' | 'readonly', run?: ExecFn): Promise<void>` and `revokeFolderAccess(sid: string, folder: string, run?: ExecFn): Promise<void>` where `type ExecFn = (cmd: string, args: string[]) => Promise<{ code: number; stderr: string }>`, injected so the test never shells a real `icacls`.
+- Produces (`grants.ts`): `class GrantTracker { constructor(sid: string, deps?: { grant?: typeof grantFolderAccess; revoke?: typeof revokeFolderAccess }); grant(folder: string, mode: 'readwrite' | 'readonly'): Promise<void>; revoke(folder: string): Promise<void>; revokeAll(): Promise<void>; folders(): string[] }`. Every grant goes through the tracker so nothing is ever written to disk without a matching revoke path. `revokeAll` never throws: it attempts every folder and returns, so one locked folder cannot leave the rest granted.
 
 - [ ] **Step 1: Write the failing test**
 
 ```typescript
 // src/test/unit/windows-sandbox-acl.test.ts
 import * as assert from 'assert';
-import { grantFolderAccess } from '../../providers/codex/windows-sandbox/acl';
+import { grantFolderAccess, revokeFolderAccess } from '../../providers/codex/windows-sandbox/acl';
 
 suite('grantFolderAccess', () => {
   test('grants full control for readwrite mode', async () => {
@@ -116,13 +128,80 @@ suite('grantFolderAccess', () => {
       /icacls failed.*The system cannot find the file specified\./s,
     );
   });
+
+  test('revokes with /remove for exactly that SID', async () => {
+    const calls: { cmd: string; args: string[] }[] = [];
+    const run = async (cmd: string, args: string[]) => { calls.push({ cmd, args }); return { code: 0, stderr: '' }; };
+    await revokeFolderAccess('S-1-15-2-111', 'C:\\work\\repo', run);
+    assert.deepStrictEqual(calls[0].args, ['C:\\work\\repo', '/remove', '*S-1-15-2-111']);
+  });
+});
+```
+
+```typescript
+// src/test/unit/windows-sandbox-grants.test.ts
+import * as assert from 'assert';
+import { GrantTracker } from '../../providers/codex/windows-sandbox/grants';
+
+function fakeDeps() {
+  const log: string[] = [];
+  return {
+    log,
+    deps: {
+      grant: async (sid: string, folder: string, mode: string) => { log.push(`grant:${mode}:${folder}`); },
+      revoke: async (sid: string, folder: string) => { log.push(`revoke:${folder}`); },
+    },
+  };
+}
+
+suite('GrantTracker', () => {
+  test('records every grant and revokes each one on revokeAll', async () => {
+    const { log, deps } = fakeDeps();
+    const tracker = new GrantTracker('S-1-15-2-1', deps as never);
+    await tracker.grant('C:\\a', 'readwrite');
+    await tracker.grant('C:\\b', 'readonly');
+    await tracker.revokeAll();
+    assert.deepStrictEqual(log, ['grant:readwrite:C:\\a', 'grant:readonly:C:\\b', 'revoke:C:\\a', 'revoke:C:\\b']);
+    assert.deepStrictEqual(tracker.folders(), []);
+  });
+
+  test('revoke removes exactly one folder and leaves the rest tracked', async () => {
+    const { log, deps } = fakeDeps();
+    const tracker = new GrantTracker('S-1-15-2-1', deps as never);
+    await tracker.grant('C:\\a', 'readwrite');
+    await tracker.grant('C:\\b', 'readwrite');
+    await tracker.revoke('C:\\a');
+    assert.deepStrictEqual(tracker.folders(), ['C:\\b']);
+    assert.strictEqual(log[log.length - 1], 'revoke:C:\\a');
+  });
+
+  test('revokeAll attempts every folder even when one revoke fails, and does not throw', async () => {
+    const attempted: string[] = [];
+    const tracker = new GrantTracker('S-1-15-2-1', {
+      grant: async () => {},
+      revoke: async (_sid: string, folder: string) => { attempted.push(folder); if (folder === 'C:\\a') { throw new Error('locked'); } },
+    } as never);
+    await tracker.grant('C:\\a', 'readwrite');
+    await tracker.grant('C:\\b', 'readwrite');
+    await tracker.revokeAll();
+    assert.deepStrictEqual(attempted, ['C:\\a', 'C:\\b']);
+  });
+
+  test('a failed grant is not recorded, so it is never "revoked"', async () => {
+    const tracker = new GrantTracker('S-1-15-2-1', {
+      grant: async () => { throw new Error('icacls failed'); },
+      revoke: async () => {},
+    } as never);
+    await assert.rejects(tracker.grant('C:\\a', 'readwrite'), /icacls failed/);
+    assert.deepStrictEqual(tracker.folders(), []);
+  });
 });
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `yarn test:unit:raw --grep grantFolderAccess`
-Expected: FAIL — `Cannot find module '../../providers/codex/windows-sandbox/acl'`
+Run: `yarn test:unit:raw --grep "grantFolderAccess|GrantTracker"`
+Expected: FAIL — `Cannot find module '../../providers/codex/windows-sandbox/acl'` (and `grants`)
 
 - [ ] **Step 3: Write minimal implementation**
 
@@ -155,18 +234,75 @@ export async function grantFolderAccess(
     throw new Error(`icacls failed (exit ${code}) granting ${sid} on ${folder}: ${stderr.trim()}`);
   }
 }
+
+/** Removes every ACE for this SID on the folder — the inverse of `grantFolderAccess`. */
+export async function revokeFolderAccess(
+  sid: string, folder: string, run: ExecFn = defaultRun,
+): Promise<void> {
+  const { code, stderr } = await run('icacls', [folder, '/remove', `*${sid}`]);
+  if (code !== 0) {
+    throw new Error(`icacls failed (exit ${code}) revoking ${sid} on ${folder}: ${stderr.trim()}`);
+  }
+}
+```
+
+```typescript
+// src/providers/codex/windows-sandbox/grants.ts
+import { grantFolderAccess, revokeFolderAccess } from './acl';
+
+type Mode = 'readwrite' | 'readonly';
+
+/**
+ * An ACE written by `icacls` is NTFS metadata keyed to the container SID: it
+ * outlives the process, the window and a reboot. Routing every grant through
+ * this tracker is what makes "revoke on dispose" possible at all — a grant
+ * made outside it has no revoke path.
+ */
+export class GrantTracker {
+  private readonly granted = new Map<string, Mode>();
+  private readonly grantFn: typeof grantFolderAccess;
+  private readonly revokeFn: typeof revokeFolderAccess;
+
+  constructor(
+    private readonly sid: string,
+    deps: { grant?: typeof grantFolderAccess; revoke?: typeof revokeFolderAccess } = {},
+  ) {
+    this.grantFn = deps.grant ?? grantFolderAccess;
+    this.revokeFn = deps.revoke ?? revokeFolderAccess;
+  }
+
+  async grant(folder: string, mode: Mode): Promise<void> {
+    await this.grantFn(this.sid, folder, mode);
+    this.granted.set(folder, mode);
+  }
+
+  async revoke(folder: string): Promise<void> {
+    await this.revokeFn(this.sid, folder);
+    this.granted.delete(folder);
+  }
+
+  /** Attempts every folder; one failure must not leave the others granted. */
+  async revokeAll(): Promise<void> {
+    for (const folder of [...this.granted.keys()]) {
+      try { await this.revoke(folder); } catch { /* best-effort: startup sweep catches leftovers */ }
+    }
+    this.granted.clear();
+  }
+
+  folders(): string[] { return [...this.granted.keys()]; }
+}
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `yarn test:unit:raw --grep grantFolderAccess`
-Expected: PASS (3 passing)
+Run: `yarn test:unit:raw --grep "grantFolderAccess|GrantTracker"`
+Expected: PASS (4 + 4 passing)
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/providers/codex/windows-sandbox/acl.ts src/test/unit/windows-sandbox-acl.test.ts
-git commit -m "feat: add icacls-backed AppContainer folder grant"
+git add src/providers/codex/windows-sandbox/acl.ts src/providers/codex/windows-sandbox/grants.ts src/test/unit/windows-sandbox-acl.test.ts src/test/unit/windows-sandbox-grants.test.ts
+git commit -m "feat: add icacls grant/revoke and a tracker that can undo every grant"
 ```
 
 ---
@@ -325,36 +461,44 @@ class MarcodeSandboxHelper
     [DllImport("kernel32.dll")] static extern uint WaitForSingleObject(IntPtr handle, uint ms);
     [DllImport("kernel32.dll")] static extern bool GetExitCodeProcess(IntPtr process, out uint code);
 
-    static string ContainerName = "MarcodeCodexSandbox";
+    [DllImport("userenv.dll", CharSet = CharSet.Unicode)]
+    static extern int DeleteAppContainerProfile(string name);
 
-    static IntPtr EnsureSid()
+    // The container name is a per-window argument, never a constant: an ACE
+    // is keyed to this SID and persists on disk, so a shared name would make
+    // every grant global to every window and workspace on the machine.
+    static IntPtr EnsureSid(string name)
     {
         IntPtr sid;
-        int hr = CreateAppContainerProfile(ContainerName, "Marcode Codex Sandbox", "Scopes codex app-server to its workspace roots", IntPtr.Zero, 0, out sid);
-        if (hr == unchecked((int)0x800700B7)) { DeriveAppContainerSidFromAppContainerName(ContainerName, out sid); }
+        int hr = CreateAppContainerProfile(name, "Marcode Codex Sandbox", "Scopes one codex app-server to its granted folders", IntPtr.Zero, 0, out sid);
+        if (hr == unchecked((int)0x800700B7)) { DeriveAppContainerSidFromAppContainerName(name, out sid); }
         else if (hr != 0) { throw new Exception("CreateAppContainerProfile failed hr=0x" + hr.ToString("X8")); }
         return sid;
     }
 
     static int Main(string[] args)
     {
-        if (args.Length < 1) { Console.Error.WriteLine("usage: sid | run <cwd> <exe> <args...>"); return 2; }
+        const string usage = "usage: sid <name> | delete <name> | run <name> <cwd> <exe> <args...>";
+        if (args.Length < 2) { Console.Error.WriteLine(usage); return 2; }
+        string name = args[1];
 
         if (args[0] == "sid")
         {
-            IntPtr sid = EnsureSid();
+            IntPtr sid = EnsureSid(name);
             IntPtr strPtr; ConvertSidToStringSidW(sid, out strPtr);
             Console.WriteLine(Marshal.PtrToStringUni(strPtr));
             LocalFree(strPtr);
             return 0;
         }
 
-        if (args[0] != "run" || args.Length < 3) { Console.Error.WriteLine("usage: run <cwd> <exe> <args...>"); return 2; }
-        string cwd = args[1], exe = args[2];
-        var cmd = new StringBuilder("\"" + exe + "\"");
-        for (int i = 3; i < args.Length; i++) { cmd.Append(" \"" + args[i].Replace("\"", "\\\"") + "\""); }
+        if (args[0] == "delete") { return DeleteAppContainerProfile(name) == 0 ? 0 : 1; }
 
-        IntPtr sidHandle = EnsureSid();
+        if (args[0] != "run" || args.Length < 4) { Console.Error.WriteLine(usage); return 2; }
+        string cwd = args[2], exe = args[3];
+        var cmd = new StringBuilder("\"" + exe + "\"");
+        for (int i = 4; i < args.Length; i++) { cmd.Append(" \"" + args[i].Replace("\"", "\\\"") + "\""); }
+
+        IntPtr sidHandle = EnsureSid(name);
 
         IntPtr internetClientSid;
         if (!ConvertStringSidToSidW(INTERNET_CLIENT_SID, out internetClientSid))
@@ -506,19 +650,28 @@ import * as assert from 'assert';
 import { mkdtempSync, writeFileSync, existsSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { buildHelper } from '../../providers/codex/windows-sandbox/build-helper';
 import { grantFolderAccess } from '../../providers/codex/windows-sandbox/acl';
 import { shouldRunWindowsSandboxTests } from './windows-sandbox-helper-gate';
 
 (shouldRunWindowsSandboxTests ? suite : suite.skip)('sandbox helper (real binary)', () => {
+  // Unique per test run: profiles persist in the OS until deleted, so a
+  // shared name would let one run's leftover grants satisfy another's asserts.
+  const CONTAINER = `marcode-test-${process.pid}-${Date.now()}`;
+  let helperForCleanup: string | undefined;
+
+  suiteTeardown(() => {
+    if (helperForCleanup) { spawnSync(helperForCleanup, ['delete', CONTAINER], { windowsHide: true }); }
+  });
+
   test('spawns a nested child (cmd -> a marker file) inside the granted root, denies outside it', async function () {
     this.timeout(20000);
     const cacheDir = mkdtempSync(path.join(tmpdir(), 'marcode-sandbox-cache-'));
     const helperPath = await buildHelper(cacheDir);
 
     const sid = await new Promise<string>((resolve, reject) => {
-      const child = spawn(helperPath, ['sid'], { windowsHide: true });
+      const child = spawn(helperPath, ['sid', CONTAINER], { windowsHide: true });
       let out = '';
       child.stdout.on('data', (c: Buffer) => { out += c.toString(); });
       child.on('exit', (code) => { code === 0 ? resolve(out.trim()) : reject(new Error(`sid exit ${code}`)); });
@@ -534,7 +687,7 @@ import { shouldRunWindowsSandboxTests } from './windows-sandbox-helper-gate';
     writeFileSync(path.join(root, 'run.cmd'), script);
 
     const exitCode = await new Promise<number>((resolve, reject) => {
-      const child = spawn(helperPath, ['run', root, 'cmd.exe', '/c', path.join(root, 'run.cmd')], { windowsHide: true });
+      const child = spawn(helperPath, ['run', CONTAINER, root, 'cmd.exe', '/c', path.join(root, 'run.cmd')], { windowsHide: true });
       child.on('exit', (code) => { code === null ? reject(new Error('killed')) : resolve(code); });
       child.on('error', reject);
     });
@@ -548,8 +701,9 @@ import { shouldRunWindowsSandboxTests } from './windows-sandbox-helper-gate';
     this.timeout(20000);
     const cacheDir = mkdtempSync(path.join(tmpdir(), 'marcode-sandbox-cache-'));
     const helperPath = await buildHelper(cacheDir);
+    helperForCleanup = helperPath;
     const sid = await new Promise<string>((resolve, reject) => {
-      const child = spawn(helperPath, ['sid'], { windowsHide: true });
+      const child = spawn(helperPath, ['sid', CONTAINER], { windowsHide: true });
       let out = '';
       child.stdout.on('data', (c: Buffer) => { out += c.toString(); });
       child.on('exit', (code) => { code === 0 ? resolve(out.trim()) : reject(new Error(`sid exit ${code}`)); });
@@ -561,7 +715,7 @@ import { shouldRunWindowsSandboxTests } from './windows-sandbox-helper-gate';
     writeFileSync(path.join(root, 'run.cmd'), `cmd /c echo hi > "${marker}"`);
 
     const exitCode = await new Promise<number>((resolve, reject) => {
-      const child = spawn(helperPath, ['run', root, 'cmd.exe', '/c', path.join(root, 'run.cmd')], { windowsHide: true });
+      const child = spawn(helperPath, ['run', CONTAINER, root, 'cmd.exe', '/c', path.join(root, 'run.cmd')], { windowsHide: true });
       child.on('exit', (code) => { code === null ? reject(new Error('killed')) : resolve(code); });
       child.on('error', reject);
     });
@@ -582,7 +736,7 @@ import { shouldRunWindowsSandboxTests } from './windows-sandbox-helper-gate';
     );
 
     const exitCode = await new Promise<number>((resolve, reject) => {
-      const child = spawn(helperPath, ['run', root, 'cmd.exe', '/c', path.join(root, 'run.cmd')], { windowsHide: true });
+      const child = spawn(helperPath, ['run', CONTAINER, root, 'cmd.exe', '/c', path.join(root, 'run.cmd')], { windowsHide: true });
       child.on('exit', (code) => { code === null ? reject(new Error('killed')) : resolve(code); });
       child.on('error', reject);
     });
@@ -596,8 +750,9 @@ import { shouldRunWindowsSandboxTests } from './windows-sandbox-helper-gate';
     this.timeout(20000);
     const cacheDir = mkdtempSync(path.join(tmpdir(), 'marcode-sandbox-cache-'));
     const helperPath = await buildHelper(cacheDir);
+    helperForCleanup = helperPath;
     const sid = await new Promise<string>((resolve, reject) => {
-      const child = spawn(helperPath, ['sid'], { windowsHide: true });
+      const child = spawn(helperPath, ['sid', CONTAINER], { windowsHide: true });
       let out = '';
       child.stdout.on('data', (c: Buffer) => { out += c.toString(); });
       child.on('exit', (code) => { code === 0 ? resolve(out.trim()) : reject(new Error(`sid exit ${code}`)); });
@@ -617,7 +772,7 @@ import { shouldRunWindowsSandboxTests } from './windows-sandbox-helper-gate';
     writeFileSync(path.join(readOnlyRoot, 'run.cmd'), script);
 
     const exitCode = await new Promise<number>((resolve, reject) => {
-      const child = spawn(helperPath, ['run', readOnlyRoot, 'cmd.exe', '/c', path.join(readOnlyRoot, 'run.cmd')], { windowsHide: true });
+      const child = spawn(helperPath, ['run', CONTAINER, readOnlyRoot, 'cmd.exe', '/c', path.join(readOnlyRoot, 'run.cmd')], { windowsHide: true });
       child.on('exit', (code) => { code === null ? reject(new Error('killed')) : resolve(code); });
       child.on('error', reject);
     });
@@ -657,172 +812,350 @@ git commit -m "test: gate a real AppContainer nested-spawn + fs-scoping check on
 
 ---
 
-## Task 4: Node-facing spawn wrapper (`index.ts`)
+## Task 4: Per-window sandbox (`state.ts`, `index.ts`)
 
 **Files:**
+- Create: `src/providers/codex/windows-sandbox/state.ts`
 - Create: `src/providers/codex/windows-sandbox/index.ts`
-- Test: `src/test/unit/windows-sandbox-index.test.ts`
+- Test: `src/test/unit/windows-sandbox-state.test.ts`, `src/test/unit/windows-sandbox-index.test.ts`
 
 **Interfaces:**
-- Consumes: `buildHelper` (Task 2), `grantFolderAccess` (Task 1), `Duplex` from
-  `src/providers/codex/app-server.ts` (already defined: `{ stdin, stdout, kill(), onFailure(cb) }`,
-  same shape `spawnAppServer` already returns — see `codex-provider.ts:105-110`).
-- Produces: `spawnSandboxed(bin: string, args: string[], cwd: string, cacheDir: string, opts?: { spawn?: SpawnFn; build?: typeof buildHelper; grant?: typeof grantFolderAccess; sid?: (helperPath: string) => Promise<string>; homeDir?: () => string; writable?: boolean }): Promise<Duplex>` — always grants broad read on `homeDir()`, grants write on `cwd` unless `writable: false` (the `plan`-mode case); `grantRoot(cwd: string, mode: 'readwrite' | 'readonly', cacheDir: string): Promise<void>` for the mid-lifetime new-`cwd` case, one call per newly seen thread.
+- Consumes: `buildHelper` (Task 2), `GrantTracker` / `grantFolderAccess` / `revokeFolderAccess` (Task 1), `Duplex` from `src/providers/codex/app-server.ts` (already defined: `{ stdin, stdout, kill(), onFailure(cb) }`, the shape `spawnAppServer` already returns — see `codex-provider.ts:105-110`).
+- Produces (`state.ts`): `interface SandboxRecord { name: string; sid: string; pid: number; folders: string[] }`; `writeRecord(dir: string, rec: SandboxRecord): void`; `removeRecord(dir: string, name: string): void`; `sweepStale(dir: string, deps: { isAlive?: (pid: number) => boolean; revoke?: typeof revokeFolderAccess; deleteProfile: (name: string) => Promise<void> }): Promise<string[]>` returning the names it cleaned. One JSON file per window (`sandbox-<name>.json`), never one shared file, so two windows never race on a write.
+- Produces (`index.ts`): `createSandbox(cacheDir: string, deps?: SandboxDeps): Promise<Sandbox>` where `interface Sandbox { readonly name: string; spawn(bin: string, args: string[], cwd: string, opts?: { writable?: boolean }): Promise<Duplex>; grant(folder: string, mode: 'readwrite' | 'readonly'): Promise<void>; revoke(folder: string): Promise<void>; dispose(): Promise<void> }`. `spawn` grants read on `homeDir()` once per sandbox and write on `cwd` unless `writable: false` (the `plan` case). `dispose` revokes every recorded grant, deletes the profile and removes the record.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Write the failing tests**
 
 ```typescript
-// src/test/unit/windows-sandbox-index.test.ts
+// src/test/unit/windows-sandbox-state.test.ts
 import * as assert from 'assert';
-import { PassThrough } from 'node:stream';
-import { spawnSandboxed } from '../../providers/codex/windows-sandbox/index';
+import { mkdtempSync, existsSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import * as path from 'node:path';
+import { writeRecord, removeRecord, sweepStale } from '../../providers/codex/windows-sandbox/state';
 
-suite('spawnSandboxed', () => {
-  test('grants broad read on the home directory once, write on the workspace root, then launches "run"', async () => {
-    const calls: string[] = [];
-    const fakeChild = {
-      stdin: new PassThrough(), stdout: new PassThrough(),
-      kill: () => { calls.push('kill'); }, on: () => {}, pid: 123,
-    };
-    let spawnedArgs: string[] = [];
-    const result = await spawnSandboxed('codex.exe', ['app-server'], 'C:\\work\\repo', 'C:\\cache', {
-      build: async () => 'C:\\cache\\helper.exe',
-      sid: async () => 'S-1-15-2-999',
-      homeDir: () => 'C:\\Users\\dev',
-      grant: async (sid, folder, mode) => { calls.push(`grant:${mode}:${sid}:${folder}`); },
-      spawn: (bin, args) => { spawnedArgs = args; calls.push(`spawn:${bin}`); return fakeChild as never; },
+suite('sweepStale', () => {
+  const rec = (name: string, pid: number, folders: string[]) => ({ name, sid: `S-1-15-2-${pid}`, pid, folders });
+
+  test('revokes and deletes a record whose owning process is gone, leaves a live one alone', async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'marcode-sweep-'));
+    writeRecord(dir, rec('dead', 111, ['C:\\a', 'C:\\b']));
+    writeRecord(dir, rec('live', 222, ['C:\\c']));
+    const revoked: string[] = [];
+    const deleted: string[] = [];
+
+    const cleaned = await sweepStale(dir, {
+      isAlive: (pid) => pid === 222,
+      revoke: async (sid, folder) => { revoked.push(`${sid}:${folder}`); },
+      deleteProfile: async (name) => { deleted.push(name); },
     });
 
-    assert.deepStrictEqual(calls, [
-      'grant:readonly:S-1-15-2-999:C:\\Users\\dev',
-      'grant:readwrite:S-1-15-2-999:C:\\work\\repo',
-      'spawn:C:\\cache\\helper.exe',
-    ]);
-    assert.deepStrictEqual(spawnedArgs, ['run', 'C:\\work\\repo', 'codex.exe', 'app-server']);
-    assert.strictEqual(result.stdin, fakeChild.stdin);
-    assert.strictEqual(result.stdout, fakeChild.stdout);
+    assert.deepStrictEqual(cleaned, ['dead']);
+    assert.deepStrictEqual(revoked, ['S-1-15-2-111:C:\\a', 'S-1-15-2-111:C:\\b']);
+    assert.deepStrictEqual(deleted, ['dead']);
+    assert.strictEqual(existsSync(path.join(dir, 'sandbox-dead.json')), false);
+    assert.strictEqual(existsSync(path.join(dir, 'sandbox-live.json')), true);
   });
 
-  test('grants only broad read for a plan-mode session — no write grant anywhere', async () => {
-    const calls: string[] = [];
-    const fakeChild = { stdin: new PassThrough(), stdout: new PassThrough(), kill: () => {}, on: () => {}, pid: 1 };
-    await spawnSandboxed('codex.exe', ['app-server'], 'C:\\work\\repo', 'C:\\cache', {
-      build: async () => 'C:\\cache\\helper.exe',
-      sid: async () => 'S-1-15-2-999',
-      homeDir: () => 'C:\\Users\\dev',
-      writable: false,
-      grant: async (sid, folder, mode) => { calls.push(`grant:${mode}:${folder}`); },
-      spawn: () => fakeChild as never,
+  test('a folder that fails to revoke does not stop the rest, and the record is still cleared', async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'marcode-sweep-'));
+    writeRecord(dir, rec('dead', 111, ['C:\\gone', 'C:\\b']));
+    const revoked: string[] = [];
+    await sweepStale(dir, {
+      isAlive: () => false,
+      revoke: async (_sid, folder) => { revoked.push(folder); if (folder === 'C:\\gone') { throw new Error('missing'); } },
+      deleteProfile: async () => {},
     });
+    assert.deepStrictEqual(revoked, ['C:\\gone', 'C:\\b']);
+    assert.strictEqual(existsSync(path.join(dir, 'sandbox-dead.json')), false);
+  });
 
-    assert.deepStrictEqual(calls, ['grant:readonly:C:\\Users\\dev']);
+  test('a corrupt record file is skipped, not thrown on', async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'marcode-sweep-'));
+    writeFileSync(path.join(dir, 'sandbox-bad.json'), '{not json');
+    const cleaned = await sweepStale(dir, { isAlive: () => false, revoke: async () => {}, deleteProfile: async () => {} });
+    assert.deepStrictEqual(cleaned, []);
+  });
+
+  test('removeRecord deletes only that window\'s file', () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'marcode-sweep-'));
+    writeRecord(dir, rec('a', 1, []));
+    writeRecord(dir, rec('b', 2, []));
+    removeRecord(dir, 'a');
+    assert.strictEqual(existsSync(path.join(dir, 'sandbox-a.json')), false);
+    assert.strictEqual(existsSync(path.join(dir, 'sandbox-b.json')), true);
   });
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+```typescript
+// src/test/unit/windows-sandbox-index.test.ts
+import * as assert from 'assert';
+import { mkdtempSync, existsSync, readdirSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import * as path from 'node:path';
+import { PassThrough } from 'node:stream';
+import { createSandbox } from '../../providers/codex/windows-sandbox/index';
 
-Run: `yarn test:unit:raw --grep spawnSandboxed`
-Expected: FAIL — module doesn't exist
+function harness() {
+  const calls: string[] = [];
+  const cacheDir = mkdtempSync(path.join(tmpdir(), 'marcode-sandbox-idx-'));
+  let spawnedArgs: string[] = [];
+  const fakeChild = { stdin: new PassThrough(), stdout: new PassThrough(), kill: () => { calls.push('kill'); }, on: () => {}, pid: 1 };
+  const deps = {
+    build: async () => 'C:\\cache\\helper.exe',
+    sid: async (_h: string, name: string) => { calls.push(`sid:${name.startsWith('marcode-codex-')}`); return 'S-1-15-2-999'; },
+    homeDir: () => 'C:\\Users\\dev',
+    grant: async (_sid: string, folder: string, mode: string) => { calls.push(`grant:${mode}:${folder}`); },
+    revoke: async (_sid: string, folder: string) => { calls.push(`revoke:${folder}`); },
+    deleteProfile: async (name: string) => { calls.push(`delete:${name.startsWith('marcode-codex-')}`); },
+    isAlive: () => true,
+    spawn: (bin: string, args: string[]) => { spawnedArgs = args; calls.push(`spawn:${bin}`); return fakeChild as never; },
+  };
+  return { calls, cacheDir, deps, fakeChild, args: () => spawnedArgs };
+}
+
+suite('createSandbox', () => {
+  test('spawn grants read on home once, write on cwd, then runs under this window\'s container name', async () => {
+    const h = harness();
+    const sandbox = await createSandbox(h.cacheDir, h.deps as never);
+    const child = await sandbox.spawn('codex.exe', ['app-server'], 'C:\\work\\repo');
+
+    assert.deepStrictEqual(h.calls, [
+      'sid:true', 'grant:readonly:C:\\Users\\dev', 'grant:readwrite:C:\\work\\repo', 'spawn:C:\\cache\\helper.exe',
+    ]);
+    assert.deepStrictEqual(h.args().slice(0, 1), ['run']);
+    assert.strictEqual(h.args()[1], sandbox.name);
+    assert.deepStrictEqual(h.args().slice(2), ['C:\\work\\repo', 'codex.exe', 'app-server']);
+    assert.strictEqual(child.stdin, h.fakeChild.stdin);
+  });
+
+  test('a second spawn does not re-grant home', async () => {
+    const h = harness();
+    const sandbox = await createSandbox(h.cacheDir, h.deps as never);
+    await sandbox.spawn('codex.exe', ['app-server'], 'C:\\a');
+    await sandbox.spawn('codex.exe', ['app-server'], 'C:\\b');
+    assert.strictEqual(h.calls.filter((c) => c === 'grant:readonly:C:\\Users\\dev').length, 1);
+  });
+
+  test('writable: false (plan mode) grants no write anywhere', async () => {
+    const h = harness();
+    const sandbox = await createSandbox(h.cacheDir, h.deps as never);
+    await sandbox.spawn('codex.exe', ['app-server'], 'C:\\work\\repo', { writable: false });
+    assert.strictEqual(h.calls.some((c) => c.startsWith('grant:readwrite')), false);
+  });
+
+  test('two sandboxes get distinct container names', async () => {
+    const a = await createSandbox(harness().cacheDir, harness().deps as never);
+    const b = await createSandbox(harness().cacheDir, harness().deps as never);
+    assert.notStrictEqual(a.name, b.name);
+  });
+
+  test('dispose revokes every grant, deletes the profile and removes the record', async () => {
+    const h = harness();
+    const sandbox = await createSandbox(h.cacheDir, h.deps as never);
+    await sandbox.spawn('codex.exe', ['app-server'], 'C:\\work\\repo');
+    await sandbox.grant('C:\\extra', 'readwrite');
+    assert.strictEqual(readdirSync(h.cacheDir).some((f) => f.startsWith('sandbox-')), true);
+    h.calls.length = 0;
+
+    await sandbox.dispose();
+
+    assert.deepStrictEqual(h.calls.filter((c) => c.startsWith('revoke:')).sort(), [
+      'revoke:C:\\Users\\dev', 'revoke:C:\\extra', 'revoke:C:\\work\\repo',
+    ]);
+    assert.strictEqual(h.calls.includes('delete:true'), true);
+    assert.strictEqual(readdirSync(h.cacheDir).some((f) => f.startsWith('sandbox-')), false);
+  });
+
+  test('startup sweeps a stale record left by a crashed window before creating its own', async () => {
+    const h = harness();
+    const { writeRecord } = await import('../../providers/codex/windows-sandbox/state');
+    writeRecord(h.cacheDir, { name: 'marcode-codex-old', sid: 'S-1-15-2-1', pid: 999999, folders: ['C:\\stale'] });
+    await createSandbox(h.cacheDir, { ...h.deps, isAlive: () => false } as never);
+    assert.strictEqual(h.calls.includes('revoke:C:\\stale'), true);
+    assert.strictEqual(existsSync(path.join(h.cacheDir, 'sandbox-marcode-codex-old.json')), false);
+  });
+});
+```
+
+- [ ] **Step 2: Run tests to verify they fail**
+
+Run: `yarn test:unit:raw --grep "sweepStale|createSandbox"`
+Expected: FAIL — modules don't exist
 
 - [ ] **Step 3: Write minimal implementation**
 
 ```typescript
+// src/providers/codex/windows-sandbox/state.ts
+import { existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs';
+import * as path from 'node:path';
+import { revokeFolderAccess } from './acl';
+
+export interface SandboxRecord { name: string; sid: string; pid: number; folders: string[] }
+
+// One file per window: two windows never race on a shared write.
+const fileOf = (dir: string, name: string) => path.join(dir, `sandbox-${name}.json`);
+
+export function writeRecord(dir: string, rec: SandboxRecord): void {
+  if (!existsSync(dir)) { mkdirSync(dir, { recursive: true }); }
+  writeFileSync(fileOf(dir, rec.name), JSON.stringify(rec), 'utf8');
+}
+
+export function removeRecord(dir: string, name: string): void {
+  try { unlinkSync(fileOf(dir, name)); } catch { /* already gone */ }
+}
+
+const defaultIsAlive = (pid: number): boolean => {
+  try { process.kill(pid, 0); return true; } catch (err) { return (err as NodeJS.ErrnoException).code === 'EPERM'; }
+};
+
+/**
+ * Cleans up after windows that died without running `dispose`. An ACE is
+ * NTFS metadata keyed to its window's SID, so a crash leaves it on disk for
+ * good unless something removes it.
+ */
+export async function sweepStale(
+  dir: string,
+  deps: { isAlive?: (pid: number) => boolean; revoke?: typeof revokeFolderAccess; deleteProfile: (name: string) => Promise<void> },
+): Promise<string[]> {
+  if (!existsSync(dir)) { return []; }
+  const isAlive = deps.isAlive ?? defaultIsAlive;
+  const revoke = deps.revoke ?? revokeFolderAccess;
+  const cleaned: string[] = [];
+
+  for (const file of readdirSync(dir).filter((f) => f.startsWith('sandbox-') && f.endsWith('.json'))) {
+    let rec: SandboxRecord;
+    try { rec = JSON.parse(readFileSync(path.join(dir, file), 'utf8')) as SandboxRecord; } catch { continue; }
+    if (isAlive(rec.pid)) { continue; }
+    for (const folder of rec.folders) {
+      try { await revoke(rec.sid, folder); } catch { /* folder deleted or locked: nothing to revoke */ }
+    }
+    try { await deps.deleteProfile(rec.name); } catch { /* profile already gone */ }
+    removeRecord(dir, rec.name);
+    cleaned.push(rec.name);
+  }
+  return cleaned;
+}
+```
+
+```typescript
 // src/providers/codex/windows-sandbox/index.ts
-import { spawn as spawnChildProcess } from 'node:child_process';
+import { spawn as spawnChildProcess, spawnSync } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { homedir } from 'node:os';
 import type { Duplex } from '../app-server';
+import { grantFolderAccess, revokeFolderAccess } from './acl';
 import { buildHelper } from './build-helper';
-import { grantFolderAccess } from './acl';
+import { GrantTracker } from './grants';
+import { removeRecord, sweepStale, writeRecord } from './state';
 
-type SpawnFn = (bin: string, args: string[]) => { stdin: NodeJS.WritableStream; stdout: NodeJS.ReadableStream; kill(): void; on(event: string, cb: (...a: unknown[]) => void): void };
+type SpawnFn = (bin: string, args: string[]) => {
+  stdin: NodeJS.WritableStream; stdout: NodeJS.ReadableStream; kill(): void;
+  on(event: string, cb: (...a: unknown[]) => void): void;
+};
+
+export interface SandboxDeps {
+  build?: typeof buildHelper;
+  sid?: (helperPath: string, name: string) => Promise<string>;
+  homeDir?: () => string;
+  grant?: typeof grantFolderAccess;
+  revoke?: typeof revokeFolderAccess;
+  deleteProfile?: (name: string) => Promise<void>;
+  isAlive?: (pid: number) => boolean;
+  spawn?: SpawnFn;
+}
+
+export interface Sandbox {
+  readonly name: string;
+  spawn(bin: string, args: string[], cwd: string, opts?: { writable?: boolean }): Promise<Duplex>;
+  grant(folder: string, mode: 'readwrite' | 'readonly'): Promise<void>;
+  revoke(folder: string): Promise<void>;
+  dispose(): Promise<void>;
+}
 
 const defaultSpawn: SpawnFn = (bin, args) => spawnChildProcess(bin, args, {
   stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true,
 }) as unknown as ReturnType<SpawnFn>;
 
-async function sidOf(helperPath: string, run: SpawnFn = defaultSpawn): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const child = run(helperPath, ['sid']) as unknown as import('node:child_process').ChildProcess;
-    let out = '';
-    child.stdout?.on('data', (c: Buffer) => { out += c.toString(); });
-    child.on('error', reject);
-    child.on('exit', (code) => { code === 0 ? resolve(out.trim()) : reject(new Error(`sandbox helper sid exit ${code}`)); });
-  });
-}
+const defaultSid = (helperPath: string, name: string): Promise<string> => new Promise((resolve, reject) => {
+  const child = spawnChildProcess(helperPath, ['sid', name], { windowsHide: true });
+  let out = '';
+  child.stdout.on('data', (c: Buffer) => { out += c.toString(); });
+  child.on('error', reject);
+  child.on('exit', (code) => { code === 0 ? resolve(out.trim()) : reject(new Error(`sandbox helper sid exit ${code}`)); });
+});
 
 /**
- * Spawns `bin args...` inside a Marcode-controlled AppContainer, in place of
- * a plain `child_process.spawn` — see the design doc for why: codex's own
- * Windows sandbox blocks further child-process creation outright, this one
- * doesn't.
- *
- * Write confinement, not filesystem confinement (spec: "Write confinement,
- * not filesystem confinement"): read+execute is granted broadly on the
- * user's home directory every time, since that grant is idempotent and
- * cheap, and this process has no reliable "did I already grant this"
- * bookkeeping across `app-server` restarts. Write (`F`) is scoped to `cwd`
- * alone, and only when `opts.writable` isn't explicitly `false` — a
- * `plan`-mode session passes `writable: false` and gets no write grant
- * anywhere, matching "nothing on disk changes."
+ * One sandbox per provider process. The container name is unique to it, so
+ * its SID — and every ACE written for that SID — belongs to this window
+ * alone. `dispose` is what makes grants temporary; without it an `icacls`
+ * grant outlives the process, the window and a reboot.
  */
-export async function spawnSandboxed(
-  bin: string, args: string[], cwd: string, cacheDir: string,
-  opts: {
-    spawn?: SpawnFn; build?: typeof buildHelper; grant?: typeof grantFolderAccess;
-    sid?: (helperPath: string) => Promise<string>; homeDir?: () => string; writable?: boolean;
-  } = {},
-): Promise<Duplex> {
-  const build = opts.build ?? buildHelper;
-  const grant = opts.grant ?? grantFolderAccess;
-  const doSpawn = opts.spawn ?? defaultSpawn;
-  const getHomeDir = opts.homeDir ?? homedir;
+export async function createSandbox(cacheDir: string, deps: SandboxDeps = {}): Promise<Sandbox> {
+  const helperPath = await (deps.build ?? buildHelper)(cacheDir);
+  const deleteProfile = deps.deleteProfile
+    ?? (async (n: string) => { spawnSync(helperPath, ['delete', n], { windowsHide: true }); });
 
-  const helperPath = await build(cacheDir);
-  const sid = opts.sid ? await opts.sid(helperPath) : await sidOf(helperPath, doSpawn);
-  await grant(sid, getHomeDir(), 'readonly');
-  if (opts.writable !== false) {
-    await grant(sid, cwd, 'readwrite');
-  }
+  await sweepStale(cacheDir, { isAlive: deps.isAlive, revoke: deps.revoke, deleteProfile });
 
-  const child = doSpawn(helperPath, ['run', cwd, bin, ...args]);
-  let notify: (reason: string) => void = () => {};
-  child.on('error', (err: Error) => { notify(`sandbox helper failed to start (${err.message})`); });
-  child.on('exit', (code: number | null, signal: string | null) => {
-    notify(`sandboxed codex app-server exited (${signal ?? `code ${code}`})`);
-  });
+  const name = `marcode-codex-${process.pid}-${randomUUID().slice(0, 8)}`;
+  const sid = await (deps.sid ?? defaultSid)(helperPath, name);
+  const tracker = new GrantTracker(sid, { grant: deps.grant, revoke: deps.revoke });
+  const getHomeDir = deps.homeDir ?? homedir;
+  const doSpawn = deps.spawn ?? defaultSpawn;
+  let homeGranted = false;
+
+  const persist = () => writeRecord(cacheDir, { name, sid, pid: process.pid, folders: tracker.folders() });
+  persist();
 
   return {
-    stdin: child.stdin as never,
-    stdout: child.stdout as never,
-    kill: () => { child.kill(); },
-    onFailure: (cb) => { notify = cb; },
-  };
-}
+    name,
 
-/** The mid-lifetime case: a newly seen thread `cwd` under an already-running app-server. */
-export async function grantRoot(
-  cwd: string, mode: 'readwrite' | 'readonly', cacheDir: string,
-  opts: { build?: typeof buildHelper; grant?: typeof grantFolderAccess; sid?: (helperPath: string) => Promise<string> } = {},
-): Promise<void> {
-  const build = opts.build ?? buildHelper;
-  const grant = opts.grant ?? grantFolderAccess;
-  const helperPath = await build(cacheDir);
-  const sid = opts.sid ? await opts.sid(helperPath) : await sidOf(helperPath);
-  await grant(sid, cwd, mode);
+    async spawn(bin, args, cwd, opts = {}) {
+      if (!homeGranted) {
+        await tracker.grant(getHomeDir(), 'readonly');
+        homeGranted = true;
+      }
+      if (opts.writable !== false) { await tracker.grant(cwd, 'readwrite'); }
+      persist();
+
+      const child = doSpawn(helperPath, ['run', name, cwd, bin, ...args]);
+      let notify: (reason: string) => void = () => {};
+      child.on('error', (err: unknown) => { notify(`sandbox helper failed to start (${(err as Error).message})`); });
+      child.on('exit', (code: unknown, signal: unknown) => {
+        notify(`sandboxed codex app-server exited (${(signal as string | null) ?? `code ${code}`})`);
+      });
+      return {
+        stdin: child.stdin as never,
+        stdout: child.stdout as never,
+        kill: () => { child.kill(); },
+        onFailure: (cb) => { notify = cb; },
+      };
+    },
+
+    async grant(folder, mode) { await tracker.grant(folder, mode); persist(); },
+    async revoke(folder) { await tracker.revoke(folder); persist(); },
+
+    async dispose() {
+      await tracker.revokeAll();
+      await deleteProfile(name);
+      removeRecord(cacheDir, name);
+    },
+  };
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [ ] **Step 4: Run tests to verify they pass**
 
-Run: `yarn test:unit:raw --grep spawnSandboxed`
-Expected: PASS
+Run: `yarn test:unit:raw --grep "sweepStale|createSandbox"`
+Expected: PASS (4 + 6 passing)
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/providers/codex/windows-sandbox/index.ts src/test/unit/windows-sandbox-index.test.ts
-git commit -m "feat: wire the AppContainer helper behind a spawnSandboxed seam"
+git add src/providers/codex/windows-sandbox/state.ts src/providers/codex/windows-sandbox/index.ts src/test/unit/windows-sandbox-state.test.ts src/test/unit/windows-sandbox-index.test.ts
+git commit -m "feat: give each window its own sandbox that undoes its grants on dispose"
 ```
 
 ---
@@ -835,7 +1168,7 @@ git commit -m "feat: wire the AppContainer helper behind a spawnSandboxed seam"
 - Test: `src/test/unit/codex-provider.test.ts`, `src/test/unit/codex-map-settings.test.ts`
 
 **Interfaces:**
-- Consumes: `spawnSandboxed` (Task 4).
+- Consumes: `createSandbox` / `Sandbox` (Task 4).
 - Produces: no new exports; changes existing behavior only on `process.platform === 'win32'`.
 
 - [ ] **Step 1: Write the failing test — `sandboxPolicyOf` always returns dangerFullAccess on win32**
@@ -885,43 +1218,51 @@ Run: `yarn test:unit:raw --grep "dangerFullAccess on win32"` → PASS
 
 ```typescript
 // added to src/test/unit/codex-provider.test.ts
-test('spawnAppServer uses spawnSandboxed on win32', async () => {
-  let sandboxedArgs: unknown[] | undefined;
+test('on win32 the app-server spawns through the per-window sandbox, and teardown disposes it', async () => {
+  const calls: string[] = [];
   const provider = new CodexProvider({
-    binPath: 'codex.exe',
-    spawn: undefined, // exercise the real branch inside spawnAppServer, not the injected seam
-    platform: 'win32',
-    spawnSandboxed: async (...args: unknown[]) => { sandboxedArgs = args; return fakeDuplex(); },
+    binPath: 'codex.exe', platform: 'win32', sandboxCacheDir: 'C:\\cache',
+    spawn: () => { throw new Error('must not be called — that would be the unsandboxed path'); },
+    createSandbox: async () => ({
+      name: 'marcode-codex-test',
+      spawn: async (_bin: string, _args: string[], cwd: string) => { calls.push(`spawn:${cwd}`); return fakeDuplex(); },
+      grant: async () => {}, revoke: async () => {},
+      dispose: async () => { calls.push('dispose'); },
+    }),
   });
-  await provider.start({ cwd: 'C:\\work\\repo', /* ...other required StartOptions fields per existing tests... */ } as never);
-  assert.ok(sandboxedArgs, 'spawnSandboxed should have been called instead of a plain child_process.spawn');
+  const run = provider.start({ cwd: 'C:\\work\\repo', /* ...other required StartOptions fields per existing tests... */ } as never);
+  await run.dispose();   // last run gone -> ref-count zero -> teardown (after teardownGraceMs)
+  await new Promise((r) => setTimeout(r, 20));
+  assert.deepStrictEqual(calls, ['spawn:C:\\work\\repo', 'dispose']);
 });
 ```
 
 - [ ] **Step 5: Run test to verify it fails**
 
-Run: `yarn test:unit:raw --grep "spawnSandboxed on win32"`
-Expected: FAIL — `CodexProvider` has no `platform`/`spawnSandboxed` constructor option yet
+Run: `yarn test:unit:raw --grep "per-window sandbox"`
+Expected: FAIL — `CodexProvider` has no `platform`/`createSandbox`/`sandboxCacheDir` constructor option yet
 
 - [ ] **Step 6: Wire the branch into `CodexProvider`**
 
 ```typescript
 // src/providers/codex/codex-provider.ts — constructor options gain:
 //   platform?: NodeJS.Platform;
-//   spawnSandboxed?: typeof import('./windows-sandbox').spawnSandboxed;
+//   createSandbox?: typeof import('./windows-sandbox').createSandbox;
 //   sandboxCacheDir?: string;
 // stored alongside the existing this.opts.spawn, defaulting platform to
-// process.platform and spawnSandboxed to a lazy `require('./windows-sandbox').spawnSandboxed`
+// process.platform and createSandbox to a lazy `(await import('./windows-sandbox')).createSandbox`
 // (lazy so macOS/Linux never touches the windows-sandbox module at all —
 // see Review Focus: "non-win32 platforms importing windows-sandbox").
+// The provider also gains `private sandbox?: Sandbox`.
 
 // inside connect(), where `child = (this.opts.spawn ?? spawnAppServer)(bin, env)` lives today:
 let child: Duplex;
 try {
   if (this.opts.platform === 'win32') {
-    const sandboxed = this.opts.spawnSandboxed
-      ?? (await import('./windows-sandbox')).spawnSandboxed;
-    child = await sandboxed(bin, ['app-server'], this.cwdForSandbox, this.sandboxCacheDir, {
+    const create = this.opts.createSandbox
+      ?? (await import('./windows-sandbox')).createSandbox;
+    this.sandbox = await create(this.sandboxCacheDir);
+    child = await this.sandbox.spawn(bin, ['app-server'], this.cwdForSandbox, {
       writable: this.modeForSandbox !== 'plan',
     });
   } else {
@@ -938,14 +1279,34 @@ thread's `cwd`/`PermissionMode` (or the workspace root Marcode already threads t
 `StartOptions`) and `this.sandboxCacheDir` from a new constructor option sourced from
 `context.globalStorageUri.fsPath` in `extension.ts` — thread these the same way `env`/`binPath`
 already flow into the constructor at `extension.ts`'s provider construction site. A second thread
-started later, in a different `cwd` and possibly a different mode, goes through `grantRoot` (Task
-4) instead — each thread's own mode governs its own root's write grant independently, and per the
-spec's accepted tradeoff, once any thread has write-granted a path it stays granted for the life of
-the shared `app-server` process, even if a later `plan`-mode thread reuses that same path.
+started later, in a different `cwd` and possibly a different mode, calls
+`this.sandbox.grant(cwd, mode)` (Task 4) instead — each thread's own mode governs its own root's
+write grant independently, and once any thread has write-granted a path it stays granted until the
+shared `app-server` process is torn down, even if a later `plan`-mode thread reuses that same path.
+
+**Teardown is where grants end.** Extend `teardown()` (`codex-provider.ts:521`, sync, called when
+the last run releases the process or `setBinPath` drops it) so it also disposes the sandbox:
+
+```typescript
+private teardown(): void {
+  const server = this.serverInstance;
+  const sandbox = this.sandbox;
+  this.connectionPromise = undefined;
+  this.serverInstance = undefined;
+  this.sandbox = undefined;
+  server?.dispose();
+  // Fire-and-forget: teardown is synchronous. A failed revoke is not lost —
+  // the record file stays on disk and the next activation's sweep retries it.
+  void sandbox?.dispose().catch(() => {});
+}
+```
+
+A window that dies without reaching `teardown()` is exactly the crash case the startup sweep in
+`createSandbox` exists for.
 
 - [ ] **Step 7: Run test to verify it passes**
 
-Run: `yarn test:unit:raw --grep "spawnSandboxed on win32"`
+Run: `yarn test:unit:raw --grep "per-window sandbox"`
 Expected: PASS
 
 - [ ] **Step 8: Run the full unit suite**
@@ -981,8 +1342,8 @@ git commit -m "feat: spawn Codex's app-server inside an AppContainer on Windows"
 test('an AppContainer provisioning failure surfaces as a start() rejection, not a silent unsandboxed fallback', async () => {
   const provider = new CodexProvider({
     binPath: 'codex.exe',
-    platform: 'win32',
-    spawnSandboxed: async () => { throw new Error('CreateAppContainerProfile failed hr=0x80070005'); },
+    platform: 'win32', sandboxCacheDir: 'C:\\cache',
+    createSandbox: async () => { throw new Error('CreateAppContainerProfile failed hr=0x80070005'); },
     spawn: () => { throw new Error('must not be called — that would be the unsandboxed fallback'); },
   });
   await assert.rejects(
@@ -1021,6 +1382,54 @@ git commit -m "test: pin AppContainer provisioning failure as a real start() rej
 
 ---
 
+## Task 7: Spike — does Codex ask about out-of-root writes under `dangerFullAccess`?
+
+This task gates the spec's "Out-of-root writes: ask, then grant" section. It writes no production
+code; its deliverable is a recorded answer, and the implementation tasks for that section are
+written **after** it, against the observed behavior rather than a guess.
+
+**Files:**
+- Create (scratch, not committed): a copy of `%TEMP%\codex-windows-sandbox-probe\probe.js`, which
+  already speaks the real `initialize` / `thread/start` / `turn/start` wire shapes against the
+  installed `codex.exe app-server`.
+- Modify: `docs/superpowers/specs/2026-09-23-codex-windows-appcontainer-sandbox-design.md`
+  ("Out-of-root writes: ask, then grant" — replace the "Open question" bullet with the result).
+
+- [ ] **Step 1: Run the probe with the exact settings Marcode will send on win32**
+
+`thread/start` with `sandbox: "danger-full-access"`, `approvalPolicy: "on-request"`,
+`approvalsReviewer: "user"` (the `default` mode), `cwd` a throwaway git repo. Prompt the agent:
+`Create a file named ../outside-probe.txt containing the word hello, using apply_patch.` Log every
+server request and notification for the turn.
+
+- [ ] **Step 2: Record which of two outcomes occurred**
+
+- **A — the request arrives:** an `item/fileChange/requestApproval` server request names a path
+  outside `cwd` before the file exists (check `Test-Path ..\outside-probe.txt` at the moment the
+  request is parked). Implement the spec's pre-execution flow.
+- **B — no request:** the file is simply written, or the turn ends with no server request.
+  Implement the spec's reactive fallback (failed `fileChange` → card → grant → follow-up message).
+
+Also record whether the `item/started` notification for the `fileChange` carries the target path
+before the write lands, since the reactive flow reads its path from there or from the failed item.
+
+- [ ] **Step 3: Write the result into the spec and commit it**
+
+```bash
+git add docs/superpowers/specs/2026-09-23-codex-windows-appcontainer-sandbox-design.md
+git commit -m "docs: record whether codex asks about out-of-root writes under dangerFullAccess"
+```
+
+- [ ] **Step 4: Amend this plan with the implementation tasks**
+
+Add Task 8 (the approval card, its three scopes — once / this session / always — and the
+`Sandbox.grant`/`revoke` calls it makes) in the shape the recorded outcome dictates, using the
+Task 1 tracker and Task 4 `Sandbox` interface already defined above. Do not start it before this
+step: the two outcomes intercept at different points (`CodexRun`'s server-request handler vs. its
+item-completed mapping) and share almost no code.
+
+---
+
 ## Final verification
 
 - [ ] `yarn lint`
@@ -1033,6 +1442,9 @@ git commit -m "test: pin AppContainer provisioning failure as a real start() rej
       (`internetClient` capability).
 - [ ] Confirm a write attempted outside the session's `cwd` (e.g. asking the agent to touch a file
       elsewhere) is denied rather than silently succeeding — the one guarantee this design adds.
+- [ ] Close the session (or reload the window), then run `icacls <workspace root>` and confirm no
+      `marcode-codex-*` ACE remains; kill the extension host from Task Manager mid-session, reopen
+      VS Code, and confirm the next activation's sweep removes the stale one.
 - [ ] Confirm the session can still read `~/.codex` (skills/auth) and run a per-user-installed
       interpreter (e.g. `python --version` if one is on `PATH` under the profile, not just
       system-wide `Program Files`) — the broad-read grant this design depends on to avoid the
