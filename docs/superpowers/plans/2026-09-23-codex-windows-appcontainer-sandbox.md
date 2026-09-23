@@ -3,19 +3,27 @@
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Replace Codex's own broken Windows sandbox (`workspace-write`/`read-only`, which blocks
-any shelled-out child process from spawning a further child) with one Marcode enforces itself: the
-`app-server` process runs inside a Windows AppContainer, ACL-scoped to the workspace roots it needs,
-so `git`/bash chains work and everything outside those roots is denied at the OS level — without
-falling back to `danger-full-access` (no sandbox at all) as the only working Windows option.
+any shelled-out child process from spawning a further child — confirmed upstream, not a Marcode
+misconfiguration: codex-cli's own `windowsSandbox/readiness` handshake already reports `"ready"` on
+a real machine with zero client setup, yet the documented `bash`/Cygwin fork failure still
+reproduces there, and the official Codex VS Code extension hits the sibling WSL-stub failure on the
+identical repro) with one Marcode enforces itself: the `app-server` process runs inside a Windows
+AppContainer — **write** ACL-scoped to the workspace root(s) a session needs, **read+execute**
+granted broadly (the whole user profile), `internetClient` granted by default — so `git`/bash
+chains work, `.codex`/per-user interpreter installs/`git fetch` all keep working exactly as they do
+unsandboxed, and only writes outside the workspace root are denied at the OS level. This is a
+deliberate **write** confinement, not a confidentiality boundary — see the spec's "Non-goals".
 
 **Architecture:** A compiled C# helper (`marcode-sandbox-helper.exe`, built once from source checked
 into the repo via the OS-bundled `csc.exe`, cached under `globalStorageUri`) does the Win32 work
-Node has no native binding for: derive/create an AppContainer SID, and launch a target process under
-that container's security capability with `STARTUPINFOEX`, its stdio handles pointed straight at the
-handles Node already piped to the helper (so the sandboxed grandchild talks directly to Node's pipes,
-no relay copying), and a Job Object with `KILL_ON_JOB_CLOSE` so killing the helper always kills the
-sandboxed process with it. A pure Node module (`acl.ts`) grants the container SID folder access via
-`icacls`, the one part that needs no native call. `codex-provider.ts`'s `spawnAppServer` and
+Node has no native binding for: derive/create an AppContainer SID with the `internetClient`
+capability (SID `S-1-15-3-1`) attached, and launch a target process under that container's security
+capability with `STARTUPINFOEX`, its stdio handles pointed straight at the handles Node already
+piped to the helper (so the sandboxed grandchild talks directly to Node's pipes, no relay copying),
+and a Job Object with `KILL_ON_JOB_CLOSE` so killing the helper always kills the sandboxed process
+with it. A pure Node module (`acl.ts`) grants the container SID folder access via `icacls` — once,
+broadly, read-only on the user's home directory, and per-session, read-write on each workspace
+root — the one part that needs no native call. `codex-provider.ts`'s `spawnAppServer` and
 `map-settings.ts`'s `sandboxPolicyOf` branch on `process.platform === 'win32'` to use this path.
 
 **Tech Stack:** TypeScript (Node `child_process`), C# compiled via `csc.exe` (no new npm dependency),
@@ -35,6 +43,14 @@ the real binary.
   reintroduce it for the sandboxed one).
 - AppContainer provisioning failure is a probe failure (surfaced as an `error`-status session, same
   path a spawn/handshake failure already takes) — never a silent fallback to unsandboxed spawn.
+- Read+execute is granted broadly (the user's home directory), not scoped per-workspace — this is
+  the accepted tradeoff from the spec ("write confinement, not filesystem confinement"): the thing
+  this design stops is destructive/unexpected **writes**, not reads, and `approvalPolicy` (untouched
+  by this design) is still the control on what an agent does with a read, same as it is today with
+  no sandbox at all. Only the **write** ACL grant (`F`) is scoped per-session `cwd`.
+- The `internetClient` capability (`S-1-15-3-1`) is always attached to the container — zero
+  capabilities blocks all outbound network (DNS resolution itself fails), which would break every
+  `git fetch`/`push`/`npm install`/API call a session makes.
 - `src/providers/` still imports no `vscode` — `globalStorageUri` for the helper cache is passed in
   as a plain string path from `extension.ts`, the same way other provider construction args are.
 - Filenames kebab-case. New folder: `src/providers/codex/windows-sandbox/`.
@@ -241,6 +257,16 @@ class MarcodeSandboxHelper
     struct SECURITY_CAPABILITIES { public IntPtr AppContainerSid; public IntPtr Capabilities; public uint CapabilityCount; public uint Reserved; }
 
     [StructLayout(LayoutKind.Sequential)]
+    struct SID_AND_ATTRIBUTES { public IntPtr Sid; public uint Attributes; }
+    const uint SE_GROUP_ENABLED = 0x00000004;
+    // The well-known internetClient capability — granted by default so
+    // outbound network (git fetch/push, npm install, any API call) works
+    // inside the container; a zero-capability AppContainer blocks all
+    // outbound network at the WFP layer, confirmed by the spike this design
+    // is built on (DNS resolution itself failed, curl exit 6).
+    const string INTERNET_CLIENT_SID = "S-1-15-3-1";
+
+    [StructLayout(LayoutKind.Sequential)]
     struct STARTUPINFO
     {
         public int cb; public IntPtr lpReserved, lpDesktop, lpTitle;
@@ -280,6 +306,8 @@ class MarcodeSandboxHelper
     static extern int DeriveAppContainerSidFromAppContainerName(string name, out IntPtr sid);
     [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
     static extern bool ConvertSidToStringSidW(IntPtr sid, out IntPtr sidString);
+    [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    static extern bool ConvertStringSidToSidW(string sidString, out IntPtr sid);
     [DllImport("kernel32.dll")] static extern IntPtr LocalFree(IntPtr mem);
     [DllImport("kernel32.dll", SetLastError = true)] static extern bool InitializeProcThreadAttributeList(IntPtr list, int count, int flags, ref IntPtr size);
     [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
@@ -327,7 +355,18 @@ class MarcodeSandboxHelper
         for (int i = 3; i < args.Length; i++) { cmd.Append(" \"" + args[i].Replace("\"", "\\\"") + "\""); }
 
         IntPtr sidHandle = EnsureSid();
-        var secCap = new SECURITY_CAPABILITIES { AppContainerSid = sidHandle, Capabilities = IntPtr.Zero, CapabilityCount = 0 };
+
+        IntPtr internetClientSid;
+        if (!ConvertStringSidToSidW(INTERNET_CLIENT_SID, out internetClientSid))
+        {
+            Console.Error.WriteLine("ConvertStringSidToSidW(internetClient) failed err=" + Marshal.GetLastWin32Error());
+            return 1;
+        }
+        var capAttr = new SID_AND_ATTRIBUTES { Sid = internetClientSid, Attributes = SE_GROUP_ENABLED };
+        IntPtr capsPtr = Marshal.AllocHGlobal(Marshal.SizeOf(capAttr));
+        Marshal.StructureToPtr(capAttr, capsPtr, false);
+
+        var secCap = new SECURITY_CAPABILITIES { AppContainerSid = sidHandle, Capabilities = capsPtr, CapabilityCount = 1 };
         IntPtr secCapPtr = Marshal.AllocHGlobal(Marshal.SizeOf(secCap));
         Marshal.StructureToPtr(secCap, secCapPtr, false);
 
@@ -464,7 +503,7 @@ export const shouldRunWindowsSandboxTests = process.platform === 'win32';
 ```typescript
 // src/test/unit/windows-sandbox-helper.test.ts
 import * as assert from 'assert';
-import { mkdtempSync, writeFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, existsSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { spawn } from 'node:child_process';
@@ -530,6 +569,63 @@ import { shouldRunWindowsSandboxTests } from './windows-sandbox-helper-gate';
     assert.strictEqual(exitCode, 0);
     assert.strictEqual(existsSync(marker), true, 'a spaced cwd/args path must reach CreateProcessW intact');
   });
+
+  test('outbound network works inside the container (internetClient capability)', async function () {
+    this.timeout(20000);
+    const cacheDir = mkdtempSync(path.join(tmpdir(), 'marcode-sandbox-cache-'));
+    const helperPath = await buildHelper(cacheDir);
+    const root = mkdtempSync(path.join(tmpdir(), 'marcode-sandbox-net-'));
+    const outFile = path.join(root, 'curl-status.txt');
+    writeFileSync(
+      path.join(root, 'run.cmd'),
+      `curl -s -o nul -w "%%{http_code}" https://github.com > "${outFile}" 2>nul`,
+    );
+
+    const exitCode = await new Promise<number>((resolve, reject) => {
+      const child = spawn(helperPath, ['run', root, 'cmd.exe', '/c', path.join(root, 'run.cmd')], { windowsHide: true });
+      child.on('exit', (code) => { code === null ? reject(new Error('killed')) : resolve(code); });
+      child.on('error', reject);
+    });
+
+    assert.strictEqual(exitCode, 0);
+    const status = readFileSync(outFile, 'utf8').trim();
+    assert.strictEqual(status, '200', `expected a live HTTP 200 through the internetClient capability, got "${status}"`);
+  });
+
+  test('the read+execute grant reaches outside the workspace root (write confinement, not filesystem confinement)', async function () {
+    this.timeout(20000);
+    const cacheDir = mkdtempSync(path.join(tmpdir(), 'marcode-sandbox-cache-'));
+    const helperPath = await buildHelper(cacheDir);
+    const sid = await new Promise<string>((resolve, reject) => {
+      const child = spawn(helperPath, ['sid'], { windowsHide: true });
+      let out = '';
+      child.stdout.on('data', (c: Buffer) => { out += c.toString(); });
+      child.on('exit', (code) => { code === 0 ? resolve(out.trim()) : reject(new Error(`sid exit ${code}`)); });
+    });
+
+    // Read-only, deliberately outside any workspace root — this is the
+    // profile-wide broad-read grant, distinct from the per-session write
+    // grant the earlier tests in this suite exercise.
+    const readOnlyRoot = mkdtempSync(path.join(tmpdir(), 'marcode-sandbox-readonly-'));
+    const preExisting = path.join(readOnlyRoot, 'preexisting.txt');
+    writeFileSync(preExisting, 'hello');
+    await grantFolderAccess(sid, readOnlyRoot, 'readonly');
+
+    const readOutFile = path.join(readOnlyRoot, 'read-result.txt');
+    const writeAttempt = path.join(readOnlyRoot, 'should-not-exist.txt');
+    const script = `cmd /c (type "${preExisting}" > "${readOutFile}") & (echo nope > "${writeAttempt}" 2>nul)`;
+    writeFileSync(path.join(readOnlyRoot, 'run.cmd'), script);
+
+    const exitCode = await new Promise<number>((resolve, reject) => {
+      const child = spawn(helperPath, ['run', readOnlyRoot, 'cmd.exe', '/c', path.join(readOnlyRoot, 'run.cmd')], { windowsHide: true });
+      child.on('exit', (code) => { code === null ? reject(new Error('killed')) : resolve(code); });
+      child.on('error', reject);
+    });
+
+    assert.strictEqual(exitCode, 0);
+    assert.strictEqual(readFileSync(readOutFile, 'utf8').trim(), 'hello', 'a readonly grant must still allow reads');
+    assert.strictEqual(existsSync(writeAttempt), false, 'a readonly grant must still deny writes');
+  });
 });
 ```
 
@@ -571,7 +667,7 @@ git commit -m "test: gate a real AppContainer nested-spawn + fs-scoping check on
 - Consumes: `buildHelper` (Task 2), `grantFolderAccess` (Task 1), `Duplex` from
   `src/providers/codex/app-server.ts` (already defined: `{ stdin, stdout, kill(), onFailure(cb) }`,
   same shape `spawnAppServer` already returns — see `codex-provider.ts:105-110`).
-- Produces: `spawnSandboxed(bin: string, args: string[], cwd: string, cacheDir: string, opts?: { spawn?: SpawnFn; build?: typeof buildHelper; grant?: typeof grantFolderAccess; sid?: (helperPath: string) => Promise<string> }): Promise<Duplex>`; `grantRoot(cwd: string, mode: 'readwrite' | 'readonly', cacheDir: string): Promise<void>` for the mid-lifetime new-`cwd` case.
+- Produces: `spawnSandboxed(bin: string, args: string[], cwd: string, cacheDir: string, opts?: { spawn?: SpawnFn; build?: typeof buildHelper; grant?: typeof grantFolderAccess; sid?: (helperPath: string) => Promise<string>; homeDir?: () => string; writable?: boolean }): Promise<Duplex>` — always grants broad read on `homeDir()`, grants write on `cwd` unless `writable: false` (the `plan`-mode case); `grantRoot(cwd: string, mode: 'readwrite' | 'readonly', cacheDir: string): Promise<void>` for the mid-lifetime new-`cwd` case, one call per newly seen thread.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -582,7 +678,7 @@ import { PassThrough } from 'node:stream';
 import { spawnSandboxed } from '../../providers/codex/windows-sandbox/index';
 
 suite('spawnSandboxed', () => {
-  test('builds the helper, resolves the SID, grants the root, then launches "run" with it', async () => {
+  test('grants broad read on the home directory once, write on the workspace root, then launches "run"', async () => {
     const calls: string[] = [];
     const fakeChild = {
       stdin: new PassThrough(), stdout: new PassThrough(),
@@ -592,14 +688,34 @@ suite('spawnSandboxed', () => {
     const result = await spawnSandboxed('codex.exe', ['app-server'], 'C:\\work\\repo', 'C:\\cache', {
       build: async () => 'C:\\cache\\helper.exe',
       sid: async () => 'S-1-15-2-999',
-      grant: async (sid, folder) => { calls.push(`grant:${sid}:${folder}`); },
+      homeDir: () => 'C:\\Users\\dev',
+      grant: async (sid, folder, mode) => { calls.push(`grant:${mode}:${sid}:${folder}`); },
       spawn: (bin, args) => { spawnedArgs = args; calls.push(`spawn:${bin}`); return fakeChild as never; },
     });
 
-    assert.deepStrictEqual(calls, ['grant:S-1-15-2-999:C:\\work\\repo', 'spawn:C:\\cache\\helper.exe']);
+    assert.deepStrictEqual(calls, [
+      'grant:readonly:S-1-15-2-999:C:\\Users\\dev',
+      'grant:readwrite:S-1-15-2-999:C:\\work\\repo',
+      'spawn:C:\\cache\\helper.exe',
+    ]);
     assert.deepStrictEqual(spawnedArgs, ['run', 'C:\\work\\repo', 'codex.exe', 'app-server']);
     assert.strictEqual(result.stdin, fakeChild.stdin);
     assert.strictEqual(result.stdout, fakeChild.stdout);
+  });
+
+  test('grants only broad read for a plan-mode session — no write grant anywhere', async () => {
+    const calls: string[] = [];
+    const fakeChild = { stdin: new PassThrough(), stdout: new PassThrough(), kill: () => {}, on: () => {}, pid: 1 };
+    await spawnSandboxed('codex.exe', ['app-server'], 'C:\\work\\repo', 'C:\\cache', {
+      build: async () => 'C:\\cache\\helper.exe',
+      sid: async () => 'S-1-15-2-999',
+      homeDir: () => 'C:\\Users\\dev',
+      writable: false,
+      grant: async (sid, folder, mode) => { calls.push(`grant:${mode}:${folder}`); },
+      spawn: () => fakeChild as never,
+    });
+
+    assert.deepStrictEqual(calls, ['grant:readonly:C:\\Users\\dev']);
   });
 });
 ```
@@ -614,6 +730,7 @@ Expected: FAIL — module doesn't exist
 ```typescript
 // src/providers/codex/windows-sandbox/index.ts
 import { spawn as spawnChildProcess } from 'node:child_process';
+import { homedir } from 'node:os';
 import type { Duplex } from '../app-server';
 import { buildHelper } from './build-helper';
 import { grantFolderAccess } from './acl';
@@ -635,23 +752,38 @@ async function sidOf(helperPath: string, run: SpawnFn = defaultSpawn): Promise<s
 }
 
 /**
- * Spawns `bin args...` inside a Marcode-controlled AppContainer scoped to
- * `cwd`, in place of a plain `child_process.spawn` — see the design doc for
- * why: codex's own Windows sandbox blocks further child-process creation
- * outright, this one doesn't, and unlike `danger-full-access` everything
- * outside the granted root stays denied.
+ * Spawns `bin args...` inside a Marcode-controlled AppContainer, in place of
+ * a plain `child_process.spawn` — see the design doc for why: codex's own
+ * Windows sandbox blocks further child-process creation outright, this one
+ * doesn't.
+ *
+ * Write confinement, not filesystem confinement (spec: "Write confinement,
+ * not filesystem confinement"): read+execute is granted broadly on the
+ * user's home directory every time, since that grant is idempotent and
+ * cheap, and this process has no reliable "did I already grant this"
+ * bookkeeping across `app-server` restarts. Write (`F`) is scoped to `cwd`
+ * alone, and only when `opts.writable` isn't explicitly `false` — a
+ * `plan`-mode session passes `writable: false` and gets no write grant
+ * anywhere, matching "nothing on disk changes."
  */
 export async function spawnSandboxed(
   bin: string, args: string[], cwd: string, cacheDir: string,
-  opts: { spawn?: SpawnFn; build?: typeof buildHelper; grant?: typeof grantFolderAccess; sid?: (helperPath: string) => Promise<string> } = {},
+  opts: {
+    spawn?: SpawnFn; build?: typeof buildHelper; grant?: typeof grantFolderAccess;
+    sid?: (helperPath: string) => Promise<string>; homeDir?: () => string; writable?: boolean;
+  } = {},
 ): Promise<Duplex> {
   const build = opts.build ?? buildHelper;
   const grant = opts.grant ?? grantFolderAccess;
   const doSpawn = opts.spawn ?? defaultSpawn;
+  const getHomeDir = opts.homeDir ?? homedir;
 
   const helperPath = await build(cacheDir);
   const sid = opts.sid ? await opts.sid(helperPath) : await sidOf(helperPath, doSpawn);
-  await grant(sid, cwd, 'readwrite');
+  await grant(sid, getHomeDir(), 'readonly');
+  if (opts.writable !== false) {
+    await grant(sid, cwd, 'readwrite');
+  }
 
   const child = doSpawn(helperPath, ['run', cwd, bin, ...args]);
   let notify: (reason: string) => void = () => {};
@@ -789,7 +921,9 @@ try {
   if (this.opts.platform === 'win32') {
     const sandboxed = this.opts.spawnSandboxed
       ?? (await import('./windows-sandbox')).spawnSandboxed;
-    child = await sandboxed(bin, ['app-server'], this.cwdForSandbox, this.sandboxCacheDir, {});
+    child = await sandboxed(bin, ['app-server'], this.cwdForSandbox, this.sandboxCacheDir, {
+      writable: this.modeForSandbox !== 'plan',
+    });
   } else {
     child = (this.opts.spawn ?? spawnAppServer)(bin, env);
   }
@@ -799,11 +933,15 @@ try {
 }
 ```
 
-The full diff also needs `this.cwdForSandbox` populated from the first thread's `cwd` (or the
-workspace root Marcode already threads through `StartOptions`) and `this.sandboxCacheDir` from a
-new constructor option sourced from `context.globalStorageUri.fsPath` in `extension.ts` — thread
-these the same way `env`/`binPath` already flow into the constructor at `extension.ts`'s provider
-construction site.
+The full diff also needs `this.cwdForSandbox`/`this.modeForSandbox` populated from the first
+thread's `cwd`/`PermissionMode` (or the workspace root Marcode already threads through
+`StartOptions`) and `this.sandboxCacheDir` from a new constructor option sourced from
+`context.globalStorageUri.fsPath` in `extension.ts` — thread these the same way `env`/`binPath`
+already flow into the constructor at `extension.ts`'s provider construction site. A second thread
+started later, in a different `cwd` and possibly a different mode, goes through `grantRoot` (Task
+4) instead — each thread's own mode governs its own root's write grant independently, and per the
+spec's accepted tradeoff, once any thread has write-granted a path it stays granted for the life of
+the shared `app-server` process, even if a later `plan`-mode thread reuses that same path.
 
 - [ ] **Step 7: Run test to verify it passes**
 
@@ -890,6 +1028,12 @@ git commit -m "test: pin AppContainer provisioning failure as a real start() rej
 - [ ] `yarn run compile`
 - [ ] `yarn test:unit` (full suite; win32-gated tests only actually run on a Windows machine)
 - [ ] On a real Windows machine: open a Codex session in Marcode, confirm `git switch`/`git status`
-      inside the panel's shell-outs succeed under `default` mode (no more `bypass`-only workaround),
-      and confirm a write attempted outside the session's `cwd` (e.g. asking the agent to touch a
-      file elsewhere) is denied rather than silently succeeding.
+      and `bash -lc "git status"` inside the panel's shell-outs succeed under `default` mode (no more
+      `bypass`-only workaround), and confirm `git fetch`/`push` against a real remote works
+      (`internetClient` capability).
+- [ ] Confirm a write attempted outside the session's `cwd` (e.g. asking the agent to touch a file
+      elsewhere) is denied rather than silently succeeding — the one guarantee this design adds.
+- [ ] Confirm the session can still read `~/.codex` (skills/auth) and run a per-user-installed
+      interpreter (e.g. `python --version` if one is on `PATH` under the profile, not just
+      system-wide `Program Files`) — the broad-read grant this design depends on to avoid the
+      home-directory-resolution failure found during design (`Could not find home directory`).
