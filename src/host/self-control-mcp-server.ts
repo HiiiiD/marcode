@@ -507,7 +507,9 @@ export class SelfControlMcpServer {
 
     const port = await this.listen(http);
     this.http = http;
-    return { url: `http://127.0.0.1:${port}/mcp`, token: this.token };
+    // Not `/mcp`: Avast's Web Shield rewrites responses to any URL with an `mcp` segment
+    // into unframed `transfer-encoding: chunked`, which Claude's client rejects as InvalidHTTPResponse.
+    return { url: `http://127.0.0.1:${port}/self-control`, token: this.token };
   }
 
   private listen(http: Server): Promise<number> {
