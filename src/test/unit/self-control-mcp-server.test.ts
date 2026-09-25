@@ -62,6 +62,19 @@ async function callToolAs(
   return body.result;
 }
 
+async function listToolNames(config: SelfControlMcpConfig): Promise<string[]> {
+  const res = await fetch(config.url, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json', accept: 'application/json, text/event-stream',
+      authorization: `Bearer ${config.token}`,
+    },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
+  });
+  const body = await res.json() as { result: { tools: { name: string }[] } };
+  return body.result.tools.map((t) => t.name);
+}
+
 function fakeMemory(overrides: Partial<MemoryStore> = {}): MemoryStore {
   return {
     search: async () => [],
@@ -500,11 +513,22 @@ suite('SelfControlMcpServer memory tools', () => {
     await server.dispose();
   });
 
-  test('marcode__recall errors without a MemoryStore configured', async () => {
+  test('the recall tools are not listed without a MemoryStore', async () => {
     const server = new SelfControlMcpServer(fakeManager());
     const config = await server.start();
-    const result = await callTool(config, 'marcode__recall', { query: 'login' });
-    assert.strictEqual(result.isError, true);
+    const names = await listToolNames(config);
+    assert.strictEqual(names.includes('marcode__recall'), false);
+    assert.strictEqual(names.includes('marcode__recall_fetch'), false);
+    assert.strictEqual(names.includes('marcode__list_sessions'), true);
+    await server.dispose();
+  });
+
+  test('the recall tools are listed with a MemoryStore', async () => {
+    const server = new SelfControlMcpServer(fakeManager(), fakeMemory());
+    const config = await server.start();
+    const names = await listToolNames(config);
+    assert.strictEqual(names.includes('marcode__recall'), true);
+    assert.strictEqual(names.includes('marcode__recall_fetch'), true);
     await server.dispose();
   });
 });

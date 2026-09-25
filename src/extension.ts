@@ -22,6 +22,7 @@ import { createVscodeEditorSource } from './host/vscode-editor-source';
 import { createWorkspaceFileIndex } from './host/workspace-file-index';
 import { ExtractiveSummarizer } from './memory/extractive-summarizer';
 import { FtsMemoryStore } from './memory/fts-memory-store';
+import { MEMORY_ENABLED_SETTING, MEMORY_SUMMARIZER_SETTING } from './shared/memory-settings';
 import type { MemoryStore } from './memory/types';
 import { ClaudeProvider } from './providers/claude/claude-provider';
 import { CodexProvider } from './providers/codex/codex-provider';
@@ -245,15 +246,18 @@ export async function activate(context: vscode.ExtensionContext) {
   // not fail the whole extension: `SessionManager` and `SelfControlMcpServer`
   // both already accept `memory` as optional, and their `marcode__recall`
   // tools already answer gracefully with none configured.
+  const memoryEnabled = vscode.workspace.getConfiguration().get<boolean>(MEMORY_ENABLED_SETTING, true);
   let memory: MemoryStore | undefined;
-  try {
-    memory = new FtsMemoryStore(
-      path.join(rootDir, 'memory.sqlite'),
-      new ExtractiveSummarizer(),
-      { tail: (id, limit) => store.tail(id, limit) },
-    );
-  } catch (err) {
-    console.warn('[mar-code] memory store unavailable; recall tools will be disabled', err);
+  if (memoryEnabled) {
+    try {
+      memory = new FtsMemoryStore(
+        path.join(rootDir, 'memory.sqlite'),
+        new ExtractiveSummarizer(),
+        { tail: (id, limit) => store.tail(id, limit) },
+      );
+    } catch (err) {
+      console.warn('[mar-code] memory store unavailable; recall tools will be disabled', err);
+    }
   }
 
   // Order matters: SessionPicker uses state.catalog[0] for the New button,
@@ -676,6 +680,16 @@ export async function activate(context: vscode.ExtensionContext) {
         const reload = 'Reload window';
         void vscode.window.showInformationMessage(
           'Provider instances changed. Reload the window to apply it.',
+          reload,
+        ).then((choice) => {
+          if (choice !== reload) { return; }
+          void vscode.commands.executeCommand('workbench.action.reloadWindow');
+        });
+      }
+      if (e.affectsConfiguration(MEMORY_ENABLED_SETTING) || e.affectsConfiguration(MEMORY_SUMMARIZER_SETTING)) {
+        const reload = 'Reload window';
+        void vscode.window.showInformationMessage(
+          'Memory settings changed. Reload the window to apply them.',
           reload,
         ).then((choice) => {
           if (choice !== reload) { return; }

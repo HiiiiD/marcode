@@ -110,6 +110,11 @@ export class SelfControlMcpServer {
    * request costs nothing that matters.
    */
   private buildMcpServer(sid: string | undefined): McpServer {
+    const memory = this.memory;
+    const recallClause = memory
+      ? ', and marcode__recall/marcode__recall_fetch to search what past sessions already figured out '
+        + '(when a task resembles earlier work, search before starting from scratch)'
+      : '';
     const mcp = new McpServer({ name: 'marcode-self-control', version: '1.0.0' }, {
       // Server-level `instructions`, per the MCP `initialize` result — not a
       // tool description, so it reaches the model even before it has decided
@@ -124,8 +129,7 @@ export class SelfControlMcpServer {
         + 'with the panel itself, not with files or the user directly: marcode__list_sessions to see '
         + 'who else is running, marcode__send_message to message another session, marcode__spawn_session '
         + 'to start a new one (marcode__list_models finds the provider/model ids it accepts), marcode__close_session to close one (e.g. a worker you spawned once it '
-        + 'has reported back), and marcode__recall/marcode__recall_fetch to search what past sessions '
-        + 'already figured out. Check marcode__list_sessions whenever coordinating with, or delegating '
+        + `has reported back)${recallClause}. Check marcode__list_sessions whenever coordinating with, or delegating `
         + 'to, another session would help — do not assume you are alone just because nothing mentioned '
         + 'these tools yet.',
     });
@@ -293,52 +297,48 @@ export class SelfControlMcpServer {
       },
     );
 
-    mcp.registerTool(
-      'marcode__recall',
-      {
-        title: 'Search past Marcode sessions',
-        description: 'Marcode-specific: searches OTHER, previously closed Marcode sessions in '
-          + 'this workspace (any provider) for a keyword or phrase — not your own conversation '
-          + 'history and unrelated to any built-in memory/recall tool you have, which only sees '
-          + 'this one conversation. Use this to find what a different session already figured '
-          + 'out. Returns short snippets, not full transcripts — call marcode__recall_fetch on a '
-          + 'specific result to read more.',
-        inputSchema: {
-          query: z.string().describe('Keywords to search for.'),
-          providerId: z.string().optional().describe('Restrict to one provider, e.g. "claude".'),
-          limit: z.number().optional().describe('Max results. Defaults to 20.'),
+    if (memory) {
+      mcp.registerTool(
+        'marcode__recall',
+        {
+          title: 'Search past Marcode sessions',
+          description: 'Marcode-specific: searches OTHER, previously closed Marcode sessions in '
+            + 'this workspace (any provider) for a keyword or phrase — not your own conversation '
+            + 'history and unrelated to any built-in memory/recall tool you have, which only sees '
+            + 'this one conversation. Use this to find what a different session already figured '
+            + 'out. Returns short snippets, not full transcripts — call marcode__recall_fetch on a '
+            + 'specific result to read more.',
+          inputSchema: {
+            query: z.string().describe('Keywords to search for.'),
+            providerId: z.string().optional().describe('Restrict to one provider, e.g. "claude".'),
+            limit: z.number().optional().describe('Max results. Defaults to 20.'),
+          },
         },
-      },
-      async ({ query, providerId, limit }) => {
-        if (!this.memory) {
-          return { isError: true, content: [{ type: 'text', text: 'Memory search is unavailable in this window.' }] };
-        }
-        const hits = await this.memory.search(query, { providerId, limit });
-        return { content: [{ type: 'text', text: JSON.stringify(hits) }] };
-      },
-    );
+        async ({ query, providerId, limit }) => {
+          const hits = await memory.search(query, { providerId, limit });
+          return { content: [{ type: 'text', text: JSON.stringify(hits) }] };
+        },
+      );
 
-    mcp.registerTool(
-      'marcode__recall_fetch',
-      {
-        title: 'Fetch a past session\'s transcript slice',
-        description: 'Marcode-specific companion to marcode__recall: reads a bounded slice of '
-          + 'that OTHER session\'s transcript, anchored at one of its results. Never call this '
-          + 'speculatively or with an id you invented — always call marcode__recall first and '
-          + 'pass back its sessionId/itemId.',
-        inputSchema: {
-          sessionId: z.string().describe('A sessionId from a marcode__recall result.'),
-          itemId: z.string().describe('The itemId from that same result.'),
+      mcp.registerTool(
+        'marcode__recall_fetch',
+        {
+          title: 'Fetch a past session\'s transcript slice',
+          description: 'Marcode-specific companion to marcode__recall: reads a bounded slice of '
+            + 'that OTHER session\'s transcript, anchored at one of its results. Never call this '
+            + 'speculatively or with an id you invented — always call marcode__recall first and '
+            + 'pass back its sessionId/itemId.',
+          inputSchema: {
+            sessionId: z.string().describe('A sessionId from a marcode__recall result.'),
+            itemId: z.string().describe('The itemId from that same result.'),
+          },
         },
-      },
-      async ({ sessionId, itemId }) => {
-        if (!this.memory) {
-          return { isError: true, content: [{ type: 'text', text: 'Memory search is unavailable in this window.' }] };
-        }
-        const detail = await this.memory.fetch({ sessionId, itemId });
-        return { content: [{ type: 'text', text: JSON.stringify(detail) }] };
-      },
-    );
+        async ({ sessionId, itemId }) => {
+          const detail = await memory.fetch({ sessionId, itemId });
+          return { content: [{ type: 'text', text: JSON.stringify(detail) }] };
+        },
+      );
+    }
 
     mcp.registerTool(
       'marcode__list_sessions',

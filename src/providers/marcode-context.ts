@@ -8,9 +8,7 @@
  */
 export const MARCODE_INTRO =
   '<marcode-context>You are running inside Marcode, a VS Code extension that hosts you in '
-  + 'a resizable split-pane session alongside other concurrent agent sessions. Earlier sessions in this '
-  + 'workspace may have solved related problems: when a task resembles past work, search it with '
-  + 'marcode__recall before starting from scratch.</marcode-context>';
+  + 'a resizable split-pane session alongside other concurrent agent sessions.</marcode-context>';
 
 /** Prepends `MARCODE_INTRO` ahead of `body`, once, for a session's first outgoing message. */
 export function withMarcodeIntro(body: string, alreadyIntroduced: boolean, isResume: boolean): string {
