@@ -70,7 +70,19 @@ client already consumes it, but it becomes a projection of the digest, never ind
 written. `ensureSummaries()` is replaced by the service's extractive pass. Writing a digest
 never touches `updatedAt` (existing invariant: it is the history sort key and the cache key).
 
-### Setting
+### Settings
+
+`marcode.memory.enabled` (boolean, default `true`). Some users already run a memory plugin,
+and two systems competing to inject context is worse than one. When `false`, none of this
+runs: no store is opened, no FTS indexing, no first-message priming, no LLM summarizer, no
+reindex, and the `marcode__recall`/`marcode__recall_fetch` tools are not registered (so their
+MCP instructions do not mention them either). The history tab is unaffected: it keeps its
+existing in-memory extractive `SessionState.summary`, filled as it is today. A change prompts
+a window reload, like `marcode.enabledProviders`.
+
+Because the recall nudge must not appear when memory is off, it moves out of the always-on
+`MARCODE_INTRO` and into the self-control MCP `instructions` text, which is only built when a
+memory store exists.
 
 `marcode.memory.summarizer`:
 
