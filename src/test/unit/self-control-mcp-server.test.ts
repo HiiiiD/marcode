@@ -490,7 +490,7 @@ suite('SelfControlMcpServer', () => {
 
 suite('SelfControlMcpServer memory tools', () => {
   test('marcode__recall returns snippets from MemoryStore.search()', async () => {
-    const hit: MemoryHit = { sessionId: 's1', itemId: 'u1', snippet: 'Fixed the flaky login test', score: 1, ts: 1000 };
+    const hit: MemoryHit = { sessionId: 's1', itemId: 'u1', snippet: 'Fixed the flaky login test', score: 1, ts: 1000, cwd: '/r' };
     const memory = fakeMemory({ search: async (query) => { assert.strictEqual(query, 'login'); return [hit]; } });
     const server = new SelfControlMcpServer(fakeManager(), memory);
     const config = await server.start();
@@ -512,6 +512,16 @@ suite('SelfControlMcpServer memory tools', () => {
     const result = await callTool(config, 'marcode__recall_fetch', { sessionId: 's1', itemId: 'u1', detail: 'transcript' });
     const body = JSON.parse(result.content[0].text) as { items: unknown[] };
     assert.strictEqual(body.items.length, 1);
+    await server.dispose();
+  });
+
+  test('marcode__recall searches inside the calling session\'s workspace folder', async () => {
+    let seen: { cwdWithin?: string } | undefined;
+    const memory = fakeMemory({ search: async (_q, opts) => { seen = opts; return []; } });
+    const server = new SelfControlMcpServer(fakeManager({ recallRoot: (sid) => (sid === 's1' ? '/ws/app' : undefined) }), memory);
+    const config = await server.start();
+    await callToolAs(config, 's1', 'marcode__recall', { query: 'login' });
+    assert.strictEqual(seen?.cwdWithin, '/ws/app');
     await server.dispose();
   });
 

@@ -11,6 +11,7 @@ import {
 import { buildSeed } from './replay';
 import { findPayload, type ResolvedBlock } from './session-refs';
 import { TRANSCRIPT_VERSION, type StoredIndex, type TranscriptStore } from './transcript-store';
+import { isWithin } from '../shared/path-scope';
 import { indexLine, type SessionDigest } from '../memory/digest';
 import { digestSession } from '../memory/session-digest';
 import { DigestService, type DigestEstimate, type DigestScope } from './digest/digest-service';
@@ -1995,11 +1996,33 @@ export class SessionManager implements SessionSink {
     this.onShellNoise(profile);
   }
 
-  async recall(text: string): Promise<string | undefined> {
+  private workspaceRoots: () => string[] = () => [];
+
+  /** Injected because this class imports no `vscode`; the extension supplies the open workspace folders. */
+  setWorkspaceRoots(roots: () => string[]): void { this.workspaceRoots = roots; }
+
+  /**
+   * The folder recall is scoped to for a session started in `cwd`: the innermost open workspace
+   * folder that contains it, or `cwd` itself when none does (the narrowest safe answer).
+   */
+  recallRootOf(cwd: string): string {
+    const containing = this.workspaceRoots().filter((root) => isWithin(root, cwd));
+    if (containing.length === 0) { return cwd; }
+    return containing.reduce((best, root) => (root.length > best.length ? root : best));
+  }
+
+  recallRootOfSession(id: SessionId): string | undefined {
+    const cwd = this.meta.get(id)?.cwd;
+    return cwd === undefined ? undefined : this.recallRootOf(cwd);
+  }
+
+  async recall(text: string, cwd: string): Promise<string | undefined> {
     if (!this.memory) { return undefined; }
     const terms = queryTermsOf(text);
     if (terms.length === 0) { return undefined; }
-    return buildMemoryBlock(await this.memory.search(terms.join(' '), { match: 'any', limit: 5 }));
+    return buildMemoryBlock(await this.memory.search(terms.join(' '), {
+      match: 'any', limit: 5, cwdWithin: this.recallRootOf(cwd),
+    }));
   }
 
   hasQueuedRelocation(id: SessionId): boolean {

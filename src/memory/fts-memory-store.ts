@@ -1,5 +1,6 @@
 import { DatabaseSync } from 'node:sqlite';
 import type { SessionId, TranscriptItem } from '../protocol/messages';
+import { isWithin } from '../shared/path-scope';
 import { extractiveDigest, indexLine, type SessionDigest } from './digest';
 import type { DigestMeta, MemoryDetail, MemoryHit, MemoryStore, SessionRecord } from './types';
 
@@ -28,6 +29,7 @@ export const FETCH_WINDOW = 40;
  * never to migrate it.
  */
 const SCHEMA_VERSION = 2;
+const SCOPED_FETCH = 500;
 
 /**
  * v1's only `MemoryStore`: one FTS5 row per session, upserted whenever that
@@ -146,26 +148,32 @@ export class FtsMemoryStore implements MemoryStore {
    * error (a corrupt index, say) is caught rather than left to propagate.
    */
   async search(
-    query: string, opts: { providerId?: string; limit?: number; match?: 'all' | 'any' } = {},
+    query: string,
+    opts: { providerId?: string; limit?: number; match?: 'all' | 'any'; cwdWithin?: string } = {},
   ): Promise<MemoryHit[]> {
     const limit = opts.limit ?? 20;
+    // The folder filter runs in JS (path comparison is platform-dependent), so over-fetch to still fill `limit`.
+    const fetchLimit = opts.cwdWithin ? Math.max(limit, SCOPED_FETCH) : limit;
     const providerId = opts.providerId ?? null;
     const terms = query.match(/[\p{L}\p{N}_]+/gu) ?? [];
     if (terms.length === 0) { return []; }
     const match = terms.map((term) => `"${term}"`).join(opts.match === 'any' ? ' OR ' : ' ');
     try {
       const rows = this.db.prepare(`
-        SELECT sessionId, firstItemId, summary, closedAt, providerId, bm25(sessions_fts) AS rank
+        SELECT sessionId, firstItemId, summary, closedAt, providerId, cwd, bm25(sessions_fts) AS rank
         FROM sessions_fts
         WHERE sessions_fts MATCH ?
           AND (? IS NULL OR providerId = ?)
         ORDER BY rank
         LIMIT ?
-      `).all(match, providerId, providerId, limit) as Array<{
+      `).all(match, providerId, providerId, fetchLimit) as Array<{
         sessionId: string; firstItemId: string; summary: string; closedAt: number;
-        providerId: string; rank: number;
+        providerId: string; cwd: string; rank: number;
       }>;
-      return rows.map((row) => ({
+      const inScope = opts.cwdWithin === undefined
+        ? rows
+        : rows.filter((row) => isWithin(opts.cwdWithin as string, row.cwd));
+      return inScope.slice(0, limit).map((row) => ({
         sessionId: row.sessionId,
         itemId: row.firstItemId,
         snippet: row.summary,
@@ -173,6 +181,7 @@ export class FtsMemoryStore implements MemoryStore {
         // "higher score is more relevant", the ordinary convention.
         score: -row.rank,
         ts: row.closedAt,
+        cwd: row.cwd,
       }));
     } catch (err) {
       console.error('[mar-code] memory search failed', err);

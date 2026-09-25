@@ -5,7 +5,7 @@ import type { MemoryHit } from '../../memory/types';
 
 const hit = (over: Partial<MemoryHit> = {}): MemoryHit => ({
   sessionId: 's1', itemId: 'u1', snippet: 'fix flaky login test → patched retry · 2 files edited',
-  score: 5, ts: 0, ...over,
+  score: 5, ts: 0, cwd: '/r', ...over,
 });
 
 suite('queryTermsOf', () => {

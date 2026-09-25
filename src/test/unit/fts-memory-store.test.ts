@@ -193,6 +193,36 @@ suite('FtsMemoryStore.fetch()', () => {
   });
 });
 
+suite('FtsMemoryStore cwd scope', () => {
+  const index = async (store: FtsMemoryStore, id: string, cwd: string) => store.index({
+    sessionId: id, providerId: 'claude', cwd, closedAt: 1,
+    items: [userItem(`u-${id}`, 'Investigate the flaky login test')],
+  });
+
+  test('hits carry the cwd the session ran in', async () => {
+    const store = new FtsMemoryStore(await tempDbPath(), noopReader);
+    await index(store, 's1', '/ws/app');
+    assert.strictEqual((await store.search('flaky login'))[0].cwd, '/ws/app');
+  });
+
+  test('cwdWithin keeps only sessions started inside that folder', async () => {
+    const store = new FtsMemoryStore(await tempDbPath(), noopReader);
+    await index(store, 'in', '/ws/app/packages/api');
+    await index(store, 'sibling', '/ws/app-two');
+    await index(store, 'elsewhere', '/other');
+    const hits = await store.search('flaky login', { cwdWithin: '/ws/app' });
+    assert.deepStrictEqual(hits.map((h) => h.sessionId), ['in']);
+  });
+
+  test('cwdWithin still fills the limit from inside the folder', async () => {
+    const store = new FtsMemoryStore(await tempDbPath(), noopReader);
+    for (let i = 0; i < 30; i++) { await index(store, `out${i}`, '/other'); }
+    await index(store, 'in', '/ws/app');
+    const hits = await store.search('flaky login', { cwdWithin: '/ws/app', limit: 1 });
+    assert.deepStrictEqual(hits.map((h) => h.sessionId), ['in']);
+  });
+});
+
 suite('FtsMemoryStore digests', () => {
   test('index() stores a digest that getDigest() and digestMeta() return', async () => {
     const store = new FtsMemoryStore(await tempDbPath(), noopReader);

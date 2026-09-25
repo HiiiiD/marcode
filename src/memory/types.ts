@@ -15,6 +15,8 @@ export interface MemoryHit {
   snippet: string;
   score: number;
   ts: number;
+  /** Where the session ran, so a caller can scope recall to a workspace folder. */
+  cwd: string;
 }
 
 export interface MemoryDetail {
@@ -53,7 +55,8 @@ export interface MemoryStore {
    * holding a whole prompt rather than a hand-picked keyword.
    */
   search(
-    query: string, opts?: { providerId?: string; limit?: number; match?: 'all' | 'any' },
+    query: string,
+    opts?: { providerId?: string; limit?: number; match?: 'all' | 'any'; cwdWithin?: string },
   ): Promise<MemoryHit[]>;
   /** Full slice for exactly one hit, on demand. */
   fetch(hit: { sessionId: SessionId; itemId: string }): Promise<MemoryDetail>;

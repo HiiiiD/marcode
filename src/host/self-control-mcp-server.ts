@@ -39,6 +39,8 @@ export interface SessionManagerLike {
     providerId: string, cwd: string, model?: string, effort?: EffortLevel, mode?: PermissionMode,
   ): Promise<{ state: { id: string; name: string } }>;
   setVisible(ids: string[]): Promise<void>;
+  /** The folder `marcode__recall` is scoped to for this caller; absent means unscoped. */
+  recallRoot?(sid: string): string | undefined;
   /** Every non-archived session's addressable identity — see `marcode__list_sessions`. */
   summaries(): {
     id: string; name: string; providerId: string; model: string; effort?: EffortLevel;
@@ -316,7 +318,9 @@ export class SelfControlMcpServer {
           },
         },
         async ({ query, providerId, limit }) => {
-          const hits = await memory.search(query, { providerId, limit });
+          const hits = await memory.search(query, {
+            providerId, limit, cwdWithin: sid ? this.sessionManager.recallRoot?.(sid) : undefined,
+          });
           return { content: [{ type: 'text', text: JSON.stringify(hits) }] };
         },
       );

@@ -309,7 +309,9 @@ export async function activate(context: vscode.ExtensionContext) {
     },
     transcriptTail: (id, limit) => manager.transcriptTail(id as SessionId, limit),
     close: (id) => manager.close(id as SessionId),
+    recallRoot: (id) => manager.recallRootOfSession(id as SessionId),
   }, memory);
+  manager.setWorkspaceRoots(() => vscode.workspace.workspaceFolders?.map((f) => f.uri.fsPath) ?? []);
   let selfControlConfig: SelfControlMcpConfig | undefined;
   try {
     selfControlConfig = await selfControlServer.start();

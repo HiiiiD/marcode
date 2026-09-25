@@ -17,7 +17,11 @@ class RecordingMemoryStore implements MemoryStore {
   indexed: SessionRecord[] = [];
   forgotten: string[] = [];
   async index(record: SessionRecord): Promise<void> { this.indexed.push(record); }
-  async search(): Promise<[]> { return []; }
+  searches: { query: string; cwdWithin?: string }[] = [];
+  async search(query: string, opts: { cwdWithin?: string } = {}): Promise<[]> {
+    this.searches.push({ query, cwdWithin: opts.cwdWithin });
+    return [];
+  }
   async fetch(): Promise<{ sessionId: string; items: [] }> { return { sessionId: '', items: [] }; }
   async forget(sessionId: string): Promise<void> { this.forgotten.push(sessionId); }
   async getDigest(): Promise<undefined> { return undefined; }
@@ -67,6 +71,38 @@ suite('SessionManager memory indexing', () => {
     await manager.close(session.state.id);
     await manager.open(session.state.id);
     assert.deepStrictEqual(memory.forgotten, [session.state.id]);
+  });
+
+  test('priming searches only inside the workspace folder that holds the session cwd', async () => {
+    const store = new TranscriptStore(await tempRoot());
+    const providers = new Map<string, AgentProvider>([['fake', new FakeProvider()]]);
+    const memory = new RecordingMemoryStore();
+    const manager = new SessionManager(
+      store, providers, () => {}, undefined, undefined, undefined, undefined, undefined, memory,
+    );
+    manager.setWorkspaceRoots(() => ['/ws/app', '/ws/other']);
+    await manager.recall('investigate the flaky login test', '/ws/app/packages/api');
+    assert.strictEqual(memory.searches[0].cwdWithin, '/ws/app');
+  });
+
+  test('a cwd outside every workspace folder is scoped to itself', async () => {
+    const store = new TranscriptStore(await tempRoot());
+    const providers = new Map<string, AgentProvider>([['fake', new FakeProvider()]]);
+    const memory = new RecordingMemoryStore();
+    const manager = new SessionManager(
+      store, providers, () => {}, undefined, undefined, undefined, undefined, undefined, memory,
+    );
+    manager.setWorkspaceRoots(() => ['/ws/app']);
+    await manager.recall('investigate the flaky login test', '/scratch/x');
+    assert.strictEqual(memory.searches[0].cwdWithin, '/scratch/x');
+  });
+
+  test('the nested workspace folder wins over its parent', async () => {
+    const store = new TranscriptStore(await tempRoot());
+    const providers = new Map<string, AgentProvider>([['fake', new FakeProvider()]]);
+    const manager = new SessionManager(store, providers, () => {});
+    manager.setWorkspaceRoots(() => ['/ws', '/ws/app']);
+    assert.strictEqual(manager.recallRootOf('/ws/app/src'), '/ws/app');
   });
 
   test('archiving an untitled, empty session does not index it', async () => {
