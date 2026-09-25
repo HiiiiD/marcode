@@ -622,6 +622,7 @@ suite('SelfControlMcpServer cross-session messaging', () => {
         { id: 's-caller', name: 'a', providerId: 'claude', status: 'idle', cwd: '/w' } as never,
         { id: 's-target', name: 'b', providerId: 'codex', status: 'idle', cwd: '/w' } as never,
       ],
+      visibleIds: () => ['s-caller', 's-target'],
       get: async (id: string) => (id === 's-target' ? target as never : undefined),
     });
     const server = new SelfControlMcpServer(manager);
@@ -642,6 +643,7 @@ suite('SelfControlMcpServer cross-session messaging', () => {
         { id: 's-caller', name: 'a', providerId: 'claude', status: 'idle', cwd: '/w' } as never,
         { id: 's-target', name: 'Receiver', providerId: 'codex', status: 'idle', cwd: '/w' } as never,
       ],
+      visibleIds: () => ['s-caller', 's-target'],
       get: async (id: string) => (id === 's-target' ? target as never : undefined),
     });
     const server = new SelfControlMcpServer(manager);
@@ -742,18 +744,14 @@ suite('SelfControlMcpServer cross-session messaging', () => {
       const config = await server.start();
 
       // Neither session has an open pane after the restore, so
-      // marcode__list_sessions — scoped to visible sessions plus the caller
-      // itself — advertises neither of them to an unidentified caller. This
-      // is the point of the assertion below: send_message can still reach a
-      // session by name that list_sessions never listed, as long as the
-      // caller already knows the name (told by the human, or recalled from
-      // an earlier turn) — discovery and reachability are separate
-      // guarantees.
+      // marcode__list_sessions advertises neither, and send_message refuses
+      // a session with no open pane. Once a pane shows the receiver, it is
+      // reachable even though the restore left it with no live run.
       const listed = await callTool(config, 'marcode__list_sessions', {});
       const names = (JSON.parse(listed.content[0].text) as { name: string }[]).map((s) => s.name);
       assert.deepStrictEqual(names, []);
 
-      const res = await fetch(`${config.url}?sid=${sender.state.id}`, {
+      const send = () => fetch(`${config.url}?sid=${sender.state.id}`, {
         method: 'POST',
         headers: {
           'content-type': 'application/json', accept: 'application/json, text/event-stream',
@@ -764,6 +762,11 @@ suite('SelfControlMcpServer cross-session messaging', () => {
           params: { name: 'marcode__send_message', arguments: { to: 'receiver', text: 'still reachable' } },
         }),
       });
+      const refused = await (await send()).json() as { result: { isError?: boolean } };
+      assert.strictEqual(refused.result.isError, true);
+
+      await second.setVisible([receiver.state.id]);
+      const res = await send();
       const body = await res.json() as { result: { isError?: boolean; content: { type: string; text: string }[] } };
       assert.strictEqual(body.result.isError, undefined);
 
@@ -795,6 +798,7 @@ suite('SelfControlMcpServer cross-session messaging', () => {
       const b = await manager.create('fake', process.cwd());
       manager.rename(a.state.id, 'sender');
       manager.rename(b.state.id, 'receiver');
+      await manager.setVisible([a.state.id, b.state.id]);
 
       const server = new SelfControlMcpServer(manager);
       const config = await server.start();
@@ -831,6 +835,7 @@ suite('SelfControlMcpServer close_session', () => {
         { id: 's-caller', name: 'a', providerId: 'claude', status: 'idle', cwd: '/w' } as never,
         { id: 's-target', name: 'b', providerId: 'codex', status: 'idle', cwd: '/w' } as never,
       ],
+      visibleIds: () => ['s-caller', 's-target'],
       close: async (id) => { closedId = id; },
     });
     const server = new SelfControlMcpServer(manager);
@@ -848,6 +853,7 @@ suite('SelfControlMcpServer close_session', () => {
         { id: 's-caller', name: 'a', providerId: 'claude', status: 'idle', cwd: '/w' } as never,
         { id: 's-target', name: 'Worker', providerId: 'codex', status: 'idle', cwd: '/w' } as never,
       ],
+      visibleIds: () => ['s-caller', 's-target'],
       close: async (id) => { closedId = id; },
     });
     const server = new SelfControlMcpServer(manager);
@@ -915,6 +921,7 @@ suite('SelfControlMcpServer close_session', () => {
       const worker = await manager.create('fake', process.cwd());
       manager.rename(root.state.id, 'root');
       manager.rename(worker.state.id, 'worker');
+      await manager.setVisible([root.state.id, worker.state.id]);
       worker.send('hello');
 
       const server = new SelfControlMcpServer(manager);
@@ -954,6 +961,7 @@ suite('SelfControlMcpServer session context', () => {
         { id: 's-caller', name: 'a', providerId: 'claude', status: 'idle', cwd: '/w' } as never,
         { id: 's-target', name: 'b', providerId: 'claude', status: 'idle', cwd: '/w' } as never,
       ],
+      visibleIds: () => ['s-target'],
       transcriptTail: async (id, limit) => { seenId = id; seenLimit = limit; return { items }; },
     });
     const server = new SelfControlMcpServer(manager);
@@ -970,6 +978,7 @@ suite('SelfControlMcpServer session context', () => {
     let seenLimit: number | undefined;
     const manager = fakeManager({
       summaries: () => [{ id: 's-target', name: 'b', providerId: 'claude', status: 'idle', cwd: '/w' } as never],
+      visibleIds: () => ['s-target'],
       transcriptTail: async (_id, limit) => { seenLimit = limit; return { items: [] }; },
     });
     const server = new SelfControlMcpServer(manager);
@@ -1012,6 +1021,7 @@ suite('SelfControlMcpServer session context', () => {
     try {
       const target = await manager.create('fake', process.cwd());
       manager.rename(target.state.id, 'target');
+      await manager.setVisible([target.state.id]);
       target.send('hello');
 
       const server = new SelfControlMcpServer({

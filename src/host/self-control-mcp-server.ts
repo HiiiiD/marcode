@@ -415,7 +415,7 @@ export class SelfControlMcpServer {
           return { isError: true, content: [{ type: 'text', text: 'Cannot send a message to yourself.' }] };
         }
         const target = this.sessionManager.summaries()
-          .find((s) => s.name.toLowerCase() === to.toLowerCase());
+          .find((s) => s.name.toLowerCase() === to.toLowerCase() && this.sessionManager.visibleIds().includes(s.id));
         if (!target) {
           return { isError: true, content: [{ type: 'text', text: `Unknown session: ${to}` }] };
         }
@@ -452,7 +452,7 @@ export class SelfControlMcpServer {
           return { isError: true, content: [{ type: 'text', text: 'Cannot close yourself.' }] };
         }
         const target = this.sessionManager.summaries()
-          .find((s) => s.name.toLowerCase() === to.toLowerCase());
+          .find((s) => s.name.toLowerCase() === to.toLowerCase() && this.sessionManager.visibleIds().includes(s.id));
         if (!target) {
           return { isError: true, content: [{ type: 'text', text: `Unknown session: ${to}` }] };
         }
@@ -484,7 +484,7 @@ export class SelfControlMcpServer {
           return { isError: true, content: [{ type: 'text', text: 'Cannot fetch your own context; you already have it.' }] };
         }
         const target = this.sessionManager.summaries()
-          .find((s) => s.name.toLowerCase() === name.toLowerCase());
+          .find((s) => s.name.toLowerCase() === name.toLowerCase() && this.sessionManager.visibleIds().includes(s.id));
         if (!target) {
           return { isError: true, content: [{ type: 'text', text: `Unknown session: ${name}` }] };
         }
