@@ -33,7 +33,7 @@ const SCOPED_FETCH = 500;
 
 /**
  * v1's only `MemoryStore`: one FTS5 row per session, upserted whenever that
- * session archives. Indexes at session granularity, not per-turn — a hit's
+ * session is hidden. Indexes at session granularity, not per-turn — a hit's
  * `itemId` anchors to the session's first item, and `fetch()` (Task 4) reads
  * forward from there. Per-turn granularity is future work (see the design
  * spec's Deferred section).

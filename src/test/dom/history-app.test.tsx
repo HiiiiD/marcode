@@ -1,5 +1,5 @@
 import * as assert from 'node:assert';
-import { screen, within } from '@testing-library/react';
+import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { formatWhen } from '../../history/format-when';
 import { summary } from '../fixtures/protocol';
@@ -13,7 +13,7 @@ const sessions = (): SessionSummary[] => [
   }),
   summary('b', { title: 'Beta', name: 'beta-name', createdAt: 30, updatedAt: 100 }),
   summary('c', {
-    title: 'Gamma', name: 'gamma-name', createdAt: 20, updatedAt: 200, archived: true,
+    title: 'Gamma', name: 'gamma-name', createdAt: 20, updatedAt: 200,
     summary: { text: 'Flaky test hunt', forUpdatedAt: 200 },
   }),
   summary('d', { title: 'Delta', name: 'delta-name', createdAt: 5, updatedAt: 1, pinned: true }),
@@ -47,17 +47,13 @@ suite('history app', () => {
     assert.strictEqual(screen.getByText('Pinned').textContent, 'Pinned');
   });
 
-  test('a row shows dates, provider and model, archived state and the summary', () => {
+  test('a row shows dates, provider and model, and the summary', () => {
     renderHistory();
     hydrate(sessions());
     assert.strictEqual(screen.getAllByText(formatWhen(300)).length >= 1, true);
     assert.strictEqual(screen.getAllByText(formatWhen(10)).length >= 1, true);
     assert.strictEqual(screen.getAllByText('fake · fake-large').length, 4);
     assert.strictEqual(screen.getByText('Fixes login redirect').textContent, 'Fixes login redirect');
-    const gamma = screen.getAllByRole('row').find((r) => (r.textContent ?? '').includes('Gamma'))!;
-    assert.strictEqual(within(gamma).queryByText('Archived') !== null, true);
-    const alpha = screen.getAllByRole('row').find((r) => (r.textContent ?? '').includes('Alpha'))!;
-    assert.strictEqual(within(alpha).queryByText('Archived') === null, true);
   });
 
   test('a session without a summary falls back to its title', () => {
@@ -73,15 +69,6 @@ suite('history app', () => {
     assert.deepStrictEqual(order(), ['Delta', 'Beta', 'Gamma', 'Alpha']);
     await userEvent.click(screen.getByRole('button', { name: 'Sort ascending' }));
     assert.deepStrictEqual(order(), ['Delta', 'Alpha', 'Gamma', 'Beta']);
-  });
-
-  test('status tabs filter by archived', async () => {
-    renderHistory();
-    hydrate(sessions());
-    await userEvent.click(screen.getByRole('tab', { name: 'Archived' }));
-    assert.deepStrictEqual(order(), ['Gamma']);
-    await userEvent.click(screen.getByRole('tab', { name: 'Active' }));
-    assert.deepStrictEqual(order(), ['Delta', 'Alpha', 'Beta']);
   });
 
   test('the text filter matches summaries', async () => {

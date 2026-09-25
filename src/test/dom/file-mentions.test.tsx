@@ -9,8 +9,7 @@ function summary(id: string, title: string): SessionSummary {
   return {
     id, providerId: 'fake', model: 'm', title, name: title, cwd: '/w',
     status: 'idle', permissionMode: 'default', includeEditorContext: true,
-    resumeTokens: {},
-    archived: false, createdAt: 1, updatedAt: 1,
+    resumeTokens: {}, createdAt: 1, updatedAt: 1,
   };
 }
 

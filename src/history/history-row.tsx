@@ -1,5 +1,4 @@
 import { PinIcon, PinOffIcon, RefreshCwIcon } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { TableCell, TableRow } from '@/components/ui/table';
 import { formatWhen } from './format-when';
@@ -16,7 +15,6 @@ export function HistoryRow({ session }: { session: SessionSummary }) {
       <TableCell className="min-w-40 align-top font-medium">
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="truncate">{session.title}</span>
-          {session.archived && <Badge variant="secondary">Archived</Badge>}
         </div>
       </TableCell>
       <TableCell className="align-top whitespace-nowrap text-muted-foreground">

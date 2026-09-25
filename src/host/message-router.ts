@@ -189,18 +189,7 @@ export class MessageRouter {
       case 'ready': {
         const layout = this.manager.layout();
         const snapshots: SessionSnapshot[] = [];
-        // A pane can outlive close-session (only delete-session prunes the
-        // layout), so a pane's sessionId may point at an archived session.
-        // Only the genuine "live at shutdown, restored with no live
-        // AgentSession yet" case should be materialized via reopen() here —
-        // an explicitly-closed session must stay archived and provider-run
-        // free until the user re-opens it (e.g. via set-visible, which
-        // already serves archived sessions from disk without reviving them).
-        const archived = new Set(
-          this.manager.summaries().filter((s) => s.archived).map((s) => s.id),
-        );
         for (const sessionId of leafSessionIds(layout.root)) {
-          if (archived.has(sessionId)) { continue; }
           const session = this.manager.get(sessionId) ?? await this.reopen(sessionId);
           if (session) { snapshots.push(await session.snapshot()); }
         }
@@ -374,7 +363,7 @@ export class MessageRouter {
       }
 
       // Rename is a `this.meta` mutation and needs no live session — resolving
-      // one first (via `reopen()`) would revive an archived session, spawning
+      // one first (via `reopen()`) would revive a hidden session, spawning
       // its provider run, purely to report a possible failure. Only on
       // failure do we try to surface it, and only to a session that is
       // ALREADY live: reviving one just to show it an error it never asked
@@ -688,7 +677,7 @@ export class MessageRouter {
   }
 
   /**
-   * `send` on a session restored from `index.json` (archived: false, but no
+   * `send` on a session restored from `index.json` (in the roster, but no
    * live AgentSession — see SessionManager.init()) needs `open()` to
    * materialize it. `open()` throws on an unknown/unknown-state SessionId
    * (e.g. an attacker-adjacent id that never existed), so that failure is

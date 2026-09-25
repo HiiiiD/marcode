@@ -8,7 +8,7 @@ const ids = (list: { id: string }[]): string[] => list.map((s) => s.id);
 const sessions = [
   summary('a', { createdAt: 10, updatedAt: 300 }),
   summary('b', { createdAt: 30, updatedAt: 100 }),
-  summary('c', { createdAt: 20, updatedAt: 200, archived: true }),
+  summary('c', { createdAt: 20, updatedAt: 200 }),
 ];
 
 suite('queryHistory', () => {
@@ -35,13 +35,6 @@ suite('queryHistory', () => {
     const out = queryHistory(list, DEFAULT_QUERY);
     assert.deepStrictEqual(ids(out.pinned), ['p2', 'p1']);
     assert.deepStrictEqual(ids(out.rest), ['a']);
-  });
-
-  test('status filter follows archived', () => {
-    const active = queryHistory(sessions, { ...DEFAULT_QUERY, status: 'active' });
-    const archived = queryHistory(sessions, { ...DEFAULT_QUERY, status: 'archived' });
-    assert.deepStrictEqual(ids(active.rest), ['a', 'b']);
-    assert.deepStrictEqual(ids(archived.rest), ['c']);
   });
 
   test('text matches title, name, model, provider and summary, case-insensitively', () => {

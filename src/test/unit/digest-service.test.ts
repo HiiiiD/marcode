@@ -50,7 +50,7 @@ function rig(sessions: DigestSession[], opts: {
 }
 
 const session = (id: string, over: Partial<DigestSession> = {}): DigestSession => ({
-  id, providerId: 'claude', cwd: '/r', title: `t-${id}`, archived: true, updatedAt: 10, ...over,
+  id, providerId: 'claude', cwd: '/r', title: `t-${id}`, hidden: true, updatedAt: 10, ...over,
 });
 
 const llmDigest = (base: SessionDigest): SessionDigest => ({ ...base, source: 'llm', title: 'LLM title' });
@@ -83,21 +83,21 @@ suite('DigestService', () => {
   });
 
   test('upgrade skips a live session', async () => {
-    const { store, service } = rig([session('a', { archived: false })], { summarize: async (_i, b) => llmDigest(b) });
+    const { store, service } = rig([session('a', { hidden: false })], { summarize: async (_i, b) => llmDigest(b) });
     await service.refresh('a');
     await service.upgrade('a');
     assert.strictEqual(store.digests.has('a'), false);
   });
 
   test('a live session gets a history projection but is never written to the store', async () => {
-    const { store, service, projected } = rig([session('a', { archived: false })]);
+    const { store, service, projected } = rig([session('a', { hidden: false })]);
     await service.refresh('a');
     assert.strictEqual(projected.get('a'), 10);
     assert.strictEqual(store.digests.size, 0);
   });
 
   test('ensureCurrent projects a live session once and then leaves it alone', async () => {
-    const { store, service, settled } = rig([session('a', { archived: false })]);
+    const { store, service, settled } = rig([session('a', { hidden: false })]);
     await service.ensureCurrent();
     const after = settled();
     await service.ensureCurrent();
@@ -121,7 +121,7 @@ suite('DigestService', () => {
     await service.refresh('a');
     const upgrading = service.upgrade('a');
     await new Promise((r) => setTimeout(r, 20));
-    sessions[0] = session('a', { archived: false });
+    sessions[0] = session('a', { hidden: false });
     gate.release?.();
     await upgrading;
     assert.strictEqual(store.digests.get('a')?.source, 'extractive');
@@ -166,7 +166,7 @@ suite('DigestService', () => {
   test('reindex missing-llm builds extractive first, then upgrades closed sessions, newest first', async () => {
     const order: string[] = [];
     const { store, service, progress } = rig(
-      [session('old', { updatedAt: 1 }), session('new', { updatedAt: 5 }), session('live', { archived: false, updatedAt: 9 })],
+      [session('old', { updatedAt: 1 }), session('new', { updatedAt: 5 }), session('live', { hidden: false, updatedAt: 9 })],
       { summarize: async (_i, base) => { order.push(base.title); return llmDigest(base); } },
     );
     await service.reindex('missing-llm');
@@ -201,7 +201,7 @@ suite('DigestService', () => {
 
   test('estimate counts closed sessions that still need an llm digest', async () => {
     const { service } = rig(
-      [session('a'), session('b'), session('live', { archived: false })],
+      [session('a'), session('b'), session('live', { hidden: false })],
       { summarize: async (_i, b) => llmDigest(b) },
     );
     assert.deepStrictEqual(await service.estimate('missing-llm'), { sessions: 2, approxInputTokens: 6000 });

@@ -846,7 +846,7 @@ function Group({
           visible for `idle`; the DOM node — and the region — stay put either
           way.
         */}
-        {session !== undefined && !session.archived && (
+        {session !== undefined && (
           <StatusBadge status={session.status} hideIdle />
         )}
         <span className="min-w-0 shrink-0 truncate text-muted-foreground">
@@ -923,7 +923,7 @@ function basename(path: string): string {
 }
 
 function titleOf(id: SessionId, sessions: SessionSummary[]): string {
-  // Archived sessions are in the roster and deliberately in the diff: a closed
+  // Hidden sessions are in the roster and deliberately in the diff: a closed
   // session's uncommitted work is still on disk and still unreviewed. Only a
   // deleted one falls through here.
   return sessions.find((s) => s.id === id)?.title ?? 'Deleted session';

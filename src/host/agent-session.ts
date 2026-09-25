@@ -181,7 +181,7 @@ export class AgentSession {
   private invocableEntries: Invocable[] | undefined;
   /**
    * Live provider state only — never persisted, never on SessionState.
-   * An archived session reports none, because there is no run to ask.
+   * A session with no live run reports none, because there is no run to ask.
    */
   private mcpServers: McpServerStatus[] = [];
   private cacheWindow?: { anchorAt: number; ttlMs: number };

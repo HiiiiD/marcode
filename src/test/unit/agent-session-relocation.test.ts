@@ -15,8 +15,7 @@ function baseState(): SessionState {
     id: 's1', providerId: 'fake', model: 'fake-large', effort: 'medium',
     title: 'Untitled', name: 'Untitled', cwd: '/repo', status: 'idle', permissionMode: 'default',
     includeEditorContext: true,
-    resumeTokens: {},
-    archived: false, createdAt: 1, updatedAt: 1,
+    resumeTokens: {}, createdAt: 1, updatedAt: 1,
   };
 }
 

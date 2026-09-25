@@ -37,7 +37,7 @@ export function App() {
   const knownSessionIdsRef = useRef<Set<string>>(new Set());
 
   // A pane's session can be deleted outright (removed from the roster
-  // entirely, unlike close-session which only archives it) or a brand new
+  // entirely, unlike close-session which only hides it) or a brand new
   // session can arrive that has no pane yet. The host doesn't drive this —
   // it has no concept of "which panes the client currently shows" beyond
   // the last `set-layout` it was told — so the client reconciles its own

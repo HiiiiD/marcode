@@ -41,17 +41,17 @@ export interface SessionManagerLike {
   setVisible(ids: string[]): Promise<void>;
   /** The folder `marcode__recall` is scoped to for this caller; absent means unscoped. */
   recallRoot?(sid: string): string | undefined;
-  /** Every non-archived session's addressable identity — see `marcode__list_sessions`. */
+  /** Every session's addressable identity — see `marcode__list_sessions`. */
   summaries(): {
     id: string; name: string; providerId: string; model: string; effort?: EffortLevel;
-    permissionMode: PermissionMode; status: string; cwd: string; archived: boolean;
+    permissionMode: PermissionMode; status: string; cwd: string;
   }[];
   /** The ids of sessions with an open pane right now — see `marcode__list_sessions`. */
   visibleIds(): string[];
   /**
    * Materializes and returns the session, if it exists — used to resolve the
    * caller's own identity and to deliver to a target. `summaries()` spans
-   * every non-archived session, live or merely restored from disk, so a
+   * every session, live or merely restored from disk, so a
    * target `marcode__list_sessions` just named may have no live
    * `AgentSession` yet. The real implementation (`extension.ts`'s closure)
    * is expected to open one, mirroring `message-router.ts`'s own `reopen()`,
@@ -72,8 +72,7 @@ export interface SessionManagerLike {
    */
   transcriptTail(id: string, limit?: number): Promise<{ items: TranscriptItem[] } | undefined>;
   /**
-   * Archives (or discards, if empty/untitled) the target session — the same
-   * rule the roster's close button takes. See `marcode__close_session`.
+   * Hides (or discards, if empty/untitled) the target session's pane and indexes it. See `marcode__close_session`.
    */
   close(id: string): Promise<void>;
 }
@@ -140,7 +139,7 @@ export class SelfControlMcpServer {
     /** The calling session's own name, resolved from `sid` — undefined if `sid` is missing or stale. */
     const caller = () => {
       if (!sid) { return undefined; }
-      return this.sessionManager.summaries().find((s) => s.id === sid && !s.archived);
+      return this.sessionManager.summaries().find((s) => s.id === sid);
     };
 
     mcp.registerTool(
@@ -378,7 +377,7 @@ export class SelfControlMcpServer {
       async () => {
         const visible = new Set(this.sessionManager.visibleIds());
         const sessions = this.sessionManager.summaries()
-          .filter((s) => !s.archived && (visible.has(s.id) || s.id === sid))
+          .filter((s) => visible.has(s.id) || s.id === sid)
           .map((s) => ({
             name: s.name, providerId: s.providerId, status: s.status, cwd: s.cwd,
             ...(s.id === sid ? { self: true } : {}),
@@ -416,7 +415,7 @@ export class SelfControlMcpServer {
           return { isError: true, content: [{ type: 'text', text: 'Cannot send a message to yourself.' }] };
         }
         const target = this.sessionManager.summaries()
-          .find((s) => s.name.toLowerCase() === to.toLowerCase() && !s.archived);
+          .find((s) => s.name.toLowerCase() === to.toLowerCase() && this.sessionManager.visibleIds().includes(s.id));
         if (!target) {
           return { isError: true, content: [{ type: 'text', text: `Unknown session: ${to}` }] };
         }
@@ -434,7 +433,7 @@ export class SelfControlMcpServer {
       'marcode__close_session',
       {
         title: 'Close another Marcode session',
-        description: 'Marcode-specific: closes a DIFFERENT Marcode session\'s pane (archives its '
+        description: 'Marcode-specific: closes a DIFFERENT Marcode session\'s pane (stops its run, indexes its '
           + 'transcript, or discards it outright if it never received or sent anything) — not your '
           + 'own conversation, and not reversible from here. Typical use: a worker session you '
           + 'spawned with marcode__spawn_session has sent its result back via marcode__send_message '
@@ -453,7 +452,7 @@ export class SelfControlMcpServer {
           return { isError: true, content: [{ type: 'text', text: 'Cannot close yourself.' }] };
         }
         const target = this.sessionManager.summaries()
-          .find((s) => s.name.toLowerCase() === to.toLowerCase() && !s.archived);
+          .find((s) => s.name.toLowerCase() === to.toLowerCase() && this.sessionManager.visibleIds().includes(s.id));
         if (!target) {
           return { isError: true, content: [{ type: 'text', text: `Unknown session: ${to}` }] };
         }
@@ -485,7 +484,7 @@ export class SelfControlMcpServer {
           return { isError: true, content: [{ type: 'text', text: 'Cannot fetch your own context; you already have it.' }] };
         }
         const target = this.sessionManager.summaries()
-          .find((s) => s.name.toLowerCase() === name.toLowerCase() && !s.archived);
+          .find((s) => s.name.toLowerCase() === name.toLowerCase() && this.sessionManager.visibleIds().includes(s.id));
         if (!target) {
           return { isError: true, content: [{ type: 'text', text: `Unknown session: ${name}` }] };
         }

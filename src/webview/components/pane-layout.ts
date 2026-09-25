@@ -10,19 +10,16 @@ import { flattenLeaves, leafSessionIds, removeSession, type FlatLeaf, type Layou
 
 export interface RosterEntry {
   id: string;
-  archived: boolean;
 }
 
 /**
  * The set of session ids eligible to have a leaf, derived from the roster
  * (`ClientState.sessions`). This is where "eligibility is roster
- * membership, not archived status" (see `reconcilePaneLayout`'s doc
+ * membership" (see `reconcilePaneLayout`'s doc
  * comment) actually gets decided for both `visibleLeaves` and
- * `reconcilePaneLayout` callers — deliberately does NOT filter out
- * `archived: true` entries. Only `delete-session` removes a session from
- * the roster entirely; `close-session` only flips `archived`, and an
- * archived session the user has explicitly opened (checked in the roster
- * picker) must keep its leaf. Extracted so this decision has its own name
+ * `reconcilePaneLayout` callers. Only `delete-session` removes a session from
+ * the roster entirely; a session the user has explicitly opened (checked in
+ * the roster picker) must keep its leaf. Extracted so this decision has its own name
  * and is pinned by a test, rather than living as an easy-to-get-wrong
  * inline `.map()` at each call site.
  */
@@ -101,8 +98,8 @@ export function appendAtTop(root: LayoutNode, sessionId: string): LayoutNode {
  * Reconciles a persisted tree against the current roster. The tree IS the
  * user's intent — which sessions have a leaf open is something only the
  * user's own actions (the roster checkbox, "+ New", closing a pane, drag-
- * to-split) get to decide. Session *state* (archived or not) must never be
- * used to derive "should this session have a leaf": an archived session the
+ * to-split) get to decide. Session *state* must never be
+ * used to derive "should this session have a leaf": a session the
  * user has explicitly opened must keep its leaf, and a live session the
  * user has explicitly closed via the roster checkbox must NOT come back on
  * the next pass just because it's still live and still in `byId`.

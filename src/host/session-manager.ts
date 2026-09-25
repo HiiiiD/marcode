@@ -207,7 +207,7 @@ export class SessionManager implements SessionSink {
     private readonly extraBaseRefs: string[] = [],
     /**
      * Indexes a session's transcript into the swappable memory backend the
-     * moment it archives. Optional: a construction site with no memory
+     * moment it is hidden. Optional: a construction site with no memory
      * store simply never indexes, the same posture `attachments` already
      * takes for a missing `AttachmentStore`.
      */
@@ -231,7 +231,7 @@ export class SessionManager implements SessionSink {
         source: {
           sessions: () => [...this.meta.values()].map((s) => ({
             id: s.id, providerId: s.providerId, cwd: s.cwd, title: s.title,
-            archived: s.archived, updatedAt: s.updatedAt,
+            hidden: !this.visible.has(s.id), updatedAt: s.updatedAt,
           })),
           transcript: async (id) => (await this.store.tail(id, Number.MAX_SAFE_INTEGER)).items,
           projected: (id) => this.meta.get(id)?.summary?.forUpdatedAt,
@@ -709,7 +709,7 @@ export class SessionManager implements SessionSink {
       title: 'Untitled', name: this.defaultName(providerId), cwd: resolvedCwd, status: 'idle', permissionMode: resolvedMode,
       includeEditorContext: true,
       resumeTokens: {},
-      archived: false, createdAt: now, updatedAt: now,
+      createdAt: now, updatedAt: now,
     };
 
     const session = new AgentSession(state, provider, this.store, this);
@@ -762,7 +762,7 @@ export class SessionManager implements SessionSink {
       status: 'idle', permissionMode: state.permissionMode,
       includeEditorContext: state.includeEditorContext,
       resumeTokens: {},
-      archived: false, createdAt: now, updatedAt: now,
+      createdAt: now, updatedAt: now,
     };
 
     for (const item of items) { this.store.append(forkState.id, item); }
@@ -783,7 +783,7 @@ export class SessionManager implements SessionSink {
   /**
    * Answers a pending relocation offer.
    *
-   * A move is `archive()` -> `open()` with one field changed, which is why it
+   * A move is `hide()` -> `open()` with one field changed, which is why it
    * introduces almost no lifecycle: dispose the run, repoint `cwd`, and
    * rebuild. Whether the new thread resumes or is seeded is decided by
    * `threadKey` — the provider declares whether its tokens travel.
@@ -876,7 +876,7 @@ export class SessionManager implements SessionSink {
    * leaves items promising a move nothing is left to perform, and a promise
    * the host cannot keep is worse than the question it replaced. Every
    * materialization ends here — `setVisible`'s live branch (`snapshot()`), its
-   * archived branch (`store.tail`), and the rebuild `moveTo` emits — so
+   * hidden branch (`store.tail`), and the rebuild `moveTo` emits — so
    * reconciling on the way out covers all of them at once. Hydrate's own
    * `open()` + `snapshot()` needs no separate hook: the webview posts
    * `set-visible` for every restored pane, and `SessionManager.visible` starts
@@ -925,7 +925,7 @@ export class SessionManager implements SessionSink {
       t: 'session-snapshot',
       session: (reopenedAny || staleAny) ? { ...snapshot, items } : snapshot,
     });
-    // An archived session has no AgentSession to schedule a flush, so the
+    // A session with no live run has no AgentSession to schedule a flush, so the
     // correction is pushed to disk here. Fire-and-forget and swallowed: this
     // is called from a sink-adjacent path, the emit above has already told the
     // pane the truth, and a failed write only means the next reveal
@@ -1182,7 +1182,7 @@ export class SessionManager implements SessionSink {
 
     // `sessionsIn` answers for the whole roster — this surface only
     // reviews trees a shown pane sits in. A session nobody has a pane
-    // open for is not "reviewing" anything right now, archived or not:
+    // open for is not "reviewing" anything right now, hidden or not:
     // filtering here (rather than narrowing `sessionsIn` itself) keeps
     // the stale-tree sweep, which wants every roster occupant, unchanged.
     const occupied = unique
@@ -1249,7 +1249,7 @@ export class SessionManager implements SessionSink {
    * one; this answers with all of them, because a shared root is precisely
    * the case this surface exists to disambiguate.
    *
-   * Archived sessions count here, and deliberately — unlike `occupantOf`,
+   * Hidden sessions count here, and deliberately — unlike `occupantOf`,
    * which excludes them because resurrecting a closed session into the roster
    * behind a sweep would be a surprise. Closing a session does not undo what
    * it wrote: its changes are still uncommitted on disk and still unreviewed,
@@ -1400,14 +1400,14 @@ export class SessionManager implements SessionSink {
   }
 
   /**
-   * The session sitting in `root` right now, if any. Archived sessions are
+   * The session sitting in `root` right now, if any. Hidden, non-live sessions are
    * not occupants: one is closed, and resurrecting it into the roster because
    * the user swept a directory would be a surprise. Its cwd and tokens are
    * still repaired by `forgetTree` when the tree goes.
    */
   private occupantOf(root: string): SessionId | undefined {
     for (const state of this.meta.values()) {
-      if (state.archived) { continue; }
+      if (!this.live.has(state.id) && !this.visible.has(state.id)) { continue; }
       if (samePath(resolve(state.cwd), root)) { return state.id; }
     }
     return undefined;
@@ -1420,7 +1420,7 @@ export class SessionManager implements SessionSink {
    * Paths get reused, which is the whole reason the tokens go — a future
    * worktree created at the same path would otherwise inherit a conversation
    * it never had. The cwd repair covers the sessions `bringBack` did not
-   * carry: an archived one, or one whose token merely named the tree.
+   * carry: a hidden one, or one whose token merely named the tree.
    */
   private forgetTree(removed: string, mainRoot: string): void {
     let touched = false;
@@ -1443,7 +1443,7 @@ export class SessionManager implements SessionSink {
 
   /**
    * Never rejects: this is answered straight onto the wire, where "errors
-   * are state". An archived or never-opened session has no live run to ask,
+   * are state". A hidden or never-opened session has no live run to ask,
    * which is a legitimate not-ok rather than a failure.
    */
   async contextBreakdown(id: SessionId): Promise<ContextResult> {
@@ -1595,10 +1595,7 @@ export class SessionManager implements SessionSink {
     const provider = this.providers.get(state.providerId);
     if (!provider) { throw new Error(`Unknown provider: ${state.providerId}`); }
 
-    state.archived = false;
     state.status = 'idle';
-    // Recall is for closed sessions only; this one is live again and would otherwise point at itself.
-    await this.digests?.forget(id);
     const session = new AgentSession(state, provider, this.store, this);
     this.live.set(id, session);
     const cached = this.catalogSvc.get(this.keyOf(state));
@@ -1619,6 +1616,8 @@ export class SessionManager implements SessionSink {
     const removed = [...this.visible].filter((id) => !next.has(id));
     this.visible = next;
 
+    // Recall covers hidden sessions only; a revealed one would otherwise point at itself.
+    for (const id of added) { await this.digests?.forget(id); }
     for (const id of added) {
       // Mark this id as "snapshot in flight" so patch() buffers instead of
       // emitting for it — see the `snapshotting` field doc comment.
@@ -1657,14 +1656,14 @@ export class SessionManager implements SessionSink {
       this.emitSnapshot(id, {
         ...state, items, hasMore, pending: [],
         invocables: this.catalogSvc.get(this.keyOf(state)),
-        // An archived session has no run to ask, and a stale snapshot
+        // A hidden session has no run to ask, and a stale snapshot
         // presented as current would be a lie. Same for the parked questions:
         // there is no live run holding any, and `emitSnapshot` reads this list
         // to decide which persisted `pending` question items are stale — which
-        // for an archived session is all of them.
+        // for a hidden session is all of them.
         pendingQuestions: [],
         mcpServers: [],
-        // Same reason: nothing is composing into an archived session, so
+        // Same reason: nothing is composing into a hidden session, so
         // there is no pending set to report.
         pendingAttachments: [],
       });
@@ -1683,9 +1682,7 @@ export class SessionManager implements SessionSink {
       const state = this.meta.get(id);
       if (!state) { continue; }
       if (await this.isDiscardable(id, state)) { await this.remove(id); continue; }
-      // Hiding a pane is not closing: the session stays live, so it is never indexed for recall.
-      // This only refreshes its history summary from whatever is on disk right now.
-      await this.digests?.refresh(id);
+      await this.digestHidden(id);
     }
   }
 
@@ -1719,8 +1716,8 @@ export class SessionManager implements SessionSink {
 
   /**
    * Closing a session that was never used discards it outright instead of
-   * archiving it: an untitled session with an empty transcript carries
-   * nothing to come back to, and archiving it would leave the roster
+   * hiding it: an untitled session with an empty transcript carries
+   * nothing to come back to, and hiding it would leave the roster
    * accumulating placeholder rows that can only ever be deleted by hand.
    *
    * "Never used" is title *and* transcript, not either alone. The title is
@@ -1744,7 +1741,7 @@ export class SessionManager implements SessionSink {
       await this.remove(id);
       return;
     }
-    await this.archive(id);
+    await this.hide(id);
   }
 
   /**
@@ -1754,7 +1751,7 @@ export class SessionManager implements SessionSink {
    * without it, a replaced pane sits in the `pending` (blank) render state
    * until `app.tsx`'s `set-visible` round-trip eventually pulls one.
    *
-   * The old session is never archived or removed — it just stops being the
+   * The old session is never closed or removed — it just stops being the
    * pane's session, the same as unchecking its row in the roster ("Hide
    * from the split"). It stays live in the roster and can be dragged back
    * into a pane later; nothing about it read as an ending.
@@ -1807,7 +1804,8 @@ export class SessionManager implements SessionSink {
     });
   }
 
-  private async archive(id: SessionId): Promise<void> {
+  /** Stops the run and hides the pane; the session stays in the roster and is indexed once hidden. */
+  private async hide(id: SessionId): Promise<void> {
     // Before the dispose below, which can report a final status: a closed
     // session must not relocate on its way out.
     this.queuedMoves.delete(id);
@@ -1818,21 +1816,21 @@ export class SessionManager implements SessionSink {
     }
     const state = this.meta.get(id);
     if (state) {
-      state.archived = true;
       state.status = 'idle';
       state.updatedAt = Date.now();
-      await this.digestClosed(id);
     }
     this.visible.delete(id);
+    this.setLayout({ ...this.paneLayout, root: removeSession(this.paneLayout.root, id) });
+    if (state) { await this.digestHidden(id); }
     this.changed();
   }
 
   /**
-   * Awaited by `archive()` so a session is searchable the moment `close()` resolves.
+   * Awaited by `hide()` so a session is searchable the moment `close()` resolves.
    * Only the cheap extractive write is awaited; the LLM upgrade is fire-and-forget,
    * and `DigestService` never rejects, so neither can fail a lifecycle transition.
    */
-  private async digestClosed(id: SessionId): Promise<void> {
+  private async digestHidden(id: SessionId): Promise<void> {
     if (!this.digests) { return; }
     await this.digests.refresh(id);
     void this.digests.upgrade(id);
@@ -1891,15 +1889,15 @@ export class SessionManager implements SessionSink {
   }
 
   async remove(id: SessionId): Promise<void> {
-    await this.archive(id);
+    await this.hide(id);
     this.meta.delete(id);
     await this.store.remove(id);
     await this.attachments?.remove(id);
-    // `archive()` above may have just indexed this session into the memory
+    // `hide()` above may have just indexed this session into the memory
     // store — the same `close()` path a mere close takes. A `remove()` is a
     // permanent delete, so that row must not outlive the transcript it was
     // built from; erasing it is best-effort and swallowed like
-    // `digestClosed`'s own errors, since a `forget()` failure must not
+    // `digestHidden`'s own errors, since a `forget()` failure must not
     // block session removal.
     try {
       await this.memory?.forget(id);
@@ -1925,8 +1923,8 @@ export class SessionManager implements SessionSink {
     const liveSessions = [...this.live.values()];
     await Promise.all(liveSessions.map((s) => s.dispose()));
     this.live.clear();
-    // Sessions still open at quit are not closed, so they are not indexed for recall. This only
-    // brings each one's history summary up to date so the persisted roster restores it. Runs after
+    // A session still shown in a pane at quit is not indexed for recall (it is not hidden); a hidden
+    // one is brought up to date. Either way each history summary is current for the persisted roster. Runs after
     // the disposals above, once every transcript has flushed.
     await Promise.all(liveSessions.map((s) => this.digests?.refresh(s.state.id)));
     this.digests?.stop();

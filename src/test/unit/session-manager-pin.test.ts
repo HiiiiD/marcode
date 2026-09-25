@@ -47,7 +47,6 @@ suite('SessionManager pinning', () => {
     await again.init();
     const restored = again.summaries().find((s) => s.id === id)!;
     assert.strictEqual(restored.pinned, true);
-    assert.strictEqual(restored.archived, true);
     await again.dispose();
   });
 

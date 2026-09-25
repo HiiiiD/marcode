@@ -110,10 +110,9 @@ suite('SessionManager', () => {
     assert.strictEqual(replacement?.providerId, 'fake');
     assert.strictEqual(replacement?.model, 'fake-large');
     assert.strictEqual(replacement?.cwd, '/tmp');
-    // Hidden from the split, not archived or removed — same as unchecking
+    // Hidden from the split, not closed or removed — same as unchecking
     // its row in the roster.
     assert.strictEqual(manager.get(old.state.id), old);
-    assert.strictEqual(old.state.archived, false);
   });
 
   test('replaceSession leaves the old session and its leaf untouched when creating the replacement fails', async () => {
@@ -404,8 +403,7 @@ suite('SessionManager', () => {
       sessions: [{
         id: 'restored', providerId: 'fake', model: 'fake-1', title: 'Restored',
         name: collidingName, cwd: '/tmp', status: 'idle', permissionMode: 'default',
-        includeEditorContext: true, resumeTokens: {},
-        archived: false, createdAt: 1, updatedAt: 1,
+        includeEditorContext: true, resumeTokens: {}, createdAt: 1, updatedAt: 1,
       } as SessionState],
       layout: layoutOf([]),
     });
@@ -665,7 +663,7 @@ suite('SessionManager', () => {
     assert.strictEqual(exists, false, 'a stray persist timer recreated the removed root directory');
   });
 
-  test('close archives and keeps the transcript; remove deletes it', async () => {
+  test('close stops the run and keeps the transcript; remove deletes it', async () => {
     const a = await manager.create('fake', '/tmp');
     const id = a.state.id;
     a.send('hello');
@@ -674,7 +672,7 @@ suite('SessionManager', () => {
     await manager.close(id);
     assert.strictEqual(manager.get(id), undefined, 'closed session is not live');
     const summary = manager.summaries().find((s) => s.id === id);
-    assert.strictEqual(summary?.archived, true);
+    assert.ok(summary, 'closed session stays in the roster');
     const kept = await store.tail(id);
     assert.ok(kept.items.length > 0, 'transcript survives close');
     const pasted = await attachments.savePaste(id, {
@@ -714,7 +712,7 @@ suite('SessionManager', () => {
     assert.strictEqual(manager.get(id), undefined, 'discarded session is not live');
     assert.strictEqual(
       manager.summaries().find((s) => s.id === id), undefined,
-      'an unused session must leave the roster, not linger as an archived row',
+      'an unused session must leave the roster, not linger as a hidden row',
     );
   });
 
@@ -740,8 +738,8 @@ suite('SessionManager', () => {
 
     await manager.setVisible([]);
 
-    assert.strictEqual(manager.summaries().find((s) => s.id === id)?.archived, false,
-      'a session with a transcript stays in the roster, unarchived');
+    assert.ok(manager.summaries().find((s) => s.id === id),
+      'a session with a transcript stays in the roster');
   });
 
   test('close keeps a session whose only item is an error, despite the Untitled title', async () => {
@@ -755,7 +753,7 @@ suite('SessionManager', () => {
 
     await m.close(id);
 
-    assert.strictEqual(m.summaries().find((s) => s.id === id)?.archived, true);
+    assert.ok(m.summaries().find((s) => s.id === id));
   });
 
   test('close keeps a session revived by open(), whose items live only on disk', async () => {
@@ -776,7 +774,7 @@ suite('SessionManager', () => {
     );
   });
 
-  test('open revives an archived session as live', async () => {
+  test('open revives a closed session as live', async () => {
     const a = await manager.create('fake', '/tmp');
     const id = a.state.id;
     a.send('hello');
@@ -784,7 +782,6 @@ suite('SessionManager', () => {
     await manager.close(id);
 
     const revived = await manager.open(id);
-    assert.strictEqual(revived.state.archived, false);
     assert.strictEqual(manager.get(id), revived);
   });
 
@@ -830,8 +827,7 @@ suite('SessionManager', () => {
       id: 's1', providerId: 'fake', model: 'fake-1', title: 'Restored', name: 'Restored',
       cwd: '/tmp', status: 'idle', permissionMode: 'default',
       includeEditorContext: true, resumeTokens: {},
-      contextPercent: 43, lastContext: remembered,
-      archived: false, createdAt: 1, updatedAt: 1, ...over,
+      contextPercent: 43, lastContext: remembered, createdAt: 1, updatedAt: 1, ...over,
     };
   }
 
@@ -1075,7 +1071,7 @@ suite('SessionManager', () => {
     assert.strictEqual((emitted[0] as { id: string }).id, a.state.id);
   });
 
-  test('an archived session snapshot reports no mcp servers', async () => {
+  test('a closed session snapshot reports no mcp servers', async () => {
     const a = await manager.create('fake', '/tmp');
     a.send('hello');
     await settle();
@@ -1210,13 +1206,13 @@ suite('SessionManager', () => {
     assert.deepStrictEqual(emitted.filter((m) => m.t === 'session-invocables'), []);
   });
 
-  test('an archived pane is served the cwd catalog from cache', async () => {
+  test('a closed pane is served the cwd catalog from cache', async () => {
     const { manager, provider, emitted } = await makeManager();
     provider.invocables = [{ name: 'init' }];
     const session = await manager.create('fake', '/repo');
     const id = session.state.id;
-    // An unused session is discarded by close() rather than archived, so
-    // give it a transcript before archiving it.
+    // An unused session is discarded by close() rather than closed, so
+    // give it a transcript before closing it.
     session.send('hello');
     await settle();
     await manager.close(id);
@@ -1229,7 +1225,7 @@ suite('SessionManager', () => {
     assert.deepStrictEqual(snap?.session.invocables, [{ name: 'init' }]);
   });
 
-  test('revealing an archived session on an unprobed cwd triggers exactly one probe', async () => {
+  test('revealing a closed session on an unprobed cwd triggers exactly one probe', async () => {
     // Simulate a window reload: a fresh SessionManager restores the session
     // from the on-disk index (never live in this manager instance, so its
     // catalog cache starts empty), then the pane is revealed without ever
@@ -1310,8 +1306,7 @@ suite('SessionManager', () => {
       version: 2,
       sessions: [{
         id: 'legacy', providerId: 'fake', model: 'fake-small', title: 'Old',
-        cwd: '/tmp', status: 'idle', permissionMode: 'default',
-        archived: false, createdAt: 1, updatedAt: 1,
+        cwd: '/tmp', status: 'idle', permissionMode: 'default', createdAt: 1, updatedAt: 1,
       } as unknown as SessionState],
       layout: layoutOf([]),
     });
@@ -1332,8 +1327,7 @@ suite('SessionManager', () => {
       sessions: [{
         id: 'pre-tokens', providerId: 'fake', model: 'fake-small', title: 'Old',
         cwd: '/tmp', status: 'idle', permissionMode: 'default',
-        includeEditorContext: true,
-        archived: false, createdAt: 1, updatedAt: 1,
+        includeEditorContext: true, createdAt: 1, updatedAt: 1,
       } as unknown as SessionState],
       layout: layoutOf([]),
     });
@@ -1355,8 +1349,7 @@ suite('SessionManager', () => {
         id: 'pre-name', providerId: 'fake', model: 'fake-small', title: 'Old',
         cwd: '/tmp', status: 'idle', permissionMode: 'default',
         includeEditorContext: true,
-        resumeTokens: {},
-        archived: false, createdAt: 1, updatedAt: 1,
+        resumeTokens: {}, createdAt: 1, updatedAt: 1,
       } as unknown as SessionState],
       layout: layoutOf([]),
     });

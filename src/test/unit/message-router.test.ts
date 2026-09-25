@@ -10,6 +10,7 @@ import { TranscriptStore } from '../../host/transcript-store';
 import { FakeProvider } from '../../providers/fake/fake-provider';
 import type { AgentProvider } from '../../providers/types';
 import type { HostToWebview } from '../../protocol/messages';
+import { leafSessionIds } from '../../webview/components/layout-tree';
 
 async function settle() {
   for (let i = 0; i < 10; i++) { await new Promise((r) => setImmediate(r)); }
@@ -557,9 +558,8 @@ suite('MessageRouter', () => {
     await router.handle({ t: 'set-visible', sessionIds: [id] });
     await router.handle({ t: 'send', id, text: 'hello' });
     await settle();
-    // close() archives the session but does NOT prune its pane from the
-    // layout (only delete-session does) — the pane is still there on the
-    // next `ready`, just pointing at an archived session.
+    // close() hides the session's pane and stops its run; a later `ready`
+    // must not revive it.
     await router.handle({
       t: 'set-layout',
       layout: { root: { kind: 'leaf', sessionId: id, size: 100 }, presets: [] },
@@ -583,7 +583,8 @@ suite('MessageRouter', () => {
     assert.strictEqual(manager2.get(id), undefined, 'closed session must not be revived as live');
     const summary = manager2.summaries().find((s) => s.id === id);
     assert.ok(summary);
-    assert.strictEqual(summary!.archived, true, 'closed session must remain archived');
+    const hydrate = sent2.find((m) => m.t === 'hydrate');
+    assert.strictEqual(hydrate?.t === 'hydrate' && !leafSessionIds(hydrate.layout.root).includes(id), true, 'closed session must leave the layout');
 
     await manager2.dispose();
   });
@@ -632,7 +633,7 @@ suite('MessageRouter', () => {
     await router.handle({ t: 'create-session', providerId: 'fake', cwd: '/tmp' });
     const id = manager.summaries()[0].id;
     await router.handle({ t: 'set-visible', sessionIds: [id] });
-    // Simulate "restored but not live": archive+release without deleting.
+    // Simulate "restored but not live": close without deleting.
     // Needs a transcript — close() discards an unused session outright.
     await router.handle({ t: 'send', id, text: 'hello' });
     await settle();
@@ -726,9 +727,9 @@ suite('MessageRouter', () => {
     assert.strictEqual(error?.role === 'error' && error.message, 'Name already in use.');
   });
 
-  test('rename-session does not revive an archived session, on success or on failure', async () => {
+  test('rename-session does not revive a closed session, on success or on failure', async () => {
     // Needs a transcript — close() discards an unused session outright,
-    // which would make "still archived after rename" trivially true for the
+    // which would make "still closed after rename" trivially true for the
     // wrong reason.
     await router.handle({ t: 'create-session', providerId: 'fake', cwd: '/tmp' });
     const id = manager.summaries()[0].id;
@@ -738,10 +739,10 @@ suite('MessageRouter', () => {
     await manager.close(id);
     assert.strictEqual(manager.get(id), undefined, 'session must not be live before the rename');
 
-    await router.handle({ t: 'rename-session', id, name: 'archived-rename' });
+    await router.handle({ t: 'rename-session', id, name: 'closed-rename' });
 
     assert.strictEqual(manager.get(id), undefined, 'a successful rename must not revive the session');
-    assert.strictEqual(manager.summaries().find((s) => s.id === id)?.name, 'archived-rename');
+    assert.strictEqual(manager.summaries().find((s) => s.id === id)?.name, 'closed-rename');
 
     // Now the failure path: the rename fails, and reporting it must not
     // revive the session either — there is no live pane to show the error to.

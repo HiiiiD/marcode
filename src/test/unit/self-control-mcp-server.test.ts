@@ -175,7 +175,7 @@ suite('SelfControlMcpServer', () => {
       }],
       summaries: () => [{
         id: 'caller', name: 'Caller', providerId: 'claude', model: 'sonnet', effort: 'high',
-        permissionMode: 'plan', status: 'idle', cwd: '/tmp', archived: false,
+        permissionMode: 'plan', status: 'idle', cwd: '/tmp',
       }],
       visibleIds: () => ['caller'],
       setVisible: async (ids) => { visible = ids; },
@@ -203,7 +203,7 @@ suite('SelfControlMcpServer', () => {
       // exactly what a pre-dynamic-catalog session carries.
       summaries: () => [{
         id: 'caller', name: 'Caller', providerId: 'claude', model: 'claude-sonnet-5',
-        permissionMode: 'default', status: 'idle', cwd: '/tmp', archived: false,
+        permissionMode: 'default', status: 'idle', cwd: '/tmp',
       }],
       create: async (...args) => { seenArgs = args; return { state: { id: 's-alias', name: 'claude-alias' } }; },
     }));
@@ -224,7 +224,7 @@ suite('SelfControlMcpServer', () => {
       ],
       summaries: () => [{
         id: 'caller', name: 'Caller', providerId: 'claude', model: 'sonnet',
-        permissionMode: 'bypass', status: 'idle', cwd: '/tmp', archived: false,
+        permissionMode: 'bypass', status: 'idle', cwd: '/tmp',
       }],
       create: async (...args) => { seenArgs = args; return { state: { id: 's-downgraded', name: 'claude-downgraded' } }; },
     }));
@@ -246,7 +246,7 @@ suite('SelfControlMcpServer', () => {
       ],
       summaries: () => [{
         id: 'caller', name: 'Caller', providerId: 'claude', model: 'sonnet',
-        permissionMode: 'default', status: 'idle', cwd: '/tmp', archived: false,
+        permissionMode: 'default', status: 'idle', cwd: '/tmp',
       }],
       create: async () => { created = true; return { state: { id: 'x', name: 'claude-x' } }; },
     }));
@@ -268,7 +268,7 @@ suite('SelfControlMcpServer', () => {
       ],
       summaries: () => [{
         id: 'caller', name: 'Caller', providerId: 'claude', model: 'sonnet',
-        permissionMode: 'default', status: 'idle', cwd: '/tmp', archived: false,
+        permissionMode: 'default', status: 'idle', cwd: '/tmp',
       }],
       create: async (...args) => { seenArgs = args; return { state: { id: 'x', name: 'claude-x' } }; },
     }));
@@ -291,7 +291,7 @@ suite('SelfControlMcpServer', () => {
       ],
       summaries: () => [{
         id: 'caller', name: 'Caller', providerId: 'claude', model: 'sonnet', effort: 'high',
-        permissionMode: 'default', status: 'idle', cwd: '/tmp', archived: false,
+        permissionMode: 'default', status: 'idle', cwd: '/tmp',
       }],
       create: async (...args) => { seenArgs = args; return { state: { id: 'x', name: 'claude-x' } }; },
     }));
@@ -316,7 +316,7 @@ suite('SelfControlMcpServer', () => {
       ],
       summaries: () => [{
         id: 'caller', name: 'Caller', providerId: 'claude', model: 'sonnet',
-        permissionMode: 'default', status: 'idle', cwd: '/tmp', archived: false,
+        permissionMode: 'default', status: 'idle', cwd: '/tmp',
       }],
       create: async (...args) => { seenArgs = args; return { state: { id: 'x', name: 'claude-x' } }; },
     }));
@@ -578,16 +578,14 @@ suite('SelfControlMcpServer memory tools', () => {
 });
 
 suite('SelfControlMcpServer cross-session messaging', () => {
-  test('marcode__list_sessions returns visible, non-archived sessions', async () => {
+  test('marcode__list_sessions returns only sessions with an open pane', async () => {
     const manager = fakeManager({
       summaries: () => [
-        { id: 's1', name: 'a', providerId: 'claude', status: 'idle', cwd: '/w1', archived: false } as never,
-        { id: 's2', name: 'b', providerId: 'codex', status: 'running', cwd: '/w2', archived: true } as never,
-        { id: 's3', name: 'c', providerId: 'claude', status: 'idle', cwd: '/w3', archived: false } as never,
+        { id: 's1', name: 'a', providerId: 'claude', status: 'idle', cwd: '/w1' } as never,
+        { id: 's3', name: 'c', providerId: 'claude', status: 'idle', cwd: '/w3' } as never,
       ],
       // s1 has an open pane; s3 does not (restored history, or a background
-      // session nobody has looked at) — only s1 should be listed. s2 is
-      // archived, so it is excluded regardless of visibility.
+      // session nobody has looked at) — only s1 should be listed.
       visibleIds: () => ['s1'],
     });
     const server = new SelfControlMcpServer(manager);
@@ -601,8 +599,8 @@ suite('SelfControlMcpServer cross-session messaging', () => {
   test('marcode__list_sessions always includes the caller, marked self, even when not visible', async () => {
     const manager = fakeManager({
       summaries: () => [
-        { id: 's-caller', name: 'a', providerId: 'claude', status: 'idle', cwd: '/w', archived: false } as never,
-        { id: 's-other', name: 'b', providerId: 'claude', status: 'idle', cwd: '/w', archived: false } as never,
+        { id: 's-caller', name: 'a', providerId: 'claude', status: 'idle', cwd: '/w' } as never,
+        { id: 's-other', name: 'b', providerId: 'claude', status: 'idle', cwd: '/w' } as never,
       ],
       // Neither session has an open pane.
       visibleIds: () => [],
@@ -621,9 +619,10 @@ suite('SelfControlMcpServer cross-session messaging', () => {
     const target = { interrupt: async () => { interrupted = true; }, send: (...args: unknown[]) => { sent = args; } };
     const manager = fakeManager({
       summaries: () => [
-        { id: 's-caller', name: 'a', providerId: 'claude', status: 'idle', cwd: '/w', archived: false } as never,
-        { id: 's-target', name: 'b', providerId: 'codex', status: 'idle', cwd: '/w', archived: false } as never,
+        { id: 's-caller', name: 'a', providerId: 'claude', status: 'idle', cwd: '/w' } as never,
+        { id: 's-target', name: 'b', providerId: 'codex', status: 'idle', cwd: '/w' } as never,
       ],
+      visibleIds: () => ['s-caller', 's-target'],
       get: async (id: string) => (id === 's-target' ? target as never : undefined),
     });
     const server = new SelfControlMcpServer(manager);
@@ -641,9 +640,10 @@ suite('SelfControlMcpServer cross-session messaging', () => {
     const target = { interrupt: async () => {}, send: (...args: unknown[]) => { sent = args; } };
     const manager = fakeManager({
       summaries: () => [
-        { id: 's-caller', name: 'a', providerId: 'claude', status: 'idle', cwd: '/w', archived: false } as never,
-        { id: 's-target', name: 'Receiver', providerId: 'codex', status: 'idle', cwd: '/w', archived: false } as never,
+        { id: 's-caller', name: 'a', providerId: 'claude', status: 'idle', cwd: '/w' } as never,
+        { id: 's-target', name: 'Receiver', providerId: 'codex', status: 'idle', cwd: '/w' } as never,
       ],
+      visibleIds: () => ['s-caller', 's-target'],
       get: async (id: string) => (id === 's-target' ? target as never : undefined),
     });
     const server = new SelfControlMcpServer(manager);
@@ -656,7 +656,7 @@ suite('SelfControlMcpServer cross-session messaging', () => {
 
   test('send_message errors when to equals the caller\'s own name case-insensitively', async () => {
     const manager = fakeManager({
-      summaries: () => [{ id: 's-caller', name: 'Alice', providerId: 'claude', status: 'idle', cwd: '/w', archived: false } as never],
+      summaries: () => [{ id: 's-caller', name: 'Alice', providerId: 'claude', status: 'idle', cwd: '/w' } as never],
     });
     const server = new SelfControlMcpServer(manager);
     const config = await server.start();
@@ -667,7 +667,7 @@ suite('SelfControlMcpServer cross-session messaging', () => {
 
   test('send_message errors on an unknown target name', async () => {
     const manager = fakeManager({
-      summaries: () => [{ id: 's-caller', name: 'a', providerId: 'claude', status: 'idle', cwd: '/w', archived: false } as never],
+      summaries: () => [{ id: 's-caller', name: 'a', providerId: 'claude', status: 'idle', cwd: '/w' } as never],
     });
     const server = new SelfControlMcpServer(manager);
     const config = await server.start();
@@ -678,7 +678,7 @@ suite('SelfControlMcpServer cross-session messaging', () => {
 
   test('send_message errors when to equals the caller\'s own name', async () => {
     const manager = fakeManager({
-      summaries: () => [{ id: 's-caller', name: 'a', providerId: 'claude', status: 'idle', cwd: '/w', archived: false } as never],
+      summaries: () => [{ id: 's-caller', name: 'a', providerId: 'claude', status: 'idle', cwd: '/w' } as never],
     });
     const server = new SelfControlMcpServer(manager);
     const config = await server.start();
@@ -701,7 +701,7 @@ suite('SelfControlMcpServer cross-session messaging', () => {
   test('send_message reaches a session list_sessions advertises but no pane has opened this launch', async () => {
     // Important #3's regression: `manager.get()` alone only reaches a LIVE
     // session, but `summaries()` (and so `marcode__list_sessions`) spans
-    // every non-archived session in `this.meta`, including one restored from
+    // every session in `this.meta`, including one restored from
     // disk that no pane has opened yet. `get` here mirrors the real
     // `extension.ts` wiring: it goes through `manager.open()`, which
     // materializes a restored session on demand.
@@ -719,9 +719,8 @@ suite('SelfControlMcpServer cross-session messaging', () => {
     first.rename(receiver.state.id, 'receiver');
     const sender = await first.create('fake', process.cwd());
     first.rename(sender.state.id, 'sender');
-    // Shutdown without archiving either session — the same posture a window
-    // reload takes: `archived` is left exactly as it was, so both come back
-    // non-archived but with no live AgentSession until something opens one.
+    // Shutdown without closing either session — the same posture a window
+    // reload takes: both come back with no live AgentSession until something opens one.
     await first.dispose();
 
     const second = new SessionManager(store, providers, () => {});
@@ -745,18 +744,14 @@ suite('SelfControlMcpServer cross-session messaging', () => {
       const config = await server.start();
 
       // Neither session has an open pane after the restore, so
-      // marcode__list_sessions — scoped to visible sessions plus the caller
-      // itself — advertises neither of them to an unidentified caller. This
-      // is the point of the assertion below: send_message can still reach a
-      // session by name that list_sessions never listed, as long as the
-      // caller already knows the name (told by the human, or recalled from
-      // an earlier turn) — discovery and reachability are separate
-      // guarantees.
+      // marcode__list_sessions advertises neither, and send_message refuses
+      // a session with no open pane. Once a pane shows the receiver, it is
+      // reachable even though the restore left it with no live run.
       const listed = await callTool(config, 'marcode__list_sessions', {});
       const names = (JSON.parse(listed.content[0].text) as { name: string }[]).map((s) => s.name);
       assert.deepStrictEqual(names, []);
 
-      const res = await fetch(`${config.url}?sid=${sender.state.id}`, {
+      const send = () => fetch(`${config.url}?sid=${sender.state.id}`, {
         method: 'POST',
         headers: {
           'content-type': 'application/json', accept: 'application/json, text/event-stream',
@@ -767,6 +762,11 @@ suite('SelfControlMcpServer cross-session messaging', () => {
           params: { name: 'marcode__send_message', arguments: { to: 'receiver', text: 'still reachable' } },
         }),
       });
+      const refused = await (await send()).json() as { result: { isError?: boolean } };
+      assert.strictEqual(refused.result.isError, true);
+
+      await second.setVisible([receiver.state.id]);
+      const res = await send();
       const body = await res.json() as { result: { isError?: boolean; content: { type: string; text: string }[] } };
       assert.strictEqual(body.result.isError, undefined);
 
@@ -798,6 +798,7 @@ suite('SelfControlMcpServer cross-session messaging', () => {
       const b = await manager.create('fake', process.cwd());
       manager.rename(a.state.id, 'sender');
       manager.rename(b.state.id, 'receiver');
+      await manager.setVisible([a.state.id, b.state.id]);
 
       const server = new SelfControlMcpServer(manager);
       const config = await server.start();
@@ -831,9 +832,10 @@ suite('SelfControlMcpServer close_session', () => {
     let closedId: string | undefined;
     const manager = fakeManager({
       summaries: () => [
-        { id: 's-caller', name: 'a', providerId: 'claude', status: 'idle', cwd: '/w', archived: false } as never,
-        { id: 's-target', name: 'b', providerId: 'codex', status: 'idle', cwd: '/w', archived: false } as never,
+        { id: 's-caller', name: 'a', providerId: 'claude', status: 'idle', cwd: '/w' } as never,
+        { id: 's-target', name: 'b', providerId: 'codex', status: 'idle', cwd: '/w' } as never,
       ],
+      visibleIds: () => ['s-caller', 's-target'],
       close: async (id) => { closedId = id; },
     });
     const server = new SelfControlMcpServer(manager);
@@ -848,9 +850,10 @@ suite('SelfControlMcpServer close_session', () => {
     let closedId: string | undefined;
     const manager = fakeManager({
       summaries: () => [
-        { id: 's-caller', name: 'a', providerId: 'claude', status: 'idle', cwd: '/w', archived: false } as never,
-        { id: 's-target', name: 'Worker', providerId: 'codex', status: 'idle', cwd: '/w', archived: false } as never,
+        { id: 's-caller', name: 'a', providerId: 'claude', status: 'idle', cwd: '/w' } as never,
+        { id: 's-target', name: 'Worker', providerId: 'codex', status: 'idle', cwd: '/w' } as never,
       ],
+      visibleIds: () => ['s-caller', 's-target'],
       close: async (id) => { closedId = id; },
     });
     const server = new SelfControlMcpServer(manager);
@@ -864,7 +867,7 @@ suite('SelfControlMcpServer close_session', () => {
   test('close_session errors when to equals the caller\'s own name case-insensitively', async () => {
     let closed = false;
     const manager = fakeManager({
-      summaries: () => [{ id: 's-caller', name: 'Alice', providerId: 'claude', status: 'idle', cwd: '/w', archived: false } as never],
+      summaries: () => [{ id: 's-caller', name: 'Alice', providerId: 'claude', status: 'idle', cwd: '/w' } as never],
       close: async () => { closed = true; },
     });
     const server = new SelfControlMcpServer(manager);
@@ -878,7 +881,7 @@ suite('SelfControlMcpServer close_session', () => {
   test('close_session errors on an unknown target name', async () => {
     let closed = false;
     const manager = fakeManager({
-      summaries: () => [{ id: 's-caller', name: 'a', providerId: 'claude', status: 'idle', cwd: '/w', archived: false } as never],
+      summaries: () => [{ id: 's-caller', name: 'a', providerId: 'claude', status: 'idle', cwd: '/w' } as never],
       close: async () => { closed = true; },
     });
     const server = new SelfControlMcpServer(manager);
@@ -902,7 +905,7 @@ suite('SelfControlMcpServer close_session', () => {
     await server.dispose();
   });
 
-  test('a real close_session call archives the target session in a real SessionManager', async () => {
+  test('a real close_session call hides and indexes the target session in a real SessionManager', async () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mar-self-control-close-'));
     const store = new TranscriptStore(dir);
     const provider = new FakeProvider(() => [
@@ -918,6 +921,7 @@ suite('SelfControlMcpServer close_session', () => {
       const worker = await manager.create('fake', process.cwd());
       manager.rename(root.state.id, 'root');
       manager.rename(worker.state.id, 'worker');
+      await manager.setVisible([root.state.id, worker.state.id]);
       worker.send('hello');
 
       const server = new SelfControlMcpServer(manager);
@@ -937,7 +941,8 @@ suite('SelfControlMcpServer close_session', () => {
       assert.strictEqual(body.result.isError, undefined);
 
       const summary = manager.summaries().find((s) => s.id === worker.state.id);
-      assert.strictEqual(summary?.archived, true);
+      assert.strictEqual(summary?.status, 'idle');
+      assert.strictEqual(manager.get(worker.state.id), undefined);
       await server.dispose();
     } finally {
       await manager.dispose();
@@ -953,9 +958,10 @@ suite('SelfControlMcpServer session context', () => {
     let seenLimit: number | undefined;
     const manager = fakeManager({
       summaries: () => [
-        { id: 's-caller', name: 'a', providerId: 'claude', status: 'idle', cwd: '/w', archived: false } as never,
-        { id: 's-target', name: 'b', providerId: 'claude', status: 'idle', cwd: '/w', archived: false } as never,
+        { id: 's-caller', name: 'a', providerId: 'claude', status: 'idle', cwd: '/w' } as never,
+        { id: 's-target', name: 'b', providerId: 'claude', status: 'idle', cwd: '/w' } as never,
       ],
+      visibleIds: () => ['s-target'],
       transcriptTail: async (id, limit) => { seenId = id; seenLimit = limit; return { items }; },
     });
     const server = new SelfControlMcpServer(manager);
@@ -971,7 +977,8 @@ suite('SelfControlMcpServer session context', () => {
   test('marcode__get_session_context passes a custom limit through', async () => {
     let seenLimit: number | undefined;
     const manager = fakeManager({
-      summaries: () => [{ id: 's-target', name: 'b', providerId: 'claude', status: 'idle', cwd: '/w', archived: false } as never],
+      summaries: () => [{ id: 's-target', name: 'b', providerId: 'claude', status: 'idle', cwd: '/w' } as never],
+      visibleIds: () => ['s-target'],
       transcriptTail: async (_id, limit) => { seenLimit = limit; return { items: [] }; },
     });
     const server = new SelfControlMcpServer(manager);
@@ -991,7 +998,7 @@ suite('SelfControlMcpServer session context', () => {
 
   test('marcode__get_session_context errors when the name is the caller\'s own, case-insensitively', async () => {
     const manager = fakeManager({
-      summaries: () => [{ id: 's-caller', name: 'Alice', providerId: 'claude', status: 'idle', cwd: '/w', archived: false } as never],
+      summaries: () => [{ id: 's-caller', name: 'Alice', providerId: 'claude', status: 'idle', cwd: '/w' } as never],
     });
     const server = new SelfControlMcpServer(manager);
     const config = await server.start();
@@ -1014,6 +1021,7 @@ suite('SelfControlMcpServer session context', () => {
     try {
       const target = await manager.create('fake', process.cwd());
       manager.rename(target.state.id, 'target');
+      await manager.setVisible([target.state.id]);
       target.send('hello');
 
       const server = new SelfControlMcpServer({

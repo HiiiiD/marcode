@@ -88,8 +88,7 @@ suite('TranscriptStore', () => {
       sessions: [{
         id: 's1', providerId: 'fake', model: 'fake-large', title: 'T', name: 'T', cwd: '/tmp',
         status: 'idle', permissionMode: 'default', includeEditorContext: true,
-        resumeTokens: {},
-        archived: false, createdAt: 1, updatedAt: 1,
+        resumeTokens: {}, createdAt: 1, updatedAt: 1,
       }],
       layout: { root: { kind: 'split', orientation: 'vertical', size: 100, children: [{ kind: 'leaf', sessionId: 's1', size: 100 }] }, presets: [] },
     });
