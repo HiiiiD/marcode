@@ -599,7 +599,8 @@ export class ClaudeProvider implements AgentProvider {
         ...(isBypassMode ? { allowDangerouslySkipPermissions: true } : {}),
         // An internal run (the digest summarizer) must not inherit the user's hooks, plugins,
         // MCP servers or allow-rules, nor any built-in tool: it only ever needs to answer.
-        ...(opts.withoutSelfControl ? { settingSources: [], tools: [] } : {}),
+        // `persistSession: false` also keeps the run out of `~/.claude/projects`, i.e. out of the CLI's own history.
+        ...(opts.withoutSelfControl ? { settingSources: [], tools: [], persistSession: false } : {}),
         ...(this.selfControlMcp && !opts.withoutSelfControl ? {
           mcpServers: {
             marcode_self_control: {

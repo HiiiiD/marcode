@@ -551,6 +551,26 @@ suite('CodexProvider', () => {
     assert.strictEqual((started?.params as { config?: unknown }).config, undefined);
   });
 
+  test('thread/start is ephemeral when withoutSelfControl is set, so it never reaches Codex history', async () => {
+    const { provider, respondTo, sent } = providerWithStub();
+    const run = provider.start({
+      cwd: '/tmp', permissionMode: 'default', sessionId: 's', withoutSelfControl: true,
+    });
+    run.send('hi');
+    await respondTo('thread/start', { thread: { id: 'th_1' } });
+    const started = sent().find((f) => f.method === 'thread/start');
+    assert.strictEqual((started?.params as { ephemeral?: boolean }).ephemeral, true);
+  });
+
+  test('a normal thread/start is not ephemeral', async () => {
+    const { provider, respondTo, sent } = providerWithStub();
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default', sessionId: 's' });
+    run.send('hi');
+    await respondTo('thread/start', { thread: { id: 'th_1' } });
+    const started = sent().find((f) => f.method === 'thread/start');
+    assert.strictEqual('ephemeral' in (started?.params as object), false);
+  });
+
   test('the spawned app-server process gets MARCODE_SELF_CONTROL_TOKEN in its env', () => {
     let capturedEnv: NodeJS.ProcessEnv | undefined;
     const provider = new CodexProvider({

@@ -570,6 +570,28 @@ suite('ClaudeProvider (lazy start)', () => {
     await run.dispose();
   });
 
+  test('withoutSelfControl keeps the run out of the Claude session history', async () => {
+    const fake = fakeLoadQuery();
+    const provider = new ClaudeProvider(fake.load as never);
+    const run = provider.start({
+      cwd: '/tmp', permissionMode: 'default', sessionId: 's', withoutSelfControl: true,
+    });
+    run.send('hi');
+    await flushMicrotasks();
+    assert.strictEqual(fake.calls[0].options.persistSession, false);
+    await run.dispose();
+  });
+
+  test('a normal run still persists its session', async () => {
+    const fake = fakeLoadQuery();
+    const provider = new ClaudeProvider(fake.load as never);
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default', sessionId: 's' });
+    run.send('hi');
+    await flushMicrotasks();
+    assert.strictEqual('persistSession' in fake.calls[0].options, false);
+    await run.dispose();
+  });
+
   test('a normal run leaves settingSources and tools at the SDK defaults', async () => {
     const fake = fakeLoadQuery();
     const provider = new ClaudeProvider(fake.load as never);

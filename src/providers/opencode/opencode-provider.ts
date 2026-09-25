@@ -89,6 +89,25 @@ export function spawnOpenCodeAcp(binPath: string | undefined, env: NodeJS.Proces
 }
 
 /**
+ * Deletes one session through `opencode session delete`. ACP has no way to start a session that is
+ * not kept, so an internal run (the digest summarizer) removes its own afterwards. Best-effort:
+ * failing to delete only leaves a stray session in OpenCode's list. `shell: true` for the same
+ * Windows `.cmd` reason as `spawnOpenCodeAcp`, which is why the id is checked before it is spawned.
+ */
+export function deleteOpenCodeSession(
+  binPath: string | undefined, env: NodeJS.ProcessEnv | undefined, id: string,
+): Promise<void> {
+  if (!/^[A-Za-z0-9_-]+$/.test(id)) { return Promise.resolve(); }
+  return new Promise((resolve) => {
+    const child = spawnChildProcess(binPath ?? 'opencode', ['session', 'delete', id], {
+      stdio: 'ignore', shell: true, windowsHide: true, ...(env ? { env } : {}),
+    });
+    child.on('error', () => resolve());
+    child.on('exit', () => resolve());
+  });
+}
+
+/**
  * The four modes OpenCode can actually honor. `auto` needs a classifier ACP
  * does not provide, and `acceptEdits` is indistinguishable from `default`
  * under a config that does not ask about edits — the same reason Codex omits
@@ -115,6 +134,7 @@ export class OpenCodeProvider implements AgentProvider {
   private models: ModelInfo[] = [];
   private readonly binPath?: string;
   private readonly spawn: (bin: string, env?: NodeJS.ProcessEnv, port?: number) => AcpChild;
+  private readonly deleteSession: (bin: string | undefined, env: NodeJS.ProcessEnv | undefined, id: string) => Promise<void>;
   private readonly selfControlMcp?: SelfControlMcpConfig;
   /** Instance env override, merged into every spawned `opencode acp` process's env. */
   private readonly env?: NodeJS.ProcessEnv;
@@ -140,6 +160,8 @@ export class OpenCodeProvider implements AgentProvider {
     displayName?: string;
     binPath?: string;
     spawn?: (bin: string, env?: NodeJS.ProcessEnv, port?: number) => AcpChild;
+    /** Injected so a test never runs the real CLI. Defaults to `deleteOpenCodeSession`. */
+    deleteSession?: (bin: string | undefined, env: NodeJS.ProcessEnv | undefined, id: string) => Promise<void>;
     selfControlMcp?: SelfControlMcpConfig;
     env?: NodeJS.ProcessEnv;
     loginKind?: 'oauth' | 'none';
@@ -152,6 +174,7 @@ export class OpenCodeProvider implements AgentProvider {
     this.displayName = opts.displayName ?? 'OpenCode';
     this.binPath = opts.binPath;
     this.spawn = opts.spawn ?? ((bin, env, port) => spawnOpenCodeAcp(bin, env, port));
+    this.deleteSession = opts.deleteSession ?? deleteOpenCodeSession;
     this.selfControlMcp = opts.selfControlMcp;
     this.env = opts.env;
     this.loginKind = opts.loginKind;
@@ -277,6 +300,7 @@ export class OpenCodeProvider implements AgentProvider {
 
   start(opts: StartOptions): AgentRun {
     const token = randomBytes(24).toString('hex');
+    let sessionId: string | undefined;
     const watch = new SubagentWatch(); // opened once a real child has actually spawned — see attemptSpawn
     const { child, markStarted } = this.spawnWithPort(token, watch);
     const run = new AcpRun(child, {
@@ -295,11 +319,16 @@ export class OpenCodeProvider implements AgentProvider {
       // exists (see `AcpRunOptions`) — the earliest point a fresh process
       // could no longer silently replace this one without losing state, so
       // it also marks `attemptSpawn`'s own "genuinely active" flag.
-      onSessionId: (id) => { watch.setRootSessionId(id); markStarted(); },
+      onSessionId: (id) => { sessionId = id; watch.setRootSessionId(id); markStarted(); },
       // Fallback: `watch` normally learns this correlation itself, live, off
       // the root's own `task` part (see `subagent-watch.ts`'s `handlePart`).
       onSubagentSpawned: (taskToolCallId, childSessionId) => watch.setParentToolCallId(childSessionId, taskToolCallId),
-      onDispose: () => watch.close(),
+      onDispose: () => {
+        watch.close();
+        if (opts.withoutSelfControl && sessionId) {
+          void this.deleteSession(this.binPath, this.mergedEnv(), sessionId).catch(() => undefined);
+        }
+      },
     });
     watch.setPermissionHandler((id, tool, meta, parentId) => run.handleAuxiliaryPermission(id, tool, meta, parentId));
     return run;
