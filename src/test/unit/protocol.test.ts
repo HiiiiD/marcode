@@ -67,6 +67,10 @@ function describeInbound(m: WebviewToHost): string {
     case 'save-preset': return 'save-preset';
     case 'delete-preset': return 'delete-preset';
     case 'replace-session': return 'replace-session';
+    case 'memory-estimate': return 'memory-estimate';
+    case 'memory-reindex': return 'memory-reindex';
+    case 'memory-resummarize': return 'memory-resummarize';
+    case 'memory-cancel': return 'memory-cancel';
     default: return assertNever(m);
   }
 }
@@ -84,6 +88,8 @@ function describeOutbound(m: HostToWebview): string {
     case 'attachments-rejected': return 'attachments-rejected';
     case 'sessions-changed': return 'sessions-changed';
     case 'memory-progress': return 'memory-progress';
+    case 'memory-status': return 'memory-status';
+    case 'memory-estimate': return 'memory-estimate';
     case 'session-invocables': return 'session-invocables';
     case 'editor-context': return 'editor-context';
     case 'catalog': return 'catalog';

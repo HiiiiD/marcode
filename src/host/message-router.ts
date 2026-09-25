@@ -648,6 +648,30 @@ export class MessageRouter {
 
       case 'request-history-summaries':
         await this.manager.ensureSummaries();
+        this.emit({ t: 'memory-status', ...this.manager.memoryStatus() });
+        return;
+
+      case 'memory-estimate': {
+        const estimate = await this.manager.memoryEstimate(msg.scope);
+        // Nothing to confirm when no model call is coming: the extractive pass is free, so just run it.
+        if (estimate.sessions === 0) {
+          await this.manager.memoryReindex(msg.scope);
+          return;
+        }
+        this.emit({ t: 'memory-estimate', scope: msg.scope, ...estimate });
+        return;
+      }
+
+      case 'memory-reindex':
+        await this.manager.memoryReindex(msg.scope);
+        return;
+
+      case 'memory-resummarize':
+        await this.manager.memoryResummarize(msg.id);
+        return;
+
+      case 'memory-cancel':
+        this.manager.memoryCancel();
         return;
 
       // PanelViewProvider intercepts this; a stray one is a no-op, not malformed.
@@ -739,6 +763,7 @@ const KNOWN_MESSAGE_TAGS = new Set<WebviewToHost['t']>([
   'request-fleet-diff', 'request-branch-refs', 'open-file-diff', 'open-review', 'open-fleet',
   'open-fleet-subagent',
   'focus-session', 'set-pinned', 'request-history-summaries', 'open-history',
+  'memory-estimate', 'memory-reindex', 'memory-resummarize', 'memory-cancel',
   'refresh-catalog', 'refresh-usage', 'open-settings', 'login-provider', 'open-external', 'export-table-csv',
   'export-image',
   'file-search', 'set-favorite-models',

@@ -60,9 +60,13 @@ export const FLEET_WANTS = (msg: HostToWebview): boolean =>
 
 /**
  * The history tab reads the roster and nothing live: every column it shows is
- * already on `SessionState`, so it never needs a patch, a status or a diff.
+ * already on `SessionState`, so it never needs a patch, a status or a diff. It
+ * also takes reindex progress, which is host-initiated and unsolicited.
+ * `memory-status` and `memory-estimate` are absent on purpose: they answer a
+ * message this client sent, through its own router's `emit`.
  */
-export const HISTORY_WANTS = (msg: HostToWebview): boolean => msg.t === 'sessions-changed';
+export const HISTORY_WANTS = (msg: HostToWebview): boolean =>
+  msg.t === 'sessions-changed' || msg.t === 'memory-progress';
 
 export class PostBus {
   private readonly clients = new Set<PostClient>();
