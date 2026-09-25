@@ -1818,7 +1818,7 @@ export class SessionManager implements SessionSink {
       if (items.length === 0) { return; }
       await this.memory.index({
         sessionId: id, providerId: state.providerId, cwd: state.cwd,
-        title: state.title, closedAt: state.updatedAt, items,
+        closedAt: state.updatedAt, items,
       });
     } catch (err) {
       console.error('[mar-code] memory indexing failed', err);

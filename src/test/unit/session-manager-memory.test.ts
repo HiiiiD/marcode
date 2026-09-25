@@ -7,7 +7,7 @@ import { SessionManager } from '../../host/session-manager';
 import { TranscriptStore } from '../../host/transcript-store';
 import { FakeProvider } from '../../providers/fake/fake-provider';
 import type { AgentProvider } from '../../providers/types';
-import type { MemoryStore, SessionRecord } from '../../memory/types';
+import type { DigestMeta, MemoryStore, SessionRecord } from '../../memory/types';
 
 async function tempRoot(): Promise<string> {
   return fs.mkdtemp(path.join(os.tmpdir(), 'marcode-session-manager-'));
@@ -20,6 +20,8 @@ class RecordingMemoryStore implements MemoryStore {
   async search(): Promise<[]> { return []; }
   async fetch(): Promise<{ sessionId: string; items: [] }> { return { sessionId: '', items: [] }; }
   async forget(sessionId: string): Promise<void> { this.forgotten.push(sessionId); }
+  async getDigest(): Promise<undefined> { return undefined; }
+  async digestMeta(): Promise<Map<string, DigestMeta>> { return new Map(); }
 }
 
 suite('SessionManager memory indexing', () => {
@@ -60,6 +62,8 @@ suite('SessionManager memory indexing', () => {
       search: async () => [],
       fetch: async () => ({ sessionId: '', items: [] }),
       forget: async () => {},
+      getDigest: async () => undefined,
+      digestMeta: async () => new Map(),
     };
     const manager = new SessionManager(
       store, providers, () => {}, undefined, undefined, undefined, undefined, undefined, memory,

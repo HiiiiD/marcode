@@ -3,7 +3,6 @@ import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { suite, test } from 'mocha';
-import { ExtractiveSummarizer } from '../../memory/extractive-summarizer';
 import { FtsMemoryStore } from '../../memory/fts-memory-store';
 import type { TranscriptItem } from '../../protocol/messages';
 
@@ -20,9 +19,9 @@ async function tempDbPath(): Promise<string> {
 
 suite('FtsMemoryStore', () => {
   test('search() finds an indexed session by keyword', async () => {
-    const store = new FtsMemoryStore(await tempDbPath(), new ExtractiveSummarizer(), noopReader);
+    const store = new FtsMemoryStore(await tempDbPath(), noopReader);
     await store.index({
-      sessionId: 's1', providerId: 'claude', cwd: '/repo', title: 'Untitled', closedAt: 1000,
+      sessionId: 's1', providerId: 'claude', cwd: '/repo', closedAt: 1000,
       items: [userItem('u1', 'Investigate the flaky login test on CI')],
     });
     const hits = await store.search('flaky login');
@@ -33,9 +32,9 @@ suite('FtsMemoryStore', () => {
   });
 
   test('search() returns nothing for an unrelated query', async () => {
-    const store = new FtsMemoryStore(await tempDbPath(), new ExtractiveSummarizer(), noopReader);
+    const store = new FtsMemoryStore(await tempDbPath(), noopReader);
     await store.index({
-      sessionId: 's1', providerId: 'claude', cwd: '/repo', title: 'Untitled', closedAt: 1000,
+      sessionId: 's1', providerId: 'claude', cwd: '/repo', closedAt: 1000,
       items: [userItem('u1', 'Investigate the flaky login test on CI')],
     });
     const hits = await store.search('database migration');
@@ -43,9 +42,9 @@ suite('FtsMemoryStore', () => {
   });
 
   test("search() with match 'any' finds a session sharing only some terms", async () => {
-    const store = new FtsMemoryStore(await tempDbPath(), new ExtractiveSummarizer(), noopReader);
+    const store = new FtsMemoryStore(await tempDbPath(), noopReader);
     await store.index({
-      sessionId: 's1', providerId: 'claude', cwd: '/repo', title: 'Untitled', closedAt: 1000,
+      sessionId: 's1', providerId: 'claude', cwd: '/repo', closedAt: 1000,
       items: [userItem('u1', 'Investigate the flaky login test on CI')],
     });
     assert.strictEqual((await store.search('flaky checkout payment')).length, 0);
@@ -56,13 +55,13 @@ suite('FtsMemoryStore', () => {
 
   test('search() filters by providerId', async () => {
     const dbPath = await tempDbPath();
-    const store = new FtsMemoryStore(dbPath, new ExtractiveSummarizer(), noopReader);
+    const store = new FtsMemoryStore(dbPath, noopReader);
     await store.index({
-      sessionId: 's1', providerId: 'claude', cwd: '/repo', title: 'Untitled', closedAt: 1000,
+      sessionId: 's1', providerId: 'claude', cwd: '/repo', closedAt: 1000,
       items: [userItem('u1', 'Investigate the flaky login test')],
     });
     await store.index({
-      sessionId: 's2', providerId: 'codex', cwd: '/repo', title: 'Untitled', closedAt: 2000,
+      sessionId: 's2', providerId: 'codex', cwd: '/repo', closedAt: 2000,
       items: [userItem('u2', 'Investigate the flaky login test')],
     });
     const hits = await store.search('flaky login', { providerId: 'codex' });
@@ -72,13 +71,13 @@ suite('FtsMemoryStore', () => {
 
   test('re-indexing the same sessionId replaces, not duplicates', async () => {
     const dbPath = await tempDbPath();
-    const store = new FtsMemoryStore(dbPath, new ExtractiveSummarizer(), noopReader);
+    const store = new FtsMemoryStore(dbPath, noopReader);
     await store.index({
-      sessionId: 's1', providerId: 'claude', cwd: '/repo', title: 'Untitled', closedAt: 1000,
+      sessionId: 's1', providerId: 'claude', cwd: '/repo', closedAt: 1000,
       items: [userItem('u1', 'Investigate the flaky login test')],
     });
     await store.index({
-      sessionId: 's1', providerId: 'claude', cwd: '/repo', title: 'Untitled', closedAt: 2000,
+      sessionId: 's1', providerId: 'claude', cwd: '/repo', closedAt: 2000,
       items: [userItem('u2', 'Investigate the flaky login test')],
     });
     const hits = await store.search('flaky login');
@@ -88,10 +87,10 @@ suite('FtsMemoryStore', () => {
 
   test('search() respects the limit option', async () => {
     const dbPath = await tempDbPath();
-    const store = new FtsMemoryStore(dbPath, new ExtractiveSummarizer(), noopReader);
+    const store = new FtsMemoryStore(dbPath, noopReader);
     for (const n of [1, 2, 3]) {
       await store.index({
-        sessionId: `s${n}`, providerId: 'claude', cwd: '/repo', title: 'Untitled', closedAt: n,
+        sessionId: `s${n}`, providerId: 'claude', cwd: '/repo', closedAt: n,
         items: [userItem(`u${n}`, 'Investigate the flaky login test')],
       });
     }
@@ -101,9 +100,9 @@ suite('FtsMemoryStore', () => {
 
   test('forget() removes a session\'s row from search results', async () => {
     const dbPath = await tempDbPath();
-    const store = new FtsMemoryStore(dbPath, new ExtractiveSummarizer(), noopReader);
+    const store = new FtsMemoryStore(dbPath, noopReader);
     await store.index({
-      sessionId: 's1', providerId: 'claude', cwd: '/repo', title: 'Untitled', closedAt: 1000,
+      sessionId: 's1', providerId: 'claude', cwd: '/repo', closedAt: 1000,
       items: [userItem('u1', 'Investigate the flaky login test on CI')],
     });
     await store.forget('s1');
@@ -124,9 +123,9 @@ suite('FtsMemoryStore', () => {
     '',
   ]) {
     test(`search() returns [] rather than throwing for ${JSON.stringify(query)}`, async () => {
-      const store = new FtsMemoryStore(await tempDbPath(), new ExtractiveSummarizer(), noopReader);
+      const store = new FtsMemoryStore(await tempDbPath(), noopReader);
       await store.index({
-        sessionId: 's1', providerId: 'claude', cwd: '/repo', title: 'Untitled', closedAt: 1000,
+        sessionId: 's1', providerId: 'claude', cwd: '/repo', closedAt: 1000,
         items: [userItem('u1', 'Investigate the flaky login test on CI')],
       });
       const hits = await store.search(query);
@@ -138,27 +137,27 @@ suite('FtsMemoryStore', () => {
 suite('FtsMemoryStore schema version', () => {
   test('a schema-version bump drops and rebuilds the table, discarding old rows', async () => {
     const dbPath = await tempDbPath();
-    const first = new FtsMemoryStore(dbPath, new ExtractiveSummarizer(), noopReader, 1);
+    const first = new FtsMemoryStore(dbPath, noopReader, 1);
     await first.index({
-      sessionId: 's1', providerId: 'claude', cwd: '/repo', title: 'Untitled', closedAt: 1000,
+      sessionId: 's1', providerId: 'claude', cwd: '/repo', closedAt: 1000,
       items: [userItem('u1', 'Investigate the flaky login test on CI')],
     });
     assert.strictEqual((await first.search('flaky login')).length, 1);
 
-    const second = new FtsMemoryStore(dbPath, new ExtractiveSummarizer(), noopReader, 2);
+    const second = new FtsMemoryStore(dbPath, noopReader, 2);
     const hits = await second.search('flaky login');
     assert.strictEqual(hits.length, 0);
   });
 
   test('reopening with the same schema version keeps prior rows', async () => {
     const dbPath = await tempDbPath();
-    const first = new FtsMemoryStore(dbPath, new ExtractiveSummarizer(), noopReader, 1);
+    const first = new FtsMemoryStore(dbPath, noopReader, 1);
     await first.index({
-      sessionId: 's1', providerId: 'claude', cwd: '/repo', title: 'Untitled', closedAt: 1000,
+      sessionId: 's1', providerId: 'claude', cwd: '/repo', closedAt: 1000,
       items: [userItem('u1', 'Investigate the flaky login test on CI')],
     });
 
-    const second = new FtsMemoryStore(dbPath, new ExtractiveSummarizer(), noopReader, 1);
+    const second = new FtsMemoryStore(dbPath, noopReader, 1);
     const hits = await second.search('flaky login');
     assert.strictEqual(hits.length, 1);
   });
@@ -176,8 +175,8 @@ function fakeReader(items: TranscriptItem[]): { tail: (id: string, limit?: numbe
 suite('FtsMemoryStore.fetch()', () => {
   test('returns a bounded slice starting at the hit\'s itemId', async () => {
     const items = [userItem('u1', 'first'), userItem('u2', 'second'), userItem('u3', 'third')];
-    const store = new FtsMemoryStore(await tempDbPath(), new ExtractiveSummarizer(), fakeReader(items));
-    await store.index({ sessionId: 's1', providerId: 'claude', cwd: '/repo', title: 'Untitled', closedAt: 1, items });
+    const store = new FtsMemoryStore(await tempDbPath(), fakeReader(items));
+    await store.index({ sessionId: 's1', providerId: 'claude', cwd: '/repo', closedAt: 1, items });
     const [hit] = await store.search('first');
     const detail = await store.fetch(hit);
     assert.strictEqual(detail.sessionId, 's1');
@@ -187,9 +186,61 @@ suite('FtsMemoryStore.fetch()', () => {
 
   test('returns an empty slice when the itemId is no longer in the transcript', async () => {
     const items = [userItem('u1', 'first')];
-    const store = new FtsMemoryStore(await tempDbPath(), new ExtractiveSummarizer(), fakeReader(items));
-    await store.index({ sessionId: 's1', providerId: 'claude', cwd: '/repo', title: 'Untitled', closedAt: 1, items });
+    const store = new FtsMemoryStore(await tempDbPath(), fakeReader(items));
+    await store.index({ sessionId: 's1', providerId: 'claude', cwd: '/repo', closedAt: 1, items });
     const detail = await store.fetch({ sessionId: 's1', itemId: 'gone' });
     assert.strictEqual(detail.items.length, 0);
+  });
+});
+
+suite('FtsMemoryStore digests', () => {
+  test('index() stores a digest that getDigest() and digestMeta() return', async () => {
+    const store = new FtsMemoryStore(await tempDbPath(), noopReader);
+    await store.index({
+      sessionId: 's1', providerId: 'claude', cwd: '/repo', closedAt: 1000,
+      items: [userItem('u1', 'Fix the flaky login test')],
+    });
+    const digest = await store.getDigest('s1');
+    assert.strictEqual(digest?.title, 'Fix the flaky login test');
+    assert.strictEqual(digest?.source, 'extractive');
+    const meta = (await store.digestMeta()).get('s1');
+    assert.strictEqual(meta?.forUpdatedAt, 1000);
+  });
+
+  test('an explicit digest wins over the extractive default and is what search shows', async () => {
+    const store = new FtsMemoryStore(await tempDbPath(), noopReader);
+    const items = [userItem('u1', 'Fix the flaky login test')];
+    await store.index({
+      sessionId: 's1', providerId: 'claude', cwd: '/repo', closedAt: 1000, items,
+      digest: {
+        title: 'Login retry', request: 'Fix the flaky login test', outcome: 'Added a retry to the auth fixture',
+        filesEdited: [], source: 'llm', summarizerVersion: 1, forUpdatedAt: 1000,
+      },
+    });
+    const hits = await store.search('flaky login');
+    assert.strictEqual(hits[0].snippet, 'Login retry → Added a retry to the auth fixture');
+    assert.strictEqual((await store.digestMeta()).get('s1')?.source, 'llm');
+  });
+
+  test('forget() removes the digest as well', async () => {
+    const store = new FtsMemoryStore(await tempDbPath(), noopReader);
+    await store.index({
+      sessionId: 's1', providerId: 'claude', cwd: '/repo', closedAt: 1000,
+      items: [userItem('u1', 'Fix it')],
+    });
+    await store.forget('s1');
+    assert.strictEqual(await store.getDigest('s1'), undefined);
+    assert.strictEqual((await store.digestMeta()).size, 0);
+  });
+
+  test('a schema bump drops the digests table with the FTS table', async () => {
+    const dbPath = await tempDbPath();
+    const first = new FtsMemoryStore(dbPath, noopReader, 1);
+    await first.index({
+      sessionId: 's1', providerId: 'claude', cwd: '/repo', closedAt: 1000,
+      items: [userItem('u1', 'Fix it')],
+    });
+    const second = new FtsMemoryStore(dbPath, noopReader, 2);
+    assert.strictEqual((await second.digestMeta()).size, 0);
   });
 });

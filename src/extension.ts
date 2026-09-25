@@ -20,7 +20,6 @@ import { SessionManager } from './host/session-manager';
 import { TranscriptStore } from './host/transcript-store';
 import { createVscodeEditorSource } from './host/vscode-editor-source';
 import { createWorkspaceFileIndex } from './host/workspace-file-index';
-import { ExtractiveSummarizer } from './memory/extractive-summarizer';
 import { FtsMemoryStore } from './memory/fts-memory-store';
 import { MEMORY_ENABLED_SETTING, MEMORY_SUMMARIZER_SETTING } from './shared/memory-settings';
 import type { MemoryStore } from './memory/types';
@@ -252,7 +251,6 @@ export async function activate(context: vscode.ExtensionContext) {
     try {
       memory = new FtsMemoryStore(
         path.join(rootDir, 'memory.sqlite'),
-        new ExtractiveSummarizer(),
         { tail: (id, limit) => store.tail(id, limit) },
       );
     } catch (err) {

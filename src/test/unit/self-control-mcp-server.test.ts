@@ -81,6 +81,8 @@ function fakeMemory(overrides: Partial<MemoryStore> = {}): MemoryStore {
     fetch: async () => ({ sessionId: 's1', items: [] }),
     index: async () => {},
     forget: async () => {},
+    getDigest: async () => undefined,
+    digestMeta: async () => new Map(),
     ...overrides,
   };
 }
