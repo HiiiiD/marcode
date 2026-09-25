@@ -34,7 +34,8 @@ suite('buildMemoryBlock', () => {
     const block = buildMemoryBlock(hits) as string;
     assert.strictEqual(block.startsWith('<marcode-memory>'), true);
     assert.strictEqual(block.endsWith('</marcode-memory>'), true);
-    assert.strictEqual(block.includes('sessionId=s3 itemId=u3'), true);
+    assert.strictEqual(block.includes('sessionId=s3'), true);
+    assert.strictEqual(block.includes('itemId'), false);
     assert.strictEqual(block.includes('s4'), false);
     assert.strictEqual(block.includes('marcode__recall_fetch'), true);
   });

@@ -4,6 +4,7 @@ import * as path from 'node:path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { z } from 'zod';
+import { digestText } from '../memory/digest';
 import type { MemoryStore } from '../memory/types';
 import type { PermissionMode, TranscriptItem } from '../protocol/messages';
 import type { EffortLevel, SelfControlMcpConfig } from '../providers/types';
@@ -306,8 +307,8 @@ export class SelfControlMcpServer {
             + 'this workspace (any provider) for a keyword or phrase — not your own conversation '
             + 'history and unrelated to any built-in memory/recall tool you have, which only sees '
             + 'this one conversation. Use this to find what a different session already figured '
-            + 'out. Returns short snippets, not full transcripts — call marcode__recall_fetch on a '
-            + 'specific result to read more.',
+            + 'out. Returns one-line pointers, not transcripts — call marcode__recall_fetch with a '
+            + "result's sessionId to read its digest.",
           inputSchema: {
             query: z.string().describe('Keywords to search for.'),
             providerId: z.string().optional().describe('Restrict to one provider, e.g. "claude".'),
@@ -323,19 +324,37 @@ export class SelfControlMcpServer {
       mcp.registerTool(
         'marcode__recall_fetch',
         {
-          title: 'Fetch a past session\'s transcript slice',
-          description: 'Marcode-specific companion to marcode__recall: reads a bounded slice of '
-            + 'that OTHER session\'s transcript, anchored at one of its results. Never call this '
-            + 'speculatively or with an id you invented — always call marcode__recall first and '
-            + 'pass back its sessionId/itemId.',
+          title: "Fetch a past session's digest or transcript slice",
+          description: 'Marcode-specific companion to marcode__recall. By default returns that OTHER '
+            + "session's digest (request, outcome, what it learned, decisions, files edited) — call it "
+            + 'with just a sessionId from a marcode__recall result. Pass detail "transcript" and that '
+            + "result's itemId to read a bounded slice of the raw conversation instead. Never call this "
+            + 'with an id you invented.',
           inputSchema: {
             sessionId: z.string().describe('A sessionId from a marcode__recall result.'),
-            itemId: z.string().describe('The itemId from that same result.'),
+            itemId: z.string().optional().describe('The itemId from that result. Only for detail "transcript".'),
+            detail: z.enum(['digest', 'transcript']).optional().describe('Defaults to "digest".'),
           },
         },
-        async ({ sessionId, itemId }) => {
-          const detail = await memory.fetch({ sessionId, itemId });
-          return { content: [{ type: 'text', text: JSON.stringify(detail) }] };
+        async ({ sessionId, itemId, detail }) => {
+          if (detail === 'transcript') {
+            if (!itemId) {
+              return {
+                isError: true,
+                content: [{ type: 'text' as const, text: 'detail "transcript" needs an itemId from marcode__recall.' }],
+              };
+            }
+            const slice = await memory.fetch({ sessionId, itemId });
+            return { content: [{ type: 'text' as const, text: JSON.stringify(slice) }] };
+          }
+          const digest = await memory.getDigest(sessionId);
+          if (!digest) {
+            return {
+              isError: true,
+              content: [{ type: 'text' as const, text: 'No digest for that session. Try detail "transcript".' }],
+            };
+          }
+          return { content: [{ type: 'text' as const, text: digestText(digest) }] };
         },
       );
     }

@@ -27,11 +27,11 @@ export function queryTermsOf(text: string): string[] {
 export function buildMemoryBlock(hits: MemoryHit[]): string | undefined {
   const keep = hits.filter((h) => h.score >= MIN_SCORE).slice(0, MAX_HITS);
   if (keep.length === 0) { return undefined; }
-  const lines = keep.map((h) => `- ${h.snippet} (sessionId=${h.sessionId} itemId=${h.itemId})`);
+  const lines = keep.map((h) => `- ${h.snippet} (sessionId=${h.sessionId})`);
   return [
     '<marcode-memory>',
     'Earlier Marcode sessions in this workspace that may relate to this task. '
-      + 'Call marcode__recall_fetch with a sessionId/itemId to read one; ignore them if unrelated.',
+      + 'Call marcode__recall_fetch with a sessionId to read its digest; ignore them if unrelated.',
     ...lines,
     '</marcode-memory>',
   ].join('\n');

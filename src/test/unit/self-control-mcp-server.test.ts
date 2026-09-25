@@ -509,9 +509,41 @@ suite('SelfControlMcpServer memory tools', () => {
     });
     const server = new SelfControlMcpServer(fakeManager(), memory);
     const config = await server.start();
-    const result = await callTool(config, 'marcode__recall_fetch', { sessionId: 's1', itemId: 'u1' });
+    const result = await callTool(config, 'marcode__recall_fetch', { sessionId: 's1', itemId: 'u1', detail: 'transcript' });
     const body = JSON.parse(result.content[0].text) as { items: unknown[] };
     assert.strictEqual(body.items.length, 1);
+    await server.dispose();
+  });
+
+  test('marcode__recall_fetch returns the digest by default', async () => {
+    const memory = fakeMemory({
+      getDigest: async (id) => (id === 's1'
+        ? {
+            title: 'Login retry', request: 'Fix login', outcome: 'Added a retry', filesEdited: ['a.ts'],
+            source: 'llm', summarizerVersion: 1, forUpdatedAt: 1, learned: 'Fixture raced',
+          }
+        : undefined),
+    });
+    const server = new SelfControlMcpServer(fakeManager(), memory);
+    const config = await server.start();
+    const result = await callTool(config, 'marcode__recall_fetch', { sessionId: 's1' });
+    assert.strictEqual(result.content[0].text.includes('Learned: Fixture raced'), true);
+    await server.dispose();
+  });
+
+  test('marcode__recall_fetch says so when a session has no digest', async () => {
+    const server = new SelfControlMcpServer(fakeManager(), fakeMemory({ getDigest: async () => undefined }));
+    const config = await server.start();
+    const result = await callTool(config, 'marcode__recall_fetch', { sessionId: 'nope' });
+    assert.strictEqual(result.isError, true);
+    await server.dispose();
+  });
+
+  test('marcode__recall_fetch transcript detail needs an itemId', async () => {
+    const server = new SelfControlMcpServer(fakeManager(), fakeMemory({}));
+    const config = await server.start();
+    const result = await callTool(config, 'marcode__recall_fetch', { sessionId: 's1', detail: 'transcript' });
+    assert.strictEqual(result.isError, true);
     await server.dispose();
   });
 
