@@ -47,7 +47,7 @@ export type DigestMeta = Pick<SessionDigest, 'source' | 'summarizerVersion' | 'f
  * when the implementation changes, only rebuilt from `index()` calls again.
  */
 export interface MemoryStore {
-  /** Called when a session archives, and by the history and reindex passes for any session with content. */
+  /** Called when a session is hidden, and by the history and reindex passes for any session with content. */
   index(record: SessionRecord): Promise<void>;
   /**
    * Cheap: snippets, not full content. `match` defaults to `'all'` (every term

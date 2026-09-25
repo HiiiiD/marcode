@@ -6,8 +6,7 @@ function summary(id: string, title: string, name?: string): SessionSummary {
   return {
     id, providerId: 'fake', model: 'm', title, name: name ?? title, cwd: '/w',
     status: 'idle', permissionMode: 'default', includeEditorContext: true,
-    resumeTokens: {},
-    archived: false, createdAt: 1, updatedAt: 1,
+    resumeTokens: {}, createdAt: 1, updatedAt: 1,
   };
 }
 
@@ -31,12 +30,6 @@ suite('session mentions', () => {
   test('omits the session doing the referencing', () => {
     const rows = sessionMentions([summary('s-1', 'me'), summary('s-2', 'other')], 's-1', true);
     assert.strictEqual(rows.some((r) => r.payload.kind === 'name' && r.id === 's-1'), false);
-  });
-
-  test('omits archived sessions', () => {
-    const archived = { ...summary('s-2', 'gone'), archived: true };
-    const rows = sessionMentions([summary('s-1', 'me'), archived], 's-1', true);
-    assert.strictEqual(rows.length, 1);
   });
 
   test('slugs the title into the base token', () => {

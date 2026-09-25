@@ -3,7 +3,7 @@ import type { DigestMeta, MemoryStore } from '../../memory/types';
 import type { SessionId, TranscriptItem } from '../../protocol/messages';
 
 export interface DigestSession {
-  id: SessionId; providerId: string; cwd: string; title: string; archived: boolean; updatedAt: number;
+  id: SessionId; providerId: string; cwd: string; title: string; hidden: boolean; updatedAt: number;
 }
 
 export interface DigestSource {
@@ -68,8 +68,8 @@ export class DigestService {
   }
 
   /**
-   * History wants a summary for every session, but recall and priming are for closed ones only: a
-   * live session is projected onto `SessionState.summary` and never written to the store.
+   * History wants a summary for every session, but recall and priming are for hidden ones only: a
+   * session shown in a pane is projected onto `SessionState.summary` and never written to the store.
    */
   private async projectLive(session: DigestSession): Promise<boolean> {
     if (this.o.source.projected(session.id) === session.updatedAt) { return false; }
@@ -82,7 +82,7 @@ export class DigestService {
   private async writeExtractive(session: DigestSession, force = false): Promise<boolean> {
     if (this.stopped || session.title === 'Untitled') { return false; }
     try {
-      if (!session.archived) { return await this.projectLive(session); }
+      if (!session.hidden) { return await this.projectLive(session); }
       if (!force) {
         // A current digest of either source already describes this transcript; rewriting it as
         // extractive would throw away a paid-for LLM digest.
@@ -110,14 +110,14 @@ export class DigestService {
 
   private async writeLlm(session: DigestSession): Promise<boolean> {
     const summarizer = this.summarizer;
-    if (this.stopped || !summarizer || !session.archived || session.title === 'Untitled') { return false; }
+    if (this.stopped || !summarizer || !session.hidden || session.title === 'Untitled') { return false; }
     try {
       const items = await this.o.source.transcript(session.id);
       const base = extractiveDigest(items, session.updatedAt);
       if (!base) { return false; }
       const digest = await summarizer.summarize(items, base);
-      // Deleted or reopened while the model was thinking: indexing now would resurrect or re-expose it.
-      if (this.stopped || !this.find(session.id)?.archived) { return false; }
+      // Deleted or shown again while the model was thinking: indexing now would resurrect or re-expose it.
+      if (this.stopped || !this.find(session.id)?.hidden) { return false; }
       await this.o.store.index({
         sessionId: session.id, providerId: session.providerId, cwd: session.cwd,
         closedAt: session.updatedAt, items, digest,
@@ -168,7 +168,7 @@ export class DigestService {
         if (this.stopped) { break; }
         if (session.title === 'Untitled') { continue; }
         const wrote = await this.enqueue('fast', async () => {
-          if (!session.archived) { return this.writeExtractive(session); }
+          if (!session.hidden) { return this.writeExtractive(session); }
           if (!isCurrent(meta.get(session.id), session)) { return this.writeExtractive(session, true); }
           if (this.o.source.projected(session.id) === session.updatedAt) { return false; }
           const digest = await this.o.store.getDigest(session.id);
@@ -187,7 +187,7 @@ export class DigestService {
   private llmTargets(scope: DigestScope, meta: Map<SessionId, DigestMeta>): DigestSession[] {
     if (!this.summarizer) { return []; }
     return this.o.source.sessions()
-      .filter((s) => s.archived && s.title !== 'Untitled')
+      .filter((s) => s.hidden && s.title !== 'Untitled')
       .filter((s) => scope === 'all' || !(meta.get(s.id)?.source === 'llm' && isCurrent(meta.get(s.id), s)))
       .sort((a, b) => b.updatedAt - a.updatedAt);
   }

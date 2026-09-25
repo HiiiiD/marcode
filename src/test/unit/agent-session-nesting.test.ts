@@ -13,8 +13,7 @@ function baseState(): SessionState {
   return {
     id: 's1', providerId: 'fake', model: 'fake-large', effort: 'medium',
     title: 'Untitled', name: 'Untitled', cwd: '/tmp', status: 'idle', permissionMode: 'default',
-    resumeTokens: {},
-    archived: false, createdAt: 1, updatedAt: 1, includeEditorContext: true,
+    resumeTokens: {}, createdAt: 1, updatedAt: 1, includeEditorContext: true,
   };
 }
 

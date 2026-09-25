@@ -33,8 +33,7 @@ function hydrated() {
     snapshots: [{
       id: 's1', providerId: 'fake', model: 'fake-large', title: 'T', name: 'T', cwd: '/tmp',
       status: 'idle', permissionMode: 'default',
-      resumeTokens: {},
-      archived: false, createdAt: 1, updatedAt: 1, includeEditorContext: true,
+      resumeTokens: {}, createdAt: 1, updatedAt: 1, includeEditorContext: true,
       pendingQuestions: [],
       items: [], hasMore: false, pending: [], mcpServers: [], pendingAttachments: [],
     }],

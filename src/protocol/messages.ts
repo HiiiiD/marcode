@@ -248,11 +248,10 @@ export interface SessionState {
    * delivery.
    */
   queued?: QueuedMessage[];
-  /** Survives close/archive; absent means false so older index.json files load unchanged. */
+  /** Survives close; absent means false so older index.json files load unchanged. */
   pinned?: boolean;
   /** Cache of `digestSession()`, stale once `forUpdatedAt !== updatedAt`. Never a source of truth. */
   summary?: { text: string; forUpdatedAt: number };
-  archived: boolean;
   createdAt: number;
   updatedAt: number;
 }
@@ -283,7 +282,7 @@ export interface SessionSnapshot extends SessionState {
    */
   invocables?: Invocable[];
   /**
-   * Live provider state, not persisted. Always [] for an archived session —
+   * Live provider state, not persisted. Always [] for a session with no live run —
    * there is no run to ask, and a stale snapshot presented as current would
    * be a lie. Deliberately NOT on SessionState, which is what index.json
    * stores.

@@ -24,10 +24,10 @@ function hydrate(): HostToWebview {
     t: 'hydrate',
     sessions: [{
       id: 's1', title: 'Session one', providerId: 'fake', model: 'm',
-      status: 'idle', cwd: '/repo', archived: false, updatedAt: 0,
+      status: 'idle', cwd: '/repo', updatedAt: 0,
     } as never, {
       id: 's2', title: 'Session two', providerId: 'fake', model: 'm',
-      status: 'idle', cwd: '/repo', archived: false, updatedAt: 0,
+      status: 'idle', cwd: '/repo', updatedAt: 0,
     } as never],
     layout: layoutOf([]),
     snapshots: [], catalog: [], unavailable: [], usage: {},

@@ -294,7 +294,7 @@ export async function activate(context: vscode.ExtensionContext) {
     setVisible: (ids) => manager.setVisible(ids as SessionId[]),
     summaries: () => manager.summaries(),
     visibleIds: () => manager.visibleIds(),
-    // `summaries()` spans every non-archived session, including one restored
+    // `summaries()` spans every session, including one restored
     // from disk that no pane has opened this launch — `manager.get()` alone
     // only reaches a live one. `open()` materializes it, mirroring
     // `message-router.ts`'s own `reopen()` helper: swallow a genuinely

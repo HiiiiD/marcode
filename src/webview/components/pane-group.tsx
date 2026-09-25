@@ -28,9 +28,8 @@ export function PaneGroup({ narrow }: PaneGroupProps) {
 
   // A pane can outlive `delete-session` on the client for a render or two,
   // and its stale `byId` entry is never cleaned up. Render only sessions
-  // that are still in the roster (i.e. not deleted outright — archived
-  // sessions DO keep rendering here if the user has them open; see
-  // pane-layout.ts for why eligibility can't be "not archived") and have an
+  // that are still in the roster (i.e. not deleted outright; see
+  // pane-layout.ts for why eligibility is roster membership) and have an
   // arrived snapshot.
   const roster = rosterSessionIds(state.sessions);
   const snapshotArrived = new Set(Object.keys(state.byId));

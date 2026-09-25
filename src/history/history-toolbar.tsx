@@ -2,7 +2,7 @@ import { ArrowDownIcon, ArrowUpIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsIndicator, TabsList, TabsTab } from '@/components/ui/tabs';
-import type { HistoryQuery, SortKey, StatusFilter } from './history-rows';
+import type { HistoryQuery, SortKey } from './history-rows';
 
 interface Props {
   query: HistoryQuery;
@@ -20,17 +20,6 @@ export function HistoryToolbar({ query, onChange }: Props) {
         onChange={(e) => onChange({ ...query, text: e.target.value })}
         className="h-7 max-w-sm min-w-48 flex-1 text-xs md:text-xs"
       />
-      <Tabs
-        value={query.status}
-        onValueChange={(v) => onChange({ ...query, status: v as StatusFilter })}
-      >
-        <TabsList aria-label="Show">
-          <TabsTab value="all">All</TabsTab>
-          <TabsTab value="active">Active</TabsTab>
-          <TabsTab value="archived">Archived</TabsTab>
-          <TabsIndicator />
-        </TabsList>
-      </Tabs>
       <div className="ml-auto flex items-center gap-1">
         <Tabs
           value={query.sort}

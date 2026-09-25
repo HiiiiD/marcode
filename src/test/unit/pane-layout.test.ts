@@ -5,16 +5,13 @@ import {
 import type { LayoutNode } from '../../webview/components/layout-tree';
 
 suite('pane-layout rosterSessionIds', () => {
-  // Deliberately does NOT filter out `archived: true`: only `delete-session`
-  // removes a session from the roster entirely, and an archived session the
-  // user has explicitly opened must keep its leaf.
-  test('every session id, archived or not', () => {
-    const ids = rosterSessionIds([{ id: 'a', archived: false }, { id: 'b', archived: true }]);
+  test('every session id in the roster', () => {
+    const ids = rosterSessionIds([{ id: 'a' }, { id: 'b' }]);
     assert.deepStrictEqual([...ids], ['a', 'b']);
   });
 
   test('reflects exactly the roster, not a subset of it', () => {
-    const ids = rosterSessionIds([{ id: 'x', archived: false }]);
+    const ids = rosterSessionIds([{ id: 'x' }]);
     assert.deepStrictEqual([...ids], ['x']);
   });
 

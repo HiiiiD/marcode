@@ -64,7 +64,7 @@ export function sessionMentions(
     });
   }
 
-  const referable = sessions.filter((s) => s.id !== selfId && !s.archived);
+  const referable = sessions.filter((s) => s.id !== selfId);
   // Sessions are labeled by their `name`, which is unique by construction
   // (enforced in `SessionManager.rename()`). Two sessions can only collide if
   // they both still hold their default auto-generated names — unlikely but

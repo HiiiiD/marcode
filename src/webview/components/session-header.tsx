@@ -252,8 +252,7 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
       </Popover>
       </Tooltip>
       {/*
-        Mounted only when there is something in it: with Archive now living
-        solely in the roster row's own menu (one entry point, not two), the
+        Mounted only when there is something in it: the
         only thing this can ever hold is the bring-back door, so it is gated
         the same way that door already was — an overflow menu whose single
         item is absent nine times out of ten teaches the user it is empty.
@@ -320,7 +319,7 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
       {/*
         Replace still gets a confirm, but not because it's destructive: it
         isn't. `replaceSession` just swaps the pane's leaf to a fresh
-        session — the old one is never archived or removed, only hidden
+        session — the old one is never closed or removed, only hidden
         from the split, the same as unchecking its row in the roster. It
         stays live there and can be dragged back into a pane later. The
         dialog still exists because this replaces a pane's active session
@@ -367,10 +366,9 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
         size="icon-xs"
         aria-label={`Hide ${accessibleTitle} from the split`}
         onClick={() => {
-          // Hide, not archive. This is the same operation as unchecking the
-          // row in the roster, and posts the same message, so the two entry
-          // points cannot drift. Archiving is a deliberate choice and lives
-          // in the roster row's actions menu, under its own word.
+          // Same operation as unchecking the row in the roster, and posts the
+          // same message, so the two entry points cannot drift. Hiding is what
+          // makes a session indexable for recall.
           post({
             t: "set-layout",
             layout: { ...state.layout, root: removeSession(state.layout.root, s.id) },

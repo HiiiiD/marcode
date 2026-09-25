@@ -223,11 +223,13 @@ These are not style preferences. Breaking one breaks the design.
 - **One digest per session, one writer.** `DigestService` alone assigns a `SessionDigest`; the
   history tab's `SessionState.summary` is a projection of it and the FTS row is derived from
   it, so history and recall cannot disagree. Writing one never touches `updatedAt`.
-  **Only closed sessions are stored, recalled or primed**: a live session is projected for the
-  history tab and never written to `memory.sqlite`, and reopening a closed one removes its row.
+  **Only hidden sessions are stored, recalled or primed**: a session is hidden when no pane shows
+  it (the header X, an unchecked roster row, or `marcode__close_session`). One shown in a pane is
+  projected for the history tab and never written to `memory.sqlite`, and showing a hidden one
+  removes its row. There is no archived state; `SessionState` carries no such flag.
   **Recall is scoped to a workspace folder**: priming and `marcode__recall` only see sessions whose
   cwd is inside the innermost open workspace folder containing the caller's cwd (or the cwd itself
-  when none does). The LLM summarizer runs only on closed sessions, always falls back to the
+  when none does). The LLM summarizer runs only on hidden sessions, always falls back to the
   extractive digest, and its run is started `withoutSelfControl`: no `marcode__*` tools on any
   provider, and no trace in the vendor CLI's own history (Claude `persistSession: false`, Codex
   ephemeral thread, OpenCode session deleted after the run). On Claude it also loads no user

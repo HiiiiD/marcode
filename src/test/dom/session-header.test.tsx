@@ -166,7 +166,7 @@ suite("SessionHeader status", () => {
     screen.getByTitle("Session a");
   });
 
-  test("the pane X removes the pane without archiving the session", async () => {
+  test("the pane X removes the pane without closing the session", async () => {
     renderApp();
     hydrateTwoPanes();
 
@@ -180,7 +180,7 @@ suite("SessionHeader status", () => {
     assert.deepStrictEqual(paneIds, ["b"]);
     assert.ok(
       !posted().some((m) => m.t === "close-session"),
-      "X means hide; archiving is a deliberate choice made from the roster",
+      "X means hide; hiding is what makes a session indexable",
     );
   });
 
@@ -193,7 +193,7 @@ suite("SessionHeader status", () => {
     assert.strictEqual(posted().some((m) => m.t === "replace-session"), false);
     screen.getByRole("button", { name: "Replace" });
     // The copy must describe what actually happens: replaceSession only
-    // swaps the pane's leaf — the old session is never archived or removed,
+    // swaps the pane's leaf — the old session is never closed or removed,
     // just hidden from the split, same as unchecking its roster row.
     assert.ok(screen.getByText(/isn.t closed — it stays/i));
     assert.strictEqual(screen.queryByText(/transcript is gone for good/i) !== null, false);
