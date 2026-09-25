@@ -42,6 +42,19 @@ suite('SessionManager memory indexing', () => {
     assert.strictEqual(memory.indexed[0].sessionId, session.state.id);
   });
 
+  test('archiving indexes an extractive digest', async () => {
+    const store = new TranscriptStore(await tempRoot());
+    const providers = new Map<string, AgentProvider>([['fake', new FakeProvider()]]);
+    const memory = new RecordingMemoryStore();
+    const manager = new SessionManager(
+      store, providers, () => {}, undefined, undefined, undefined, undefined, undefined, memory,
+    );
+    const session = await manager.create('fake', '/repo');
+    session.send('Investigate the flaky login test');
+    await manager.close(session.state.id);
+    assert.strictEqual(memory.indexed[0].digest?.source, 'extractive');
+  });
+
   test('archiving an untitled, empty session does not index it', async () => {
     const store = new TranscriptStore(await tempRoot());
     const providers = new Map<string, AgentProvider>([['fake', new FakeProvider()]]);

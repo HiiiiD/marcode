@@ -11,7 +11,9 @@ import {
 import { buildSeed } from './replay';
 import { findPayload, type ResolvedBlock } from './session-refs';
 import { TRANSCRIPT_VERSION, type StoredIndex, type TranscriptStore } from './transcript-store';
+import { indexLine, type SessionDigest } from '../memory/digest';
 import { digestSession } from '../memory/session-digest';
+import { DigestService, type DigestEstimate, type DigestScope } from './digest/digest-service';
 import { buildMemoryBlock, queryTermsOf } from '../memory/prime-block';
 import type { MemoryStore } from '../memory/types';
 import type {
@@ -222,7 +224,26 @@ export class SessionManager implements SessionSink {
     this.compiledUsageMirrors = usageMirrors.flatMap((mirror) => {
       try { return [{ mirror, pattern: new RegExp(mirror.modelPattern) }]; } catch { return []; }
     });
+    if (this.memory) {
+      this.digests = new DigestService({
+        store: this.memory,
+        source: {
+          sessions: () => [...this.meta.values()].map((s) => ({
+            id: s.id, providerId: s.providerId, cwd: s.cwd, title: s.title,
+            archived: s.archived, updatedAt: s.updatedAt,
+          })),
+          transcript: async (id) => (await this.store.tail(id, Number.MAX_SAFE_INTEGER)).items,
+          projected: (id) => this.meta.get(id)?.summary?.forUpdatedAt,
+        },
+        // Written without touching `updatedAt`: it is the history sort key and this cache's key.
+        onDigest: (id, digest) => { this.project(id, digest); },
+        onSettled: () => { if (!this.disposed) { this.changed(); } },
+        onProgress: (p) => { this.emit({ t: 'memory-progress', ...p }); },
+      });
+    }
   }
+
+  private readonly digests?: DigestService;
 
   private readonly compiledUsageMirrors: { mirror: UsageMirror; pattern: RegExp }[];
 
@@ -1660,7 +1681,7 @@ export class SessionManager implements SessionSink {
       // does not depend on remembering the separate action. Never touches
       // `archived` or disposes the live session: it stays exactly as open
       // as it was, just re-indexed with whatever is on disk right now.
-      await this.indexForMemory(id, state);
+      await this.digests?.refresh(id);
     }
   }
 
@@ -1796,40 +1817,52 @@ export class SessionManager implements SessionSink {
       state.archived = true;
       state.status = 'idle';
       state.updatedAt = Date.now();
-      await this.indexForMemory(id, state);
+      await this.digestClosed(id);
     }
     this.visible.delete(id);
     this.changed();
   }
 
   /**
-   * Awaited by `archive()` so a session is actually searchable the moment
-   * `close()`/`remove()` resolves, but never lets a memory-store failure
-   * surface as a rejection out of either: every error is caught and logged
-   * here, so `memory.sqlite` (or whatever a future implementation uses) is a
-   * rebuildable cache, never a reason to fail a session lifecycle
-   * transition. Skips a bare untitled/empty session — same emptiness check
-   * `isDiscardable` uses — since there is nothing there worth finding later.
+   * Awaited by `archive()` so a session is searchable the moment `close()` resolves.
+   * Only the cheap extractive write is awaited; the LLM upgrade is fire-and-forget,
+   * and `DigestService` never rejects, so neither can fail a lifecycle transition.
    */
-  private async indexForMemory(id: SessionId, state: SessionState): Promise<void> {
-    if (!this.memory || state.title === 'Untitled') { return; }
-    try {
-      const { items } = await this.store.tail(id, Number.MAX_SAFE_INTEGER);
-      if (items.length === 0) { return; }
-      await this.memory.index({
-        sessionId: id, providerId: state.providerId, cwd: state.cwd,
-        closedAt: state.updatedAt, items,
-      });
-    } catch (err) {
-      console.error('[mar-code] memory indexing failed', err);
-    }
+  private async digestClosed(id: SessionId): Promise<void> {
+    if (!this.digests) { return; }
+    await this.digests.refresh(id);
+    void this.digests.upgrade(id);
   }
+
+  private project(id: SessionId, digest: SessionDigest): void {
+    const state = this.meta.get(id);
+    if (state) { state.summary = { text: indexLine(digest), forUpdatedAt: digest.forUpdatedAt }; }
+  }
+
+  setSummarizer(
+    summarizer: { summarize(items: TranscriptItem[], base: SessionDigest): Promise<SessionDigest> } | undefined,
+  ): void {
+    this.digests?.setSummarizer(summarizer);
+  }
+
+  memoryStatus(): { enabled: boolean; llm: boolean } {
+    return { enabled: this.digests !== undefined, llm: this.digests?.hasSummarizer() ?? false };
+  }
+
+  async memoryEstimate(scope: DigestScope): Promise<DigestEstimate> {
+    return this.digests ? this.digests.estimate(scope) : { sessions: 0, approxInputTokens: 0 };
+  }
+
+  async memoryReindex(scope: DigestScope): Promise<void> { await this.digests?.reindex(scope); }
+  async memoryResummarize(id: SessionId): Promise<void> { await this.digests?.resummarize(id); }
+  memoryCancel(): void { this.digests?.cancel(); }
 
   private summaryRun: Promise<void> | undefined;
 
   /** Concurrent callers (sidebar + tab) share one run. */
   ensureSummaries(): Promise<void> {
-    this.summaryRun ??= this.runSummaries().finally(() => { this.summaryRun = undefined; });
+    this.summaryRun ??= (this.digests ? this.digests.ensureCurrent() : this.runSummaries())
+      .finally(() => { this.summaryRun = undefined; });
     return this.summaryRun;
   }
 
@@ -1862,7 +1895,7 @@ export class SessionManager implements SessionSink {
     // store — the same `close()` path a mere close takes. A `remove()` is a
     // permanent delete, so that row must not outlive the transcript it was
     // built from; erasing it is best-effort and swallowed like
-    // `indexForMemory`'s own errors, since a `forget()` failure must not
+    // `digestClosed`'s own errors, since a `forget()` failure must not
     // block session removal.
     try {
       await this.memory?.forget(id);
@@ -1896,9 +1929,8 @@ export class SessionManager implements SessionSink {
     // `state` object rather than `archive()` — this is shutdown, not a
     // lifecycle transition the user chose, so `archived` must stay exactly
     // what it was and the roster comes back unchanged on relaunch.
-    await Promise.all(
-      liveSessions.map((s) => this.indexForMemory(s.state.id, s.state)),
-    );
+    await Promise.all(liveSessions.map((s) => this.digests?.refresh(s.state.id)));
+    this.digests?.stop();
     if (this.persistTimer) { clearTimeout(this.persistTimer); }
     await this.persist();
   }

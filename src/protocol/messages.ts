@@ -790,6 +790,7 @@ export type HostToWebview =
   | { t: 'session-prepend'; id: SessionId; items: TranscriptItem[]; hasMore: boolean }
   | { t: 'session-status'; id: SessionId; status: SessionStatus }
   | { t: 'sessions-changed'; sessions: SessionSummary[] }
+  | { t: 'memory-progress'; phase: 'extractive' | 'llm' | 'done' | 'cancelled'; done: number; total: number }
   | { t: 'session-invocables'; id: SessionId; entries: Invocable[] }
   | { t: 'session-mcp'; id: SessionId; servers: McpServerStatus[] }
   | { t: 'session-cache-window'; id: SessionId; window: { anchorAt: number; ttlMs: number } }

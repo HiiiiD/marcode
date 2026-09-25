@@ -83,6 +83,7 @@ function describeOutbound(m: HostToWebview): string {
     case 'session-attachments': return 'session-attachments';
     case 'attachments-rejected': return 'attachments-rejected';
     case 'sessions-changed': return 'sessions-changed';
+    case 'memory-progress': return 'memory-progress';
     case 'session-invocables': return 'session-invocables';
     case 'editor-context': return 'editor-context';
     case 'catalog': return 'catalog';
