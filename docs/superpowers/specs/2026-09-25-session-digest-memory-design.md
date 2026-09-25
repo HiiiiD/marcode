@@ -79,8 +79,10 @@ never touches `updatedAt` (existing invariant: it is the history sort key and th
 ```
 
 `mode` defaults to `off`. `provider`, `model` and `effort` are read only when `mode` is
-`llm`; an unset model resolves to the provider's cheapest listed model. Validated like
-`marcode.systemPrompts`: bad values warn once and fall back to `off`. Registration is read at
+`llm`. `provider` and `model` are required: there is no default model, because picking one
+on the user's behalf would spend their quota on a choice they never made. `effort` is
+optional and defaults to `low`. Validated like `marcode.systemPrompts`: `llm` with a missing
+or unknown `provider`/`model` warns once and falls back to `off`. Registration is read at
 activate and a change prompts a reload, matching `marcode.enabledProviders`.
 
 ### LLM summarizer
@@ -113,7 +115,9 @@ measured on raw-prompt text) is retuned against digest text in the plan.
 
 - Pass 1, always free: rebuild every session's extractive digest and FTS row from JSONL, so
   all sessions are findable immediately.
-- Pass 2, only when `mode` is `llm`: upgrade to LLM digests in the background, newest first.
+- Pass 2, only when `mode` is `llm`: upgrade closed sessions to LLM digests in the
+  background, newest first. A session that is still open keeps its extractive digest until
+  it closes; LLM digests are never produced for a live session.
 - Entry points: command `marcode.memory.reindex`, a per-row "Re-summarize" in the history
   tab, and a bulk history-tab action with scope `all` or `missing-llm`.
 - Before pass 2, show a cost estimate (session count and roughly 3k input tokens each) and
@@ -139,8 +143,7 @@ Types only in `src/protocol/messages.ts`. History to host: `memory-reindex { sco
 - History DOM tests through the real `StoreProvider`, asserting posted messages.
 - Priming block rendered from pointers; score floor against realistic digests.
 
-## Open questions
+## Decisions
 
-- Cheapest-model resolution when `model` is unset: pick by the provider's `listModels()`
-  order, or require it to be set?
-- Whether a still-live session gets an LLM digest at all, or only extractive until it closes.
+- The summarizer's `model` must be set in config; there is no automatic cheapest-model pick.
+- Only closed sessions receive an LLM digest.
