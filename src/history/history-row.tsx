@@ -36,7 +36,7 @@ export function HistoryRow({ session }: { session: SessionSummary }) {
         <TableCell className="align-middle whitespace-nowrap tabular-nums text-muted-foreground">
           {formatWhen(session.updatedAt)}
         </TableCell>
-        <TableCell className="align-middle">
+        <TableCell className="sticky right-0 bg-background align-middle">
           <div className="flex items-center justify-end gap-1">
             {state.memory?.enabled && (
               <TipButton

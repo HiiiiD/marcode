@@ -22,7 +22,7 @@ export function HistoryTable({ groups }: { groups: HistoryGroups }) {
           <TableHead>Session</TableHead>
           <TableHead>Model</TableHead>
           <TableHead>Last updated</TableHead>
-          <TableHead><span className="sr-only">Actions</span></TableHead>
+          <TableHead className="sticky right-0 bg-background"><span className="sr-only">Actions</span></TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
