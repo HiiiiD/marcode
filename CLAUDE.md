@@ -82,7 +82,12 @@ extension.ts
 | `src/host/review-panel.ts` | The review editor tab: creation, restore, transport |
 | `src/host/history-panel.ts` | The session history editor tab: creation, restore, transport. Its bus allow-list (`HISTORY_WANTS`) is `sessions-changed` only — every column it shows is already on `SessionState` |
 | `src/host/focus-session.ts` | Adds a session to the sidebar split and reveals the sidebar; shared by the fleet and history tabs |
-| `src/memory/session-digest.ts` | Pure `digestSession(items)` → "goal → last reply · N files edited"; the history tab's summary text |
+| `src/memory/session-digest.ts` | Thin wrapper: `digestSession(items)` = the extractive `indexLine`, kept for the memory-off history path |
+| `src/memory/digest.ts` | `SessionDigest`, the extractive digest, `indexLine` (the one-line pointer), `digestText` |
+| `src/host/digest/digest-service.ts` | The only writer of a digest: serial queue, close-time refresh, reindex with resume |
+| `src/host/digest/llm-summarizer.ts` | Hidden, tool-less `AgentRun` (started `withoutSelfControl`) that writes an LLM digest |
+| `src/host/digest/llm-prompt.ts` | Trimmed summary prompt and the tolerant JSON reply parser |
+| `src/shared/memory-settings.ts` | `marcode.memory.enabled` and `marcode.memory.summarizer` ids and validation |
 | `src/history/` | The history client: its own narrow reducer, store and surface (toolbar, table, rows) |
 | `src/history/history-rows.ts` | Pure filter/sort/group of the roster into pinned and rest |
 | `src/host/fleet-diff.ts` | One tree's change set: base resolution, numstat + untracked parsing |
@@ -214,6 +219,13 @@ These are not style preferences. Breaking one breaks the design.
   else. Its view state (collapse, opened rows) is deliberately ephemeral: both
   describe a reading position in a list that re-reads itself while agents
   work, so a restored one would describe a tree nobody checked this launch.
+- **One digest per session, one writer.** `DigestService` alone assigns a `SessionDigest`; the
+  history tab's `SessionState.summary` is a projection of it and the FTS row is derived from
+  it, so history and recall cannot disagree. Writing one never touches `updatedAt`. The LLM
+  summarizer runs only on closed sessions, always falls back to the extractive digest, and its
+  run is started `withoutSelfControl` so it can never call `marcode__recall` on itself.
+  `marcode.memory.enabled = false` removes the store, service, priming and recall tools
+  entirely; the history tab then keeps the legacy in-memory extractive summary.
 - **Pin and summary are host state on `SessionState`, and neither writes `updatedAt`.**
   `updatedAt` is the history tab's sort key and the summary cache's key
   (`summary.forUpdatedAt !== updatedAt` means stale), so a pin toggle or a summary refresh
