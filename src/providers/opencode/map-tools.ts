@@ -167,6 +167,12 @@ export function toToolCall(c: AcpToolCall): ToolCall {
       }
       return { kind: 'other', label: 'Search', raw: c.rawInput };
     }
+    case 'fetch': {
+      const url = (c.rawInput as { url?: string } | undefined)?.url;
+      return url
+        ? { kind: 'web', label: 'WebFetch', url }
+        : { kind: 'other', label: 'WebFetch', raw: c.rawInput };
+    }
     default:
       break;
   }
