@@ -314,6 +314,43 @@ suite('OpenCodeProvider', () => {
     await run.dispose();
   });
 
+  test('start() with withoutSelfControl gives the AcpRun no self-control MCP server', async () => {
+    const { spawn, seen } = recordingSpawn();
+    const provider = new OpenCodeProvider({
+      spawn, selfControlMcp: { url: 'http://x/mcp', token: 't' },
+    });
+    const run = provider.start({
+      cwd: '/tmp', permissionMode: 'default', sessionId: 's', withoutSelfControl: true,
+    });
+    const created = await waitFor(seen, 'session/new');
+    assert.deepStrictEqual((created.params as { mcpServers: unknown }).mcpServers, []);
+    await run.dispose();
+  });
+
+  test('a withoutSelfControl run deletes its opencode session on dispose, so it never reaches OpenCode history', async () => {
+    const { spawn, seen } = scriptedSpawn();
+    const deleted: string[] = [];
+    const provider = new OpenCodeProvider({ spawn, deleteSession: async (_bin, _env, id) => { deleted.push(id); } });
+    const run = provider.start({
+      cwd: '/tmp', permissionMode: 'default', sessionId: 's', withoutSelfControl: true,
+    });
+    await waitFor(seen, 'session/new');
+    await new Promise((r) => setTimeout(r, 50));
+    await run.dispose();
+    assert.deepStrictEqual(deleted, [frames.newSession.sessionId]);
+  });
+
+  test('a normal run leaves its opencode session alone', async () => {
+    const { spawn, seen } = scriptedSpawn();
+    const deleted: string[] = [];
+    const provider = new OpenCodeProvider({ spawn, deleteSession: async (_bin, _env, id) => { deleted.push(id); } });
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default', sessionId: 's' });
+    await waitFor(seen, 'session/new');
+    await new Promise((r) => setTimeout(r, 50));
+    await run.dispose();
+    assert.deepStrictEqual(deleted, []);
+  });
+
   test('an instance override sets id/displayName and merges env into the spawned process', async () => {
     let capturedEnv: NodeJS.ProcessEnv | undefined;
     const { spawn: scripted } = scriptedSpawn();

@@ -134,3 +134,97 @@ suite('history app', () => {
     assert.strictEqual(screen.getByText('No sessions match').textContent, 'No sessions match');
   });
 });
+
+suite('history memory actions', () => {
+  setup(() => { resetHost(); });
+
+  test('nothing memory-related renders until the host says memory is enabled', () => {
+    renderHistory();
+    hydrate(sessions());
+    assert.strictEqual(screen.queryByRole('button', { name: 'Index memory' }) === null, true);
+    assert.strictEqual(screen.queryByRole('button', { name: 'Re-summarize alpha-name' }) === null, true);
+  });
+
+  test('with memory enabled a row can be re-summarized', async () => {
+    renderHistory();
+    hydrate(sessions());
+    sendFromHost({ t: 'memory-status', enabled: true, llm: false });
+    await userEvent.click(await screen.findByRole('button', { name: 'Re-summarize alpha-name' }));
+    assert.deepStrictEqual(posted().filter((m) => m.t === 'memory-resummarize'), [
+      { t: 'memory-resummarize', id: 'a' },
+    ]);
+  });
+
+  test('without an llm summarizer the bulk action reindexes immediately', async () => {
+    renderHistory();
+    hydrate(sessions());
+    sendFromHost({ t: 'memory-status', enabled: true, llm: false });
+    await userEvent.click(await screen.findByRole('button', { name: 'Index memory' }));
+    assert.deepStrictEqual(posted().filter((m) => m.t === 'memory-reindex'), [
+      { t: 'memory-reindex', scope: 'missing-llm' },
+    ]);
+  });
+
+  test('with an llm summarizer the bulk action asks for the estimate and waits for confirmation', async () => {
+    renderHistory();
+    hydrate(sessions());
+    sendFromHost({ t: 'memory-status', enabled: true, llm: true });
+    await userEvent.click(await screen.findByRole('button', { name: 'Index memory' }));
+    assert.deepStrictEqual(posted().filter((m) => m.t === 'memory-estimate'), [
+      { t: 'memory-estimate', scope: 'missing-llm' },
+    ]);
+    assert.strictEqual(posted().some((m) => m.t === 'memory-reindex'), false);
+    sendFromHost({ t: 'memory-estimate', scope: 'missing-llm', sessions: 120, approxInputTokens: 360000 });
+    assert.strictEqual(
+      (await screen.findByText('Summarize 120 sessions (~360k tokens)?')).textContent,
+      'Summarize 120 sessions (~360k tokens)?',
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Start' }));
+    assert.deepStrictEqual(posted().filter((m) => m.t === 'memory-reindex'), [
+      { t: 'memory-reindex', scope: 'missing-llm' },
+    ]);
+  });
+
+  test('with an llm summarizer a full rebuild can be started from the strip', async () => {
+    renderHistory();
+    hydrate(sessions());
+    sendFromHost({ t: 'memory-status', enabled: true, llm: true });
+    await userEvent.click(await screen.findByRole('button', { name: 'Rebuild all' }));
+    assert.deepStrictEqual(posted().filter((m) => m.t === 'memory-estimate'), [
+      { t: 'memory-estimate', scope: 'all' },
+    ]);
+    sendFromHost({ t: 'memory-estimate', scope: 'all', sessions: 300, approxInputTokens: 900000 });
+    await userEvent.click(await screen.findByRole('button', { name: 'Start' }));
+    assert.deepStrictEqual(posted().filter((m) => m.t === 'memory-reindex'), [
+      { t: 'memory-reindex', scope: 'all' },
+    ]);
+  });
+
+  test('without an llm summarizer there is no full-rebuild button', async () => {
+    renderHistory();
+    hydrate(sessions());
+    sendFromHost({ t: 'memory-status', enabled: true, llm: false });
+    await screen.findByRole('button', { name: 'Index memory' });
+    assert.strictEqual(screen.queryByRole('button', { name: 'Rebuild all' }) === null, true);
+  });
+
+  test('progress shows the phase and can be stopped', async () => {
+    renderHistory();
+    hydrate(sessions());
+    sendFromHost({ t: 'memory-status', enabled: true, llm: true });
+    sendFromHost({ t: 'memory-progress', phase: 'llm', done: 3, total: 10 });
+    assert.strictEqual((await screen.findByText('Summarizing 3/10')).textContent, 'Summarizing 3/10');
+    await userEvent.click(screen.getByRole('button', { name: 'Stop' }));
+    assert.deepStrictEqual(posted().filter((m) => m.t === 'memory-cancel'), [{ t: 'memory-cancel' }]);
+  });
+
+  test('done clears the progress strip', async () => {
+    renderHistory();
+    hydrate(sessions());
+    sendFromHost({ t: 'memory-status', enabled: true, llm: true });
+    sendFromHost({ t: 'memory-progress', phase: 'llm', done: 3, total: 10 });
+    sendFromHost({ t: 'memory-progress', phase: 'done', done: 10, total: 10 });
+    assert.strictEqual(screen.queryByText('Summarizing 3/10') === null, true);
+    assert.strictEqual(screen.queryByRole('button', { name: 'Index memory' }) !== null, true);
+  });
+});

@@ -472,7 +472,7 @@ export class ClaudeProvider implements AgentProvider {
     };
     let disposed = false;
     let started = false;
-    let introduced = false;
+    let introduced = Boolean(opts.withoutSelfControl);
     let queryRef: Query | undefined;
     // Effective mode/effort for a query not yet constructed. Read by
     // ensureStarted() -> buildOptions() at the moment the query actually
@@ -597,7 +597,11 @@ export class ClaudeProvider implements AgentProvider {
         ...(this.pathToClaudeCodeExecutable ? { pathToClaudeCodeExecutable: this.pathToClaudeCodeExecutable } : {}),
         ...(effort !== undefined ? { effort: effort as SdkEffortLevel } : {}),
         ...(isBypassMode ? { allowDangerouslySkipPermissions: true } : {}),
-        ...(this.selfControlMcp ? {
+        // An internal run (the digest summarizer) must not inherit the user's hooks, plugins,
+        // MCP servers or allow-rules, nor any built-in tool: it only ever needs to answer.
+        // `persistSession: false` also keeps the run out of `~/.claude/projects`, i.e. out of the CLI's own history.
+        ...(opts.withoutSelfControl ? { settingSources: [], tools: [], persistSession: false } : {}),
+        ...(this.selfControlMcp && !opts.withoutSelfControl ? {
           mcpServers: {
             marcode_self_control: {
               type: 'http' as const,

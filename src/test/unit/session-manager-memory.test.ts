@@ -7,7 +7,7 @@ import { SessionManager } from '../../host/session-manager';
 import { TranscriptStore } from '../../host/transcript-store';
 import { FakeProvider } from '../../providers/fake/fake-provider';
 import type { AgentProvider } from '../../providers/types';
-import type { MemoryStore, SessionRecord } from '../../memory/types';
+import type { DigestMeta, MemoryStore, SessionRecord } from '../../memory/types';
 
 async function tempRoot(): Promise<string> {
   return fs.mkdtemp(path.join(os.tmpdir(), 'marcode-session-manager-'));
@@ -17,9 +17,15 @@ class RecordingMemoryStore implements MemoryStore {
   indexed: SessionRecord[] = [];
   forgotten: string[] = [];
   async index(record: SessionRecord): Promise<void> { this.indexed.push(record); }
-  async search(): Promise<[]> { return []; }
+  searches: { query: string; cwdWithin?: string }[] = [];
+  async search(query: string, opts: { cwdWithin?: string } = {}): Promise<[]> {
+    this.searches.push({ query, cwdWithin: opts.cwdWithin });
+    return [];
+  }
   async fetch(): Promise<{ sessionId: string; items: [] }> { return { sessionId: '', items: [] }; }
   async forget(sessionId: string): Promise<void> { this.forgotten.push(sessionId); }
+  async getDigest(): Promise<undefined> { return undefined; }
+  async digestMeta(): Promise<Map<string, DigestMeta>> { return new Map(); }
 }
 
 suite('SessionManager memory indexing', () => {
@@ -38,6 +44,65 @@ suite('SessionManager memory indexing', () => {
     await manager.close(session.state.id);
     assert.strictEqual(memory.indexed.length, 1);
     assert.strictEqual(memory.indexed[0].sessionId, session.state.id);
+  });
+
+  test('archiving indexes an extractive digest', async () => {
+    const store = new TranscriptStore(await tempRoot());
+    const providers = new Map<string, AgentProvider>([['fake', new FakeProvider()]]);
+    const memory = new RecordingMemoryStore();
+    const manager = new SessionManager(
+      store, providers, () => {}, undefined, undefined, undefined, undefined, undefined, memory,
+    );
+    const session = await manager.create('fake', '/repo');
+    session.send('Investigate the flaky login test');
+    await manager.close(session.state.id);
+    assert.strictEqual(memory.indexed[0].digest?.source, 'extractive');
+  });
+
+  test('reopening a closed session removes it from the index', async () => {
+    const store = new TranscriptStore(await tempRoot());
+    const providers = new Map<string, AgentProvider>([['fake', new FakeProvider()]]);
+    const memory = new RecordingMemoryStore();
+    const manager = new SessionManager(
+      store, providers, () => {}, undefined, undefined, undefined, undefined, undefined, memory,
+    );
+    const session = await manager.create('fake', '/repo');
+    session.send('Investigate the flaky login test');
+    await manager.close(session.state.id);
+    await manager.open(session.state.id);
+    assert.deepStrictEqual(memory.forgotten, [session.state.id]);
+  });
+
+  test('priming searches only inside the workspace folder that holds the session cwd', async () => {
+    const store = new TranscriptStore(await tempRoot());
+    const providers = new Map<string, AgentProvider>([['fake', new FakeProvider()]]);
+    const memory = new RecordingMemoryStore();
+    const manager = new SessionManager(
+      store, providers, () => {}, undefined, undefined, undefined, undefined, undefined, memory,
+    );
+    manager.setWorkspaceRoots(() => ['/ws/app', '/ws/other']);
+    await manager.recall('investigate the flaky login test', '/ws/app/packages/api');
+    assert.strictEqual(memory.searches[0].cwdWithin, '/ws/app');
+  });
+
+  test('a cwd outside every workspace folder is scoped to itself', async () => {
+    const store = new TranscriptStore(await tempRoot());
+    const providers = new Map<string, AgentProvider>([['fake', new FakeProvider()]]);
+    const memory = new RecordingMemoryStore();
+    const manager = new SessionManager(
+      store, providers, () => {}, undefined, undefined, undefined, undefined, undefined, memory,
+    );
+    manager.setWorkspaceRoots(() => ['/ws/app']);
+    await manager.recall('investigate the flaky login test', '/scratch/x');
+    assert.strictEqual(memory.searches[0].cwdWithin, '/scratch/x');
+  });
+
+  test('the nested workspace folder wins over its parent', async () => {
+    const store = new TranscriptStore(await tempRoot());
+    const providers = new Map<string, AgentProvider>([['fake', new FakeProvider()]]);
+    const manager = new SessionManager(store, providers, () => {});
+    manager.setWorkspaceRoots(() => ['/ws', '/ws/app']);
+    assert.strictEqual(manager.recallRootOf('/ws/app/src'), '/ws/app');
   });
 
   test('archiving an untitled, empty session does not index it', async () => {
@@ -60,6 +125,8 @@ suite('SessionManager memory indexing', () => {
       search: async () => [],
       fetch: async () => ({ sessionId: '', items: [] }),
       forget: async () => {},
+      getDigest: async () => undefined,
+      digestMeta: async () => new Map(),
     };
     const manager = new SessionManager(
       store, providers, () => {}, undefined, undefined, undefined, undefined, undefined, memory,
@@ -85,7 +152,7 @@ suite('SessionManager memory indexing', () => {
     assert.deepStrictEqual(memory.forgotten, [session.state.id]);
   });
 
-  test('hiding a session (the pane X, or an unchecked roster row) indexes it without archiving', async () => {
+  test('hiding a session (the pane X, or an unchecked roster row) does not index it: only closed sessions are recalled', async () => {
     const store = new TranscriptStore(await tempRoot());
     const providers = new Map<string, AgentProvider>([['fake', new FakeProvider()]]);
     const memory = new RecordingMemoryStore();
@@ -96,12 +163,11 @@ suite('SessionManager memory indexing', () => {
     session.send('Investigate the flaky login test');
     await manager.setVisible([session.state.id]); // reveal, as opening a pane does
     await manager.setVisible([]); // hide — set-layout/set-visible, never close-session
-    assert.strictEqual(memory.indexed.length, 1);
-    assert.strictEqual(memory.indexed[0].sessionId, session.state.id);
+    assert.strictEqual(memory.indexed.length, 0);
     assert.strictEqual(session.state.archived, false, 'hiding must never archive');
   });
 
-  test('dispose() indexes still-open sessions instead of losing them on reload', async () => {
+  test('dispose() does not index still-open sessions: they come back live after a reload', async () => {
     const store = new TranscriptStore(await tempRoot());
     const providers = new Map<string, AgentProvider>([['fake', new FakeProvider()]]);
     const memory = new RecordingMemoryStore();
@@ -112,8 +178,8 @@ suite('SessionManager memory indexing', () => {
     session.send('Investigate the flaky login test');
     // Never closed — this is the reload/quit path, not `close()`.
     await manager.dispose();
-    assert.strictEqual(memory.indexed.length, 1);
-    assert.strictEqual(memory.indexed[0].sessionId, session.state.id);
+    assert.strictEqual(memory.indexed.length, 0);
+    assert.strictEqual(session.state.id.length > 0, true);
   });
 
   test('dispose() does not index an untitled, empty session', async () => {

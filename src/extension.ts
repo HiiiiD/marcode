@@ -20,8 +20,9 @@ import { SessionManager } from './host/session-manager';
 import { TranscriptStore } from './host/transcript-store';
 import { createVscodeEditorSource } from './host/vscode-editor-source';
 import { createWorkspaceFileIndex } from './host/workspace-file-index';
-import { ExtractiveSummarizer } from './memory/extractive-summarizer';
 import { FtsMemoryStore } from './memory/fts-memory-store';
+import { LlmSummarizer } from './host/digest/llm-summarizer';
+import { MEMORY_ENABLED_SETTING, MEMORY_SUMMARIZER_SETTING, validateSummarizer } from './shared/memory-settings';
 import type { MemoryStore } from './memory/types';
 import { ClaudeProvider } from './providers/claude/claude-provider';
 import { CodexProvider } from './providers/codex/codex-provider';
@@ -245,15 +246,17 @@ export async function activate(context: vscode.ExtensionContext) {
   // not fail the whole extension: `SessionManager` and `SelfControlMcpServer`
   // both already accept `memory` as optional, and their `marcode__recall`
   // tools already answer gracefully with none configured.
+  const memoryEnabled = vscode.workspace.getConfiguration().get<boolean>(MEMORY_ENABLED_SETTING, true);
   let memory: MemoryStore | undefined;
-  try {
-    memory = new FtsMemoryStore(
-      path.join(rootDir, 'memory.sqlite'),
-      new ExtractiveSummarizer(),
-      { tail: (id, limit) => store.tail(id, limit) },
-    );
-  } catch (err) {
-    console.warn('[mar-code] memory store unavailable; recall tools will be disabled', err);
+  if (memoryEnabled) {
+    try {
+      memory = new FtsMemoryStore(
+        path.join(rootDir, 'memory.sqlite'),
+        { tail: (id, limit) => store.tail(id, limit) },
+      );
+    } catch (err) {
+      console.warn('[mar-code] memory store unavailable; recall tools will be disabled', err);
+    }
   }
 
   // Order matters: SessionPicker uses state.catalog[0] for the New button,
@@ -306,7 +309,9 @@ export async function activate(context: vscode.ExtensionContext) {
     },
     transcriptTail: (id, limit) => manager.transcriptTail(id as SessionId, limit),
     close: (id) => manager.close(id as SessionId),
+    recallRoot: (id) => manager.recallRootOfSession(id as SessionId),
   }, memory);
+  manager.setWorkspaceRoots(() => vscode.workspace.workspaceFolders?.map((f) => f.uri.fsPath) ?? []);
   let selfControlConfig: SelfControlMcpConfig | undefined;
   try {
     selfControlConfig = await selfControlServer.start();
@@ -453,6 +458,24 @@ export async function activate(context: vscode.ExtensionContext) {
       providers.set(cfg.id, new OpenCodeProvider({
         id: cfg.id, displayName: cfg.displayName, binPath: cfg.binPath,
         env: mergedEnv, selfControlMcp: selfControlConfig, loginKind,
+      }));
+    }
+  }
+
+  if (memory) {
+    // Validated against every registered id, instances included, so a provider named here that is
+    // not actually enabled degrades to "off" with one warning instead of failing per session.
+    const { setting, warnings } = validateSummarizer(
+      vscode.workspace.getConfiguration().get<unknown>(MEMORY_SUMMARIZER_SETTING),
+      providers.keys(),
+    );
+    for (const warning of warnings) { void vscode.window.showWarningMessage(warning); }
+    if (setting.mode === 'llm') {
+      manager.setSummarizer(new LlmSummarizer({
+        provider: providers.get(setting.provider) as AgentProvider,
+        model: setting.model,
+        effort: setting.effort,
+        cwd: os.tmpdir(),
       }));
     }
   }
@@ -614,6 +637,26 @@ export async function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand('marcode.review.open', () => { review.open(); }),
     vscode.commands.registerCommand('marcode.fleet.open', () => { fleet.open(); }),
     vscode.commands.registerCommand('marcode.history.open', () => { history.open(); }),
+    vscode.commands.registerCommand('marcode.memory.reindex', async () => {
+      const status = manager.memoryStatus();
+      if (!status.enabled) {
+        void vscode.window.showInformationMessage('Marcode memory is off (marcode.memory.enabled).');
+        return;
+      }
+      let detail = 'Rebuild the memory index for every session. No model cost.';
+      if (status.llm) {
+        const est = await manager.memoryEstimate('missing-llm');
+        if (est.sessions > 0) {
+          detail += ` Then summarize ${est.sessions} closed sessions with the configured model `
+            + `(about ${Math.round(est.approxInputTokens / 1000)}k input tokens).`;
+        }
+      }
+      const start = 'Start';
+      if (await vscode.window.showInformationMessage(detail, { modal: true }, start) !== start) { return; }
+      void manager.memoryReindex('missing-llm').then(() => {
+        void vscode.window.showInformationMessage('Marcode memory reindex finished.');
+      });
+    }),
     // Without a serializer VS Code restores the tab as a blank webview, which
     // is worse than not restoring it. The host owns whether the tab exists;
     // the client owns nothing durable, so re-attaching is the whole job.
@@ -676,6 +719,16 @@ export async function activate(context: vscode.ExtensionContext) {
         const reload = 'Reload window';
         void vscode.window.showInformationMessage(
           'Provider instances changed. Reload the window to apply it.',
+          reload,
+        ).then((choice) => {
+          if (choice !== reload) { return; }
+          void vscode.commands.executeCommand('workbench.action.reloadWindow');
+        });
+      }
+      if (e.affectsConfiguration(MEMORY_ENABLED_SETTING) || e.affectsConfiguration(MEMORY_SUMMARIZER_SETTING)) {
+        const reload = 'Reload window';
+        void vscode.window.showInformationMessage(
+          'Memory settings changed. Reload the window to apply them.',
           reload,
         ).then((choice) => {
           if (choice !== reload) { return; }

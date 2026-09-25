@@ -25,6 +25,11 @@ suite('PostBus', () => {
     assert.strictEqual(REVIEW_WANTS({ t: 'sessions-changed' } as unknown as HostToWebview), true);
   });
 
+  test('HISTORY_WANTS takes memory-progress but not memory-status (a direct answer)', () => {
+    assert.strictEqual(HISTORY_WANTS({ t: 'memory-progress', phase: 'done', done: 1, total: 1 }), true);
+    assert.strictEqual(HISTORY_WANTS({ t: 'memory-status', enabled: true, llm: false } as unknown as HostToWebview), false);
+  });
+
   test('HISTORY_WANTS admits sessions-changed and nothing else', () => {
     assert.strictEqual(HISTORY_WANTS({ t: 'sessions-changed', sessions: [] } as unknown as HostToWebview), true);
     assert.strictEqual(HISTORY_WANTS({ t: 'session-status', id: 's1' as SessionId, status: 'idle' } as HostToWebview), false);

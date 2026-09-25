@@ -68,6 +68,12 @@ export interface SessionSink {
    */
   shellNoise?(profile: string): void;
   /**
+   * A block of past-session hits relevant to a fresh session's first prompt,
+   * or undefined when none clear the bar. Optional: a sink with no memory
+   * store answers "nothing" by omission. A rejection is treated as "nothing".
+   */
+  recall?(text: string, cwd: string): Promise<string | undefined>;
+  /**
    * Whether a Move is queued for this session, right now. Consulted only at
    * the start of `turn-end` handling, before `recomputeWaitingStatus` runs —
    * that call is what performs a queued move (through the sink's own
@@ -215,6 +221,11 @@ export class AgentSession {
    * task happens to finish before the rest of the turn does.
    */
   private turnActive = false;
+  /** Whether this session's first user message has been delivered; recall runs for that one only. */
+  private firstDelivered = false;
+  private readonly resumed: boolean;
+  /** Set while a first-message recall lookup is in flight; later sends chain behind it to keep order. */
+  private recallPending?: Promise<void>;
 
   constructor(
     private readonly _state: SessionState,
@@ -228,6 +239,7 @@ export class AgentSession {
      */
     private seed?: string,
   ) {
+    this.resumed = Boolean(_state.resumeTokens[threadKey(provider.id, provider.threadScope, _state.cwd)]);
     this.run = provider.start({
       cwd: _state.cwd,
       model: _state.model,
@@ -452,11 +464,30 @@ export class AgentSession {
       ? `[Delegated request from session "${from.name}", via Marcode's inter-session tool.]\n\n${text}`
       : text;
     const outgoing = this.seed ? `${this.seed}\n\n---\n\n${withSender}` : withSender;
+    const wantsRecall = !this.firstDelivered && !this.seed && !from && !this.resumed
+      && this.sink.recall !== undefined;
+    this.firstDelivered = true;
     this.seed = undefined;
-    try {
-      this.run.send(outgoing, context, attachments.length > 0 ? attachments : undefined);
-    } catch (err) {
-      this.fail(err instanceof Error ? err.message : String(err));
+    const dispatch = (body: string) => {
+      if (this.disposed) { return; }
+      try {
+        this.run.send(body, context, attachments.length > 0 ? attachments : undefined);
+      } catch (err) {
+        this.fail(err instanceof Error ? err.message : String(err));
+      }
+    };
+    if (wantsRecall) {
+      const pending = this.sink.recall!(text, this._state.cwd)
+        .catch(() => undefined)
+        .then((block) => dispatch(block ? `${block}\n\n${outgoing}` : outgoing));
+      this.recallPending = pending;
+      void pending.then(() => { if (this.recallPending === pending) { this.recallPending = undefined; } });
+    } else if (this.recallPending) {
+      const chained = this.recallPending.then(() => dispatch(outgoing));
+      this.recallPending = chained;
+      void chained.then(() => { if (this.recallPending === chained) { this.recallPending = undefined; } });
+    } else {
+      dispatch(outgoing);
     }
   }
 

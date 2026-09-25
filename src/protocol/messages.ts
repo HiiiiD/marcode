@@ -257,6 +257,9 @@ export interface SessionState {
   updatedAt: number;
 }
 
+/** Which sessions a memory reindex covers; `missing-llm` skips ones whose LLM digest is current. */
+export type DigestScopeWire = 'all' | 'missing-llm';
+
 export type SessionSummary = SessionState;
 
 export interface SessionSnapshot extends SessionState {
@@ -482,6 +485,10 @@ export type WebviewToHost =
   | { t: 'focus-session'; id: SessionId }
   | { t: 'set-pinned'; id: SessionId; pinned: boolean }
   | { t: 'request-history-summaries' }
+  | { t: 'memory-estimate'; scope: DigestScopeWire }
+  | { t: 'memory-reindex'; scope: DigestScopeWire }
+  | { t: 'memory-resummarize'; id: SessionId }
+  | { t: 'memory-cancel' }
   /** Intercepted by `PanelViewProvider` — opening the tab needs the `vscode` API. */
   | { t: 'open-history' }
   /**
@@ -790,6 +797,9 @@ export type HostToWebview =
   | { t: 'session-prepend'; id: SessionId; items: TranscriptItem[]; hasMore: boolean }
   | { t: 'session-status'; id: SessionId; status: SessionStatus }
   | { t: 'sessions-changed'; sessions: SessionSummary[] }
+  | { t: 'memory-progress'; phase: 'extractive' | 'llm' | 'done' | 'cancelled'; done: number; total: number }
+  | { t: 'memory-status'; enabled: boolean; llm: boolean }
+  | { t: 'memory-estimate'; scope: DigestScopeWire; sessions: number; approxInputTokens: number }
   | { t: 'session-invocables'; id: SessionId; entries: Invocable[] }
   | { t: 'session-mcp'; id: SessionId; servers: McpServerStatus[] }
   | { t: 'session-cache-window'; id: SessionId; window: { anchorAt: number; ttlMs: number } }

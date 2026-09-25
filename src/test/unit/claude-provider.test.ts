@@ -545,6 +545,90 @@ suite('ClaudeProvider (lazy start)', () => {
     await run.dispose();
   });
 
+  test('start() omits the self-control MCP server when withoutSelfControl is set', async () => {
+    const fake = fakeLoadQuery();
+    const provider = new ClaudeProvider(fake.load as never, { url: 'http://127.0.0.1:1234/mcp', token: 'tok' });
+    const run = provider.start({
+      cwd: '/tmp', permissionMode: 'default', sessionId: 's', withoutSelfControl: true,
+    });
+    run.send('hi');
+    await flushMicrotasks();
+    assert.strictEqual(fake.calls[0].options.mcpServers, undefined);
+    await run.dispose();
+  });
+
+  test('withoutSelfControl also isolates the run from user settings and built-in tools', async () => {
+    const fake = fakeLoadQuery();
+    const provider = new ClaudeProvider(fake.load as never, { url: 'http://127.0.0.1:1234/mcp', token: 'tok' });
+    const run = provider.start({
+      cwd: '/tmp', permissionMode: 'default', sessionId: 's', withoutSelfControl: true,
+    });
+    run.send('hi');
+    await flushMicrotasks();
+    assert.deepStrictEqual(fake.calls[0].options.settingSources, []);
+    assert.deepStrictEqual(fake.calls[0].options.tools, []);
+    await run.dispose();
+  });
+
+  test('withoutSelfControl keeps the run out of the Claude session history', async () => {
+    const fake = fakeLoadQuery();
+    const provider = new ClaudeProvider(fake.load as never);
+    const run = provider.start({
+      cwd: '/tmp', permissionMode: 'default', sessionId: 's', withoutSelfControl: true,
+    });
+    run.send('hi');
+    await flushMicrotasks();
+    assert.strictEqual(fake.calls[0].options.persistSession, false);
+    await run.dispose();
+  });
+
+  test('a normal run still persists its session', async () => {
+    const fake = fakeLoadQuery();
+    const provider = new ClaudeProvider(fake.load as never);
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default', sessionId: 's' });
+    run.send('hi');
+    await flushMicrotasks();
+    assert.strictEqual('persistSession' in fake.calls[0].options, false);
+    await run.dispose();
+  });
+
+  test('a normal run leaves settingSources and tools at the SDK defaults', async () => {
+    const fake = fakeLoadQuery();
+    const provider = new ClaudeProvider(fake.load as never);
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default', sessionId: 's' });
+    run.send('hi');
+    await flushMicrotasks();
+    assert.strictEqual('settingSources' in fake.calls[0].options, false);
+    assert.strictEqual('tools' in fake.calls[0].options, false);
+    await run.dispose();
+  });
+
+  test('withoutSelfControl sends the prompt without the Marcode intro', async () => {
+    const fake = fakeLoadQuery();
+    const provider = new ClaudeProvider(fake.load as never);
+    const run = provider.start({
+      cwd: '/tmp', permissionMode: 'default', sessionId: 's', withoutSelfControl: true,
+    });
+    run.send('summarize this');
+    await flushMicrotasks();
+    const first = await fake.calls[0].prompt[Symbol.asyncIterator]().next();
+    const sent = JSON.stringify(first.value);
+    assert.strictEqual(sent.includes('summarize this'), true);
+    assert.strictEqual(sent.includes('marcode-context'), false);
+    await run.dispose();
+  });
+
+  test('a normal run still gets the Marcode intro on its first message', async () => {
+    const fake = fakeLoadQuery();
+    const provider = new ClaudeProvider(fake.load as never);
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default', sessionId: 's' });
+    run.send('hello');
+    await flushMicrotasks();
+    const first = await fake.calls[0].prompt[Symbol.asyncIterator]().next();
+    assert.strictEqual(JSON.stringify(first.value).includes('marcode-context'), true);
+    await run.dispose();
+  });
+
   test('start() omits mcpServers when no self-control config was given', async () => {
     const fake = fakeLoadQuery();
     const provider = new ClaudeProvider(fake.load as never);

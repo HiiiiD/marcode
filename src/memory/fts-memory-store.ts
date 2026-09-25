@@ -1,6 +1,8 @@
 import { DatabaseSync } from 'node:sqlite';
 import type { SessionId, TranscriptItem } from '../protocol/messages';
-import type { MemoryDetail, MemoryHit, MemoryStore, SessionRecord, Summarizer } from './types';
+import { isWithin } from '../shared/path-scope';
+import { extractiveDigest, indexLine, type SessionDigest } from './digest';
+import type { DigestMeta, MemoryDetail, MemoryHit, MemoryStore, SessionRecord } from './types';
 
 /**
  * The slice of `TranscriptStore` this store needs to answer `fetch()` — see
@@ -26,7 +28,8 @@ export const FETCH_WINDOW = 40;
  * spec's "Modularity / swap story"), so the fix is to drop and rebuild it,
  * never to migrate it.
  */
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
+const SCOPED_FETCH = 500;
 
 /**
  * v1's only `MemoryStore`: one FTS5 row per session, upserted whenever that
@@ -43,7 +46,6 @@ export class FtsMemoryStore implements MemoryStore {
 
   constructor(
     dbPath: string,
-    private readonly summarizer: Summarizer,
     private readonly transcripts: TranscriptReader,
     schemaVersion: number = SCHEMA_VERSION,
   ) {
@@ -60,7 +62,7 @@ export class FtsMemoryStore implements MemoryStore {
       user_version: number;
     };
     if (onDiskVersion !== schemaVersion) {
-      this.db.exec('DROP TABLE IF EXISTS sessions_fts;');
+      this.db.exec('DROP TABLE IF EXISTS sessions_fts; DROP TABLE IF EXISTS digests;');
       this.db.exec(`PRAGMA user_version = ${schemaVersion};`);
     }
     this.db.exec(`
@@ -69,31 +71,68 @@ export class FtsMemoryStore implements MemoryStore {
         sessionId UNINDEXED, providerId UNINDEXED, cwd UNINDEXED,
         firstItemId UNINDEXED, closedAt UNINDEXED
       );
+      CREATE TABLE IF NOT EXISTS digests (
+        sessionId TEXT PRIMARY KEY, source TEXT NOT NULL, summarizerVersion INTEGER NOT NULL,
+        forUpdatedAt INTEGER NOT NULL, json TEXT NOT NULL
+      );
     `);
   }
 
   async index(record: SessionRecord): Promise<void> {
+    const digest = record.digest ?? extractiveDigest(record.items, record.closedAt);
     const firstItemId = record.items[0]?.id;
-    if (!firstItemId) { return; } // nothing to anchor a future fetch() to
-    const summary = await this.summarizer.summarize(record.items);
+    if (!firstItemId || !digest) { return; } // nothing to anchor a future fetch() to
     const text = record.items
       .map((i) => ('text' in i ? i.text : ''))
       .filter((t) => t.length > 0)
       .join('\n');
 
-    await this.forget(record.sessionId);
-    this.db.prepare(`
-      INSERT INTO sessions_fts (title, summary, text, sessionId, providerId, cwd, firstItemId, closedAt)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      record.title, summary, text,
-      record.sessionId, record.providerId, record.cwd, firstItemId, record.closedAt,
-    );
+    this.db.exec('BEGIN');
+    try {
+      this.deleteRows(record.sessionId);
+      this.db.prepare(`
+        INSERT INTO sessions_fts (title, summary, text, sessionId, providerId, cwd, firstItemId, closedAt)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        digest.title, indexLine(digest), text,
+        record.sessionId, record.providerId, record.cwd, firstItemId, record.closedAt,
+      );
+      this.db.prepare(`
+        INSERT INTO digests (sessionId, source, summarizerVersion, forUpdatedAt, json)
+        VALUES (?, ?, ?, ?, ?)
+      `).run(record.sessionId, digest.source, digest.summarizerVersion, digest.forUpdatedAt, JSON.stringify(digest));
+      this.db.exec('COMMIT');
+    } catch (err) {
+      this.db.exec('ROLLBACK');
+      throw err;
+    }
   }
 
-  /** Erases `sessionId`'s row, if any. See `MemoryStore.forget`. */
+  /** Erases `sessionId`'s row and digest, if any. See `MemoryStore.forget`. */
   async forget(sessionId: SessionId): Promise<void> {
+    this.deleteRows(sessionId);
+  }
+
+  private deleteRows(sessionId: SessionId): void {
     this.db.prepare('DELETE FROM sessions_fts WHERE sessionId = ?').run(sessionId);
+    this.db.prepare('DELETE FROM digests WHERE sessionId = ?').run(sessionId);
+  }
+
+  async getDigest(sessionId: SessionId): Promise<SessionDigest | undefined> {
+    const row = this.db.prepare('SELECT json FROM digests WHERE sessionId = ?').get(sessionId) as
+      { json: string } | undefined;
+    return row ? JSON.parse(row.json) as SessionDigest : undefined;
+  }
+
+  async digestMeta(): Promise<Map<SessionId, DigestMeta>> {
+    const rows = this.db.prepare(
+      'SELECT sessionId, source, summarizerVersion, forUpdatedAt FROM digests',
+    ).all() as Array<{
+      sessionId: string; source: 'extractive' | 'llm'; summarizerVersion: number; forUpdatedAt: number;
+    }>;
+    return new Map(rows.map((r) => [r.sessionId, {
+      source: r.source, summarizerVersion: r.summarizerVersion, forUpdatedAt: r.forUpdatedAt,
+    }]));
   }
 
   /**
@@ -108,25 +147,33 @@ export class FtsMemoryStore implements MemoryStore {
    * behaviour for ordinary alphanumeric queries — and any remaining SQL
    * error (a corrupt index, say) is caught rather than left to propagate.
    */
-  async search(query: string, opts: { providerId?: string; limit?: number } = {}): Promise<MemoryHit[]> {
+  async search(
+    query: string,
+    opts: { providerId?: string; limit?: number; match?: 'all' | 'any'; cwdWithin?: string } = {},
+  ): Promise<MemoryHit[]> {
     const limit = opts.limit ?? 20;
+    // The folder filter runs in JS (path comparison is platform-dependent), so over-fetch to still fill `limit`.
+    const fetchLimit = opts.cwdWithin ? Math.max(limit, SCOPED_FETCH) : limit;
     const providerId = opts.providerId ?? null;
     const terms = query.match(/[\p{L}\p{N}_]+/gu) ?? [];
     if (terms.length === 0) { return []; }
-    const match = terms.map((term) => `"${term}"`).join(' ');
+    const match = terms.map((term) => `"${term}"`).join(opts.match === 'any' ? ' OR ' : ' ');
     try {
       const rows = this.db.prepare(`
-        SELECT sessionId, firstItemId, summary, closedAt, providerId, bm25(sessions_fts) AS rank
+        SELECT sessionId, firstItemId, summary, closedAt, providerId, cwd, bm25(sessions_fts) AS rank
         FROM sessions_fts
         WHERE sessions_fts MATCH ?
           AND (? IS NULL OR providerId = ?)
         ORDER BY rank
         LIMIT ?
-      `).all(match, providerId, providerId, limit) as Array<{
+      `).all(match, providerId, providerId, fetchLimit) as Array<{
         sessionId: string; firstItemId: string; summary: string; closedAt: number;
-        providerId: string; rank: number;
+        providerId: string; cwd: string; rank: number;
       }>;
-      return rows.map((row) => ({
+      const inScope = opts.cwdWithin === undefined
+        ? rows
+        : rows.filter((row) => isWithin(opts.cwdWithin as string, row.cwd));
+      return inScope.slice(0, limit).map((row) => ({
         sessionId: row.sessionId,
         itemId: row.firstItemId,
         snippet: row.summary,
@@ -134,6 +181,7 @@ export class FtsMemoryStore implements MemoryStore {
         // "higher score is more relevant", the ordinary convention.
         score: -row.rank,
         ts: row.closedAt,
+        cwd: row.cwd,
       }));
     } catch (err) {
       console.error('[mar-code] memory search failed', err);

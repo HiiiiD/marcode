@@ -62,12 +62,27 @@ async function callToolAs(
   return body.result;
 }
 
+async function listToolNames(config: SelfControlMcpConfig): Promise<string[]> {
+  const res = await fetch(config.url, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json', accept: 'application/json, text/event-stream',
+      authorization: `Bearer ${config.token}`,
+    },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
+  });
+  const body = await res.json() as { result: { tools: { name: string }[] } };
+  return body.result.tools.map((t) => t.name);
+}
+
 function fakeMemory(overrides: Partial<MemoryStore> = {}): MemoryStore {
   return {
     search: async () => [],
     fetch: async () => ({ sessionId: 's1', items: [] }),
     index: async () => {},
     forget: async () => {},
+    getDigest: async () => undefined,
+    digestMeta: async () => new Map(),
     ...overrides,
   };
 }
@@ -475,7 +490,7 @@ suite('SelfControlMcpServer', () => {
 
 suite('SelfControlMcpServer memory tools', () => {
   test('marcode__recall returns snippets from MemoryStore.search()', async () => {
-    const hit: MemoryHit = { sessionId: 's1', itemId: 'u1', snippet: 'Fixed the flaky login test', score: 1, ts: 1000 };
+    const hit: MemoryHit = { sessionId: 's1', itemId: 'u1', snippet: 'Fixed the flaky login test', score: 1, ts: 1000, cwd: '/r' };
     const memory = fakeMemory({ search: async (query) => { assert.strictEqual(query, 'login'); return [hit]; } });
     const server = new SelfControlMcpServer(fakeManager(), memory);
     const config = await server.start();
@@ -494,17 +509,70 @@ suite('SelfControlMcpServer memory tools', () => {
     });
     const server = new SelfControlMcpServer(fakeManager(), memory);
     const config = await server.start();
-    const result = await callTool(config, 'marcode__recall_fetch', { sessionId: 's1', itemId: 'u1' });
+    const result = await callTool(config, 'marcode__recall_fetch', { sessionId: 's1', itemId: 'u1', detail: 'transcript' });
     const body = JSON.parse(result.content[0].text) as { items: unknown[] };
     assert.strictEqual(body.items.length, 1);
     await server.dispose();
   });
 
-  test('marcode__recall errors without a MemoryStore configured', async () => {
+  test('marcode__recall searches inside the calling session\'s workspace folder', async () => {
+    let seen: { cwdWithin?: string } | undefined;
+    const memory = fakeMemory({ search: async (_q, opts) => { seen = opts; return []; } });
+    const server = new SelfControlMcpServer(fakeManager({ recallRoot: (sid) => (sid === 's1' ? '/ws/app' : undefined) }), memory);
+    const config = await server.start();
+    await callToolAs(config, 's1', 'marcode__recall', { query: 'login' });
+    assert.strictEqual(seen?.cwdWithin, '/ws/app');
+    await server.dispose();
+  });
+
+  test('marcode__recall_fetch returns the digest by default', async () => {
+    const memory = fakeMemory({
+      getDigest: async (id) => (id === 's1'
+        ? {
+            title: 'Login retry', request: 'Fix login', outcome: 'Added a retry', filesEdited: ['a.ts'],
+            source: 'llm', summarizerVersion: 1, forUpdatedAt: 1, learned: 'Fixture raced',
+          }
+        : undefined),
+    });
+    const server = new SelfControlMcpServer(fakeManager(), memory);
+    const config = await server.start();
+    const result = await callTool(config, 'marcode__recall_fetch', { sessionId: 's1' });
+    assert.strictEqual(result.content[0].text.includes('Learned: Fixture raced'), true);
+    await server.dispose();
+  });
+
+  test('marcode__recall_fetch says so when a session has no digest', async () => {
+    const server = new SelfControlMcpServer(fakeManager(), fakeMemory({ getDigest: async () => undefined }));
+    const config = await server.start();
+    const result = await callTool(config, 'marcode__recall_fetch', { sessionId: 'nope' });
+    assert.strictEqual(result.isError, true);
+    await server.dispose();
+  });
+
+  test('marcode__recall_fetch transcript detail needs an itemId', async () => {
+    const server = new SelfControlMcpServer(fakeManager(), fakeMemory({}));
+    const config = await server.start();
+    const result = await callTool(config, 'marcode__recall_fetch', { sessionId: 's1', detail: 'transcript' });
+    assert.strictEqual(result.isError, true);
+    await server.dispose();
+  });
+
+  test('the recall tools are not listed without a MemoryStore', async () => {
     const server = new SelfControlMcpServer(fakeManager());
     const config = await server.start();
-    const result = await callTool(config, 'marcode__recall', { query: 'login' });
-    assert.strictEqual(result.isError, true);
+    const names = await listToolNames(config);
+    assert.strictEqual(names.includes('marcode__recall'), false);
+    assert.strictEqual(names.includes('marcode__recall_fetch'), false);
+    assert.strictEqual(names.includes('marcode__list_sessions'), true);
+    await server.dispose();
+  });
+
+  test('the recall tools are listed with a MemoryStore', async () => {
+    const server = new SelfControlMcpServer(fakeManager(), fakeMemory());
+    const config = await server.start();
+    const names = await listToolNames(config);
+    assert.strictEqual(names.includes('marcode__recall'), true);
+    assert.strictEqual(names.includes('marcode__recall_fetch'), true);
     await server.dispose();
   });
 });

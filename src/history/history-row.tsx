@@ -1,4 +1,4 @@
-import { PinIcon, PinOffIcon } from 'lucide-react';
+import { PinIcon, PinOffIcon, RefreshCwIcon } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { TableCell, TableRow } from '@/components/ui/table';
@@ -7,7 +7,7 @@ import { useStore } from './store';
 import type { SessionSummary } from '../protocol/messages';
 
 export function HistoryRow({ session }: { session: SessionSummary }) {
-  const { post } = useStore();
+  const { state, post } = useStore();
   const pinned = session.pinned === true;
   const summary = session.summary?.text || session.title;
 
@@ -33,6 +33,16 @@ export function HistoryRow({ session }: { session: SessionSummary }) {
       </TableCell>
       <TableCell className="align-top">
         <div className="flex items-center justify-end gap-1">
+          {state.memory?.enabled && (
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label={`Re-summarize ${session.name}`}
+              onClick={() => post({ t: 'memory-resummarize', id: session.id })}
+            >
+              <RefreshCwIcon aria-hidden />
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="icon-sm"

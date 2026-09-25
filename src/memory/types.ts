@@ -1,4 +1,5 @@
 import type { SessionId, TranscriptItem } from '../protocol/messages';
+import type { SessionDigest } from './digest';
 
 /**
  * One search result. Deliberately snippet-only, never a `TranscriptItem[]` —
@@ -14,6 +15,8 @@ export interface MemoryHit {
   snippet: string;
   score: number;
   ts: number;
+  /** Where the session ran, so a caller can scope recall to a workspace folder. */
+  cwd: string;
 }
 
 export interface MemoryDetail {
@@ -22,16 +25,19 @@ export interface MemoryDetail {
   items: TranscriptItem[];
 }
 
-/** What `MemoryStore.index()` needs to make one closed session findable later. */
+/** What `MemoryStore.index()` needs to make one session findable later. */
 export interface SessionRecord {
   sessionId: SessionId;
   providerId: string;
   cwd: string;
-  title: string;
   closedAt: number;
-  /** The full transcript at close time — the caller already has this in memory. */
+  /** The full transcript at index time — the caller already has this in memory. */
   items: TranscriptItem[];
+  /** Absent means "build the extractive digest from `items`". */
+  digest?: SessionDigest;
 }
+
+export type DigestMeta = Pick<SessionDigest, 'source' | 'summarizerVersion' | 'forUpdatedAt'>;
 
 /**
  * The swappable seam. v1 ships `FtsMemoryStore` (SQLite + FTS5); a future
@@ -41,10 +47,17 @@ export interface SessionRecord {
  * when the implementation changes, only rebuilt from `index()` calls again.
  */
 export interface MemoryStore {
-  /** Called once a session archives. Never called on a live session. */
+  /** Called when a session archives, and by the history and reindex passes for any session with content. */
   index(record: SessionRecord): Promise<void>;
-  /** Cheap: snippets, not full content. */
-  search(query: string, opts?: { providerId?: string; limit?: number }): Promise<MemoryHit[]>;
+  /**
+   * Cheap: snippets, not full content. `match` defaults to `'all'` (every term
+   * must appear); `'any'` ranks sessions sharing at least one, for a caller
+   * holding a whole prompt rather than a hand-picked keyword.
+   */
+  search(
+    query: string,
+    opts?: { providerId?: string; limit?: number; match?: 'all' | 'any'; cwdWithin?: string },
+  ): Promise<MemoryHit[]>;
   /** Full slice for exactly one hit, on demand. */
   fetch(hit: { sessionId: SessionId; itemId: string }): Promise<MemoryDetail>;
   /**
@@ -53,14 +66,8 @@ export interface MemoryStore {
    * the transcript it was meant to erase permanently findable in this cache.
    */
   forget(sessionId: SessionId): Promise<void>;
-}
-
-/**
- * How `index()` gets its short, human-readable summary. A second, independently
- * swappable seam nested inside a `MemoryStore` implementation: v1's
- * `ExtractiveSummarizer` makes no LLM call; a future LLM-backed one implements
- * the same one-method contract.
- */
-export interface Summarizer {
-  summarize(items: TranscriptItem[]): Promise<string>;
+  /** The stored digest for one session, if any. */
+  getDigest(sessionId: SessionId): Promise<SessionDigest | undefined>;
+  /** Cheap: every stored digest's freshness, so a caller can skip current ones. */
+  digestMeta(): Promise<Map<SessionId, DigestMeta>>;
 }

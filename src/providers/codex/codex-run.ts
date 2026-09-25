@@ -499,6 +499,8 @@ export class CodexRun implements AgentRun {
       // (codex-rs `app-server-protocol`), verified against source rather than
       // guessed — unlike the OpenCode ACP path, which has no equivalent.
       ...(this.opts.systemPrompt ? { base_instructions: this.opts.systemPrompt } : {}),
+      // An ephemeral thread is never written to Codex's own history.
+      ...(this.opts.withoutSelfControl ? { ephemeral: true } : {}),
       // Codex's own app-server protocol has no `mcpServers` field on
       // `ThreadStartParams`/`ThreadResumeParams` — only this raw config
       // override map, matching the same dotted-path shape as `codex mcp add`
