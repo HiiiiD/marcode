@@ -108,12 +108,14 @@ export class FtsMemoryStore implements MemoryStore {
    * behaviour for ordinary alphanumeric queries — and any remaining SQL
    * error (a corrupt index, say) is caught rather than left to propagate.
    */
-  async search(query: string, opts: { providerId?: string; limit?: number } = {}): Promise<MemoryHit[]> {
+  async search(
+    query: string, opts: { providerId?: string; limit?: number; match?: 'all' | 'any' } = {},
+  ): Promise<MemoryHit[]> {
     const limit = opts.limit ?? 20;
     const providerId = opts.providerId ?? null;
     const terms = query.match(/[\p{L}\p{N}_]+/gu) ?? [];
     if (terms.length === 0) { return []; }
-    const match = terms.map((term) => `"${term}"`).join(' ');
+    const match = terms.map((term) => `"${term}"`).join(opts.match === 'any' ? ' OR ' : ' ');
     try {
       const rows = this.db.prepare(`
         SELECT sessionId, firstItemId, summary, closedAt, providerId, bm25(sessions_fts) AS rank

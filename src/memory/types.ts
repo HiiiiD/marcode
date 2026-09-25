@@ -43,8 +43,14 @@ export interface SessionRecord {
 export interface MemoryStore {
   /** Called once a session archives. Never called on a live session. */
   index(record: SessionRecord): Promise<void>;
-  /** Cheap: snippets, not full content. */
-  search(query: string, opts?: { providerId?: string; limit?: number }): Promise<MemoryHit[]>;
+  /**
+   * Cheap: snippets, not full content. `match` defaults to `'all'` (every term
+   * must appear); `'any'` ranks sessions sharing at least one, for a caller
+   * holding a whole prompt rather than a hand-picked keyword.
+   */
+  search(
+    query: string, opts?: { providerId?: string; limit?: number; match?: 'all' | 'any' },
+  ): Promise<MemoryHit[]>;
   /** Full slice for exactly one hit, on demand. */
   fetch(hit: { sessionId: SessionId; itemId: string }): Promise<MemoryDetail>;
   /**

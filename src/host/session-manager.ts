@@ -12,6 +12,7 @@ import { buildSeed } from './replay';
 import { findPayload, type ResolvedBlock } from './session-refs';
 import { TRANSCRIPT_VERSION, type StoredIndex, type TranscriptStore } from './transcript-store';
 import { digestSession } from '../memory/session-digest';
+import { buildMemoryBlock, queryTermsOf } from '../memory/prime-block';
 import type { MemoryStore } from '../memory/types';
 import type {
   AgentProvider, EffortLevel, Invocable, ModelInfo, UpdateInfo, UsageMirror, UsageWindow,
@@ -1962,6 +1963,13 @@ export class SessionManager implements SessionSink {
    */
   shellNoise(profile: string): void {
     this.onShellNoise(profile);
+  }
+
+  async recall(text: string): Promise<string | undefined> {
+    if (!this.memory) { return undefined; }
+    const terms = queryTermsOf(text);
+    if (terms.length === 0) { return undefined; }
+    return buildMemoryBlock(await this.memory.search(terms.join(' '), { match: 'any', limit: 5 }));
   }
 
   hasQueuedRelocation(id: SessionId): boolean {

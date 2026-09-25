@@ -42,6 +42,18 @@ suite('FtsMemoryStore', () => {
     assert.strictEqual(hits.length, 0);
   });
 
+  test("search() with match 'any' finds a session sharing only some terms", async () => {
+    const store = new FtsMemoryStore(await tempDbPath(), new ExtractiveSummarizer(), noopReader);
+    await store.index({
+      sessionId: 's1', providerId: 'claude', cwd: '/repo', title: 'Untitled', closedAt: 1000,
+      items: [userItem('u1', 'Investigate the flaky login test on CI')],
+    });
+    assert.strictEqual((await store.search('flaky checkout payment')).length, 0);
+    const hits = await store.search('flaky checkout payment', { match: 'any' });
+    assert.strictEqual(hits.length, 1);
+    assert.strictEqual(hits[0].sessionId, 's1');
+  });
+
   test('search() filters by providerId', async () => {
     const dbPath = await tempDbPath();
     const store = new FtsMemoryStore(dbPath, new ExtractiveSummarizer(), noopReader);
