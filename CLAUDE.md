@@ -88,6 +88,7 @@ extension.ts
 | `src/host/digest/llm-summarizer.ts` | Hidden, tool-less `AgentRun` (started `withoutSelfControl`) that writes an LLM digest |
 | `src/host/digest/llm-prompt.ts` | Trimmed summary prompt and the tolerant JSON reply parser |
 | `src/shared/memory-settings.ts` | `marcode.memory.enabled` and `marcode.memory.summarizer` ids and validation |
+| `src/shared/path-scope.ts` | `isWithin(root, path)`: separator- and case-aware folder containment for recall scoping |
 | `src/history/` | The history client: its own narrow reducer, store and surface (toolbar, table, rows) |
 | `src/history/history-rows.ts` | Pure filter/sort/group of the roster into pinned and rest |
 | `src/host/fleet-diff.ts` | One tree's change set: base resolution, numstat + untracked parsing |
@@ -221,9 +222,16 @@ These are not style preferences. Breaking one breaks the design.
   work, so a restored one would describe a tree nobody checked this launch.
 - **One digest per session, one writer.** `DigestService` alone assigns a `SessionDigest`; the
   history tab's `SessionState.summary` is a projection of it and the FTS row is derived from
-  it, so history and recall cannot disagree. Writing one never touches `updatedAt`. The LLM
-  summarizer runs only on closed sessions, always falls back to the extractive digest, and its
-  run is started `withoutSelfControl` so it can never call `marcode__recall` on itself.
+  it, so history and recall cannot disagree. Writing one never touches `updatedAt`.
+  **Only closed sessions are stored, recalled or primed**: a live session is projected for the
+  history tab and never written to `memory.sqlite`, and reopening a closed one removes its row.
+  **Recall is scoped to a workspace folder**: priming and `marcode__recall` only see sessions whose
+  cwd is inside the innermost open workspace folder containing the caller's cwd (or the cwd itself
+  when none does). The LLM summarizer runs only on closed sessions, always falls back to the
+  extractive digest, and its run is started `withoutSelfControl`: no `marcode__*` tools on any
+  provider, and no trace in the vendor CLI's own history (Claude `persistSession: false`, Codex
+  ephemeral thread, OpenCode session deleted after the run). On Claude it also loads no user
+  settings or built-in tools; Codex and OpenCode still load their own user config.
   `marcode.memory.enabled = false` removes the store, service, priming and recall tools
   entirely; the history tab then keeps the legacy in-memory extractive summary.
 - **Pin and summary are host state on `SessionState`, and neither writes `updatedAt`.**
