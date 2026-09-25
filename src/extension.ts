@@ -643,13 +643,15 @@ export async function activate(context: vscode.ExtensionContext) {
         void vscode.window.showInformationMessage('Marcode memory is off (marcode.memory.enabled).');
         return;
       }
-      let detail = 'Rebuild the memory index for every session. No model cost.';
-      if (status.llm) {
-        const est = await manager.memoryEstimate('missing-llm');
-        if (est.sessions > 0) {
-          detail += ` Then summarize ${est.sessions} closed sessions with the configured model `
-            + `(about ${Math.round(est.approxInputTokens / 1000)}k input tokens).`;
-        }
+      let detail = 'Rebuild the memory index for every session (no model used for this step).';
+      const est = status.llm ? await manager.memoryEstimate('missing-llm') : undefined;
+      if (est && est.sessions > 0) {
+        detail += ` Then summarize ${est.sessions} hidden sessions with the configured model `
+          + `(about ${Math.round(est.approxInputTokens / 1000)}k input tokens). This costs model usage.`;
+      } else if (est) {
+        detail += ' Every hidden session already has a current model summary, so no model calls will be made.';
+      } else {
+        detail += ' No summarizer is configured, so no model calls will be made.';
       }
       const start = 'Start';
       if (await vscode.window.showInformationMessage(detail, { modal: true }, start) !== start) { return; }
