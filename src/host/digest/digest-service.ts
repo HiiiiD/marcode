@@ -30,6 +30,7 @@ export interface DigestServiceOptions {
 
 const APPROX_TOKENS_PER_SESSION = 3000;
 const SETTLE_EVERY = 10;
+const LLM_CONCURRENCY = 3;
 
 const isCurrent = (meta: DigestMeta | undefined, session: DigestSession): boolean =>
   meta !== undefined && meta.forUpdatedAt === session.updatedAt && meta.summarizerVersion === SUMMARIZER_VERSION;
@@ -224,14 +225,19 @@ export class DigestService {
     this.o.onSettled();
 
     done = 0;
-    for (const session of llm) {
-      if (this.cancelled) { return this.finish('cancelled', done, llm.length); }
-      await this.enqueue('slow', () => this.writeLlm(session));
-      done++;
-      this.o.onProgress({ phase: 'llm', done, total: llm.length });
-      if (done % SETTLE_EVERY === 0) { this.o.onSettled(); }
-    }
-    this.finish('done', done, llm.length);
+    let next = 0;
+    // Bypasses the slow lane: that lane serializes single upgrades, and each model call is an independent run.
+    const worker = async (): Promise<void> => {
+      while (!this.cancelled && next < llm.length) {
+        const session = llm[next++];
+        await this.writeLlm(session);
+        done++;
+        this.o.onProgress({ phase: 'llm', done, total: llm.length });
+        if (done % SETTLE_EVERY === 0) { this.o.onSettled(); }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(LLM_CONCURRENCY, llm.length) }, worker));
+    this.finish(this.cancelled ? 'cancelled' : 'done', done, llm.length);
   }
 
   private finish(phase: 'done' | 'cancelled', done: number, total: number): void {

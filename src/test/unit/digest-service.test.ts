@@ -213,21 +213,40 @@ suite('DigestService', () => {
   });
 
   test('cancel stops a running reindex and reports cancelled', async () => {
-    const gate: { release?: () => void } = {};
+    const releases: Array<() => void> = [];
     const { service, progress } = rig(
-      [session('a'), session('b'), session('c')],
+      [session('a'), session('b'), session('c'), session('d')],
       {
         summarize: (_i, base) => new Promise((resolve) => {
-          gate.release = () => resolve(llmDigest(base));
+          releases.push(() => resolve(llmDigest(base)));
         }),
       },
     );
     const run = service.reindex('all');
     await new Promise((r) => setTimeout(r, 20));
     service.cancel();
-    gate.release?.();
+    releases.forEach((r) => r());
     await run;
+    assert.strictEqual(releases.length, 3);
     assert.strictEqual(progress[progress.length - 1].phase, 'cancelled');
+  });
+
+  test('reindex summarizes several sessions at once, bounded', async () => {
+    let active = 0;
+    let peak = 0;
+    const { service } = rig(
+      Array.from({ length: 8 }, (_, i) => session(`s${i}`)),
+      {
+        summarize: async (_i, base) => {
+          active++; peak = Math.max(peak, active);
+          await new Promise((r) => setTimeout(r, 10));
+          active--;
+          return llmDigest(base);
+        },
+      },
+    );
+    await service.reindex('all');
+    assert.strictEqual(peak, 3);
   });
 
   test('a close-time refresh is not starved behind a long reindex', async () => {
