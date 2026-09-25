@@ -47,18 +47,26 @@ suite('history app', () => {
     assert.strictEqual(screen.getByText('Pinned').textContent, 'Pinned');
   });
 
-  test('a row shows dates, provider and model, and the summary', () => {
+  test('a row shows last updated, provider and model; summary is collapsed', () => {
     renderHistory();
     hydrate(sessions());
     assert.strictEqual(screen.getAllByText(formatWhen(300)).length >= 1, true);
-    assert.strictEqual(screen.getAllByText(formatWhen(10)).length >= 1, true);
     assert.strictEqual(screen.getAllByText('fake · fake-large').length, 4);
-    assert.strictEqual(screen.getByText('Fixes login redirect').textContent, 'Fixes login redirect');
+    assert.strictEqual(screen.queryByText('Fixes login redirect') === null, true);
   });
 
-  test('a session without a summary falls back to its title', () => {
+  test('expanding a row reveals its summary and created date', async () => {
     renderHistory();
     hydrate(sessions());
+    await userEvent.click(screen.getByRole('button', { name: 'Expand alpha-name' }));
+    assert.strictEqual(screen.getByText('Fixes login redirect').textContent, 'Fixes login redirect');
+    assert.strictEqual(screen.getByRole('button', { name: 'Collapse alpha-name' }).getAttribute('aria-expanded'), 'true');
+  });
+
+  test('a session without a summary falls back to its title when expanded', async () => {
+    renderHistory();
+    hydrate(sessions());
+    await userEvent.click(screen.getByRole('button', { name: 'Expand beta-name' }));
     assert.strictEqual(screen.getAllByText('Beta').length, 2);
   });
 

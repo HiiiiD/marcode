@@ -5,7 +5,7 @@ import type { HistoryGroups } from './history-rows';
 function GroupLabel({ label }: { label: string }) {
   return (
     <TableRow>
-      <TableCell colSpan={6} className="bg-muted/40 py-1 font-medium text-muted-foreground">
+      <TableCell colSpan={5} className="bg-muted/40 py-1 font-medium text-muted-foreground">
         {label}
       </TableCell>
     </TableRow>
@@ -18,12 +18,11 @@ export function HistoryTable({ groups }: { groups: HistoryGroups }) {
     <Table>
       <TableHeader>
         <TableRow>
+          <TableHead className="w-8"><span className="sr-only">Expand</span></TableHead>
           <TableHead>Session</TableHead>
           <TableHead>Model</TableHead>
-          <TableHead>Created</TableHead>
           <TableHead>Last updated</TableHead>
-          <TableHead>Summary</TableHead>
-          <TableHead><span className="sr-only">Actions</span></TableHead>
+          <TableHead className="sticky right-0 bg-background"><span className="sr-only">Actions</span></TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
