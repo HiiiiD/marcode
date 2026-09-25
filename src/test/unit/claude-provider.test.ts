@@ -545,6 +545,18 @@ suite('ClaudeProvider (lazy start)', () => {
     await run.dispose();
   });
 
+  test('start() omits the self-control MCP server when withoutSelfControl is set', async () => {
+    const fake = fakeLoadQuery();
+    const provider = new ClaudeProvider(fake.load as never, { url: 'http://127.0.0.1:1234/mcp', token: 'tok' });
+    const run = provider.start({
+      cwd: '/tmp', permissionMode: 'default', sessionId: 's', withoutSelfControl: true,
+    });
+    run.send('hi');
+    await flushMicrotasks();
+    assert.strictEqual(fake.calls[0].options.mcpServers, undefined);
+    await run.dispose();
+  });
+
   test('start() omits mcpServers when no self-control config was given', async () => {
     const fake = fakeLoadQuery();
     const provider = new ClaudeProvider(fake.load as never);

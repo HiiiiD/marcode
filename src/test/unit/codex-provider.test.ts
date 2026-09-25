@@ -538,6 +538,19 @@ suite('CodexProvider', () => {
     });
   });
 
+  test('thread/start sends no mcp_servers override when withoutSelfControl is set', async () => {
+    const { provider, respondTo, sent } = providerWithStub({
+      selfControlMcp: { url: 'http://127.0.0.1:1/mcp', token: 'tok' },
+    });
+    const run = provider.start({
+      cwd: '/tmp', permissionMode: 'default', sessionId: 's', withoutSelfControl: true,
+    });
+    run.send('hi');
+    await respondTo('thread/start', { thread: { id: 'th_1' } });
+    const started = sent().find((f) => f.method === 'thread/start');
+    assert.strictEqual((started?.params as { config?: unknown }).config, undefined);
+  });
+
   test('the spawned app-server process gets MARCODE_SELF_CONTROL_TOKEN in its env', () => {
     let capturedEnv: NodeJS.ProcessEnv | undefined;
     const provider = new CodexProvider({

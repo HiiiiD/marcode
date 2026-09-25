@@ -289,7 +289,7 @@ export class OpenCodeProvider implements AgentProvider {
       tools: openCodeTools,
       modeId: openCodeModeId,
       clientName: 'mar-code',
-      selfControlMcp: this.selfControlMcp,
+      selfControlMcp: opts.withoutSelfControl ? undefined : this.selfControlMcp,
       childEvents: watch.events,
       // `onSessionId` fires once, the moment a real opencode session id
       // exists (see `AcpRunOptions`) — the earliest point a fresh process

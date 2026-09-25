@@ -314,6 +314,19 @@ suite('OpenCodeProvider', () => {
     await run.dispose();
   });
 
+  test('start() with withoutSelfControl gives the AcpRun no self-control MCP server', async () => {
+    const { spawn, seen } = recordingSpawn();
+    const provider = new OpenCodeProvider({
+      spawn, selfControlMcp: { url: 'http://x/mcp', token: 't' },
+    });
+    const run = provider.start({
+      cwd: '/tmp', permissionMode: 'default', sessionId: 's', withoutSelfControl: true,
+    });
+    const created = await waitFor(seen, 'session/new');
+    assert.deepStrictEqual((created.params as { mcpServers: unknown }).mcpServers, []);
+    await run.dispose();
+  });
+
   test('an instance override sets id/displayName and merges env into the spawned process', async () => {
     let capturedEnv: NodeJS.ProcessEnv | undefined;
     const { spawn: scripted } = scriptedSpawn();

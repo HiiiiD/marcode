@@ -455,7 +455,8 @@ export class CodexProvider implements AgentProvider {
     const view = new ThreadView(() => this.connection());
     this.views.add(view);
     return new CodexRun(view, {
-      ...opts, selfControlMcp: this.opts.selfControlMcp, systemPrompt: this.opts.systemPrompt,
+      ...opts, selfControlMcp: opts.withoutSelfControl ? undefined : this.opts.selfControlMcp,
+      systemPrompt: this.opts.systemPrompt,
     }, () => {
       this.views.delete(view);
       if (this.views.size === 0) { this.scheduleTeardown(); }

@@ -140,6 +140,11 @@ export interface StartOptions {
    * self-control wiring. See `self-control-mcp-server.ts`.
    */
   sessionId: SessionId;
+  /**
+   * Leaves the self-control MCP server off this run. For internal, tool-less
+   * runs (the digest summarizer) that must never reach `marcode__*` tools.
+   */
+  withoutSelfControl?: boolean;
 }
 
 /**

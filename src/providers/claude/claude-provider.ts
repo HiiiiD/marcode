@@ -597,7 +597,7 @@ export class ClaudeProvider implements AgentProvider {
         ...(this.pathToClaudeCodeExecutable ? { pathToClaudeCodeExecutable: this.pathToClaudeCodeExecutable } : {}),
         ...(effort !== undefined ? { effort: effort as SdkEffortLevel } : {}),
         ...(isBypassMode ? { allowDangerouslySkipPermissions: true } : {}),
-        ...(this.selfControlMcp ? {
+        ...(this.selfControlMcp && !opts.withoutSelfControl ? {
           mcpServers: {
             marcode_self_control: {
               type: 'http' as const,
