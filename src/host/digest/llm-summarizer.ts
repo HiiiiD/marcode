@@ -11,12 +11,17 @@ export interface LlmSummarizerOptions {
   /** Deliberately not a session's cwd: a project directory would load its CLAUDE.md into every summary. */
   cwd: string;
   timeoutMs?: number;
+  concurrency?: number;
 }
 
 const DEFAULT_TIMEOUT_MS = 90_000;
 
 export class LlmSummarizer {
-  constructor(private readonly o: LlmSummarizerOptions) {}
+  readonly concurrency: number | undefined;
+
+  constructor(private readonly o: LlmSummarizerOptions) {
+    this.concurrency = o.concurrency;
+  }
 
   async summarize(items: TranscriptItem[], base: SessionDigest): Promise<SessionDigest> {
     const run = this.o.provider.start({

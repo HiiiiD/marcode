@@ -475,6 +475,7 @@ export async function activate(context: vscode.ExtensionContext) {
         provider: providers.get(setting.provider) as AgentProvider,
         model: setting.model,
         effort: setting.effort,
+        concurrency: setting.concurrency,
         cwd: os.tmpdir(),
       }));
     }

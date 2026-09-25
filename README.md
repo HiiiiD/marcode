@@ -254,8 +254,10 @@ it from the index.
   this. No store, priming or recall tools; the history tab keeps a plain extractive summary.
 - `marcode.memory.summarizer`: `{ "mode": "off" }` (default) builds digests from the
   transcript with no model call. `{ "mode": "llm", "provider": "claude", "model": "...",
-  "effort": "low" }` runs a hidden, tool-less agent on session close, falling back to the
-  extractive digest on failure. Summarizer runs leave no trace in the vendor CLI's history.
+  "effort": "low", "concurrency": 3 }` runs a hidden, tool-less agent on session close,
+  falling back to the extractive digest on failure. Summarizer runs leave no trace in the
+  vendor CLI's history. `concurrency` (1–8, default 3) is how many sessions a rebuild
+  summarizes at once; lower it if your provider rate-limits.
 - **Marcode: Rebuild memory index** re-digests every closed session; the history tab also
   offers per-session re-summarize.
 
