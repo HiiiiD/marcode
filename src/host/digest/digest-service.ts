@@ -17,7 +17,11 @@ export type DigestScope = 'all' | 'missing-llm';
 export interface DigestProgress { phase: 'extractive' | 'llm' | 'done' | 'cancelled'; done: number; total: number }
 export interface DigestEstimate { sessions: number; approxInputTokens: number }
 
-type Summarizer = { summarize(items: TranscriptItem[], base: SessionDigest): Promise<SessionDigest> };
+type Summarizer = {
+  summarize(items: TranscriptItem[], base: SessionDigest): Promise<SessionDigest>;
+  /** How many summaries a reindex may run at once. */
+  concurrency?: number;
+};
 
 export interface DigestServiceOptions {
   store: MemoryStore;
@@ -30,7 +34,7 @@ export interface DigestServiceOptions {
 
 const APPROX_TOKENS_PER_SESSION = 3000;
 const SETTLE_EVERY = 10;
-const LLM_CONCURRENCY = 3;
+const DEFAULT_LLM_CONCURRENCY = 3;
 
 const isCurrent = (meta: DigestMeta | undefined, session: DigestSession): boolean =>
   meta !== undefined && meta.forUpdatedAt === session.updatedAt && meta.summarizerVersion === SUMMARIZER_VERSION;
@@ -236,7 +240,7 @@ export class DigestService {
         if (done % SETTLE_EVERY === 0) { this.o.onSettled(); }
       }
     };
-    await Promise.all(Array.from({ length: Math.min(LLM_CONCURRENCY, llm.length) }, worker));
+    await Promise.all(Array.from({ length: Math.min(this.summarizer?.concurrency ?? DEFAULT_LLM_CONCURRENCY, llm.length) }, worker));
     this.finish(this.cancelled ? 'cancelled' : 'done', done, llm.length);
   }
 

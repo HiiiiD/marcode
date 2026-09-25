@@ -5,9 +5,12 @@ export const MEMORY_SUMMARIZER_SETTING = 'marcode.memory.summarizer';
 
 const EFFORTS: readonly EffortLevel[] = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'];
 
-export interface LlmSummarizerConfig { provider: string; model: string; effort: EffortLevel }
+export interface LlmSummarizerConfig { provider: string; model: string; effort: EffortLevel; concurrency: number }
 export type SummarizerSetting = { mode: 'off' } | ({ mode: 'llm' } & LlmSummarizerConfig);
 export interface SummarizerValidation { setting: SummarizerSetting; warnings: string[] }
+
+export const MAX_SUMMARIZER_CONCURRENCY = 8;
+const DEFAULT_CONCURRENCY = 3;
 
 const OFF: SummarizerSetting = { mode: 'off' };
 
@@ -38,8 +41,17 @@ export function validateSummarizer(configured: unknown, providerIds: Iterable<st
       warnings.push(`${MEMORY_SUMMARIZER_SETTING}.effort "${String(value.effort)}" is not a known level; using "low".`);
     }
   }
+  let concurrency = DEFAULT_CONCURRENCY;
+  if (value.concurrency !== undefined) {
+    const n = value.concurrency;
+    if (typeof n === 'number' && Number.isInteger(n) && n >= 1 && n <= MAX_SUMMARIZER_CONCURRENCY) {
+      concurrency = n;
+    } else {
+      warnings.push(`${MEMORY_SUMMARIZER_SETTING}.concurrency must be an integer from 1 to ${MAX_SUMMARIZER_CONCURRENCY}; using ${DEFAULT_CONCURRENCY}.`);
+    }
+  }
   return {
-    setting: { mode: 'llm', provider: value.provider as string, model: value.model as string, effort },
+    setting: { mode: 'llm', provider: value.provider as string, model: value.model as string, effort, concurrency },
     warnings,
   };
 }

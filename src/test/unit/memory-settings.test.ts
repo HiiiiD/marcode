@@ -13,8 +13,26 @@ suite('validateSummarizer', () => {
     const { setting, warnings } = validateSummarizer(
       { mode: 'llm', provider: 'claude', model: 'claude-haiku-4-5' }, ids,
     );
-    assert.deepStrictEqual(setting, { mode: 'llm', provider: 'claude', model: 'claude-haiku-4-5', effort: 'low' });
+    assert.deepStrictEqual(setting, { mode: 'llm', provider: 'claude', model: 'claude-haiku-4-5', effort: 'low', concurrency: 3 });
     assert.deepStrictEqual(warnings, []);
+  });
+
+  test('concurrency is accepted within 1..8', () => {
+    const { setting, warnings } = validateSummarizer(
+      { mode: 'llm', provider: 'claude', model: 'm', concurrency: 5 }, ids,
+    );
+    assert.strictEqual(setting.mode === 'llm' && setting.concurrency, 5);
+    assert.deepStrictEqual(warnings, []);
+  });
+
+  test('an out-of-range or non-integer concurrency warns and uses 3', () => {
+    for (const bad of [0, 9, 2.5, 'many']) {
+      const { setting, warnings } = validateSummarizer(
+        { mode: 'llm', provider: 'claude', model: 'm', concurrency: bad }, ids,
+      );
+      assert.strictEqual(setting.mode === 'llm' && setting.concurrency, 3);
+      assert.strictEqual(warnings.length, 1);
+    }
   });
 
   test('llm without a model warns and falls back to off', () => {
@@ -34,7 +52,7 @@ suite('validateSummarizer', () => {
     const { setting, warnings } = validateSummarizer(
       { mode: 'llm', provider: 'codex', model: 'm', effort: 'turbo' }, ids,
     );
-    assert.deepStrictEqual(setting, { mode: 'llm', provider: 'codex', model: 'm', effort: 'low' });
+    assert.deepStrictEqual(setting, { mode: 'llm', provider: 'codex', model: 'm', effort: 'low', concurrency: 3 });
     assert.strictEqual(warnings.length, 1);
   });
 

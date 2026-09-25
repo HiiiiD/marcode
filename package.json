@@ -58,7 +58,8 @@
             "mode": { "type": "string", "enum": ["off", "llm"], "default": "off" },
             "provider": { "type": "string", "description": "A provider or instance id, e.g. \"claude\". Required when mode is \"llm\"." },
             "model": { "type": "string", "description": "A model id that provider lists. Required when mode is \"llm\"." },
-            "effort": { "type": "string", "enum": ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"], "default": "low" }
+            "effort": { "type": "string", "enum": ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"], "default": "low" },
+            "concurrency": { "type": "integer", "minimum": 1, "maximum": 8, "default": 3, "description": "How many sessions a reindex summarizes at once. Lower it if the provider rate-limits." }
           },
           "additionalProperties": false
         },

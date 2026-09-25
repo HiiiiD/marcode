@@ -29,6 +29,7 @@ class FakeStore implements MemoryStore {
 
 function rig(sessions: DigestSession[], opts: {
   summarize?: (items: TranscriptItem[], base: SessionDigest) => Promise<SessionDigest>;
+  concurrency?: number;
 } = {}) {
   const store = new FakeStore();
   const projected = new Map<string, number>();
@@ -41,7 +42,7 @@ function rig(sessions: DigestSession[], opts: {
   };
   const service = new DigestService({
     store, source,
-    summarizer: opts.summarize ? { summarize: opts.summarize } : undefined,
+    summarizer: opts.summarize ? { summarize: opts.summarize, concurrency: opts.concurrency } : undefined,
     onDigest: (id, d) => { projected.set(id, d.forUpdatedAt); },
     onSettled: () => { settled++; },
     onProgress: (p) => progress.push(p),
@@ -231,23 +232,26 @@ suite('DigestService', () => {
     assert.strictEqual(progress[progress.length - 1].phase, 'cancelled');
   });
 
-  test('reindex summarizes several sessions at once, bounded', async () => {
-    let active = 0;
-    let peak = 0;
-    const { service } = rig(
-      Array.from({ length: 8 }, (_, i) => session(`s${i}`)),
-      {
-        summarize: async (_i, base) => {
-          active++; peak = Math.max(peak, active);
-          await new Promise((r) => setTimeout(r, 10));
-          active--;
-          return llmDigest(base);
+  for (const [limit, expected] of [[undefined, 3], [1, 1], [5, 5]] as const) {
+    test(`reindex runs ${expected} summaries at once for concurrency ${String(limit)}`, async () => {
+      let active = 0;
+      let peak = 0;
+      const { service } = rig(
+        Array.from({ length: 8 }, (_, i) => session(`s${i}`)),
+        {
+          concurrency: limit,
+          summarize: async (_i, base) => {
+            active++; peak = Math.max(peak, active);
+            await new Promise((r) => setTimeout(r, 10));
+            active--;
+            return llmDigest(base);
+          },
         },
-      },
-    );
-    await service.reindex('all');
-    assert.strictEqual(peak, 3);
-  });
+      );
+      await service.reindex('all');
+      assert.strictEqual(peak, expected);
+    });
+  }
 
   test('a close-time refresh is not starved behind a long reindex', async () => {
     const many = Array.from({ length: 50 }, (_, i) => session(`s${i}`));
