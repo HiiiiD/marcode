@@ -45,6 +45,23 @@
           "default": false,
           "description": "Enable additional Marcode diagnostic logging."
         },
+        "marcode.memory.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Index closed sessions and let agents recall them. Turn off if another memory plugin already does this. Requires a window reload."
+        },
+        "marcode.memory.summarizer": {
+          "type": "object",
+          "default": { "mode": "off" },
+          "description": "How session digests are written. \"off\" builds them from the transcript with no model call. \"llm\" runs a hidden agent on session close using the provider, model and effort below. Requires a window reload.",
+          "properties": {
+            "mode": { "type": "string", "enum": ["off", "llm"], "default": "off" },
+            "provider": { "type": "string", "description": "A provider or instance id, e.g. \"claude\". Required when mode is \"llm\"." },
+            "model": { "type": "string", "description": "A model id that provider lists. Required when mode is \"llm\"." },
+            "effort": { "type": "string", "enum": ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"], "default": "low" }
+          },
+          "additionalProperties": false
+        },
         "marcode.enabledProviders": {
           "type": "array",
           "items": {
