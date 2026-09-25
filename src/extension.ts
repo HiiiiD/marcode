@@ -21,7 +21,8 @@ import { TranscriptStore } from './host/transcript-store';
 import { createVscodeEditorSource } from './host/vscode-editor-source';
 import { createWorkspaceFileIndex } from './host/workspace-file-index';
 import { FtsMemoryStore } from './memory/fts-memory-store';
-import { MEMORY_ENABLED_SETTING, MEMORY_SUMMARIZER_SETTING } from './shared/memory-settings';
+import { LlmSummarizer } from './host/digest/llm-summarizer';
+import { MEMORY_ENABLED_SETTING, MEMORY_SUMMARIZER_SETTING, validateSummarizer } from './shared/memory-settings';
 import type { MemoryStore } from './memory/types';
 import { ClaudeProvider } from './providers/claude/claude-provider';
 import { CodexProvider } from './providers/codex/codex-provider';
@@ -459,6 +460,24 @@ export async function activate(context: vscode.ExtensionContext) {
     }
   }
 
+  if (memory) {
+    // Validated against every registered id, instances included, so a provider named here that is
+    // not actually enabled degrades to "off" with one warning instead of failing per session.
+    const { setting, warnings } = validateSummarizer(
+      vscode.workspace.getConfiguration().get<unknown>(MEMORY_SUMMARIZER_SETTING),
+      providers.keys(),
+    );
+    for (const warning of warnings) { void vscode.window.showWarningMessage(warning); }
+    if (setting.mode === 'llm') {
+      manager.setSummarizer(new LlmSummarizer({
+        provider: providers.get(setting.provider) as AgentProvider,
+        model: setting.model,
+        effort: setting.effort,
+        cwd: os.tmpdir(),
+      }));
+    }
+  }
+
   // Never `process.cwd()` — for an extension host that is VS Code's own
   // install directory, and a session inherits it silently. See
   // `host/default-cwd.ts`.
@@ -616,6 +635,26 @@ export async function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand('marcode.review.open', () => { review.open(); }),
     vscode.commands.registerCommand('marcode.fleet.open', () => { fleet.open(); }),
     vscode.commands.registerCommand('marcode.history.open', () => { history.open(); }),
+    vscode.commands.registerCommand('marcode.memory.reindex', async () => {
+      const status = manager.memoryStatus();
+      if (!status.enabled) {
+        void vscode.window.showInformationMessage('Marcode memory is off (marcode.memory.enabled).');
+        return;
+      }
+      let detail = 'Rebuild the memory index for every session. No model cost.';
+      if (status.llm) {
+        const est = await manager.memoryEstimate('missing-llm');
+        if (est.sessions > 0) {
+          detail += ` Then summarize ${est.sessions} closed sessions with the configured model `
+            + `(about ${Math.round(est.approxInputTokens / 1000)}k input tokens).`;
+        }
+      }
+      const start = 'Start';
+      if (await vscode.window.showInformationMessage(detail, { modal: true }, start) !== start) { return; }
+      void manager.memoryReindex('missing-llm').then(() => {
+        void vscode.window.showInformationMessage('Marcode memory reindex finished.');
+      });
+    }),
     // Without a serializer VS Code restores the tab as a blank webview, which
     // is worse than not restoring it. The host owns whether the tab exists;
     // the client owns nothing durable, so re-attaching is the whole job.

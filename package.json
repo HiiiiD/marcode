@@ -465,6 +465,10 @@
       {
         "command": "marcode.history.open",
         "title": "Marcode: Open session history"
+      },
+      {
+        "command": "marcode.memory.reindex",
+        "title": "Marcode: Rebuild memory index"
       }
     ],
     "walkthroughs": [
