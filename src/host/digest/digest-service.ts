@@ -67,9 +67,22 @@ export class DigestService {
     return this.o.source.sessions().find((s) => s.id === id);
   }
 
+  /**
+   * History wants a summary for every session, but recall and priming are for closed ones only: a
+   * live session is projected onto `SessionState.summary` and never written to the store.
+   */
+  private async projectLive(session: DigestSession): Promise<boolean> {
+    if (this.o.source.projected(session.id) === session.updatedAt) { return false; }
+    const digest = extractiveDigest(await this.o.source.transcript(session.id), session.updatedAt);
+    if (!digest) { return false; }
+    this.o.onDigest(session.id, digest);
+    return true;
+  }
+
   private async writeExtractive(session: DigestSession, force = false): Promise<boolean> {
     if (this.stopped || session.title === 'Untitled') { return false; }
     try {
+      if (!session.archived) { return await this.projectLive(session); }
       if (!force) {
         // A current digest of either source already describes this transcript; rewriting it as
         // extractive would throw away a paid-for LLM digest.
@@ -103,8 +116,8 @@ export class DigestService {
       const base = extractiveDigest(items, session.updatedAt);
       if (!base) { return false; }
       const digest = await summarizer.summarize(items, base);
-      // The session may have been deleted while the model was thinking; indexing now would resurrect it.
-      if (this.stopped || !this.find(session.id)) { return false; }
+      // Deleted or reopened while the model was thinking: indexing now would resurrect or re-expose it.
+      if (this.stopped || !this.find(session.id)?.archived) { return false; }
       await this.o.store.index({
         sessionId: session.id, providerId: session.providerId, cwd: session.cwd,
         closedAt: session.updatedAt, items, digest,
@@ -131,6 +144,17 @@ export class DigestService {
     });
   }
 
+  /** Drops a session from the store, in line behind any write already queued for it. */
+  async forget(id: SessionId): Promise<void> {
+    await this.enqueue('fast', async () => {
+      try {
+        await this.o.store.forget(id);
+      } catch (err) {
+        console.error('[mar-code] digest forget failed for', id, err);
+      }
+    });
+  }
+
   async resummarize(id: SessionId): Promise<void> {
     await this.refresh(id);
     await this.upgrade(id);
@@ -144,6 +168,7 @@ export class DigestService {
         if (this.stopped) { break; }
         if (session.title === 'Untitled') { continue; }
         const wrote = await this.enqueue('fast', async () => {
+          if (!session.archived) { return this.writeExtractive(session); }
           if (!isCurrent(meta.get(session.id), session)) { return this.writeExtractive(session, true); }
           if (this.o.source.projected(session.id) === session.updatedAt) { return false; }
           const digest = await this.o.store.getDigest(session.id);

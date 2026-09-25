@@ -1596,6 +1596,8 @@ export class SessionManager implements SessionSink {
 
     state.archived = false;
     state.status = 'idle';
+    // Recall is for closed sessions only; this one is live again and would otherwise point at itself.
+    await this.digests?.forget(id);
     const session = new AgentSession(state, provider, this.store, this);
     this.live.set(id, session);
     const cached = this.catalogSvc.get(this.keyOf(state));
@@ -1680,12 +1682,8 @@ export class SessionManager implements SessionSink {
       const state = this.meta.get(id);
       if (!state) { continue; }
       if (await this.isDiscardable(id, state)) { await this.remove(id); continue; }
-      // Hiding a pane (the header's X, or unchecking the roster row) is the
-      // moment a user is "done for now" without making the deliberate
-      // Archive choice — index it opportunistically here too, so memory
-      // does not depend on remembering the separate action. Never touches
-      // `archived` or disposes the live session: it stays exactly as open
-      // as it was, just re-indexed with whatever is on disk right now.
+      // Hiding a pane is not closing: the session stays live, so it is never indexed for recall.
+      // This only refreshes its history summary from whatever is on disk right now.
       await this.digests?.refresh(id);
     }
   }
@@ -1926,14 +1924,9 @@ export class SessionManager implements SessionSink {
     const liveSessions = [...this.live.values()];
     await Promise.all(liveSessions.map((s) => s.dispose()));
     this.live.clear();
-    // A window reload/quit tears down every live session the same way an
-    // explicit Archive does, memory-wise: a session the user never got
-    // around to closing must not lose the only chance `MemoryStore` ever
-    // gets to index it. Runs after the disposals above, once each session's
-    // transcript has actually flushed, and reuses each session's own
-    // `state` object rather than `archive()` — this is shutdown, not a
-    // lifecycle transition the user chose, so `archived` must stay exactly
-    // what it was and the roster comes back unchanged on relaunch.
+    // Sessions still open at quit are not closed, so they are not indexed for recall. This only
+    // brings each one's history summary up to date so the persisted roster restores it. Runs after
+    // the disposals above, once every transcript has flushed.
     await Promise.all(liveSessions.map((s) => this.digests?.refresh(s.state.id)));
     this.digests?.stop();
     if (this.persistTimer) { clearTimeout(this.persistTimer); }

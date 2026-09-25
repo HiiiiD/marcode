@@ -18,7 +18,7 @@ class FakeStore implements MemoryStore {
   }
   async search() { return []; }
   async fetch() { return { sessionId: '', items: [] }; }
-  async forget() {}
+  async forget(id: string) { this.digests.delete(id); }
   async getDigest(id: string) { return this.digests.get(id); }
   async digestMeta() {
     return new Map<string, DigestMeta>([...this.digests].map(([id, d]) => [id, {
@@ -86,6 +86,44 @@ suite('DigestService', () => {
     const { store, service } = rig([session('a', { archived: false })], { summarize: async (_i, b) => llmDigest(b) });
     await service.refresh('a');
     await service.upgrade('a');
+    assert.strictEqual(store.digests.has('a'), false);
+  });
+
+  test('a live session gets a history projection but is never written to the store', async () => {
+    const { store, service, projected } = rig([session('a', { archived: false })]);
+    await service.refresh('a');
+    assert.strictEqual(projected.get('a'), 10);
+    assert.strictEqual(store.digests.size, 0);
+  });
+
+  test('ensureCurrent projects a live session once and then leaves it alone', async () => {
+    const { store, service, settled } = rig([session('a', { archived: false })]);
+    await service.ensureCurrent();
+    const after = settled();
+    await service.ensureCurrent();
+    assert.strictEqual(store.digests.size, 0);
+    assert.strictEqual(settled(), after);
+  });
+
+  test('forget removes a stored digest', async () => {
+    const { store, service } = rig([session('a')]);
+    await service.refresh('a');
+    await service.forget('a');
+    assert.strictEqual(store.digests.has('a'), false);
+  });
+
+  test('an llm digest is not written if the session was reopened while the model was working', async () => {
+    const sessions = [session('a')];
+    const gate: { release?: () => void } = {};
+    const { store, service } = rig(sessions, {
+      summarize: (_i, base) => new Promise((resolve) => { gate.release = () => resolve(llmDigest(base)); }),
+    });
+    await service.refresh('a');
+    const upgrading = service.upgrade('a');
+    await new Promise((r) => setTimeout(r, 20));
+    sessions[0] = session('a', { archived: false });
+    gate.release?.();
+    await upgrading;
     assert.strictEqual(store.digests.get('a')?.source, 'extractive');
   });
 
@@ -134,7 +172,7 @@ suite('DigestService', () => {
     await service.reindex('missing-llm');
     assert.strictEqual(store.digests.get('new')?.source, 'llm');
     assert.strictEqual(store.digests.get('old')?.source, 'llm');
-    assert.strictEqual(store.digests.get('live')?.source, 'extractive');
+    assert.strictEqual(store.digests.has('live'), false);
     assert.deepStrictEqual(order, ['task new', 'task old']);
     assert.strictEqual(progress[progress.length - 1].phase, 'done');
   });
