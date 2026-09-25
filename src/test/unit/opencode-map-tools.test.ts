@@ -133,10 +133,23 @@ suite('opencode toToolCall', () => {
 
   test('an unknown kind falls through to other, carrying its raw input', () => {
     const call = {
-      toolCallId: 't', kind: 'fetch', title: 'grab it', rawInput: { url: 'https://x' },
+      toolCallId: 't', kind: 'teleport', title: 'grab it', rawInput: { url: 'https://x' },
     } as unknown as AcpToolCall;
     assert.deepStrictEqual(toToolCall(call),
       { kind: 'other', label: 'grab it', raw: { url: 'https://x' } });
+  });
+
+  test('a fetch call becomes a web card from its url', () => {
+    const call = {
+      toolCallId: 't', kind: 'fetch', title: 'webfetch', rawInput: { url: 'https://x.dev/docs', format: 'markdown' },
+    } as unknown as AcpToolCall;
+    assert.deepStrictEqual(toToolCall(call),
+      { kind: 'web', label: 'WebFetch', url: 'https://x.dev/docs' });
+  });
+
+  test('a fetch call with no url yet falls through to other', () => {
+    const call = { toolCallId: 't', kind: 'fetch', title: 'webfetch', rawInput: {} } as unknown as AcpToolCall;
+    assert.deepStrictEqual(toToolCall(call), { kind: 'other', label: 'WebFetch', raw: {} });
   });
 
   // Observed live: opencode sends the self-control call as kind 'other'
