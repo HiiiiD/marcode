@@ -857,12 +857,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@opencode-ai/sdk@npm:^1.18.31":
-  version: 1.18.31
-  resolution: "@opencode-ai/sdk@npm:1.18.31"
+"@opencode-ai/sdk@npm:^1.18.32":
+  version: 1.18.32
+  resolution: "@opencode-ai/sdk@npm:1.18.32"
   dependencies:
     cross-spawn: "npm:7.0.6"
-  checksum: 10c0/db5114f4ba724d654a5b6634663b02dd989f8ac8192c66310a3012b00469521b0dac1c26405ce250f8462d5d52fe6e48a9ec73d1fa439579b85bc27b6680f67b
+  checksum: 10c0/2656ccbab3be79c527a19a3f7e82a8ddf3459dbd3d0685fc2e48bc954f95c5c72c117931b63458952d594914715980185fb45c2b815183c78cc3a451f7c82095
   languageName: node
   linkType: hard
 
@@ -4376,7 +4376,7 @@ __metadata:
     "@headless-tree/core": "npm:1.7.0"
     "@headless-tree/react": "npm:1.7.0"
     "@modelcontextprotocol/sdk": "npm:^1.30.0"
-    "@opencode-ai/sdk": "npm:^1.18.31"
+    "@opencode-ai/sdk": "npm:^1.18.32"
     "@shadcn/react": "npm:^0.3.1"
     "@tailwindcss/cli": "npm:^4.3.3"
     "@testing-library/dom": "npm:^10.4.2"
