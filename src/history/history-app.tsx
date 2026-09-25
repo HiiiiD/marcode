@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { TooltipProvider } from '@/components/ui/tooltip';
 import { HistoryTable } from './history-table';
 import { HistoryToolbar } from './history-toolbar';
 import { MemoryStrip } from './memory-strip';
@@ -26,10 +27,12 @@ export function HistoryApp() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col text-foreground">
-      <HistoryToolbar query={query} onChange={setQuery} />
-      <MemoryStrip />
-      {body}
-    </div>
+    <TooltipProvider>
+      <div className="flex min-h-screen flex-col text-foreground">
+        <HistoryToolbar query={query} onChange={setQuery} />
+        <MemoryStrip />
+        {body}
+      </div>
+    </TooltipProvider>
   );
 }
