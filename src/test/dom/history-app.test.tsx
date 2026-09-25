@@ -185,6 +185,29 @@ suite('history memory actions', () => {
     ]);
   });
 
+  test('with an llm summarizer a full rebuild can be started from the strip', async () => {
+    renderHistory();
+    hydrate(sessions());
+    sendFromHost({ t: 'memory-status', enabled: true, llm: true });
+    await userEvent.click(await screen.findByRole('button', { name: 'Rebuild all' }));
+    assert.deepStrictEqual(posted().filter((m) => m.t === 'memory-estimate'), [
+      { t: 'memory-estimate', scope: 'all' },
+    ]);
+    sendFromHost({ t: 'memory-estimate', scope: 'all', sessions: 300, approxInputTokens: 900000 });
+    await userEvent.click(await screen.findByRole('button', { name: 'Start' }));
+    assert.deepStrictEqual(posted().filter((m) => m.t === 'memory-reindex'), [
+      { t: 'memory-reindex', scope: 'all' },
+    ]);
+  });
+
+  test('without an llm summarizer there is no full-rebuild button', async () => {
+    renderHistory();
+    hydrate(sessions());
+    sendFromHost({ t: 'memory-status', enabled: true, llm: false });
+    await screen.findByRole('button', { name: 'Index memory' });
+    assert.strictEqual(screen.queryByRole('button', { name: 'Rebuild all' }) === null, true);
+  });
+
   test('progress shows the phase and can be stopped', async () => {
     renderHistory();
     hydrate(sessions());

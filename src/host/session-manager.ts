@@ -291,6 +291,11 @@ export class SessionManager implements SessionSink {
     for (const [providerId, models] of Object.entries(catalog.providers)) {
       this.seededModels.set(providerId, models);
     }
+
+    // A schema bump (or a first launch with memory on) leaves the index empty; without this, recall
+    // and priming would stay blind to every pre-existing session until someone opened the history tab.
+    // Extractive only and one job per session, so it never delays a close.
+    if (this.digests) { void this.ensureSummaries(); }
   }
 
   /**

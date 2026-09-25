@@ -26,15 +26,22 @@ export function MemoryStrip() {
     );
   } else {
     body = (
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={() => post(memory.llm
-          ? { t: 'memory-estimate', scope: 'missing-llm' }
-          : { t: 'memory-reindex', scope: 'missing-llm' })}
-      >
-        Index memory
-      </Button>
+      <>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => post(memory.llm
+            ? { t: 'memory-estimate', scope: 'missing-llm' }
+            : { t: 'memory-reindex', scope: 'missing-llm' })}
+        >
+          Index memory
+        </Button>
+        {memory.llm && (
+          <Button variant="ghost" size="sm" onClick={() => post({ t: 'memory-estimate', scope: 'all' })}>
+            Rebuild all
+          </Button>
+        )}
+      </>
     );
   }
 

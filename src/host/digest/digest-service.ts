@@ -36,7 +36,8 @@ const isCurrent = (meta: DigestMeta | undefined, session: DigestSession): boolea
 
 export class DigestService {
   private summarizer: Summarizer | undefined;
-  private queue: Promise<void> = Promise.resolve();
+  private fast: Promise<void> = Promise.resolve();
+  private slow: Promise<void> = Promise.resolve();
   private cancelled = false;
   private stopped = false;
   private reindexing: Promise<void> | undefined;
@@ -50,10 +51,15 @@ export class DigestService {
   cancel(): void { this.cancelled = true; }
   stop(): void { this.stopped = true; this.cancelled = true; }
 
-  /** One job at a time; every write is its own job so a close-time write can slip between a reindex's. */
-  private enqueue<T>(job: () => Promise<T>): Promise<T> {
-    const run = this.queue.then(job);
-    this.queue = run.then(() => undefined, () => undefined);
+  /**
+   * Two serial lanes. Extractive writes are cheap and awaited by close, hide, delete and shutdown, so
+   * they must never wait behind a model call that can run for its whole timeout; those get their own
+   * lane. Each write is its own job so a close-time write can also slip between a sweep's.
+   */
+  private enqueue<T>(lane: 'fast' | 'slow', job: () => Promise<T>): Promise<T> {
+    const run = (lane === 'fast' ? this.fast : this.slow).then(job);
+    const tail = run.then(() => undefined, () => undefined);
+    if (lane === 'fast') { this.fast = tail; } else { this.slow = tail; }
     return run;
   }
 
@@ -61,9 +67,19 @@ export class DigestService {
     return this.o.source.sessions().find((s) => s.id === id);
   }
 
-  private async writeExtractive(session: DigestSession): Promise<boolean> {
+  private async writeExtractive(session: DigestSession, force = false): Promise<boolean> {
     if (this.stopped || session.title === 'Untitled') { return false; }
     try {
+      if (!force) {
+        // A current digest of either source already describes this transcript; rewriting it as
+        // extractive would throw away a paid-for LLM digest.
+        const existing = await this.o.store.getDigest(session.id);
+        if (existing && isCurrent(existing, session)) {
+          if (this.o.source.projected(session.id) === session.updatedAt) { return false; }
+          this.o.onDigest(session.id, existing);
+          return true;
+        }
+      }
       const items = await this.o.source.transcript(session.id);
       const digest = extractiveDigest(items, session.updatedAt);
       if (!digest) { return false; }
@@ -102,14 +118,14 @@ export class DigestService {
   }
 
   async refresh(id: SessionId): Promise<void> {
-    await this.enqueue(async () => {
+    await this.enqueue('fast', async () => {
       const session = this.find(id);
       if (session && await this.writeExtractive(session)) { this.o.onSettled(); }
     });
   }
 
   async upgrade(id: SessionId): Promise<void> {
-    await this.enqueue(async () => {
+    await this.enqueue('slow', async () => {
       const session = this.find(id);
       if (session && await this.writeLlm(session)) { this.o.onSettled(); }
     });
@@ -121,26 +137,26 @@ export class DigestService {
   }
 
   async ensureCurrent(): Promise<void> {
-    await this.enqueue(async () => {
-      try {
-        const meta = await this.o.store.digestMeta();
-        let touched = false;
-        for (const session of this.o.source.sessions()) {
-          if (this.stopped) { return; }
-          if (session.title === 'Untitled') { continue; }
-          const stored = meta.get(session.id);
-          if (!isCurrent(stored, session)) {
-            if (await this.writeExtractive(session)) { touched = true; }
-          } else if (this.o.source.projected(session.id) !== session.updatedAt) {
-            const digest = await this.o.store.getDigest(session.id);
-            if (digest) { this.o.onDigest(session.id, digest); touched = true; }
-          }
-        }
-        if (touched) { this.o.onSettled(); }
-      } catch (err) {
-        console.error('[mar-code] digest refresh failed', err);
+    try {
+      const meta = await this.o.store.digestMeta();
+      let touched = false;
+      for (const session of this.o.source.sessions()) {
+        if (this.stopped) { break; }
+        if (session.title === 'Untitled') { continue; }
+        const wrote = await this.enqueue('fast', async () => {
+          if (!isCurrent(meta.get(session.id), session)) { return this.writeExtractive(session, true); }
+          if (this.o.source.projected(session.id) === session.updatedAt) { return false; }
+          const digest = await this.o.store.getDigest(session.id);
+          if (!digest) { return false; }
+          this.o.onDigest(session.id, digest);
+          return true;
+        });
+        if (wrote) { touched = true; }
       }
-    });
+      if (touched) { this.o.onSettled(); }
+    } catch (err) {
+      console.error('[mar-code] digest refresh failed', err);
+    }
   }
 
   private llmTargets(scope: DigestScope, meta: Map<SessionId, DigestMeta>): DigestSession[] {
@@ -175,7 +191,7 @@ export class DigestService {
     let done = 0;
     for (const session of extractive) {
       if (this.cancelled) { return this.finish('cancelled', done, extractive.length); }
-      await this.enqueue(() => this.writeExtractive(session));
+      await this.enqueue('fast', () => this.writeExtractive(session, true));
       done++;
       this.o.onProgress({ phase: 'extractive', done, total: extractive.length });
       if (done % SETTLE_EVERY === 0) { this.o.onSettled(); }
@@ -185,7 +201,7 @@ export class DigestService {
     done = 0;
     for (const session of llm) {
       if (this.cancelled) { return this.finish('cancelled', done, llm.length); }
-      await this.enqueue(() => this.writeLlm(session));
+      await this.enqueue('slow', () => this.writeLlm(session));
       done++;
       this.o.onProgress({ phase: 'llm', done, total: llm.length });
       if (done % SETTLE_EVERY === 0) { this.o.onSettled(); }

@@ -55,6 +55,21 @@ suite('history routing', () => {
     });
   });
 
+  test('memory-status goes out before the summaries sweep finishes', async () => {
+    const gate: { release?: () => void } = {};
+    const manager = {
+      ensureSummaries: () => new Promise<void>((resolve) => { gate.release = resolve; }),
+      memoryStatus: () => ({ enabled: true, llm: false }),
+    } as unknown as ConstructorParameters<typeof MessageRouter>[0];
+    const emitted: HostToWebview[] = [];
+    const router = new MessageRouter(manager, (m) => emitted.push(m), '/tmp');
+    const pending = router.handle({ t: 'request-history-summaries' });
+    await new Promise((r) => setTimeout(r, 10));
+    assert.strictEqual(emitted.some((m) => m.t === 'memory-status'), true);
+    gate.release?.();
+    await pending;
+  });
+
   test('memory-estimate replies with the manager estimate', async () => {
     const { router, emitted } = routerWith();
     await router.handle({ t: 'memory-estimate', scope: 'missing-llm' });

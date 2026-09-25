@@ -647,8 +647,9 @@ export class MessageRouter {
         return;
 
       case 'request-history-summaries':
-        await this.manager.ensureSummaries();
+        // Before the sweep: the strip and row buttons should not wait on however many digests are stale.
         this.emit({ t: 'memory-status', ...this.manager.memoryStatus() });
+        await this.manager.ensureSummaries();
         return;
 
       case 'memory-estimate': {

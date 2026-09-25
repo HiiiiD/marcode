@@ -141,8 +141,10 @@ export interface StartOptions {
    */
   sessionId: SessionId;
   /**
-   * Leaves the self-control MCP server off this run. For internal, tool-less
-   * runs (the digest summarizer) that must never reach `marcode__*` tools.
+   * Marks an internal, tool-less run (the digest summarizer) that must never
+   * reach `marcode__*` tools: no self-control MCP server on any provider. On
+   * Claude it also skips filesystem settings and built-in tools, and the
+   * Marcode intro; Codex and OpenCode still load their own user config.
    */
   withoutSelfControl?: boolean;
 }

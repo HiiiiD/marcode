@@ -104,6 +104,29 @@ suite('SessionManager summaries with memory enabled', () => {
     await manager.dispose();
   });
 
+  test('init rebuilds missing digests for sessions restored from disk, with no history tab open', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mar-summaries-init-'));
+    const store = new TranscriptStore(dir);
+    const providers = new Map<string, AgentProvider>([['fake', new FakeProvider()]]);
+    const first = new SessionManager(store, providers, () => {});
+    await first.init();
+    const session = await first.create('fake', '/repo');
+    session.send('Investigate the flaky login test');
+    await first.close(session.state.id);
+    await first.dispose();
+
+    const memory = new FtsMemoryStore(path.join(dir, 'memory.sqlite'), { tail: (id, n) => store.tail(id, n) });
+    const second = new SessionManager(
+      store, providers, () => {}, undefined, undefined, undefined, undefined, undefined, memory,
+    );
+    await second.init();
+    for (let i = 0; i < 40 && !(await memory.getDigest(session.state.id)); i++) {
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    assert.strictEqual((await memory.getDigest(session.state.id))?.source, 'extractive');
+    await second.dispose();
+  });
+
   test('memoryStatus reports enabled with no llm by default', async () => {
     const { manager } = await memoryRig();
     assert.deepStrictEqual(manager.memoryStatus(), { enabled: true, llm: false });

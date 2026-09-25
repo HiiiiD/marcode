@@ -223,6 +223,49 @@ suite('DigestService', () => {
     await assert.doesNotReject(service.ensureCurrent());
   });
 
+  test('a close-time refresh does not wait behind a running llm job', async () => {
+    const gate: { release?: () => void } = {};
+    const { store, service } = rig([session('a'), session('b')], {
+      summarize: (_i, base) => new Promise((resolve) => { gate.release = () => resolve(llmDigest(base)); }),
+    });
+    await service.refresh('a');
+    const upgrading = service.upgrade('a');
+    await new Promise((r) => setTimeout(r, 20));
+    await service.refresh('b');
+    assert.strictEqual(store.digests.has('b'), true);
+    gate.release?.();
+    await upgrading;
+  });
+
+  test('ensureCurrent works one session at a time so a close-time refresh slips in', async () => {
+    const many = Array.from({ length: 50 }, (_, i) => session(`s${i}`));
+    const { store, service } = rig(many);
+    const sweep = service.ensureCurrent();
+    await service.refresh('s49');
+    assert.strictEqual(store.indexed.indexOf('s49') < 49, true);
+    await sweep;
+  });
+
+  test('refresh never downgrades a current llm digest', async () => {
+    const { store, service } = rig([session('a')], { summarize: async (_i, b) => llmDigest(b) });
+    await service.refresh('a');
+    await service.upgrade('a');
+    await service.refresh('a');
+    assert.strictEqual(store.digests.get('a')?.source, 'llm');
+  });
+
+  test('resummarize keeps the previous llm digest when the model fails', async () => {
+    let fail = false;
+    const { store, service } = rig([session('a')], {
+      summarize: async (_i, b) => { if (fail) { throw new Error('boom'); } return llmDigest(b); },
+    });
+    await service.resummarize('a');
+    assert.strictEqual(store.digests.get('a')?.source, 'llm');
+    fail = true;
+    await service.resummarize('a');
+    assert.strictEqual(store.digests.get('a')?.source, 'llm');
+  });
+
   test('stop makes queued work a no-op', async () => {
     const { store, service } = rig([session('a')]);
     service.stop();
