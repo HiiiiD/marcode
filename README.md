@@ -35,9 +35,10 @@ loop.
   changes against a base ref, attributed to the session whose tool calls made them.
 - A fleet view (**Marcode: Open fleet view**) for drilling into one session's running or
   finished subagents in a focused list, linked from a subagent card in the sidebar.
-- Cross-provider memory: any session can recall relevant snippets from your previously
-  closed sessions (`marcode__recall` / `marcode__recall_fetch`) without reloading full
-  transcripts into context.
+- Cross-provider memory: closed sessions are indexed as structured digests, and any session
+  can recall them (`marcode__recall` / `marcode__recall_fetch`) without reloading full
+  transcripts into context. A fresh session's first message is also primed with up to three
+  related past sessions. Recall is scoped to the workspace folder holding the session's cwd.
 - Self-control: a session can spawn a new Marcode session for itself — provider, model,
   permission mode, cwd and an initial prompt — via a local `marcode__spawn_session` MCP
   tool (blocked from spawning in unrestricted `bypass` mode).
@@ -242,6 +243,23 @@ plain-string form. Reload the window after changing the setting.
 OpenCode is not a valid key here: neither its ACP `session/new` call nor its system-prompt
 assembly exposes a per-session override, so there is nothing for Marcode to set. Use
 OpenCode's own `opencode.json`/agent files for that backend instead.
+
+### Session memory
+
+Closed sessions (only closed ones) are digested and indexed in a local SQLite FTS store.
+The history tab shows the digest as each session's summary, and reopening a session removes
+it from the index.
+
+- `marcode.memory.enabled` (default `true`): turn off if another memory plugin already does
+  this. No store, priming or recall tools; the history tab keeps a plain extractive summary.
+- `marcode.memory.summarizer`: `{ "mode": "off" }` (default) builds digests from the
+  transcript with no model call. `{ "mode": "llm", "provider": "claude", "model": "...",
+  "effort": "low" }` runs a hidden, tool-less agent on session close, falling back to the
+  extractive digest on failure. Summarizer runs leave no trace in the vendor CLI's history.
+- **Marcode: Rebuild memory index** re-digests every closed session; the history tab also
+  offers per-session re-summarize.
+
+Reload the window after changing either setting.
 
 ### Provider behavior and quirks
 
