@@ -8,28 +8,28 @@ suite('buildExcludeGlob', () => {
   test('with no extras, is just the built-in excludes', () => {
     assert.strictEqual(
       buildExcludeGlob([]),
-      '{**/node_modules/**,**/.git/**,**/dist/**,**/out/**}',
+      '{**/node_modules/**,**/.git/**,**/dist/**,**/out/**,**/.claude/worktrees/**,**/.worktrees/**}',
     );
   });
 
   test('treats a bare path segment as matching anywhere in the tree', () => {
     assert.strictEqual(
-      buildExcludeGlob(['.claude/worktrees']),
-      '{**/node_modules/**,**/.git/**,**/dist/**,**/out/**,**/.claude/worktrees/**}',
+      buildExcludeGlob(['legacy/cache']),
+      '{**/node_modules/**,**/.git/**,**/dist/**,**/out/**,**/.claude/worktrees/**,**/.worktrees/**,**/legacy/cache/**}',
     );
   });
 
   test('passes an entry containing "*" through untouched', () => {
     assert.strictEqual(
       buildExcludeGlob(['**/vendor/**']),
-      '{**/node_modules/**,**/.git/**,**/dist/**,**/out/**,**/vendor/**}',
+      '{**/node_modules/**,**/.git/**,**/dist/**,**/out/**,**/.claude/worktrees/**,**/.worktrees/**,**/vendor/**}',
     );
   });
 
   test('trims whitespace, strips leading/trailing slashes, drops empty entries', () => {
     assert.strictEqual(
       buildExcludeGlob([' /tmp/ ', '']),
-      '{**/node_modules/**,**/.git/**,**/dist/**,**/out/**,**/tmp/**}',
+      '{**/node_modules/**,**/.git/**,**/dist/**,**/out/**,**/.claude/worktrees/**,**/.worktrees/**,**/tmp/**}',
     );
   });
 });
@@ -188,6 +188,39 @@ suite('AgentsMdNudgeController', () => {
       t: 'agents-md-nudge',
       hits: [{ dir: 'pkg-a', kind: 'migrate' }, { dir: 'pkg-b', kind: 'add-stub' }],
     });
+  });
+
+  test('resend re-posts the settled hits, so a hydrate that wiped the card cannot lose them', async () => {
+    const { controller, posted } = makeController({ relativePaths: ['pkg-a/CLAUDE.md'] });
+    await controller.scan();
+    posted.length = 0;
+    await controller.resend();
+    assert.deepStrictEqual(posted, [
+      { t: 'agents-md-nudge', hits: [{ dir: 'pkg-a', kind: 'migrate' }] },
+    ]);
+  });
+
+  test('resend during an in-flight scan waits for it rather than posting an empty card', async () => {
+    const posted: HostToWebview[] = [];
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    const controller = new AgentsMdNudgeController({
+      findRelativePaths: async () => { await gate; return ['pkg-a/CLAUDE.md']; },
+      hasClaudeProvider: true,
+      dismiss: { get: () => new Set<string>(), add: async () => {} },
+      resolvePaths: (dir) => ({ claudeMdPath: `${dir}/CLAUDE.md`, agentsMdPath: `${dir}/AGENTS.md` }),
+      fs: { readFile: async () => '', writeFile: async () => {} },
+      post: (m) => posted.push(m),
+    });
+    void controller.scan();
+    const resent = controller.resend();
+    release();
+    await resent;
+    const last = posted[posted.length - 1];
+    assert.deepStrictEqual(last, {
+      t: 'agents-md-nudge', hits: [{ dir: 'pkg-a', kind: 'migrate' }],
+    });
+    assert.strictEqual(posted.every((m) => m.t === 'agents-md-nudge' && m.hits.length > 0), true);
   });
 
   test('dismiss action removes the dir from the posted hits and persists it', async () => {

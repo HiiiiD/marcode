@@ -116,6 +116,9 @@ export class PanelViewProvider implements vscode.WebviewViewProvider {
           return;
         }
         await router.handle(raw);
+        if (raw?.t === 'ready') {
+          await this.agentsMdNudge?.resend();
+        }
       } catch (err) {
         console.error('[mar-code] message handling failed', err);
       }

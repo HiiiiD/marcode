@@ -11,7 +11,10 @@ export interface AgentsMdNudgeHit {
 
 const STUB_CONTENT = '@AGENTS.md\n';
 
-const DEFAULT_EXCLUDE_GLOBS = ['**/node_modules/**', '**/.git/**', '**/dist/**', '**/out/**'];
+const DEFAULT_EXCLUDE_GLOBS = [
+  '**/node_modules/**', '**/.git/**', '**/dist/**', '**/out/**',
+  '**/.claude/worktrees/**', '**/.worktrees/**',
+];
 
 /**
  * Pure: default excludes plus caller-supplied extra globs (from
@@ -126,13 +129,30 @@ export class AgentsMdNudgeController {
 
   constructor(private readonly deps: AgentsMdNudgeDeps) {}
 
-  async scan(): Promise<void> {
-    const paths = await this.deps.findRelativePaths();
-    const entries = groupIntoDirEntries(paths);
-    this.hits = scanForHits(entries, {
-      hasClaudeProvider: this.deps.hasClaudeProvider,
-      dismissed: this.deps.dismiss.get(),
-    });
+  private pending: Promise<void> | undefined;
+
+  scan(): Promise<void> {
+    const run = (async () => {
+      const paths = await this.deps.findRelativePaths();
+      this.hits = scanForHits(groupIntoDirEntries(paths), {
+        hasClaudeProvider: this.deps.hasClaudeProvider,
+        dismissed: this.deps.dismiss.get(),
+      });
+      this.post();
+    })();
+    this.pending = run.catch(() => {});
+    return run;
+  }
+
+  /**
+   * The webview's `hydrate` resets the card to empty, and the scan fires
+   * before the webview has said `ready`, so its one post can land before
+   * hydrate (and be wiped) or before the script loads (and be dropped).
+   * Called after hydrate is answered: waits out any in-flight scan, then
+   * re-posts the settled hits.
+   */
+  async resend(): Promise<void> {
+    await this.pending;
     this.post();
   }
 
