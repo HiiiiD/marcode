@@ -5,7 +5,7 @@
 // importing it.
 
 export type LayoutNode =
-  | { kind: 'leaf'; sessionId: string | null; size: number }
+  | { kind: 'leaf'; sessionId: string | null; size: number; transient?: true }
   | { kind: 'split'; orientation: 'vertical' | 'horizontal'; children: LayoutNode[]; size: number };
 
 export function emptyRoot(): LayoutNode {
@@ -210,4 +210,131 @@ export function freshTargetPath(
   if (draggedIndex === -1 || targetIndex === -1) { return undefined; }
   const adjusted = targetIndex > draggedIndex ? targetIndex - 1 : targetIndex;
   return flattenLeaves(withoutDragged)[adjusted]?.path;
+}
+
+/** Closing a session frees its slot; siblings keep their place and size. */
+export function emptySession(root: LayoutNode, sessionId: string): LayoutNode {
+  const path = findPath(root, sessionId);
+  if (path === undefined) { return root; }
+  const target = at(root, path);
+  if (target === undefined || target.kind !== 'leaf') { return root; }
+  const emptied = replaceAt(root, path, { ...target, sessionId: null });
+  return target.transient ? removeSlotAt(emptied, path) : emptied;
+}
+
+/** Explicit "Remove slot": only an empty non-root leaf can go; the parent collapses like `removeSession`. */
+export function removeSlotAt(root: LayoutNode, path: number[]): LayoutNode {
+  const target = at(root, path);
+  if (target === undefined || target.kind !== 'leaf' || target.sessionId !== null || path.length === 0) { return root; }
+  const parentPath = path.slice(0, -1);
+  const parent = at(root, parentPath);
+  if (parent === undefined || parent.kind !== 'split') { return root; }
+  const remaining = parent.children.filter((_, i) => i !== path[path.length - 1]);
+  if (remaining.length === 1) { return replaceAt(root, parentPath, { ...remaining[0], size: parent.size }); }
+  const sizes = evenSizes(remaining.length);
+  return replaceAt(root, parentPath, {
+    ...parent, children: remaining.map((child, i) => ({ ...child, size: sizes[i] })),
+  });
+}
+
+/**
+ * Where a new or revealed session lands: the first empty leaf in reading
+ * order, else a new sibling after the last-focused pane in that pane's own
+ * split, resized evenly (a root leaf has no parent, so `fallback` decides
+ * the orientation of the split it becomes). An unknown
+ * focus falls back to the last leaf.
+ */
+export function placeSession(
+  root: LayoutNode, sessionId: string, focusedId: string | null | undefined, fallback: 'vertical' | 'horizontal',
+): LayoutNode {
+  if (findPath(root, sessionId) !== undefined) { return root; }
+  const leaves = flattenLeaves(root);
+  const empty = leaves.find((l) => l.sessionId === null);
+  if (empty) { return assignAt(root, empty.path, sessionId) ?? root; }
+  const focused = (focusedId ? leaves.find((l) => l.sessionId === focusedId) : undefined) ?? leaves[leaves.length - 1];
+  const parentPath = focused.path.slice(0, -1);
+  const parent = focused.path.length > 0 ? at(root, parentPath) : undefined;
+  const fresh: LayoutNode = { kind: 'leaf', sessionId, size: 0, transient: true };
+  if (parent?.kind !== 'split') {
+    return { kind: 'split', orientation: fallback, size: root.size, children: [{ ...root, size: 50 }, { ...fresh, size: 50 }] };
+  }
+  // A sibling in the focused pane's own split, not a nested split: every pane on that axis shares the space evenly.
+  const idx = focused.path[focused.path.length - 1] + 1;
+  const children = [...parent.children.slice(0, idx), fresh, ...parent.children.slice(idx)];
+  const sizes = evenSizes(children.length);
+  return replaceAt(root, parentPath, { ...parent, children: children.map((c, i) => ({ ...c, size: sizes[i] })) });
+}
+
+/** Rows stack vertically; each row is a horizontal split of cells. Sessions fill in reading order, extras are `hidden`. */
+export function gridLayout(rows: number, cols: number, sessionIds: string[]): { root: LayoutNode; hidden: string[] } {
+  const cell = (): LayoutNode => ({ kind: 'leaf', sessionId: null, size: 100 / cols });
+  const row = (): LayoutNode => (cols === 1
+    ? { kind: 'leaf', sessionId: null, size: 100 / rows }
+    : { kind: 'split', orientation: 'horizontal', size: 100 / rows, children: Array.from({ length: cols }, cell) });
+  let shape: LayoutNode;
+  if (rows === 1) {
+    shape = cols === 1
+      ? { kind: 'leaf', sessionId: null, size: 100 }
+      : { kind: 'split', orientation: 'horizontal', size: 100, children: Array.from({ length: cols }, cell) };
+  } else {
+    shape = { kind: 'split', orientation: 'vertical', size: 100, children: Array.from({ length: rows }, row) };
+  }
+  return fillShapeKeepingOverflow(shape, sessionIds);
+}
+
+/** Like `fillShape`, but never refuses: sessions past the last slot come back as `hidden` instead. */
+export function fillShapeKeepingOverflow(shape: LayoutNode, sessionIds: string[]): { root: LayoutNode; hidden: string[] } {
+  const cells = slotCount(shape);
+  return { root: fillShape(shape, sessionIds.slice(0, cells)) ?? shape, hidden: sessionIds.slice(cells) };
+}
+
+export function swapLeaves(root: LayoutNode, a: number[], b: number[]): LayoutNode {
+  const x = at(root, a);
+  const y = at(root, b);
+  if (x?.kind !== 'leaf' || y?.kind !== 'leaf') { return root; }
+  return replaceAt(replaceAt(root, a, { ...x, sessionId: y.sessionId }), b, { ...y, sessionId: x.sessionId });
+}
+
+/** The orientation a bare root leaf splits along: the layout's own, defaulting to a stack. */
+export function rootOrientation(root: LayoutNode): 'vertical' | 'horizontal' {
+  return root.kind === 'split' ? root.orientation : 'vertical';
+}
+
+/** Rows x cols when the tree is exactly a grid `gridLayout` could have produced; otherwise `undefined`. */
+export function gridDims(root: LayoutNode): { rows: number; cols: number } | undefined {
+  if (root.kind === 'leaf') { return { rows: 1, cols: 1 }; }
+  if (root.children.every((c) => c.kind === 'leaf')) {
+    const n = root.children.length;
+    return root.orientation === 'horizontal' ? { rows: 1, cols: n } : { rows: n, cols: 1 };
+  }
+  if (root.orientation !== 'vertical') { return undefined; }
+  const widths = root.children.map((row) => (
+    row.kind === 'split' && row.orientation === 'horizontal' && row.children.every((c) => c.kind === 'leaf')
+      ? row.children.length : -1));
+  return widths[0] > 0 && widths.every((w) => w === widths[0]) ? { rows: widths.length, cols: widths[0] } : undefined;
+}
+
+/** Smallest share a pane can be dragged to; `maximizeSizes` leaves every other pane exactly this much. */
+export const PEEK_SIZE = 15;
+
+/**
+ * A view-only copy of the tree with the pane holding `sessionId` given all the
+ * room every ancestor split allows, the rest left peeking at `PEEK_SIZE`.
+ * Never persisted: the real layout keeps its own sizes.
+ */
+export function maximizeSizes(root: LayoutNode, sessionId: string): LayoutNode {
+  const path = findPath(root, sessionId);
+  if (path === undefined) { return root; }
+  const walk = (node: LayoutNode, rest: number[]): LayoutNode => {
+    if (node.kind === 'leaf' || rest.length === 0) { return node; }
+    const [head, ...tail] = rest;
+    const main = 100 - PEEK_SIZE * (node.children.length - 1);
+    return {
+      ...node,
+      children: node.children.map((child, i) => (
+        i === head ? { ...walk(child, tail), size: main } : { ...child, size: PEEK_SIZE }
+      )),
+    };
+  };
+  return walk(root, path);
 }

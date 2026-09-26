@@ -6,7 +6,9 @@
 // Built on the `LayoutNode` tree from `./layout-tree`, which mirrors
 // `PaneLayout` from `protocol/messages.ts` structurally.
 
-import { flattenLeaves, leafSessionIds, removeSession, type FlatLeaf, type LayoutNode } from './layout-tree';
+import {
+  emptySession, flattenLeaves, leafSessionIds, placeSession, rootOrientation, type FlatLeaf, type LayoutNode,
+} from './layout-tree';
 
 export interface RosterEntry {
   id: string;
@@ -73,28 +75,6 @@ export interface ReconcileResult {
 }
 
 /**
- * Appends a leaf for `sessionId` at the top split level: fills a bare empty
- * root directly, otherwise adds it as a sibling — wrapping the existing root
- * in a fresh vertical split only when it isn't already one — and re-splits
- * sizes evenly across the resulting sibling set. The append rule
- * `reconcilePaneLayout` uses for a newly-arrived session, extracted so
- * `session-picker.tsx`'s roster checkbox (an explicit user action, not a
- * reconcile pass) can share it instead of duplicating it.
- */
-export function appendAtTop(root: LayoutNode, sessionId: string): LayoutNode {
-  if (root.kind === 'leaf' && root.sessionId === null) {
-    return { kind: 'leaf', sessionId, size: 100 };
-  }
-  const siblings: LayoutNode[] = root.kind === 'split' && root.orientation === 'vertical' ? root.children : [root];
-  const newLeaf: LayoutNode = { kind: 'leaf', sessionId, size: 0 };
-  const children = [...siblings, newLeaf];
-  return {
-    kind: 'split', orientation: 'vertical', size: 100,
-    children: children.map((child) => ({ ...child, size: 100 / children.length })),
-  };
-}
-
-/**
  * Reconciles a persisted tree against the current roster. The tree IS the
  * user's intent — which sessions have a leaf open is something only the
  * user's own actions (the roster checkbox, "+ New", closing a pane, drag-
@@ -105,23 +85,16 @@ export function appendAtTop(root: LayoutNode, sessionId: string): LayoutNode {
  * the next pass just because it's still live and still in `byId`.
  *
  * So reconciliation only ever does two things:
- *  - drops a leaf whose session is no longer in the roster at all (deleted
- *    outright — the one case where the session itself is gone, not just the
- *    user's choice to hide it), via `removeSession`, which also collapses
- *    the leaf's parent split (see its own doc comment for the collapse
- *    rules) — the tree-shaped equivalent of re-splitting sizes evenly
- *    across the remaining flat pane list;
- *  - appends a leaf for a session that has a snapshot in `byId` for the
+ *  - empties the leaf of a session no longer in the roster at all (deleted
+ *    outright), via `emptySession`: the slot stays, like any other close;
+ *  - places a session that has a snapshot in `byId` for the
  *    FIRST time (`snapshotArrivedIds` minus `knownSessionIds`) — this is
  *    what makes a freshly created session open into a pane. A session
  *    already in `knownSessionIds` (because a previous pass already offered
  *    it a leaf, or because it arrived via an explicit `set-visible` from
  *    the roster checkbox) is never auto-appended again, even if the user
- *    just removed its leaf. A bare empty root leaf is filled directly;
- *    otherwise the new leaf is appended as a sibling at the top split
- *    level, wrapping the existing root in a fresh vertical split only when
- *    it isn't already one, and sizes are re-split evenly across the
- *    resulting sibling set.
+ *    just removed its leaf. Placement is `placeSession`'s: the first empty
+ *    slot, else an evenly sized sibling of the last-focused pane.
  *
  * `root` is `null` when nothing needs to change, so a caller driving this
  * from a render effect can skip posting `set-layout` on every pass.
@@ -145,11 +118,12 @@ export function appendAtTop(root: LayoutNode, sessionId: string): LayoutNode {
  */
 export function reconcilePaneLayout(
   root: LayoutNode, roster: ReadonlySet<string>, snapshotArrivedIds: string[], knownSessionIds: ReadonlySet<string>,
+  focusedSessionId: string | null = null,
 ): ReconcileResult {
   let next = root;
   let changed = false;
   for (const id of leafSessionIds(root)) {
-    if (!roster.has(id)) { next = removeSession(next, id); changed = true; }
+    if (!roster.has(id)) { next = emptySession(next, id); changed = true; }
   }
 
   const stillPresent = new Set(leafSessionIds(next));
@@ -158,7 +132,7 @@ export function reconcilePaneLayout(
   );
   for (const id of newlyArrived) {
     changed = true;
-    next = appendAtTop(next, id);
+    next = placeSession(next, id, focusedSessionId, rootOrientation(next));
   }
 
   const nextKnown = new Set(knownSessionIds);

@@ -15,7 +15,7 @@ import { folderName } from "../format";
 import type { PaneState } from "../reducer";
 import { useStore } from "../store";
 import { BringBackDialog } from "./bring-back-dialog";
-import { removeSession } from "./layout-tree";
+import { emptySession } from "./layout-tree";
 import { isUnhealthy, worstState } from "./mcp-status";
 import { usePaneDrag } from "./pane-drag-context";
 import { PinButton } from "./pin-button";
@@ -297,7 +297,11 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
             size="icon-xs"
             aria-label={dragLabel}
             draggable
-            onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; setDraggingId(s.id); }}
+            onDragStart={(e) => {
+              e.dataTransfer.effectAllowed = "move";
+              e.dataTransfer.setData("text/plain", s.id);
+              setDraggingId(s.id);
+            }}
             onDragEnd={() => setDraggingId(null)}
             className="shrink-0 cursor-grab active:cursor-grabbing"
           />
@@ -371,7 +375,7 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
           // makes a session indexable for recall.
           post({
             t: "set-layout",
-            layout: { ...state.layout, root: removeSession(state.layout.root, s.id) },
+            layout: { ...state.layout, root: emptySession(state.layout.root, s.id) },
           });
         }}
         className="shrink-0"

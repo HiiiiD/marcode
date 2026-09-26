@@ -177,7 +177,7 @@ suite("SessionHeader status", () => {
     const paneIds = finalLayout.root.kind === "split"
       ? finalLayout.root.children.map((child) => child.kind === "leaf" ? child.sessionId : null)
       : [finalLayout.root.sessionId];
-    assert.deepStrictEqual(paneIds, ["b"]);
+    assert.deepStrictEqual(paneIds, [null, "b"]);
     assert.ok(
       !posted().some((m) => m.t === "close-session"),
       "X means hide; hiding is what makes a session indexable",
@@ -217,7 +217,7 @@ suite("SessionHeader status", () => {
     await userEvent.click(screen.getByRole("button", { name: "Replace Session a" }));
     await userEvent.click(screen.getByRole("button", { name: "Replace" }));
 
-    assert.deepStrictEqual(posted().at(-1), { t: "replace-session", id: "a" });
+    assert.deepStrictEqual(posted().filter((m) => m.t === "replace-session"), [{ t: "replace-session", id: "a" }]);
   });
 
   test("the drag grip has a tooltip explaining what it does", async () => {

@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { LogInIcon, RefreshCwIcon, SettingsIcon } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 // react-resizable-panels ships ESM-only; a type-only import from a CommonJS
 // module needs an explicit resolution-mode attribute (TS 5.3+) or tsc's
 // per-file CJS/ESM interop check rejects it outright (TS1541) — see the
@@ -11,7 +11,9 @@ import { ENABLED_PROVIDERS_SETTING, PROVIDER_INSTANCES_SETTING } from "../../sha
 import type { LayoutNode } from "../../protocol/messages";
 import { shouldOfferLogin } from "../lib/provider-login";
 import { useStore } from "../store";
-import { at, assignAt, freshTargetPath, removeSession, replaceAt, splitAt } from "./layout-tree";
+import {
+  at, assignAt, emptySession, findPath, freshTargetPath, maximizeSizes, removeSession, replaceAt, splitAt, swapLeaves,
+} from "./layout-tree";
 import { LayoutNodeView } from "./layout-node-view";
 import { PaneDragProvider } from "./pane-drag-context";
 import { accessibleTitles, leafDisplayState, rosterSessionIds, visibleLeaves } from "./pane-layout";
@@ -25,6 +27,8 @@ interface PaneGroupProps {
 
 export function PaneGroup({ narrow }: PaneGroupProps) {
   const { state, post, focus } = useStore();
+  // Resizes made while a pane is maximized live here, never in the saved layout.
+  const [peek, setPeek] = useState<{ id: string; base: LayoutNode; root: LayoutNode } | null>(null);
 
   // A pane can outlive `delete-session` on the client for a render or two,
   // and its stale `byId` entry is never cleaned up. Render only sessions
@@ -60,21 +64,32 @@ export function PaneGroup({ narrow }: PaneGroupProps) {
     post({ t: "set-layout", layout: { ...state.layout, root: next } });
   };
 
-  // Drag-to-assign: dropping directly on an empty leaf places the dragged
-  // session there with no new split node — the same removal-then-recompute
-  // as handleSplit, but assigning rather than splitting the target.
+  // Drag-to-assign: dropping directly on an empty leaf moves the dragged
+  // session there, leaving its old slot empty.
   const handleDropAssign = (path: number[], draggedSessionId: string) => {
-    const withoutDragged = removeSession(state.layout.root, draggedSessionId);
-    const freshPath = freshTargetPath(state.layout.root, path, draggedSessionId, withoutDragged);
-    if (!freshPath) { return; }
-    const next = assignAt(withoutDragged, freshPath, draggedSessionId);
+    // Emptying (not collapsing) keeps every path valid, so `path` needs no recomputing.
+    const next = assignAt(emptySession(state.layout.root, draggedSessionId), path, draggedSessionId);
     if (!next) { return; }
     post({ t: "set-layout", layout: { ...state.layout, root: next } });
   };
 
+  const handleSwap = (path: number[], draggedSessionId: string) => {
+    const from = findPath(state.layout.root, draggedSessionId);
+    if (!from) { return; }
+    post({ t: "set-layout", layout: { ...state.layout, root: swapLeaves(state.layout.root, from, path) } });
+  };
+
+  const maximizedId = state.maximizedId !== null && readyLeaves.some((l) => l.sessionId === state.maximizedId)
+    ? state.maximizedId
+    : null;
+  const viewRoot = maximizedId === null ? state.layout.root
+    : peek?.id === maximizedId && peek.base === state.layout.root ? peek.root
+      : maximizeSizes(state.layout.root, maximizedId);
+
   const handleLayoutChanged = (path: number[], layout: Layout, meta: LayoutChangedMeta, children: LayoutNode[]) => {
     if (!meta.isUserInteraction) { return; }
-    const target = at(state.layout.root, path);
+    const current = viewRoot;
+    const target = at(current, path);
     if (!target || target.kind !== "split") { return; }
     const resized: LayoutNode = {
       kind: "split",
@@ -82,7 +97,9 @@ export function PaneGroup({ narrow }: PaneGroupProps) {
       size: target.size,
       children: children.map((child, i) => ({ ...child, size: layout[`${path.join("-")}-${i}`] ?? child.size })),
     };
-    post({ t: "set-layout", layout: { ...state.layout, root: replaceAt(state.layout.root, path, resized) } });
+    const next = replaceAt(current, path, resized);
+    if (maximizedId !== null) { setPeek({ id: maximizedId, base: state.layout.root, root: next }); return; }
+    post({ t: "set-layout", layout: { ...state.layout, root: next } });
   };
 
   // Hiding a pane or deleting its session unmounts the pane. If the element
@@ -181,10 +198,6 @@ export function PaneGroup({ narrow }: PaneGroupProps) {
     target?.focus();
   }, [request]);
 
-  const maximizedLeaf = state.maximizedId !== null && readyLeaves.some((l) => l.sessionId === state.maximizedId)
-    ? ({ kind: "leaf", sessionId: state.maximizedId, size: 100 } as const)
-    : null;
-  const noop = () => undefined;
 
   // Nothing can be created. Three readings of one empty catalog, and they are
   // not interchangeable:
@@ -287,17 +300,19 @@ export function PaneGroup({ narrow }: PaneGroupProps) {
     >
       <PaneDragProvider>
         <LayoutNodeView
-          node={maximizedLeaf ?? state.layout.root}
+          key={maximizedId ?? "all"}
+          node={viewRoot}
           path={[]}
           topLevel
           narrow={narrow}
           leafState={(sessionId) => leafDisplayState(sessionId, roster, snapshotArrived)}
           names={names}
           activeId={activeId}
-          onLayoutChanged={maximizedLeaf ? noop : handleLayoutChanged}
+          onLayoutChanged={handleLayoutChanged}
           onFocusCapture={focus}
-          onSplit={maximizedLeaf ? noop : handleSplit}
-          onDropAssign={maximizedLeaf ? noop : handleDropAssign}
+          onSplit={handleSplit}
+          onDropAssign={handleDropAssign}
+          onSwap={handleSwap}
         />
       </PaneDragProvider>
     </div>

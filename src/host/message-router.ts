@@ -638,6 +638,10 @@ export class MessageRouter {
       case 'focus-session':
         return;
 
+      case 'focus-pane':
+        this.manager.setFocusedPane(msg.sessionId);
+        return;
+
       case 'set-pinned':
         this.manager.setPinned(msg.id, msg.pinned);
         return;
@@ -763,7 +767,7 @@ const KNOWN_MESSAGE_TAGS = new Set<WebviewToHost['t']>([
   'request-stale-trees', 'remove-stale-tree',
   'request-fleet-diff', 'request-branch-refs', 'open-file-diff', 'open-review', 'open-fleet',
   'open-fleet-subagent',
-  'focus-session', 'set-pinned', 'set-draft','request-history-summaries', 'open-history',
+  'focus-session', 'focus-pane', 'set-pinned', 'set-draft', 'request-history-summaries', 'open-history',
   'memory-estimate', 'memory-reindex', 'memory-resummarize', 'memory-cancel',
   'refresh-catalog', 'refresh-usage', 'open-settings', 'login-provider', 'open-external', 'export-table-csv',
   'export-image',

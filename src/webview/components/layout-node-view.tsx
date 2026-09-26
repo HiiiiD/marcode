@@ -44,6 +44,8 @@ interface LayoutNodeViewProps {
   onSplit: (
     path: number[], orientation: "vertical" | "horizontal", draggedSessionId: string, insertBefore: boolean,
   ) => void;
+  /** A session's grab handle was dropped on the middle of this (ready) leaf — the two sessions trade slots. */
+  onSwap: (path: number[], draggedSessionId: string) => void;
   /** A session's grab handle was dropped directly on this empty leaf — assign it there, no split. */
   onDropAssign: (path: number[], draggedSessionId: string) => void;
   /**
@@ -109,6 +111,7 @@ function LeafContent({ node, path, ctx }: { node: LeafNode; path: number[]; ctx:
   const { draggingId, setDraggingId } = usePaneDrag();
   const [hoverEdge, setHoverEdge] = useState<Edge | null>(null);
   const [emptyHover, setEmptyHover] = useState(false);
+  const [centerHover, setCenterHover] = useState(false);
   const state = ctx.leafState(node.sessionId);
   // A leaf can't be dropped onto the very session being dragged off it —
   // there is nothing sensible to split or assign in that case.
@@ -160,12 +163,31 @@ function LeafContent({ node, path, ctx }: { node: LeafNode; path: number[]; ctx:
   return (
     <div className="relative h-full">
       <PaneContent sessionId={node.sessionId!} accessibleTitle={ctx.names.get(node.sessionId!)!} />
+      {isDropTarget && (
+        <div
+          data-testid="drop-zone-center"
+          className={cn(
+            "absolute inset-1/4 z-10 flex items-center justify-center border border-dashed border-ring/50 text-xs",
+            centerHover && "bg-ring/30",
+          )}
+          onDragOver={(e) => { e.preventDefault(); setCenterHover(true); }}
+          onDragLeave={() => setCenterHover(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setCenterHover(false);
+            setDraggingId(null);
+            ctx.onSwap(path, draggingId!);
+          }}
+        >
+          <span aria-hidden className="pointer-events-none rounded bg-background/80 px-1.5 py-0.5">Swap</span>
+        </div>
+      )}
       {isDropTarget && EDGES.map((edge) => (
         <div
           key={edge}
           data-testid={`drop-zone-${edge}`}
           className={cn(
-            "absolute z-10",
+            "absolute z-10 flex items-center justify-center border border-dashed border-ring/50 text-xs",
             edge === "top" && "inset-x-0 top-0 h-1/4",
             edge === "bottom" && "inset-x-0 bottom-0 h-1/4",
             edge === "left" && "inset-y-0 left-0 w-1/4",
@@ -175,7 +197,9 @@ function LeafContent({ node, path, ctx }: { node: LeafNode; path: number[]; ctx:
           onDragOver={(e) => { e.preventDefault(); setHoverEdge(edge); }}
           onDragLeave={() => setHoverEdge((cur) => (cur === edge ? null : cur))}
           onDrop={(e) => { e.preventDefault(); handleDrop(edge); }}
-        />
+        >
+          <span aria-hidden className="pointer-events-none rounded bg-background/80 px-1 py-0.5">Split</span>
+        </div>
       ))}
     </div>
   );
@@ -226,8 +250,8 @@ export function LayoutNodeView(props: LayoutNodeViewProps) {
       onLayoutChanged={(layout, meta) => onLayoutChanged(path, layout, meta, node.children)}
     >
       {node.children.map((child, i) => (
-        // Keyed by session id (for a leaf), not by index: `removeSession`
-        // (or the roster-uncheck path) can drop an earlier sibling and
+        // Keyed by session id (for a leaf), not by index: `removeSlotAt`
+        // (or a drag-to-split move) can drop an earlier sibling and
         // shift a later leaf's session into this same array slot. `Composer`
         // keeps `text`/`ghost`/`refs`/`caret` in local `useState` with no
         // reset effect keyed on the session id — an index key would let

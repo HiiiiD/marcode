@@ -73,7 +73,7 @@ suite('SessionManager', () => {
     return { manager: mmanager, provider, emitted, store: mstore };
   }
 
-  test('remove() drops the session leaf and collapses its split', async () => {
+  test('remove() empties the session leaf and keeps the split', async () => {
     const a = await manager.create('fake', '/tmp');
     const b = await manager.create('fake', '/tmp');
     manager.setLayout({
@@ -90,8 +90,42 @@ suite('SessionManager', () => {
     await manager.remove(a.state.id);
 
     assert.deepStrictEqual(manager.layout().root, {
-      kind: 'leaf', sessionId: b.state.id, size: 100,
+      kind: 'split', orientation: 'vertical', size: 100,
+      children: [
+        { kind: 'leaf', sessionId: null, size: 50 },
+        { kind: 'leaf', sessionId: b.state.id, size: 50 },
+      ],
     });
+  });
+
+  test('close() empties the leaf; the sibling keeps its slot and size', async () => {
+    const a = await manager.create('fake', '/tmp');
+    const b = await manager.create('fake', '/tmp');
+    manager.setLayout({
+      root: {
+        kind: 'split', orientation: 'horizontal', size: 100,
+        children: [
+          { kind: 'leaf', sessionId: a.state.id, size: 30 },
+          { kind: 'leaf', sessionId: b.state.id, size: 70 },
+        ],
+      },
+      presets: [],
+    });
+    await manager.close(a.state.id);
+    assert.deepStrictEqual(manager.layout().root, {
+      kind: 'split', orientation: 'horizontal', size: 100,
+      children: [
+        { kind: 'leaf', sessionId: null, size: 30 },
+        { kind: 'leaf', sessionId: b.state.id, size: 70 },
+      ],
+    });
+  });
+
+  test('the focused pane is host state that a webview set-layout cannot clobber', async () => {
+    const a = await manager.create('fake', '/tmp');
+    manager.setFocusedPane(a.state.id);
+    manager.setLayout({ root: { kind: 'leaf', sessionId: a.state.id, size: 100 }, presets: [] });
+    assert.strictEqual(manager.layout().focusedSessionId, a.state.id);
   });
 
   test('replaceSession creates a matching session and swaps its leaf without touching the old one', async () => {

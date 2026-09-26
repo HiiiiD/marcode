@@ -66,7 +66,9 @@ export function App() {
       }
     }
 
-    const result = reconcilePaneLayout(root, roster, byIdKeys, knownSessionIdsRef.current);
+    const result = reconcilePaneLayout(
+      root, roster, byIdKeys, knownSessionIdsRef.current, state.focusedSessionId ?? state.layout.focusedSessionId,
+    );
     knownSessionIdsRef.current = result.knownSessionIds;
     if (result.root) {
       post({ t: 'set-layout', layout: { ...state.layout, root: result.root } });

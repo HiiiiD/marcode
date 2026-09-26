@@ -429,8 +429,9 @@ export interface TreeDiff {
   reason?: string;
 }
 
+/** A leaf with `transient` was made by an overflowing session, and goes away with it. */
 export type LayoutNode =
-  | { kind: 'leaf'; sessionId: SessionId | null; size: number }
+  | { kind: 'leaf'; sessionId: SessionId | null; size: number; transient?: true }
   | { kind: 'split'; orientation: 'vertical' | 'horizontal'; children: LayoutNode[]; size: number };
 
 export interface LayoutPreset {
@@ -444,6 +445,8 @@ export interface PaneLayout {
   root: LayoutNode;
   /** User-saved presets only — built-ins are code constants, never sent over the wire. */
   presets: LayoutPreset[];
+  /** Last pane that held focus; where an overflow session splits. Absent in layouts saved before it existed. */
+  focusedSessionId?: SessionId | null;
 }
 
 export type WebviewToHost =
@@ -484,6 +487,7 @@ export type WebviewToHost =
    * container needs the `vscode` API this module must not import.
    */
   | { t: 'focus-session'; id: SessionId }
+  | { t: 'focus-pane'; sessionId: SessionId }
   | { t: 'set-pinned'; id: SessionId; pinned: boolean }
   | { t: 'set-draft'; id: SessionId; text: string }
   | { t: 'request-history-summaries' }

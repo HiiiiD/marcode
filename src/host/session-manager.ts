@@ -25,7 +25,7 @@ import { FILE_CAP } from '../shared/file-cap';
 import { resolvePermissionMode } from '../shared/permission-catalog';
 import { threadKey, threadKeyCwd } from '../shared/thread-key';
 import { orderWindows } from '../shared/usage-windows';
-import { removeSession, replaceLeafSession, stripSessionIds } from '../webview/components/layout-tree';
+import { emptySession, replaceLeafSession, stripSessionIds } from '../webview/components/layout-tree';
 import type {
   Attachment,
   ContextResult, HostToWebview, LayoutPreset, McpServerStatus, PaneLayout, PermissionMode, ProviderInfo, SessionId,
@@ -655,8 +655,15 @@ export class SessionManager implements SessionSink {
    * only for a caller other than the webview itself.
    */
   setLayout(layout: PaneLayout): void {
-    this.paneLayout = layout;
+    // The webview's copy of the layout lags focus (it is posted separately), so it must not clobber it.
+    this.paneLayout = { ...layout, focusedSessionId: this.paneLayout.focusedSessionId };
     if (!this.disposed) { this.emit({ t: 'layout-changed', layout }); }
+    this.schedulePersist();
+  }
+
+  setFocusedPane(id: SessionId): void {
+    if (this.paneLayout.focusedSessionId === id) { return; }
+    this.paneLayout = { ...this.paneLayout, focusedSessionId: id };
     this.schedulePersist();
   }
 
@@ -1831,7 +1838,7 @@ export class SessionManager implements SessionSink {
       state.updatedAt = Date.now();
     }
     this.visible.delete(id);
-    this.setLayout({ ...this.paneLayout, root: removeSession(this.paneLayout.root, id) });
+    this.setLayout({ ...this.paneLayout, root: emptySession(this.paneLayout.root, id) });
     if (state) { await this.digestHidden(id); }
     this.changed();
   }
@@ -1934,7 +1941,7 @@ export class SessionManager implements SessionSink {
     } catch (err) {
       console.error('[mar-code] memory forget failed', err);
     }
-    this.paneLayout = { ...this.paneLayout, root: removeSession(this.paneLayout.root, id) };
+    this.paneLayout = { ...this.paneLayout, root: emptySession(this.paneLayout.root, id) };
     this.changed();
   }
 
