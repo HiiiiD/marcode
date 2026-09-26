@@ -146,7 +146,7 @@ suite('pane-layout reconcilePaneLayout', () => {
     });
   });
 
-  test('overflow splits the focused pane along its parent orientation', () => {
+  test('overflow adds an even sibling after the focused pane', () => {
     const root: LayoutNode = {
       kind: 'split', orientation: 'horizontal', size: 100,
       children: [
@@ -158,14 +158,9 @@ suite('pane-layout reconcilePaneLayout', () => {
     assert.deepStrictEqual(result.root, {
       kind: 'split', orientation: 'horizontal', size: 100,
       children: [
-        {
-          kind: 'split', orientation: 'horizontal', size: 50,
-          children: [
-            { kind: 'leaf', sessionId: 'a', size: 50 },
-            { kind: 'leaf', sessionId: 'c', size: 50, transient: true },
-          ],
-        },
-        { kind: 'leaf', sessionId: 'b', size: 50 },
+        { kind: 'leaf', sessionId: 'a', size: 100 / 3 },
+        { kind: 'leaf', sessionId: 'c', size: 100 / 3, transient: true },
+        { kind: 'leaf', sessionId: 'b', size: 100 / 3 },
       ],
     });
   });

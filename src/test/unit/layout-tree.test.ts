@@ -448,18 +448,19 @@ suite('layout-tree placeSession', () => {
     assert.strictEqual(placeSession(root, 'a', null, 'vertical'), root);
   });
 
-  test('overflow splits the focused pane along its parent orientation', () => {
-    const root = S('horizontal', [L('a'), L('b')]);
+  test('overflow adds a sibling after the focused pane and resizes all evenly', () => {
+    const root = S('horizontal', [L('a', 30), L('b', 70)]);
     const next = placeSession(root, 'n', 'a', 'vertical');
-    const a = at(next, [0])!;
-    assert.strictEqual(a.kind === 'split' && a.orientation, 'horizontal');
     assert.deepStrictEqual(leafSessionIds(next), ['a', 'n', 'b']);
+    assert.strictEqual(next.kind === 'split' && next.orientation, 'horizontal');
+    assert.deepStrictEqual(flattenLeaves(next).map((l) => Math.round(l.size)), [33, 33, 33]);
   });
 
-  test('vertical parent yields a vertical split', () => {
-    const root = S('vertical', [L('a'), L('b')]);
-    const b = at(placeSession(root, 'n', 'b', 'horizontal'), [1])!;
-    assert.strictEqual(b.kind === 'split' && b.orientation, 'vertical');
+  test('a vertical parent stays vertical, sizes even', () => {
+    const next = placeSession(S('vertical', [L('a'), L('b')]), 'n', 'b', 'horizontal');
+    assert.strictEqual(next.kind === 'split' && next.orientation, 'vertical');
+    assert.deepStrictEqual(leafSessionIds(next), ['a', 'b', 'n']);
+    assert.strictEqual(slotCount(next), 3);
   });
 
   test('root leaf with no parent uses the fallback orientation', () => {

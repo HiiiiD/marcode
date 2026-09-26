@@ -239,8 +239,9 @@ export function removeSlotAt(root: LayoutNode, path: number[]): LayoutNode {
 
 /**
  * Where a new or revealed session lands: the first empty leaf in reading
- * order, else a split of the last-focused pane along its parent's
- * orientation (a root leaf has no parent, so `fallback` decides). An unknown
+ * order, else a new sibling after the last-focused pane in that pane's own
+ * split, resized evenly (a root leaf has no parent, so `fallback` decides
+ * the orientation of the split it becomes). An unknown
  * focus falls back to the last leaf.
  */
 export function placeSession(
@@ -251,12 +252,17 @@ export function placeSession(
   const empty = leaves.find((l) => l.sessionId === null);
   if (empty) { return assignAt(root, empty.path, sessionId) ?? root; }
   const focused = (focusedId ? leaves.find((l) => l.sessionId === focusedId) : undefined) ?? leaves[leaves.length - 1];
-  const parent = focused.path.length > 0 ? at(root, focused.path.slice(0, -1)) : undefined;
-  const orientation = parent?.kind === 'split' ? parent.orientation : fallback;
-  const split = splitAt(root, focused.path, orientation, sessionId);
-  const added = [...focused.path, 1];
-  const leaf = at(split, added);
-  return leaf?.kind === 'leaf' ? replaceAt(split, added, { ...leaf, transient: true }) : split;
+  const parentPath = focused.path.slice(0, -1);
+  const parent = focused.path.length > 0 ? at(root, parentPath) : undefined;
+  const fresh: LayoutNode = { kind: 'leaf', sessionId, size: 0, transient: true };
+  if (parent?.kind !== 'split') {
+    return { kind: 'split', orientation: fallback, size: root.size, children: [{ ...root, size: 50 }, { ...fresh, size: 50 }] };
+  }
+  // A sibling in the focused pane's own split, not a nested split: every pane on that axis shares the space evenly.
+  const idx = focused.path[focused.path.length - 1] + 1;
+  const children = [...parent.children.slice(0, idx), fresh, ...parent.children.slice(idx)];
+  const sizes = evenSizes(children.length);
+  return replaceAt(root, parentPath, { ...parent, children: children.map((c, i) => ({ ...c, size: sizes[i] })) });
 }
 
 /** Rows stack vertically; each row is a horizontal split of cells. Sessions fill in reading order, extras are `hidden`. */
