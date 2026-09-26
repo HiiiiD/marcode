@@ -21,6 +21,8 @@ interface StoreValue {
   dismissRejection: (id: SessionId) => void;
   /** See `ClientState.pendingSlotPath`. */
   setPendingSlot: (path: number[] | null) => void;
+  /** Update the composer text in client state only; the host copy is `useDraftSync`'s job. */
+  setDraft: (id: SessionId, text: string) => void;
 }
 
 const StoreContext = createContext<StoreValue | undefined>(undefined);
@@ -61,8 +63,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const dismissRejection = (id: SessionId) => dispatch({ t: 'local-dismiss-rejection', id });
   const setPendingSlot = (path: number[] | null) => dispatch({ t: 'local-pending-slot', path });
 
+  const setDraft = useCallback(
+    (id: SessionId, text: string) => dispatch({ t: 'local-draft', id, text }),
+    [],
+  );
+
   return (
-    <StoreContext.Provider value={{ state, post, focus, dismissRejection, setPendingSlot }}>
+    <StoreContext.Provider value={{ state, post, focus, dismissRejection, setPendingSlot, setDraft }}>
       {children}
     </StoreContext.Provider>
   );

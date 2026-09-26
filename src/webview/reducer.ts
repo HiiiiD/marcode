@@ -128,6 +128,13 @@ export interface ClientState {
    */
   fileSearchBySession: Record<SessionId, { query: string; files: FileRef[] } | undefined>;
   /**
+   * The composer's live text per session. Lives here rather than in the
+   * composer because a layout change re-parents a pane and remounts it —
+   * component state would be lost mid-sentence. Seeded from the host's
+   * persisted draft on hydrate; the host copy lags by a debounce.
+   */
+  draftBySession: Record<SessionId, string | undefined>;
+  /**
    * The AGENTS.md/CLAUDE.md nudge card's rows. Empty means no card — sent
    * once per activate/reload, wholesale, same posture as `staleTrees`: it
    * describes disk at an instant, and a resolved or dismissed row is simply
@@ -183,6 +190,7 @@ export const initialState: ClientState = {
   focusedSessionId: null,
   rejectionBySession: {},
   fileSearchBySession: {},
+  draftBySession: {},
   agentsMdNudgeHits: [],
   favoriteModels: [],
   showCacheTimer: false,
@@ -214,6 +222,8 @@ export type ClientAction =
   | { t: 'local-dismiss-rejection'; id: SessionId }
   /** See `ClientState.pendingSlotPath`. */
   | { t: 'local-pending-slot'; path: number[] | null }
+  /** See `ClientState.draftBySession`. */
+  | { t: 'local-draft'; id: SessionId; text: string }
   /** See `ClientState.usageRefreshing`. */
   | { t: 'local-usage-refresh-start' };
 
@@ -230,6 +240,9 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
 
     case 'local-pending-slot':
       return { ...state, pendingSlotPath: msg.path };
+
+    case 'local-draft':
+      return { ...state, draftBySession: { ...state.draftBySession, [msg.id]: msg.text } };
 
     case 'local-usage-refresh-start':
       return { ...state, usageRefreshing: true };
@@ -288,6 +301,11 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
         // Cleared for the same reason: it answers "what did the box's last
         // keystroke ask for", and a reload has no box left holding one.
         fileSearchBySession: {},
+        // Rebuilt from the host's copy, never carried: a reload has no
+        // composer left holding newer text than what the host persisted.
+        draftBySession: Object.fromEntries(
+          msg.sessions.filter((s) => s.draft).map((s) => [s.id, s.draft]),
+        ),
         // Cleared, not carried: a reload re-scans (panel-view-provider.ts
         // triggers the scan on resolveWebviewView), and the fresh
         // `agents-md-nudge` message that follows is the total rebuild here —
