@@ -160,6 +160,38 @@ export class DigestService {
     });
   }
 
+  /**
+   * A digest for a handoff prompt. Read-only: never writes the store, projects onto the session or
+   * touches `updatedAt`, so a handoff cannot become a second writer. Never rejects — any failure
+   * degrades to the extractive digest.
+   */
+  digestForHandoff(id: SessionId): Promise<{ digest: SessionDigest; source: 'llm' | 'extractive' } | undefined> {
+    return this.enqueue('slow', async () => {
+      const session = this.find(id);
+      if (!session) { return undefined; }
+      try {
+        if (session.hidden) {
+          const stored = await this.o.store.getDigest(id);
+          if (stored?.source === 'llm' && isCurrent(stored, session)) { return { digest: stored, source: 'llm' as const }; }
+        }
+        const items = await this.o.source.transcript(id);
+        const base = extractiveDigest(items, session.updatedAt);
+        if (!base) { return undefined; }
+        if (this.summarizer && !this.stopped) {
+          try {
+            return { digest: await this.summarizer.summarize(items, base), source: 'llm' as const };
+          } catch (err) {
+            console.error('[mar-code] handoff summary failed for', id, err);
+          }
+        }
+        return { digest: base, source: 'extractive' as const };
+      } catch (err) {
+        console.error('[mar-code] handoff digest failed for', id, err);
+        return undefined;
+      }
+    });
+  }
+
   async resummarize(id: SessionId): Promise<void> {
     await this.refresh(id);
     await this.upgrade(id);

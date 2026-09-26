@@ -194,3 +194,37 @@ suite('SessionManager memory indexing', () => {
     assert.strictEqual(memory.indexed.length, 0);
   });
 });
+
+suite('SessionManager handoff summary', () => {
+  test('a shown session yields a summary and is never written to the store', async () => {
+    const store = new TranscriptStore(await tempRoot());
+    const providers = new Map<string, AgentProvider>([['fake', new FakeProvider()]]);
+    const memory = new RecordingMemoryStore();
+    const manager = new SessionManager(
+      store, providers, () => {}, undefined, undefined, undefined, undefined, undefined, memory,
+    );
+    const session = await manager.create('fake', '/repo');
+    session.send('Investigate the flaky login test');
+    await manager.setVisible([session.state.id]);
+    const before = manager.summaries().find((s) => s.id === session.state.id)?.updatedAt;
+    const summary = await manager.handoffSummary(session.state.id);
+    assert.strictEqual(summary?.text.includes('Investigate the flaky login test'), true);
+    assert.strictEqual(memory.indexed.length, 0);
+    assert.strictEqual(manager.summaries().find((s) => s.id === session.state.id)?.updatedAt, before);
+  });
+
+  test('with memory off it still falls back to the extractive digest', async () => {
+    const store = new TranscriptStore(await tempRoot());
+    const providers = new Map<string, AgentProvider>([['fake', new FakeProvider()]]);
+    const manager = new SessionManager(store, providers, () => {});
+    const session = await manager.create('fake', '/repo');
+    session.send('Investigate the flaky login test');
+    const summary = await manager.handoffSummary(session.state.id);
+    assert.strictEqual(summary?.text.includes('Investigate the flaky login test'), true);
+  });
+
+  test('an unknown session has no summary', async () => {
+    const manager = new SessionManager(new TranscriptStore(await tempRoot()), new Map(), () => {});
+    assert.strictEqual(await manager.handoffSummary('nope'), undefined);
+  });
+});

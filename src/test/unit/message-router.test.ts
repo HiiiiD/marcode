@@ -1177,6 +1177,56 @@ suite('MessageRouter', () => {
     assert.strictEqual(user?.role === 'user' && user.text.includes('--- message from agent-1 ---'), true);
   });
 
+  test('create-session with handoffFrom prepends the source digest to the first message', async () => {
+    const source = await manager.create('fake', dir);
+    source.send('Refactor the billing module');
+    await settle();
+
+    await router.handle({
+      t: 'create-session', providerId: 'fake', cwd: '',
+      seed: { text: 'Continue with tests', handoffFrom: source.state.id },
+    });
+    await settle();
+
+    const created = manager.summaries().find((s) => s.id !== source.state.id);
+    const items = (await manager.get(created!.id)!.snapshot()).items;
+    const user = items.find((i) => i.role === 'user');
+    assert.strictEqual(user?.role === 'user' && user.text.startsWith('Continue with tests'), true);
+    assert.strictEqual(user?.role === 'user' && user.text.includes('--- handoff from '), true);
+    assert.strictEqual(user?.role === 'user' && user.text.includes('Refactor the billing module'), true);
+  });
+
+  test('handoffFrom reports summarizing then done, and works with no typed text', async () => {
+    const source = await manager.create('fake', dir);
+    source.send('Refactor the billing module');
+    await settle();
+    sent.length = 0;
+
+    await router.handle({
+      t: 'create-session', providerId: 'fake', cwd: '',
+      seed: { text: '', handoffFrom: source.state.id },
+    });
+    await settle();
+
+    const phases = sent.flatMap((m) => (m.t === 'handoff-progress' ? [m.phase] : []));
+    assert.deepStrictEqual(phases, ['summarizing', 'done']);
+    const created = manager.summaries().find((s) => s.id !== source.state.id);
+    const items = (await manager.get(created!.id)!.snapshot()).items;
+    assert.strictEqual(items.some((i) => i.role === 'user'), true);
+  });
+
+  test('handoffFrom an unknown session sends the plain seed', async () => {
+    await router.handle({
+      t: 'create-session', providerId: 'fake', cwd: '',
+      seed: { text: 'Just this', handoffFrom: 'nope' },
+    });
+    await settle();
+    const created = manager.summaries()[0];
+    const items = (await manager.get(created.id)!.snapshot()).items;
+    const user = items.find((i) => i.role === 'user');
+    assert.strictEqual(user?.role === 'user' && user.text, 'Just this');
+  });
+
   test('create-session with an unresolvable seed still creates the session', async () => {
     await router.handle({
       t: 'create-session', providerId: 'fake', cwd: '',

@@ -462,7 +462,7 @@ export type WebviewToHost =
        * made it — a two-step version would have to wait for the snapshot and
        * would lose the seed if the panel reloaded in between.
        */
-      seed?: { text: string; refs?: SessionRef[]; fileRefs?: FileRef[] };
+      seed?: { text: string; refs?: SessionRef[]; fileRefs?: FileRef[]; handoffFrom?: SessionId };
       /**
        * Create the session in a fresh (or existing) linked worktree instead
        * of `cwd`. `base` is the branch/ref to create `branch` off of when it
@@ -804,6 +804,8 @@ export type HostToWebview =
   | { t: 'session-prepend'; id: SessionId; items: TranscriptItem[]; hasMore: boolean }
   | { t: 'session-status'; id: SessionId; status: SessionStatus }
   | { t: 'sessions-changed'; sessions: SessionSummary[] }
+  /** A handoff's source is being summarized. Answers `create-session`; sent straight to the asker, not fanned out. */
+  | { t: 'handoff-progress'; sessionId: SessionId; phase: 'summarizing' | 'done' }
   | { t: 'memory-progress'; phase: 'extractive' | 'llm' | 'done' | 'cancelled'; done: number; total: number }
   | { t: 'memory-status'; enabled: boolean; llm: boolean }
   | { t: 'memory-estimate'; scope: DigestScopeWire; sessions: number; approxInputTokens: number }
