@@ -2,9 +2,21 @@ import { formatEditorContext } from './format-editor-context';
 import { withMarcodeIntro } from './marcode-context';
 import type { EditorContext, Invocable } from './types';
 
-/** Names of the commands that only run when the message starts with `/name`. */
+/**
+ * Names of the commands that only run when the message starts with `/name`.
+ * An alias that is also some row's own name runs that row, so it is left out.
+ */
 export function bareNamesOf(entries: readonly Invocable[]): Set<string> {
-  return new Set(entries.filter((e) => e.bare).map((e) => e.name));
+  const own = new Set(entries.map((e) => e.name));
+  const out = new Set<string>();
+  for (const e of entries) {
+    if (!e.bare) { continue; }
+    out.add(e.name);
+    for (const alias of e.aliases ?? []) {
+      if (!own.has(alias)) { out.add(alias); }
+    }
+  }
+  return out;
 }
 
 function leadingCommand(text: string): string | undefined {

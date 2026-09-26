@@ -65,6 +65,8 @@ export interface Invocable {
   argHint?: string;
   /** A backend command that breaks when anything precedes it, so no editor context is attached. */
   bare?: boolean;
+  /** Other names that run this bare command. Not shown in the menu. */
+  aliases?: string[];
 }
 
 export type AttachmentKind = 'image' | 'file';

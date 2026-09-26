@@ -24,8 +24,8 @@ export function toInvocables(commands: unknown): Invocable[] {
   const out: Invocable[] = [];
   for (const raw of commands) {
     if (typeof raw !== 'object' || raw === null) { continue; }
-    const { name, description, argumentHint, builtin } = raw as {
-      name?: unknown; description?: unknown; argumentHint?: unknown; builtin?: unknown;
+    const { name, description, argumentHint, builtin, aliases } = raw as {
+      name?: unknown; description?: unknown; argumentHint?: unknown; builtin?: unknown; aliases?: unknown;
     };
     if (typeof name !== 'string' || name.length === 0) { continue; }
 
@@ -38,7 +38,11 @@ export function toInvocables(commands: unknown): Invocable[] {
     if (typeof argumentHint === 'string' && argumentHint.length > 0) {
       entry.argHint = argumentHint;
     }
-    if (builtin === true) { entry.bare = true; }
+    if (builtin === true) {
+      entry.bare = true;
+      const names = Array.isArray(aliases) ? aliases.filter((a): a is string => typeof a === 'string' && a.length > 0) : [];
+      if (names.length > 0) { entry.aliases = names; }
+    }
     const origin = originOf(name);
     if (origin) { entry.origin = origin; }
     out.push(entry);

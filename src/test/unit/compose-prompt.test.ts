@@ -44,6 +44,14 @@ suite('bare command detection', () => {
     assert.deepStrictEqual([...bareNamesOf(entries)], ['compact']);
   });
 
+  test('a builtin alias is bare unless another row owns that name', () => {
+    const entries = toInvocables([
+      { name: 'usage', description: 'd', argumentHint: '', builtin: true, aliases: ['cost', 'stats'] },
+      { name: 'stats', description: 'd', argumentHint: '' },
+    ]);
+    assert.deepStrictEqual([...bareNamesOf(entries)].sort(), ['cost', 'usage']);
+  });
+
   test('parseSkillNames tolerates log noise and rejects garbage', () => {
     const names = parseSkillNames('INFO x\n[{"name":"pdf"},{"name":"xlsx"}]\n');
     assert.deepStrictEqual([...(names ?? [])], ['pdf', 'xlsx']);
