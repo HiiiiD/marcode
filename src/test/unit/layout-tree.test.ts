@@ -2,7 +2,7 @@ import * as assert from 'assert';
 import {
   emptyRoot, flattenLeaves, leafSessionIds, findPath, slotCount,
   splitAt, assignAt, removeSession, replaceLeafSession, fillShape, stripSessionIds,
-  at, replaceAt, freshTargetPath, emptySession, fillShapeKeepingOverflow, removeSlotAt, placeSession, gridLayout, swapLeaves,
+  at, replaceAt, freshTargetPath, emptySession, fillShapeKeepingOverflow, gridDims, removeSlotAt, placeSession, gridLayout, swapLeaves,
 } from '../../webview/components/layout-tree';
 
 suite('layout-tree read helpers', () => {
@@ -525,5 +525,22 @@ suite('layout-tree fillShapeKeepingOverflow', () => {
     const { root, hidden } = fillShapeKeepingOverflow(shape, ['a', 'b', 'c']);
     assert.deepStrictEqual(leafSessionIds(root), ['a', 'b']);
     assert.deepStrictEqual(hidden, ['c']);
+  });
+});
+
+suite('layout-tree gridDims', () => {
+  test('reads back what gridLayout built', () => {
+    for (const [r, c] of [[1, 1], [1, 3], [3, 1], [2, 3], [4, 2]]) {
+      assert.deepStrictEqual(gridDims(gridLayout(r, c, []).root), { rows: r, cols: c });
+    }
+  });
+
+  test('a vertical stack of leaves is N rows, one column', () => {
+    assert.deepStrictEqual(gridDims(S('vertical', [L('a'), L('b')])), { rows: 2, cols: 1 });
+  });
+
+  test('a non-grid shape has no dims', () => {
+    const root = S('horizontal', [L('a'), S('vertical', [L('b'), L('c')], 50)]);
+    assert.strictEqual(gridDims(root), undefined);
   });
 });

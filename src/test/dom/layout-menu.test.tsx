@@ -83,7 +83,7 @@ suite('layout menu', () => {
     fireEvent.click(screen.getByRole('button', { name: /^Apply$/i }));
     const last = posted().filter((m) => m.t === 'set-layout').at(-1)!;
     if (last.t !== 'set-layout') { throw new Error('unreachable'); }
-    assert.deepStrictEqual(flattenLeaves(last.layout.root).map((l) => l.sessionId), ['s1', null, null]);
+    assert.deepStrictEqual(flattenLeaves(last.layout.root).map((l) => l.sessionId), ['s1', null]);
   });
 
   test('save current layout as preset posts save-preset with the entered name', async () => {
@@ -114,5 +114,23 @@ suite('layout menu', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Delete My grid' }));
     const last = posted().at(-1);
     assert.deepStrictEqual(last, { t: 'delete-preset', id: 'p1' });
+  });
+});
+
+suite('layout menu sliders', () => {
+  test('open with the current layout\'s rows and columns', () => {
+    renderApp();
+    sendFromHost({
+      t: 'hydrate',
+      sessions: [summary('s1'), summary('s2')],
+      layout: layoutOf(['s1', 's2']),
+      snapshots: [snapshot('s1'), snapshot('s2')],
+      catalog: catalog(),
+      unavailable: [],
+      usage: {},
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^Layout$/i }));
+    const value = (label: string) => document.querySelector(`input[aria-label="${label}"]`)!.getAttribute('aria-valuenow');
+    assert.deepStrictEqual([value('Rows'), value('Columns')], ['2', '1']);
   });
 });

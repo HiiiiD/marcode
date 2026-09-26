@@ -289,3 +289,17 @@ export function swapLeaves(root: LayoutNode, a: number[], b: number[]): LayoutNo
 export function rootOrientation(root: LayoutNode): 'vertical' | 'horizontal' {
   return root.kind === 'split' ? root.orientation : 'vertical';
 }
+
+/** Rows x cols when the tree is exactly a grid `gridLayout` could have produced; otherwise `undefined`. */
+export function gridDims(root: LayoutNode): { rows: number; cols: number } | undefined {
+  if (root.kind === 'leaf') { return { rows: 1, cols: 1 }; }
+  if (root.children.every((c) => c.kind === 'leaf')) {
+    const n = root.children.length;
+    return root.orientation === 'horizontal' ? { rows: 1, cols: n } : { rows: n, cols: 1 };
+  }
+  if (root.orientation !== 'vertical') { return undefined; }
+  const widths = root.children.map((row) => (
+    row.kind === 'split' && row.orientation === 'horizontal' && row.children.every((c) => c.kind === 'leaf')
+      ? row.children.length : -1));
+  return widths[0] > 0 && widths.every((w) => w === widths[0]) ? { rows: widths.length, cols: widths[0] } : undefined;
+}

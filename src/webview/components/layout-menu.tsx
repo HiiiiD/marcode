@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Separator } from '@/components/ui/separator';
 import { Slider } from '@/components/ui/slider';
-import { fillShapeKeepingOverflow, gridLayout, leafSessionIds } from './layout-tree';
+import { fillShapeKeepingOverflow, gridDims, gridLayout, leafSessionIds } from './layout-tree';
 import { BUILTIN_PRESETS, shapeMatches } from './layout-presets';
 import { LayoutGridPreview } from './layout-grid-preview';
 import { LayoutOverflowDialog } from './layout-overflow-dialog';
@@ -35,10 +35,18 @@ export function LayoutMenu() {
     const titles = next.hidden.map((id) => state.sessions.find((s) => s.id === id)?.title ?? id);
     setPending({ root: next.root, titles });
   };
+  // Sliders start from the layout as it is now; a non-grid shape keeps whatever was last dialled in.
+  const onOpenChange = (next: boolean) => {
+    if (next) {
+      const dims = gridDims(state.layout.root);
+      if (dims) { setRows(Math.min(dims.rows, MAX_DIM)); setCols(Math.min(dims.cols, MAX_DIM)); }
+    }
+    setOpen(next);
+  };
   const applyShape = (shape: LayoutNode) => request(fillShapeKeepingOverflow(shape, openIds));
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverTrigger render={<Button variant="outline" size="icon-sm" aria-label="Layout" className="shrink-0" />}>
         <LayoutGridIcon aria-hidden />
       </PopoverTrigger>
