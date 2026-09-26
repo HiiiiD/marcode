@@ -250,6 +250,8 @@ export interface SessionState {
   queued?: QueuedMessage[];
   /** Survives close; absent means false so older index.json files load unchanged. */
   pinned?: boolean;
+  /** The composer's unsent text. Absent means empty; never moves `updatedAt`. */
+  draft?: string;
   /** Cache of `digestSession()`, stale once `forUpdatedAt !== updatedAt`. Never a source of truth. */
   summary?: { text: string; forUpdatedAt: number };
   createdAt: number;
@@ -483,6 +485,7 @@ export type WebviewToHost =
    */
   | { t: 'focus-session'; id: SessionId }
   | { t: 'set-pinned'; id: SessionId; pinned: boolean }
+  | { t: 'set-draft'; id: SessionId; text: string }
   | { t: 'request-history-summaries' }
   | { t: 'memory-estimate'; scope: DigestScopeWire }
   | { t: 'memory-reindex'; scope: DigestScopeWire }
