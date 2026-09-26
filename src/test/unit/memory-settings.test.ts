@@ -13,7 +13,7 @@ suite('validateSummarizer', () => {
     const { setting, warnings } = validateSummarizer(
       { mode: 'llm', provider: 'claude', model: 'claude-haiku-4-5' }, ids,
     );
-    assert.deepStrictEqual(setting, { mode: 'llm', provider: 'claude', model: 'claude-haiku-4-5', effort: 'low', concurrency: 3 });
+    assert.deepStrictEqual(setting, { mode: 'llm', provider: 'claude', model: 'claude-haiku-4-5', effort: 'low', concurrency: 3, fallbacks: [] });
     assert.deepStrictEqual(warnings, []);
   });
 
@@ -52,7 +52,7 @@ suite('validateSummarizer', () => {
     const { setting, warnings } = validateSummarizer(
       { mode: 'llm', provider: 'codex', model: 'm', effort: 'turbo' }, ids,
     );
-    assert.deepStrictEqual(setting, { mode: 'llm', provider: 'codex', model: 'm', effort: 'low', concurrency: 3 });
+    assert.deepStrictEqual(setting, { mode: 'llm', provider: 'codex', model: 'm', effort: 'low', concurrency: 3, fallbacks: [] });
     assert.strictEqual(warnings.length, 1);
   });
 
@@ -65,6 +65,41 @@ suite('validateSummarizer', () => {
   test('an unknown mode warns and is off', () => {
     const { setting, warnings } = validateSummarizer({ mode: 'fast' }, ids);
     assert.deepStrictEqual(setting, { mode: 'off' });
+    assert.strictEqual(warnings.length, 1);
+  });
+
+  test('fallbacks are accepted in order with effort defaulting to low', () => {
+    const { setting, warnings } = validateSummarizer({
+      mode: 'llm', provider: 'claude', model: 'm',
+      fallbacks: [{ provider: 'codex', model: 'c' }, { provider: 'opencode', model: 'o', effort: 'high' }],
+    }, ids);
+    assert.deepStrictEqual(setting.mode === 'llm' && setting.fallbacks, [
+      { provider: 'codex', model: 'c', effort: 'low' },
+      { provider: 'opencode', model: 'o', effort: 'high' },
+    ]);
+    assert.deepStrictEqual(warnings, []);
+  });
+
+  test('an invalid fallback is dropped with one warning and the rest survive', () => {
+    const { setting, warnings } = validateSummarizer({
+      mode: 'llm', provider: 'claude', model: 'm',
+      fallbacks: [{ provider: 'nope', model: 'x' }, { provider: 'codex' }, 'junk', { provider: 'codex', model: 'c' }],
+    }, ids);
+    assert.deepStrictEqual(setting.mode === 'llm' && setting.fallbacks, [{ provider: 'codex', model: 'c', effort: 'low' }]);
+    assert.strictEqual(warnings.length, 3);
+  });
+
+  test('a fallback with a bad effort warns and uses low', () => {
+    const { setting, warnings } = validateSummarizer({
+      mode: 'llm', provider: 'claude', model: 'm', fallbacks: [{ provider: 'codex', model: 'c', effort: 'turbo' }],
+    }, ids);
+    assert.strictEqual(setting.mode === 'llm' && setting.fallbacks[0].effort, 'low');
+    assert.strictEqual(warnings.length, 1);
+  });
+
+  test('non-array fallbacks warns and is ignored', () => {
+    const { setting, warnings } = validateSummarizer({ mode: 'llm', provider: 'claude', model: 'm', fallbacks: 'codex' }, ids);
+    assert.deepStrictEqual(setting.mode === 'llm' && setting.fallbacks, []);
     assert.strictEqual(warnings.length, 1);
   });
 });

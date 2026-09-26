@@ -5,7 +5,8 @@ export const MEMORY_SUMMARIZER_SETTING = 'marcode.memory.summarizer';
 
 const EFFORTS: readonly EffortLevel[] = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'];
 
-export interface LlmSummarizerConfig { provider: string; model: string; effort: EffortLevel; concurrency: number }
+export interface SummarizerTarget { provider: string; model: string; effort: EffortLevel }
+export interface LlmSummarizerConfig extends SummarizerTarget { concurrency: number; fallbacks: SummarizerTarget[] }
 export type SummarizerSetting = { mode: 'off' } | ({ mode: 'llm' } & LlmSummarizerConfig);
 export interface SummarizerValidation { setting: SummarizerSetting; warnings: string[] }
 
@@ -33,14 +34,7 @@ export function validateSummarizer(configured: unknown, providerIds: Iterable<st
     warnings.push(`${MEMORY_SUMMARIZER_SETTING}.model is required when mode is "llm"; using "off".`);
   }
   if (warnings.length > 0) { return { setting: OFF, warnings }; }
-  let effort: EffortLevel = 'low';
-  if (value.effort !== undefined) {
-    if (EFFORTS.includes(value.effort as EffortLevel)) {
-      effort = value.effort as EffortLevel;
-    } else {
-      warnings.push(`${MEMORY_SUMMARIZER_SETTING}.effort "${String(value.effort)}" is not a known level; using "low".`);
-    }
-  }
+  const effort = parseEffort(value.effort, MEMORY_SUMMARIZER_SETTING, warnings);
   let concurrency = DEFAULT_CONCURRENCY;
   if (value.concurrency !== undefined) {
     const n = value.concurrency;
@@ -50,8 +44,43 @@ export function validateSummarizer(configured: unknown, providerIds: Iterable<st
       warnings.push(`${MEMORY_SUMMARIZER_SETTING}.concurrency must be an integer from 1 to ${MAX_SUMMARIZER_CONCURRENCY}; using ${DEFAULT_CONCURRENCY}.`);
     }
   }
+  const fallbacks = parseFallbacks(value.fallbacks, known, warnings);
   return {
-    setting: { mode: 'llm', provider: value.provider as string, model: value.model as string, effort, concurrency },
+    setting: { mode: 'llm', provider: value.provider as string, model: value.model as string, effort, concurrency, fallbacks },
     warnings,
   };
+}
+
+function parseEffort(raw: unknown, path: string, warnings: string[]): EffortLevel {
+  if (raw === undefined) { return 'low'; }
+  if (EFFORTS.includes(raw as EffortLevel)) { return raw as EffortLevel; }
+  warnings.push(`${path}.effort "${String(raw)}" is not a known level; using "low".`);
+  return 'low';
+}
+
+function parseFallbacks(raw: unknown, known: Set<string>, warnings: string[]): SummarizerTarget[] {
+  if (raw === undefined) { return []; }
+  if (!Array.isArray(raw)) {
+    warnings.push(`${MEMORY_SUMMARIZER_SETTING}.fallbacks is not an array; ignoring it.`);
+    return [];
+  }
+  const targets: SummarizerTarget[] = [];
+  raw.forEach((entry, i) => {
+    const path = `${MEMORY_SUMMARIZER_SETTING}.fallbacks[${i}]`;
+    if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) {
+      warnings.push(`${path} is not an object; skipping it.`);
+      return;
+    }
+    const f = entry as Record<string, unknown>;
+    if (typeof f.provider !== 'string' || !known.has(f.provider)) {
+      warnings.push(`${path}.provider "${String(f.provider)}" is not an enabled provider; skipping it.`);
+      return;
+    }
+    if (typeof f.model !== 'string' || f.model.trim() === '') {
+      warnings.push(`${path}.model is required; skipping it.`);
+      return;
+    }
+    targets.push({ provider: f.provider, model: f.model, effort: parseEffort(f.effort, path, warnings) });
+  });
+  return targets;
 }

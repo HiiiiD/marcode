@@ -21,8 +21,9 @@ import { TranscriptStore } from './host/transcript-store';
 import { createVscodeEditorSource } from './host/vscode-editor-source';
 import { createWorkspaceFileIndex } from './host/workspace-file-index';
 import { FtsMemoryStore } from './memory/fts-memory-store';
+import { FallbackSummarizer } from './host/digest/fallback-summarizer';
 import { LlmSummarizer } from './host/digest/llm-summarizer';
-import { MEMORY_ENABLED_SETTING, MEMORY_SUMMARIZER_SETTING, validateSummarizer } from './shared/memory-settings';
+import { MEMORY_ENABLED_SETTING, MEMORY_SUMMARIZER_SETTING, validateSummarizer, type SummarizerTarget } from './shared/memory-settings';
 import type { MemoryStore } from './memory/types';
 import { ClaudeProvider } from './providers/claude/claude-provider';
 import { CodexProvider } from './providers/codex/codex-provider';
@@ -472,13 +473,15 @@ export async function activate(context: vscode.ExtensionContext) {
     );
     for (const warning of warnings) { void vscode.window.showWarningMessage(warning); }
     if (setting.mode === 'llm') {
-      manager.setSummarizer(new LlmSummarizer({
-        provider: providers.get(setting.provider) as AgentProvider,
-        model: setting.model,
-        effort: setting.effort,
-        concurrency: setting.concurrency,
+      const llm = (t: SummarizerTarget, concurrency?: number) => new LlmSummarizer({
+        provider: providers.get(t.provider) as AgentProvider,
+        model: t.model,
+        effort: t.effort,
+        concurrency,
         cwd: os.tmpdir(),
-      }));
+      });
+      const chain = [llm(setting, setting.concurrency), ...setting.fallbacks.map((f) => llm(f))];
+      manager.setSummarizer(chain.length === 1 ? chain[0] : new FallbackSummarizer(chain));
     }
   }
 
