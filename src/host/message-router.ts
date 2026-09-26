@@ -635,6 +635,10 @@ export class MessageRouter {
         this.manager.setPinned(msg.id, msg.pinned);
         return;
 
+      case 'set-draft':
+        this.manager.setDraft(msg.id, msg.text);
+        return;
+
       case 'request-history-summaries':
         // Before the sweep: the strip and row buttons should not wait on however many digests are stale.
         this.emit({ t: 'memory-status', ...this.manager.memoryStatus() });
@@ -752,7 +756,7 @@ const KNOWN_MESSAGE_TAGS = new Set<WebviewToHost['t']>([
   'request-stale-trees', 'remove-stale-tree',
   'request-fleet-diff', 'request-branch-refs', 'open-file-diff', 'open-review', 'open-fleet',
   'open-fleet-subagent',
-  'focus-session', 'set-pinned', 'request-history-summaries', 'open-history',
+  'focus-session', 'set-pinned', 'set-draft','request-history-summaries', 'open-history',
   'memory-estimate', 'memory-reindex', 'memory-resummarize', 'memory-cancel',
   'refresh-catalog', 'refresh-usage', 'open-settings', 'login-provider', 'open-external', 'export-table-csv',
   'export-image',

@@ -601,6 +601,17 @@ export class SessionManager implements SessionSink {
     this.changed();
   }
 
+  /**
+   * Persist-only: the typing pane already shows the text, so a
+   * `sessions-changed` fan-out per debounce would just wake every other tab.
+   */
+  setDraft(id: SessionId, text: string): void {
+    const state = this.meta.get(id);
+    if (!state || (state.draft ?? '') === text) { return; }
+    if (text) { state.draft = text; } else { delete state.draft; }
+    this.schedulePersist();
+  }
+
   layout(): PaneLayout { return this.paneLayout; }
 
   private keyOf(state: SessionState): string {

@@ -50,6 +50,7 @@ function describeInbound(m: WebviewToHost): string {
     case 'open-fleet': return 'open-fleet';
     case 'focus-session': return 'focus-session';
     case 'set-pinned': return 'set-pinned';
+    case 'set-draft': return 'set-draft';
     case 'request-history-summaries': return 'request-history-summaries';
     case 'open-history': return 'open-history';
     case 'open-fleet-subagent': return 'open-fleet-subagent';
