@@ -30,7 +30,7 @@ suite('fixed slots', () => {
   test('dropping on the middle of an occupied pane swaps the two sessions', () => {
     renderApp();
     hydrate(layoutOf(['s1', 's2']), ['s1', 's2'], ['s1', 's2']);
-    fireEvent.dragStart(screen.getByLabelText('Drag Session s1 to split or reassign a pane'), { dataTransfer: { effectAllowed: '' } });
+    fireEvent.dragStart(screen.getByLabelText('Drag Session s1 to split or reassign a pane'), { dataTransfer: { effectAllowed: '', setData: () => undefined } });
     const zone = within(screen.getByLabelText('Session: Session s2')).getByTestId('drop-zone-center');
     fireEvent.dragOver(zone);
     fireEvent.drop(zone);

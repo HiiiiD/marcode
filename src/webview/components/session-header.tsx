@@ -297,7 +297,11 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
             size="icon-xs"
             aria-label={dragLabel}
             draggable
-            onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; setDraggingId(s.id); }}
+            onDragStart={(e) => {
+              e.dataTransfer.effectAllowed = "move";
+              e.dataTransfer.setData("text/plain", s.id);
+              setDraggingId(s.id);
+            }}
             onDragEnd={() => setDraggingId(null)}
             className="shrink-0 cursor-grab active:cursor-grabbing"
           />

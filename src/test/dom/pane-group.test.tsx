@@ -9,7 +9,7 @@ import { flattenLeaves } from '../../webview/components/layout-tree';
 
 /** A minimal stand-in `DataTransfer` — jsdom's drag events carry no real one, and the handlers under test only ever set `effectAllowed`, never read a payload back off it. */
 function dragStart(el: HTMLElement) {
-  fireEvent.dragStart(el, { dataTransfer: { effectAllowed: '' } });
+  fireEvent.dragStart(el, { dataTransfer: { effectAllowed: '', setData: () => undefined } });
 }
 
 function hydrate(paneIds: string[], rosterIds = paneIds) {

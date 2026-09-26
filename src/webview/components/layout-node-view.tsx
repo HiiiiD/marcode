@@ -165,7 +165,10 @@ function LeafContent({ node, path, ctx }: { node: LeafNode; path: number[]; ctx:
       {isDropTarget && (
         <div
           data-testid="drop-zone-center"
-          className={cn("absolute inset-1/4 z-10", centerHover && "bg-ring/30")}
+          className={cn(
+            "absolute inset-1/4 z-10 flex items-center justify-center border border-dashed border-ring/50 text-xs",
+            centerHover && "bg-ring/30",
+          )}
           onDragOver={(e) => { e.preventDefault(); setCenterHover(true); }}
           onDragLeave={() => setCenterHover(false)}
           onDrop={(e) => {
@@ -174,14 +177,16 @@ function LeafContent({ node, path, ctx }: { node: LeafNode; path: number[]; ctx:
             setDraggingId(null);
             ctx.onSwap(path, draggingId!);
           }}
-        />
+        >
+          <span aria-hidden className="pointer-events-none rounded bg-background/80 px-1.5 py-0.5">Swap</span>
+        </div>
       )}
       {isDropTarget && EDGES.map((edge) => (
         <div
           key={edge}
           data-testid={`drop-zone-${edge}`}
           className={cn(
-            "absolute z-10",
+            "absolute z-10 flex items-center justify-center border border-dashed border-ring/50 text-xs",
             edge === "top" && "inset-x-0 top-0 h-1/4",
             edge === "bottom" && "inset-x-0 bottom-0 h-1/4",
             edge === "left" && "inset-y-0 left-0 w-1/4",
@@ -191,7 +196,9 @@ function LeafContent({ node, path, ctx }: { node: LeafNode; path: number[]; ctx:
           onDragOver={(e) => { e.preventDefault(); setHoverEdge(edge); }}
           onDragLeave={() => setHoverEdge((cur) => (cur === edge ? null : cur))}
           onDrop={(e) => { e.preventDefault(); handleDrop(edge); }}
-        />
+        >
+          <span aria-hidden className="pointer-events-none rounded bg-background/80 px-1 py-0.5">Split</span>
+        </div>
       ))}
     </div>
   );
