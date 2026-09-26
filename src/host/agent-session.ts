@@ -17,6 +17,7 @@ import { threadKey } from '../shared/thread-key';
 import { MAX_PENDING } from './attachment-store';
 import { claimedPaths } from './claim-paths';
 import { profileNoiseIn } from './profile-noise';
+import { ruleFor } from './permission-rules';
 import { persistableAnswers } from './question-persistence';
 import type { TranscriptStore } from './transcript-store';
 import { detectWorktreeAdd } from './worktree-detect';
@@ -131,6 +132,8 @@ function nextId(prefix: string): string {
 export class AgentSession {
   private run: AgentRun;
   private pending = new Map<string, PermissionRequest>();
+  /** Rule keys granted "always allow" this run; never persisted. */
+  private alwaysAllow = new Set<string>();
   private pendingQuestions = new Map<string, QuestionRequest>();
   private openAssistantId: string | undefined;
   private toolItems = new Map<string, TranscriptItem>();
@@ -596,8 +599,11 @@ export class AgentSession {
     this.sink.changed();
   }
 
-  respondToPermission(requestId: string, decision: ToolDecision): void {
+  respondToPermission(requestId: string, decision: ToolDecision, always = false): void {
+    const parked = this.pending.get(requestId);
     if (!this.pending.delete(requestId)) { return; }
+    const rule = always && decision.allow && parked ? ruleFor(parked.tool) : undefined;
+    if (rule) { this.alwaysAllow.add(rule.key); }
     try {
       this.run.respondToTool(requestId, decision);
     } catch (err) {
@@ -1120,12 +1126,18 @@ export class AgentSession {
         // absent key and a present-but-undefined one are the same value but
         // not the same object.
         const meta = event.meta ? { meta: event.meta } : {};
+        const rule = ruleFor(event.tool);
+        const auto = rule !== undefined && this.alwaysAllow.has(rule.key);
         const item: TranscriptItem = {
           id: nextId('p'), ts: Date.now(), role: 'permission',
-          requestId: event.id, tool: event.tool, state: 'pending', ...meta,
+          requestId: event.id, tool: event.tool,
+          state: auto ? 'allowed' : 'pending',
+          ...(rule && auto ? { reason: `Auto-allowed: ${rule.label}` } : {}),
+          ...(rule && !auto ? { alwaysRule: { label: rule.label } } : {}),
+          ...meta,
         };
         this.permissionItems.set(event.id, item);
-        this.pending.set(event.id, { requestId: event.id, tool: event.tool, ...meta });
+        if (!auto) { this.pending.set(event.id, { requestId: event.id, tool: event.tool, ...meta }); }
 
         if (parentSource && parentItemId) {
           const root = this.resolveParent(parentSource);
@@ -1138,6 +1150,11 @@ export class AgentSession {
         } else {
           this.closeAssistant();
           this.appendItem(item);
+        }
+        if (auto) {
+          try { this.run.respondToTool(event.id, { allow: true }); }
+          catch (err) { this.fail(err instanceof Error ? err.message : String(err)); }
+          return;
         }
         this.setStatus('awaiting-approval');
         this.refreshActivityLabel();

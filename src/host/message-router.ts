@@ -571,7 +571,7 @@ export class MessageRouter {
         return;
 
       case 'permission-decision':
-        this.manager.get(msg.id)?.respondToPermission(msg.requestId, msg.decision);
+        this.manager.get(msg.id)?.respondToPermission(msg.requestId, msg.decision, msg.always === true);
         return;
 
       case 'question-answer':
