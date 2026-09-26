@@ -13,16 +13,18 @@ import { clampLines, type ToolBlock } from './tool-render';
  * for a ~300px column: one column, no side-by-side, and anything that can be
  * long is clamped rather than allowed to bury the rest of the transcript.
  */
-export function ToolBody({ blocks }: { blocks: ToolBlock[] }) {
+export type Clamp = { head: number; tail: number };
+
+export function ToolBody({ blocks, clamp }: { blocks: ToolBlock[]; clamp?: Clamp }) {
   if (blocks.length === 0) { return null; }
   return (
     <div className="flex flex-col gap-1.5">
-      {blocks.map((block, i) => <Block key={i} block={block} />)}
+      {blocks.map((block, i) => <Block key={i} block={block} clamp={clamp} />)}
     </div>
   );
 }
 
-function Block({ block }: { block: ToolBlock }) {
+function Block({ block, clamp }: { block: ToolBlock; clamp?: Clamp }) {
   switch (block.kind) {
     case 'note':
       return <p className="wrap-break-word text-muted-foreground">{block.text}</p>;
@@ -47,7 +49,7 @@ function Block({ block }: { block: ToolBlock }) {
       return <PathRow path={block.path} hint={block.hint} />;
 
     case 'diff':
-      return <ClampedLines lines={block.lines} tone="diff" />;
+      return <ClampedLines lines={block.lines} tone="diff" clamp={clamp} />;
 
     case 'todos':
       return (
@@ -205,13 +207,14 @@ const TONE_CLASS = {
  * an unbounded run of lines.
  */
 function ClampedLines({
-  lines, tone,
+  lines, tone, clamp,
 }: {
   lines: string[];
   tone: 'output' | 'code' | 'error' | 'diff';
+  clamp?: Clamp;
 }) {
   const [full, setFull] = useState(false);
-  const clamped = clampLines(lines.join('\n'));
+  const clamped = clampLines(lines.join('\n'), clamp?.head, clamp?.tail);
   const showAll = full || clamped.hidden === 0;
   const shown = showAll ? lines : clamped.head;
 

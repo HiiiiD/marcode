@@ -117,7 +117,7 @@ export function PermissionCard({
     );
   }
 
-  const decide = (allow: boolean) => {
+  const decide = (allow: boolean, always = false) => {
     // Set synchronously on first click, before the post — this is the only
     // thing standing between a double-click and a silently-dropped second
     // decision, since the host never acknowledges on the wire.
@@ -127,6 +127,7 @@ export function PermissionCard({
       id: sessionId,
       requestId: item.requestId,
       decision: allow ? { allow: true } : { allow: false, reason: 'Denied by user' },
+      ...(always ? { always: true as const } : {}),
     });
   };
 
@@ -179,7 +180,7 @@ export function PermissionCard({
       </div>
       <div className="mb-2">
         <PermissionMetaDetail meta={item.meta} />
-        <ToolBody blocks={request} />
+        <ToolBody blocks={request} clamp={{ head: 4, tail: 2 }} />
       </div>
       {/* Deny is the safe, reversible-feeling choice: it comes first in DOM
           and tab order, and Allow — the consequential, irreversible-feeling
@@ -204,6 +205,18 @@ export function PermissionCard({
         >
           Allow
         </Button>
+        {item.alwaysRule && (
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={answered}
+            onClick={() => decide(true, true)}
+            title={item.alwaysRule.label}
+            className="min-w-0 shrink justify-start"
+          >
+            <span className="truncate">{item.alwaysRule.label}</span>
+          </Button>
+        )}
       </div>
     </div>
   );
