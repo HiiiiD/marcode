@@ -67,6 +67,10 @@ export function LayoutMenu() {
               onApply={() => applyShape(preset.root)}
             />
           ))}
+        </div>
+        <Separator />
+        <div className="flex flex-col gap-0.5">
+          <span className="px-2.5 text-muted-foreground">Custom</span>
           {state.layout.presets.map((preset) => (
             <PresetRow
               key={preset.id}
@@ -77,7 +81,7 @@ export function LayoutMenu() {
             />
           ))}
           <Button variant="ghost" size="sm" className="justify-start" onClick={() => setSaveOpen(true)}>
-            Save current layout…
+            Save current layout as custom…
           </Button>
         </div>
       </PopoverContent>

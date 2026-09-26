@@ -90,7 +90,7 @@ suite('layout menu', () => {
     renderApp();
     hydrateTwo();
     fireEvent.click(screen.getByRole('button', { name: /^Layout$/i }));
-    fireEvent.click(screen.getByRole('button', { name: /Save current layout/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Save current layout as custom/i }));
     fireEvent.change(screen.getByLabelText(/preset name/i), { target: { value: 'My grid' } });
     fireEvent.click(screen.getByRole('button', { name: /^Save$/i }));
     const last = posted().at(-1);
