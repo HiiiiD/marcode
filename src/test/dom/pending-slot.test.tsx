@@ -106,13 +106,13 @@ suite('pending slot', () => {
     await act(async () => arrive('b'));
 
     const last = posted().filter((m) => m.t === 'set-layout').at(-1) as { layout: { root: LayoutNode } };
-    // No slot left to fill — falls through to reconcile's own append-at-top,
-    // the same as an ordinary New with no empty slot in play.
+    // No slot left to fill — falls through to reconcile's overflow split,
+    // whose new slot is transient.
     assert.deepStrictEqual(last.layout.root, {
       kind: 'split', orientation: 'vertical', size: 100,
       children: [
         { kind: 'leaf', sessionId: 'a', size: 50 },
-        { kind: 'leaf', sessionId: 'b', size: 50 },
+        { kind: 'leaf', sessionId: 'b', size: 50, transient: true },
       ],
     });
   });

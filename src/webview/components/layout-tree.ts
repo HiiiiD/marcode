@@ -5,7 +5,7 @@
 // importing it.
 
 export type LayoutNode =
-  | { kind: 'leaf'; sessionId: string | null; size: number }
+  | { kind: 'leaf'; sessionId: string | null; size: number; transient?: true }
   | { kind: 'split'; orientation: 'vertical' | 'horizontal'; children: LayoutNode[]; size: number };
 
 export function emptyRoot(): LayoutNode {
@@ -218,7 +218,8 @@ export function emptySession(root: LayoutNode, sessionId: string): LayoutNode {
   if (path === undefined) { return root; }
   const target = at(root, path);
   if (target === undefined || target.kind !== 'leaf') { return root; }
-  return replaceAt(root, path, { ...target, sessionId: null });
+  const emptied = replaceAt(root, path, { ...target, sessionId: null });
+  return target.transient ? removeSlotAt(emptied, path) : emptied;
 }
 
 /** Explicit "Remove slot": only an empty non-root leaf can go; the parent collapses like `removeSession`. */
@@ -252,7 +253,10 @@ export function placeSession(
   const focused = (focusedId ? leaves.find((l) => l.sessionId === focusedId) : undefined) ?? leaves[leaves.length - 1];
   const parent = focused.path.length > 0 ? at(root, focused.path.slice(0, -1)) : undefined;
   const orientation = parent?.kind === 'split' ? parent.orientation : fallback;
-  return splitAt(root, focused.path, orientation, sessionId);
+  const split = splitAt(root, focused.path, orientation, sessionId);
+  const added = [...focused.path, 1];
+  const leaf = at(split, added);
+  return leaf?.kind === 'leaf' ? replaceAt(split, added, { ...leaf, transient: true }) : split;
 }
 
 /** Rows stack vertically; each row is a horizontal split of cells. Sessions fill in reading order, extras are `hidden`. */

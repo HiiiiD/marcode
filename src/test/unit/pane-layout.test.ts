@@ -94,7 +94,7 @@ suite('pane-layout reconcilePaneLayout', () => {
       kind: 'split', orientation: 'vertical', size: 100,
       children: [
         { kind: 'leaf', sessionId: 'a', size: 50 },
-        { kind: 'leaf', sessionId: 'b', size: 50 },
+        { kind: 'leaf', sessionId: 'b', size: 50, transient: true },
       ],
     });
     assert.ok(result.knownSessionIds.has('b'), 'newly-appended session must be marked known');
@@ -162,7 +162,7 @@ suite('pane-layout reconcilePaneLayout', () => {
           kind: 'split', orientation: 'horizontal', size: 50,
           children: [
             { kind: 'leaf', sessionId: 'a', size: 50 },
-            { kind: 'leaf', sessionId: 'c', size: 50 },
+            { kind: 'leaf', sessionId: 'c', size: 50, transient: true },
           ],
         },
         { kind: 'leaf', sessionId: 'b', size: 50 },

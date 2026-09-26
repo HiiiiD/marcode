@@ -544,3 +544,29 @@ suite('layout-tree gridDims', () => {
     assert.strictEqual(gridDims(root), undefined);
   });
 });
+
+suite('layout-tree overflow slots', () => {
+  test('a slot created by overflow disappears when its session closes', () => {
+    const root = S('vertical', [L('a'), L('b')]);
+    const placed = placeSession(root, 'n', 'a', 'horizontal');
+    const closed = emptySession(placed, 'n');
+    assert.deepStrictEqual(leafSessionIds(closed), ['a', 'b']);
+    assert.strictEqual(slotCount(closed), 2);
+  });
+
+  test('closing the session that was there first keeps its slot, only the overflow slot is transient', () => {
+    const placed = placeSession(S('vertical', [L('a'), L('b')]), 'n', 'a', 'horizontal');
+    const closed = emptySession(placed, 'a');
+    assert.deepStrictEqual(flattenLeaves(closed).map((l) => l.sessionId), [null, 'n', 'b']);
+  });
+
+  test('a builder slot stays after its session closes', () => {
+    const closed = emptySession(gridLayout(1, 2, ['a', 'b']).root, 'b');
+    assert.strictEqual(slotCount(closed), 2);
+  });
+
+  test('filling an empty slot never marks it transient', () => {
+    const next = placeSession(S('vertical', [L('a'), L(null)]), 'n', null, 'vertical');
+    assert.strictEqual(slotCount(emptySession(next, 'n')), 2);
+  });
+});

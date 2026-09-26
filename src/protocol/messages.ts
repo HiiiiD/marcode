@@ -427,8 +427,9 @@ export interface TreeDiff {
   reason?: string;
 }
 
+/** A leaf with `transient` was made by an overflowing session, and goes away with it. */
 export type LayoutNode =
-  | { kind: 'leaf'; sessionId: SessionId | null; size: number }
+  | { kind: 'leaf'; sessionId: SessionId | null; size: number; transient?: true }
   | { kind: 'split'; orientation: 'vertical' | 'horizontal'; children: LayoutNode[]; size: number };
 
 export interface LayoutPreset {
