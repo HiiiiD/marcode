@@ -106,6 +106,9 @@ function describeOutbound(m: HostToWebview): string {
     case 'favorite-models': return 'favorite-models';
     case 'layout-changed': return 'layout-changed';
     case 'fleet-focus-subagent': return 'fleet-focus-subagent';
+    case 'focus-pane': return 'focus-pane';
+    case 'step-pane': return 'step-pane';
+    case 'toggle-maximize-pane': return 'toggle-maximize-pane';
     default: return assertNever(m);
   }
 }

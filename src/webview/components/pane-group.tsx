@@ -171,6 +171,21 @@ export function PaneGroup({ narrow }: PaneGroupProps) {
     }
   }, [state.focusedSessionId, readyLeaves.length > 0]);
 
+  // The host's pane commands land here as a request rather than a direct DOM
+  // call: only this tree knows which composer is mounted.
+  const request = state.paneFocusRequest;
+  useEffect(() => {
+    if (!request) { return; }
+    const pane = rootRef.current?.querySelector<HTMLElement>(`[data-session-id="${CSS.escape(request.id)}"]`);
+    const target = pane?.querySelector<HTMLElement>('[data-slot="input-group-textarea"]') ?? pane;
+    target?.focus();
+  }, [request]);
+
+  const maximizedLeaf = state.maximizedId !== null && readyLeaves.some((l) => l.sessionId === state.maximizedId)
+    ? ({ kind: "leaf", sessionId: state.maximizedId, size: 100 } as const)
+    : null;
+  const noop = () => undefined;
+
   // Nothing can be created. Three readings of one empty catalog, and they are
   // not interchangeable:
   //  - `probing`: nobody has answered yet. Not a verdict, so it is shown as a
@@ -272,17 +287,17 @@ export function PaneGroup({ narrow }: PaneGroupProps) {
     >
       <PaneDragProvider>
         <LayoutNodeView
-          node={state.layout.root}
+          node={maximizedLeaf ?? state.layout.root}
           path={[]}
           topLevel
           narrow={narrow}
           leafState={(sessionId) => leafDisplayState(sessionId, roster, snapshotArrived)}
           names={names}
           activeId={activeId}
-          onLayoutChanged={handleLayoutChanged}
+          onLayoutChanged={maximizedLeaf ? noop : handleLayoutChanged}
           onFocusCapture={focus}
-          onSplit={handleSplit}
-          onDropAssign={handleDropAssign}
+          onSplit={maximizedLeaf ? noop : handleSplit}
+          onDropAssign={maximizedLeaf ? noop : handleDropAssign}
         />
       </PaneDragProvider>
     </div>

@@ -791,6 +791,14 @@ export type HostToWebview =
    * client in direct reply to its own request, not a broadcast.
    */
   | { t: 'fleet-focus-subagent'; sessionId: SessionId; itemId: string }
+  /**
+   * Keyboard pane navigation, sent by the pane commands. `focus-pane` names
+   * its target; `step-pane` and `toggle-maximize-pane` are relative to the
+   * webview's own focused pane, which only the client knows.
+   */
+  | { t: 'focus-pane'; id: SessionId }
+  | { t: 'step-pane'; delta: 1 | -1 }
+  | { t: 'toggle-maximize-pane' }
   | { t: 'session-snapshot'; session: SessionSnapshot }
   | { t: 'session-patch'; id: SessionId; patch: TranscriptPatch }
   | { t: 'session-prepend'; id: SessionId; items: TranscriptItem[]; hasMore: boolean }
