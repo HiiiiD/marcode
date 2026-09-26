@@ -163,10 +163,12 @@ async function settle() {
  * `agent-session-attachments.test.ts`) rather than needing the suite's
  * shared `store`/`sink` fixtures.
  */
-export async function makeSession(script: (text: string) => AgentEvent[] = () => []) {
+export async function makeSession(
+  script: (text: string) => AgentEvent[] = () => [],
+  provider: FakeProvider = new FakeProvider(script),
+) {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mar-session-'));
   const store = new TranscriptStore(dir);
-  const provider = new FakeProvider(script);
   const sink = new RecordingSink();
   const session = new AgentSession(baseState(), provider, store, sink);
   // `run` is the provider, not `provider.runs[0]`: `.sent` — the (text,

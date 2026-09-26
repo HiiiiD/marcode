@@ -208,17 +208,16 @@ suite('PermissionCard', () => {
       assert.strictEqual(posted().length, after);
     });
 
-    test('Deny and Allow keep their order with or without Always allow', () => {
+    test('Deny and Allow keep their leading order; Always allow comes after them', () => {
       const names = () => screen.getAllByRole('button').map((b) => b.textContent)
-        .filter((n) => n === 'Deny' || n === 'Allow');
+        .filter((n) => n === 'Deny' || n === 'Allow' || n === RULE.label);
       const first = renderWithStore(<PermissionCard item={permission()} sessionId="a" />);
       hydrateWith(LIVE);
-      const without = names();
+      assert.deepStrictEqual(names(), ['Deny', 'Allow']);
       first.unmount();
       renderWithStore(<PermissionCard item={permission({ alwaysRule: RULE })} sessionId="a" />);
       hydrateWith(LIVE);
-      assert.deepStrictEqual(names(), without);
-      assert.deepStrictEqual(without, ['Deny', 'Allow']);
+      assert.deepStrictEqual(names(), ['Deny', 'Allow', RULE.label]);
     });
   });
 
