@@ -269,11 +269,13 @@ export function gridLayout(rows: number, cols: number, sessionIds: string[]): { 
   } else {
     shape = { kind: 'split', orientation: 'vertical', size: 100, children: Array.from({ length: rows }, row) };
   }
-  const cells = rows * cols;
-  return {
-    root: fillShape(shape, sessionIds.slice(0, cells)) ?? shape,
-    hidden: sessionIds.slice(cells),
-  };
+  return fillShapeKeepingOverflow(shape, sessionIds);
+}
+
+/** Like `fillShape`, but never refuses: sessions past the last slot come back as `hidden` instead. */
+export function fillShapeKeepingOverflow(shape: LayoutNode, sessionIds: string[]): { root: LayoutNode; hidden: string[] } {
+  const cells = slotCount(shape);
+  return { root: fillShape(shape, sessionIds.slice(0, cells)) ?? shape, hidden: sessionIds.slice(cells) };
 }
 
 export function swapLeaves(root: LayoutNode, a: number[], b: number[]): LayoutNode {

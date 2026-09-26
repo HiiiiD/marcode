@@ -2,7 +2,7 @@ import * as assert from 'assert';
 import {
   emptyRoot, flattenLeaves, leafSessionIds, findPath, slotCount,
   splitAt, assignAt, removeSession, replaceLeafSession, fillShape, stripSessionIds,
-  at, replaceAt, freshTargetPath, emptySession, removeSlotAt, placeSession, gridLayout, swapLeaves,
+  at, replaceAt, freshTargetPath, emptySession, fillShapeKeepingOverflow, removeSlotAt, placeSession, gridLayout, swapLeaves,
 } from '../../webview/components/layout-tree';
 
 suite('layout-tree read helpers', () => {
@@ -516,5 +516,14 @@ suite('layout-tree swapLeaves', () => {
   test('stale path is a no-op', () => {
     const root = S('vertical', [L('a'), L('b')]);
     assert.strictEqual(swapLeaves(root, [0], [5]), root);
+  });
+});
+
+suite('layout-tree fillShapeKeepingOverflow', () => {
+  test('fills what fits and reports the rest, in reading order', () => {
+    const shape = S('horizontal', [L(null), L(null)]);
+    const { root, hidden } = fillShapeKeepingOverflow(shape, ['a', 'b', 'c']);
+    assert.deepStrictEqual(leafSessionIds(root), ['a', 'b']);
+    assert.deepStrictEqual(hidden, ['c']);
   });
 });

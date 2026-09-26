@@ -57,7 +57,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const focus = (id: SessionId) => dispatch({ t: 'local-focus', id });
+  const focus = (id: SessionId) => {
+    dispatch({ t: 'local-focus', id });
+    postToHost({ t: 'focus-pane', sessionId: id });
+  };
   const dismissRejection = (id: SessionId) => dispatch({ t: 'local-dismiss-rejection', id });
   const setPendingSlot = (path: number[] | null) => dispatch({ t: 'local-pending-slot', path });
 

@@ -4,7 +4,7 @@ import {
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { LayoutPresetsMenu } from './layout-presets-menu';
+import { LayoutMenu } from './layout-menu';
 import { SessionCreateMenu } from './session-create-menu';
 import { StaleTreesDialog } from './stale-trees';
 import { useStore } from '../store';
@@ -215,7 +215,7 @@ export function SessionPicker({ narrow, onReview, onFleet, onHistory }: SessionP
         </span>
       )}
 
-      <LayoutPresetsMenu />
+      <LayoutMenu />
 
       <SessionCreateMenu />
       </div>

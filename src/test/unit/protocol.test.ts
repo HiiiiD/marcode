@@ -49,6 +49,7 @@ function describeInbound(m: WebviewToHost): string {
     case 'open-review': return 'open-review';
     case 'open-fleet': return 'open-fleet';
     case 'focus-session': return 'focus-session';
+    case 'focus-pane': return 'focus-pane';
     case 'set-pinned': return 'set-pinned';
     case 'request-history-summaries': return 'request-history-summaries';
     case 'open-history': return 'open-history';

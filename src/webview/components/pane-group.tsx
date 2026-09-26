@@ -11,7 +11,9 @@ import { ENABLED_PROVIDERS_SETTING, PROVIDER_INSTANCES_SETTING } from "../../sha
 import type { LayoutNode } from "../../protocol/messages";
 import { shouldOfferLogin } from "../lib/provider-login";
 import { useStore } from "../store";
-import { at, assignAt, freshTargetPath, removeSession, replaceAt, splitAt } from "./layout-tree";
+import {
+  at, assignAt, emptySession, findPath, freshTargetPath, removeSession, replaceAt, splitAt, swapLeaves,
+} from "./layout-tree";
 import { LayoutNodeView } from "./layout-node-view";
 import { PaneDragProvider } from "./pane-drag-context";
 import { accessibleTitles, leafDisplayState, rosterSessionIds, visibleLeaves } from "./pane-layout";
@@ -60,16 +62,19 @@ export function PaneGroup({ narrow }: PaneGroupProps) {
     post({ t: "set-layout", layout: { ...state.layout, root: next } });
   };
 
-  // Drag-to-assign: dropping directly on an empty leaf places the dragged
-  // session there with no new split node — the same removal-then-recompute
-  // as handleSplit, but assigning rather than splitting the target.
+  // Drag-to-assign: dropping directly on an empty leaf moves the dragged
+  // session there, leaving its old slot empty.
   const handleDropAssign = (path: number[], draggedSessionId: string) => {
-    const withoutDragged = removeSession(state.layout.root, draggedSessionId);
-    const freshPath = freshTargetPath(state.layout.root, path, draggedSessionId, withoutDragged);
-    if (!freshPath) { return; }
-    const next = assignAt(withoutDragged, freshPath, draggedSessionId);
+    // Emptying (not collapsing) keeps every path valid, so `path` needs no recomputing.
+    const next = assignAt(emptySession(state.layout.root, draggedSessionId), path, draggedSessionId);
     if (!next) { return; }
     post({ t: "set-layout", layout: { ...state.layout, root: next } });
+  };
+
+  const handleSwap = (path: number[], draggedSessionId: string) => {
+    const from = findPath(state.layout.root, draggedSessionId);
+    if (!from) { return; }
+    post({ t: "set-layout", layout: { ...state.layout, root: swapLeaves(state.layout.root, from, path) } });
   };
 
   const handleLayoutChanged = (path: number[], layout: Layout, meta: LayoutChangedMeta, children: LayoutNode[]) => {
@@ -283,6 +288,7 @@ export function PaneGroup({ narrow }: PaneGroupProps) {
           onFocusCapture={focus}
           onSplit={handleSplit}
           onDropAssign={handleDropAssign}
+          onSwap={handleSwap}
         />
       </PaneDragProvider>
     </div>

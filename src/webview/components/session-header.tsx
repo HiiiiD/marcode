@@ -15,7 +15,7 @@ import { folderName } from "../format";
 import type { PaneState } from "../reducer";
 import { useStore } from "../store";
 import { BringBackDialog } from "./bring-back-dialog";
-import { removeSession } from "./layout-tree";
+import { emptySession } from "./layout-tree";
 import { isUnhealthy, worstState } from "./mcp-status";
 import { usePaneDrag } from "./pane-drag-context";
 import { PinButton } from "./pin-button";
@@ -371,7 +371,7 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
           // makes a session indexable for recall.
           post({
             t: "set-layout",
-            layout: { ...state.layout, root: removeSession(state.layout.root, s.id) },
+            layout: { ...state.layout, root: emptySession(state.layout.root, s.id) },
           });
         }}
         className="shrink-0"

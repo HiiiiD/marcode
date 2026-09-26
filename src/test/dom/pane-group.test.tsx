@@ -5,6 +5,7 @@ import { catalog, layoutOf, snapshot, summary } from '../fixtures/protocol';
 import { posted, renderApp, renderWithStore, sendFromHost } from './harness';
 import { PaneGroup } from '@/components/pane-group';
 import type { TranscriptItem } from '../../protocol/messages';
+import { flattenLeaves } from '../../webview/components/layout-tree';
 
 /** A minimal stand-in `DataTransfer` — jsdom's drag events carry no real one, and the handlers under test only ever set `effectAllowed`, never read a payload back off it. */
 function dragStart(el: HTMLElement) {
@@ -500,7 +501,7 @@ suite('PaneGroup', () => {
       usage: {},
     });
     assert.strictEqual(screen.getAllByRole('region', { name: /Session:/ }).length, 1);
-    assert.strictEqual(screen.getByRole('button', { name: /^New$/i }) !== undefined, true);
+    assert.strictEqual(within(screen.getByRole('group', { name: 'Empty slot' })).getByRole('button', { name: /^New session$/i }) !== undefined, true);
   });
 
   test('a departed session\'s composer draft does not leak into the sibling that shifts into its slot', async () => {
@@ -745,17 +746,14 @@ suite('PaneGroup', () => {
     // The empty leaf only grows its `drop-zone-empty` wrapper once a drag is
     // live — look it up after `dragStart`, not before.
     dragStart(handle);
-    const emptySlot = screen.getByRole('button', { name: /^New$/i });
+    const emptySlot = within(screen.getByRole('group', { name: 'Empty slot' })).getByRole('button', { name: /^New session$/i });
     const dropZone = emptySlot.closest('[data-testid="drop-zone-empty"]') as HTMLElement;
     fireEvent.dragOver(dropZone);
     fireEvent.drop(dropZone);
 
-    // s1's own (now-only-sibling) leaf collapses away entirely, leaving the
-    // formerly-empty leaf — now holding s1 — as the whole tree: no new split
-    // node, just a plain assigned leaf.
-    assert.deepStrictEqual(posted().filter((m) => m.t === 'set-layout').at(-1), {
-      t: 'set-layout',
-      layout: { presets: [], root: { kind: 'leaf', sessionId: 's1', size: 100 } },
-    });
+    // s1's old slot goes empty rather than collapsing; the target slot now holds s1.
+    const last = posted().filter((m) => m.t === 'set-layout').at(-1)!;
+    if (last.t !== 'set-layout') { throw new Error('unreachable'); }
+    assert.deepStrictEqual(flattenLeaves(last.layout.root).map((l) => l.sessionId), [null, 's1']);
   });
 });

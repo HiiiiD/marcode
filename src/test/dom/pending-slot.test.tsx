@@ -1,5 +1,5 @@
 import * as assert from 'assert';
-import { act, screen } from '@testing-library/react';
+import { act, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { catalog, snapshot, summary } from '../fixtures/protocol';
 import { posted, renderApp, resetHost, sendFromHost } from './harness';
@@ -48,7 +48,7 @@ suite('pending slot', () => {
     renderApp();
     hydrateWithEmptySlot();
 
-    await userEvent.click(screen.getByRole('button', { name: /^New$/i }));
+    await userEvent.click(within(screen.getByRole('group', { name: 'Empty slot' })).getByRole('button', { name: /^New session$/i }));
     await userEvent.click(screen.getByRole('button', { name: 'Create session' }));
 
     assert.deepStrictEqual(posted().at(-1), {
@@ -93,7 +93,7 @@ suite('pending slot', () => {
     renderApp();
     hydrateWithEmptySlot();
 
-    await userEvent.click(screen.getByRole('button', { name: /^New$/i }));
+    await userEvent.click(within(screen.getByRole('group', { name: 'Empty slot' })).getByRole('button', { name: /^New session$/i }));
     await userEvent.click(screen.getByRole('button', { name: 'Create session' }));
 
     // Something else — another client, a drag, a preset — fills the slot
