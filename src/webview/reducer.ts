@@ -350,10 +350,10 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
         draftBySession: Object.fromEntries(
           msg.sessions.filter((s) => s.draft).map((s) => [s.id, s.draft]),
         ),
-        // Cleared, not carried: a reload re-scans (panel-view-provider.ts
-        // triggers the scan on resolveWebviewView), and the fresh
-        // `agents-md-nudge` message that follows is the total rebuild here —
-        // same posture as `staleTrees`.
+        // Cleared, not carried: the host re-posts the settled hits right
+        // after every hydrate (panel-view-provider.ts, on `ready`), and that
+        // `agents-md-nudge` message is the total rebuild here — same posture
+        // as `staleTrees`.
         agentsMdNudgeHits: [],
         // Absent reads as empty, not "carry the previous reload's list
         // forward" — same posture as `probing`: a host that predates this

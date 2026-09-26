@@ -50,7 +50,7 @@ loop.
 - A CLAUDE.md/AGENTS.md drift nudge: flags directories where the two have drifted (one
   has real content, the other is missing) and offers a one-click migrate to make
   AGENTS.md the source of truth with CLAUDE.md as a `@AGENTS.md` stub. Scanned paths
-  beyond the built-in node_modules/.git/dist/out excludes are configurable via
+  beyond the built-in node_modules/.git/dist/out/.claude/worktrees/.worktrees excludes are configurable via
   `marcode.agentsMdNudge.excludePaths`.
 
 ## Install

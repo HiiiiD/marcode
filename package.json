@@ -479,7 +479,7 @@
             "type": "string"
           },
           "default": [],
-          "description": "Extra paths the CLAUDE.md/AGENTS.md drift scan skips, on top of the built-in node_modules/.git/dist/out. A plain segment (e.g. \".claude/worktrees\") matches that path anywhere in the tree; an entry containing \"*\" is used as a raw glob.",
+          "description": "Extra paths the CLAUDE.md/AGENTS.md drift scan skips, on top of the built-in node_modules/.git/dist/out/.claude/worktrees/.worktrees. A plain segment (e.g. \"vendor/legacy\") matches that path anywhere in the tree; an entry containing \"*\" is used as a raw glob.",
           "scope": "window"
         },
         "marcode.favoriteModels": {
