@@ -12,6 +12,7 @@ import { HistoryPanel, HISTORY_VIEW_TYPE } from './host/history-panel';
 import { clampCap } from './host/fleet-diff';
 import { PanelViewProvider } from './host/panel-view-provider';
 import { PostBus } from './host/post-bus';
+import { createNotifierClient } from './host/notifier-vscode';
 import type { AttachmentHost, ConfigHost, UpdateNotifyHost } from './host/message-router';
 import { PROFILE_GUARD_SNIPPET } from './host/profile-noise';
 import { ReviewPanel, REVIEW_VIEW_TYPE } from './host/review-panel';
@@ -624,6 +625,9 @@ export async function activate(context: vscode.ExtensionContext) {
   // than inside PanelViewProvider so there is one place that says which
   // surfaces exist and what each of them sees.
   bus.add({ post: (msg) => provider.post(msg), wants: () => true });
+  const notifier = createNotifierClient(manager, () => provider.isVisible());
+  bus.add(notifier.client);
+  context.subscriptions.push({ dispose: () => { notifier.dispose(); } });
 
   // Push every change to the webview so the composer chip tracks the editor.
   const contextSub = tracker.onChange((ctx) => provider.post({ t: 'editor-context', ctx }));

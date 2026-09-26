@@ -63,6 +63,8 @@ export class PanelViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
+  isVisible(): boolean { return this.view?.visible === true; }
+
   resolveWebviewView(view: vscode.WebviewView): void {
     this.view = view;
     view.webview.options = {
