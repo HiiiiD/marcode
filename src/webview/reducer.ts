@@ -1,3 +1,4 @@
+import { leafSessionIds } from './components/layout-tree';
 import type {
   Attachment,
   BringBackPlan,
@@ -118,6 +119,14 @@ export interface ClientState {
    * rarely sees this null in practice.
    */
   focusedSessionId: SessionId | null;
+  /**
+   * A keyboard request to move DOM focus into `id`'s composer. A fresh object
+   * per request so asking for the same pane twice still re-fires the effect.
+   * Client-local and ephemeral, like `focusedSessionId`.
+   */
+  paneFocusRequest: { id: SessionId } | null;
+  /** The one pane shown full-size, or null. Client-local and never persisted. */
+  maximizedId: SessionId | null;
   /** Last transient attachment failure for each composer, one line per refused file. */
   rejectionBySession: Record<SessionId, string[] | undefined>;
   /**
@@ -181,6 +190,8 @@ export const initialState: ClientState = {
   fleetDiffReason: undefined,
   fleetDiffDirty: 0,
   focusedSessionId: null,
+  paneFocusRequest: null,
+  maximizedId: null,
   rejectionBySession: {},
   fileSearchBySession: {},
   agentsMdNudgeHits: [],
@@ -220,10 +231,37 @@ export type ClientAction =
 export function reduce(state: ClientState, msg: ClientAction): ClientState {
   switch (msg.t) {
     case 'local-layout':
-      return { ...state, layout: msg.layout };
+      return { ...state, layout: msg.layout, maximizedId: keepMaximized(state.maximizedId, msg.layout) };
 
     case 'layout-changed':
-      return { ...state, layout: msg.layout };
+      return { ...state, layout: msg.layout, maximizedId: keepMaximized(state.maximizedId, msg.layout) };
+
+    case 'focus-pane': {
+      if (!readyPaneIds(state).includes(msg.id)) { return state; }
+      return {
+        ...state,
+        paneFocusRequest: { id: msg.id },
+        maximizedId: state.maximizedId === null ? null : msg.id,
+      };
+    }
+
+    case 'step-pane': {
+      const ids = readyPaneIds(state);
+      if (ids.length === 0) { return state; }
+      const at = state.focusedSessionId === null ? -1 : ids.indexOf(state.focusedSessionId);
+      const next = at === -1
+        ? (msg.delta === 1 ? 0 : ids.length - 1)
+        : (at + msg.delta + ids.length) % ids.length;
+      return {
+        ...state,
+        paneFocusRequest: { id: ids[next] },
+        maximizedId: state.maximizedId === null ? null : ids[next],
+      };
+    }
+
+    case 'toggle-maximize-pane':
+      if (state.maximizedId !== null) { return { ...state, maximizedId: null }; }
+      return state.focusedSessionId === null ? state : { ...state, maximizedId: state.focusedSessionId };
 
     case 'local-focus':
       return state.focusedSessionId === msg.id ? state : { ...state, focusedSessionId: msg.id };
@@ -284,6 +322,8 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
         // hydrate rebuilds them. A stale id would let `+ New` inherit from a
         // session this hydrate may not even contain.
         focusedSessionId: null,
+        paneFocusRequest: null,
+        maximizedId: null,
         rejectionBySession: {},
         // Cleared for the same reason: it answers "what did the box's last
         // keystroke ask for", and a reload has no box left holding one.
@@ -625,4 +665,13 @@ function withChild(
     return { ...item, children: updated };
   });
   return found ? next : undefined;
+}
+
+function readyPaneIds(state: ClientState): SessionId[] {
+  const roster = new Set(state.sessions.map((s) => s.id));
+  return leafSessionIds(state.layout.root).filter((id) => roster.has(id) && id in state.byId);
+}
+
+function keepMaximized(id: SessionId | null, layout: PaneLayout): SessionId | null {
+  return id !== null && leafSessionIds(layout.root).includes(id) ? id : null;
 }

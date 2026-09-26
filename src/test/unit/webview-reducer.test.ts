@@ -644,3 +644,70 @@ suite('webview reducer', () => {
     assert.strictEqual(state.contextBySession['s1']?.ok, true);
   });
 });
+
+suite('pane keyboard navigation', () => {
+  function three() {
+    return reduce(initialState, {
+      t: 'hydrate',
+      sessions: ['a', 'b', 'c'].map((id) => summary(id)),
+      layout: layoutOf(['a', 'b', 'c']),
+      snapshots: ['a', 'b', 'c'].map((id) => snapshot(id)),
+      catalog: [], unavailable: [], usage: {},
+    });
+  }
+
+  test('focus-pane requests focus for that id', () => {
+    const s = reduce(three(), { t: 'focus-pane', id: 'b' });
+    assert.strictEqual(s.paneFocusRequest?.id, 'b');
+  });
+
+  test('focus-pane for a session that is not a ready pane is ignored', () => {
+    const s = reduce(three(), { t: 'focus-pane', id: 'zzz' });
+    assert.strictEqual(s.paneFocusRequest, null);
+  });
+
+  test('step-pane wraps in layout order from the focused pane', () => {
+    let s = reduce(three(), { t: 'local-focus', id: 'c' });
+    s = reduce(s, { t: 'step-pane', delta: 1 });
+    assert.strictEqual(s.paneFocusRequest?.id, 'a');
+    s = reduce(reduce(three(), { t: 'local-focus', id: 'a' }), { t: 'step-pane', delta: -1 });
+    assert.strictEqual(s.paneFocusRequest?.id, 'c');
+  });
+
+  test('step-pane with nothing focused lands on the first or last pane', () => {
+    assert.strictEqual(reduce(three(), { t: 'step-pane', delta: 1 }).paneFocusRequest?.id, 'a');
+    assert.strictEqual(reduce(three(), { t: 'step-pane', delta: -1 }).paneFocusRequest?.id, 'c');
+  });
+
+  test('a repeated request for the same id is a new request', () => {
+    const one = reduce(three(), { t: 'focus-pane', id: 'b' });
+    const two = reduce(one, { t: 'focus-pane', id: 'b' });
+    assert.notStrictEqual(one.paneFocusRequest, two.paneFocusRequest);
+  });
+
+  test('toggle-maximize maximizes the focused pane and toggles back', () => {
+    let s = reduce(three(), { t: 'local-focus', id: 'b' });
+    s = reduce(s, { t: 'toggle-maximize-pane' });
+    assert.strictEqual(s.maximizedId, 'b');
+    s = reduce(s, { t: 'toggle-maximize-pane' });
+    assert.strictEqual(s.maximizedId, null);
+  });
+
+  test('toggle-maximize with nothing focused does nothing', () => {
+    assert.strictEqual(reduce(three(), { t: 'toggle-maximize-pane' }).maximizedId, null);
+  });
+
+  test('focus-pane while maximized moves the maximized pane', () => {
+    let s = reduce(three(), { t: 'local-focus', id: 'a' });
+    s = reduce(s, { t: 'toggle-maximize-pane' });
+    s = reduce(s, { t: 'focus-pane', id: 'c' });
+    assert.strictEqual(s.maximizedId, 'c');
+  });
+
+  test('maximize is dropped when its pane leaves the layout', () => {
+    let s = reduce(three(), { t: 'local-focus', id: 'a' });
+    s = reduce(s, { t: 'toggle-maximize-pane' });
+    s = reduce(s, { t: 'layout-changed', layout: layoutOf(['b', 'c']) });
+    assert.strictEqual(s.maximizedId, null);
+  });
+});

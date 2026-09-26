@@ -27,6 +27,7 @@ import type { MemoryStore } from './memory/types';
 import { ClaudeProvider } from './providers/claude/claude-provider';
 import { CodexProvider } from './providers/codex/codex-provider';
 import { FakeProvider } from './providers/fake/fake-provider';
+import { PANE_COMMANDS, paneCommandMessage } from './host/pane-commands';
 import { OpenCodeProvider } from './providers/opencode/opencode-provider';
 import type { DiffBase, SessionId } from './protocol/messages';
 import {
@@ -635,6 +636,10 @@ export async function activate(context: vscode.ExtensionContext) {
     { dispose: () => { void selfControlServer.dispose(); } },
     { dispose: () => { contextSub.dispose(); tracker.dispose(); editorSource.dispose(); } },
     fileIndex,
+    ...PANE_COMMANDS.map((command) => vscode.commands.registerCommand(command, () => {
+      const msg = paneCommandMessage(command, manager.layout());
+      if (msg) { provider.post(msg); }
+    })),
     vscode.commands.registerCommand('marcode.review.open', () => { review.open(); }),
     vscode.commands.registerCommand('marcode.fleet.open', () => { fleet.open(); }),
     vscode.commands.registerCommand('marcode.history.open', () => { history.open(); }),
