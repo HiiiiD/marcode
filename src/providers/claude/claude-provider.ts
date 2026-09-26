@@ -122,7 +122,7 @@ import { findModel, resolveEffort } from '../../shared/model-catalog';
 import { addUsageTotals } from '../../shared/usage-totals';
 import { attachmentLines, imageAttachments, readBase64 } from '../attachment-payload';
 import { formatEditorContext } from '../format-editor-context';
-import { withMarcodeIntro } from '../marcode-context';
+import { bareNamesOf, composePrompt } from '../compose-prompt';
 import {
   localVersion, npmLatestVersion, type ExecVersionFn, type FetchFn, type UpdateInfo,
 } from '../update-check';
@@ -473,6 +473,7 @@ export class ClaudeProvider implements AgentProvider {
     let disposed = false;
     let started = false;
     let introduced = Boolean(opts.withoutSelfControl);
+    let bareCommands: ReadonlySet<string> = new Set();
     let queryRef: Query | undefined;
     // Effective mode/effort for a query not yet constructed. Read by
     // ensureStarted() -> buildOptions() at the moment the query actually
@@ -704,6 +705,7 @@ export class ClaudeProvider implements AgentProvider {
                 && interruptedGen !== undefined && interruptedGen !== turnGen
               ) { continue; }
               if (event.kind === 'turn-end' && event.reason === 'interrupted') { interruptedGen = undefined; }
+              if (event.kind === 'invocables') { bareCommands = bareNamesOf(event.entries); }
               events.push(event);
             }
           }
@@ -735,9 +737,9 @@ export class ClaudeProvider implements AgentProvider {
           turnGeneration: turnGen,
         });
         ensureStarted();
-        const body0 = context ? `${formatEditorContext(context)}\n\n${text}` : text;
-        const body = withMarcodeIntro(body0, introduced, Boolean(opts.resumeToken));
-        introduced = true;
+        const composed = composePrompt(text, context, bareCommands, introduced, Boolean(opts.resumeToken));
+        const body = composed.body;
+        introduced = composed.introduced;
         const content: ContentBlockParam[] = [
           { type: 'text', text: `${body}${attachmentLines(attachments)}` },
         ];

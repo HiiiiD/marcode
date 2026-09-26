@@ -63,6 +63,8 @@ export interface Invocable {
   origin?: string;
   /** e.g. '[interval] [prompt]'. Rendered as ghost text after insertion. */
   argHint?: string;
+  /** A backend command that breaks when anything precedes it, so no editor context is attached. */
+  bare?: boolean;
 }
 
 export type AttachmentKind = 'image' | 'file';
