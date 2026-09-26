@@ -313,3 +313,28 @@ export function gridDims(root: LayoutNode): { rows: number; cols: number } | und
       ? row.children.length : -1));
   return widths[0] > 0 && widths.every((w) => w === widths[0]) ? { rows: widths.length, cols: widths[0] } : undefined;
 }
+
+/** Smallest share a pane can be dragged to; `maximizeSizes` leaves every other pane exactly this much. */
+export const PEEK_SIZE = 15;
+
+/**
+ * A view-only copy of the tree with the pane holding `sessionId` given all the
+ * room every ancestor split allows, the rest left peeking at `PEEK_SIZE`.
+ * Never persisted: the real layout keeps its own sizes.
+ */
+export function maximizeSizes(root: LayoutNode, sessionId: string): LayoutNode {
+  const path = findPath(root, sessionId);
+  if (path === undefined) { return root; }
+  const walk = (node: LayoutNode, rest: number[]): LayoutNode => {
+    if (node.kind === 'leaf' || rest.length === 0) { return node; }
+    const [head, ...tail] = rest;
+    const main = 100 - PEEK_SIZE * (node.children.length - 1);
+    return {
+      ...node,
+      children: node.children.map((child, i) => (
+        i === head ? { ...walk(child, tail), size: main } : { ...child, size: PEEK_SIZE }
+      )),
+    };
+  };
+  return walk(root, path);
+}

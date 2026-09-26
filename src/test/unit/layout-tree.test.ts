@@ -2,7 +2,7 @@ import * as assert from 'assert';
 import {
   emptyRoot, flattenLeaves, leafSessionIds, findPath, slotCount,
   splitAt, assignAt, removeSession, replaceLeafSession, fillShape, stripSessionIds,
-  at, replaceAt, freshTargetPath, emptySession, fillShapeKeepingOverflow, gridDims, removeSlotAt, placeSession, gridLayout, swapLeaves,
+  at, replaceAt, freshTargetPath, emptySession, fillShapeKeepingOverflow, maximizeSizes, gridDims, removeSlotAt, placeSession, gridLayout, swapLeaves,
 } from '../../webview/components/layout-tree';
 
 suite('layout-tree read helpers', () => {
@@ -569,5 +569,27 @@ suite('layout-tree overflow slots', () => {
   test('filling an empty slot never marks it transient', () => {
     const next = placeSession(S('vertical', [L('a'), L(null)]), 'n', null, 'vertical');
     assert.strictEqual(slotCount(emptySession(next, 'n')), 2);
+  });
+});
+
+suite('layout-tree maximizeSizes', () => {
+  test('the pane takes what is left after every sibling peeks at the minimum', () => {
+    const root = S('horizontal', [L('a'), L('b'), L('c')]);
+    assert.deepStrictEqual(flattenLeaves(maximizeSizes(root, 'b')).map((l) => l.size), [15, 70, 15]);
+  });
+
+  test('every ancestor split is maximized toward the pane', () => {
+    const root = S('vertical', [L('a'), S('horizontal', [L('b'), L('c')], 50)]);
+    const next = maximizeSizes(root, 'c');
+    const sizes = flattenLeaves(next).map((l) => [l.sessionId, l.size]);
+    assert.deepStrictEqual(sizes, [['a', 15], ['b', 15], ['c', 85]]);
+    assert.strictEqual(next.kind === 'split' && next.children[1].size, 85);
+  });
+
+  test('the original tree is untouched and an unknown id is a no-op', () => {
+    const root = S('horizontal', [L('a'), L('b')]);
+    maximizeSizes(root, 'a');
+    assert.deepStrictEqual(flattenLeaves(root).map((l) => l.size), [50, 50]);
+    assert.strictEqual(maximizeSizes(root, 'z'), root);
   });
 });

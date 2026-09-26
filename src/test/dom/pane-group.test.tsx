@@ -776,14 +776,16 @@ suite('PaneGroup keyboard navigation', () => {
     assert.strictEqual(document.querySelector('[data-session-id="a"]')!.getAttribute('data-active'), 'false');
   });
 
-  test('toggle-maximize shows only the focused pane, and toggling again restores the rest', () => {
+  test('toggle-maximize keeps the other panes peeking, and never rewrites the saved layout', () => {
     renderApp();
     hydrate(['a', 'b']);
     act(() => { sendFromHost({ t: 'focus-pane', id: 'b' }); });
-    act(() => { sendFromHost({ t: 'toggle-maximize-pane' }); });
-    assert.strictEqual(document.querySelectorAll('[data-session-id]').length, 1);
-    assert.strictEqual(document.querySelector('[data-session-id="b"]') === null, false);
+    const layoutPosts = () => posted().filter((m) => m.t === 'set-layout').length;
+    const before = layoutPosts();
     act(() => { sendFromHost({ t: 'toggle-maximize-pane' }); });
     assert.strictEqual(document.querySelectorAll('[data-session-id]').length, 2);
+    act(() => { sendFromHost({ t: 'toggle-maximize-pane' }); });
+    assert.strictEqual(document.querySelectorAll('[data-session-id]').length, 2);
+    assert.strictEqual(layoutPosts(), before);
   });
 });
