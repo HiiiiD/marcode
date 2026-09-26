@@ -1,6 +1,5 @@
 import { attachmentLines, imageAttachments } from '../attachment-payload';
-import { formatEditorContext } from '../format-editor-context';
-import { withMarcodeIntro } from '../marcode-context';
+import { composePrompt } from '../compose-prompt';
 import { sumUsageTotals } from '../../shared/usage-totals';
 import type {
   AgentEvent, AgentRun, Attachment, ContextBreakdown, EditorContext, EffortLevel, McpServerStatus,
@@ -550,9 +549,10 @@ export class CodexRun implements AgentRun {
   }
 
   send(text: string, context?: EditorContext, attachments?: Attachment[]): void {
-    const body0 = context ? `${formatEditorContext(context)}\n\n${text}` : text;
-    const body = withMarcodeIntro(body0, this.introduced, Boolean(this.opts.resumeToken));
-    this.introduced = true;
+    // Codex has no text-level commands, so nothing is ever bare.
+    const composed = composePrompt(text, context, new Set(), this.introduced, Boolean(this.opts.resumeToken));
+    const body = composed.body;
+    this.introduced = composed.introduced;
     const input: UserInput[] = [
       { type: 'text', text: `${body}${attachmentLines(attachments)}`, text_elements: [] },
     ];
