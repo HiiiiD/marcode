@@ -117,7 +117,7 @@ export function PermissionCard({
     );
   }
 
-  const decide = (allow: boolean, always = false) => {
+  const decide = (allow: boolean) => {
     // Set synchronously on first click, before the post — this is the only
     // thing standing between a double-click and a silently-dropped second
     // decision, since the host never acknowledges on the wire.
@@ -127,7 +127,6 @@ export function PermissionCard({
       id: sessionId,
       requestId: item.requestId,
       decision: allow ? { allow: true } : { allow: false, reason: 'Denied by user' },
-      ...(always ? { always: true as const } : {}),
     });
   };
 
@@ -186,9 +185,8 @@ export function PermissionCard({
           and tab order, and Allow — the consequential, irreversible-feeling
           action — is deliberately not styled with solid-primary emphasis,
           so it isn't both the most prominent control and the first tab
-          stop. Neither button autofocuses. Always allow wraps below rather
-          than truncating: its label is the scope being granted. */}
-      <div className="flex flex-wrap gap-2">
+          stop. Neither button autofocuses. */}
+      <div className="flex gap-2">
         <Button
           size="sm"
           disabled={answered}
@@ -206,18 +204,6 @@ export function PermissionCard({
         >
           Allow
         </Button>
-        {item.alwaysRule && (
-          <Button
-            variant="ghost"
-            size="sm"
-            disabled={answered}
-            onClick={() => decide(true, true)}
-            title={item.alwaysRule.label}
-            className="h-auto min-h-7 max-w-full justify-start whitespace-normal text-left"
-          >
-            {item.alwaysRule.label}
-          </Button>
-        )}
       </div>
     </div>
   );

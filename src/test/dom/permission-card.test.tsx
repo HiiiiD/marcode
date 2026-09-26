@@ -174,53 +174,6 @@ suite('PermissionCard', () => {
     });
   });
 
-  suite('always allow', () => {
-    const RULE = { label: 'Always allow file edits' };
-
-    test('shows Always allow when the item carries a rule', () => {
-      renderWithStore(<PermissionCard item={permission({ alwaysRule: RULE })} sessionId="a" />);
-      hydrateWith(LIVE);
-      screen.getByRole('button', { name: RULE.label });
-    });
-
-    test('no rule, no Always allow button', () => {
-      renderWithStore(<PermissionCard item={permission()} sessionId="a" />);
-      hydrateWith(LIVE);
-      assert.strictEqual(screen.queryAllByRole('button', { name: /always allow/i }).length, 0);
-    });
-
-    test('clicking Always allow posts an allow carrying always', async () => {
-      renderWithStore(<PermissionCard item={permission({ alwaysRule: RULE })} sessionId="a" />);
-      hydrateWith(LIVE);
-      await userEvent.click(screen.getByRole('button', { name: RULE.label }));
-      assert.deepStrictEqual(posted().at(-1), {
-        t: 'permission-decision', id: 'a', requestId: 'r1', decision: { allow: true }, always: true,
-      });
-    });
-
-    test('a double click on Always allow posts once', async () => {
-      renderWithStore(<PermissionCard item={permission({ alwaysRule: RULE })} sessionId="a" />);
-      hydrateWith(LIVE);
-      const btn = screen.getByRole('button', { name: RULE.label });
-      await userEvent.click(btn);
-      const after = posted().length;
-      await userEvent.click(btn);
-      assert.strictEqual(posted().length, after);
-    });
-
-    test('Deny and Allow keep their leading order; Always allow comes after them', () => {
-      const names = () => screen.getAllByRole('button').map((b) => b.textContent)
-        .filter((n) => n === 'Deny' || n === 'Allow' || n === RULE.label);
-      const first = renderWithStore(<PermissionCard item={permission()} sessionId="a" />);
-      hydrateWith(LIVE);
-      assert.deepStrictEqual(names(), ['Deny', 'Allow']);
-      first.unmount();
-      renderWithStore(<PermissionCard item={permission({ alwaysRule: RULE })} sessionId="a" />);
-      hydrateWith(LIVE);
-      assert.deepStrictEqual(names(), ['Deny', 'Allow', RULE.label]);
-    });
-  });
-
   test('a mid-length edit previews compactly with a reveal', () => {
     const after = Array.from({ length: 15 }, (_, i) => `line ${i}`).join('\n');
     const tool: ToolCall = {

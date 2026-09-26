@@ -1,5 +1,7 @@
 # Always Allow Implementation Plan
 
+> **Status: dropped 2026-09-26.** Not shipped: session-scoped rules widen what an agent can do unprompted (edits + test runner = code execution; broad read rules). If revisited, prefer provider-native mechanisms (Claude suggestions pinned to the session destination, Codex acceptForSession, ACP allow_always). Only the compact diff preview and the fixed button row landed.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Permission cards offer "Always allow"; Marcode remembers a narrow per-session rule in memory and auto-answers matching requests on every provider. Edit approvals get a compact diff preview; Deny/Allow keep a fixed position.

@@ -1,5 +1,7 @@
 # Always allow on permission cards
 
+> **Status: dropped 2026-09-26.** Not shipped: session-scoped rules widen what an agent can do unprompted (edits + test runner = code execution; broad read rules). If revisited, prefer provider-native mechanisms (Claude suggestions pinned to the session destination, Codex acceptForSession, ACP allow_always). Only the compact diff preview and the fixed button row landed.
+
 ## Goal
 
 A permission card offers "Always allow" next to Allow and Deny. Marcode itself remembers the

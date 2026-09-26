@@ -17,7 +17,6 @@ import { threadKey } from '../shared/thread-key';
 import { MAX_PENDING } from './attachment-store';
 import { claimedPaths } from './claim-paths';
 import { profileNoiseIn } from './profile-noise';
-import { ruleFor } from './permission-rules';
 import { persistableAnswers } from './question-persistence';
 import type { TranscriptStore } from './transcript-store';
 import { detectWorktreeAdd } from './worktree-detect';
@@ -132,8 +131,6 @@ function nextId(prefix: string): string {
 export class AgentSession {
   private run: AgentRun;
   private pending = new Map<string, PermissionRequest>();
-  /** Rule keys granted "always allow" this run; never persisted. */
-  private alwaysAllow = new Set<string>();
   private pendingQuestions = new Map<string, QuestionRequest>();
   private openAssistantId: string | undefined;
   private toolItems = new Map<string, TranscriptItem>();
@@ -599,36 +596,27 @@ export class AgentSession {
     this.sink.changed();
   }
 
-  /**
-   * The provider rejected a decision, so the request is no longer outstanding
-   * as far as it is concerned. Settle the persisted item as denied rather than
-   * leaving it 'pending' forever with no way for the user to retry.
-   */
-  private denyRejected(requestId: string, err: unknown): void {
-    const message = err instanceof Error ? err.message : String(err);
-    const existing = this.permissionItems.get(requestId);
-    if (existing && existing.role === 'permission') {
-      const settled: TranscriptItem = { ...existing, state: 'denied', reason: message };
-      const parentRoot = this.permissionChildOf.get(requestId);
-      if (parentRoot) { this.replaceChild(parentRoot, settled); }
-      else { this.replaceItem(settled); }
-      this.permissionItems.set(requestId, settled);
-    }
-    this.fail(message);
-  }
-
-  respondToPermission(requestId: string, decision: ToolDecision, always = false): void {
-    const parked = this.pending.get(requestId);
+  respondToPermission(requestId: string, decision: ToolDecision): void {
     if (!this.pending.delete(requestId)) { return; }
-    const rule = always && decision.allow && parked ? ruleFor(parked.tool, this._state.cwd) : undefined;
     try {
       this.run.respondToTool(requestId, decision);
     } catch (err) {
-      this.denyRejected(requestId, err);
+      const message = err instanceof Error ? err.message : String(err);
+      // The provider rejected the decision, so the request is no longer
+      // outstanding as far as it's concerned. Settle the persisted item as
+      // denied (rather than leaving it 'pending' forever with no way for
+      // the user to retry, since `pending` no longer has this requestId).
+      const existing = this.permissionItems.get(requestId);
+      if (existing && existing.role === 'permission') {
+        const settled: TranscriptItem = { ...existing, state: 'denied', reason: message };
+        const parentRoot = this.permissionChildOf.get(requestId);
+        if (parentRoot) { this.replaceChild(parentRoot, settled); }
+        else { this.replaceItem(settled); }
+        this.permissionItems.set(requestId, settled);
+      }
+      this.fail(message);
       return;
     }
-    // Only after the provider accepted it: a grant that never took effect must not linger.
-    if (rule) { this.alwaysAllow.add(rule.key); }
 
     const existing = this.permissionItems.get(requestId);
     if (existing && existing.role === 'permission') {
@@ -1132,18 +1120,12 @@ export class AgentSession {
         // absent key and a present-but-undefined one are the same value but
         // not the same object.
         const meta = event.meta ? { meta: event.meta } : {};
-        const rule = ruleFor(event.tool, this._state.cwd);
-        const auto = rule !== undefined && this.alwaysAllow.has(rule.key);
         const item: TranscriptItem = {
           id: nextId('p'), ts: Date.now(), role: 'permission',
-          requestId: event.id, tool: event.tool,
-          state: auto ? 'allowed' : 'pending',
-          ...(rule && auto ? { reason: `Auto-allowed: ${rule.label}` } : {}),
-          ...(rule && !auto ? { alwaysRule: { label: rule.label } } : {}),
-          ...meta,
+          requestId: event.id, tool: event.tool, state: 'pending', ...meta,
         };
         this.permissionItems.set(event.id, item);
-        if (!auto) { this.pending.set(event.id, { requestId: event.id, tool: event.tool, ...meta }); }
+        this.pending.set(event.id, { requestId: event.id, tool: event.tool, ...meta });
 
         if (parentSource && parentItemId) {
           const root = this.resolveParent(parentSource);
@@ -1156,11 +1138,6 @@ export class AgentSession {
         } else {
           this.closeAssistant();
           this.appendItem(item);
-        }
-        if (auto) {
-          try { this.run.respondToTool(event.id, { allow: true }); }
-          catch (err) { this.denyRejected(event.id, err); }
-          return;
         }
         this.setStatus('awaiting-approval');
         this.refreshActivityLabel();

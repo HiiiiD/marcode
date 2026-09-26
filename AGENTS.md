@@ -82,7 +82,6 @@ extension.ts
 | `src/host/review-panel.ts` | The review editor tab: creation, restore, transport |
 | `src/host/history-panel.ts` | The session history editor tab: creation, restore, transport. Its bus allow-list (`HISTORY_WANTS`) is `sessions-changed` only — every column it shows is already on `SessionState` |
 | `src/host/focus-session.ts` | Adds a session to the sidebar split and reveals the sidebar; shared by the fleet and history tabs |
-| `src/host/permission-rules.ts` | `ruleFor(tool)`: a narrow per-session "always allow" rule from a canonical `ToolCall` (or none). `AgentSession` keeps the keys in memory and auto-answers matches for every provider; never persisted |
 | `src/memory/session-digest.ts` | Thin wrapper: `digestSession(items)` = the extractive `indexLine`, kept for the memory-off history path |
 | `src/memory/digest.ts` | `SessionDigest`, the extractive digest, `indexLine` (the one-line pointer), `digestText` |
 | `src/host/digest/digest-service.ts` | The only writer of a digest: serial queue, close-time refresh, reindex with resume |

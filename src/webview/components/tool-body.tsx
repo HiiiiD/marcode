@@ -8,13 +8,13 @@ import { cn } from '@/lib/utils';
 import { useStore } from '../store';
 import { clampLines, type ToolBlock } from './tool-render';
 
+export type Clamp = { head: number; tail: number };
+
 /**
  * Renders the typed blocks produced by tool-render.ts. Every block is laid out
  * for a ~300px column: one column, no side-by-side, and anything that can be
  * long is clamped rather than allowed to bury the rest of the transcript.
  */
-export type Clamp = { head: number; tail: number };
-
 export function ToolBody({ blocks, clamp }: { blocks: ToolBlock[]; clamp?: Clamp }) {
   if (blocks.length === 0) { return null; }
   return (

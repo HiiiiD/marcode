@@ -94,8 +94,6 @@ export type TranscriptItem =
       role: 'permission'; requestId: string; tool: ToolCall;
       state: 'pending' | 'allowed' | 'denied'; reason?: string;
       meta?: PermissionMeta;
-      /** Present only when Marcode can remember "always allow" for this request. */
-      alwaysRule?: { label: string };
     })
   /**
    * A structured question from the agent. Blocking ones freeze the composer;
@@ -551,7 +549,7 @@ export type WebviewToHost =
   /** Not session-addressed: opening a file is global IDE state, not session state. */
   | { t: 'reveal-file'; path: string; startLine?: number }
   | { t: 'set-model'; id: SessionId; model: string }
-  | { t: 'permission-decision'; id: SessionId; requestId: string; decision: ToolDecision; always?: true }
+  | { t: 'permission-decision'; id: SessionId; requestId: string; decision: ToolDecision }
   | { t: 'question-answer'; id: SessionId; requestId: string; answers: QuestionAnswers }
   | { t: 'load-more'; id: SessionId; beforeItemId: string }
   | { t: 'request-context'; id: SessionId }
