@@ -211,3 +211,74 @@ export function freshTargetPath(
   const adjusted = targetIndex > draggedIndex ? targetIndex - 1 : targetIndex;
   return flattenLeaves(withoutDragged)[adjusted]?.path;
 }
+
+/** Closing a session frees its slot; siblings keep their place and size. */
+export function emptySession(root: LayoutNode, sessionId: string): LayoutNode {
+  const path = findPath(root, sessionId);
+  if (path === undefined) { return root; }
+  const target = at(root, path);
+  if (target === undefined || target.kind !== 'leaf') { return root; }
+  return replaceAt(root, path, { ...target, sessionId: null });
+}
+
+/** Explicit "Remove slot": only an empty non-root leaf can go; the parent collapses like `removeSession`. */
+export function removeSlotAt(root: LayoutNode, path: number[]): LayoutNode {
+  const target = at(root, path);
+  if (target === undefined || target.kind !== 'leaf' || target.sessionId !== null || path.length === 0) { return root; }
+  const parentPath = path.slice(0, -1);
+  const parent = at(root, parentPath);
+  if (parent === undefined || parent.kind !== 'split') { return root; }
+  const remaining = parent.children.filter((_, i) => i !== path[path.length - 1]);
+  if (remaining.length === 1) { return replaceAt(root, parentPath, { ...remaining[0], size: parent.size }); }
+  const sizes = evenSizes(remaining.length);
+  return replaceAt(root, parentPath, {
+    ...parent, children: remaining.map((child, i) => ({ ...child, size: sizes[i] })),
+  });
+}
+
+/**
+ * Where a new or revealed session lands: the first empty leaf in reading
+ * order, else a split of the last-focused pane along its parent's
+ * orientation (a root leaf has no parent, so `fallback` decides). An unknown
+ * focus falls back to the last leaf.
+ */
+export function placeSession(
+  root: LayoutNode, sessionId: string, focusedId: string | null | undefined, fallback: 'vertical' | 'horizontal',
+): LayoutNode {
+  if (findPath(root, sessionId) !== undefined) { return root; }
+  const leaves = flattenLeaves(root);
+  const empty = leaves.find((l) => l.sessionId === null);
+  if (empty) { return assignAt(root, empty.path, sessionId) ?? root; }
+  const focused = (focusedId ? leaves.find((l) => l.sessionId === focusedId) : undefined) ?? leaves[leaves.length - 1];
+  const parent = focused.path.length > 0 ? at(root, focused.path.slice(0, -1)) : undefined;
+  const orientation = parent?.kind === 'split' ? parent.orientation : fallback;
+  return splitAt(root, focused.path, orientation, sessionId);
+}
+
+/** Rows stack vertically; each row is a horizontal split of cells. Sessions fill in reading order, extras are `hidden`. */
+export function gridLayout(rows: number, cols: number, sessionIds: string[]): { root: LayoutNode; hidden: string[] } {
+  const cell = (): LayoutNode => ({ kind: 'leaf', sessionId: null, size: 100 / cols });
+  const row = (): LayoutNode => (cols === 1
+    ? { kind: 'leaf', sessionId: null, size: 100 / rows }
+    : { kind: 'split', orientation: 'horizontal', size: 100 / rows, children: Array.from({ length: cols }, cell) });
+  let shape: LayoutNode;
+  if (rows === 1) {
+    shape = cols === 1
+      ? { kind: 'leaf', sessionId: null, size: 100 }
+      : { kind: 'split', orientation: 'horizontal', size: 100, children: Array.from({ length: cols }, cell) };
+  } else {
+    shape = { kind: 'split', orientation: 'vertical', size: 100, children: Array.from({ length: rows }, row) };
+  }
+  const cells = rows * cols;
+  return {
+    root: fillShape(shape, sessionIds.slice(0, cells)) ?? shape,
+    hidden: sessionIds.slice(cells),
+  };
+}
+
+export function swapLeaves(root: LayoutNode, a: number[], b: number[]): LayoutNode {
+  const x = at(root, a);
+  const y = at(root, b);
+  if (x?.kind !== 'leaf' || y?.kind !== 'leaf') { return root; }
+  return replaceAt(replaceAt(root, a, { ...x, sessionId: y.sessionId }), b, { ...y, sessionId: x.sessionId });
+}

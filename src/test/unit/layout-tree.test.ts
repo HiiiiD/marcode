@@ -2,7 +2,7 @@ import * as assert from 'assert';
 import {
   emptyRoot, flattenLeaves, leafSessionIds, findPath, slotCount,
   splitAt, assignAt, removeSession, replaceLeafSession, fillShape, stripSessionIds,
-  at, replaceAt, freshTargetPath,
+  at, replaceAt, freshTargetPath, emptySession, removeSlotAt, placeSession, gridLayout, swapLeaves,
 } from '../../webview/components/layout-tree';
 
 suite('layout-tree read helpers', () => {
@@ -395,5 +395,126 @@ suite('layout-tree freshTargetPath', () => {
     };
     assert.strictEqual(freshTargetPath(root, [0], 'z', root), undefined);
     assert.strictEqual(freshTargetPath(root, [9], 'a', root), undefined);
+  });
+});
+
+const L = (sessionId: string | null, size = 50) => ({ kind: 'leaf' as const, sessionId, size });
+const S = (orientation: 'vertical' | 'horizontal', children: ReturnType<typeof L>[] | unknown[], size = 100) =>
+  ({ kind: 'split' as const, orientation, size, children }) as import('../../webview/components/layout-tree').LayoutNode;
+
+suite('layout-tree emptySession', () => {
+  test('empties the leaf without collapsing or reflowing siblings', () => {
+    const root = S('vertical', [L('a', 30), L('b', 70)]);
+    assert.deepStrictEqual(emptySession(root, 'a'), S('vertical', [L(null, 30), L('b', 70)]));
+  });
+
+  test('unknown id is a no-op', () => {
+    const root = S('vertical', [L('a'), L('b')]);
+    assert.strictEqual(emptySession(root, 'z'), root);
+  });
+});
+
+suite('layout-tree removeSlotAt', () => {
+  test('collapses a two-child split into the survivor', () => {
+    const root = S('vertical', [L(null), L('b')]);
+    assert.deepStrictEqual(removeSlotAt(root, [0]), L('b', 100));
+  });
+
+  test('reflows three siblings evenly', () => {
+    const root = S('horizontal', [L('a', 20), L(null, 30), L('c', 50)]);
+    const next = removeSlotAt(root, [1]);
+    assert.deepStrictEqual(leafSessionIds(next), ['a', 'c']);
+    assert.deepStrictEqual(flattenLeaves(next).map((l) => l.size), [50, 50]);
+  });
+
+  test('refuses to remove an occupied leaf and a root leaf', () => {
+    const root = S('vertical', [L('a'), L('b')]);
+    assert.strictEqual(removeSlotAt(root, [0]), root);
+    const single = L(null, 100);
+    assert.strictEqual(removeSlotAt(single, []), single);
+  });
+});
+
+suite('layout-tree placeSession', () => {
+  test('fills the first empty leaf in reading order', () => {
+    const root = S('horizontal', [L('a'), S('vertical', [L('b'), L(null)], 50), L(null)]);
+    const next = placeSession(root, 'n', null, 'vertical');
+    assert.deepStrictEqual(leafSessionIds(next), ['a', 'b', 'n']);
+    assert.strictEqual(flattenLeaves(next).find((l) => l.sessionId === 'n')!.path.join(), '1,1');
+  });
+
+  test('already placed session is a no-op', () => {
+    const root = S('vertical', [L('a'), L(null)]);
+    assert.strictEqual(placeSession(root, 'a', null, 'vertical'), root);
+  });
+
+  test('overflow splits the focused pane along its parent orientation', () => {
+    const root = S('horizontal', [L('a'), L('b')]);
+    const next = placeSession(root, 'n', 'a', 'vertical');
+    const a = at(next, [0])!;
+    assert.strictEqual(a.kind === 'split' && a.orientation, 'horizontal');
+    assert.deepStrictEqual(leafSessionIds(next), ['a', 'n', 'b']);
+  });
+
+  test('vertical parent yields a vertical split', () => {
+    const root = S('vertical', [L('a'), L('b')]);
+    const b = at(placeSession(root, 'n', 'b', 'horizontal'), [1])!;
+    assert.strictEqual(b.kind === 'split' && b.orientation, 'vertical');
+  });
+
+  test('root leaf with no parent uses the fallback orientation', () => {
+    const next = placeSession(L('a', 100), 'n', 'a', 'horizontal');
+    assert.strictEqual(next.kind === 'split' && next.orientation, 'horizontal');
+  });
+
+  test('unknown or missing focus falls back to the last leaf', () => {
+    const root = S('vertical', [L('a'), L('b')]);
+    assert.deepStrictEqual(leafSessionIds(placeSession(root, 'n', 'ghost', 'vertical')), ['a', 'b', 'n']);
+    assert.deepStrictEqual(leafSessionIds(placeSession(root, 'n', null, 'vertical')), ['a', 'b', 'n']);
+  });
+});
+
+suite('layout-tree gridLayout', () => {
+  test('1x1 is a single leaf', () => {
+    assert.deepStrictEqual(gridLayout(1, 1, ['a']).root, L('a', 100));
+  });
+
+  test('1 row is a horizontal split, 1 col a vertical one', () => {
+    const row = gridLayout(1, 3, []).root;
+    assert.strictEqual(row.kind === 'split' && row.orientation, 'horizontal');
+    const col = gridLayout(3, 1, []).root;
+    assert.strictEqual(col.kind === 'split' && col.orientation, 'vertical');
+  });
+
+  test('2x3 is vertical rows of horizontal cells with even sizes', () => {
+    const { root } = gridLayout(2, 3, []);
+    assert.strictEqual(root.kind === 'split' && root.orientation, 'vertical');
+    assert.strictEqual(slotCount(root), 6);
+    assert.deepStrictEqual(flattenLeaves(root).map((l) => Math.round(l.size)), [33, 33, 33, 33, 33, 33]);
+    assert.strictEqual(root.kind === 'split' && root.children[0].size, 50);
+  });
+
+  test('sessions fill cells in reading order, rest empty, none hidden', () => {
+    const { root, hidden } = gridLayout(2, 2, ['a', 'b', 'c']);
+    assert.deepStrictEqual(flattenLeaves(root).map((l) => l.sessionId), ['a', 'b', 'c', null]);
+    assert.deepStrictEqual(hidden, []);
+  });
+
+  test('overflow sessions are reported hidden, last ones', () => {
+    const { root, hidden } = gridLayout(1, 2, ['a', 'b', 'c', 'd']);
+    assert.deepStrictEqual(leafSessionIds(root), ['a', 'b']);
+    assert.deepStrictEqual(hidden, ['c', 'd']);
+  });
+});
+
+suite('layout-tree swapLeaves', () => {
+  test('swaps two occupied leaves in place', () => {
+    const root = S('vertical', [L('a'), S('horizontal', [L('b'), L('c')], 50)]);
+    assert.deepStrictEqual(leafSessionIds(swapLeaves(root, [0], [1, 1])), ['c', 'b', 'a']);
+  });
+
+  test('stale path is a no-op', () => {
+    const root = S('vertical', [L('a'), L('b')]);
+    assert.strictEqual(swapLeaves(root, [0], [5]), root);
   });
 });
