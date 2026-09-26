@@ -186,8 +186,9 @@ export function PermissionCard({
           and tab order, and Allow — the consequential, irreversible-feeling
           action — is deliberately not styled with solid-primary emphasis,
           so it isn't both the most prominent control and the first tab
-          stop. Neither button autofocuses. */}
-      <div className="flex gap-2">
+          stop. Neither button autofocuses. Always allow wraps below rather
+          than truncating: its label is the scope being granted. */}
+      <div className="flex flex-wrap gap-2">
         <Button
           size="sm"
           disabled={answered}
@@ -212,9 +213,9 @@ export function PermissionCard({
             disabled={answered}
             onClick={() => decide(true, true)}
             title={item.alwaysRule.label}
-            className="min-w-0 shrink justify-start"
+            className="h-auto min-h-7 max-w-full justify-start whitespace-normal text-left"
           >
-            <span className="truncate">{item.alwaysRule.label}</span>
+            {item.alwaysRule.label}
           </Button>
         )}
       </div>
