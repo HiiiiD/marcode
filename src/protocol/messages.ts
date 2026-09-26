@@ -442,6 +442,8 @@ export interface PaneLayout {
   root: LayoutNode;
   /** User-saved presets only — built-ins are code constants, never sent over the wire. */
   presets: LayoutPreset[];
+  /** Last pane that held focus; where an overflow session splits. Absent in layouts saved before it existed. */
+  focusedSessionId?: SessionId | null;
 }
 
 export type WebviewToHost =
@@ -482,6 +484,7 @@ export type WebviewToHost =
    * container needs the `vscode` API this module must not import.
    */
   | { t: 'focus-session'; id: SessionId }
+  | { t: 'focus-pane'; sessionId: SessionId }
   | { t: 'set-pinned'; id: SessionId; pinned: boolean }
   | { t: 'request-history-summaries' }
   | { t: 'memory-estimate'; scope: DigestScopeWire }

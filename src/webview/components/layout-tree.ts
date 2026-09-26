@@ -282,3 +282,8 @@ export function swapLeaves(root: LayoutNode, a: number[], b: number[]): LayoutNo
   if (x?.kind !== 'leaf' || y?.kind !== 'leaf') { return root; }
   return replaceAt(replaceAt(root, a, { ...x, sessionId: y.sessionId }), b, { ...y, sessionId: x.sessionId });
 }
+
+/** The orientation a bare root leaf splits along: the layout's own, defaulting to a stack. */
+export function rootOrientation(root: LayoutNode): 'vertical' | 'horizontal' {
+  return root.kind === 'split' ? root.orientation : 'vertical';
+}

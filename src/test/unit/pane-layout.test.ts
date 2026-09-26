@@ -1,6 +1,6 @@
 import * as assert from 'assert';
 import {
-  accessibleTitles, appendAtTop, leafDisplayState, reconcilePaneLayout, rosterSessionIds, visibleLeaves,
+  accessibleTitles, leafDisplayState, reconcilePaneLayout, rosterSessionIds, visibleLeaves,
 } from '../../webview/components/pane-layout';
 import type { LayoutNode } from '../../webview/components/layout-tree';
 
@@ -69,7 +69,7 @@ suite('pane-layout visibleLeaves', () => {
 });
 
 suite('pane-layout reconcilePaneLayout', () => {
-  test('drops a leaf whose session left the roster outright, collapsing its split', () => {
+  test('empties a leaf whose session left the roster outright, keeping its slot', () => {
     const root: LayoutNode = {
       kind: 'split', orientation: 'vertical', size: 100,
       children: [
@@ -78,10 +78,16 @@ suite('pane-layout reconcilePaneLayout', () => {
       ],
     };
     const result = reconcilePaneLayout(root, new Set(['a']), ['a'], new Set(['a']));
-    assert.deepStrictEqual(result.root, { kind: 'leaf', sessionId: 'a', size: 100 });
+    assert.deepStrictEqual(result.root, {
+      kind: 'split', orientation: 'vertical', size: 100,
+      children: [
+        { kind: 'leaf', sessionId: 'a', size: 50 },
+        { kind: 'leaf', sessionId: null, size: 50 },
+      ],
+    });
   });
 
-  test('appends a newly-arrived session as a sibling at the top split level', () => {
+  test('a newly-arrived session splits the root leaf when no slot is free', () => {
     const root: LayoutNode = { kind: 'leaf', sessionId: 'a', size: 100 };
     const result = reconcilePaneLayout(root, new Set(['a', 'b']), ['a', 'b'], new Set(['a']));
     assert.deepStrictEqual(result.root, {
@@ -122,26 +128,25 @@ suite('pane-layout reconcilePaneLayout', () => {
     assert.strictEqual(result.root, null);
   });
 
-  test('appends a third sibling to an existing vertical split, reflowing all children evenly', () => {
+  test('a newly-arrived session takes the first empty slot without touching sizes', () => {
     const root: LayoutNode = {
       kind: 'split', orientation: 'vertical', size: 100,
       children: [
-        { kind: 'leaf', sessionId: 'a', size: 50 },
-        { kind: 'leaf', sessionId: 'b', size: 50 },
+        { kind: 'leaf', sessionId: 'a', size: 30 },
+        { kind: 'leaf', sessionId: null, size: 70 },
       ],
     };
-    const result = reconcilePaneLayout(root, new Set(['a', 'b', 'c']), ['a', 'b', 'c'], new Set(['a', 'b']));
+    const result = reconcilePaneLayout(root, new Set(['a', 'c']), ['a', 'c'], new Set(['a']));
     assert.deepStrictEqual(result.root, {
       kind: 'split', orientation: 'vertical', size: 100,
       children: [
-        { kind: 'leaf', sessionId: 'a', size: 100 / 3 },
-        { kind: 'leaf', sessionId: 'b', size: 100 / 3 },
-        { kind: 'leaf', sessionId: 'c', size: 100 / 3 },
+        { kind: 'leaf', sessionId: 'a', size: 30 },
+        { kind: 'leaf', sessionId: 'c', size: 70 },
       ],
     });
   });
 
-  test('wraps a non-vertical top split rather than merging into it', () => {
+  test('overflow splits the focused pane along its parent orientation', () => {
     const root: LayoutNode = {
       kind: 'split', orientation: 'horizontal', size: 100,
       children: [
@@ -149,80 +154,18 @@ suite('pane-layout reconcilePaneLayout', () => {
         { kind: 'leaf', sessionId: 'b', size: 50 },
       ],
     };
-    const result = reconcilePaneLayout(root, new Set(['a', 'b', 'c']), ['a', 'b', 'c'], new Set(['a', 'b']));
+    const result = reconcilePaneLayout(root, new Set(['a', 'b', 'c']), ['a', 'b', 'c'], new Set(['a', 'b']), 'a');
     assert.deepStrictEqual(result.root, {
-      kind: 'split', orientation: 'vertical', size: 100,
-      children: [
-        {
-          kind: 'split', orientation: 'horizontal', size: 50,
-          children: [
-            { kind: 'leaf', sessionId: 'a', size: 50 },
-            { kind: 'leaf', sessionId: 'b', size: 50 },
-          ],
-        },
-        { kind: 'leaf', sessionId: 'c', size: 50 },
-      ],
-    });
-  });
-});
-
-suite('pane-layout appendAtTop', () => {
-  // Same rule `reconcilePaneLayout` uses for a newly-arrived session, now
-  // exported so `session-picker.tsx`'s roster checkbox can call it directly
-  // instead of duplicating it.
-  test('fills a bare empty root directly, without wrapping it in a split', () => {
-    const root: LayoutNode = { kind: 'leaf', sessionId: null, size: 100 };
-    assert.deepStrictEqual(appendAtTop(root, 'a'), { kind: 'leaf', sessionId: 'a', size: 100 });
-  });
-
-  test('wraps a bare occupied leaf in a fresh vertical split, sized evenly', () => {
-    const root: LayoutNode = { kind: 'leaf', sessionId: 'a', size: 100 };
-    assert.deepStrictEqual(appendAtTop(root, 'b'), {
-      kind: 'split', orientation: 'vertical', size: 100,
-      children: [
-        { kind: 'leaf', sessionId: 'a', size: 50 },
-        { kind: 'leaf', sessionId: 'b', size: 50 },
-      ],
-    });
-  });
-
-  test('appends a sibling to an existing vertical split, reflowing all children evenly', () => {
-    const root: LayoutNode = {
-      kind: 'split', orientation: 'vertical', size: 100,
-      children: [
-        { kind: 'leaf', sessionId: 'a', size: 50 },
-        { kind: 'leaf', sessionId: 'b', size: 50 },
-      ],
-    };
-    assert.deepStrictEqual(appendAtTop(root, 'c'), {
-      kind: 'split', orientation: 'vertical', size: 100,
-      children: [
-        { kind: 'leaf', sessionId: 'a', size: 100 / 3 },
-        { kind: 'leaf', sessionId: 'b', size: 100 / 3 },
-        { kind: 'leaf', sessionId: 'c', size: 100 / 3 },
-      ],
-    });
-  });
-
-  test('wraps a non-vertical top split rather than merging into it', () => {
-    const root: LayoutNode = {
       kind: 'split', orientation: 'horizontal', size: 100,
       children: [
-        { kind: 'leaf', sessionId: 'a', size: 50 },
-        { kind: 'leaf', sessionId: 'b', size: 50 },
-      ],
-    };
-    assert.deepStrictEqual(appendAtTop(root, 'c'), {
-      kind: 'split', orientation: 'vertical', size: 100,
-      children: [
         {
           kind: 'split', orientation: 'horizontal', size: 50,
           children: [
             { kind: 'leaf', sessionId: 'a', size: 50 },
-            { kind: 'leaf', sessionId: 'b', size: 50 },
+            { kind: 'leaf', sessionId: 'c', size: 50 },
           ],
         },
-        { kind: 'leaf', sessionId: 'c', size: 50 },
+        { kind: 'leaf', sessionId: 'b', size: 50 },
       ],
     });
   });
