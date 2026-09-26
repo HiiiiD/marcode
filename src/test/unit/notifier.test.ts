@@ -8,7 +8,8 @@ function setup(over: Partial<NotifierPorts> = {}) {
   const n = new Notifier({
     isWatching: () => false,
     nameOf: (id) => `name-${id}`,
-    kinds: () => ({ approval: true, finished: true, error: true }),
+    kinds: () => ({ approval: true, question: true, finished: true, error: true }),
+    waitingOn: () => 'approval',
     show: (id, kind, name) => { shown.push({ id, kind, name }); },
     setPendingCount: (c) => { counts.push(c); },
     ...over,
@@ -48,7 +49,7 @@ suite('Notifier', () => {
   });
 
   test('disabled kind is silent', () => {
-    const { shown, status } = setup({ kinds: () => ({ approval: true, finished: false, error: true }) });
+    const { shown, status } = setup({ kinds: () => ({ approval: true, question: true, finished: false, error: true }) });
     status('a', 'running');
     status('a', 'idle');
     assert.strictEqual(shown.length, 0);
@@ -82,6 +83,29 @@ suite('Notifier', () => {
     status('a', 'running'); status('a', 'idle');
     status('b', 'running'); status('b', 'idle');
     assert.strictEqual(shown.length, 2);
+  });
+
+  test('awaiting on a question notifies the question kind', () => {
+    const { shown, status } = setup({ waitingOn: () => 'question' });
+    status('a', 'running');
+    status('a', 'awaiting-approval');
+    assert.deepStrictEqual(shown.map((s) => s.kind), ['question']);
+  });
+
+  test('question kind can be disabled without silencing approvals', () => {
+    const kinds = () => ({ approval: true, question: false, finished: true, error: true });
+    const q = setup({ kinds, waitingOn: () => 'question' });
+    q.status('a', 'running'); q.status('a', 'awaiting-approval');
+    assert.strictEqual(q.shown.length, 0);
+    const p = setup({ kinds });
+    p.status('a', 'running'); p.status('a', 'awaiting-approval');
+    assert.strictEqual(p.shown.length, 1);
+  });
+
+  test('a question still counts toward the pending badge', () => {
+    const { counts, status } = setup({ waitingOn: () => 'question' });
+    status('a', 'awaiting-approval');
+    assert.deepStrictEqual(counts, [1]);
   });
 
   test('retain drops sessions no longer in the roster', () => {

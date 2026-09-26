@@ -1,12 +1,12 @@
 export const NOTIFICATIONS_SETTING = 'marcode.notifications';
 
-export interface NotificationKinds { approval: boolean; finished: boolean; error: boolean }
+export interface NotificationKinds { approval: boolean; question: boolean; finished: boolean; error: boolean }
 export interface NotificationValidation { kinds: NotificationKinds; warnings: string[] }
 
-const KEYS: readonly (keyof NotificationKinds)[] = ['approval', 'finished', 'error'];
+const KEYS: readonly (keyof NotificationKinds)[] = ['approval', 'question', 'finished', 'error'];
 
 export function validateNotificationKinds(configured: unknown): NotificationValidation {
-  const kinds: NotificationKinds = { approval: true, finished: true, error: true };
+  const kinds: NotificationKinds = { approval: true, question: true, finished: true, error: true };
   if (configured === undefined) { return { kinds, warnings: [] }; }
   if (typeof configured !== 'object' || configured === null || Array.isArray(configured)) {
     return { kinds, warnings: [`${NOTIFICATIONS_SETTING} is not an object; ignoring it.`] };

@@ -714,6 +714,10 @@ export class AgentSession {
     this.questionItems.set(requestId, settled);
   }
 
+  waitingOn(): 'approval' | 'question' {
+    return this.pending.size === 0 && this.pendingQuestions.size > 0 ? 'question' : 'approval';
+  }
+
   /**
    * The one place that recomputes `awaiting-approval` vs. an idle status —
    * used wherever a permission or question request settles. `idle` names

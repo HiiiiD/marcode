@@ -1,21 +1,23 @@
 import * as assert from 'node:assert';
 import { validateNotificationKinds } from '../../shared/notification-settings';
 
+const ALL = { approval: true, question: true, finished: true, error: true };
+
 suite('validateNotificationKinds', () => {
   test('undefined enables every kind', () => {
     const r = validateNotificationKinds(undefined);
-    assert.deepStrictEqual(r.kinds, { approval: true, finished: true, error: true });
+    assert.deepStrictEqual(r.kinds, ALL);
     assert.deepStrictEqual(r.warnings, []);
   });
 
   test('honours explicit booleans', () => {
     const r = validateNotificationKinds({ finished: false });
-    assert.deepStrictEqual(r.kinds, { approval: true, finished: false, error: true });
+    assert.deepStrictEqual(r.kinds, { ...ALL, finished: false });
   });
 
   test('non-object warns and falls back', () => {
     const r = validateNotificationKinds(3);
-    assert.deepStrictEqual(r.kinds, { approval: true, finished: true, error: true });
+    assert.deepStrictEqual(r.kinds, ALL);
     assert.strictEqual(r.warnings.length, 1);
   });
 

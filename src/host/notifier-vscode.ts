@@ -9,6 +9,7 @@ import type { SessionId } from '../protocol/messages';
 
 const TEXT: Record<NotifyKind, (name: string) => string> = {
   approval: (n) => `${n} needs a tool approval.`,
+  question: (n) => `${n} has a question for you.`,
   finished: (n) => `${n} finished its turn.`,
   error: (n) => `${n} hit an error.`,
 };
@@ -31,9 +32,10 @@ export function createNotifierClient(
       if (warnings.length > 0) { console.warn(warnings.join(' ')); }
       return kinds;
     },
+    waitingOn: (id) => manager.get(id)?.waitingOn() ?? 'approval',
     show: (id, kind, name) => {
       const show = kind === 'error' ? vscode.window.showErrorMessage
-        : kind === 'approval' ? vscode.window.showWarningMessage : vscode.window.showInformationMessage;
+        : kind === 'approval' || kind === 'question' ? vscode.window.showWarningMessage : vscode.window.showInformationMessage;
       void Promise.resolve(show(TEXT[kind](name), 'Show')).then(
         (pick) => { if (pick === 'Show') { return focusSession(manager, id); } },
         () => undefined,
@@ -42,7 +44,7 @@ export function createNotifierClient(
     setPendingCount: (count) => {
       if (count === 0) { badge.hide(); return; }
       badge.text = `$(bell) ${count}`;
-      badge.tooltip = `${count} session${count === 1 ? '' : 's'} awaiting approval`;
+      badge.tooltip = `${count} session${count === 1 ? '' : 's'} waiting on you`;
       badge.show();
     },
   });

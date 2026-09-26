@@ -7,6 +7,8 @@ export interface NotifierPorts {
   isWatching(id: SessionId): boolean;
   nameOf(id: SessionId): string;
   kinds(): NotificationKinds;
+  /** Why an `awaiting-approval` session is blocked; a permission outranks a question. */
+  waitingOn(id: SessionId): 'approval' | 'question';
   show(id: SessionId, kind: NotifyKind, name: string): void;
   setPendingCount(count: number): void;
   now?(): number;
@@ -31,7 +33,7 @@ export class Notifier {
     if (status === 'awaiting-approval') { this.awaiting.add(id); } else { this.awaiting.delete(id); }
     if (wasAwaiting !== this.awaiting.has(id)) { this.ports.setPendingCount(this.awaiting.size); }
 
-    const kind = kindFor(prev, status);
+    const kind = status === 'awaiting-approval' ? this.ports.waitingOn(id) : kindFor(prev, status);
     if (kind === undefined || !this.ports.kinds()[kind] || this.ports.isWatching(id)) { return; }
 
     const now = (this.ports.now ?? Date.now)();
@@ -54,7 +56,6 @@ export class Notifier {
 }
 
 function kindFor(prev: SessionStatus | undefined, next: SessionStatus): NotifyKind | undefined {
-  if (next === 'awaiting-approval') { return 'approval'; }
   if (next === 'error') { return 'error'; }
   if (next === 'idle' && prev === 'running') { return 'finished'; }
   return undefined;

@@ -47,10 +47,11 @@
         },
         "marcode.notifications": {
           "type": "object",
-          "default": { "approval": true, "finished": true, "error": true },
-          "description": "Show a notification when a session needs a tool approval, finishes a turn or errors while you are not looking at it. A count of pending approvals also shows in the status bar.",
+          "default": { "approval": true, "question": true, "finished": true, "error": true },
+          "description": "Show a notification when a session needs a tool approval, asks you a question, finishes a turn or errors while you are not looking at it. A count of sessions waiting on you also shows in the status bar.",
           "properties": {
             "approval": { "type": "boolean", "default": true },
+            "question": { "type": "boolean", "default": true },
             "finished": { "type": "boolean", "default": true },
             "error": { "type": "boolean", "default": true }
           },
