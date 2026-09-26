@@ -73,7 +73,7 @@ function leafPanelExtras(node: LayoutNode, ctx: LayoutNodeViewProps) {
     // A ring, not a background: at 300px a filled active pane would compete
     // with the permission card, which must stay the loudest thing on
     // screen — it's the only transcript item demanding an action.
-    className: cn("transition-colors", ctx.activeId === node.sessionId && "ring-1 ring-ring/70 ring-inset"),
+    className: cn("border border-transparent transition-colors", ctx.activeId === node.sessionId && "border-ring/70"),
   };
 }
 
