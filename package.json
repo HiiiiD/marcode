@@ -92,6 +92,24 @@
               "maximum": 8,
               "default": 3,
               "description": "How many sessions a reindex summarizes at once. Lower it if the provider rate-limits."
+            },
+            "fallbacks": {
+              "type": "array",
+              "description": "Tried in order when the summarizer above fails (usage limit, timeout, provider down). The primary is retried on every summary.",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "provider": { "type": "string", "description": "A provider or instance id." },
+                  "model": { "type": "string", "description": "A model id that provider lists." },
+                  "effort": {
+                    "type": "string",
+                    "enum": ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"],
+                    "default": "low"
+                  }
+                },
+                "required": ["provider", "model"],
+                "additionalProperties": false
+              }
             }
           },
           "additionalProperties": false
