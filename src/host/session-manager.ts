@@ -12,7 +12,7 @@ import { buildSeed } from './replay';
 import { findPayload, type ResolvedBlock } from './session-refs';
 import { TRANSCRIPT_VERSION, type StoredIndex, type TranscriptStore } from './transcript-store';
 import { isWithin } from '../shared/path-scope';
-import { indexLine, type SessionDigest } from '../memory/digest';
+import { digestText, extractiveDigest, indexLine, type SessionDigest } from '../memory/digest';
 import { digestSession } from '../memory/session-digest';
 import { DigestService, type DigestEstimate, type DigestScope } from './digest/digest-service';
 import { buildMemoryBlock, queryTermsOf } from '../memory/prime-block';
@@ -599,6 +599,17 @@ export class SessionManager implements SessionSink {
     if (!state || (state.pinned ?? false) === pinned) { return; }
     state.pinned = pinned;
     this.changed();
+  }
+
+  /**
+   * Persist-only: the typing pane already shows the text, so a
+   * `sessions-changed` fan-out per debounce would just wake every other tab.
+   */
+  setDraft(id: SessionId, text: string): void {
+    const state = this.meta.get(id);
+    if (!state || (state.draft ?? '') === text) { return; }
+    if (text) { state.draft = text; } else { delete state.draft; }
+    this.schedulePersist();
   }
 
   layout(): PaneLayout { return this.paneLayout; }
@@ -1860,6 +1871,25 @@ export class SessionManager implements SessionSink {
 
   async memoryEstimate(scope: DigestScope): Promise<DigestEstimate> {
     return this.digests ? this.digests.estimate(scope) : { sessions: 0, approxInputTokens: 0 };
+  }
+
+  /**
+   * The source's digest as prompt text for a handoff. Read-only: `DigestService.digestForHandoff`
+   * never writes, and with memory off this reads the transcript directly. Never rejects.
+   */
+  async handoffSummary(id: SessionId): Promise<{ title: string; text: string } | undefined> {
+    const state = this.meta.get(id);
+    if (!state) { return undefined; }
+    try {
+      await this.live.get(id)?.snapshot();
+      const digest = this.digests
+        ? (await this.digests.digestForHandoff(id))?.digest
+        : extractiveDigest((await this.store.tail(id, Number.MAX_SAFE_INTEGER)).items, state.updatedAt);
+      return digest ? { title: state.title, text: digestText(digest) } : undefined;
+    } catch (err) {
+      console.error('[mar-code] handoff summary failed for', id, err);
+      return undefined;
+    }
   }
 
   async memoryReindex(scope: DigestScope): Promise<void> { await this.digests?.reindex(scope); }

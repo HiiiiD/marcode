@@ -52,14 +52,47 @@
         },
         "marcode.memory.summarizer": {
           "type": "object",
-          "default": { "mode": "off" },
+          "default": {
+            "mode": "off"
+          },
           "description": "How session digests are written. \"off\" builds them from the transcript with no model call. \"llm\" runs a hidden agent on session close using the provider, model and effort below. Requires a window reload.",
           "properties": {
-            "mode": { "type": "string", "enum": ["off", "llm"], "default": "off" },
-            "provider": { "type": "string", "description": "A provider or instance id, e.g. \"claude\". Required when mode is \"llm\"." },
-            "model": { "type": "string", "description": "A model id that provider lists. Required when mode is \"llm\"." },
-            "effort": { "type": "string", "enum": ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"], "default": "low" },
-            "concurrency": { "type": "integer", "minimum": 1, "maximum": 8, "default": 3, "description": "How many sessions a reindex summarizes at once. Lower it if the provider rate-limits." }
+            "mode": {
+              "type": "string",
+              "enum": [
+                "off",
+                "llm"
+              ],
+              "default": "off"
+            },
+            "provider": {
+              "type": "string",
+              "description": "A provider or instance id, e.g. \"claude\". Required when mode is \"llm\"."
+            },
+            "model": {
+              "type": "string",
+              "description": "A model id that provider lists. Required when mode is \"llm\"."
+            },
+            "effort": {
+              "type": "string",
+              "enum": [
+                "minimal",
+                "low",
+                "medium",
+                "high",
+                "xhigh",
+                "max",
+                "ultra"
+              ],
+              "default": "low"
+            },
+            "concurrency": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 8,
+              "default": 3,
+              "description": "How many sessions a reindex summarizes at once. Lower it if the provider rate-limits."
+            }
           },
           "additionalProperties": false
         },
@@ -470,6 +503,128 @@
       {
         "command": "marcode.memory.reindex",
         "title": "Marcode: Rebuild memory index"
+      },
+      {
+        "command": "marcode.focusPane.1",
+        "title": "Marcode: Focus pane 1"
+      },
+      {
+        "command": "marcode.focusPane.2",
+        "title": "Marcode: Focus pane 2"
+      },
+      {
+        "command": "marcode.focusPane.3",
+        "title": "Marcode: Focus pane 3"
+      },
+      {
+        "command": "marcode.focusPane.4",
+        "title": "Marcode: Focus pane 4"
+      },
+      {
+        "command": "marcode.focusPane.5",
+        "title": "Marcode: Focus pane 5"
+      },
+      {
+        "command": "marcode.focusPane.6",
+        "title": "Marcode: Focus pane 6"
+      },
+      {
+        "command": "marcode.focusPane.7",
+        "title": "Marcode: Focus pane 7"
+      },
+      {
+        "command": "marcode.focusPane.8",
+        "title": "Marcode: Focus pane 8"
+      },
+      {
+        "command": "marcode.focusPane.9",
+        "title": "Marcode: Focus pane 9"
+      },
+      {
+        "command": "marcode.focusNextPane",
+        "title": "Marcode: Focus next pane"
+      },
+      {
+        "command": "marcode.focusPrevPane",
+        "title": "Marcode: Focus previous pane"
+      },
+      {
+        "command": "marcode.toggleMaximizePane",
+        "title": "Marcode: Toggle maximize pane"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "marcode.focusPane.1",
+        "key": "alt+1",
+        "mac": "ctrl+1",
+        "when": "focusedView == 'mar-code.panel'"
+      },
+      {
+        "command": "marcode.focusPane.2",
+        "key": "alt+2",
+        "mac": "ctrl+2",
+        "when": "focusedView == 'mar-code.panel'"
+      },
+      {
+        "command": "marcode.focusPane.3",
+        "key": "alt+3",
+        "mac": "ctrl+3",
+        "when": "focusedView == 'mar-code.panel'"
+      },
+      {
+        "command": "marcode.focusPane.4",
+        "key": "alt+4",
+        "mac": "ctrl+4",
+        "when": "focusedView == 'mar-code.panel'"
+      },
+      {
+        "command": "marcode.focusPane.5",
+        "key": "alt+5",
+        "mac": "ctrl+5",
+        "when": "focusedView == 'mar-code.panel'"
+      },
+      {
+        "command": "marcode.focusPane.6",
+        "key": "alt+6",
+        "mac": "ctrl+6",
+        "when": "focusedView == 'mar-code.panel'"
+      },
+      {
+        "command": "marcode.focusPane.7",
+        "key": "alt+7",
+        "mac": "ctrl+7",
+        "when": "focusedView == 'mar-code.panel'"
+      },
+      {
+        "command": "marcode.focusPane.8",
+        "key": "alt+8",
+        "mac": "ctrl+8",
+        "when": "focusedView == 'mar-code.panel'"
+      },
+      {
+        "command": "marcode.focusPane.9",
+        "key": "alt+9",
+        "mac": "ctrl+9",
+        "when": "focusedView == 'mar-code.panel'"
+      },
+      {
+        "command": "marcode.focusNextPane",
+        "key": "alt+pagedown",
+        "mac": "ctrl+alt+pagedown",
+        "when": "focusedView == 'mar-code.panel'"
+      },
+      {
+        "command": "marcode.focusPrevPane",
+        "key": "alt+pageup",
+        "mac": "ctrl+alt+pageup",
+        "when": "focusedView == 'mar-code.panel'"
+      },
+      {
+        "command": "marcode.toggleMaximizePane",
+        "key": "alt+m",
+        "mac": "ctrl+m",
+        "when": "focusedView == 'mar-code.panel'"
       }
     ],
     "walkthroughs": [

@@ -1,11 +1,10 @@
 import { attachmentLines, imageAttachments, readBase64 } from '../attachment-payload';
-import { formatEditorContext } from '../format-editor-context';
-import { withMarcodeIntro } from '../marcode-context';
+import { composePrompt } from '../compose-prompt';
 import type { SessionId } from '../../protocol/messages';
 import { addUsageTotals } from '../../shared/usage-totals';
 import type {
   AgentEvent, AgentRun, Attachment, ContextBreakdown, EditorContext,
-  EffortLevel, PermissionMeta, PermissionMode, QuestionAnswers,
+  EffortLevel, Invocable, PermissionMeta, PermissionMode, QuestionAnswers,
   SelfControlMcpConfig, ToolCall, ToolDecision, UsageTotals,
 } from '../types';
 import { CLIENT_CAPABILITIES, connectAcp, PROTOCOL_VERSION, type AcpChild } from './acp-client';
@@ -74,6 +73,8 @@ export interface AcpRunOptions {
   childEvents?: AsyncIterable<AgentEvent>;
   /** Fired once, the instant this run's own session id is known. */
   onSessionId?: (id: string) => void;
+  /** The names of this agent's skills, when the agent can say; `undefined` if it cannot. */
+  skillNames?: () => Promise<ReadonlySet<string> | undefined>;
   /** Fired during `dispose()`, alongside this run's own teardown. */
   onDispose?: () => Promise<void> | void;
   /**
@@ -210,6 +211,7 @@ export class AcpRun implements AgentRun {
   private interrupted = false;
   /** Set true after the first `send()`; guards `withMarcodeIntro`. */
   private introduced = false;
+  private bareCommands: ReadonlySet<string> = new Set();
   /**
    * Why startup failed, if it did. Re-reported by every later `send()`: the
    * `turn-end` `start()` pushes is a one-off at construction, and a session
@@ -450,9 +452,24 @@ export class AcpRun implements AgentRun {
       return;
     }
     for (const event of toAgentEvents(p.update, this.opts.tools, this.calls)) {
+      if (event.kind === 'invocables') { this.classifyCommands(event.entries); }
       this.events.push(event);
     }
     this.detectSubagentSpawn(p.update);
+  }
+
+  /**
+   * ACP marks nothing as the agent's own command, so the vendor names its skills
+   * and every other entry is bare. A failed lookup leaves the set empty: losing
+   * the editor context on a skill would be worse than the status quo.
+   */
+  private classifyCommands(entries: readonly Invocable[]): void {
+    const lookup = this.opts.skillNames;
+    if (!lookup) { return; }
+    void lookup().then((skills) => {
+      if (!skills) { return; }
+      this.bareCommands = new Set(entries.filter((e) => !skills.has(e.name)).map((e) => e.name));
+    }).catch(() => undefined);
   }
 
   /** `usage_update` feeds `contextBreakdown` and emits nothing — it is not a transcript item. */
@@ -568,9 +585,9 @@ export class AcpRun implements AgentRun {
   // -------------------------------------------------------------- outgoing
 
   send(text: string, context?: EditorContext, attachments?: Attachment[]): void {
-    const body0 = context ? `${formatEditorContext(context)}\n\n${text}` : text;
-    const body = withMarcodeIntro(body0, this.introduced, Boolean(this.opts.resumeToken));
-    this.introduced = true;
+    const composed = composePrompt(text, context, this.bareCommands, this.introduced, Boolean(this.opts.resumeToken));
+    const body = composed.body;
+    this.introduced = composed.introduced;
     const blocks: unknown[] = [{ type: 'text', text: body }];
     for (const image of imageAttachments(attachments)) {
       const data = readBase64(image);

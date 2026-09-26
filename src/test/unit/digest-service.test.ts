@@ -339,4 +339,47 @@ suite('DigestService', () => {
     await service.refresh('a');
     assert.strictEqual(store.digests.get('a')?.summarizerVersion, SUMMARIZER_VERSION);
   });
+
+  suite('digestForHandoff', () => {
+    test('summarizes a shown session in memory without writing the store or projecting', async () => {
+      const { store, service, projected } = rig([session('a', { hidden: false })], {
+        summarize: async (_i, base) => llmDigest(base),
+      });
+      const r = await service.digestForHandoff('a');
+      assert.strictEqual(r?.source, 'llm');
+      assert.strictEqual(r?.digest.title, 'LLM title');
+      assert.strictEqual(store.indexed.length, 0);
+      assert.strictEqual(projected.has('a'), false);
+    });
+
+    test('falls back to the extractive digest when the summarizer throws', async () => {
+      const { service } = rig([session('a', { hidden: false })], {
+        summarize: async () => { throw new Error('boom'); },
+      });
+      assert.strictEqual((await service.digestForHandoff('a'))?.source, 'extractive');
+    });
+
+    test('is extractive when no summarizer is set', async () => {
+      const { service } = rig([session('a', { hidden: false })]);
+      assert.strictEqual((await service.digestForHandoff('a'))?.source, 'extractive');
+    });
+
+    test('reuses a current stored llm digest for a hidden session', async () => {
+      let calls = 0;
+      const { store, service } = rig([session('a')], {
+        summarize: async (_i, base) => { calls++; return llmDigest(base); },
+      });
+      store.digests.set('a', {
+        title: 't', request: 'r', outcome: '', filesEdited: [], source: 'llm',
+        summarizerVersion: SUMMARIZER_VERSION, forUpdatedAt: 10,
+      });
+      assert.strictEqual((await service.digestForHandoff('a'))?.source, 'llm');
+      assert.strictEqual(calls, 0);
+    });
+
+    test('unknown session resolves undefined', async () => {
+      const { service } = rig([]);
+      assert.strictEqual(await service.digestForHandoff('nope'), undefined);
+    });
+  });
 });

@@ -309,6 +309,59 @@ suite('session handoff', () => {
     assert.strictEqual(sent.seed?.refs, undefined);
   });
 
+  function openHandoff(): void {
+    const box = messageBox();
+    fireEvent.change(box, { target: { value: '@hand' } });
+    fireEvent.keyDown(box, { key: 'Enter' });
+  }
+
+  test('the handoff seed names the source session by default', () => {
+    renderApp();
+    hydrateTwoSessions();
+    openHandoff();
+    fireEvent.change(screen.getByLabelText('First message'), { target: { value: 'go' } });
+    fireEvent.click(screen.getByText('Create and send'));
+
+    const sent = posted().filter((m) => m.t === 'create-session')[0] as { seed?: { handoffFrom?: string } };
+    assert.strictEqual(sent.seed?.handoffFrom, 's-1');
+  });
+
+  test('unchecking the summary option omits handoffFrom', () => {
+    renderApp();
+    hydrateTwoSessions();
+    openHandoff();
+    fireEvent.click(document.querySelector('[data-slot=checkbox][aria-label="Include summary of this session"]')!);
+    fireEvent.change(screen.getByLabelText('First message'), { target: { value: 'go' } });
+    fireEvent.click(screen.getByText('Create and send'));
+
+    const sent = posted().filter((m) => m.t === 'create-session')[0] as { seed?: { handoffFrom?: string } };
+    assert.strictEqual(sent.seed?.handoffFrom, undefined);
+  });
+
+  test('with the summary included the first message may be empty', () => {
+    renderApp();
+    hydrateTwoSessions();
+    openHandoff();
+    fireEvent.click(screen.getByText('Create and send'));
+
+    const creates = posted().filter((m) => m.t === 'create-session');
+    assert.strictEqual(creates.length, 1);
+  });
+
+  test('the dialog shows progress while summarizing and closes when the host is done', () => {
+    renderApp();
+    hydrateTwoSessions();
+    openHandoff();
+    fireEvent.click(screen.getByText('Create and send'));
+
+    sendFromHost({ t: 'handoff-progress', sessionId: 's-1', phase: 'summarizing' });
+    assert.strictEqual(screen.getByText('Summarizing…') !== null, true);
+    assert.strictEqual(screen.queryByLabelText('First message') !== null, true);
+
+    sendFromHost({ t: 'handoff-progress', sessionId: 's-1', phase: 'done' });
+    assert.strictEqual(screen.queryByLabelText('First message') === null, true);
+  });
+
   test('the handoff dialog inherits the source session provider and model', () => {
     renderApp();
     hydrateTwoSessions();

@@ -250,6 +250,8 @@ export interface SessionState {
   queued?: QueuedMessage[];
   /** Survives close; absent means false so older index.json files load unchanged. */
   pinned?: boolean;
+  /** The composer's unsent text. Absent means empty; never moves `updatedAt`. */
+  draft?: string;
   /** Cache of `digestSession()`, stale once `forUpdatedAt !== updatedAt`. Never a source of truth. */
   summary?: { text: string; forUpdatedAt: number };
   createdAt: number;
@@ -465,7 +467,7 @@ export type WebviewToHost =
        * made it — a two-step version would have to wait for the snapshot and
        * would lose the seed if the panel reloaded in between.
        */
-      seed?: { text: string; refs?: SessionRef[]; fileRefs?: FileRef[] };
+      seed?: { text: string; refs?: SessionRef[]; fileRefs?: FileRef[]; handoffFrom?: SessionId };
       /**
        * Create the session in a fresh (or existing) linked worktree instead
        * of `cwd`. `base` is the branch/ref to create `branch` off of when it
@@ -487,6 +489,7 @@ export type WebviewToHost =
   | { t: 'focus-session'; id: SessionId }
   | { t: 'focus-pane'; sessionId: SessionId }
   | { t: 'set-pinned'; id: SessionId; pinned: boolean }
+  | { t: 'set-draft'; id: SessionId; text: string }
   | { t: 'request-history-summaries' }
   | { t: 'memory-estimate'; scope: DigestScopeWire }
   | { t: 'memory-reindex'; scope: DigestScopeWire }
@@ -795,11 +798,21 @@ export type HostToWebview =
    * client in direct reply to its own request, not a broadcast.
    */
   | { t: 'fleet-focus-subagent'; sessionId: SessionId; itemId: string }
+  /**
+   * Keyboard pane navigation, sent by the pane commands. `focus-pane` names
+   * its target; `step-pane` and `toggle-maximize-pane` are relative to the
+   * webview's own focused pane, which only the client knows.
+   */
+  | { t: 'focus-pane'; id: SessionId }
+  | { t: 'step-pane'; delta: 1 | -1 }
+  | { t: 'toggle-maximize-pane' }
   | { t: 'session-snapshot'; session: SessionSnapshot }
   | { t: 'session-patch'; id: SessionId; patch: TranscriptPatch }
   | { t: 'session-prepend'; id: SessionId; items: TranscriptItem[]; hasMore: boolean }
   | { t: 'session-status'; id: SessionId; status: SessionStatus }
   | { t: 'sessions-changed'; sessions: SessionSummary[] }
+  /** A handoff's source is being summarized. Answers `create-session`; sent straight to the asker, not fanned out. */
+  | { t: 'handoff-progress'; sessionId: SessionId; phase: 'summarizing' | 'done' }
   | { t: 'memory-progress'; phase: 'extractive' | 'llm' | 'done' | 'cancelled'; done: number; total: number }
   | { t: 'memory-status'; enabled: boolean; llm: boolean }
   | { t: 'memory-estimate'; scope: DigestScopeWire; sessions: number; approxInputTokens: number }

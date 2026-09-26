@@ -51,6 +51,7 @@ function describeInbound(m: WebviewToHost): string {
     case 'focus-session': return 'focus-session';
     case 'focus-pane': return 'focus-pane';
     case 'set-pinned': return 'set-pinned';
+    case 'set-draft': return 'set-draft';
     case 'request-history-summaries': return 'request-history-summaries';
     case 'open-history': return 'open-history';
     case 'open-fleet-subagent': return 'open-fleet-subagent';
@@ -107,6 +108,10 @@ function describeOutbound(m: HostToWebview): string {
     case 'favorite-models': return 'favorite-models';
     case 'layout-changed': return 'layout-changed';
     case 'fleet-focus-subagent': return 'fleet-focus-subagent';
+    case 'handoff-progress': return 'handoff-progress';
+    case 'focus-pane': return 'focus-pane';
+    case 'step-pane': return 'step-pane';
+    case 'toggle-maximize-pane': return 'toggle-maximize-pane';
     default: return assertNever(m);
   }
 }

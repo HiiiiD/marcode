@@ -20,6 +20,9 @@ import {
   sessionMentions, type SessionMentionPayload,
 } from "../lib/session-mentions";
 import { useMentionMenu } from "../lib/use-mention-menu";
+import { promptHistory } from "../lib/prompt-history";
+import { useDraftSync } from "../lib/use-draft-sync";
+import { usePromptHistory } from "../lib/use-prompt-history";
 import { base64Of, urisOf } from "../lib/read-attachment";
 import type { PaneState } from "../reducer";
 import { useStore } from "../store";
@@ -51,8 +54,10 @@ export function Composer({
    */
   unavailableReason?: string;
 }) {
-  const { state, post, dismissRejection } = useStore();
-  const [text, setText] = useState("");
+  const { state, post, dismissRejection, setDraft } = useStore();
+  const text = state.draftBySession[pane.summary.id] ?? "";
+  const setText = (next: string) => setDraft(pane.summary.id, next);
+  useDraftSync(pane.summary.id, text, post);
   /** The selected entry's arg hint. Presentation only; never sent. */
   const [ghost, setGhost] = useState("");
   const [refs, setRefs] = useState<PendingMention<SessionMentionPayload | FileMentionPayload>[]>([]);
@@ -60,6 +65,12 @@ export function Composer({
   // `setHandoffOpen` arrives in Task 7's dialog; declared now so `pickRef`'s
   // action branch has somewhere to signal it opened.
   const [handoffOpen, setHandoffOpen] = useState(false);
+  const [handoffBusy, setHandoffBusy] = useState(false);
+  const handoffPhase = state.handoffPhase[pane.summary.id];
+  // Keyed on the phase changing, not on `handoffBusy`: a stale 'done' from an earlier handoff must not close a new dialog.
+  useEffect(() => {
+    if (handoffPhase === 'done') { setHandoffBusy(false); setHandoffOpen(false); }
+  }, [handoffPhase]);
   /**
    * The context dialog has two doors — the ring beside the Send button and
    * an intercepted `/context` — so its open state lives here, above both,
@@ -71,6 +82,7 @@ export function Composer({
   // to is bound on the textarea, so a menu opened by a click that left focus
   // on the button would be unreachable by keyboard.
   const box = useRef<HTMLTextAreaElement | null>(null);
+  const recall = usePromptHistory(promptHistory(pane.items), text, setText, box);
   const running = pane.summary.status === "running" || pane.summary.status === "awaiting-approval";
   // Session-scoped, not a bare literal: Composer renders once per pane, so a
   // fixed id would collide across panes — `getElementById`, which is what
@@ -262,6 +274,7 @@ export function Composer({
       });
     }
     setText("");
+    recall.reset();
     setGhost("");
     setRefs([]);
     menu.reset();
@@ -460,6 +473,7 @@ export function Composer({
           value={text}
           onChange={(e) => {
             setText(e.target.value);
+            recall.reset();
             setCaret(e.target.selectionStart ?? e.target.value.length);
             setRefs((current) => pruneMentions(e.target.value, current));
             setGhost("");
@@ -493,6 +507,7 @@ export function Composer({
             if (!composingEnter && (refMenu.handleKeyDown(e) || menu.handleKeyDown(e))) {
               return;
             }
+            if (recall.handleKeyDown(e)) { return; }
             // Sent during a run too: the host parks it and spends it at the
             // turn boundary, so the user never has to hold the next
             // instruction in their head — or in an unsent box — while the
@@ -691,14 +706,16 @@ export function Composer({
           catalog={state.catalog}
           initial={handoffSettings}
           seedable
-          onCreate={(chosen, seed, worktree) => {
+          busy={handoffBusy}
+          onCreate={(chosen, seed, worktree, includeSummary) => {
             const pruned = pruneMentions(seed ?? "", refs);
             const fileCarried = fileRefsOf(pruned);
             post(createMessage(chosen, {
               text: seed ?? "",
               ...(fileCarried.length > 0 ? { fileRefs: fileCarried } : {}),
+              ...(includeSummary ? { handoffFrom: pane.summary.id } : {}),
             }, worktree));
-            setHandoffOpen(false);
+            if (includeSummary) { setHandoffBusy(true); } else { setHandoffOpen(false); }
           }}
         />
       )}

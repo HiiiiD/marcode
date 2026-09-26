@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog, DialogClose, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
@@ -7,7 +8,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Tabs, TabsIndicator, TabsList, TabsPanel, TabsTab } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import { GitBranch, Star } from "lucide-react";
+import { GitBranch, LoaderCircle, Star } from "lucide-react";
 import { useId, useState } from "react";
 import type { EffortLevel, ModelInfo, PermissionMode, ProviderInfo } from "../../protocol/messages";
 import { expandedDisplayName, findModel, isFavorite, modelKey, resolveEffort } from "../../shared/model-catalog";
@@ -101,6 +102,7 @@ export function SessionCreateDialog({
   catalog,
   initial,
   seedable,
+  busy,
   onCreate,
 }: {
   open: boolean;
@@ -110,8 +112,11 @@ export function SessionCreateDialog({
   initial: CreateSettings;
   /** True for the handoff dialog: adds the first-message field and relabels. */
   seedable?: boolean;
+  /** A handoff summary is in flight: the form is locked and the button says so. */
+  busy?: boolean;
   onCreate: (
     settings: CreateSettings, seed?: string, worktree?: { branch: string; base?: string },
+    includeSummary?: boolean,
   ) => void;
 }) {
   return (
@@ -133,6 +138,7 @@ export function SessionCreateDialog({
             catalog={catalog}
             initial={initial}
             seedable={seedable}
+            busy={busy}
             onCreate={onCreate}
           />
         )}
@@ -145,19 +151,23 @@ function CreateForm({
   catalog,
   initial,
   seedable,
+  busy,
   onCreate,
 }: {
   catalog: ProviderInfo[];
   initial: CreateSettings;
   seedable?: boolean;
+  busy?: boolean;
   onCreate: (
     settings: CreateSettings, seed?: string, worktree?: { branch: string; base?: string },
+    includeSummary?: boolean,
   ) => void;
 }) {
   const { state, post } = useStore();
   const [picked, setPicked] = useState(valueOf(initial.providerId, initial.model));
   const [mode, setMode] = useState<PermissionMode>(initial.mode);
   const [seedText, setSeedText] = useState("");
+  const [includeSummary, setIncludeSummary] = useState(true);
   const [branch, setBranch] = useState("");
   const [base, setBase] = useState("");
   // Derived, not a separate toggle: a non-empty branch name IS the choice to
@@ -292,6 +302,14 @@ function CreateForm({
               placeholder="Execute the plan in docs/superpowers/plans/…"
               className="min-h-16"
             />
+            <label className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Checkbox
+                checked={includeSummary}
+                onCheckedChange={(v) => setIncludeSummary(v === true)}
+                aria-label="Include summary of this session"
+              />
+              Include summary of this session
+            </label>
           </div>
         )}
 
@@ -446,7 +464,7 @@ function CreateForm({
         <DialogClose render={<Button variant="outline" size="sm" />}>Cancel</DialogClose>
         <Button
           size="sm"
-          disabled={!provider || !model || (seedable && !seedText.trim())}
+          disabled={!provider || !model || busy || (seedable && !seedText.trim() && !includeSummary)}
           onClick={() => {
             if (!provider || !model) { return; }
             onCreate({
@@ -457,10 +475,16 @@ function CreateForm({
             }, seedable ? seedText.trim() : undefined,
             inWorktree
               ? { branch: branch.trim(), ...(base.trim() ? { base: base.trim() } : {}) }
-              : undefined);
+              : undefined,
+            seedable ? includeSummary : undefined);
           }}
         >
-          {seedable ? "Create and send" : "Create session"}
+          {busy ? (
+            <>
+              <LoaderCircle className="animate-spin" aria-hidden />
+              Summarizing…
+            </>
+          ) : seedable ? "Create and send" : "Create session"}
         </Button>
       </DialogFooter>
     </>

@@ -249,6 +249,10 @@ export class MessageRouter {
           msg.providerId, msg.cwd || this.defaultCwd, msg.model, msg.effort, msg.mode, msg.worktree,
         );
         if (msg.seed) {
+          const handoffFrom = msg.seed.handoffFrom;
+          if (handoffFrom) { this.emit({ t: 'handoff-progress', sessionId: handoffFrom, phase: 'summarizing' }); }
+          const handoff = handoffFrom ? await this.manager.handoffSummary(handoffFrom) : undefined;
+          if (handoffFrom) { this.emit({ t: 'handoff-progress', sessionId: handoffFrom, phase: 'done' }); }
           const seedRefs = msg.seed.refs ?? [];
           const fileRefs = msg.seed.fileRefs ?? [];
           const [{ blocks: sBlocks, missing: sMissing }, { blocks: fBlocks, missing: fMissing }] =
@@ -263,7 +267,10 @@ export class MessageRouter {
               ? this.editor.current() ?? undefined
               : undefined;
             session.send(
-              composePrompt(msg.seed.text, [...sBlocks, ...fBlocks]), context,
+              composePrompt(msg.seed.text, [
+                ...(handoff ? [{ title: handoff.title, kind: 'handoff' as const, text: handoff.text }] : []),
+                ...sBlocks, ...fBlocks,
+              ]), context,
               seedRefs.length > 0 ? seedRefs : undefined,
               fileRefs.length > 0 ? fileRefs : undefined,
             );
@@ -639,6 +646,10 @@ export class MessageRouter {
         this.manager.setPinned(msg.id, msg.pinned);
         return;
 
+      case 'set-draft':
+        this.manager.setDraft(msg.id, msg.text);
+        return;
+
       case 'request-history-summaries':
         // Before the sweep: the strip and row buttons should not wait on however many digests are stale.
         this.emit({ t: 'memory-status', ...this.manager.memoryStatus() });
@@ -756,7 +767,7 @@ const KNOWN_MESSAGE_TAGS = new Set<WebviewToHost['t']>([
   'request-stale-trees', 'remove-stale-tree',
   'request-fleet-diff', 'request-branch-refs', 'open-file-diff', 'open-review', 'open-fleet',
   'open-fleet-subagent',
-  'focus-session', 'focus-pane', 'set-pinned', 'request-history-summaries', 'open-history',
+  'focus-session', 'focus-pane', 'set-pinned', 'set-draft', 'request-history-summaries', 'open-history',
   'memory-estimate', 'memory-reindex', 'memory-resummarize', 'memory-cancel',
   'refresh-catalog', 'refresh-usage', 'open-settings', 'login-provider', 'open-external', 'export-table-csv',
   'export-image',

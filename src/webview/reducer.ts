@@ -1,3 +1,4 @@
+import { leafSessionIds } from './components/layout-tree';
 import type {
   Attachment,
   BringBackPlan,
@@ -118,8 +119,18 @@ export interface ClientState {
    * rarely sees this null in practice.
    */
   focusedSessionId: SessionId | null;
+  /**
+   * A keyboard request to move DOM focus into `id`'s composer. A fresh object
+   * per request so asking for the same pane twice still re-fires the effect.
+   * Client-local and ephemeral, like `focusedSessionId`.
+   */
+  paneFocusRequest: { id: SessionId } | null;
+  /** The one pane shown full-size, or null. Client-local and never persisted. */
+  maximizedId: SessionId | null;
   /** Last transient attachment failure for each composer, one line per refused file. */
   rejectionBySession: Record<SessionId, string[] | undefined>;
+  /** Per source session: where a handoff's summary is. Only the composer that asked reads it. */
+  handoffPhase: Record<SessionId, 'summarizing' | 'done' | undefined>;
   /**
    * The most recent `file-search-result` per composer, keyed alongside the
    * `query` it answers — the composer compares that against its own live
@@ -127,6 +138,13 @@ export interface ClientState {
    * rather than needing a separate staleness id on the wire.
    */
   fileSearchBySession: Record<SessionId, { query: string; files: FileRef[] } | undefined>;
+  /**
+   * The composer's live text per session. Lives here rather than in the
+   * composer because a layout change re-parents a pane and remounts it —
+   * component state would be lost mid-sentence. Seeded from the host's
+   * persisted draft on hydrate; the host copy lags by a debounce.
+   */
+  draftBySession: Record<SessionId, string | undefined>;
   /**
    * The AGENTS.md/CLAUDE.md nudge card's rows. Empty means no card — sent
    * once per activate/reload, wholesale, same posture as `staleTrees`: it
@@ -181,8 +199,12 @@ export const initialState: ClientState = {
   fleetDiffReason: undefined,
   fleetDiffDirty: 0,
   focusedSessionId: null,
+  paneFocusRequest: null,
+  maximizedId: null,
   rejectionBySession: {},
+  handoffPhase: {},
   fileSearchBySession: {},
+  draftBySession: {},
   agentsMdNudgeHits: [],
   favoriteModels: [],
   showCacheTimer: false,
@@ -214,22 +236,54 @@ export type ClientAction =
   | { t: 'local-dismiss-rejection'; id: SessionId }
   /** See `ClientState.pendingSlotPath`. */
   | { t: 'local-pending-slot'; path: number[] | null }
+  /** See `ClientState.draftBySession`. */
+  | { t: 'local-draft'; id: SessionId; text: string }
   /** See `ClientState.usageRefreshing`. */
   | { t: 'local-usage-refresh-start' };
 
 export function reduce(state: ClientState, msg: ClientAction): ClientState {
   switch (msg.t) {
     case 'local-layout':
-      return { ...state, layout: msg.layout };
+      return { ...state, layout: msg.layout, maximizedId: keepMaximized(state.maximizedId, msg.layout) };
 
     case 'layout-changed':
-      return { ...state, layout: msg.layout };
+      return { ...state, layout: msg.layout, maximizedId: keepMaximized(state.maximizedId, msg.layout) };
+
+    case 'focus-pane': {
+      if (!readyPaneIds(state).includes(msg.id)) { return state; }
+      return {
+        ...state,
+        paneFocusRequest: { id: msg.id },
+        maximizedId: state.maximizedId === null ? null : msg.id,
+      };
+    }
+
+    case 'step-pane': {
+      const ids = readyPaneIds(state);
+      if (ids.length === 0) { return state; }
+      const at = state.focusedSessionId === null ? -1 : ids.indexOf(state.focusedSessionId);
+      const next = at === -1
+        ? (msg.delta === 1 ? 0 : ids.length - 1)
+        : (at + msg.delta + ids.length) % ids.length;
+      return {
+        ...state,
+        paneFocusRequest: { id: ids[next] },
+        maximizedId: state.maximizedId === null ? null : ids[next],
+      };
+    }
+
+    case 'toggle-maximize-pane':
+      if (state.maximizedId !== null) { return { ...state, maximizedId: null }; }
+      return state.focusedSessionId === null ? state : { ...state, maximizedId: state.focusedSessionId };
 
     case 'local-focus':
       return state.focusedSessionId === msg.id ? state : { ...state, focusedSessionId: msg.id };
 
     case 'local-pending-slot':
       return { ...state, pendingSlotPath: msg.path };
+
+    case 'local-draft':
+      return { ...state, draftBySession: { ...state.draftBySession, [msg.id]: msg.text } };
 
     case 'local-usage-refresh-start':
       return { ...state, usageRefreshing: true };
@@ -284,10 +338,18 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
         // hydrate rebuilds them. A stale id would let `+ New` inherit from a
         // session this hydrate may not even contain.
         focusedSessionId: null,
+        paneFocusRequest: null,
+        maximizedId: null,
         rejectionBySession: {},
+        handoffPhase: {},
         // Cleared for the same reason: it answers "what did the box's last
         // keystroke ask for", and a reload has no box left holding one.
         fileSearchBySession: {},
+        // Rebuilt from the host's copy, never carried: a reload has no
+        // composer left holding newer text than what the host persisted.
+        draftBySession: Object.fromEntries(
+          msg.sessions.filter((s) => s.draft).map((s) => [s.id, s.draft]),
+        ),
         // Cleared, not carried: a reload re-scans (panel-view-provider.ts
         // triggers the scan on resolveWebviewView), and the fresh
         // `agents-md-nudge` message that follows is the total rebuild here —
@@ -467,6 +529,9 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
         rejectionBySession: { ...state.rejectionBySession, [msg.id]: undefined },
       };
 
+    case 'handoff-progress':
+      return { ...state, handoffPhase: { ...state.handoffPhase, [msg.sessionId]: msg.phase } };
+
     case 'session-status': {
       const sessions = state.sessions.map((s) =>
         s.id === msg.id ? { ...s, status: msg.status } : s);
@@ -625,4 +690,13 @@ function withChild(
     return { ...item, children: updated };
   });
   return found ? next : undefined;
+}
+
+function readyPaneIds(state: ClientState): SessionId[] {
+  const roster = new Set(state.sessions.map((s) => s.id));
+  return leafSessionIds(state.layout.root).filter((id) => roster.has(id) && id in state.byId);
+}
+
+function keepMaximized(id: SessionId | null, layout: PaneLayout): SessionId | null {
+  return id !== null && leafSessionIds(layout.root).includes(id) ? id : null;
 }

@@ -173,4 +173,14 @@ suite('PermissionCard', () => {
       screen.getByText('Claude wants to write a.txt');
     });
   });
+
+  test('a mid-length edit previews compactly with a reveal', () => {
+    const after = Array.from({ length: 15 }, (_, i) => `line ${i}`).join('\n');
+    const tool: ToolCall = {
+      kind: 'file-edit', label: 'Write', files: [{ path: '/a', op: 'create', edits: [{ after }] }],
+    };
+    renderWithStore(<PermissionCard item={permission({ tool })} sessionId="a" />);
+    hydrateWith([{ requestId: 'r1', tool }]);
+    screen.getByText(/more lines/);
+  });
 });

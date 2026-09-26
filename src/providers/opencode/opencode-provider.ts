@@ -7,6 +7,7 @@ import { AcpRun } from '../acp/acp-run';
 import { openCodeModeId } from './map-modes';
 import { openCodeTools } from './map-tools';
 import { reserveLoopbackPort } from './reserve-port';
+import { listOpenCodeSkillNames } from './skill-names';
 import { SubagentWatch } from './subagent-watch';
 import {
   localVersion, githubLatestVersion, type ExecVersionFn, type FetchFn, type UpdateInfo,
@@ -135,6 +136,7 @@ export class OpenCodeProvider implements AgentProvider {
   private readonly binPath?: string;
   private readonly spawn: (bin: string, env?: NodeJS.ProcessEnv, port?: number) => AcpChild;
   private readonly deleteSession: (bin: string | undefined, env: NodeJS.ProcessEnv | undefined, id: string) => Promise<void>;
+  private readonly listSkillNames: typeof listOpenCodeSkillNames;
   private readonly selfControlMcp?: SelfControlMcpConfig;
   /** Instance env override, merged into every spawned `opencode acp` process's env. */
   private readonly env?: NodeJS.ProcessEnv;
@@ -162,6 +164,8 @@ export class OpenCodeProvider implements AgentProvider {
     spawn?: (bin: string, env?: NodeJS.ProcessEnv, port?: number) => AcpChild;
     /** Injected so a test never runs the real CLI. Defaults to `deleteOpenCodeSession`. */
     deleteSession?: (bin: string | undefined, env: NodeJS.ProcessEnv | undefined, id: string) => Promise<void>;
+    /** Injected so a test never runs the real CLI. Defaults to `listOpenCodeSkillNames`. */
+    skillNames?: typeof listOpenCodeSkillNames;
     selfControlMcp?: SelfControlMcpConfig;
     env?: NodeJS.ProcessEnv;
     loginKind?: 'oauth' | 'none';
@@ -175,6 +179,7 @@ export class OpenCodeProvider implements AgentProvider {
     this.binPath = opts.binPath;
     this.spawn = opts.spawn ?? ((bin, env, port) => spawnOpenCodeAcp(bin, env, port));
     this.deleteSession = opts.deleteSession ?? deleteOpenCodeSession;
+    this.listSkillNames = opts.skillNames ?? listOpenCodeSkillNames;
     this.selfControlMcp = opts.selfControlMcp;
     this.env = opts.env;
     this.loginKind = opts.loginKind;
@@ -315,6 +320,7 @@ export class OpenCodeProvider implements AgentProvider {
       clientName: 'mar-code',
       selfControlMcp: opts.withoutSelfControl ? undefined : this.selfControlMcp,
       childEvents: watch.events,
+      skillNames: () => this.listSkillNames(this.binPath, this.mergedEnv(), opts.cwd),
       // `onSessionId` fires once, the moment a real opencode session id
       // exists (see `AcpRunOptions`) — the earliest point a fresh process
       // could no longer silently replace this one without losing state, so

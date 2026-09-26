@@ -757,3 +757,33 @@ suite('PaneGroup', () => {
     assert.deepStrictEqual(flattenLeaves(last.layout.root).map((l) => l.sessionId), [null, 's1']);
   });
 });
+
+suite('PaneGroup keyboard navigation', () => {
+  test('focus-pane moves DOM focus to that pane\'s composer', () => {
+    renderApp();
+    hydrate(['a', 'b']);
+    act(() => { sendFromHost({ t: 'focus-pane', id: 'b' }); });
+    const pane = document.querySelector('[data-session-id="b"]')!;
+    assert.strictEqual(pane.contains(document.activeElement), true);
+    assert.strictEqual(document.activeElement?.tagName, 'TEXTAREA');
+  });
+
+  test('the focused pane is marked active', () => {
+    renderApp();
+    hydrate(['a', 'b']);
+    act(() => { sendFromHost({ t: 'focus-pane', id: 'b' }); });
+    assert.strictEqual(document.querySelector('[data-session-id="b"]')!.getAttribute('data-active'), 'true');
+    assert.strictEqual(document.querySelector('[data-session-id="a"]')!.getAttribute('data-active'), 'false');
+  });
+
+  test('toggle-maximize shows only the focused pane, and toggling again restores the rest', () => {
+    renderApp();
+    hydrate(['a', 'b']);
+    act(() => { sendFromHost({ t: 'focus-pane', id: 'b' }); });
+    act(() => { sendFromHost({ t: 'toggle-maximize-pane' }); });
+    assert.strictEqual(document.querySelectorAll('[data-session-id]').length, 1);
+    assert.strictEqual(document.querySelector('[data-session-id="b"]') === null, false);
+    act(() => { sendFromHost({ t: 'toggle-maximize-pane' }); });
+    assert.strictEqual(document.querySelectorAll('[data-session-id]').length, 2);
+  });
+});

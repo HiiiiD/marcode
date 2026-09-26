@@ -179,7 +179,7 @@ export function PermissionCard({
       </div>
       <div className="mb-2">
         <PermissionMetaDetail meta={item.meta} />
-        <ToolBody blocks={request} />
+        <ToolBody blocks={request} clamp={{ head: 4, tail: 2 }} />
       </div>
       {/* Deny is the safe, reversible-feeling choice: it comes first in DOM
           and tab order, and Allow — the consequential, irreversible-feeling

@@ -6,6 +6,7 @@ function routerWith(estimate = { sessions: 2, approxInputTokens: 6000 }) {
   const calls: string[] = [];
   const manager = {
     setPinned: (id: string, pinned: boolean) => { calls.push(`setPinned:${id}:${pinned}`); },
+    setDraft: (id: string, text: string) => { calls.push(`setDraft:${id}:${text}`); },
     ensureSummaries: async () => { calls.push('ensureSummaries'); },
     memoryStatus: () => ({ enabled: true, llm: false }),
     memoryEstimate: async () => estimate,
@@ -33,6 +34,12 @@ suite('history routing', () => {
     const { router, calls } = routerWith();
     await router.handle({ t: 'set-pinned', id: 's1', pinned: true });
     assert.deepStrictEqual(calls, ['setPinned:s1:true']);
+  });
+
+  test('set-draft reaches the manager', async () => {
+    const { router, calls } = routerWith();
+    await router.handle({ t: 'set-draft', id: 's1', text: 'hi' });
+    assert.deepStrictEqual(calls, ['setDraft:s1:hi']);
   });
 
   test('request-history-summaries reaches the manager', async () => {

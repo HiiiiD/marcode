@@ -85,23 +85,16 @@ export interface ReconcileResult {
  * the next pass just because it's still live and still in `byId`.
  *
  * So reconciliation only ever does two things:
- *  - drops a leaf whose session is no longer in the roster at all (deleted
- *    outright — the one case where the session itself is gone, not just the
- *    user's choice to hide it), via `removeSession`, which also collapses
- *    the leaf's parent split (see its own doc comment for the collapse
- *    rules) — the tree-shaped equivalent of re-splitting sizes evenly
- *    across the remaining flat pane list;
- *  - appends a leaf for a session that has a snapshot in `byId` for the
+ *  - empties the leaf of a session no longer in the roster at all (deleted
+ *    outright), via `emptySession`: the slot stays, like any other close;
+ *  - places a session that has a snapshot in `byId` for the
  *    FIRST time (`snapshotArrivedIds` minus `knownSessionIds`) — this is
  *    what makes a freshly created session open into a pane. A session
  *    already in `knownSessionIds` (because a previous pass already offered
  *    it a leaf, or because it arrived via an explicit `set-visible` from
  *    the roster checkbox) is never auto-appended again, even if the user
- *    just removed its leaf. A bare empty root leaf is filled directly;
- *    otherwise the new leaf is appended as a sibling at the top split
- *    level, wrapping the existing root in a fresh vertical split only when
- *    it isn't already one, and sizes are re-split evenly across the
- *    resulting sibling set.
+ *    just removed its leaf. Placement is `placeSession`'s: the first empty
+ *    slot, else an evenly sized sibling of the last-focused pane.
  *
  * `root` is `null` when nothing needs to change, so a caller driving this
  * from a render effect can skip posting `set-layout` on every pass.
