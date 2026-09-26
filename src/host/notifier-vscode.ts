@@ -3,6 +3,7 @@ import type { SessionManager } from './session-manager';
 import type { PostClient } from './post-bus';
 import { Notifier, type NotifyKind } from './notifier';
 import { focusSession } from './focus-session';
+import { flashTaskbar } from './taskbar-flash';
 import { NOTIFICATIONS_SETTING, validateNotificationKinds } from '../shared/notification-settings';
 import { leafSessionIds } from '../webview/components/layout-tree';
 import type { SessionId } from '../protocol/messages';
@@ -13,6 +14,12 @@ const TEXT: Record<NotifyKind, (name: string) => string> = {
   finished: (n) => `${n} finished its turn.`,
   error: (n) => `${n} hit an error.`,
 };
+
+function readSettings() {
+  const result = validateNotificationKinds(vscode.workspace.getConfiguration().get<unknown>(NOTIFICATIONS_SETTING));
+  if (result.warnings.length > 0) { console.warn(result.warnings.join(' ')); }
+  return result;
+}
 
 export function createNotifierClient(
   manager: SessionManager,
@@ -25,15 +32,12 @@ export function createNotifierClient(
     isWatching: (id) => vscode.window.state.focused && isViewVisible()
       && leafSessionIds(manager.layout().root).includes(id),
     nameOf: (id) => manager.summaries().find((s) => s.id === id)?.name ?? id,
-    kinds: () => {
-      const { kinds, warnings } = validateNotificationKinds(
-        vscode.workspace.getConfiguration().get<unknown>(NOTIFICATIONS_SETTING),
-      );
-      if (warnings.length > 0) { console.warn(warnings.join(' ')); }
-      return kinds;
-    },
+    kinds: () => readSettings().kinds,
     waitingOn: (id) => manager.get(id)?.waitingOn() ?? 'approval',
     show: (id, kind, name) => {
+      if (!vscode.window.state.focused && readSettings().taskbarFlash) {
+        flashTaskbar(vscode.workspace.name ?? '');
+      }
       const show = kind === 'error' ? vscode.window.showErrorMessage
         : kind === 'approval' || kind === 'question' ? vscode.window.showWarningMessage : vscode.window.showInformationMessage;
       void Promise.resolve(show(TEXT[kind](name), 'Show')).then(

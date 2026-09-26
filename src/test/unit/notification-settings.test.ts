@@ -26,4 +26,17 @@ suite('validateNotificationKinds', () => {
     assert.strictEqual(r.kinds.error, true);
     assert.strictEqual(r.warnings.length, 1);
   });
+
+  test('taskbarFlash defaults on, can be turned off, and is not a kind', () => {
+    assert.strictEqual(validateNotificationKinds(undefined).taskbarFlash, true);
+    const r = validateNotificationKinds({ taskbarFlash: false });
+    assert.strictEqual(r.taskbarFlash, false);
+    assert.deepStrictEqual(r.kinds, ALL);
+  });
+
+  test('non-boolean taskbarFlash warns and keeps default', () => {
+    const r = validateNotificationKinds({ taskbarFlash: 1 });
+    assert.strictEqual(r.taskbarFlash, true);
+    assert.strictEqual(r.warnings.length, 1);
+  });
 });

@@ -52,6 +52,7 @@
           "properties": {
             "approval": { "type": "boolean", "default": true },
             "question": { "type": "boolean", "default": true },
+            "taskbarFlash": { "type": "boolean", "default": true, "description": "Flash the Windows taskbar icon when a notification fires while VS Code is not the focused window." },
             "finished": { "type": "boolean", "default": true },
             "error": { "type": "boolean", "default": true }
           },
