@@ -120,6 +120,8 @@ export interface ClientState {
   focusedSessionId: SessionId | null;
   /** Last transient attachment failure for each composer, one line per refused file. */
   rejectionBySession: Record<SessionId, string[] | undefined>;
+  /** Per source session: where a handoff's summary is. Only the composer that asked reads it. */
+  handoffPhase: Record<SessionId, 'summarizing' | 'done' | undefined>;
   /**
    * The most recent `file-search-result` per composer, keyed alongside the
    * `query` it answers — the composer compares that against its own live
@@ -182,6 +184,7 @@ export const initialState: ClientState = {
   fleetDiffDirty: 0,
   focusedSessionId: null,
   rejectionBySession: {},
+  handoffPhase: {},
   fileSearchBySession: {},
   agentsMdNudgeHits: [],
   favoriteModels: [],
@@ -285,6 +288,7 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
         // session this hydrate may not even contain.
         focusedSessionId: null,
         rejectionBySession: {},
+        handoffPhase: {},
         // Cleared for the same reason: it answers "what did the box's last
         // keystroke ask for", and a reload has no box left holding one.
         fileSearchBySession: {},
@@ -466,6 +470,9 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
         ...state,
         rejectionBySession: { ...state.rejectionBySession, [msg.id]: undefined },
       };
+
+    case 'handoff-progress':
+      return { ...state, handoffPhase: { ...state.handoffPhase, [msg.sessionId]: msg.phase } };
 
     case 'session-status': {
       const sessions = state.sessions.map((s) =>

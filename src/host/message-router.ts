@@ -249,6 +249,10 @@ export class MessageRouter {
           msg.providerId, msg.cwd || this.defaultCwd, msg.model, msg.effort, msg.mode, msg.worktree,
         );
         if (msg.seed) {
+          const handoffFrom = msg.seed.handoffFrom;
+          if (handoffFrom) { this.emit({ t: 'handoff-progress', sessionId: handoffFrom, phase: 'summarizing' }); }
+          const handoff = handoffFrom ? await this.manager.handoffSummary(handoffFrom) : undefined;
+          if (handoffFrom) { this.emit({ t: 'handoff-progress', sessionId: handoffFrom, phase: 'done' }); }
           const seedRefs = msg.seed.refs ?? [];
           const fileRefs = msg.seed.fileRefs ?? [];
           const [{ blocks: sBlocks, missing: sMissing }, { blocks: fBlocks, missing: fMissing }] =
@@ -263,7 +267,10 @@ export class MessageRouter {
               ? this.editor.current() ?? undefined
               : undefined;
             session.send(
-              composePrompt(msg.seed.text, [...sBlocks, ...fBlocks]), context,
+              composePrompt(msg.seed.text, [
+                ...(handoff ? [{ title: handoff.title, kind: 'handoff' as const, text: handoff.text }] : []),
+                ...sBlocks, ...fBlocks,
+              ]), context,
               seedRefs.length > 0 ? seedRefs : undefined,
               fileRefs.length > 0 ? fileRefs : undefined,
             );

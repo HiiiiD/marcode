@@ -1,7 +1,7 @@
 import type { FileRef, RefKind, TranscriptItem } from '../protocol/messages';
 
 /** One resolved reference, ready to be appended to a prompt. */
-export interface ResolvedBlock { title: string; kind: RefKind | 'file'; text: string }
+export interface ResolvedBlock { title: string; kind: RefKind | 'file' | 'handoff'; text: string }
 
 /**
  * The text a reference resolves to, or `undefined` when the source has

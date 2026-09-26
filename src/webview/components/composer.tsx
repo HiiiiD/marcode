@@ -60,6 +60,12 @@ export function Composer({
   // `setHandoffOpen` arrives in Task 7's dialog; declared now so `pickRef`'s
   // action branch has somewhere to signal it opened.
   const [handoffOpen, setHandoffOpen] = useState(false);
+  const [handoffBusy, setHandoffBusy] = useState(false);
+  const handoffPhase = state.handoffPhase[pane.summary.id];
+  // Keyed on the phase changing, not on `handoffBusy`: a stale 'done' from an earlier handoff must not close a new dialog.
+  useEffect(() => {
+    if (handoffPhase === 'done') { setHandoffBusy(false); setHandoffOpen(false); }
+  }, [handoffPhase]);
   /**
    * The context dialog has two doors — the ring beside the Send button and
    * an intercepted `/context` — so its open state lives here, above both,
@@ -691,14 +697,16 @@ export function Composer({
           catalog={state.catalog}
           initial={handoffSettings}
           seedable
-          onCreate={(chosen, seed, worktree) => {
+          busy={handoffBusy}
+          onCreate={(chosen, seed, worktree, includeSummary) => {
             const pruned = pruneMentions(seed ?? "", refs);
             const fileCarried = fileRefsOf(pruned);
             post(createMessage(chosen, {
               text: seed ?? "",
               ...(fileCarried.length > 0 ? { fileRefs: fileCarried } : {}),
+              ...(includeSummary ? { handoffFrom: pane.summary.id } : {}),
             }, worktree));
-            setHandoffOpen(false);
+            if (includeSummary) { setHandoffBusy(true); } else { setHandoffOpen(false); }
           }}
         />
       )}

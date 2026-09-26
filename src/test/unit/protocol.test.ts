@@ -106,6 +106,7 @@ function describeOutbound(m: HostToWebview): string {
     case 'favorite-models': return 'favorite-models';
     case 'layout-changed': return 'layout-changed';
     case 'fleet-focus-subagent': return 'fleet-focus-subagent';
+    case 'handoff-progress': return 'handoff-progress';
     default: return assertNever(m);
   }
 }
