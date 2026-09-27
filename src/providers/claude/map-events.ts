@@ -228,11 +228,17 @@ export function mapEvent(msg: unknown): AgentEvent[] {
       // source of truth for the whole set. `task_notification` below is
       // paired against it anyway, as a second, per-task edge: belt and
       // suspenders against this snapshot's own settle update getting lost.
-      const tasks = (msg as { tasks?: { task_id?: unknown }[] }).tasks;
+      //
+      // `ambient` tasks are dropped: the CLI's own housekeeping forks
+      // (skipTranscript — memory extraction, summaries) and live-update
+      // watchers (Monitor). A watcher never ends on its own, so counting one
+      // held the session `running` — Stop up — long after the turn was over.
+      const tasks = (msg as { tasks?: { task_id?: unknown; ambient?: unknown }[] }).tasks;
       return [{
         kind: 'background-tasks-changed',
         taskIds: Array.isArray(tasks)
-          ? tasks.map((t) => t.task_id).filter((id): id is string => typeof id === 'string')
+          ? tasks.filter((t) => t.ambient !== true).map((t) => t.task_id)
+            .filter((id): id is string => typeof id === 'string')
           : [],
       }];
     }
