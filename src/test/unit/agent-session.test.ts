@@ -1401,8 +1401,57 @@ suite('AgentSession questions', () => {
     await session.dispose();
   });
 
+  // turn-end leaves the session waiting while a request is outstanding, and
+  // no second turn-end follows — so settling it must land on idle, not on a
+  // 'running' nothing will ever end.
+  test('answering a permission that outlived turn-end settles idle', async () => {
+    const { session, provider } = sessionWith();
+    session.send('go');
+    await settle();
+    provider.runs[0].emit({
+      kind: 'permission', id: 'p1', tool: { kind: 'command', label: 'Bash', command: 'ls' },
+    });
+    provider.runs[0].emit({ kind: 'turn-end', reason: 'done' });
+    await settle();
+    assert.strictEqual(session.state.status, 'awaiting-approval');
+
+    session.respondToPermission('p1', { allow: true });
+    assert.strictEqual(session.state.status, 'idle');
+    await session.dispose();
+  });
+
+  test('answering a question that outlived turn-end settles idle', async () => {
+    const { session, provider } = sessionWith();
+    session.send('go');
+    await settle();
+    provider.runs[0].emit({ kind: 'question', id: 'r1', blocking: true, questions: [QUESTION_SPEC] });
+    provider.runs[0].emit({ kind: 'turn-end', reason: 'done' });
+    await settle();
+
+    session.answerQuestion('r1', { q1: ['A'] });
+    assert.strictEqual(session.state.status, 'idle');
+    await session.dispose();
+  });
+
+  test('a request cancelled after turn-end settles idle', async () => {
+    const { session, provider } = sessionWith();
+    session.send('go');
+    await settle();
+    provider.runs[0].emit({
+      kind: 'permission', id: 'p1', tool: { kind: 'command', label: 'Bash', command: 'ls' },
+    });
+    provider.runs[0].emit({ kind: 'turn-end', reason: 'done' });
+    provider.runs[0].emit({ kind: 'request-cancelled', id: 'p1' });
+    await settle();
+
+    assert.strictEqual(session.state.status, 'idle');
+    await session.dispose();
+  });
+
   test('a cancelled permission settles denied, and a later decision on it is a no-op', async () => {
     const { session, provider } = sessionWith();
+    session.send('go');
+    await settle();
     provider.runs[0].emit({
       kind: 'permission', id: 'p1', tool: { kind: 'command', label: 'Bash', command: 'ls' },
     });

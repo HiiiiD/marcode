@@ -330,6 +330,63 @@ suite('AgentSession send on a run that queues natively', () => {
     assert.deepStrictEqual(provider.sent.map((s) => s.text), ['first', 'second']);
   });
 
+  // The user's message landed too late to fold into the finishing turn, so
+  // the CLI ran it as a turn of its own: the first turn's result ended the
+  // host's turn, and nothing but the second turn's own output says it began.
+  test('output after turn-end revives running for a turn the CLI started from its queue', async () => {
+    const { provider, sink, session } = makeSession();
+    session.send('first');
+    await settle();
+    session.send('second');
+    await settle();
+    const run = provider.runs[0];
+
+    run.emit({ kind: 'turn-end', reason: 'done' });
+    await settle();
+    assert.strictEqual(session.state.status, 'idle');
+
+    run.emit({ kind: 'text', delta: 'answer to second' });
+    await settle();
+    assert.strictEqual(session.state.status, 'running');
+    assert.strictEqual(sink.statuses.at(-1), 'running');
+
+    run.emit({ kind: 'turn-end', reason: 'done' });
+    await settle();
+    assert.strictEqual(session.state.status, 'idle');
+  });
+
+  test('a queued turn that opens with a tool call revives running too', async () => {
+    const { provider, session } = makeSession();
+    session.send('first');
+    await settle();
+    const run = provider.runs[0];
+    run.emit({ kind: 'turn-end', reason: 'done' });
+    await settle();
+
+    run.emit({
+      kind: 'tool-start', id: 'tool-1',
+      tool: { kind: 'command', label: 'ls', command: 'ls' },
+    });
+    await settle();
+    assert.strictEqual(session.state.status, 'running');
+  });
+
+  test('a subagent event after turn-end does not revive running', async () => {
+    const { provider, session } = makeSession();
+    session.send('first');
+    await settle();
+    const run = provider.runs[0];
+    run.emit({ kind: 'turn-end', reason: 'done' });
+    await settle();
+
+    run.emit({
+      kind: 'tool-start', id: 'child-1', parentId: 'parent-1',
+      tool: { kind: 'command', label: 'ls', command: 'ls' },
+    });
+    await settle();
+    assert.strictEqual(session.state.status, 'idle');
+  });
+
   test('each send still carries its own editor context and live attachments', async () => {
     const { provider, session } = makeSession();
     session.send('first', { path: 'a.ts', languageId: 'typescript' });
