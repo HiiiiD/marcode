@@ -717,10 +717,12 @@ export class AgentSession {
   /**
    * The one place that recomputes `awaiting-approval` vs. an idle status —
    * used wherever a permission or question request settles. `idle` names
-   * what "not waiting" means at the call site: `running` mid-turn,
-   * `idle` once a turn has ended.
+   * what "not waiting" means: `running` mid-turn, `idle` once a turn has
+   * ended. Defaults off `turnActive`, never a fixed `running`: a request can
+   * outlive its turn-end, and settling it into `running` would leave Stop up
+   * with no further turn-end coming to clear it.
    */
-  private recomputeWaitingStatus(idle: SessionStatus = 'running'): void {
+  private recomputeWaitingStatus(idle: SessionStatus = this.turnActive ? 'running' : 'idle'): void {
     const waiting = this.pending.size > 0 || this.pendingQuestions.size > 0;
     // A non-empty background-task set overrides `idle` specifically, never
     // `awaiting-approval`: there is nothing to approve, so 'running' (which
@@ -996,6 +998,7 @@ export class AgentSession {
 
       case 'text':
       case 'thinking': {
+        this.reviveNativeQueuedTurn();
         // ACP backends stream the compaction summary as ordinary agent text;
         // the compaction card carries it, so a chat copy would duplicate it.
         if (this.compactionItem?.state === 'running') { return; }
@@ -1012,6 +1015,7 @@ export class AgentSession {
       }
 
       case 'tool-start': {
+        if (!event.parentId) { this.reviveNativeQueuedTurn(); }
         const item: TranscriptItem = {
           id: nextId('t'), ts: Date.now(), role: 'tool',
           toolId: event.id, tool: event.tool, state: 'running',
@@ -1557,6 +1561,22 @@ export class AgentSession {
   private closeAssistant(): void {
     this.openAssistantId = undefined;
     this.pendingAssistant = undefined;
+  }
+
+  /**
+   * A send that reaches a native queue too late to fold into the finishing
+   * turn runs as a turn of its own after that turn's `turn-end` already
+   * settled the session idle — and no `deliver()` marks its start. Its first
+   * top-level output is the only signal that it began.
+   */
+  private reviveNativeQueuedTurn(): void {
+    if (this.turnActive || !this.run.queuesNatively) { return; }
+    lifecycleDebug('session.native-turn-revived', {
+      sessionId: this._state.id,
+      status: this._state.status,
+    });
+    this.turnActive = true;
+    this.recomputeWaitingStatus('running');
   }
 
   private setStatus(status: SessionStatus): void {

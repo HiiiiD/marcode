@@ -354,6 +354,22 @@ suite('mapEvent', () => {
     assert.deepStrictEqual(out, [{ kind: 'background-tasks-changed', taskIds: ['t1', 't2'] }]);
   });
 
+  // A watcher (Monitor) or housekeeping fork (memory extraction, summaries)
+  // outlives the turn by design; counting it kept Stop up forever.
+  test('ambient background tasks are not activity and are left out of the set', () => {
+    const out = mapEvent({
+      type: 'system', subtype: 'background_tasks_changed',
+      tasks: [
+        { task_id: 't1', task_type: 'local_bash', description: 'Running tests' },
+        { task_id: 'w1', task_type: 'monitor_ws', description: 'Watching', ambient: true },
+        { task_id: 'f1', task_type: 'local_agent', description: 'extract_memories', ambient: true },
+      ],
+      uuid: 'u', session_id: 's',
+    } as never);
+
+    assert.deepStrictEqual(out, [{ kind: 'background-tasks-changed', taskIds: ['t1'] }]);
+  });
+
   test('a background_tasks_changed message with no live tasks replaces the set with empty', () => {
     const out = mapEvent({
       type: 'system', subtype: 'background_tasks_changed', tasks: [], uuid: 'u', session_id: 's',
