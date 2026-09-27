@@ -31,6 +31,7 @@ export function PaneContent({ sessionId, accessibleTitle }: PaneContentProps) {
   const paneState = state.byId[sessionId];
   const provider = state.catalog.find((p) => p.id === paneState.summary.providerId);
   const model = findModel(provider?.models ?? [], paneState.summary.model);
+  const running = paneState.summary.status === "running" || paneState.summary.status === "awaiting-approval";
 
   return (
     // The scroller's context wraps the whole pane, not just the transcript:
@@ -43,7 +44,20 @@ export function PaneContent({ sessionId, accessibleTitle }: PaneContentProps) {
     // a document scrolling past, not a conversation. One provider per pane,
     // so two panes never share a scroll position.
     <MessageScrollerProvider autoScroll defaultScrollPosition="end">
-      <div className="flex h-full flex-col">
+      <div
+        className="flex h-full flex-col"
+        // Esc-to-stop, anywhere focus sits in this pane — header, transcript
+        // or composer — not just the composer box. An Escape a descendant
+        // already used for its own purpose (closing a mention menu,
+        // cancelling a rename) calls `stopPropagation` before this ever
+        // sees it; see composer.tsx and session-header.tsx.
+        onKeyDown={(e) => {
+          if (e.key === "Escape" && running) {
+            e.preventDefault();
+            post({ t: "interrupt", id: sessionId });
+          }
+        }}
+      >
         <SessionHeader pane={paneState} accessibleTitle={accessibleTitle} />
         <SubagentDrillInContext.Provider
           value={(itemId) => post({ t: "open-fleet-subagent", sessionId, itemId })}

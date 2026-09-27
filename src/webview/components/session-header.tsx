@@ -115,7 +115,9 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
             onBlur={commitName}
             onKeyDown={(e) => {
               if (e.key === "Enter") { commitName(); }
-              if (e.key === "Escape") { cancelEditingName(); }
+              // stopPropagation: cancelling a rename must not also reach the
+              // pane-wide Esc-to-stop handler in pane-content.tsx.
+              if (e.key === "Escape") { cancelEditingName(); e.stopPropagation(); }
             }}
             className="h-5 px-0.5 py-0 text-xs leading-none font-medium"
           />
