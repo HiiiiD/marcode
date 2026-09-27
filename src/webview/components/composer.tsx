@@ -504,10 +504,15 @@ export function Composer({
             // isComposing) would insert a row instead of committing the IME
             // text, so it is withheld from both menus.
             const composingEnter = e.key === "Enter" && e.nativeEvent.isComposing;
+            // stopPropagation: an Escape that closed a menu must not also
+            // reach the pane-wide Esc-to-stop handler in pane-content.tsx —
+            // dismissing an autocomplete list is not a request to stop the
+            // agent.
             if (!composingEnter && (refMenu.handleKeyDown(e) || menu.handleKeyDown(e))) {
+              e.stopPropagation();
               return;
             }
-            if (recall.handleKeyDown(e)) { return; }
+            if (recall.handleKeyDown(e)) { e.stopPropagation(); return; }
             // Sent during a run too: the host parks it and spends it at the
             // turn boundary, so the user never has to hold the next
             // instruction in their head — or in an unsent box — while the
