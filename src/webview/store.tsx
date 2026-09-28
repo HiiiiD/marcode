@@ -1,7 +1,8 @@
 import {
-  createContext, useCallback, useContext, useEffect, useReducer, type ReactNode,
+  createContext, useCallback, useContext, useEffect, useReducer, useRef, type ReactNode,
 } from 'react';
 import { initialState, reduce, type ClientState } from './reducer';
+import { createDraftStore, type DraftStore } from './lib/draft-store';
 import { onHostMessage, postToHost } from './vscode-api';
 import type { SessionId, WebviewToHost } from '../protocol/messages';
 
@@ -21,20 +22,50 @@ interface StoreValue {
   dismissRejection: (id: SessionId) => void;
   /** See `ClientState.pendingSlotPath`. */
   setPendingSlot: (path: number[] | null) => void;
-  /** Update the composer text in client state only; the host copy is `useDraftSync`'s job. */
-  setDraft: (id: SessionId, text: string) => void;
 }
 
 const StoreContext = createContext<StoreValue | undefined>(undefined);
 
+/**
+ * Separate from `StoreContext` on purpose: `DraftStore` notifies per-session
+ * subscribers directly (see `lib/draft-store.ts`), so a keystroke in one
+ * pane's composer never touches this context's value and never re-renders
+ * `StoreContext`'s consumers. Kept in its own context (rather than a module
+ * singleton) so each `StoreProvider` — the DOM test harness mounts a fresh
+ * one per test — gets its own store.
+ */
+const DraftStoreContext = createContext<DraftStore | undefined>(undefined);
+
+export function useDraftStore(): DraftStore {
+  const value = useContext(DraftStoreContext);
+  if (!value) { throw new Error('useDraftStore must be used inside StoreProvider'); }
+  return value;
+}
+
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reduce, initialState);
+  // One instance per provider (not a module singleton), created once on
+  // first render — see the `DraftStoreContext` doc comment above.
+  const draftStoreRef = useRef<DraftStore | undefined>(undefined);
+  if (!draftStoreRef.current) { draftStoreRef.current = createDraftStore(); }
+  const draftStore = draftStoreRef.current;
 
   useEffect(() => {
-    const off = onHostMessage(dispatch);
+    const off = onHostMessage((msg) => {
+      // Seeded here, not through `reduce`: a draft no longer lives in
+      // `ClientState` (see `lib/draft-store.ts`), so hydrate's copy has to
+      // reach the draft store directly.
+      if (msg.t === 'hydrate') {
+        draftStore.hydrate(
+          msg.sessions.filter((s): s is typeof s & { draft: string } => s.draft !== undefined)
+            .map((s) => [s.id, s.draft]),
+        );
+      }
+      dispatch(msg);
+    });
     postToHost({ t: 'ready' });
     return off;
-  }, []);
+  }, [draftStore]);
 
   // Stable across renders, and that stability is load-bearing rather than an
   // optimization: `post` is a dependency of every "ask the host once" effect
@@ -66,14 +97,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const dismissRejection = (id: SessionId) => dispatch({ t: 'local-dismiss-rejection', id });
   const setPendingSlot = (path: number[] | null) => dispatch({ t: 'local-pending-slot', path });
 
-  const setDraft = useCallback(
-    (id: SessionId, text: string) => dispatch({ t: 'local-draft', id, text }),
-    [],
-  );
-
   return (
-    <StoreContext.Provider value={{ state, post, focus, dismissRejection, setPendingSlot, setDraft }}>
-      {children}
+    <StoreContext.Provider value={{ state, post, focus, dismissRejection, setPendingSlot }}>
+      <DraftStoreContext.Provider value={draftStore}>
+        {children}
+      </DraftStoreContext.Provider>
     </StoreContext.Provider>
   );
 }
