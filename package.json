@@ -719,7 +719,7 @@
   "packageManager": "yarn@4.18.0",
   "dependencies": {
     "@agentclientprotocol/sdk": "^1.5.0",
-    "@anthropic-ai/claude-agent-sdk": "0.3.280",
+    "@anthropic-ai/claude-agent-sdk": "0.3.282",
     "@base-ui/react": "^1.8.0",
     "@headless-tree/core": "1.7.0",
     "@headless-tree/react": "1.7.0",
