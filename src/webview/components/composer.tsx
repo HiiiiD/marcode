@@ -21,6 +21,7 @@ import {
 } from "../lib/session-mentions";
 import { useMentionMenu } from "../lib/use-mention-menu";
 import { promptHistory } from "../lib/prompt-history";
+import { useDraft } from "../lib/use-draft";
 import { useDraftSync } from "../lib/use-draft-sync";
 import { usePromptHistory } from "../lib/use-prompt-history";
 import { base64Of, urisOf } from "../lib/read-attachment";
@@ -54,9 +55,8 @@ export function Composer({
    */
   unavailableReason?: string;
 }) {
-  const { state, post, dismissRejection, setDraft } = useStore();
-  const text = state.draftBySession[pane.summary.id] ?? "";
-  const setText = (next: string) => setDraft(pane.summary.id, next);
+  const { state, post, dismissRejection } = useStore();
+  const [text, setText] = useDraft(pane.summary.id);
   useDraftSync(pane.summary.id, text, post);
   /** The selected entry's arg hint. Presentation only; never sent. */
   const [ghost, setGhost] = useState("");
