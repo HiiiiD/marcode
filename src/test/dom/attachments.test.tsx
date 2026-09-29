@@ -53,6 +53,14 @@ suite('Attachment chips', () => {
     assert.deepStrictEqual(posted().at(-1), { t: 'attach-remove', id: 'a', attachmentId: 'a1' });
   });
 
+  test('opening a chip posts open-attachment by id, not path', async () => {
+    renderWithStore(<Composer pane={pane([att()])} model={NO_EFFORT} models={[]} />);
+
+    await userEvent.click(screen.getByRole('button', { name: /open shot\.png/i }));
+
+    assert.deepStrictEqual(posted().at(-1), { t: 'open-attachment', id: 'a', attachmentId: 'a1' });
+  });
+
   test('no attachments renders no strip', () => {
     const { container } = renderWithStore(<Composer pane={pane()} model={NO_EFFORT} models={[]} />);
     assert.strictEqual(container.querySelector('[data-testid="attachment-chips"]') === null, true);

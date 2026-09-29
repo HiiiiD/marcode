@@ -1623,6 +1623,18 @@ export class SessionManager implements SessionSink {
    * memory file in that answer renders as a link. Vouching only for what a
    * live run reported would leave each of those links inert.
    */
+  async attachmentPath(
+    id: SessionId, attachmentId: string, itemId?: string,
+  ): Promise<string | undefined> {
+    if (!itemId) {
+      return this.live.get(id)?.pendingAttachments.find((a) => a.id === attachmentId)?.path;
+    }
+    if (!this.meta.has(id)) { return undefined; }
+    const item = await this.store.find(id, itemId);
+    if (item?.role !== 'user') { return undefined; }
+    return item.attachments?.find((a) => a.id === attachmentId)?.path;
+  }
+
   canOpenFile(id: SessionId, path: string): boolean {
     if (this.live.get(id)?.reportedMemoryFile(path)) { return true; }
     return this.meta.get(id)?.lastContext?.memoryFiles.some((f) => f.path === path) ?? false;

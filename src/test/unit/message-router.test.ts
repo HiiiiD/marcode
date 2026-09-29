@@ -463,6 +463,20 @@ suite('MessageRouter', () => {
     assert.strictEqual(msg.attachments.length, 0);
   });
 
+  test('attachmentPath resolves a pending attachment by id and refuses an unknown one', async () => {
+    await router.handle({ t: 'create-session', providerId: 'fake', cwd: '/tmp' });
+    const id = manager.summaries()[0].id;
+    await router.handle({
+      t: 'attach-paste', id, name: 'shot.png', mediaType: 'image/png', base64: 'iVBORw==',
+    });
+    const pending = manager.get(id)!.pendingAttachments[0];
+
+    assert.strictEqual(await manager.attachmentPath(id, pending.id), pending.path);
+    assert.strictEqual(await manager.attachmentPath(id, 'nope'), undefined);
+    assert.strictEqual(await manager.attachmentPath(id, pending.id, 'no-such-item'), undefined);
+    assert.strictEqual(await manager.attachmentPath('nope', pending.id), undefined);
+  });
+
   test('an attachment message for an unknown session is a no-op', async () => {
     await router.handle({ t: 'attach-remove', id: 'nope', attachmentId: 'x' });
     assert.strictEqual(manager.summaries().length, 0);

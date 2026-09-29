@@ -43,7 +43,7 @@ export function TranscriptItemView({
 
   switch (item.role) {
     case 'user':
-      return <UserItem item={item} onFork={onFork} />;
+      return <UserItem item={item} sessionId={sessionId} onFork={onFork} />;
 
     case 'assistant':
       return (
@@ -129,9 +129,10 @@ export function TranscriptItemView({
 }
 
 function UserItem({
-  item, onFork,
+  item, sessionId, onFork,
 }: {
   item: Extract<TranscriptItem, { role: 'user' }>;
+  sessionId: SessionId;
   onFork?: () => void;
 }) {
   const { post } = useStore();
@@ -175,7 +176,12 @@ function UserItem({
         <ul aria-label="Attachments sent" className="mt-1 flex min-w-0 flex-wrap gap-1">
           {item.attachments.map((attachment) => (
             <li key={attachment.id}>
-              <AttachmentChip attachment={attachment} />
+              <AttachmentChip
+                attachment={attachment}
+                onOpen={() => post({
+                  t: 'open-attachment', id: sessionId, attachmentId: attachment.id, itemId: item.id,
+                })}
+              />
             </li>
           ))}
         </ul>

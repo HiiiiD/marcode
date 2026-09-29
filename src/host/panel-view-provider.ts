@@ -63,6 +63,18 @@ export class PanelViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
+  private async openAttachment(id: SessionId, attachmentId: string, itemId?: string): Promise<void> {
+    const path = await this.manager.attachmentPath(id, attachmentId, itemId);
+    if (!path) { return; }
+    try {
+      // `vscode.open` picks the right editor: the image viewer for a
+      // screenshot, a text editor otherwise. `openTextDocument` fails on images.
+      await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(path));
+    } catch (err) {
+      console.error('[mar-code] could not open attachment', path, err);
+    }
+  }
+
   resolveWebviewView(view: vscode.WebviewView): void {
     this.view = view;
     view.webview.options = {
@@ -91,6 +103,10 @@ export class PanelViewProvider implements vscode.WebviewViewProvider {
         // router's dependencies.
         if (raw?.t === 'open-file') {
           await this.openFile(raw.id, raw.path);
+          return;
+        }
+        if (raw?.t === 'open-attachment') {
+          await this.openAttachment(raw.id, raw.attachmentId, raw.itemId);
           return;
         }
         if (raw?.t === 'open-review') {
