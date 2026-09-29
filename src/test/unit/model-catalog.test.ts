@@ -1,6 +1,8 @@
 import * as assert from 'assert';
 import type { ModelInfo } from '../../providers/types';
-import { findModel, isFavorite, pinnedModelId, modelKey, resolveEffort, sortFavoritesFirst } from '../../shared/model-catalog';
+import {
+  expandedDisplayName, findModel, isFavorite, modelKey, pinnedModelId, resolveEffort, sortFavoritesFirst,
+} from '../../shared/model-catalog';
 
 const MODELS: ModelInfo[] = [
   { id: 'default', displayName: 'Default (recommended)', resolvedModel: 'claude-opus-5' },
@@ -117,6 +119,12 @@ suite('retired wire ids', () => {
     assert.deepStrictEqual(row?.effort, alias[0].effort);
   });
 
+  test('a retired row drops the version the alias label carries', () => {
+    const versioned: ModelInfo[] = [{ id: 'sonnet', displayName: 'Sonnet 5.5', resolvedModel: 'claude-sonnet-5-5' }];
+    const row = findModel(versioned, 'claude-sonnet-5')!;
+    assert.strictEqual(expandedDisplayName(row), 'Sonnet 5');
+  });
+
   test('a family with no row still finds nothing', () => {
     assert.strictEqual(findModel(alias, 'claude-haiku-5'), undefined);
   });
@@ -127,5 +135,25 @@ suite('pinnedModelId', () => {
     assert.strictEqual(pinnedModelId({ id: 'sonnet', displayName: 'S', resolvedModel: 'claude-sonnet-5-5' }), 'claude-sonnet-5-5');
     assert.strictEqual(pinnedModelId({ id: 'claude-x-1', displayName: 'X' }), 'claude-x-1');
     assert.strictEqual(pinnedModelId({ id: 'default', displayName: 'D', resolvedModel: 'claude-opus-5' }), 'default');
+  });
+});
+
+suite('expandedDisplayName', () => {
+  test('appends the resolved version when the label has none', () => {
+    assert.strictEqual(expandedDisplayName({ id: 'opus', displayName: 'Opus', resolvedModel: 'claude-opus-5-5' }), 'Opus 5.5');
+  });
+
+  test('does not repeat a version the label already carries', () => {
+    assert.strictEqual(
+      expandedDisplayName({ id: 'sonnet', displayName: 'Sonnet 5.5', resolvedModel: 'claude-sonnet-5-5' }),
+      'Sonnet 5.5',
+    );
+  });
+
+  test('keeps the context suffix when the version is already present', () => {
+    assert.strictEqual(
+      expandedDisplayName({ id: 'sonnet', displayName: 'Sonnet 5.5 (1M context)', resolvedModel: 'claude-sonnet-5-5[1m]' }),
+      'Sonnet 5.5 (1M)',
+    );
   });
 });

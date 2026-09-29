@@ -46,7 +46,7 @@ function retiredRow(models: ModelInfo[], id: string): ModelInfo | undefined {
   if (!alias) { return undefined; }
   return {
     id,
-    displayName: alias.displayName.replace(/\s*\([^)]*\)\s*$/, '').trim(),
+    displayName: alias.displayName.replace(/\s*\([^)]*\)\s*$/, '').replace(/\s+\d+(\.\d+)*$/, '').trim(),
     resolvedModel: id,
     ...(alias.effort ? { effort: alias.effort } : {}),
   };
@@ -109,7 +109,9 @@ export function expandedDisplayName(model: ModelInfo): string {
 
   const base = model.displayName.replace(/\s*\([^)]*\)\s*$/, '').trim();
   const suffix = bracket ? ` (${bracket.toUpperCase()})` : '';
-  return `${base} ${version}${suffix}`;
+  const escaped = version.replace(/\./g, '\\.');
+  const hasVersion = new RegExp(`(^|\\s)${escaped}(\\s|$)`).test(base);
+  return `${base}${hasVersion ? '' : ` ${version}`}${suffix}`;
 }
 
 /**
