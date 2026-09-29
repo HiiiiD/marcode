@@ -84,7 +84,7 @@ export function AttachmentChip({
         ? (
           <Button
             variant="ghost"
-            className="h-auto min-w-0 gap-1 p-0 text-xs font-normal hover:bg-transparent"
+            className="h-auto min-w-0 cursor-pointer gap-1 p-0 text-xs font-normal hover:bg-transparent hover:underline"
             aria-label={`Open ${attachment.name}`}
             onClick={onOpen}
           >
@@ -96,7 +96,7 @@ export function AttachmentChip({
         <Button
           variant="ghost"
           size="icon-xs"
-          className="size-4 shrink-0"
+          className="size-4 shrink-0 cursor-pointer"
           aria-label={`Remove ${attachment.name}`}
           onClick={onRemove}
         >
