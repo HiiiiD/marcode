@@ -1251,6 +1251,11 @@ export class AgentSession {
         this.applyCompaction(event);
         return;
 
+      case 'sign-in-failure':
+        this.closeAssistant();
+        void this.noteError(event.message);
+        return;
+
       case 'turn-end':
         this.settleCompaction();
         lifecycleDebug('session.turn-end', {

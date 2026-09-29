@@ -1266,6 +1266,28 @@ suite('AgentSession background tasks', () => {
     await session.dispose();
   });
 
+  test('a sign-in-failure event adds an error item after the assistant text and leaves status alone', async () => {
+    const text = 'Failed to authenticate: OAuth session expired and could not be refreshed';
+    const provider = new FakeProvider(() => [
+      { kind: 'text', delta: text },
+      { kind: 'sign-in-failure', message: 'Not signed in to Claude. Run `claude auth login`.' },
+      { kind: 'turn-end', reason: 'done' },
+    ]);
+    const session = new AgentSession(baseState(), provider, store, sink);
+    session.send('/release');
+    await settle();
+
+    assert.strictEqual(session.state.status, 'idle');
+    const snap = await session.snapshot();
+    assert.deepStrictEqual(
+      snap.items.filter((i) => i.role !== 'user').map((i) => i.role),
+      ['assistant', 'error'],
+    );
+    const err = snap.items.find((i) => i.role === 'error');
+    assert.strictEqual((err as { message: string }).message, 'Not signed in to Claude. Run `claude auth login`.');
+    await session.dispose();
+  });
+
   test('a task-settled event for an untracked id is a no-op', async () => {
     const provider = new FakeProvider(() => [
       { kind: 'background-tasks-changed', taskIds: ['bg-1'] },
