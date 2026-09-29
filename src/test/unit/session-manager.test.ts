@@ -1662,7 +1662,7 @@ suite('SessionManager', () => {
     await m.dispose();
   });
 
-  test('create resolves a requested wire id onto the alias row covering it', async () => {
+  test('create pins an alias to the wire id it resolves to now', async () => {
     const aliasProvider: AgentProvider = {
       id: 'claude', displayName: 'Claude', threadScope: 'cwd',
       listModels: () => [
@@ -1681,8 +1681,8 @@ suite('SessionManager', () => {
 
     const session = await m.create('claude', '/repo', 'claude-opus-5', 'low');
 
-    assert.strictEqual(session.state.model, 'opus',
-      'a session pinned to a wire id must land on the row the picker renders');
+    assert.strictEqual(session.state.model, 'claude-opus-5',
+      'an alias moves when the CLI updates; the session must keep the version it started on');
     assert.strictEqual(session.state.effort, 'low');
     await m.dispose();
   });

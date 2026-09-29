@@ -722,8 +722,10 @@ export class SessionManager implements SessionSink {
     }
 
     const now = Date.now();
+    // An alias row (`sonnet`) is re-pointed by every CLI update; persisting
+    // its wire id keeps the session on the version it started on.
     const state: SessionState = {
-      id: newSessionId(), providerId, model: chosen.id, effort: resolvedEffort,
+      id: newSessionId(), providerId, model: chosen.resolvedModel ?? chosen.id, effort: resolvedEffort,
       title: 'Untitled', name: this.defaultName(providerId), cwd: resolvedCwd, status: 'idle', permissionMode: resolvedMode,
       includeEditorContext: true,
       resumeTokens: {},
