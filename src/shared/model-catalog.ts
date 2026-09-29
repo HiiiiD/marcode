@@ -72,7 +72,9 @@ export function expandedDisplayName(model: ModelInfo): string {
 
   const base = model.displayName.replace(/\s*\([^)]*\)\s*$/, '').trim();
   const suffix = bracket ? ` (${bracket.toUpperCase()})` : '';
-  return `${base} ${version}${suffix}`;
+  const escaped = version.replace(/\./g, '\\.');
+  const hasVersion = new RegExp(`(^|\\s)${escaped}(\\s|$)`).test(base);
+  return `${base}${hasVersion ? '' : ` ${version}`}${suffix}`;
 }
 
 /**

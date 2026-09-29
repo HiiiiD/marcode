@@ -1,6 +1,6 @@
 import * as assert from 'assert';
 import type { ModelInfo } from '../../providers/types';
-import { findModel, isFavorite, modelKey, resolveEffort, sortFavoritesFirst } from '../../shared/model-catalog';
+import { expandedDisplayName, findModel, isFavorite, modelKey, resolveEffort, sortFavoritesFirst } from '../../shared/model-catalog';
 
 const MODELS: ModelInfo[] = [
   { id: 'default', displayName: 'Default (recommended)', resolvedModel: 'claude-opus-5' },
@@ -101,5 +101,25 @@ suite('sortFavoritesFirst', () => {
 
   test('does not treat another provider\'s star as this provider\'s', () => {
     assert.deepStrictEqual(sortFavoritesFirst(MODELS, 'opencode', ['claude fable']), MODELS);
+  });
+});
+
+suite('expandedDisplayName', () => {
+  test('appends the resolved version when the label has none', () => {
+    assert.strictEqual(expandedDisplayName({ id: 'opus', displayName: 'Opus', resolvedModel: 'claude-opus-5-5' }), 'Opus 5.5');
+  });
+
+  test('does not repeat a version the label already carries', () => {
+    assert.strictEqual(
+      expandedDisplayName({ id: 'sonnet', displayName: 'Sonnet 5.5', resolvedModel: 'claude-sonnet-5-5' }),
+      'Sonnet 5.5',
+    );
+  });
+
+  test('keeps the context suffix when the version is already present', () => {
+    assert.strictEqual(
+      expandedDisplayName({ id: 'sonnet', displayName: 'Sonnet 5.5 (1M context)', resolvedModel: 'claude-sonnet-5-5[1m]' }),
+      'Sonnet 5.5 (1M)',
+    );
   });
 });
