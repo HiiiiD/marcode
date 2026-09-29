@@ -545,7 +545,7 @@ suite("Composer", () => {
     );
 
     const label = screen.getByLabelText("Model").textContent ?? "";
-    assert.ok(/Sonnet 5/.test(label), `got ${JSON.stringify(label)}`);
+    assert.ok(/^Sonnet 5/.test(label), `got ${JSON.stringify(label)}`);
     await userEvent.click(screen.getByLabelText("Model"));
     assert.strictEqual((await screen.findAllByRole("option")).length, 2);
   });
