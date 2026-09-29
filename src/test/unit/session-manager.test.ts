@@ -1687,6 +1687,31 @@ suite('SessionManager', () => {
     await m.dispose();
   });
 
+  test('a live probe pins a session left on an alias, without touching updatedAt', async () => {
+    let models: ModelInfo[] = [{ id: 'sonnet', displayName: 'Sonnet' }];
+    const provider: AgentProvider = {
+      id: 'claude', displayName: 'Claude', threadScope: 'cwd',
+      listModels: () => models,
+      listPermissionModes: () => [],
+      fetchModels: async () => {
+        models = [{ id: 'sonnet', displayName: 'Sonnet', resolvedModel: 'claude-sonnet-5-5' }];
+        return models;
+      },
+      start: (opts) => new FakeProvider(() => []).start(opts),
+    };
+    const m = new SessionManager(new TranscriptStore(dir), new Map([['claude', provider]]), () => {});
+    await m.init();
+    const session = await m.create('claude', '/repo', 'sonnet');
+    assert.strictEqual(session.state.model, 'sonnet');
+    const before = session.state.updatedAt;
+
+    await m.refreshModels('/repo');
+
+    assert.strictEqual(session.state.model, 'claude-sonnet-5-5');
+    assert.strictEqual(session.state.updatedAt, before);
+    await m.dispose();
+  });
+
   test('refreshModels announces a settled catalog even when no provider can answer', async () => {
     // It used to emit nothing here, which was defensible while an empty
     // catalog was only ever transient. It is not: the panel now distinguishes

@@ -533,6 +533,23 @@ suite("Composer", () => {
     );
   });
 
+  test("a pinned wire id the catalog moved past stays selectable with its own label", async () => {
+    const alias = { id: "sonnet", displayName: "Sonnet", resolvedModel: "claude-sonnet-5-5" };
+    const pinned = { id: "claude-sonnet-5", displayName: "Sonnet", resolvedModel: "claude-sonnet-5" };
+    renderWithStore(
+      <Composer
+        pane={{ ...pane(), summary: summary("a", { model: "claude-sonnet-5" }) }}
+        model={pinned}
+        models={[alias]}
+      />,
+    );
+
+    const label = screen.getByLabelText("Model").textContent ?? "";
+    assert.ok(/Sonnet 5/.test(label), `got ${JSON.stringify(label)}`);
+    await userEvent.click(screen.getByLabelText("Model"));
+    assert.strictEqual((await screen.findAllByRole("option")).length, 2);
+  });
+
   test("the model control stays enabled once the session has started", () => {
     // `Query.setModel` retargets the live run, so a mid-conversation switch is
     // real — the control has no reason to freeze after the first message, and

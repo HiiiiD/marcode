@@ -20,7 +20,7 @@ import type { MemoryStore } from '../memory/types';
 import type {
   AgentProvider, EffortLevel, Invocable, ModelInfo, UpdateInfo, UsageMirror, UsageWindow,
 } from '../providers/types';
-import { findModel, resolveEffort } from '../shared/model-catalog';
+import { findModel, pinnedModelId, resolveEffort } from '../shared/model-catalog';
 import { FILE_CAP } from '../shared/file-cap';
 import { resolvePermissionMode } from '../shared/permission-catalog';
 import { threadKey, threadKeyCwd } from '../shared/thread-key';
@@ -430,12 +430,34 @@ export class SessionManager implements SessionSink {
 
     await Promise.all(probes);
     if (this.disposed) { return; }
+    this.pinAliasSessions();
     this.emit({
       t: 'catalog', catalog: this.catalog(), unavailable: this.unavailable(), probing: false,
     });
     // Record what the backend just said, so the next launch's panel comes up
     // with a live model switcher instead of waiting on this same probe.
     this.schedulePersist();
+  }
+
+  /**
+   * Rewrites sessions still persisted under an alias (`sonnet`) to the wire id
+   * it resolves to now. Sessions created before pinning existed would
+   * otherwise follow the alias through every CLI update. It can only pin what
+   * the alias means today — a version it already moved past is not
+   * recoverable. Runs on live probe answers only, never the seed, and leaves
+   * `updatedAt` alone (the history tab's sort key).
+   */
+  private pinAliasSessions(): void {
+    let changed = false;
+    for (const state of this.meta.values()) {
+      const p = this.providers.get(state.providerId);
+      const live = p?.listModels() ?? [];
+      const row = live.find((m) => m.id === state.model);
+      if (!row) { continue; }
+      const pinned = pinnedModelId(row);
+      if (pinned !== state.model) { state.model = pinned; changed = true; }
+    }
+    if (changed) { this.changed(); }
   }
 
   /**
@@ -725,7 +747,7 @@ export class SessionManager implements SessionSink {
     // An alias row (`sonnet`) is re-pointed by every CLI update; persisting
     // its wire id keeps the session on the version it started on.
     const state: SessionState = {
-      id: newSessionId(), providerId, model: chosen.resolvedModel ?? chosen.id, effort: resolvedEffort,
+      id: newSessionId(), providerId, model: pinnedModelId(chosen), effort: resolvedEffort,
       title: 'Untitled', name: this.defaultName(providerId), cwd: resolvedCwd, status: 'idle', permissionMode: resolvedMode,
       includeEditorContext: true,
       resumeTokens: {},
