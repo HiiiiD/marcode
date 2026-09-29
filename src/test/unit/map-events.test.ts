@@ -24,6 +24,36 @@ suite('mapEvent', () => {
     assert.deepStrictEqual(events, [{ kind: 'text', delta: 'Hello' }]);
   });
 
+  test('an assistant text that is the SDK OAuth-expiry message also raises sign-in-failure', () => {
+    const text = 'Failed to authenticate: OAuth session expired and could not be refreshed';
+    const events = mapEvent({
+      type: 'assistant', message: { content: [{ type: 'text', text }] },
+    } as never);
+    assert.deepStrictEqual(events, [
+      { kind: 'text', delta: text },
+      { kind: 'sign-in-failure', message: 'Not signed in to Claude. Run `claude auth login`.' },
+    ]);
+  });
+
+  test('a long assistant answer that merely mentions the phrase raises no sign-in-failure', () => {
+    const text = `${'Some explanation. '.repeat(20)}The error was "Failed to authenticate".`;
+    const events = mapEvent({
+      type: 'assistant', message: { content: [{ type: 'text', text }] },
+    } as never);
+    assert.deepStrictEqual(events, [{ kind: 'text', delta: text }]);
+  });
+
+  test('an error result carrying the OAuth-expiry text is normalized to the sign-in phrasing', () => {
+    const events = mapEvent({
+      type: 'result', subtype: 'error_during_execution',
+      errors: ['Failed to authenticate: OAuth session expired and could not be refreshed'],
+    } as never);
+    assert.deepStrictEqual(
+      events.at(-1),
+      { kind: 'turn-end', reason: 'error', error: 'Not signed in to Claude. Run `claude auth login`.' },
+    );
+  });
+
   test('assistant thinking blocks become thinking events', () => {
     const events = mapEvent({
       type: 'assistant',

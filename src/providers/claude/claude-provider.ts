@@ -133,6 +133,7 @@ import type {
   EffortLevel, Invocable, ModelInfo, PermissionMode, PermissionModeInfo,
   QuestionAnswers, SelfControlMcpConfig, StartOptions, ThreadScope, ToolDecision, UsageTotals, UsageWindow,
 } from '../types';
+import { authFailureReason } from './auth-failure';
 import { toInvocables } from './map-commands';
 import { toContextBreakdown, toUsageWindows, type ContextUsageLike, type UsageResponseLike } from './map-context';
 import { claudeUsageDelta, mapEvent } from './map-events';
@@ -155,19 +156,6 @@ function unavailableReason(err: unknown): string {
   const raw = errorMessage(err);
   if (/executable not found|ENOENT/i.test(raw)) { return 'Claude Code CLI not found.'; }
   return authFailureReason(raw) ?? raw;
-}
-
-/**
- * The SDK's own OAuth-expiry text, turned into the same "not signed in"
- * phrasing Codex's `fetchModels` already uses — so the panel's reauth
- * action (matched client-side on that phrasing) recognizes both providers
- * with one pattern. `undefined` when `raw` is not an auth failure, so
- * callers fall back to the message unchanged.
- */
-function authFailureReason(raw: string): string | undefined {
-  return /Failed to authenticate|OAuth session expired/i.test(raw)
-    ? 'Not signed in to Claude. Run `claude auth login`.'
-    : undefined;
 }
 
 /** The subset of the SDK's `ModelInfo` this adapter reads. */

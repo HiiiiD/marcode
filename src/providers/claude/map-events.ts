@@ -124,6 +124,7 @@
 //     usage response, mapped through `toUsageWindows` in map-context.ts) is
 //     what actually answers with numbers.
 import type { AgentEvent, McpServerStatus, UsageTotals } from '../types';
+import { authFailureReason } from './auth-failure';
 import { toInvocables } from './map-commands';
 import { toToolCall, toToolOutput } from './map-tools';
 import { redactSecrets } from './redact';
@@ -298,6 +299,10 @@ export function mapEvent(msg: unknown): AgentEvent[] {
         // the nested-card design exists to avoid.
         if (parentId) { continue; }
         out.push({ kind: 'text', delta: block.text });
+        // Whole-block match on a short text: an assistant merely quoting the
+        // phrase inside a long answer must not raise a sign-in banner.
+        const signIn = block.text.length < 200 ? authFailureReason(block.text) : undefined;
+        if (signIn) { out.push({ kind: 'sign-in-failure', message: signIn }); }
       } else if (block.type === 'thinking' && block.thinking) {
         // Truthy, not `typeof === 'string'`: a thinking block whose content is
         // withheld still arrives, carrying the empty string. Forwarding it
@@ -377,7 +382,10 @@ export function mapEvent(msg: unknown): AgentEvent[] {
     const detail = errorList.length > 0
       ? errorList.join('; ')
       : (terminalReason || stopReason || subtype);
-    out.push({ kind: 'turn-end', reason: 'error', error: redactSecrets(detail || 'Agent error') });
+    const message = detail || 'Agent error';
+    out.push({
+      kind: 'turn-end', reason: 'error', error: authFailureReason(message) ?? redactSecrets(message),
+    });
     return out;
   }
 

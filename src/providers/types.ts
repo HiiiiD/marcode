@@ -374,7 +374,15 @@ export type AgentEvent =
    * session never tracked as backgrounded (a plain removal from a set
    * that never had it).
    */
-  | { kind: 'task-settled'; taskId: string };
+  | { kind: 'task-settled'; taskId: string }
+  /**
+   * The backend reported an expired/missing login as ordinary assistant text
+   * rather than an error (Claude Code does this on OAuth expiry). The text
+   * itself stays in the transcript; this asks the host to add an error item
+   * beside it so the Log in action has something to attach to. Status is
+   * untouched — the session is intact, only its credentials are not.
+   */
+  | { kind: 'sign-in-failure'; message: string };
 
 export interface AgentRun {
   /**
