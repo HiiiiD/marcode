@@ -607,7 +607,8 @@ export function Composer({
           <ModeMenu pane={pane} model={model} disabled={readOnly} />
 
           <Combobox
-            items={pickerModels.map((m) => ({ value: m.id, label: expandedDisplayName(m) }))}
+            items={(model && !pickerModels.some((m) => m.id === model.id) ? [model, ...pickerModels] : pickerModels)
+              .map((m) => ({ value: m.id, label: expandedDisplayName(m) }))}
             // The one case where the model control does freeze: with the
             // provider gone so is its catalog, so there is nothing to switch
             // to that the host could honor.

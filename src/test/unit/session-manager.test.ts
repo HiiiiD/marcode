@@ -1662,7 +1662,7 @@ suite('SessionManager', () => {
     await m.dispose();
   });
 
-  test('create resolves a requested wire id onto the alias row covering it', async () => {
+  test('create pins an alias to the wire id it resolves to now', async () => {
     const aliasProvider: AgentProvider = {
       id: 'claude', displayName: 'Claude', threadScope: 'cwd',
       listModels: () => [
@@ -1681,9 +1681,34 @@ suite('SessionManager', () => {
 
     const session = await m.create('claude', '/repo', 'claude-opus-5', 'low');
 
-    assert.strictEqual(session.state.model, 'opus',
-      'a session pinned to a wire id must land on the row the picker renders');
+    assert.strictEqual(session.state.model, 'claude-opus-5',
+      'an alias moves when the CLI updates; the session must keep the version it started on');
     assert.strictEqual(session.state.effort, 'low');
+    await m.dispose();
+  });
+
+  test('a live probe pins a session left on an alias, without touching updatedAt', async () => {
+    let models: ModelInfo[] = [{ id: 'sonnet', displayName: 'Sonnet' }];
+    const provider: AgentProvider = {
+      id: 'claude', displayName: 'Claude', threadScope: 'cwd',
+      listModels: () => models,
+      listPermissionModes: () => [],
+      fetchModels: async () => {
+        models = [{ id: 'sonnet', displayName: 'Sonnet', resolvedModel: 'claude-sonnet-5-5' }];
+        return models;
+      },
+      start: (opts) => new FakeProvider(() => []).start(opts),
+    };
+    const m = new SessionManager(new TranscriptStore(dir), new Map([['claude', provider]]), () => {});
+    await m.init();
+    const session = await m.create('claude', '/repo', 'sonnet');
+    assert.strictEqual(session.state.model, 'sonnet');
+    const before = session.state.updatedAt;
+
+    await m.refreshModels('/repo');
+
+    assert.strictEqual(session.state.model, 'claude-sonnet-5-5');
+    assert.strictEqual(session.state.updatedAt, before);
     await m.dispose();
   });
 

@@ -1,6 +1,8 @@
 import * as assert from 'assert';
 import type { ModelInfo } from '../../providers/types';
-import { expandedDisplayName, findModel, isFavorite, modelKey, resolveEffort, sortFavoritesFirst } from '../../shared/model-catalog';
+import {
+  expandedDisplayName, findModel, isFavorite, modelKey, pinnedModelId, resolveEffort, sortFavoritesFirst,
+} from '../../shared/model-catalog';
 
 const MODELS: ModelInfo[] = [
   { id: 'default', displayName: 'Default (recommended)', resolvedModel: 'claude-opus-5' },
@@ -101,6 +103,38 @@ suite('sortFavoritesFirst', () => {
 
   test('does not treat another provider\'s star as this provider\'s', () => {
     assert.deepStrictEqual(sortFavoritesFirst(MODELS, 'opencode', ['claude fable']), MODELS);
+  });
+});
+
+suite('retired wire ids', () => {
+  const alias: ModelInfo[] = [
+    { id: 'sonnet', displayName: 'Sonnet', resolvedModel: 'claude-sonnet-5-5',
+      effort: { levels: ['low', 'high'], default: 'high' } },
+  ];
+
+  test('a pinned id its alias moved past gets a row borrowing the family effort', () => {
+    const row = findModel(alias, 'claude-sonnet-5');
+    assert.strictEqual(row?.id, 'claude-sonnet-5');
+    assert.strictEqual(row?.displayName, 'Sonnet');
+    assert.deepStrictEqual(row?.effort, alias[0].effort);
+  });
+
+  test('a retired row drops the version the alias label carries', () => {
+    const versioned: ModelInfo[] = [{ id: 'sonnet', displayName: 'Sonnet 5.5', resolvedModel: 'claude-sonnet-5-5' }];
+    const row = findModel(versioned, 'claude-sonnet-5')!;
+    assert.strictEqual(expandedDisplayName(row), 'Sonnet 5');
+  });
+
+  test('a family with no row still finds nothing', () => {
+    assert.strictEqual(findModel(alias, 'claude-haiku-5'), undefined);
+  });
+});
+
+suite('pinnedModelId', () => {
+  test('an alias pins to its wire id, a canonical or default row does not', () => {
+    assert.strictEqual(pinnedModelId({ id: 'sonnet', displayName: 'S', resolvedModel: 'claude-sonnet-5-5' }), 'claude-sonnet-5-5');
+    assert.strictEqual(pinnedModelId({ id: 'claude-x-1', displayName: 'X' }), 'claude-x-1');
+    assert.strictEqual(pinnedModelId({ id: 'default', displayName: 'D', resolvedModel: 'claude-opus-5' }), 'default');
   });
 });
 

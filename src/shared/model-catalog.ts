@@ -21,7 +21,44 @@ import type { EffortLevel, ModelInfo } from '../providers/types';
  */
 export function findModel(models: ModelInfo[], id: string | undefined): ModelInfo | undefined {
   if (id === undefined) { return undefined; }
-  return models.find((m) => m.id === id) ?? models.find((m) => m.resolvedModel === id);
+  return models.find((m) => m.id === id)
+    ?? models.find((m) => m.resolvedModel === id)
+    ?? retiredRow(models, id);
+}
+
+function wireFamily(id: string): string | undefined {
+  return id.match(/^claude-([a-z]+)-\d/)?.[1];
+}
+
+/**
+ * A row standing in for a pinned wire id the catalog no longer lists.
+ *
+ * Sessions persist the wire id their alias resolved to (`claude-sonnet-5`),
+ * and the alias later moves on (`sonnet` -> `claude-sonnet-5-5`), leaving no
+ * row that covers the pin. It borrows its family's effort control, so the
+ * picker keeps a real label and the effort menu keeps working.
+ */
+function retiredRow(models: ModelInfo[], id: string): ModelInfo | undefined {
+  const family = wireFamily(id);
+  if (!family) { return undefined; }
+  const alias = models.find((m) => m.id === family)
+    ?? models.find((m) => m.resolvedModel && wireFamily(m.resolvedModel) === family);
+  if (!alias) { return undefined; }
+  return {
+    id,
+    displayName: alias.displayName.replace(/\s*\([^)]*\)\s*$/, '').replace(/\s+\d+(\.\d+)*$/, '').trim(),
+    resolvedModel: id,
+    ...(alias.effort ? { effort: alias.effort } : {}),
+  };
+}
+
+/**
+ * The id a new session should persist for `row`: the wire id an alias
+ * resolves to right now, so a later CLI update cannot move it. `default` is
+ * left alone — choosing it means "whatever is recommended", not a version.
+ */
+export function pinnedModelId(row: ModelInfo): string {
+  return row.id === 'default' ? row.id : row.resolvedModel ?? row.id;
 }
 
 /**
