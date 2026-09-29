@@ -1609,6 +1609,18 @@ export class SessionManager implements SessionSink {
     );
   }
 
+  async attachmentPath(
+    id: SessionId, attachmentId: string, itemId?: string,
+  ): Promise<string | undefined> {
+    if (!itemId) {
+      return this.live.get(id)?.pendingAttachments.find((a) => a.id === attachmentId)?.path;
+    }
+    if (!this.meta.has(id)) { return undefined; }
+    const item = await this.store.find(id, itemId);
+    if (item?.role !== 'user') { return undefined; }
+    return item.attachments?.find((a) => a.id === attachmentId)?.path;
+  }
+
   /**
    * Whether `path` is one the session itself reported as a loaded memory
    * file. `open-file` arrives over `postMessage` carrying a path that

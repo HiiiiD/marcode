@@ -21,6 +21,9 @@ export function AttachmentChips({ pane }: { pane: PaneState }) {
         <li key={attachment.id}>
           <AttachmentChip
             attachment={attachment}
+            onOpen={() => post({
+              t: 'open-attachment', id: pane.summary.id, attachmentId: attachment.id,
+            })}
             onRemove={() => post({
               t: 'attach-remove', id: pane.summary.id, attachmentId: attachment.id,
             })}
@@ -43,19 +46,12 @@ export function AttachmentChips({ pane }: { pane: PaneState }) {
  * the removal control off the chip, and the full path is on the title.
  */
 export function AttachmentChip({
-  attachment, onRemove,
-}: { attachment: Attachment; onRemove?: () => void }) {
+  attachment, onRemove, onOpen,
+}: { attachment: Attachment; onRemove?: () => void; onOpen?: () => void }) {
   const preview = previewUriOf(attachment);
 
-  return (
-    <span
-      className={cn(
-        'flex max-w-48 items-center gap-1 rounded-md border border-border',
-        'bg-muted py-0.5 text-xs',
-        onRemove ? 'pl-1.5 pr-0.5' : 'px-1.5',
-      )}
-      title={`${attachment.path} · ${sizeOf(attachment)}`}
-    >
+  const face = (
+    <>
       {preview
         ? (
           // The thumbnail replaces the icon rather than joining it: at this
@@ -72,11 +68,35 @@ export function AttachmentChip({
           ? <ImageIcon className="size-3 shrink-0 text-muted-foreground" aria-hidden />
           : <FileText className="size-3 shrink-0 text-muted-foreground" aria-hidden />}
       <span className="truncate">{attachment.name}</span>
+    </>
+  );
+
+  return (
+    <span
+      className={cn(
+        'flex max-w-48 items-center gap-1 rounded-md border border-border',
+        'bg-muted py-0.5 text-xs',
+        onRemove ? 'pl-1.5 pr-0.5' : 'px-1.5',
+      )}
+      title={`${attachment.path} · ${sizeOf(attachment)}`}
+    >
+      {onOpen
+        ? (
+          <Button
+            variant="ghost"
+            className="h-auto min-w-0 cursor-pointer gap-1 p-0 text-xs font-normal hover:bg-transparent hover:underline"
+            aria-label={`Open ${attachment.name}`}
+            onClick={onOpen}
+          >
+            {face}
+          </Button>
+        )
+        : face}
       {onRemove && (
         <Button
           variant="ghost"
           size="icon-xs"
-          className="size-4 shrink-0"
+          className="size-4 shrink-0 cursor-pointer"
           aria-label={`Remove ${attachment.name}`}
           onClick={onRemove}
         >

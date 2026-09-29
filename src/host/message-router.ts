@@ -608,6 +608,10 @@ export class MessageRouter {
       case 'open-file':
         return;
 
+      // Intercepted by PanelViewProvider (needs `vscode`), like open-file.
+      case 'open-attachment':
+        return;
+
       // Same precedent as `open-file` above: `PanelViewProvider` intercepts
       // this before delegating, since opening the review tab needs the
       // `vscode` API this module must not import. Listed here, and in
@@ -762,7 +766,7 @@ const KNOWN_MESSAGE_TAGS = new Set<WebviewToHost['t']>([
   'answer-relocation', 'cancel-relocation', 'fork-session',
   'set-include-context', 'reveal-file',
   'attach-paste', 'attach-pick', 'attach-drop', 'attach-remove', 'attach-failed',
-  'request-context', 'open-file',
+  'request-context', 'open-file', 'open-attachment',
   'request-bring-back', 'bring-back',
   'request-stale-trees', 'remove-stale-tree',
   'request-fleet-diff', 'request-branch-refs', 'open-file-diff', 'open-review', 'open-fleet',

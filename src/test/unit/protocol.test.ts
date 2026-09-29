@@ -29,6 +29,7 @@ function describeInbound(m: WebviewToHost): string {
     case 'attach-pick': return 'attach-pick';
     case 'attach-drop': return 'attach-drop';
     case 'attach-remove': return 'attach-remove';
+    case 'open-attachment': return 'open-attachment';
     case 'attach-failed': return 'attach-failed';
     case 'reveal-file': return 'reveal-file';
     case 'set-model': return 'set-model';

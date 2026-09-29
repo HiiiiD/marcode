@@ -544,6 +544,12 @@ export type WebviewToHost =
   | { t: 'attach-drop'; id: SessionId; uris: string[] }
   | { t: 'attach-remove'; id: SessionId; attachmentId: string }
   /**
+   * Opens an attachment in an editor tab. Names it by id, never by path, so the
+   * host resolves it from its own records: `itemId` set means a sent turn's
+   * attachment, absent means one still pending on the composer.
+   */
+  | { t: 'open-attachment'; id: SessionId; attachmentId: string; itemId?: string }
+  /**
    * A clipboard or dropped `File` the webview could not read, so no bytes
    * ever reached the host.
    *
