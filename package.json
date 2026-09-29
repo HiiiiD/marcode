@@ -99,15 +99,32 @@
               "items": {
                 "type": "object",
                 "properties": {
-                  "provider": { "type": "string", "description": "A provider or instance id." },
-                  "model": { "type": "string", "description": "A model id that provider lists." },
+                  "provider": {
+                    "type": "string",
+                    "description": "A provider or instance id."
+                  },
+                  "model": {
+                    "type": "string",
+                    "description": "A model id that provider lists."
+                  },
                   "effort": {
                     "type": "string",
-                    "enum": ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"],
+                    "enum": [
+                      "minimal",
+                      "low",
+                      "medium",
+                      "high",
+                      "xhigh",
+                      "max",
+                      "ultra"
+                    ],
                     "default": "low"
                   }
                 },
-                "required": ["provider", "model"],
+                "required": [
+                  "provider",
+                  "model"
+                ],
                 "additionalProperties": false
               }
             }
@@ -686,7 +703,7 @@
     "codex:bindings": "codex app-server generate-ts --out .codex-bindings"
   },
   "devDependencies": {
-    "@anthropic-ai/sdk": "0.128.0",
+    "@anthropic-ai/sdk": "0.129.0",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "@tailwindcss/cli": "^4.3.3",
     "@testing-library/dom": "^10.4.2",
@@ -719,7 +736,7 @@
   "packageManager": "yarn@4.18.0",
   "dependencies": {
     "@agentclientprotocol/sdk": "^1.5.0",
-    "@anthropic-ai/claude-agent-sdk": "0.3.280",
+    "@anthropic-ai/claude-agent-sdk": "0.3.284",
     "@base-ui/react": "^1.8.0",
     "@headless-tree/core": "1.7.0",
     "@headless-tree/react": "1.7.0",
