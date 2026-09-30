@@ -6,11 +6,12 @@ export const MEMORY_SUMMARIZER_SETTING = 'marcode.memory.summarizer';
 const EFFORTS: readonly EffortLevel[] = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'ultra'];
 
 export interface SummarizerTarget { provider: string; model: string; effort: EffortLevel }
-export interface LlmSummarizerConfig extends SummarizerTarget { concurrency: number; fallbacks: SummarizerTarget[] }
+export interface LlmSummarizerConfig extends SummarizerTarget { concurrency: number; fallbacks: SummarizerTarget[]; prompt?: string }
 export type SummarizerSetting = { mode: 'off' } | ({ mode: 'llm' } & LlmSummarizerConfig);
 export interface SummarizerValidation { setting: SummarizerSetting; warnings: string[] }
 
 export const MAX_SUMMARIZER_CONCURRENCY = 8;
+export const MAX_SUMMARIZER_PROMPT = 2000;
 const DEFAULT_CONCURRENCY = 3;
 
 const OFF: SummarizerSetting = { mode: 'off' };
@@ -45,10 +46,29 @@ export function validateSummarizer(configured: unknown, providerIds: Iterable<st
     }
   }
   const fallbacks = parseFallbacks(value.fallbacks, known, warnings);
+  const prompt = parsePrompt(value.prompt, warnings);
   return {
-    setting: { mode: 'llm', provider: value.provider as string, model: value.model as string, effort, concurrency, fallbacks },
+    setting: {
+      mode: 'llm', provider: value.provider as string, model: value.model as string, effort, concurrency, fallbacks,
+      ...(prompt !== undefined ? { prompt } : {}),
+    },
     warnings,
   };
+}
+
+function parsePrompt(raw: unknown, warnings: string[]): string | undefined {
+  if (raw === undefined) { return undefined; }
+  if (typeof raw !== 'string') {
+    warnings.push(`${MEMORY_SUMMARIZER_SETTING}.prompt is not a string; using the default.`);
+    return undefined;
+  }
+  const trimmed = raw.trim();
+  if (trimmed === '') { return undefined; }
+  if (trimmed.length > MAX_SUMMARIZER_PROMPT) {
+    warnings.push(`${MEMORY_SUMMARIZER_SETTING}.prompt is over ${MAX_SUMMARIZER_PROMPT} characters; truncating it.`);
+    return trimmed.slice(0, MAX_SUMMARIZER_PROMPT);
+  }
+  return trimmed;
 }
 
 function parseEffort(raw: unknown, path: string, warnings: string[]): EffortLevel {
