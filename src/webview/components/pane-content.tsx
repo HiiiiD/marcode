@@ -1,6 +1,7 @@
 import { MessageScrollerProvider } from "@/components/ui/message-scroller";
 import { findModel } from "../../shared/model-catalog";
 import type { SessionId } from "../../protocol/messages";
+import { ownerReason } from "../lib/owner-reason";
 import { unavailabilityFor } from "../lib/provider-availability";
 import { useStore } from "../store";
 import { Composer } from "./composer";
@@ -73,7 +74,7 @@ export function PaneContent({ sessionId, accessibleTitle }: PaneContentProps) {
           pane={paneState}
           model={model}
           models={provider?.models ?? []}
-          unavailableReason={unavailabilityFor(state, paneState.summary.providerId)}
+          unavailableReason={ownerReason(paneState.summary) ?? unavailabilityFor(state, paneState.summary.providerId)}
         />
       </div>
     </MessageScrollerProvider>
