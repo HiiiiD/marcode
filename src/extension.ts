@@ -22,6 +22,7 @@ import { setLifecycleDebug } from './shared/lifecycle-debug';
 import { configPath, loadConfig, patchConfig, seedConfigFile, watchConfig } from './host/config-file';
 import { createHost } from './host/create-host';
 import { routeOpenSettings } from './host/settings-routing';
+import { countOldSessions, declineMigration, migrateStorage, readMigrationMarker } from './host/migrate-storage';
 import { marcodeHome, resolveWorkspaceDir } from './host/workspace-dir';
 
 /**
@@ -52,7 +53,29 @@ function legacySettings(): Record<string, unknown> {
   return out;
 }
 
-async function offerMigration(_context: vscode.ExtensionContext, _workspaceDir: string): Promise<void> {}
+/** Not awaited by `activate()`: a toast must never hold up the panel. A successful import asks for a reload, because the host already read the roster. */
+async function offerMigration(context: vscode.ExtensionContext, workspaceDir: string): Promise<void> {
+  const oldDir = (context.storageUri ?? context.globalStorageUri).fsPath;
+  if (await readMigrationMarker(workspaceDir)) { return; }
+  const count = await countOldSessions(oldDir);
+  if (count === 0) { return; }
+  const importLabel = 'Import';
+  const never = 'Never';
+  const choice = await vscode.window.showInformationMessage(
+    `Import ${count} Marcode session${count === 1 ? '' : 's'} into ~/.marcode? Your existing data is copied, never moved.`,
+    importLabel, 'Not now', never,
+  );
+  if (choice === never) { await declineMigration(workspaceDir, oldDir); return; }
+  if (choice !== importLabel) { return; }
+  const result = await migrateStorage(oldDir, workspaceDir);
+  if (!result.ok) { void vscode.window.showWarningMessage(result.reason); return; }
+  const reload = 'Reload window';
+  const next = await vscode.window.showInformationMessage(
+    `Imported ${result.sessions} session${result.sessions === 1 ? '' : 's'}. Reload the window to see them.`,
+    reload,
+  );
+  if (next === reload) { await vscode.commands.executeCommand('workbench.action.reloadWindow'); }
+}
 
 /**
  * One warning per window, not per session and not per command.
