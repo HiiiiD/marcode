@@ -1,10 +1,17 @@
 import * as assert from 'assert';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { PanelViewProvider } from '../../host/panel-view-provider';
 import type { EditorContextHost } from '../../host/message-router';
 import type { SessionManager } from '../../host/session-manager';
 
 suite('extension', () => {
+  suiteSetup(() => {
+    process.env.MARCODE_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'marcode-it-'));
+  });
+
   test('activates and registers the panel view', async () => {
     const ext = vscode.extensions.getExtension('undefined_publisher.mar-code');
     assert.ok(ext, 'extension should be found');

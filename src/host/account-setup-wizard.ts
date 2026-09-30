@@ -11,28 +11,25 @@ import {
   PROVIDER_INSTANCE_KINDS, validateProviderInstances,
   type EnvMapValue, type ProviderInstanceConfig, type ProviderInstanceKind,
 } from '../shared/provider-instances';
-import { PROVIDER_INSTANCES_SETTING } from '../shared/settings';
+import { loadConfig, patchConfig } from './config-file';
 import { copySkillsAndPlugins } from './copy-skills-plugins';
 
 /**
  * `Marcode: Set up a provider account` — a guided QuickPick/InputBox
- * sequence that appends one entry to `marcode.providerInstances` (user
- * settings) and, for claude/codex, offers to copy the main account's
+ * sequence that appends one entry to `providerInstances` in `config.json` and, for claude/codex, offers to copy the main account's
  * skills/plugins into the new instance's own config dir. Any step the user
  * cancels (Esc) aborts the whole wizard with no write. See
  * docs/superpowers/specs/2026-09-01-account-setup-wizard-design.md.
  */
-export async function runAccountSetupWizard(baseIds: readonly string[]): Promise<void> {
+export async function runAccountSetupWizard(baseIds: readonly string[], configFile: string): Promise<void> {
   const kind = await vscode.window.showQuickPick(
     [...PROVIDER_INSTANCE_KINDS],
     { title: 'Set up a provider account (1/5): kind', placeHolder: 'Which backend is this instance?' },
   ) as ProviderInstanceKind | undefined;
   if (kind === undefined) { return; }
 
-  const config = vscode.workspace.getConfiguration();
-  const { valid: existing } = validateProviderInstances(
-    config.get<unknown>(PROVIDER_INSTANCES_SETTING), baseIds,
-  );
+  const { raw } = await loadConfig(configFile);
+  const { valid: existing } = validateProviderInstances(raw.providerInstances, baseIds);
 
   const id = await vscode.window.showInputBox({
     title: 'Set up a provider account (2/5): id',
@@ -104,20 +101,11 @@ export async function runAccountSetupWizard(baseIds: readonly string[]): Promise
 
   const newEntry: ProviderInstanceConfig = buildProviderInstanceConfig(kind, id, displayName, envMap);
   try {
-    // `existing` is the merged (workspace+user), *validated* array — correct
-    // for the collision check above, but writing it back to Global would
-    // (a) duplicate any workspace-scoped entries into user settings, where
-    // an unmerged array is shadowed by the workspace value and never takes
-    // effect, and (b) silently drop any malformed entry `existing` filtered
-    // out. The write instead appends to the raw, unvalidated Global-scope
-    // array, preserving anything already stored there as-is.
-    const rawGlobal = config.inspect<ProviderInstanceConfig[]>(PROVIDER_INSTANCES_SETTING)?.globalValue ?? [];
-    await config.update(
-      PROVIDER_INSTANCES_SETTING, [...rawGlobal, newEntry], vscode.ConfigurationTarget.Global,
-    );
-    // extension.ts's existing onDidChangeConfiguration listener for
-    // PROVIDER_INSTANCES_SETTING shows its own "Reload the window to apply
-    // it." prompt in response to this update() — no second prompt here.
+    // Appends to the raw array rather than the validated `existing` one, so a
+    // malformed entry already in the file is preserved instead of silently dropped.
+    const rawInstances = Array.isArray(raw.providerInstances) ? raw.providerInstances : [];
+    await patchConfig(configFile, { providerInstances: [...rawInstances, newEntry] });
+    // extension.ts's config watcher shows the "Reload the window" prompt — no second prompt here.
   } catch (err) {
     void vscode.window.showErrorMessage(
       `Could not save the new provider instance: ${err instanceof Error ? err.message : String(err)}`,
