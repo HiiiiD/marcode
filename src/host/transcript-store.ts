@@ -2,6 +2,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import type { PaneLayout, SessionId, SessionState, TranscriptItem } from '../protocol/messages';
 import type { ModelInfo, UsageWindow } from '../providers/types';
+import { writeFileAtomic } from './atomic-file';
 
 /**
  * Bumped when a persisted `TranscriptItem` shape changes in a way an older
@@ -177,13 +178,31 @@ export class TranscriptStore {
    */
   private chains = new Map<SessionId, Promise<void>>();
 
-  constructor(private readonly rootDir: string) {}
+  private foreign = new Set<SessionId>();
+
+  constructor(private readonly rootDir: string, private readonly layoutHost: string = 'vscode') {}
+
+  get root(): string { return this.rootDir; }
+
+  markForeign(id: SessionId): void {
+    this.foreign.add(id);
+    this.pending.delete(id);
+    this.dirty.delete(id);
+    this.replacements.delete(id);
+  }
+
+  clearForeign(id: SessionId): void {
+    this.foreign.delete(id);
+    this.cache.delete(id);
+  }
+
+  isForeign(id: SessionId): boolean { return this.foreign.has(id); }
 
   private sessionFile(id: SessionId): string {
     return path.join(this.rootDir, 'sessions', `${id}.jsonl`);
   }
 
-  private async ensureLoaded(id: SessionId): Promise<TranscriptItem[]> {
+  private async ensureLoaded(id: SessionId, opts: { dropTornTail?: boolean } = {}): Promise<TranscriptItem[]> {
     const cached = this.cache.get(id);
     if (cached) { return cached; }
 
@@ -191,7 +210,11 @@ export class TranscriptStore {
     let skipped = 0;
     try {
       const raw = await fs.readFile(this.sessionFile(id), 'utf8');
-      for (const line of raw.split('\n')) {
+      const lines = raw.split('\n');
+      let last = lines.length - 1;
+      while (last >= 0 && lines[last].trim().length === 0) { last--; }
+      for (let n = 0; n < lines.length; n++) {
+        const line = lines[n];
         if (line.trim().length === 0) { continue; }
         try {
           items.push(JSON.parse(line) as TranscriptItem);
@@ -201,8 +224,9 @@ export class TranscriptStore {
           // before()/flushOne() and, since MessageRouter only logs, leaves
           // the pane permanently blank with no error state, violating
           // "errors are state, never exceptions". A partial transcript beats
-          // no transcript: skip the line and surface it below instead.
-          skipped++;
+          // no transcript: skip the line and surface it below instead. A tail
+          // reader may see the owner's append half-written; that is not damage.
+          if (!(opts.dropTornTail && n === last)) { skipped++; }
         }
       }
     } catch (err) {
@@ -231,6 +255,7 @@ export class TranscriptStore {
   }
 
   append(id: SessionId, item: TranscriptItem): void {
+    if (this.foreign.has(id)) { return; }
     const cached = this.cache.get(id);
     if (cached) { cached.push(item); }
     const queue = this.pending.get(id) ?? [];
@@ -239,6 +264,7 @@ export class TranscriptStore {
   }
 
   replace(id: SessionId, item: TranscriptItem): void {
+    if (this.foreign.has(id)) { return; }
     const cached = this.cache.get(id);
     if (cached) {
       const at = cached.findIndex((i) => i.id === item.id);
@@ -256,7 +282,8 @@ export class TranscriptStore {
   }
 
   async flush(id?: SessionId): Promise<void> {
-    const ids = id ? [id] : [...new Set([...this.pending.keys(), ...this.dirty])];
+    const ids = (id ? [id] : [...new Set([...this.pending.keys(), ...this.dirty])])
+      .filter((i) => !this.foreign.has(i));
     await fs.mkdir(path.join(this.rootDir, 'sessions'), { recursive: true });
     await Promise.all(
       ids.map((sessionId) => this.serialize(sessionId, () => this.flushOne(sessionId))),
@@ -428,7 +455,21 @@ export class TranscriptStore {
     return items.find((i) => i.id === itemId);
   }
 
+  async reloadFromDisk(id: SessionId): Promise<{ appended: TranscriptItem[]; replaced: TranscriptItem[] }> {
+    const known = new Map((this.cache.get(id) ?? []).map((i) => [i.id, JSON.stringify(i)]));
+    this.cache.delete(id);
+    const after = await this.ensureLoaded(id, { dropTornTail: true });
+    const appended: TranscriptItem[] = [];
+    const replaced: TranscriptItem[] = [];
+    for (const it of after) {
+      const prior = known.get(it.id);
+      if (prior === undefined) { appended.push(it); } else if (prior !== JSON.stringify(it)) { replaced.push(it); }
+    }
+    return { appended, replaced };
+  }
+
   async remove(id: SessionId): Promise<void> {
+    if (this.foreign.has(id)) { return; }
     await this.serialize(id, async () => {
       this.cache.delete(id);
       this.pending.delete(id);
@@ -450,10 +491,13 @@ export class TranscriptStore {
       const raw = await fs.readFile(path.join(this.rootDir, 'index.json'), 'utf8');
       const parsed = JSON.parse(raw) as Partial<StoredIndex> & { layout?: unknown };
       if (parsed.version !== TRANSCRIPT_VERSION) { return emptyIndex(); }
+      const layout = this.layoutHost === 'vscode'
+        ? migrateLayout(parsed.layout)
+        : await this.readOwnLayout();
       return {
         version: TRANSCRIPT_VERSION,
         sessions: parsed.sessions ?? [],
-        layout: migrateLayout(parsed.layout) ?? emptyIndex().layout,
+        layout: layout ?? emptyIndex().layout,
       };
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === 'ENOENT') { return emptyIndex(); }
@@ -461,12 +505,30 @@ export class TranscriptStore {
     }
   }
 
+  private layoutFile(): string { return path.join(this.rootDir, `layout.${this.layoutHost}.json`); }
+
+  private async readOwnLayout(): Promise<PaneLayout | undefined> {
+    try { return migrateLayout(JSON.parse(await fs.readFile(this.layoutFile(), 'utf8'))); } catch { return undefined; }
+  }
+
+  private async diskLayout(): Promise<PaneLayout> {
+    try {
+      const parsed = JSON.parse(await fs.readFile(path.join(this.rootDir, 'index.json'), 'utf8')) as { layout?: unknown };
+      return migrateLayout(parsed.layout) ?? emptyIndex().layout;
+    } catch {
+      return emptyIndex().layout;
+    }
+  }
+
   async writeIndex(index: StoredIndex): Promise<void> {
-    await fs.mkdir(this.rootDir, { recursive: true });
-    await fs.writeFile(
+    let layout = index.layout;
+    if (this.layoutHost !== 'vscode') {
+      await writeFileAtomic(this.layoutFile(), JSON.stringify(index.layout, null, 2));
+      layout = await this.diskLayout();
+    }
+    await writeFileAtomic(
       path.join(this.rootDir, 'index.json'),
-      JSON.stringify({ ...index, version: TRANSCRIPT_VERSION }, null, 2),
-      'utf8',
+      JSON.stringify({ ...index, layout, version: TRANSCRIPT_VERSION }, null, 2),
     );
   }
 
@@ -493,12 +555,7 @@ export class TranscriptStore {
   }
 
   async writeUsage(usage: StoredUsage): Promise<void> {
-    await fs.mkdir(this.rootDir, { recursive: true });
-    await fs.writeFile(
-      path.join(this.rootDir, 'usage.json'),
-      JSON.stringify(usage, null, 2),
-      'utf8',
-    );
+    await writeFileAtomic(path.join(this.rootDir, 'usage.json'), JSON.stringify(usage, null, 2));
   }
 
   /**
@@ -524,11 +581,6 @@ export class TranscriptStore {
   }
 
   async writeCatalog(catalog: StoredCatalog): Promise<void> {
-    await fs.mkdir(this.rootDir, { recursive: true });
-    await fs.writeFile(
-      path.join(this.rootDir, 'catalog.json'),
-      JSON.stringify(catalog, null, 2),
-      'utf8',
-    );
+    await writeFileAtomic(path.join(this.rootDir, 'catalog.json'), JSON.stringify(catalog, null, 2));
   }
 }
