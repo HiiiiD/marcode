@@ -19,11 +19,11 @@ import { PANE_COMMANDS, paneCommandMessage } from './host/pane-commands';
 import type { DiffBase } from './protocol/messages';
 import { KNOWN_PROVIDER_IDS } from './shared/settings';
 import { setLifecycleDebug } from './shared/lifecycle-debug';
-import { configPath, loadConfig, patchConfig, seedConfigFile, watchConfig } from './host/config-file';
+import { configPath, favoriteModelsSource, loadConfig, seedConfigFileSafely, watchConfig } from './host/config-file';
 import { createHost } from './host/create-host';
 import { routeOpenSettings } from './host/settings-routing';
-import { countOldSessions, declineMigration, migrateStorage, readMigrationMarker } from './host/migrate-storage';
-import { marcodeHome, resolveWorkspaceDir } from './host/workspace-dir';
+import { importOldStorage } from './host/migrate-storage';
+import { marcodeHome, resolveWorkspaceDirOr } from './host/workspace-dir';
 
 /**
  * `marcode.showCacheTimer` — off by default. See package.json's description
@@ -53,28 +53,20 @@ function legacySettings(): Record<string, unknown> {
   return out;
 }
 
-/** Not awaited by `activate()`: a toast must never hold up the panel. A successful import asks for a reload, because the host already read the roster. */
-async function offerMigration(context: vscode.ExtensionContext, workspaceDir: string): Promise<void> {
+/**
+ * Awaited before the host exists, and without asking: the copy never touches the old directory,
+ * and a consent toast awaited here would hold up the panel, while one answered after the host
+ * started would merge into an `index.json` the host is already rewriting. Only the report is a toast.
+ */
+async function importPreviousStorage(context: vscode.ExtensionContext, workspaceDir: string): Promise<void> {
   const oldDir = (context.storageUri ?? context.globalStorageUri).fsPath;
-  if (await readMigrationMarker(workspaceDir)) { return; }
-  const count = await countOldSessions(oldDir);
-  if (count === 0) { return; }
-  const importLabel = 'Import';
-  const never = 'Never';
-  const choice = await vscode.window.showInformationMessage(
-    `Import ${count} Marcode session${count === 1 ? '' : 's'} into ~/.marcode? Your existing data is copied, never moved.`,
-    importLabel, 'Not now', never,
-  );
-  if (choice === never) { await declineMigration(workspaceDir, oldDir); return; }
-  if (choice !== importLabel) { return; }
-  const result = await migrateStorage(oldDir, workspaceDir);
-  if (!result.ok) { void vscode.window.showWarningMessage(result.reason); return; }
-  const reload = 'Reload window';
-  const next = await vscode.window.showInformationMessage(
-    `Imported ${result.sessions} session${result.sessions === 1 ? '' : 's'}. Reload the window to see them.`,
-    reload,
-  );
-  if (next === reload) { await vscode.commands.executeCommand('workbench.action.reloadWindow'); }
+  const result = await importOldStorage(oldDir, workspaceDir);
+  if (result.kind === 'failed') { void vscode.window.showWarningMessage(result.reason); }
+  if (result.kind === 'imported') {
+    void vscode.window.showInformationMessage(
+      `Imported ${result.sessions} Marcode session${result.sessions === 1 ? '' : 's'} into ~/.marcode. The originals were copied, not moved.`,
+    );
+  }
 }
 
 /**
@@ -134,12 +126,17 @@ export async function activate(context: vscode.ExtensionContext) {
   setLifecycleDebug(vscode.workspace.getConfiguration('marcode').get<boolean>('debug', false));
   const home = marcodeHome();
   const configFile = configPath(home);
-  await seedConfigFile(configFile, legacySettings());
+  const seeded = await seedConfigFileSafely(configFile, legacySettings());
+  if (seeded.warning) { void vscode.window.showWarningMessage(seeded.warning); }
   const { config, warnings: configWarnings } = await loadConfig(configFile);
   for (const warning of configWarnings) { void vscode.window.showWarningMessage(warning); }
 
-  const workspaceDir = await resolveWorkspaceDir(home, vscode.workspace.workspaceFolders?.[0]?.uri.fsPath);
-  void offerMigration(context, workspaceDir);
+  const resolved = await resolveWorkspaceDirOr(
+    home, vscode.workspace.workspaceFolders?.[0]?.uri.fsPath, (context.storageUri ?? context.globalStorageUri).fsPath,
+  );
+  if (resolved.warning) { void vscode.window.showWarningMessage(resolved.warning); }
+  const workspaceDir = resolved.dir;
+  await importPreviousStorage(context, workspaceDir);
 
   let provider: PanelViewProvider;
   const bus = new PostBus();
@@ -207,10 +204,11 @@ export async function activate(context: vscode.ExtensionContext) {
     },
   };
 
+  const favorites = favoriteModelsSource(
+    configFile, config.favoriteModels, (m) => { void vscode.window.showWarningMessage(m); },
+  );
   const configHost: ConfigHost = {
-    setFavoriteModels: (ids) => {
-      void patchConfig(configFile, { favoriteModels: ids });
-    },
+    setFavoriteModels: (ids) => { void favorites.set(ids); },
   };
 
   // Activation-scoped, not persisted: the sidebar WebviewView has no
@@ -288,7 +286,7 @@ export async function activate(context: vscode.ExtensionContext) {
     (focus) => { fleet.open(focus); },
     fileIndex,
     agentsMdNudge,
-    () => config.favoriteModels,
+    () => favorites.get(),
     configHost,
     updateNotify,
     showCacheTimer(),

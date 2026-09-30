@@ -91,6 +91,7 @@ export async function createHost(opts: CreateHostOptions): Promise<HostHandle> {
     create: (providerId, cwd, model, effort, mode) => manager.create(providerId, cwd, model, effort, mode),
     setVisible: (ids) => manager.setVisible(ids as SessionId[]),
     summaries: () => manager.summaries(),
+    isForeign: (id) => manager.isForeign(id as SessionId),
     visibleIds: () => manager.visibleIds(),
     // `summaries()` spans every session, including one restored from disk that no
     // pane has opened this launch; `open()` materializes it. An unknown id becomes
@@ -230,7 +231,14 @@ export async function createHost(opts: CreateHostOptions): Promise<HostHandle> {
 
   // Extractive digests are idempotent so both hosts write them; only the LLM summarizer costs money, so one host runs it.
   const digestLock = new SessionOwnership(opts.workspaceDir, opts.hostKind);
-  const holdsDigest = memory ? (await digestLock.claim('digest')).owned : false;
+  let holdsDigest = false;
+  if (memory) {
+    try {
+      holdsDigest = (await digestLock.claim('digest')).owned;
+    } catch (err) {
+      notify.warn(`Marcode could not claim the memory summarizer lock (${(err as Error).message}); sessions are summarized without a model in this window.`);
+    }
+  }
   if (memory && holdsDigest) {
     // Validated against every registered id, instances included, so a provider named here that is
     // not actually enabled degrades to "off" with one warning instead of failing per session.

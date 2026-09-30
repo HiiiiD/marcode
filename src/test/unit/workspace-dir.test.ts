@@ -3,7 +3,7 @@ import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { normalizeWorkspacePath, slugOf } from '../../shared/workspace-dir';
-import { marcodeHome, resolveWorkspaceDir } from '../../host/workspace-dir';
+import { marcodeHome, resolveWorkspaceDir, resolveWorkspaceDirOr } from '../../host/workspace-dir';
 
 suite('workspace-dir (pure)', () => {
   test('a windows path is case-folded, forward-slashed and slugged', () => {
@@ -88,5 +88,24 @@ suite('workspace-dir (fs)', () => {
     const link = path.join(home, 'link');
     try { await fs.symlink(target, link, 'junction'); } catch { this.skip(); }
     assert.strictEqual(await resolveWorkspaceDir(home, link), await resolveWorkspaceDir(home, target));
+  });
+});
+
+suite('workspace-dir (unwritable home)', () => {
+  let base: string;
+  setup(async () => { base = await fs.mkdtemp(path.join(os.tmpdir(), 'mar-wsd-ro-')); });
+  teardown(async () => { await fs.rm(base, { recursive: true, force: true }); });
+
+  test('a home that cannot be written falls back to the given directory with a warning', async () => {
+    await fs.writeFile(path.join(base, 'blocker'), '');
+    const home = path.join(base, 'blocker', '.marcode');
+    const fallback = path.join(base, 'fallback');
+    const r = await resolveWorkspaceDirOr(home, path.join(base, 'ws'), fallback);
+    assert.deepStrictEqual([r.dir, typeof r.warning], [fallback, 'string']);
+  });
+
+  test('a writable home resolves normally, with no warning', async () => {
+    const r = await resolveWorkspaceDirOr(path.join(base, 'home'), path.join(base, 'ws'), path.join(base, 'fallback'));
+    assert.deepStrictEqual([r.dir === path.join(base, 'fallback'), r.warning], [false, undefined]);
   });
 });

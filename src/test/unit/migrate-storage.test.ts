@@ -2,7 +2,9 @@ import * as assert from 'assert';
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { countOldSessions, declineMigration, migrateStorage, readMigrationMarker } from '../../host/migrate-storage';
+import { createHost } from '../../host/create-host';
+import { defaultHostConfig } from '../../host/host-config';
+import { countOldSessions, declineMigration, importOldStorage, migrateStorage, readMigrationMarker } from '../../host/migrate-storage';
 
 const idx = (ids: string[], layoutId = 'x') => JSON.stringify({
   version: 2,
@@ -80,5 +82,43 @@ suite('migrate-storage', () => {
   test('a declined migration is remembered', async () => {
     await declineMigration(newDir, oldDir);
     assert.strictEqual((await readMigrationMarker(newDir))?.declined, true);
+  });
+
+  test('an old index at another transcript version is refused with a reason, copies nothing, and is not offered again', async () => {
+    await seedOld();
+    await fs.writeFile(path.join(oldDir, 'index.json'), JSON.stringify({ version: 1, sessions: [{ id: 's1' }], layout: {} }));
+    const r = await importOldStorage(oldDir, newDir);
+    assert.strictEqual(r.kind, 'failed');
+    assert.strictEqual(r.kind === 'failed' && r.reason.includes('version'), true);
+    assert.deepStrictEqual((await fs.readdir(newDir)).filter((n) => n !== 'migrated.json'), []);
+    assert.deepStrictEqual(await importOldStorage(oldDir, newDir), { kind: 'none' });
+  });
+
+  test('importing before the host starts puts the old sessions in the roster it reads at init, no reload needed', async () => {
+    const row = (id: string) => ({
+      id, providerId: 'fake', model: 'm', title: id, name: id, cwd: newDir, status: 'idle',
+      permissionMode: 'default', includeEditorContext: true, resumeTokens: {}, createdAt: 1, updatedAt: 1,
+    });
+    await fs.writeFile(path.join(oldDir, 'index.json'), JSON.stringify({
+      version: 2, sessions: [row('s1'), row('s2')], layout: { root: { kind: 'leaf', sessionId: null, size: 100 }, presets: [] },
+    }));
+    assert.deepStrictEqual(await importOldStorage(oldDir, newDir), { kind: 'imported', sessions: 2 });
+    const host = await createHost({
+      workspaceDir: newDir, hostKind: 'vscode', workspaceRoots: () => [newDir], emit: () => {}, notify: { warn: () => {} },
+      config: { ...defaultHostConfig(), enabledProviders: ['fake'], memory: { enabled: false, summarizer: undefined } },
+    });
+    try {
+      await host.init();
+      assert.deepStrictEqual(host.manager.summaries().map((x) => x.id).sort(), ['s1', 's2']);
+    } finally {
+      await host.dispose();
+    }
+  });
+
+  test('importing is skipped once a marker exists, and when the old directory is the new one', async () => {
+    await seedOld();
+    await declineMigration(newDir, oldDir);
+    assert.deepStrictEqual(await importOldStorage(oldDir, newDir), { kind: 'none' });
+    assert.deepStrictEqual(await importOldStorage(oldDir, oldDir), { kind: 'none' });
   });
 });

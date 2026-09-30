@@ -23,6 +23,20 @@ async function claimDir(dir: string, key: string): Promise<boolean> {
   }
 }
 
+/** An unwritable home (read-only, EACCES, ENOSPC) falls back to `fallback` instead of failing activation. */
+export async function resolveWorkspaceDirOr(
+  home: string, workspacePath: string | undefined, fallback: string,
+): Promise<{ dir: string; warning?: string }> {
+  try {
+    return { dir: await resolveWorkspaceDir(home, workspacePath) };
+  } catch (err) {
+    return {
+      dir: fallback,
+      warning: `Marcode could not use ${home} (${(err as Error).message}); this window keeps its sessions in ${fallback}, unshared.`,
+    };
+  }
+}
+
 export async function resolveWorkspaceDir(home: string, workspacePath: string | undefined): Promise<string> {
   const workspaces = path.join(home, 'workspaces');
   if (workspacePath === undefined) {

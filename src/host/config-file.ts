@@ -49,9 +49,39 @@ export async function seedConfigFile(file: string, legacy: Record<string, unknow
   return true;
 }
 
+/** Rejects rather than write over a file it could not read: that write would erase every other setting. */
+/** Activation must survive a home it cannot write: the defaults still run a panel. */
+export async function seedConfigFileSafely(file: string, legacy: Record<string, unknown>): Promise<{ warning?: string }> {
+  try {
+    await seedConfigFile(file, legacy);
+    return {};
+  } catch (err) {
+    return { warning: `Marcode could not create ${file} (${(err as Error).message}); running on the defaults.` };
+  }
+}
+
 export async function patchConfig(file: string, patch: Record<string, unknown>): Promise<void> {
-  const { raw } = await readRaw(file);
+  const { raw, warning } = await readRaw(file);
+  if (warning) { throw new Error(warning.replace('; using the defaults.', '; fix it before changing settings from Marcode.')); }
   await writeFileAtomic(file, JSON.stringify({ ...(raw ?? {}), ...patch }, null, 2));
+}
+
+/** In-memory favorites that every re-hydrate reads, written through to config.json one write at a time. */
+export function favoriteModelsSource(
+  file: string, initial: string[], warn: (message: string) => void,
+): { get(): string[]; set(ids: string[]): Promise<void> } {
+  let current = initial;
+  let chain: Promise<void> = Promise.resolve();
+  return {
+    get: () => current,
+    set: (ids) => {
+      current = ids;
+      chain = chain.then(() => patchConfig(file, { favoriteModels: ids })).catch((err: unknown) => {
+        warn(`Favorite models were not saved: ${err instanceof Error ? err.message : String(err)}`);
+      });
+      return chain;
+    },
+  };
 }
 
 export function watchConfig(

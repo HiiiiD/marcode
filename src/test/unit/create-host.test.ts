@@ -25,6 +25,14 @@ suite('createHost', () => {
     return h;
   };
 
+  test('a digest lock that cannot be read never fails the host; it runs without the summarizer lease', async () => {
+    await fs.mkdir(path.join(dir, 'digest.lock'));
+    const warnings: string[] = [];
+    const h = await build({ memory: { enabled: true, summarizer: undefined } }, warnings);
+    await h.init();
+    assert.strictEqual(warnings.some((m) => m.includes('summar')), true);
+  });
+
   test('only the enabled providers are registered', async () => {
     const h = await build();
     assert.deepStrictEqual([...h.providers.keys()], ['fake']);
