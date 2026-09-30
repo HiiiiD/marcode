@@ -18,6 +18,18 @@ async function tempDbPath(): Promise<string> {
 }
 
 suite('FtsMemoryStore', () => {
+  test('two stores on one file both index and each finds the other\'s sessions', async () => {
+    const file = await tempDbPath();
+    const a = new FtsMemoryStore(file, noopReader);
+    const b = new FtsMemoryStore(file, noopReader);
+    await a.index({ sessionId: 'sa', providerId: 'claude', cwd: '/repo', closedAt: 1, items: [userItem('u1', 'zebra migration plan')] });
+    await b.index({ sessionId: 'sb', providerId: 'claude', cwd: '/repo', closedAt: 2, items: [userItem('u2', 'giraffe rollout notes')] });
+    assert.deepStrictEqual((await a.search('giraffe')).map((h) => h.sessionId), ['sb']);
+    assert.deepStrictEqual((await b.search('zebra')).map((h) => h.sessionId), ['sa']);
+    a.close();
+    b.close();
+  });
+
   test('search() finds an indexed session by keyword', async () => {
     const store = new FtsMemoryStore(await tempDbPath(), noopReader);
     await store.index({
