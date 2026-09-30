@@ -93,6 +93,11 @@
               "default": 3,
               "description": "How many sessions a reindex summarizes at once. Lower it if the provider rate-limits."
             },
+            "prompt": {
+              "type": "string",
+              "maxLength": 2000,
+              "description": "Guidance for the summarizer, e.g. \"Write in Italian\" or \"Emphasize architectural decisions\". Replaces the default opening line only; the JSON reply format and the no-tools rule always apply. Also used by fallbacks."
+            },
             "fallbacks": {
               "type": "array",
               "description": "Tried in order when the summarizer above fails (usage limit, timeout, provider down). The primary is retried on every summary.",

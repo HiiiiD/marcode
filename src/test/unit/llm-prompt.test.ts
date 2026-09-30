@@ -32,6 +32,20 @@ suite('buildSummaryPrompt', () => {
     assert.strictEqual(prompt.includes('ONE JSON object'), true);
     assert.strictEqual(prompt.includes('Do not use any tools'), true);
   });
+
+  test('guidance replaces the opening line and leaves the tool ban and JSON contract', () => {
+    const prompt = buildSummaryPrompt([user('u1', 'hi')], 'Write in Italian.');
+    assert.strictEqual(prompt.startsWith('Write in Italian.'), true);
+    assert.strictEqual(prompt.includes('You are summarizing a finished'), false);
+    assert.strictEqual(prompt.includes('Do not use any tools'), true);
+    assert.strictEqual(prompt.includes('ONE JSON object'), true);
+    assert.strictEqual(prompt.includes('nextSteps'), true);
+  });
+
+  test('absent guidance leaves the prompt unchanged', () => {
+    const items = [user('u1', 'hi')];
+    assert.strictEqual(buildSummaryPrompt(items, undefined), buildSummaryPrompt(items));
+  });
 });
 
 suite('parseLlmDigest', () => {

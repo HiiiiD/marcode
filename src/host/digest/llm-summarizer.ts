@@ -12,6 +12,7 @@ export interface LlmSummarizerOptions {
   cwd: string;
   timeoutMs?: number;
   concurrency?: number;
+  prompt?: string;
 }
 
 const DEFAULT_TIMEOUT_MS = 90_000;
@@ -39,7 +40,7 @@ export class LlmSummarizer {
           () => reject(new Error('summarizer timed out')), this.o.timeoutMs ?? DEFAULT_TIMEOUT_MS,
         );
       });
-      const reply = await Promise.race([this.collect(run, buildSummaryPrompt(items)), timeout]);
+      const reply = await Promise.race([this.collect(run, buildSummaryPrompt(items, this.o.prompt)), timeout]);
       return parseLlmDigest(reply, base);
     } finally {
       if (timer) { clearTimeout(timer); }

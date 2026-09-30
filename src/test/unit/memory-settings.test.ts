@@ -1,6 +1,6 @@
 import * as assert from 'node:assert';
 import { suite, test } from 'mocha';
-import { validateSummarizer } from '../../shared/memory-settings';
+import { MAX_SUMMARIZER_PROMPT, validateSummarizer } from '../../shared/memory-settings';
 
 const ids = ['claude', 'codex', 'opencode'];
 
@@ -33,6 +33,38 @@ suite('validateSummarizer', () => {
       assert.strictEqual(setting.mode === 'llm' && setting.concurrency, 3);
       assert.strictEqual(warnings.length, 1);
     }
+  });
+
+  test('a prompt is trimmed and carried through', () => {
+    const { setting, warnings } = validateSummarizer(
+      { mode: 'llm', provider: 'claude', model: 'm', prompt: '  Focus on decisions.  ' }, ids,
+    );
+    assert.strictEqual(setting.mode === 'llm' && setting.prompt, 'Focus on decisions.');
+    assert.deepStrictEqual(warnings, []);
+  });
+
+  test('a blank prompt is ignored silently', () => {
+    const { setting, warnings } = validateSummarizer(
+      { mode: 'llm', provider: 'claude', model: 'm', prompt: '   ' }, ids,
+    );
+    assert.strictEqual(setting.mode === 'llm' && 'prompt' in setting, false);
+    assert.deepStrictEqual(warnings, []);
+  });
+
+  test('a non-string prompt warns and is ignored', () => {
+    const { setting, warnings } = validateSummarizer(
+      { mode: 'llm', provider: 'claude', model: 'm', prompt: 5 }, ids,
+    );
+    assert.strictEqual(setting.mode === 'llm' && 'prompt' in setting, false);
+    assert.strictEqual(warnings.length, 1);
+  });
+
+  test('an over-long prompt is truncated with a warning', () => {
+    const { setting, warnings } = validateSummarizer(
+      { mode: 'llm', provider: 'claude', model: 'm', prompt: 'x'.repeat(MAX_SUMMARIZER_PROMPT + 50) }, ids,
+    );
+    assert.strictEqual(setting.mode === 'llm' && setting.prompt?.length, MAX_SUMMARIZER_PROMPT);
+    assert.strictEqual(warnings.length, 1);
   });
 
   test('llm without a model warns and falls back to off', () => {

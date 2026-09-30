@@ -257,7 +257,9 @@ it from the index.
   "effort": "low", "concurrency": 3 }` runs a hidden, tool-less agent on session close,
   falling back to the extractive digest on failure. Summarizer runs leave no trace in the
   vendor CLI's history. `concurrency` (1–8, default 3) is how many sessions a rebuild
-  summarizes at once; lower it if your provider rate-limits.
+  summarizes at once; lower it if your provider rate-limits. `prompt` (optional, up to 2000
+  chars) is guidance for the summarizer, such as "Write in Italian"; it replaces only the
+  default opening line, so the JSON reply format and the no-tools rule always apply.
 - **Marcode: Rebuild memory index** re-digests every closed session; the history tab also
   offers per-session re-summarize.
 

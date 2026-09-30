@@ -474,6 +474,7 @@ export async function activate(context: vscode.ExtensionContext) {
     for (const warning of warnings) { void vscode.window.showWarningMessage(warning); }
     if (setting.mode === 'llm') {
       const llm = (t: SummarizerTarget, concurrency?: number) => new LlmSummarizer({
+        prompt: setting.prompt,
         provider: providers.get(t.provider) as AgentProvider,
         model: t.model,
         effort: t.effort,

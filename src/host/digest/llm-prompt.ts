@@ -6,8 +6,9 @@ const ASSISTANT_MAX = 800;
 const TOTAL_MAX = 16_000;
 const FILES_MAX = 30;
 
-const INSTRUCTIONS = [
-  'You are summarizing a finished coding-agent session so a future session can find and reuse its work.',
+const DEFAULT_GUIDANCE = 'You are summarizing a finished coding-agent session so a future session can find and reuse its work.';
+
+const CONTRACT = [
   'Do not use any tools. Reply with ONE JSON object and nothing else, with exactly these keys:',
   'title (string, max 80 chars, what the session was about),',
   'request (string, the user\'s goal),',
@@ -16,7 +17,8 @@ const INSTRUCTIONS = [
   'decisions (array of short strings), nextSteps (array of short strings).',
 ].join(' ');
 
-export function buildSummaryPrompt(items: TranscriptItem[]): string {
+/** `guidance` replaces only the opening line; the tool ban and JSON keys are what `parseLlmDigest` depends on. */
+export function buildSummaryPrompt(items: TranscriptItem[], guidance?: string): string {
   const lines: string[] = [];
   const edited = new Set<string>();
   let pending = '';
@@ -42,7 +44,7 @@ export function buildSummaryPrompt(items: TranscriptItem[]): string {
   }
   const files = [...edited].slice(0, FILES_MAX);
   return [
-    INSTRUCTIONS, '', '<conversation>', body, '</conversation>',
+    `${guidance ?? DEFAULT_GUIDANCE} ${CONTRACT}`, '', '<conversation>', body, '</conversation>',
     ...(files.length > 0 ? [`Files edited: ${files.join(', ')}`] : []),
   ].join('\n');
 }
