@@ -43,7 +43,7 @@ export class SessionOwnership {
 
   async ownerOf(id: string): Promise<OwnerInfo | undefined> {
     if (this.held.has(id)) { return undefined; }
-    const info = await readLease(this.file(id));
+    const info = await readLease(this.file(id), this.deps.readFile);
     if (!info || isStale(info, this.deps)) { return undefined; }
     return { host: info.host, pid: info.pid };
   }

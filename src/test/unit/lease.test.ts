@@ -78,6 +78,21 @@ suite('lease', () => {
     assert.strictEqual((await readLease(file))?.instance, 'B');
   });
 
+  const busy = async (): Promise<string> => { throw Object.assign(new Error('EBUSY: resource busy'), { code: 'EBUSY' }); };
+
+  test('a transient read error never steals a live lease', async () => {
+    await claimLease(file, { host: 'vscode', instance: 'A' }, deps());
+    await assert.rejects(claimLease(file, { host: 'tui', instance: 'B' }, deps({ readFile: busy })));
+    assert.strictEqual((await readLease(file))?.instance, 'A');
+  });
+
+  test('a transient read error during a heartbeat is not a lost lease', async () => {
+    const a = await claimLease(file, { host: 'vscode', instance: 'A' }, deps({ readFile: busy }));
+    if (!a.ok) { throw new Error('expected a claim'); }
+    await assert.rejects(a.lease.beat());
+    assert.strictEqual((await readLease(file))?.instance, 'A');
+  });
+
   test('isStale is a pure function of heartbeat, pid and machine', () => {
     const info = { pid: 1, host: 'tui' as const, instance: 'x', machine: 'm1', heartbeat: 0 };
     assert.strictEqual(isStale(info, deps({ now: () => STALE_MS })), false);

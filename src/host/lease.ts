@@ -19,6 +19,8 @@ export interface LeaseDeps {
   now(): number;
   pidAlive(pid: number): boolean;
   machine: string;
+  /** Injected so a transient I/O failure can be reproduced. */
+  readFile?: (file: string) => Promise<string>;
 }
 
 export const defaultLeaseDeps: LeaseDeps = {
@@ -38,9 +40,22 @@ function isLeaseInfo(value: unknown): value is LeaseInfo {
     && typeof v.heartbeat === 'number' && (v.host === 'vscode' || v.host === 'tui');
 }
 
-export async function readLease(file: string): Promise<LeaseInfo | undefined> {
+/**
+ * Absent or unparseable is "no lease". Any other read error is rethrown: EBUSY/EPERM on a live
+ * owner's file says nothing about whether it is still held, and reading it as free steals it.
+ */
+export async function readLease(
+  file: string, read: (file: string) => Promise<string> = (f) => fs.readFile(f, 'utf8'),
+): Promise<LeaseInfo | undefined> {
+  let raw: string;
   try {
-    const parsed: unknown = JSON.parse(await fs.readFile(file, 'utf8'));
+    raw = await read(file);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') { return undefined; }
+    throw err;
+  }
+  try {
+    const parsed: unknown = JSON.parse(raw);
     return isLeaseInfo(parsed) ? parsed : undefined;
   } catch {
     return undefined;
@@ -60,15 +75,17 @@ export class HeldLease {
     private readonly deps: LeaseDeps,
   ) {}
 
+  /** Rejects on an I/O error: that is not a lost lease, and the caller retries. */
   async beat(): Promise<boolean> {
-    const current = await readLease(this.file);
+    const current = await readLease(this.file, this.deps.readFile);
     if (current?.instance !== this.info.instance) { return false; }
     await writeFileAtomic(this.file, JSON.stringify({ ...this.info, heartbeat: this.deps.now() }));
     return true;
   }
 
   async release(): Promise<void> {
-    const current = await readLease(this.file);
+    // Unreadable: leave it to go stale rather than remove what may be someone else's.
+    const current = await readLease(this.file, this.deps.readFile).catch(() => undefined);
     if (current?.instance === this.info.instance) { await fs.rm(this.file, { force: true }); }
   }
 }
@@ -85,12 +102,12 @@ export async function claimLease(
   };
   for (let attempt = 0; attempt < 3; attempt++) {
     if (await createExclusive(file, JSON.stringify(info))) { return { ok: true, lease: new HeldLease(file, info, deps) }; }
-    const current = await readLease(file);
+    const current = await readLease(file, deps.readFile);
     if (current?.instance === self.instance) { return { ok: true, lease: new HeldLease(file, current, deps) }; }
     if (current && !isStale(current, deps)) { return { ok: false, owner: current }; }
     await fs.rm(file, { force: true });
   }
-  const last = await readLease(file);
+  const last = await readLease(file, deps.readFile);
   if (last) { return { ok: false, owner: last }; }
   throw new Error(`could not claim lease ${file}`);
 }

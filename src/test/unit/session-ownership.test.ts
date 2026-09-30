@@ -2,7 +2,7 @@ import * as assert from 'assert';
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { STALE_MS } from '../../host/lease';
+import { defaultLeaseDeps, STALE_MS } from '../../host/lease';
 import { SessionOwnership } from '../../host/session-ownership';
 
 suite('SessionOwnership', () => {
@@ -35,6 +35,23 @@ suite('SessionOwnership', () => {
     assert.deepStrictEqual(await b.ownerOf('s1'), { host: 'vscode', pid: process.pid });
     assert.strictEqual(await a.ownerOf('s1'), undefined);
     assert.strictEqual(await b.ownerOf('nobody'), undefined);
+  });
+
+  test('a lease file that cannot be read for a while does not fire onLost', async () => {
+    let failing = false;
+    const readFile = async (file: string): Promise<string> => {
+      if (failing) { throw Object.assign(new Error('EPERM: operation not permitted'), { code: 'EPERM' }); }
+      return fs.readFile(file, 'utf8');
+    };
+    const a = make('vscode', { heartbeatMs: 10, deps: { ...defaultLeaseDeps, readFile } });
+    const lost: string[] = [];
+    a.onLost((id) => lost.push(id));
+    await a.claim('s1');
+    failing = true;
+    await new Promise((r) => setTimeout(r, 60));
+    failing = false;
+    assert.deepStrictEqual(lost, []);
+    assert.strictEqual(a.owns('s1'), true);
   });
 
   test('release frees the session for the other host', async () => {

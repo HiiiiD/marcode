@@ -198,6 +198,19 @@ export class TranscriptStore {
 
   isForeign(id: SessionId): boolean { return this.foreign.has(id); }
 
+  /** Drops the cached transcript so the next read comes from disk: another host may have written it since. */
+  invalidate(id: SessionId): void { this.cache.delete(id); }
+
+  async transcriptIds(): Promise<Set<SessionId>> {
+    try {
+      const names = await fs.readdir(path.join(this.rootDir, 'sessions'));
+      return new Set(names.filter((n) => n.endsWith('.jsonl')).map((n) => n.slice(0, -'.jsonl'.length)));
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') { return new Set(); }
+      throw err;
+    }
+  }
+
   private sessionFile(id: SessionId): string {
     return path.join(this.rootDir, 'sessions', `${id}.jsonl`);
   }
@@ -487,22 +500,45 @@ export class TranscriptStore {
   }
 
   async readIndex(): Promise<StoredIndex> {
+    const { index, state } = await this.readIndexState();
+    if (state === 'unreadable') { throw new SyntaxError('index.json is not valid JSON'); }
+    return index;
+  }
+
+  /**
+   * `state` says whether the roster read is one to sync from: an empty index that is really a
+   * missing file, a torn one, or another build's version says nothing about what was deleted.
+   * `newer` also covers a version this build cannot place, and must never be overwritten.
+   */
+  async readIndexState(): Promise<{ index: StoredIndex; state: 'ok' | 'missing' | 'unreadable' | 'older' | 'newer' }> {
+    let raw: string;
     try {
-      const raw = await fs.readFile(path.join(this.rootDir, 'index.json'), 'utf8');
-      const parsed = JSON.parse(raw) as Partial<StoredIndex> & { layout?: unknown };
-      if (parsed.version !== TRANSCRIPT_VERSION) { return emptyIndex(); }
-      const layout = this.layoutHost === 'vscode'
-        ? migrateLayout(parsed.layout)
-        : await this.readOwnLayout();
-      return {
+      raw = await fs.readFile(path.join(this.rootDir, 'index.json'), 'utf8');
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') { return { index: emptyIndex(), state: 'missing' }; }
+      throw err;
+    }
+    let parsed: Partial<StoredIndex> & { layout?: unknown };
+    try {
+      parsed = JSON.parse(raw) as Partial<StoredIndex> & { layout?: unknown };
+    } catch {
+      return { index: emptyIndex(), state: 'unreadable' };
+    }
+    if (parsed.version !== TRANSCRIPT_VERSION) {
+      const older = typeof parsed.version === 'number' && parsed.version < TRANSCRIPT_VERSION;
+      return { index: emptyIndex(), state: older ? 'older' : 'newer' };
+    }
+    const layout = this.layoutHost === 'vscode'
+      ? migrateLayout(parsed.layout)
+      : await this.readOwnLayout();
+    return {
+      index: {
         version: TRANSCRIPT_VERSION,
         sessions: parsed.sessions ?? [],
         layout: layout ?? emptyIndex().layout,
-      };
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === 'ENOENT') { return emptyIndex(); }
-      throw err;
-    }
+      },
+      state: 'ok',
+    };
   }
 
   private layoutFile(): string { return path.join(this.rootDir, `layout.${this.layoutHost}.json`); }
