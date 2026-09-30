@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import { AgentSession, type SessionSink } from './agent-session';
 import type { AttachmentStore } from './attachment-store';
 import { catalogKey, CatalogService } from './catalog-service';
@@ -8,7 +8,11 @@ import { listBranchRefs, treeChanges } from './fleet-diff';
 import {
   bringBack as runBringBack, bringBackPlan, createWorktree, samePath, treeStatus, type TreeStatus,
 } from './git-worktree';
+import { dormantProvider } from './dormant-provider';
+import { ForeignTail } from './foreign-tail';
 import { buildSeed } from './replay';
+import { mergeRoster } from './roster-sync';
+import type { OwnerInfo, SessionOwnership } from './session-ownership';
 import { findPayload, type ResolvedBlock } from './session-refs';
 import { TRANSCRIPT_VERSION, type StoredIndex, type TranscriptStore } from './transcript-store';
 import { isWithin } from '../shared/path-scope';
@@ -278,6 +282,7 @@ export class SessionManager implements SessionSink {
       });
     }
     this.paneLayout = index.layout;
+    this.knownOnDisk = new Set(index.sessions.map((s) => s.id));
 
     const usage = await this.store.readUsage();
     for (const [providerId, windows] of Object.entries(usage.providers)) {
@@ -754,6 +759,7 @@ export class SessionManager implements SessionSink {
       createdAt: now, updatedAt: now,
     };
 
+    await this.ownership?.claim(state.id);
     const session = new AgentSession(state, provider, this.store, this);
     this.meta.set(state.id, state);
     this.live.set(state.id, session);
@@ -810,6 +816,7 @@ export class SessionManager implements SessionSink {
     for (const item of items) { this.store.append(forkState.id, item); }
     await this.store.flush(forkState.id);
 
+    await this.ownership?.claim(forkState.id);
     const session = new AgentSession(forkState, provider, this.store, this, buildSeed(items));
     this.meta.set(forkState.id, forkState);
     this.live.set(forkState.id, session);
@@ -1642,13 +1649,20 @@ export class SessionManager implements SessionSink {
 
   async open(id: SessionId): Promise<AgentSession> {
     const existing = this.live.get(id);
-    if (existing) { return existing; }
+    if (existing) {
+      if (!this.foreign.has(id) || (await this.ownership?.ownerOf(id)) !== undefined) { return existing; }
+      await this.releaseForeign(id);
+    }
 
     const state = this.meta.get(id);
     if (!state) { throw new Error(`Unknown session: ${id}`); }
     const provider = this.providers.get(state.providerId);
     if (!provider) { throw new Error(`Unknown provider: ${state.providerId}`); }
 
+    if (this.ownership) {
+      const claim = await this.ownership.claim(id);
+      if (!claim.owned) { return this.openForeign(state, provider, claim.owner); }
+    }
     state.status = 'idle';
     const session = new AgentSession(state, provider, this.store, this);
     this.live.set(id, session);
@@ -1791,7 +1805,7 @@ export class SessionManager implements SessionSink {
 
   async close(id: SessionId): Promise<void> {
     const state = this.meta.get(id);
-    if (state && await this.isDiscardable(id, state)) {
+    if (state && !this.foreign.has(id) && await this.isDiscardable(id, state)) {
       await this.remove(id);
       return;
     }
@@ -1863,19 +1877,22 @@ export class SessionManager implements SessionSink {
     // Before the dispose below, which can report a final status: a closed
     // session must not relocate on its way out.
     this.queuedMoves.delete(id);
+    const wasForeign = this.foreign.has(id);
+    if (wasForeign) { await this.releaseForeign(id); }
     const session = this.live.get(id);
     if (session) {
       await session.dispose();
       this.live.delete(id);
     }
+    if (!wasForeign) { await this.ownership?.release(id); }
     const state = this.meta.get(id);
-    if (state) {
+    if (state && !wasForeign) {
       state.status = 'idle';
       state.updatedAt = Date.now();
     }
     this.visible.delete(id);
     this.setLayout({ ...this.paneLayout, root: emptySession(this.paneLayout.root, id) });
-    if (state) { await this.digestHidden(id); }
+    if (state && !wasForeign) { await this.digestHidden(id); }
     this.changed();
   }
 
@@ -1962,6 +1979,7 @@ export class SessionManager implements SessionSink {
   }
 
   async remove(id: SessionId): Promise<void> {
+    if (this.foreign.has(id)) { return; }
     await this.hide(id);
     this.meta.delete(id);
     await this.store.remove(id);
@@ -1992,6 +2010,8 @@ export class SessionManager implements SessionSink {
     // schedulePersist() becomes a no-op) and only clear the timer AFTER
     // every session has actually finished disposing.
     this.disposed = true;
+    if (this.rosterTimer) { clearInterval(this.rosterTimer); }
+    for (const tail of this.foreign.values()) { tail.stop(); }
     this.queuedMoves.clear();
     const liveSessions = [...this.live.values()];
     await Promise.all(liveSessions.map((s) => s.dispose()));
@@ -2003,6 +2023,7 @@ export class SessionManager implements SessionSink {
     this.digests?.stop();
     if (this.persistTimer) { clearTimeout(this.persistTimer); }
     await this.persist();
+    await this.ownership?.dispose();
   }
 
   // --- SessionSink ---
@@ -2071,6 +2092,85 @@ export class SessionManager implements SessionSink {
 
   /** Injected because this class imports no `vscode`; the extension supplies the open workspace folders. */
   setWorkspaceRoots(roots: () => string[]): void { this.workspaceRoots = roots; }
+
+  private ownership?: SessionOwnership;
+  private tailIntervalMs = 750;
+  private readonly foreign = new Map<SessionId, ForeignTail>();
+  private knownOnDisk = new Set<SessionId>();
+  private rosterTimer?: NodeJS.Timeout;
+
+  setOwnership(ownership: SessionOwnership, opts: { tailIntervalMs?: number } = {}): void {
+    this.ownership = ownership;
+    if (opts.tailIntervalMs !== undefined) { this.tailIntervalMs = opts.tailIntervalMs; }
+    ownership.onLost((id) => { void this.hide(id).catch(() => { /* errors are state */ }); });
+  }
+
+  startRosterSync(intervalMs = 2000): void {
+    if (this.rosterTimer || !this.ownership) { return; }
+    this.rosterTimer = setInterval(() => { void this.syncRoster(); }, intervalMs);
+    this.rosterTimer.unref();
+  }
+
+  async persistNow(): Promise<void> { await this.persist(); }
+
+  private async reconcile(): Promise<{ sessions: SessionState[]; changed: boolean }> {
+    const disk = (await this.store.readIndex()).sessions;
+    const owners = new Map<SessionId, OwnerInfo>();
+    for (const id of new Set([...disk.map((d) => d.id), ...this.meta.keys()])) {
+      const owner = await this.ownership?.ownerOf(id);
+      if (owner) { owners.set(id, owner); }
+    }
+    const merged = mergeRoster({ ours: this.meta, disk, owners, knownOnDisk: this.knownOnDisk });
+    for (const d of merged.adopt) { this.meta.set(d.id, { ...d, status: d.status === 'running' ? d.status : 'idle' }); }
+    for (const d of merged.update) { Object.assign(this.meta.get(d.id) as SessionState, d); }
+    let changed = merged.changed;
+    for (const [id, mine] of this.meta) {
+      if (!owners.has(id) && mine.owner) { delete mine.owner; changed = true; }
+    }
+    for (const id of merged.drop) { await this.hide(id); this.meta.delete(id); }
+    this.knownOnDisk = merged.knownOnDisk;
+    return { sessions: merged.sessions, changed };
+  }
+
+  async syncRoster(): Promise<void> {
+    if (!this.ownership || this.disposed) { return; }
+    try {
+      const { changed } = await this.reconcile();
+      if (changed) { this.emit({ t: 'sessions-changed', sessions: this.summaries() }); }
+    } catch (err) {
+      console.error('[mar-code] roster sync failed', err);
+    }
+  }
+
+  private openForeign(state: SessionState, provider: AgentProvider, owner: OwnerInfo): AgentSession {
+    const id = state.id;
+    this.store.markForeign(id);
+    state.owner = owner;
+    const session = new AgentSession(state, dormantProvider(provider), this.store, this);
+    this.live.set(id, session);
+    const tail = new ForeignTail({
+      id, store: this.store, file: join(this.store.root, 'sessions', `${id}.jsonl`),
+      intervalMs: this.tailIntervalMs,
+      stillForeign: async () => (await this.ownership?.ownerOf(id)) !== undefined,
+      onPatch: (patch) => { this.patch(id, patch); },
+      onFree: () => { void this.releaseForeign(id); },
+    });
+    this.foreign.set(id, tail);
+    tail.start();
+    this.changed();
+    return session;
+  }
+
+  private async releaseForeign(id: SessionId): Promise<void> {
+    this.foreign.get(id)?.stop();
+    this.foreign.delete(id);
+    this.store.clearForeign(id);
+    const session = this.live.get(id);
+    if (session) { await session.dispose(); this.live.delete(id); }
+    const state = this.meta.get(id);
+    if (state) { delete state.owner; }
+    if (!this.disposed) { this.emit({ t: 'sessions-changed', sessions: this.summaries() }); }
+  }
 
   /**
    * The folder recall is scoped to for a session started in `cwd`: the innermost open workspace
@@ -2177,11 +2277,10 @@ export class SessionManager implements SessionSink {
   }
 
   private async persist(): Promise<void> {
-    const index: StoredIndex = {
-      version: TRANSCRIPT_VERSION,
-      sessions: [...this.meta.values()],
-      layout: this.paneLayout,
-    };
+    const sessions = this.ownership
+      ? (await this.reconcile()).sessions
+      : [...this.meta.values()].map(({ owner: _owner, ...rest }) => rest as SessionState);
+    const index: StoredIndex = { version: TRANSCRIPT_VERSION, sessions, layout: this.paneLayout };
     await this.store.writeIndex(index);
     // usageSnapshot() prunes reset windows on the way out, so a file written
     // now cannot resurrect one on the next load.
