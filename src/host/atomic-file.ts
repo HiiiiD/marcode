@@ -37,13 +37,14 @@ export async function writeFileAtomic(file: string, body: string): Promise<void>
  * `wx` alone is not enough: it creates the file empty before the body lands,
  * so a concurrent reader can see a valid-looking but empty lock. A hard link
  * publishes the finished file in one step. Filesystems without hard links fall
- * back to `wx`.
+ * back to `wx`, which is best-effort and non-atomic: callers must treat an
+ * empty or unparsable file as "no live owner".
  */
 export async function createExclusive(file: string, body: string): Promise<boolean> {
   await fs.mkdir(path.dirname(file), { recursive: true });
   const tmp = tmpName(file);
-  await fs.writeFile(tmp, body, 'utf8');
   try {
+    await fs.writeFile(tmp, body, 'utf8');
     await fs.link(tmp, file);
     return true;
   } catch (err) {

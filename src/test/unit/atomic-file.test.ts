@@ -37,5 +37,6 @@ suite('atomic-file', () => {
     const results = await Promise.all(Array.from({ length: 20 }, () => createExclusive(file, body)));
     assert.strictEqual(results.filter(Boolean).length, 1);
     assert.strictEqual(await fs.readFile(file, 'utf8'), body);
+    assert.deepStrictEqual((await fs.readdir(dir)).filter((n) => n.endsWith('.tmp')), []);
   });
 });
