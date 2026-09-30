@@ -252,6 +252,7 @@ export class AgentSession {
     });
     this.pumping = this.pump();
     this._state.activityLabel = this.activityLabelFor(this._state.status);
+    delete this._state.backgroundTasks;
   }
 
   get state(): SessionState { return this._state; }
@@ -807,10 +808,17 @@ export class AgentSession {
    * starts) without `status` itself moving off `'running'` — a case
    * `setStatus`'s no-op-on-unchanged-status guard would otherwise swallow.
    */
+  private backgroundOnlyCount(): number | undefined {
+    const count = this.activeBackgroundTasks.size;
+    return this._state.status === 'running' && !this.turnActive && count > 0 ? count : undefined;
+  }
+
   private refreshActivityLabel(): void {
     const label = this.activityLabelFor(this._state.status);
-    if (this._state.activityLabel === label) { return; }
+    const tasks = this.backgroundOnlyCount();
+    if (this._state.activityLabel === label && this._state.backgroundTasks === tasks) { return; }
     this._state.activityLabel = label;
+    if (tasks === undefined) { delete this._state.backgroundTasks; } else { this._state.backgroundTasks = tasks; }
     this._state.updatedAt = Date.now();
     this.sink.changed();
   }

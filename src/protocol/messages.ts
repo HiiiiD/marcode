@@ -195,6 +195,14 @@ export interface SessionState {
    * event.
    */
   activityLabel?: string;
+  /**
+   * How many background tasks are the only thing keeping this session
+   * `running` — the turn itself has ended. Absent otherwise, including
+   * mid-turn, where the turn already explains the status. Lets the composer
+   * say why Stop is showing with nothing streaming. Host-derived, never
+   * persisted.
+   */
+  backgroundTasks?: number;
   permissionMode: PermissionMode;
   /** Whether sends from this session attach the editor context. Sticky. */
   includeEditorContext: boolean;
