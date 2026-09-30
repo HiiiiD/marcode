@@ -185,6 +185,12 @@ export interface SessionState {
    * per window, case-insensitive; enforced in `SessionManager.rename()`.
    */
   name: string;
+  /**
+   * Set only while another live host owns this session: read-only here, and
+   * the label says where it is running. Host-derived from the lease files and
+   * stripped before the index is written.
+   */
+  owner?: { host: 'vscode' | 'tui'; pid: number };
   cwd: string;
   status: SessionStatus;
   /**
