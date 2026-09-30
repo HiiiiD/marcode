@@ -180,6 +180,37 @@ suite("Composer", () => {
     assert.deepStrictEqual(posted().at(-1), { t: "cancel-queued", id: "a", messageId: "q1" });
   });
 
+  test("a background task alone says why Stop is showing, and Stop names it", async () => {
+    const bg = {
+      summary: summary("a", { status: "running", backgroundTasks: 1 }),
+      items: [], hasMore: false, pending: [], mcpServers: [],
+      pendingQuestions: [], attachments: [],
+    };
+    renderWithStore(<Composer pane={bg} model={NO_EFFORT} models={[]} />);
+
+    assert.ok(screen.getByText("Background task running"));
+    await userEvent.click(screen.getByRole("button", { name: "Stop background task" }));
+    assert.deepStrictEqual(posted().at(-1), { t: "interrupt", id: "a" });
+  });
+
+  test("several background tasks are counted", () => {
+    const bg = {
+      summary: summary("a", { status: "running", backgroundTasks: 3 }),
+      items: [], hasMore: false, pending: [], mcpServers: [],
+      pendingQuestions: [], attachments: [],
+    };
+    renderWithStore(<Composer pane={bg} model={NO_EFFORT} models={[]} />);
+
+    assert.ok(screen.getByText("3 background tasks running"));
+  });
+
+  test("a running turn without the background flag keeps the plain Stop and no note", () => {
+    renderWithStore(<Composer pane={pane("running")} model={NO_EFFORT} models={[]} />);
+
+    assert.strictEqual(screen.queryByText(/background task/i) === null, true);
+    assert.ok(screen.getByRole("button", { name: "Stop" }));
+  });
+
   test("several queued messages are all shown, each with its own cancel control", async () => {
     const queued = {
       summary: summary("a", {

@@ -1752,6 +1752,42 @@ suite('AgentSession activityLabel', () => {
     await session.dispose();
   });
 
+  test('backgroundTasks counts tasks only while they alone hold status running', async () => {
+    const provider = new FakeProvider();
+    const session = new AgentSession(baseState(), provider, store, sink);
+    session.send('go');
+    await settle();
+    const run = provider.runs[0];
+
+    run.emit({ kind: 'background-tasks-changed', taskIds: ['bg-1', 'bg-2'] });
+    await settle();
+    assert.strictEqual(session.state.status, 'running');
+    assert.strictEqual(session.state.backgroundTasks, undefined, 'mid-turn the turn itself explains running');
+
+    run.emit({ kind: 'turn-end', reason: 'done' });
+    await settle();
+    assert.strictEqual(session.state.status, 'running');
+    assert.strictEqual(session.state.backgroundTasks, 2);
+
+    run.emit({ kind: 'task-settled', taskId: 'bg-1' });
+    await settle();
+    assert.strictEqual(session.state.backgroundTasks, 1, 'a count change alone must patch');
+
+    run.emit({ kind: 'background-tasks-changed', taskIds: [] });
+    await settle();
+    assert.strictEqual(session.state.status, 'idle');
+    assert.strictEqual(session.state.backgroundTasks, undefined);
+    await session.dispose();
+  });
+
+  test('backgroundTasks is not carried over from a persisted state', async () => {
+    const session = new AgentSession(
+      { ...baseState(), backgroundTasks: 3 }, new FakeProvider(() => []), store, sink,
+    );
+    assert.strictEqual(session.state.backgroundTasks, undefined);
+    await session.dispose();
+  });
+
   test('a pending question describes waiting on an answer, not on a tool', async () => {
     const provider = new FakeProvider();
     const session = new AgentSession(baseState(), provider, store, sink);

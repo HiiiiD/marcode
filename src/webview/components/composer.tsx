@@ -4,7 +4,7 @@ import {
 } from "@/components/ui/combobox";
 import { InputGroup, InputGroupAddon, InputGroupTextarea } from "@/components/ui/input-group";
 import { cn } from "@/lib/utils";
-import { Clock, Paperclip, SendHorizontal, Square, TriangleAlert, X } from "lucide-react";
+import { Clock, Loader, Paperclip, SendHorizontal, Square, TriangleAlert, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { Invocable, ModelInfo } from "../../protocol/messages";
 import { fileMentions, fileRefsOf, type FileMentionPayload } from "../lib/file-mentions";
@@ -84,6 +84,8 @@ export function Composer({
   const box = useRef<HTMLTextAreaElement | null>(null);
   const recall = usePromptHistory(promptHistory(pane.items), text, setText, box);
   const running = pane.summary.status === "running" || pane.summary.status === "awaiting-approval";
+  const backgroundTasks = pane.summary.backgroundTasks;
+  const stopLabel = backgroundTasks === undefined ? "Stop" : "Stop background task";
   // Session-scoped, not a bare literal: Composer renders once per pane, so a
   // fixed id would collide across panes — `getElementById`, which is what
   // `aria-describedby` resolves against, returns only the first match, and
@@ -343,6 +345,19 @@ export function Composer({
         >
           <TriangleAlert className="mt-px size-3.5 shrink-0" aria-hidden />
           <span>{blockedReason}</span>
+        </p>
+      )}
+      {backgroundTasks !== undefined && (
+        // Above the box like the notices around it, never inside the frame:
+        // Stop is showing with nothing streaming, and this is the why.
+        <p
+          role="status"
+          className="mb-1.5 flex items-center gap-1.5 text-xs text-muted-foreground"
+        >
+          <Loader className="size-3.5 shrink-0" aria-hidden />
+          <span className="min-w-0 truncate">
+            {backgroundTasks === 1 ? "Background task running" : `${backgroundTasks} background tasks running`}
+          </span>
         </p>
       )}
       {queued && queued.length > 0 && (
@@ -658,8 +673,8 @@ export function Composer({
               variant="outline"
               size="icon-xs"
               onClick={() => post({ t: "interrupt", id: pane.summary.id })}
-              aria-label="Stop"
-              title="Stop the agent"
+              aria-label={stopLabel}
+              title={backgroundTasks === undefined ? "Stop the agent" : stopLabel}
             >
               <Square />
             </Button>

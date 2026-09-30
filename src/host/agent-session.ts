@@ -252,6 +252,7 @@ export class AgentSession {
     });
     this.pumping = this.pump();
     this._state.activityLabel = this.activityLabelFor(this._state.status);
+    delete this._state.backgroundTasks;
   }
 
   get state(): SessionState { return this._state; }
@@ -799,6 +800,11 @@ export class AgentSession {
     return 'Idle';
   }
 
+  private backgroundOnlyCount(): number | undefined {
+    const count = this.activeBackgroundTasks.size;
+    return this._state.status === 'running' && !this.turnActive && count > 0 ? count : undefined;
+  }
+
   /**
    * Recomputes `activityLabel` from the current status and current tool,
    * and reports a change the same way every other derived field on
@@ -809,8 +815,10 @@ export class AgentSession {
    */
   private refreshActivityLabel(): void {
     const label = this.activityLabelFor(this._state.status);
-    if (this._state.activityLabel === label) { return; }
+    const tasks = this.backgroundOnlyCount();
+    if (this._state.activityLabel === label && this._state.backgroundTasks === tasks) { return; }
     this._state.activityLabel = label;
+    if (tasks === undefined) { delete this._state.backgroundTasks; } else { this._state.backgroundTasks = tasks; }
     this._state.updatedAt = Date.now();
     this.sink.changed();
   }
