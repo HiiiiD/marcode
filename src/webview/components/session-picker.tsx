@@ -1,5 +1,5 @@
 import {
-  ColumnsIcon, FolderGit2Icon, GitCompareIcon, HistoryIcon, LayoutGridIcon, RowsIcon,
+  ActivityIcon, ColumnsIcon, FolderGit2Icon, GitCompareIcon, HistoryIcon, RowsIcon,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -153,7 +153,7 @@ export function SessionPicker({ narrow, onReview, onFleet, onHistory }: SessionP
           />
         )}
       >
-        <LayoutGridIcon aria-hidden />
+        <ActivityIcon aria-hidden />
       </TooltipTrigger>
       <TooltipContent>Open the fleet view in an editor tab</TooltipContent>
       </Tooltip>
