@@ -800,6 +800,11 @@ export class AgentSession {
     return 'Idle';
   }
 
+  private backgroundOnlyCount(): number | undefined {
+    const count = this.activeBackgroundTasks.size;
+    return this._state.status === 'running' && !this.turnActive && count > 0 ? count : undefined;
+  }
+
   /**
    * Recomputes `activityLabel` from the current status and current tool,
    * and reports a change the same way every other derived field on
@@ -808,11 +813,6 @@ export class AgentSession {
    * starts) without `status` itself moving off `'running'` — a case
    * `setStatus`'s no-op-on-unchanged-status guard would otherwise swallow.
    */
-  private backgroundOnlyCount(): number | undefined {
-    const count = this.activeBackgroundTasks.size;
-    return this._state.status === 'running' && !this.turnActive && count > 0 ? count : undefined;
-  }
-
   private refreshActivityLabel(): void {
     const label = this.activityLabelFor(this._state.status);
     const tasks = this.backgroundOnlyCount();
