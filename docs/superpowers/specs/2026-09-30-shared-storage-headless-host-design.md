@@ -17,6 +17,13 @@ roster, each session is run by exactly one of them, and the other shows it live 
 - **One session, one owner**, tracked by a lease file. A session owned elsewhere is read-only.
 - **`config.json` is the single source of truth** for host settings.
 
+## Deviations recorded during planning
+
+- `digest.lock` gates only the LLM summarizer. Extractive digests are idempotent so both hosts write them, and SQLite WAL plus `busy_timeout` makes two writers safe at the file level. A non-holder still reads recall.
+- The pane layout is per host: the existing `index.json` `layout` field for `vscode`, `layout.<host>.json` for any other host, since two clients showing different panes cannot share one layout.
+- `host-config.ts` and `config-file.ts` live in `src/host/`, not `src/shared/`, because validation imports `clampCap` from `src/host/fleet-diff.ts`.
+- The migration prompt never blocks activation; a successful import asks for a window reload.
+
 ## Storage layout
 
 ```

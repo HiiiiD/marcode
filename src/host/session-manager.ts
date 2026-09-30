@@ -2113,7 +2113,15 @@ export class SessionManager implements SessionSink {
 
   async persistNow(): Promise<void> { await this.persist(); }
 
-  private async reconcile(): Promise<{ sessions: SessionState[]; changed: boolean }> {
+  private reconcileChain: Promise<unknown> = Promise.resolve();
+
+  private reconcile(): Promise<{ sessions: SessionState[]; changed: boolean }> {
+    const run = this.reconcileChain.then(() => this.reconcileOnce());
+    this.reconcileChain = run.catch(() => { /* surfaced to the caller */ });
+    return run;
+  }
+
+  private async reconcileOnce(): Promise<{ sessions: SessionState[]; changed: boolean }> {
     const disk = (await this.store.readIndex()).sessions;
     const owners = new Map<SessionId, OwnerInfo>();
     for (const id of new Set([...disk.map((d) => d.id), ...this.meta.keys()])) {
@@ -2128,7 +2136,9 @@ export class SessionManager implements SessionSink {
       if (!owners.has(id) && mine.owner) { delete mine.owner; changed = true; }
     }
     for (const id of merged.drop) { await this.hide(id); this.meta.delete(id); }
-    this.knownOnDisk = merged.knownOnDisk;
+    // What was observed on disk, never what we are about to write: a sync that lands between
+    // a persist's merge and its write would otherwise read "missing" as "deleted elsewhere".
+    this.knownOnDisk = new Set(disk.map((d) => d.id));
     return { sessions: merged.sessions, changed };
   }
 
@@ -2282,6 +2292,7 @@ export class SessionManager implements SessionSink {
       : [...this.meta.values()].map(({ owner: _owner, ...rest }) => rest as SessionState);
     const index: StoredIndex = { version: TRANSCRIPT_VERSION, sessions, layout: this.paneLayout };
     await this.store.writeIndex(index);
+    if (this.ownership) { this.knownOnDisk = new Set(sessions.map((x) => x.id)); }
     // usageSnapshot() prunes reset windows on the way out, so a file written
     // now cannot resurrect one on the next load.
     await this.store.writeUsage({ providers: this.usageSnapshot() });

@@ -53,7 +53,13 @@ extension.ts
 
 | Path | Responsibility |
 |---|---|
-| `src/extension.ts` | `activate()`: construct manager + store + `PostBus` + `ReviewPanel`, register the sidebar webview view, the `marcode.review.open` command, and the review tab's `WebviewPanelSerializer` |
+| `src/extension.ts` | `activate()`: resolve the workspace directory under `~/.marcode`, load `config.json`, offer the one-time migration, call `createHost`, then construct `PostBus` + `ReviewPanel`, register the sidebar webview view, the `marcode.review.open` command, and the review tab's `WebviewPanelSerializer` |
+| `src/host/create-host.ts` | `createHost()`: the store, memory, self-control server, provider and summarizer wiring, with no `vscode` import — what `activate()` and a terminal client both call |
+| `src/host/workspace-dir.ts` + `src/shared/workspace-dir.ts` | `marcodeHome` (`MARCODE_HOME` or `~/.marcode`) and `resolveWorkspaceDir`: a workspace to `workspaces/<slug>`, verified by `workspace.json`, numbered on a slug collision |
+| `src/host/lease.ts`, `src/host/session-ownership.ts` | Per-session lease files (`sessions/<id>.lock`), one heartbeat timer; a lease is stale after 20s or when its pid is dead on the same machine |
+| `src/host/dormant-provider.ts`, `src/host/foreign-tail.ts`, `src/host/roster-sync.ts` | A session owned by another host: an inert provider, a poll that turns the owner's flushed JSONL into patches, and the pure roster merge |
+| `src/host/host-config.ts`, `src/host/config-file.ts` | `HostConfig` and its validation; `config.json` load, first-import seed from old VS Code settings, patch-write and reload watch |
+| `src/host/migrate-storage.ts` | Copy-only import of the old `storageUri` into the workspace directory; never modifies the source |
 | `src/protocol/messages.ts` | Shared wire types. **Types only.** The one module every bundle imports. |
 | `src/providers/types.ts` | `AgentProvider`, `AgentRun`, `AgentEvent`, `ModelInfo` |
 | `src/providers/fake/fake-provider.ts` | Scripted provider for tests and the walking skeleton |
@@ -71,7 +77,7 @@ extension.ts
 | `src/providers/opencode/map-subagent-tools.ts` | Raw `ToolPart` → the same `AcpToolCall` shape the ACP bridge already produces, so classification stays in `map-tools.ts` alone |
 | `src/shared/usage-windows.ts` | Fixed display order for usage windows; shared so neither provider nor host owns the other's table |
 | `src/shared/file-cap.ts` | `FILE_CAP`/`MAX_FILE_CAP` — shared so the host and the review webview agree on the default and ceiling without importing across the host/webview boundary |
-| `src/host/transcript-store.ts` | `index.json` + per-session JSONL; append, load, page |
+| `src/host/transcript-store.ts` | `index.json` + per-session JSONL under the workspace directory; append, load, page. Index, usage and catalog writes are atomic; a foreign session's writes are refused |
 | `src/host/agent-session.ts` | One conversation: transcript, status, pending approvals |
 | `src/host/session-manager.ts` | Roster; create/close/delete; patch fan-out to the visible set |
 | `src/host/self-control-mcp-server.ts` | One loopback HTTP MCP server exposing `marcode__spawn_session` to every session's provider; started at `activate()`, token/url threaded into all three provider constructors |
@@ -147,8 +153,19 @@ These are not style preferences. Breaking one breaks the design.
   took a developer machine down on 2026-08-14. It only detonates while the test is red,
   which is exactly when you are running it. `screen.getByX` helpers are safe — they throw
   their own message and never hand the node to `assert`.
+- **A host never writes a session it does not own.** The lease file is the owner. A session leased
+  by another live host is opened over a dormant provider and `TranscriptStore.markForeign` turns
+  every append, replace, flush and remove for it into a no-op, so even a mutator that slips past the
+  UI cannot touch the owner's JSONL. Deleting a foreign session is refused. Never infer "deleted
+  elsewhere" from a missing index row that this host has not itself seen on disk.
+- **`config.json` is the single source of truth for host settings.** Every setting the host consumes
+  (`enabledProviders`, `providerInstances`, `systemPrompts`, `codex.path`, `opencode.path`,
+  `usageMirrors`, `memory.*`, `review.*`, `favoriteModels`) lives in `~/.marcode/config.json`, read by
+  `createHost`, the account-setup wizard and the favorites handler alike. Only pure-UI settings stay in
+  VS Code (`marcode.debug`, `marcode.showCacheTimer`, `marcode.agentsMdNudge.excludePaths`). A change
+  takes a window reload. See `docs/config.md`.
 - **Which providers exist is a setting; whether they work is a probe.**
-  `marcode.enabledProviders` (default `["claude","codex"]`) decides what
+  `enabledProviders` in `config.json` (default `["claude","codex","opencode"]`) decides what
   `activate()` registers, and a provider left out is not constructed at all — it
   appears in neither `catalog()` nor `unavailable()`, because "nobody asked for this
   backend" is not a diagnosis of it. `fake` is a legal value, never a default: a

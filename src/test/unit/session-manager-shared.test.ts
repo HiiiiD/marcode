@@ -101,6 +101,13 @@ suite('SessionManager (shared directory)', () => {
     assert.strictEqual(b.manager.summaries().some((x) => x.id === made.state.id), true);
   });
 
+  test('a roster sync racing a persist never drops a session that was just created', async () => {
+    const a = await host('vscode');
+    const made = await a.manager.create('fake', '/w');
+    await Promise.all([a.manager.persistNow(), a.manager.syncRoster(), a.manager.syncRoster()]);
+    assert.strictEqual(a.manager.summaries().some((x) => x.id === made.state.id), true);
+  });
+
   test('a session leased elsewhere that the guest never opened still carries the owner', async () => {
     const owner = await host('vscode');
     const session = await ownedSession(owner);
