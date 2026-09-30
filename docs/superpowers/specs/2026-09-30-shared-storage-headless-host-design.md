@@ -41,7 +41,8 @@ roster, each session is run by exactly one of them, and the other shows it live 
 
 1. Normalize the path: real path, drive letter lowercased, trailing separators stripped, case
    folded on Windows and macOS.
-2. Slug: every non-alphanumeric character becomes `-` (`e:\Efebia\x` → `e--Efebia-x`).
+2. Slug: every non-alphanumeric character becomes `-` (`E:\Efebia\x` → `e--efebia-x`; the path was
+   case-folded first on Windows and macOS, so two spellings of one folder share one slug).
 3. A slug over ~80 characters is truncated and given a short hash suffix (MAX_PATH).
 4. If `workspace.json` in the slug folder names a different path, use a numbered suffix (`-2`).
    The `-2` folder is verified the same way.
@@ -51,16 +52,21 @@ root when there is one. A VS Code window with no folder uses `workspaces/_global
 
 ## Config
 
-`~/.marcode/config.json` holds the settings the host consumes: `enabledProviders`,
-`memory.enabled`, `memory.summarizer`. Global, no per-workspace override. Pure-UI settings stay
-in VS Code.
+`~/.marcode/config.json` holds **every setting the host consumes**, so the TUI can run anything the
+extension can: `enabledProviders`, `providerInstances`, `systemPrompts`, `codexPath`, `opencodePath`,
+`usageMirrors`, `memory.enabled`, `memory.summarizer`, `review.fileCap`, `review.pollIntervalMs`,
+`review.baseRefs`, `favoriteModels`. Global, no per-workspace override. Only pure-UI settings stay in
+VS Code: `marcode.debug`, `marcode.showCacheTimer`, `marcode.agentsMdNudge.excludePaths`.
 
-- The extension removes those three `contributes.configuration` entries and adds
-  `marcode.config.open`.
-- A file watcher keeps the existing "changed, reload the window" prompt.
+- The extension removes the moved `contributes.configuration` entries and adds `marcode.config.open`.
+- Every reader of a moved setting reads the file instead: `createHost`, the account-setup wizard
+  (writes `providerInstances`), the `set-favorite-models` handler, and `open-settings` (the webview's
+  "Open settings" button opens `config.json` when the requested section is a moved setting).
+- A file watcher keeps one "changed, reload the window" prompt for all of them. The live
+  `codex.path` re-probe is dropped: a changed path now takes a reload like every other provider setting.
 - `createHost` loads the file itself; the extension passes nothing settings-related.
 - The first import (below) copies existing VS Code values into `config.json` when it does not
-  exist yet.
+  exist yet. An invalid value is a warning and the default, never a failed start.
 
 ## Session ownership
 
@@ -84,6 +90,15 @@ Host view of a session:
 A `foreign` session tails `sessions/<id>.jsonl` with `fs.watch` plus a re-read from the last
 offset. Its status label reads "running in vscode (pid N)". Closing it in the UI only hides it
 locally and never touches the owner's lease. No forced takeover of a live lease in this spec.
+
+**How a foreign session is held.** `SessionManager.open()` builds its `AgentSession` over a dormant
+provider (`start()` returns an inert run, so no backend process is spawned), and
+`TranscriptStore.markForeign(id)` turns every write for that id (append, replace, flush, remove) into a
+no-op. The store guard is the invariant: a host never writes a session it does not own, even if some
+mutator slips past the UI. Deleting a foreign session is refused for the same reason. The tail
+re-reads the whole JSONL on change and diffs by item id (the owner rewrites the file on a `replace`,
+so an offset read is not enough), then emits `append`/`replace` patches. The owner's writes reach disk
+at its flush points (turn end and the 500ms persist), so the tail is near-live, not per-token.
 
 `SessionState` gains `owner?: { host, pid }`, set only when foreign. Additive; every message
 keeps its explicit `SessionId`.
@@ -115,14 +130,21 @@ resolved workspace dir.
 
 ## Code changes
 
-- `createHost({ workspaceDir, cwd }) → { manager, dispose }`: the wiring now in `activate()`,
-  with no `vscode` types. It loads `config.json` itself.
+- `createHost({ workspaceDir, cwd, config, notify }) → HostHandle`: the store, memory, self-control
+  server, provider and summarizer wiring now in `activate()`, with no `vscode` types. `notify` carries
+  the warnings `activate()` currently raises as VS Code toasts.
 - `extension.ts` shrinks to resolving the workspace dir, calling `createHost`, running the
-  migration prompt and registering panels.
-- Four `storageUri` leaks become constructor parameters: `transcript-store.ts`, `default-cwd.ts`,
-  `question-persistence.ts`, and the mention in `providers/types.ts`.
-- New modules: `src/shared/workspace-dir.ts`, `src/host/lease.ts`, `src/host/migrate-storage.ts`,
-  `src/host/foreign-tail.ts`, `src/host/config-file.ts`.
+  migration prompt and registering panels and commands.
+- There is one real `storageUri` leak: `extension.ts` derives `rootDir` from it. `TranscriptStore`,
+  `AttachmentStore` and `FtsMemoryStore` already take a plain directory, and `default-cwd.ts` and
+  `question-persistence.ts` are pure (they only mention `storageUri` in comments).
+- `TranscriptStore` index, usage and catalog writes become atomic with a per-writer temp name,
+  because two hosts now write the same directory.
+- New modules: `src/shared/workspace-dir.ts` (pure slug), `src/host/workspace-dir.ts` (fs
+  resolution), `src/host/lease.ts`, `src/host/session-ownership.ts`, `src/host/dormant-provider.ts`,
+  `src/host/foreign-tail.ts`, `src/host/migrate-storage.ts`, `src/shared/host-config.ts` (schema and
+  validation), `src/host/config-file.ts` (load, watch, write, first-import seeding),
+  `src/host/create-host.ts`.
 
 ## Testing
 
