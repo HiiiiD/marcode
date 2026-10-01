@@ -1,4 +1,5 @@
 import type { BoxRenderable, MouseEvent } from '@opentui/core';
+import { useRenderer } from '@opentui/react';
 import { useEffect, useRef, useState } from 'react';
 import type { LayoutNode } from '../../client-core/layout-tree';
 import { visibleRects, MIN_PANE_H, MIN_PANE_W, type DividerRect, type Rect } from '../../client-core/pane-geometry';
@@ -26,6 +27,7 @@ export interface PaneTreeProps {
 export function PaneTree(p: PaneTreeProps) {
   const { state } = useTuiStore();
   const theme = useTheme();
+  const renderer = useRenderer();
   const region = useRef<BoxRenderable | null>(null);
   const [size, setSize] = useState(p.estimate);
   useEffect(() => {
@@ -59,6 +61,7 @@ export function PaneTree(p: PaneTreeProps) {
   // A drag measured against a tree that has since changed would write that old tree back over the change.
   useEffect(() => { if (grabbed.current && grabRoot.current !== root) { cancelDrag(); } }, [root]);
   const onEnd = () => {
+    renderer.setMousePointer('default');
     grabbed.current = null;
     const done = dragged.current;
     dragged.current = null;
