@@ -1,3 +1,4 @@
+import { TextAttributes } from "@opentui/core";
 import { useKeyboard } from "@opentui/react";
 import { useState } from "react";
 import type { ReactNode } from "react";
@@ -92,7 +93,7 @@ export const Dialog = ({
               ? theme.colors.foreground
               : theme.colors.mutedForeground
           }
-          inverse={focusedButton === 0}
+          attributes={focusedButton === 0 ? TextAttributes.INVERSE : 0}
         >
           {focusedButton === 0 ? (
             <b>{` ${cancelLabel} `}</b>
@@ -102,7 +103,7 @@ export const Dialog = ({
         </text>
         <text
           fg={focusedButton === 1 ? confirmColor : theme.colors.mutedForeground}
-          inverse={focusedButton === 1}
+          attributes={focusedButton === 1 ? TextAttributes.INVERSE : 0}
         >
           {focusedButton === 1 ? (
             <b>{` ${confirmLabel} `}</b>
