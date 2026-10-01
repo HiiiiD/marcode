@@ -1,0 +1,73 @@
+import { useKeyboard } from '@opentui/react';
+import { useEffect, useRef } from 'react';
+import type { SessionSummary } from '../../protocol/messages';
+import { actionFor, type Zone } from '../keymap';
+import { nextEffort, nextMode, nextModel } from '../view/cycle';
+import { useTuiStore } from './store';
+
+export const QUIT_NOTICE = 'Press Ctrl+C again to quit';
+
+export interface AppKeys {
+  inert: boolean;
+  zone: Zone;
+  summary: SessionSummary | undefined;
+  quitWindowMs: number;
+  onQuit(): void;
+  toggleRoster(): void;
+  openDialog(): void;
+  cycleZone(): void;
+}
+
+export function useAppKeys(k: AppKeys): void {
+  const { state, post, focusedId, notice, setNotice } = useTuiStore();
+  const armed = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const noticeRef = useRef(notice);
+  noticeRef.current = notice;
+
+  useEffect(() => () => { clearTimeout(armed.current); }, []);
+
+  const quitRequest = () => {
+    if (armed.current) {
+      clearTimeout(armed.current);
+      armed.current = undefined;
+      k.onQuit();
+      return;
+    }
+    setNotice(QUIT_NOTICE);
+    armed.current = setTimeout(() => {
+      armed.current = undefined;
+      if (noticeRef.current === QUIT_NOTICE) { setNotice(null); }
+    }, k.quitWindowMs);
+  };
+
+  // send/newline/history belong to the composer's own textarea bindings; acting on them here would send twice.
+  useKeyboard((key) => {
+    if (k.inert) { return; }
+    const s = k.summary;
+    const action = actionFor(k.zone, key, { running: s?.status === 'running' });
+    switch (action?.do) {
+      case 'toggle-roster': k.toggleRoster(); return;
+      case 'new-session': k.openDialog(); return;
+      case 'cycle-zone': k.cycleZone(); return;
+      case 'interrupt': if (focusedId) { post({ t: 'interrupt', id: focusedId }); } return;
+      case 'quit-request': quitRequest(); return;
+      case 'refresh-catalog': post({ t: 'refresh-catalog' }); return;
+      case 'cycle-model': {
+        const model = s && nextModel(state.catalog, s);
+        if (s && model) { post({ t: 'set-model', id: s.id, model }); }
+        return;
+      }
+      case 'cycle-effort': {
+        const effort = s && nextEffort(state.catalog, s);
+        if (s && effort) { post({ t: 'set-effort', id: s.id, effort }); }
+        return;
+      }
+      case 'cycle-mode': {
+        const mode = s && nextMode(state.catalog, s);
+        if (s && mode) { post({ t: 'set-permission-mode', id: s.id, mode }); }
+        return;
+      }
+      default: return;
+    }
+  });
+}

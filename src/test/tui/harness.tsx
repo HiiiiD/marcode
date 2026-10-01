@@ -34,7 +34,8 @@ export async function mount(ui: ReactNode, size = { width: 100, height: 30 }): P
   actEnv(true);
   let setup!: Awaited<ReturnType<typeof testRender>>;
   await act(async () => {
-    setup = await testRender(<TuiStoreProvider transport={loop.transport}>{ui}</TuiStoreProvider>, size);
+    // main.tsx runs with exitOnCtrlC off; the test renderer would otherwise destroy itself on Ctrl+C.
+    setup = await testRender(<TuiStoreProvider transport={loop.transport}>{ui}</TuiStoreProvider>, { exitOnCtrlC: false, ...size });
   });
   await setup.renderOnce();
   actEnv(true);
