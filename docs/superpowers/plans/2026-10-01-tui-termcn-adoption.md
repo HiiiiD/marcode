@@ -182,7 +182,7 @@ export function TuiThemeProvider({ children }: { children: ReactNode }) {
 }
 ```
 
-The file therefore has a `.tsx` extension: name it `src/tui/ui/tui-theme.tsx` (the Files list and later imports use `./tui-theme`, which resolves either way). The `defaultTheme` export and `ThemeProvider`'s file path come from Task 1's install; if the CLI used different file names, match what it generated.
+The file is `.tsx` because it contains JSX. The `defaultTheme` export and `ThemeProvider`'s file path come from Task 1's install; if the CLI used different file names, match what it generated.
 
 - [ ] **Step 4: Run the test and see it pass**
 
@@ -657,7 +657,7 @@ cd /e/Efebia/hiiiid-code && git add src/tui/ui/transcript src/tui/ui/termcn src/
 
 - [ ] **Step 1: Docs**
 
-In `docs/tui.md` add a short "Vendored components" section: termcn items live in `src/tui/ui/termcn/`, installed with `npx shadcn@latest add @termcn/opentui/<name> --yes --cwd src/tui/ui/termcn`, local edits are listed in `termcn/PATCHES.md` and must be reapplied after `--overwrite`, theme tokens come from `src/tui/ui/tui-theme.ts`. Add to the smoke checklist: `- [ ] Light terminal theme: tool rows, role labels, chips and the delete confirm stay legible.` and `- [ ] The new-session dialog, delete confirm and chip band in a short (12-row) terminal.` In `AGENTS.md` add a path-table row: `src/tui/ui/termcn/` | termcn components installed by the shadcn CLI, patched only as `PATCHES.md` lists; `src/tui/ui/tui-theme.ts` maps our terminal colours into its theme.
+In `docs/tui.md` add a short "Vendored components" section: termcn items live in `src/tui/ui/termcn/`, installed with `npx shadcn@latest add @termcn/opentui/<name> --yes --cwd src/tui/ui/termcn`, local edits are listed in `termcn/PATCHES.md` and must be reapplied after `--overwrite`, theme tokens come from `src/tui/ui/tui-theme.tsx`. Add to the smoke checklist: `- [ ] Light terminal theme: tool rows, role labels, chips and the delete confirm stay legible.` and `- [ ] The new-session dialog, delete confirm and chip band in a short (12-row) terminal.` In `AGENTS.md` add a path-table row: `src/tui/ui/termcn/` | termcn components installed by the shadcn CLI, patched only as `PATCHES.md` lists; `src/tui/ui/tui-theme.tsx` maps our terminal colours into its theme.
 
 - [ ] **Step 2: Run every gate**
 
