@@ -3408,6 +3408,8 @@ cd /e/Efebia/hiiiid-code && git add scripts docs AGENTS.md package.json .gitigno
 
 (Record here, as you go, every OpenTUI prop or API name that differed from the docs and was corrected from the installed types, and any `--external` decision from Task 18.)
 
+- Task 4: `testRender` is async as documented and `onInput` is the right prop, but a bare `mockInput.typeText` does not flush React state updates (React act environment is on); wrap it as `await act(async () => { await setup.mockInput.typeText(...) })` with `act` from `react`. A harmless "Root inside a test was not wrapped in act(...)" warning still prints on stderr.
+
 ## Self-Review Notes (for the reviewer)
 
 - Spec coverage: client-core + transport (2, 3); toolchain, guards (4); CLI, workspace key (5); boot/in-process host (6); roster, bottom slot, transcript rows, keymap (7, 8); store + visible-set posting (9); transcript scrollback/markdown/tool expand/load-more (10); composer/drafts/newline chords/history/queued (11); approvals and questions (12); foreign banner, status line, empty states (13); launch/new session/cyclers (14); app, lifecycle, signals (15); login/config/migrate (16); e2e incl. foreign (17); binaries, docs, smoke (18). Bun spike gate (1).

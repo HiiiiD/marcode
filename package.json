@@ -238,7 +238,7 @@
   },
   "scripts": {
     "vscode:prepublish": "yarn run package",
-    "compile": "node esbuild.js && yarn run check-types && yarn run lint",
+    "compile": "node esbuild.js && yarn run check-types && yarn run check-types:tui && yarn run lint",
     "watch": "npm-run-all -p watch:*",
     "watch:esbuild": "node esbuild.js --watch",
     "watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
@@ -249,11 +249,14 @@
     "watch-tests": "tsc -p . -w --outDir out",
     "pretest": "yarn run compile-tests && yarn run compile && yarn run lint",
     "check-types": "tsc --noEmit",
+    "check-types:tui": "tsc -p tsconfig.tui.json --noEmit",
     "lint": "eslint src",
     "test": "yarn run pretest && vscode-test",
     "test:unit:raw": "mocha --ui tdd --require tsx/cjs \"src/test/unit/**/*.test.ts\"",
     "test:dom:raw": "mocha --ui tdd --require tsx/cjs --require global-jsdom/register --require src/test/dom/setup.ts \"src/test/dom/**/*.test.tsx\"",
     "test:unit": "node scripts/run-tests-ram-guard.mjs unit",
+    "test:tui:raw": "bun test src/test/tui",
+    "test:tui": "node scripts/run-tests-ram-guard.mjs tui && node scripts/check-tui-asserts.mjs",
     "test:dom": "node scripts/run-tests-ram-guard.mjs dom",
     "codex:bindings": "codex app-server generate-ts --out .codex-bindings"
   },

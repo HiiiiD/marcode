@@ -13,6 +13,6 @@
         "ignoreDeprecations": "6.0",
         "resolveJsonModule": true,
         "skipLibCheck": true
-    }
-    ,"exclude": ["node_modules", "dist", "scripts/spikes"]
+    },
+    "exclude": ["node_modules", "out", "dist", "scripts/spikes", "src/tui/ui", "src/test/tui"]
 }

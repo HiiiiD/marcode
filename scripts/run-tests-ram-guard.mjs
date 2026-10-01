@@ -7,7 +7,7 @@
 // scripts/check-dom-null-asserts.mjs) take the whole machine down.
 //
 // Usage:
-//   node scripts/run-tests-ram-guard.mjs <unit|dom> [--limit-mb=2048] [--interval-ms=250]
+//   node scripts/run-tests-ram-guard.mjs <unit|dom|tui> [--limit-mb=2048] [--interval-ms=250]
 //
 // Exit code: the wrapped test process's own exit code, or 137 if killed for
 // exceeding the RAM limit.
@@ -38,6 +38,10 @@ const SUITES = {
             "--require", "src/test/dom/setup.ts",
             "src/test/dom/**/*.test.tsx",
         ],
+    },
+    tui: {
+        bin: process.platform === "win32" ? "bun.exe" : "bun",
+        args: ["test", "src/test/tui"],
     },
 };
 
