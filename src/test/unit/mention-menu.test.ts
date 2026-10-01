@@ -2,7 +2,7 @@ import * as assert from 'assert';
 import {
   filterMentions, pruneMentions, mentionQuery, spliceMention, tokenFor,
   type MentionOption, type PendingMention,
-} from '../../webview/lib/mention-menu';
+} from '../../client-core/mentions/mention-menu';
 
 function option(baseToken: string, label: string, group = 'Sessions'): MentionOption<{ tag: string }> {
   return {

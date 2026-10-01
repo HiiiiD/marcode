@@ -1,5 +1,5 @@
 import * as assert from 'assert';
-import { sessionMentions, type SessionMentionPayload } from '../../webview/lib/session-mentions';
+import { sessionMentions, type SessionMentionPayload } from '../../client-core/mentions/session-mentions';
 import type { SessionSummary } from '../../protocol/messages';
 
 function summary(id: string, title: string, name?: string): SessionSummary {

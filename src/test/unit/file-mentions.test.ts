@@ -1,7 +1,7 @@
 import * as assert from 'assert';
-import { fileMentions, fileRefsOf, type FileMentionPayload } from '../../webview/lib/file-mentions';
-import type { PendingMention } from '../../webview/lib/mention-menu';
-import type { SessionMentionPayload } from '../../webview/lib/session-mentions';
+import { fileMentions, fileRefsOf, type FileMentionPayload } from '../../client-core/mentions/file-mentions';
+import type { PendingMention } from '../../client-core/mentions/mention-menu';
+import type { SessionMentionPayload } from '../../client-core/mentions/session-mentions';
 
 suite('file mentions', () => {
   test('one row per file, grouped under Files', () => {

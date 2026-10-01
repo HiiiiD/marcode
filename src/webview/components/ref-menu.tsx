@@ -1,10 +1,10 @@
 import { cn } from '@/lib/utils';
 import { useEffect, useRef } from 'react';
-import type { MentionOption } from '../lib/mention-menu';
+import type { MentionOption } from '../../client-core/mentions/mention-menu';
 
 /**
  * The `@` menu rows. Presentation only — every decision about what is in the
- * list, and what picking one does, lives in `lib/mention-menu.ts` and its
+ * list, and what picking one does, lives in `client-core/mentions/mention-menu.ts` and its
  * source modules.
  *
  * `onMouseDown` with `preventDefault`, not `onClick`: the composer closes the
