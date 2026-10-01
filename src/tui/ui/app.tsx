@@ -4,9 +4,12 @@ import type { SessionId } from '../../protocol/messages';
 import type { Zone } from '../keymap';
 import { bottomSlot } from '../view/bottom-slot';
 import { launchPlan } from '../view/launch';
+import type { PickerKind } from '../view/pickers';
 import { BottomSlotView } from './bottom-slot';
 import { DeleteConfirm } from './delete-confirm';
 import { EmptyState } from './empty-state';
+import { ModeDialog } from './mode-dialog';
+import { ModelDialog } from './model-dialog';
 import { NewSessionDialog } from './new-session-dialog';
 import { NoticeLine } from './notice-line';
 import { Roster } from './roster';
@@ -38,6 +41,7 @@ export function App(props: AppProps) {
   const showRoster = rosterOn ?? wide;
   const [zone, setZone] = useState<PaneZone>('composer');
   const [dialog, setDialog] = useState(false);
+  const [picker, setPicker] = useState<PickerKind | null>(null);
   const [deleting, setDeleting] = useState<{ id: SessionId; title: string } | null>(null);
   const [kept, setKept] = useState<string | undefined>(undefined);
   const planned = useRef(false);
@@ -81,12 +85,13 @@ export function App(props: AppProps) {
   const current: PaneZone = zones.includes(zone) ? zone : zones[0] ?? 'composer';
   const keyZone: Zone = slot?.kind === 'permission' ? 'approval' : slot?.kind === 'question' ? 'question' : current;
   const paneZone: PaneZone = keyZone === 'approval' || keyZone === 'question' ? 'composer' : current;
-  const live = (z: PaneZone) => !dialog && !deleting && paneZone === z;
+  const live = (z: PaneZone) => !dialog && !deleting && !picker && paneZone === z;
 
   useAppKeys({
-    inert: dialog || deleting !== null, zone: keyZone, summary, quitWindowMs: props.quitWindowMs ?? 2000, onQuit: props.onQuit,
+    inert: dialog || deleting !== null || picker !== null, zone: keyZone, summary, quitWindowMs: props.quitWindowMs ?? 2000, onQuit: props.onQuit,
     toggleRoster: () => { setRosterOn(!showRoster); },
     openDialog: () => { setDialog(true); },
+    openPicker: setPicker,
     cycleZone: () => { setZone(zones[(zones.indexOf(current) + 1) % zones.length] ?? 'composer'); },
   });
 
@@ -102,7 +107,7 @@ export function App(props: AppProps) {
   const body = focusedId ? (
     <box flexDirection="column" flexGrow={1} flexShrink={1} minHeight={0}>
       <Transcript sessionId={focusedId} focused={live('transcript')} />
-      <box flexShrink={0}><BottomSlotView sessionId={focusedId} focused={live('composer')} /></box>
+      <box flexShrink={0}><BottomSlotView sessionId={focusedId} focused={live('composer')} onOpenPicker={setPicker} /></box>
     </box>
   ) : (
     <box flexGrow={1}>
@@ -126,6 +131,10 @@ export function App(props: AppProps) {
           onClose={() => { setDialog(false); }}
           onCreated={() => { setDialog(false); expectNewSession(); }}
         />
+      ) : null}
+      {picker === 'model' && focusedId ? <ModelDialog sessionId={focusedId} onClose={() => { setPicker(null); }} /> : null}
+      {(picker === 'mode' || picker === 'effort') && focusedId ? (
+        <ModeDialog sessionId={focusedId} focus={picker === 'effort' ? 'effort' : 'modes'} onClose={() => { setPicker(null); }} />
       ) : null}
       {deleting ? <DeleteConfirm id={deleting.id} title={deleting.title} onDone={() => { setDeleting(null); }} /> : null}
       <box flexDirection="column" flexShrink={0}>

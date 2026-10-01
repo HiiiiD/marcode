@@ -2,7 +2,7 @@ export type Zone = 'composer' | 'transcript' | 'roster' | 'approval' | 'question
 export interface KeyInput { name: string; ctrl?: boolean; meta?: boolean; shift?: boolean }
 export type Action =
   | { do: 'toggle-roster' } | { do: 'new-session' } | { do: 'interrupt' } | { do: 'quit-request' }
-  | { do: 'cycle-zone' } | { do: 'cycle-model' } | { do: 'cycle-effort' } | { do: 'cycle-mode' }
+  | { do: 'cycle-zone' } | { do: 'open-model' } | { do: 'open-effort' } | { do: 'open-mode' }
   | { do: 'send' } | { do: 'newline' } | { do: 'history-prev' }
   | { do: 'item-next' } | { do: 'item-prev' } | { do: 'toggle-item' } | { do: 'page-up' } | { do: 'page-down' } | { do: 'repin' }
   | { do: 'roster-next' } | { do: 'roster-prev' } | { do: 'roster-focus' } | { do: 'roster-hide' } | { do: 'roster-rename' }
@@ -19,15 +19,15 @@ function globalAction(key: KeyInput, zone: Zone, ctx: { running: boolean }): Act
       case 'b': return act('toggle-roster');
       case 'n': return act('new-session');
       case 'c': return ctx.running ? act('interrupt') : act('quit-request');
-      case 'p': return act('cycle-model');
-      case 'e': return act('cycle-effort');
+      case 'p': return act('open-model');
+      case 'e': return act('open-effort');
       case 'r': return act('refresh-catalog');
     }
     return undefined;
   }
   if (key.name === 'escape') { return ctx.running ? act('interrupt') : undefined; }
   if (key.name === 'tab') {
-    if (key.shift) { return act('cycle-mode'); }
+    if (key.shift) { return act('open-mode'); }
     return zone === 'approval' || zone === 'question' ? undefined : act('cycle-zone');
   }
   return undefined;

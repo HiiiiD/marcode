@@ -37,8 +37,9 @@ yarn build:tui:bin    # bin/marcode.exe (bin/marcode elsewhere): standalone, Bun
 | Ctrl+B | anywhere | toggle the roster |
 | Ctrl+N | anywhere | new session dialog |
 | Up / Down or k / j, Enter, Esc | new session dialog | move; Enter picks the provider, then the model (skipped when it has one); Esc cancels |
-| Ctrl+P / Ctrl+E | your own session | cycle model / effort |
-| Shift+Tab | your own session | cycle permission mode (never into `bypass`) |
+| Ctrl+P / Ctrl+E | your own session | open the model dialog (type to search, favorites first) / the permission-mode dialog on its effort row (Left/Right steps the level live) |
+| Shift+Tab | your own session | open the permission-mode dialog (`bypass` is greyed once the session has started) |
+| `/model`, `/effort`, `/mode` | composer | the same dialogs, typed and sent with Enter |
 | Ctrl+R | anywhere | re-check providers |
 | j / k, Enter | transcript | next / previous item (a message or a tool/subagent card), expand or collapse a card |
 | PgUp / PgDn, End | transcript | scroll, re-pin to the bottom |

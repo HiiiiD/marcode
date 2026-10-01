@@ -2,7 +2,7 @@ import { useKeyboard } from '@opentui/react';
 import { useEffect, useRef } from 'react';
 import type { SessionSummary } from '../../protocol/messages';
 import { actionFor, type Zone } from '../keymap';
-import { nextEffort, nextMode, nextModel } from '../view/cycle';
+import type { PickerKind } from '../view/pickers';
 import { useTuiStore } from './store';
 
 export const QUIT_NOTICE = 'Press Ctrl+C again to quit';
@@ -15,11 +15,12 @@ export interface AppKeys {
   onQuit(): void;
   toggleRoster(): void;
   openDialog(): void;
+  openPicker(kind: PickerKind): void;
   cycleZone(): void;
 }
 
 export function useAppKeys(k: AppKeys): void {
-  const { state, post, notice, setNotice, mentionOpen, rosterFiltering } = useTuiStore();
+  const { post, notice, setNotice, mentionOpen, rosterFiltering } = useTuiStore();
   const armed = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const noticeRef = useRef(notice);
   noticeRef.current = notice;
@@ -73,21 +74,9 @@ export function useAppKeys(k: AppKeys): void {
       }
       case 'quit-request': quitRequest(); return;
       case 'refresh-catalog': post({ t: 'refresh-catalog' }); return;
-      case 'cycle-model': {
-        const model = s && nextModel(state.catalog, s);
-        if (s && model) { post({ t: 'set-model', id: s.id, model }); }
-        return;
-      }
-      case 'cycle-effort': {
-        const effort = s && nextEffort(state.catalog, s);
-        if (s && effort) { post({ t: 'set-effort', id: s.id, effort }); }
-        return;
-      }
-      case 'cycle-mode': {
-        const mode = s && nextMode(state.catalog, s);
-        if (s && mode) { post({ t: 'set-permission-mode', id: s.id, mode }); }
-        return;
-      }
+      case 'open-model': if (s) { k.openPicker('model'); } return;
+      case 'open-effort': if (s) { k.openPicker('effort'); } return;
+      case 'open-mode': if (s) { k.openPicker('mode'); } return;
       default: return;
     }
   });

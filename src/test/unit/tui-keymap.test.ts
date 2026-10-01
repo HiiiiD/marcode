@@ -52,8 +52,10 @@ suite('tui keymap', () => {
   test('global chords', () => {
     assert.deepStrictEqual(actionFor('transcript', { name: 'b', ctrl: true }, idle), { do: 'toggle-roster' });
     assert.deepStrictEqual(actionFor('transcript', { name: 'n', ctrl: true }, idle), { do: 'new-session' });
-    assert.deepStrictEqual(actionFor('composer', { name: 'tab', shift: true }, idle), { do: 'cycle-mode' });
+    assert.deepStrictEqual(actionFor('composer', { name: 'tab', shift: true }, idle), { do: 'open-mode' });
     assert.deepStrictEqual(actionFor('composer', { name: 'r', ctrl: true }, idle), { do: 'refresh-catalog' });
+    assert.deepStrictEqual(actionFor('composer', { name: 'p', ctrl: true }, idle), { do: 'open-model' });
+    assert.deepStrictEqual(actionFor('composer', { name: 'e', ctrl: true }, idle), { do: 'open-effort' });
   });
   test('roster: p pins, / filters, shift+d deletes, plain d does nothing', () => {
     assert.deepStrictEqual(actionFor('roster', { name: 'p' }, idle), { do: 'roster-pin' });

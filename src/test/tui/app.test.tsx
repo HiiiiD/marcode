@@ -6,6 +6,7 @@ import { catalog, singlePaneLayout, snapshot, summary } from '../fixtures/protoc
 import { hydrateMsg, mount, type Mounted } from './harness';
 
 let m: Mounted | undefined;
+const settleEscape = async () => { await act(async () => { await new Promise((r) => setTimeout(r, 100)); }); await m!.setup.renderOnce(); };
 afterEach(() => { m?.destroy(); m = undefined; });
 
 const props = { launchCwd: '/repo', forceNew: false, loginCommands: {}, onQuit: () => {} };
@@ -132,15 +133,45 @@ test('a later notice from the subscriber reaches the notice line, and unmount un
   expect(unsubscribed).toBe(1);
 });
 
-test('with a catalog, Ctrl+P and Ctrl+E post the next model and effort, Ctrl+R refreshes', async () => {
+test('Ctrl+P opens the model dialog and picking a row posts set-model', async () => {
   m = await mount(<App {...props} />);
   await m.fromHost(hydrateMsg({ catalog: catalog() }));
   await m.press('p', { ctrl: true });
-  await m.press('e', { ctrl: true });
-  await m.press('r', { ctrl: true });
-  await m.press('tab', { shift: true });
+  expect(m.frame()).toContain('Search:');
+  await m.press('down');
+  await m.press('return');
   expect(m.posted.some((p) => p.t === 'set-model' && p.model === 'fake-small')).toBe(true);
-  expect(m.posted.some((p) => p.t === 'set-effort' && p.effort === 'low')).toBe(true);
+  expect(m.frame().includes('Search:')).toBe(false);
+});
+
+test('Ctrl+E opens the effort row and Right posts the next level', async () => {
+  m = await mount(<App {...props} />);
+  await m.fromHost(hydrateMsg({ catalog: catalog() }));
+  await m.press('e', { ctrl: true });
+  expect(m.frame()).toContain('Effort');
+  await m.press('right');
+  expect(m.posted.some((p) => p.t === 'set-effort' && p.effort === 'high')).toBe(true);
+});
+
+test('Shift+Tab opens the permission mode dialog and Ctrl+R still refreshes the catalog', async () => {
+  m = await mount(<App {...props} />);
+  await m.fromHost(hydrateMsg({ catalog: catalog() }));
+  await m.press('tab', { shift: true });
+  expect(m.frame()).toContain('Permission mode');
+  await m.press('escape');
+  await settleEscape();
+  await m.press('r', { ctrl: true });
   expect(m.posted.some((p) => p.t === 'refresh-catalog')).toBe(true);
   expect(m.posted.some((p) => p.t === 'set-permission-mode')).toBe(false);
+});
+
+test('while a picker is open, other global chords are inert and Esc closes it', async () => {
+  m = await mount(<App {...props} />);
+  await m.fromHost(hydrateMsg({ catalog: catalog() }));
+  await m.press('p', { ctrl: true });
+  await m.press('n', { ctrl: true });
+  expect(m.frame().includes('New session')).toBe(false);
+  await m.press('escape');
+  await settleEscape();
+  expect(m.frame().includes('Search:')).toBe(false);
 });
