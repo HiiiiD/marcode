@@ -36,7 +36,7 @@ export function NewSessionDialog(props: { cwd: string; initialPrompt?: string; o
   const { pi, mi, step } = st.view;
   const models = providers[pi]?.models ?? [];
   return (
-    <box flexDirection="column" border borderStyle="double" title="New session" padding={1}>
+    <box flexDirection="column" flexShrink={0} border borderStyle="double" title="New session" paddingX={1}>
       {providers.length === 0 ? <text fg="gray">No provider available.</text> : null}
       {step === 'provider'
         ? providers.map((p, i) => <text key={p.id} attributes={i === pi ? 1 : 0}>{`${i === pi ? '›' : ' '} ${p.displayName}`}</text>)

@@ -136,3 +136,12 @@ test('an owned running session: the first Ctrl+C interrupts, a second within the
   await m.press('c', { ctrl: true });
   expect(quit).toBe(1);
 });
+
+test('the new-session dialog keeps its option rows visible in a short terminal', async () => {
+  m = await mount(<App {...props} />, { width: 120, height: 14 });
+  await m.fromHost(hydrateMsg());
+  await m.press('n', { ctrl: true });
+  const frame = m.frame();
+  expect(frame.includes('New session')).toBe(true);
+  expect(frame.includes('› ')).toBe(true);
+});
