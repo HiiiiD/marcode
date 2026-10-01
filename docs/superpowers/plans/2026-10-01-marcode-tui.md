@@ -3409,6 +3409,8 @@ cd /e/Efebia/hiiiid-code && git add scripts docs AGENTS.md package.json .gitigno
 (Record here, as you go, every OpenTUI prop or API name that differed from the docs and was corrected from the installed types, and any `--external` decision from Task 18.)
 
 - Task 4: `testRender` is async as documented and `onInput` is the right prop, but a bare `mockInput.typeText` does not flush React state updates (React act environment is on); wrap it as `await act(async () => { await setup.mockInput.typeText(...) })` with `act` from `react`. A harmless "Root inside a test was not wrapped in act(...)" warning still prints on stderr.
+- Task 9: the Task 4 stderr act() warning was not a typing problem. `testRender` sets `IS_REACT_ACT_ENVIRONMENT` true itself but resets it to false on destroy, and the renderer's destroy listener unmounts the React root outside any `act`. The harness re-enables the flag on every `mount` and wraps `renderer.destroy()` in `act`; a bun preload or a module-level flag alone does not silence it. `fromHost`/`press`/`type` run inside `await act(async ...)` then `renderOnce()`.
+- Task 9: `mockInput.pressKey` takes `KeyCodes` names (`RETURN`, `ARROW_UP`) or literal characters, not the lowercase `key.name` the app sees (`return`, `up`); the harness `press` maps the lowercase names. `<box>` needs `border` alongside `borderStyle` to draw a frame; `useKeyboard`'s event has `name`/`ctrl`/`meta`/`shift`, matching `KeyInput`.
 
 ## Self-Review Notes (for the reviewer)
 

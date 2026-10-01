@@ -3,7 +3,7 @@ import { testRender } from '@opentui/react/test-utils';
 import { act, useState } from 'react';
 
 let setup: Awaited<ReturnType<typeof testRender>> | undefined;
-afterEach(() => { setup?.renderer.destroy(); setup = undefined; });
+afterEach(() => { act(() => { setup?.renderer.destroy(); }); setup = undefined; });
 
 function Counter() {
   const [n, setN] = useState(0);
