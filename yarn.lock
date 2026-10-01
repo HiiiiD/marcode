@@ -866,6 +866,116 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@opentui/core-darwin-arm64@npm:0.5.13":
+  version: 0.5.13
+  resolution: "@opentui/core-darwin-arm64@npm:0.5.13"
+  conditions: os=darwin & cpu=arm64
+  languageName: node
+  linkType: hard
+
+"@opentui/core-darwin-x64@npm:0.5.13":
+  version: 0.5.13
+  resolution: "@opentui/core-darwin-x64@npm:0.5.13"
+  conditions: os=darwin & cpu=x64
+  languageName: node
+  linkType: hard
+
+"@opentui/core-linux-arm64-musl@npm:0.5.13":
+  version: 0.5.13
+  resolution: "@opentui/core-linux-arm64-musl@npm:0.5.13"
+  conditions: os=linux & cpu=arm64 & libc=musl
+  languageName: node
+  linkType: hard
+
+"@opentui/core-linux-arm64@npm:0.5.13":
+  version: 0.5.13
+  resolution: "@opentui/core-linux-arm64@npm:0.5.13"
+  conditions: os=linux & cpu=arm64
+  languageName: node
+  linkType: hard
+
+"@opentui/core-linux-x64-musl@npm:0.5.13":
+  version: 0.5.13
+  resolution: "@opentui/core-linux-x64-musl@npm:0.5.13"
+  conditions: os=linux & cpu=x64 & libc=musl
+  languageName: node
+  linkType: hard
+
+"@opentui/core-linux-x64@npm:0.5.13":
+  version: 0.5.13
+  resolution: "@opentui/core-linux-x64@npm:0.5.13"
+  conditions: os=linux & cpu=x64
+  languageName: node
+  linkType: hard
+
+"@opentui/core-win32-arm64@npm:0.5.13":
+  version: 0.5.13
+  resolution: "@opentui/core-win32-arm64@npm:0.5.13"
+  conditions: os=win32 & cpu=arm64
+  languageName: node
+  linkType: hard
+
+"@opentui/core-win32-x64@npm:0.5.13":
+  version: 0.5.13
+  resolution: "@opentui/core-win32-x64@npm:0.5.13"
+  conditions: os=win32 & cpu=x64
+  languageName: node
+  linkType: hard
+
+"@opentui/core@npm:0.5.13":
+  version: 0.5.13
+  resolution: "@opentui/core@npm:0.5.13"
+  dependencies:
+    "@opentui/core-darwin-arm64": "npm:0.5.13"
+    "@opentui/core-darwin-x64": "npm:0.5.13"
+    "@opentui/core-linux-arm64": "npm:0.5.13"
+    "@opentui/core-linux-arm64-musl": "npm:0.5.13"
+    "@opentui/core-linux-x64": "npm:0.5.13"
+    "@opentui/core-linux-x64-musl": "npm:0.5.13"
+    "@opentui/core-win32-arm64": "npm:0.5.13"
+    "@opentui/core-win32-x64": "npm:0.5.13"
+    bun-ffi-structs: "npm:0.3.1"
+    diff: "npm:9.0.0"
+    marked: "npm:17.0.1"
+    string-width: "npm:7.2.0"
+    strip-ansi: "npm:7.1.2"
+  peerDependencies:
+    web-tree-sitter: 0.25.10
+  dependenciesMeta:
+    "@opentui/core-darwin-arm64":
+      optional: true
+    "@opentui/core-darwin-x64":
+      optional: true
+    "@opentui/core-linux-arm64":
+      optional: true
+    "@opentui/core-linux-arm64-musl":
+      optional: true
+    "@opentui/core-linux-x64":
+      optional: true
+    "@opentui/core-linux-x64-musl":
+      optional: true
+    "@opentui/core-win32-arm64":
+      optional: true
+    "@opentui/core-win32-x64":
+      optional: true
+  checksum: 10c0/b1267ffb8326c4c0429208af4d686e483d1d74da76f9fd3fedd2214b89ee9bb09554b51c096396d6d4f12785650b9e5779bb244b846320de0db3b3a36ec16271
+  languageName: node
+  linkType: hard
+
+"@opentui/react@npm:0.5.13":
+  version: 0.5.13
+  resolution: "@opentui/react@npm:0.5.13"
+  dependencies:
+    "@opentui/core": "npm:0.5.13"
+    react-reconciler: "npm:^0.33.0"
+  peerDependencies:
+    react: ">=19.2.0"
+    react-devtools-core: ^7.0.1
+    ws: ^8.18.0
+  checksum: 10c0/5a2026579fe7ae658c5487e78d90a875805085ffd94a3f23caf3d43256231c1f1139e0e65063c9ae916df691eabb13f130bc3e5e6d889179b8917456144a99a2
+  languageName: node
+  linkType: hard
+
 "@parcel/watcher-android-arm64@npm:2.5.1":
   version: 2.5.1
   resolution: "@parcel/watcher-android-arm64@npm:2.5.1"
@@ -1265,6 +1375,15 @@ __metadata:
   version: 5.0.4
   resolution: "@types/aria-query@npm:5.0.4"
   checksum: 10c0/dc667bc6a3acc7bba2bccf8c23d56cb1f2f4defaa704cfef595437107efaa972d3b3db9ec1d66bc2711bfc35086821edd32c302bffab36f2e79b97f312069f08
+  languageName: node
+  linkType: hard
+
+"@types/bun@npm:^1.4.2":
+  version: 1.4.2
+  resolution: "@types/bun@npm:1.4.2"
+  dependencies:
+    bun-types: "npm:1.4.2"
+  checksum: 10c0/f22456d26f2330ab8f9ea351695218db0dc05911281b7c12b609ed89d7050bac18a0f8400ae0996756fe9651e12fb3200527dcfae53f0ddb9265e860bf0b3099
   languageName: node
   linkType: hard
 
@@ -1683,6 +1802,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"ansi-regex@npm:^6.0.1":
+  version: 6.4.0
+  resolution: "ansi-regex@npm:6.4.0"
+  checksum: 10c0/e42f68ffa21aac4c4de27aad601bb5ea415b5a07b127681ef44728195f22231b77bc39230ce0c976420d84650b7bf5a5b60eb4e7500c1f74e9a3f3cd4a68f3f6
+  languageName: node
+  linkType: hard
+
 "ansi-regex@npm:^6.2.2":
   version: 6.3.0
   resolution: "ansi-regex@npm:6.3.0"
@@ -1867,6 +1993,24 @@ __metadata:
   version: 1.3.1
   resolution: "browser-stdout@npm:1.3.1"
   checksum: 10c0/c40e482fd82be872b6ea7b9f7591beafbf6f5ba522fe3dade98ba1573a1c29a11101564993e4eb44e5488be8f44510af072df9a9637c739217eb155ceb639205
+  languageName: node
+  linkType: hard
+
+"bun-ffi-structs@npm:0.3.1":
+  version: 0.3.1
+  resolution: "bun-ffi-structs@npm:0.3.1"
+  peerDependencies:
+    typescript: ^5
+  checksum: 10c0/b1b30c7d5aaf58baa1ecc986ab7d1166eee45bf12e519f3133ecd8ae81460600fdffbcf82d71cd9dfded6b5ab54b11dd832eedc0ebddfd1367798f60ae5e3d79
+  languageName: node
+  linkType: hard
+
+"bun-types@npm:1.4.2":
+  version: 1.4.2
+  resolution: "bun-types@npm:1.4.2"
+  dependencies:
+    "@types/node": "npm:*"
+  checksum: 10c0/5044ca70b666567a258bcf48f516af2850e80091ccc3cacbf893852ece027007bc0fcf3424a59e97d5dba327ebcd5732ef9363a1d653d57ce2474f05526f40e3
   languageName: node
   linkType: hard
 
@@ -2389,17 +2533,17 @@ __metadata:
   languageName: node
   linkType: hard
 
+"diff@npm:9.0.0, diff@npm:^9.0.0":
+  version: 9.0.0
+  resolution: "diff@npm:9.0.0"
+  checksum: 10c0/a971cc88f66071a33bd3942db2f51b57d484e9856265ae45cf44fb28ab2fde91f132d9c26d8be0fb6082d2be94d29e1295c1adb251b7461935d6a2dd304cd161
+  languageName: node
+  linkType: hard
+
 "diff@npm:^7.0.0":
   version: 7.0.0
   resolution: "diff@npm:7.0.0"
   checksum: 10c0/251fd15f85ffdf814cfc35a728d526b8d2ad3de338dcbd011ac6e57c461417090766b28995f8ff733135b5fbc3699c392db1d5e27711ac4e00244768cd1d577b
-  languageName: node
-  linkType: hard
-
-"diff@npm:^9.0.0":
-  version: 9.0.0
-  resolution: "diff@npm:9.0.0"
-  checksum: 10c0/a971cc88f66071a33bd3942db2f51b57d484e9856265ae45cf44fb28ab2fde91f132d9c26d8be0fb6082d2be94d29e1295c1adb251b7461935d6a2dd304cd161
   languageName: node
   linkType: hard
 
@@ -4384,11 +4528,14 @@ __metadata:
     "@headless-tree/react": "npm:1.7.0"
     "@modelcontextprotocol/sdk": "npm:^1.30.1"
     "@opencode-ai/sdk": "npm:^1.18.32"
+    "@opentui/core": "npm:0.5.13"
+    "@opentui/react": "npm:0.5.13"
     "@shadcn/react": "npm:^0.3.1"
     "@tailwindcss/cli": "npm:^4.3.3"
     "@testing-library/dom": "npm:^10.4.2"
     "@testing-library/react": "npm:^16.3.3"
     "@testing-library/user-event": "npm:^14.6.7"
+    "@types/bun": "npm:^1.4.2"
     "@types/jsdom": "npm:^30.0.0"
     "@types/mocha": "npm:^10.0.10"
     "@types/node": "npm:24.x"
@@ -4407,6 +4554,7 @@ __metadata:
     mocha: "npm:^12.0.2"
     npm-run-all: "npm:^4.1.5"
     react: "npm:^19.2.8"
+    react-devtools-core: "npm:7.0.1"
     react-dom: "npm:^19.2.8"
     react-markdown: "npm:^10.1.0"
     react-resizable-panels: "npm:^4.13.3"
@@ -4417,6 +4565,7 @@ __metadata:
     tsx: "npm:^4.23.15"
     typescript: "npm:^6.0.3"
     typescript-eslint: "npm:^8.70.1"
+    web-tree-sitter: "npm:0.25.10"
     zod: "npm:^4.6.5"
   languageName: unknown
   linkType: soft
@@ -4425,6 +4574,15 @@ __metadata:
   version: 3.0.4
   resolution: "markdown-table@npm:3.0.4"
   checksum: 10c0/1257b31827629a54c24a5030a3dac952256c559174c95ce3ef89bebd6bff0cb1444b1fd667b1a1bb53307f83278111505b3e26f0c4e7b731e0060d435d2d930b
+  languageName: node
+  linkType: hard
+
+"marked@npm:17.0.1":
+  version: 17.0.1
+  resolution: "marked@npm:17.0.1"
+  bin:
+    marked: bin/marked.js
+  checksum: 10c0/0197337aad33882308cea52d2c86d7b830a89be729a4010a26a488ae1c224cdc7520b8cce056832a81a127fc39a3827f45e3865c1ff257324cb553cb06ce0e57
   languageName: node
   linkType: hard
 
@@ -5640,6 +5798,16 @@ __metadata:
   languageName: node
   linkType: hard
 
+"react-devtools-core@npm:7.0.1":
+  version: 7.0.1
+  resolution: "react-devtools-core@npm:7.0.1"
+  dependencies:
+    shell-quote: "npm:^1.6.1"
+    ws: "npm:^7"
+  checksum: 10c0/a531bdb1203d1b903a50b8604c45cb53d09fb9654c4d558340d41569b1831746852f47b4698b04a102dd1b9a3861c2b9fa2d2af89a6e2e836026e0bea3d317ed
+  languageName: node
+  linkType: hard
+
 "react-dom@npm:^19.2.8":
   version: 19.2.8
   resolution: "react-dom@npm:19.2.8"
@@ -5677,6 +5845,17 @@ __metadata:
     "@types/react": ">=18"
     react: ">=18"
   checksum: 10c0/4a5dc7d15ca6d05e9ee95318c1904f83b111a76f7588c44f50f1d54d4c97193b84e4f64c4b592057c989228238a2590306cedd0c4d398e75da49262b2b5ae1bf
+  languageName: node
+  linkType: hard
+
+"react-reconciler@npm:^0.33.0":
+  version: 0.33.0
+  resolution: "react-reconciler@npm:0.33.0"
+  dependencies:
+    scheduler: "npm:^0.27.0"
+  peerDependencies:
+    react: ^19.2.0
+  checksum: 10c0/3f7b27ea8d0ff4c8bf0e402a285e1af9b7d0e6f4c1a70a28f4384938bc1130bc82a90a31df0b79ef5e380e2e55e2598bd90b4dbf802b1203d735ba0355817d3a
   languageName: node
   linkType: hard
 
@@ -6277,6 +6456,17 @@ __metadata:
   languageName: node
   linkType: hard
 
+"string-width@npm:7.2.0, string-width@npm:^7.0.0, string-width@npm:^7.2.0":
+  version: 7.2.0
+  resolution: "string-width@npm:7.2.0"
+  dependencies:
+    emoji-regex: "npm:^10.3.0"
+    get-east-asian-width: "npm:^1.0.0"
+    strip-ansi: "npm:^7.1.0"
+  checksum: 10c0/eb0430dd43f3199c7a46dcbf7a0b34539c76fe3aa62763d0b0655acdcbdf360b3f66f3d58ca25ba0205f42ea3491fa00f09426d3b7d3040e506878fc7664c9b9
+  languageName: node
+  linkType: hard
+
 "string-width@npm:^5.0.1, string-width@npm:^5.1.2":
   version: 5.1.2
   resolution: "string-width@npm:5.1.2"
@@ -6285,17 +6475,6 @@ __metadata:
     emoji-regex: "npm:^9.2.2"
     strip-ansi: "npm:^7.0.1"
   checksum: 10c0/ab9c4264443d35b8b923cbdd513a089a60de339216d3b0ed3be3ba57d6880e1a192b70ae17225f764d7adbf5994e9bb8df253a944736c15a0240eff553c678ca
-  languageName: node
-  linkType: hard
-
-"string-width@npm:^7.0.0, string-width@npm:^7.2.0":
-  version: 7.2.0
-  resolution: "string-width@npm:7.2.0"
-  dependencies:
-    emoji-regex: "npm:^10.3.0"
-    get-east-asian-width: "npm:^1.0.0"
-    strip-ansi: "npm:^7.1.0"
-  checksum: 10c0/eb0430dd43f3199c7a46dcbf7a0b34539c76fe3aa62763d0b0655acdcbdf360b3f66f3d58ca25ba0205f42ea3491fa00f09426d3b7d3040e506878fc7664c9b9
   languageName: node
   linkType: hard
 
@@ -6385,6 +6564,15 @@ __metadata:
   dependencies:
     ansi-regex: "npm:^5.0.1"
   checksum: 10c0/1ae5f212a126fe5b167707f716942490e3933085a5ff6c008ab97ab2f272c8025d3aa218b7bd6ab25729ca20cc81cddb252102f8751e13482a5199e873680952
+  languageName: node
+  linkType: hard
+
+"strip-ansi@npm:7.1.2":
+  version: 7.1.2
+  resolution: "strip-ansi@npm:7.1.2"
+  dependencies:
+    ansi-regex: "npm:^6.0.1"
+  checksum: 10c0/0d6d7a023de33368fd042aab0bf48f4f4077abdfd60e5393e73c7c411e85e1b3a83507c11af2e656188511475776215df9ca589b4da2295c9455cc399ce1858b
   languageName: node
   linkType: hard
 
@@ -6936,6 +7124,18 @@ __metadata:
   languageName: node
   linkType: hard
 
+"web-tree-sitter@npm:0.25.10":
+  version: 0.25.10
+  resolution: "web-tree-sitter@npm:0.25.10"
+  peerDependencies:
+    "@types/emscripten": ^1.40.0
+  peerDependenciesMeta:
+    "@types/emscripten":
+      optional: true
+  checksum: 10c0/8056263c75f59c8f992584386f85675fdce94f67eec506970f49d203a7d25effa96a4736eee5b06f06dc4d8f01339f68d9d4e97d713a6517d19db1f1c0954e06
+  languageName: node
+  linkType: hard
+
 "webidl-conversions@npm:^8.0.1":
   version: 8.0.1
   resolution: "webidl-conversions@npm:8.0.1"
@@ -7124,6 +7324,21 @@ __metadata:
   version: 1.0.2
   resolution: "wrappy@npm:1.0.2"
   checksum: 10c0/56fece1a4018c6a6c8e28fbc88c87e0fbf4ea8fd64fc6c63b18f4acc4bd13e0ad2515189786dd2c30d3eec9663d70f4ecf699330002f8ccb547e4a18231fc9f0
+  languageName: node
+  linkType: hard
+
+"ws@npm:^7":
+  version: 7.5.13
+  resolution: "ws@npm:7.5.13"
+  peerDependencies:
+    bufferutil: ^4.0.1
+    utf-8-validate: ^5.0.2
+  peerDependenciesMeta:
+    bufferutil:
+      optional: true
+    utf-8-validate:
+      optional: true
+  checksum: 10c0/e223726bbda5768ed58ec9252d04eda7018ef380ea122bb94e595a4d7a02b5baeb423933936576fddb8fa51b642375f7ae814bf0f6f5d9a3ce290566578a8c5a
   languageName: node
   linkType: hard
 
