@@ -30,8 +30,10 @@ export function SubagentCard(props: { item: ToolItem; open: boolean; userClosed:
       header={(
         <>
           <text fg={muted} flexShrink={0}>{expanded ? '▾' : '▸'}</text>
-          <text attributes={props.selected ? TextAttributes.BOLD : TextAttributes.NONE} flexShrink={0}>{subagentLabel(item)}</text>
-          <box flexGrow={1} flexShrink={1} minWidth={0} height={1} overflow="hidden">
+          <box flexShrink={1} minWidth={0} height={1} overflow="hidden">
+            <text attributes={props.selected ? TextAttributes.BOLD : TextAttributes.NONE} wrapMode="none">{subagentLabel(item)}</text>
+          </box>
+          <box flexGrow={1} flexShrink={100} minWidth={0} height={1} overflow="hidden">
             <text fg={muted} wrapMode="none">{text}</text>
           </box>
           {summary.blocked ? <text fg={theme.colors.primary} flexShrink={0}>Needs you</text> : null}

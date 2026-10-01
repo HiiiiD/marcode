@@ -26,9 +26,16 @@ export function ToolCard(props: { item: ToolItem; open: boolean; selected: boole
       header={(
         <>
           <text fg={failed ? theme.colors.error : muted} flexShrink={0}>{glyph}</text>
-          {server ? <text fg={muted} flexShrink={0}>{`[${server}]`}</text> : null}
-          <text attributes={props.selected ? TextAttributes.BOLD : TextAttributes.NONE} flexShrink={0}>{header.verb}</text>
-          <box flexGrow={1} flexShrink={1} minWidth={0} height={1} overflow="hidden">
+          {server ? (
+            <box flexShrink={1} minWidth={0} height={1} overflow="hidden">
+              <text fg={muted} wrapMode="none">{`[${server}]`}</text>
+            </box>
+          ) : null}
+          <box flexShrink={1} minWidth={0} height={1} overflow="hidden">
+            <text attributes={props.selected ? TextAttributes.BOLD : TextAttributes.NONE} wrapMode="none">{header.verb}</text>
+          </box>
+          {/* The primary absorbs overflow first; verb and chip only shrink once it is gone. */}
+          <box flexGrow={1} flexShrink={100} minWidth={0} height={1} overflow="hidden">
             <text fg={muted} wrapMode="none">{header.primary}</text>
           </box>
           {failed ? <text fg={theme.colors.error} flexShrink={0}>failed</text> : null}

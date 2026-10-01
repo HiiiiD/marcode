@@ -55,3 +55,15 @@ test('a settled closed subagent starts no interval', async () => {
   try { m = await mount(card(agent())); } finally { globalThis.setInterval = real; }
   expect(started).toBe(0);
 });
+
+test('a very long agent label keeps the Needs you pill visible at 50 columns', async () => {
+  const blocked = agent({
+    state: 'running',
+    tool: { ...spawn, agent: 'a-very-long-custom-agent-name-for-review' },
+    children: [permission({ id: 'pp', state: 'pending' })],
+  });
+  m = await mount(card(blocked, { userClosed: true }), { width: 50, height: 10 });
+  const rows = m.frame().split(/\r?\n/);
+  expect(rows.some((r) => r.includes('Needs you'))).toBe(true);
+  expect(rows.every((r) => r.trimEnd().length <= 50)).toBe(true);
+});

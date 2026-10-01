@@ -68,3 +68,14 @@ test('an MCP call shows a muted server chip', async () => {
   m = await mount(<ToolCard item={tool({ tool: { kind: 'mcp', label: 'search', server: 'github', tool: 'search' } })} open={false} selected={false} />);
   expect(m.frame()).toContain('github');
 });
+
+test('a long MCP verb and server chip keep the header on one line with the pill and chevron at 50 columns', async () => {
+  const mcp = { kind: 'mcp', label: 'mcp__chrome-devtools__performance_analyze_insight', server: 'chrome-devtools', tool: 'performance_analyze_insight' } as const;
+  m = await mount(<ToolCard item={tool({ state: 'error', tool: mcp })} open={false} selected={false} />, { width: 50, height: 10 });
+  const rows = rowsOf(m.frame());
+  const header = rows.filter((r) => r.includes('chrome-devtools'));
+  expect(header.length).toBe(1);
+  expect(header[0]).toContain('failed');
+  expect(header[0]).toContain('▸');
+  expect(rows.every((r) => r.trimEnd().length <= 50)).toBe(true);
+});
