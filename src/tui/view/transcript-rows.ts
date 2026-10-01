@@ -46,6 +46,10 @@ export function transcriptRows(items: TranscriptItem[], running: boolean): Trans
       case 'relocation':
         rows.push({ kind: 'notice', id: item.id, tone: 'info', text: `Worktree move offered: ${item.path} (${item.state})` });
         break;
+      default: {
+        const unhandled: never = item;
+        return unhandled;
+      }
     }
   }
   if (running) {
