@@ -29,9 +29,22 @@ highlighting); `streaming-text`; `token-usage` (raw token counts break the perce
 
 ### 1. Vendoring
 
-- Files live in `src/tui/ui/termcn/`, copied by hand from the registry JSON. No shadcn CLI and no second
-  `components.json`: the existing one configures the webview, and its `@/*` alias maps to `src/webview/*`.
-- Imports are rewritten to relative paths. Each file starts with a one-line header naming the registry item.
+- Components are installed with the **shadcn CLI**, never copied by hand:
+  `npx shadcn@latest add @termcn/opentui/<name> --cwd src/tui/ui/termcn`.
+- The root `components.json` configures the webview and the CLI reads only the `components.json` in its cwd,
+  so the TUI gets its own, in `src/tui/ui/termcn/`, next to a minimal private `package.json`. Probes in the OS
+  temp dir (dry-run, nothing written to the repo) showed:
+  - the CLI treats a cwd without `package.json` as an uninitialised project and starts an interactive
+    "Select a component library" prompt, so that file is required;
+  - the registry resolves with `"registries": {"@termcn": "https://termcn.dev/r/{name}.json"}`, so
+    `@termcn/opentui/confirm` pulls `confirm` plus its `use-theme`, `types` and default theme dependencies;
+  - `style` must be set (use `base-nova`, as the webview does), or it also prompts; run with `--yes`;
+  - the `@/` alias is ambiguous (the root tsconfig maps it to `src/webview/*`), so the TUI config uses a
+    dedicated `@termcn/*` alias, mapped in `src/tui/ui/tsconfig.json` (which also needs Bun and `check-types:tui`
+    to resolve it), with every alias pointing inside `src/tui/ui/termcn/` so nothing lands outside it.
+- Where the CLI lands a file or rewrites an import differently from this layout, the plan's first task
+  fixes the alias map, then re-runs the install. Hand edits to generated files are limited to the `active`
+  patch in section 2, and each is recorded in `src/tui/ui/termcn/PATCHES.md` so a later re-install can reapply it.
 - Initial items: `types`, `use-theme`, theme provider with the default theme, `dialog`, `confirm`, `tag`,
   `tool-call`, `chat-message`, `status-message`. The first task reads every item's full render code; an
   item that does not fit is dropped from the list.
@@ -88,6 +101,9 @@ types-only; session-addressed messages keep their `SessionId`; errors stay state
 - **Frame churn:** many assertions change; mitigated by updating them one surface at a time.
 - **Row chrome height:** `tool-call` and `chat-message` add rows; per-row-type decision, with a fallback to
   keeping the current one-line row.
-- **Drift from upstream:** accepted, as in shadcn. Headers name the source item for later re-sync.
+- **Drift from upstream:** accepted, as in shadcn. `PATCHES.md` lists our local edits so `shadcn add --overwrite`
+  can be followed by reapplying them.
+- **CLI config:** a second `components.json` and `package.json` under `src/tui/ui/termcn/` must not be picked up
+  by yarn, lint, the webview build or `check-types`; the plan verifies each gate before committing the install.
 - **Unread render code:** only prop signatures and sizes were reviewed during research; the first plan task
   is a full read pass.
