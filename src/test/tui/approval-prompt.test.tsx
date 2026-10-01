@@ -26,11 +26,12 @@ test('y allows exactly once', async () => {
   expect(decisions()).toEqual([{ t: 'permission-decision', id: 's1', requestId: 'r1', decision: { allow: true } }]);
 });
 
-test('Enter on the default highlight allows once', async () => {
+test('Enter does not allow: only y does', async () => {
   m = await mount(<ApprovalPrompt sessionId="s1" request={req} focused />);
   await m.press('return');
   await m.press('return');
-  expect(decisions()).toEqual([{ t: 'permission-decision', id: 's1', requestId: 'r1', decision: { allow: true } }]);
+  expect(decisions().length).toBe(0);
+  expect(m.frame()).toContain('[y] allow  [n] deny');
 });
 
 test('n then a reason denies with that reason', async () => {

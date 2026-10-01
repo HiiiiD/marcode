@@ -2,6 +2,7 @@ import { testRender } from '@opentui/react/test-utils';
 import { act, type ReactNode } from 'react';
 import { createLoopback } from '../../client-core/loopback-transport';
 import type { HostToWebview, WebviewToHost } from '../../protocol/messages';
+import { PromptArmContext } from '../../tui/ui/prompt-arm';
 import { TuiStoreProvider } from '../../tui/ui/store';
 import { catalog, singlePaneLayout, snapshot, summary } from '../fixtures/protocol';
 
@@ -28,14 +29,24 @@ export interface Mounted {
   destroy(): void;
 }
 
-export async function mount(ui: ReactNode, size = { width: 100, height: 30 }): Promise<Mounted> {
+export interface MountOpts {
+  /** Prompts ignore keys for this long after they appear; 0 here so tests can answer at once. */
+  promptArmMs?: number;
+}
+
+export async function mount(ui: ReactNode, size = { width: 100, height: 30 }, opts: MountOpts = {}): Promise<Mounted> {
   const posted: WebviewToHost[] = [];
   const loop = createLoopback((m) => { posted.push(m); });
   actEnv(true);
   let setup!: Awaited<ReturnType<typeof testRender>>;
   await act(async () => {
     // main.tsx runs with exitOnCtrlC off; the test renderer would otherwise destroy itself on Ctrl+C.
-    setup = await testRender(<TuiStoreProvider transport={loop.transport}>{ui}</TuiStoreProvider>, { exitOnCtrlC: false, ...size });
+    setup = await testRender(
+      <PromptArmContext.Provider value={opts.promptArmMs ?? 0}>
+        <TuiStoreProvider transport={loop.transport}>{ui}</TuiStoreProvider>
+      </PromptArmContext.Provider>,
+      { exitOnCtrlC: false, ...size },
+    );
   });
   await setup.renderOnce();
   actEnv(true);

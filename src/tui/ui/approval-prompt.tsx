@@ -4,6 +4,7 @@ import { clampLines, describeInput, describeTool, type ToolBlock } from '../../c
 import type { PermissionRequest, SessionId } from '../../protocol/messages';
 import { actionFor } from '../keymap';
 import { editText } from './key-text';
+import { usePromptArmed } from './prompt-arm';
 import { useTuiStore } from './store';
 import { useSyncState } from './use-sync-state';
 
@@ -26,6 +27,7 @@ export function ApprovalPrompt(props: { sessionId: SessionId; request: Permissio
   const shown = clampLines(body, 5, 1);
   const st = useSyncState({ mode: 'choose' as 'choose' | 'reason', reason: '' });
   const sent = useRef<string | null>(null);
+  const isArmed = usePromptArmed(request.requestId);
 
   useEffect(() => { st.set({ mode: 'choose', reason: '' }); }, [request.requestId]);
 
@@ -36,7 +38,7 @@ export function ApprovalPrompt(props: { sessionId: SessionId; request: Permissio
   };
 
   useKeyboard((key) => {
-    if (!props.focused) { return; }
+    if (!props.focused || !isArmed()) { return; }
     const { mode, reason } = st.get();
     if (mode === 'reason') {
       if (key.name === 'escape') { key.preventDefault(); st.set({ mode: 'choose' }); }
@@ -45,7 +47,8 @@ export function ApprovalPrompt(props: { sessionId: SessionId; request: Permissio
       return;
     }
     const action = actionFor('approval', key, { running: false });
-    if (action?.do === 'allow' || action?.do === 'confirm') { decide({ allow: true }); }
+    // Enter (`confirm`) never allows: nothing on screen marks it as the default, so only an explicit y does.
+    if (action?.do === 'allow') { decide({ allow: true }); }
     else if (action?.do === 'deny') { st.set({ mode: 'reason' }); }
   });
 

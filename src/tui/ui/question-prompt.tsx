@@ -3,6 +3,7 @@ import { useEffect, useRef } from 'react';
 import type { QuestionRequest, SessionId } from '../../protocol/messages';
 import { actionFor } from '../keymap';
 import { editText } from './key-text';
+import { usePromptArmed } from './prompt-arm';
 import { useTuiStore } from './store';
 import { useSyncState } from './use-sync-state';
 
@@ -15,6 +16,7 @@ export function QuestionPrompt(props: { sessionId: SessionId; request: QuestionR
   const st = useSyncState(fresh);
   const answers = useRef<Record<string, string[]>>({});
   const sent = useRef<string | null>(null);
+  const isArmed = usePromptArmed(request.requestId);
 
   useEffect(() => { answers.current = {}; st.set(fresh); }, [request.requestId]);
 
@@ -40,7 +42,7 @@ export function QuestionPrompt(props: { sessionId: SessionId; request: QuestionR
   useKeyboard((key) => {
     const cur = st.get();
     const { spec, options, otherIdx, rows } = layout(cur.qi);
-    if (!props.focused || !spec) { return; }
+    if (!props.focused || !spec || !isArmed()) { return; }
     if (options.length === 0 || cur.typing) {
       if (key.name === 'return') {
         if (options.length > 0 && spec.multiSelect) {
