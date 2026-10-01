@@ -35,8 +35,11 @@ export function PaneTree(p: PaneTreeProps) {
   const [drag, setDrag] = useState<LayoutNode | null>(null);
   const dragged = useRef<LayoutNode | null>(null);
   const grabbed = useRef<DividerRect | null>(null);
+  const grabRoot = useRef<LayoutNode | null>(null);
   const area: Rect = { x: 0, y: 0, w: size.w, h: size.h };
   const root = state.layout.root;
+  const rootRef = useRef(root);
+  rootRef.current = root;
   const { panes, dividers } = visibleRects(drag ?? root, p.focusedId, area, p.maximized);
 
   // The renderer only captures a drag once the first drag event lands, wherever the pointer is by then,
@@ -51,13 +54,16 @@ export function PaneTree(p: PaneTreeProps) {
     setDrag(dragged.current);
   };
   // A drag the renderer stopped reporting (pointer left the window) must not commit on someone else's later click.
-  const onPress = () => { grabbed.current = null; dragged.current = null; setDrag(null); };
+  const cancelDrag = () => { grabbed.current = null; dragged.current = null; setDrag(null); };
+  const onPress = cancelDrag;
+  // A drag measured against a tree that has since changed would write that old tree back over the change.
+  useEffect(() => { if (grabbed.current && grabRoot.current !== root) { cancelDrag(); } }, [root]);
   const onEnd = () => {
     grabbed.current = null;
     const done = dragged.current;
     dragged.current = null;
     setDrag(null);
-    if (done) { p.onResize(done); }
+    if (done && grabRoot.current === rootRef.current) { p.onResize(done); }
   };
   return (
     <box ref={region} onMouseDown={onPress} onMouseDrag={onDrag} onMouseUp={onEnd} onMouseDragEnd={onEnd} position="relative" overflow="hidden" flexGrow={1} flexShrink={1} minHeight={0} minWidth={0}>
@@ -68,12 +74,12 @@ export function PaneTree(p: PaneTreeProps) {
       ) : (
         <Pane
           key={r.path.join('.')} rect={{ ...r, sessionId: r.sessionId }}
-          compact={r.w < MIN_PANE_W || r.h < MIN_PANE_H}
+          compact={r.sessionId !== p.focusedId && (r.w < MIN_PANE_W || r.h < MIN_PANE_H)}
           focused={r.sessionId === p.focusedId} liveZone={p.liveZone}
           onFocus={p.onFocus} onHide={p.onHide} onFork={p.onFork} onOpenPicker={p.onOpenPicker}
         />
       )))}
-      {dividers.map((d) => <Divider key={`${d.path.join('.')}:${d.index}`} rect={d} onGrab={() => { grabbed.current = d; }} />)}
+      {dividers.map((d) => <Divider key={`${d.path.join('.')}:${d.index}`} rect={d} onGrab={() => { grabbed.current = d; grabRoot.current = rootRef.current; }} />)}
     </box>
   );
 }

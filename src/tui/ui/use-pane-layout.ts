@@ -7,6 +7,9 @@ import { splitAtSession } from '../../client-core/pane-ops';
 import type { PaneLayout, SessionId } from '../../protocol/messages';
 import { useTuiStore } from './store';
 
+// An arm older than this was for a session the host never produced; whatever arrives later is not it.
+const ARM_MS = 15_000;
+
 export interface PaneLayoutApi {
   root: LayoutNode;
   leafIds: SessionId[];
@@ -27,8 +30,8 @@ export function usePaneLayout(): PaneLayoutApi {
   const stateRef = useRef(state);
   stateRef.current = state;
   const known = useRef<Set<string>>(new Set());
-  const split = useRef<'horizontal' | 'vertical' | null>(null);
-  const expecting = useRef(false);
+  const split = useRef<{ orientation: 'horizontal' | 'vertical'; until: number } | null>(null);
+  const expecting = useRef<number | null>(null);
 
   const applyRoot = useCallback((next: LayoutNode) => {
     const layout: PaneLayout = { ...stateRef.current.layout, root: next };
@@ -42,9 +45,10 @@ export function usePaneLayout(): PaneLayoutApi {
     const roster = rosterSessionIds(cur.sessions);
     const before = known.current;
     const arrived = byIdKeys.filter((id) => roster.has(id) && !before.has(id) && !leafIds.includes(id));
-    if (split.current && arrived.length === 1) {
+    const armedSplit = split.current && split.current.until > Date.now() ? split.current.orientation : null;
+    if (armedSplit && arrived.length === 1) {
       known.current = new Set([...before, ...byIdKeys]);
-      applyRoot(splitAtSession(cur.layout.root, cur.focusedSessionId, split.current, arrived[0]));
+      applyRoot(splitAtSession(cur.layout.root, cur.focusedSessionId, armedSplit, arrived[0]));
       split.current = null;
     } else {
       const result = reconcilePaneLayout(
@@ -53,7 +57,12 @@ export function usePaneLayout(): PaneLayoutApi {
       known.current = result.knownSessionIds;
       if (result.root) { applyRoot(result.root); }
     }
-    if (expecting.current && arrived.length > 0) { expecting.current = false; focus(arrived[0]); }
+    if (arrived.length > 0) {
+      const wanted = expecting.current !== null && expecting.current > Date.now();
+      expecting.current = null;
+      split.current = null;
+      if (wanted) { focus(arrived[0]); }
+    }
   }, [byIdKeys.join(','), state.sessions.map((s) => s.id).join(','), leafIds.join(',')]);
 
   useEffect(() => { post({ t: 'set-visible', sessionIds: leafIds }); }, [leafIds.join(',')]);
@@ -69,8 +78,8 @@ export function usePaneLayout(): PaneLayoutApi {
   return {
     root, leafIds, placeOrFocus, applyRoot,
     hide: (id) => { applyRoot(removeSession(stateRef.current.layout.root, id)); },
-    armSplit: (o) => { split.current = o; },
-    splitArmed: () => split.current !== null,
-    expectArrival: () => { expecting.current = true; },
+    armSplit: (o) => { split.current = o ? { orientation: o, until: Date.now() + ARM_MS } : null; },
+    splitArmed: () => split.current !== null && split.current.until > Date.now(),
+    expectArrival: () => { expecting.current = Date.now() + ARM_MS; },
   };
 }

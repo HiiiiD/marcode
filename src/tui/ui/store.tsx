@@ -13,6 +13,8 @@ export interface TuiStoreValue {
   focusedId: SessionId | null;
   focus(id: SessionId): void;
   setLocalLayout(layout: PaneLayout): void;
+  /** True between Ctrl+W and its second key, so listeners registered before the chord hook can stand down. */
+  chordArmed: { current: boolean };
   notice: string | null;
   setNotice(text: string | null): void;
   mentionOpen: boolean;
@@ -28,6 +30,7 @@ export function TuiStoreProvider({ transport, children }: { transport: ClientTra
   const [notice, setNotice] = useState<string | null>(null);
   const [mentionOpen, setMentionOpen] = useState(false);
   const [rosterFiltering, setRosterFiltering] = useState(false);
+  const chordArmed = useRef(false);
   const draftsRef = useRef<DraftStore | undefined>(undefined);
   if (!draftsRef.current) { draftsRef.current = createDraftStore(); }
   const drafts = draftsRef.current;
@@ -58,8 +61,8 @@ export function TuiStoreProvider({ transport, children }: { transport: ClientTra
 
   const focusedId = state.focusedSessionId ?? null;
   const value = useMemo<TuiStoreValue>(
-    () => ({ state, post, drafts, focusedId, focus, setLocalLayout, notice, setNotice, mentionOpen, setMentionOpen, rosterFiltering, setRosterFiltering }),
-    [state, post, drafts, focusedId, focus, setLocalLayout, notice, mentionOpen, rosterFiltering],
+    () => ({ state, post, drafts, focusedId, focus, setLocalLayout, chordArmed, notice, setNotice, mentionOpen, setMentionOpen, rosterFiltering, setRosterFiltering }),
+    [state, post, drafts, focusedId, focus, setLocalLayout, chordArmed, notice, mentionOpen, rosterFiltering],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

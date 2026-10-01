@@ -86,3 +86,15 @@ test('a click elsewhere after an abandoned drag does not commit it', async () =>
   await mouse((mm) => mm.click(100, 5));
   expect(m.posted.filter((p) => p.t === 'set-layout').length).toBe(before);
 });
+
+test('a drag released after the layout changed under it does not drop the new pane', async () => {
+  m = await mount(<App {...props} />, { width: 140, height: 30 });
+  await m.fromHost(hydrateTwo());
+  await mouse(async (mm) => { await mm.pressDown(82, 10); await mm.moveTo(70, 10); });
+  await m.fromHost(
+    { t: 'sessions-changed', sessions: [summary('s1'), summary('s2'), summary('sp1')] },
+    { t: 'session-snapshot', session: snapshot('sp1') },
+  );
+  await mouse((mm) => mm.release(70, 10));
+  expect(JSON.stringify(lastOf(m.posted, 'set-layout')?.layout.root).includes('"sp1"')).toBe(true);
+});

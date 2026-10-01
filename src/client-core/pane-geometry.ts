@@ -74,6 +74,10 @@ export function tooSmall(panes: PaneRect[]): boolean {
   return panes.some((p) => p.sessionId !== null && (p.w < MIN_PANE_W || p.h < MIN_PANE_H));
 }
 
+export function squeezedIds(panes: PaneRect[]): Set<string> {
+  return new Set(panes.flatMap((p) => (p.sessionId !== null && (p.w < MIN_PANE_W || p.h < MIN_PANE_H) ? [p.sessionId] : [])));
+}
+
 /** The real tree's rects, or the focused-pane-maximised copy's when the real one does not fit (or `force`). View-only. */
 export function visibleRects(
   root: LayoutNode, focusedId: string | null, area: Rect, force = false,

@@ -15,13 +15,14 @@ interface RosterProps {
   onFocusSession(id: SessionId): void;
   onAskDelete(row: { id: SessionId; title: string }): void;
   onHandoff(row: { id: SessionId; title: string }): void;
+  squeezed?: ReadonlySet<SessionId>;
 }
 
-export function Roster({ focused, onFocusSession, onAskDelete, onHandoff }: RosterProps) {
-  const { state, focusedId, post, setNotice, setRosterFiltering } = useTuiStore();
+export function Roster({ focused, onFocusSession, onAskDelete, onHandoff, squeezed }: RosterProps) {
+  const { state, focusedId, post, setNotice, setRosterFiltering, chordArmed } = useTuiStore();
   const [filter, setFilter] = useState('');
   const [filtering, setFiltering] = useState(false);
-  const rows = rosterRows(state.sessions, focusedId, filter, new Set(leafSessionIds(state.layout.root)));
+  const rows = rosterRows(state.sessions, focusedId, filter, new Set(leafSessionIds(state.layout.root)), squeezed);
   // Tracked by id so a reorder (pinning) keeps the highlight on the row it was on.
   const [cursorId, setCursorId] = useState<SessionId | null>(null);
   const cursor = Math.max(0, rows.findIndex((r) => r.id === cursorId));
@@ -38,7 +39,7 @@ export function Roster({ focused, onFocusSession, onAskDelete, onHandoff }: Rost
   }, [cursor, rows.length]);
 
   useKeyboard((key) => {
-    if (!focused || key.defaultPrevented) { return; }
+    if (!focused || key.defaultPrevented || chordArmed.current) { return; }
     if (filtering) {
       if (key.name === 'escape') { setFilter(''); setFiltering(false); }
       else if (key.name === 'return') { setFiltering(false); }
@@ -77,7 +78,7 @@ export function Roster({ focused, onFocusSession, onAskDelete, onHandoff }: Rost
             attributes={focused && i === cursor ? 1 : 0}
             onMouseDown={() => { setCursorId(row.id); onFocusSession(row.id); }}
           >
-            {`${row.focused ? '▸' : row.leaf ? '▪' : ' '}${row.glyph} ${row.pinned ? '★ ' : ''}${row.title}${row.suffix ? ` ${row.suffix}` : ''}`}
+            {`${row.focused ? '▸' : row.squeezed ? '+' : row.leaf ? '▪' : ' '}${row.glyph} ${row.pinned ? '★ ' : ''}${row.title}${row.suffix ? ` ${row.suffix}` : ''}`}
           </text>
         ))}
       </scrollbox>

@@ -19,7 +19,7 @@ export interface PaneChords {
 }
 
 export function usePaneChords(c: PaneChords): void {
-  const { focusedId, notice, setNotice } = useTuiStore();
+  const { focusedId, notice, setNotice, chordArmed } = useTuiStore();
   const armed = useRef<number | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const noticeRef = useRef(notice);
@@ -28,6 +28,7 @@ export function usePaneChords(c: PaneChords): void {
 
   const disarm = () => {
     armed.current = null;
+    chordArmed.current = false;
     clearTimeout(timer.current);
     if (noticeRef.current === HINT) { setNotice(null); }
   };
@@ -52,9 +53,10 @@ export function usePaneChords(c: PaneChords): void {
   useKeyboard((key) => {
     if (c.inert) { return; }
     const step = chordStep(armed.current, Date.now(), key);
-    if (!step.consumed) { armed.current = null; return; }
+    if (!step.consumed) { armed.current = null; chordArmed.current = false; return; }
     key.preventDefault();
     armed.current = step.armedAt;
+    chordArmed.current = step.armedAt !== null;
     if (step.armedAt !== null) {
       setNotice(HINT);
       clearTimeout(timer.current);

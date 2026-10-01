@@ -9,7 +9,7 @@ import { useTuiStore } from '../store';
 import { RowView } from './row';
 
 export function Transcript({ sessionId, focused, onFork }: { sessionId: SessionId; focused: boolean; onFork?(itemId: string): void }) {
-  const { state, post, setNotice } = useTuiStore();
+  const { state, post, setNotice, chordArmed } = useTuiStore();
   const pane = state.byId[sessionId];
   const running = pane?.summary.status === 'running';
   const rows = useMemo(() => transcriptRows(pane?.items ?? [], running), [pane?.items, running]);
@@ -58,7 +58,7 @@ export function Transcript({ sessionId, focused, onFork }: { sessionId: SessionI
   };
 
   useKeyboard((key) => {
-    if (!focused || key.defaultPrevented) { return; }
+    if (!focused || key.defaultPrevented || chordArmed.current) { return; }
     const action = actionFor('transcript', key, { running });
     if (!action) { return; }
     const box = scroll.current;

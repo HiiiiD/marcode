@@ -1,5 +1,6 @@
 import { useTerminalDimensions } from '@opentui/react';
 import { useEffect, useRef, useState } from 'react';
+import { squeezedIds, visibleRects } from '../../client-core/pane-geometry';
 import type { SessionId } from '../../protocol/messages';
 import type { Zone } from '../keymap';
 import { bottomSlot } from '../view/bottom-slot';
@@ -57,6 +58,7 @@ export function App(props: AppProps) {
     setHandoffSource(src ? { ...src, on: source !== undefined } : undefined);
     setDialog(true);
   };
+  const pendingSplit = useRef<'horizontal' | 'vertical' | null>(null);
   const expectNewSession = () => { layout.expectArrival(); setKept(undefined); };
 
   const pane = focusedId ? state.byId[focusedId] : undefined;
@@ -94,7 +96,7 @@ export function App(props: AppProps) {
     area: { x: 0, y: 0, ...estimate },
     inert: dialog || deleting !== null || picker !== null,
     maximized, layout,
-    onSplit: (orientation) => { layout.armSplit(orientation); openNewSession(); },
+    onSplit: (orientation) => { pendingSplit.current = orientation; openNewSession(); },
     toggleMaximize: () => { setMaximized((v) => !v); },
   });
 
@@ -112,8 +114,9 @@ export function App(props: AppProps) {
     if (!wide) { setRosterOn(false); }
   };
 
+  const squeezed = squeezedIds(visibleRects(layout.root, focusedId, { x: 0, y: 0, ...estimate }, maximized).panes);
   const roster = showRoster
-    ? <Roster focused={live('roster')} onFocusSession={onFocusSession} onAskDelete={(row) => { setDeleting(row); }} onHandoff={(row) => { openNewSession(row); }} />
+    ? <Roster focused={live('roster')} squeezed={squeezed} onFocusSession={onFocusSession} onAskDelete={(row) => { setDeleting(row); }} onHandoff={(row) => { openNewSession(row); }} />
     : null;
   const body = focusedId ? (
     <PaneTree
@@ -147,10 +150,12 @@ export function App(props: AppProps) {
           cwd={props.launchCwd}
           initialPrompt={kept}
           handoff={handoffSource}
-          onClose={() => { setDialog(false); layout.armSplit(null); }}
+          onClose={() => { setDialog(false); pendingSplit.current = null; }}
           onCreated={(info) => {
             setDialog(false);
-            if (info.handoff && !layout.splitArmed()) { layout.armSplit('horizontal'); }
+            const orientation = pendingSplit.current ?? (info.handoff ? 'horizontal' : null);
+            pendingSplit.current = null;
+            if (orientation) { layout.armSplit(orientation); }
             expectNewSession();
           }}
         />

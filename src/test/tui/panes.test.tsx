@@ -1,4 +1,5 @@
-import { afterEach, expect, test } from 'bun:test';
+import { afterEach, expect, setSystemTime, test } from 'bun:test';
+import type { LayoutNode } from '../../client-core/layout-tree';
 import { App } from '../../tui/ui/app';
 import { snapshot, summary } from '../fixtures/protocol';
 import { hydrateMsg, mount, type Mounted } from './harness';
@@ -150,6 +151,8 @@ test('Ctrl+W | opens the new-session dialog and the created session splits besid
   await m.press('|');
   expect(m.frame()).toContain('New session');
   await m.press('return');
+  await m.press('return');
+  expect(m.posted.filter((p) => p.t === 'create-session').length).toBe(1);
   await m.fromHost(
     { t: 'sessions-changed', sessions: [summary('s1'), summary('n1')] },
     { t: 'session-snapshot', session: snapshot('n1') },
@@ -189,4 +192,73 @@ test('Ctrl+W m maximizes the focused pane without posting a layout', async () =>
   await m.press('w', { ctrl: true });
   await m.press('m');
   expect(m.posted.filter((p) => p.t === 'set-layout').length).toBe(before);
+});
+
+const fourUp = (): LayoutNode => ({
+  kind: 'split', orientation: 'horizontal', size: 100,
+  children: ['s1', 's2', 's3', 's4'].map((id) => ({ kind: 'leaf' as const, sessionId: id, size: 25 })),
+});
+const hydrateFour = () => hydrateMsg({
+  sessions: ['s1', 's2', 's3', 's4'].map((id, i) => summary(id, { name: ['one', 'two', 'three', 'four'][i] })),
+  layout: { root: fourUp(), presets: [], focusedSessionId: 's1' },
+  snapshots: ['s1', 's2', 's3', 's4'].map((id) => snapshot(id)),
+});
+
+test('the focused pane keeps its composer even when four panes cannot fit', async () => {
+  m = await mount(<App {...props} />, { width: 100, height: 30 });
+  await m.fromHost(hydrateFour());
+  await m.type('hi');
+  await m.press('return');
+  const sends = m.posted.filter((p) => p.t === 'send');
+  expect(sends.length).toBe(1);
+  expect(sends[0]?.t === 'send' && sends[0].id).toBe('s1');
+});
+
+test('a session with a pane but no room is marked + in the roster', async () => {
+  m = await mount(<App {...props} />, { width: 110, height: 30 });
+  await m.fromHost(hydrateFour());
+  const row = m.frame().split('\n').find((l) => l.includes('two')) ?? '';
+  expect(row.includes('+○ two')).toBe(true);
+});
+
+test('Ctrl+W x from the roster hides the pane and does not also hide the roster row', async () => {
+  m = await mount(<App {...props} />, { width: 140, height: 30 });
+  await m.fromHost(hydrateTwo());
+  await m.press('tab');
+  await m.press('tab');
+  await m.press('w', { ctrl: true });
+  await m.press('x');
+  expect(m.posted.filter((p) => p.t === 'close-session').length).toBe(0);
+  expect(lastOf(m.posted, 'set-visible')?.sessionIds.join(',')).toBe('s2');
+});
+
+test('a fork the host never answers does not leave the next spawn splitting and stealing focus', async () => {
+  m = await mount(<App {...props} />, { width: 140, height: 30 });
+  await m.fromHost(hydrateMsg({ snapshots: [snapshot('s1', { items: [{ id: 'u1', ts: 1, role: 'user', text: 'first' }] })] }));
+  await m.press('tab');
+  await m.press('k');
+  await m.press('f');
+  setSystemTime(new Date(Date.now() + 60_000));
+  try {
+    await m.fromHost(
+      { t: 'sessions-changed', sessions: [summary('s1'), summary('sp1')] },
+      { t: 'session-snapshot', session: snapshot('sp1') },
+    );
+  } finally { setSystemTime(); }
+  const root = lastOf(m.posted, 'set-layout')?.layout.root;
+  expect(root?.kind === 'split' && root.orientation === 'vertical').toBe(true);
+  expect(m.posted.filter((p) => p.t === 'focus-pane' && p.sessionId === 'sp1').length).toBe(0);
+});
+
+test('a spawn arriving while the split dialog is open does not take the split slot', async () => {
+  m = await mount(<App {...props} />, { width: 140, height: 30 });
+  await m.fromHost(hydrateMsg());
+  await m.press('w', { ctrl: true });
+  await m.press('|');
+  await m.fromHost(
+    { t: 'sessions-changed', sessions: [summary('s1'), summary('sp1')] },
+    { t: 'session-snapshot', session: snapshot('sp1') },
+  );
+  const root = lastOf(m.posted, 'set-layout')?.layout.root;
+  expect(root?.kind === 'split' && root.orientation === 'vertical').toBe(true);
 });
