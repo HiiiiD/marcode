@@ -87,7 +87,19 @@ test('many long chips wrap into the frame instead of overflowing', async () => {
     t: 'session-attachments', id: 's1',
     attachments: names.map((name, i) => ({ id: `a${i}`, path: `/x/${name}`, name, kind: 'image' as const, bytes: 2048 })),
   });
-  for (const name of names) { expect(m!.frame()).toContain(name); }
+  for (const name of names.slice(0, 4)) { expect(m!.frame()).toContain(name); }
+  expect(m!.frame()).toContain('+2 more');
+});
+
+test('seven chips in a 16-row terminal leave the composer on screen', async () => {
+  m = await mount(<App launchCwd="/repo" forceNew={false} loginCommands={{}} onQuit={() => {}} />, { width: 50, height: 16 });
+  await m.fromHost(hydrateMsg({ snapshots: [snapshot('s1')] }));
+  const names = Array.from({ length: 7 }, (_, i) => `attachment-${i}.png`);
+  await m.fromHost({
+    t: 'session-attachments', id: 's1',
+    attachments: names.map((name, i) => ({ id: `a${i}`, path: `/x/${name}`, name, kind: 'image' as const, bytes: 2048 })),
+  });
+  expect(m.frame()).toContain('Message');
 });
 
 test('Ctrl+X with no chips posts nothing', async () => {

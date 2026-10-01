@@ -70,7 +70,7 @@ export const Dialog = ({
       paddingBottom={0}
     >
       {title && (
-        <box marginBottom={1}>
+        <box marginBottom={interactive ? 1 : 0}>
           <text
             fg={
               variant === "danger"
@@ -82,7 +82,7 @@ export const Dialog = ({
           </text>
         </box>
       )}
-      <box marginBottom={1} flexDirection="column">
+      <box marginBottom={interactive ? 1 : 0} flexDirection="column">
         {children}
       </box>
       {interactive ? (

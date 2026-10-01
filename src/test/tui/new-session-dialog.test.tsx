@@ -1,5 +1,6 @@
 import { afterEach, expect, test } from 'bun:test';
 import { catalog } from '../fixtures/protocol';
+import { App } from '../../tui/ui/app';
 import { NewSessionDialog } from '../../tui/ui/new-session-dialog';
 import { hydrateMsg, mount, type Mounted } from './harness';
 
@@ -64,6 +65,19 @@ test('a 12-row terminal still shows the provider rows', async () => {
   await m.fromHost(hydrateMsg());
   expect(m.frame()).toContain('New session');
   expect(m.frame()).toContain('Fake');
+});
+
+test('in an 80x12 app the dialog does not draw over the composer', async () => {
+  const base = catalog()[0];
+  const three = ['Alpha', 'Beta', 'Gamma'].map((displayName) => ({ ...base, id: displayName.toLowerCase(), displayName }));
+  m = await mount(<App launchCwd="/repo" forceNew={false} loginCommands={{}} onQuit={() => {}} />, { width: 80, height: 12 });
+  await m.fromHost(hydrateMsg({ catalog: three }));
+  await m.press('n', { ctrl: true });
+  const rows = m.frame().split(/\r?\n/);
+  expect(rows.some((r) => r.includes('New session'))).toBe(true);
+  expect(rows.some((r) => r.includes('Gamma'))).toBe(true);
+  expect(rows.some((r) => r.includes('Message') && r.includes('New session'))).toBe(false);
+  expect(rows.some((r) => r.includes('│') && r.includes('────'))).toBe(false);
 });
 
 test('batched Enter Enter posts once', async () => {

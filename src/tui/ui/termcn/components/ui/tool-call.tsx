@@ -52,7 +52,7 @@ export const ToolCall = ({
   }, [status]);
 
   useKeyboard((key) => {
-    if (collapsible && (key.name === "return" || key.name === "")) {
+    if (collapsible && (key.name === "return" || key.name === " ")) {
       setCollapsed((c) => !c);
     }
   });

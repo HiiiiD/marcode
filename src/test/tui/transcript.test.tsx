@@ -53,6 +53,21 @@ test('a finished tool row starts no interval timers', async () => {
   } finally { globalThis.setInterval = real; }
 });
 
+const chevronFg = () => {
+  const spans = m!.setup.captureSpans().lines.flatMap((l) => l.spans);
+  const span = spans.find((s) => s.text.includes('▸') || s.text.includes('▾'));
+  return span === undefined ? '' : span.fg.toString();
+};
+
+test('the selected tool row is marked by colour, not only by bold', async () => {
+  m = await mount(<Transcript sessionId="s1" focused />);
+  await m.fromHost(withItems([tool({ id: 't1' })]));
+  const idle = chevronFg();
+  expect(idle === '').toBe(false);
+  await m.press('j');
+  expect(chevronFg() === idle).toBe(false);
+});
+
 test('a finished tool row shows a check mark', async () => {
   m = await mount(<Transcript sessionId="s1" focused />);
   await m.fromHost(withItems([tool({ id: 't1', state: 'ok' })]));

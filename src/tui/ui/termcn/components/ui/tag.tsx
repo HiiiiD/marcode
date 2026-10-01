@@ -37,7 +37,7 @@ export const Tag = ({
       >
         {children}
       </text>
-      {onRemove && <text fg={theme.colors.mutedForeground}>{"×"}</text>}
+      {onRemove && <text fg={theme.colors.mutedForeground}>{" ×"}</text>}
     </box>
   );
 };

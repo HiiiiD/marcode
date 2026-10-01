@@ -46,7 +46,7 @@ export const ChatMessage = ({
   }, [streaming]);
 
   useKeyboard((key) => {
-    if (initialCollapsed && (key.name === "return" || key.name === "")) {
+    if (initialCollapsed && (key.name === "return" || key.name === " ")) {
       setIsCollapsed((c) => !c);
     }
   });
@@ -70,7 +70,7 @@ export const ChatMessage = ({
   const dots = ["", "●", "●●", "●●●"][dotFrame] ?? "";
 
   const childrenText = typeof children === "string" ? children : "";
-  const firstLine = childrenText.split("")[0] ?? "";
+  const firstLine = childrenText.split("\n")[0] ?? "";
 
   const renderContent = () => {
     if (streaming) {
@@ -87,7 +87,7 @@ export const ChatMessage = ({
     if (isCollapsed) {
       return (
         <box>
-          <text fg="#666">{`${firstLine.slice(0, 60)}${firstLine.length > 60 || childrenText.includes("") ? "..." : ""}`}</text>
+          <text fg="#666">{`${firstLine.slice(0, 60)}${firstLine.length > 60 || childrenText.includes("\n") ? "..." : ""}`}</text>
         </box>
       );
     }

@@ -47,7 +47,7 @@ export const Confirm = ({
   return (
     <box flexDirection="column" gap={0}>
       <box flexDirection="row">
-        <text fg={theme.colors.primary}>{"?"}</text>
+        <text fg={theme.colors.primary}>{"? "}</text>
         <text>{message}</text>
       </box>
       <box flexDirection="row" gap={2} paddingLeft={2}>
@@ -55,13 +55,13 @@ export const Confirm = ({
           {selected ? (
             <text fg={yesColor}>
               <b>
-                {"›"}
+                {"› "}
                 {confirmLabel}
               </b>
             </text>
           ) : (
             <text fg={theme.colors.mutedForeground}>
-              {""}
+              {"  "}
               {confirmLabel}
             </text>
           )}
@@ -69,13 +69,13 @@ export const Confirm = ({
         <box gap={1}>
           {selected ? (
             <text fg={theme.colors.mutedForeground}>
-              {""}
+              {"  "}
               {cancelLabel}
             </text>
           ) : (
             <text>
               <b>
-                {"›"}
+                {"› "}
                 {cancelLabel}
               </b>
             </text>

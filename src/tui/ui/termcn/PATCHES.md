@@ -11,8 +11,11 @@ Reapply after `shadcn add ... --overwrite`.
 | `components/ui/confirm.tsx` | `flexDirection="row"` on the button row (`<box gap={2} paddingLeft={2}>`) | OpenTUI boxes default to a column; the registry code assumes a row, so Yes/No stacked over blank rows |
 | `components/ui/tool-call.tsx` | `flexDirection="row"` on the header `<box gap={1}>` | same: status icon, name and duration stacked |
 | `components/ui/chat-message.tsx` | `flexDirection="row"` on the header `<box gap={1}>` | same: sender name and time stacked |
+| `components/ui/dialog.tsx` | the two `marginBottom={1}` (after the title, after the children) become `marginBottom={interactive ? 1 : 0}` | five rows of chrome collided with the composer in a 12-row terminal |
+| `components/ui/confirm.tsx`, `tag.tsx`, `tool-call.tsx`, `chat-message.tsx` | restored whitespace-only string literals: `"? "`, `"› "`, `"  "`, `" ×"`, `" "` (space key), `"\n"` (two uses) | the shadcn CLI strips whitespace inside string literals when it writes files (`"? "` arrives as `"?"`, `"\n"` as `""`) |
 
 Registry items written for Ink-style row defaults need this check after install: render one and look for stacked rows.
+After every install, diff each new file against its registry JSON (`https://termcn.dev/r/opentui/<name>.json`) for lost whitespace in string literals.
 
 ## Install notes
 

@@ -7,13 +7,15 @@ export function DeleteConfirm({ id, title, onDone }: { id: SessionId; title: str
   const { post } = useTuiStore();
   useKeyboard((key) => { if (key.name === 'escape') { onDone(); } });
   return (
-    <Confirm
-      variant="danger"
-      message={`Delete "${title}"?`}
-      confirmLabel="Delete"
-      cancelLabel="Cancel"
-      onConfirm={() => { post({ t: 'delete-session', id }); onDone(); }}
-      onCancel={onDone}
-    />
+    <box flexShrink={0}>
+      <Confirm
+        variant="danger"
+        message={`Delete "${title}"?`}
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        onConfirm={() => { post({ t: 'delete-session', id }); onDone(); }}
+        onCancel={onDone}
+      />
+    </box>
   );
 }
