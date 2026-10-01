@@ -1,0 +1,684 @@
+import { leafSessionIds } from './layout-tree';
+import type {
+  Attachment,
+  BringBackPlan,
+  ContextResult,
+  EditorContext,
+  FileRef,
+  HostToWebview, Invocable, McpServerStatus, PaneLayout, PermissionRequest, ProviderInfo,
+  QuestionRequest,
+  SessionId, SessionSummary, StaleTree, TranscriptItem, TreeDiff, UnavailableProvider, UsageWindow,
+} from '../protocol/messages';
+
+export interface PaneState {
+  summary: SessionSummary;
+  items: TranscriptItem[];
+  hasMore: boolean;
+  pending: PermissionRequest[];
+  /** The cwd's catalog. Absent until the host has one; see the spec's States. */
+  invocables?: Invocable[];
+  mcpServers: McpServerStatus[];
+  /** The prompt cache's live warm/cold state, Claude-only. Absent = unknown. */
+  cacheWindow?: { anchorAt: number; ttlMs: number };
+  /** Composed but not sent. Host state mirrored for this pane. */
+  attachments: Attachment[];
+  pendingQuestions: QuestionRequest[];
+}
+
+export interface ClientState {
+  ready: boolean;
+  sessions: SessionSummary[];
+  layout: PaneLayout;
+  catalog: ProviderInfo[];
+  /**
+   * The configured providers that cannot be picked, and why. Never overlaps
+   * `catalog` — the host partitions them — so "is this provider available?"
+   * is answered by `catalog` alone, and this list only ever supplies the
+   * explanation.
+   */
+  unavailable: UnavailableProvider[];
+  /**
+   * Whether the host is still asking the backends. `true` until a message
+   * says otherwise, because an empty catalog nobody has answered for yet is
+   * not the same claim as an empty catalog that settled — and only the second
+   * one may be shown as "nothing here can run an agent".
+   */
+  probing: boolean;
+  byId: Record<SessionId, PaneState>;
+  /**
+   * Client-wide, not per session: the active editor is global IDE state and
+   * every composer shows the same file.
+   */
+  editorContext: EditorContext | null;
+  /** Last reply per session; kept while a refetch is in flight. */
+  contextBySession: Record<SessionId, ContextResult | undefined>;
+  /**
+   * The last bring-back plan the host answered with, per session. `undefined`
+   * means nobody has asked yet — which is not the same as "no", and is why the
+   * pane header shows no door until an answer arrives rather than showing one
+   * and taking it away.
+   */
+  bringBackBySession: Record<SessionId, BringBackPlan | undefined>;
+  /**
+   * The window set each provider has reported. Pushed by the host, replaced
+   * wholesale. `undefined` means the host has said nothing about that
+   * provider yet; an empty array means it said "nothing to show". They render
+   * identically — the distinction exists only so this reducer never has to
+   * invent a value.
+   */
+  usageByProvider: Record<string, UsageWindow[] | undefined>;
+  usageDisplayNames: Record<string, string>;
+  /**
+   * True from the moment the refresh button is clicked until `usage-windows`
+   * says the round it fired is done. Purely client-local UI state — no
+   * request id involved, because `refresh-usage` never overlaps itself
+   * client-side (the button disables for the duration).
+   */
+  usageRefreshing: boolean;
+  /**
+   * Every working tree the host's last sweep found, in the order it sent
+   * them. Panel-wide rather than per session, because the rows that matter
+   * are the ones no session is in. Empty until something has asked — which is
+   * not the same as "there are none", and is why the entry point is mounted
+   * only once a non-empty answer has arrived.
+   */
+  staleTrees: StaleTree[];
+  /**
+   * The host's last fleet answer. `undefined` means nobody has asked — which
+   * is not the same as `[]`, "asked, and nothing has changed". The two render
+   * differently, and collapsing them would make an idle fleet look like a
+   * broken one.
+   */
+  fleetDiff: TreeDiff[] | undefined;
+  /**
+   * Why the host's last fleet read failed, if it did. Distinct from an empty
+   * `fleetDiff`, which is an answer: this one says there is no answer, and
+   * says what stopped it. `undefined` whenever the last read succeeded.
+   */
+  fleetDiffReason: string | undefined;
+  /**
+   * Bumped whenever something happened that could have changed a diff: a
+   * settled `file-edit` tool call, or a session going idle.
+   *
+   * The counter, rather than a boolean, so the surface's debounce can key an
+   * effect on it and coalesce a burst of edits into one request. Deliberately
+   * client-side: `session-status` is ungated (it fans out for every session,
+   * visible or not) and `session-patch` already carries settled tool items
+   * for the visible ones, so the host needs no new plumbing to make this live.
+   */
+  fleetDiffDirty: number;
+  /**
+   * The session whose pane last held focus — client-local, never sent to the
+   * host and never persisted. It answers "which session is the user actually
+   * working in", which is what a new session inherits its provider, model,
+   * effort and permission mode from, and what the split renders its active
+   * ring on. `null` until something in a pane has been focused — briefly true
+   * on a fresh load or right after the last pane closes, since nothing has
+   * been worked in yet, but `PaneGroup` lands real focus in the first visible
+   * pane as soon as one exists and nothing else claimed focus, so `+ New`
+   * rarely sees this null in practice.
+   */
+  focusedSessionId: SessionId | null;
+  /**
+   * A keyboard request to move DOM focus into `id`'s composer. A fresh object
+   * per request so asking for the same pane twice still re-fires the effect.
+   * Client-local and ephemeral, like `focusedSessionId`.
+   */
+  paneFocusRequest: { id: SessionId } | null;
+  /** The one pane shown full-size, or null. Client-local and never persisted. */
+  maximizedId: SessionId | null;
+  /** Last transient attachment failure for each composer, one line per refused file. */
+  rejectionBySession: Record<SessionId, string[] | undefined>;
+  /** Per source session: where a handoff's summary is. Only the composer that asked reads it. */
+  handoffPhase: Record<SessionId, 'summarizing' | 'done' | undefined>;
+  /**
+   * The most recent `file-search-result` per composer, keyed alongside the
+   * `query` it answers — the composer compares that against its own live
+   * query and drops a result for a keystroke the user has since typed past,
+   * rather than needing a separate staleness id on the wire.
+   */
+  fileSearchBySession: Record<SessionId, { query: string; files: FileRef[] } | undefined>;
+  /**
+   * The AGENTS.md/CLAUDE.md nudge card's rows. Empty means no card — sent
+   * once per activate/reload, wholesale, same posture as `staleTrees`: it
+   * describes disk at an instant, and a resolved or dismissed row is simply
+   * absent from the next message rather than merged against.
+   */
+  agentsMdNudgeHits: Array<{ dir: string; kind: 'migrate' | 'add-stub'; error?: string }>;
+  /**
+   * `marcode.favoriteModels`: starred rows, keyed `"providerId modelId"`
+   * (see `shared/model-catalog.ts#modelKey`). Global client state, not
+   * per-pane — every composer's picker and the New session dialog read the
+   * same list.
+   */
+  favoriteModels: string[];
+  /**
+   * `marcode.showCacheTimer`. Off by default — the badge stays out of the
+   * composer entirely rather than rendering a muted/hidden state, matching
+   * how `enabledProviders` removes a backend rather than graying it out.
+   */
+  showCacheTimer: boolean;
+  /**
+   * A tree path the next freshly-created session should be assigned into,
+   * rather than appended as a new top-level sibling — set right before
+   * `create-session` is posted, by either an empty slot's own "New" button
+   * (targeting itself) or the toolbar's "+ New" when an empty slot exists
+   * anywhere in the tree (targeting the first one in reading order). Consumed
+   * exactly once, by `App`'s reconcile effect, the moment the new session's
+   * snapshot arrives — win or lose (the path can go stale if the tree
+   * changed in between), it is cleared right there rather than retried.
+   * Client-local: the host has no notion of "the next session goes here",
+   * only `set-layout` after the fact.
+   */
+  pendingSlotPath: number[] | null;
+}
+
+export const initialState: ClientState = {
+  ready: false,
+  sessions: [],
+  layout: { root: { kind: 'leaf', sessionId: null, size: 100 }, presets: [] },
+  catalog: [],
+  unavailable: [],
+  probing: true,
+  byId: {},
+  editorContext: null,
+  contextBySession: {},
+  bringBackBySession: {},
+  usageByProvider: {},
+  usageDisplayNames: {},
+  usageRefreshing: false,
+  staleTrees: [],
+  fleetDiff: undefined,
+  fleetDiffReason: undefined,
+  fleetDiffDirty: 0,
+  focusedSessionId: null,
+  paneFocusRequest: null,
+  maximizedId: null,
+  rejectionBySession: {},
+  handoffPhase: {},
+  fileSearchBySession: {},
+  agentsMdNudgeHits: [],
+  favoriteModels: [],
+  showCacheTimer: false,
+  pendingSlotPath: null,
+};
+
+/**
+ * `HostToWebview` plus one client-local action. `hydrate` carries `layout`
+ * too, but only once, on `ready`; a later layout change reaches the webview
+ * either via the host's own `layout-changed` echo (`SessionManager.setLayout`
+ * emits it for every caller, e.g. the fleet view's `focus-session` handler)
+ * or, for a layout change the webview itself posted, via `local-layout`:
+ * `StoreProvider.post` applies a posted `set-layout` optimistically so a
+ * newly opened or closed pane renders immediately instead of waiting for the
+ * round trip; the host ends up persisting and echoing back exactly the value
+ * computed here, so there's nothing to reconcile once `layout-changed`
+ * arrives for it.
+ */
+export type ClientAction =
+  | HostToWebview
+  | { t: 'local-layout'; layout: PaneLayout }
+  /** Focus landed somewhere inside `id`'s pane. Client-local; see `focusedSessionId`. */
+  | { t: 'local-focus'; id: SessionId }
+  /**
+   * The user closed the composer's rejection line. Client-local because the
+   * host emits rejections and forgets them — `rejectionBySession` is the only
+   * place they live, so there is nothing on the host to tell.
+   */
+  | { t: 'local-dismiss-rejection'; id: SessionId }
+  /** See `ClientState.pendingSlotPath`. */
+  | { t: 'local-pending-slot'; path: number[] | null }
+  /** See `ClientState.usageRefreshing`. */
+  | { t: 'local-usage-refresh-start' };
+
+export function reduce(state: ClientState, msg: ClientAction): ClientState {
+  switch (msg.t) {
+    case 'local-layout':
+      return { ...state, layout: msg.layout, maximizedId: keepMaximized(state.maximizedId, msg.layout) };
+
+    case 'layout-changed':
+      return { ...state, layout: msg.layout, maximizedId: keepMaximized(state.maximizedId, msg.layout) };
+
+    case 'focus-pane': {
+      if (!readyPaneIds(state).includes(msg.id)) { return state; }
+      return {
+        ...state,
+        paneFocusRequest: { id: msg.id },
+        maximizedId: state.maximizedId === null ? null : msg.id,
+      };
+    }
+
+    case 'step-pane': {
+      const ids = readyPaneIds(state);
+      if (ids.length === 0) { return state; }
+      const at = state.focusedSessionId === null ? -1 : ids.indexOf(state.focusedSessionId);
+      const next = at === -1
+        ? (msg.delta === 1 ? 0 : ids.length - 1)
+        : (at + msg.delta + ids.length) % ids.length;
+      return {
+        ...state,
+        paneFocusRequest: { id: ids[next] },
+        maximizedId: state.maximizedId === null ? null : ids[next],
+      };
+    }
+
+    case 'toggle-maximize-pane':
+      if (state.maximizedId !== null) { return { ...state, maximizedId: null }; }
+      return state.focusedSessionId === null ? state : { ...state, maximizedId: state.focusedSessionId };
+
+    case 'local-focus':
+      return state.focusedSessionId === msg.id ? state : { ...state, focusedSessionId: msg.id };
+
+    case 'local-pending-slot':
+      return { ...state, pendingSlotPath: msg.path };
+
+    case 'local-usage-refresh-start':
+      return { ...state, usageRefreshing: true };
+
+    case 'usage-refresh-done':
+      return { ...state, usageRefreshing: false };
+
+    case 'hydrate': {
+      const byId: Record<SessionId, PaneState> = {};
+      for (const s of msg.snapshots) {
+        byId[s.id] = {
+          summary: s, items: s.items, hasMore: s.hasMore, pending: s.pending,
+          invocables: s.invocables,
+          mcpServers: s.mcpServers ?? [],
+          cacheWindow: s.cacheWindow,
+          attachments: s.pendingAttachments ?? [],
+          pendingQuestions: s.pendingQuestions,
+        };
+      }
+      return {
+        ready: true, sessions: msg.sessions, layout: msg.layout,
+        catalog: msg.catalog, unavailable: msg.unavailable,
+        // Absent reads as "still probing", the conservative side: a host that
+        // never mentions it has never said the answer settled, and the empty
+        // state stays a wait rather than becoming a verdict.
+        probing: msg.probing ?? true,
+        byId,
+        // Explicit, not `...state`: `hydrate` is meant to be a total
+        // rebuild of `ClientState`, not a merge. `editorContext` is
+        // genuinely client-wide (global IDE state a reload doesn't change),
+        // so it is deliberately carried forward here — but spelled out so a
+        // future field added to `ClientState` doesn't silently survive a
+        // reload by accident the way a bare spread would let it. `usage` is
+        // the opposite case: it is host state (the account's last known
+        // window set), not client state, so it is always taken fresh from
+        // the message rather than carried forward like `editorContext`.
+        editorContext: state.editorContext,
+        // Both cleared, not carried: a plan is a statement about a directory's
+        // git state at one instant, and a reload is exactly the event after
+        // which nothing in the client may still claim to know that.
+        contextBySession: {}, bringBackBySession: {}, usageByProvider: msg.usage,
+        usageDisplayNames: msg.usageDisplayNames ?? {},
+        // Cleared for the same reason the plans are: a sweep describes the
+        // disk at one instant, and a reload is exactly the event after which
+        // nothing in the client may still claim to know it.
+        staleTrees: [],
+        // Cleared with the sweep and for the same reason — and the counter
+        // with it, so a reload does not immediately re-request off a count
+        // that describes a webview that no longer exists.
+        fleetDiff: undefined, fleetDiffReason: undefined, fleetDiffDirty: 0,
+        // Not carried forward: focus is a fact about the rendered panes, and
+        // hydrate rebuilds them. A stale id would let `+ New` inherit from a
+        // session this hydrate may not even contain.
+        focusedSessionId: null,
+        paneFocusRequest: null,
+        maximizedId: null,
+        rejectionBySession: {},
+        handoffPhase: {},
+        // Cleared for the same reason: it answers "what did the box's last
+        // keystroke ask for", and a reload has no box left holding one.
+        fileSearchBySession: {},
+        // Cleared, not carried: the host re-posts the settled hits right
+        // after every hydrate (panel-view-provider.ts, on `ready`), and that
+        // `agents-md-nudge` message is the total rebuild here — same posture
+        // as `staleTrees`.
+        agentsMdNudgeHits: [],
+        // Absent reads as empty, not "carry the previous reload's list
+        // forward" — same posture as `probing`: a host that predates this
+        // field (or a hand-built fixture) has not said otherwise.
+        favoriteModels: msg.favoriteModels ?? [],
+        showCacheTimer: msg.showCacheTimer ?? false,
+        // Not carried forward, same reasoning as `focusedSessionId`: it
+        // names a path into panes hydrate is about to rebuild from scratch,
+        // and a session created against a pre-reload path could land
+        // anywhere.
+        pendingSlotPath: null,
+        // Not carried: it answers "is a round the client itself just fired
+        // still in flight", and a reload has no such round pending.
+        usageRefreshing: false,
+      };
+    }
+
+    case 'sessions-changed': {
+      // `sessions-changed` is the only HostToWebview message carrying a
+      // session's full summary — effort and permissionMode changes
+      // (AgentSession.setEffort/setPermissionMode notify via
+      // sink.changed() -> sessions-changed) reach the wire only through it,
+      // not through session-status or session-patch. Mirror each incoming
+      // summary into the matching byId entry so panes reflect it without
+      // waiting for a session-snapshot (which only arrives on hydrate or
+      // set-visible) — the same reason session-status below mirrors
+      // `status` specifically, generalized to every summary field.
+      const byId = { ...state.byId };
+      for (const s of msg.sessions) {
+        const pane = byId[s.id];
+        if (!pane) { continue; } // no existing pane: nothing to mirror onto, and not created here.
+        byId[s.id] = { ...pane, summary: s };
+      }
+      // A deleted session's cached breakdown would otherwise outlive it for
+      // the life of the webview — the roster is the only signal the client
+      // gets that a session is gone.
+      const alive = new Set(msg.sessions.map((s) => s.id));
+      const contextBySession: Record<SessionId, ContextResult | undefined> = {};
+      for (const [id, result] of Object.entries(state.contextBySession)) {
+        if (alive.has(id)) { contextBySession[id] = result; }
+      }
+      // Pruned on the same signal and for the same reason: a plan naming a
+      // worktree would otherwise outlive the session that was sitting in it.
+      const bringBackBySession: Record<SessionId, BringBackPlan | undefined> = {};
+      for (const [id, plan] of Object.entries(state.bringBackBySession)) {
+        if (alive.has(id)) { bringBackBySession[id] = plan; }
+      }
+      return { ...state, sessions: msg.sessions, byId, contextBySession, bringBackBySession };
+    }
+
+    case 'bring-back-plan': {
+      // Same guard as `context-breakdown`: the question and its answer are two
+      // round trips apart, so a session deleted in between must not have a
+      // plan cached *after* the `sessions-changed` that pruned it.
+      if (!state.sessions.some((s) => s.id === msg.id)) { return state; }
+      return {
+        ...state,
+        bringBackBySession: { ...state.bringBackBySession, [msg.id]: msg.plan },
+      };
+    }
+
+    case 'context-breakdown': {
+      // A reply for a session the roster does not name is ignored, not
+      // stored: `request-context` and its answer are two round trips apart,
+      // so a session deleted in between would otherwise get its breakdown
+      // cached *after* the `sessions-changed` that was supposed to prune it,
+      // and nothing would remove it until the next roster change.
+      if (!state.sessions.some((s) => s.id === msg.id)) { return state; }
+      return {
+        ...state,
+        contextBySession: { ...state.contextBySession, [msg.id]: msg.result },
+      };
+    }
+
+    case 'fleet-diff':
+      // Wholesale, never merged, for the same reason the sweep is: it
+      // describes disk at an instant, and a merged delta would let a stale
+      // row outlive the change it described.
+      // The reason travels with the answer and is replaced by it: a later
+      // successful read clears a failure, because a failure that outlived the
+      // read that disproved it would be the stale row this case exists to
+      // prevent.
+      return { ...state, fleetDiff: msg.trees, fleetDiffReason: msg.reason };
+
+    case 'stale-trees':
+      // Wholesale, never merged: the sweep is the complete answer, and a
+      // removal's outcome is a row that is no longer in it.
+      return { ...state, staleTrees: msg.trees };
+
+    case 'usage-windows':
+      return {
+        ...state,
+        usageByProvider: { ...state.usageByProvider, [msg.providerId]: msg.windows },
+        usageDisplayNames: msg.displayName
+          ? { ...state.usageDisplayNames, [msg.providerId]: msg.displayName }
+          : state.usageDisplayNames,
+      };
+
+    case 'catalog':
+      // Full replacement: the host sends the whole catalog, never a delta —
+      // and both arrays move together, so an availability change lands as one
+      // message rather than a window where the two could disagree.
+      return {
+        ...state, catalog: msg.catalog, unavailable: msg.unavailable,
+        probing: msg.probing ?? true,
+      };
+
+    case 'favorite-models':
+      return { ...state, favoriteModels: msg.ids };
+
+    case 'editor-context':
+      return { ...state, editorContext: msg.ctx };
+
+    case 'session-snapshot': {
+      const s = msg.session;
+      return {
+        ...state,
+        byId: {
+          ...state.byId,
+          [s.id]: {
+            summary: s, items: s.items, hasMore: s.hasMore, pending: s.pending,
+            invocables: s.invocables,
+            mcpServers: s.mcpServers ?? [],
+            cacheWindow: s.cacheWindow,
+            attachments: s.pendingAttachments ?? [],
+            pendingQuestions: s.pendingQuestions,
+          },
+        },
+      };
+    }
+
+    case 'session-invocables': {
+      const pane = state.byId[msg.id];
+      if (!pane) { return state; }
+      // Full replacement, matching the seam: no merge, no ordering to keep.
+      return {
+        ...state,
+        byId: { ...state.byId, [msg.id]: { ...pane, invocables: msg.entries } },
+      };
+    }
+
+    case 'session-attachments': {
+      const pane = state.byId[msg.id];
+      if (!pane) { return state; }
+      return {
+        ...state,
+        byId: { ...state.byId, [msg.id]: { ...pane, attachments: msg.attachments } },
+        rejectionBySession: { ...state.rejectionBySession, [msg.id]: undefined },
+      };
+    }
+
+    case 'attachments-rejected':
+      return {
+        ...state,
+        rejectionBySession: { ...state.rejectionBySession, [msg.id]: msg.reasons },
+      };
+
+    case 'file-search-result':
+      return {
+        ...state,
+        fileSearchBySession: {
+          ...state.fileSearchBySession,
+          [msg.id]: { query: msg.query, files: msg.files },
+        },
+      };
+
+    // Dismissed by the user rather than by a later success. The reasons are
+    // read and spent; keeping them until something unrelated attaches leaves
+    // a stale complaint sitting under the box with no way to close it.
+    case 'local-dismiss-rejection':
+      return {
+        ...state,
+        rejectionBySession: { ...state.rejectionBySession, [msg.id]: undefined },
+      };
+
+    case 'handoff-progress':
+      return { ...state, handoffPhase: { ...state.handoffPhase, [msg.sessionId]: msg.phase } };
+
+    case 'session-status': {
+      const sessions = state.sessions.map((s) =>
+        s.id === msg.id ? { ...s, status: msg.status } : s);
+      // Idle is when a turn's writes have landed. Ungated, so this is the one
+      // signal that reaches the client for a session with no pane on screen.
+      const fleetDiffDirty = msg.status === 'idle'
+        ? state.fleetDiffDirty + 1
+        : state.fleetDiffDirty;
+      const pane = state.byId[msg.id];
+      if (!pane) { return { ...state, sessions, fleetDiffDirty }; }
+      return {
+        ...state,
+        sessions,
+        fleetDiffDirty,
+        byId: {
+          ...state.byId,
+          [msg.id]: { ...pane, summary: { ...pane.summary, status: msg.status } },
+        },
+      };
+    }
+
+    case 'session-prepend': {
+      const pane = state.byId[msg.id];
+      if (!pane) { return state; }
+      return {
+        ...state,
+        byId: {
+          ...state.byId,
+          [msg.id]: { ...pane, items: [...msg.items, ...pane.items], hasMore: msg.hasMore },
+        },
+      };
+    }
+
+    case 'session-patch': {
+      // Counted before the pane guard: a file edit changed the tree whether
+      // or not this client is rendering that session's transcript.
+      const edited = msg.patch.op === 'replace'
+        && msg.patch.item.role === 'tool'
+        && msg.patch.item.state !== 'running'
+        && msg.patch.item.tool.kind === 'file-edit';
+      const fleetDiffDirty = edited ? state.fleetDiffDirty + 1 : state.fleetDiffDirty;
+
+      const pane = state.byId[msg.id];
+      if (!pane) { return edited ? { ...state, fleetDiffDirty } : state; }
+      return {
+        ...state,
+        fleetDiffDirty,
+        byId: { ...state.byId, [msg.id]: applyPatch(pane, msg.patch) },
+      };
+    }
+
+    case 'agents-md-nudge':
+      return { ...state, agentsMdNudgeHits: msg.hits };
+
+    case 'session-mcp': {
+      const pane = state.byId[msg.id];
+      if (!pane) { return state; }
+      return {
+        ...state,
+        byId: { ...state.byId, [msg.id]: { ...pane, mcpServers: msg.servers } },
+      };
+    }
+
+    case 'session-cache-window': {
+      const pane = state.byId[msg.id];
+      if (!pane) { return state; }
+      return {
+        ...state,
+        byId: { ...state.byId, [msg.id]: { ...pane, cacheWindow: msg.window } },
+      };
+    }
+
+    default:
+      // The HostToWebview type is closed, but nothing guarantees a runtime value
+      // matches it (a host that shipped a new variant before this bundle updated,
+      // or a stray/malformed message). Treat an unrecognized message as a no-op
+      // rather than falling off the switch and returning undefined.
+      return state;
+  }
+}
+
+type Patch = Extract<HostToWebview, { t: 'session-patch' }>['patch'];
+
+function applyPatch(pane: PaneState, patch: Patch): PaneState {
+  switch (patch.op) {
+    case 'append': {
+      const pending = patch.item.role === 'permission' && patch.item.state === 'pending'
+        ? [...pane.pending, { requestId: patch.item.requestId, tool: patch.item.tool }]
+        : pane.pending;
+      const pendingQuestions = patch.item.role === 'question' && patch.item.state === 'pending'
+        ? [...pane.pendingQuestions, {
+            requestId: patch.item.requestId, questions: patch.item.questions, blocking: patch.item.blocking,
+          }]
+        : pane.pendingQuestions;
+
+      // A nested append targets a parent already in the loaded window: the
+      // parent's tool-start is appended before its subagent can emit
+      // anything, so no orphan buffer is needed. If the parent genuinely is
+      // not here, promote the child to top-level rather than dropping it —
+      // losing nesting degrades rendering; dropping hides real work.
+      if (patch.parentItemId) {
+        const nested = withChild(pane.items, patch.parentItemId, patch.item);
+        if (nested) { return { ...pane, items: nested, pending, pendingQuestions }; }
+      }
+
+      return { ...pane, items: [...pane.items, patch.item], pending, pendingQuestions };
+    }
+
+    case 'replace': {
+      const replaced = patch.item;
+      const pending = replaced.role === 'permission' && replaced.state !== 'pending'
+        ? pane.pending.filter((p) => p.requestId !== replaced.requestId)
+        : pane.pending;
+      const pendingQuestions = replaced.role === 'question' && replaced.state !== 'pending'
+        ? pane.pendingQuestions.filter((q) => q.requestId !== replaced.requestId)
+        : pane.pendingQuestions;
+
+      if (patch.parentItemId) {
+        const nested = withChild(pane.items, patch.parentItemId, replaced);
+        if (nested) { return { ...pane, items: nested, pending, pendingQuestions }; }
+      }
+
+      const items = pane.items.map((i) => (i.id === replaced.id ? replaced : i));
+      return { ...pane, items, pending, pendingQuestions };
+    }
+
+    case 'delta': {
+      const items = pane.items.map((i) => {
+        if (i.id !== patch.itemId || i.role !== 'assistant') { return i; }
+        return { ...i, [patch.field]: (i[patch.field] ?? '') + patch.delta };
+      });
+      return { ...pane, items };
+    }
+  }
+}
+
+/**
+ * Inserts or replaces `child` inside `parentItemId`'s children, immutably.
+ * Returns undefined when the parent is not in the loaded window, which is
+ * the caller's signal to fall back to a top-level append.
+ */
+function withChild(
+  items: TranscriptItem[],
+  parentItemId: string,
+  child: TranscriptItem,
+): TranscriptItem[] | undefined {
+  let found = false;
+  const next = items.map((item) => {
+    if (item.id !== parentItemId || item.role !== 'tool') { return item; }
+    found = true;
+    const children = item.children ?? [];
+    const at = children.findIndex((c) => c.id === child.id);
+    const updated = at >= 0
+      ? children.map((c, i) => (i === at ? child : c))
+      : [...children, child];
+    return { ...item, children: updated };
+  });
+  return found ? next : undefined;
+}
+
+function readyPaneIds(state: ClientState): SessionId[] {
+  const roster = new Set(state.sessions.map((s) => s.id));
+  return leafSessionIds(state.layout.root).filter((id) => roster.has(id) && id in state.byId);
+}
+
+function keepMaximized(id: SessionId | null, layout: PaneLayout): SessionId | null {
+  return id !== null && leafSessionIds(layout.root).includes(id) ? id : null;
+}
