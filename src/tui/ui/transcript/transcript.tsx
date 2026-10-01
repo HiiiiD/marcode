@@ -2,6 +2,7 @@ import type { ScrollBoxRenderable } from '@opentui/core';
 import { useKeyboard } from '@opentui/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { SessionId } from '../../../protocol/messages';
+import { summarizeSubagent } from '../../../client-core/subagent-window';
 import { actionFor } from '../../keymap';
 import { transcriptRows } from '../../view/transcript-rows';
 import { useTuiStore } from '../store';
@@ -14,6 +15,7 @@ export function Transcript({ sessionId, focused }: { sessionId: SessionId; focus
   const rows = useMemo(() => transcriptRows(pane?.items ?? [], running), [pane?.items, running]);
   const [cursorId, setCursorId] = useState<string | undefined>(undefined);
   const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
+  const [closed, setClosed] = useState<ReadonlySet<string>>(new Set());
   const asked = useRef<string | undefined>(undefined);
   const scroll = useRef<ScrollBoxRenderable | null>(null);
   const heightBefore = useRef<number | undefined>(undefined);
@@ -62,7 +64,12 @@ export function Transcript({ sessionId, focused }: { sessionId: SessionId; focus
     else if (action.do === 'toggle-item') {
       const row = rows[cursor];
       if (row?.kind !== 'tool') { return; }
-      setOpen((o) => { const n = new Set(o); if (n.has(row.id)) { n.delete(row.id); } else { n.add(row.id); } return n; });
+      const id = row.id;
+      const blocked = row.item.tool.kind === 'subagent' && summarizeSubagent(row.item, 0).blocked;
+      const effective = open.has(id) || (blocked && !closed.has(id));
+      const flip = (s: ReadonlySet<string>, on: boolean) => { const n = new Set(s); if (on) { n.add(id); } else { n.delete(id); } return n; };
+      setOpen((o) => flip(o, !effective));
+      setClosed((c) => flip(c, effective && blocked));
     } else if (action.do === 'repin') { setCursorId(undefined); box?.scrollTo(Number.MAX_SAFE_INTEGER); }
     if (action.do === 'page-up' || action.do === 'item-prev') { setTimeout(askOlder, 0); }
   });
@@ -73,7 +80,7 @@ export function Transcript({ sessionId, focused }: { sessionId: SessionId; focus
       {rows.map((row, i) => {
         return (
           <box key={row.id} id={row.id} flexDirection="column">
-            <RowView row={row} selected={focused && i === cursor} expanded={open.has(row.id)} />
+            <RowView row={row} selected={focused && i === cursor} expanded={open.has(row.id)} closed={closed.has(row.id)} />
           </box>
         );
       })}

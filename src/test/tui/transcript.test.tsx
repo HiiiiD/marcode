@@ -263,3 +263,21 @@ test('two quick j presses both register', async () => {
   await m.press('return');
   expect(m.frame()).toContain('BODYTEXT');
 });
+
+test('Enter toggles a subagent and a user collapse sticks while it is still blocked', async () => {
+  const blocked = () => withItems([tool({
+    id: 'sa', ts: 1, state: 'running',
+    tool: { kind: 'subagent', label: 'Task', action: 'spawn', agent: 'Explore' },
+    children: [tool({ id: 'k1', toolId: 'tk1', ts: 2, tool: { kind: 'command', label: 'Bash', command: 'CHILDCMD' } }), permission({ id: 'pp', state: 'pending' })],
+  })], 'running');
+  m = await mount(<Transcript sessionId="s1" focused />);
+  await m.fromHost(blocked());
+  expect(m.frame()).toContain('CHILDCMD');
+  await m.press('j');
+  await m.press('return');
+  expect(m.frame().includes('CHILDCMD')).toBe(false);
+  await m.fromHost(blocked());
+  expect(m.frame().includes('CHILDCMD')).toBe(false);
+  await m.press('return');
+  expect(m.frame()).toContain('CHILDCMD');
+});

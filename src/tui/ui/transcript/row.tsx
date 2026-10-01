@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import type { TranscriptRow } from '../../view/transcript-rows';
 import { ChatMessage } from '../termcn/components/ui/chat-message';
 import { useTheme } from '../termcn/hooks/use-theme';
+import { SubagentCard } from './subagent-card';
 import { ToolCard } from './tool-card';
 
 const syntaxStyle = SyntaxStyle.create();
@@ -17,7 +18,7 @@ function Bar({ color, children }: { color: string; children: ReactNode }) {
   );
 }
 
-export function RowView(props: { row: TranscriptRow; selected: boolean; expanded: boolean }) {
+export function RowView(props: { row: TranscriptRow; selected: boolean; expanded: boolean; closed: boolean }) {
   const { row } = props;
   const theme = useTheme();
   const bold = props.selected ? 1 : 0;
@@ -39,7 +40,9 @@ export function RowView(props: { row: TranscriptRow; selected: boolean; expanded
         </Bar>
       );
     case 'tool':
-      return <ToolCard item={row.item} open={props.expanded} selected={props.selected} />;
+      return row.item.tool.kind === 'subagent'
+        ? <SubagentCard item={row.item} open={props.expanded} userClosed={props.closed} selected={props.selected} />
+        : <ToolCard item={row.item} open={props.expanded} selected={props.selected} />;
     case 'permission':
       return (
         <text attributes={bold} wrapMode="word">
