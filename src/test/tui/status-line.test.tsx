@@ -26,3 +26,23 @@ test('with no session it offers a new one', async () => {
   await m.fromHost(hydrateMsg({ sessions: [], snapshots: [] }));
   expect(m.frame()).toContain('no session — Ctrl+N new');
 });
+
+test('hints the picker keys when the session is ours and there is room', async () => {
+  m = await mount(<StatusLine sessionId="s1" width={100} />);
+  await m.fromHost(hydrateMsg({ sessions: [withEffort], snapshots: [snapshot('s1', withEffort)] }));
+  expect(m.frame()).toContain('^P model · ^E effort · ⇧Tab mode');
+});
+
+test('drops the hint before it would truncate the session line', async () => {
+  m = await mount(<StatusLine sessionId="s1" width={40} />);
+  await m.fromHost(hydrateMsg({ sessions: [withEffort], snapshots: [snapshot('s1', withEffort)] }));
+  expect(m.frame()).toContain('Fake · fake-large · high · plan');
+  expect(m.frame().includes('^P')).toBe(false);
+});
+
+test('a session owned by another host gets no hint', async () => {
+  const foreign = summary('s1', { owner: { host: 'vscode', pid: 1 } });
+  m = await mount(<StatusLine sessionId="s1" width={100} />);
+  await m.fromHost(hydrateMsg({ sessions: [foreign], snapshots: [snapshot('s1', foreign)] }));
+  expect(m.frame().includes('^P')).toBe(false);
+});

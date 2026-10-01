@@ -124,6 +124,7 @@ test('a foreign session: Esc and the cyclers post nothing for it', async () => {
   await m.press('e', { ctrl: true });
   await m.press('tab', { shift: true });
   expect(forS1().length).toBe(0);
+  expect(m.frame().includes('Search:') || m.frame().includes('Permission mode')).toBe(false);
 });
 
 test('an owned running session: the first Ctrl+C interrupts, a second within the window quits', async () => {

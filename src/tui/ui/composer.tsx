@@ -5,6 +5,7 @@ import { parseAttachCommand, parsePastedPaths } from '../../client-core/path-pas
 import { promptHistory } from '../../client-core/prompt-history';
 import type { SessionId } from '../../protocol/messages';
 import { existingFileUris } from '../attach-paths';
+import { parsePickerCommand, type PickerKind } from '../view/pickers';
 import { actionFor } from '../keymap';
 import { AttachmentChips } from './attachment-chips';
 import { MentionPopup } from './mention-popup';
@@ -22,7 +23,7 @@ const KEY_BINDINGS: KeyBinding[] = [
   { name: 'linefeed', action: 'newline' },
 ];
 
-export function Composer({ sessionId, focused }: { sessionId: SessionId; focused: boolean }) {
+export function Composer({ sessionId, focused, onOpenPicker }: { sessionId: SessionId; focused: boolean; onOpenPicker?: (kind: PickerKind) => void }) {
   const { state, post, drafts, setMentionOpen, setNotice } = useTuiStore();
   const pane = state.byId[sessionId];
   const running = pane?.summary.status === 'running';
@@ -88,6 +89,15 @@ export function Composer({ sessionId, focused }: { sessionId: SessionId; focused
   const submit = () => {
     const value = (box.current?.plainText ?? '').trim();
     if (value === '') { return; }
+    const picker = parsePickerCommand(value);
+    if (picker && onOpenPicker) {
+      setBox('');
+      drafts.set(sessionId, '');
+      pending.current = '';
+      flush();
+      onOpenPicker(picker);
+      return;
+    }
     const command = parseAttachCommand(value);
     if (command !== undefined) {
       if (!attach(command)) { setNotice('attach: path not found or not an absolute file path'); return; }

@@ -18,6 +18,9 @@ below is its own cycle: spec in `docs/superpowers/specs/`, plan in `docs/superpo
   `src/tui/ui/termcn/`. Landed: marcode theme, delete confirm, new-session dialog, attachment chips, roster,
   transcript rows on termcn chat-message and tool-call. Spec `2026-10-01-tui-termcn-adoption-design.md`.
   Docs for the vendored components are in `docs/`; check `git log feat/tui-features..feat/tui-termcn`.
+- **Model, effort and mode dialogs** (`feat/tui-model-effort-dialogs`, off `feat/tui-termcn`): Ctrl+P, Ctrl+E,
+  Shift+Tab and `/model` `/effort` `/mode` open webview-style dialogs; the cycle keys are gone. Mode rows are shared with the
+  webview through `src/shared/permission-modes.ts`.
 - **Tool cards at webview parity.** Spec `2026-10-01-tui-tool-cards-design.md` and its plan are written; check
   whether execution has started before picking it up.
 

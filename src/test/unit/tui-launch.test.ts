@@ -1,7 +1,6 @@
 import * as assert from 'node:assert';
 import type { ProviderInfo } from '../../protocol/messages';
 import { launchPlan } from '../../tui/view/launch';
-import { nextEffort, nextMode, nextModel } from '../../tui/view/cycle';
 import { catalog, singlePaneLayout, summary } from '../fixtures/protocol';
 
 const base = { ready: true, probing: false, sessions: [summary('a', { updatedAt: 5 }), summary('b', { updatedAt: 9 })], catalog: catalog(), layout: singlePaneLayout('a'), forceNew: false };
@@ -49,45 +48,5 @@ suite('tui launch plan', () => {
   });
   test('no sessions and a ready catalog is the empty state', () => {
     assert.deepStrictEqual(launchPlan({ ...base, sessions: [] }), { kind: 'empty' });
-  });
-});
-
-suite('tui cyclers', () => {
-  const s = summary('a', { providerId: 'fake', model: 'fake-large' });
-  const withModes = () => {
-    const cat = catalog();
-    cat[0].permissionModes = [{ id: 'default' }, { id: 'plan' }, { id: 'bypass' }] as never;
-    return cat;
-  };
-  test('model wraps around the provider list', () => {
-    assert.strictEqual(nextModel(catalog(), s), 'fake-small');
-    assert.strictEqual(nextModel(catalog(), { ...s, model: 'fake-medium' }), 'fake-large');
-  });
-  test('model is undefined with fewer than two models', () => {
-    const cat = catalog();
-    cat[0].models = [cat[0].models[0]];
-    assert.strictEqual(nextModel(cat, s), undefined);
-  });
-  test('effort follows the model levels and wraps', () => {
-    assert.strictEqual(nextEffort(catalog(), { ...s, effort: 'low' }), 'medium');
-    assert.strictEqual(nextEffort(catalog(), { ...s, effort: 'high' }), 'low');
-  });
-  test('effort is undefined for a model without levels or with one level', () => {
-    assert.strictEqual(nextEffort(catalog(), { ...s, model: 'fake-small' }), undefined);
-    const cat = catalog();
-    cat[0].models = [{ id: 'fake-large', displayName: 'L', effort: { levels: ['low'], default: 'low' } }];
-    assert.strictEqual(nextEffort(cat, s), undefined);
-  });
-  test('permission mode never advances into bypass', () => {
-    assert.strictEqual(nextMode(withModes(), { ...s, permissionMode: 'default' }), 'plan');
-    assert.strictEqual(nextMode(withModes(), { ...s, permissionMode: 'plan' }), 'default');
-  });
-  test('a session in bypass cycles to the first non-bypass mode', () => {
-    assert.strictEqual(nextMode(withModes(), { ...s, permissionMode: 'bypass' }), 'default');
-  });
-  test('mode is undefined when fewer than two non-bypass modes remain', () => {
-    const cat = catalog();
-    cat[0].permissionModes = [{ id: 'default' }, { id: 'bypass' }] as never;
-    assert.strictEqual(nextMode(cat, s), undefined);
   });
 });

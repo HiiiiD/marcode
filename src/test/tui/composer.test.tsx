@@ -153,3 +153,25 @@ test('an unfocused composer ignores keys', async () => {
   expect(m.frame()).not.toContain('earlier prompt');
   expect(sends().length).toBe(0);
 });
+
+test('/model opens the model picker instead of sending, and clears the box', async () => {
+  const opened: string[] = [];
+  m = await mount(<Composer sessionId="s1" focused onOpenPicker={(k) => { opened.push(k); }} />);
+  await m.fromHost(hydrateMsg());
+  await m.type('/model');
+  await m.press('return');
+  expect(opened).toEqual(['model']);
+  expect(sends().length).toBe(0);
+  expect(m.frame().includes('/model')).toBe(false);
+});
+
+test('/effort and /mode open their pickers', async () => {
+  const opened: string[] = [];
+  m = await mount(<Composer sessionId="s1" focused onOpenPicker={(k) => { opened.push(k); }} />);
+  await m.fromHost(hydrateMsg());
+  await m.type('/effort');
+  await m.press('return');
+  await m.type('/mode');
+  await m.press('return');
+  expect(opened).toEqual(['effort', 'mode']);
+});
