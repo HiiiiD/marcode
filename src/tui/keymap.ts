@@ -8,6 +8,7 @@ export type Action =
   | { do: 'roster-next' } | { do: 'roster-prev' } | { do: 'roster-focus' } | { do: 'roster-hide' } | { do: 'roster-rename' }
   | { do: 'allow' } | { do: 'deny' } | { do: 'confirm' }
   | { do: 'option-next' } | { do: 'option-prev' } | { do: 'option-toggle' } | { do: 'submit-answers' }
+  | { do: 'roster-pin' } | { do: 'roster-filter' } | { do: 'roster-delete' } | { do: 'attach-remove' }
   | { do: 'refresh-catalog' };
 
 const act = <T extends Action['do']>(d: T) => ({ do: d }) as Extract<Action, { do: T }>;
@@ -37,6 +38,7 @@ export function actionFor(zone: Zone, key: KeyInput, ctx: { running: boolean }):
   if (global) { return global; }
   if (key.ctrl && key.name === 'j' && zone === 'composer') { return act('newline'); }
   if (key.name === 'linefeed' && zone === 'composer') { return act('newline'); }
+  if (key.ctrl && key.name === 'x' && zone === 'composer') { return act('attach-remove'); }
   if (key.ctrl) { return undefined; }
   switch (zone) {
     case 'composer':
@@ -60,6 +62,9 @@ export function actionFor(zone: Zone, key: KeyInput, ctx: { running: boolean }):
         case 'return': return act('roster-focus');
         case 'x': return act('roster-hide');
         case 'r': return act('roster-rename');
+        case 'p': return act('roster-pin');
+        case '/': return act('roster-filter');
+        case 'd': return key.shift ? act('roster-delete') : undefined;
       }
       return undefined;
     case 'approval':

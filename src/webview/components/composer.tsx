@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 import { Clock, Loader, Paperclip, SendHorizontal, Square, TriangleAlert, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { Invocable, ModelInfo } from "../../protocol/messages";
-import { fileMentions, fileRefsOf, type FileMentionPayload } from "../lib/file-mentions";
+import { fileMentions, fileRefsOf, type FileMentionPayload } from "../../client-core/mentions/file-mentions";
 import { interceptFor } from "../lib/intercepts";
 import { insertionFor, menuQuery, menuView } from "../lib/invocable-menu";
 import { expandedDisplayName, sortFavoritesFirst } from "../../shared/model-catalog";
@@ -15,10 +15,10 @@ import { leafSessionIds } from "./layout-tree";
 import {
   filterMentions, mentionQuery, pruneMentions, spliceMention, tokenFor,
   type MentionOption, type PendingMention,
-} from "../lib/mention-menu";
+} from "../../client-core/mentions/mention-menu";
 import {
   sessionMentions, type SessionMentionPayload,
-} from "../lib/session-mentions";
+} from "../../client-core/mentions/session-mentions";
 import { useMentionMenu } from "../lib/use-mention-menu";
 import { promptHistory } from "../lib/prompt-history";
 import { useDraft } from "../lib/use-draft";

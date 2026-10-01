@@ -5,6 +5,7 @@ import type { Zone } from '../keymap';
 import { bottomSlot } from '../view/bottom-slot';
 import { launchPlan } from '../view/launch';
 import { BottomSlotView } from './bottom-slot';
+import { DeleteConfirm } from './delete-confirm';
 import { EmptyState } from './empty-state';
 import { NewSessionDialog } from './new-session-dialog';
 import { NoticeLine } from './notice-line';
@@ -37,6 +38,7 @@ export function App(props: AppProps) {
   const showRoster = rosterOn ?? wide;
   const [zone, setZone] = useState<PaneZone>('composer');
   const [dialog, setDialog] = useState(false);
+  const [deleting, setDeleting] = useState<{ id: SessionId; title: string } | null>(null);
   const [kept, setKept] = useState<string | undefined>(undefined);
   const planned = useRef(false);
   const seen = useRef<Set<SessionId> | null>(null);
@@ -79,10 +81,10 @@ export function App(props: AppProps) {
   const current: PaneZone = zones.includes(zone) ? zone : zones[0] ?? 'composer';
   const keyZone: Zone = slot?.kind === 'permission' ? 'approval' : slot?.kind === 'question' ? 'question' : current;
   const paneZone: PaneZone = keyZone === 'approval' || keyZone === 'question' ? 'composer' : current;
-  const live = (z: PaneZone) => !dialog && paneZone === z;
+  const live = (z: PaneZone) => !dialog && !deleting && paneZone === z;
 
   useAppKeys({
-    inert: dialog, zone: keyZone, summary, quitWindowMs: props.quitWindowMs ?? 2000, onQuit: props.onQuit,
+    inert: dialog || deleting !== null, zone: keyZone, summary, quitWindowMs: props.quitWindowMs ?? 2000, onQuit: props.onQuit,
     toggleRoster: () => { setRosterOn(!showRoster); },
     openDialog: () => { setDialog(true); },
     cycleZone: () => { setZone(zones[(zones.indexOf(current) + 1) % zones.length] ?? 'composer'); },
@@ -94,7 +96,9 @@ export function App(props: AppProps) {
     if (!wide) { setRosterOn(false); }
   };
 
-  const roster = showRoster ? <Roster focused={live('roster')} onFocusSession={onFocusSession} /> : null;
+  const roster = showRoster
+    ? <Roster focused={live('roster')} onFocusSession={onFocusSession} onAskDelete={(row) => { setDeleting(row); }} />
+    : null;
   const body = focusedId ? (
     <box flexDirection="column" flexGrow={1} flexShrink={1} minHeight={0}>
       <Transcript sessionId={focusedId} focused={live('transcript')} />
@@ -123,6 +127,7 @@ export function App(props: AppProps) {
           onCreated={() => { setDialog(false); expectNewSession(); }}
         />
       ) : null}
+      {deleting ? <DeleteConfirm id={deleting.id} title={deleting.title} onDone={() => { setDeleting(null); }} /> : null}
       <box flexDirection="column" flexShrink={0}>
         <StatusLine sessionId={focusedId} width={width} />
         <NoticeLine />
