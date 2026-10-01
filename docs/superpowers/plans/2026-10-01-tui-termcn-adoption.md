@@ -504,6 +504,37 @@ test('a very long title and a foreign row stay inside the 26-column roster', asy
 
 If `trimEnd().length <= 26` is too strict for how the border draws (the roster `width={26}` includes its border), print one frame locally, set the bound to the observed roster width, and keep the assertion on both the long and foreign rows.
 
+Also add the overflow check. The roster maps every row with no scrolling, so a long list may spill out of its box; this test finds out:
+
+```tsx
+test('a long roster keeps the cursor row visible while moving down', async () => {
+  const many = Array.from({ length: 40 }, (_, i) => summary(`n${i}`, { name: `session-${String(i).padStart(2, '0')}` }));
+  m = await mount(<Roster focused onFocusSession={() => {}} onAskDelete={() => {}} />, { width: 60, height: 15 });
+  await m.fromHost(hydrateMsg({ sessions: many, snapshots: [snapshot('n0')] }));
+  expect(m.frame()).toContain('session-00');
+  for (let i = 0; i < 35; i++) { await m.press('j'); }
+  expect(m.frame()).toContain('session-35');
+});
+```
+
+- [ ] **Step 2b: Run the roster tests and decide**
+
+Run: `cd /e/Efebia/hiiiid-code && bun test src/test/tui/roster.test.tsx`
+Expected: the long-title test passes. If the 40-session test **passes**, the roster already copes (OpenTUI clips and the cursor follows); record that in the commit message body and skip Step 2c. If it **fails**, the roster overflows today and Step 2c is part of this task.
+
+- [ ] **Step 2c: Only if Step 2b failed: scroll the rows natively**
+
+Do not use termcn's `virtual-list`: its cursor is internal and unclamped when a filter shrinks the list, so it would fight our id-based cursor. Use OpenTUI's `<scrollbox>`, as `transcript.tsx` does. In `roster.tsx`: import `type { ScrollBoxRenderable } from '@opentui/core'` and `useRef`; add `const scroll = useRef<ScrollBoxRenderable | null>(null);`; add
+
+```tsx
+  useEffect(() => {
+    const id = rows[cursor]?.id;
+    if (id !== undefined) { scroll.current?.scrollChildIntoView(id); }
+  }, [cursor, rows.length]);
+```
+
+and render the rows as `<scrollbox ref={scroll} flexGrow={1}>` containing one `<text key={row.id} id={row.id} ...>` per row (the same row string and colours as before). The filter line and the empty-state lines stay outside the scrollbox. Re-run the file; the 40-session test must now pass and every other roster test must be unchanged.
+
 - [ ] **Step 2: Run the file**
 
 Run: `cd /e/Efebia/hiiiid-code && bun test src/test/tui/roster.test.tsx`
