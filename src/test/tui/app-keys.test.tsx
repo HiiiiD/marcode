@@ -145,3 +145,50 @@ test('the new-session dialog keeps its option rows visible in a short terminal',
   expect(frame.includes('New session')).toBe(true);
   expect(frame.includes('› ')).toBe(true);
 });
+
+const rosterApp = () => hydrateMsg({
+  sessions: [summary('s1', { name: 'one' }), summary('s2', { name: 'two' }), summary('s3', { name: 'theirs', owner: { host: 'vscode', pid: 7 } })],
+  snapshots: [snapshot('s1')],
+});
+
+test('delete confirm: y deletes the highlighted session, other keys are inert meanwhile', async () => {
+  m = await mount(<App {...props} />, { width: 120, height: 30 });
+  await m.fromHost(rosterApp());
+  await m.press('tab');
+  await m.press('tab');
+  await m.press('j');
+  await m.press('d', { shift: true });
+  expect(m.frame()).toContain('Delete "two"? y/n');
+  await m.press('j');
+  expect(m.posted.some((p) => p.t === 'delete-session')).toBe(false);
+  await m.press('y');
+  expect(m.posted).toContainEqual({ t: 'delete-session', id: 's2' });
+  expect(m.frame().includes('Delete "two"')).toBe(false);
+});
+
+test('delete confirm: n and Esc cancel without posting', async () => {
+  m = await mount(<App {...props} />, { width: 120, height: 30 });
+  await m.fromHost(rosterApp());
+  await m.press('tab');
+  await m.press('tab');
+  await m.press('d', { shift: true });
+  await m.press('n');
+  expect(m.frame().includes('Delete "one"')).toBe(false);
+  await m.press('d', { shift: true });
+  await m.press('escape');
+  await settleEscape();
+  expect(m.frame().includes('Delete "one"')).toBe(false);
+  expect(m.posted.some((p) => p.t === 'delete-session')).toBe(false);
+});
+
+test('delete is refused for a session owned by another host, with a notice', async () => {
+  m = await mount(<App {...props} />, { width: 120, height: 30 });
+  await m.fromHost(rosterApp());
+  await m.press('tab');
+  await m.press('tab');
+  await m.press('j');
+  await m.press('j');
+  await m.press('d', { shift: true });
+  expect(m.frame()).toContain('owned by vscode');
+  expect(m.frame().includes('Delete "theirs"')).toBe(false);
+});
