@@ -1,7 +1,8 @@
 import { SyntaxStyle } from '@opentui/core';
 import type { TranscriptRow } from '../../view/transcript-rows';
+import { ChatMessage } from '../termcn/components/ui/chat-message';
+import { ToolCall } from '../termcn/components/ui/tool-call';
 
-const MARK = { running: '…', ok: '', error: ' ✗' } as const;
 const syntaxStyle = SyntaxStyle.create();
 
 export function RowView(props: { row: TranscriptRow; selected: boolean; expanded: boolean }) {
@@ -9,14 +10,27 @@ export function RowView(props: { row: TranscriptRow; selected: boolean; expanded
   const bold = props.selected ? 1 : 0;
   switch (row.kind) {
     case 'user':
-      return <text attributes={bold} wrapMode="word">{`> ${row.fromName ? `[${row.fromName}] ` : ''}${row.text}`}</text>;
+      return (
+        <ChatMessage sender="user" name={row.fromName}>
+          <text attributes={bold} wrapMode="word">{row.text}</text>
+        </ChatMessage>
+      );
     case 'assistant':
-      return <markdown content={row.text} streaming={row.streaming} syntaxStyle={syntaxStyle} />;
+      return (
+        <ChatMessage sender="assistant">
+          <markdown content={row.text} streaming={row.streaming} syntaxStyle={syntaxStyle} />
+        </ChatMessage>
+      );
     case 'tool':
       return (
-        <text attributes={bold} fg="gray" wrapMode="word">
-          {`${' '.repeat(row.depth * 2)}${props.expanded ? '▾' : '▸'} ${row.header.verb} ${row.header.primary}${MARK[row.state]}`}
-        </text>
+        <box flexDirection="row" gap={1} paddingLeft={row.depth * 2}>
+          <text attributes={bold} fg="gray">{props.expanded ? '▾' : '▸'}</text>
+          <ToolCall
+            name={`${row.header.verb} ${row.header.primary}`}
+            status={row.state === 'ok' ? 'success' : row.state}
+            collapsible={false}
+          />
+        </box>
       );
     case 'permission':
       return <text attributes={bold} fg="yellow" wrapMode="word">{`? ${row.header.verb} ${row.header.primary} — ${row.state}${row.reason ? ` (${row.reason})` : ''}`}</text>;

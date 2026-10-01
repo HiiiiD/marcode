@@ -35,8 +35,28 @@ test('user and assistant text render, assistant as markdown', async () => {
     { id: 'a1', ts: 2, role: 'assistant', text: 'Done. **All green.**' },
   ]));
   await paint('All green');
-  expect(m.frame()).toContain('> fix the tests');
+  expect(m.frame()).toContain('fix the tests');
+  expect(m.frame()).toContain('user');
+  expect(m.frame()).toContain('assistant');
   expect(m.frame()).toContain('All green');
+});
+
+test('a finished tool row starts no interval timers', async () => {
+  const real = globalThis.setInterval;
+  let started = 0;
+  globalThis.setInterval = ((...a: Parameters<typeof setInterval>) => { started++; return real(...a); }) as typeof setInterval;
+  try {
+    m = await mount(<Transcript sessionId="s1" focused />);
+    const before = started;
+    await m.fromHost(withItems([tool({ id: 't1', state: 'ok' })]));
+    expect(started - before).toBe(0);
+  } finally { globalThis.setInterval = real; }
+});
+
+test('a finished tool row shows a check mark', async () => {
+  m = await mount(<Transcript sessionId="s1" focused />);
+  await m.fromHost(withItems([tool({ id: 't1', state: 'ok' })]));
+  expect(m.frame()).toContain('✓');
 });
 
 test('a tool call is one header line until expanded', async () => {
@@ -146,7 +166,7 @@ test('a prepend does not cascade another load-more and keeps the reader in place
   expect(loadMores().length).toBe(1);
   expect(m.frame()).toContain('m message 0');
   await m.press('k');
-  for (let i = 0; i < 20; i++) { await m.press('pageup'); await tick(); }
+  for (let i = 0; i < 80; i++) { await m.press('pageup'); await tick(); }
   expect(loadMores().length).toBe(2);
   expect(loadMores()[1]).toEqual({ t: 'load-more', id: 's1', beforeItemId: 'old0' });
 });
