@@ -4,6 +4,7 @@ import { createLoopback } from '../../client-core/loopback-transport';
 import type { HostToWebview, WebviewToHost } from '../../protocol/messages';
 import { PromptArmContext } from '../../tui/ui/prompt-arm';
 import { TuiStoreProvider } from '../../tui/ui/store';
+import { TuiThemeProvider } from '../../tui/ui/tui-theme';
 import { catalog, singlePaneLayout, snapshot, summary } from '../fixtures/protocol';
 
 // testRender flips this to false on destroy, so every mount must switch it back on.
@@ -43,7 +44,9 @@ export async function mount(ui: ReactNode, size = { width: 100, height: 30 }, op
     // main.tsx runs with exitOnCtrlC off; the test renderer would otherwise destroy itself on Ctrl+C.
     setup = await testRender(
       <PromptArmContext.Provider value={opts.promptArmMs ?? 0}>
-        <TuiStoreProvider transport={loop.transport}>{ui}</TuiStoreProvider>
+        <TuiThemeProvider>
+          <TuiStoreProvider transport={loop.transport}>{ui}</TuiStoreProvider>
+        </TuiThemeProvider>
       </PromptArmContext.Provider>,
       { exitOnCtrlC: false, ...size },
     );

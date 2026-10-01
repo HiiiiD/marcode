@@ -7,6 +7,7 @@ import { bootHost, type Booted } from '../../tui/boot';
 import { App } from '../../tui/ui/app';
 import { PromptArmContext } from '../../tui/ui/prompt-arm';
 import { TuiStoreProvider } from '../../tui/ui/store';
+import { TuiThemeProvider } from '../../tui/ui/tui-theme';
 import { actEnv, KEY_ALIAS } from './harness';
 
 export type Mods = { ctrl?: boolean; meta?: boolean; shift?: boolean };
@@ -43,9 +44,11 @@ export async function mountBooted(opts: MountBootedOpts = {}) {
   await act(async () => {
     setup = await testRender(
       <PromptArmContext.Provider value={opts.promptArmMs ?? 0}>
-        <TuiStoreProvider transport={booted.loopback.transport}>
-          <App launchCwd={cwd} prompt={opts.prompt} forceNew={false} loginCommands={{}} onQuit={() => {}} />
-        </TuiStoreProvider>
+        <TuiThemeProvider>
+          <TuiStoreProvider transport={booted.loopback.transport}>
+            <App launchCwd={cwd} prompt={opts.prompt} forceNew={false} loginCommands={{}} onQuit={() => {}} />
+          </TuiStoreProvider>
+        </TuiThemeProvider>
       </PromptArmContext.Provider>,
       { exitOnCtrlC: false, width: 110, height: 32 },
     );
