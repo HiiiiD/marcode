@@ -37,3 +37,28 @@ test('x on a row posts close-session for it', async () => {
   await m.press('x');
   expect(m.posted).toContainEqual({ t: 'close-session', id: 'a' });
 });
+
+test('k clamps at the first row', async () => {
+  const chosen: string[] = [];
+  m = await mount(<Roster focused onFocusSession={(id) => chosen.push(id)} />);
+  await m.fromHost(hydrateMsg({ sessions, snapshots: [snapshot('a')] }));
+  await m.press('k');
+  await m.press('return');
+  expect(chosen).toEqual(['a']);
+});
+
+test('keys are ignored while the roster is not focused', async () => {
+  const chosen: string[] = [];
+  m = await mount(<Roster focused={false} onFocusSession={(id) => chosen.push(id)} />);
+  await m.fromHost(hydrateMsg({ sessions, snapshots: [snapshot('a')] }));
+  await m.press('return');
+  await m.press('x');
+  expect(chosen).toEqual([]);
+  expect(m.posted.some((p) => p.t === 'close-session')).toBe(false);
+});
+
+test('an empty roster says so', async () => {
+  m = await mount(<Roster focused onFocusSession={() => {}} />);
+  await m.fromHost(hydrateMsg({ sessions: [], snapshots: [] }));
+  expect(m.frame()).toContain('no sessions yet');
+});
