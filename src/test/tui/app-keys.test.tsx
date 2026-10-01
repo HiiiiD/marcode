@@ -192,3 +192,15 @@ test('delete is refused for a session owned by another host, with a notice', asy
   expect(m.frame()).toContain('owned by vscode');
   expect(m.frame().includes('Delete "theirs"')).toBe(false);
 });
+
+test('Tab with the @ popup open picks the row and does not cycle the zone', async () => {
+  m = await mount(<App {...props} />, { width: 120, height: 30 });
+  await m.fromHost(hydrateMsg());
+  await m.type('@ap');
+  await wait(250);
+  await m.fromHost({ t: 'file-search-result', id: 's1', query: 'ap', files: [{ path: 'src/app.ts', name: 'app.ts' }] });
+  await m.press('tab');
+  expect(m.frame()).toContain('@src/app.ts');
+  await m.type('x');
+  expect(m.frame()).toContain('@src/app.ts x');
+});
