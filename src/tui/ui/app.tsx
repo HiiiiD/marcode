@@ -18,6 +18,7 @@ import { useTuiStore } from './store';
 import { Transcript } from './transcript/transcript';
 import { useAppKeys } from './use-app-keys';
 import { useFocusFallback } from './use-focus-fallback';
+import { usePaneLayout } from './use-pane-layout';
 
 export interface AppProps {
   launchCwd: string;
@@ -34,7 +35,8 @@ type PaneZone = 'composer' | 'transcript' | 'roster';
 
 export function App(props: AppProps) {
   const { state, post, setNotice } = useTuiStore();
-  const { shownId: focusedId, focusSession: focus } = useFocusFallback();
+  const layout = usePaneLayout();
+  const { shownId: focusedId, focusSession: focus } = useFocusFallback(layout.placeOrFocus);
   const { width } = useTerminalDimensions();
   const wide = width >= 100;
   const [rosterOn, setRosterOn] = useState<boolean | undefined>(undefined);
@@ -45,10 +47,8 @@ export function App(props: AppProps) {
   const [deleting, setDeleting] = useState<{ id: SessionId; title: string } | null>(null);
   const [kept, setKept] = useState<string | undefined>(undefined);
   const planned = useRef(false);
-  const seen = useRef<Set<SessionId> | null>(null);
 
-  const knownIds = () => new Set([...state.sessions.map((s) => s.id), ...Object.keys(state.byId)]);
-  const expectNewSession = () => { seen.current = knownIds(); };
+  const expectNewSession = () => { layout.expectArrival(); setKept(undefined); };
 
   const pane = focusedId ? state.byId[focusedId] : undefined;
   const summary = pane?.summary ?? state.sessions.find((s) => s.id === focusedId);
@@ -69,13 +69,6 @@ export function App(props: AppProps) {
       });
     } else { setKept(plan.pendingPrompt); }
   });
-
-  useEffect(() => {
-    if (!seen.current) { return; }
-    const before = seen.current;
-    const fresh = [...knownIds()].find((id) => !before.has(id));
-    if (fresh) { seen.current = null; setKept(undefined); focus(fresh); }
-  }, [state.sessions, state.byId]);
 
   useEffect(() => { if (props.initialNotice) { setNotice(props.initialNotice); } }, []);
   useEffect(() => props.subscribeNotices?.((text) => { setNotice(text); }), [props.subscribeNotices]);

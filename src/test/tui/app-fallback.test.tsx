@@ -21,7 +21,7 @@ async function twoSessions() {
   m = await mount(<App {...props} />, { width: 120, height: 30 });
   await m.fromHost(hydrateMsg({
     sessions: [summary('a', { name: 'alpha' }), summary('b', { name: 'beta' })],
-    snapshots: [snapshot('a'), snapshot('b', { items: [{ id: 'u1', ts: 1, role: 'user', text: 'beta says hi' }] })],
+    snapshots: [snapshot('a')],
     layout: { root: { kind: 'leaf', sessionId: 'a', size: 100 }, presets: [] },
   }));
   expect(lastVisible()).toEqual({ t: 'set-visible', sessionIds: ['a'] });
@@ -35,7 +35,7 @@ test('closing the focused session from the roster focuses the next one once the 
   expect(m!.posted.some((p) => p.t === 'close-session' && p.id === 'a')).toBe(true);
   await m!.fromHost({ t: 'sessions-changed', sessions: [summary('b', { name: 'beta' })] });
   await new Promise((r) => setTimeout(r, 10));
-  await m!.fromHost();
+  await m!.fromHost({ t: 'session-snapshot', session: snapshot('b', { items: [{ id: 'u1', ts: 1, role: 'user', text: 'beta says hi' }] }) });
   expect(lastVisible()).toEqual({ t: 'set-visible', sessionIds: ['b'] });
   expect(m!.frame()).toContain('beta says hi');
 });
@@ -54,7 +54,7 @@ test('hiding the only session leaves the empty state, and typing sends nothing',
   await m.type('hello');
   await m.press('return');
   expect(m.posted.some((p) => p.t === 'send')).toBe(false);
-  expect(m.posted.filter((p) => p.t === 'set-visible').length).toBe(1);
+  expect(lastVisible()).toEqual({ t: 'set-visible', sessionIds: [] });
 });
 
 test('closing the last session leaves the empty state with no composer', async () => {

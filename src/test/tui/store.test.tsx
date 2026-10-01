@@ -18,7 +18,7 @@ const presets: LayoutPreset[] = [
   { id: 'p1', name: 'one', builtin: false, root: { kind: 'leaf', sessionId: 'a', size: 100 } },
 ];
 
-test('focus posts set-layout, set-visible, focus-pane in order and updates focusedId', async () => {
+test('focus posts only focus-pane and updates focusedId; the layout is not rewritten', async () => {
   m = await mount(<Probe />);
   await m.fromHost(hydrateMsg({
     sessions: [summary('a'), summary('b')],
@@ -29,14 +29,9 @@ test('focus posts set-layout, set-visible, focus-pane in order and updates focus
   const before = m.posted.length;
   await m.press('f');
   const after = m.posted.slice(before);
-  expect(after.map((p) => p.t)).toEqual(['set-layout', 'set-visible', 'focus-pane']);
-  const [layoutMsg, visible, pane] = after;
-  if (layoutMsg.t !== 'set-layout' || visible.t !== 'set-visible' || pane.t !== 'focus-pane') { throw new Error('unexpected messages'); }
-  const layout = layoutMsg.layout; const rootNode = layout.root;
-  expect(rootNode).toEqual({ kind: 'leaf', sessionId: 'b', size: 100 });
-  expect(layoutMsg.layout.focusedSessionId).toBe('b');
-  expect(layoutMsg.layout.presets).toEqual(presets);
-  expect(visible.sessionIds).toEqual(['b']);
+  expect(after.map((p) => p.t)).toEqual(['focus-pane']);
+  const [pane] = after;
+  if (pane.t !== 'focus-pane') { throw new Error('unexpected messages'); }
   expect(pane.sessionId).toBe('b');
   expect(m.frame()).toContain('focused:b');
 });

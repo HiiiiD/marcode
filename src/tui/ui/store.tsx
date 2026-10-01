@@ -12,6 +12,7 @@ export interface TuiStoreValue {
   drafts: DraftStore;
   focusedId: SessionId | null;
   focus(id: SessionId): void;
+  setLocalLayout(layout: PaneLayout): void;
   notice: string | null;
   setNotice(text: string | null): void;
   mentionOpen: boolean;
@@ -49,22 +50,16 @@ export function TuiStoreProvider({ transport, children }: { transport: ClientTra
   const post = useCallback((msg: WebviewToHost) => { transport.post(msg); }, [transport]);
 
   const focus = useCallback((id: SessionId) => {
-    const layout: PaneLayout = {
-      root: { kind: 'leaf', sessionId: id, size: 100 },
-      presets: stateRef.current.layout.presets,
-      focusedSessionId: id,
-    };
-    transport.post({ t: 'set-layout', layout });
-    transport.post({ t: 'set-visible', sessionIds: [id] });
     transport.post({ t: 'focus-pane', sessionId: id });
-    dispatch({ t: 'local-layout', layout });
     dispatch({ t: 'local-focus', id });
   }, [transport]);
 
+  const setLocalLayout = useCallback((layout: PaneLayout) => { dispatch({ t: 'local-layout', layout }); }, []);
+
   const focusedId = state.focusedSessionId ?? null;
   const value = useMemo<TuiStoreValue>(
-    () => ({ state, post, drafts, focusedId, focus, notice, setNotice, mentionOpen, setMentionOpen, rosterFiltering, setRosterFiltering }),
-    [state, post, drafts, focusedId, focus, notice, mentionOpen, rosterFiltering],
+    () => ({ state, post, drafts, focusedId, focus, setLocalLayout, notice, setNotice, mentionOpen, setMentionOpen, rosterFiltering, setRosterFiltering }),
+    [state, post, drafts, focusedId, focus, setLocalLayout, notice, mentionOpen, rosterFiltering],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

@@ -1,6 +1,7 @@
 import type { ScrollBoxRenderable } from '@opentui/core';
 import { useKeyboard } from '@opentui/react';
 import { useEffect, useRef, useState } from 'react';
+import { leafSessionIds } from '../../client-core/layout-tree';
 import type { SessionId } from '../../protocol/messages';
 import { actionFor } from '../keymap';
 import { rosterRows } from '../view/roster-rows';
@@ -17,7 +18,7 @@ export function Roster({ focused, onFocusSession, onAskDelete }: RosterProps) {
   const { state, focusedId, post, setNotice, setRosterFiltering } = useTuiStore();
   const [filter, setFilter] = useState('');
   const [filtering, setFiltering] = useState(false);
-  const rows = rosterRows(state.sessions, focusedId, filter);
+  const rows = rosterRows(state.sessions, focusedId, filter, new Set(leafSessionIds(state.layout.root)));
   // Tracked by id so a reorder (pinning) keeps the highlight on the row it was on.
   const [cursorId, setCursorId] = useState<SessionId | null>(null);
   const cursor = Math.max(0, rows.findIndex((r) => r.id === cursorId));
@@ -71,7 +72,7 @@ export function Roster({ focused, onFocusSession, onAskDelete }: RosterProps) {
             fg={row.dim ? theme.colors.mutedForeground : undefined}
             attributes={focused && i === cursor ? 1 : 0}
           >
-            {`${row.focused ? '▸' : ' '}${row.glyph} ${row.pinned ? '★ ' : ''}${row.title}${row.suffix ? ` ${row.suffix}` : ''}`}
+            {`${row.focused ? '▸' : row.leaf ? '▪' : ' '}${row.glyph} ${row.pinned ? '★ ' : ''}${row.title}${row.suffix ? ` ${row.suffix}` : ''}`}
           </text>
         ))}
       </scrollbox>
