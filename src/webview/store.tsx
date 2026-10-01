@@ -3,7 +3,7 @@ import {
 } from 'react';
 import { initialState, reduce, type ClientState } from './reducer';
 import { createDraftStore, type DraftStore } from './lib/draft-store';
-import { onHostMessage, postToHost } from './vscode-api';
+import { vscodeTransport } from './vscode-transport';
 import type { SessionId, WebviewToHost } from '../protocol/messages';
 
 interface StoreValue {
@@ -51,7 +51,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const draftStore = draftStoreRef.current;
 
   useEffect(() => {
-    const off = onHostMessage((msg) => {
+    const off = vscodeTransport.onMessage((msg) => {
       // Seeded here, not through `reduce`: a draft no longer lives in
       // `ClientState` (see `lib/draft-store.ts`), so hydrate's copy has to
       // reach the draft store directly.
@@ -63,7 +63,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
       dispatch(msg);
     });
-    postToHost({ t: 'ready' });
+    vscodeTransport.post({ t: 'ready' });
     return off;
   }, [draftStore]);
 
@@ -75,7 +75,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   // re-render. `dispatch` is already stable, so there is nothing to close over
   // that can go stale.
   const post = useCallback((msg: WebviewToHost) => {
-    postToHost(msg);
+    vscodeTransport.post(msg);
     // See the `local-layout` doc comment in reducer.ts: the host never
     // echoes `set-layout` back, so apply it here too or newly
     // opened/closed panes would never render until the next reload.
@@ -92,7 +92,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const focus = (id: SessionId) => {
     dispatch({ t: 'local-focus', id });
-    postToHost({ t: 'focus-pane', sessionId: id });
+    vscodeTransport.post({ t: 'focus-pane', sessionId: id });
   };
   const dismissRejection = (id: SessionId) => dispatch({ t: 'local-dismiss-rejection', id });
   const setPendingSlot = (path: number[] | null) => dispatch({ t: 'local-pending-slot', path });
