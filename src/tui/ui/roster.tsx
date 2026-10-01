@@ -8,6 +8,8 @@ import { rosterRows } from '../view/roster-rows';
 import { useTuiStore } from './store';
 import { useTheme } from './termcn/hooks/use-theme';
 
+export const ROSTER_W = 26;
+
 interface RosterProps {
   focused: boolean;
   onFocusSession(id: SessionId): void;
@@ -62,7 +64,7 @@ export function Roster({ focused, onFocusSession, onAskDelete }: RosterProps) {
   });
 
   return (
-    <box flexDirection="column" width={26} border borderStyle="single" title="sessions">
+    <box flexDirection="column" width={ROSTER_W} border borderStyle="single" title="sessions">
       {filtering || filter !== '' ? <text fg={theme.colors.muted}>{`/${filter}`}</text> : null}
       <scrollbox ref={scroll} flexGrow={1}>
         {rows.map((row, i) => (

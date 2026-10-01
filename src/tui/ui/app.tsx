@@ -5,17 +5,16 @@ import type { Zone } from '../keymap';
 import { bottomSlot } from '../view/bottom-slot';
 import { launchPlan } from '../view/launch';
 import type { PickerKind } from '../view/pickers';
-import { BottomSlotView } from './bottom-slot';
 import { DeleteConfirm } from './delete-confirm';
 import { EmptyState } from './empty-state';
 import { ModeDialog } from './mode-dialog';
 import { ModelDialog } from './model-dialog';
 import { NewSessionDialog } from './new-session-dialog';
 import { NoticeLine } from './notice-line';
-import { Roster } from './roster';
+import { PaneTree } from './pane-tree';
+import { Roster, ROSTER_W } from './roster';
 import { StatusLine } from './status-line';
 import { useTuiStore } from './store';
-import { Transcript } from './transcript/transcript';
 import { useAppKeys } from './use-app-keys';
 import { useFocusFallback } from './use-focus-fallback';
 import { usePaneLayout } from './use-pane-layout';
@@ -37,7 +36,7 @@ export function App(props: AppProps) {
   const { state, post, setNotice } = useTuiStore();
   const layout = usePaneLayout();
   const { shownId: focusedId, focusSession: focus } = useFocusFallback(layout.placeOrFocus);
-  const { width } = useTerminalDimensions();
+  const { width, height } = useTerminalDimensions();
   const wide = width >= 100;
   const [rosterOn, setRosterOn] = useState<boolean | undefined>(undefined);
   const showRoster = rosterOn ?? wide;
@@ -98,10 +97,15 @@ export function App(props: AppProps) {
     ? <Roster focused={live('roster')} onFocusSession={onFocusSession} onAskDelete={(row) => { setDeleting(row); }} />
     : null;
   const body = focusedId ? (
-    <box flexDirection="column" flexGrow={1} flexShrink={1} minHeight={0}>
-      <Transcript sessionId={focusedId} focused={live('transcript')} />
-      <box flexShrink={0}><BottomSlotView sessionId={focusedId} focused={live('composer')} onOpenPicker={setPicker} /></box>
-    </box>
+    <PaneTree
+      estimate={{ w: width - (wide && showRoster ? ROSTER_W : 0), h: height - 2 }}
+      focusedId={focusedId}
+      liveZone={dialog || deleting || picker || paneZone === 'roster' ? null : paneZone}
+      maximized={false}
+      onFocus={focus}
+      onHide={layout.hide}
+      onOpenPicker={setPicker}
+    />
   ) : (
     <box flexGrow={1}>
       <EmptyState pendingPrompt={kept} loginCommands={props.loginCommands} />

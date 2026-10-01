@@ -2,7 +2,7 @@ import { afterEach, expect, test } from 'bun:test';
 import { App } from '../../tui/ui/app';
 import { snapshot, summary } from '../fixtures/protocol';
 import { hydrateMsg, mount, type Mounted } from './harness';
-import { hydrateTwo, lastOf } from './pane-fixtures';
+import { hydrateTwo, lastOf, twoUp } from './pane-fixtures';
 
 let m: Mounted | undefined;
 afterEach(() => { m?.destroy(); m = undefined; });
@@ -52,4 +52,65 @@ test('a session whose snapshot arrives again after it was hidden is not re-place
   await m.fromHost({ t: 'layout-changed', layout: { root: { kind: 'leaf', sessionId: 's1', size: 100 }, presets: [] } });
   await m.fromHost({ t: 'session-snapshot', session: snapshot('s2') });
   expect(m.posted.filter((p) => p.t === 'set-layout').length).toBe(afterFirst);
+});
+
+test('two panes each render their own transcript', async () => {
+  m = await mount(<App {...props} />, { width: 140, height: 30 });
+  await m.fromHost(hydrateMsg({
+    sessions: [summary('s1', { name: 'one' }), summary('s2', { name: 'two' })],
+    layout: { root: twoUp(), presets: [], focusedSessionId: 's1' },
+    snapshots: [
+      snapshot('s1', { items: [{ id: 'u1', ts: 1, role: 'user', text: 'alpha message' }] }),
+      snapshot('s2', { items: [{ id: 'u2', ts: 1, role: 'user', text: 'beta message' }] }),
+    ],
+  }));
+  await new Promise((r) => setTimeout(r, 30));
+  await m.fromHost();
+  const f = m.frame();
+  expect(f).toContain('alpha message');
+  expect(f).toContain('beta message');
+});
+
+test('only the focused pane takes composer input', async () => {
+  m = await mount(<App {...props} />, { width: 140, height: 30 });
+  await m.fromHost(hydrateTwo());
+  await m.type('hi');
+  await m.press('return');
+  const sends = m.posted.filter((p) => p.t === 'send');
+  expect(sends.length).toBe(1);
+  expect(sends[0]?.t === 'send' && sends[0].id).toBe('s1');
+});
+
+test('a pending approval in an unfocused pane is shown but does not answer', async () => {
+  m = await mount(<App {...props} />, { width: 140, height: 30 });
+  await m.fromHost(hydrateMsg({
+    sessions: [summary('s1'), summary('s2', { status: 'awaiting-approval' })],
+    layout: { root: twoUp(), presets: [], focusedSessionId: 's1' },
+    snapshots: [snapshot('s1'), snapshot('s2', { pending: [{ requestId: 'r1', tool: { kind: 'command', label: 'Bash', command: 'rm x' } }] })],
+  }));
+  await m.press('y');
+  expect(m.posted.filter((p) => p.t === 'permission-decision').length).toBe(0);
+  expect(m.frame()).toContain('[y] allow');
+});
+
+test('a terminal too narrow for the tree maximizes the focused pane and keeps it usable', async () => {
+  m = await mount(<App {...props} />, { width: 70, height: 30 });
+  await m.fromHost(hydrateTwo());
+  expect(m.frame().split('\n').every((line) => line.length <= 70)).toBe(true);
+  await m.type('hi');
+  await m.press('return');
+  expect(m.posted.filter((p) => p.t === 'send').length).toBe(1);
+});
+
+test('a foreign session in a pane is read-only', async () => {
+  m = await mount(<App {...props} />, { width: 140, height: 30 });
+  await m.fromHost(hydrateMsg({
+    sessions: [summary('s1', { owner: { host: 'vscode', pid: 42 } }), summary('s2')],
+    layout: { root: twoUp(), presets: [], focusedSessionId: 's1' },
+    snapshots: [snapshot('s1', { owner: { host: 'vscode', pid: 42 } }), snapshot('s2')],
+  }));
+  expect(m.frame()).toContain('vscode·42');
+  await m.type('hi');
+  await m.press('return');
+  expect(m.posted.filter((p) => p.t === 'send').length).toBe(0);
 });

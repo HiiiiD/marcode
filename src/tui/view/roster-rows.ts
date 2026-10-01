@@ -9,6 +9,8 @@ const GLYPH: Record<SessionStatus, RosterRow['glyph']> = {
   running: '●', idle: '○', 'awaiting-approval': '!', error: '✗',
 };
 
+export const statusGlyph = (status: SessionStatus): RosterRow['glyph'] => GLYPH[status];
+
 export function rosterRows(sessions: SessionSummary[], focusedId: SessionId | null, filter = '', leafIds: ReadonlySet<SessionId> = new Set()): RosterRow[] {
   const needle = filter.toLowerCase();
   const rows = sessions

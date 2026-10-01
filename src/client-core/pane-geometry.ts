@@ -74,9 +74,11 @@ export function tooSmall(panes: PaneRect[]): boolean {
   return panes.some((p) => p.sessionId !== null && (p.w < MIN_PANE_W || p.h < MIN_PANE_H));
 }
 
-/** The real tree's rects, or the focused-pane-maximised copy's when the real one does not fit. View-only. */
-export function visibleRects(root: LayoutNode, focusedId: string | null, area: Rect): ReturnType<typeof layoutRects> {
+/** The real tree's rects, or the focused-pane-maximised copy's when the real one does not fit (or `force`). View-only. */
+export function visibleRects(
+  root: LayoutNode, focusedId: string | null, area: Rect, force = false,
+): ReturnType<typeof layoutRects> {
   const real = layoutRects(root, area);
-  if (!tooSmall(real.panes) || focusedId === null) { return real; }
+  if (focusedId === null || (!force && !tooSmall(real.panes))) { return real; }
   return layoutRects(maximizeSizes(root, focusedId), area);
 }

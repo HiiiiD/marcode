@@ -1,0 +1,13 @@
+import type { DividerRect } from '../../client-core/pane-geometry';
+import { useTheme } from './termcn/hooks/use-theme';
+
+export function Divider({ rect }: { rect: DividerRect }) {
+  const theme = useTheme();
+  const glyph = rect.axis === 'x' ? '│' : '─';
+  const line = rect.axis === 'x' ? Array.from({ length: rect.h }, () => glyph).join('\n') : glyph.repeat(rect.w);
+  return (
+    <box position="absolute" left={rect.x} top={rect.y} width={rect.w} height={rect.h}>
+      <text fg={theme.colors.mutedForeground}>{line}</text>
+    </box>
+  );
+}
