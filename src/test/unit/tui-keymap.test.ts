@@ -19,6 +19,10 @@ suite('tui keymap', () => {
     assert.deepStrictEqual(actionFor('composer', { name: 'return', meta: true }, idle), { do: 'newline' });
     assert.deepStrictEqual(actionFor('composer', { name: 'up' }, idle), { do: 'history-prev' });
   });
+  test('composer: OpenTUI delivers Ctrl+J as a bare linefeed', () => {
+    assert.deepStrictEqual(actionFor('composer', { name: 'linefeed' }, idle), { do: 'newline' });
+    assert.strictEqual(actionFor('transcript', { name: 'linefeed' }, idle), undefined);
+  });
   test('a plain letter in the composer is never an action', () => {
     for (const name of ['j', 'k', 'y', 'n', 'x', 'r']) {
       assert.strictEqual(actionFor('composer', { name }, idle), undefined);

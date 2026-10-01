@@ -11,7 +11,7 @@ actEnv(true);
 
 // mockInput takes KeyCodes names (RETURN, ARROW_UP) or literal characters, not the lowercase key.name the app sees.
 const KEY_ALIAS: Record<string, string> = {
-  return: 'RETURN', tab: 'TAB', escape: 'ESCAPE', backspace: 'BACKSPACE', delete: 'DELETE',
+  return: 'RETURN', linefeed: 'LINEFEED', tab: 'TAB', escape: 'ESCAPE', backspace: 'BACKSPACE', delete: 'DELETE',
   up: 'ARROW_UP', down: 'ARROW_DOWN', left: 'ARROW_LEFT', right: 'ARROW_RIGHT', home: 'HOME', end: 'END',
   pageup: '\u001B[5~', pagedown: '\u001B[6~', space: ' ',
 };

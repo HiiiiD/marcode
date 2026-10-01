@@ -36,6 +36,7 @@ export function actionFor(zone: Zone, key: KeyInput, ctx: { running: boolean }):
   const global = globalAction(key, zone, ctx);
   if (global) { return global; }
   if (key.ctrl && key.name === 'j' && zone === 'composer') { return act('newline'); }
+  if (key.name === 'linefeed' && zone === 'composer') { return act('newline'); }
   if (key.ctrl) { return undefined; }
   switch (zone) {
     case 'composer':
