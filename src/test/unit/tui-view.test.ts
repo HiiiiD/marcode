@@ -29,6 +29,28 @@ suite('tui view: roster rows', () => {
     assert.strictEqual(rows[3].suffix, 'vscode·4812');
     assert.strictEqual(rows[0].suffix, undefined);
   });
+  test('pinned rows sort first, stably, and carry the foreign flag', () => {
+    const rows = rosterRows([
+      summary('a', { name: 'alpha' }),
+      summary('b', { name: 'beta', pinned: true }),
+      summary('c', { name: 'gamma', pinned: true, owner: { host: 'vscode', pid: 1 } }),
+      summary('d', { name: 'delta' }),
+    ], null);
+    assert.deepStrictEqual(rows.map((r) => r.id), ['b', 'c', 'a', 'd']);
+    assert.deepStrictEqual(rows.map((r) => r.pinned), [true, true, false, false]);
+    assert.deepStrictEqual(rows.map((r) => r.foreign), [false, true, false, false]);
+  });
+  test('the filter matches the title case-insensitively and keeps pinned-first order', () => {
+    const rows = rosterRows([
+      summary('a', { name: 'API fix' }),
+      summary('b', { name: 'docs' }),
+      summary('c', { name: 'api docs', pinned: true }),
+    ], null, 'API');
+    assert.deepStrictEqual(rows.map((r) => r.id), ['c', 'a']);
+  });
+  test('an empty filter keeps every row', () => {
+    assert.strictEqual(rosterRows([summary('a'), summary('b')], null, '').length, 2);
+  });
 });
 
 suite('tui view: bottom slot', () => {

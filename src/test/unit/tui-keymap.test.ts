@@ -55,4 +55,14 @@ suite('tui keymap', () => {
     assert.deepStrictEqual(actionFor('composer', { name: 'tab', shift: true }, idle), { do: 'cycle-mode' });
     assert.deepStrictEqual(actionFor('composer', { name: 'r', ctrl: true }, idle), { do: 'refresh-catalog' });
   });
+  test('roster: p pins, / filters, shift+d deletes, plain d does nothing', () => {
+    assert.deepStrictEqual(actionFor('roster', { name: 'p' }, idle), { do: 'roster-pin' });
+    assert.deepStrictEqual(actionFor('roster', { name: '/' }, idle), { do: 'roster-filter' });
+    assert.deepStrictEqual(actionFor('roster', { name: 'd', shift: true }, idle), { do: 'roster-delete' });
+    assert.strictEqual(actionFor('roster', { name: 'd' }, idle), undefined);
+  });
+  test('composer: Ctrl+X removes the last attachment, only in the composer', () => {
+    assert.deepStrictEqual(actionFor('composer', { name: 'x', ctrl: true }, idle), { do: 'attach-remove' });
+    assert.strictEqual(actionFor('transcript', { name: 'x', ctrl: true }, idle), undefined);
+  });
 });
