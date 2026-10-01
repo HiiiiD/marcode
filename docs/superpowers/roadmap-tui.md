@@ -21,10 +21,9 @@ below is its own cycle: spec in `docs/superpowers/specs/`, plan in `docs/superpo
 - **Model, effort and mode dialogs** (`feat/tui-model-effort-dialogs`, off `feat/tui-termcn`): Ctrl+P, Ctrl+E,
   Shift+Tab and `/model` `/effort` `/mode` open webview-style dialogs; the cycle keys are gone. Mode rows are shared with the
   webview through `src/shared/permission-modes.ts`.
-- **Tool cards at webview parity.** Spec `2026-10-01-tui-tool-cards-design.md` and its plan are written; check
-  whether execution has started before picking it up.
+- **Tool cards at webview parity**: landed (`3358c99`, `5e58bed`, `9f9a0f7`, `80b7553`). Spec `2026-10-01-tui-tool-cards-design.md`.
 
-Do both before C: split panes reshape the same components.
+All three are done, so C is next. It reshapes the same components, which is why they went first.
 
 ## Next, in the order the user approved
 
