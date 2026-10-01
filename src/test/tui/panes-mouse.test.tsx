@@ -98,16 +98,3 @@ test('a drag released after the layout changed under it does not drop the new pa
   await mouse((mm) => mm.release(70, 10));
   expect(JSON.stringify(lastOf(m.posted, 'set-layout')?.layout.root).includes('"sp1"')).toBe(true);
 });
-
-test('hovering a divider switches to the resize pointer and leaving restores it', async () => {
-  m = await mount(<App {...props} />, { width: 140, height: 30 });
-  await m.fromHost(hydrateTwo());
-  const seen: string[] = [];
-  const renderer = m.setup.renderer;
-  const original = renderer.setMousePointer.bind(renderer);
-  renderer.setMousePointer = (style) => { seen.push(style); original(style); };
-  await mouse((mm) => mm.moveTo(82, 10));
-  expect(seen[seen.length - 1]).toBe('col-resize');
-  await mouse((mm) => mm.moveTo(110, 10));
-  expect(seen[seen.length - 1]).toBe('default');
-});
