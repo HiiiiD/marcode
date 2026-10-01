@@ -2,7 +2,7 @@ import { act } from 'react';
 import { afterEach, expect, test } from 'bun:test';
 import { Transcript } from '../../tui/ui/transcript/transcript';
 import { hydrateMsg, mount, type Mounted } from './harness';
-import { snapshot, summary, tool } from '../fixtures/protocol';
+import { permission, snapshot, summary, tool } from '../fixtures/protocol';
 import type { TranscriptItem } from '../../protocol/messages';
 
 let m: Mounted | undefined;
@@ -66,6 +66,50 @@ test('the selected tool row is marked by colour, not only by bold', async () => 
   expect(idle === '').toBe(false);
   await m.press('j');
   expect(chevronFg() === idle).toBe(false);
+});
+
+const spansOf = () => m!.setup.captureSpans().lines.flatMap((l) => l.spans);
+const fgOf = (text: string) => {
+  const span = spansOf().find((s) => s.text.includes(text));
+  return span === undefined ? '' : span.fg.toString();
+};
+
+test('user text is capped to a readable width on a wide terminal', async () => {
+  m = await mount(<Transcript sessionId="s1" focused />, { width: 200, height: 20 });
+  await m.fromHost(withItems([{ id: 'u1', ts: 1, role: 'user', text: 'word '.repeat(80) }]));
+  const longest = Math.max(...m.frame().split(/\r?\n/).map((r) => r.trimEnd().length));
+  expect(longest <= 104).toBe(true);
+  expect(longest > 40).toBe(true);
+});
+
+test('a message body sits behind a left accent bar', async () => {
+  m = await mount(<Transcript sessionId="s1" focused />);
+  await m.fromHost(withItems([{ id: 'u1', ts: 1, role: 'user', text: 'fix the tests' }]));
+  const row = m.frame().split(/\r?\n/).find((r) => r.includes('fix the tests')) ?? '';
+  expect(row.startsWith('│')).toBe(true);
+});
+
+test('the accent bar stops at the last line of the message, not the spacer row', async () => {
+  m = await mount(<Transcript sessionId="s1" focused />);
+  await m.fromHost(withItems([{ id: 'u1', ts: 1, role: 'user', text: 'fix the tests' }]));
+  const rows = m.frame().split(/\r?\n/);
+  const at = rows.findIndex((r) => r.includes('fix the tests'));
+  expect(at >= 0).toBe(true);
+  expect(rows[at + 1].startsWith('│')).toBe(false);
+});
+
+test('only the status mark of a failed tool row is red, not its name', async () => {
+  m = await mount(<Transcript sessionId="s1" focused />);
+  await m.fromHost(withItems([tool({ id: 't1', state: 'error' })]));
+  expect(fgOf('✗') === '').toBe(false);
+  expect(fgOf('Bash') === fgOf('✗')).toBe(false);
+});
+
+test('only the question mark of a permission row is coloured', async () => {
+  m = await mount(<Transcript sessionId="s1" focused />);
+  await m.fromHost(withItems([permission({ id: 'p1', state: 'allowed' })]));
+  expect(fgOf('?') === '').toBe(false);
+  expect(fgOf('allowed') === fgOf('?')).toBe(false);
 });
 
 test('a finished tool row shows a check mark', async () => {

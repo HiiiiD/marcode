@@ -13,6 +13,8 @@ Reapply after `shadcn add ... --overwrite`.
 | `components/ui/chat-message.tsx` | `flexDirection="row"` on the header `<box gap={1}>` | same: sender name and time stacked |
 | `components/ui/dialog.tsx` | the two `marginBottom={1}` (after the title, after the children) become `marginBottom={interactive ? 1 : 0}` | five rows of chrome collided with the composer in a 12-row terminal |
 | `components/ui/confirm.tsx`, `tag.tsx`, `tool-call.tsx`, `chat-message.tsx` | restored whitespace-only string literals: `"? "`, `"› "`, `"  "`, `" ×"`, `" "` (space key), `"\n"` (two uses) | the shadcn CLI strips whitespace inside string literals when it writes files (`"? "` arrives as `"?"`, `"\n"` as `""`) |
+| `components/ui/tool-call.tsx` | the name is always `mutedForeground` and not bold (the registry colours the whole name by status) | a failed call turned the whole tool line red; only the status mark should carry the status colour |
+| `components/ui/chat-message.tsx` | the root `marginBottom={1}` is removed; `transcript/row.tsx` puts the margin on the accent bar instead | the margin sat inside the bar, so the bar ran on through the spacer row |
 
 Registry items written for Ink-style row defaults need this check after install: render one and look for stacked rows.
 After every install, diff each new file against its registry JSON (`https://termcn.dev/r/opentui/<name>.json`) for lost whitespace in string literals.

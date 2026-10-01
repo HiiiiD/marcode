@@ -84,23 +84,14 @@ export const ToolCall = ({
     durationText = `${duration}ms`;
   }
 
-  let nameColor: string;
-  if (status === "error") {
-    nameColor = theme.colors.error ?? "red";
-  } else if (status === "success") {
-    nameColor = theme.colors.success ?? "green";
-  } else if (status === "running") {
-    nameColor = theme.colors.primary;
-  } else {
-    nameColor = theme.colors.mutedForeground;
-  }
+  const nameColor = theme.colors.mutedForeground;
 
   return (
     <box flexDirection="column">
       <box flexDirection="row" gap={1}>
         {statusIcon()}
         <text fg={nameColor}>
-          {status !== "pending" ? <b>{name}</b> : name}
+          {name}
         </text>
         {durationText && (
           <text fg={theme.colors.mutedForeground}>{`(${durationText})`}</text>

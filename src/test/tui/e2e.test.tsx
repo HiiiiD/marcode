@@ -6,7 +6,7 @@ import { defaultHostConfig } from '../../host/host-config';
 import { resolveWorkspaceDir } from '../../host/workspace-dir';
 import { makeTmp, mountBooted, until } from './e2e-harness';
 
-const hasReply = (f: string) => /│ok\s*$/m.test(f);
+const hasReply = (f: string) => /│\s*ok\s*$/m.test(f);
 
 type Mounted = Awaited<ReturnType<typeof mountBooted>>;
 const mounts: Mounted[] = [];
