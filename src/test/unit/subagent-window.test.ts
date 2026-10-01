@@ -1,7 +1,7 @@
 import * as assert from 'assert';
 import {
   SUBAGENT_CHILD_WINDOW, formatElapsed, isBackgroundDispatch, summarizeSubagent, windowChildren,
-} from '../../webview/components/subagent-window';
+} from '../../client-core/subagent-window';
 import type { TranscriptItem } from '../../protocol/messages';
 
 function child(id: string, state: 'running' | 'ok' | 'error' = 'ok'): TranscriptItem {

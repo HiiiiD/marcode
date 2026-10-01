@@ -1,7 +1,7 @@
 // Pure helpers for SubagentCard, kept free of React and UI imports so the
 // mocha unit harness can require them directly — the same split
 // tool-card-format.ts and status.ts use.
-import type { TranscriptItem } from '../../protocol/messages';
+import type { TranscriptItem } from '../protocol/messages';
 
 type ToolItem = Extract<TranscriptItem, { role: 'tool' }>;
 

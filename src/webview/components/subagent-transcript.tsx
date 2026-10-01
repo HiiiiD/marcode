@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { ChevronLeftIcon } from 'lucide-react';
 import { PermissionCard } from './permission-card';
 import { ToolCard } from './tool-card';
-import { subagentLabel } from './subagent-window';
+import { subagentLabel } from '../../client-core/subagent-window';
 import type { SessionId, TranscriptItem } from '../../protocol/messages';
 
 type ToolItem = Extract<TranscriptItem, { role: 'tool' }>;
