@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import type { TranscriptRow } from '../../view/transcript-rows';
 import { ChatMessage } from '../termcn/components/ui/chat-message';
 import { useTheme } from '../termcn/hooks/use-theme';
+import { ToolCard } from './tool-card';
 
 const syntaxStyle = SyntaxStyle.create();
 // Readable measure on wide terminals; the bar groups a message with its body.
@@ -38,11 +39,7 @@ export function RowView(props: { row: TranscriptRow; selected: boolean; expanded
         </Bar>
       );
     case 'tool':
-      return (
-        <text attributes={bold} fg={props.selected ? theme.colors.primary : theme.colors.mutedForeground}>
-          {`${props.expanded ? '▾' : '▸'} ${row.header.verb} ${row.header.primary}`}
-        </text>
-      );
+      return <ToolCard item={row.item} open={props.expanded} selected={props.selected} />;
     case 'permission':
       return (
         <text attributes={bold} wrapMode="word">
