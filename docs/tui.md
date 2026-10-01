@@ -29,12 +29,13 @@ yarn build:tui:bin    # bin/marcode.exe (bin/marcode elsewhere): standalone, Bun
 |---|---|---|
 | Enter | composer | send |
 | Ctrl+J, Alt+Enter | composer | newline (terminals deliver Ctrl+J as `linefeed`) |
-| Up | composer, cursor at the start | walk prompt history |
+| Up | composer, box empty or cursor at the very start | walk prompt history (keeps walking while the cursor is on the first line) |
 | Esc, Ctrl+C | a turn is running or awaiting approval | interrupt |
 | Ctrl+C twice | idle | quit |
 | Tab | anywhere but approval/question | cycle composer, transcript, roster |
 | Ctrl+B | anywhere | toggle the roster |
 | Ctrl+N | anywhere | new session dialog |
+| Up / Down or k / j, Enter, Esc | new session dialog | move; Enter picks the provider, then the model (skipped when it has one); Esc cancels |
 | Ctrl+P / Ctrl+E | anywhere | cycle model / effort |
 | Shift+Tab | anywhere | cycle permission mode (never into `bypass`) |
 | Ctrl+R | anywhere | re-check providers |
