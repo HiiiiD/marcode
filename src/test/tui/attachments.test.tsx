@@ -73,6 +73,23 @@ test('chips list name and size; Ctrl+X removes the last one', async () => {
   expect(m!.posted).toContainEqual({ t: 'attach-remove', id: 's1', attachmentId: 'a2' });
 });
 
+test('chips are drawn in the termcn rounded border', async () => {
+  await open();
+  await m!.fromHost({ t: 'session-attachments', id: 's1', attachments: [attachment] });
+  expect(m!.frame()).toContain('╭');
+  expect(m!.frame()).toContain('2 KB');
+});
+
+test('many long chips wrap into the frame instead of overflowing', async () => {
+  await open();
+  const names = Array.from({ length: 6 }, (_, i) => `a-rather-long-attachment-name-${i}.png`);
+  await m!.fromHost({
+    t: 'session-attachments', id: 's1',
+    attachments: names.map((name, i) => ({ id: `a${i}`, path: `/x/${name}`, name, kind: 'image' as const, bytes: 2048 })),
+  });
+  for (const name of names) { expect(m!.frame()).toContain(name); }
+});
+
 test('Ctrl+X with no chips posts nothing', async () => {
   await open();
   await m!.press('x', { ctrl: true });
