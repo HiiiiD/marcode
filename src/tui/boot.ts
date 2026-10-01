@@ -61,14 +61,19 @@ export async function bootHost(opts: BootOptions): Promise<Booted> {
     emit: (msg) => loopback.deliver(msg),
     notify: { warn },
   });
-  await host.init();
+  try {
+    await host.init();
 
-  const favorites = favoriteModelsSource(configFile, config.favoriteModels, warn);
-  router = new MessageRouter(
-    host.manager, (msg) => loopback.deliver(msg), opts.cwd,
-    terminalEditorHost(() => {}), host.attachments, undefined, config.review.pollIntervalMs,
-    undefined, favorites.get(), terminalConfigHost((ids) => { void favorites.set(ids); }),
-  );
+    const favorites = favoriteModelsSource(configFile, config.favoriteModels, warn);
+    router = new MessageRouter(
+      host.manager, (msg) => loopback.deliver(msg), opts.cwd,
+      terminalEditorHost(() => {}), host.attachments, undefined, config.review.pollIntervalMs,
+      undefined, favorites.get(), terminalConfigHost((ids) => { void favorites.set(ids); }),
+    );
+  } catch (err) {
+    await host.dispose().catch(() => {});
+    throw err;
+  }
 
   let down: Promise<void> | undefined;
   return {

@@ -6,6 +6,7 @@ import { bootHost, memoryForRuntime, type Booted } from '../../tui/boot';
 import type { HostToWebview } from '../../protocol/messages';
 import { loadConfig } from '../../host/config-file';
 import { reloadSignature } from '../../host/host-config';
+import { resolveWorkspaceDir } from '../../host/workspace-dir';
 
 suite('tui boot', () => {
   let tmp: string;
@@ -36,6 +37,16 @@ suite('tui boot', () => {
     assert.strictEqual(b.workspaceRoot, tmp);
     const entries = await fs.readdir(path.join(tmp, 'home', 'workspaces'));
     assert.strictEqual(entries.length, 1);
+  });
+
+  test('a host that fails to init surfaces the error', async () => {
+    const home = path.join(tmp, 'home');
+    const dir = await resolveWorkspaceDir(home, tmp);
+    await fs.writeFile(path.join(dir, 'index.json'), '{ not json');
+    await assert.rejects(
+      bootHost({ cwd: tmp, home, config: { enabledProviders: ['fake'], memory: { enabled: false, summarizer: undefined } } }),
+      /index\.json is not valid JSON/,
+    );
   });
 
   test('a corrupt config.json is a warning and the defaults, not a failed boot', async () => {
