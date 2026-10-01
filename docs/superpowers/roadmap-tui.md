@@ -11,6 +11,14 @@ below is its own cycle: spec in `docs/superpowers/specs/`, plan in `docs/superpo
   roster pin, filter, hide and delete. Spec `2026-10-01-tui-composer-roster-design.md`, plan
   `2026-10-01-tui-composer-roster.md`.
 
+- **C. Multi-session** (`feat/tui-multi-session`): split panes over the visible sessions (the layout's leaves are the
+  visible set), per-host persisted layout, `Ctrl+W` chords, mouse (focus, divider drag, roster, cards), fork from a
+  transcript message, handoff from the new-session dialog, and the `marcode__spawn_session` fix (a spawned session
+  gets a pane without taking focus). Spec `2026-10-01-tui-multi-session-design.md`, plan
+  `2026-10-01-tui-multi-session.md`.
+  Left over: layout presets UI, drag-to-move panes between slots, grid-shape commands, tabbed panes, fork-to-take-over
+  of a foreign session. Not verified in a real terminal: mouse drag and wheel reporting, `Ctrl+W` under a multiplexer.
+
 ## In progress (branch `feat/tui-termcn`, stacked on `feat/tui-features`)
 
 - **termcn adoption.** The v1 spec said "OpenTUI with termcn-style copy-paste components" but v1 and B were
@@ -23,17 +31,14 @@ below is its own cycle: spec in `docs/superpowers/specs/`, plan in `docs/superpo
   webview through `src/shared/permission-modes.ts`.
 - **Tool cards at webview parity**: landed (`3358c99`, `5e58bed`, `9f9a0f7`, `80b7553`). Spec `2026-10-01-tui-tool-cards-design.md`.
 
-All three are done, so C is next. It reshapes the same components, which is why they went first.
+All three are done, and C (above) has landed on top of them.
 
 ## Next, in the order the user approved
 
-1. **C. Multi-session.** Split panes over the visible sessions with a persisted per-host layout; mouse support;
-   handoff seeds and forking. Includes the `marcode__spawn_session` fix: it adds spawned sessions to the visible
-   set, which breaks the TUI's "exactly one visible session" rule, so panes need a defined meaning of "visible".
-2. **D. Awareness.** Context dialog and a context share in the status line; usage strip; worktree and relocation
+1. **D. Awareness.** Context dialog and a context share in the status line; usage strip; worktree and relocation
    cards (currently a read-only one-line notice).
-3. **E. Review and history.** Fleet-diff review and history surfaces. Biggest items; need their own surface design.
-4. **F. Platform.** In-TUI login by suspending the renderer; recall and memory (off under Bun because
+2. **E. Review and history.** Fleet-diff review and history surfaces. Biggest items; need their own surface design.
+3. **F. Platform.** In-TUI login by suspending the renderer; recall and memory (off under Bun because
    `node:sqlite` is unavailable there, so it needs a replacement).
 
 ## Deferred hardening (group A)

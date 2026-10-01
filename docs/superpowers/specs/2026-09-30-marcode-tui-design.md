@@ -46,7 +46,7 @@ src/client-core/   moved from src/webview, re-exported at the old paths
 
 Router wiring: the `EditorContextHost` hooks are no-ops except `openExternal` and `login` (the latter surfaces the recipe command in the empty state instead of opening a terminal). `ConfigHost.setFavoriteModels` writes `config.json`. No `FileSearch` in v1.
 
-Visible set: the TUI keeps exactly one visible session, the focused one. A focus change posts `set-visible [id]` and `focus-pane`, and the store mirrors `local-layout`. The focused id is persisted in `layout.<host>.json` (per-host layout from sub-project 1). Status for other sessions comes from `sessions-changed` and `session-status`, which are ungated.
+Visible set (superseded by [multi-session](2026-10-01-tui-multi-session-design.md): the visible set is now the layout's leaves): the TUI keeps exactly one visible session, the focused one. A focus change posts `set-visible [id]` and `focus-pane`, and the store mirrors `local-layout`. The focused id is persisted in `layout.<host>.json` (per-host layout from sub-project 1). Status for other sessions comes from `sessions-changed` and `session-status`, which are ungated.
 
 ## UI
 

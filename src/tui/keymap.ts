@@ -1,5 +1,5 @@
 export type Zone = 'composer' | 'transcript' | 'roster' | 'approval' | 'question';
-export interface KeyInput { name: string; ctrl?: boolean; meta?: boolean; shift?: boolean }
+export interface KeyInput { name: string; sequence?: string; ctrl?: boolean; meta?: boolean; shift?: boolean }
 export type Action =
   | { do: 'toggle-roster' } | { do: 'new-session' } | { do: 'interrupt' } | { do: 'quit-request' }
   | { do: 'cycle-zone' } | { do: 'open-model' } | { do: 'open-effort' } | { do: 'open-mode' }
@@ -9,7 +9,7 @@ export type Action =
   | { do: 'allow' } | { do: 'deny' } | { do: 'confirm' }
   | { do: 'option-next' } | { do: 'option-prev' } | { do: 'option-toggle' } | { do: 'submit-answers' }
   | { do: 'roster-pin' } | { do: 'roster-filter' } | { do: 'roster-delete' } | { do: 'attach-remove' }
-  | { do: 'refresh-catalog' };
+  | { do: 'refresh-catalog' } | { do: 'pane-prefix' } | { do: 'fork-item' } | { do: 'roster-handoff' };
 
 const act = <T extends Action['do']>(d: T) => ({ do: d }) as Extract<Action, { do: T }>;
 
@@ -22,6 +22,7 @@ function globalAction(key: KeyInput, zone: Zone, ctx: { running: boolean }): Act
       case 'p': return act('open-model');
       case 'e': return act('open-effort');
       case 'r': return act('refresh-catalog');
+      case 'w': return act('pane-prefix');
     }
     return undefined;
   }
@@ -53,6 +54,7 @@ export function actionFor(zone: Zone, key: KeyInput, ctx: { running: boolean }):
         case 'pageup': return act('page-up');
         case 'pagedown': return act('page-down');
         case 'end': return act('repin');
+        case 'f': return act('fork-item');
       }
       return undefined;
     case 'roster':
@@ -64,6 +66,7 @@ export function actionFor(zone: Zone, key: KeyInput, ctx: { running: boolean }):
         case 'r': return act('roster-rename');
         case 'p': return act('roster-pin');
         case '/': return act('roster-filter');
+        case 'h': return key.shift ? act('roster-handoff') : undefined;
         case 'd': return key.shift ? act('roster-delete') : undefined;
       }
       return undefined;

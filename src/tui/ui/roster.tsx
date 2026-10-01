@@ -1,23 +1,28 @@
 import type { ScrollBoxRenderable } from '@opentui/core';
 import { useKeyboard } from '@opentui/react';
 import { useEffect, useRef, useState } from 'react';
+import { leafSessionIds } from '../../client-core/layout-tree';
 import type { SessionId } from '../../protocol/messages';
 import { actionFor } from '../keymap';
 import { rosterRows } from '../view/roster-rows';
 import { useTuiStore } from './store';
 import { useTheme } from './termcn/hooks/use-theme';
 
+export const ROSTER_W = 26;
+
 interface RosterProps {
   focused: boolean;
   onFocusSession(id: SessionId): void;
   onAskDelete(row: { id: SessionId; title: string }): void;
+  onHandoff(row: { id: SessionId; title: string }): void;
+  squeezed?: ReadonlySet<SessionId>;
 }
 
-export function Roster({ focused, onFocusSession, onAskDelete }: RosterProps) {
-  const { state, focusedId, post, setNotice, setRosterFiltering } = useTuiStore();
+export function Roster({ focused, onFocusSession, onAskDelete, onHandoff, squeezed }: RosterProps) {
+  const { state, focusedId, post, setNotice, setRosterFiltering, chordArmed } = useTuiStore();
   const [filter, setFilter] = useState('');
   const [filtering, setFiltering] = useState(false);
-  const rows = rosterRows(state.sessions, focusedId, filter);
+  const rows = rosterRows(state.sessions, focusedId, filter, new Set(leafSessionIds(state.layout.root)), squeezed);
   // Tracked by id so a reorder (pinning) keeps the highlight on the row it was on.
   const [cursorId, setCursorId] = useState<SessionId | null>(null);
   const cursor = Math.max(0, rows.findIndex((r) => r.id === cursorId));
@@ -34,7 +39,7 @@ export function Roster({ focused, onFocusSession, onAskDelete }: RosterProps) {
   }, [cursor, rows.length]);
 
   useKeyboard((key) => {
-    if (!focused) { return; }
+    if (!focused || key.defaultPrevented || chordArmed.current) { return; }
     if (filtering) {
       if (key.name === 'escape') { setFilter(''); setFiltering(false); }
       else if (key.name === 'return') { setFiltering(false); }
@@ -50,6 +55,7 @@ export function Roster({ focused, onFocusSession, onAskDelete }: RosterProps) {
     else if (action.do === 'roster-prev') { setCursorId(rows[Math.max(cursor - 1, 0)]?.id ?? null); }
     else if (action.do === 'roster-focus' && row) { onFocusSession(row.id); }
     else if (action.do === 'roster-hide' && row) { post({ t: 'close-session', id: row.id }); }
+    else if (action.do === 'roster-handoff' && row) { onHandoff({ id: row.id, title: row.title }); }
     else if (action.do === 'roster-pin' && row) { post({ t: 'set-pinned', id: row.id, pinned: !row.pinned }); }
     else if (action.do === 'roster-filter') { setFiltering(true); setCursorId(null); }
     else if (action.do === 'roster-delete' && row) {
@@ -61,7 +67,7 @@ export function Roster({ focused, onFocusSession, onAskDelete }: RosterProps) {
   });
 
   return (
-    <box flexDirection="column" width={26} border borderStyle="single" title="sessions">
+    <box flexDirection="column" width={ROSTER_W} border borderStyle="single" title="sessions">
       {filtering || filter !== '' ? <text fg={theme.colors.muted}>{`/${filter}`}</text> : null}
       <scrollbox ref={scroll} flexGrow={1}>
         {rows.map((row, i) => (
@@ -70,8 +76,9 @@ export function Roster({ focused, onFocusSession, onAskDelete }: RosterProps) {
             id={row.id}
             fg={row.dim ? theme.colors.mutedForeground : undefined}
             attributes={focused && i === cursor ? 1 : 0}
+            onMouseDown={() => { setCursorId(row.id); onFocusSession(row.id); }}
           >
-            {`${row.focused ? '▸' : ' '}${row.glyph} ${row.pinned ? '★ ' : ''}${row.title}${row.suffix ? ` ${row.suffix}` : ''}`}
+            {`${row.focused ? '▸' : row.squeezed ? '+' : row.leaf ? '▪' : ' '}${row.glyph} ${row.pinned ? '★ ' : ''}${row.title}${row.suffix ? ` ${row.suffix}` : ''}`}
           </text>
         ))}
       </scrollbox>

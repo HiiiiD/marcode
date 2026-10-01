@@ -23,6 +23,15 @@ suite('tui keymap', () => {
     assert.deepStrictEqual(actionFor('composer', { name: 'linefeed' }, idle), { do: 'newline' });
     assert.strictEqual(actionFor('transcript', { name: 'linefeed' }, idle), undefined);
   });
+  test('Ctrl+W is the pane prefix everywhere; f forks in the transcript; Shift+H hands off from the roster', () => {
+    for (const zone of ['composer', 'transcript', 'roster'] as const) {
+      assert.deepStrictEqual(actionFor(zone, { name: 'w', ctrl: true }, idle), { do: 'pane-prefix' });
+    }
+    assert.deepStrictEqual(actionFor('transcript', { name: 'f' }, idle), { do: 'fork-item' });
+    assert.strictEqual(actionFor('composer', { name: 'f' }, idle), undefined);
+    assert.deepStrictEqual(actionFor('roster', { name: 'h', shift: true }, idle), { do: 'roster-handoff' });
+    assert.strictEqual(actionFor('roster', { name: 'h' }, idle), undefined);
+  });
   test('a plain letter in the composer is never an action', () => {
     for (const name of ['j', 'k', 'y', 'n', 'x', 'r']) {
       assert.strictEqual(actionFor('composer', { name }, idle), undefined);

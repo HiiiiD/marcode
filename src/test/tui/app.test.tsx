@@ -14,7 +14,7 @@ const props = { launchCwd: '/repo', forceNew: false, loginCommands: {}, onQuit: 
 const tick = () => new Promise((r) => setTimeout(r, 10));
 const perm: PermissionRequest = { requestId: 'r1', tool: { kind: 'command', label: 'Bash', command: 'rm -rf x' } };
 
-test('resumes the last session and posts the single-leaf visible set', async () => {
+test('resumes the last session and posts its leaf as the visible set', async () => {
   m = await mount(<App {...props} />);
   await m.fromHost(hydrateMsg({
     sessions: [summary('s1', { name: 'api-fix' })],
@@ -34,8 +34,9 @@ test('a prompt argument creates a session in the launch cwd with the prompt as s
   const create = creates[0];
   expect(create?.t === 'create-session' && create.cwd).toBe('/repo');
   expect(create?.t === 'create-session' && create.seed?.text).toBe('fix the tests');
-  await m.fromHost({ t: 'sessions-changed', sessions: [summary('new1')] });
-  expect(m.posted.some((p) => p.t === 'set-visible' && p.sessionIds[0] === 'new1')).toBe(true);
+  await m.fromHost({ t: 'sessions-changed', sessions: [summary('new1')] }, { t: 'session-snapshot', session: snapshot('new1') });
+  expect(m.posted.some((p) => p.t === 'set-visible' && p.sessionIds.includes('new1'))).toBe(true);
+  expect(m.posted.some((p) => p.t === 'focus-pane' && p.sessionId === 'new1')).toBe(true);
 });
 
 test('a prompt argument with no provider is kept on screen, not sent', async () => {
@@ -59,7 +60,7 @@ test('Ctrl+B toggles the roster and focusing another session posts set-visible f
   await m.press('tab');
   await m.press('j');
   await m.press('return');
-  expect(m.posted.some((p) => p.t === 'set-visible' && p.sessionIds[0] === 's2')).toBe(true);
+  expect(m.posted.some((p) => p.t === 'set-visible' && p.sessionIds.includes('s2'))).toBe(true);
 });
 
 test('a narrow terminal hides the roster until Ctrl+B shows it as an overlay', async () => {

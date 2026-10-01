@@ -1,23 +1,25 @@
 import { useTerminalDimensions } from '@opentui/react';
 import { useEffect, useRef, useState } from 'react';
+import { squeezedIds, visibleRects } from '../../client-core/pane-geometry';
 import type { SessionId } from '../../protocol/messages';
 import type { Zone } from '../keymap';
 import { bottomSlot } from '../view/bottom-slot';
 import { launchPlan } from '../view/launch';
 import type { PickerKind } from '../view/pickers';
-import { BottomSlotView } from './bottom-slot';
 import { DeleteConfirm } from './delete-confirm';
 import { EmptyState } from './empty-state';
 import { ModeDialog } from './mode-dialog';
 import { ModelDialog } from './model-dialog';
-import { NewSessionDialog } from './new-session-dialog';
+import { NewSessionDialog, type HandoffSource } from './new-session-dialog';
 import { NoticeLine } from './notice-line';
-import { Roster } from './roster';
+import { PaneTree } from './pane-tree';
+import { Roster, ROSTER_W } from './roster';
 import { StatusLine } from './status-line';
 import { useTuiStore } from './store';
-import { Transcript } from './transcript/transcript';
 import { useAppKeys } from './use-app-keys';
 import { useFocusFallback } from './use-focus-fallback';
+import { usePaneChords } from './use-pane-chords';
+import { usePaneLayout } from './use-pane-layout';
 
 export interface AppProps {
   launchCwd: string;
@@ -34,8 +36,9 @@ type PaneZone = 'composer' | 'transcript' | 'roster';
 
 export function App(props: AppProps) {
   const { state, post, setNotice } = useTuiStore();
-  const { shownId: focusedId, focusSession: focus } = useFocusFallback();
-  const { width } = useTerminalDimensions();
+  const layout = usePaneLayout();
+  const { shownId: focusedId, focusSession: focus } = useFocusFallback(layout.placeOrFocus);
+  const { width, height } = useTerminalDimensions();
   const wide = width >= 100;
   const [rosterOn, setRosterOn] = useState<boolean | undefined>(undefined);
   const showRoster = rosterOn ?? wide;
@@ -43,12 +46,20 @@ export function App(props: AppProps) {
   const [dialog, setDialog] = useState(false);
   const [picker, setPicker] = useState<PickerKind | null>(null);
   const [deleting, setDeleting] = useState<{ id: SessionId; title: string } | null>(null);
+  const [maximized, setMaximized] = useState(false);
+  const [handoffSource, setHandoffSource] = useState<HandoffSource | undefined>(undefined);
   const [kept, setKept] = useState<string | undefined>(undefined);
   const planned = useRef(false);
-  const seen = useRef<Set<SessionId> | null>(null);
 
-  const knownIds = () => new Set([...state.sessions.map((s) => s.id), ...Object.keys(state.byId)]);
-  const expectNewSession = () => { seen.current = knownIds(); };
+  const openNewSession = (source?: { id: SessionId; title: string }) => {
+    const row = state.sessions.find((x) => x.id === focusedId);
+    const focusedTitle = row ? row.name || row.title : undefined;
+    const src = source ?? (focusedId && focusedTitle ? { id: focusedId, title: focusedTitle } : undefined);
+    setHandoffSource(src ? { ...src, on: source !== undefined } : undefined);
+    setDialog(true);
+  };
+  const pendingSplit = useRef<'horizontal' | 'vertical' | null>(null);
+  const expectNewSession = () => { layout.expectArrival(); setKept(undefined); };
 
   const pane = focusedId ? state.byId[focusedId] : undefined;
   const summary = pane?.summary ?? state.sessions.find((s) => s.id === focusedId);
@@ -70,13 +81,6 @@ export function App(props: AppProps) {
     } else { setKept(plan.pendingPrompt); }
   });
 
-  useEffect(() => {
-    if (!seen.current) { return; }
-    const before = seen.current;
-    const fresh = [...knownIds()].find((id) => !before.has(id));
-    if (fresh) { seen.current = null; setKept(undefined); focus(fresh); }
-  }, [state.sessions, state.byId]);
-
   useEffect(() => { if (props.initialNotice) { setNotice(props.initialNotice); } }, []);
   useEffect(() => props.subscribeNotices?.((text) => { setNotice(text); }), [props.subscribeNotices]);
 
@@ -87,10 +91,19 @@ export function App(props: AppProps) {
   const paneZone: PaneZone = keyZone === 'approval' || keyZone === 'question' ? 'composer' : current;
   const live = (z: PaneZone) => !dialog && !deleting && !picker && paneZone === z;
 
+  const estimate = { w: width - (wide && showRoster ? ROSTER_W : 0), h: height - 2 };
+  usePaneChords({
+    area: { x: 0, y: 0, ...estimate },
+    inert: dialog || deleting !== null || picker !== null,
+    maximized, layout,
+    onSplit: (orientation) => { pendingSplit.current = orientation; openNewSession(); },
+    toggleMaximize: () => { setMaximized((v) => !v); },
+  });
+
   useAppKeys({
     inert: dialog || deleting !== null || picker !== null, zone: keyZone, summary, quitWindowMs: props.quitWindowMs ?? 2000, onQuit: props.onQuit,
     toggleRoster: () => { setRosterOn(!showRoster); },
-    openDialog: () => { setDialog(true); },
+    openDialog: () => { openNewSession(); },
     openPicker: setPicker,
     cycleZone: () => { setZone(zones[(zones.indexOf(current) + 1) % zones.length] ?? 'composer'); },
   });
@@ -101,14 +114,22 @@ export function App(props: AppProps) {
     if (!wide) { setRosterOn(false); }
   };
 
+  const squeezed = squeezedIds(visibleRects(layout.root, focusedId, { x: 0, y: 0, ...estimate }, maximized).panes);
   const roster = showRoster
-    ? <Roster focused={live('roster')} onFocusSession={onFocusSession} onAskDelete={(row) => { setDeleting(row); }} />
+    ? <Roster focused={live('roster')} squeezed={squeezed} onFocusSession={onFocusSession} onAskDelete={(row) => { setDeleting(row); }} onHandoff={(row) => { openNewSession(row); }} />
     : null;
   const body = focusedId ? (
-    <box flexDirection="column" flexGrow={1} flexShrink={1} minHeight={0}>
-      <Transcript sessionId={focusedId} focused={live('transcript')} />
-      <box flexShrink={0}><BottomSlotView sessionId={focusedId} focused={live('composer')} onOpenPicker={setPicker} /></box>
-    </box>
+    <PaneTree
+      estimate={estimate}
+      focusedId={focusedId}
+      liveZone={dialog || deleting || picker || paneZone === 'roster' ? null : paneZone}
+      maximized={maximized}
+      onFocus={focus}
+      onHide={layout.hide}
+      onResize={layout.applyRoot}
+      onFork={(id, itemId) => { layout.armSplit('horizontal'); layout.expectArrival(); post({ t: 'fork-session', id, itemId }); }}
+      onOpenPicker={setPicker}
+    />
   ) : (
     <box flexGrow={1}>
       <EmptyState pendingPrompt={kept} loginCommands={props.loginCommands} />
@@ -128,8 +149,15 @@ export function App(props: AppProps) {
         <NewSessionDialog
           cwd={props.launchCwd}
           initialPrompt={kept}
-          onClose={() => { setDialog(false); }}
-          onCreated={() => { setDialog(false); expectNewSession(); }}
+          handoff={handoffSource}
+          onClose={() => { setDialog(false); pendingSplit.current = null; }}
+          onCreated={(info) => {
+            setDialog(false);
+            const orientation = pendingSplit.current ?? (info.handoff ? 'horizontal' : null);
+            pendingSplit.current = null;
+            if (orientation) { layout.armSplit(orientation); }
+            expectNewSession();
+          }}
         />
       ) : null}
       {picker === 'model' && focusedId ? <ModelDialog sessionId={focusedId} onClose={() => { setPicker(null); }} /> : null}

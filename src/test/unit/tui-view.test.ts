@@ -51,6 +51,10 @@ suite('tui view: roster rows', () => {
   test('an empty filter keeps every row', () => {
     assert.strictEqual(rosterRows([summary('a'), summary('b')], null, '').length, 2);
   });
+  test('roster rows mark sessions that have a pane', () => {
+    const rows = rosterRows([summary('a'), summary('b')], 'a', '', new Set(['a']));
+    assert.deepStrictEqual(rows.map((r) => r.leaf), [true, false]);
+  });
 });
 
 suite('tui view: bottom slot', () => {

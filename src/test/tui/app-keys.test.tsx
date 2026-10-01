@@ -92,8 +92,8 @@ test('Enter in the dialog creates a session and sends nothing from the composer'
   await m.press('return');
   expect(m.posted.filter((p) => p.t === 'create-session').length).toBe(1);
   expect(sends().length).toBe(0);
-  await m.fromHost({ t: 'sessions-changed', sessions: [summary('s1'), summary('s9')] });
-  expect(m.posted.some((p) => p.t === 'set-visible' && p.sessionIds[0] === 's9')).toBe(true);
+  await m.fromHost({ t: 'sessions-changed', sessions: [summary('s1'), summary('s9')] }, { t: 'session-snapshot', session: snapshot('s9') });
+  expect(m.posted.some((p) => p.t === 'set-visible' && p.sessionIds.includes('s9'))).toBe(true);
 });
 
 const owner = { host: 'vscode' as const, pid: 4812 };

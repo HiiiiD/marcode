@@ -41,6 +41,14 @@ yarn build:tui:bin    # bin/marcode.exe (bin/marcode elsewhere): standalone, Bun
 | Shift+Tab | your own session | open the permission-mode dialog (`bypass` is greyed once the session has started) |
 | `/model`, `/effort`, `/mode` | composer | the same dialogs, typed and sent with Enter |
 | Ctrl+R | anywhere | re-check providers |
+| Ctrl+W, then h j k l or arrows | anywhere | focus the pane in that direction |
+| Ctrl+W, then `|` / `-` | anywhere | split right / below: opens the new-session dialog, and the session lands in the new pane |
+| Ctrl+W, then m / = | anywhere | maximize the focused pane (view only) / even out every split |
+| Ctrl+W, then H J K L | anywhere | move the focused pane's divider by 5% (one layout write) |
+| Ctrl+W, then x | anywhere | hide the focused pane's session (it stays in the roster) |
+| f | transcript | fork the selected message into a new session beside this one (not for a session owned by another host) |
+| Shift+H | roster | hand off from the row: opens the new-session dialog with the handoff on |
+| h | new-session dialog | toggle "Hand off from <focused session>"; with it on, a prompt line follows the provider and model picks |
 | j / k, Enter | transcript | next / previous item (a message or a tool/subagent card), expand or collapse a card |
 | PgUp / PgDn, End | transcript | scroll, re-pin to the bottom |
 | j / k, Enter, x | roster | move, focus, hide the session from the panes |
@@ -51,6 +59,21 @@ yarn build:tui:bin    # bin/marcode.exe (bin/marcode elsewhere): standalone, Bun
 | Ctrl+X | composer | remove the last attachment |
 | y / n, Enter | approval | allow / deny (n opens a reason; Enter confirms, Esc leaves the reason) |
 | Up / Down, Space, Enter | question | move, toggle, submit; "Other" takes free text; secret questions are masked |
+
+## Panes and mouse
+
+Every session with a pane is visible: the layout's leaves are the visible set, and only visible sessions stream.
+Roster Enter focuses a session that has a pane, or places it (first free slot, else beside the focused pane).
+A session an agent starts with `marcode__spawn_session` gets a pane the same way, without taking focus. The
+layout is saved per host (`layout.tui.json`), so a restart brings the same panes back.
+
+Only the focused pane takes keys; a pane with an approval or question shows it but waits until you focus it.
+A pane under 40 x 8 cells collapses to one line, and when the tree does not fit the terminal the focused pane is
+maximized (view only; saved sizes are untouched). A `▪` in the roster marks a session that has a pane.
+
+Mouse: click a pane, a roster row or a tool card header; drag the divider between panes to resize (one layout
+write on release; dragging out of the window cancels); click ✕ in a title to hide the pane; the wheel scrolls
+the pane under the pointer. Every mouse action has a keyboard equivalent.
 
 ## Attachments
 
@@ -124,3 +147,8 @@ Run in Windows Terminal and in one macOS or Linux terminal.
 - [ ] The new-session dialog, delete confirm and chip band in a short (12-row) terminal.
 - [ ] A subagent run shows a card with a tool count and elapsed time, and a blocked one opens itself and shows "Needs you".
 - [ ] A failed tool shows the "failed" pill; the card borders stay legible on a light terminal.
+- [ ] Drag a divider and quit: the sizes come back on relaunch. Wheel over an unfocused pane scrolls only that pane.
+- [ ] Ctrl+W chords: focus, split, maximize, even, resize, hide. Inside tmux or screen, Ctrl+W may be intercepted: note it.
+- [ ] Shrink the terminal below the tree's minimum and back: the focused pane maximizes, then the layout returns.
+- [ ] Have an agent call `marcode__spawn_session`: the session gets a pane and focus stays where it was.
+- [ ] Fork at a message with `f`; hand off from the roster with `Shift+H`.
