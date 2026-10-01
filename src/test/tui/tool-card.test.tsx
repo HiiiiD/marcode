@@ -79,3 +79,28 @@ test('a long MCP verb and server chip keep the header on one line with the pill 
   expect(header[0]).toContain('▸');
   expect(rows.every((r) => r.trimEnd().length <= 50)).toBe(true);
 });
+
+test('a folded permission shows its state in the header and a denied call drops the failed pill', async () => {
+  m = await mount(<ToolCard item={tool({ state: 'error' })} permission={{ state: 'denied', reason: 'too risky' }} open={false} selected={false} />);
+  const line = rowsOf(m.frame()).find((r) => r.includes('Bash')) ?? '';
+  expect(line).toContain('denied');
+  expect(line.includes('failed')).toBe(false);
+  m.destroy();
+  m = await mount(<ToolCard item={tool({ state: 'ok' })} permission={{ state: 'allowed' }} open={false} selected={false} />);
+  expect(m.frame()).toContain('allowed');
+  m.destroy();
+  m = await mount(<ToolCard item={tool({ state: 'running', output: undefined })} permission={{ state: 'pending' }} open={false} selected={false} />);
+  expect(m.frame()).toContain('awaiting approval');
+});
+
+test('a denial reason shows in the open body', async () => {
+  m = await mount(<ToolCard item={tool({ state: 'error' })} permission={{ state: 'denied', reason: 'too risky' }} open selected={false} />);
+  expect(m.frame()).toContain('too risky');
+});
+
+test('the permission state survives a 50-column header', async () => {
+  m = await mount(<ToolCard item={tool({ state: 'running', output: undefined, tool: { kind: 'command', label: 'Bash', command: 'x'.repeat(200) } })} permission={{ state: 'pending' }} open={false} selected={false} />, { width: 50, height: 10 });
+  const line = rowsOf(m.frame()).find((r) => r.includes('Bash')) ?? '';
+  expect(line).toContain('awaiting approval');
+  expect(line).toContain('▸');
+});

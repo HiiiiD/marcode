@@ -43,7 +43,7 @@ export function RowView(props: { row: TranscriptRow; selected: boolean; expanded
     case 'tool':
       return row.item.tool.kind === 'subagent'
         ? <SubagentCard item={row.item} open={props.expanded} userClosed={props.closed} selected={props.selected} />
-        : <ToolCard item={row.item} open={props.expanded} selected={props.selected} />;
+        : <ToolCard item={row.item} permission={row.permission} open={props.expanded} selected={props.selected} />;
     case 'permission':
       return <PermissionCard header={row.header} state={row.state} reason={row.reason} selected={props.selected} />;
     case 'question':

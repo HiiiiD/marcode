@@ -106,6 +106,23 @@ suite('tui view: transcript rows', () => {
     ], false);
     assert.deepStrictEqual(rows.map((r) => r.kind), ['permission', 'notice', 'notice']);
   });
+  test('a permission for the preceding tool call folds into that tool row', () => {
+    const rows = transcriptRows([
+      tool({ id: 't', toolId: 'tu1' }),
+      permission({ id: 'p', requestId: 'tu1', state: 'denied', reason: 'no' }),
+    ], false);
+    assert.strictEqual(rows.length, 1);
+    const row = rows[0];
+    assert.ok(row.kind === 'tool');
+    assert.deepStrictEqual(row.kind === 'tool' && row.permission, { state: 'denied', reason: 'no' });
+  });
+  test('a permission with no matching tool row stays its own row', () => {
+    const rows = transcriptRows([
+      tool({ id: 't', toolId: 'tu1' }),
+      permission({ id: 'p', requestId: 'other' }),
+    ], false);
+    assert.deepStrictEqual(rows.map((r) => r.kind), ['tool', 'permission']);
+  });
   test('a question item keeps its state', () => {
     const rows = transcriptRows([question({ id: 'q1' })], false);
     assert.strictEqual(rows[0].kind === 'question' && rows[0].state, 'pending');
