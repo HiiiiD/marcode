@@ -43,8 +43,20 @@ yarn build:tui:bin    # bin/marcode.exe (bin/marcode elsewhere): standalone, Bun
 | j / k, Enter | transcript | next / previous item, expand or collapse |
 | PgUp / PgDn, End | transcript | scroll, re-pin to the bottom |
 | j / k, Enter, x | roster | move, focus, hide the session from the panes |
+| p | roster | pin or unpin the session (pinned sort first, shown with a star) |
+| / | roster | filter by title; Enter keeps the filter, Esc clears it |
+| Shift+D, then y / n | roster | delete the session after confirming; refused for a session owned by another host |
+| @ then Up / Down, Tab or Enter, Esc | composer | file mention popup: a pick inserts `@path`, and the file's content travels with the message |
+| Ctrl+X | composer | remove the last attachment |
 | y / n, Enter | approval | allow / deny (n opens a reason; Enter confirms, Esc leaves the reason) |
 | Up / Down, Space, Enter | question | move, toggle, submit; "Other" takes free text; secret questions are masked |
+
+## Attachments
+
+Paste an absolute file path (most terminals paste the path when you drop a file onto the window) or send
+`/attach <absolute path>`: the file becomes an attachment chip above the box. Pasted text that is anything
+else, including prose that merely contains a path, a path that does not exist, or a directory, is inserted
+as normal text. There is no clipboard-image read.
 
 ## Sharing sessions with VS Code
 
@@ -63,7 +75,7 @@ notice, then restart it. See `config.md`.
   `superpowers/notes/2026-10-01-bun-host-spike.md`). Sessions created from the TUI are not digested.
 - `dist/tui/tui.js` references its assets by absolute path; run it where it was built.
 - Shift+Enter is not distinguished from Enter by most terminals; use Ctrl+J or Alt+Enter.
-- Roster rename and "remember last effort/mode" in the new-session dialog are not implemented.
+- Roster rename, the empty-state prompt picker, clipboard-image attach and "remember last effort/mode" in the new-session dialog are not implemented.
 
 ## Manual smoke checklist
 
@@ -87,4 +99,9 @@ Run in Windows Terminal and in one macOS or Linux terminal.
 - [ ] Scrollbox with arrow keys: a key is not handled twice (no double scroll).
 - [ ] Long transcript: k or PgUp at the top loads earlier items.
 - [ ] Close the focused session via roster `x`: focus falls back to a neighbour or the empty state.
+- [ ] Type `@` plus a few letters: the popup lists files, Down and Tab pick one, and the sent message includes the file's content.
+- [ ] Drag a file from the file manager onto the terminal window: a chip appears (Windows Terminal, and one macOS or Linux terminal). If nothing happens, note the terminal; `/attach` must still work.
+- [ ] `/attach` a missing path: the notice explains it and the text stays.
+- [ ] Roster: `p` pins, `/` filters, Shift+D confirms before deleting, and a session owned by VS Code refuses.
+- [ ] Open the new-session dialog in a very short terminal: the provider rows stay visible.
 - [ ] The compiled `bin/marcode` renders markdown with highlighted code blocks (tree-sitter assets load from the embedded filesystem).
