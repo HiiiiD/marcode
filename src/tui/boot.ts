@@ -27,14 +27,9 @@ export interface Booted {
   shutdown(): Promise<void>;
 }
 
-export function memoryForRuntime(
-  memory: HostConfig['memory'], isBun: boolean,
-): { memory: HostConfig['memory']; warning?: string } {
-  if (!isBun || !memory.enabled) { return { memory }; }
-  return {
-    memory: { ...memory, enabled: false },
-    warning: 'Memory is unavailable under Bun in this build; recall is off.',
-  };
+// A known build limit, not a fault of this install: shown on every launch it would only be noise.
+export function memoryForRuntime(memory: HostConfig['memory'], isBun: boolean): HostConfig['memory'] {
+  return isBun && memory.enabled ? { ...memory, enabled: false } : memory;
 }
 
 export async function bootHost(opts: BootOptions): Promise<Booted> {
@@ -46,9 +41,7 @@ export async function bootHost(opts: BootOptions): Promise<Booted> {
   const loaded = await loadConfig(configFile);
   for (const w of loaded.warnings) { warn(w); }
   const config: HostConfig = { ...defaultHostConfig(), ...loaded.config, ...opts.config };
-  const runtimeMemory = memoryForRuntime(config.memory, Boolean(process.versions.bun));
-  config.memory = runtimeMemory.memory;
-  if (runtimeMemory.warning) { warn(runtimeMemory.warning); }
+  config.memory = memoryForRuntime(config.memory, Boolean(process.versions.bun));
 
   const workspaceRoot = await findGitRoot(opts.cwd);
   const workspaceDir = await resolveWorkspaceDir(home, workspaceRoot);

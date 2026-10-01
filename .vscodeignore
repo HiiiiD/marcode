@@ -8,6 +8,8 @@
 .dev-host-profile/**
 .impeccable/**
 scratch/**
+bin/**
+dist/tui/**
 docs/**
 .mcp.json
 components.json

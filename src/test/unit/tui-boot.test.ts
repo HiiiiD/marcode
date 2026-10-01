@@ -74,26 +74,12 @@ suite('tui boot', () => {
     booted = undefined;
   });
 
-  test('memoryForRuntime turns memory off with a warning under Bun', () => {
-    const r = memoryForRuntime({ enabled: true, summarizer: 'x' }, true);
-    assert.strictEqual(r.memory.enabled, false);
-    assert.strictEqual(r.memory.summarizer, 'x');
-    assert.strictEqual(typeof r.warning, 'string');
+  test('memoryForRuntime turns memory off under Bun and keeps the summarizer', () => {
+    assert.deepStrictEqual(memoryForRuntime({ enabled: true, summarizer: 'x' }, true), { enabled: false, summarizer: 'x' });
   });
 
   test('memoryForRuntime leaves memory alone under Node or when already off', () => {
-    const on = memoryForRuntime({ enabled: true, summarizer: undefined }, false);
-    assert.strictEqual(on.memory.enabled, true);
-    assert.strictEqual(on.warning === undefined, true);
-    const off = memoryForRuntime({ enabled: false, summarizer: undefined }, true);
-    assert.strictEqual(off.warning === undefined, true);
-  });
-
-  (process.versions.bun ? test : test.skip)('bootHost forces memory off under Bun and warns', async () => {
-    booted = await bootHost({
-      cwd: tmp, home: path.join(tmp, 'home'),
-      config: { enabledProviders: ['fake'], memory: { enabled: true, summarizer: undefined } },
-    });
-    assert.strictEqual(booted.warnings.some((w) => w.includes('Memory is unavailable under Bun')), true);
+    assert.strictEqual(memoryForRuntime({ enabled: true, summarizer: undefined }, false).enabled, true);
+    assert.strictEqual(memoryForRuntime({ enabled: false, summarizer: undefined }, true).enabled, false);
   });
 });

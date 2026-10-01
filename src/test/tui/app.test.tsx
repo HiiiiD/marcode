@@ -113,9 +113,9 @@ test('when the owner lets go of the focused session the composer returns', async
 });
 
 test('the first boot warning is the initial notice', async () => {
-  m = await mount(<App {...props} initialNotice="Memory is unavailable under Bun" />);
+  m = await mount(<App {...props} initialNotice="config.json could not be read; using the defaults." />);
   await m.fromHost(hydrateMsg());
-  expect(m.frame()).toContain('Memory is unavailable under Bun');
+  expect(m.frame()).toContain('config.json could not be read; using the defaults.');
 });
 
 test('a later notice from the subscriber reaches the notice line, and unmount unsubscribes', async () => {

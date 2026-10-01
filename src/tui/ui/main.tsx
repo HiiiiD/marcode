@@ -43,8 +43,8 @@ async function runTui(cmd: Extract<CliCommand, { kind: 'run' }>): Promise<void> 
     booted = await bootHost({ cwd: process.cwd(), notify: (m) => { if (!booting) { notices.notify(m); } } });
   } catch (err) {
     console.error(`marcode: ${message(err)}`);
-    process.exitCode = 1;
-    return;
+    // A host that got partway up can hold timers or sockets open; nothing here is worth waiting for.
+    process.exit(1);
   }
   booting = false;
 
