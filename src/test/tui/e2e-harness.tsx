@@ -14,8 +14,6 @@ export interface MountBootedOpts {
   home?: string;
   cwd?: string;
   prompt?: string;
-  /** Skip removing the temp dir on destroy (a second boot reuses it). */
-  keepTmp?: boolean;
 }
 
 export const until = async (cond: () => boolean | Promise<boolean>, ms = 3000): Promise<void> => {
@@ -74,7 +72,7 @@ ${frame()}`); }
       act(() => { setup.renderer.destroy(); });
       actEnv(false);
       await booted.shutdown();
-      if (ownTmp && !opts.keepTmp) { await fs.rm(ownTmp, { recursive: true, force: true }); }
+      if (ownTmp) { await fs.rm(ownTmp, { recursive: true, force: true }); }
     },
   };
 }

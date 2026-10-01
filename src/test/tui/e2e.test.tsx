@@ -36,8 +36,9 @@ test('a command that needs permission shows the prompt and y lets the turn finis
   const m = await mountTracked({ prompt: 'please rm the build folder' });
   await m.waitFrame((f) => f.includes('[y] allow'));
   await m.press('y');
-  await m.waitFrame((f) => !f.includes('[y] allow'));
+  await m.waitFrame((f) => /— allowed/.test(f));
   expect(m.frame()).not.toContain('[y] allow');
+  await until(() => m.booted.host.manager.summaries().every((s) => s.status !== 'running' && s.status !== 'awaiting-approval'));
 });
 
 test('n then Enter denies and the turn still finishes', async () => {
@@ -48,6 +49,7 @@ test('n then Enter denies and the turn still finishes', async () => {
   await m.press('return');
   await m.waitFrame((f) => !f.includes('[y] allow') && !f.includes('deny reason'));
   await until(() => m.booted.host.manager.summaries().every((s) => s.status !== 'running' && s.status !== 'awaiting-approval'));
+  await m.waitFrame((f) => /— denied/.test(f));
 });
 
 test('a session owned by another host is read-only here and frees up on release', async () => {
@@ -76,10 +78,15 @@ test('a session owned by another host is read-only here and frees up on release'
 
   const file = path.join(dir, 'sessions', `${s.state.id}.jsonl`);
   const before = await fs.readFile(file, 'utf8');
-  await m.type('x');
+  const rowCount = m.booted.host.manager.summaries().length;
+  await m.type('zzq');
   await m.press('return');
   await m.settle(300);
   expect(m.frame()).not.toContain('Message —');
+  expect(m.frame()).not.toContain('zzq');
+  expect(m.frame()).toContain(`vscode·${process.pid}`);
+  expect(m.booted.host.manager.summaries().length).toBe(rowCount);
+  expect(m.booted.host.manager.summaries().some((x) => x.id === s.state.id)).toBe(true);
   await other.manager.persistNow();
   expect(await fs.readFile(file, 'utf8')).toBe(before);
 
@@ -93,7 +100,7 @@ test('a restarted TUI resumes the previous session with its transcript', async (
   const tmp = await makeTmp();
   tmps.push(tmp);
   const home = path.join(tmp, 'home');
-  const first = await mountBooted({ home, cwd: tmp, prompt: 'remember this message' });
+  const first = await mountTracked({ home, cwd: tmp, prompt: 'remember this message' });
   await first.waitFrame((f) => f.includes('remember this message') && hasReply(f));
   await first.booted.host.manager.persistNow();
   await first.destroy();

@@ -43,6 +43,7 @@ test('a foreign session shows the banner and no composer', async () => {
   await m.type('hello');
   await m.press('return');
   expect(m.posted.some((p) => p.t === 'send')).toBe(false);
+  expect(m.frame()).not.toContain('hello');
 });
 
 test('a foreign session with a pending permission shows no prompt and posts nothing', async () => {
