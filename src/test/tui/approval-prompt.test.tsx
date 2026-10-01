@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from 'bun:test';
-import { act } from 'react';
+import { act, useState } from 'react';
 import type { PermissionRequest, WebviewToHost } from '../../protocol/messages';
 import { ApprovalPrompt } from '../../tui/ui/approval-prompt';
 import { mount, type Mounted } from './harness';
@@ -39,14 +39,14 @@ test('n then a reason denies with that reason', async () => {
   await m.type('Too risky');
   expect(m.frame()).toContain('Too risky');
   await m.press('return');
-  expect(decisions()).toEqual([deny('Too risky')]);
+  expect(decisions()).toStrictEqual([deny('Too risky')]);
 });
 
 test('n then Enter denies without a reason', async () => {
   m = await mount(<ApprovalPrompt sessionId="s1" request={req} focused />);
   await m.press('n');
   await m.press('return');
-  expect(decisions()).toEqual([deny()]);
+  expect(decisions()).toStrictEqual([deny()]);
 });
 
 test('typing y and n inside the reason does not allow or deny', async () => {
@@ -56,7 +56,7 @@ test('typing y and n inside the reason does not allow or deny', async () => {
   expect(decisions().length).toBe(0);
   expect(m.frame()).toContain('yn yes');
   await m.press('return');
-  expect(decisions()).toEqual([deny('yn yes')]);
+  expect(decisions()).toStrictEqual([deny('yn yes')]);
 });
 
 test('backspace edits the reason', async () => {
@@ -65,7 +65,7 @@ test('backspace edits the reason', async () => {
   await m.type('abcd');
   await m.press('backspace');
   await m.press('return');
-  expect(decisions()).toEqual([deny('abc')]);
+  expect(decisions()).toStrictEqual([deny('abc')]);
 });
 
 test('Esc in the reason returns to the choice', async () => {
@@ -87,4 +87,36 @@ test('an unfocused prompt ignores keys', async () => {
   await m.press('y');
   await m.press('n');
   expect(decisions().length).toBe(0);
+});
+
+test('n and Enter in one batch deny rather than allow', async () => {
+  m = await mount(<ApprovalPrompt sessionId="s1" request={req} focused />);
+  await m.pressMany(['n', 'return']);
+  expect(decisions()).toStrictEqual([deny()]);
+});
+
+test('n, typed text and Enter in one batch deny with the whole reason', async () => {
+  m = await mount(<ApprovalPrompt sessionId="s1" request={req} focused />);
+  await m.pressMany(['n', 'n', 'o', 'return']);
+  expect(decisions()).toStrictEqual([deny('no')]);
+});
+
+test('two y presses in one batch post one decision', async () => {
+  m = await mount(<ApprovalPrompt sessionId="s1" request={req} focused />);
+  await m.pressMany(['y', 'y']);
+  expect(decisions().length).toBe(1);
+});
+
+test('a new request id in the same mount can be answered, once', async () => {
+  let swap!: (r: PermissionRequest) => void;
+  const Host = () => {
+    const [r, setR] = useState(req);
+    swap = setR;
+    return <ApprovalPrompt sessionId="s1" request={r} focused />;
+  };
+  m = await mount(<Host />);
+  await m.press('y');
+  await act(async () => { swap({ ...req, requestId: 'r2' }); });
+  await m.pressMany(['y', 'y']);
+  expect(decisions().map((d) => (d as { requestId: string }).requestId)).toEqual(['r1', 'r2']);
 });

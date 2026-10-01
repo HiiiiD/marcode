@@ -1,10 +1,11 @@
 import { useKeyboard } from '@opentui/react';
-import { useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { clampLines, describeInput, describeTool, type ToolBlock } from '../../client-core/tool-render';
 import type { PermissionRequest, SessionId } from '../../protocol/messages';
 import { actionFor } from '../keymap';
 import { editText } from './key-text';
 import { useTuiStore } from './store';
+import { useSyncState } from './use-sync-state';
 
 const blockLines = (b: ToolBlock): string[] => {
   switch (b.kind) {
@@ -23,27 +24,29 @@ export function ApprovalPrompt(props: { sessionId: SessionId; request: Permissio
   const header = describeTool(request.tool);
   const body = describeInput(request.tool).flatMap(blockLines).join('\n');
   const shown = clampLines(body, 5, 1);
-  const [mode, setMode] = useState<'choose' | 'reason'>('choose');
-  const [reason, setReason] = useState('');
-  const sent = useRef(false);
+  const st = useSyncState({ mode: 'choose' as 'choose' | 'reason', reason: '' });
+  const sent = useRef<string | null>(null);
+
+  useEffect(() => { st.set({ mode: 'choose', reason: '' }); }, [request.requestId]);
 
   const decide = (decision: { allow: true } | { allow: false; reason?: string }) => {
-    if (sent.current) { return; }
-    sent.current = true;
+    if (sent.current === request.requestId) { return; }
+    sent.current = request.requestId;
     post({ t: 'permission-decision', id: props.sessionId, requestId: request.requestId, decision });
   };
 
   useKeyboard((key) => {
     if (!props.focused) { return; }
+    const { mode, reason } = st.get();
     if (mode === 'reason') {
-      if (key.name === 'escape') { setMode('choose'); }
+      if (key.name === 'escape') { st.set({ mode: 'choose' }); }
       else if (key.name === 'return') { decide(reason.trim() ? { allow: false, reason: reason.trim() } : { allow: false }); }
-      else { setReason((x) => editText(x, key) ?? x); }
+      else { st.set({ reason: editText(reason, key) ?? reason }); }
       return;
     }
     const action = actionFor('approval', key, { running: false });
     if (action?.do === 'allow' || action?.do === 'confirm') { decide({ allow: true }); }
-    else if (action?.do === 'deny') { setMode('reason'); }
+    else if (action?.do === 'deny') { st.set({ mode: 'reason' }); }
   });
 
   const extra = [request.meta?.description, request.meta?.decisionReason].filter((t): t is string => Boolean(t));
@@ -52,9 +55,9 @@ export function ApprovalPrompt(props: { sessionId: SessionId; request: Permissio
       <text fg="yellow">{`${header.verb} ${header.primary}`}</text>
       {extra.map((t, i) => <text key={`m${i}`} fg="gray">{t}</text>)}
       {[...shown.head, ...(shown.hidden > 0 ? [`… ${shown.hidden} more …`] : []), ...shown.tail].map((l, i) => <text key={i}>{l}</text>)}
-      {mode === 'choose'
+      {st.view.mode === 'choose'
         ? <text>[y] allow  [n] deny</text>
-        : <text>{`deny reason (Enter to send, Esc back): ${reason}`}</text>}
+        : <text>{`deny reason (Enter to send, Esc back): ${st.view.reason}`}</text>}
     </box>
   );
 }

@@ -63,6 +63,7 @@ export function actionFor(zone: Zone, key: KeyInput, ctx: { running: boolean }):
       }
       return undefined;
     case 'approval':
+      if (key.meta) { return undefined; }
       switch (key.name) {
         case 'y': return act('allow');
         case 'n': return act('deny');

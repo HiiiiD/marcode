@@ -39,6 +39,11 @@ suite('tui keymap', () => {
     assert.deepStrictEqual(actionFor('question', { name: 'space' }, idle), { do: 'option-toggle' });
     assert.deepStrictEqual(actionFor('question', { name: 'return' }, idle), { do: 'submit-answers' });
   });
+  test('the approval zone ignores meta chords', () => {
+    assert.strictEqual(actionFor('approval', { name: 'y', meta: true }, idle), undefined);
+    assert.strictEqual(actionFor('approval', { name: 'return', meta: true }, idle), undefined);
+    assert.deepStrictEqual(actionFor('composer', { name: 'return', meta: true }, idle), { do: 'newline' });
+  });
   test('Tab cycles zones except inside a prompt', () => {
     assert.deepStrictEqual(actionFor('composer', { name: 'tab' }, idle), { do: 'cycle-zone' });
     assert.strictEqual(actionFor('approval', { name: 'tab' }, idle), undefined);

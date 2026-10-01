@@ -23,6 +23,8 @@ export interface Mounted {
   frame(): string;
   press(name: string, mods?: { ctrl?: boolean; meta?: boolean; shift?: boolean }): Promise<void>;
   type(text: string): Promise<void>;
+  /** Delivers every key inside one act batch, with no render in between (type-ahead, paste). */
+  pressMany(keys: string[]): Promise<void>;
   destroy(): void;
 }
 
@@ -47,6 +49,7 @@ export async function mount(ui: ReactNode, size = { width: 100, height: 30 }): P
     frame: () => setup.captureCharFrame(),
     press: (name, mods) => settle(() => { setup.mockInput.pressKey(KEY_ALIAS[name] ?? name, mods); }),
     type: (text) => settle(async () => { await setup.mockInput.typeText(text); }),
+    pressMany: (keys) => settle(() => { for (const k of keys) { setup.mockInput.pressKey(KEY_ALIAS[k] ?? k); } }),
     destroy: () => { actEnv(true); act(() => { setup.renderer.destroy(); }); },
   };
 }
