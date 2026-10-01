@@ -3,7 +3,7 @@ import { createRoot } from '@opentui/react';
 import { watchConfig } from '../../host/config-file';
 import { bootHost, type Booted } from '../boot';
 import { parseArgs, USAGE, type CliCommand } from '../cli';
-import { createShutdown } from '../shutdown';
+import { createShutdown, installExitSignals } from '../shutdown';
 import { runConfig, runLogin, runMigrate } from '../subcommands';
 import { App } from './app';
 import { TuiStoreProvider } from './store';
@@ -51,19 +51,10 @@ async function runTui(cmd: Extract<CliCommand, { kind: 'run' }>): Promise<void> 
   const watcher = watchConfig(booted.configFile, booted.fileConfig, () => {
     notices.notify('config.json changed — restart to apply');
   });
-  let renderer: CliRenderer;
-  try {
-    renderer = await createCliRenderer({ exitOnCtrlC: false });
-  } catch (err) {
-    watcher.dispose();
-    await booted.shutdown().catch(() => {});
-    console.error(`marcode: ${message(err)}`);
-    process.exitCode = 1;
-    return;
-  }
+  let renderer: CliRenderer | undefined;
   let fatal: string | undefined;
   const shutdown = createShutdown({
-    destroyRenderer: () => { renderer.destroy(); },
+    destroyRenderer: () => { renderer?.destroy(); },
     disposeHost: () => { watcher.dispose(); return booted.shutdown(); },
     exit: (code) => {
       if (fatal) { console.error(`marcode: ${fatal}`); }
@@ -74,10 +65,23 @@ async function runTui(cmd: Extract<CliCommand, { kind: 'run' }>): Promise<void> 
     fatal ??= err instanceof Error ? err.stack ?? err.message : String(err);
     void shutdown(1);
   };
-  process.on('SIGINT', () => { void shutdown(130); });
-  process.on('SIGTERM', () => { void shutdown(143); });
+  installExitSignals((signal, handler) => { process.on(signal, handler); }, shutdown);
   process.on('uncaughtException', crash);
   process.on('unhandledRejection', crash);
+
+  try {
+    // OpenTUI's own exitSignals handler only destroys the renderer and swallows the signal, so the host
+    // (leases, self-control server, provider children) would outlive the terminal; we own every signal instead.
+    renderer = await createCliRenderer({
+      exitOnCtrlC: false,
+      exitSignals: [],
+      onDestroy: () => { void shutdown.ifIdle(1); },
+    });
+  } catch (err) {
+    fatal = message(err);
+    await shutdown(1);
+    return;
+  }
 
   const loginCommands = Object.fromEntries([...booted.host.loginRecipes].map(([id, r]) => [id, r.command]));
   createRoot(renderer).render(

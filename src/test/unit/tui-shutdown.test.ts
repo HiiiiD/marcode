@@ -1,5 +1,5 @@
 import * as assert from 'node:assert';
-import { createShutdown } from '../../tui/shutdown';
+import { createShutdown, installExitSignals } from '../../tui/shutdown';
 
 function fakes(over: { destroy?: () => void; dispose?: () => Promise<void> } = {}) {
   const calls: string[] = [];
@@ -56,5 +56,35 @@ suite('tui shutdown', () => {
     await f.shutdown(0);
     await f.shutdown(1);
     assert.deepStrictEqual(f.exits, [0]);
+  });
+});
+
+suite('tui shutdown ifIdle and signals', () => {
+  test('ifIdle runs the whole sequence when nothing started it', async () => {
+    const f = fakes();
+    await f.shutdown.ifIdle(1);
+    assert.deepStrictEqual(f.calls, ['destroy', 'dispose', 'exit 1']);
+  });
+
+  test('ifIdle during a shutdown it did not start is ignored, not a forced 130', async () => {
+    const f = fakes({ dispose: () => new Promise<void>(() => {}) });
+    const first = f.shutdown(0);
+    await f.shutdown.ifIdle(1);
+    await first;
+    assert.deepStrictEqual(f.exits, [0]);
+  });
+
+  test('every exit signal goes through the one shutdown with its own code', () => {
+    const handlers = new Map<string, () => void>();
+    const codes: number[] = [];
+    installExitSignals((sig, fn) => { handlers.set(sig, fn); }, (code) => { codes.push(code); return Promise.resolve(); });
+    for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP', 'SIGQUIT', 'SIGBREAK']) { handlers.get(sig)?.(); }
+    assert.deepStrictEqual(codes, [130, 143, 129, 131, 149]);
+  });
+
+  test('a signal the platform refuses to listen for is skipped, not fatal', () => {
+    const installed: string[] = [];
+    installExitSignals((sig) => { if (sig === 'SIGQUIT') { throw new Error('ENOSYS'); } installed.push(sig); }, () => Promise.resolve());
+    assert.deepStrictEqual(installed, ['SIGINT', 'SIGTERM', 'SIGHUP', 'SIGBREAK']);
   });
 });

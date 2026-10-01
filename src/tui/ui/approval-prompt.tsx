@@ -39,7 +39,7 @@ export function ApprovalPrompt(props: { sessionId: SessionId; request: Permissio
     if (!props.focused) { return; }
     const { mode, reason } = st.get();
     if (mode === 'reason') {
-      if (key.name === 'escape') { st.set({ mode: 'choose' }); }
+      if (key.name === 'escape') { key.preventDefault(); st.set({ mode: 'choose' }); }
       else if (key.name === 'return') { decide(reason.trim() ? { allow: false, reason: reason.trim() } : { allow: false }); }
       else { st.set({ reason: editText(reason, key) ?? reason }); }
       return;

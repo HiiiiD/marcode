@@ -19,7 +19,7 @@ export interface AppKeys {
 }
 
 export function useAppKeys(k: AppKeys): void {
-  const { state, post, focusedId, notice, setNotice } = useTuiStore();
+  const { state, post, notice, setNotice } = useTuiStore();
   const armed = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const noticeRef = useRef(notice);
   noticeRef.current = notice;
@@ -44,12 +44,21 @@ export function useAppKeys(k: AppKeys): void {
   useKeyboard((key) => {
     if (k.inert) { return; }
     const s = k.summary;
-    const action = actionFor(k.zone, key, { running: s?.status === 'running' });
+    const busy = s?.status === 'running' || s?.status === 'awaiting-approval';
+    const action = actionFor(k.zone, key, { running: busy });
     switch (action?.do) {
       case 'toggle-roster': k.toggleRoster(); return;
       case 'new-session': k.openDialog(); return;
       case 'cycle-zone': k.cycleZone(); return;
-      case 'interrupt': if (focusedId) { post({ t: 'interrupt', id: focusedId }); } return;
+      case 'interrupt': {
+        if (!s) { return; }
+        const interrupt = () => { post({ t: 'interrupt', id: s.id }); };
+        // Prompts subscribe after App, so they see this Esc later; one that uses it (leaving a text entry) marks it.
+        if (key.name === 'escape' && (k.zone === 'approval' || k.zone === 'question')) {
+          queueMicrotask(() => { if (!key.defaultPrevented) { interrupt(); } });
+        } else { interrupt(); }
+        return;
+      }
       case 'quit-request': quitRequest(); return;
       case 'refresh-catalog': post({ t: 'refresh-catalog' }); return;
       case 'cycle-model': {

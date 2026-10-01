@@ -13,6 +13,7 @@ import { StatusLine } from './status-line';
 import { useTuiStore } from './store';
 import { Transcript } from './transcript/transcript';
 import { useAppKeys } from './use-app-keys';
+import { useFocusFallback } from './use-focus-fallback';
 
 export interface AppProps {
   launchCwd: string;
@@ -28,7 +29,8 @@ export interface AppProps {
 type PaneZone = 'composer' | 'transcript' | 'roster';
 
 export function App(props: AppProps) {
-  const { state, post, focus, focusedId, setNotice } = useTuiStore();
+  const { state, post, setNotice } = useTuiStore();
+  const { shownId: focusedId, focusSession: focus } = useFocusFallback();
   const { width } = useTerminalDimensions();
   const wide = width >= 100;
   const [rosterOn, setRosterOn] = useState<boolean | undefined>(undefined);

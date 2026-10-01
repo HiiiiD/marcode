@@ -47,7 +47,7 @@ export function QuestionPrompt(props: { sessionId: SessionId; request: QuestionR
           const rest = cur.picked.filter((i) => i !== otherIdx);
           st.set({ typing: false, picked: cur.text ? [...rest, otherIdx] : rest });
         } else { finishQuestion([cur.text]); }
-      } else if (key.name === 'escape' && options.length > 0) { st.set({ typing: false }); }
+      } else if (key.name === 'escape' && options.length > 0) { key.preventDefault(); st.set({ typing: false }); }
       else { st.set({ text: editText(cur.text, key) ?? cur.text }); }
       return;
     }
