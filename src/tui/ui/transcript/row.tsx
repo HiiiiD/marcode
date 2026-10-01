@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import type { TranscriptRow } from '../../view/transcript-rows';
 import { ChatMessage } from '../termcn/components/ui/chat-message';
 import { useTheme } from '../termcn/hooks/use-theme';
+import { PermissionCard } from './permission-card';
 import { SubagentCard } from './subagent-card';
 import { ToolCard } from './tool-card';
 
@@ -44,12 +45,7 @@ export function RowView(props: { row: TranscriptRow; selected: boolean; expanded
         ? <SubagentCard item={row.item} open={props.expanded} userClosed={props.closed} selected={props.selected} />
         : <ToolCard item={row.item} open={props.expanded} selected={props.selected} />;
     case 'permission':
-      return (
-        <text attributes={bold} wrapMode="word">
-          <span fg={theme.colors.warning}>{'? '}</span>
-          {`${row.header.verb} ${row.header.primary} — ${row.state}${row.reason ? ` (${row.reason})` : ''}`}
-        </text>
-      );
+      return <PermissionCard header={row.header} state={row.state} reason={row.reason} selected={props.selected} />;
     case 'question':
       return (
         <text attributes={bold} wrapMode="word">

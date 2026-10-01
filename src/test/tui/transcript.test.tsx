@@ -105,11 +105,11 @@ test('only the status mark of a failed tool row is red, not its name', async () 
   expect(fgOf('Bash') === fgOf('✗')).toBe(false);
 });
 
-test('only the question mark of a permission row is coloured', async () => {
+test('only the mark of a permission row is coloured', async () => {
   m = await mount(<Transcript sessionId="s1" focused />);
   await m.fromHost(withItems([permission({ id: 'p1', state: 'allowed' })]));
-  expect(fgOf('?') === '').toBe(false);
-  expect(fgOf('allowed') === fgOf('?')).toBe(false);
+  expect(fgOf('✓') === '').toBe(false);
+  expect(fgOf('allowed') === fgOf('✓')).toBe(false);
 });
 
 test('a finished tool card shows no status mark', async () => {

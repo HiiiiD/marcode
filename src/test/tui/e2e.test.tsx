@@ -36,7 +36,7 @@ test('a command that needs permission shows the prompt and y lets the turn finis
   const m = await mountTracked({ prompt: 'please rm the build folder' });
   await m.waitFrame((f) => f.includes('[y] allow'));
   await m.press('y');
-  await m.waitFrame((f) => /— allowed/.test(f));
+  await m.waitFrame((f) => /✓.*allowed/.test(f));
   expect(m.frame()).not.toContain('[y] allow');
   await until(() => m.booted.host.manager.summaries().every((s) => s.status !== 'running' && s.status !== 'awaiting-approval'));
 });
@@ -49,7 +49,7 @@ test('n then Enter denies and the turn still finishes', async () => {
   await m.press('return');
   await m.waitFrame((f) => !f.includes('[y] allow') && !f.includes('deny reason'));
   await until(() => m.booted.host.manager.summaries().every((s) => s.status !== 'running' && s.status !== 'awaiting-approval'));
-  await m.waitFrame((f) => /— denied/.test(f));
+  await m.waitFrame((f) => /✗.*denied/.test(f));
 });
 
 test('a session owned by another host is read-only here and frees up on release', async () => {
