@@ -79,7 +79,8 @@ export function PaneTree(p: PaneTreeProps) {
           onFocus={p.onFocus} onHide={p.onHide} onFork={p.onFork} onOpenPicker={p.onOpenPicker}
         />
       )))}
-      {dividers.map((d) => <Divider key={`${d.path.join('.')}:${d.index}`} rect={d} onGrab={() => { grabbed.current = d; grabRoot.current = rootRef.current; }} />)}
+      {dividers.map((d) => <Divider key={`${d.path.join('.')}:${d.index}`} rect={d} active={drag !== null && grabbed.current?.path.join('.') === d.path.join('.') && grabbed.current.index === d.index}
+          onGrab={() => { grabbed.current = d; grabRoot.current = rootRef.current; }} />)}
     </box>
   );
 }

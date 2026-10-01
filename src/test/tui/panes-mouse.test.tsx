@@ -98,3 +98,24 @@ test('a drag released after the layout changed under it does not drop the new pa
   await mouse((mm) => mm.release(70, 10));
   expect(JSON.stringify(lastOf(m.posted, 'set-layout')?.layout.root).includes('"sp1"')).toBe(true);
 });
+
+const dividerGlyphs = (frame: string, x: number) => frame.split('\n').slice(2, 20).map((l) => [...l][x] ?? ' ');
+
+test('hovering a divider highlights it and leaving restores it', async () => {
+  m = await mount(<App {...props} />, { width: 140, height: 30 });
+  await m.fromHost(hydrateTwo());
+  expect(dividerGlyphs(m.frame(), 82).every((c) => c === '│')).toBe(true);
+  await mouse((mm) => mm.moveTo(82, 10));
+  expect(dividerGlyphs(m.frame(), 82).every((c) => c === '┃')).toBe(true);
+  await mouse((mm) => mm.moveTo(110, 10));
+  expect(dividerGlyphs(m.frame(), 82).every((c) => c === '│')).toBe(true);
+});
+
+test('the divider stays highlighted while it is being dragged, and clears when released', async () => {
+  m = await mount(<App {...props} />, { width: 140, height: 30 });
+  await m.fromHost(hydrateTwo());
+  await mouse(async (mm) => { await mm.pressDown(82, 10); await mm.moveTo(70, 10); });
+  expect(m.frame().includes('┃')).toBe(true);
+  await mouse((mm) => mm.release(70, 10));
+  expect(m.frame().includes('┃')).toBe(false);
+});
