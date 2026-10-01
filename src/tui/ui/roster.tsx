@@ -1,9 +1,11 @@
+import type { ScrollBoxRenderable } from '@opentui/core';
 import { useKeyboard } from '@opentui/react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { SessionId } from '../../protocol/messages';
 import { actionFor } from '../keymap';
 import { rosterRows } from '../view/roster-rows';
 import { useTuiStore } from './store';
+import { useTheme } from './termcn/hooks/use-theme';
 
 interface RosterProps {
   focused: boolean;
@@ -24,6 +26,12 @@ export function Roster({ focused, onFocusSession, onAskDelete }: RosterProps) {
     return () => { setRosterFiltering(false); };
   }, [focused, filtering]);
   useEffect(() => { if (!focused) { setFiltering(false); } }, [focused]);
+  const theme = useTheme();
+  const scroll = useRef<ScrollBoxRenderable | null>(null);
+  useEffect(() => {
+    const id = rows[cursor]?.id;
+    if (id !== undefined) { scroll.current?.scrollChildIntoView(id); }
+  }, [cursor, rows.length]);
 
   useKeyboard((key) => {
     if (!focused) { return; }
@@ -54,13 +62,20 @@ export function Roster({ focused, onFocusSession, onAskDelete }: RosterProps) {
 
   return (
     <box flexDirection="column" width={26} border borderStyle="single" title="sessions">
-      {filtering || filter !== '' ? <text fg="gray">{`/${filter}`}</text> : null}
-      {rows.map((row, i) => (
-        <text key={row.id} fg={row.dim ? 'gray' : undefined} attributes={focused && i === cursor ? 1 : 0}>
-          {`${row.focused ? '▸' : ' '}${row.glyph} ${row.pinned ? '★ ' : ''}${row.title}${row.suffix ? ` ${row.suffix}` : ''}`}
-        </text>
-      ))}
-      {rows.length === 0 ? <text fg="gray">{filter !== '' ? 'no match' : 'no sessions yet'}</text> : null}
+      {filtering || filter !== '' ? <text fg={theme.colors.muted}>{`/${filter}`}</text> : null}
+      <scrollbox ref={scroll} flexGrow={1}>
+        {rows.map((row, i) => (
+          <text
+            key={row.id}
+            id={row.id}
+            fg={row.dim ? theme.colors.mutedForeground : undefined}
+            attributes={focused && i === cursor ? 1 : 0}
+          >
+            {`${row.focused ? '▸' : ' '}${row.glyph} ${row.pinned ? '★ ' : ''}${row.title}${row.suffix ? ` ${row.suffix}` : ''}`}
+          </text>
+        ))}
+      </scrollbox>
+      {rows.length === 0 ? <text fg={theme.colors.muted}>{filter !== '' ? 'no match' : 'no sessions yet'}</text> : null}
     </box>
   );
 }
