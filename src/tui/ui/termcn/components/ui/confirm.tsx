@@ -50,7 +50,7 @@ export const Confirm = ({
         <text fg={theme.colors.primary}>{"?"}</text>
         <text>{message}</text>
       </box>
-      <box gap={2} paddingLeft={2}>
+      <box flexDirection="row" gap={2} paddingLeft={2}>
         <box gap={1}>
           {selected ? (
             <text fg={yesColor}>

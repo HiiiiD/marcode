@@ -168,6 +168,16 @@ test('delete confirm: y deletes the highlighted session, other keys are inert me
   expect(m.frame().includes('Delete "two"')).toBe(false);
 });
 
+test('delete confirm: both choices sit on one row under the message', async () => {
+  m = await mount(<App {...props} />, { width: 120, height: 30 });
+  await m.fromHost(rosterApp());
+  await m.press('tab');
+  await m.press('tab');
+  await m.press('d', { shift: true });
+  const rows = m.frame().split(/\r?\n/);
+  expect(rows.some((r) => r.includes('Delete') && r.includes('Cancel'))).toBe(true);
+});
+
 test('delete confirm: Enter on the default choice cancels', async () => {
   m = await mount(<App {...props} />, { width: 120, height: 30 });
   await m.fromHost(rosterApp());
