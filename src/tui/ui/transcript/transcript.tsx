@@ -13,10 +13,11 @@ export function Transcript({ sessionId, focused }: { sessionId: SessionId; focus
   const pane = state.byId[sessionId];
   const running = pane?.summary.status === 'running';
   const rows = useMemo(() => transcriptRows(pane?.items ?? [], running), [pane?.items, running]);
-  const [cursor, setCursor] = useState(-1);
+  const [cursorId, setCursorId] = useState<string | undefined>(undefined);
   const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
   const asked = useRef<string | undefined>(undefined);
   const scroll = useRef<ScrollBoxRenderable | null>(null);
+  const heightBefore = useRef<number | undefined>(undefined);
 
   const itemById = useMemo(
     () => new Map((pane?.items ?? []).flatMap((i) => [[i.id, i] as const, ...((i.role === 'tool' ? i.children ?? [] : []).map((c) => [c.id, c] as const))])),
@@ -25,36 +26,50 @@ export function Transcript({ sessionId, focused }: { sessionId: SessionId; focus
 
   const first = pane?.items[0]?.id;
   const hasMore = pane?.hasMore === true;
+  // Only a user scroll asks: a render-driven ask would chain through every page, because a prepend leaves no scroll to anchor on.
   const askOlder = () => {
-    if (!hasMore || !first || asked.current === first || (scroll.current?.scrollTop ?? 1) > 0) { return; }
+    const box = scroll.current;
+    if (!hasMore || !first || asked.current === first || !box || box.scrollTop > 0) { return; }
     asked.current = first;
+    heightBefore.current = box.scrollHeight;
     post({ t: 'load-more', id: sessionId, beforeItemId: first });
   };
-  // Content that fits the viewport sits at scrollTop 0 too, which is right: nothing older is on screen.
+
+  // Keep the reader on the row they were on once older items land above it.
   useEffect(() => {
-    const t = setTimeout(askOlder, 0);
+    if (heightBefore.current === undefined) { return; }
+    const before = heightBefore.current;
+    const t = setTimeout(() => {
+      const box = scroll.current;
+      if (box && box.scrollHeight > before) { box.scrollBy(box.scrollHeight - before, 'absolute'); heightBefore.current = undefined; }
+    }, 0);
     return () => clearTimeout(t);
-  });
+  }, [first]);
+
+  const cursor = cursorId === undefined ? -1 : rows.findIndex((r) => r.id === cursorId);
+  useEffect(() => {
+    if (cursorId !== undefined) { scroll.current?.scrollChildIntoView(cursorId); }
+  }, [cursorId]);
 
   useKeyboard((key) => {
     if (!focused) { return; }
     const action = actionFor('transcript', key, { running });
     if (!action) { return; }
     const box = scroll.current;
-    const select = (next: number) => {
-      setCursor(next);
-      const id = rows[next]?.id;
-      if (id) { box?.scrollChildIntoView(id); }
-    };
-    if (action.do === 'item-next') { select(Math.min(cursor + 1, rows.length - 1)); }
-    else if (action.do === 'item-prev') { select(cursor < 0 ? rows.length - 1 : Math.max(cursor - 1, 0)); }
+    const step = (delta: 1 | -1) => setCursorId((prev) => {
+      const at = prev === undefined ? -1 : rows.findIndex((r) => r.id === prev);
+      const next = delta === 1 ? Math.min(at + 1, rows.length - 1) : at < 0 ? rows.length - 1 : Math.max(at - 1, 0);
+      return rows[next]?.id ?? prev;
+    });
+    if (action.do === 'item-next') { step(1); }
+    else if (action.do === 'item-prev') { step(-1); }
     else if (action.do === 'page-up') { box?.scrollBy(-0.5, 'viewport'); }
     else if (action.do === 'page-down') { box?.scrollBy(0.5, 'viewport'); }
     else if (action.do === 'toggle-item') {
       const row = rows[cursor];
       if (row?.kind !== 'tool') { return; }
-      setOpen((s) => { const n = new Set(s); if (n.has(row.id)) { n.delete(row.id); } else { n.add(row.id); } return n; });
-    } else if (action.do === 'repin') { setCursor(-1); box?.scrollTo(Number.MAX_SAFE_INTEGER); }
+      setOpen((o) => { const n = new Set(o); if (n.has(row.id)) { n.delete(row.id); } else { n.add(row.id); } return n; });
+    } else if (action.do === 'repin') { setCursorId(undefined); box?.scrollTo(Number.MAX_SAFE_INTEGER); }
     if (action.do === 'page-up' || action.do === 'item-prev') { setTimeout(askOlder, 0); }
   });
 
