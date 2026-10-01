@@ -9,9 +9,12 @@ export function createLoopback(handle: (msg: WebviewToHost) => void | Promise<vo
     deliver: (msg) => { for (const l of [...listeners]) { l(msg); } },
     transport: {
       post: (msg) => {
-        void Promise.resolve()
-          .then(() => handle(msg))
-          .catch((err: unknown) => { console.error('[marcode] loopback: handler failed', msg.t, err); });
+        const fail = (err: unknown) => { console.error('[marcode] loopback: handler failed', msg.t, err); };
+        try {
+          void Promise.resolve(handle(msg)).catch(fail);
+        } catch (err) {
+          fail(err);
+        }
       },
       onMessage: (listener) => {
         listeners.add(listener);
