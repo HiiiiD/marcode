@@ -1,6 +1,8 @@
-import type { BoxRenderable } from '@opentui/core';
+import type { BoxRenderable, MouseEvent } from '@opentui/core';
 import { useEffect, useRef, useState } from 'react';
-import { visibleRects, MIN_PANE_H, MIN_PANE_W, type Rect } from '../../client-core/pane-geometry';
+import type { LayoutNode } from '../../client-core/layout-tree';
+import { visibleRects, MIN_PANE_H, MIN_PANE_W, type DividerRect, type Rect } from '../../client-core/pane-geometry';
+import { dragDivider } from '../../client-core/pane-resize';
 import type { SessionId } from '../../protocol/messages';
 import type { PickerKind } from '../view/pickers';
 import { Divider } from './divider';
@@ -16,6 +18,7 @@ export interface PaneTreeProps {
   maximized: boolean;
   onFocus(id: SessionId): void;
   onHide(id: SessionId): void;
+  onResize(root: LayoutNode): void;
   onOpenPicker?(kind: PickerKind): void;
 }
 
@@ -28,11 +31,35 @@ export function PaneTree(p: PaneTreeProps) {
     const r = region.current;
     if (r && r.width > 0 && r.height > 0 && (r.width !== size.w || r.height !== size.h)) { setSize({ w: r.width, h: r.height }); }
   });
+  const [drag, setDrag] = useState<LayoutNode | null>(null);
+  const dragged = useRef<LayoutNode | null>(null);
+  const grabbed = useRef<DividerRect | null>(null);
   const area: Rect = { x: 0, y: 0, w: size.w, h: size.h };
   const root = state.layout.root;
-  const { panes, dividers } = visibleRects(root, p.focusedId, area, p.maximized);
+  const { panes, dividers } = visibleRects(drag ?? root, p.focusedId, area, p.maximized);
+
+  // The renderer only captures a drag once the first drag event lands, wherever the pointer is by then,
+  // so the grab is remembered here and the drag is read from the region, which every pane's events bubble to.
+  const onDrag = (e: MouseEvent) => {
+    const d = grabbed.current;
+    if (!d) { return; }
+    const origin = region.current;
+    const pointer = d.axis === 'x' ? e.x - (origin?.x ?? 0) : e.y - (origin?.y ?? 0);
+    const next = dragDivider(root, d, pointer);
+    dragged.current = next === root ? null : next;
+    setDrag(dragged.current);
+  };
+  // A drag the renderer stopped reporting (pointer left the window) must not commit on someone else's later click.
+  const onPress = () => { grabbed.current = null; dragged.current = null; setDrag(null); };
+  const onEnd = () => {
+    grabbed.current = null;
+    const done = dragged.current;
+    dragged.current = null;
+    setDrag(null);
+    if (done) { p.onResize(done); }
+  };
   return (
-    <box ref={region} position="relative" overflow="hidden" flexGrow={1} flexShrink={1} minHeight={0} minWidth={0}>
+    <box ref={region} onMouseDown={onPress} onMouseDrag={onDrag} onMouseUp={onEnd} onMouseDragEnd={onEnd} position="relative" overflow="hidden" flexGrow={1} flexShrink={1} minHeight={0} minWidth={0}>
       {panes.map((r) => (r.sessionId === null ? (
         <box key={r.path.join('.')} position="absolute" left={r.x} top={r.y} width={r.w} height={r.h} border borderStyle="single" borderColor={theme.colors.border}>
           <text fg={theme.colors.mutedForeground}>open a session from the roster</text>
@@ -45,7 +72,7 @@ export function PaneTree(p: PaneTreeProps) {
           onFocus={p.onFocus} onHide={p.onHide} onOpenPicker={p.onOpenPicker}
         />
       )))}
-      {dividers.map((d) => <Divider key={`${d.path.join('.')}:${d.index}`} rect={d} />)}
+      {dividers.map((d) => <Divider key={`${d.path.join('.')}:${d.index}`} rect={d} onGrab={() => { grabbed.current = d; }} />)}
     </box>
   );
 }

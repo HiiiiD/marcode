@@ -73,6 +73,7 @@ export function Roster({ focused, onFocusSession, onAskDelete }: RosterProps) {
             id={row.id}
             fg={row.dim ? theme.colors.mutedForeground : undefined}
             attributes={focused && i === cursor ? 1 : 0}
+            onMouseDown={() => { setCursorId(row.id); onFocusSession(row.id); }}
           >
             {`${row.focused ? '▸' : row.leaf ? '▪' : ' '}${row.glyph} ${row.pinned ? '★ ' : ''}${row.title}${row.suffix ? ` ${row.suffix}` : ''}`}
           </text>

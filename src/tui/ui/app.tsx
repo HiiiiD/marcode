@@ -115,6 +115,7 @@ export function App(props: AppProps) {
       maximized={maximized}
       onFocus={focus}
       onHide={layout.hide}
+      onResize={layout.applyRoot}
       onOpenPicker={setPicker}
     />
   ) : (

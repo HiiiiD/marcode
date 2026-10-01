@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { SessionId } from '../../../protocol/messages';
 import { summarizeSubagent } from '../../../client-core/subagent-window';
 import { actionFor } from '../../keymap';
-import { transcriptRows } from '../../view/transcript-rows';
+import { transcriptRows, type TranscriptRow } from '../../view/transcript-rows';
 import { useTuiStore } from '../store';
 import { RowView } from './row';
 
@@ -47,6 +47,16 @@ export function Transcript({ sessionId, focused }: { sessionId: SessionId; focus
     if (cursorId !== undefined) { scroll.current?.scrollChildIntoView(cursorId); }
   }, [cursorId]);
 
+  const toggleRow = (row: TranscriptRow | undefined) => {
+    if (row?.kind !== 'tool') { return; }
+    const id = row.id;
+    const blocked = row.item.tool.kind === 'subagent' && summarizeSubagent(row.item, 0).blocked;
+    const effective = open.has(id) || (blocked && !closed.has(id));
+    const flip = (s: ReadonlySet<string>, on: boolean) => { const n = new Set(s); if (on) { n.add(id); } else { n.delete(id); } return n; };
+    setOpen((o) => flip(o, !effective));
+    setClosed((c) => flip(c, effective && blocked));
+  };
+
   useKeyboard((key) => {
     if (!focused || key.defaultPrevented) { return; }
     const action = actionFor('transcript', key, { running });
@@ -61,16 +71,8 @@ export function Transcript({ sessionId, focused }: { sessionId: SessionId; focus
     else if (action.do === 'item-prev') { step(-1); }
     else if (action.do === 'page-up') { box?.scrollBy(-0.5, 'viewport'); }
     else if (action.do === 'page-down') { box?.scrollBy(0.5, 'viewport'); }
-    else if (action.do === 'toggle-item') {
-      const row = rows[cursor];
-      if (row?.kind !== 'tool') { return; }
-      const id = row.id;
-      const blocked = row.item.tool.kind === 'subagent' && summarizeSubagent(row.item, 0).blocked;
-      const effective = open.has(id) || (blocked && !closed.has(id));
-      const flip = (s: ReadonlySet<string>, on: boolean) => { const n = new Set(s); if (on) { n.add(id); } else { n.delete(id); } return n; };
-      setOpen((o) => flip(o, !effective));
-      setClosed((c) => flip(c, effective && blocked));
-    } else if (action.do === 'repin') { setCursorId(undefined); box?.scrollTo(Number.MAX_SAFE_INTEGER); }
+    else if (action.do === 'toggle-item') { toggleRow(rows[cursor]); }
+    else if (action.do === 'repin') { setCursorId(undefined); box?.scrollTo(Number.MAX_SAFE_INTEGER); }
     if (action.do === 'page-up' || action.do === 'item-prev') { setTimeout(askOlder, 0); }
   });
 
@@ -79,7 +81,7 @@ export function Transcript({ sessionId, focused }: { sessionId: SessionId; focus
       {hasMore ? <text fg="gray">↑ older messages</text> : null}
       {rows.map((row, i) => {
         return (
-          <box key={row.id} id={row.id} flexDirection="column">
+          <box key={row.id} id={row.id} flexDirection="column" onMouseDown={() => { setCursorId(row.id); toggleRow(row); }}>
             <RowView row={row} selected={focused && i === cursor} expanded={open.has(row.id)} closed={closed.has(row.id)} />
           </box>
         );
