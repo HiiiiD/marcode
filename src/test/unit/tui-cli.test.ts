@@ -15,7 +15,7 @@ suite('tui cli', () => {
   test('subcommands', () => {
     assert.deepStrictEqual(parseArgs(['login', 'claude']), { kind: 'login', provider: 'claude' });
     assert.deepStrictEqual(parseArgs(['config']), { kind: 'config' });
-    assert.deepStrictEqual(parseArgs(['migrate', 'C:\old']), { kind: 'migrate', oldDir: 'C:\old' });
+    assert.deepStrictEqual(parseArgs(['migrate', 'C:\\old']), { kind: 'migrate', oldDir: 'C:\\old' });
     assert.deepStrictEqual(parseArgs(['--help']), { kind: 'help' });
   });
   test('missing operands and unknown flags are errors, never throws', () => {
