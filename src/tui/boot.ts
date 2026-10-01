@@ -21,6 +21,8 @@ export interface Booted {
   workspaceRoot: string;
   launchCwd: string;
   configFile: string;
+  /** What config.json said, before boot overrides; the baseline a config watch compares against. */
+  fileConfig: HostConfig;
   warnings: string[];
   shutdown(): Promise<void>;
 }
@@ -70,7 +72,7 @@ export async function bootHost(opts: BootOptions): Promise<Booted> {
 
   let down: Promise<void> | undefined;
   return {
-    host, router, loopback, workspaceRoot, launchCwd: opts.cwd, configFile, warnings,
+    host, router, loopback, workspaceRoot, launchCwd: opts.cwd, configFile, fileConfig: loaded.config, warnings,
     shutdown: () => (down ??= host.dispose()),
   };
 }

@@ -4,6 +4,8 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { bootHost, memoryForRuntime, type Booted } from '../../tui/boot';
 import type { HostToWebview } from '../../protocol/messages';
+import { loadConfig } from '../../host/config-file';
+import { reloadSignature } from '../../host/host-config';
 
 suite('tui boot', () => {
   let tmp: string;
@@ -45,6 +47,13 @@ suite('tui boot', () => {
     });
     booted = b;
     assert.strictEqual(b.warnings.some((w) => w.includes('not valid JSON')), true);
+  });
+
+  test('fileConfig is what config.json says, not the boot overrides, so a config watch does not fire at once', async () => {
+    const b = await boot();
+    const fromFile = await loadConfig(b.configFile);
+    assert.strictEqual(reloadSignature(b.fileConfig), reloadSignature(fromFile.config));
+    assert.notStrictEqual(reloadSignature(b.fileConfig), reloadSignature({ ...fromFile.config, enabledProviders: ['fake'] }));
   });
 
   test('shutdown twice is harmless', async () => {
