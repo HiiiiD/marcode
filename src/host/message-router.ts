@@ -315,8 +315,11 @@ export class MessageRouter {
         return;
 
       case 'send': {
-        const session = this.manager.get(msg.id) ?? await this.reopen(msg.id);
-        if (!session) { return; }
+        // open() takes a foreign session over when its owner has let go; while it still holds on,
+        // the dormant copy would park the message and sit busy with nothing ever running it.
+        const known = this.manager.get(msg.id);
+        const session = known && !this.manager.isForeign(msg.id) ? known : await this.reopen(msg.id);
+        if (!session || this.manager.isForeign(msg.id)) { return; }
         const context = session.state.includeEditorContext
           ? this.editor.current() ?? undefined
           : undefined;

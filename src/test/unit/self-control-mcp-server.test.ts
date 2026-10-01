@@ -635,6 +635,27 @@ suite('SelfControlMcpServer cross-session messaging', () => {
     await server.dispose();
   });
 
+  test('send_message to a session another host is running is an error naming the owner, and delivers nothing', async () => {
+    let sent = false;
+    const target = { interrupt: async () => {}, send: () => { sent = true; } };
+    const manager = fakeManager({
+      summaries: () => [
+        { id: 's-caller', name: 'a', providerId: 'claude', status: 'idle', cwd: '/w' } as never,
+        { id: 's-target', name: 'b', providerId: 'codex', status: 'idle', cwd: '/w', owner: { host: 'tui', pid: 42 } } as never,
+      ],
+      visibleIds: () => ['s-caller', 's-target'],
+      get: async (id: string) => (id === 's-target' ? target as never : undefined),
+      isForeign: (id: string) => id === 's-target',
+    });
+    const server = new SelfControlMcpServer(manager);
+    const config = await server.start();
+    const result = await callToolAs(config, 's-caller', 'marcode__send_message', { to: 'b', text: 'hi' });
+    assert.strictEqual(result.isError, true);
+    assert.strictEqual(result.content[0].text.includes('tui'), true);
+    assert.strictEqual(sent, false);
+    await server.dispose();
+  });
+
   test('send_message resolves the target case-insensitively, matching rename()\'s own rule', async () => {
     let sent: unknown[] = [];
     const target = { interrupt: async () => {}, send: (...args: unknown[]) => { sent = args; } };

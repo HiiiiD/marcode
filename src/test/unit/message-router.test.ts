@@ -6,6 +6,7 @@ import { pathToFileURL } from 'node:url';
 import { AttachmentStore } from '../../host/attachment-store';
 import { MessageRouter } from '../../host/message-router';
 import { SessionManager } from '../../host/session-manager';
+import { SessionOwnership } from '../../host/session-ownership';
 import { TranscriptStore } from '../../host/transcript-store';
 import { FakeProvider } from '../../providers/fake/fake-provider';
 import type { AgentProvider } from '../../providers/types';
@@ -1390,5 +1391,45 @@ suite('MessageRouter', () => {
 
     assert.strictEqual(calls, 0);
     await m.dispose();
+  });
+});
+
+suite('MessageRouter (session owned by another host)', () => {
+  let dir: string;
+  const cleanup: (() => Promise<void>)[] = [];
+
+  setup(async () => { dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mar-router-shared-')); });
+  teardown(async () => {
+    for (const c of cleanup.splice(0)) { await c(); }
+    await fs.rm(dir, { recursive: true, force: true });
+  });
+
+  async function host(kind: 'vscode' | 'tui') {
+    const sent: HostToWebview[] = [];
+    const providers = new Map<string, AgentProvider>([
+      ['fake', new FakeProvider(() => [{ kind: 'text', delta: 'ok' }, { kind: 'turn-end', reason: 'done' }])],
+    ]);
+    const manager = new SessionManager(new TranscriptStore(dir, kind), providers, (m) => sent.push(m));
+    const ownership = new SessionOwnership(path.join(dir, 'sessions'), kind, { heartbeatMs: 20 });
+    manager.setOwnership(ownership, { tailIntervalMs: 20 });
+    await manager.init();
+    cleanup.push(async () => { await manager.dispose(); await ownership.dispose(); });
+    return { manager, sent, router: new MessageRouter(manager, (m) => sent.push(m), '/tmp') };
+  }
+
+  test('a send to a foreign session is dropped rather than parked in a dormant copy', async () => {
+    const owner = await host('vscode');
+    const session = await owner.manager.create('fake', '/w');
+    await owner.manager.persistNow();
+    const guest = await host('tui');
+    await guest.manager.syncRoster();
+
+    await guest.router.handle({ t: 'send', id: session.state.id, text: 'swallowed?' });
+    await settle();
+
+    const copy = guest.manager.get(session.state.id);
+    const items = copy ? (await copy.snapshot()).items : [];
+    assert.strictEqual(items.some((i) => i.role === 'user'), false);
+    assert.strictEqual(copy?.state.status === 'running', false);
   });
 });

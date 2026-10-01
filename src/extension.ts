@@ -3,121 +3,27 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { runAccountSetupWizard } from './host/account-setup-wizard';
 import { AgentsMdNudgeController, buildExcludeGlob } from './host/agents-md-nudge';
-import { AttachmentStore } from './host/attachment-store';
 import { defaultCwdOf } from './host/default-cwd';
 import { diffUri, registerDiffContentProvider } from './host/diff-content-provider';
 import { EditorContextTracker } from './host/editor-context-tracker';
 import { FleetPanel, FLEET_VIEW_TYPE } from './host/fleet-panel';
 import { HistoryPanel, HISTORY_VIEW_TYPE } from './host/history-panel';
-import { clampCap } from './host/fleet-diff';
 import { PanelViewProvider } from './host/panel-view-provider';
 import { PostBus } from './host/post-bus';
 import type { AttachmentHost, ConfigHost, UpdateNotifyHost } from './host/message-router';
 import { PROFILE_GUARD_SNIPPET } from './host/profile-noise';
 import { ReviewPanel, REVIEW_VIEW_TYPE } from './host/review-panel';
-import { SelfControlMcpServer } from './host/self-control-mcp-server';
-import { SessionManager } from './host/session-manager';
-import { TranscriptStore } from './host/transcript-store';
 import { createVscodeEditorSource } from './host/vscode-editor-source';
 import { createWorkspaceFileIndex } from './host/workspace-file-index';
-import { FtsMemoryStore } from './memory/fts-memory-store';
-import { FallbackSummarizer } from './host/digest/fallback-summarizer';
-import { LlmSummarizer } from './host/digest/llm-summarizer';
-import { MEMORY_ENABLED_SETTING, MEMORY_SUMMARIZER_SETTING, validateSummarizer, type SummarizerTarget } from './shared/memory-settings';
-import type { MemoryStore } from './memory/types';
-import { ClaudeProvider } from './providers/claude/claude-provider';
-import { CodexProvider } from './providers/codex/codex-provider';
-import { FakeProvider } from './providers/fake/fake-provider';
 import { PANE_COMMANDS, paneCommandMessage } from './host/pane-commands';
-import { OpenCodeProvider } from './providers/opencode/opencode-provider';
-import type { DiffBase, SessionId } from './protocol/messages';
-import {
-  DEFAULT_PROVIDER_IDS, ENABLED_PROVIDERS_SETTING, KNOWN_PROVIDER_IDS, PROVIDER_INSTANCES_SETTING,
-  SYSTEM_PROMPTS_SETTING,
-} from './shared/settings';
-import {
-  claudeLoginCommand, codexLoginCommand, computeLoginKind, resolveEnvMap, validateProviderInstances,
-} from './shared/provider-instances';
-import type { ProviderInstanceKind } from './shared/provider-instances';
-import { validateSystemPrompts } from './shared/system-prompts';
+import type { DiffBase } from './protocol/messages';
+import { KNOWN_PROVIDER_IDS } from './shared/settings';
 import { setLifecycleDebug } from './shared/lifecycle-debug';
-import type { AgentProvider, SelfControlMcpConfig, UsageMirror } from './providers/types';
-
-/**
- * `marcode.codex.path` defaults to `""` (see package.json) so the
- * settings UI shows an empty field, but CodexProvider's own default only
- * kicks in for `undefined` — passing through `""` would spawn `''` and
- * make Codex unavailable out of the box. Empty (or unset) means "use codex
- * from PATH", so it is normalized to `undefined` here at the boundary.
- */
-function codexBinPath(): string | undefined {
-  const configured = vscode.workspace.getConfiguration('marcode').get<string>('codex.path');
-  return configured ? configured : undefined;
-}
-
-/**
- * `marcode.opencode.path` defaults to `""` (see package.json) so the
- * settings UI shows an empty field, but OpenCodeProvider's own default only
- * kicks in for `undefined` — passing through `""` would spawn `''` and
- * make OpenCode unavailable out of the box. Empty (or unset) means "use opencode
- * from PATH", so it is normalized to `undefined` here at the boundary.
- */
-function openCodeBinPath(): string | undefined {
-  const configured = vscode.workspace.getConfiguration('marcode').get<string>('opencode.path');
-  return configured ? configured : undefined;
-}
-
-/**
- * `marcode.review.fileCap` — the default page size `SessionManager.fleetDiff`
- * asks for when a request omits its own `cap`. Sanitized through the same
- * `clampCap` `treeChanges` itself uses: a missing, non-numeric or non-positive
- * value falls back to `FILE_CAP` (500), and an over-large one clamps to
- * `MAX_FILE_CAP` (2000) rather than letting a typo ask the host to parse an
- * unbounded numstat every poll.
- */
-function reviewFileCap(): number {
-  const configured = vscode.workspace.getConfiguration('marcode').get<number>('review.fileCap');
-  return clampCap(configured);
-}
-
-/**
- * `marcode.review.pollIntervalMs` — how often the review tab re-reads a
- * dirty working tree. Floored at 100ms so a misconfigured value cannot turn
- * this into a busy loop of git spawns; a non-number or non-positive value
- * falls back to the host's own 750ms default.
- */
-function reviewPollIntervalMs(): number {
-  const configured = vscode.workspace.getConfiguration('marcode').get<number>('review.pollIntervalMs');
-  if (typeof configured !== 'number' || Number.isNaN(configured) || configured < 1) { return 750; }
-  return Math.max(100, Math.floor(configured));
-}
-
-/**
- * `marcode.review.baseRefs` — extra candidate refs `resolveBase` tries for
- * a working tree whose integration branch (`develop`, `trunk`, …) is neither
- * auto-detected via `origin/HEAD` nor one of `fleet-diff.ts`'s own hardcoded
- * fallbacks. A malformed value (not an array of strings) is dropped rather
- * than passed through — a bad ref name here would name that fact in a diff
- * base line, not in the settings UI where it could be fixed.
- */
-function reviewBaseRefs(): string[] {
-  const configured = vscode.workspace.getConfiguration('marcode').get<unknown>('review.baseRefs');
-  if (!Array.isArray(configured)) { return []; }
-  return configured.filter((ref): ref is string => typeof ref === 'string' && ref.trim() !== '');
-}
-
-/**
- * `marcode.favoriteModels` — model rows the New session dialog's user
- * starred, each keyed `"providerId modelId"` (see
- * `shared/model-catalog.ts#modelKey`). A malformed value (not an array of
- * strings) is dropped rather than passed through, the same posture as
- * `reviewBaseRefs`.
- */
-function favoriteModels(): string[] {
-  const configured = vscode.workspace.getConfiguration('marcode').get<unknown>('favoriteModels');
-  if (!Array.isArray(configured)) { return []; }
-  return configured.filter((id): id is string => typeof id === 'string' && id.trim() !== '');
-}
+import { configPath, favoriteModelsSource, loadConfig, seedConfigFileSafely, watchConfig } from './host/config-file';
+import { createHost } from './host/create-host';
+import { routeOpenSettings } from './host/settings-routing';
+import { importOldStorage } from './host/migrate-storage';
+import { marcodeHome, resolveWorkspaceDirOr } from './host/workspace-dir';
 
 /**
  * `marcode.showCacheTimer` — off by default. See package.json's description
@@ -130,58 +36,37 @@ function showCacheTimer(): boolean {
   return vscode.workspace.getConfiguration('marcode').get<boolean>('showCacheTimer', false);
 }
 
-/** Reads explicit account-usage mirrors without allowing malformed settings into the host. */
-function configuredUsageMirrors(): UsageMirror[] {
-  const configured = vscode.workspace.getConfiguration('marcode').get<unknown>('usageMirrors');
-  if (!Array.isArray(configured)) { return []; }
-  return configured.flatMap((entry): UsageMirror[] => {
-    if (!entry || typeof entry !== 'object') { return []; }
-    const value = entry as Record<string, unknown>;
-    const fields = ['sourceProviderId', 'modelPattern', 'targetProviderId', 'usageProviderId', 'displayName'];
-    if (!fields.every((field) => typeof value[field] === 'string' && (value[field] as string).trim() !== '')) {
-      return [];
-    }
-    try { new RegExp(value.modelPattern as string); } catch { return []; }
-    return [value as unknown as UsageMirror];
-  });
+const LEGACY_KEYS = [
+  'enabledProviders', 'providerInstances', 'systemPrompts', 'codex.path', 'opencode.path', 'usageMirrors',
+  'memory.enabled', 'memory.summarizer', 'review.fileCap', 'review.pollIntervalMs', 'review.baseRefs', 'favoriteModels',
+];
+
+/** Explicit values a user set under the old VS Code setting ids, for the one-time `config.json` seed. */
+function legacySettings(): Record<string, unknown> {
+  const cfg = vscode.workspace.getConfiguration('marcode');
+  const out: Record<string, unknown> = {};
+  for (const key of LEGACY_KEYS) {
+    const info = cfg.inspect<unknown>(key);
+    const value = info?.workspaceFolderValue ?? info?.workspaceValue ?? info?.globalValue;
+    if (value !== undefined) { out[key] = value; }
+  }
+  return out;
 }
 
 /**
- * The provider ids this window registers.
- *
- * A `Set` of ids rather than a filter over a provider list, because
- * construction itself is what is gated: `ClaudeProvider` and `CodexProvider`
- * each own a subprocess, and building one nobody enabled would spawn a CLI to
- * answer a question the panel will never ask.
- *
- * A malformed value (not an array, or entries that are not strings) falls back
- * to the default rather than yielding a panel with nothing in it: the user's
- * mistake is in a settings file, and a silently empty roster is a worse
- * account of it than the default behaviour plus an unknown-id warning.
+ * Awaited before the host exists, and without asking: the copy never touches the old directory,
+ * and a consent toast awaited here would hold up the panel, while one answered after the host
+ * started would merge into an `index.json` the host is already rewriting. Only the report is a toast.
  */
-function enabledProviderIds(): Set<string> {
-  const configured = vscode.workspace
-    .getConfiguration()
-    .get<unknown>(ENABLED_PROVIDERS_SETTING);
-  if (!Array.isArray(configured) || configured.some((id) => typeof id !== 'string')) {
-    if (configured !== undefined) {
-      console.warn('[mar-code] enabledProviders is not a list of strings; using the default', configured);
-    }
-    return new Set(DEFAULT_PROVIDER_IDS);
-  }
-  const ids = configured as string[];
-  const unknown = ids.filter((id) => !KNOWN_PROVIDER_IDS.includes(id as typeof KNOWN_PROVIDER_IDS[number]));
-  if (unknown.length > 0) {
-    // Named, not silently dropped: an id with a typo in it is the difference
-    // between "Claude is broken" and "Claude was never asked", and the panel's
-    // empty state cannot tell that story — it only ever hears about providers
-    // that exist.
-    void vscode.window.showWarningMessage(
-      `${ENABLED_PROVIDERS_SETTING}: ignoring unknown provider ${unknown.join(', ')}. `
-        + `Known providers: ${KNOWN_PROVIDER_IDS.join(', ')}.`,
+async function importPreviousStorage(context: vscode.ExtensionContext, workspaceDir: string): Promise<void> {
+  const oldDir = (context.storageUri ?? context.globalStorageUri).fsPath;
+  const result = await importOldStorage(oldDir, workspaceDir);
+  if (result.kind === 'failed') { void vscode.window.showWarningMessage(result.reason); }
+  if (result.kind === 'imported') {
+    void vscode.window.showInformationMessage(
+      `Imported ${result.sessions} Marcode session${result.sessions === 1 ? '' : 's'} into ~/.marcode. The originals were copied, not moved.`,
     );
   }
-  return new Set(ids);
 }
 
 /**
@@ -239,252 +124,30 @@ let pendingDeactivate: (() => Promise<void>) | undefined;
 
 export async function activate(context: vscode.ExtensionContext) {
   setLifecycleDebug(vscode.workspace.getConfiguration('marcode').get<boolean>('debug', false));
-  const rootDir = context.storageUri?.fsPath ?? context.globalStorageUri.fsPath;
-  const store = new TranscriptStore(rootDir);
-  const attachments = new AttachmentStore(rootDir);
-  // Errors are state, never exceptions — same posture as
-  // `selfControlServer.start()` below. A locked/corrupt `memory.sqlite`, or
-  // `node:sqlite`/FTS5 being unavailable in this Electron-bundled Node, must
-  // not fail the whole extension: `SessionManager` and `SelfControlMcpServer`
-  // both already accept `memory` as optional, and their `marcode__recall`
-  // tools already answer gracefully with none configured.
-  const memoryEnabled = vscode.workspace.getConfiguration().get<boolean>(MEMORY_ENABLED_SETTING, true);
-  let memory: MemoryStore | undefined;
-  if (memoryEnabled) {
-    try {
-      memory = new FtsMemoryStore(
-        path.join(rootDir, 'memory.sqlite'),
-        { tail: (id, limit) => store.tail(id, limit) },
-      );
-    } catch (err) {
-      console.warn('[mar-code] memory store unavailable; recall tools will be disabled', err);
-    }
-  }
+  const home = marcodeHome();
+  const configFile = configPath(home);
+  const seeded = await seedConfigFileSafely(configFile, legacySettings());
+  if (seeded.warning) { void vscode.window.showWarningMessage(seeded.warning); }
+  const { config, warnings: configWarnings } = await loadConfig(configFile);
+  for (const warning of configWarnings) { void vscode.window.showWarningMessage(warning); }
 
-  // Order matters: SessionPicker uses state.catalog[0] for the New button,
-  // so Claude — the real provider — is registered first.
-  //
-  // Registration is gated on `marcode.enabledProviders`, and a disabled
-  // provider is not registered at all rather than registered-and-hidden: it
-  // must appear in neither `catalog()` nor `unavailable()`, since "nobody
-  // asked for this backend" is not a diagnosis of it. Emptying the setting is
-  // therefore how the no-provider empty state is reached on purpose.
-  const enabled = enabledProviderIds();
-  const usageMirrors = configuredUsageMirrors();
-  // Empty at construction — `manager` needs this Map to build, but the
-  // self-control server (constructed just below, from `manager`) needs to
-  // resolve its config before providers can be built with it. `.set()` below
-  // populates the same Map by reference: `SessionManager` reads
-  // `this.providers` live on every call (`catalog()`, `create()`), never
-  // copies it at construction, so populating it after is safe.
-  const providers = new Map<string, AgentProvider>();
+  const resolved = await resolveWorkspaceDirOr(
+    home, vscode.workspace.workspaceFolders?.[0]?.uri.fsPath, (context.storageUri ?? context.globalStorageUri).fsPath,
+  );
+  if (resolved.warning) { void vscode.window.showWarningMessage(resolved.warning); }
+  const workspaceDir = resolved.dir;
+  await importPreviousStorage(context, workspaceDir);
 
   let provider: PanelViewProvider;
   const bus = new PostBus();
-  const manager = new SessionManager(
-    store, providers, (msg) => bus.post(msg), undefined, warnAboutProfile, attachments,
-    reviewFileCap(), reviewBaseRefs(), memory, undefined, usageMirrors,
-  );
-
-  // Constructed against `manager` via closures — `SessionManagerLike`
-  // defers to `manager` only when a tool call actually arrives, well after
-  // `activate()` returns, the same "assigned below, before this ever runs"
-  // pattern `agentsMdNudge`'s `post` callback uses further down.
-  const selfControlServer = new SelfControlMcpServer({
-    catalog: () => manager.catalog(),
-    create: (providerId, cwd, model, effort, mode) => manager.create(providerId, cwd, model, effort, mode),
-    setVisible: (ids) => manager.setVisible(ids as SessionId[]),
-    summaries: () => manager.summaries(),
-    visibleIds: () => manager.visibleIds(),
-    // `summaries()` spans every session, including one restored
-    // from disk that no pane has opened this launch — `manager.get()` alone
-    // only reaches a live one. `open()` materializes it, mirroring
-    // `message-router.ts`'s own `reopen()` helper: swallow a genuinely
-    // unknown/unknown-state id into `undefined` rather than let it reject
-    // here, where errors are state.
-    get: async (id) => {
-      try {
-        return await manager.open(id as SessionId);
-      } catch {
-        return undefined;
-      }
-    },
-    transcriptTail: (id, limit) => manager.transcriptTail(id as SessionId, limit),
-    close: (id) => manager.close(id as SessionId),
-    recallRoot: (id) => manager.recallRootOfSession(id as SessionId),
-  }, memory);
-  manager.setWorkspaceRoots(() => vscode.workspace.workspaceFolders?.map((f) => f.uri.fsPath) ?? []);
-  let selfControlConfig: SelfControlMcpConfig | undefined;
-  try {
-    selfControlConfig = await selfControlServer.start();
-  } catch (err) {
-    // Errors are state, never exceptions, and sessions from this launch
-    // simply have no self-control tool — the same posture a failed model
-    // probe takes.
-    console.warn('[mar-code] self-control MCP server failed to start; spawn_session will be unavailable', err);
-  }
-
-  // Extra named instances of an existing kind — additive to `enabled` above.
-  // See docs/superpowers/specs/2026-08-31-provider-instances-design.md.
-  // Validated ahead of every provider construction below (base and instance
-  // alike) because `marcode.systemPrompts` needs every id's kind up front —
-  // an id it doesn't recognize, or an opencode id, is warned about once here
-  // rather than re-derived per construction site.
-  const { valid: instanceConfigs, warnings: instanceWarnings } = validateProviderInstances(
-    vscode.workspace.getConfiguration().get<unknown>(PROVIDER_INSTANCES_SETTING),
-    KNOWN_PROVIDER_IDS,
-  );
-  for (const warning of instanceWarnings) {
-    void vscode.window.showWarningMessage(warning);
-  }
-  const kindOf: Record<string, ProviderInstanceKind> = { claude: 'claude', codex: 'codex', opencode: 'opencode' };
-  for (const cfg of instanceConfigs) { kindOf[cfg.id] = cfg.kind; }
-  const { prompts: systemPrompts, warnings: systemPromptWarnings } = validateSystemPrompts(
-    vscode.workspace.getConfiguration().get<unknown>(SYSTEM_PROMPTS_SETTING),
-    kindOf,
-  );
-  for (const warning of systemPromptWarnings) {
-    void vscode.window.showWarningMessage(warning);
-  }
-
-  if (enabled.has('claude')) {
-    providers.set('claude', new ClaudeProvider(undefined, selfControlConfig, {
-      systemPrompt: systemPrompts.claude,
-    }));
-  }
-  // Constructed only when enabled — it owns a CLI subprocess, and building
-  // one nobody asked for would spawn a backend to answer a question the panel
-  // never puts to it. `undefined` is why the path listener below is guarded.
-  const codexProvider = enabled.has('codex')
-    ? new CodexProvider({ binPath: codexBinPath(), selfControlMcp: selfControlConfig, systemPrompt: systemPrompts.codex as string | undefined })
-    : undefined;
-  if (codexProvider) { providers.set('codex', codexProvider); }
-  // Constructed only when enabled — it owns a CLI subprocess, and building
-  // one nobody asked for would spawn a backend to answer a question the panel
-  // never puts to it. `undefined` is why the path listener below is guarded.
-  const openCodeProvider = enabled.has('opencode')
-    ? new OpenCodeProvider({ binPath: openCodeBinPath(), selfControlMcp: selfControlConfig })
-    : undefined;
-  if (openCodeProvider) { providers.set('opencode', openCodeProvider); }
-  if (enabled.has('fake')) { providers.set('fake', new FakeProvider(
-    (text) => (text.includes('permission fixture')
-      ? [{
-          kind: 'permission', id: `p-${Date.now()}`,
-          tool: {
-            kind: 'other', label: 'Read',
-            raw: {
-              filepath: '/fake/workspace/src/example.ts', parentDir: '/fake/workspace/src',
-              encoding: 'utf8', maxBytes: 4096, followSymlinks: false,
-            },
-          },
-        }]
-      : text.includes('rm')
-      ? [{
-          kind: 'permission', id: `p-${Date.now()}`,
-          tool: { kind: 'command', label: 'Bash', command: text },
-        }]
-      : [{ kind: 'text', delta: 'ok' }, { kind: 'turn-end', reason: 'done' }]),
-    // Scripted so both the context ring and the usage strip have something
-    // to render in the dev host. Obviously synthetic, and deliberately
-    // scripted *here* rather than defaulted inside FakeProvider — the unit
-    // tests depend on an unscripted fake genuinely omitting `contextBreakdown`.
-    // The two memory files share a basename on purpose: that is the case
-    // the popover's rows have to stay distinguishable in.
-    {
-      context: {
-        systemPercent: 12,
-        memoryPercent: 5,
-        conversationPercent: 26,
-        freePercent: 57,
-        memoryFiles: [
-          { path: '/fake/workspace/CLAUDE.md', percent: 4 },
-          { path: '/fake/home/.claude/CLAUDE.md', percent: 1 },
-        ],
-      },
-      windows: [
-        { id: 'five-hour', label: 'Session (5h)', usedPercent: 62, resetsAt: Date.now() + 2 * 3_600_000 },
-        { id: 'seven-day', label: 'Week', usedPercent: 18, resetsAt: Date.now() + 3 * 86_400_000 },
-      ],
-    },
-  )); }
-
-  /** One instance id -> the terminal command that signs it in, and the env that terminal runs with. */
-  type LoginRecipe = { terminalName: string; command: string; env: NodeJS.ProcessEnv };
-  const loginRecipes = new Map<string, LoginRecipe>();
-  if (enabled.has('claude')) {
-    loginRecipes.set('claude', { terminalName: 'Claude login', command: 'claude auth login', env: process.env });
-  }
-  if (codexProvider) {
-    loginRecipes.set('codex', { terminalName: 'Codex login', command: 'codex login', env: process.env });
-  }
-
-  for (const cfg of instanceConfigs) {
-    const resolvedEnv = resolveEnvMap(cfg.envMap, process.env);
-    // resolveEnvMap silently omits any subprocess var whose named OS var is
-    // unset — proceeding with no signal would leave e.g. a "claude-work"
-    // instance running as the default account. Cheap loop, instance id and
-    // OS var name only, never a value.
-    for (const entry of Object.values(cfg.envMap ?? {})) {
-      if (entry.type === 'env' && process.env[entry.value] === undefined) {
-        void vscode.window.showWarningMessage(
-          `Provider instance "${cfg.id}": OS environment variable "${entry.value}" is not set.`,
-        );
-      }
-    }
-    const mergedEnv = { ...process.env, ...resolvedEnv };
-    const loginKind = computeLoginKind(cfg.kind, resolvedEnv);
-    if (cfg.kind === 'claude') {
-      providers.set(cfg.id, new ClaudeProvider(undefined, selfControlConfig, {
-        id: cfg.id, displayName: cfg.displayName, env: mergedEnv,
-        pathToClaudeCodeExecutable: cfg.binPath, loginKind, systemPrompt: systemPrompts[cfg.id],
-      }));
-      if (loginKind === 'oauth') {
-        loginRecipes.set(cfg.id, {
-          terminalName: `${cfg.displayName} login`,
-          command: claudeLoginCommand(cfg.binPath),
-          env: mergedEnv,
-        });
-      }
-    } else if (cfg.kind === 'codex') {
-      providers.set(cfg.id, new CodexProvider({
-        id: cfg.id, displayName: cfg.displayName, binPath: cfg.binPath,
-        env: mergedEnv, selfControlMcp: selfControlConfig, loginKind,
-        systemPrompt: systemPrompts[cfg.id] as string | undefined,
-      }));
-      loginRecipes.set(cfg.id, {
-        terminalName: `${cfg.displayName} login`,
-        command: codexLoginCommand(cfg.binPath, resolvedEnv),
-        env: mergedEnv,
-      });
-    } else {
-      providers.set(cfg.id, new OpenCodeProvider({
-        id: cfg.id, displayName: cfg.displayName, binPath: cfg.binPath,
-        env: mergedEnv, selfControlMcp: selfControlConfig, loginKind,
-      }));
-    }
-  }
-
-  if (memory) {
-    // Validated against every registered id, instances included, so a provider named here that is
-    // not actually enabled degrades to "off" with one warning instead of failing per session.
-    const { setting, warnings } = validateSummarizer(
-      vscode.workspace.getConfiguration().get<unknown>(MEMORY_SUMMARIZER_SETTING),
-      providers.keys(),
-    );
-    for (const warning of warnings) { void vscode.window.showWarningMessage(warning); }
-    if (setting.mode === 'llm') {
-      const llm = (t: SummarizerTarget, concurrency?: number) => new LlmSummarizer({
-        prompt: setting.prompt,
-        provider: providers.get(t.provider) as AgentProvider,
-        model: t.model,
-        effort: t.effort,
-        concurrency,
-        cwd: os.tmpdir(),
-      });
-      const chain = [llm(setting, setting.concurrency), ...setting.fallbacks.map((f) => llm(f))];
-      manager.setSummarizer(chain.length === 1 ? chain[0] : new FallbackSummarizer(chain));
-    }
-  }
+  const host = await createHost({
+    workspaceDir, config, hostKind: 'vscode',
+    workspaceRoots: () => vscode.workspace.workspaceFolders?.map((f) => f.uri.fsPath) ?? [],
+    emit: (msg) => bus.post(msg),
+    notify: { warn: (m) => { void vscode.window.showWarningMessage(m); } },
+    onShellNoise: warnAboutProfile,
+  });
+  const { manager, attachments, enabled, loginRecipes } = host;
 
   // Never `process.cwd()` — for an extension host that is VS Code's own
   // install directory, and a session inherits it silently. See
@@ -515,7 +178,11 @@ export async function activate(context: vscode.ExtensionContext) {
       void openFileDiff(root, target, base);
     },
     openSettings: (section: string) => {
-      void vscode.commands.executeCommand('workbench.action.openSettings', section);
+      if (routeOpenSettings(section) === 'config-file') {
+        void vscode.commands.executeCommand('vscode.open', vscode.Uri.file(configFile));
+      } else {
+        void vscode.commands.executeCommand('workbench.action.openSettings', section);
+      }
     },
     openExternal: (url: string) => {
       void openExternal(url);
@@ -537,11 +204,11 @@ export async function activate(context: vscode.ExtensionContext) {
     },
   };
 
+  const favorites = favoriteModelsSource(
+    configFile, config.favoriteModels, (m) => { void vscode.window.showWarningMessage(m); },
+  );
   const configHost: ConfigHost = {
-    setFavoriteModels: (ids) => {
-      void vscode.workspace.getConfiguration('marcode')
-        .update('favoriteModels', ids, vscode.ConfigurationTarget.Global);
-    },
+    setFavoriteModels: (ids) => { void favorites.set(ids); },
   };
 
   // Activation-scoped, not persisted: the sidebar WebviewView has no
@@ -572,7 +239,7 @@ export async function activate(context: vscode.ExtensionContext) {
   };
 
   const review = new ReviewPanel(
-    context.extensionUri, manager, bus, defaultCwd, editorHost, reviewPollIntervalMs(),
+    context.extensionUri, manager, bus, defaultCwd, editorHost, config.review.pollIntervalMs,
   );
   const fleet = new FleetPanel(context.extensionUri, manager, bus, defaultCwd, editorHost);
   const history = new HistoryPanel(context.extensionUri, manager, bus, defaultCwd, editorHost);
@@ -619,7 +286,7 @@ export async function activate(context: vscode.ExtensionContext) {
     (focus) => { fleet.open(focus); },
     fileIndex,
     agentsMdNudge,
-    favoriteModels,
+    () => favorites.get(),
     configHost,
     updateNotify,
     showCacheTimer(),
@@ -633,11 +300,22 @@ export async function activate(context: vscode.ExtensionContext) {
   // Push every change to the webview so the composer chip tracks the editor.
   const contextSub = tracker.onChange((ctx) => provider.post({ t: 'editor-context', ctx }));
 
+  const watcher = watchConfig(configFile, config, () => {
+    const reload = 'Reload window';
+    void vscode.window.showInformationMessage(
+      'Marcode settings changed. Reload the window to apply them.',
+      reload,
+    ).then((choice) => {
+      if (choice !== reload) { return; }
+      void vscode.commands.executeCommand('workbench.action.reloadWindow');
+    });
+  });
+
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(PanelViewProvider.viewType, provider),
     registerDiffContentProvider(),
-    { dispose: () => { void manager.dispose(); } },
-    { dispose: () => { void selfControlServer.dispose(); } },
+    { dispose: () => { void host.dispose(); } },
+    { dispose: () => { watcher.dispose(); } },
     { dispose: () => { contextSub.dispose(); tracker.dispose(); editorSource.dispose(); } },
     fileIndex,
     ...PANE_COMMANDS.map((command) => vscode.commands.registerCommand(command, () => {
@@ -647,6 +325,9 @@ export async function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand('marcode.review.open', () => { review.open(); }),
     vscode.commands.registerCommand('marcode.fleet.open', () => { fleet.open(); }),
     vscode.commands.registerCommand('marcode.history.open', () => { history.open(); }),
+    vscode.commands.registerCommand('marcode.config.open', () => {
+      void vscode.commands.executeCommand('vscode.open', vscode.Uri.file(configFile));
+    }),
     vscode.commands.registerCommand('marcode.memory.reindex', async () => {
       const status = manager.memoryStatus();
       if (!status.enabled) {
@@ -693,70 +374,21 @@ export async function activate(context: vscode.ExtensionContext) {
       if (recipe) { openLoginTerminal(recipe.terminalName, recipe.command, recipe.env); }
     }),
     vscode.commands.registerCommand('marcode.accountSetup.wizard', () => {
-      void runAccountSetupWizard(KNOWN_PROVIDER_IDS);
+      void runAccountSetupWizard(KNOWN_PROVIDER_IDS, configFile);
     }),
-    // A changed path is a different install: point the provider at it, then
-    // re-probe — which is also how the provider recovers from 'unavailable'.
-    // refreshModels already IS the availability probe — see session-manager.
-    // setBinPath must run first: it is what makes the re-probe actually use
-    // the new path, rather than retrying the stale one connect() already
-    // cached. It also kills the process running against the old binary,
-    // which ends any Codex session currently in flight — a user who
-    // changes the binary has declared the running one wrong, so those
-    // sessions land in 'error' with a transcript item (CodexRun's onClose
-    // handling), not silently on the old process.
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration('marcode.debug')) {
         setLifecycleDebug(vscode.workspace.getConfiguration('marcode').get<boolean>('debug', false));
-      }
-      if (codexProvider && e.affectsConfiguration('marcode.codex.path')) {
-        codexProvider.setBinPath(codexBinPath());
-        void manager.refreshModels(defaultCwd);
-      }
-      // Registration happens once, at activate, and a provider added here
-      // would have no sessions, no transcript store wiring and no probe —
-      // so this asks rather than pretends. A re-probe would be the wrong
-      // remedy: the provider set itself changed, not any backend's answer.
-      if (e.affectsConfiguration(ENABLED_PROVIDERS_SETTING)) {
-        const reload = 'Reload window';
-        void vscode.window.showInformationMessage(
-          'The enabled agent providers changed. Reload the window to apply it.',
-          reload,
-        ).then((choice) => {
-          if (choice !== reload) { return; }
-          void vscode.commands.executeCommand('workbench.action.reloadWindow');
-        });
-      }
-      if (e.affectsConfiguration(PROVIDER_INSTANCES_SETTING)) {
-        const reload = 'Reload window';
-        void vscode.window.showInformationMessage(
-          'Provider instances changed. Reload the window to apply it.',
-          reload,
-        ).then((choice) => {
-          if (choice !== reload) { return; }
-          void vscode.commands.executeCommand('workbench.action.reloadWindow');
-        });
-      }
-      if (e.affectsConfiguration(MEMORY_ENABLED_SETTING) || e.affectsConfiguration(MEMORY_SUMMARIZER_SETTING)) {
-        const reload = 'Reload window';
-        void vscode.window.showInformationMessage(
-          'Memory settings changed. Reload the window to apply them.',
-          reload,
-        ).then((choice) => {
-          if (choice !== reload) { return; }
-          void vscode.commands.executeCommand('workbench.action.reloadWindow');
-        });
       }
     }),
   );
 
   pendingDeactivate = async () => {
-    await manager.dispose();
-    await selfControlServer.dispose();
+    await host.dispose();
   };
 
   try {
-    await manager.init();
+    await host.init();
   } catch (err) {
     // A corrupt index.json (or any other restore failure) must not take the
     // whole extension down with it: the view provider is already registered

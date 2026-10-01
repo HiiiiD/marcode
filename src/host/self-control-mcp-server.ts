@@ -45,7 +45,10 @@ export interface SessionManagerLike {
   summaries(): {
     id: string; name: string; providerId: string; model: string; effort?: EffortLevel;
     permissionMode: PermissionMode; status: string; cwd: string;
+    owner?: { host: string; pid: number };
   }[];
+  /** Leased by another Marcode host: this window can read it but not run it. */
+  isForeign?(id: string): boolean;
   /** The ids of sessions with an open pane right now — see `marcode__list_sessions`. */
   visibleIds(): string[];
   /**
@@ -419,10 +422,18 @@ export class SelfControlMcpServer {
         if (!target) {
           return { isError: true, content: [{ type: 'text', text: `Unknown session: ${to}` }] };
         }
+        const foreign = () => {
+          const owner = this.sessionManager.summaries().find((s) => s.id === target.id)?.owner;
+          const by = owner ? `the Marcode ${owner.host} host (pid ${owner.pid})` : 'another Marcode host';
+          return { isError: true, content: [{ type: 'text' as const, text: `Session ${to} is running in ${by}; it cannot take messages from this window.` }] };
+        };
+        if (this.sessionManager.isForeign?.(target.id)) { return foreign(); }
         const session = await this.sessionManager.get(target.id);
         if (!session) {
           return { isError: true, content: [{ type: 'text', text: `Session ${to} is not available.` }] };
         }
+        // Opening is also what first learns the owner of a session no roster sync has marked yet.
+        if (this.sessionManager.isForeign?.(target.id)) { return foreign(); }
         await session.interrupt();
         session.send(text, undefined, undefined, undefined, { sessionId: from.id, name: from.name });
         return { content: [{ type: 'text', text: JSON.stringify({ delivered: true }) }] };

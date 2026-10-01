@@ -50,6 +50,7 @@ export class FtsMemoryStore implements MemoryStore {
     schemaVersion: number = SCHEMA_VERSION,
   ) {
     this.db = new DatabaseSync(dbPath);
+    this.db.exec('PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;');
 
     // `CREATE VIRTUAL TABLE IF NOT EXISTS` is a no-op once the table already
     // exists on disk, so a future column-list change would otherwise leave
@@ -109,6 +110,8 @@ export class FtsMemoryStore implements MemoryStore {
   }
 
   /** Erases `sessionId`'s row and digest, if any. See `MemoryStore.forget`. */
+  close(): void { this.db.close(); }
+
   async forget(sessionId: SessionId): Promise<void> {
     this.deleteRows(sessionId);
   }

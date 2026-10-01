@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import { AgentSession, type SessionSink } from './agent-session';
 import type { AttachmentStore } from './attachment-store';
 import { catalogKey, CatalogService } from './catalog-service';
@@ -8,7 +8,11 @@ import { listBranchRefs, treeChanges } from './fleet-diff';
 import {
   bringBack as runBringBack, bringBackPlan, createWorktree, samePath, treeStatus, type TreeStatus,
 } from './git-worktree';
+import { dormantProvider } from './dormant-provider';
+import { ForeignTail } from './foreign-tail';
 import { buildSeed } from './replay';
+import { mergeRoster } from './roster-sync';
+import type { OwnClaim, OwnerInfo, SessionOwnership } from './session-ownership';
 import { findPayload, type ResolvedBlock } from './session-refs';
 import { TRANSCRIPT_VERSION, type StoredIndex, type TranscriptStore } from './transcript-store';
 import { isWithin } from '../shared/path-scope';
@@ -65,6 +69,13 @@ function withTimeout<T>(work: Promise<T>, ms: number, reason: string): Promise<T
   return Promise.race([work, bound]).finally(() => {
     if (timer) { clearTimeout(timer); }
   }) as Promise<T>;
+}
+
+interface Reconciled {
+  sessions: SessionState[];
+  changed: boolean;
+  /** False when the index on disk belongs to a build this one cannot read. */
+  writable: boolean;
 }
 
 export class SessionManager implements SessionSink {
@@ -278,6 +289,7 @@ export class SessionManager implements SessionSink {
       });
     }
     this.paneLayout = index.layout;
+    this.knownOnDisk = new Set(index.sessions.map((s) => s.id));
 
     const usage = await this.store.readUsage();
     for (const [providerId, windows] of Object.entries(usage.providers)) {
@@ -754,6 +766,7 @@ export class SessionManager implements SessionSink {
       createdAt: now, updatedAt: now,
     };
 
+    await this.ownership?.claim(state.id);
     const session = new AgentSession(state, provider, this.store, this);
     this.meta.set(state.id, state);
     this.live.set(state.id, session);
@@ -810,6 +823,7 @@ export class SessionManager implements SessionSink {
     for (const item of items) { this.store.append(forkState.id, item); }
     await this.store.flush(forkState.id);
 
+    await this.ownership?.claim(forkState.id);
     const session = new AgentSession(forkState, provider, this.store, this, buildSeed(items));
     this.meta.set(forkState.id, forkState);
     this.live.set(forkState.id, session);
@@ -1640,15 +1654,40 @@ export class SessionManager implements SessionSink {
     return this.meta.get(id)?.lastContext?.memoryFiles.some((f) => f.path === path) ?? false;
   }
 
-  async open(id: SessionId): Promise<AgentSession> {
+  /** Concurrent callers share one open: two would build two sessions, and the orphan's tail polls forever. */
+  open(id: SessionId): Promise<AgentSession> {
+    const inflight = this.opening.get(id);
+    if (inflight) { return inflight; }
+    const run = this.openOnce(id).finally(() => { this.opening.delete(id); });
+    this.opening.set(id, run);
+    return run;
+  }
+
+  private async openOnce(id: SessionId): Promise<AgentSession> {
     const existing = this.live.get(id);
-    if (existing) { return existing; }
+    if (existing) {
+      if (!this.foreign.has(id) || (await this.ownership?.ownerOf(id)) !== undefined) { return existing; }
+      await this.releaseForeign(id);
+    }
 
     const state = this.meta.get(id);
     if (!state) { throw new Error(`Unknown session: ${id}`); }
     const provider = this.providers.get(state.providerId);
     if (!provider) { throw new Error(`Unknown provider: ${state.providerId}`); }
 
+    if (this.ownership) {
+      let claim: OwnClaim;
+      try {
+        claim = await this.ownership.claim(id);
+      } catch (err) {
+        const unchecked = this.openForeign(state, provider, state.owner);
+        const code = (err as NodeJS.ErrnoException).code ?? String(err);
+        void unchecked.noteError(`Could not read this session's lock file (${code}), so it stays read-only here until it can be checked.`);
+        return unchecked;
+      }
+      if (!claim.owned) { return this.openForeign(state, provider, claim.owner); }
+      await this.adoptDiskCopy(state);
+    }
     state.status = 'idle';
     const session = new AgentSession(state, provider, this.store, this);
     this.live.set(id, session);
@@ -1679,6 +1718,9 @@ export class SessionManager implements SessionSink {
       this.snapshotSeq.set(id, seq);
       this.snapshotting.set(id, []);
 
+      if (!this.live.has(id) && this.meta.has(id) && await this.ownedElsewhere(id)) {
+        await this.open(id).catch((err: unknown) => { console.warn('[mar-code] could not open a foreign session', err); });
+      }
       const session = this.live.get(id);
       if (session) {
         const snapshot = await session.snapshot();
@@ -1735,8 +1777,25 @@ export class SessionManager implements SessionSink {
       if (this.snapshotting.has(id)) { continue; }
       const state = this.meta.get(id);
       if (!state) { continue; }
+      if (await this.ownedElsewhere(id)) { await this.detachForeign(id); continue; }
       if (await this.isDiscardable(id, state)) { await this.remove(id); continue; }
       await this.digestHidden(id);
+    }
+  }
+
+  /** Leased by another host: this one may read it but never run, write, discard or delete it. */
+  isForeign(id: SessionId): boolean {
+    return this.foreign.has(id) || this.meta.get(id)?.owner !== undefined || this.store.isForeign(id);
+  }
+
+  // Re-asks the lease file too: a roster-only row learns its owner only at the next sync.
+  private async ownedElsewhere(id: SessionId): Promise<boolean> {
+    if (!this.ownership) { return false; }
+    if (this.isForeign(id)) { return true; }
+    try {
+      return (await this.ownership.ownerOf(id)) !== undefined;
+    } catch {
+      return true;
     }
   }
 
@@ -1791,7 +1850,7 @@ export class SessionManager implements SessionSink {
 
   async close(id: SessionId): Promise<void> {
     const state = this.meta.get(id);
-    if (state && await this.isDiscardable(id, state)) {
+    if (state && !(await this.ownedElsewhere(id)) && await this.isDiscardable(id, state)) {
       await this.remove(id);
       return;
     }
@@ -1863,19 +1922,22 @@ export class SessionManager implements SessionSink {
     // Before the dispose below, which can report a final status: a closed
     // session must not relocate on its way out.
     this.queuedMoves.delete(id);
+    const wasForeign = this.isForeign(id);
+    if (this.foreign.has(id)) { await this.detachForeign(id); }
     const session = this.live.get(id);
     if (session) {
       await session.dispose();
       this.live.delete(id);
     }
+    if (!wasForeign) { await this.ownership?.release(id); }
     const state = this.meta.get(id);
-    if (state) {
+    if (state && !wasForeign) {
       state.status = 'idle';
       state.updatedAt = Date.now();
     }
     this.visible.delete(id);
     this.setLayout({ ...this.paneLayout, root: emptySession(this.paneLayout.root, id) });
-    if (state) { await this.digestHidden(id); }
+    if (state && !wasForeign) { await this.digestHidden(id); }
     this.changed();
   }
 
@@ -1962,7 +2024,9 @@ export class SessionManager implements SessionSink {
   }
 
   async remove(id: SessionId): Promise<void> {
+    if (await this.ownedElsewhere(id)) { return; }
     await this.hide(id);
+    if (this.ownership) { this.deleted.add(id); }
     this.meta.delete(id);
     await this.store.remove(id);
     await this.attachments?.remove(id);
@@ -1992,6 +2056,8 @@ export class SessionManager implements SessionSink {
     // schedulePersist() becomes a no-op) and only clear the timer AFTER
     // every session has actually finished disposing.
     this.disposed = true;
+    if (this.rosterTimer) { clearInterval(this.rosterTimer); }
+    for (const tail of this.foreign.values()) { tail.stop(); }
     this.queuedMoves.clear();
     const liveSessions = [...this.live.values()];
     await Promise.all(liveSessions.map((s) => s.dispose()));
@@ -2003,6 +2069,7 @@ export class SessionManager implements SessionSink {
     this.digests?.stop();
     if (this.persistTimer) { clearTimeout(this.persistTimer); }
     await this.persist();
+    await this.ownership?.dispose();
   }
 
   // --- SessionSink ---
@@ -2071,6 +2138,151 @@ export class SessionManager implements SessionSink {
 
   /** Injected because this class imports no `vscode`; the extension supplies the open workspace folders. */
   setWorkspaceRoots(roots: () => string[]): void { this.workspaceRoots = roots; }
+
+  private ownership?: SessionOwnership;
+  private tailIntervalMs = 750;
+  private readonly foreign = new Map<SessionId, ForeignTail>();
+  private readonly opening = new Map<SessionId, Promise<AgentSession>>();
+  /** Deleted here; kept until an index read no longer lists them, so a stale index cannot resurrect them. */
+  private readonly deleted = new Set<SessionId>();
+  private knownOnDisk = new Set<SessionId>();
+  private rosterTimer?: NodeJS.Timeout;
+
+  setOwnership(ownership: SessionOwnership, opts: { tailIntervalMs?: number } = {}): void {
+    this.ownership = ownership;
+    if (opts.tailIntervalMs !== undefined) { this.tailIntervalMs = opts.tailIntervalMs; }
+    ownership.onLost((id) => {
+      // Before the dispose in hide(): its final flush would land in a JSONL the new owner is writing.
+      this.store.markForeign(id);
+      void this.hide(id).catch(() => { /* errors are state */ });
+    });
+  }
+
+  startRosterSync(intervalMs = 2000): void {
+    if (this.rosterTimer || !this.ownership) { return; }
+    this.rosterTimer = setInterval(() => { void this.syncRoster(); }, intervalMs);
+    this.rosterTimer.unref();
+  }
+
+  async persistNow(): Promise<void> { await this.persist(); }
+
+  private reconcileChain: Promise<unknown> = Promise.resolve();
+
+  private reconcile(): Promise<Reconciled> {
+    const run = this.reconcileChain.then(() => this.reconcileOnce());
+    this.reconcileChain = run.catch(() => { /* surfaced to the caller */ });
+    return run;
+  }
+
+  private async reconcileOnce(): Promise<Reconciled> {
+    const { index, state: indexState } = await this.store.readIndexState();
+    if (indexState !== 'ok') {
+      // A missing, torn or other-version index says nothing about what was deleted.
+      const sessions = [...this.meta.values()].map(({ owner: _owner, ...rest }) => rest as SessionState);
+      return { sessions, changed: false, writable: indexState !== 'newer' };
+    }
+    const disk = index.sessions;
+    const onDisk = new Set(disk.map((d) => d.id));
+    for (const id of [...this.deleted]) { if (!onDisk.has(id)) { this.deleted.delete(id); } }
+    const owners = new Map<SessionId, OwnerInfo>();
+    const owned = new Set<SessionId>();
+    for (const id of new Set([...onDisk, ...this.meta.keys()])) {
+      if (this.deleted.has(id)) { continue; }
+      if (this.ownership?.owns(id)) { owned.add(id); continue; }
+      // An unreadable lock keeps whatever owner was last seen rather than reading as free.
+      const owner = await this.ownership?.ownerOf(id).catch(() => this.meta.get(id)?.owner);
+      if (owner) { owners.set(id, owner); }
+    }
+    const merged = mergeRoster({
+      ours: this.meta, disk, owners, knownOnDisk: this.knownOnDisk,
+      owned, tombstones: this.deleted, transcripts: await this.store.transcriptIds(),
+    });
+    for (const d of merged.adopt) {
+      if (d.owner) { this.store.markForeign(d.id); }
+      this.meta.set(d.id, { ...d, status: d.owner && d.status === 'running' ? d.status : 'idle' });
+    }
+    for (const d of merged.update) {
+      const mine = this.meta.get(d.id) as SessionState;
+      Object.assign(mine, d);
+      if (d.owner) { this.store.markForeign(d.id); } else { delete mine.queued; }
+    }
+    let changed = merged.changed;
+    for (const [id, mine] of this.meta) {
+      if (!owners.has(id) && mine.owner) {
+        delete mine.owner;
+        delete mine.queued;
+        mine.status = 'idle';
+        if (!this.foreign.has(id)) { this.store.clearForeign(id); }
+        changed = true;
+      }
+    }
+    for (const id of merged.drop) { await this.hide(id); this.meta.delete(id); }
+    // What was observed on disk, never what we are about to write: a sync that lands between
+    // a persist's merge and its write would otherwise read "missing" as "deleted elsewhere".
+    this.knownOnDisk = onDisk;
+    return { sessions: merged.sessions, changed, writable: true };
+  }
+
+  async syncRoster(): Promise<void> {
+    if (!this.ownership || this.disposed) { return; }
+    try {
+      const { changed } = await this.reconcile();
+      if (changed) { this.emit({ t: 'sessions-changed', sessions: this.summaries() }); }
+    } catch (err) {
+      console.error('[mar-code] roster sync failed', err);
+    }
+  }
+
+  /** After a lease claim: another host may have run this session since this one last read it. */
+  private async adoptDiskCopy(state: SessionState): Promise<void> {
+    this.store.clearForeign(state.id);
+    try {
+      const { index, state: indexState } = await this.store.readIndexState();
+      const row = indexState === 'ok' ? index.sessions.find((s) => s.id === state.id) : undefined;
+      if (row && row.updatedAt > state.updatedAt) {
+        const { owner: _owner, queued: _queued, ...rest } = row;
+        Object.assign(state, rest);
+      }
+    } catch (err) {
+      console.warn('[mar-code] could not re-read the roster row of', state.id, err);
+    }
+    delete state.owner;
+  }
+
+  /** Stops following a foreign session without forgetting who owns it. */
+  private async detachForeign(id: SessionId): Promise<void> {
+    this.foreign.get(id)?.stop();
+    this.foreign.delete(id);
+    const session = this.live.get(id);
+    if (session) { await session.dispose(); this.live.delete(id); }
+  }
+
+  private openForeign(state: SessionState, provider: AgentProvider, owner: OwnerInfo | undefined): AgentSession {
+    const id = state.id;
+    this.store.markForeign(id);
+    if (owner) { state.owner = owner; }
+    const session = new AgentSession(state, dormantProvider(provider), this.store, this);
+    this.live.set(id, session);
+    const tail = new ForeignTail({
+      id, store: this.store, file: join(this.store.root, 'sessions', `${id}.jsonl`),
+      intervalMs: this.tailIntervalMs,
+      stillForeign: async () => (await this.ownership?.ownerOf(id)) !== undefined,
+      onPatch: (patch) => { this.patch(id, patch); },
+      onFree: () => { void this.releaseForeign(id); },
+    });
+    this.foreign.set(id, tail);
+    tail.start();
+    this.changed();
+    return session;
+  }
+
+  private async releaseForeign(id: SessionId): Promise<void> {
+    await this.detachForeign(id);
+    this.store.clearForeign(id);
+    const state = this.meta.get(id);
+    if (state) { delete state.owner; }
+    if (!this.disposed) { this.emit({ t: 'sessions-changed', sessions: this.summaries() }); }
+  }
 
   /**
    * The folder recall is scoped to for a session started in `cwd`: the innermost open workspace
@@ -2177,12 +2389,18 @@ export class SessionManager implements SessionSink {
   }
 
   private async persist(): Promise<void> {
-    const index: StoredIndex = {
-      version: TRANSCRIPT_VERSION,
-      sessions: [...this.meta.values()],
-      layout: this.paneLayout,
-    };
-    await this.store.writeIndex(index);
+    let sessions = [...this.meta.values()].map(({ owner: _owner, ...rest }) => rest as SessionState);
+    let writable = true;
+    if (this.ownership) {
+      const reconciled = await this.reconcile();
+      ({ sessions, writable } = reconciled);
+      if (reconciled.changed && !this.disposed) { this.emit({ t: 'sessions-changed', sessions: this.summaries() }); }
+    }
+    if (writable) {
+      const index: StoredIndex = { version: TRANSCRIPT_VERSION, sessions, layout: this.paneLayout };
+      await this.store.writeIndex(index);
+      if (this.ownership) { this.knownOnDisk = new Set(sessions.map((x) => x.id)); }
+    }
     // usageSnapshot() prunes reset windows on the way out, so a file written
     // now cannot resurrect one on the next load.
     await this.store.writeUsage({ providers: this.usageSnapshot() });
