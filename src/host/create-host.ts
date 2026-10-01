@@ -1,6 +1,6 @@
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { FtsMemoryStore } from '../memory/fts-memory-store';
+import type { FtsMemoryStore } from '../memory/fts-memory-store';
 import type { MemoryStore } from '../memory/types';
 import type { HostToWebview, SessionId } from '../protocol/messages';
 import { ClaudeProvider } from '../providers/claude/claude-provider';
@@ -61,6 +61,8 @@ export async function createHost(opts: CreateHostOptions): Promise<HostHandle> {
   let fts: FtsMemoryStore | undefined;
   if (config.memory.enabled) {
     try {
+      // require, not import(): evaluated here so a missing node:sqlite lands in the catch, and it resolves extensionless under tsx, esbuild and bun alike
+      const { FtsMemoryStore } = require('../memory/fts-memory-store') as typeof import('../memory/fts-memory-store');
       fts = new FtsMemoryStore(
         path.join(opts.workspaceDir, 'memory.sqlite'),
         { tail: (id, limit) => store.tail(id, limit) },
