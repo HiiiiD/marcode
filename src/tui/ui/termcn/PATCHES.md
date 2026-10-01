@@ -9,4 +9,4 @@ Reapply after `shadcn add ... --overwrite`.
 ## Install notes
 
 - `package.json` lists `@opentui/react` so the CLI skips its own dependency install (it would otherwise run `yarn add` in this folder and fail; the package is a marker, not a yarn workspace).
-- Install: `npx shadcn@latest add @termcn/opentui/<name> --yes --cwd src/tui/ui/termcn`
+- Install: `yes n | npx shadcn@latest add @termcn/opentui/<name> --yes --cwd src/tui/ui/termcn`. The `yes n` answers "no" to the overwrite prompts for already-installed shared files (`types`, `default`, `use-theme`), which `--yes` does not skip and which would otherwise undo the patch above.
