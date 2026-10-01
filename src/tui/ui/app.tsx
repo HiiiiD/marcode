@@ -116,6 +116,7 @@ export function App(props: AppProps) {
       onFocus={focus}
       onHide={layout.hide}
       onResize={layout.applyRoot}
+      onFork={(id, itemId) => { layout.armSplit('horizontal'); layout.expectArrival(); post({ t: 'fork-session', id, itemId }); }}
       onOpenPicker={setPicker}
     />
   ) : (

@@ -18,6 +18,7 @@ export interface PaneTreeProps {
   maximized: boolean;
   onFocus(id: SessionId): void;
   onHide(id: SessionId): void;
+  onFork(id: SessionId, itemId: string): void;
   onResize(root: LayoutNode): void;
   onOpenPicker?(kind: PickerKind): void;
 }
@@ -69,7 +70,7 @@ export function PaneTree(p: PaneTreeProps) {
           key={r.path.join('.')} rect={{ ...r, sessionId: r.sessionId }}
           compact={r.w < MIN_PANE_W || r.h < MIN_PANE_H}
           focused={r.sessionId === p.focusedId} liveZone={p.liveZone}
-          onFocus={p.onFocus} onHide={p.onHide} onOpenPicker={p.onOpenPicker}
+          onFocus={p.onFocus} onHide={p.onHide} onFork={p.onFork} onOpenPicker={p.onOpenPicker}
         />
       )))}
       {dividers.map((d) => <Divider key={`${d.path.join('.')}:${d.index}`} rect={d} onGrab={() => { grabbed.current = d; }} />)}

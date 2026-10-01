@@ -15,10 +15,11 @@ export interface PaneProps {
   liveZone: 'composer' | 'transcript' | null;
   onFocus(id: SessionId): void;
   onHide(id: SessionId): void;
+  onFork(id: SessionId, itemId: string): void;
   onOpenPicker?(kind: PickerKind): void;
 }
 
-export function Pane({ rect, compact, focused, liveZone, onFocus, onHide, onOpenPicker }: PaneProps) {
+export function Pane({ rect, compact, focused, liveZone, onFocus, onHide, onFork, onOpenPicker }: PaneProps) {
   const { state } = useTuiStore();
   const theme = useTheme();
   const id = rect.sessionId;
@@ -42,7 +43,7 @@ export function Pane({ rect, compact, focused, liveZone, onFocus, onHide, onOpen
       onMouseDown={() => { onFocus(id); }}
     >
       <PaneTitle text={title} focused={focused} onHide={() => { onHide(id); }} />
-      <Transcript sessionId={id} focused={focused && liveZone === 'transcript'} />
+      <Transcript sessionId={id} focused={focused && liveZone === 'transcript'} onFork={(itemId) => { onFork(id, itemId); }} />
       <box flexShrink={0}>
         <BottomSlotView sessionId={id} focused={focused && liveZone === 'composer'} onOpenPicker={onOpenPicker} />
       </box>
