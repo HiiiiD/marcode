@@ -30,14 +30,15 @@ yarn build:tui:bin    # bin/marcode.exe (bin/marcode elsewhere): standalone, Bun
 | Enter | composer | send |
 | Ctrl+J, Alt+Enter | composer | newline (terminals deliver Ctrl+J as `linefeed`) |
 | Up | composer, box empty or cursor at the very start | walk prompt history (keeps walking while the cursor is on the first line) |
-| Esc, Ctrl+C | a turn is running or awaiting approval | interrupt |
-| Ctrl+C twice | idle | quit |
+| Esc | your own session's turn is running or awaiting approval | interrupt |
+| Ctrl+C | your own session's turn is running or awaiting approval | interrupt; a second Ctrl+C within 2 s quits even if the turn has not stopped |
+| Ctrl+C twice | idle, or a session owned by another host | quit |
 | Tab | anywhere but approval/question | cycle composer, transcript, roster |
 | Ctrl+B | anywhere | toggle the roster |
 | Ctrl+N | anywhere | new session dialog |
 | Up / Down or k / j, Enter, Esc | new session dialog | move; Enter picks the provider, then the model (skipped when it has one); Esc cancels |
-| Ctrl+P / Ctrl+E | anywhere | cycle model / effort |
-| Shift+Tab | anywhere | cycle permission mode (never into `bypass`) |
+| Ctrl+P / Ctrl+E | your own session | cycle model / effort |
+| Shift+Tab | your own session | cycle permission mode (never into `bypass`) |
 | Ctrl+R | anywhere | re-check providers |
 | j / k, Enter | transcript | next / previous item, expand or collapse |
 | PgUp / PgDn, End | transcript | scroll, re-pin to the bottom |

@@ -26,8 +26,9 @@ export function useAppKeys(k: AppKeys): void {
 
   useEffect(() => () => { clearTimeout(armed.current); }, []);
 
+  const quitArmed = () => armed.current !== undefined;
   const quitRequest = () => {
-    if (armed.current) {
+    if (quitArmed()) {
       clearTimeout(armed.current);
       armed.current = undefined;
       k.onQuit();
@@ -43,7 +44,8 @@ export function useAppKeys(k: AppKeys): void {
   // send/newline/history belong to the composer's own textarea bindings; acting on them here would send twice.
   useKeyboard((key) => {
     if (k.inert) { return; }
-    const s = k.summary;
+    // A foreign session is read-only here: no interrupt and no model/effort/mode switch may be posted for it.
+    const s = k.summary && !k.summary.owner ? k.summary : undefined;
     const busy = s?.status === 'running' || s?.status === 'awaiting-approval';
     const action = actionFor(k.zone, key, { running: busy });
     switch (action?.do) {
@@ -52,6 +54,13 @@ export function useAppKeys(k: AppKeys): void {
       case 'cycle-zone': k.cycleZone(); return;
       case 'interrupt': {
         if (!s) { return; }
+        // The second Ctrl+C quits even mid-turn, so a provider that never stops cannot trap the user.
+        if (key.ctrl) {
+          if (quitArmed()) { quitRequest(); return; }
+          post({ t: 'interrupt', id: s.id });
+          quitRequest();
+          return;
+        }
         const interrupt = () => { post({ t: 'interrupt', id: s.id }); };
         // Prompts subscribe after App, so they see this Esc later; one that uses it (leaving a text entry) marks it.
         if (key.name === 'escape' && (k.zone === 'approval' || k.zone === 'question')) {
