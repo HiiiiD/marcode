@@ -53,3 +53,12 @@ test('an available catalog with no sessions invites a new one and keeps the prom
   expect(f).toContain('Fake');
   expect(f).toContain('Your prompt is kept: hello there');
 });
+
+test('sessions in the roster but none shown points at the roster', async () => {
+  m = await mount(<EmptyState loginCommands={{}} />);
+  await m.fromHost(hydrateMsg());
+  const f = m.frame();
+  expect(f).toContain('No session open. Open one from the roster (Ctrl+B, then Enter), or press Ctrl+N for a new one:');
+  expect(f).not.toContain('No sessions yet');
+  expect(f).toContain('Fake');
+});

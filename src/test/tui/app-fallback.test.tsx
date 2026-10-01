@@ -50,7 +50,7 @@ test('hiding the only session leaves the empty state, and typing sends nothing',
   m = await mount(<App {...props} />, { width: 80, height: 20 });
   await m.fromHost(hydrateMsg());
   await m.fromHost({ t: 'layout-changed', layout: emptyLeaf });
-  expect(m.frame()).toContain('No sessions yet');
+  expect(m.frame()).toContain('No session open.');
   await m.type('hello');
   await m.press('return');
   expect(m.posted.some((p) => p.t === 'send')).toBe(false);

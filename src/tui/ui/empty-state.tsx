@@ -16,7 +16,9 @@ export function EmptyState({ pendingPrompt, loginCommands }: { pendingPrompt?: s
       lines.push('Press Ctrl+R to check again.');
     }
   } else {
-    lines.push('No sessions yet. Press Ctrl+N to start one:');
+    lines.push(state.sessions.length > 0
+      ? 'No session open. Open one from the roster (Ctrl+B, then Enter), or press Ctrl+N for a new one:'
+      : 'No sessions yet. Press Ctrl+N to start one:');
     for (const p of state.catalog) { lines.push(`  ${p.displayName}`); }
   }
   if (pendingPrompt) { lines.push(`Your prompt is kept: ${pendingPrompt}`); }
