@@ -48,7 +48,7 @@ export function Transcript({ sessionId, focused }: { sessionId: SessionId; focus
   }, [cursorId]);
 
   useKeyboard((key) => {
-    if (!focused) { return; }
+    if (!focused || key.defaultPrevented) { return; }
     const action = actionFor('transcript', key, { running });
     if (!action) { return; }
     const box = scroll.current;

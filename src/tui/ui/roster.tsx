@@ -37,7 +37,7 @@ export function Roster({ focused, onFocusSession, onAskDelete }: RosterProps) {
   }, [cursor, rows.length]);
 
   useKeyboard((key) => {
-    if (!focused) { return; }
+    if (!focused || key.defaultPrevented) { return; }
     if (filtering) {
       if (key.name === 'escape') { setFilter(''); setFiltering(false); }
       else if (key.name === 'return') { setFiltering(false); }

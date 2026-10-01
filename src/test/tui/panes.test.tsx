@@ -114,3 +114,79 @@ test('a foreign session in a pane is read-only', async () => {
   await m.press('return');
   expect(m.posted.filter((p) => p.t === 'send').length).toBe(0);
 });
+
+test('Ctrl+W l moves focus to the pane on the right and posts focus-pane', async () => {
+  m = await mount(<App {...props} />, { width: 140, height: 30 });
+  await m.fromHost(hydrateTwo());
+  await m.press('w', { ctrl: true });
+  await m.press('l');
+  expect(lastOf(m.posted, 'focus-pane')?.sessionId).toBe('s2');
+});
+
+test('a swallowed chord key never reaches the composer', async () => {
+  m = await mount(<App {...props} />, { width: 140, height: 30 });
+  await m.fromHost(hydrateTwo());
+  await m.press('w', { ctrl: true });
+  await m.press('q');
+  await m.type('z');
+  await m.press('return');
+  const sends = m.posted.filter((p) => p.t === 'send');
+  expect(sends.length).toBe(1);
+  expect(sends[0]?.t === 'send' && sends[0].text).toBe('z');
+});
+
+test('Ctrl+W x hides the focused pane: one leaf left, set-visible shrinks', async () => {
+  m = await mount(<App {...props} />, { width: 140, height: 30 });
+  await m.fromHost(hydrateTwo());
+  await m.press('w', { ctrl: true });
+  await m.press('x');
+  expect(lastOf(m.posted, 'set-visible')?.sessionIds.join(',')).toBe('s2');
+});
+
+test('Ctrl+W | opens the new-session dialog and the created session splits beside the focused pane', async () => {
+  m = await mount(<App {...props} />, { width: 140, height: 30 });
+  await m.fromHost(hydrateMsg());
+  await m.press('w', { ctrl: true });
+  await m.press('|');
+  expect(m.frame()).toContain('New session');
+  await m.press('return');
+  await m.fromHost(
+    { t: 'sessions-changed', sessions: [summary('s1'), summary('n1')] },
+    { t: 'session-snapshot', session: snapshot('n1') },
+  );
+  const root = lastOf(m.posted, 'set-layout')?.layout.root;
+  expect(root?.kind === 'split' && root.orientation === 'horizontal' && root.children.length === 2).toBe(true);
+});
+
+test('Ctrl+W then Esc cancels, and a plain key afterwards behaves normally', async () => {
+  m = await mount(<App {...props} />, { width: 140, height: 30 });
+  await m.fromHost(hydrateTwo());
+  await m.press('w', { ctrl: true });
+  await m.press('escape');
+  await new Promise((r) => setTimeout(r, 100));
+  await m.type('q');
+  await m.press('return');
+  const send = m.posted.find((p) => p.t === 'send');
+  expect(send?.t === 'send' && send.text).toBe('q');
+});
+
+test('Ctrl+W L widens the focused pane by posting one set-layout', async () => {
+  m = await mount(<App {...props} />, { width: 140, height: 30 });
+  await m.fromHost(hydrateTwo());
+  const before = m.posted.filter((p) => p.t === 'set-layout').length;
+  await m.press('w', { ctrl: true });
+  await m.press('l', { shift: true });
+  const layouts = m.posted.filter((p) => p.t === 'set-layout');
+  expect(layouts.length).toBe(before + 1);
+  const root = lastOf(m.posted, 'set-layout')?.layout.root;
+  expect(root?.kind === 'split' && Math.round(root.children[0].size)).toBe(55);
+});
+
+test('Ctrl+W m maximizes the focused pane without posting a layout', async () => {
+  m = await mount(<App {...props} />, { width: 140, height: 30 });
+  await m.fromHost(hydrateTwo());
+  const before = m.posted.filter((p) => p.t === 'set-layout').length;
+  await m.press('w', { ctrl: true });
+  await m.press('m');
+  expect(m.posted.filter((p) => p.t === 'set-layout').length).toBe(before);
+});

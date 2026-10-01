@@ -17,6 +17,7 @@ import { StatusLine } from './status-line';
 import { useTuiStore } from './store';
 import { useAppKeys } from './use-app-keys';
 import { useFocusFallback } from './use-focus-fallback';
+import { usePaneChords } from './use-pane-chords';
 import { usePaneLayout } from './use-pane-layout';
 
 export interface AppProps {
@@ -44,6 +45,7 @@ export function App(props: AppProps) {
   const [dialog, setDialog] = useState(false);
   const [picker, setPicker] = useState<PickerKind | null>(null);
   const [deleting, setDeleting] = useState<{ id: SessionId; title: string } | null>(null);
+  const [maximized, setMaximized] = useState(false);
   const [kept, setKept] = useState<string | undefined>(undefined);
   const planned = useRef(false);
 
@@ -79,6 +81,15 @@ export function App(props: AppProps) {
   const paneZone: PaneZone = keyZone === 'approval' || keyZone === 'question' ? 'composer' : current;
   const live = (z: PaneZone) => !dialog && !deleting && !picker && paneZone === z;
 
+  const estimate = { w: width - (wide && showRoster ? ROSTER_W : 0), h: height - 2 };
+  usePaneChords({
+    area: { x: 0, y: 0, ...estimate },
+    inert: dialog || deleting !== null || picker !== null,
+    maximized, layout,
+    onSplit: (orientation) => { layout.armSplit(orientation); setDialog(true); },
+    toggleMaximize: () => { setMaximized((v) => !v); },
+  });
+
   useAppKeys({
     inert: dialog || deleting !== null || picker !== null, zone: keyZone, summary, quitWindowMs: props.quitWindowMs ?? 2000, onQuit: props.onQuit,
     toggleRoster: () => { setRosterOn(!showRoster); },
@@ -98,10 +109,10 @@ export function App(props: AppProps) {
     : null;
   const body = focusedId ? (
     <PaneTree
-      estimate={{ w: width - (wide && showRoster ? ROSTER_W : 0), h: height - 2 }}
+      estimate={estimate}
       focusedId={focusedId}
       liveZone={dialog || deleting || picker || paneZone === 'roster' ? null : paneZone}
-      maximized={false}
+      maximized={maximized}
       onFocus={focus}
       onHide={layout.hide}
       onOpenPicker={setPicker}
@@ -125,7 +136,7 @@ export function App(props: AppProps) {
         <NewSessionDialog
           cwd={props.launchCwd}
           initialPrompt={kept}
-          onClose={() => { setDialog(false); }}
+          onClose={() => { setDialog(false); layout.armSplit(null); }}
           onCreated={() => { setDialog(false); expectNewSession(); }}
         />
       ) : null}
