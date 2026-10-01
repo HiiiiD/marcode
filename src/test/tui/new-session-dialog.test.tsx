@@ -45,6 +45,27 @@ test('batched down and Enter pick the moved option', async () => {
   expect(msg?.t === 'create-session' && msg.model).toBe('fake-small');
 });
 
+test('the dialog is drawn with the termcn rounded frame', async () => {
+  m = await mount(<NewSessionDialog cwd="/r" onClose={() => {}} onCreated={() => {}} />);
+  await m.fromHost(hydrateMsg());
+  expect(m.frame()).toContain('╭');
+});
+
+test('the frame has no OK/Cancel buttons and Enter creates exactly once', async () => {
+  m = await mount(<NewSessionDialog cwd="/r" onClose={() => {}} onCreated={() => {}} />);
+  await m.fromHost(hydrateMsg({ catalog: oneModel() }));
+  expect(m.frame().includes(' OK ')).toBe(false);
+  await m.press('return');
+  expect(creates().length).toBe(1);
+});
+
+test('a 12-row terminal still shows the provider rows', async () => {
+  m = await mount(<NewSessionDialog cwd="/r" onClose={() => {}} onCreated={() => {}} />, { width: 80, height: 12 });
+  await m.fromHost(hydrateMsg());
+  expect(m.frame()).toContain('New session');
+  expect(m.frame()).toContain('Fake');
+});
+
 test('batched Enter Enter posts once', async () => {
   m = await mount(<NewSessionDialog cwd="/r" onClose={() => {}} onCreated={() => {}} />);
   await m.fromHost(hydrateMsg({ catalog: oneModel() }));

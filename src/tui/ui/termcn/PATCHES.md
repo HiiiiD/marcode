@@ -5,6 +5,7 @@ Reapply after `shadcn add ... --overwrite`.
 | File | Edit | Why |
 |---|---|---|
 | `lib/terminal-themes/default.ts` | `import type { Theme } from "@termcn/components/ui/types"` | the CLI leaves the registry's `@/components/ui/types` alias unrewritten in this item |
+| `components/ui/dialog.tsx` | `interactive?: boolean` (default true): when false, no key handling and no OK/Cancel row | Enter would cancel; we only want the frame |
 
 ## Install notes
 
