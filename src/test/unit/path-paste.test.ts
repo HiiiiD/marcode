@@ -17,6 +17,13 @@ suite('path paste', () => {
   test('a backslash-escaped space joins the token', () => {
     assert.deepStrictEqual(parsePastedPaths('/tmp/my\\ dir/a.png'), ['/tmp/my dir/a.png']);
   });
+  test('POSIX drops escape spaces and shell characters with a backslash', () => {
+    assert.deepStrictEqual(parsePastedPaths('/Users/me/Shot\\ \\(1\\).png'), ['/Users/me/Shot (1).png']);
+    assert.deepStrictEqual(parsePastedPaths('/tmp/a\\&b.txt'), ['/tmp/a&b.txt']);
+  });
+  test('Windows backslashes stay separators', () => {
+    assert.deepStrictEqual(parsePastedPaths('C:\\Users\\(me)\\a.png'), ['C:\\Users\\(me)\\a.png']);
+  });
   test('file URIs decode to paths', () => {
     assert.deepStrictEqual(parsePastedPaths('file:///tmp/a%20b.png'), ['/tmp/a b.png']);
     assert.deepStrictEqual(parsePastedPaths('file:///C:/Users/me/a%20b.png'), ['C:/Users/me/a b.png']);

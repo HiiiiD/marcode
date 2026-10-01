@@ -121,3 +121,17 @@ test('shift+d asks to delete the row under the cursor', async () => {
   await m.press('d', { shift: true });
   expect(asked).toEqual([{ id: 'b', title: 'docs' }]);
 });
+
+test('the cursor follows the pinned row when pinning reorders the list', async () => {
+  m = await mount(<Roster focused onFocusSession={() => {}} onAskDelete={() => {}} />);
+  const four = ['a', 'b', 'c', 'd'].map((id) => summary(id, { name: id }));
+  await m.fromHost(hydrateMsg({ sessions: four, snapshots: [snapshot('a')] }));
+  await m.press('j');
+  await m.press('j');
+  await m.press('j');
+  await m.press('p');
+  expect(m.posted).toContainEqual({ t: 'set-pinned', id: 'd', pinned: true });
+  await m.fromHost({ t: 'sessions-changed', sessions: [four[0], four[1], four[2], { ...four[3], pinned: true }] });
+  await m.press('p');
+  expect(m.posted).toContainEqual({ t: 'set-pinned', id: 'd', pinned: false });
+});

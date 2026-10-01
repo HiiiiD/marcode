@@ -17,6 +17,7 @@ export interface MentionPopup {
   pick(): { text: string; caret: number } | undefined;
   refs(): FileMentionPayload['ref'][];
   prune(text: string): void;
+  reset(): void;
 }
 
 export function useMentionPopup(opts: { sessionId: SessionId; text: string; caret: number }): MentionPopup {
@@ -33,6 +34,10 @@ export function useMentionPopup(opts: { sessionId: SessionId; text: string; care
     return () => { clearTimeout(timer); };
   }, [query, opts.sessionId]);
   useEffect(() => { setIndex(0); }, [query]);
+  useEffect(() => {
+    pending.current = [];
+    setDismissedAt(null);
+  }, [opts.sessionId]);
 
   const answer = state.fileSearchBySession[opts.sessionId];
   const rows = hit && answer && answer.query === hit.query ? fileMentions(answer.files) : [];
@@ -52,5 +57,6 @@ export function useMentionPopup(opts: { sessionId: SessionId; text: string; care
     },
     refs: () => pending.current.map((p) => p.payload.ref),
     prune: (text) => { pending.current = pruneMentions(text, pending.current); },
+    reset: () => { pending.current = []; setDismissedAt(null); },
   };
 }

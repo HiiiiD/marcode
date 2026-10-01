@@ -19,7 +19,7 @@ export interface AppKeys {
 }
 
 export function useAppKeys(k: AppKeys): void {
-  const { state, post, notice, setNotice, mentionOpen } = useTuiStore();
+  const { state, post, notice, setNotice, mentionOpen, rosterFiltering } = useTuiStore();
   const armed = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const noticeRef = useRef(notice);
   noticeRef.current = notice;
@@ -44,7 +44,9 @@ export function useAppKeys(k: AppKeys): void {
   // send/newline/history belong to the composer's own textarea bindings; acting on them here would send twice.
   useKeyboard((key) => {
     if (k.inert) { return; }
-    if (key.name === 'tab' && !key.shift && mentionOpen) { return; }
+    // A popup or the roster filter owns Esc and Tab while open; Esc must not also interrupt the turn.
+    if (key.name === 'tab' && ((mentionOpen && !key.shift) || rosterFiltering)) { return; }
+    if (key.name === 'escape' && (mentionOpen || rosterFiltering)) { return; }
     // A foreign session is read-only here: no interrupt and no model/effort/mode switch may be posted for it.
     const s = k.summary && !k.summary.owner ? k.summary : undefined;
     const busy = s?.status === 'running' || s?.status === 'awaiting-approval';

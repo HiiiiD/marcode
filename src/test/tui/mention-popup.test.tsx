@@ -94,3 +94,19 @@ test('a mention whose token was deleted before sending carries no fileRef', asyn
   const msg = sends()[0];
   expect(msg.t === 'send' && 'fileRefs' in msg).toBe(false);
 });
+
+test('a mention sent once is not remembered: picking the same file again keeps the plain token', async () => {
+  await open();
+  await m!.type('fix @ap');
+  await wait(250);
+  await m!.fromHost({ t: 'file-search-result', id: 's1', query: 'ap', files });
+  await m!.press('return');
+  await m!.press('return');
+  expect(sends().length).toBe(1);
+  await m!.type('@ap');
+  await wait(250);
+  await m!.fromHost({ t: 'file-search-result', id: 's1', query: 'ap', files });
+  await m!.press('return');
+  expect(m!.frame()).toContain('@src/app.ts');
+  expect(m!.frame().includes('app.ts-2')).toBe(false);
+});

@@ -12,12 +12,18 @@ interface RosterProps {
 }
 
 export function Roster({ focused, onFocusSession, onAskDelete }: RosterProps) {
-  const { state, focusedId, post, setNotice } = useTuiStore();
+  const { state, focusedId, post, setNotice, setRosterFiltering } = useTuiStore();
   const [filter, setFilter] = useState('');
   const [filtering, setFiltering] = useState(false);
   const rows = rosterRows(state.sessions, focusedId, filter);
-  const [cursor, setCursor] = useState(0);
-  useEffect(() => { setCursor((c) => Math.min(c, Math.max(0, rows.length - 1))); }, [rows.length]);
+  // Tracked by id so a reorder (pinning) keeps the highlight on the row it was on.
+  const [cursorId, setCursorId] = useState<SessionId | null>(null);
+  const cursor = Math.max(0, rows.findIndex((r) => r.id === cursorId));
+  useEffect(() => {
+    setRosterFiltering(focused && filtering);
+    return () => { setRosterFiltering(false); };
+  }, [focused, filtering]);
+  useEffect(() => { if (!focused) { setFiltering(false); } }, [focused]);
 
   useKeyboard((key) => {
     if (!focused) { return; }
@@ -32,12 +38,12 @@ export function Roster({ focused, onFocusSession, onAskDelete }: RosterProps) {
     const action = actionFor('roster', key, { running: false });
     if (!action) { return; }
     const row = rows[cursor];
-    if (action.do === 'roster-next') { setCursor((c) => Math.min(c + 1, rows.length - 1)); }
-    else if (action.do === 'roster-prev') { setCursor((c) => Math.max(c - 1, 0)); }
+    if (action.do === 'roster-next') { setCursorId(rows[Math.min(cursor + 1, rows.length - 1)]?.id ?? null); }
+    else if (action.do === 'roster-prev') { setCursorId(rows[Math.max(cursor - 1, 0)]?.id ?? null); }
     else if (action.do === 'roster-focus' && row) { onFocusSession(row.id); }
     else if (action.do === 'roster-hide' && row) { post({ t: 'close-session', id: row.id }); }
     else if (action.do === 'roster-pin' && row) { post({ t: 'set-pinned', id: row.id, pinned: !row.pinned }); }
-    else if (action.do === 'roster-filter') { setFiltering(true); setCursor(0); }
+    else if (action.do === 'roster-filter') { setFiltering(true); setCursorId(null); }
     else if (action.do === 'roster-delete' && row) {
       if (row.foreign) {
         const owner = row.suffix?.split('·')[0] ?? 'another host';

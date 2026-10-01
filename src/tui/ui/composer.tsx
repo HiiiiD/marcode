@@ -100,6 +100,7 @@ export function Composer({ sessionId, focused }: { sessionId: SessionId; focused
     popup.prune(value);
     const fileRefs = popup.refs();
     post({ t: 'send', id: sessionId, text: value, ...(fileRefs.length > 0 ? { fileRefs } : {}) });
+    popup.reset();
     walk.current = -1;
     setBox('');
     drafts.set(sessionId, '');

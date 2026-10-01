@@ -16,6 +16,8 @@ export interface TuiStoreValue {
   setNotice(text: string | null): void;
   mentionOpen: boolean;
   setMentionOpen(open: boolean): void;
+  rosterFiltering: boolean;
+  setRosterFiltering(on: boolean): void;
 }
 
 const Ctx = createContext<TuiStoreValue | undefined>(undefined);
@@ -24,6 +26,7 @@ export function TuiStoreProvider({ transport, children }: { transport: ClientTra
   const [state, dispatch] = useReducer(reduce, initialState);
   const [notice, setNotice] = useState<string | null>(null);
   const [mentionOpen, setMentionOpen] = useState(false);
+  const [rosterFiltering, setRosterFiltering] = useState(false);
   const draftsRef = useRef<DraftStore | undefined>(undefined);
   if (!draftsRef.current) { draftsRef.current = createDraftStore(); }
   const drafts = draftsRef.current;
@@ -60,8 +63,8 @@ export function TuiStoreProvider({ transport, children }: { transport: ClientTra
 
   const focusedId = state.focusedSessionId ?? null;
   const value = useMemo<TuiStoreValue>(
-    () => ({ state, post, drafts, focusedId, focus, notice, setNotice, mentionOpen, setMentionOpen }),
-    [state, post, drafts, focusedId, focus, notice, mentionOpen],
+    () => ({ state, post, drafts, focusedId, focus, notice, setNotice, mentionOpen, setMentionOpen, rosterFiltering, setRosterFiltering }),
+    [state, post, drafts, focusedId, focus, notice, mentionOpen, rosterFiltering],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

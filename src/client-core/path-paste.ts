@@ -1,6 +1,6 @@
 const ABSOLUTE = /^(?:[a-zA-Z]:[\\/]|\\\\|\/)/;
 
-// Backslash only escapes a space: on Windows it is the path separator.
+// On Windows a backslash is the separator, so outside a token that starts with "/" it only escapes a space.
 function tokenize(text: string): string[] {
   const out: string[] = [];
   let cur = '';
@@ -13,7 +13,13 @@ function tokenize(text: string): string[] {
       continue;
     }
     if (c === '"' || c === "'") { quote = c; started = true; continue; }
-    if (c === '\\' && text[i + 1] === ' ') { cur += ' '; i++; started = true; continue; }
+    const next = text[i + 1];
+    if (c === '\\' && next !== undefined && (next === ' ' || (cur.startsWith('/') && /[^\w/\s]/.test(next)))) {
+      cur += next;
+      i++;
+      started = true;
+      continue;
+    }
     if (/\s/.test(c)) {
       if (started) { out.push(cur); cur = ''; started = false; }
       continue;

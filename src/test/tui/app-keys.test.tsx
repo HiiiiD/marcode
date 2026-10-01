@@ -204,3 +204,30 @@ test('Tab with the @ popup open picks the row and does not cycle the zone', asyn
   await m.type('x');
   expect(m.frame()).toContain('@src/app.ts x');
 });
+
+test('Esc dismissing the @ popup does not interrupt a running turn', async () => {
+  m = await mount(<App {...props} />, { width: 120, height: 30 });
+  await m.fromHost(hydrateMsg({ sessions: [summary('s1', { status: 'running' })], snapshots: [snapshot('s1', { status: 'running' })] }));
+  await m.type('@ap');
+  await wait(250);
+  await m.fromHost({ t: 'file-search-result', id: 's1', query: 'ap', files: [{ path: 'src/app.ts', name: 'app.ts' }] });
+  expect(m.frame()).toContain('src/app.ts');
+  await m.press('escape');
+  await settleEscape();
+  expect(m.frame().includes('src/app.ts')).toBe(false);
+  expect(m.posted.some((p) => p.t === 'interrupt')).toBe(false);
+});
+
+test('Esc clearing the roster filter does not interrupt a running turn, and Tab stays in the filter', async () => {
+  m = await mount(<App {...props} />, { width: 120, height: 30 });
+  await m.fromHost(hydrateMsg({ sessions: [summary('s1', { name: 'one', status: 'running' })], snapshots: [snapshot('s1', { status: 'running' })] }));
+  await m.press('tab');
+  await m.press('tab');
+  await m.press('/');
+  await m.type('o');
+  await m.press('tab');
+  expect(m.frame()).toContain('/o');
+  await m.press('escape');
+  await settleEscape();
+  expect(m.posted.some((p) => p.t === 'interrupt')).toBe(false);
+});
