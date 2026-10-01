@@ -1,6 +1,7 @@
 import { useKeyboard } from '@opentui/react';
 import { useRef } from 'react';
 import { useTuiStore } from './store';
+import { Dialog } from './termcn/components/ui/dialog';
 import { useSyncState } from './use-sync-state';
 
 export function NewSessionDialog(props: { cwd: string; initialPrompt?: string; onClose(): void; onCreated(): void }) {
@@ -36,12 +37,14 @@ export function NewSessionDialog(props: { cwd: string; initialPrompt?: string; o
   const { pi, mi, step } = st.view;
   const models = providers[pi]?.models ?? [];
   return (
-    <box flexDirection="column" flexShrink={0} border borderStyle="double" title="New session" paddingX={1}>
-      {providers.length === 0 ? <text fg="gray">No provider available.</text> : null}
-      {step === 'provider'
-        ? providers.map((p, i) => <text key={p.id} attributes={i === pi ? 1 : 0}>{`${i === pi ? '›' : ' '} ${p.displayName}`}</text>)
-        : models.map((mo, i) => <text key={mo.id} attributes={i === mi ? 1 : 0}>{`${i === mi ? '›' : ' '} ${mo.displayName}`}</text>)}
-      <text fg="gray">{`${props.cwd} — Enter create, Esc cancel`}</text>
+    <box flexDirection="column" flexShrink={0}>
+      <Dialog isOpen interactive={false} title="New session">
+        {providers.length === 0 ? <text fg="gray">No provider available.</text> : null}
+        {step === 'provider'
+          ? providers.map((p, i) => <text key={p.id} attributes={i === pi ? 1 : 0}>{`${i === pi ? '›' : ' '} ${p.displayName}`}</text>)
+          : models.map((mo, i) => <text key={mo.id} attributes={i === mi ? 1 : 0}>{`${i === mi ? '›' : ' '} ${mo.displayName}`}</text>)}
+        <text fg="gray">{`${props.cwd} — Enter create, Esc cancel`}</text>
+      </Dialog>
     </box>
   );
 }

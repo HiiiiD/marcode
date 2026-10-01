@@ -2,7 +2,7 @@ import { act } from 'react';
 import { afterEach, expect, test } from 'bun:test';
 import { Transcript } from '../../tui/ui/transcript/transcript';
 import { hydrateMsg, mount, type Mounted } from './harness';
-import { snapshot, summary, tool } from '../fixtures/protocol';
+import { permission, snapshot, summary, tool } from '../fixtures/protocol';
 import type { TranscriptItem } from '../../protocol/messages';
 
 let m: Mounted | undefined;
@@ -35,8 +35,88 @@ test('user and assistant text render, assistant as markdown', async () => {
     { id: 'a1', ts: 2, role: 'assistant', text: 'Done. **All green.**' },
   ]));
   await paint('All green');
-  expect(m.frame()).toContain('> fix the tests');
+  expect(m.frame()).toContain('fix the tests');
+  expect(m.frame()).toContain('user');
+  expect(m.frame()).toContain('assistant');
   expect(m.frame()).toContain('All green');
+});
+
+test('a finished tool row starts no interval timers', async () => {
+  const real = globalThis.setInterval;
+  let started = 0;
+  globalThis.setInterval = ((...a: Parameters<typeof setInterval>) => { started++; return real(...a); }) as typeof setInterval;
+  try {
+    m = await mount(<Transcript sessionId="s1" focused />);
+    const before = started;
+    await m.fromHost(withItems([tool({ id: 't1', state: 'ok' })]));
+    expect(started - before).toBe(0);
+  } finally { globalThis.setInterval = real; }
+});
+
+const chevronFg = () => {
+  const spans = m!.setup.captureSpans().lines.flatMap((l) => l.spans);
+  const span = spans.find((s) => s.text.includes('┌'));
+  return span === undefined ? '' : span.fg.toString();
+};
+
+test('the selected tool row is marked by colour, not only by bold', async () => {
+  m = await mount(<Transcript sessionId="s1" focused />);
+  await m.fromHost(withItems([tool({ id: 't1' })]));
+  const idle = chevronFg();
+  expect(idle === '').toBe(false);
+  await m.press('j');
+  expect(chevronFg() === idle).toBe(false);
+});
+
+const spansOf = () => m!.setup.captureSpans().lines.flatMap((l) => l.spans);
+const fgOf = (text: string) => {
+  const span = spansOf().find((s) => s.text.includes(text));
+  return span === undefined ? '' : span.fg.toString();
+};
+
+test('user text is capped to a readable width on a wide terminal', async () => {
+  m = await mount(<Transcript sessionId="s1" focused />, { width: 200, height: 20 });
+  await m.fromHost(withItems([{ id: 'u1', ts: 1, role: 'user', text: 'word '.repeat(80) }]));
+  const longest = Math.max(...m.frame().split(/\r?\n/).map((r) => r.trimEnd().length));
+  expect(longest <= 104).toBe(true);
+  expect(longest > 40).toBe(true);
+});
+
+test('a message body sits behind a left accent bar', async () => {
+  m = await mount(<Transcript sessionId="s1" focused />);
+  await m.fromHost(withItems([{ id: 'u1', ts: 1, role: 'user', text: 'fix the tests' }]));
+  const row = m.frame().split(/\r?\n/).find((r) => r.includes('fix the tests')) ?? '';
+  expect(row.startsWith('│')).toBe(true);
+});
+
+test('the accent bar stops at the last line of the message, not the spacer row', async () => {
+  m = await mount(<Transcript sessionId="s1" focused />);
+  await m.fromHost(withItems([{ id: 'u1', ts: 1, role: 'user', text: 'fix the tests' }]));
+  const rows = m.frame().split(/\r?\n/);
+  const at = rows.findIndex((r) => r.includes('fix the tests'));
+  expect(at >= 0).toBe(true);
+  expect(rows[at + 1].startsWith('│')).toBe(false);
+});
+
+test('only the status mark of a failed tool row is red, not its name', async () => {
+  m = await mount(<Transcript sessionId="s1" focused />);
+  await m.fromHost(withItems([tool({ id: 't1', state: 'error' })]));
+  expect(fgOf('✗') === '').toBe(false);
+  expect(fgOf('Bash') === fgOf('✗')).toBe(false);
+});
+
+test('only the mark of a permission row is coloured', async () => {
+  m = await mount(<Transcript sessionId="s1" focused />);
+  await m.fromHost(withItems([permission({ id: 'p1', state: 'allowed' })]));
+  expect(fgOf('✓') === '').toBe(false);
+  expect(fgOf('allowed') === fgOf('✓')).toBe(false);
+});
+
+test('a finished tool card shows no status mark', async () => {
+  m = await mount(<Transcript sessionId="s1" focused />);
+  await m.fromHost(withItems([tool({ id: 't1', state: 'ok' })]));
+  expect(m.frame()).toContain('Bash');
+  expect(m.frame().includes('✓') || m.frame().includes('✗')).toBe(false);
 });
 
 test('a tool call is one header line until expanded', async () => {
@@ -146,7 +226,7 @@ test('a prepend does not cascade another load-more and keeps the reader in place
   expect(loadMores().length).toBe(1);
   expect(m.frame()).toContain('m message 0');
   await m.press('k');
-  for (let i = 0; i < 20; i++) { await m.press('pageup'); await tick(); }
+  for (let i = 0; i < 80; i++) { await m.press('pageup'); await tick(); }
   expect(loadMores().length).toBe(2);
   expect(loadMores()[1]).toEqual({ t: 'load-more', id: 's1', beforeItemId: 'old0' });
 });
@@ -184,13 +264,20 @@ test('two quick j presses both register', async () => {
   expect(m.frame()).toContain('BODYTEXT');
 });
 
-test('expanding a subagent child tool row shows its body', async () => {
+test('Enter toggles a subagent and a user collapse sticks while it is still blocked', async () => {
+  const blocked = () => withItems([tool({
+    id: 'sa', ts: 1, state: 'running',
+    tool: { kind: 'subagent', label: 'Task', action: 'spawn', agent: 'Explore' },
+    children: [tool({ id: 'k1', toolId: 'tk1', ts: 2, tool: { kind: 'command', label: 'Bash', command: 'CHILDCMD' } }), permission({ id: 'pp', state: 'pending' })],
+  })], 'running');
   m = await mount(<Transcript sessionId="s1" focused />);
-  const child = tool({ id: 'c1', output: { kind: 'text', text: 'CHILDBODY' } });
-  await m.fromHost(withItems([tool({ id: 'p1', output: { kind: 'text', text: 'PARENTBODY' }, children: [child] } as never)]));
-  await m.press('j');
+  await m.fromHost(blocked());
+  expect(m.frame()).toContain('CHILDCMD');
   await m.press('j');
   await m.press('return');
-  expect(m.frame()).toContain('CHILDBODY');
-  expect(m.frame()).not.toContain('PARENTBODY');
+  expect(m.frame().includes('CHILDCMD')).toBe(false);
+  await m.fromHost(blocked());
+  expect(m.frame().includes('CHILDCMD')).toBe(false);
+  await m.press('return');
+  expect(m.frame()).toContain('CHILDCMD');
 });

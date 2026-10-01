@@ -8,7 +8,7 @@ import { TranscriptItemShell } from './transcript-item-shell';
 import {
   formatElapsed, isBackgroundDispatch, subagentLabel, subagentStateLabel, summarizeSubagent,
   windowChildren,
-} from './subagent-window';
+} from '../../client-core/subagent-window';
 import { useOpenSubagentTranscript } from './subagent-drill-in-context';
 import type { SessionId, TranscriptItem } from '../../protocol/messages';
 

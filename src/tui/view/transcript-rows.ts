@@ -1,19 +1,17 @@
 import { describeTool, type ToolHeader } from '../../client-core/tool-render';
 import type { TranscriptItem } from '../../protocol/messages';
 
+export type ToolItem = Extract<TranscriptItem, { role: 'tool' }>;
+
+export interface FoldedPermission { state: 'pending' | 'allowed' | 'denied'; reason?: string }
+
 export type TranscriptRow =
   | { kind: 'user'; id: string; text: string; fromName?: string }
   | { kind: 'assistant'; id: string; text: string; streaming: boolean }
-  | { kind: 'tool'; id: string; header: ToolHeader; state: 'running' | 'ok' | 'error'; depth: number }
+  | { kind: 'tool'; id: string; item: ToolItem; header: ToolHeader; state: 'running' | 'ok' | 'error'; permission?: FoldedPermission }
   | { kind: 'permission'; id: string; header: ToolHeader; state: 'pending' | 'allowed' | 'denied'; reason?: string }
   | { kind: 'question'; id: string; state: string; text: string }
   | { kind: 'notice'; id: string; tone: 'error' | 'info'; text: string };
-
-function toolRows(item: Extract<TranscriptItem, { role: 'tool' }>, depth: number): TranscriptRow[] {
-  const own: TranscriptRow = { kind: 'tool', id: item.id, header: describeTool(item.tool), state: item.state, depth };
-  const kids = (item.children ?? []).flatMap((c) => (c.role === 'tool' ? toolRows(c, 1) : []));
-  return [own, ...kids];
-}
 
 export function transcriptRows(items: TranscriptItem[], running: boolean): TranscriptRow[] {
   const rows: TranscriptRow[] = [];
@@ -26,11 +24,22 @@ export function transcriptRows(items: TranscriptItem[], running: boolean): Trans
         if (item.text !== '') { rows.push({ kind: 'assistant', id: item.id, text: item.text, streaming: false }); }
         break;
       case 'tool':
-        rows.push(...toolRows(item, 0));
+        rows.push({ kind: 'tool', id: item.id, item, header: describeTool(item.tool), state: item.state });
         break;
-      case 'permission':
+      case 'permission': {
+        // The host appends the tool before its permission request; showing them as two rows reads backwards.
+        let owner: Extract<TranscriptRow, { kind: 'tool' }> | undefined;
+        for (let i = rows.length - 1; i >= 0 && !owner; i--) {
+          const r = rows[i];
+          if (r.kind === 'tool' && r.item.toolId === item.requestId) { owner = r; }
+        }
+        if (owner) {
+          owner.permission = { state: item.state, ...(item.reason ? { reason: item.reason } : {}) };
+          break;
+        }
         rows.push({ kind: 'permission', id: item.id, header: describeTool(item.tool), state: item.state, ...(item.reason ? { reason: item.reason } : {}) });
         break;
+      }
       case 'question':
         rows.push({ kind: 'question', id: item.id, state: item.state, text: item.questions.map((q) => q.question).join(' / ') });
         break;

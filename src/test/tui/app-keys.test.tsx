@@ -158,12 +158,46 @@ test('delete confirm: y deletes the highlighted session, other keys are inert me
   await m.press('tab');
   await m.press('j');
   await m.press('d', { shift: true });
-  expect(m.frame()).toContain('Delete "two"? y/n');
+  expect(m.frame()).toContain('? Delete "two"?');
+  expect(m.frame()).toContain('Cancel');
   await m.press('j');
   expect(m.posted.some((p) => p.t === 'delete-session')).toBe(false);
   await m.press('y');
   expect(m.posted).toContainEqual({ t: 'delete-session', id: 's2' });
+  expect(m.posted.filter((p) => p.t === 'delete-session').length).toBe(1);
   expect(m.frame().includes('Delete "two"')).toBe(false);
+});
+
+test('delete confirm: both choices sit on one row under the message', async () => {
+  m = await mount(<App {...props} />, { width: 120, height: 30 });
+  await m.fromHost(rosterApp());
+  await m.press('tab');
+  await m.press('tab');
+  await m.press('d', { shift: true });
+  const rows = m.frame().split(/\r?\n/);
+  expect(rows.some((r) => r.includes('Delete') && r.includes('Cancel'))).toBe(true);
+});
+
+test('delete confirm: at 20 rows it does not overprint the status line', async () => {
+  m = await mount(<App {...props} />, { width: 120, height: 20 });
+  await m.fromHost(rosterApp());
+  await m.press('tab');
+  await m.press('tab');
+  await m.press('d', { shift: true });
+  const rows = m.frame().split(/\r?\n/);
+  expect(rows.some((r) => r.includes('Delete') && r.includes('Cancel'))).toBe(true);
+  expect(rows.some((r) => r.includes('fake-large'))).toBe(true);
+});
+
+test('delete confirm: Enter on the default choice cancels', async () => {
+  m = await mount(<App {...props} />, { width: 120, height: 30 });
+  await m.fromHost(rosterApp());
+  await m.press('tab');
+  await m.press('tab');
+  await m.press('d', { shift: true });
+  await m.press('return');
+  expect(m.posted.some((p) => p.t === 'delete-session')).toBe(false);
+  expect(m.frame().includes('Delete "one"')).toBe(false);
 });
 
 test('delete confirm: n and Esc cancel without posting', async () => {

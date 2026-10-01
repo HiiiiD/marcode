@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils';
 import { filterSubagents } from './filter-subagents';
 import {
   formatElapsed, isBackgroundDispatch, subagentLabel, subagentStateLabel, summarizeSubagent,
-} from '../webview/components/subagent-window';
+} from '../client-core/subagent-window';
 import type { PaneState } from '../webview/reducer';
 
 /**

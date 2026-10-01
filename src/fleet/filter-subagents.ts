@@ -1,6 +1,6 @@
 // Pure helper for FleetApp's per-session subagent list — kept free of React
 // so it unit-tests without mounting anything, the same split
-// active-subagents.ts and subagent-window.ts use.
+// active-subagents.ts and client-core/subagent-window.ts use.
 import type { TranscriptItem } from '../protocol/messages';
 
 type ToolItem = Extract<TranscriptItem, { role: 'tool' }>;

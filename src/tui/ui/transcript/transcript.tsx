@@ -2,11 +2,11 @@ import type { ScrollBoxRenderable } from '@opentui/core';
 import { useKeyboard } from '@opentui/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { SessionId } from '../../../protocol/messages';
+import { summarizeSubagent } from '../../../client-core/subagent-window';
 import { actionFor } from '../../keymap';
 import { transcriptRows } from '../../view/transcript-rows';
 import { useTuiStore } from '../store';
 import { RowView } from './row';
-import { ToolBody } from './tool-row';
 
 export function Transcript({ sessionId, focused }: { sessionId: SessionId; focused: boolean }) {
   const { state, post } = useTuiStore();
@@ -15,14 +15,10 @@ export function Transcript({ sessionId, focused }: { sessionId: SessionId; focus
   const rows = useMemo(() => transcriptRows(pane?.items ?? [], running), [pane?.items, running]);
   const [cursorId, setCursorId] = useState<string | undefined>(undefined);
   const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
+  const [closed, setClosed] = useState<ReadonlySet<string>>(new Set());
   const asked = useRef<string | undefined>(undefined);
   const scroll = useRef<ScrollBoxRenderable | null>(null);
   const heightBefore = useRef<number | undefined>(undefined);
-
-  const itemById = useMemo(
-    () => new Map((pane?.items ?? []).flatMap((i) => [[i.id, i] as const, ...((i.role === 'tool' ? i.children ?? [] : []).map((c) => [c.id, c] as const))])),
-    [pane?.items],
-  );
 
   const first = pane?.items[0]?.id;
   const hasMore = pane?.hasMore === true;
@@ -68,7 +64,12 @@ export function Transcript({ sessionId, focused }: { sessionId: SessionId; focus
     else if (action.do === 'toggle-item') {
       const row = rows[cursor];
       if (row?.kind !== 'tool') { return; }
-      setOpen((o) => { const n = new Set(o); if (n.has(row.id)) { n.delete(row.id); } else { n.add(row.id); } return n; });
+      const id = row.id;
+      const blocked = row.item.tool.kind === 'subagent' && summarizeSubagent(row.item, 0).blocked;
+      const effective = open.has(id) || (blocked && !closed.has(id));
+      const flip = (s: ReadonlySet<string>, on: boolean) => { const n = new Set(s); if (on) { n.add(id); } else { n.delete(id); } return n; };
+      setOpen((o) => flip(o, !effective));
+      setClosed((c) => flip(c, effective && blocked));
     } else if (action.do === 'repin') { setCursorId(undefined); box?.scrollTo(Number.MAX_SAFE_INTEGER); }
     if (action.do === 'page-up' || action.do === 'item-prev') { setTimeout(askOlder, 0); }
   });
@@ -77,13 +78,9 @@ export function Transcript({ sessionId, focused }: { sessionId: SessionId; focus
     <scrollbox ref={scroll} flexGrow={1} stickyScroll stickyStart="bottom" viewportCulling focused={focused}>
       {hasMore ? <text fg="gray">↑ older messages</text> : null}
       {rows.map((row, i) => {
-        const item = itemById.get(row.id);
-        const expanded = open.has(row.id);
         return (
           <box key={row.id} id={row.id} flexDirection="column">
-            <RowView row={row} selected={focused && i === cursor} expanded={expanded} />
-            {row.kind === 'tool' && expanded && item?.role === 'tool'
-              ? <ToolBody tool={item.tool} output={item.output} state={item.state} /> : null}
+            <RowView row={row} selected={focused && i === cursor} expanded={open.has(row.id)} closed={closed.has(row.id)} />
           </box>
         );
       })}

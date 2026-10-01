@@ -135,3 +135,33 @@ test('the cursor follows the pinned row when pinning reorders the list', async (
   await m.press('p');
   expect(m.posted).toContainEqual({ t: 'set-pinned', id: 'd', pinned: false });
 });
+
+test('a very long title and a foreign row stay inside the 26-column roster', async () => {
+  m = await mount(<Roster focused onFocusSession={() => {}} onAskDelete={() => {}} />, { width: 60, height: 20 });
+  await m.fromHost(hydrateMsg({
+    sessions: [
+      summary('a', { name: 'x'.repeat(80) }),
+      summary('c', { name: 'shared', owner: { host: 'vscode', pid: 4812 } }),
+    ],
+    snapshots: [snapshot('a')],
+  }));
+  const borderRows = m.frame().split('\n').filter((l) => l.includes('│'));
+  expect(borderRows.every((l) => l.trimEnd().length <= 26)).toBe(true);
+  expect(m.frame()).toContain('sessions');
+  expect(m.frame()).toContain('vscode·4812');
+});
+
+test('a long roster keeps the cursor row visible while moving down', async () => {
+  const many = Array.from({ length: 40 }, (_, i) => summary(`n${i}`, { name: `session-${String(i).padStart(2, '0')}` }));
+  // App gives the roster a bounded row; mount it the same way so the box has a height to scroll within.
+  m = await mount(
+    <box flexDirection="row" width="100%" height="100%" minHeight={0}>
+      <Roster focused onFocusSession={() => {}} onAskDelete={() => {}} />
+    </box>,
+    { width: 60, height: 15 },
+  );
+  await m.fromHost(hydrateMsg({ sessions: many, snapshots: [snapshot('n0')] }));
+  expect(m.frame()).toContain('session-00');
+  for (let i = 0; i < 35; i++) { await m.press('j'); }
+  expect(m.frame()).toContain('session-35');
+});

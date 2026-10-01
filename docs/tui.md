@@ -40,7 +40,7 @@ yarn build:tui:bin    # bin/marcode.exe (bin/marcode elsewhere): standalone, Bun
 | Ctrl+P / Ctrl+E | your own session | cycle model / effort |
 | Shift+Tab | your own session | cycle permission mode (never into `bypass`) |
 | Ctrl+R | anywhere | re-check providers |
-| j / k, Enter | transcript | next / previous item, expand or collapse |
+| j / k, Enter | transcript | next / previous item (a message or a tool/subagent card), expand or collapse a card |
 | PgUp / PgDn, End | transcript | scroll, re-pin to the bottom |
 | j / k, Enter, x | roster | move, focus, hide the session from the panes |
 | p | roster | pin or unpin the session (pinned sort first, shown with a star) |
@@ -77,6 +77,20 @@ notice, then restart it. See `config.md`.
 - Shift+Enter is not distinguished from Enter by most terminals; use Ctrl+J or Alt+Enter.
 - Roster rename, the empty-state prompt picker, clipboard-image attach and "remember last effort/mode" in the new-session dialog are not implemented.
 
+## Vendored components
+
+Some TUI visuals come from [termcn](https://github.com/shadcn-labs/termcn) (MIT), installed with the shadcn
+CLI into `src/tui/ui/termcn/`, which has its own `components.json`, `package.json` and `tsconfig.json`:
+
+```
+yes n | npx shadcn@latest add @termcn/opentui/<name> --yes --cwd src/tui/ui/termcn
+```
+
+Local edits to the generated files are listed in `src/tui/ui/termcn/PATCHES.md` and must be reapplied after
+`--overwrite`. Theme tokens come from `src/tui/ui/tui-theme.tsx`, which maps our terminal colour names into
+termcn's theme. Always render a freshly installed item and look for stacked rows: registry code often omits
+`flexDirection="row"`, and OpenTUI boxes default to a column.
+
 ## Manual smoke checklist
 
 Run in Windows Terminal and in one macOS or Linux terminal.
@@ -105,3 +119,7 @@ Run in Windows Terminal and in one macOS or Linux terminal.
 - [ ] Roster: `p` pins, `/` filters, Shift+D confirms before deleting, and a session owned by VS Code refuses.
 - [ ] Open the new-session dialog in a very short terminal: the provider rows stay visible.
 - [ ] The compiled `bin/marcode` renders markdown with highlighted code blocks (tree-sitter assets load from the embedded filesystem).
+- [ ] Light terminal theme: tool rows, role labels, chips and the delete confirm stay legible.
+- [ ] The new-session dialog, delete confirm and chip band in a short (12-row) terminal.
+- [ ] A subagent run shows a card with a tool count and elapsed time, and a blocked one opens itself and shows "Needs you".
+- [ ] A failed tool shows the "failed" pill; the card borders stay legible on a light terminal.

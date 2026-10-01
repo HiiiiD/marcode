@@ -89,10 +89,14 @@ suite('tui view: transcript rows', () => {
   test('an empty assistant item is skipped', () => {
     assert.strictEqual(transcriptRows([{ id: 'a', ts: 1, role: 'assistant', text: '' }], true).length, 0);
   });
-  test('tool children are flattened at depth 1 after their parent', () => {
-    const child = tool({ id: 'c1', toolId: 'tc' });
-    const rows = transcriptRows([tool({ id: 'p', children: [child] })], false);
-    assert.deepStrictEqual(rows.map((r) => (r.kind === 'tool' ? r.depth : -1)), [0, 1]);
+  test('a tool row carries its item and its children are not rows', () => {
+    const child = tool({ id: 'c', toolId: 'tc' });
+    const parent = tool({ id: 'p', children: [child] });
+    const rows = transcriptRows([parent], false);
+    assert.strictEqual(rows.length, 1);
+    const row = rows[0];
+    assert.ok(row.kind === 'tool');
+    assert.strictEqual(row.kind === 'tool' && row.item.children?.length, 1);
   });
   test('permission, error and switch items map to their row kinds', () => {
     const rows = transcriptRows([
@@ -101,6 +105,23 @@ suite('tui view: transcript rows', () => {
       { id: 's1', ts: 1, role: 'switch', kind: 'model', text: 'Model: a → b' },
     ], false);
     assert.deepStrictEqual(rows.map((r) => r.kind), ['permission', 'notice', 'notice']);
+  });
+  test('a permission for the preceding tool call folds into that tool row', () => {
+    const rows = transcriptRows([
+      tool({ id: 't', toolId: 'tu1' }),
+      permission({ id: 'p', requestId: 'tu1', state: 'denied', reason: 'no' }),
+    ], false);
+    assert.strictEqual(rows.length, 1);
+    const row = rows[0];
+    assert.ok(row.kind === 'tool');
+    assert.deepStrictEqual(row.kind === 'tool' && row.permission, { state: 'denied', reason: 'no' });
+  });
+  test('a permission with no matching tool row stays its own row', () => {
+    const rows = transcriptRows([
+      tool({ id: 't', toolId: 'tu1' }),
+      permission({ id: 'p', requestId: 'other' }),
+    ], false);
+    assert.deepStrictEqual(rows.map((r) => r.kind), ['tool', 'permission']);
   });
   test('a question item keeps its state', () => {
     const rows = transcriptRows([question({ id: 'q1' })], false);
