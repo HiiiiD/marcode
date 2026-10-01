@@ -6,7 +6,6 @@ import { actionFor } from '../../keymap';
 import { transcriptRows } from '../../view/transcript-rows';
 import { useTuiStore } from '../store';
 import { RowView } from './row';
-import { ToolBody } from './tool-row';
 
 export function Transcript({ sessionId, focused }: { sessionId: SessionId; focused: boolean }) {
   const { state, post } = useTuiStore();
@@ -18,11 +17,6 @@ export function Transcript({ sessionId, focused }: { sessionId: SessionId; focus
   const asked = useRef<string | undefined>(undefined);
   const scroll = useRef<ScrollBoxRenderable | null>(null);
   const heightBefore = useRef<number | undefined>(undefined);
-
-  const itemById = useMemo(
-    () => new Map((pane?.items ?? []).flatMap((i) => [[i.id, i] as const, ...((i.role === 'tool' ? i.children ?? [] : []).map((c) => [c.id, c] as const))])),
-    [pane?.items],
-  );
 
   const first = pane?.items[0]?.id;
   const hasMore = pane?.hasMore === true;
@@ -77,13 +71,9 @@ export function Transcript({ sessionId, focused }: { sessionId: SessionId; focus
     <scrollbox ref={scroll} flexGrow={1} stickyScroll stickyStart="bottom" viewportCulling focused={focused}>
       {hasMore ? <text fg="gray">↑ older messages</text> : null}
       {rows.map((row, i) => {
-        const item = itemById.get(row.id);
-        const expanded = open.has(row.id);
         return (
           <box key={row.id} id={row.id} flexDirection="column">
-            <RowView row={row} selected={focused && i === cursor} expanded={expanded} />
-            {row.kind === 'tool' && expanded && item?.role === 'tool'
-              ? <ToolBody tool={item.tool} output={item.output} state={item.state} /> : null}
+            <RowView row={row} selected={focused && i === cursor} expanded={open.has(row.id)} />
           </box>
         );
       })}
