@@ -1,0 +1,76 @@
+import { configPath, favoriteModelsSource, loadConfig } from '../host/config-file';
+import { createHost, type HostHandle } from '../host/create-host';
+import { defaultHostConfig, type HostConfig } from '../host/host-config';
+import { MessageRouter } from '../host/message-router';
+import { marcodeHome, resolveWorkspaceDir } from '../host/workspace-dir';
+import { createLoopback, type Loopback } from '../client-core/loopback-transport';
+import { terminalConfigHost, terminalEditorHost } from './tui-hooks';
+import { findGitRoot } from './workspace-root';
+
+export interface BootOptions {
+  cwd: string;
+  home?: string;
+  config?: Partial<HostConfig>;
+  notify?: (message: string) => void;
+}
+
+export interface Booted {
+  host: HostHandle;
+  router: MessageRouter;
+  loopback: Loopback;
+  workspaceRoot: string;
+  launchCwd: string;
+  configFile: string;
+  warnings: string[];
+  shutdown(): Promise<void>;
+}
+
+export function memoryForRuntime(
+  memory: HostConfig['memory'], isBun: boolean,
+): { memory: HostConfig['memory']; warning?: string } {
+  if (!isBun || !memory.enabled) { return { memory }; }
+  return {
+    memory: { ...memory, enabled: false },
+    warning: 'Memory is unavailable under Bun in this build; recall is off.',
+  };
+}
+
+export async function bootHost(opts: BootOptions): Promise<Booted> {
+  const home = opts.home ?? marcodeHome();
+  const configFile = configPath(home);
+  const warnings: string[] = [];
+  const warn = (message: string) => { warnings.push(message); (opts.notify ?? console.error)(message); };
+
+  const loaded = await loadConfig(configFile);
+  for (const w of loaded.warnings) { warn(w); }
+  const config: HostConfig = { ...defaultHostConfig(), ...loaded.config, ...opts.config };
+  const runtimeMemory = memoryForRuntime(config.memory, Boolean(process.versions.bun));
+  config.memory = runtimeMemory.memory;
+  if (runtimeMemory.warning) { warn(runtimeMemory.warning); }
+
+  const workspaceRoot = await findGitRoot(opts.cwd);
+  const workspaceDir = await resolveWorkspaceDir(home, workspaceRoot);
+
+  let router: MessageRouter | undefined;
+  const loopback = createLoopback((msg) => router?.handle(msg));
+  const host = await createHost({
+    workspaceDir, config, hostKind: 'tui',
+    workspaceRoots: () => [workspaceRoot],
+    emit: (msg) => loopback.deliver(msg),
+    notify: { warn },
+  });
+  await host.init();
+
+  const favorites = favoriteModelsSource(configFile, config.favoriteModels, warn);
+  router = new MessageRouter(
+    host.manager, (msg) => loopback.deliver(msg), opts.cwd,
+    terminalEditorHost(() => {}), host.attachments, undefined, config.review.pollIntervalMs,
+    undefined, favorites.get(), terminalConfigHost((ids) => { void favorites.set(ids); }),
+  );
+
+  let down: Promise<void> | undefined;
+  return {
+    host, router, loopback, workspaceRoot, launchCwd: opts.cwd, configFile, warnings,
+    shutdown: () => (down ??= host.dispose()),
+  };
+}
