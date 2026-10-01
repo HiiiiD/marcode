@@ -14,6 +14,7 @@ export interface PaneLayoutApi {
   hide(id: SessionId): void;
   /** The next unseen session splits the focused pane instead of taking the first free slot; `null` disarms. */
   armSplit(orientation: 'horizontal' | 'vertical' | null): void;
+  splitArmed(): boolean;
   applyRoot(root: LayoutNode): void;
   /** The next unseen session was asked for by the user, so it takes focus. */
   expectArrival(): void;
@@ -69,6 +70,7 @@ export function usePaneLayout(): PaneLayoutApi {
     root, leafIds, placeOrFocus, applyRoot,
     hide: (id) => { applyRoot(removeSession(stateRef.current.layout.root, id)); },
     armSplit: (o) => { split.current = o; },
+    splitArmed: () => split.current !== null,
     expectArrival: () => { expecting.current = true; },
   };
 }

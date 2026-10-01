@@ -19,7 +19,7 @@ const sessions = [
 ];
 
 test('rows show glyph, name and the foreign owner label', async () => {
-  m = await mount(<Roster focused onFocusSession={() => {}} onAskDelete={() => {}} />);
+  m = await mount(<Roster focused onFocusSession={() => {}} onAskDelete={() => {}} onHandoff={() => {}} />);
   await m.fromHost(hydrateMsg({ sessions, snapshots: [snapshot('a', { name: 'api-fix' })] }));
   const f = m.frame();
   expect(f).toContain('● api-fix');
@@ -30,7 +30,7 @@ test('rows show glyph, name and the foreign owner label', async () => {
 
 test('j then Enter focuses the second session', async () => {
   const chosen: string[] = [];
-  m = await mount(<Roster focused onFocusSession={(id) => chosen.push(id)} onAskDelete={() => {}} />);
+  m = await mount(<Roster focused onFocusSession={(id) => chosen.push(id)} onAskDelete={() => {}} onHandoff={() => {}} />);
   await m.fromHost(hydrateMsg({ sessions, snapshots: [snapshot('a')] }));
   await m.press('j');
   await m.press('return');
@@ -38,7 +38,7 @@ test('j then Enter focuses the second session', async () => {
 });
 
 test('x on a row posts close-session for it', async () => {
-  m = await mount(<Roster focused onFocusSession={() => {}} onAskDelete={() => {}} />);
+  m = await mount(<Roster focused onFocusSession={() => {}} onAskDelete={() => {}} onHandoff={() => {}} />);
   await m.fromHost(hydrateMsg({ sessions, snapshots: [snapshot('a')] }));
   await m.press('x');
   expect(m.posted).toContainEqual({ t: 'close-session', id: 'a' });
@@ -46,7 +46,7 @@ test('x on a row posts close-session for it', async () => {
 
 test('k clamps at the first row', async () => {
   const chosen: string[] = [];
-  m = await mount(<Roster focused onFocusSession={(id) => chosen.push(id)} onAskDelete={() => {}} />);
+  m = await mount(<Roster focused onFocusSession={(id) => chosen.push(id)} onAskDelete={() => {}} onHandoff={() => {}} />);
   await m.fromHost(hydrateMsg({ sessions, snapshots: [snapshot('a')] }));
   await m.press('k');
   await m.press('return');
@@ -55,7 +55,7 @@ test('k clamps at the first row', async () => {
 
 test('keys are ignored while the roster is not focused', async () => {
   const chosen: string[] = [];
-  m = await mount(<Roster focused={false} onFocusSession={(id) => chosen.push(id)} onAskDelete={() => {}} />);
+  m = await mount(<Roster focused={false} onFocusSession={(id) => chosen.push(id)} onAskDelete={() => {}} onHandoff={() => {}} />);
   await m.fromHost(hydrateMsg({ sessions, snapshots: [snapshot('a')] }));
   await m.press('return');
   await m.press('x');
@@ -64,13 +64,13 @@ test('keys are ignored while the roster is not focused', async () => {
 });
 
 test('an empty roster says so', async () => {
-  m = await mount(<Roster focused onFocusSession={() => {}} onAskDelete={() => {}} />);
+  m = await mount(<Roster focused onFocusSession={() => {}} onAskDelete={() => {}} onHandoff={() => {}} />);
   await m.fromHost(hydrateMsg({ sessions: [], snapshots: [] }));
   expect(m.frame()).toContain('no sessions yet');
 });
 
 test('p posts set-pinned for the row under the cursor, toggling an already pinned one off', async () => {
-  m = await mount(<Roster focused onFocusSession={() => {}} onAskDelete={() => {}} />);
+  m = await mount(<Roster focused onFocusSession={() => {}} onAskDelete={() => {}} onHandoff={() => {}} />);
   await m.fromHost(hydrateMsg({
     sessions: [summary('a', { name: 'api-fix' }), summary('b', { name: 'docs', pinned: true })],
     snapshots: [snapshot('a')],
@@ -83,14 +83,14 @@ test('p posts set-pinned for the row under the cursor, toggling an already pinne
 });
 
 test('pinned rows show a star', async () => {
-  m = await mount(<Roster focused onFocusSession={() => {}} onAskDelete={() => {}} />);
+  m = await mount(<Roster focused onFocusSession={() => {}} onAskDelete={() => {}} onHandoff={() => {}} />);
   await m.fromHost(hydrateMsg({ sessions: [summary('a', { name: 'api-fix', pinned: true })], snapshots: [snapshot('a')] }));
   expect(m.frame()).toContain('★ api-fix');
 });
 
 test('/ filters by title; the cursor then addresses the filtered rows; Esc clears', async () => {
   const chosen: string[] = [];
-  m = await mount(<Roster focused onFocusSession={(id) => chosen.push(id)} onAskDelete={() => {}} />);
+  m = await mount(<Roster focused onFocusSession={(id) => chosen.push(id)} onAskDelete={() => {}} onHandoff={() => {}} />);
   await m.fromHost(hydrateMsg({ sessions, snapshots: [snapshot('a')] }));
   await m.press('/');
   await m.type('docs');
@@ -106,7 +106,7 @@ test('/ filters by title; the cursor then addresses the filtered rows; Esc clear
 });
 
 test('filter mode swallows x and p so typing never closes or pins a session', async () => {
-  m = await mount(<Roster focused onFocusSession={() => {}} onAskDelete={() => {}} />);
+  m = await mount(<Roster focused onFocusSession={() => {}} onAskDelete={() => {}} onHandoff={() => {}} />);
   await m.fromHost(hydrateMsg({ sessions, snapshots: [snapshot('a')] }));
   await m.press('/');
   await m.type('xp');
@@ -115,7 +115,7 @@ test('filter mode swallows x and p so typing never closes or pins a session', as
 
 test('shift+d asks to delete the row under the cursor', async () => {
   const asked: { id: string; title: string }[] = [];
-  m = await mount(<Roster focused onFocusSession={() => {}} onAskDelete={(r) => asked.push(r)} />);
+  m = await mount(<Roster focused onFocusSession={() => {}} onAskDelete={(r) => asked.push(r)} onHandoff={() => {}} />);
   await m.fromHost(hydrateMsg({ sessions, snapshots: [snapshot('a')] }));
   await m.press('j');
   await m.press('d', { shift: true });
@@ -123,7 +123,7 @@ test('shift+d asks to delete the row under the cursor', async () => {
 });
 
 test('the cursor follows the pinned row when pinning reorders the list', async () => {
-  m = await mount(<Roster focused onFocusSession={() => {}} onAskDelete={() => {}} />);
+  m = await mount(<Roster focused onFocusSession={() => {}} onAskDelete={() => {}} onHandoff={() => {}} />);
   const four = ['a', 'b', 'c', 'd'].map((id) => summary(id, { name: id }));
   await m.fromHost(hydrateMsg({ sessions: four, snapshots: [snapshot('a')] }));
   await m.press('j');
@@ -137,7 +137,7 @@ test('the cursor follows the pinned row when pinning reorders the list', async (
 });
 
 test('a very long title and a foreign row stay inside the 26-column roster', async () => {
-  m = await mount(<Roster focused onFocusSession={() => {}} onAskDelete={() => {}} />, { width: 60, height: 20 });
+  m = await mount(<Roster focused onFocusSession={() => {}} onAskDelete={() => {}} onHandoff={() => {}} />, { width: 60, height: 20 });
   await m.fromHost(hydrateMsg({
     sessions: [
       summary('a', { name: 'x'.repeat(80) }),
@@ -156,7 +156,7 @@ test('a long roster keeps the cursor row visible while moving down', async () =>
   // App gives the roster a bounded row; mount it the same way so the box has a height to scroll within.
   m = await mount(
     <box flexDirection="row" width="100%" height="100%" minHeight={0}>
-      <Roster focused onFocusSession={() => {}} onAskDelete={() => {}} />
+      <Roster focused onFocusSession={() => {}} onAskDelete={() => {}} onHandoff={() => {}} />
     </box>,
     { width: 60, height: 15 },
   );

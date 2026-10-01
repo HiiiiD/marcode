@@ -9,7 +9,7 @@ import { DeleteConfirm } from './delete-confirm';
 import { EmptyState } from './empty-state';
 import { ModeDialog } from './mode-dialog';
 import { ModelDialog } from './model-dialog';
-import { NewSessionDialog } from './new-session-dialog';
+import { NewSessionDialog, type HandoffSource } from './new-session-dialog';
 import { NoticeLine } from './notice-line';
 import { PaneTree } from './pane-tree';
 import { Roster, ROSTER_W } from './roster';
@@ -46,9 +46,17 @@ export function App(props: AppProps) {
   const [picker, setPicker] = useState<PickerKind | null>(null);
   const [deleting, setDeleting] = useState<{ id: SessionId; title: string } | null>(null);
   const [maximized, setMaximized] = useState(false);
+  const [handoffSource, setHandoffSource] = useState<HandoffSource | undefined>(undefined);
   const [kept, setKept] = useState<string | undefined>(undefined);
   const planned = useRef(false);
 
+  const openNewSession = (source?: { id: SessionId; title: string }) => {
+    const row = state.sessions.find((x) => x.id === focusedId);
+    const focusedTitle = row ? row.name || row.title : undefined;
+    const src = source ?? (focusedId && focusedTitle ? { id: focusedId, title: focusedTitle } : undefined);
+    setHandoffSource(src ? { ...src, on: source !== undefined } : undefined);
+    setDialog(true);
+  };
   const expectNewSession = () => { layout.expectArrival(); setKept(undefined); };
 
   const pane = focusedId ? state.byId[focusedId] : undefined;
@@ -86,14 +94,14 @@ export function App(props: AppProps) {
     area: { x: 0, y: 0, ...estimate },
     inert: dialog || deleting !== null || picker !== null,
     maximized, layout,
-    onSplit: (orientation) => { layout.armSplit(orientation); setDialog(true); },
+    onSplit: (orientation) => { layout.armSplit(orientation); openNewSession(); },
     toggleMaximize: () => { setMaximized((v) => !v); },
   });
 
   useAppKeys({
     inert: dialog || deleting !== null || picker !== null, zone: keyZone, summary, quitWindowMs: props.quitWindowMs ?? 2000, onQuit: props.onQuit,
     toggleRoster: () => { setRosterOn(!showRoster); },
-    openDialog: () => { setDialog(true); },
+    openDialog: () => { openNewSession(); },
     openPicker: setPicker,
     cycleZone: () => { setZone(zones[(zones.indexOf(current) + 1) % zones.length] ?? 'composer'); },
   });
@@ -105,7 +113,7 @@ export function App(props: AppProps) {
   };
 
   const roster = showRoster
-    ? <Roster focused={live('roster')} onFocusSession={onFocusSession} onAskDelete={(row) => { setDeleting(row); }} />
+    ? <Roster focused={live('roster')} onFocusSession={onFocusSession} onAskDelete={(row) => { setDeleting(row); }} onHandoff={(row) => { openNewSession(row); }} />
     : null;
   const body = focusedId ? (
     <PaneTree
@@ -138,8 +146,13 @@ export function App(props: AppProps) {
         <NewSessionDialog
           cwd={props.launchCwd}
           initialPrompt={kept}
+          handoff={handoffSource}
           onClose={() => { setDialog(false); layout.armSplit(null); }}
-          onCreated={() => { setDialog(false); expectNewSession(); }}
+          onCreated={(info) => {
+            setDialog(false);
+            if (info.handoff && !layout.splitArmed()) { layout.armSplit('horizontal'); }
+            expectNewSession();
+          }}
         />
       ) : null}
       {picker === 'model' && focusedId ? <ModelDialog sessionId={focusedId} onClose={() => { setPicker(null); }} /> : null}

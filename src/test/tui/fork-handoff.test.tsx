@@ -48,3 +48,72 @@ test('f with no selected row does nothing', async () => {
   await m.press('f');
   expect(m.posted.filter((p) => p.t === 'fork-session').length).toBe(0);
 });
+
+test('H on a roster row opens the dialog with the handoff on, and the seed line posts a handoff create-session', async () => {
+  m = await mount(<App {...props} />, { width: 140, height: 30 });
+  await m.fromHost(hydrateMsg({ sessions: [summary('s1', { name: 'one' })] }));
+  await m.press('tab');
+  await m.press('tab');
+  await m.press('h', { shift: true });
+  expect(m.frame()).toContain('[x] Hand off from one');
+  await m.press('return');
+  await m.press('return');
+  await m.type('continue the work');
+  await m.press('return');
+  const creates = m.posted.filter((p) => p.t === 'create-session');
+  expect(creates.length).toBe(1);
+  const c = creates[0];
+  expect(c?.t === 'create-session' && c.seed?.handoffFrom).toBe('s1');
+  expect(c?.t === 'create-session' && c.seed?.text).toBe('continue the work');
+});
+
+test('Ctrl+N has the handoff off by default, so no seed is sent', async () => {
+  m = await mount(<App {...props} />, { width: 140, height: 30 });
+  await m.fromHost(hydrateMsg({ sessions: [summary('s1', { name: 'one' })] }));
+  await m.press('n', { ctrl: true });
+  expect(m.frame()).toContain('[ ] Hand off from one');
+  await m.press('return');
+  await m.press('return');
+  const c = m.posted.find((p) => p.t === 'create-session');
+  expect(c?.t === 'create-session' && c.seed === undefined).toBe(true);
+});
+
+test('Ctrl+N then h turns the handoff on for the focused session', async () => {
+  m = await mount(<App {...props} />, { width: 140, height: 30 });
+  await m.fromHost(hydrateMsg({ sessions: [summary('s1', { name: 'one' })] }));
+  await m.press('n', { ctrl: true });
+  await m.press('h');
+  expect(m.frame()).toContain('[x] Hand off from one');
+});
+
+test('with no focused session the handoff toggle is unavailable', async () => {
+  m = await mount(<App {...props} />, { width: 140, height: 30 });
+  await m.fromHost(hydrateMsg({ sessions: [], snapshots: [], layout: { root: { kind: 'leaf', sessionId: null, size: 100 }, presets: [] } }));
+  await m.press('n', { ctrl: true });
+  await m.press('h');
+  expect(m.frame()).not.toContain('Hand off from');
+});
+
+test('Esc in the seed line cancels without creating', async () => {
+  m = await mount(<App {...props} />, { width: 140, height: 30 });
+  await m.fromHost(hydrateMsg({ sessions: [summary('s1', { name: 'one' })] }));
+  await m.press('n', { ctrl: true });
+  await m.press('h');
+  await m.press('return');
+  await m.press('return');
+  await m.type('abc');
+  await m.press('escape');
+  await new Promise((r) => setTimeout(r, 100));
+  await m.setup.renderOnce();
+  expect(m.posted.filter((p) => p.t === 'create-session').length).toBe(0);
+  expect(m.frame().includes('New session')).toBe(false);
+});
+
+test('the status line says a source is being summarized until the phase is done', async () => {
+  m = await mount(<App {...props} />, { width: 140, height: 30 });
+  await m.fromHost(hydrateMsg({ sessions: [summary('s1', { name: 'one' })] }));
+  await m.fromHost({ t: 'handoff-progress', sessionId: 's1', phase: 'summarizing' });
+  expect(m.frame()).toContain('Summarizing one');
+  await m.fromHost({ t: 'handoff-progress', sessionId: 's1', phase: 'done' });
+  expect(m.frame().includes('Summarizing')).toBe(false);
+});

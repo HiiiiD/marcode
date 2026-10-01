@@ -14,9 +14,10 @@ interface RosterProps {
   focused: boolean;
   onFocusSession(id: SessionId): void;
   onAskDelete(row: { id: SessionId; title: string }): void;
+  onHandoff(row: { id: SessionId; title: string }): void;
 }
 
-export function Roster({ focused, onFocusSession, onAskDelete }: RosterProps) {
+export function Roster({ focused, onFocusSession, onAskDelete, onHandoff }: RosterProps) {
   const { state, focusedId, post, setNotice, setRosterFiltering } = useTuiStore();
   const [filter, setFilter] = useState('');
   const [filtering, setFiltering] = useState(false);
@@ -53,6 +54,7 @@ export function Roster({ focused, onFocusSession, onAskDelete }: RosterProps) {
     else if (action.do === 'roster-prev') { setCursorId(rows[Math.max(cursor - 1, 0)]?.id ?? null); }
     else if (action.do === 'roster-focus' && row) { onFocusSession(row.id); }
     else if (action.do === 'roster-hide' && row) { post({ t: 'close-session', id: row.id }); }
+    else if (action.do === 'roster-handoff' && row) { onHandoff({ id: row.id, title: row.title }); }
     else if (action.do === 'roster-pin' && row) { post({ t: 'set-pinned', id: row.id, pinned: !row.pinned }); }
     else if (action.do === 'roster-filter') { setFiltering(true); setCursorId(null); }
     else if (action.do === 'roster-delete' && row) {
