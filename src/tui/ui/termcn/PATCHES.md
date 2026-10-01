@@ -7,13 +7,10 @@ Reapply after `shadcn add ... --overwrite`.
 | `lib/terminal-themes/default.ts` | `import type { Theme } from "@termcn/components/ui/types"` | the CLI leaves the registry's `@/components/ui/types` alias unrewritten in this item |
 | `components/ui/dialog.tsx` | `interactive?: boolean` (default true): when false, no key handling and no OK/Cancel row | Enter would cancel; we only want the frame |
 | `components/ui/dialog.tsx` | `inverse={...}` on `<text>` becomes `attributes={... ? TextAttributes.INVERSE : 0}` (import from `@opentui/core`) | `inverse` is not a `TextProps` key in `@opentui/react` 0.5.13, so the registry code fails `check-types:tui` |
-| `components/ui/tool-call.tsx` | spinner interval only while `status === "running"` | stock code ticks 12 times a second on every instance forever |
 | `components/ui/confirm.tsx` | `flexDirection="row"` on the button row (`<box gap={2} paddingLeft={2}>`) | OpenTUI boxes default to a column; the registry code assumes a row, so Yes/No stacked over blank rows |
-| `components/ui/tool-call.tsx` | `flexDirection="row"` on the header `<box gap={1}>` | same: status icon, name and duration stacked |
 | `components/ui/chat-message.tsx` | `flexDirection="row"` on the header `<box gap={1}>` | same: sender name and time stacked |
 | `components/ui/dialog.tsx` | the two `marginBottom={1}` (after the title, after the children) become `marginBottom={interactive ? 1 : 0}` | five rows of chrome collided with the composer in a 12-row terminal |
-| `components/ui/confirm.tsx`, `tag.tsx`, `tool-call.tsx`, `chat-message.tsx` | restored whitespace-only string literals: `"? "`, `"› "`, `"  "`, `" ×"`, `" "` (space key), `"\n"` (two uses) | the shadcn CLI strips whitespace inside string literals when it writes files (`"? "` arrives as `"?"`, `"\n"` as `""`) |
-| `components/ui/tool-call.tsx` | the name is always `mutedForeground` and not bold (the registry colours the whole name by status) | a failed call turned the whole tool line red; only the status mark should carry the status colour |
+| `components/ui/confirm.tsx`, `tag.tsx`, `chat-message.tsx` | restored whitespace-only string literals: `"? "`, `"› "`, `"  "`, `" ×"`, `" "` (space key), `"\n"` (two uses) | the shadcn CLI strips whitespace inside string literals when it writes files (`"? "` arrives as `"?"`, `"\n"` as `""`) |
 | `components/ui/chat-message.tsx` | the root `marginBottom={1}` is removed; `transcript/row.tsx` puts the margin on the accent bar instead | the margin sat inside the bar, so the bar ran on through the spacer row |
 
 Registry items written for Ink-style row defaults need this check after install: render one and look for stacked rows.

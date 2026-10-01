@@ -40,7 +40,7 @@ yarn build:tui:bin    # bin/marcode.exe (bin/marcode elsewhere): standalone, Bun
 | Ctrl+P / Ctrl+E | your own session | cycle model / effort |
 | Shift+Tab | your own session | cycle permission mode (never into `bypass`) |
 | Ctrl+R | anywhere | re-check providers |
-| j / k, Enter | transcript | next / previous item, expand or collapse |
+| j / k, Enter | transcript | next / previous item (a message or a tool/subagent card), expand or collapse a card |
 | PgUp / PgDn, End | transcript | scroll, re-pin to the bottom |
 | j / k, Enter, x | roster | move, focus, hide the session from the panes |
 | p | roster | pin or unpin the session (pinned sort first, shown with a star) |
@@ -121,3 +121,5 @@ Run in Windows Terminal and in one macOS or Linux terminal.
 - [ ] The compiled `bin/marcode` renders markdown with highlighted code blocks (tree-sitter assets load from the embedded filesystem).
 - [ ] Light terminal theme: tool rows, role labels, chips and the delete confirm stay legible.
 - [ ] The new-session dialog, delete confirm and chip band in a short (12-row) terminal.
+- [ ] A subagent run shows a card with a tool count and elapsed time, and a blocked one opens itself and shows "Needs you".
+- [ ] A failed tool shows the "failed" pill; the card borders stay legible on a light terminal.

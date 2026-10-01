@@ -111,6 +111,8 @@ extension.ts
 | `src/client-core/` | Pure client state shared by the webviews and the TUI: reducer, `ClientTransport` and its loopback, drafts, history, tool-card formatting. No React, DOM or `vscode` |
 | `src/tui/` | The terminal client's non-UI half: boot, cli, keymap, view models, subcommands, shutdown |
 | `src/tui/ui/` | OpenTUI components, store, `App` and `main.tsx` (the Bun entry point) |
+| `src/tui/ui/transcript/` | `collapsible.tsx`, `tool-card.tsx`, `subagent-card.tsx`, `tool-blocks.tsx`: webview-parity cards built on `client-core/tool-render` and `client-core/subagent-window` |
+| `src/tui/ui/use-ticker.ts` | The one shared animation interval (spinners, subagent elapsed time); runs only while something subscribed is active |
 | `src/tui/ui/termcn/` | termcn components installed by the shadcn CLI, patched only as its `PATCHES.md` lists; `src/tui/ui/tui-theme.tsx` maps our terminal colours into its theme |
 
 **Build:** esbuild produces five bundles — `dist/extension.js` (node/CJS, the host) and four
