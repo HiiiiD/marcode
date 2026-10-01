@@ -108,11 +108,17 @@ extension.ts
 | `src/review/` | The review client: its own reducer, store and surface |
 | `src/review/fleet-diff.tsx` | The fleet diff surface: trees, session groups, file rows |
 | `src/review/fleet-diff-groups.ts` | Pure grouping of a flat `TreeDiff` into session groups |
+| `src/client-core/` | Pure client state shared by the webviews and the TUI: reducer, `ClientTransport` and its loopback, drafts, history, tool-card formatting. No React, DOM or `vscode` |
+| `src/tui/` | The terminal client's non-UI half: boot, cli, keymap, view models, subcommands, shutdown |
+| `src/tui/ui/` | OpenTUI components, store, `App` and `main.tsx` (the Bun entry point) |
 
 **Build:** esbuild produces five bundles — `dist/extension.js` (node/CJS, the host) and four
 browser/IIFE webview bundles, one per surface: `dist/webview.js`/`.css` for the sidebar,
 `dist/review.js`/`.css` for the review tab, `dist/fleet.js`/`.css` for the fleet tab and
 `dist/history.js`/`.css` for the history tab. TypeScript, React 19, Tailwind v4.
+
+The TUI is a Bun/ESM build, not an esbuild bundle and not part of the extension: `yarn build:tui`
+(`dist/tui/tui.js`) and `yarn build:tui:bin` (standalone `bin/marcode[.exe]`). See `docs/tui.md`.
 
 **Tests:** mocha for unit tests (`yarn test:unit`, TDD-style `suite`/`test` globals, run
 straight from source through the `tsx/cjs` hook), mocha + jsdom for webview DOM tests
@@ -120,11 +126,16 @@ straight from source through the `tsx/cjs` hook), mocha + jsdom for webview DOM 
 `HostToWebview` messages — see `src/test/dom/harness.tsx`), `@vscode/test-cli` for
 integration (`yarn test`).
 
+`yarn test:tui` runs `bun test src/test/tui` behind the RAM guard; pure TUI logic stays on mocha in
+`src/test/unit/tui-*.test.ts`. TUI tests never hand a renderer or renderable to an assertion
+(`scripts/check-tui-asserts.mjs`).
+
 ### Invariants
 
 These are not style preferences. Breaking one breaks the design.
 
 - **`src/protocol/messages.ts` is types-only.** No runtime code, no `vscode` import.
+- **Nothing under `src/tui/` or `src/client-core/` imports `vscode`; `src/client-core/` has no React or DOM.**
 - **Nothing under `src/providers/` or `src/protocol/` imports `vscode`.** Neither does
   `src/host/message-router.ts`. This is what keeps them unit-testable outside the
   extension host.

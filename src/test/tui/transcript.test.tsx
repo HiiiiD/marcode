@@ -19,8 +19,14 @@ const many = (n: number, prefix = 'm'): TranscriptItem[] =>
 
 const loadMores = () => m!.posted.filter((p) => p.t === 'load-more');
 const tick = () => new Promise((r) => setTimeout(r, 10));
-// <markdown> lays out asynchronously; a wall-clock gap plus one more frame lets it paint.
-const paint = async () => { await tick(); await m!.fromHost(); };
+// <markdown> lays out asynchronously (slower once tree-sitter loads); poll frames until the text paints.
+const paint = async (text: string) => {
+  for (let i = 0; i < 60; i++) {
+    await tick();
+    await m!.fromHost();
+    if (m!.frame().includes(text)) { return; }
+  }
+};
 
 test('user and assistant text render, assistant as markdown', async () => {
   m = await mount(<Transcript sessionId="s1" focused />);
@@ -28,7 +34,7 @@ test('user and assistant text render, assistant as markdown', async () => {
     { id: 'u1', ts: 1, role: 'user', text: 'fix the tests' },
     { id: 'a1', ts: 2, role: 'assistant', text: 'Done. **All green.**' },
   ]));
-  await paint();
+  await paint('All green');
   expect(m.frame()).toContain('> fix the tests');
   expect(m.frame()).toContain('All green');
 });
@@ -58,7 +64,7 @@ test('a very long output is clamped with a hidden-lines divider', async () => {
 test('a single enormous line wraps instead of overflowing', async () => {
   m = await mount(<Transcript sessionId="s1" focused />, { width: 40, height: 20 });
   await m.fromHost(withItems([{ id: 'a1', ts: 1, role: 'assistant', text: 'x'.repeat(200) }]));
-  await paint();
+  await paint('xxxx');
   const widest = Math.max(...m.frame().split('\n').map((l) => l.length));
   expect(widest).toBeLessThanOrEqual(40);
   expect(m.frame()).toContain('xxxx');
@@ -74,7 +80,7 @@ test('a streaming delta appends to the visible assistant text', async () => {
   m = await mount(<Transcript sessionId="s1" focused />);
   await m.fromHost(withItems([{ id: 'a1', ts: 1, role: 'assistant', text: 'Hel' }], 'running'));
   await m.fromHost({ t: 'session-patch', id: 's1', patch: { op: 'delta', itemId: 'a1', field: 'text', delta: 'lo there' } });
-  await paint();
+  await paint('Hello there');
   expect(m.frame()).toContain('Hello there');
 });
 
