@@ -4557,7 +4557,7 @@ __metadata:
     react-devtools-core: "npm:8.0.0"
     react-dom: "npm:^19.2.8"
     react-markdown: "npm:^10.1.0"
-    react-resizable-panels: "npm:^4.13.3"
+    react-resizable-panels: "npm:^4.14.1"
     remark-gfm: "npm:^4.0.1"
     sonner: "npm:^2.0.7"
     tailwind-merge: "npm:^3.7.0"
@@ -5859,13 +5859,13 @@ __metadata:
   languageName: node
   linkType: hard
 
-"react-resizable-panels@npm:^4.13.3":
-  version: 4.13.3
-  resolution: "react-resizable-panels@npm:4.13.3"
+"react-resizable-panels@npm:^4.14.1":
+  version: 4.14.1
+  resolution: "react-resizable-panels@npm:4.14.1"
   peerDependencies:
     react: ^18.0.0 || ^19.0.0
     react-dom: ^18.0.0 || ^19.0.0
-  checksum: 10c0/3cc85f4271aba5f92bc4814dfd6d07e7b222829f3522e9e893f236a476f28cf539544c729c8983df79d1933ebe021554f8794ce3d2464c95c03f94470959f313
+  checksum: 10c0/45b9efa097e8eb686166bec545ff388d78b7b22606b4a16f20f30c3d66bb0e1e4ce36fc69b59306a40e58f187064b7ff255ea6cc89fb7b7bc5dd321c80f29b46
   languageName: node
   linkType: hard
 
