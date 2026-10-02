@@ -57,7 +57,7 @@ export function ApprovalPrompt(props: { sessionId: SessionId; request: Permissio
 
   const extra = [request.meta?.description, request.meta?.decisionReason].filter((t): t is string => Boolean(t));
   return (
-    <Surface tone="panel" padX={1} flexDirection="column" title="permission">
+    <Surface tone="panel" padX={1} padY={1} flexDirection="column" title="permission">
       <text fg="yellow">{`${header.verb} ${header.primary}`}</text>
       {extra.map((t, i) => <text key={`m${i}`} fg={muted}>{t}</text>)}
       {[...shown.head, ...(shown.hidden > 0 ? [`… ${shown.hidden} more …`] : []), ...shown.tail].map((l, i) => <text key={i}>{l}</text>)}

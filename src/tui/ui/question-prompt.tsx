@@ -80,7 +80,7 @@ export function QuestionPrompt(props: { sessionId: SessionId; request: QuestionR
   const shownText = spec.secret ? '●'.repeat([...text].length) : text;
   const hint = freeText ? 'Enter submit' : spec.multiSelect ? 'Space toggle, Enter submit' : 'Up/Down, Enter choose';
   return (
-    <Surface tone="panel" padX={1} flexDirection="column" title={spec.header}>
+    <Surface tone="panel" padX={1} padY={1} flexDirection="column" title={spec.header}>
       <text>{spec.question}</text>
       {options.length > 0 && !typing ? rows.map((label, i) => {
         const desc = options[i]?.description;

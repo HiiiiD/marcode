@@ -66,6 +66,7 @@ export async function mountBooted(opts: MountBootedOpts = {}) {
   };
   const settle = async (ms = 100) => { await new Promise((r) => setTimeout(r, ms)); await render(); };
   const frame = () => setup.captureCharFrame();
+  const spans = () => setup.captureSpans().lines;
   const waitFrame = async (cond: (f: string) => boolean, ms = 3000) => {
     try { await until(async () => { await render(); return cond(frame()); }, ms); }
     catch (e) { throw new Error(`${(e as Error).message}
@@ -74,7 +75,7 @@ ${frame()}`); }
   await settle();
   let destroyed = false;
   return {
-    booted, home, cwd, settle, frame, waitFrame,
+    booted, home, cwd, settle, frame, spans, waitFrame,
     press: (k: string, mods?: Mods) => render(() => { setup.mockInput.pressKey(KEY_ALIAS[k] ?? k, mods); }),
     type: (t: string) => render(async () => { await setup.mockInput.typeText(t); }),
     destroy: async () => {

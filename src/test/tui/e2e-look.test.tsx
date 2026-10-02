@@ -7,7 +7,7 @@ type Mounted = Awaited<ReturnType<typeof mountBooted>>;
 let m: Mounted | undefined;
 afterEach(async () => { await m?.destroy(); m = undefined; });
 
-test('with a derived palette the whole app is rounded surfaces, with a gap between roster and pane', async () => {
+test('with a derived palette the app is square tinted surfaces, with a gap between roster and pane', async () => {
   m = await mountBooted({ prompt: 'hello there', tokens: deriveTokens(DARK) });
   await m.waitFrame((f) => f.includes('hello there'));
   const { manager } = m.booted.host;
@@ -17,9 +17,9 @@ test('with a derived palette the whole app is rounded surfaces, with a gap betwe
   await m.settle(300);
   const f = m.frame();
   expect(['┌', '┐', '└', '┘'].some((c) => f.includes(c))).toBe(false);
-  expect(f.includes('▗')).toBe(true);
-  const rows = f.split('\n').slice(1, 6);
-  expect(rows.every((r) => r[25] === '█' && r[26] === ' ' && r[27] === '█')).toBe(true);
+  expect(['▗', '▖', '▝', '▘'].some((c) => f.includes(c))).toBe(false);
+  const cells = m.spans()[2].spans.flatMap((sp) => [...sp.text].map(() => sp.bg.toString()));
+  expect(cells[25] !== cells[26] && cells[27] !== cells[26]).toBe(true);
 });
 
 test('without a palette the plain framed layout is unchanged', async () => {
@@ -27,5 +27,4 @@ test('without a palette the plain framed layout is unchanged', async () => {
   await m.waitFrame((f) => f.includes('hello there'));
   const f = m.frame();
   expect(f.includes('┌')).toBe(true);
-  expect(f.includes('▗')).toBe(false);
 });

@@ -151,7 +151,7 @@ export function Composer({ sessionId, focused, onOpenPicker }: { sessionId: Sess
       {popup.open ? <MentionPopup rows={popup.rows} index={popup.index} /> : null}
       <AttachmentChips attachments={attachments} rejected={rejected} />
       {queued.map((q) => <text key={q.id} fg={tokens?.textMuted ?? 'gray'}>{`queued: ${q.text}`}</text>)}
-      <Surface tone="panel" padX={1}>
+      <Surface tone="panel" padX={1} padY={1}>
         <textarea
           ref={box}
           focused={focused}
