@@ -2,7 +2,7 @@ export type Zone = 'composer' | 'transcript' | 'roster' | 'approval' | 'question
 export interface KeyInput { name: string; sequence?: string; ctrl?: boolean; meta?: boolean; shift?: boolean }
 export type Action =
   | { do: 'toggle-roster' } | { do: 'new-session' } | { do: 'interrupt' } | { do: 'quit-request' }
-  | { do: 'cycle-zone' } | { do: 'open-model' } | { do: 'open-effort' } | { do: 'open-mode' }
+  | { do: 'cycle-zone' } | { do: 'open-model' } | { do: 'open-effort' } | { do: 'open-mode' } | { do: 'open-context' }
   | { do: 'send' } | { do: 'newline' } | { do: 'history-prev' }
   | { do: 'item-next' } | { do: 'item-prev' } | { do: 'toggle-item' } | { do: 'page-up' } | { do: 'page-down' } | { do: 'repin' }
   | { do: 'roster-next' } | { do: 'roster-prev' } | { do: 'roster-focus' } | { do: 'roster-hide' } | { do: 'roster-rename' }
@@ -21,6 +21,7 @@ function globalAction(key: KeyInput, zone: Zone, ctx: { running: boolean }): Act
       case 'c': return ctx.running ? act('interrupt') : act('quit-request');
       case 'p': return act('open-model');
       case 'e': return act('open-effort');
+      case 't': return act('open-context');
       case 'r': return act('refresh-catalog');
       case 'w': return act('pane-prefix');
     }

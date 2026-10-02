@@ -14,6 +14,7 @@ import { NewSessionDialog, type HandoffSource } from './new-session-dialog';
 import { NoticeLine } from './notice-line';
 import { PaneTree } from './pane-tree';
 import { Roster, ROSTER_W } from './roster';
+import { ContextDialog } from './context-dialog';
 import { StatusLine } from './status-line';
 import { useTuiStore } from './store';
 import { useAppKeys } from './use-app-keys';
@@ -164,9 +165,14 @@ export function App(props: AppProps) {
       {(picker === 'mode' || picker === 'effort') && focusedId ? (
         <ModeDialog sessionId={focusedId} focus={picker === 'effort' ? 'effort' : 'modes'} onClose={() => { setPicker(null); }} />
       ) : null}
+      {picker === 'context' && focusedId ? <ContextDialog sessionId={focusedId} onClose={() => { setPicker(null); }} /> : null}
       {deleting ? <DeleteConfirm id={deleting.id} title={deleting.title} onDone={() => { setDeleting(null); }} /> : null}
       <box flexDirection="column" flexShrink={0}>
-        <StatusLine sessionId={focusedId} width={width} />
+        <StatusLine
+          sessionId={focusedId}
+          width={width}
+          onOpenContext={summary && !summary.owner && !dialog && !deleting && !picker ? () => { setPicker('context'); } : undefined}
+        />
         <NoticeLine />
       </box>
     </box>

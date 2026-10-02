@@ -65,6 +65,9 @@ suite('tui keymap', () => {
     assert.deepStrictEqual(actionFor('composer', { name: 'r', ctrl: true }, idle), { do: 'refresh-catalog' });
     assert.deepStrictEqual(actionFor('composer', { name: 'p', ctrl: true }, idle), { do: 'open-model' });
     assert.deepStrictEqual(actionFor('composer', { name: 'e', ctrl: true }, idle), { do: 'open-effort' });
+    assert.deepStrictEqual(actionFor('composer', { name: 't', ctrl: true }, idle), { do: 'open-context' });
+    assert.deepStrictEqual(actionFor('transcript', { name: 't', ctrl: true }, idle), { do: 'open-context' });
+    assert.strictEqual(actionFor('composer', { name: 't' }, idle), undefined);
   });
   test('roster: p pins, / filters, shift+d deletes, plain d does nothing', () => {
     assert.deepStrictEqual(actionFor('roster', { name: 'p' }, idle), { do: 'roster-pin' });
