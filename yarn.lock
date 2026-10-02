@@ -4565,7 +4565,7 @@ __metadata:
     tsx: "npm:^4.23.15"
     typescript: "npm:^6.0.3"
     typescript-eslint: "npm:^8.71.0"
-    web-tree-sitter: "npm:0.27.0"
+    web-tree-sitter: "npm:0.25.10"
     zod: "npm:^4.6.5"
   languageName: unknown
   linkType: soft
@@ -7124,10 +7124,15 @@ __metadata:
   languageName: node
   linkType: hard
 
-"web-tree-sitter@npm:0.27.0":
-  version: 0.27.0
-  resolution: "web-tree-sitter@npm:0.27.0"
-  checksum: 10c0/a4e0a756db8a9711286ad8334f8e2a666030288e04f82c413cee5b678709e65570791c4613b98786a9b269c2386055c5758071306eb15b7d8faf943b7d0c1241
+"web-tree-sitter@npm:0.25.10":
+  version: 0.25.10
+  resolution: "web-tree-sitter@npm:0.25.10"
+  peerDependencies:
+    "@types/emscripten": ^1.40.0
+  peerDependenciesMeta:
+    "@types/emscripten":
+      optional: true
+  checksum: 10c0/8056263c75f59c8f992584386f85675fdce94f67eec506970f49d203a7d25effa96a4736eee5b06f06dc4d8f01339f68d9d4e97d713a6517d19db1f1c0954e06
   languageName: node
   linkType: hard
 

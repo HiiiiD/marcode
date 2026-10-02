@@ -10,3 +10,6 @@ updates:
     schedule:
       interval: "daily"
     open-pull-requests-limit: 15
+    ignore:
+      # @opentui/core pins 0.25.10 and imports tree-sitter.wasm, renamed in 0.27
+      - dependency-name: "web-tree-sitter"
