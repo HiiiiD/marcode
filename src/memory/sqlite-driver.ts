@@ -47,6 +47,8 @@ export function assertFts5(db: SqlDb): void {
   try {
     db.exec('CREATE VIRTUAL TABLE temp.fts5_probe USING fts5(x); DROP TABLE temp.fts5_probe;');
   } catch (err) {
+    // a corrupt or locked file fails the probe too; only blame FTS5 when the message says so
+    if (!/fts5|no such module/i.test((err as Error).message)) { throw err; }
     throw new Error(`SQLite FTS5 is unavailable: ${(err as Error).message}`);
   }
 }

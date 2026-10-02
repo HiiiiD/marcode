@@ -50,6 +50,11 @@ suite('sqlite-driver', () => {
     assert.throws(() => assertFts5(db), /FTS5 is unavailable: no such module: fts5/);
   });
 
+  test('assertFts5 does not blame FTS5 for an unrelated open failure', () => {
+    const db = wrapDatabase(fakeRaw({ exec: () => { throw new Error('file is not a database'); } }));
+    assert.throws(() => assertFts5(db), (err: Error) => err.message === 'file is not a database');
+  });
+
   test('openDatabase round-trips on this runtime and reports no row as undefined', async () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'marcode-driver-'));
     const db = openDatabase(path.join(dir, 'x.sqlite'));
