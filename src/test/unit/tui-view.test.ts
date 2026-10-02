@@ -2,7 +2,7 @@ import * as assert from 'node:assert';
 import { bottomSlot } from '../../tui/view/bottom-slot';
 import { rosterRows } from '../../tui/view/roster-rows';
 import { transcriptRows } from '../../tui/view/transcript-rows';
-import { permission, question, summary, tool } from '../fixtures/protocol';
+import { permission, question, relocation, summary, tool } from '../fixtures/protocol';
 import type { PaneState } from '../../client-core/reducer';
 import type { PermissionRequest, QuestionRequest } from '../../protocol/messages';
 
@@ -130,5 +130,15 @@ suite('tui view: transcript rows', () => {
   test('a question item keeps its state', () => {
     const rows = transcriptRows([question({ id: 'q1' })], false);
     assert.strictEqual(rows[0].kind === 'question' && rows[0].state, 'pending');
+  });
+  test('a relocation becomes a card row; only the newest unsettled offer is active', () => {
+    const rows = transcriptRows([
+      relocation({ id: 'r1', state: 'pending' }),
+      relocation({ id: 'r2', state: 'moved' }),
+      relocation({ id: 'r3', state: 'pending' }),
+    ], false);
+    assert.deepStrictEqual(rows.map((r) => (r.kind === 'relocation' ? [r.id, r.card.state, r.active] : null)), [
+      ['r1', 'pending', false], ['r2', 'moved', false], ['r3', 'pending', true],
+    ]);
   });
 });

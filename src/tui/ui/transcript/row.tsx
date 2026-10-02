@@ -64,6 +64,8 @@ export function RowView(props: { row: TranscriptRow; selected: boolean; expanded
           {`${row.text} — ${row.state}`}
         </text>
       );
+    case 'relocation':
+      return <text fg="gray">{row.card.name}</text>;
     case 'notice':
       return <text attributes={bold} fg={row.tone === 'error' ? 'red' : 'gray'} wrapMode="word">{row.text}</text>;
   }
