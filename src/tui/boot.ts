@@ -27,11 +27,6 @@ export interface Booted {
   shutdown(): Promise<void>;
 }
 
-// A known build limit, not a fault of this install: shown on every launch it would only be noise.
-export function memoryForRuntime(memory: HostConfig['memory'], isBun: boolean): HostConfig['memory'] {
-  return isBun && memory.enabled ? { ...memory, enabled: false } : memory;
-}
-
 export async function bootHost(opts: BootOptions): Promise<Booted> {
   const home = opts.home ?? marcodeHome();
   const configFile = configPath(home);
@@ -41,7 +36,6 @@ export async function bootHost(opts: BootOptions): Promise<Booted> {
   const loaded = await loadConfig(configFile);
   for (const w of loaded.warnings) { warn(w); }
   const config: HostConfig = { ...defaultHostConfig(), ...loaded.config, ...opts.config };
-  config.memory = memoryForRuntime(config.memory, Boolean(process.versions.bun));
 
   const workspaceRoot = await findGitRoot(opts.cwd);
   const workspaceDir = await resolveWorkspaceDir(home, workspaceRoot);

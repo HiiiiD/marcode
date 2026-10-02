@@ -99,8 +99,9 @@ notice, then restart it. See `config.md`.
 - OpenTUI needs Bun >= 1.3 (or Node >= 26.4 with `--experimental-ffi`). The extension stays on Node 22;
   the TUI is a separate Bun/ESM build, and `bin/marcode` embeds Bun, the native library and the
   tree-sitter assets.
-- Memory and recall are off in the TUI: `node:sqlite` does not exist under Bun (see
-  `superpowers/notes/2026-10-01-bun-host-spike.md`). Sessions created from the TUI are not digested.
+- Memory and recall run in the TUI on `bun:sqlite` through `src/memory/sqlite-driver.ts`, over the same
+  `memory.sqlite` as the VS Code host. Not verified: macOS, where `bun:sqlite` uses the system SQLite and
+  may lack FTS5 (the store then stays off and a warning says so).
 - `dist/tui/tui.js` references its assets by absolute path; run it where it was built.
 - Shift+Enter is not distinguished from Enter by most terminals; use Ctrl+J or Alt+Enter.
 - Roster rename, the empty-state prompt picker, clipboard-image attach and "remember last effort/mode" in the new-session dialog are not implemented.

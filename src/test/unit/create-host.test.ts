@@ -33,6 +33,14 @@ suite('createHost', () => {
     assert.strictEqual(warnings.some((m) => m.includes('summar')), true);
   });
 
+  test('a memory store that cannot open leaves the host running and says why', async () => {
+    await fs.mkdir(path.join(dir, 'memory.sqlite'));
+    const warnings: string[] = [];
+    const h = await build({ memory: { enabled: true, summarizer: undefined } }, warnings);
+    await h.init();
+    assert.strictEqual(warnings.some((m) => m.includes('memory is unavailable')), true);
+  });
+
   test('only the enabled providers are registered', async () => {
     const h = await build();
     assert.deepStrictEqual([...h.providers.keys()], ['fake']);

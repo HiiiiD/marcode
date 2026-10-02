@@ -77,6 +77,7 @@ extension.ts
 | `src/providers/opencode/map-subagent-tools.ts` | Raw `ToolPart` → the same `AcpToolCall` shape the ACP bridge already produces, so classification stays in `map-tools.ts` alone |
 | `src/shared/usage-windows.ts` | Fixed display order for usage windows; shared so neither provider nor host owns the other's table |
 | `src/shared/file-cap.ts` | `FILE_CAP`/`MAX_FILE_CAP` — shared so the host and the review webview agree on the default and ceiling without importing across the host/webview boundary |
+| `src/memory/sqlite-driver.ts` | `openDatabase`: `bun:sqlite` under Bun, `node:sqlite` otherwise, behind the narrow `SqlDb` the FTS store uses; finalizes each statement after one use (Bun's `close()` otherwise leaves the file locked) and probes FTS5 at open |
 | `src/host/transcript-store.ts` | `index.json` + per-session JSONL under the workspace directory; append, load, page. Index, usage and catalog writes are atomic; a foreign session's writes are refused |
 | `src/host/agent-session.ts` | One conversation: transcript, status, pending approvals |
 | `src/host/session-manager.ts` | Roster; create/close/delete; patch fan-out to the visible set |
