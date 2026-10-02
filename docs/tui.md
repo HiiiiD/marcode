@@ -39,7 +39,8 @@ yarn build:tui:bin    # bin/marcode.exe (bin/marcode elsewhere): standalone, Bun
 | Up / Down or k / j, Enter, Esc | new session dialog | move; Enter picks the provider, then the model (skipped when it has one); Esc cancels |
 | Ctrl+P / Ctrl+E | your own session | open the model dialog (type to search, favorites first) / the permission-mode dialog on its effort row (Left/Right steps the level live) |
 | Shift+Tab | your own session | open the permission-mode dialog (`bypass` is greyed once the session has started) |
-| `/model`, `/effort`, `/mode` | composer | the same dialogs, typed and sent with Enter |
+| Ctrl+T | your own session | open the context dialog (window, slices, memory files; `r` retries a failed read). The status line shows `ctx N%`, red from 80%, and clicking it does the same |
+| `/model`, `/effort`, `/mode`, `/context` | composer | the same dialogs, typed and sent with Enter |
 | Ctrl+R | anywhere | re-check providers |
 | Ctrl+W, then h j k l or arrows | anywhere | focus the pane in that direction |
 | Ctrl+W, then `|` / `-` | anywhere | split right / below: opens the new-session dialog, and the session lands in the new pane |
@@ -129,6 +130,7 @@ termcn's theme. Always render a freshly installed item and look for stacked rows
 
 Run in Windows Terminal and in one macOS or Linux terminal.
 
+- [ ] Click the `ctx` share in the status line: the context dialog opens (`Ctrl+T` and `/context` are the fallback if mouse clicks do not arrive).
 - [ ] Resize below 100 columns and back: the roster becomes an overlay, then a column again.
 - [ ] Paste a multi-line block into the composer: it arrives intact, no send, no stray keys.
 - [ ] Ctrl+J and Alt+Enter insert a newline; note whether Shift+Enter sends or inserts one.

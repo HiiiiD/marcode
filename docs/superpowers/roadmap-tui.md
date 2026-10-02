@@ -19,6 +19,8 @@ below is its own cycle: spec in `docs/superpowers/specs/`, plan in `docs/superpo
   Left over: layout presets UI, drag-to-move panes between slots, grid-shape commands, tabbed panes, fork-to-take-over
   of a foreign session. Not verified in a real terminal: mouse drag and wheel reporting, `Ctrl+W` under a multiplexer.
 
+- **D1. Context** (`feat/tui-awareness-context`): `ctx N%` in the status line (red from 80%), a context dialog via `/context`, `Ctrl+T` or a click on the share. Spec `2026-10-02-tui-awareness-design.md`, plan `2026-10-02-tui-awareness-context.md`. Not verified in a real terminal: the status-line click.
+
 ## In progress (branch `feat/tui-termcn`, stacked on `feat/tui-features`)
 
 - **termcn adoption.** The v1 spec said "OpenTUI with termcn-style copy-paste components" but v1 and B were
@@ -35,8 +37,8 @@ All three are done, and C (above) has landed on top of them.
 
 ## Next, in the order the user approved
 
-1. **D. Awareness.** Context dialog and a context share in the status line; usage strip; worktree and relocation
-   cards (currently a read-only one-line notice).
+1. **D2. Awareness, slice 2.** Usage strip in the roster header; worktree and relocation cards with actions
+   (currently a read-only one-line notice). D1 (context) has landed.
 2. **E. Review and history.** Fleet-diff review and history surfaces. Biggest items; need their own surface design.
 3. **F. Platform.** In-TUI login by suspending the renderer; recall and memory (off under Bun because
    `node:sqlite` is unavailable there, so it needs a replacement).
