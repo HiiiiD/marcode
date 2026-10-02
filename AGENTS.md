@@ -114,6 +114,8 @@ extension.ts
 | `src/tui/ui/transcript/` | `collapsible.tsx`, `tool-card.tsx`, `subagent-card.tsx`, `tool-blocks.tsx`: webview-parity cards built on `client-core/tool-render` and `client-core/subagent-window` |
 | `src/tui/ui/use-ticker.ts` | The one shared animation interval (spinners, subagent elapsed time); runs only while something subscribed is active |
 | `src/tui/ui/termcn/` | termcn components installed by the shadcn CLI, patched only as its `PATCHES.md` lists; `src/tui/ui/tui-theme.tsx` maps our terminal colours into its theme |
+| `src/tui/ui/tokens/` | `deriveTokens` (terminal palette to RGB surfaces, diff and syntax tints), `TokensProvider`, `detectTokens`; consumers fall back to named colors when tokens are `undefined` |
+| `src/tui/ui/transcript/panel.tsx`, `diff-block.tsx`, `diff-view.ts` | Tinted left-bar card frame; native `<diff>` with width-chosen split/unified; hunk validation before a patch reaches the renderer |
 
 **Build:** esbuild produces five bundles — `dist/extension.js` (node/CJS, the host) and four
 browser/IIFE webview bundles, one per surface: `dist/webview.js`/`.css` for the sidebar,

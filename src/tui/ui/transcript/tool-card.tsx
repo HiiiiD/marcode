@@ -4,7 +4,8 @@ import type { FoldedPermission, ToolItem } from '../../view/transcript-rows';
 import { useTheme } from '../termcn/hooks/use-theme';
 import { SPINNER, useTick } from '../use-ticker';
 import { Collapsible } from './collapsible';
-import { ToolBlocks } from './tool-blocks';
+import { useTokens } from '../tokens/tokens-provider';
+import { nativeDiff, ToolBlocks } from './tool-blocks';
 import { TOOL_GLYPHS } from './tool-glyphs';
 
 export function ToolCard(props: {
@@ -28,9 +29,13 @@ export function ToolCard(props: {
   const open = props.open && props.headerOnly !== true;
   const muted = theme.colors.mutedForeground;
   const output = open ? describeOutput(item.tool.kind, item.output, item.state) : [];
+  const tokens = useTokens();
+  const inputBlocks = open ? describeInput(item.tool) : [];
+  const wide = inputBlocks.some((b) => nativeDiff(b, tokens) !== undefined);
   return (
     <Collapsible
       open={open}
+      wide={wide}
       selected={props.selected}
       header={(
         <>
@@ -53,7 +58,7 @@ export function ToolCard(props: {
       )}
     >
       {open && approval?.reason ? <text fg={muted} wrapMode="word">{`Denied: ${approval.reason}`}</text> : null}
-      {open ? <ToolBlocks blocks={describeInput(item.tool)} /> : null}
+      {open ? <ToolBlocks blocks={inputBlocks} /> : null}
       {output.length > 0 ? (
         <>
           <text fg={muted}>{failed ? 'Error' : 'Result'}</text>

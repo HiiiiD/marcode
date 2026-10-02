@@ -1,5 +1,8 @@
 import { afterEach, expect, test } from 'bun:test';
 import { ToolCard } from '../../tui/ui/transcript/tool-card';
+import { deriveTokens } from '../../tui/ui/tokens/derive-tokens';
+import { TokensProvider } from '../../tui/ui/tokens/tokens-provider';
+import { DARK } from '../fixtures/terminal-colors';
 import { tool } from '../fixtures/protocol';
 import { mount, type Mounted } from './harness';
 
@@ -103,4 +106,28 @@ test('the permission state survives a 50-column header', async () => {
   const line = rowsOf(m.frame()).find((r) => r.includes('Bash')) ?? '';
   expect(line).toContain('awaiting approval');
   expect(line).toContain('▸');
+});
+
+const editItem = () => tool({
+  tool: {
+    kind: 'file-edit', label: 'Edit',
+    files: [{ path: '/a.ts', op: 'modify', unifiedDiff: '--- a/a.ts\n+++ b/a.ts\n@@ -1 +1 @@\n-const old = 1;\n+const next = 2;' }],
+  },
+  output: undefined,
+});
+const widest = (f: string) => Math.max(...rowsOf(f).map((r) => r.trimEnd().length));
+
+test('with tokens an open edit card widens past 100 columns so the diff can go split', async () => {
+  m = await mount(
+    <TokensProvider tokens={deriveTokens(DARK)}><ToolCard item={editItem()} open selected={false} /></TokensProvider>,
+    { width: 200, height: 20 },
+  );
+  const row = rowsOf(m.frame()).find((r) => r.includes('const old'));
+  expect(row !== undefined && row.includes('const next')).toBe(true);
+  expect(widest(m.frame()) > 100).toBe(true);
+});
+
+test('without tokens the same card stays at the 100 column measure', async () => {
+  m = await mount(<ToolCard item={editItem()} open selected={false} />, { width: 200, height: 20 });
+  expect(widest(m.frame()) <= 100).toBe(true);
 });

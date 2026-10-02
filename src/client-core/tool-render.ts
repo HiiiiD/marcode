@@ -43,7 +43,7 @@ export type ToolBlock =
   /** A file path, drawn as a reveal-in-editor control. */
   | { kind: 'path'; path: string; hint?: string }
   /** Unified-ish diff lines, each already prefixed with ` `, `+` or `-`. */
-  | { kind: 'diff'; lines: string[] }
+  | { kind: 'diff'; lines: string[]; unified?: string }
   | { kind: 'todos'; items: { status: TodoStatus; text: string }[] }
   /** Free text shown in the editor font, clamped by the card. */
   | { kind: 'lines'; text: string; tone: 'output' | 'error' | 'code' }
@@ -187,7 +187,9 @@ function editBlocks(file: FileEdit): ToolBlock[] {
   if (file.unifiedDiff) { lines.push(...diffBodyLines(file.unifiedDiff)); }
   // A rename- or mode-only change has headers and no body left after
   // stripping them; an empty diff block is an empty bordered box.
-  if (lines.length > 0) { blocks.push({ kind: 'diff', lines }); }
+  // Only a lone, hunk-bearing patch can be handed to a real diff renderer; mixed sources have no single patch.
+  const unified = !file.edits?.length && file.unifiedDiff && /^@@/m.test(file.unifiedDiff) ? file.unifiedDiff : undefined;
+  if (lines.length > 0) { blocks.push(unified === undefined ? { kind: 'diff', lines } : { kind: 'diff', lines, unified }); }
   if (file.replaceAll) {
     blocks.push({ kind: 'field', label: 'scope', value: 'all occurrences' });
   }

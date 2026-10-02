@@ -1,6 +1,11 @@
 import { TextAttributes } from '@opentui/core';
 import { clampLines, type ToolBlock } from '../../../client-core/tool-render';
 import { useTheme } from '../termcn/hooks/use-theme';
+import type { TuiTokens } from '../tokens/derive-tokens';
+import { useTokens } from '../tokens/tokens-provider';
+import { DiffBlock } from './diff-block';
+import { hunksAreWellFormed, MAX_NATIVE_DIFF_LINES } from './diff-view';
+import { filetypeOf } from './filetype';
 
 interface Line { text: string; fg?: string; attributes?: number }
 
@@ -31,13 +36,28 @@ function blockLines(block: ToolBlock, c: { muted: string; ok: string; bad: strin
   }
 }
 
+export function nativeDiff(block: ToolBlock, tokens: TuiTokens | undefined): string | undefined {
+  if (!tokens || block.kind !== 'diff' || block.unified === undefined) { return undefined; }
+  if (block.lines.length > MAX_NATIVE_DIFF_LINES || !hunksAreWellFormed(block.unified)) { return undefined; }
+  return block.unified;
+}
+
 export function ToolBlocks(props: { blocks: ToolBlock[] }) {
   const theme = useTheme();
+  const tokens = useTokens();
   const colors = { muted: theme.colors.mutedForeground, ok: theme.colors.success, bad: theme.colors.error };
-  const lines = props.blocks.flatMap((b) => blockLines(b, colors));
+  // A diff block has no path of its own; it belongs to the path block just before it.
+  let path: string | undefined;
   return (
     <box flexDirection="column">
-      {lines.map((l, i) => <text key={i} fg={l.fg} attributes={l.attributes} wrapMode="word">{l.text}</text>)}
+      {props.blocks.map((block, i) => {
+        if (block.kind === 'path') { path = block.path; }
+        const patch = nativeDiff(block, tokens);
+        if (patch !== undefined && tokens) { return <DiffBlock key={i} unified={patch} filetype={filetypeOf(path)} tokens={tokens} />; }
+        return blockLines(block, colors).map((l, j) => (
+          <text key={`${i}-${j}`} fg={l.fg} attributes={l.attributes} wrapMode="word">{l.text}</text>
+        ));
+      })}
     </box>
   );
 }

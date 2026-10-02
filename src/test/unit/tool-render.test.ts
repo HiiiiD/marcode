@@ -205,8 +205,21 @@ suite('describeInput', () => {
     });
     assert.deepStrictEqual(blocks, [
       { kind: 'path', path: '/a.ts' },
-      { kind: 'diff', lines: ['-old', '+new'] },
+      { kind: 'diff', lines: ['-old', '+new'], unified: '--- a/a.ts\n+++ b/a.ts\n@@ -1 +1 @@\n-old\n+new' },
     ]);
+  });
+
+  test('a unified diff without hunk headers, or mixed with before/after edits, carries no unified text', () => {
+    const noHunk = describeInput({
+      kind: 'file-edit', label: 'Edit',
+      files: [{ path: '/a.ts', op: 'modify', unifiedDiff: '-old\n+new' }],
+    });
+    assert.deepStrictEqual(noHunk[1], { kind: 'diff', lines: ['-old', '+new'] });
+    const mixed = describeInput({
+      kind: 'file-edit', label: 'Edit',
+      files: [{ path: '/a.ts', op: 'modify', edits: [{ before: 'a', after: 'b' }], unifiedDiff: '@@ -1 +1 @@\n-x\n+y' }],
+    });
+    assert.strictEqual((mixed[1] as { unified?: string }).unified, undefined);
   });
 
   test('a header-only diff yields no empty diff block, but does name the rename op', () => {
@@ -230,7 +243,10 @@ suite('describeInput', () => {
     });
     assert.deepStrictEqual(blocks, [
       { kind: 'path', path: '/s.css' },
-      { kind: 'diff', lines: ['--color-primary: red;', '++counter: 1;'] },
+      {
+        kind: 'diff', lines: ['--color-primary: red;', '++counter: 1;'],
+        unified: '--- a/s.css\n+++ b/s.css\n@@ -1,2 +1,2 @@\n--color-primary: red;\n++counter: 1;',
+      },
     ]);
   });
 
@@ -244,7 +260,10 @@ suite('describeInput', () => {
     });
     assert.deepStrictEqual(blocks, [
       { kind: 'path', path: '/a.ts' },
-      { kind: 'diff', lines: ['-old1', '+new1', '-old2', '+new2'] },
+      {
+        kind: 'diff', lines: ['-old1', '+new1', '-old2', '+new2'],
+        unified: '--- a/a.ts\n+++ b/a.ts\n@@ -1 +1 @@\n-old1\n+new1\n@@ -10 +10 @@\n-old2\n+new2',
+      },
     ]);
   });
 
