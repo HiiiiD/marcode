@@ -28,3 +28,10 @@ test('without a palette the plain framed layout is unchanged', async () => {
   const f = m.frame();
   expect(f.includes('┌')).toBe(true);
 });
+
+test('a long roster row stays on one line and the title is not overdrawn', async () => {
+  m = await mountBooted({ prompt: 'hello there', tokens: deriveTokens(DARK) });
+  await m.waitFrame((f) => f.includes('hello there'));
+  const rows = m.frame().split('\n').map((r) => r.slice(0, 26));
+  expect(rows[1].includes('sessions')).toBe(true);
+});

@@ -76,15 +76,16 @@ export function Roster({ focused, onFocusSession, onAskDelete, onHandoff, squeez
   });
 
   return (
-    <Surface tone="pane" padX={1} flexDirection="column" width={ROSTER_W} marginRight={tokens ? 1 : 0} title="sessions">
-      {filtering || filter !== '' ? <text fg={theme.colors.muted}>{`/${filter}`}</text> : null}
-      <scrollbox ref={scroll} flexGrow={1}>
+    <Surface tone="pane" padX={1} padY={1} flexDirection="column" width={ROSTER_W} marginRight={tokens ? 1 : 0} title="sessions">
+      {filtering || filter !== '' ? <text flexShrink={0} fg={theme.colors.muted}>{`/${filter}`}</text> : null}
+      <scrollbox ref={scroll} flexGrow={1} flexShrink={1} minHeight={0}>
         {rows.map((row, i) => (
           <text
             key={row.id}
             id={row.id}
             fg={row.dim ? theme.colors.mutedForeground : undefined}
             attributes={focused && i === cursor ? 1 : 0}
+            truncate
             onMouseDown={() => { setCursorId(row.id); onFocusSession(row.id); }}
           >
             {`${row.focused ? '▸' : row.squeezed ? '+' : row.leaf ? '▪' : ' '}${row.glyph} ${row.pinned ? '★ ' : ''}${row.title}${row.suffix ? ` ${row.suffix}` : ''}`}

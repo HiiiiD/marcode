@@ -22,7 +22,7 @@ export function Surface({ tone = 'panel', fallbackBorder = 'gray', padX = 0, pad
   }
   return (
     <box backgroundColor={tokens[tone]} paddingLeft={padX} paddingRight={padX} paddingTop={padY} paddingBottom={padY} {...box}>
-      {title ? <text fg={tokens.textMuted}>{title}</text> : null}
+      {title ? <text flexShrink={0} fg={tokens.textMuted}>{title}</text> : null}
       {children}
     </box>
   );
