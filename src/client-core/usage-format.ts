@@ -10,6 +10,9 @@ const SHORT_LABEL: Record<string, string> = {
   'five-hour': '5h', 'seven-day': '7d', 'seven-day-opus': '7d opus', 'seven-day-sonnet': '7d sonnet',
 };
 
+// Codex names its windows by duration, so its ids are generic and only the label says which window it is.
+const SHORT_BY_LABEL: Record<string, string> = { 'Session (5h)': '5h', Week: '7d' };
+
 export interface UsageWindowRow { id: string; label: string; percent: number; reset?: string }
 export interface UsageProviderRow { id: string; name: string; windows: UsageWindowRow[] }
 
@@ -36,7 +39,7 @@ export function usageRows(
       name: nameOf(id),
       windows: orderWindows(live).map((w) => {
         const reset = resetCountdown(w.resetsAt, now);
-        return { id: w.id, label: SHORT_LABEL[w.id] ?? w.label, percent: clampPercent(w.usedPercent), ...(reset ? { reset } : {}) };
+        return { id: w.id, label: SHORT_LABEL[w.id] ?? SHORT_BY_LABEL[w.label] ?? w.label, percent: clampPercent(w.usedPercent), ...(reset ? { reset } : {}) };
       }),
     });
   }
@@ -58,8 +61,10 @@ export function windowLine(w: UsageWindowRow, width: number, labelWidth: number)
     pct,
     ...(reset && w.reset ? { reset: w.reset } : {}),
   });
-  const attempts: [number, boolean, boolean][] = [[labelWidth, true, true], [labelWidth, true, false]];
-  for (let l = labelWidth - 1; l >= MIN_LABEL; l--) { attempts.push([l, true, false]); }
+  // The countdown outranks label width: a shorter label still says which window it is, a lost reset says nothing.
+  const attempts: [number, boolean, boolean][] = [];
+  for (let l = labelWidth; l >= MIN_LABEL; l--) { attempts.push([l, true, true]); }
+  for (let l = labelWidth; l >= MIN_LABEL; l--) { attempts.push([l, true, false]); }
   for (let l = labelWidth; l >= MIN_LABEL; l--) { attempts.push([l, false, false]); }
   const fit = attempts.find(([l, b, r]) => size(l, b, r) <= width);
   if (fit) { return make(...fit); }

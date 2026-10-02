@@ -96,3 +96,29 @@ suite('usage-format: stripLines', () => {
     assert.deepStrictEqual(stripLines([], 24, 5), []);
   });
 });
+
+suite('usage-format: labels and countdowns (review fixes)', () => {
+  test('Codex-style windows get the short names and keep their countdown at the roster width', () => {
+    const rows = usageRows({ codex: [
+      win({ id: 'primary', label: 'Session (5h)', resetsAt: NOW + 62 * MIN }),
+      win({ id: 'secondary', label: 'Week', usedPercent: 18, resetsAt: NOW + 3 * 24 * 60 * MIN }),
+    ] }, name, NOW);
+    assert.deepStrictEqual(rows[0]!.windows.map((w) => w.label), ['5h', '7d']);
+    const text = stripLines(rows, 24, 10).filter((l) => l.kind === 'window').map((l) => windowLineText(l.kind === 'window' ? l.line : { label: '', pct: '' }));
+    assert.deepStrictEqual(text, ['5h ████░░ 62% 1h02m', '7d █░░░░░ 18% 3d0h']);
+  });
+  test('a long label shrinks before its countdown is dropped', () => {
+    const row: UsageWindowRow = { id: 'x', label: 'Session (5h)', percent: 62, reset: '1h02m' };
+    const text = windowLineText(windowLine(row, 24, 12));
+    assert.strictEqual(text.endsWith('62% 1h02m'), true);
+    assert.strictEqual(text.length <= 24, true);
+  });
+  test('one long label no longer takes the countdown from its short siblings', () => {
+    const rows = usageRows({ p: [
+      win({ id: 'five-hour', resetsAt: NOW + 62 * MIN }),
+      win({ id: 'seven-day-sonnet', label: 'Sonnet', usedPercent: 5, resetsAt: NOW + 4 * 24 * 60 * MIN }),
+    ] }, name, NOW);
+    const lines = stripLines(rows, 24, 10).filter((l) => l.kind === 'window').map((l) => windowLineText(l.kind === 'window' ? l.line : { label: '', pct: '' }));
+    assert.strictEqual(lines.every((t) => /\d[dhm]/.test(t.split('% ')[1] ?? '')), true);
+  });
+});

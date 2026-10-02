@@ -1,4 +1,5 @@
 import { afterEach, expect, test } from 'bun:test';
+import { act } from 'react';
 import { App } from '../../tui/ui/app';
 import { relocation, snapshot, summary } from '../fixtures/protocol';
 import { hydrateMsg, mount, type Mounted } from './harness';
@@ -83,4 +84,32 @@ test('the keys are inert while a dialog owns the keyboard', async () => {
   await m!.press('p', { ctrl: true });
   await m!.press('y', { ctrl: true });
   expect(answers().length).toBe(0);
+});
+
+test('a offer that comes back to pending after a hide and re-show can be answered again', async () => {
+  await boot([relocation({ id: 'r1' })]);
+  await m!.press('y', { ctrl: true });
+  await m!.fromHost({ t: 'session-patch', id: 's1', patch: { op: 'replace', item: relocation({ id: 'r1', state: 'queued' }) } });
+  await m!.fromHost({ t: 'session-patch', id: 's1', patch: { op: 'replace', item: relocation({ id: 'r1', state: 'pending' }) } });
+  await m!.press('y', { ctrl: true });
+  expect(answers().length).toBe(2);
+});
+
+test('the same offer id in another session is answered separately (a fork copies it)', async () => {
+  const a = summary('s1', { name: 'one' });
+  const b = summary('s2', { name: 'two' });
+  m = await mount(<App {...props} />, { width: 140, height: 40 });
+  await m.fromHost(hydrateMsg({
+    sessions: [a, b],
+    layout: { root: twoUp(), presets: [], focusedSessionId: 's1' },
+    snapshots: [
+      snapshot('s1', { ...a, items: [relocation({ id: 'r1' })] }),
+      snapshot('s2', { ...b, items: [relocation({ id: 'r1' })] }),
+    ],
+  }));
+  await m.press('y', { ctrl: true });
+  await act(async () => { await m!.setup.mockMouse.click(110, 5); });
+  await m.fromHost();
+  await m.press('y', { ctrl: true });
+  expect(answers().map((p) => (p.t === 'answer-relocation' ? p.id : ''))).toEqual(['s1', 's2']);
 });

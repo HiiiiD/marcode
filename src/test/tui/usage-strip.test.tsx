@@ -122,3 +122,17 @@ test('Ctrl+G pulls once whatever zone is focused, and not again while refreshing
   await m.press('g', { ctrl: true });
   expect(pulls()).toBe(1);
 });
+
+test('on a short terminal the session list keeps its rows and the strip steps aside', async () => {
+  const sessions = ['a', 'b', 'c', 'd'].map((id) => summary(id, { name: `sess-${id}` }));
+  m = await mount(
+    <box flexDirection="row" width="100%" height="100%">
+      <Roster focused onFocusSession={() => {}} onAskDelete={() => {}} onHandoff={() => {}} />
+    </box>,
+    { width: 26, height: 10 },
+  );
+  await m.fromHost(hydrateMsg({ sessions, snapshots: [snapshot('a')], usage: { claude: windows() } }));
+  const f = m.frame();
+  for (const id of ['a', 'b', 'c', 'd']) { expect(f).toContain(`sess-${id}`); }
+  expect(f.includes('usage')).toBe(false);
+});

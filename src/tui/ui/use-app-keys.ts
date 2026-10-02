@@ -29,6 +29,8 @@ export function useAppKeys(k: AppKeys): void {
   noticeRef.current = notice;
 
   useEffect(() => () => { clearTimeout(armed.current); }, []);
+  // The guard only covers the round trip: any change of session, offer or state (a hide and re-show, a fork's copy) re-arms the keys.
+  useEffect(() => { answered.current = undefined; }, [k.summary?.id, k.relocation?.id, k.relocation?.state]);
 
   const quitArmed = () => armed.current !== undefined;
   const quitRequest = () => {
@@ -84,7 +86,7 @@ export function useAppKeys(k: AppKeys): void {
         if (!s || !item) { return; }
         const msg = relocationMessage(s.id, item, action.do === 'relocation-move' ? 'move' : 'stay');
         // The patch that settles the item has to round-trip; keyed on state so a cancel that returns it to pending re-arms.
-        const key = `${item.id}:${item.state}:${msg?.t}`;
+        const key = `${s.id}:${item.id}:${item.state}:${msg?.t}`;
         if (!msg || answered.current === key) { return; }
         answered.current = key;
         post(msg);

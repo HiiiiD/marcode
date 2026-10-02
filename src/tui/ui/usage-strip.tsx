@@ -14,7 +14,7 @@ export function UsageStrip({ width, maxLines }: { width: number; maxLines: numbe
   );
   // The countdown reads the clock at render time; the shared ticker is what re-renders it while visible.
   const tick = useTick(rows.length > 0);
-  if (rows.length === 0) { return null; }
+  if (rows.length === 0 || maxLines <= 0) { return null; }
   const muted = theme.colors.mutedForeground;
   const header = state.usageRefreshing ? `${SPINNER[tick % SPINNER.length]} refreshing` : 'usage  ^G refresh';
   return (

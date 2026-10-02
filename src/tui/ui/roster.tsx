@@ -11,6 +11,10 @@ import { useTheme } from './termcn/hooks/use-theme';
 
 export const ROSTER_W = 26;
 
+// The strip is flexShrink 0, so on a short terminal it would take the session list's rows: below this it steps aside.
+const MIN_HEIGHT_FOR_STRIP = 14;
+const stripBudget = (height: number) => (height < MIN_HEIGHT_FOR_STRIP ? 0 : Math.max(1, Math.floor(height / 3) - 2));
+
 interface RosterProps {
   focused: boolean;
   onFocusSession(id: SessionId): void;
@@ -84,7 +88,7 @@ export function Roster({ focused, onFocusSession, onAskDelete, onHandoff, squeez
           </text>
         ))}
       </scrollbox>
-      <UsageStrip width={ROSTER_W - 2} maxLines={Math.max(2, Math.floor(height / 3))} />
+      <UsageStrip width={ROSTER_W - 2} maxLines={stripBudget(height)} />
       {rows.length === 0 ? <text fg={theme.colors.muted}>{filter !== '' ? 'no match' : 'no sessions yet'}</text> : null}
     </box>
   );
