@@ -1,4 +1,5 @@
 import { afterEach, expect, test } from 'bun:test';
+import { act } from 'react';
 import { StatusLine } from '../../tui/ui/status-line';
 import { snapshot, summary } from '../fixtures/protocol';
 import { hydrateMsg, mount, type Mounted } from './harness';
@@ -45,4 +46,31 @@ test('a session owned by another host gets no hint', async () => {
   m = await mount(<StatusLine sessionId="s1" width={100} />);
   await m.fromHost(hydrateMsg({ sessions: [foreign], snapshots: [snapshot('s1', foreign)] }));
   expect(m.frame().includes('^P')).toBe(false);
+});
+
+test('shows the context share when the session reports one', async () => {
+  const s = summary('s1', { contextPercent: 42 });
+  m = await mount(<StatusLine sessionId="s1" width={120} />);
+  await m.fromHost(hydrateMsg({ sessions: [s], snapshots: [snapshot('s1', s)] }));
+  expect(m.frame()).toContain('ctx 42%');
+});
+
+test('shows no ctx segment without a reading', async () => {
+  m = await mount(<StatusLine sessionId="s1" width={120} />);
+  await m.fromHost(hydrateMsg({ sessions: [withEffort], snapshots: [snapshot('s1', withEffort)] }));
+  expect(m.frame().includes('ctx')).toBe(false);
+});
+
+test('a click on the share opens the context dialog, a click elsewhere does not', async () => {
+  let opened = 0;
+  const s = summary('s1', { contextPercent: 42 });
+  m = await mount(<StatusLine sessionId="s1" width={120} onOpenContext={() => { opened++; }} />);
+  await m.fromHost(hydrateMsg({ sessions: [s], snapshots: [snapshot('s1', s)] }));
+  const rows = m.frame().split('\n');
+  const y = rows.findIndex((r) => r.includes('ctx 42%'));
+  const x = rows[y]!.indexOf('ctx 42%');
+  await act(async () => { await m!.setup.mockMouse.click(0, y); });
+  expect(opened).toBe(0);
+  await act(async () => { await m!.setup.mockMouse.click(x + 1, y); });
+  expect(opened).toBe(1);
 });
