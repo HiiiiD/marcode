@@ -51,7 +51,8 @@ suite('context-format: stacked bar', () => {
 suite('context-format: paths, header, tokens', () => {
   test('fitPath keeps the basename and trims the front', () => {
     assert.strictEqual(fitPath('/repo/CLAUDE.md', 40), '/repo/CLAUDE.md');
-    assert.strictEqual(fitPath('/very/long/dir/name/CLAUDE.md', 14), '…name/CLAUDE.md');
+    assert.strictEqual(fitPath('/very/long/dir/name/CLAUDE.md', 14), '…ame/CLAUDE.md');
+    assert.strictEqual(fitPath('/very/long/dir/name/CLAUDE.md', 14).length, 14);
     assert.strictEqual(fitPath('/x/y.md', 1), '…');
   });
   test('header is unavailable without a percent and dangerous at 80', () => {

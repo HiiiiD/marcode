@@ -63,7 +63,7 @@ export function stackedBar(slices: { key: SliceKey; percent: number }[], width: 
 /** The identifying end of a path is its tail, so the front gives way. */
 export function fitPath(path: string, width: number): string {
   if (path.length <= width) { return path; }
-  return width <= 1 ? '…' : `…${path.slice(-width)}`;
+  return width <= 1 ? '…' : `…${path.slice(-(width - 1))}`;
 }
 
 export function headerLabel(percent: number | undefined): { text: string; danger: boolean } {

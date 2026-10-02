@@ -49,3 +49,11 @@ test('a foreign session cannot open it by chord or click', async () => {
   await clickShare();
   expect(requests().length).toBe(0);
 });
+
+test('a click on the share does not replace another open dialog', async () => {
+  await boot();
+  await m!.press('p', { ctrl: true });
+  await clickShare();
+  expect(requests().length).toBe(0);
+  expect(m!.frame()).toContain('Search:');
+});

@@ -171,7 +171,7 @@ export function App(props: AppProps) {
         <StatusLine
           sessionId={focusedId}
           width={width}
-          onOpenContext={summary && !summary.owner ? () => { setPicker('context'); } : undefined}
+          onOpenContext={summary && !summary.owner && !dialog && !deleting && !picker ? () => { setPicker('context'); } : undefined}
         />
         <NoticeLine />
       </box>
