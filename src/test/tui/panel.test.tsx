@@ -63,3 +63,11 @@ test('width is capped at 100, or 180 when wide', async () => {
   const w = widest();
   expect(w > 100 && w <= 180).toBe(true);
 });
+
+test('selecting changes the header strip but leaves the body surface alone, so a diff inside never mismatches', async () => {
+  m = await mount(card(true, false));
+  const idleBody = bgOf('BODY');
+  m.destroy();
+  m = await mount(card(true, true));
+  expect(bgOf('BODY') === idleBody).toBe(true);
+});

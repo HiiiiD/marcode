@@ -26,6 +26,10 @@ suite('tui diff: hunksAreWellFormed', () => {
     assert.strictEqual(hunksAreWellFormed('@@ -1 +1 @@\n-old\n+new\n+extra'), false);
   });
 
+  test('a body one line short of its counts is rejected even though split leaves a trailing empty element', () => {
+    assert.strictEqual(hunksAreWellFormed('@@ -1,3 +1,3 @@\n a\n-b\n+c\n'), false);
+  });
+
   test('no hunk header, or a stray non-diff line inside a hunk, is rejected', () => {
     assert.strictEqual(hunksAreWellFormed('-old\n+new'), false);
     assert.strictEqual(hunksAreWellFormed('@@ -1 +1 @@\nxyz'), false);

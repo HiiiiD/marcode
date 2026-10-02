@@ -8,7 +8,7 @@ import { runConfig, runLogin, runMigrate } from '../subcommands';
 import { App } from './app';
 import { TuiStoreProvider } from './store';
 import { detectTokens } from './tokens/detect-tokens';
-import { TokensProvider } from './tokens/tokens-provider';
+import { DetectedTokensProvider } from './tokens/tokens-provider';
 import { TuiThemeProvider } from './tui-theme';
 
 const message = (err: unknown) => (err instanceof Error ? err.message : String(err));
@@ -86,11 +86,12 @@ async function runTui(cmd: Extract<CliCommand, { kind: 'run' }>): Promise<void> 
     return;
   }
 
-  const tokens = await detectTokens(renderer);
-  const loginCommands =Object.fromEntries([...booted.host.loginRecipes].map(([id, r]) => [id, r.command]));
+  const live = renderer;
+  const detect = () => detectTokens(live);
+  const loginCommands = Object.fromEntries([...booted.host.loginRecipes].map(([id, r]) => [id, r.command]));
   createRoot(renderer).render(
     <TuiThemeProvider>
-      <TokensProvider tokens={tokens}>
+      <DetectedTokensProvider detect={detect}>
         <TuiStoreProvider transport={booted.loopback.transport}>
           <App
             launchCwd={booted.launchCwd}
@@ -102,7 +103,7 @@ async function runTui(cmd: Extract<CliCommand, { kind: 'run' }>): Promise<void> 
             onQuit={() => { void shutdown(0); }}
           />
         </TuiStoreProvider>
-      </TokensProvider>
+      </DetectedTokensProvider>
     </TuiThemeProvider>,
   );
 }

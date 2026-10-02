@@ -15,11 +15,12 @@ export function Panel(props: {
       border={['left']}
       customBorderChars={BAR_CHARS}
       borderColor={props.selected ? theme.colors.primary : theme.colors.border}
-      backgroundColor={props.selected ? props.tokens.menu : props.tokens.panel}
+      backgroundColor={props.tokens.panel}
       paddingLeft={1}
       paddingRight={1}
     >
-      <box flexDirection="row" gap={1}>{props.header}</box>
+      {/* Only the header strip lights up: a diff in the body paints its own panel-colored rows and must not mismatch. */}
+      <box flexDirection="row" gap={1} backgroundColor={props.selected ? props.tokens.menu : undefined}>{props.header}</box>
       {props.open ? <box flexDirection="column" paddingTop={1}>{props.children}</box> : null}
     </box>
   );

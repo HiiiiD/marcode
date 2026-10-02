@@ -2,7 +2,7 @@ import { deriveTokens, type TerminalColorsLike, type TuiTokens } from './derive-
 
 export async function detectTokens(
   renderer: { getPalette(options?: { timeout?: number }): Promise<TerminalColorsLike> },
-  timeoutMs = 400,
+  timeoutMs = 1500,
 ): Promise<TuiTokens | undefined> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const never = new Promise<undefined>((resolve) => { timer = setTimeout(() => { resolve(undefined); }, timeoutMs); });

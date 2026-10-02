@@ -12,7 +12,10 @@ export function hunksAreWellFormed(diff: string): boolean {
   let oldLeft = 0;
   let newLeft = 0;
   let hunks = 0;
-  for (const line of diff.split('\n')) {
+  const rows = diff.split('\n');
+  // The parser does not count the empty element a final newline leaves behind as a context line.
+  if (rows[rows.length - 1] === '') { rows.pop(); }
+  for (const line of rows) {
     const inHunk = oldLeft > 0 || newLeft > 0;
     if (!inHunk) {
       const m = HUNK.exec(line);
