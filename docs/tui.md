@@ -101,6 +101,16 @@ notice, then restart it. See `config.md`.
 - Shift+Enter is not distinguished from Enter by most terminals; use Ctrl+J or Alt+Enter.
 - Roster rename, the empty-state prompt picker, clipboard-image attach and "remember last effort/mode" in the new-session dialog are not implemented.
 
+## Appearance
+
+Panels, diffs and code are tinted from your terminal's own colors: at start the TUI asks the
+terminal for its background, foreground and ANSI palette (OSC) and derives the surfaces from them,
+so light and dark terminals both work. If the terminal does not answer within 400 ms, or the colors
+are unusable (foreground nearly equal to background), the TUI falls back to plain named colors
+and bordered cards. Diffs render with line numbers and syntax highlighting; a card at least
+120 columns wide shows them side by side. Diffs over 120 lines, or patches the renderer cannot parse,
+show as clamped +/- lines.
+
 ## Vendored components
 
 Some TUI visuals come from [termcn](https://github.com/shadcn-labs/termcn) (MIT), installed with the shadcn
