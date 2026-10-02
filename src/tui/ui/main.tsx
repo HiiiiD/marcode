@@ -7,6 +7,8 @@ import { createShutdown, installExitSignals } from '../shutdown';
 import { runConfig, runLogin, runMigrate } from '../subcommands';
 import { App } from './app';
 import { TuiStoreProvider } from './store';
+import { detectTokens } from './tokens/detect-tokens';
+import { TokensProvider } from './tokens/tokens-provider';
 import { TuiThemeProvider } from './tui-theme';
 
 const message = (err: unknown) => (err instanceof Error ? err.message : String(err));
@@ -84,20 +86,23 @@ async function runTui(cmd: Extract<CliCommand, { kind: 'run' }>): Promise<void> 
     return;
   }
 
-  const loginCommands = Object.fromEntries([...booted.host.loginRecipes].map(([id, r]) => [id, r.command]));
+  const tokens = await detectTokens(renderer);
+  const loginCommands =Object.fromEntries([...booted.host.loginRecipes].map(([id, r]) => [id, r.command]));
   createRoot(renderer).render(
     <TuiThemeProvider>
-      <TuiStoreProvider transport={booted.loopback.transport}>
-        <App
-          launchCwd={booted.launchCwd}
-          prompt={cmd.prompt}
-          forceNew={cmd.forceNew}
-          loginCommands={loginCommands}
-          initialNotice={booted.warnings[0]}
-          subscribeNotices={notices.subscribe}
-          onQuit={() => { void shutdown(0); }}
-        />
-      </TuiStoreProvider>
+      <TokensProvider tokens={tokens}>
+        <TuiStoreProvider transport={booted.loopback.transport}>
+          <App
+            launchCwd={booted.launchCwd}
+            prompt={cmd.prompt}
+            forceNew={cmd.forceNew}
+            loginCommands={loginCommands}
+            initialNotice={booted.warnings[0]}
+            subscribeNotices={notices.subscribe}
+            onQuit={() => { void shutdown(0); }}
+          />
+        </TuiStoreProvider>
+      </TokensProvider>
     </TuiThemeProvider>,
   );
 }
