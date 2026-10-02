@@ -1,5 +1,6 @@
 import { useTerminalDimensions } from '@opentui/react';
 import type { Attachment } from '../../protocol/messages';
+import { useTokens } from './tokens/tokens-provider';
 import { Tag } from './termcn/components/ui/tag';
 
 // Each chip is a 3-row bordered box, so an uncapped band can push the composer off a short terminal;
@@ -16,12 +17,13 @@ function size(bytes: number): string {
 export function AttachmentChips({ attachments, rejected }: { attachments: Attachment[]; rejected: string[] }) {
   const { height } = useTerminalDimensions();
   const cap = chipCap(height);
+  const muted = useTokens()?.textMuted ?? 'gray';
   return (
     <box flexDirection="column" flexShrink={0}>
       <box flexDirection="row" flexWrap="wrap" columnGap={1}>
         {attachments.slice(0, cap).map((a) => <Tag key={a.id}>{`${a.name} (${size(a.bytes)})`}</Tag>)}
       </box>
-      {attachments.length > cap ? <text fg="gray">{`+${attachments.length - cap} more`}</text> : null}
+      {attachments.length > cap ? <text fg={muted}>{`+${attachments.length - cap} more`}</text> : null}
       {rejected.map((r) => <text key={r} fg="yellow">{r}</text>)}
     </box>
   );

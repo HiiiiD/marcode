@@ -6,6 +6,8 @@ import { actionFor } from '../keymap';
 import { editText } from './key-text';
 import { usePromptArmed } from './prompt-arm';
 import { useTuiStore } from './store';
+import { Surface } from './surface';
+import { useTokens } from './tokens/tokens-provider';
 import { useSyncState } from './use-sync-state';
 
 const blockLines = (b: ToolBlock): string[] => {
@@ -22,6 +24,7 @@ const blockLines = (b: ToolBlock): string[] => {
 export function ApprovalPrompt(props: { sessionId: SessionId; request: PermissionRequest; focused: boolean }) {
   const { post } = useTuiStore();
   const { request } = props;
+  const muted = useTokens()?.textMuted ?? 'gray';
   const header = describeTool(request.tool);
   const body = describeInput(request.tool).flatMap(blockLines).join('\n');
   const shown = clampLines(body, 5, 1);
@@ -54,13 +57,13 @@ export function ApprovalPrompt(props: { sessionId: SessionId; request: Permissio
 
   const extra = [request.meta?.description, request.meta?.decisionReason].filter((t): t is string => Boolean(t));
   return (
-    <box flexDirection="column" border borderStyle="single" title="permission">
+    <Surface tone="panel" padX={1} flexDirection="column" title="permission">
       <text fg="yellow">{`${header.verb} ${header.primary}`}</text>
-      {extra.map((t, i) => <text key={`m${i}`} fg="gray">{t}</text>)}
+      {extra.map((t, i) => <text key={`m${i}`} fg={muted}>{t}</text>)}
       {[...shown.head, ...(shown.hidden > 0 ? [`… ${shown.hidden} more …`] : []), ...shown.tail].map((l, i) => <text key={i}>{l}</text>)}
       {st.view.mode === 'choose'
         ? <text>[y] allow  [n] deny</text>
         : <text>{`deny reason (Enter to send, Esc back): ${st.view.reason}`}</text>}
-    </box>
+    </Surface>
   );
 }

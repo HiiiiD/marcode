@@ -7,7 +7,7 @@ export interface TerminalColorsLike {
 }
 
 export interface TuiTokens {
-  panel: string; element: string; menu: string;
+  pane: string; paneActive: string; panel: string; element: string; menu: string;
   text: string; textMuted: string;
   diff: {
     addedBg: string; removedBg: string; contextBg: string;
@@ -42,14 +42,16 @@ export function deriveTokens(c: TerminalColorsLike): TuiTokens | undefined {
   const hue = (normal: number): Rgb => ansi(light ? normal : normal + 8);
   const surface = (t: number): Rgb => mix(bg, fg, Math.max(t, MIN_STEP / gap));
 
-  const panel = surface(0.06);
+  const panel = surface(0.095);
   const tint = (hueRgb: Rgb, base: Rgb, t: number): string => toHex(mix(base, hueRgb, t));
   const muted = mix(bg, fg, 0.55);
 
   return {
+    pane: toHex(surface(0.03)),
+    paneActive: toHex(surface(0.065)),
     panel: toHex(panel),
-    element: toHex(surface(0.09)),
-    menu: toHex(surface(0.12)),
+    element: toHex(surface(0.125)),
+    menu: toHex(surface(0.155)),
     text: toHex(fg),
     textMuted: toHex(muted),
     diff: {

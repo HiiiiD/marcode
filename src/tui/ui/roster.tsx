@@ -6,6 +6,8 @@ import type { SessionId } from '../../protocol/messages';
 import { actionFor } from '../keymap';
 import { rosterRows } from '../view/roster-rows';
 import { useTuiStore } from './store';
+import { Surface } from './surface';
+import { useTokens } from './tokens/tokens-provider';
 import { UsageStrip } from './usage-strip';
 import { useTheme } from './termcn/hooks/use-theme';
 
@@ -37,6 +39,7 @@ export function Roster({ focused, onFocusSession, onAskDelete, onHandoff, squeez
   }, [focused, filtering]);
   useEffect(() => { if (!focused) { setFiltering(false); } }, [focused]);
   const theme = useTheme();
+  const tokens = useTokens();
   const { height } = useTerminalDimensions();
   const scroll = useRef<ScrollBoxRenderable | null>(null);
   useEffect(() => {
@@ -73,7 +76,7 @@ export function Roster({ focused, onFocusSession, onAskDelete, onHandoff, squeez
   });
 
   return (
-    <box flexDirection="column" width={ROSTER_W} border borderStyle="single" title="sessions">
+    <Surface tone="pane" padX={1} flexDirection="column" width={ROSTER_W} marginRight={tokens ? 1 : 0} title="sessions">
       {filtering || filter !== '' ? <text fg={theme.colors.muted}>{`/${filter}`}</text> : null}
       <scrollbox ref={scroll} flexGrow={1}>
         {rows.map((row, i) => (
@@ -88,8 +91,8 @@ export function Roster({ focused, onFocusSession, onAskDelete, onHandoff, squeez
           </text>
         ))}
       </scrollbox>
-      <UsageStrip width={ROSTER_W - 2} maxLines={stripBudget(height)} />
+      <UsageStrip width={ROSTER_W - 4} maxLines={stripBudget(height)} />
       {rows.length === 0 ? <text fg={theme.colors.muted}>{filter !== '' ? 'no match' : 'no sessions yet'}</text> : null}
-    </box>
+    </Surface>
   );
 }

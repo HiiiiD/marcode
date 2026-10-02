@@ -5,6 +5,8 @@ import { actionFor } from '../keymap';
 import { editText } from './key-text';
 import { usePromptArmed } from './prompt-arm';
 import { useTuiStore } from './store';
+import { Surface } from './surface';
+import { useTokens } from './tokens/tokens-provider';
 import { useSyncState } from './use-sync-state';
 
 const fresh = { qi: 0, cursor: 0, picked: [] as number[], text: '', typing: false };
@@ -70,6 +72,7 @@ export function QuestionPrompt(props: { sessionId: SessionId; request: QuestionR
     }
   });
 
+  const muted = useTokens()?.textMuted ?? 'gray';
   const { qi, cursor, picked, text, typing } = st.view;
   const { spec, options, rows } = layout(qi);
   if (!spec) { return <text fg="gray">No question.</text>; }
@@ -77,7 +80,7 @@ export function QuestionPrompt(props: { sessionId: SessionId; request: QuestionR
   const shownText = spec.secret ? '●'.repeat([...text].length) : text;
   const hint = freeText ? 'Enter submit' : spec.multiSelect ? 'Space toggle, Enter submit' : 'Up/Down, Enter choose';
   return (
-    <box flexDirection="column" border borderStyle="single" title={spec.header}>
+    <Surface tone="panel" padX={1} flexDirection="column" title={spec.header}>
       <text>{spec.question}</text>
       {options.length > 0 && !typing ? rows.map((label, i) => {
         const desc = options[i]?.description;
@@ -85,7 +88,7 @@ export function QuestionPrompt(props: { sessionId: SessionId; request: QuestionR
         return <text key={`${i}:${label}`} attributes={i === cursor ? 1 : 0}>{`${i === cursor ? '›' : ' '} ${mark}${label}${desc ? ` — ${desc}` : ''}`}</text>;
       }) : null}
       {freeText ? <text>{`> ${shownText}`}</text> : null}
-      <text fg="gray">{typing ? 'Enter confirm, Esc back' : hint}</text>
-    </box>
+      <text fg={muted}>{typing ? 'Enter confirm, Esc back' : hint}</text>
+    </Surface>
   );
 }

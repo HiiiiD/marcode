@@ -7,6 +7,8 @@ import { bootHost, type Booted } from '../../tui/boot';
 import { App } from '../../tui/ui/app';
 import { PromptArmContext } from '../../tui/ui/prompt-arm';
 import { TuiStoreProvider } from '../../tui/ui/store';
+import type { TuiTokens } from '../../tui/ui/tokens/derive-tokens';
+import { TokensProvider } from '../../tui/ui/tokens/tokens-provider';
 import { TuiThemeProvider } from '../../tui/ui/tui-theme';
 import { actEnv, KEY_ALIAS } from './harness';
 
@@ -17,6 +19,7 @@ export interface MountBootedOpts {
   cwd?: string;
   prompt?: string;
   promptArmMs?: number;
+  tokens?: TuiTokens;
 }
 
 export const until = async (cond: () => boolean | Promise<boolean>, ms = 3000): Promise<void> => {
@@ -44,11 +47,13 @@ export async function mountBooted(opts: MountBootedOpts = {}) {
   await act(async () => {
     setup = await testRender(
       <PromptArmContext.Provider value={opts.promptArmMs ?? 0}>
+        <TokensProvider tokens={opts.tokens}>
         <TuiThemeProvider>
           <TuiStoreProvider transport={booted.loopback.transport}>
             <App launchCwd={cwd} prompt={opts.prompt} forceNew={false} loginCommands={{}} onQuit={() => {}} />
           </TuiStoreProvider>
         </TuiThemeProvider>
+        </TokensProvider>
       </PromptArmContext.Provider>,
       { exitOnCtrlC: false, width: 110, height: 32 },
     );

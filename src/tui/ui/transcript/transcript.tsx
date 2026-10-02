@@ -6,6 +6,7 @@ import { summarizeSubagent } from '../../../client-core/subagent-window';
 import { actionFor } from '../../keymap';
 import { transcriptRows, type TranscriptRow } from '../../view/transcript-rows';
 import { useTuiStore } from '../store';
+import { useTheme } from '../termcn/hooks/use-theme';
 import type { RelocationKeys } from './relocation-card';
 import { RowView } from './row';
 
@@ -86,9 +87,10 @@ export function Transcript({ sessionId, focused, onFork, relocationKeys = 'none'
     if (action.do === 'page-up' || action.do === 'item-prev') { setTimeout(askOlder, 0); }
   });
 
+  const muted = useTheme().colors.mutedForeground;
   return (
     <scrollbox ref={scroll} flexGrow={1} stickyScroll stickyStart="bottom" viewportCulling focused={focused}>
-      {hasMore ? <text fg="gray">↑ older messages</text> : null}
+      {hasMore ? <text fg={muted}>↑ older messages</text> : null}
       {rows.map((row, i) => {
         return (
           <box key={row.id} id={row.id} flexDirection="column" onMouseDown={() => { setCursorId(row.id); toggleRow(row); }}>

@@ -10,6 +10,8 @@ import { actionFor } from '../keymap';
 import { AttachmentChips } from './attachment-chips';
 import { MentionPopup } from './mention-popup';
 import { useTuiStore } from './store';
+import { Surface } from './surface';
+import { useTokens } from './tokens/tokens-provider';
 import { useMentionPopup } from './use-mention-popup';
 
 const DEBOUNCE_MS = 300;
@@ -38,6 +40,7 @@ export function Composer({ sessionId, focused, onOpenPicker }: { sessionId: Sess
   const pending = useRef<string | null>(null);
   const [text, setText] = useState('');
   const [caret, setCaret] = useState(0);
+  const tokens = useTokens();
   const popup = useMentionPopup({ sessionId, text, caret });
   useEffect(() => { setMentionOpen(popup.open); return () => { setMentionOpen(false); }; }, [popup.open]);
 
@@ -147,8 +150,8 @@ export function Composer({ sessionId, focused, onOpenPicker }: { sessionId: Sess
     <box flexDirection="column">
       {popup.open ? <MentionPopup rows={popup.rows} index={popup.index} /> : null}
       <AttachmentChips attachments={attachments} rejected={rejected} />
-      {queued.map((q) => <text key={q.id} fg="gray">{`queued: ${q.text}`}</text>)}
-      <box border borderStyle="single">
+      {queued.map((q) => <text key={q.id} fg={tokens?.textMuted ?? 'gray'}>{`queued: ${q.text}`}</text>)}
+      <Surface tone="panel" padX={1}>
         <textarea
           ref={box}
           focused={focused}
@@ -160,9 +163,10 @@ export function Composer({ sessionId, focused, onOpenPicker }: { sessionId: Sess
             if (paths.length > 0 && attach(paths)) { event.preventDefault(); }
           }}
           onSubmit={() => { if (!popup.open) { submit(); } }}
-          height={3}
+          height={tokens ? Math.min(5, Math.max(1, text.split('\n').length)) : 3}
+          {...(tokens ? { backgroundColor: tokens.panel, focusedBackgroundColor: tokens.panel, placeholderColor: tokens.textMuted } : {})}
         />
-      </box>
+      </Surface>
     </box>
   );
 }
