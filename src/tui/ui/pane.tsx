@@ -43,7 +43,12 @@ export function Pane({ rect, compact, focused, liveZone, onFocus, onHide, onFork
       onMouseDown={() => { onFocus(id); }}
     >
       <PaneTitle text={title} focused={focused} onHide={() => { onHide(id); }} />
-      <Transcript sessionId={id} focused={focused && liveZone === 'transcript'} onFork={(itemId) => { onFork(id, itemId); }} />
+      <Transcript
+        sessionId={id}
+        focused={focused && liveZone === 'transcript'}
+        relocationKeys={summary?.owner ? 'none' : focused ? 'live' : 'idle'}
+        onFork={(itemId) => { onFork(id, itemId); }}
+      />
       <box flexShrink={0}>
         <BottomSlotView sessionId={id} focused={focused && liveZone === 'composer'} onOpenPicker={onOpenPicker} />
       </box>
