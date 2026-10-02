@@ -23,6 +23,8 @@ below is its own cycle: spec in `docs/superpowers/specs/`, plan in `docs/superpo
 
 - **D2. Usage strip and relocation cards** (`feat/tui-awareness-usage-relocation`): usage windows at the foot of the roster (`Ctrl+G` or a click refreshes), and worktree offers as cards answered with `Ctrl+Y` / `Ctrl+L`. Plan `2026-10-02-tui-awareness-usage-relocation.md`. Not verified in a real terminal: the strip click, chord delivery under a multiplexer.
 
+- **F1. Memory** (`feat/tui-memory`): `bun:sqlite` behind `src/memory/sqlite-driver.ts`; recall, priming and digests in the TUI over the shared `memory.sqlite`. Spec `2026-10-02-tui-memory-design.md`, plan `2026-10-02-tui-memory.md`. Not verified: macOS system SQLite and FTS5.
+
 ## In progress (branch `feat/tui-termcn`, stacked on `feat/tui-features`)
 
 - **termcn adoption.** The v1 spec said "OpenTUI with termcn-style copy-paste components" but v1 and B were
@@ -40,8 +42,7 @@ All three are done, and C (above) has landed on top of them.
 ## Next, in the order the user approved
 
 1. **E. Review and history.** Fleet-diff review and history surfaces. Biggest items; need their own surface design.
-2. **F. Platform.** In-TUI login by suspending the renderer; recall and memory (off under Bun because
-   `node:sqlite` is unavailable there, so it needs a replacement).
+2. **F2. Platform.** In-TUI login by suspending the renderer.
 
 ## Deferred hardening (group A)
 
