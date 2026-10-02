@@ -1,11 +1,11 @@
-import type { ComponentProps } from 'react';
+import type { BoxProps } from '@opentui/react';
+import type { ReactNode } from 'react';
 import type { TuiTokens } from './tokens/derive-tokens';
 import { useTheme } from './termcn/hooks/use-theme';
 import { useTokens } from './tokens/tokens-provider';
 
 export type SurfaceTone = keyof Pick<TuiTokens, 'pane' | 'paneActive' | 'panel' | 'element' | 'menu'>;
 
-type BoxProps = ComponentProps<'box'>;
 export type SurfaceProps = Omit<BoxProps, 'border' | 'borderStyle' | 'borderColor' | 'customBorderChars' | 'backgroundColor'> & {
   tone?: SurfaceTone;
   /** Border colour when the terminal gave no palette to derive a surface from. */
@@ -16,6 +16,7 @@ export type SurfaceProps = Omit<BoxProps, 'border' | 'borderStyle' | 'borderColo
   ring?: boolean;
   /** A border label on the fallback frame; a muted first line inside the fill otherwise. */
   title?: string;
+  children?: ReactNode;
 };
 
 export function Surface({ tone = 'panel', fallbackBorder = 'gray', padX = 0, padY = 0, ring, title, children, ...box }: SurfaceProps) {
