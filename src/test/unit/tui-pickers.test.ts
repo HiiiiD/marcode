@@ -92,6 +92,11 @@ suite('tui pickers: slash commands', () => {
     assert.strictEqual(parsePickerCommand('/effort'), 'effort');
     assert.strictEqual(parsePickerCommand('/mode'), 'mode');
   });
+  test('/context names its dialog', () => {
+    assert.strictEqual(parsePickerCommand('/context'), 'context');
+    assert.strictEqual(parsePickerCommand(' /context '), 'context');
+    assert.strictEqual(parsePickerCommand('/context now'), undefined);
+  });
   test('surrounding space is ignored but extra words and other text are not commands', () => {
     assert.strictEqual(parsePickerCommand('  /model  '), 'model');
     assert.strictEqual(parsePickerCommand('/model gpt'), undefined);

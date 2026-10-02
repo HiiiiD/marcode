@@ -77,6 +77,7 @@ export function useAppKeys(k: AppKeys): void {
       case 'open-model': if (s) { k.openPicker('model'); } return;
       case 'open-effort': if (s) { k.openPicker('effort'); } return;
       case 'open-mode': if (s) { k.openPicker('mode'); } return;
+      case 'open-context': if (s) { k.openPicker('context'); } return;
       default: return;
     }
   });
