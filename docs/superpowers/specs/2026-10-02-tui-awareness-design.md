@@ -16,7 +16,7 @@ without opening the webview.
 - Every session-addressed message carries a `SessionId`.
 - TUI tests never hand a renderer or renderable to an assertion; no fixed sleeps in new tests.
 - No protocol or host changes. Everything needed is already on the wire and in `client-core` state
-  (`contextBySession`, `usageByProvider`, `usageRefreshing`-style flag, `summary.contextPercent`).
+  (`contextBySession`, `usageByProvider`, `usageRefreshing`, `usageDisplayNames`, `summary.contextPercent`).
 
 ## Out of scope
 
