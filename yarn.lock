@@ -5,12 +5,12 @@ __metadata:
   version: 10
   cacheKey: 10c0
 
-"@agentclientprotocol/sdk@npm:^1.5.0":
-  version: 1.5.0
-  resolution: "@agentclientprotocol/sdk@npm:1.5.0"
+"@agentclientprotocol/sdk@npm:^1.5.1":
+  version: 1.5.1
+  resolution: "@agentclientprotocol/sdk@npm:1.5.1"
   peerDependencies:
     zod: ^3.25.0 || ^4.0.0
-  checksum: 10c0/5db5dd03ebf20575153626a7beec09776004b47dc54a9ab6c924cef4a16bb69be5bf41bdbfb83b6e1e6b40a04184e1e73aeeab9a09351827ae986316d87bec3e
+  checksum: 10c0/5883af5a539863a1efcec7a601e51fbee904c311ea22edca847922d37bfe3e41076c0cd3269af9e24d5df81e74d35320fe18b5e03fb693a67d8923d2ae23eb67
   languageName: node
   linkType: hard
 
@@ -4520,7 +4520,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "mar-code@workspace:."
   dependencies:
-    "@agentclientprotocol/sdk": "npm:^1.5.0"
+    "@agentclientprotocol/sdk": "npm:^1.5.1"
     "@anthropic-ai/claude-agent-sdk": "npm:0.3.284"
     "@anthropic-ai/sdk": "npm:0.129.0"
     "@base-ui/react": "npm:^1.8.0"
