@@ -70,6 +70,7 @@ export async function createHost(opts: CreateHostOptions): Promise<HostHandle> {
       memory = fts;
     } catch (err) {
       console.warn('[mar-code] memory store unavailable; recall tools will be disabled', err);
+      notify.warn(`Marcode memory is unavailable (${(err as Error).message}); recall and session digests are off in this window.`);
     }
   }
 
