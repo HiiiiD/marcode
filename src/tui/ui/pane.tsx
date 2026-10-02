@@ -39,7 +39,7 @@ export function Pane({ rect, compact, focused, liveZone, onFocus, onHide, onFork
   }
   return (
     <Surface
-      {...place} flexDirection="column" padX={1} padY={1} tone={focused ? 'paneActive' : 'pane'}
+      {...place} flexDirection="column" padX={1} ring={focused} tone={focused ? 'paneActive' : 'pane'}
       fallbackBorder={focused ? theme.colors.primary : theme.colors.border}
       onMouseDown={() => { onFocus(id); }}
     >
