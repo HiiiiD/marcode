@@ -4554,7 +4554,7 @@ __metadata:
     mocha: "npm:^12.0.2"
     npm-run-all: "npm:^4.1.5"
     react: "npm:^19.2.8"
-    react-devtools-core: "npm:7.0.1"
+    react-devtools-core: "npm:8.0.0"
     react-dom: "npm:^19.2.8"
     react-markdown: "npm:^10.1.0"
     react-resizable-panels: "npm:^4.13.3"
@@ -5798,13 +5798,13 @@ __metadata:
   languageName: node
   linkType: hard
 
-"react-devtools-core@npm:7.0.1":
-  version: 7.0.1
-  resolution: "react-devtools-core@npm:7.0.1"
+"react-devtools-core@npm:8.0.0":
+  version: 8.0.0
+  resolution: "react-devtools-core@npm:8.0.0"
   dependencies:
     shell-quote: "npm:^1.6.1"
     ws: "npm:^7"
-  checksum: 10c0/a531bdb1203d1b903a50b8604c45cb53d09fb9654c4d558340d41569b1831746852f47b4698b04a102dd1b9a3861c2b9fa2d2af89a6e2e836026e0bea3d317ed
+  checksum: 10c0/37ff2c3aed5dea98d3e5d1e607979d60cfdf92baf42bffb7bbd7889ccfe5fb1a1aba7964a3f82fdb36464e961db07b095f311d77620b3726417b3a6c948d9b5f
   languageName: node
   linkType: hard
 
