@@ -3,6 +3,7 @@ import { useEffect, useRef } from 'react';
 import type { SessionSummary } from '../../protocol/messages';
 import { actionFor, type Zone } from '../keymap';
 import type { PickerKind } from '../view/pickers';
+import { relocationMessage, type RelocationItem } from '../view/relocation-view';
 import { useTuiStore } from './store';
 
 export const QUIT_NOTICE = 'Press Ctrl+C again to quit';
@@ -17,11 +18,13 @@ export interface AppKeys {
   openDialog(): void;
   openPicker(kind: PickerKind): void;
   cycleZone(): void;
+  relocation: RelocationItem | undefined;
 }
 
 export function useAppKeys(k: AppKeys): void {
   const { post, notice, setNotice, mentionOpen, rosterFiltering, refreshUsage } = useTuiStore();
   const armed = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const answered = useRef<string | undefined>(undefined);
   const noticeRef = useRef(notice);
   noticeRef.current = notice;
 
@@ -75,6 +78,18 @@ export function useAppKeys(k: AppKeys): void {
       case 'quit-request': quitRequest(); return;
       case 'refresh-catalog': post({ t: 'refresh-catalog' }); return;
       case 'refresh-usage': refreshUsage(); return;
+      case 'relocation-move':
+      case 'relocation-stay': {
+        const item = k.relocation;
+        if (!s || !item) { return; }
+        const msg = relocationMessage(s.id, item, action.do === 'relocation-move' ? 'move' : 'stay');
+        // The patch that settles the item has to round-trip; keyed on state so a cancel that returns it to pending re-arms.
+        const key = `${item.id}:${item.state}:${msg?.t}`;
+        if (!msg || answered.current === key) { return; }
+        answered.current = key;
+        post(msg);
+        return;
+      }
       case 'open-model': if (s) { k.openPicker('model'); } return;
       case 'open-effort': if (s) { k.openPicker('effort'); } return;
       case 'open-mode': if (s) { k.openPicker('mode'); } return;
