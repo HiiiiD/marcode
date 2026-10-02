@@ -42,6 +42,9 @@ yarn build:tui:bin    # bin/marcode.exe (bin/marcode elsewhere): standalone, Bun
 | Ctrl+T | your own session | open the context dialog (window, slices, memory files; `r` retries a failed read). The status line shows `ctx N%`, red from 80%, and clicking it does the same |
 | `/model`, `/effort`, `/mode`, `/context` | composer | the same dialogs, typed and sent with Enter |
 | Ctrl+R | anywhere | re-check providers |
+| Ctrl+G | anywhere | refresh plan usage; clicking the usage strip does the same, and a spinner shows until the round is done |
+| Ctrl+Y | your own session | move the session to the offered worktree (the newest open offer in the focused pane) |
+| Ctrl+L | your own session | stay in the current directory, or cancel a move queued behind a running turn |
 | Ctrl+W, then h j k l or arrows | anywhere | focus the pane in that direction |
 | Ctrl+W, then `|` / `-` | anywhere | split right / below: opens the new-session dialog, and the session lands in the new pane |
 | Ctrl+W, then m / = | anywhere | maximize the focused pane (view only) / even out every split |
@@ -126,11 +129,24 @@ Local edits to the generated files are listed in `src/tui/ui/termcn/PATCHES.md` 
 termcn's theme. Always render a freshly installed item and look for stacked rows: registry code often omits
 `flexDirection="row"`, and OpenTUI boxes default to a column.
 
+## Usage strip and worktree offers
+
+The roster ends in a usage strip: one name line per provider that reports plan windows, then a line per window
+(`5h ████░░ 62% 1h02m`). Only percentages are shown, never token counts. It is absent while nothing reports, windows
+whose reset has passed drop out on their own, and on a narrow roster the countdown goes first, then the label, then the
+bar. A stale reading is replaced by `Ctrl+G` or a click on the strip.
+
+A worktree offer in the transcript is a card. Pending offers show `^Y move  ^L stay`; a move answered during a running
+turn shows as queued with `^L cancel`; answered offers collapse to one muted line. Only the newest open offer in the
+focused pane takes the keys, older open ones read "superseded", an unfocused pane says to focus it, and a session
+owned by another host shows the offer without keys.
+
 ## Manual smoke checklist
 
 Run in Windows Terminal and in one macOS or Linux terminal.
 
 - [ ] Click the `ctx` share in the status line: the context dialog opens (`Ctrl+T` and `/context` are the fallback if mouse clicks do not arrive).
+- [ ] Open a worktree offer in a real Claude session and answer it with `Ctrl+Y` / `Ctrl+L` from a split with two panes; click the usage strip in Windows Terminal (`Ctrl+G` is the fallback).
 - [ ] Resize below 100 columns and back: the roster becomes an overlay, then a column again.
 - [ ] Paste a multi-line block into the composer: it arrives intact, no send, no stray keys.
 - [ ] Ctrl+J and Alt+Enter insert a newline; note whether Shift+Enter sends or inserts one.

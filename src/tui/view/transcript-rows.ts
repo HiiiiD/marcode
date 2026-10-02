@@ -1,4 +1,5 @@
 import { describeTool, type ToolHeader } from '../../client-core/tool-render';
+import { activeRelocation, relocationCard, type RelocationCard } from './relocation-view';
 import type { TranscriptItem } from '../../protocol/messages';
 
 export type ToolItem = Extract<TranscriptItem, { role: 'tool' }>;
@@ -11,10 +12,12 @@ export type TranscriptRow =
   | { kind: 'tool'; id: string; item: ToolItem; header: ToolHeader; state: 'running' | 'ok' | 'error'; permission?: FoldedPermission }
   | { kind: 'permission'; id: string; header: ToolHeader; state: 'pending' | 'allowed' | 'denied'; reason?: string }
   | { kind: 'question'; id: string; state: string; text: string }
+  | { kind: 'relocation'; id: string; card: RelocationCard; active: boolean }
   | { kind: 'notice'; id: string; tone: 'error' | 'info'; text: string };
 
 export function transcriptRows(items: TranscriptItem[], running: boolean): TranscriptRow[] {
   const rows: TranscriptRow[] = [];
+  const activeId = activeRelocation(items)?.id;
   for (const item of items) {
     switch (item.role) {
       case 'user':
@@ -53,7 +56,7 @@ export function transcriptRows(items: TranscriptItem[], running: boolean): Trans
         rows.push({ kind: 'notice', id: item.id, tone: item.state === 'failed' ? 'error' : 'info', text: `Conversation compaction ${item.state}` });
         break;
       case 'relocation':
-        rows.push({ kind: 'notice', id: item.id, tone: 'info', text: `Worktree move offered: ${item.path} (${item.state})` });
+        rows.push({ kind: 'relocation', id: item.id, card: relocationCard(item), active: item.id === activeId });
         break;
       default: {
         const unhandled: never = item;

@@ -69,6 +69,20 @@ suite('tui keymap', () => {
     assert.deepStrictEqual(actionFor('transcript', { name: 't', ctrl: true }, idle), { do: 'open-context' });
     assert.strictEqual(actionFor('composer', { name: 't' }, idle), undefined);
   });
+  test('usage and relocation chords work in every zone and leave plain keys alone', () => {
+    for (const zone of ['composer', 'transcript', 'roster'] as const) {
+      assert.deepStrictEqual(actionFor(zone, { name: 'g', ctrl: true }, idle), { do: 'refresh-usage' });
+      assert.deepStrictEqual(actionFor(zone, { name: 'y', ctrl: true }, idle), { do: 'relocation-move' });
+      assert.deepStrictEqual(actionFor(zone, { name: 'l', ctrl: true }, idle), { do: 'relocation-stay' });
+      assert.strictEqual(actionFor(zone, { name: 'g' }, idle), undefined);
+    }
+    assert.deepStrictEqual(actionFor('approval', { name: 'y' }, idle), { do: 'allow' });
+  });
+  test('the Ctrl letters bound outside the composer are exactly the audited set', () => {
+    const bound = [...'abcdefghijklmnopqrstuvwxyz'].filter((c) => actionFor('transcript', { name: c, ctrl: true }, idle) !== undefined);
+    // The textarea owns a b d e f k o p s u w; adding a letter here means re-auditing against that list.
+    assert.deepStrictEqual(bound, ['b', 'c', 'e', 'g', 'l', 'n', 'p', 'r', 't', 'w', 'y']);
+  });
   test('roster: p pins, / filters, shift+d deletes, plain d does nothing', () => {
     assert.deepStrictEqual(actionFor('roster', { name: 'p' }, idle), { do: 'roster-pin' });
     assert.deepStrictEqual(actionFor('roster', { name: '/' }, idle), { do: 'roster-filter' });

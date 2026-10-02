@@ -16,6 +16,7 @@ import { PaneTree } from './pane-tree';
 import { Roster, ROSTER_W } from './roster';
 import { ContextDialog } from './context-dialog';
 import { StatusLine } from './status-line';
+import { activeRelocation } from '../view/relocation-view';
 import { useTuiStore } from './store';
 import { useAppKeys } from './use-app-keys';
 import { useFocusFallback } from './use-focus-fallback';
@@ -107,6 +108,7 @@ export function App(props: AppProps) {
     openDialog: () => { openNewSession(); },
     openPicker: setPicker,
     cycleZone: () => { setZone(zones[(zones.indexOf(current) + 1) % zones.length] ?? 'composer'); },
+    relocation: summary && !summary.owner ? activeRelocation(pane?.items ?? []) : undefined,
   });
 
   const onFocusSession = (id: SessionId) => {

@@ -6,9 +6,12 @@ import { summarizeSubagent } from '../../../client-core/subagent-window';
 import { actionFor } from '../../keymap';
 import { transcriptRows, type TranscriptRow } from '../../view/transcript-rows';
 import { useTuiStore } from '../store';
+import type { RelocationKeys } from './relocation-card';
 import { RowView } from './row';
 
-export function Transcript({ sessionId, focused, onFork }: { sessionId: SessionId; focused: boolean; onFork?(itemId: string): void }) {
+export function Transcript({ sessionId, focused, onFork, relocationKeys = 'none' }: {
+  sessionId: SessionId; focused: boolean; onFork?(itemId: string): void; relocationKeys?: RelocationKeys;
+}) {
   const { state, post, setNotice, chordArmed } = useTuiStore();
   const pane = state.byId[sessionId];
   const running = pane?.summary.status === 'running';
@@ -89,7 +92,7 @@ export function Transcript({ sessionId, focused, onFork }: { sessionId: SessionI
       {rows.map((row, i) => {
         return (
           <box key={row.id} id={row.id} flexDirection="column" onMouseDown={() => { setCursorId(row.id); toggleRow(row); }}>
-            <RowView row={row} selected={focused && i === cursor} expanded={open.has(row.id)} closed={closed.has(row.id)} />
+            <RowView row={row} selected={focused && i === cursor} expanded={open.has(row.id)} closed={closed.has(row.id)} relocationKeys={relocationKeys} />
           </box>
         );
       })}

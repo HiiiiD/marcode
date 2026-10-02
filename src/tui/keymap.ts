@@ -9,7 +9,8 @@ export type Action =
   | { do: 'allow' } | { do: 'deny' } | { do: 'confirm' }
   | { do: 'option-next' } | { do: 'option-prev' } | { do: 'option-toggle' } | { do: 'submit-answers' }
   | { do: 'roster-pin' } | { do: 'roster-filter' } | { do: 'roster-delete' } | { do: 'attach-remove' }
-  | { do: 'refresh-catalog' } | { do: 'pane-prefix' } | { do: 'fork-item' } | { do: 'roster-handoff' };
+  | { do: 'refresh-catalog' } | { do: 'pane-prefix' } | { do: 'fork-item' } | { do: 'roster-handoff' }
+  | { do: 'refresh-usage' } | { do: 'relocation-move' } | { do: 'relocation-stay' };
 
 const act = <T extends Action['do']>(d: T) => ({ do: d }) as Extract<Action, { do: T }>;
 
@@ -22,6 +23,9 @@ function globalAction(key: KeyInput, zone: Zone, ctx: { running: boolean }): Act
       case 'p': return act('open-model');
       case 'e': return act('open-effort');
       case 't': return act('open-context');
+      case 'g': return act('refresh-usage');
+      case 'y': return act('relocation-move');
+      case 'l': return act('relocation-stay');
       case 'r': return act('refresh-catalog');
       case 'w': return act('pane-prefix');
     }

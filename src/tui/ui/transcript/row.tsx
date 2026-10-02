@@ -5,6 +5,7 @@ import { useTheme } from '../termcn/hooks/use-theme';
 import { useSyntaxStyle, useTokens } from '../tokens/tokens-provider';
 import { BAR_CHARS } from './bar-border';
 import { PermissionCard } from './permission-card';
+import { RelocationCardView, type RelocationKeys } from './relocation-card';
 import { SubagentCard } from './subagent-card';
 import { ToolCard } from './tool-card';
 
@@ -29,7 +30,7 @@ function Bar({ color, tint, children }: { color: string; tint?: boolean; childre
   );
 }
 
-export function RowView(props: { row: TranscriptRow; selected: boolean; expanded: boolean; closed: boolean }) {
+export function RowView(props: { row: TranscriptRow; selected: boolean; expanded: boolean; closed: boolean; relocationKeys: RelocationKeys }) {
   const { row } = props;
   const theme = useTheme();
   const syntaxStyle = useSyntaxStyle();
@@ -64,6 +65,8 @@ export function RowView(props: { row: TranscriptRow; selected: boolean; expanded
           {`${row.text} — ${row.state}`}
         </text>
       );
+    case 'relocation':
+      return <RelocationCardView card={row.card} active={row.active} keys={props.relocationKeys} selected={props.selected} />;
     case 'notice':
       return <text attributes={bold} fg={row.tone === 'error' ? 'red' : 'gray'} wrapMode="word">{row.text}</text>;
   }
