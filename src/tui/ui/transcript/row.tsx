@@ -1,19 +1,29 @@
-import { SyntaxStyle } from '@opentui/core';
 import type { ReactNode } from 'react';
 import type { TranscriptRow } from '../../view/transcript-rows';
 import { ChatMessage } from '../termcn/components/ui/chat-message';
 import { useTheme } from '../termcn/hooks/use-theme';
+import { useSyntaxStyle, useTokens } from '../tokens/tokens-provider';
+import { BAR_CHARS } from './bar-border';
 import { PermissionCard } from './permission-card';
 import { SubagentCard } from './subagent-card';
 import { ToolCard } from './tool-card';
 
-const syntaxStyle = SyntaxStyle.create();
 // Readable measure on wide terminals; the bar groups a message with its body.
 const MAX_WIDTH = 100;
 
-function Bar({ color, children }: { color: string; children: ReactNode }) {
+function Bar({ color, tint, children }: { color: string; tint?: boolean; children: ReactNode }) {
+  const tokens = useTokens();
   return (
-    <box maxWidth={MAX_WIDTH} marginBottom={1} border={['left']} borderStyle="single" borderColor={color} paddingLeft={1}>
+    <box
+      maxWidth={MAX_WIDTH}
+      marginBottom={1}
+      border={['left']}
+      borderStyle="single"
+      {...(tokens ? { customBorderChars: BAR_CHARS } : {})}
+      borderColor={color}
+      backgroundColor={tokens && tint ? tokens.panel : undefined}
+      paddingLeft={1}
+    >
       {children}
     </box>
   );
@@ -22,11 +32,12 @@ function Bar({ color, children }: { color: string; children: ReactNode }) {
 export function RowView(props: { row: TranscriptRow; selected: boolean; expanded: boolean; closed: boolean }) {
   const { row } = props;
   const theme = useTheme();
+  const syntaxStyle = useSyntaxStyle();
   const bold = props.selected ? 1 : 0;
   switch (row.kind) {
     case 'user':
       return (
-        <Bar color={theme.colors.primary}>
+        <Bar color={theme.colors.primary} tint>
           <ChatMessage sender="user" name={row.fromName}>
             <text attributes={bold} wrapMode="word">{row.text}</text>
           </ChatMessage>
