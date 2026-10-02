@@ -3,17 +3,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { formatTokens } from "@/format";
 import { cn } from "@/lib/utils";
 import { useEffect } from "react";
+import { clampPercent, DANGER_PERCENT } from "../../client-core/context-format";
 import type { ContextResult, SessionState } from "../../protocol/messages";
 import type { PaneState } from "../reducer";
 import { useStore } from "../store";
 
-/** Above this share of the window, colour alone stops carrying the signal. */
-export const DANGER_PERCENT = 80;
-
-/** A provider reports a percentage; nothing guarantees it is one. */
-function clampPercent(percent: number): number {
-  return Math.max(0, Math.min(100, Math.round(percent)));
-}
+export { DANGER_PERCENT };
 
 /** A listed file rounding to 0 is present but tiny — never "nothing". */
 function formatPercent(percent: number): string {
