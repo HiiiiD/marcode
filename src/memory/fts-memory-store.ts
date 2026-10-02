@@ -1,4 +1,4 @@
-import { DatabaseSync } from 'node:sqlite';
+import { openDatabase, type SqlDb } from './sqlite-driver';
 import type { SessionId, TranscriptItem } from '../protocol/messages';
 import { isWithin } from '../shared/path-scope';
 import { extractiveDigest, indexLine, type SessionDigest } from './digest';
@@ -42,14 +42,14 @@ const SCOPED_FETCH = 500;
  * cache — see the design spec's "Modularity / swap story".
  */
 export class FtsMemoryStore implements MemoryStore {
-  private readonly db: DatabaseSync;
+  private readonly db: SqlDb;
 
   constructor(
     dbPath: string,
     private readonly transcripts: TranscriptReader,
     schemaVersion: number = SCHEMA_VERSION,
   ) {
-    this.db = new DatabaseSync(dbPath);
+    this.db = openDatabase(dbPath);
     this.db.exec('PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;');
 
     // `CREATE VIRTUAL TABLE IF NOT EXISTS` is a no-op once the table already
