@@ -20,7 +20,7 @@ export interface AppKeys {
 }
 
 export function useAppKeys(k: AppKeys): void {
-  const { post, notice, setNotice, mentionOpen, rosterFiltering } = useTuiStore();
+  const { post, notice, setNotice, mentionOpen, rosterFiltering, refreshUsage } = useTuiStore();
   const armed = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const noticeRef = useRef(notice);
   noticeRef.current = notice;
@@ -74,6 +74,7 @@ export function useAppKeys(k: AppKeys): void {
       }
       case 'quit-request': quitRequest(); return;
       case 'refresh-catalog': post({ t: 'refresh-catalog' }); return;
+      case 'refresh-usage': refreshUsage(); return;
       case 'open-model': if (s) { k.openPicker('model'); } return;
       case 'open-effort': if (s) { k.openPicker('effort'); } return;
       case 'open-mode': if (s) { k.openPicker('mode'); } return;

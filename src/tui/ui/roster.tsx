@@ -1,11 +1,12 @@
 import type { ScrollBoxRenderable } from '@opentui/core';
-import { useKeyboard } from '@opentui/react';
+import { useKeyboard, useTerminalDimensions } from '@opentui/react';
 import { useEffect, useRef, useState } from 'react';
 import { leafSessionIds } from '../../client-core/layout-tree';
 import type { SessionId } from '../../protocol/messages';
 import { actionFor } from '../keymap';
 import { rosterRows } from '../view/roster-rows';
 import { useTuiStore } from './store';
+import { UsageStrip } from './usage-strip';
 import { useTheme } from './termcn/hooks/use-theme';
 
 export const ROSTER_W = 26;
@@ -32,6 +33,7 @@ export function Roster({ focused, onFocusSession, onAskDelete, onHandoff, squeez
   }, [focused, filtering]);
   useEffect(() => { if (!focused) { setFiltering(false); } }, [focused]);
   const theme = useTheme();
+  const { height } = useTerminalDimensions();
   const scroll = useRef<ScrollBoxRenderable | null>(null);
   useEffect(() => {
     const id = rows[cursor]?.id;
@@ -82,6 +84,7 @@ export function Roster({ focused, onFocusSession, onAskDelete, onHandoff, squeez
           </text>
         ))}
       </scrollbox>
+      <UsageStrip width={ROSTER_W - 2} maxLines={Math.max(2, Math.floor(height / 3))} />
       {rows.length === 0 ? <text fg={theme.colors.muted}>{filter !== '' ? 'no match' : 'no sessions yet'}</text> : null}
     </box>
   );
