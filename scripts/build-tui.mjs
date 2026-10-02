@@ -15,8 +15,8 @@ if (!process.versions.bun) {
   process.exit(res.status ?? 1);
 }
 
-// Bun hoists the lazy require of fts-memory-store into a top-level `import 'node:sqlite'`, which
-// Bun's runtime cannot satisfy. The TUI forces memory off under Bun, so a throwing stand-in is enough.
+// Bun hoists the lazy require of the sqlite driver into a top-level `import 'node:sqlite'`, which
+// Bun's runtime cannot satisfy. The driver opens bun:sqlite under Bun and never constructs this stand-in.
 const sqliteStub = {
   name: 'node-sqlite-stub',
   setup(build) {

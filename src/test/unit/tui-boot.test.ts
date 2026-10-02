@@ -2,7 +2,7 @@ import * as assert from 'node:assert';
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { bootHost, memoryForRuntime, type Booted } from '../../tui/boot';
+import { bootHost, type Booted } from '../../tui/boot';
 import type { HostToWebview } from '../../protocol/messages';
 import { loadConfig } from '../../host/config-file';
 import { reloadSignature } from '../../host/host-config';
@@ -72,14 +72,5 @@ suite('tui boot', () => {
     await b.shutdown();
     await b.shutdown();
     booted = undefined;
-  });
-
-  test('memoryForRuntime turns memory off under Bun and keeps the summarizer', () => {
-    assert.deepStrictEqual(memoryForRuntime({ enabled: true, summarizer: 'x' }, true), { enabled: false, summarizer: 'x' });
-  });
-
-  test('memoryForRuntime leaves memory alone under Node or when already off', () => {
-    assert.strictEqual(memoryForRuntime({ enabled: true, summarizer: undefined }, false).enabled, true);
-    assert.strictEqual(memoryForRuntime({ enabled: false, summarizer: undefined }, true).enabled, false);
   });
 });

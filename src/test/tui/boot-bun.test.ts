@@ -12,13 +12,16 @@ afterEach(async () => {
   if (tmp) { await fs.rm(tmp, { recursive: true, force: true }); tmp = undefined; }
 });
 
-test('under Bun memory is forced off without a launch warning', async () => {
+test('under Bun memory follows config: the store opens and nothing warns at launch', async () => {
   tmp = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'mar-bunboot-')));
   const notified: string[] = [];
+  const home = path.join(tmp, 'home');
   booted = await bootHost({
-    cwd: tmp, home: path.join(tmp, 'home'), notify: (m) => { notified.push(m); },
+    cwd: tmp, home, notify: (m) => { notified.push(m); },
     config: { enabledProviders: ['fake'], memory: { enabled: true, summarizer: undefined } },
   });
+  const files = await fs.readdir(home, { recursive: true });
+  expect(files.some((f) => String(f).endsWith('memory.sqlite'))).toBe(true);
   expect(booted.warnings).toEqual([]);
   expect(notified).toEqual([]);
 });

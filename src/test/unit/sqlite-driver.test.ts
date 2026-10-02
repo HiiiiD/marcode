@@ -27,6 +27,24 @@ suite('sqlite-driver', () => {
     assert.deepStrictEqual(db.prepare('SELECT 1').all(), [row]);
   });
 
+  test('wrapDatabase finalizes a statement after each use so bun:sqlite can release the file', () => {
+    let finalized = 0;
+    const statement = { get: () => null, all: () => [], run: () => undefined, finalize: () => { finalized++; } };
+    const db = wrapDatabase(fakeRaw({ prepare: () => statement }));
+    db.prepare('SELECT 1').get();
+    db.prepare('SELECT 1').all();
+    db.prepare('SELECT 1').run();
+    assert.strictEqual(finalized, 3);
+  });
+
+  test('wrapDatabase finalizes even when the statement throws', () => {
+    let finalized = 0;
+    const statement = { get: () => { throw new Error('boom'); }, all: () => [], run: () => undefined, finalize: () => { finalized++; } };
+    const db = wrapDatabase(fakeRaw({ prepare: () => statement }));
+    assert.throws(() => db.prepare('SELECT 1').get(), /boom/);
+    assert.strictEqual(finalized, 1);
+  });
+
   test('assertFts5 explains a build without FTS5', () => {
     const db = wrapDatabase(fakeRaw({ exec: () => { throw new Error('no such module: fts5'); } }));
     assert.throws(() => assertFts5(db), /FTS5 is unavailable: no such module: fts5/);

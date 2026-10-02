@@ -16,6 +16,7 @@ export interface RawDatabase {
     get(...params: unknown[]): unknown;
     all(...params: unknown[]): unknown[];
     run(...params: unknown[]): unknown;
+    finalize?(): void;
   };
   close(): void;
 }
@@ -25,11 +26,16 @@ export function wrapDatabase(raw: RawDatabase): SqlDb {
     exec: (sql) => { raw.exec(sql); },
     prepare: (sql) => {
       const statement = raw.prepare(sql);
+      // bun:sqlite's close() leaves the file locked while a statement is unfinalized (EBUSY on Windows);
+      // callers prepare per call, so each statement is finalized right after its one use. node:sqlite has no finalize.
+      const once = <T>(use: () => T): T => {
+        try { return use(); } finally { statement.finalize?.(); }
+      };
       return {
         // bun:sqlite reports no row as null, node:sqlite as undefined
-        get: (...params) => statement.get(...params) ?? undefined,
-        all: (...params) => statement.all(...params),
-        run: (...params) => { statement.run(...params); },
+        get: (...params) => once(() => statement.get(...params)) ?? undefined,
+        all: (...params) => once(() => statement.all(...params)),
+        run: (...params) => { once(() => statement.run(...params)); },
       };
     },
     close: () => raw.close(),
