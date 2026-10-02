@@ -21,6 +21,8 @@ export interface TuiStoreValue {
   setMentionOpen(open: boolean): void;
   rosterFiltering: boolean;
   setRosterFiltering(on: boolean): void;
+  /** Pulls plan usage again; a no-op while a round is already in flight. */
+  refreshUsage(): void;
 }
 
 const Ctx = createContext<TuiStoreValue | undefined>(undefined);
@@ -57,12 +59,20 @@ export function TuiStoreProvider({ transport, children }: { transport: ClientTra
     dispatch({ t: 'local-focus', id });
   }, [transport]);
 
+  const refreshUsage = useCallback(() => {
+    if (stateRef.current.usageRefreshing) { return; }
+    // Nothing echoes the request, only its eventual usage-refresh-done, so the marker has to start here.
+    stateRef.current = { ...stateRef.current, usageRefreshing: true };
+    transport.post({ t: 'refresh-usage' });
+    dispatch({ t: 'local-usage-refresh-start' });
+  }, [transport]);
+
   const setLocalLayout = useCallback((layout: PaneLayout) => { dispatch({ t: 'local-layout', layout }); }, []);
 
   const focusedId = state.focusedSessionId ?? null;
   const value = useMemo<TuiStoreValue>(
-    () => ({ state, post, drafts, focusedId, focus, setLocalLayout, chordArmed, notice, setNotice, mentionOpen, setMentionOpen, rosterFiltering, setRosterFiltering }),
-    [state, post, drafts, focusedId, focus, setLocalLayout, chordArmed, notice, mentionOpen, rosterFiltering],
+    () => ({ state, post, drafts, focusedId, focus, setLocalLayout, chordArmed, notice, setNotice, mentionOpen, setMentionOpen, rosterFiltering, setRosterFiltering, refreshUsage }),
+    [state, post, drafts, focusedId, focus, setLocalLayout, chordArmed, notice, mentionOpen, rosterFiltering, refreshUsage],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
