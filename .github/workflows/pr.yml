@@ -13,8 +13,25 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test:
+  checks:
+    name: ${{ matrix.name }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: static
+            bun: false
+            commands: yarn run check-types && yarn run check-types:tui && yarn run lint
+          - name: unit
+            bun: false
+            commands: yarn run test:unit
+          - name: dom
+            bun: false
+            commands: yarn run test:dom
+          - name: tui
+            bun: true
+            commands: yarn run test:tui
     steps:
       - uses: actions/checkout@v4
 
@@ -22,9 +39,11 @@ jobs:
         with:
           node-version: 22
 
+      - uses: oven-sh/setup-bun@v2
+        if: matrix.bun
+        with:
+          bun-version: latest
+
       - run: corepack enable
       - run: yarn install --frozen-lockfile
-      - run: yarn run check-types
-      - run: yarn run lint
-      - run: yarn run test:unit
-      - run: yarn run test:dom
+      - run: ${{ matrix.commands }}
