@@ -5,6 +5,7 @@ import type { PickerKind } from '../view/pickers';
 import { BottomSlotView } from './bottom-slot';
 import { paneTitleText, PaneTitle } from './pane-title';
 import { useTuiStore } from './store';
+import { Surface } from './surface';
 import { useTheme } from './termcn/hooks/use-theme';
 import { Transcript } from './transcript/transcript';
 
@@ -37,9 +38,9 @@ export function Pane({ rect, compact, focused, liveZone, onFocus, onHide, onFork
     );
   }
   return (
-    <box
-      {...place} flexDirection="column" border borderStyle="single"
-      borderColor={focused ? theme.colors.primary : theme.colors.border}
+    <Surface
+      {...place} flexDirection="column" padX={1} ring={focused} tone={focused ? 'paneActive' : 'pane'}
+      fallbackBorder={focused ? theme.colors.primary : theme.colors.border}
       onMouseDown={() => { onFocus(id); }}
     >
       <PaneTitle text={title} focused={focused} onHide={() => { onHide(id); }} />
@@ -52,6 +53,6 @@ export function Pane({ rect, compact, focused, liveZone, onFocus, onHide, onFork
       <box flexShrink={0}>
         <BottomSlotView sessionId={id} focused={focused && liveZone === 'composer'} onOpenPicker={onOpenPicker} />
       </box>
-    </box>
+    </Surface>
   );
 }

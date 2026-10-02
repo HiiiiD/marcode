@@ -1,7 +1,11 @@
+import { Surface } from './surface';
+import { useTokens } from './tokens/tokens-provider';
+
 export function ForeignBanner({ text }: { text: string }) {
+  const muted = useTokens()?.textMuted ?? 'gray';
   return (
-    <box border borderStyle="single">
-      <text fg="gray">{text}</text>
-    </box>
+    <Surface tone="panel" padX={1} padY={1}>
+      <text fg={muted}>{text}</text>
+    </Surface>
   );
 }

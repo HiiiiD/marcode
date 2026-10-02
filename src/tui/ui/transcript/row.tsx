@@ -34,6 +34,7 @@ export function RowView(props: { row: TranscriptRow; selected: boolean; expanded
   const { row } = props;
   const theme = useTheme();
   const syntaxStyle = useSyntaxStyle();
+  const tokens = useTokens();
   const bold = props.selected ? 1 : 0;
   switch (row.kind) {
     case 'user':
@@ -46,7 +47,7 @@ export function RowView(props: { row: TranscriptRow; selected: boolean; expanded
       );
     case 'assistant':
       return (
-        <Bar color={theme.colors.success}>
+        <Bar color={tokens ? tokens.menu : theme.colors.success}>
           <ChatMessage sender="assistant">
             <markdown content={row.text} streaming={row.streaming} syntaxStyle={syntaxStyle} />
           </ChatMessage>
@@ -68,6 +69,6 @@ export function RowView(props: { row: TranscriptRow; selected: boolean; expanded
     case 'relocation':
       return <RelocationCardView card={row.card} active={row.active} keys={props.relocationKeys} selected={props.selected} />;
     case 'notice':
-      return <text attributes={bold} fg={row.tone === 'error' ? 'red' : 'gray'} wrapMode="word">{row.text}</text>;
+      return <text attributes={bold} fg={row.tone === 'error' ? theme.colors.error : theme.colors.mutedForeground} wrapMode="word">{row.text}</text>;
   }
 }

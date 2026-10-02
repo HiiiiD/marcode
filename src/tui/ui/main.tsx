@@ -90,8 +90,8 @@ async function runTui(cmd: Extract<CliCommand, { kind: 'run' }>): Promise<void> 
   const detect = () => detectTokens(live);
   const loginCommands = Object.fromEntries([...booted.host.loginRecipes].map(([id, r]) => [id, r.command]));
   createRoot(renderer).render(
-    <TuiThemeProvider>
-      <DetectedTokensProvider detect={detect}>
+    <DetectedTokensProvider detect={detect}>
+      <TuiThemeProvider>
         <TuiStoreProvider transport={booted.loopback.transport}>
           <App
             launchCwd={booted.launchCwd}
@@ -103,8 +103,8 @@ async function runTui(cmd: Extract<CliCommand, { kind: 'run' }>): Promise<void> 
             onQuit={() => { void shutdown(0); }}
           />
         </TuiStoreProvider>
-      </DetectedTokensProvider>
-    </TuiThemeProvider>,
+      </TuiThemeProvider>
+    </DetectedTokensProvider>,
   );
 }
 

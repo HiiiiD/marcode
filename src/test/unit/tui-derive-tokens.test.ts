@@ -10,6 +10,8 @@ suite('tui tokens: deriveTokens', () => {
     const t = deriveTokens(DARK)!;
     const bg = rgb('#1e1e1e');
     assert.ok(maxDelta(rgb(t.panel), bg) >= 8);
+    assert.ok(maxDelta(rgb(t.paneActive), bg) > maxDelta(rgb(t.pane), bg));
+    assert.ok(maxDelta(rgb(t.panel), bg) > maxDelta(rgb(t.paneActive), bg));
     assert.ok(maxDelta(rgb(t.element), bg) > maxDelta(rgb(t.panel), bg));
     assert.ok(maxDelta(rgb(t.menu), bg) > maxDelta(rgb(t.element), bg));
     assert.ok(rgb(t.panel)[0] > bg[0]);
@@ -49,7 +51,7 @@ suite('tui tokens: deriveTokens', () => {
 
   test('every token is a #rrggbb string', () => {
     const t = deriveTokens(DARK)!;
-    const all = [t.panel, t.menu, t.element, t.text, t.textMuted, ...Object.values(t.diff), ...Object.values(t.syntax), ...Object.values(t.markdown)];
+    const all = [t.pane, t.paneActive, t.panel, t.menu, t.element, t.text, t.textMuted, ...Object.values(t.diff), ...Object.values(t.syntax), ...Object.values(t.markdown)];
     assert.deepStrictEqual(all.filter((v) => !/^#[0-9a-f]{6}$/.test(v)), []);
   });
 });
