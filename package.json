@@ -63,10 +63,6 @@
     },
     "commands": [
       {
-        "command": "marcode.codex.login",
-        "title": "Marcode: Sign in to Codex"
-      },
-      {
         "command": "marcode.login",
         "title": "Marcode: Sign in to a provider instance"
       },

@@ -143,7 +143,7 @@ this extension does not manage or prompt for authentication itself, except where
   or the Command Palette's **Marcode: Sign in to a provider instance**. `marcode.providerInstances` is
   only for *extra* accounts beyond this default one — see below.
 - **Codex** — the `codex` CLI must be on PATH (or set via `marcode.codex.path`). Sign in
-  from the Command Palette with **Marcode: Sign in to Codex**.
+  from the Command Palette with **Marcode: Sign in to a provider instance**.
 - **OpenCode** — the `opencode` CLI must be on PATH (or set via
   `marcode.opencode.path`).
 
