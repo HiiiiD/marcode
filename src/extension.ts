@@ -369,10 +369,6 @@ export async function activate(context: vscode.ExtensionContext) {
       const recipe = loginRecipes.get('codex');
       if (recipe) { openLoginTerminal(recipe.terminalName, recipe.command, recipe.env); }
     }),
-    vscode.commands.registerCommand('marcode.claude.login', () => {
-      const recipe = loginRecipes.get('claude');
-      if (recipe) { openLoginTerminal(recipe.terminalName, recipe.command, recipe.env); }
-    }),
     vscode.commands.registerCommand('marcode.login', async () => {
       const picks = [...loginRecipes.entries()].map(([id, recipe]) => ({ label: recipe.terminalName, description: id, recipe }));
       if (picks.length === 0) {
