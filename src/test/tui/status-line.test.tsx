@@ -1,5 +1,6 @@
 import { afterEach, expect, test } from 'bun:test';
 import { act } from 'react';
+import { LAYOUT_HINT, PICKER_HINT } from '../../tui/view/status-line';
 import { StatusLine } from '../../tui/ui/status-line';
 import { snapshot, summary } from '../fixtures/protocol';
 import { hydrateMsg, mount, type Mounted } from './harness';
@@ -73,4 +74,27 @@ test('a click on the share opens the context dialog, a click elsewhere does not'
   expect(opened).toBe(0);
   await act(async () => { await m!.setup.mockMouse.click(x + 1, y); });
   expect(opened).toBe(1);
+});
+
+const HEAD = 'Fake · fake-large · high · plan';
+
+test('the layout shortcut extends the hints on the same line', async () => {
+  m = await mount(<StatusLine sessionId="s1" width={120} />);
+  await m.fromHost(hydrateMsg({ sessions: [withEffort], snapshots: [snapshot('s1', withEffort)] }));
+  expect(m.frame()).toContain(`${PICKER_HINT} · ${LAYOUT_HINT}`);
+});
+
+test('the layout shortcut is the first hint to go when the width is short', async () => {
+  m = await mount(<StatusLine sessionId="s1" width={HEAD.length + 3 + PICKER_HINT.length} />);
+  await m.fromHost(hydrateMsg({ sessions: [withEffort], snapshots: [snapshot('s1', withEffort)] }));
+  expect(m.frame()).toContain('^T context');
+  expect(m.frame().includes(LAYOUT_HINT)).toBe(false);
+});
+
+test('a foreign session gets the layout shortcut but not the picker keys', async () => {
+  const foreign = summary('s1', { owner: { host: 'vscode', pid: 1 } });
+  m = await mount(<StatusLine sessionId="s1" width={100} />);
+  await m.fromHost(hydrateMsg({ sessions: [foreign], snapshots: [snapshot('s1', foreign)] }));
+  expect(m.frame()).toContain(LAYOUT_HINT);
+  expect(m.frame().includes('^P')).toBe(false);
 });

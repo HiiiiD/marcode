@@ -40,7 +40,7 @@ yarn build:tui:bin    # bin/marcode.exe (bin/marcode elsewhere): standalone, Bun
 | Ctrl+P / Ctrl+E | your own session | open the model dialog (type to search, favorites first) / the permission-mode dialog on its effort row (Left/Right steps the level live) |
 | Shift+Tab | your own session | open the permission-mode dialog (`bypass` is greyed once the session has started) |
 | Ctrl+T | your own session | open the context dialog (window, slices, memory files; `r` retries a failed read). The status line shows `ctx N%`, red from 80%, and clicking it does the same |
-| `/model`, `/effort`, `/mode`, `/context` | composer | the same dialogs, typed and sent with Enter |
+| `/model`, `/effort`, `/mode`, `/context`, `/layout` | composer | the same dialogs, typed and sent with Enter |
 | Ctrl+R | anywhere | re-check providers |
 | Ctrl+G | anywhere | refresh plan usage; clicking the usage strip does the same, and a spinner shows until the round is done |
 | Ctrl+Y | your own session | move the session to the offered worktree (the newest open offer in the focused pane) |
@@ -50,6 +50,7 @@ yarn build:tui:bin    # bin/marcode.exe (bin/marcode elsewhere): standalone, Bun
 | Ctrl+W, then m / = | anywhere | maximize the focused pane (view only) / even out every split |
 | Ctrl+W, then H J K L | anywhere | move the focused pane's divider by 5% (one layout write) |
 | Ctrl+W, then x | anywhere | hide the focused pane's session (it stays in the roster) |
+| Ctrl+W, then g | anywhere | open the layout dialog: grid rows x columns, built-in and saved presets, `s` saves the current shape, `d` deletes a saved one. Applying a shape with fewer slots than open sessions asks first; hidden sessions stay in the roster |
 | f | transcript | fork the selected message into a new session beside this one (not for a session owned by another host) |
 | Shift+H | roster | hand off from the row: opens the new-session dialog with the handoff on |
 | h | new-session dialog | toggle "Hand off from <focused session>"; with it on, a prompt line follows the provider and model picks |
@@ -178,6 +179,7 @@ Run in Windows Terminal and in one macOS or Linux terminal.
 - [ ] A failed tool shows the "failed" pill; the card borders stay legible on a light terminal.
 - [ ] Drag a divider and quit: the sizes come back on relaunch. Wheel over an unfocused pane scrolls only that pane.
 - [ ] Ctrl+W chords: focus, split, maximize, even, resize, hide. Inside tmux or screen, Ctrl+W may be intercepted: note it.
+- [ ] Ctrl+W g opens the layout dialog: apply a preset and a 2x3 grid, save the shape, delete it. Inside tmux or screen the chord may be intercepted: `/layout` is the fallback.
 - [ ] Shrink the terminal below the tree's minimum and back: the focused pane maximizes, then the layout returns.
 - [ ] Have an agent call `marcode__spawn_session`: the session gets a pane and focus stays where it was.
 - [ ] Fork at a message with `f`; hand off from the roster with `Shift+H`.

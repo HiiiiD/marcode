@@ -1,4 +1,4 @@
-import type { LayoutNode, LayoutPreset } from '../../protocol/messages';
+import type { LayoutNode, LayoutPreset } from '../protocol/messages';
 
 const leaf = (): LayoutNode => ({ kind: 'leaf', sessionId: null, size: 50 });
 

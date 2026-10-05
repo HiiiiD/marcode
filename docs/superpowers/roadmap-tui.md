@@ -16,8 +16,10 @@ below is its own cycle: spec in `docs/superpowers/specs/`, plan in `docs/superpo
   transcript message, handoff from the new-session dialog, and the `marcode__spawn_session` fix (a spawned session
   gets a pane without taking focus). Spec `2026-10-01-tui-multi-session-design.md`, plan
   `2026-10-01-tui-multi-session.md`.
-  Left over: layout presets UI, drag-to-move panes between slots, grid-shape commands, tabbed panes, fork-to-take-over
+  Left over: drag-to-move panes between slots, tabbed panes, fork-to-take-over
   of a foreign session. Not verified in a real terminal: mouse drag and wheel reporting, `Ctrl+W` under a multiplexer.
+
+- **C. Layout dialog** (`feat/tui-layout-dialog`): `Ctrl+W g` or `/layout` opens one dialog for grid rows x columns, built-in and saved presets, save-current and delete, with an overflow confirm. Spec `2026-10-05-tui-layout-dialog-design.md`, plan `2026-10-05-tui-layout-dialog.md`. Not verified in a real terminal: the dialog itself, `Ctrl+W g` under a multiplexer.
 
 - **D1. Context** (`feat/tui-awareness-context`): `ctx N%` in the status line (red from 80%), a context dialog via `/context`, `Ctrl+T` or a click on the share. Spec `2026-10-02-tui-awareness-design.md`, plan `2026-10-02-tui-awareness-context.md`. Not verified in a real terminal: the status-line click.
 

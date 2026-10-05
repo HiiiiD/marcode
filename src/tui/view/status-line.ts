@@ -1,6 +1,8 @@
 import { clampPercent, DANGER_PERCENT } from '../../client-core/context-format';
 
 export const PICKER_HINT = '^P model · ^E effort · ⇧Tab mode · ^T context';
+// Pane chords work on any session, so unlike PICKER_HINT it is not gated on ownership.
+export const LAYOUT_HINT = '^W g layout';
 
 export interface StatusLayout { text: string; ctx?: { start: number; end: number; danger: boolean } }
 
@@ -15,7 +17,11 @@ export function statusLayout(o: StatusInput): StatusLayout {
   const ctx = shown === undefined ? undefined : `ctx ${shown}%`;
   const withCtx = ctx ? `${head} · ${ctx}` : head;
   const candidates: { text: string; hasCtx: boolean }[] = [];
-  if (o.owned) { candidates.push({ text: `${withCtx}   ${PICKER_HINT}`, hasCtx: ctx !== undefined }); }
+  if (o.owned) {
+    candidates.push({ text: `${withCtx}   ${PICKER_HINT} · ${LAYOUT_HINT}`, hasCtx: ctx !== undefined });
+    candidates.push({ text: `${withCtx}   ${PICKER_HINT}`, hasCtx: ctx !== undefined });
+  }
+  candidates.push({ text: `${withCtx}   ${LAYOUT_HINT}`, hasCtx: ctx !== undefined });
   if (ctx) { candidates.push({ text: withCtx, hasCtx: true }); }
   candidates.push({ text: head, hasCtx: false });
   const fit = candidates.find((c) => c.text.length <= o.width);
