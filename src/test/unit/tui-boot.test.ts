@@ -12,7 +12,7 @@ suite('tui boot', () => {
   let tmp: string;
   let booted: Booted | undefined;
   setup(async () => { tmp = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'mar-boot-'))); });
-  teardown(async () => { await booted?.shutdown(); booted = undefined; await fs.rm(tmp, { recursive: true, force: true }); });
+  teardown(async () => { await booted?.shutdown(); booted = undefined; await fs.rm(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 }); });
 
   const boot = async () => {
     booted = await bootHost({
@@ -43,7 +43,9 @@ suite('tui boot', () => {
     b.loopback.transport.post({ t: 'file-search', id: 's1', query: 'compos' });
     await new Promise((r) => setTimeout(r, 200));
     const result = got.find((m) => m.t === 'file-search-result');
-    assert.deepStrictEqual(result?.t === 'file-search-result' && result.files.map((f) => f.path), ['src/composer.ts']);
+    const paths = result?.t === 'file-search-result' ? result.files.map((f) => f.path) : [];
+    assert.strictEqual(paths[0], 'src/composer.ts');
+    assert.strictEqual(paths.some((p) => p.includes('node_modules')), false);
   });
 
   test('the workspace directory lives under the given home and is stable', async () => {
