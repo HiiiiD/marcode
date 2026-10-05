@@ -113,11 +113,12 @@ export function LayoutDialog({ onApply, onClose }: { onApply(root: LayoutNode): 
         ) : null}
         {view.mode === 'name' ? <text>{`Save current layout as: ${view.name}▏`}</text> : null}
         {view.error ? <text fg="red">{view.error}</text> : null}
-        <text fg="gray">
-          {view.mode === 'name' ? 'Enter save, Esc cancel'
-            : view.mode === 'confirm' ? 'Enter apply anyway, Esc back'
-              : 'Up/Down move — Left/Right grid — Enter apply — s save — d delete — Esc close'}
-        </text>
+        {view.mode === 'list' ? (
+          <box flexDirection="column">
+            <text fg="gray">Up/Down move — Left/Right grid — Enter apply</text>
+            <text fg="gray">s save — d delete — Esc close</text>
+          </box>
+        ) : <text fg="gray">{view.mode === 'name' ? 'Enter save, Esc cancel' : 'Enter apply anyway, Esc back'}</text>}
       </Dialog>
     </box>
   );
