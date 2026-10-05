@@ -8,10 +8,12 @@ import { existingFileUris } from '../attach-paths';
 import { parsePickerCommand, type PickerKind } from '../view/pickers';
 import { actionFor } from '../keymap';
 import { AttachmentChips } from './attachment-chips';
+import { InvocablePopup } from './invocable-popup';
 import { MentionPopup } from './mention-popup';
 import { useTuiStore } from './store';
 import { Surface } from './surface';
 import { useTokens } from './tokens/tokens-provider';
+import { useInvocablePopup } from './use-invocable-popup';
 import { useMentionPopup } from './use-mention-popup';
 
 const DEBOUNCE_MS = 300;
@@ -44,7 +46,9 @@ export function Composer({ sessionId, focused, onOpenPicker }: { sessionId: Sess
   const [caret, setCaret] = useState(0);
   const tokens = useTokens();
   const popup = useMentionPopup({ sessionId, text, caret });
-  useEffect(() => { setMentionOpen(popup.open); return () => { setMentionOpen(false); }; }, [popup.open]);
+  const slash = useInvocablePopup({ sessionId, text });
+  const anyOpen = popup.open || slash.open;
+  useEffect(() => { setMentionOpen(anyOpen); return () => { setMentionOpen(false); }; }, [anyOpen]);
 
   const flush = () => {
     clearTimeout(timer.current);
@@ -130,6 +134,16 @@ export function Composer({ sessionId, focused, onOpenPicker }: { sessionId: Sess
 
   useKeyboard((key) => {
     if (!focused) { return; }
+    if (slash.open) {
+      if (key.name === 'escape') { slash.dismiss(); key.preventDefault(); return; }
+      if (key.name === 'down') { slash.move(1); key.preventDefault(); return; }
+      if (key.name === 'up') { slash.move(-1); key.preventDefault(); return; }
+      if (key.name === 'tab' || key.name === 'return') {
+        const next = slash.pick();
+        if (next) { setBox(next.text, next.caret); key.preventDefault(); }
+        return;
+      }
+    }
     if (popup.open) {
       if (key.name === 'escape') { popup.dismiss(); key.preventDefault(); return; }
       if (key.name === 'down') { popup.move(1); key.preventDefault(); return; }
@@ -156,6 +170,7 @@ export function Composer({ sessionId, focused, onOpenPicker }: { sessionId: Sess
   return (
     <box flexDirection="column">
       {popup.open ? <MentionPopup rows={popup.rows} index={popup.index} /> : null}
+      {slash.open ? <InvocablePopup rows={slash.rows} overflow={slash.overflow} index={slash.index} /> : null}
       <AttachmentChips attachments={attachments} rejected={rejected} />
       {queued.map((q) => <text key={q.id} fg={tokens?.textMuted ?? 'gray'}>{`queued: ${q.text}`}</text>)}
       <Surface tone="panel" padX={1} padY={1}>
@@ -170,7 +185,7 @@ export function Composer({ sessionId, focused, onOpenPicker }: { sessionId: Sess
             const paths = parsePastedPaths(new TextDecoder().decode(event.bytes));
             if (paths.length > 0 && attach(paths)) { event.preventDefault(); }
           }}
-          onSubmit={() => { if (!popup.open) { submit(); } }}
+          onSubmit={() => { if (!anyOpen) { submit(); } }}
           height={tokens ? Math.min(5, Math.max(1, text.split('\n').length)) : 3}
           {...(tokens ? { backgroundColor: tokens.panel, focusedBackgroundColor: tokens.panel, placeholderColor: tokens.textMuted } : {})}
         />
