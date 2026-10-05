@@ -2,6 +2,7 @@ import { configPath, favoriteModelsSource, loadConfig } from '../host/config-fil
 import { createHost, type HostHandle } from '../host/create-host';
 import { defaultHostConfig, type HostConfig } from '../host/host-config';
 import { MessageRouter } from '../host/message-router';
+import { createTerminalFileIndex } from '../host/terminal-file-index';
 import { marcodeHome, resolveWorkspaceDir } from '../host/workspace-dir';
 import { createLoopback, type Loopback } from '../client-core/loopback-transport';
 import { terminalConfigHost, terminalEditorHost } from './tui-hooks';
@@ -55,7 +56,7 @@ export async function bootHost(opts: BootOptions): Promise<Booted> {
     router = new MessageRouter(
       host.manager, (msg) => loopback.deliver(msg), opts.cwd,
       terminalEditorHost(() => {}), host.attachments, undefined, config.review.pollIntervalMs,
-      undefined, favorites.get(), terminalConfigHost((ids) => { void favorites.set(ids); }),
+      createTerminalFileIndex(workspaceRoot), favorites.get(), terminalConfigHost((ids) => { void favorites.set(ids); }),
     );
   } catch (err) {
     await host.dispose().catch(() => {});

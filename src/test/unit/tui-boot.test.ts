@@ -32,6 +32,20 @@ suite('tui boot', () => {
     assert.strictEqual(hydrate?.t === 'hydrate' && hydrate.catalog.some((p) => p.id === 'fake'), true);
   });
 
+  test('file-search through the loopback answers with files from the workspace', async () => {
+    await fs.mkdir(path.join(tmp, 'src'));
+    await fs.writeFile(path.join(tmp, 'src', 'composer.ts'), '');
+    await fs.mkdir(path.join(tmp, 'node_modules'));
+    await fs.writeFile(path.join(tmp, 'node_modules', 'composer-dep.js'), '');
+    const b = await boot();
+    const got: HostToWebview[] = [];
+    b.loopback.transport.onMessage((m) => got.push(m));
+    b.loopback.transport.post({ t: 'file-search', id: 's1', query: 'compos' });
+    await new Promise((r) => setTimeout(r, 200));
+    const result = got.find((m) => m.t === 'file-search-result');
+    assert.deepStrictEqual(result?.t === 'file-search-result' && result.files.map((f) => f.path), ['src/composer.ts']);
+  });
+
   test('the workspace directory lives under the given home and is stable', async () => {
     const b = await boot();
     assert.strictEqual(b.workspaceRoot, tmp);
