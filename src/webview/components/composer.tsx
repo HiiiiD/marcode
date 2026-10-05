@@ -9,7 +9,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Invocable, ModelInfo } from "../../protocol/messages";
 import { fileMentions, fileRefsOf, type FileMentionPayload } from "../../client-core/mentions/file-mentions";
 import { interceptFor } from "../lib/intercepts";
-import { insertionFor, menuQuery, menuView } from "../lib/invocable-menu";
+import { insertionFor, menuQuery, menuView } from "../../client-core/invocables/invocable-menu";
 import { expandedDisplayName, sortFavoritesFirst } from "../../shared/model-catalog";
 import { leafSessionIds } from "./layout-tree";
 import {

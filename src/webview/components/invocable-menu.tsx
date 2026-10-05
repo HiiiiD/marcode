@@ -1,11 +1,11 @@
 import { useEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
-import { truncateName } from '../lib/invocable-menu';
+import { truncateName } from '../../client-core/invocables/invocable-menu';
 import type { Invocable } from '../../protocol/messages';
 
 /**
  * The `/` autocomplete list. A pure renderer: every rule about what to show,
- * in what order, and which key does what lives in `../lib/invocable-menu` and
+ * in what order, and which key does what lives in `client-core/invocables/invocable-menu` and
  * is unit-tested there. This file decides only how a row looks.
  *
  * It renders inside the composer's `block-start` addon rather than a popover:

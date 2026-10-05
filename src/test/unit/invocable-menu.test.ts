@@ -2,7 +2,7 @@ import * as assert from 'assert';
 import {
   INVOCABLE_MENU_WINDOW, filterInvocables, insertionFor, menuKeyAction,
   menuQuery, menuView, nextIndex, truncateName,
-} from '../../webview/lib/invocable-menu';
+} from '../../client-core/invocables/invocable-menu';
 import type { Invocable } from '../../protocol/messages';
 
 const ENTRIES: Invocable[] = [

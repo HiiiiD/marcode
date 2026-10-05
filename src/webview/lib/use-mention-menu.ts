@@ -1,5 +1,5 @@
 import { useState, type KeyboardEvent } from 'react';
-import { menuKeyAction, nextIndex } from './invocable-menu';
+import { menuKeyAction, nextIndex } from '../../client-core/invocables/invocable-menu';
 
 /**
  * The state machine behind an inline composer menu — the `/` invocables list
