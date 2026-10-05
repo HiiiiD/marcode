@@ -71,6 +71,10 @@
         "title": "Marcode: Sign in to Claude"
       },
       {
+        "command": "marcode.login",
+        "title": "Marcode: Sign in to a provider instance"
+      },
+      {
         "command": "marcode.accountSetup.wizard",
         "title": "Marcode: Set up a provider account"
       },

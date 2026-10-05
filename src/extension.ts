@@ -373,6 +373,17 @@ export async function activate(context: vscode.ExtensionContext) {
       const recipe = loginRecipes.get('claude');
       if (recipe) { openLoginTerminal(recipe.terminalName, recipe.command, recipe.env); }
     }),
+    vscode.commands.registerCommand('marcode.login', async () => {
+      const picks = [...loginRecipes.entries()].map(([id, recipe]) => ({ label: recipe.terminalName, description: id, recipe }));
+      if (picks.length === 0) {
+        void vscode.window.showInformationMessage('No provider instance has a login flow.');
+        return;
+      }
+      const pick = picks.length === 1
+        ? picks[0]
+        : await vscode.window.showQuickPick(picks, { placeHolder: 'Sign in to which provider instance?' });
+      if (pick) { openLoginTerminal(pick.recipe.terminalName, pick.recipe.command, pick.recipe.env); }
+    }),
     vscode.commands.registerCommand('marcode.accountSetup.wizard', () => {
       void runAccountSetupWizard(KNOWN_PROVIDER_IDS, configFile);
     }),
