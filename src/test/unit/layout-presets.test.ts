@@ -1,5 +1,5 @@
 import * as assert from 'assert';
-import { BUILTIN_PRESETS, shapeMatches } from '../../webview/components/layout-presets';
+import { BUILTIN_PRESETS, shapeMatches } from '../../client-core/layout-presets';
 
 suite('layout-presets BUILTIN_PRESETS', () => {
   test('every built-in preset is shape-only (no sessionId anywhere)', () => {

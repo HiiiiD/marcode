@@ -5,14 +5,14 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Separator } from '@/components/ui/separator';
 import { Slider } from '@/components/ui/slider';
 import { fillShapeKeepingOverflow, gridDims, gridLayout, leafSessionIds } from './layout-tree';
-import { BUILTIN_PRESETS, shapeMatches } from './layout-presets';
+import { MAX_GRID_DIM } from '../../client-core/layout-apply';
+import { BUILTIN_PRESETS, shapeMatches } from '../../client-core/layout-presets';
 import { LayoutGridPreview } from './layout-grid-preview';
 import { LayoutOverflowDialog } from './layout-overflow-dialog';
 import { SavePresetDialog } from './layout-save-preset-dialog';
 import { useStore } from '../store';
 import type { LayoutNode } from '../../protocol/messages';
 
-const MAX_DIM = 6;
 const single = (v: number | readonly number[]) => (typeof v === 'number' ? v : v[0]);
 
 interface Pending { root: LayoutNode; titles: string[] }
@@ -39,7 +39,7 @@ export function LayoutMenu() {
   const onOpenChange = (next: boolean) => {
     if (next) {
       const dims = gridDims(state.layout.root);
-      if (dims) { setRows(Math.min(dims.rows, MAX_DIM)); setCols(Math.min(dims.cols, MAX_DIM)); }
+      if (dims) { setRows(Math.min(dims.rows, MAX_GRID_DIM)); setCols(Math.min(dims.cols, MAX_GRID_DIM)); }
     }
     setOpen(next);
   };
@@ -102,7 +102,7 @@ function DimSlider({ label, value, onChange }: { label: string; value: number; o
       <Slider
         getThumbAriaLabel={() => label}
         min={1}
-        max={MAX_DIM}
+        max={MAX_GRID_DIM}
         step={1}
         value={[value]}
         onValueChange={(v) => onChange(single(v))}
