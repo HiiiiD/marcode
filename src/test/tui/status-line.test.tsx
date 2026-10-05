@@ -74,3 +74,24 @@ test('a click on the share opens the context dialog, a click elsewhere does not'
   await act(async () => { await m!.setup.mockMouse.click(x + 1, y); });
   expect(opened).toBe(1);
 });
+
+test('the layout shortcut sits on the line below the session line', async () => {
+  m = await mount(<StatusLine sessionId="s1" width={100} />);
+  await m.fromHost(hydrateMsg({ sessions: [withEffort], snapshots: [snapshot('s1', withEffort)] }));
+  const lines = m.frame().split('\n');
+  const session = lines.findIndex((l) => l.includes('Fake · fake-large'));
+  const layout = lines.findIndex((l) => l.includes('^W g layout'));
+  expect(session).toBeGreaterThanOrEqual(0);
+  expect(layout).toBe(session + 1);
+});
+
+test('the layout shortcut shows for a foreign session too, and not when it would not fit', async () => {
+  const foreign = summary('s1', { owner: { host: 'vscode', pid: 1 } });
+  m = await mount(<StatusLine sessionId="s1" width={100} />);
+  await m.fromHost(hydrateMsg({ sessions: [foreign], snapshots: [snapshot('s1', foreign)] }));
+  expect(m.frame()).toContain('^W g layout');
+  m.destroy();
+  m = await mount(<StatusLine sessionId="s1" width={8} />);
+  await m.fromHost(hydrateMsg({ sessions: [foreign], snapshots: [snapshot('s1', foreign)] }));
+  expect(m.frame().includes('^W g layout')).toBe(false);
+});

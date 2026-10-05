@@ -1,6 +1,8 @@
 import { clampPercent, DANGER_PERCENT } from '../../client-core/context-format';
 
 export const PICKER_HINT = '^P model · ^E effort · ⇧Tab mode · ^T context';
+// Pane chords work on any session, so unlike PICKER_HINT it is not gated on ownership.
+export const LAYOUT_HINT = '^W g layout';
 
 export interface StatusLayout { text: string; ctx?: { start: number; end: number; danger: boolean } }
 

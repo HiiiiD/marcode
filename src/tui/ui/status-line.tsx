@@ -1,5 +1,5 @@
 import type { SessionId } from '../../protocol/messages';
-import { hitsContext, statusLayout } from '../view/status-line';
+import { hitsContext, LAYOUT_HINT, statusLayout } from '../view/status-line';
 import { useTuiStore } from './store';
 import { useTheme } from './termcn/hooks/use-theme';
 import { useTokens } from './tokens/tokens-provider';
@@ -24,12 +24,17 @@ export function StatusLine({ sessionId, width, onOpenContext }: { sessionId: Ses
   const onMouseDown = onOpenContext
     ? (e: { x: number }) => { if (hitsContext(layout, e.x)) { onOpenContext(); } }
     : undefined;
-  if (!ctx) { return <text fg={muted} onMouseDown={onMouseDown}>{text}</text>; }
-  return (
+  const line = ctx ? (
     <text fg={muted} onMouseDown={onMouseDown}>
       {text.slice(0, ctx.start)}
       <span fg={ctx.danger ? danger : muted}>{text.slice(ctx.start, ctx.end)}</span>
       {text.slice(ctx.end)}
     </text>
+  ) : <text fg={muted} onMouseDown={onMouseDown}>{text}</text>;
+  return (
+    <box flexDirection="column">
+      {line}
+      {LAYOUT_HINT.length <= width ? <text fg={muted}>{LAYOUT_HINT}</text> : null}
+    </box>
   );
 }
