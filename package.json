@@ -63,12 +63,8 @@
     },
     "commands": [
       {
-        "command": "marcode.codex.login",
-        "title": "Marcode: Sign in to Codex"
-      },
-      {
-        "command": "marcode.claude.login",
-        "title": "Marcode: Sign in to Claude"
+        "command": "marcode.login",
+        "title": "Marcode: Sign in to a provider instance"
       },
       {
         "command": "marcode.accountSetup.wizard",
