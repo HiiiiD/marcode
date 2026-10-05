@@ -102,3 +102,12 @@ test('Esc closes the dialog without a layout write', async () => {
   expect(m.frame().includes('Built-in')).toBe(false);
   expect(setLayouts().length).toBe(before);
 });
+
+test('before hydrate the chord does nothing, so a layout write cannot overwrite the saved one', async () => {
+  m = await mount(<App {...props} />, size);
+  await openByChord();
+  expect(m.frame().includes('Built-in')).toBe(false);
+  await m.fromHost(three());
+  expect(m.frame().includes('Built-in')).toBe(false);
+  expect(setLayouts().length).toBe(0);
+});

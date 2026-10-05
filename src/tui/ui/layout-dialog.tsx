@@ -62,6 +62,7 @@ export function LayoutDialog({ onApply, onClose }: { onApply(root: LayoutNode): 
     }
 
     if (key.name === 'escape') { onClose(); return; }
+    if (key.ctrl || key.meta) { return; }
     if (key.name === 'down') { st.set({ index: Math.min(last, index + 1) }); return; }
     if (key.name === 'up') { st.set({ index: Math.max(0, index - 1) }); return; }
     if (key.name === 's') { st.set({ mode: 'name', name: '', error: undefined }); return; }

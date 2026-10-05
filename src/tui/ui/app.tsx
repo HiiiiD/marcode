@@ -101,7 +101,7 @@ export function App(props: AppProps) {
     maximized, layout,
     onSplit: (orientation) => { pendingSplit.current = orientation; openNewSession(); },
     toggleMaximize: () => { setMaximized((v) => !v); },
-    onOpenLayout: () => { setPicker('layout'); },
+    onOpenLayout: () => { if (state.ready) { setPicker('layout'); } },
   });
 
   useAppKeys({

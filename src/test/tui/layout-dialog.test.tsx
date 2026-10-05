@@ -196,3 +196,13 @@ test('a long saved list is windowed and the selection stays visible', async () =
   expect(m!.frame()).toContain('Saved 11');
   expect(m!.frame().includes('2 columns')).toBe(false);
 });
+
+test('modified s and d are not commands: Ctrl+D leaves the preset, Ctrl+S opens no prompt', async () => {
+  await open(hydrateWith({ root: layoutOf(['s1', 's2']).root, presets: [mine('p1', 'Mine')] }, 2));
+  await m!.pressMany(Array.from({ length: 7 }, () => 'down'));
+  await m!.press('d', { ctrl: true });
+  await m!.press('d', { meta: true });
+  await m!.press('s', { ctrl: true });
+  expect(posts('delete-preset').length).toBe(0);
+  expect(m!.frame().includes('Save current layout as')).toBe(false);
+});
