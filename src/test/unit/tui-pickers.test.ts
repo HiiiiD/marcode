@@ -92,6 +92,11 @@ suite('tui pickers: slash commands', () => {
     assert.strictEqual(parsePickerCommand('/effort'), 'effort');
     assert.strictEqual(parsePickerCommand('/mode'), 'mode');
   });
+  test('/layout names its dialog and takes no arguments', () => {
+    assert.strictEqual(parsePickerCommand('/layout'), 'layout');
+    assert.strictEqual(parsePickerCommand('  /layout '), 'layout');
+    assert.strictEqual(parsePickerCommand('/layout 2x2'), undefined);
+  });
   test('/context names its dialog', () => {
     assert.strictEqual(parsePickerCommand('/context'), 'context');
     assert.strictEqual(parsePickerCommand(' /context '), 'context');

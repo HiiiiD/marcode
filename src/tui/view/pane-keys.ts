@@ -3,7 +3,7 @@ import type { KeyInput } from '../keymap';
 export type Dir = 'left' | 'right' | 'up' | 'down';
 export type PaneAction =
   | { do: 'focus'; dir: Dir } | { do: 'split'; orientation: 'horizontal' | 'vertical' }
-  | { do: 'maximize' } | { do: 'even' } | { do: 'resize'; dir: Dir } | { do: 'hide' };
+  | { do: 'maximize' } | { do: 'even' } | { do: 'resize'; dir: Dir } | { do: 'hide' } | { do: 'layout' };
 export interface ChordResult { armedAt: number | null; consumed: boolean; action?: PaneAction }
 
 export const CHORD_MS = 1500;
@@ -23,6 +23,7 @@ function chordAction(key: KeyInput): PaneAction | undefined {
   if (resize) { return { do: 'resize', dir: resize }; }
   if (key.name === 'm') { return { do: 'maximize' }; }
   if (key.name === 'x') { return { do: 'hide' }; }
+  if (key.name === 'g') { return { do: 'layout' }; }
   const focus = FOCUS[key.name];
   return focus ? { do: 'focus', dir: focus } : undefined;
 }
