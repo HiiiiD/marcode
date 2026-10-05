@@ -16,13 +16,15 @@ import { useMentionPopup } from './use-mention-popup';
 
 const DEBOUNCE_MS = 300;
 
-// The textarea defaults Enter to newline and Alt+Enter to submit; flip both, and keep linefeed (Ctrl+J) a newline.
+// The textarea defaults Enter to newline and Alt+Enter to submit; flip both, and keep linefeed (Ctrl+J) a newline,
+// and make Ctrl+A select everything rather than the emacs line-home (Home still goes there).
 const KEY_BINDINGS: KeyBinding[] = [
   { name: 'return', action: 'submit' },
   { name: 'kpenter', action: 'submit' },
   { name: 'return', meta: true, action: 'newline' },
   { name: 'kpenter', meta: true, action: 'newline' },
   { name: 'linefeed', action: 'newline' },
+  { name: 'a', ctrl: true, action: 'select-all' },
 ];
 
 export function Composer({ sessionId, focused, onOpenPicker }: { sessionId: SessionId; focused: boolean; onOpenPicker?: (kind: PickerKind) => void }) {

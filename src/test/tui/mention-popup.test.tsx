@@ -180,3 +180,14 @@ test('typing dismisses attachment rejections', async () => {
   await m!.type('h');
   expect(m!.frame().includes('too big: huge.bin')).toBe(false);
 });
+
+test('Ctrl+A selects the whole composer, so the next key replaces it', async () => {
+  await open();
+  await m!.type('first line');
+  await m!.press('linefeed');
+  await m!.type('second line');
+  await m!.press('a', { ctrl: true });
+  await m!.type('X');
+  expect(m!.frame()).toContain('X');
+  expect(m!.frame().includes('first line') || m!.frame().includes('second line')).toBe(false);
+});

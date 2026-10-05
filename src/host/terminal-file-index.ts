@@ -17,10 +17,10 @@ function gitFiles(root: string): Promise<string[] | undefined> {
   });
 }
 
-async function walkFiles(root: string): Promise<string[]> {
+async function walkFiles(root: string, stopped: () => boolean): Promise<string[]> {
   const out: string[] = [];
   const queue = [''];
-  while (queue.length > 0 && out.length < WALK_CAP) {
+  while (queue.length > 0 && out.length < WALK_CAP && !stopped()) {
     const dir = queue.shift() as string;
     const entries = await readdir(join(root, dir), { withFileTypes: true }).catch(() => []);
     for (const e of entries) {
@@ -31,21 +31,25 @@ async function walkFiles(root: string): Promise<string[]> {
   return out.slice(0, WALK_CAP);
 }
 
-const scan = async (root: string): Promise<IndexedPath[]> => indexPaths((await gitFiles(root)) ?? (await walkFiles(root)));
+const scan = async (root: string, stopped: () => boolean): Promise<IndexedPath[]> =>
+  indexPaths((await gitFiles(root)) ?? (await walkFiles(root, stopped)));
 
 /**
  * `FileSearch` for hosts with no `vscode` workspace. The scan starts at construction so the first `@` finds it
  * ready, and a stale index keeps answering while a fresh one builds, so no keystroke ever waits on a rescan.
  */
-export function createTerminalFileIndex(root: string): FileSearch {
-  let current: Promise<IndexedPath[]> = scan(root);
+export function createTerminalFileIndex(root: string): FileSearch & { dispose(): Promise<void> } {
+  let disposed = false;
+  const stopped = () => disposed;
+  let current: Promise<IndexedPath[]> = scan(root, stopped);
   let builtAt = Date.now();
-  let rebuilding = false;
+  let rebuilding: Promise<void> | undefined;
 
   const refreshIfStale = () => {
-    if (rebuilding || Date.now() - builtAt < STALE_MS) { return; }
-    rebuilding = true;
-    void scan(root).then((next) => { current = Promise.resolve(next); builtAt = Date.now(); }).finally(() => { rebuilding = false; });
+    if (disposed || rebuilding || Date.now() - builtAt < STALE_MS) { return; }
+    rebuilding = scan(root, stopped)
+      .then((next) => { current = Promise.resolve(next); builtAt = Date.now(); })
+      .finally(() => { rebuilding = undefined; });
   };
 
   return {
@@ -53,6 +57,11 @@ export function createTerminalFileIndex(root: string): FileSearch {
       const index = await current;
       refreshIfStale();
       return searchIndex(index, query);
+    },
+    // A scan still walking when the workspace directory is removed holds it open (EBUSY on Windows).
+    dispose: async () => {
+      disposed = true;
+      await Promise.allSettled([current, rebuilding]);
     },
   };
 }

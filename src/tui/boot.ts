@@ -42,6 +42,7 @@ export async function bootHost(opts: BootOptions): Promise<Booted> {
   const workspaceDir = await resolveWorkspaceDir(home, workspaceRoot);
 
   let router: MessageRouter | undefined;
+  let fileIndex: ReturnType<typeof createTerminalFileIndex> | undefined;
   const loopback = createLoopback((msg) => router?.handle(msg));
   const host = await createHost({
     workspaceDir, config, hostKind: 'tui',
@@ -53,19 +54,20 @@ export async function bootHost(opts: BootOptions): Promise<Booted> {
     await host.init();
 
     const favorites = favoriteModelsSource(configFile, config.favoriteModels, warn);
+    fileIndex = createTerminalFileIndex(workspaceRoot);
     router = new MessageRouter(
       host.manager, (msg) => loopback.deliver(msg), opts.cwd,
       terminalEditorHost(() => {}), host.attachments, undefined, config.review.pollIntervalMs,
-      createTerminalFileIndex(workspaceRoot), favorites.get(), terminalConfigHost((ids) => { void favorites.set(ids); }),
+      fileIndex, favorites.get(), terminalConfigHost((ids) => { void favorites.set(ids); }),
     );
   } catch (err) {
-    await host.dispose().catch(() => {});
+    await Promise.all([fileIndex?.dispose(), host.dispose()]).catch(() => {});
     throw err;
   }
 
   let down: Promise<void> | undefined;
   return {
     host, router, loopback, workspaceRoot, launchCwd: opts.cwd, configFile, fileConfig: loaded.config, warnings,
-    shutdown: () => (down ??= host.dispose()),
+    shutdown: () => (down ??= Promise.all([fileIndex?.dispose(), host.dispose()]).then(() => undefined)),
   };
 }
