@@ -56,18 +56,16 @@ All three are done, and C (above) has landed on top of them.
 
 ## Deferred minors from B's final review
 
-- An out-of-order `file-search-result` replaces a newer one and closes the popup until the next keystroke.
-- Recalling a prompt that ends in a mention opens the popup and takes Up and Enter.
-- Picking a mention mid-text moves the cursor to the end (`pick()` returns a caret nothing uses).
-- The popup is not re-evaluated on arrow-key caret movement.
-- Attachment rejections show in the chip row, not the notice line, and cannot be dismissed
-  (`local-dismiss-rejection` is never dispatched).
-- GNOME-style `'it'\''s.txt'` quoting is not parsed.
-- Esc dismissal is tied to a column position rather than "until the next `@` is typed"; searches keep posting while dismissed.
-- The delete confirm accepted modified `y`/`n`, blocked Ctrl+C, and rendered above the status line, not in the bottom slot.
-- A pending file ref is lost if the Composer remounts (a permission or question slot swap).
-- `statSync` on a UNC path can stall the UI thread during a paste.
-- Predates B: the Composer is not keyed by `sessionId`, and its draft seed skips an empty draft.
+Fixed on `fix/tui-composer-minors`: out-of-order `file-search-result` (the live query is searched again), a recalled or
+restored prompt ending in a mention (popup stays closed), mid-text pick (caret lands after the token), arrow-key caret
+movement (popup re-evaluates), Esc dismissal (until the `@` token ends; no searches while dismissed), dismissible
+attachment rejections (any edit clears them), pending file refs surviving a Composer remount, Composer keyed by session,
+empty draft seeding, delete confirm (modifier keys ignored, Ctrl+C cancels), UNC paths refused rather than stat-ed.
+
+Still open:
+
+- GNOME-style `'it'''s.txt'` quoting is not parsed for Windows-style paths (POSIX paths already work).
+- The delete confirm renders above the status line, not in the bottom slot.
 
 ## Not verified in a real terminal
 

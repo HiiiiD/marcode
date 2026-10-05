@@ -29,3 +29,23 @@ suite('matchFiles', () => {
     assert.strictEqual(rows.length, 20);
   });
 });
+
+suite('matchFiles fuzzy fallback', () => {
+  test('a scattered subsequence still matches', () => {
+    assert.deepStrictEqual(matchFiles(['src/webview/composer.tsx', 'src/host/x.ts'], 'cmpsr').map((r) => r.path), ['src/webview/composer.tsx']);
+  });
+
+  test('a contiguous match outranks a scattered one', () => {
+    const rows = matchFiles(['src/c-o-m-p.ts', 'src/compose.ts'], 'comp');
+    assert.strictEqual(rows[0].path, 'src/compose.ts');
+  });
+
+  test('a basename-start match outranks a mid-word one and a shorter path breaks ties', () => {
+    const rows = matchFiles(['a/xfoo.ts', 'a/foo-long-name.ts', 'a/foo.ts'], 'foo');
+    assert.deepStrictEqual(rows.map((r) => r.path), ['a/foo.ts', 'a/foo-long-name.ts', 'a/xfoo.ts']);
+  });
+
+  test('a path with no subsequence does not match', () => {
+    assert.deepStrictEqual(matchFiles(['src/host/x.ts'], 'zzz'), []);
+  });
+});

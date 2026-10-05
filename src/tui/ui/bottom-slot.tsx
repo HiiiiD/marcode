@@ -17,6 +17,6 @@ export function BottomSlotView({ sessionId, focused, onOpenPicker }: { sessionId
     case 'permission':
       return <ApprovalPrompt key={slot.request.requestId} sessionId={sessionId} request={slot.request} focused={focused} />;
     case 'foreign': return <ForeignBanner text={slot.text} />;
-    case 'composer': return <Composer sessionId={sessionId} focused={focused} onOpenPicker={onOpenPicker} />;
+    case 'composer': return <Composer key={sessionId} sessionId={sessionId} focused={focused} onOpenPicker={onOpenPicker} />;
   }
 }

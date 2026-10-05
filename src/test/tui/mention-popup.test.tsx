@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from 'bun:test';
 import { act } from 'react';
 import { Composer } from '../../tui/ui/composer';
-import { snapshot } from '../fixtures/protocol';
+import { snapshot, summary } from '../fixtures/protocol';
 import { hydrateMsg, mount, type Mounted } from './harness';
 
 let m: Mounted | undefined;
@@ -109,4 +109,85 @@ test('a mention sent once is not remembered: picking the same file again keeps t
   await m!.press('return');
   expect(m!.frame()).toContain('@src/app.ts');
   expect(m!.frame().includes('app.ts-2')).toBe(false);
+});
+
+const pickedFrame = async (text: string) => {
+  await m!.type(text);
+  await wait(250);
+  await m!.fromHost({ t: 'file-search-result', id: 's1', query: 'ap', files });
+};
+
+test('an older result landing after the live one triggers a fresh search for the live query', async () => {
+  await open();
+  await m!.type('@ap');
+  await wait(250);
+  await m!.type('p');
+  await wait(250);
+  await m!.fromHost({ t: 'file-search-result', id: 's1', query: 'app', files });
+  expect(m!.frame()).toContain('src/app.ts');
+  await m!.fromHost({ t: 'file-search-result', id: 's1', query: 'ap', files });
+  await wait(250);
+  expect(searches().filter((s) => s.t === 'file-search' && s.query === 'app').length).toBe(2);
+});
+
+test('a draft that ends in an @ token does not open the popup', async () => {
+  m = await mount(<Composer sessionId="s1" focused />);
+  await m.fromHost(hydrateMsg({ sessions: [{ ...summary('s1'), draft: 'see @ap' }] }));
+  await wait(250);
+  expect(searches().length).toBe(0);
+});
+
+test('picking a mention mid-text leaves the caret after the token', async () => {
+  await open();
+  await m!.type('a @ap b');
+  for (let i = 0; i < 2; i++) { await m!.press('left'); }
+  await wait(250);
+  await m!.fromHost({ t: 'file-search-result', id: 's1', query: 'ap', files });
+  await m!.press('return');
+  await m!.type('X');
+  expect(m!.frame()).toContain('a @src/app.ts X b');
+});
+
+test('moving the caret back into an @ token with the arrow keys reopens the popup', async () => {
+  await open();
+  await pickedFrame('@ap');
+  await m!.type(' x');
+  expect(m!.frame().includes('docs/app.md')).toBe(false);
+  await m!.press('left');
+  await m!.press('left');
+  expect(m!.frame()).toContain('docs/app.md');
+});
+
+test('after Esc, a fresh @ opens the popup again and nothing searches while dismissed', async () => {
+  await open();
+  await pickedFrame('@ap');
+  await m!.press('escape');
+  await settleEscape();
+  const before = searches().length;
+  await m!.type('p');
+  await wait(250);
+  expect(searches().length).toBe(before);
+  for (let i = 0; i < 4; i++) { await m!.press('backspace'); }
+  await m!.type('@ap');
+  await wait(250);
+  expect(searches().length).toBeGreaterThan(before);
+});
+
+test('typing dismisses attachment rejections', async () => {
+  await open();
+  await m!.fromHost({ t: 'attachments-rejected', id: 's1', reasons: ['too big: huge.bin'] });
+  expect(m!.frame()).toContain('too big: huge.bin');
+  await m!.type('h');
+  expect(m!.frame().includes('too big: huge.bin')).toBe(false);
+});
+
+test('Ctrl+A selects the whole composer, so the next key replaces it', async () => {
+  await open();
+  await m!.type('first line');
+  await m!.press('linefeed');
+  await m!.type('second line');
+  await m!.press('a', { ctrl: true });
+  await m!.type('X');
+  expect(m!.frame()).toContain('X');
+  expect(m!.frame().includes('first line') || m!.frame().includes('second line')).toBe(false);
 });

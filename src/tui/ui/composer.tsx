@@ -16,17 +16,19 @@ import { useMentionPopup } from './use-mention-popup';
 
 const DEBOUNCE_MS = 300;
 
-// The textarea defaults Enter to newline and Alt+Enter to submit; flip both, and keep linefeed (Ctrl+J) a newline.
+// The textarea defaults Enter to newline and Alt+Enter to submit; flip both, and keep linefeed (Ctrl+J) a newline,
+// and make Ctrl+A select everything rather than the emacs line-home (Home still goes there).
 const KEY_BINDINGS: KeyBinding[] = [
   { name: 'return', action: 'submit' },
   { name: 'kpenter', action: 'submit' },
   { name: 'return', meta: true, action: 'newline' },
   { name: 'kpenter', meta: true, action: 'newline' },
   { name: 'linefeed', action: 'newline' },
+  { name: 'a', ctrl: true, action: 'select-all' },
 ];
 
 export function Composer({ sessionId, focused, onOpenPicker }: { sessionId: SessionId; focused: boolean; onOpenPicker?: (kind: PickerKind) => void }) {
-  const { state, post, drafts, setMentionOpen, setNotice } = useTuiStore();
+  const { state, post, drafts, setMentionOpen, setNotice, dismissRejection } = useTuiStore();
   const pane = state.byId[sessionId];
   const running = pane?.summary.status === 'running';
   const queued = pane?.summary.queued ?? [];
@@ -52,20 +54,22 @@ export function Composer({ sessionId, focused, onOpenPicker }: { sessionId: Sess
     pending.current = null;
   };
 
-  const setBox = (text: string) => {
+  const setBox = (text: string, at: number = text.length) => {
     programmatic.current = text;
     box.current?.setText(text);
-    box.current?.gotoBufferEnd();
+    if (at >= text.length) { box.current?.gotoBufferEnd(); } else if (box.current) { box.current.cursorOffset = at; }
     setText(text);
-    setCaret(text.length);
+    setCaret(at);
   };
+  // Recalled and restored text is not something the user is mid-way through typing, so an `@` at its end stays closed.
+  const setBoxQuiet = (text: string) => { popup.suppress(text); setBox(text); };
 
   useEffect(() => {
     const seed = drafts.get(sessionId);
-    if (seed !== '' && box.current && box.current.plainText !== seed) { setBox(seed); }
+    if (box.current && box.current.plainText !== seed) { setBoxQuiet(seed); }
     return drafts.subscribe(sessionId, () => {
       const next = drafts.get(sessionId);
-      if (box.current && box.current.plainText !== next) { setBox(next); }
+      if (box.current && box.current.plainText !== next) { setBoxQuiet(next); }
     });
   }, [drafts, sessionId]);
 
@@ -75,7 +79,10 @@ export function Composer({ sessionId, focused, onOpenPicker }: { sessionId: Sess
     const value = box.current?.plainText ?? '';
     setText(value);
     setCaret(box.current?.cursorOffset ?? value.length);
-    if (programmatic.current === value) { programmatic.current = null; } else { walk.current = -1; }
+    if (programmatic.current === value) { programmatic.current = null; } else {
+      walk.current = -1;
+      if (rejected.length > 0) { dismissRejection(sessionId); }
+    }
     drafts.set(sessionId, value);
     pending.current = value;
     clearTimeout(timer.current);
@@ -129,7 +136,7 @@ export function Composer({ sessionId, focused, onOpenPicker }: { sessionId: Sess
       if (key.name === 'up') { popup.move(-1); key.preventDefault(); return; }
       if (key.name === 'tab' || key.name === 'return') {
         const next = popup.pick();
-        if (next) { setBox(next.text); key.preventDefault(); }
+        if (next) { setBox(next.text, next.caret); key.preventDefault(); }
         return;
       }
     }
@@ -143,7 +150,7 @@ export function Composer({ sessionId, focused, onOpenPicker }: { sessionId: Sess
     const atStart = text === '' || box.current?.cursorOffset === 0;
     if (!atStart && !(walk.current >= 0 && box.current?.logicalCursor.row === 0)) { return; }
     walk.current = Math.min(walk.current + 1, history.length - 1);
-    setBox(history[walk.current]);
+    setBoxQuiet(history[walk.current]);
   });
 
   return (
@@ -158,6 +165,7 @@ export function Composer({ sessionId, focused, onOpenPicker }: { sessionId: Sess
           keyBindings={KEY_BINDINGS}
           placeholder={running ? 'Working… Esc to interrupt' : 'Message — Enter send, Ctrl+J newline'}
           onContentChange={onContentChange}
+          onCursorChange={() => { setCaret(box.current?.cursorOffset ?? 0); }}
           onPaste={(event) => {
             const paths = parsePastedPaths(new TextDecoder().decode(event.bytes));
             if (paths.length > 0 && attach(paths)) { event.preventDefault(); }
