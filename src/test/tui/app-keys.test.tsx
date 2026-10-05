@@ -266,3 +266,18 @@ test('Esc clearing the roster filter does not interrupt a running turn, and Tab 
   await settleEscape();
   expect(m.posted.some((p) => p.t === 'interrupt')).toBe(false);
 });
+
+test('delete confirm: a modified y does not answer it, and Ctrl+C cancels it', async () => {
+  m = await mount(<App {...props} />, { width: 120, height: 30 });
+  await m.fromHost(rosterApp());
+  await m.press('tab');
+  await m.press('tab');
+  await m.press('d', { shift: true });
+  await m.press('y', { ctrl: true });
+  await m.press('n', { meta: true });
+  expect(m.frame()).toContain('? Delete');
+  expect(m.posted.some((p) => p.t === 'delete-session')).toBe(false);
+  await m.press('c', { ctrl: true });
+  expect(m.frame().includes('? Delete')).toBe(false);
+  expect(m.posted.some((p) => p.t === 'delete-session')).toBe(false);
+});
