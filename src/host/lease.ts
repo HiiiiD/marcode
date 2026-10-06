@@ -75,18 +75,35 @@ export class HeldLease {
     private readonly deps: LeaseDeps,
   ) {}
 
-  /** Rejects on an I/O error: that is not a lost lease, and the caller retries. */
-  async beat(): Promise<boolean> {
-    const current = await readLease(this.file, this.deps.readFile);
-    if (current?.instance !== this.info.instance) { return false; }
-    await writeFileAtomic(this.file, JSON.stringify({ ...this.info, heartbeat: this.deps.now() }));
-    return true;
+  // A beat is read-then-write; a release landing between the two would be undone by the write, and the
+  // resurrected file would read as a live owner until it went stale.
+  private turn: Promise<unknown> = Promise.resolve();
+  private released = false;
+
+  private serialized<T>(run: () => Promise<T>): Promise<T> {
+    const next = this.turn.then(run, run);
+    this.turn = next.catch(() => undefined);
+    return next;
   }
 
-  async release(): Promise<void> {
-    // Unreadable: leave it to go stale rather than remove what may be someone else's.
-    const current = await readLease(this.file, this.deps.readFile).catch(() => undefined);
-    if (current?.instance === this.info.instance) { await fs.rm(this.file, { force: true }); }
+  /** Rejects on an I/O error: that is not a lost lease, and the caller retries. */
+  beat(): Promise<boolean> {
+    return this.serialized(async () => {
+      if (this.released) { return false; }
+      const current = await readLease(this.file, this.deps.readFile);
+      if (current?.instance !== this.info.instance) { return false; }
+      await writeFileAtomic(this.file, JSON.stringify({ ...this.info, heartbeat: this.deps.now() }));
+      return true;
+    });
+  }
+
+  release(): Promise<void> {
+    return this.serialized(async () => {
+      this.released = true;
+      // Unreadable: leave it to go stale rather than remove what may be someone else's.
+      const current = await readLease(this.file, this.deps.readFile).catch(() => undefined);
+      if (current?.instance === this.info.instance) { await fs.rm(this.file, { force: true }); }
+    });
   }
 }
 
