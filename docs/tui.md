@@ -61,6 +61,7 @@ yarn build:tui:bin    # bin/marcode.exe (bin/marcode elsewhere): standalone, Bun
 | / | roster | filter by title; Enter keeps the filter, Esc clears it |
 | Shift+D, then y / n | roster | delete the session after confirming; refused for a session owned by another host |
 | @ then Up / Down, Tab or Enter, Esc | composer | file mention popup: a pick inserts `@path`, and the file's content travels with the message |
+| / at the start of the box, then Up / Down, Tab or Enter, Esc | composer | skill and slash-command menu for the session's provider: a pick inserts the command. Typed built-ins (`/model`, `/layout`, ...) still work |
 | Ctrl+X | composer | remove the last attachment |
 | y / n, Enter | approval | allow / deny (n opens a reason; Enter confirms, Esc leaves the reason) |
 | Up / Down, Space, Enter | question | move, toggle, submit; "Other" takes free text; secret questions are masked |
@@ -105,7 +106,7 @@ notice, then restart it. See `config.md`.
   may lack FTS5 (the store then stays off and a warning says so).
 - `dist/tui/tui.js` references its assets by absolute path; run it where it was built.
 - Shift+Enter is not distinguished from Enter by most terminals; use Ctrl+J or Alt+Enter.
-- Roster rename, the empty-state prompt picker, clipboard-image attach and "remember last effort/mode" in the new-session dialog are not implemented.
+- Roster rename, the empty-state prompt picker, clipboard-image attach and "remember last effort/mode" in the new-session dialog are not implemented. See [Not in the TUI yet](#not-in-the-tui-yet) for the full comparison with the VS Code panel.
 
 ## Appearance
 
@@ -143,43 +144,28 @@ turn shows as queued with `^L cancel`; answered offers collapse to one muted lin
 focused pane takes the keys, older open ones read "superseded", an unfocused pane says to focus it, and a session
 owned by another host shows the offer without keys.
 
-## Manual smoke checklist
+## Not in the TUI yet
 
-Run in Windows Terminal and in one macOS or Linux terminal.
+The TUI renders the same host state as the VS Code panel, but not every surface has a terminal version. Anything
+below works in VS Code only; sessions, transcripts and settings are shared, so nothing is lost by switching.
 
-- [ ] Click the `ctx` share in the status line: the context dialog opens (`Ctrl+T` and `/context` are the fallback if mouse clicks do not arrive).
-- [ ] Open a worktree offer in a real Claude session and answer it with `Ctrl+Y` / `Ctrl+L` from a split with two panes; click the usage strip in Windows Terminal (`Ctrl+G` is the fallback).
-- [ ] Resize below 100 columns and back: the roster becomes an overlay, then a column again.
-- [ ] Paste a multi-line block into the composer: it arrives intact, no send, no stray keys.
-- [ ] Ctrl+J and Alt+Enter insert a newline; note whether Shift+Enter sends or inserts one.
-- [ ] Colours stay legible on a light terminal theme.
-- [ ] Ctrl+C while running interrupts; Ctrl+C twice while idle quits and the prompt, cursor and main screen are restored.
-- [ ] `kill -TERM` and closing the tab (SIGHUP) shut the host down; `sessions/<id>.lock` is gone afterwards.
-- [ ] An uncaught error (force one) restores the terminal.
-- [ ] Run a session in VS Code on the same folder: it appears as `vscode·<pid>`, read-only; release it in VS Code and the composer returns.
-- [ ] Esc interrupts a running turn, also while an approval is pending.
-- [ ] An approval answered with `y`, and another with `n` plus a reason.
-- [ ] A question with options, and a free-text or secret question (masked).
-- [ ] `marcode login claude` hands the terminal over and returns cleanly.
-- [ ] `marcode config` opens `$EDITOR`.
-- [ ] Edit `config.json` while the TUI runs: the "restart to apply" notice appears.
-- [ ] Streaming markdown: no first-frame flash of raw text.
-- [ ] Scrollbox with arrow keys: a key is not handled twice (no double scroll).
-- [ ] Long transcript: k or PgUp at the top loads earlier items.
-- [ ] Close the focused session via roster `x`: focus falls back to a neighbour or the empty state.
-- [ ] Type `@` plus a few letters: the popup lists files, Down and Tab pick one, and the sent message includes the file's content.
-- [ ] Drag a file from the file manager onto the terminal window: a chip appears (Windows Terminal, and one macOS or Linux terminal). If nothing happens, note the terminal; `/attach` must still work.
-- [ ] `/attach` a missing path: the notice explains it and the text stays.
-- [ ] Roster: `p` pins, `/` filters, Shift+D confirms before deleting, and a session owned by VS Code refuses.
-- [ ] Open the new-session dialog in a very short terminal: the provider rows stay visible.
-- [ ] The compiled `bin/marcode` renders markdown with highlighted code blocks (tree-sitter assets load from the embedded filesystem).
-- [ ] Light terminal theme: tool rows, role labels, chips and the delete confirm stay legible.
-- [ ] The new-session dialog, delete confirm and chip band in a short (12-row) terminal.
-- [ ] A subagent run shows a card with a tool count and elapsed time, and a blocked one opens itself and shows "Needs you".
-- [ ] A failed tool shows the "failed" pill; the card borders stay legible on a light terminal.
-- [ ] Drag a divider and quit: the sizes come back on relaunch. Wheel over an unfocused pane scrolls only that pane.
-- [ ] Ctrl+W chords: focus, split, maximize, even, resize, hide. Inside tmux or screen, Ctrl+W may be intercepted: note it.
-- [ ] Ctrl+W g opens the layout dialog: apply a preset and a 2x3 grid, save the shape, delete it. Inside tmux or screen the chord may be intercepted: `/layout` is the fallback.
-- [ ] Shrink the terminal below the tree's minimum and back: the focused pane maximizes, then the layout returns.
-- [ ] Have an agent call `marcode__spawn_session`: the session gets a pane and focus stays where it was.
-- [ ] Fork at a message with `f`; hand off from the roster with `Shift+H`.
+| Area | VS Code panel | TUI |
+|---|---|---|
+| Fleet diff review tab (**Marcode: Review fleet changes**) | yes | no |
+| Fleet view, subagent drill-in (**Marcode: Open fleet view**) | yes, a focused list per subagent run | no: a subagent is a collapsible card in the transcript; its inner transcript is not browsable |
+| Session history tab (**Marcode: Open history**): sort, filter, digests | yes | no: the roster has pin and title filter only |
+| Memory reindex command | yes | no (recall and priming do run) |
+| Roster rename | yes | no |
+| Bring-back dialog (delete a worktree, check its branch out in the main tree) | yes | no: a worktree offer can be moved to or declined, not brought back |
+| Stale-trees notice | yes | no |
+| Editor-context chip (active file and selection sent with a prompt) | yes | no: there is no editor; use `@path` |
+| CLAUDE.md / AGENTS.md drift nudge card | yes | no |
+| Prompt-cache warm/cold timer badge | yes | no |
+| Empty-state prompt picker | yes | no |
+| Image attach from the clipboard, drag a pane to rearrange | yes | no: attach by path; move panes with Ctrl+W chords |
+| "Remember last effort and mode" in the new-session dialog | yes | no |
+| Account-setup wizard and one-click reauth | yes | `marcode login <provider>` for Claude and Codex; edit `config.json` for the rest |
+| Settings UI | VS Code settings and `config.json` | `config.json` only (`marcode config`) |
+| Context-compaction card | card | one-line notice |
+
+Update this table in the same change that closes a row.
