@@ -15,8 +15,9 @@ import { ToolCard } from './tool-card';
 // Readable measure on wide terminals; the bar groups a message with its body.
 const MAX_WIDTH = 100;
 
-function Bar({ color, tint, children }: { color: string; tint?: boolean; children: ReactNode }) {
+function Bar({ color, tint, selected, children }: { color: string; tint?: boolean; selected: boolean; children: ReactNode }) {
   const tokens = useTokens();
+  const theme = useTheme();
   return (
     <box
       maxWidth={MAX_WIDTH}
@@ -24,8 +25,8 @@ function Bar({ color, tint, children }: { color: string; tint?: boolean; childre
       border={['left']}
       borderStyle="single"
       {...(tokens ? { customBorderChars: BAR_CHARS } : {})}
-      borderColor={color}
-      backgroundColor={tokens && tint ? tokens.panel : undefined}
+      borderColor={selected ? theme.colors.warning : color}
+      backgroundColor={tokens && selected ? tokens.menu : tokens && tint ? tokens.panel : undefined}
       paddingLeft={1}
     >
       {children}
@@ -45,7 +46,7 @@ export function RowView(props: {
   switch (row.kind) {
     case 'user':
       return (
-        <Bar color={theme.colors.primary} tint>
+        <Bar color={theme.colors.primary} tint selected={props.selected}>
           <ChatMessage sender="user" name={row.fromName}>
             <text attributes={bold} wrapMode="word">{row.text}</text>
             {row.attachments ? <SentAttachments attachments={row.attachments} cursor={props.attachmentCursor} onOpen={props.onOpenAttachment} /> : null}
@@ -54,7 +55,7 @@ export function RowView(props: {
       );
     case 'assistant':
       return (
-        <Bar color={tokens ? tokens.menu : theme.colors.success}>
+        <Bar color={tokens ? tokens.menu : theme.colors.success} selected={props.selected}>
           <ChatMessage sender="assistant">
             <markdown content={row.text} streaming={row.streaming} syntaxStyle={syntaxStyle} />
           </ChatMessage>
