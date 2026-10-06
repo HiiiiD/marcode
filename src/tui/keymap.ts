@@ -8,7 +8,7 @@ export type Action =
   | { do: 'roster-next' } | { do: 'roster-prev' } | { do: 'roster-focus' } | { do: 'roster-hide' } | { do: 'roster-rename' }
   | { do: 'allow' } | { do: 'deny' } | { do: 'confirm' }
   | { do: 'option-next' } | { do: 'option-prev' } | { do: 'option-toggle' } | { do: 'submit-answers' }
-  | { do: 'roster-pin' } | { do: 'roster-filter' } | { do: 'roster-delete' } | { do: 'attach-remove' }
+  | { do: 'roster-pin' } | { do: 'roster-filter' } | { do: 'roster-delete' } | { do: 'attach-remove' } | { do: 'attach-clipboard' }
   | { do: 'refresh-catalog' } | { do: 'pane-prefix' } | { do: 'fork-item' } | { do: 'roster-handoff' }
   | { do: 'refresh-usage' } | { do: 'relocation-move' } | { do: 'relocation-stay' };
 
@@ -45,6 +45,7 @@ export function actionFor(zone: Zone, key: KeyInput, ctx: { running: boolean }):
   if (key.ctrl && key.name === 'j' && zone === 'composer') { return act('newline'); }
   if (key.name === 'linefeed' && zone === 'composer') { return act('newline'); }
   if (key.ctrl && key.name === 'x' && zone === 'composer') { return act('attach-remove'); }
+  if (key.ctrl && key.name === 'v' && zone === 'composer') { return act('attach-clipboard'); }
   if (key.ctrl) { return undefined; }
   switch (zone) {
     case 'composer':

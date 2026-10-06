@@ -93,4 +93,8 @@ suite('tui keymap', () => {
     assert.deepStrictEqual(actionFor('composer', { name: 'x', ctrl: true }, idle), { do: 'attach-remove' });
     assert.strictEqual(actionFor('transcript', { name: 'x', ctrl: true }, idle), undefined);
   });
+  test('composer: Ctrl+V attaches a clipboard image, only in the composer', () => {
+    assert.deepStrictEqual(actionFor('composer', { name: 'v', ctrl: true }, idle), { do: 'attach-clipboard' });
+    assert.strictEqual(actionFor('transcript', { name: 'v', ctrl: true }, idle), undefined);
+  });
 });

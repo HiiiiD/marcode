@@ -36,7 +36,8 @@ yarn build:tui:bin    # bin/marcode.exe (bin/marcode elsewhere): standalone, Bun
 | Tab | anywhere but approval/question | cycle composer, transcript, roster |
 | Ctrl+B | anywhere | toggle the roster |
 | Ctrl+N | anywhere | new session dialog |
-| Up / Down or k / j, Enter, Esc | new session dialog | move; Enter picks the provider, then the model (skipped when it has one); Esc cancels |
+| Up / Down or k / j, Enter, Esc | new session dialog | move; Enter picks the provider, then the model (skipped when it has one); Esc cancels. Starts on the focused session's provider and model, and the new session inherits its effort and mode |
+| c | new session dialog | create now as a copy of the focused session's provider and model |
 | Ctrl+P / Ctrl+E | your own session | open the model dialog (type to search, favorites first) / the permission-mode dialog on its effort row (Left/Right steps the level live) |
 | Shift+Tab | your own session | open the permission-mode dialog (`bypass` is greyed once the session has started) |
 | Ctrl+T | your own session | open the context dialog (window, slices, memory files; `r` retries a failed read). The status line shows `ctx N%`, red from 80%, and clicking it does the same |
@@ -63,6 +64,7 @@ yarn build:tui:bin    # bin/marcode.exe (bin/marcode elsewhere): standalone, Bun
 | @ then Up / Down, Tab or Enter, Esc | composer | file mention popup: a pick inserts `@path`, and the file's content travels with the message |
 | / at the start of the box, then Up / Down, Tab or Enter, Esc | composer | skill and slash-command menu for the session's provider: a pick inserts the command. Typed built-ins (`/model`, `/layout`, ...) still work |
 | Ctrl+X | composer | remove the last attachment |
+| Ctrl+V | composer | attach an image from the clipboard |
 | y / n, Enter | approval | allow / deny (n opens a reason; Enter confirms, Esc leaves the reason) |
 | Up / Down, Space, Enter | question | move, toggle, submit; "Other" takes free text; secret questions are masked |
 
@@ -86,7 +88,10 @@ the pane under the pointer. Every mouse action has a keyboard equivalent.
 Paste an absolute file path (most terminals paste the path when you drop a file onto the window) or send
 `/attach <absolute path>`: the file becomes an attachment chip above the box. Pasted text that is anything
 else, including prose that merely contains a path, a path that does not exist, or a directory, is inserted
-as normal text. There is no clipboard-image read.
+as normal text.
+
+Ctrl+V in the composer attaches an image from the clipboard (also tried when a terminal pastes nothing). It shells out to
+PowerShell on Windows, `pngpaste` on macOS, and `wl-paste` or `xclip` on Linux; a missing tool is named in a notice.
 
 ## Sharing sessions with VS Code
 
@@ -106,7 +111,7 @@ notice, then restart it. See `config.md`.
   may lack FTS5 (the store then stays off and a warning says so).
 - `dist/tui/tui.js` references its assets by absolute path; run it where it was built.
 - Shift+Enter is not distinguished from Enter by most terminals; use Ctrl+J or Alt+Enter.
-- Roster rename, the empty-state prompt picker, clipboard-image attach and "remember last effort/mode" in the new-session dialog are not implemented. See [Not in the TUI yet](#not-in-the-tui-yet) for the full comparison with the VS Code panel.
+- Roster rename and the empty-state prompt picker are not implemented. See [Not in the TUI yet](#not-in-the-tui-yet) for the full comparison with the VS Code panel.
 
 ## Appearance
 
@@ -162,10 +167,8 @@ below works in VS Code only; sessions, transcripts and settings are shared, so n
 | CLAUDE.md / AGENTS.md drift nudge card | yes | no |
 | Prompt-cache warm/cold timer badge | yes | no |
 | Empty-state prompt picker | yes | no |
-| Image attach from the clipboard, drag a pane to rearrange | yes | no: attach by path; move panes with Ctrl+W chords |
-| "Remember last effort and mode" in the new-session dialog | yes | no |
+| Drag a pane to rearrange | yes | no: move panes with Ctrl+W chords |
 | Account-setup wizard and one-click reauth | yes | `marcode login <provider>` for Claude and Codex; edit `config.json` for the rest |
 | Settings UI | VS Code settings and `config.json` | `config.json` only (`marcode config`) |
-| Context-compaction card | card | one-line notice |
 
 Update this table in the same change that closes a row.
