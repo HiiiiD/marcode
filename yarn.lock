@@ -857,12 +857,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@opencode-ai/sdk@npm:^1.18.33":
-  version: 1.18.33
-  resolution: "@opencode-ai/sdk@npm:1.18.33"
+"@opencode-ai/sdk@npm:^1.18.34":
+  version: 1.18.34
+  resolution: "@opencode-ai/sdk@npm:1.18.34"
   dependencies:
     cross-spawn: "npm:7.0.6"
-  checksum: 10c0/ad9c884cffce056c98f37ff37693047c95871f233d96f5de0f103ae0438c423c612e995a2bae46988f6dd4773d04e21f9bee8cb72854b57e1cfaab1de35b6462
+  checksum: 10c0/bad0f38016e59568d5e16e9bdeddca9d491845269de5d860640132efb3a4d5612057418a4327a4264d937fa24bf914458e458f3dcd88e68b9e50951570fb68e2
   languageName: node
   linkType: hard
 
@@ -4531,7 +4531,7 @@ __metadata:
     "@headless-tree/core": "npm:1.7.0"
     "@headless-tree/react": "npm:1.7.0"
     "@modelcontextprotocol/sdk": "npm:^1.32.0"
-    "@opencode-ai/sdk": "npm:^1.18.33"
+    "@opencode-ai/sdk": "npm:^1.18.34"
     "@opentui/core": "npm:0.5.13"
     "@opentui/react": "npm:0.5.13"
     "@shadcn/react": "npm:^0.3.1"
