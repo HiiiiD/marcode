@@ -1,9 +1,11 @@
 import type { ReactNode } from 'react';
+import type { Attachment } from '../../../protocol/messages';
 import type { TranscriptRow } from '../../view/transcript-rows';
 import { ChatMessage } from '../termcn/components/ui/chat-message';
 import { useTheme } from '../termcn/hooks/use-theme';
 import { useSyntaxStyle, useTokens } from '../tokens/tokens-provider';
 import { BAR_CHARS } from './bar-border';
+import { SentAttachments } from '../attachment-chips';
 import { CompactionCard } from './compaction-card';
 import { PermissionCard } from './permission-card';
 import { RelocationCardView, type RelocationKeys } from './relocation-card';
@@ -31,7 +33,10 @@ function Bar({ color, tint, children }: { color: string; tint?: boolean; childre
   );
 }
 
-export function RowView(props: { row: TranscriptRow; selected: boolean; expanded: boolean; closed: boolean; relocationKeys: RelocationKeys }) {
+export function RowView(props: {
+  row: TranscriptRow; selected: boolean; expanded: boolean; closed: boolean; relocationKeys: RelocationKeys;
+  attachmentCursor?: number; onOpenAttachment(a: Attachment): void;
+}) {
   const { row } = props;
   const theme = useTheme();
   const syntaxStyle = useSyntaxStyle();
@@ -43,6 +48,7 @@ export function RowView(props: { row: TranscriptRow; selected: boolean; expanded
         <Bar color={theme.colors.primary} tint>
           <ChatMessage sender="user" name={row.fromName}>
             <text attributes={bold} wrapMode="word">{row.text}</text>
+            {row.attachments ? <SentAttachments attachments={row.attachments} cursor={props.attachmentCursor} onOpen={props.onOpenAttachment} /> : null}
           </ChatMessage>
         </Bar>
       );

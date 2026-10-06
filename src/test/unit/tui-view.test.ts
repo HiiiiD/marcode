@@ -141,6 +141,14 @@ suite('tui view: transcript rows', () => {
       ['r1', 'pending', false], ['r2', 'moved', false], ['r3', 'pending', true],
     ]);
   });
+  test('a user row carries the attachments it was sent with', () => {
+    const a = { id: 'a1', path: '/x/a.png', name: 'a.png', kind: 'image' as const, bytes: 3 };
+    const rows = transcriptRows([
+      { id: 'u1', ts: 1, role: 'user', text: 'hi', attachments: [a] },
+      { id: 'u2', ts: 1, role: 'user', text: 'yo', attachments: [] },
+    ], false);
+    assert.deepStrictEqual(rows.map((r) => (r.kind === 'user' ? r.attachments?.map((x) => x.id) : null)), [['a1'], undefined]);
+  });
   test('a compaction becomes a card row carrying its headline and summary', () => {
     const rows = transcriptRows([
       { id: 'c1', ts: 1, role: 'compaction', state: 'done', trigger: 'auto', summary: 'kept' },

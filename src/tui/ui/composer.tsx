@@ -163,6 +163,12 @@ export function Composer({ sessionId, focused, onOpenPicker }: { sessionId: Sess
       }
     }
     if (actionFor('composer', key, { running })?.do === 'attach-clipboard') { key.preventDefault(); void attachClipboardImage(false); return; }
+    if (actionFor('composer', key, { running })?.do === 'attach-open') {
+      key.preventDefault();
+      const last = attachments.at(-1);
+      if (last) { post({ t: 'open-attachment', id: sessionId, attachmentId: last.id }); }
+      return;
+    }
     if (actionFor('composer', key, { running })?.do === 'attach-remove') {
       const last = attachments.at(-1);
       if (last) { post({ t: 'attach-remove', id: sessionId, attachmentId: last.id }); }
@@ -180,7 +186,7 @@ export function Composer({ sessionId, focused, onOpenPicker }: { sessionId: Sess
     <box flexDirection="column">
       {popup.open ? <MentionPopup rows={popup.rows} index={popup.index} /> : null}
       {slash.open ? <InvocablePopup rows={slash.rows} overflow={slash.overflow} index={slash.index} /> : null}
-      <AttachmentChips attachments={attachments} rejected={rejected} />
+      <AttachmentChips attachments={attachments} rejected={rejected} onOpen={(a) => { post({ t: 'open-attachment', id: sessionId, attachmentId: a.id }); }} />
       {queued.map((q) => <text key={q.id} fg={tokens?.textMuted ?? 'gray'}>{`queued: ${q.text}`}</text>)}
       <Surface tone="panel" padX={1} padY={1}>
         <textarea

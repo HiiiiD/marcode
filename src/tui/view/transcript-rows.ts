@@ -1,14 +1,14 @@
 import { compactionHeadline } from '../../client-core/compaction';
 import { describeTool, type ToolHeader } from '../../client-core/tool-render';
 import { activeRelocation, relocationCard, type RelocationCard } from './relocation-view';
-import type { TranscriptItem } from '../../protocol/messages';
+import type { Attachment, TranscriptItem } from '../../protocol/messages';
 
 export type ToolItem = Extract<TranscriptItem, { role: 'tool' }>;
 
 export interface FoldedPermission { state: 'pending' | 'allowed' | 'denied'; reason?: string }
 
 export type TranscriptRow =
-  | { kind: 'user'; id: string; text: string; fromName?: string }
+  | { kind: 'user'; id: string; text: string; fromName?: string; attachments?: Attachment[] }
   | { kind: 'assistant'; id: string; text: string; streaming: boolean }
   | { kind: 'tool'; id: string; item: ToolItem; header: ToolHeader; state: 'running' | 'ok' | 'error'; permission?: FoldedPermission }
   | { kind: 'permission'; id: string; header: ToolHeader; state: 'pending' | 'allowed' | 'denied'; reason?: string }
@@ -23,7 +23,7 @@ export function transcriptRows(items: TranscriptItem[], running: boolean): Trans
   for (const item of items) {
     switch (item.role) {
       case 'user':
-        rows.push({ kind: 'user', id: item.id, text: item.text, ...(item.from ? { fromName: item.from.name } : {}) });
+        rows.push({ kind: 'user', id: item.id, text: item.text, ...(item.from ? { fromName: item.from.name } : {}), ...(item.attachments?.length ? { attachments: item.attachments } : {}) });
         break;
       case 'assistant':
         if (item.text !== '') { rows.push({ kind: 'assistant', id: item.id, text: item.text, streaming: false }); }

@@ -93,6 +93,13 @@ suite('tui keymap', () => {
     assert.deepStrictEqual(actionFor('composer', { name: 'x', ctrl: true }, idle), { do: 'attach-remove' });
     assert.strictEqual(actionFor('transcript', { name: 'x', ctrl: true }, idle), undefined);
   });
+  test('composer: Ctrl+O opens the last attachment; transcript: h/l and arrows walk the attachments of a row', () => {
+    assert.deepStrictEqual(actionFor('composer', { name: 'o', ctrl: true }, idle), { do: 'attach-open' });
+    assert.strictEqual(actionFor('transcript', { name: 'o', ctrl: true }, idle), undefined);
+    assert.deepStrictEqual(actionFor('transcript', { name: 'l' }, idle), { do: 'attachment-next' });
+    assert.deepStrictEqual(actionFor('transcript', { name: 'left' }, idle), { do: 'attachment-prev' });
+    assert.strictEqual(actionFor('composer', { name: 'l' }, idle), undefined);
+  });
   test('composer: Ctrl+V attaches a clipboard image, only in the composer', () => {
     assert.deepStrictEqual(actionFor('composer', { name: 'v', ctrl: true }, idle), { do: 'attach-clipboard' });
     assert.strictEqual(actionFor('transcript', { name: 'v', ctrl: true }, idle), undefined);
