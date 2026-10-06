@@ -1390,6 +1390,26 @@ suite('AgentSession questions', () => {
     await session.dispose();
   });
 
+  test('answering one of two nested permissions patches that child and keeps the other pending', async () => {
+    const { session, provider, sink } = sessionWith();
+    const run = provider.runs[0];
+    run.emit({ kind: 'tool-start', id: 'task1', tool: { kind: 'subagent', label: 'Task', action: 'spawn' } });
+    run.emit({ kind: 'permission', id: 'p1', parentId: 'task1', tool: { kind: 'command', label: 'Bash', command: 'a' } });
+    run.emit({ kind: 'permission', id: 'p2', parentId: 'task1', tool: { kind: 'command', label: 'Bash', command: 'b' } });
+    await settle();
+    sink.patches.length = 0;
+
+    session.respondToPermission('p1', { allow: false, reason: 'no' });
+    await settle();
+
+    const replaces = sink.patches.map((p) => p.patch).filter((p) => p.op === 'replace');
+    const r = replaces[0];
+    assert.strictEqual(r.op === 'replace' && r.item.role, 'permission');
+    assert.strictEqual(r.op === 'replace' && r.parentItemId !== undefined, true);
+    assert.deepStrictEqual((await session.snapshot()).pending.map((p) => p.requestId), ['p2']);
+    await session.dispose();
+  });
+
   test('answering a question while a permission is still pending keeps the session waiting', async () => {
     const { session, provider } = sessionWith();
     provider.runs[0].emit({

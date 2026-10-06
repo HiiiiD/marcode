@@ -624,8 +624,15 @@ function applyPatch(pane: PaneState, patch: Patch): PaneState {
 
     case 'replace': {
       const replaced = patch.item;
-      const pending = replaced.role === 'permission' && replaced.state !== 'pending'
-        ? pane.pending.filter((p) => p.requestId !== replaced.requestId)
+      // A settled parent is replaced wholesale with its children inside, so an
+      // approval settled there arrives as a tool item, not a permission item.
+      const settledIds = replaced.role === 'permission' && replaced.state !== 'pending'
+        ? [replaced.requestId]
+        : replaced.role === 'tool'
+          ? (replaced.children ?? []).flatMap((c) => (c.role === 'permission' && c.state !== 'pending' ? [c.requestId] : []))
+          : [];
+      const pending = settledIds.length > 0
+        ? pane.pending.filter((p) => !settledIds.includes(p.requestId))
         : pane.pending;
       const pendingQuestions = replaced.role === 'question' && replaced.state !== 'pending'
         ? pane.pendingQuestions.filter((q) => q.requestId !== replaced.requestId)

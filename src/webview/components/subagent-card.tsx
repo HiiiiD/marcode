@@ -135,7 +135,8 @@ export function SubagentCard({ item, sessionId }: { item: ToolItem; sessionId: S
             <div className={cn('flex flex-col gap-1')}>
               {shown.map((child) =>
                 child.role === 'permission' ? (
-                  <PermissionCard key={child.id} item={child} sessionId={sessionId} />
+                  // A pending approval is answered in the pinned strip above the composer, not here.
+                  child.state === 'pending' ? null : <PermissionCard key={child.id} item={child} sessionId={sessionId} />
                 ) : child.role === 'tool' ? (
                   <ToolCard key={child.id} item={child} />
                 ) : null,

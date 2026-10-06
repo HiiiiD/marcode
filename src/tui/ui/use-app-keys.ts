@@ -1,9 +1,10 @@
-import { useKeyboard } from '@opentui/react';
+import { useKeyboard, useRenderer } from '@opentui/react';
 import { useEffect, useRef } from 'react';
 import type { SessionSummary } from '../../protocol/messages';
 import { actionFor, type Zone } from '../keymap';
 import type { PickerKind } from '../view/pickers';
 import { relocationMessage, type RelocationItem } from '../view/relocation-view';
+import { copySelection } from './copy-selection';
 import { useTuiStore } from './store';
 
 export const QUIT_NOTICE = 'Press Ctrl+C again to quit';
@@ -23,6 +24,7 @@ export interface AppKeys {
 
 export function useAppKeys(k: AppKeys): void {
   const { post, notice, setNotice, mentionOpen, rosterFiltering, refreshUsage } = useTuiStore();
+  const renderer = useRenderer();
   const armed = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const answered = useRef<string | undefined>(undefined);
   const noticeRef = useRef(notice);
@@ -50,6 +52,8 @@ export function useAppKeys(k: AppKeys): void {
   // send/newline/history belong to the composer's own textarea bindings; acting on them here would send twice.
   useKeyboard((key) => {
     if (k.inert || key.defaultPrevented) { return; }
+    // Ctrl+C copies a live selection instead of interrupting or arming quit.
+    if (key.ctrl && key.name === 'c' && copySelection(renderer)) { key.preventDefault(); return; }
     // A popup or the roster filter owns Esc and Tab while open; Esc must not also interrupt the turn.
     if (key.name === 'tab' && ((mentionOpen && !key.shift) || rosterFiltering)) { return; }
     if (key.name === 'escape' && (mentionOpen || rosterFiltering)) { return; }
