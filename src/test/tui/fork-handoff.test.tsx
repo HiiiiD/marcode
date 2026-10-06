@@ -13,7 +13,6 @@ test('f on a selected message forks it and the fork lands beside the source, foc
   m = await mount(<App {...props} />, { width: 140, height: 30 });
   await m.fromHost(hydrateMsg({ snapshots: [snapshot('s1', { items })] }));
   await m.press('tab');
-  await m.press('k');
   await m.press('f');
   const forks = m.posted.filter((p) => p.t === 'fork-session');
   expect(forks.length).toBe(1);
@@ -41,9 +40,9 @@ test('forking a foreign session is refused with a notice and posts nothing', asy
   expect(m.frame()).toContain('owned by vscode');
 });
 
-test('f with no selected row does nothing', async () => {
+test('f with nothing to select does nothing', async () => {
   m = await mount(<App {...props} />, { width: 140, height: 30 });
-  await m.fromHost(hydrateMsg({ snapshots: [snapshot('s1', { items })] }));
+  await m.fromHost(hydrateMsg({ snapshots: [snapshot('s1', { items: [] })] }));
   await m.press('tab');
   await m.press('f');
   expect(m.posted.filter((p) => p.t === 'fork-session').length).toBe(0);

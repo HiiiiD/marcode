@@ -1,5 +1,6 @@
 import { useKeyboard } from '@opentui/react';
 import { useRef } from 'react';
+import { settingsForChoice } from '../../client-core/create-settings';
 import type { SessionId } from '../../protocol/messages';
 import { useTuiStore } from './store';
 import { Dialog } from './termcn/components/ui/dialog';
@@ -18,21 +19,28 @@ interface Props {
 export function NewSessionDialog(props: Props) {
   const { state, post } = useTuiStore();
   const providers = state.catalog;
+  const sourceId = props.handoff?.id;
+  const source = state.sessions.find((x) => x.id === sourceId);
+  const sourcePi = Math.max(0, providers.findIndex((p) => p.id === source?.providerId));
+  const sourceMi = Math.max(0, (providers[sourcePi]?.models ?? []).findIndex((m) => m.id === source?.model));
   const st = useSyncState({
-    pi: 0, mi: 0, step: 'provider' as 'provider' | 'model' | 'seed', handoff: props.handoff?.on ?? false, seed: '',
+    pi: sourcePi, mi: sourceMi, step: 'provider' as 'provider' | 'model' | 'seed', handoff: props.handoff?.on ?? false, seed: '',
   });
   const sent = useRef(false);
 
   const create = (providerId: string, model: string | undefined, handoff: boolean, seed: string) => {
     sent.current = true;
-    const source = props.handoff;
+    const handoffSource = props.handoff;
+    const inherited = settingsForChoice(state, sourceId, providerId, model);
     post({
       t: 'create-session', providerId, cwd: props.cwd, model,
-      ...(handoff && source
-        ? { seed: { text: seed, handoffFrom: source.id } }
+      ...(inherited?.effort ? { effort: inherited.effort } : {}),
+      ...(inherited ? { mode: inherited.mode } : {}),
+      ...(handoff && handoffSource
+        ? { seed: { text: seed, handoffFrom: handoffSource.id } }
         : props.initialPrompt ? { seed: { text: props.initialPrompt } } : {}),
     });
-    props.onCreated({ handoff: handoff && source !== undefined });
+    props.onCreated({ handoff: handoff && handoffSource !== undefined });
   };
 
   useKeyboard((key) => {
@@ -47,6 +55,7 @@ export function NewSessionDialog(props: Props) {
       else if (key.sequence && key.sequence.length === 1 && !key.ctrl && !key.meta) { st.set({ seed: cur.seed + key.sequence }); }
       return;
     }
+    if (key.name === 'c' && source) { create(source.providerId, source.model, false, ''); return; }
     if (key.name === 'h' && props.handoff) { st.set({ handoff: !cur.handoff }); return; }
     const count = cur.step === 'provider' ? providers.length : models.length;
     const move = (d: number) => {
@@ -64,6 +73,8 @@ export function NewSessionDialog(props: Props) {
 
   const { pi, mi, step, handoff, seed } = st.view;
   const models = providers[pi]?.models ?? [];
+  const chosen = settingsForChoice(state, sourceId, providers[pi]?.id ?? '', models[mi]?.id);
+  const carried = [chosen?.effort ? `effort ${chosen.effort}` : '', chosen ? `mode ${chosen.mode}` : ''].filter(Boolean).join(' · ');
   return (
     <box flexDirection="column" flexShrink={0}>
       <Dialog isOpen interactive={false} title="New session">
@@ -74,7 +85,8 @@ export function NewSessionDialog(props: Props) {
           ? providers.map((p, i) => <text key={p.id} attributes={i === pi ? 1 : 0}>{`${i === pi ? '›' : ' '} ${p.displayName}`}</text>)
           : models.map((mo, i) => <text key={mo.id} attributes={i === mi ? 1 : 0}>{`${i === mi ? '›' : ' '} ${mo.displayName}`}</text>)}
         {props.handoff && step !== 'seed' ? <text fg="gray">{`${handoff ? '[x]' : '[ ]'} Hand off from ${props.handoff.title} (h)`}</text> : null}
-        <text fg="gray">{`${props.cwd} — Enter create, Esc cancel`}</text>
+        {carried && step !== 'seed' ? <text fg="gray">{`${carried}${source ? ' (from focused)' : ''}`}</text> : null}
+        <text fg="gray">{`${props.cwd} — Enter create${source ? ', c copy focused' : ''}, Esc cancel`}</text>
       </Dialog>
     </box>
   );

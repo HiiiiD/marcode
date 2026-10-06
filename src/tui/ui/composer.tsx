@@ -5,6 +5,7 @@ import { parseAttachCommand, parsePastedPaths } from '../../client-core/path-pas
 import { promptHistory } from '../../client-core/prompt-history';
 import type { SessionId } from '../../protocol/messages';
 import { existingFileUris } from '../attach-paths';
+import { readClipboardImage } from '../clipboard-image';
 import { parsePickerCommand, type PickerKind } from '../view/pickers';
 import { actionFor } from '../keymap';
 import { AttachmentChips } from './attachment-chips';
@@ -66,7 +67,7 @@ export function Composer({ sessionId, focused, onOpenPicker }: { sessionId: Sess
     setCaret(at);
   };
   // Recalled and restored text is not something the user is mid-way through typing, so an `@` at its end stays closed.
-  const setBoxQuiet = (text: string) => { popup.suppress(text); setBox(text); };
+  const setBoxQuiet = (text: string) => { popup.suppress(text); slash.suppress(text); setBox(text); };
 
   useEffect(() => {
     const seed = drafts.get(sessionId);
@@ -98,6 +99,13 @@ export function Composer({ sessionId, focused, onOpenPicker }: { sessionId: Sess
     if (!uris) { return false; }
     post({ t: 'attach-drop', id: sessionId, uris });
     return true;
+  };
+
+  const attachClipboardImage = async (quiet: boolean) => {
+    const img = await readClipboardImage();
+    if (img.kind === 'image') { post({ t: 'attach-paste', id: sessionId, mediaType: img.mediaType, base64: img.base64 }); return; }
+    if (quiet) { return; }
+    setNotice(img.kind === 'none' ? 'clipboard has no image' : `clipboard image: ${img.hint}`);
   };
 
   const submit = () => {
@@ -154,6 +162,13 @@ export function Composer({ sessionId, focused, onOpenPicker }: { sessionId: Sess
         return;
       }
     }
+    if (actionFor('composer', key, { running })?.do === 'attach-clipboard') { key.preventDefault(); void attachClipboardImage(false); return; }
+    if (actionFor('composer', key, { running })?.do === 'attach-open') {
+      key.preventDefault();
+      const last = attachments.at(-1);
+      if (last) { post({ t: 'open-attachment', id: sessionId, attachmentId: last.id }); }
+      return;
+    }
     if (actionFor('composer', key, { running })?.do === 'attach-remove') {
       const last = attachments.at(-1);
       if (last) { post({ t: 'attach-remove', id: sessionId, attachmentId: last.id }); }
@@ -171,7 +186,7 @@ export function Composer({ sessionId, focused, onOpenPicker }: { sessionId: Sess
     <box flexDirection="column">
       {popup.open ? <MentionPopup rows={popup.rows} index={popup.index} /> : null}
       {slash.open ? <InvocablePopup rows={slash.rows} overflow={slash.overflow} index={slash.index} /> : null}
-      <AttachmentChips attachments={attachments} rejected={rejected} />
+      <AttachmentChips attachments={attachments} rejected={rejected} onOpen={(a) => { post({ t: 'open-attachment', id: sessionId, attachmentId: a.id }); }} />
       {queued.map((q) => <text key={q.id} fg={tokens?.textMuted ?? 'gray'}>{`queued: ${q.text}`}</text>)}
       <Surface tone="panel" padX={1} padY={1}>
         <textarea
@@ -182,7 +197,10 @@ export function Composer({ sessionId, focused, onOpenPicker }: { sessionId: Sess
           onContentChange={onContentChange}
           onCursorChange={() => { setCaret(box.current?.cursorOffset ?? 0); }}
           onPaste={(event) => {
-            const paths = parsePastedPaths(new TextDecoder().decode(event.bytes));
+            const pasted = new TextDecoder().decode(event.bytes);
+            // A terminal pastes an empty string when the clipboard holds only an image.
+            if (pasted === '') { void attachClipboardImage(true); return; }
+            const paths = parsePastedPaths(pasted);
             if (paths.length > 0 && attach(paths)) { event.preventDefault(); }
           }}
           onSubmit={() => { if (!anyOpen) { submit(); } }}

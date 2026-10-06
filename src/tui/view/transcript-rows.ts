@@ -1,18 +1,20 @@
+import { compactionHeadline } from '../../client-core/compaction';
 import { describeTool, type ToolHeader } from '../../client-core/tool-render';
 import { activeRelocation, relocationCard, type RelocationCard } from './relocation-view';
-import type { TranscriptItem } from '../../protocol/messages';
+import type { Attachment, TranscriptItem } from '../../protocol/messages';
 
 export type ToolItem = Extract<TranscriptItem, { role: 'tool' }>;
 
 export interface FoldedPermission { state: 'pending' | 'allowed' | 'denied'; reason?: string }
 
 export type TranscriptRow =
-  | { kind: 'user'; id: string; text: string; fromName?: string }
+  | { kind: 'user'; id: string; text: string; fromName?: string; attachments?: Attachment[] }
   | { kind: 'assistant'; id: string; text: string; streaming: boolean }
   | { kind: 'tool'; id: string; item: ToolItem; header: ToolHeader; state: 'running' | 'ok' | 'error'; permission?: FoldedPermission }
   | { kind: 'permission'; id: string; header: ToolHeader; state: 'pending' | 'allowed' | 'denied'; reason?: string }
   | { kind: 'question'; id: string; state: string; text: string }
   | { kind: 'relocation'; id: string; card: RelocationCard; active: boolean }
+  | { kind: 'compaction'; id: string; state: 'running' | 'done' | 'failed'; headline: string; summary?: string; error?: string }
   | { kind: 'notice'; id: string; tone: 'error' | 'info'; text: string };
 
 export function transcriptRows(items: TranscriptItem[], running: boolean): TranscriptRow[] {
@@ -21,7 +23,7 @@ export function transcriptRows(items: TranscriptItem[], running: boolean): Trans
   for (const item of items) {
     switch (item.role) {
       case 'user':
-        rows.push({ kind: 'user', id: item.id, text: item.text, ...(item.from ? { fromName: item.from.name } : {}) });
+        rows.push({ kind: 'user', id: item.id, text: item.text, ...(item.from ? { fromName: item.from.name } : {}), ...(item.attachments?.length ? { attachments: item.attachments } : {}) });
         break;
       case 'assistant':
         if (item.text !== '') { rows.push({ kind: 'assistant', id: item.id, text: item.text, streaming: false }); }
@@ -53,7 +55,11 @@ export function transcriptRows(items: TranscriptItem[], running: boolean): Trans
         rows.push({ kind: 'notice', id: item.id, tone: 'info', text: item.text });
         break;
       case 'compaction':
-        rows.push({ kind: 'notice', id: item.id, tone: item.state === 'failed' ? 'error' : 'info', text: `Conversation compaction ${item.state}` });
+        rows.push({
+          kind: 'compaction', id: item.id, state: item.state, headline: compactionHeadline(item),
+          ...(item.state === 'done' && item.summary ? { summary: item.summary } : {}),
+          ...(item.error ? { error: item.error } : {}),
+        });
         break;
       case 'relocation':
         rows.push({ kind: 'relocation', id: item.id, card: relocationCard(item), active: item.id === activeId });

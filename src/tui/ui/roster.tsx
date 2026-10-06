@@ -80,16 +80,23 @@ export function Roster({ focused, onFocusSession, onAskDelete, onHandoff, squeez
       {filtering || filter !== '' ? <text flexShrink={0} fg={theme.colors.muted}>{`/${filter}`}</text> : null}
       <scrollbox ref={scroll} flexGrow={1} flexShrink={1} minHeight={0}>
         {rows.map((row, i) => (
-          <text
+          <box
             key={row.id}
             id={row.id}
+            flexShrink={0}
+            {...(focused && i === cursor
+              ? { border: ['left'] as ['left'], borderStyle: 'single' as const, borderColor: theme.colors.warning, ...(tokens ? { backgroundColor: tokens.menu } : {}) }
+              : { paddingLeft: 1 })}
+            onMouseDown={() => { setCursorId(row.id); onFocusSession(row.id); }}
+          >
+          <text
             fg={row.dim ? theme.colors.mutedForeground : undefined}
             attributes={focused && i === cursor ? 1 : 0}
             truncate
-            onMouseDown={() => { setCursorId(row.id); onFocusSession(row.id); }}
           >
             {`${row.focused ? '▸' : row.squeezed ? '+' : row.leaf ? '▪' : ' '}${row.glyph} ${row.pinned ? '★ ' : ''}${row.title}${row.suffix ? ` ${row.suffix}` : ''}`}
           </text>
+          </box>
         ))}
       </scrollbox>
       <UsageStrip width={ROSTER_W - 4} maxLines={stripBudget(height)} />

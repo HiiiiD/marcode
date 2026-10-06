@@ -5,6 +5,7 @@ import { MessageRouter } from '../host/message-router';
 import { createTerminalFileIndex } from '../host/terminal-file-index';
 import { marcodeHome, resolveWorkspaceDir } from '../host/workspace-dir';
 import { createLoopback, type Loopback } from '../client-core/loopback-transport';
+import { openPath } from './open-path';
 import { terminalConfigHost, terminalEditorHost } from './tui-hooks';
 import { findGitRoot } from './workspace-root';
 
@@ -43,7 +44,15 @@ export async function bootHost(opts: BootOptions): Promise<Booted> {
 
   let router: MessageRouter | undefined;
   let fileIndex: ReturnType<typeof createTerminalFileIndex> | undefined;
-  const loopback = createLoopback((msg) => router?.handle(msg));
+  const loopback = createLoopback(async (msg) => {
+    if (msg.t === 'open-attachment') {
+      const path = await host?.manager.attachmentPath(msg.id, msg.attachmentId, msg.itemId);
+      const failure = path ? await openPath(path) : 'attachment not found';
+      if (failure) { warn(failure); }
+      return;
+    }
+    return router?.handle(msg);
+  });
   const host = await createHost({
     workspaceDir, config, hostKind: 'tui',
     workspaceRoots: () => [workspaceRoot],

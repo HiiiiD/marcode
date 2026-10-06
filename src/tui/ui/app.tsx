@@ -17,6 +17,7 @@ import { Roster, ROSTER_W } from './roster';
 import { ContextDialog } from './context-dialog';
 import { LayoutDialog } from './layout-dialog';
 import { StatusLine } from './status-line';
+import { ZoneLine } from './zone-line';
 import { activeRelocation } from '../view/relocation-view';
 import { useTuiStore } from './store';
 import { useAppKeys } from './use-app-keys';
@@ -94,7 +95,7 @@ export function App(props: AppProps) {
   const paneZone: PaneZone = keyZone === 'approval' || keyZone === 'question' ? 'composer' : current;
   const live = (z: PaneZone) => !dialog && !deleting && !picker && paneZone === z;
 
-  const estimate = { w: width - (wide && showRoster ? ROSTER_W : 0), h: height - 2 };
+  const estimate = { w: width - (wide && showRoster ? ROSTER_W : 0), h: height - 3 };
   usePaneChords({
     area: { x: 0, y: 0, ...estimate },
     inert: dialog || deleting !== null || picker !== null,
@@ -173,6 +174,7 @@ export function App(props: AppProps) {
       {picker === 'layout' ? <LayoutDialog onApply={layout.applyRoot} onClose={() => { setPicker(null); }} /> : null}
       {deleting ? <DeleteConfirm id={deleting.id} title={deleting.title} onDone={() => { setDeleting(null); }} /> : null}
       <box flexDirection="column" flexShrink={0}>
+        <ZoneLine zone={keyZone} width={width} modal={dialog || deleting !== null || picker !== null} />
         <StatusLine
           sessionId={focusedId}
           width={width}

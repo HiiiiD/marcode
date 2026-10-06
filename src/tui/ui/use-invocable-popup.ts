@@ -10,6 +10,8 @@ export interface InvocablePopup {
   index: number;
   move(delta: number): void;
   dismiss(): void;
+  /** Restored text is not something the user is typing, so its menu stays closed until the query changes. */
+  suppress(text: string): void;
   pick(): { text: string; caret: number } | undefined;
 }
 
@@ -18,7 +20,9 @@ export function useInvocablePopup(opts: { sessionId: SessionId; text: string }):
   const query = menuQuery(opts.text);
   const [index, setIndex] = useState(0);
   const [dismissedQuery, setDismissedQuery] = useState<string | null>(null);
-  useEffect(() => { setIndex(0); setDismissedQuery(null); }, [query]);
+  useEffect(() => { setIndex(0); }, [query]);
+  // Kept while the query still equals the dismissed one, so suppress() survives the render its own text change causes.
+  useEffect(() => { setDismissedQuery((d) => (d === query ? d : null)); }, [query]);
   useEffect(() => { setDismissedQuery(null); }, [opts.sessionId]);
 
   const entries = state.byId[opts.sessionId]?.invocables ?? [];
@@ -30,6 +34,10 @@ export function useInvocablePopup(opts: { sessionId: SessionId; text: string }):
     open, rows, overflow, index: clamped,
     move: (delta) => { setIndex(nextIndex(clamped, delta, rows.length)); },
     dismiss: () => { if (query !== undefined) { setDismissedQuery(query); } },
+    suppress: (text) => {
+      const q = menuQuery(text);
+      if (q !== undefined) { setDismissedQuery(q); }
+    },
     pick: () => {
       const row = rows[clamped];
       if (!row) { return undefined; }

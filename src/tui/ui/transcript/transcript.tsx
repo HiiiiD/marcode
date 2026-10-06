@@ -1,7 +1,7 @@
 import type { ScrollBoxRenderable } from '@opentui/core';
 import { useKeyboard } from '@opentui/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { SessionId } from '../../../protocol/messages';
+import type { Attachment, SessionId } from '../../../protocol/messages';
 import { summarizeSubagent } from '../../../client-core/subagent-window';
 import { actionFor } from '../../keymap';
 import { transcriptRows, type TranscriptRow } from '../../view/transcript-rows';
@@ -19,6 +19,7 @@ export function Transcript({ sessionId, focused, onFork, relocationKeys = 'none'
   const rows = useMemo(() => transcriptRows(pane?.items ?? [], running), [pane?.items, running]);
   const [cursorId, setCursorId] = useState<string | undefined>(undefined);
   const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
+  const [attachCursor, setAttachCursor] = useState<{ rowId: string; index: number } | undefined>(undefined);
   const [closed, setClosed] = useState<ReadonlySet<string>>(new Set());
   const asked = useRef<string | undefined>(undefined);
   const scroll = useRef<ScrollBoxRenderable | null>(null);
@@ -46,12 +47,23 @@ export function Transcript({ sessionId, focused, onFork, relocationKeys = 'none'
     return () => clearTimeout(t);
   }, [first]);
 
+  // Entering the zone selects the newest message, so the zone change shows up on screen at once.
+  useEffect(() => {
+    if (focused && cursorId === undefined && rows.length > 0) { setCursorId(rows[rows.length - 1]?.id); }
+  }, [focused]);
+
   const cursor = cursorId === undefined ? -1 : rows.findIndex((r) => r.id === cursorId);
   useEffect(() => {
     if (cursorId !== undefined) { scroll.current?.scrollChildIntoView(cursorId); }
   }, [cursorId]);
 
   const toggleRow = (row: TranscriptRow | undefined) => {
+    if (row?.kind === 'compaction') {
+      if (row.summary === undefined) { return; }
+      const id = row.id;
+      setOpen((o) => { const n = new Set(o); if (n.has(id)) { n.delete(id); } else { n.add(id); } return n; });
+      return;
+    }
     if (row?.kind !== 'tool') { return; }
     const id = row.id;
     const blocked = row.item.tool.kind === 'subagent' && summarizeSubagent(row.item, 0).blocked;
@@ -66,16 +78,29 @@ export function Transcript({ sessionId, focused, onFork, relocationKeys = 'none'
     const action = actionFor('transcript', key, { running });
     if (!action) { return; }
     const box = scroll.current;
-    const step = (delta: 1 | -1) => setCursorId((prev) => {
+    const current = rows[cursor];
+    const sent = current?.kind === 'user' ? current.attachments : undefined;
+    const openAttachment = (rowId: string, a: Attachment) => { post({ t: 'open-attachment', id: sessionId, attachmentId: a.id, itemId: rowId }); };
+    const step = (delta: 1 | -1) => { setAttachCursor(undefined); setCursorId((prev) => {
       const at = prev === undefined ? -1 : rows.findIndex((r) => r.id === prev);
       const next = delta === 1 ? Math.min(at + 1, rows.length - 1) : at < 0 ? rows.length - 1 : Math.max(at - 1, 0);
       return rows[next]?.id ?? prev;
-    });
+    }); };
     if (action.do === 'item-next') { step(1); }
     else if (action.do === 'item-prev') { step(-1); }
     else if (action.do === 'page-up') { box?.scrollBy(-0.5, 'viewport'); }
     else if (action.do === 'page-down') { box?.scrollBy(0.5, 'viewport'); }
-    else if (action.do === 'toggle-item') { toggleRow(rows[cursor]); }
+    else if (action.do === 'attachment-next' || action.do === 'attachment-prev') {
+      if (!current || !sent) { return; }
+      const at = attachCursor?.rowId === current.id ? attachCursor.index : -1;
+      const next = action.do === 'attachment-next' ? Math.min(at + 1, sent.length - 1) : at - 1;
+      setAttachCursor(next < 0 ? undefined : { rowId: current.id, index: next });
+    }
+    else if (action.do === 'toggle-item') {
+      const highlighted = attachCursor?.rowId === current?.id ? sent?.[attachCursor?.index ?? -1] : undefined;
+      const picked = highlighted ?? sent?.[0];
+      if (current && picked) { openAttachment(current.id, picked); } else { toggleRow(current); }
+    }
     else if (action.do === 'fork-item') {
       const row = rows[cursor];
       const owner = pane?.summary.owner;
@@ -94,7 +119,7 @@ export function Transcript({ sessionId, focused, onFork, relocationKeys = 'none'
       {rows.map((row, i) => {
         return (
           <box key={row.id} id={row.id} flexDirection="column" onMouseDown={() => { setCursorId(row.id); toggleRow(row); }}>
-            <RowView row={row} selected={focused && i === cursor} expanded={open.has(row.id)} closed={closed.has(row.id)} relocationKeys={relocationKeys} />
+            <RowView row={row} selected={focused && i === cursor} attachmentCursor={attachCursor?.rowId === row.id ? attachCursor.index : undefined} onOpenAttachment={(a) => { post({ t: 'open-attachment', id: sessionId, attachmentId: a.id, itemId: row.id }); }} expanded={open.has(row.id)} closed={closed.has(row.id)} relocationKeys={relocationKeys} />
           </box>
         );
       })}
