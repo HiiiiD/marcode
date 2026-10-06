@@ -8,18 +8,18 @@ test('the bottom line names the zone and follows Tab through composer, transcrip
   m = await mountBooted({ prompt: 'hello' });
   await m.waitFrame((f) => f.includes('hello'));
   await m.settle(200);
-  expect(m.frame().includes('[composer]')).toBe(true);
+  expect(m.frame().includes('COMPOSER')).toBe(true);
   expect(m.frame().includes('^V image')).toBe(true);
   await m.press('tab');
   await m.settle(200);
-  expect(m.frame().includes('[transcript]')).toBe(true);
+  expect(m.frame().includes('TRANSCRIPT')).toBe(true);
   expect(m.frame().includes('j/k select')).toBe(true);
   await m.press('tab');
   await m.settle(200);
-  expect(m.frame().includes('[roster]')).toBe(true);
+  expect(m.frame().includes('ROSTER')).toBe(true);
   await m.press('tab');
   await m.settle(200);
-  expect(m.frame().includes('[composer]')).toBe(true);
+  expect(m.frame().includes('COMPOSER')).toBe(true);
 });
 
 test('entering the transcript selects the newest message, so Enter-less actions have a target', async () => {

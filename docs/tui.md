@@ -33,7 +33,7 @@ yarn build:tui:bin    # bin/marcode.exe (bin/marcode elsewhere): standalone, Bun
 | Esc | your own session's turn is running or awaiting approval | interrupt |
 | Ctrl+C | your own session's turn is running or awaiting approval | interrupt; a second Ctrl+C within 2 s quits even if the turn has not stopped |
 | Ctrl+C twice | idle, or a session owned by another host | quit |
-| Tab | anywhere but approval/question | cycle composer, transcript, roster. The two lines at the bottom say where you are: the first shows the zone (`[composer]`, `[transcript]`, `[roster]`) with the keys that work there, the second is the session status and the shortcuts that work everywhere. Entering the transcript selects the newest message |
+| Tab | anywhere but approval/question | cycle composer, transcript, roster. The two lines at the bottom say where you are: the first shows the zone (an inverted `COMPOSER`, `TRANSCRIPT` or `ROSTER` badge) with the keys that work there, the second is the session status and the shortcuts that work everywhere. Entering the transcript selects the newest message |
 | Ctrl+B | anywhere | toggle the roster |
 | Ctrl+N | anywhere | new session dialog |
 | Up / Down or k / j, Enter, Esc | new session dialog | move; Enter picks the provider, then the model (skipped when it has one); Esc cancels. Starts on the focused session's provider and model, and the new session inherits its effort and mode |
