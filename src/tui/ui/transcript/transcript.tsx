@@ -25,6 +25,15 @@ export function Transcript({ sessionId, focused, onFork, relocationKeys = 'none'
   const scroll = useRef<ScrollBoxRenderable | null>(null);
   const heightBefore = useRef<number | undefined>(undefined);
 
+  // The stock edge-drag speeds (up to 72 rows/s) overshoot a text selection; these are read each frame.
+  useEffect(() => {
+    const box = scroll.current as unknown as Record<string, number> | null;
+    if (!box) { return; }
+    box.autoScrollSpeedSlow = 3;
+    box.autoScrollSpeedMedium = 10;
+    box.autoScrollSpeedFast = 20;
+  }, []);
+
   const first = pane?.items[0]?.id;
   const hasMore = pane?.hasMore === true;
   // Only a user scroll asks: a render-driven ask would chain through every page, because a prepend leaves no scroll to anchor on.
