@@ -66,7 +66,7 @@ yarn build:tui:bin    # bin/marcode.exe (bin/marcode elsewhere): standalone, Bun
 | Ctrl+X | composer | remove the last attachment |
 | Ctrl+V | composer | attach an image from the clipboard |
 | Ctrl+O | composer | open the last pending attachment |
-| l / Right, h / Left | transcript | on a message with attachments, move to the next / previous attachment; Enter opens the highlighted one |
+| l / Right, h / Left | transcript | on a message with attachments, move to the next / previous attachment; Enter opens the highlighted one, or the first when none is highlighted |
 | y / n, Enter | approval | allow / deny (n opens a reason; Enter confirms, Esc leaves the reason) |
 | Up / Down, Space, Enter | question | move, toggle, submit; "Other" takes free text; secret questions are masked |
 
@@ -95,8 +95,9 @@ as normal text.
 Ctrl+V in the composer attaches an image from the clipboard (also tried when a terminal pastes nothing). It shells out to
 PowerShell on Windows, `osascript` on macOS, and `wl-paste` or `xclip` on Linux; a missing tool is named in a notice.
 
-A sent message shows its attachments as chips under the text. Click a chip, or select the message, press `l`
-until it is highlighted and press Enter, to open the file with the system default opener (`start`, `open`, `xdg-open`).
+A sent message shows its attachments as chips under the text. Click a chip to open it with the system default opener
+(`start`, `open`, `xdg-open`). From the keyboard, select the message with `j`/`k` and press Enter to open its first
+attachment, or press `l` to highlight a later one first.
 Pending chips above the composer open on click or with Ctrl+O (the last one).
 
 ## Sharing sessions with VS Code

@@ -92,7 +92,8 @@ export function Transcript({ sessionId, focused, onFork, relocationKeys = 'none'
       setAttachCursor(next < 0 ? undefined : { rowId: current.id, index: next });
     }
     else if (action.do === 'toggle-item') {
-      const picked = attachCursor?.rowId === current?.id ? sent?.[attachCursor?.index ?? -1] : undefined;
+      const highlighted = attachCursor?.rowId === current?.id ? sent?.[attachCursor?.index ?? -1] : undefined;
+      const picked = highlighted ?? sent?.[0];
       if (current && picked) { openAttachment(current.id, picked); } else { toggleRow(current); }
     }
     else if (action.do === 'fork-item') {
