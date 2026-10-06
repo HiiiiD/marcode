@@ -14,6 +14,14 @@ interface Host { manager: SessionManager; ownership: SessionOwnership; sent: Hos
 
 const settle = () => new Promise((r) => setTimeout(r, 60));
 
+async function until(cond: () => boolean, what: string, ms = 5000): Promise<void> {
+  const end = Date.now() + ms;
+  while (!cond()) {
+    if (Date.now() > end) { throw new Error(`timed out waiting for ${what}`); }
+    await new Promise((r) => setTimeout(r, 10));
+  }
+}
+
 suite('SessionManager (shared directory)', () => {
   let dir: string;
   const hosts: Host[] = [];
@@ -196,7 +204,8 @@ suite('SessionManager (shared directory)', () => {
     assert.strictEqual(listed(guest, session.state.id), true);
   });
 
-  test('reopening a session another host ran meanwhile keeps that host\'s turn on disk', async () => {
+  test('reopening a session another host ran meanwhile keeps that host\'s turn on disk', async function () {
+    this.timeout(15_000);
     const texts = ['first', 'second'];
     let turn = 0;
     const scripted = () => [{ kind: 'text' as const, delta: texts[turn++] }, { kind: 'turn-end' as const, reason: 'done' as const }];
@@ -215,8 +224,10 @@ suite('SessionManager (shared directory)', () => {
     const b = await scriptedHost('tui');
     const s = await a.manager.create('fake', '/w');
     const id = s.state.id;
+    // A fixed sleep let a loaded runner close the session mid-turn, dropping that turn from disk.
+    const turnDone = (session: { state: { status: string } }, n: number) => until(() => turn >= n && session.state.status === 'idle', `turn ${n} to finish`);
     s.send('one');
-    await settle();
+    await turnDone(s, 1);
     await a.manager.persistNow();
     await a.manager.setVisible([id]);
     await a.manager.close(id);
@@ -224,7 +235,7 @@ suite('SessionManager (shared directory)', () => {
     await b.manager.syncRoster();
     const onB = await b.manager.open(id);
     onB.send('two');
-    await settle();
+    await turnDone(onB, 2);
     await b.manager.close(id);
 
     await a.manager.open(id);

@@ -93,6 +93,28 @@ suite('lease', () => {
     assert.strictEqual((await readLease(file))?.instance, 'A');
   });
 
+  test('a heartbeat caught mid-flight by a release does not write the lease back', async () => {
+    let parked = false;
+    let open: (() => void) | undefined;
+    const readFile = async (f: string) => {
+      const text = await fs.readFile(f, 'utf8');
+      if (parked) { parked = false; await new Promise<void>((resolve) => { open = resolve; }); }
+      return text;
+    };
+    const a = await claimLease(file, { host: 'vscode', instance: 'A' }, deps({ readFile }));
+    if (!a.ok) { throw new Error('expected a claim'); }
+
+    parked = true;
+    const beating = a.lease.beat();
+    while (!open) { await new Promise((r) => setTimeout(r, 1)); }
+    const releasing = a.lease.release();
+    await new Promise((r) => setTimeout(r, 30));
+    open();
+    await Promise.all([beating, releasing]);
+
+    assert.strictEqual(await readLease(file), undefined);
+  });
+
   test('isStale is a pure function of heartbeat, pid and machine', () => {
     const info = { pid: 1, host: 'tui' as const, instance: 'x', machine: 'm1', heartbeat: 0 };
     assert.strictEqual(isStale(info, deps({ now: () => STALE_MS })), false);
