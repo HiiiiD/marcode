@@ -22,9 +22,15 @@ suite('tui clipboard image', () => {
   test('non-PNG bytes are rejected', async () => {
     assert.strictEqual((await readClipboardImage(async () => ({ code: 0, stdout: Buffer.from('hello world') }), 'linux')).kind, 'none');
   });
+  test('macos: decodes the hex osascript prints as «data PNGf…»', async () => {
+    const run: RunTool = async () => ({ code: 0, stdout: Buffer.from(`«data PNGf${png.toString('hex')}»
+`) });
+    assert.deepStrictEqual(await readClipboardImage(run, 'darwin'), { kind: 'image', mediaType: 'image/png', base64: png.toString('base64') });
+    assert.strictEqual((await readClipboardImage(async () => ({ code: 1, stdout: Buffer.alloc(0) }), 'darwin')).kind, 'none');
+  });
   test('no reader installed reports a hint; unknown platform too', async () => {
-    const none = await readClipboardImage(async () => undefined, 'darwin');
-    assert.strictEqual(none.kind === 'no-tool' && none.hint.includes('pngpaste'), true);
+    const none = await readClipboardImage(async () => undefined, 'linux');
+    assert.strictEqual(none.kind === 'no-tool' && none.hint.includes('wl-clipboard'), true);
     assert.strictEqual((await readClipboardImage(async () => undefined, 'freebsd')).kind, 'no-tool');
   });
 });

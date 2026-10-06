@@ -91,7 +91,7 @@ else, including prose that merely contains a path, a path that does not exist, o
 as normal text.
 
 Ctrl+V in the composer attaches an image from the clipboard (also tried when a terminal pastes nothing). It shells out to
-PowerShell on Windows, `pngpaste` on macOS, and `wl-paste` or `xclip` on Linux; a missing tool is named in a notice.
+PowerShell on Windows, `osascript` on macOS, and `wl-paste` or `xclip` on Linux; a missing tool is named in a notice.
 
 ## Sharing sessions with VS Code
 

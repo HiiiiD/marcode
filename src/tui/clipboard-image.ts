@@ -7,7 +7,7 @@ export type ClipboardImage =
 
 export type RunTool = (cmd: string, args: string[]) => Promise<{ code: number; stdout: Buffer } | undefined>;
 
-interface Reader { cmd: string; args: string[]; output: 'binary' | 'base64' }
+interface Reader { cmd: string; args: string[]; output: 'binary' | 'base64' | 'applescript' }
 
 const WINDOWS_SCRIPT = 'Add-Type -AssemblyName System.Windows.Forms; Add-Type -AssemblyName System.Drawing; '
   + '$i=[System.Windows.Forms.Clipboard]::GetImage(); if($i){$m=New-Object IO.MemoryStream; '
@@ -15,7 +15,7 @@ const WINDOWS_SCRIPT = 'Add-Type -AssemblyName System.Windows.Forms; Add-Type -A
 
 const READERS: Partial<Record<NodeJS.Platform, { readers: Reader[]; hint: string }>> = {
   win32: { readers: [{ cmd: 'powershell', args: ['-NoProfile', '-STA', '-Command', WINDOWS_SCRIPT], output: 'base64' }], hint: 'powershell not found' },
-  darwin: { readers: [{ cmd: 'pngpaste', args: ['-'], output: 'binary' }], hint: 'install pngpaste (brew install pngpaste)' },
+  darwin: { readers: [{ cmd: 'osascript', args: ['-e', 'the clipboard as «class PNGf»'], output: 'applescript' }], hint: 'osascript not found' },
   linux: {
     readers: [
       { cmd: 'wl-paste', args: ['--type', 'image/png'], output: 'binary' },
@@ -26,6 +26,15 @@ const READERS: Partial<Record<NodeJS.Platform, { readers: Reader[]; hint: string
 };
 
 const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
+
+// osascript prints the clipboard as «data PNGf<hex>», not as raw bytes.
+function encode(output: Reader['output'], stdout: Buffer): string | undefined {
+  if (output === 'binary') { return stdout.toString('base64'); }
+  const text = stdout.toString('utf8').trim();
+  if (output === 'base64') { return text; }
+  const hex = /«data PNGf([0-9A-Fa-f]+)»/.exec(text)?.[1];
+  return hex ? Buffer.from(hex, 'hex').toString('base64') : undefined;
+}
 
 export const runTool: RunTool = (cmd, args) => new Promise((resolve) => {
   execFile(cmd, args, { encoding: 'buffer', maxBuffer: 64 * 1024 * 1024, windowsHide: true, timeout: 10_000 }, (err, stdout) => {
@@ -44,7 +53,8 @@ export async function readClipboardImage(run: RunTool = runTool, platform: NodeJ
     if (!out) { continue; }
     found = true;
     if (out.code !== 0) { continue; }
-    const base64 = reader.output === 'base64' ? out.stdout.toString('utf8').trim() : out.stdout.toString('base64');
+    const base64 = encode(reader.output, out.stdout);
+    if (!base64) { continue; }
     const bytes = Buffer.from(base64, 'base64');
     if (bytes.length > PNG_MAGIC.length && bytes.subarray(0, PNG_MAGIC.length).equals(PNG_MAGIC)) {
       return { kind: 'image', mediaType: 'image/png', base64 };
