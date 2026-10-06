@@ -14,74 +14,74 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@anthropic-ai/claude-agent-sdk-darwin-arm64@npm:0.3.287":
-  version: 0.3.287
-  resolution: "@anthropic-ai/claude-agent-sdk-darwin-arm64@npm:0.3.287"
+"@anthropic-ai/claude-agent-sdk-darwin-arm64@npm:0.3.288":
+  version: 0.3.288
+  resolution: "@anthropic-ai/claude-agent-sdk-darwin-arm64@npm:0.3.288"
   conditions: os=darwin & cpu=arm64
   languageName: node
   linkType: hard
 
-"@anthropic-ai/claude-agent-sdk-darwin-x64@npm:0.3.287":
-  version: 0.3.287
-  resolution: "@anthropic-ai/claude-agent-sdk-darwin-x64@npm:0.3.287"
+"@anthropic-ai/claude-agent-sdk-darwin-x64@npm:0.3.288":
+  version: 0.3.288
+  resolution: "@anthropic-ai/claude-agent-sdk-darwin-x64@npm:0.3.288"
   conditions: os=darwin & cpu=x64
   languageName: node
   linkType: hard
 
-"@anthropic-ai/claude-agent-sdk-linux-arm64-musl@npm:0.3.287":
-  version: 0.3.287
-  resolution: "@anthropic-ai/claude-agent-sdk-linux-arm64-musl@npm:0.3.287"
+"@anthropic-ai/claude-agent-sdk-linux-arm64-musl@npm:0.3.288":
+  version: 0.3.288
+  resolution: "@anthropic-ai/claude-agent-sdk-linux-arm64-musl@npm:0.3.288"
   conditions: os=linux & cpu=arm64 & libc=musl
   languageName: node
   linkType: hard
 
-"@anthropic-ai/claude-agent-sdk-linux-arm64@npm:0.3.287":
-  version: 0.3.287
-  resolution: "@anthropic-ai/claude-agent-sdk-linux-arm64@npm:0.3.287"
+"@anthropic-ai/claude-agent-sdk-linux-arm64@npm:0.3.288":
+  version: 0.3.288
+  resolution: "@anthropic-ai/claude-agent-sdk-linux-arm64@npm:0.3.288"
   conditions: os=linux & cpu=arm64 & libc=glibc
   languageName: node
   linkType: hard
 
-"@anthropic-ai/claude-agent-sdk-linux-x64-musl@npm:0.3.287":
-  version: 0.3.287
-  resolution: "@anthropic-ai/claude-agent-sdk-linux-x64-musl@npm:0.3.287"
+"@anthropic-ai/claude-agent-sdk-linux-x64-musl@npm:0.3.288":
+  version: 0.3.288
+  resolution: "@anthropic-ai/claude-agent-sdk-linux-x64-musl@npm:0.3.288"
   conditions: os=linux & cpu=x64 & libc=musl
   languageName: node
   linkType: hard
 
-"@anthropic-ai/claude-agent-sdk-linux-x64@npm:0.3.287":
-  version: 0.3.287
-  resolution: "@anthropic-ai/claude-agent-sdk-linux-x64@npm:0.3.287"
+"@anthropic-ai/claude-agent-sdk-linux-x64@npm:0.3.288":
+  version: 0.3.288
+  resolution: "@anthropic-ai/claude-agent-sdk-linux-x64@npm:0.3.288"
   conditions: os=linux & cpu=x64 & libc=glibc
   languageName: node
   linkType: hard
 
-"@anthropic-ai/claude-agent-sdk-win32-arm64@npm:0.3.287":
-  version: 0.3.287
-  resolution: "@anthropic-ai/claude-agent-sdk-win32-arm64@npm:0.3.287"
+"@anthropic-ai/claude-agent-sdk-win32-arm64@npm:0.3.288":
+  version: 0.3.288
+  resolution: "@anthropic-ai/claude-agent-sdk-win32-arm64@npm:0.3.288"
   conditions: os=win32 & cpu=arm64
   languageName: node
   linkType: hard
 
-"@anthropic-ai/claude-agent-sdk-win32-x64@npm:0.3.287":
-  version: 0.3.287
-  resolution: "@anthropic-ai/claude-agent-sdk-win32-x64@npm:0.3.287"
+"@anthropic-ai/claude-agent-sdk-win32-x64@npm:0.3.288":
+  version: 0.3.288
+  resolution: "@anthropic-ai/claude-agent-sdk-win32-x64@npm:0.3.288"
   conditions: os=win32 & cpu=x64
   languageName: node
   linkType: hard
 
-"@anthropic-ai/claude-agent-sdk@npm:0.3.287":
-  version: 0.3.287
-  resolution: "@anthropic-ai/claude-agent-sdk@npm:0.3.287"
+"@anthropic-ai/claude-agent-sdk@npm:0.3.288":
+  version: 0.3.288
+  resolution: "@anthropic-ai/claude-agent-sdk@npm:0.3.288"
   dependencies:
-    "@anthropic-ai/claude-agent-sdk-darwin-arm64": "npm:0.3.287"
-    "@anthropic-ai/claude-agent-sdk-darwin-x64": "npm:0.3.287"
-    "@anthropic-ai/claude-agent-sdk-linux-arm64": "npm:0.3.287"
-    "@anthropic-ai/claude-agent-sdk-linux-arm64-musl": "npm:0.3.287"
-    "@anthropic-ai/claude-agent-sdk-linux-x64": "npm:0.3.287"
-    "@anthropic-ai/claude-agent-sdk-linux-x64-musl": "npm:0.3.287"
-    "@anthropic-ai/claude-agent-sdk-win32-arm64": "npm:0.3.287"
-    "@anthropic-ai/claude-agent-sdk-win32-x64": "npm:0.3.287"
+    "@anthropic-ai/claude-agent-sdk-darwin-arm64": "npm:0.3.288"
+    "@anthropic-ai/claude-agent-sdk-darwin-x64": "npm:0.3.288"
+    "@anthropic-ai/claude-agent-sdk-linux-arm64": "npm:0.3.288"
+    "@anthropic-ai/claude-agent-sdk-linux-arm64-musl": "npm:0.3.288"
+    "@anthropic-ai/claude-agent-sdk-linux-x64": "npm:0.3.288"
+    "@anthropic-ai/claude-agent-sdk-linux-x64-musl": "npm:0.3.288"
+    "@anthropic-ai/claude-agent-sdk-win32-arm64": "npm:0.3.288"
+    "@anthropic-ai/claude-agent-sdk-win32-x64": "npm:0.3.288"
   peerDependencies:
     "@anthropic-ai/sdk": ">=0.93.0"
     "@modelcontextprotocol/sdk": ^1.29.0
@@ -103,7 +103,7 @@ __metadata:
       optional: true
     "@anthropic-ai/claude-agent-sdk-win32-x64":
       optional: true
-  checksum: 10c0/cd97bb3db346ca85c68e9e2ef0e685d1d677634feb2302b4c5cfdc48cdd6d1afc9a1be04017d2566e51cace5572046a04bfa0f2ca6984657ddd2fdb3e4ffa21d
+  checksum: 10c0/5613fdc8f7404d501c0a80b05ba3cb712365ee9fbfe84c4cb5ae8b21b881ad9c5d79b21f79f481f3cbd688a3ba321a3b826eba5ef7583939a7c176f9f228022a
   languageName: node
   linkType: hard
 
@@ -4525,7 +4525,7 @@ __metadata:
   resolution: "mar-code@workspace:."
   dependencies:
     "@agentclientprotocol/sdk": "npm:^1.6.1"
-    "@anthropic-ai/claude-agent-sdk": "npm:0.3.287"
+    "@anthropic-ai/claude-agent-sdk": "npm:0.3.288"
     "@anthropic-ai/sdk": "npm:0.131.0"
     "@base-ui/react": "npm:^1.8.0"
     "@headless-tree/core": "npm:1.7.0"
