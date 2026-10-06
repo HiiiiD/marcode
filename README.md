@@ -31,6 +31,8 @@ loop.
   account, a Codex instance pointed at a different `CODEX_HOME`, an OpenCode instance
   against a different config — each with its own binary path and secrets sourced from OS
   env vars, never stored in settings.
+- A terminal client (**TUI**): the same sessions, split panes, approvals, memory and plan usage
+  in a terminal, sharing `~/.marcode` with the extension. See [Terminal client](#terminal-client).
 - A fleet diff review tab (**Marcode: Review fleet changes**) showing every session's
   changes against a base ref, attributed to the session whose tool calls made them.
 - A fleet view (**Marcode: Open fleet view**) for drilling into one session's running or
@@ -52,6 +54,35 @@ loop.
   AGENTS.md the source of truth with CLAUDE.md as a `@AGENTS.md` stub. Scanned paths
   beyond the built-in node_modules/.git/dist/out/.claude/worktrees/.worktrees excludes are configurable via
   `marcode.agentsMdNudge.excludePaths`.
+
+## Terminal client
+
+Marcode also ships a terminal UI (TUI) for the same sessions. It boots its own host in-process,
+uses the same `~/.marcode/workspaces/<slug>` directory and `config.json` as the extension, and
+renders with OpenTUI. A session you start in the terminal shows up in VS Code and the other way
+round; one open in both is owned by one host at a time and is read-only in the other.
+
+It has the roster, resizable split panes with a saved layout, tool approvals and questions,
+model / effort / permission-mode dialogs, `@file` mentions and the `/` skill menu, file
+attachments, fork and handoff, context and plan-usage readouts, memory and recall, and worktree
+offers. It does not yet have the fleet diff review, the history tab or the fleet view; see
+[docs/tui.md](docs/tui.md#not-in-the-tui-yet) for the full list.
+
+It needs [Bun](https://bun.sh) >= 1.3 to build and run from source:
+
+```powershell
+yarn build:tui        # dist/tui/tui.js, run with: bun dist/tui/tui.js
+yarn build:tui:bin    # bin/marcode.exe (bin/marcode elsewhere): standalone, Bun embedded
+```
+
+```powershell
+marcode                  # open the TUI, resuming the last session
+marcode "<prompt>"       # start a session with that prompt
+marcode login claude     # sign in (claude, codex)
+marcode config           # open config.json
+```
+
+Keys, panes, mouse, attachments and limits are in [docs/tui.md](docs/tui.md).
 
 ## Install
 
