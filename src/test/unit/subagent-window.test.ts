@@ -1,6 +1,6 @@
 import * as assert from 'assert';
 import {
-  SUBAGENT_CHILD_WINDOW, formatElapsed, isBackgroundDispatch, summarizeSubagent, windowChildren,
+  SUBAGENT_CHILD_WINDOW, formatElapsed, isBackgroundDispatch, pendingSubagentPermissions, summarizeSubagent, windowChildren,
 } from '../../client-core/subagent-window';
 import type { TranscriptItem } from '../../protocol/messages';
 
@@ -18,7 +18,29 @@ function parent(children: TranscriptItem[], ts = 1000): TranscriptItem {
   };
 }
 
+function perm(id: string, state: 'pending' | 'allowed' = 'pending'): TranscriptItem {
+  return { id, ts: 1, role: 'permission', requestId: id, tool: { kind: 'file-read', label: 'Read', path: 'a.ts' }, state };
+}
+
 suite('subagent window', () => {
+  test('a pending approval outside the window is still shown', () => {
+    const children = [perm('p'), ...Array.from({ length: 25 }, (_, i) => child(`c${i}`))];
+    const shown = windowChildren(children);
+    assert.strictEqual(shown[0].id, 'p');
+    assert.strictEqual(shown.length, 11);
+  });
+
+  test('settled approvals outside the window are dropped', () => {
+    const children = [perm('p', 'allowed'), ...Array.from({ length: 25 }, (_, i) => child(`c${i}`))];
+    assert.strictEqual(windowChildren(children).length, 10);
+  });
+
+  test('pendingSubagentPermissions finds nested pending approvals only', () => {
+    const found = pendingSubagentPermissions([child('top'), parent([perm('a'), perm('b', 'allowed'), child('c')])]);
+    assert.deepStrictEqual(found.map((f) => f.item.id), ['a']);
+    assert.strictEqual(found[0].parent.id, 't1');
+  });
+
   test('the window is ten', () => {
     assert.strictEqual(SUBAGENT_CHILD_WINDOW, 10);
   });

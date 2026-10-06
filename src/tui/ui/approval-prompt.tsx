@@ -5,6 +5,7 @@ import type { PermissionRequest, SessionId } from '../../protocol/messages';
 import { actionFor } from '../keymap';
 import { editText } from './key-text';
 import { usePromptArmed } from './prompt-arm';
+import { pendingSubagentPermissions, subagentLabel } from '../../client-core/subagent-window';
 import { useTuiStore } from './store';
 import { Surface } from './surface';
 import { useTokens } from './tokens/tokens-provider';
@@ -22,7 +23,7 @@ const blockLines = (b: ToolBlock): string[] => {
 };
 
 export function ApprovalPrompt(props: { sessionId: SessionId; request: PermissionRequest; focused: boolean }) {
-  const { post } = useTuiStore();
+  const { post, state } = useTuiStore();
   const { request } = props;
   const muted = useTokens()?.textMuted ?? 'gray';
   const header = describeTool(request.tool);
@@ -55,9 +56,13 @@ export function ApprovalPrompt(props: { sessionId: SessionId; request: Permissio
     else if (action?.do === 'deny') { st.set({ mode: 'reason' }); }
   });
 
+  const queued = state.byId[props.sessionId]?.pending.length ?? 1;
+  const origin = pendingSubagentPermissions(state.byId[props.sessionId]?.items ?? [])
+    .find((e) => e.item.requestId === request.requestId);
   const extra = [request.meta?.description, request.meta?.decisionReason].filter((t): t is string => Boolean(t));
   return (
-    <Surface tone="panel" padX={1} padY={1} flexDirection="column" title="permission">
+    <Surface tone="panel" padX={1} padY={1} flexDirection="column" title={queued > 1 ? `permission · 1 of ${queued}` : 'permission'}>
+      {origin ? <text fg={muted}>{`subagent: ${subagentLabel(origin.parent)}`}</text> : null}
       <text fg="yellow">{`${header.verb} ${header.primary}`}</text>
       {extra.map((t, i) => <text key={`m${i}`} fg={muted}>{t}</text>)}
       {[...shown.head, ...(shown.hidden > 0 ? [`… ${shown.hidden} more …`] : []), ...shown.tail].map((l, i) => <text key={i}>{l}</text>)}

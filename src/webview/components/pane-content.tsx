@@ -5,6 +5,7 @@ import { ownerReason } from "../lib/owner-reason";
 import { unavailabilityFor } from "../lib/provider-availability";
 import { useStore } from "../store";
 import { Composer } from "./composer";
+import { PinnedSubagentPermissions } from "./pinned-subagent-permissions";
 import { SessionHeader } from "./session-header";
 import { SubagentDrillInContext } from "./subagent-drill-in-context";
 import { Transcript } from "./transcript";
@@ -70,6 +71,7 @@ export function PaneContent({ sessionId, accessibleTitle }: PaneContentProps) {
             />
           </div>
         </SubagentDrillInContext.Provider>
+        <PinnedSubagentPermissions pane={paneState} sessionId={sessionId} />
         <Composer
           pane={paneState}
           model={model}

@@ -19,10 +19,28 @@ type ToolItem = Extract<TranscriptItem, { role: 'tool' }>;
  */
 export const SUBAGENT_CHILD_WINDOW = 10;
 
+/** Pending approvals are always kept: a request cut off by the window is one nobody can answer. */
 export function windowChildren(children: TranscriptItem[]): TranscriptItem[] {
-  return children.length <= SUBAGENT_CHILD_WINDOW
-    ? children
-    : children.slice(children.length - SUBAGENT_CHILD_WINDOW);
+  if (children.length <= SUBAGENT_CHILD_WINDOW) { return children; }
+  const cut = children.length - SUBAGENT_CHILD_WINDOW;
+  return children.filter((c, i) => i >= cut || (c.role === 'permission' && c.state === 'pending'));
+}
+
+export interface PendingSubagentPermission {
+  parent: ToolItem;
+  item: Extract<TranscriptItem, { role: 'permission' }>;
+}
+
+/** Every unanswered approval nested inside a subagent, oldest first. */
+export function pendingSubagentPermissions(items: TranscriptItem[]): PendingSubagentPermission[] {
+  const out: PendingSubagentPermission[] = [];
+  for (const parent of items) {
+    if (parent.role !== 'tool') { continue; }
+    for (const item of parent.children ?? []) {
+      if (item.role === 'permission' && item.state === 'pending') { out.push({ parent, item }); }
+    }
+  }
+  return out;
 }
 
 export interface SubagentSummary {
