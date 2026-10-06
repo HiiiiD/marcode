@@ -67,7 +67,7 @@ export function Composer({ sessionId, focused, onOpenPicker }: { sessionId: Sess
     setCaret(at);
   };
   // Recalled and restored text is not something the user is mid-way through typing, so an `@` at its end stays closed.
-  const setBoxQuiet = (text: string) => { popup.suppress(text); setBox(text); };
+  const setBoxQuiet = (text: string) => { popup.suppress(text); slash.suppress(text); setBox(text); };
 
   useEffect(() => {
     const seed = drafts.get(sessionId);
