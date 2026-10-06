@@ -4,6 +4,7 @@ import { ChatMessage } from '../termcn/components/ui/chat-message';
 import { useTheme } from '../termcn/hooks/use-theme';
 import { useSyntaxStyle, useTokens } from '../tokens/tokens-provider';
 import { BAR_CHARS } from './bar-border';
+import { CompactionCard } from './compaction-card';
 import { PermissionCard } from './permission-card';
 import { RelocationCardView, type RelocationKeys } from './relocation-card';
 import { SubagentCard } from './subagent-card';
@@ -68,6 +69,8 @@ export function RowView(props: { row: TranscriptRow; selected: boolean; expanded
       );
     case 'relocation':
       return <RelocationCardView card={row.card} active={row.active} keys={props.relocationKeys} selected={props.selected} />;
+    case 'compaction':
+      return <CompactionCard row={row} open={props.expanded} selected={props.selected} />;
     case 'notice':
       return <text attributes={bold} fg={row.tone === 'error' ? theme.colors.error : theme.colors.mutedForeground} wrapMode="word">{row.text}</text>;
   }

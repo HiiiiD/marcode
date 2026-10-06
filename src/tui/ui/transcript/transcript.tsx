@@ -52,6 +52,12 @@ export function Transcript({ sessionId, focused, onFork, relocationKeys = 'none'
   }, [cursorId]);
 
   const toggleRow = (row: TranscriptRow | undefined) => {
+    if (row?.kind === 'compaction') {
+      if (row.summary === undefined) { return; }
+      const id = row.id;
+      setOpen((o) => { const n = new Set(o); if (n.has(id)) { n.delete(id); } else { n.add(id); } return n; });
+      return;
+    }
     if (row?.kind !== 'tool') { return; }
     const id = row.id;
     const blocked = row.item.tool.kind === 'subagent' && summarizeSubagent(row.item, 0).blocked;

@@ -141,4 +141,14 @@ suite('tui view: transcript rows', () => {
       ['r1', 'pending', false], ['r2', 'moved', false], ['r3', 'pending', true],
     ]);
   });
+  test('a compaction becomes a card row carrying its headline and summary', () => {
+    const rows = transcriptRows([
+      { id: 'c1', ts: 1, role: 'compaction', state: 'done', trigger: 'auto', summary: 'kept' },
+      { id: 'c2', ts: 1, role: 'compaction', state: 'failed', error: 'nope' },
+    ], false);
+    assert.deepStrictEqual(rows.map((r) => (r.kind === 'compaction' ? [r.id, r.state, r.headline, r.summary, r.error] : null)), [
+      ['c1', 'done', 'Conversation compacted automatically', 'kept', undefined],
+      ['c2', 'failed', 'Compaction failed', undefined, 'nope'],
+    ]);
+  });
 });

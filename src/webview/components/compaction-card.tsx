@@ -2,17 +2,9 @@ import { ChevronRightIcon } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import type { TranscriptItem } from '../../protocol/messages';
+import { compactionHeadline as headline, type CompactionItem } from '../../client-core/compaction';
 import { Markdown } from './markdown';
 import { TranscriptItemShell } from './transcript-item-shell';
-
-type CompactionItem = Extract<TranscriptItem, { role: 'compaction' }>;
-
-function headline(item: CompactionItem): string {
-  if (item.state === 'running') { return 'Compacting conversation…'; }
-  if (item.state === 'failed') { return 'Compaction failed'; }
-  return item.trigger === 'auto' ? 'Conversation compacted automatically' : 'Conversation compacted';
-}
 
 export function CompactionCard({ item }: { item: CompactionItem }) {
   const [open, setOpen] = useState(false);
