@@ -47,6 +47,11 @@ export function Transcript({ sessionId, focused, onFork, relocationKeys = 'none'
     return () => clearTimeout(t);
   }, [first]);
 
+  // Entering the zone selects the newest message, so the zone change shows up on screen at once.
+  useEffect(() => {
+    if (focused && cursorId === undefined && rows.length > 0) { setCursorId(rows[rows.length - 1]?.id); }
+  }, [focused]);
+
   const cursor = cursorId === undefined ? -1 : rows.findIndex((r) => r.id === cursorId);
   useEffect(() => {
     if (cursorId !== undefined) { scroll.current?.scrollChildIntoView(cursorId); }

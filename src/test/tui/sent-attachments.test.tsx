@@ -25,7 +25,6 @@ async function sendWithFiles(names: string[]) {
   await m.settle(500);
   await m.press('tab');
   await m.press('k');
-  await m.press('k');
   return { m, asked };
 }
 
