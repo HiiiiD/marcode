@@ -2,6 +2,7 @@ import type {
   EffortLevel, FileRef, PermissionMode, SessionId, SessionRef, WebviewToHost,
 } from "../protocol/messages";
 import { findModel, resolveEffort } from "../shared/model-catalog";
+import { leafSessionIds } from "./layout-tree";
 import type { ClientState } from "./reducer";
 
 /** Everything a session is created with, beyond its cwd. */
@@ -60,8 +61,17 @@ export function settingsFor(
  * `undefined` when the catalog has no provider to create against, which is
  * what disables both create controls.
  */
-export function inheritedSettings(state: ClientState): CreateSettings | undefined {
-  return settingsFor(state, state.focusedSessionId);
+export function inheritedSettings(
+  state: Pick<ClientState, 'sessions' | 'catalog' | 'focusedSessionId' | 'layout'>,
+): CreateSettings | undefined {
+  // Focus only lands through a composer textarea, which a session owned by
+  // another window never offers — without this `+ New` would silently copy
+  // the catalog's first model instead of the pane the user is looking at.
+  const known = (id: SessionId | null | undefined): id is SessionId =>
+    !!id && state.sessions.some((s) => s.id === id);
+  const source = [state.focusedSessionId, state.layout.focusedSessionId, ...leafSessionIds(state.layout.root)]
+    .find(known);
+  return settingsFor(state, source);
 }
 
 /** The wire message for `settings`. `cwd: ''` means the workspace root. */

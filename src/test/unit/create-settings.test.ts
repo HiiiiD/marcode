@@ -1,5 +1,5 @@
 import * as assert from 'node:assert';
-import { settingsForChoice } from '../../client-core/create-settings';
+import { inheritedSettings, settingsForChoice } from '../../client-core/create-settings';
 import { catalog, summary } from '../fixtures/protocol';
 
 const withModes = () => {
@@ -28,5 +28,24 @@ suite('create settings: choice inherits from the source session', () => {
       providerId: 'fake', model: 'fake-large', effort: 'medium', mode: 'default',
     });
     assert.strictEqual(settingsForChoice(state, undefined, 'nope', undefined), undefined);
+  });
+});
+
+suite('create settings: inheritedSettings without DOM focus', () => {
+  const pinned = (model: string) => summary('s1', { model });
+  const layout = (focusedSessionId?: string) => ({
+    root: { kind: 'leaf' as const, sessionId: 's1', size: 100 }, presets: [], focusedSessionId,
+  });
+
+  test('falls back to the pane in the layout instead of the catalog default', () => {
+    const state = { catalog: catalog(), sessions: [pinned('fake-large')], focusedSessionId: null, layout: layout() };
+    assert.strictEqual(inheritedSettings(state)?.model, 'fake-large');
+  });
+  test('an explicit focus still wins', () => {
+    const state = {
+      catalog: catalog(), sessions: [pinned('fake-large'), summary('s2', { model: 'fake-medium' })],
+      focusedSessionId: 's2', layout: layout(),
+    };
+    assert.strictEqual(inheritedSettings(state)?.model, 'fake-medium');
   });
 });
