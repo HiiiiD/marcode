@@ -61,7 +61,9 @@ export function TranscriptItemView({
       // and the user needs the destination to look like what was promised.
       // `children` still routes on its own, so a provider that nests under a
       // call we do not classify as a subagent keeps its nested rendering.
-      return item.tool.kind === 'subagent' || (item.children && item.children.length > 0)
+      // A SendMessage call is a one-shot tool call, not a subagent of its own.
+      return (item.tool.kind === 'subagent' && item.tool.action !== 'message')
+        || (item.children && item.children.length > 0)
         ? <SubagentCard item={item} sessionId={sessionId} />
         : <ToolCard item={item} onFork={onFork} />;
 

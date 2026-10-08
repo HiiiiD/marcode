@@ -136,10 +136,9 @@ export function describeTool(tool: ToolCall): ToolHeader {
       return header('list-todo', tool.label, tool.text, false);
 
     case 'subagent':
-      return header(
-        tool.action === 'message' ? 'send' : 'bot', tool.label,
-        tool.agent ?? tool.summary ?? tool.target ?? '', false,
-      );
+      // The target is an opaque agent id the panel never shows elsewhere.
+      if (tool.action === 'message') { return header('send', tool.label, 'Sent to subagent', false); }
+      return header('bot', tool.label, tool.agent ?? tool.summary ?? tool.target ?? '', false);
 
     case 'mcp': {
       // The one deliberate exception to "nothing here branches on a tool's
@@ -286,7 +285,9 @@ export function describeInput(tool: ToolCall): ToolBlock[] {
     case 'subagent':
       if (tool.summary) { blocks.push({ kind: 'note', text: tool.summary }); }
       if (tool.agent) { blocks.push({ kind: 'field', label: 'agent', value: tool.agent }); }
-      if (tool.target) { blocks.push({ kind: 'field', label: 'to', value: tool.target }); }
+      if (tool.target && tool.action !== 'message') {
+        blocks.push({ kind: 'field', label: 'to', value: tool.target });
+      }
       if (tool.model) { blocks.push({ kind: 'field', label: 'model', value: tool.model }); }
       if (tool.isolation) {
         blocks.push({ kind: 'field', label: 'isolation', value: tool.isolation });
