@@ -18,7 +18,7 @@ export function filterSubagents(
   opts: { includeSettled: boolean },
 ): ToolItem[] {
   return items
-    .filter((item): item is ToolItem => item.role === 'tool' && item.tool.kind === 'subagent')
+    .filter((item): item is ToolItem => item.role === 'tool' && item.tool.kind === 'subagent' && item.tool.action !== 'message')
     .filter((item) => opts.includeSettled || item.state === 'running')
     .sort((a, b) => a.ts - b.ts);
 }

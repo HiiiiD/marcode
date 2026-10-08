@@ -80,6 +80,13 @@ suite('describeTool', () => {
     }).glyph, 'bot');
   });
 
+  test('a subagent message reads "Sent to subagent", never the raw target id', () => {
+    const header = describeTool({
+      kind: 'subagent', label: 'SendMessage', action: 'message', target: 'a1b2c3', prompt: 'hi',
+    });
+    assert.strictEqual(header.primary, 'Sent to subagent');
+  });
+
   test('an mcp call shows only the tool — the server has its own chip beside it', () => {
     const header = describeTool({
       kind: 'mcp', label: 'create_issue', server: 'github', tool: 'create_issue',
