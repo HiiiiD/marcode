@@ -18,7 +18,7 @@ export function AttachmentChips({ pane }: { pane: PaneState }) {
       className="flex min-w-0 flex-wrap gap-1"
     >
       {pane.attachments.map((attachment) => (
-        <li key={attachment.id}>
+        <li key={attachment.id} className="min-w-0 max-w-full">
           <AttachmentChip
             attachment={attachment}
             onOpen={() => post({
@@ -74,7 +74,7 @@ export function AttachmentChip({
   return (
     <span
       className={cn(
-        'flex max-w-48 items-center gap-1 rounded-md border border-border',
+        'flex max-w-full items-center gap-1 rounded-md border border-border',
         'bg-muted py-0.5 text-xs',
         onRemove ? 'pl-1.5 pr-0.5' : 'px-1.5',
       )}
@@ -84,7 +84,7 @@ export function AttachmentChip({
         ? (
           <Button
             variant="ghost"
-            className="h-auto min-w-0 cursor-pointer gap-1 p-0 text-xs font-normal hover:bg-transparent hover:underline"
+            className="h-auto min-w-0 flex-1 justify-start overflow-hidden cursor-pointer gap-1 p-0 text-xs font-normal hover:bg-transparent hover:underline"
             aria-label={`Open ${attachment.name}`}
             onClick={onOpen}
           >
