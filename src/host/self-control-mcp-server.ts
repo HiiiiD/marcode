@@ -394,8 +394,8 @@ export class SelfControlMcpServer {
       {
         title: 'Send a message to another Marcode session',
         description: 'Marcode-specific: delivers text to a DIFFERENT, independent Marcode session '
-          + '(possibly a different provider entirely — Claude, Codex, OpenCode), interrupting it '
-          + 'if it is mid-turn. If your harness also offers a generic "SendMessage"/"message another '
+          + '(possibly a different provider entirely — Claude, Codex, OpenCode). It does not interrupt: '
+          + 'if the target is mid-turn the message is queued and handled after the current turn. If your harness also offers a generic "SendMessage"/"message another '
           + 'agent" tool, that one is unrelated — it addresses your own harness\'s agents, not the '
           + 'sessions in this VS Code panel; use marcode__send_message for those. This is not a '
           + 'message to yourself, the user, or a subagent of this conversation. Get the target name '
@@ -434,7 +434,6 @@ export class SelfControlMcpServer {
         }
         // Opening is also what first learns the owner of a session no roster sync has marked yet.
         if (this.sessionManager.isForeign?.(target.id)) { return foreign(); }
-        await session.interrupt();
         session.send(text, undefined, undefined, undefined, { sessionId: from.id, name: from.name });
         return { content: [{ type: 'text', text: JSON.stringify({ delivered: true }) }] };
       },
