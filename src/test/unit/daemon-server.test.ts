@@ -1,3 +1,4 @@
+import * as fs from 'node:fs';
 import * as assert from 'node:assert';
 import * as net from 'node:net';
 import * as os from 'node:os';
@@ -31,17 +32,19 @@ suite('daemon server', () => {
   let bus: PostBus;
   let endpoint: string;
   let throwOnRouter = false;
+  let throwOnChange = false;
   const make = (helloTimeoutMs?: number) => new DaemonServer({
     endpoint, bus, helloTimeoutMs,
     connectionDeps: {
       token: 'tok', identity: { protocolVersion: 1, appVersion: '1' }, loginRecipes: [],
       isBusy: () => false,
       makeRouter: () => { if (throwOnRouter) { throw new Error('boom'); } return { handle: async () => {} }; },
-      onShutdown: () => {}, onChange: () => {},
+      onShutdown: () => {}, onChange: () => { if (throwOnChange) { throw new Error('change boom'); } },
     },
   });
   setup(async () => {
     throwOnRouter = false;
+    throwOnChange = false;
     bus = new PostBus();
     endpoint = endpointFor(path.join(os.tmpdir(), `mar-srv-${process.pid}-${Date.now()}-${Math.random()}`));
     server = make();
@@ -138,5 +141,59 @@ suite('daemon server', () => {
     await until(() => c.closed());
     assert.strictEqual(c.closed(), true);
     assert.strictEqual(server.clientCount(), 0);
+  });
+
+  test('close() really waits: the client sees the close and the endpoint is reusable at once', async () => {
+    const c = await client(endpoint);
+    c.send(HELLO('tui', ['/a']));
+    await until(() => server.clientCount() === 1);
+    await server.close();
+    const again = make();
+    await again.listen();
+    await until(() => c.closed());
+    assert.strictEqual(c.closed(), true);
+    await again.close();
+  });
+
+  test('close() before listen resolves', async () => {
+    const fresh = make();
+    await fresh.close();
+    await fresh.close();
+  });
+
+  test('a server error event does not crash and the server still accepts clients', async () => {
+    (server as unknown as { server: net.Server }).server.emit('error', new Error('x'));
+    const c = await client(endpoint);
+    c.send(HELLO('tui', ['/a']));
+    await until(() => c.frames.some((f) => f.f === 'welcome'));
+    assert.strictEqual(c.frames.some((f) => f.f === 'welcome'), true);
+    c.sock.destroy();
+  });
+
+  test('a throwing onChange on detach does not take the server down', async () => {
+    const a = await client(endpoint);
+    const b = await client(endpoint);
+    a.send(HELLO('tui', ['/a']));
+    b.send(HELLO('tui', ['/b']));
+    await until(() => server.clientCount() === 2);
+    throwOnChange = true;
+    a.sock.destroy();
+    await new Promise((r) => setTimeout(r, 50));
+    throwOnChange = false;
+    bus.post({ t: 'session-patch' } as never);
+    await until(() => b.frames.some((f) => f.f === 'msg'));
+    assert.strictEqual(b.frames.some((f) => f.f === 'msg'), true);
+    b.sock.destroy();
+  });
+
+  test('a pre-existing loose socket dir owned by us is tightened to 0700 (POSIX)', async function () {
+    if (process.platform === 'win32') { this.skip(); }
+    await server.close();
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mar-dir-'));
+    fs.chmodSync(dir, 0o777);
+    endpoint = path.join(dir, 's.sock');
+    server = make();
+    await server.listen();
+    assert.strictEqual((fs.statSync(dir).mode & 0o777).toString(8), '700');
   });
 });

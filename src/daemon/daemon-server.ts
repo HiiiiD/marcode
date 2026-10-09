@@ -15,6 +15,15 @@ export interface DaemonServerOptions {
   helloTimeoutMs?: number;
 }
 
+function vetSocketDir(dir: string): void {
+  const st = fs.lstatSync(dir);
+  const uid = typeof process.getuid === 'function' ? process.getuid() : undefined;
+  if (st.isSymbolicLink() || !st.isDirectory() || (uid !== undefined && st.uid !== uid)) {
+    throw new Error(`Refusing to listen: socket directory ${dir} is a symlink or not owned by this user`);
+  }
+  if ((st.mode & 0o077) !== 0) { fs.chmodSync(dir, 0o700); }
+}
+
 export class DaemonServer {
   private readonly server = net.createServer((socket) => this.accept(socket));
   private readonly connections = new Set<DaemonConnection>();
@@ -23,27 +32,37 @@ export class DaemonServer {
   private readonly rootsListeners: Array<() => void> = [];
   private closing: Promise<void> | undefined;
 
-  constructor(private readonly opts: DaemonServerOptions) {}
+  constructor(private readonly opts: DaemonServerOptions) {
+    this.server.on('error', (err) => console.error('[marcode] daemon: server error', err));
+  }
 
   async listen(): Promise<void> {
     const posix = process.platform !== 'win32';
     if (posix) {
-      fs.mkdirSync(path.dirname(this.opts.endpoint), { recursive: true, mode: 0o700 });
+      const dir = path.dirname(this.opts.endpoint);
+      fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+      vetSocketDir(dir);
       fs.rmSync(this.opts.endpoint, { force: true });
     }
     await new Promise<void>((resolve, reject) => {
       this.server.once('error', reject);
       this.server.listen(this.opts.endpoint, () => { this.server.off('error', reject); resolve(); });
     });
-    if (posix) { fs.chmodSync(this.opts.endpoint, 0o600); }
+    if (posix) {
+      try { fs.chmodSync(this.opts.endpoint, 0o600); } catch (err) {
+        await this.close();
+        throw err;
+      }
+    }
   }
 
   close(): Promise<void> {
     this.closing ??= new Promise<void>((resolve) => {
+      // The server only emits close once every connection has ended; the adapter's end() destroys stragglers.
       this.server.close(() => resolve());
-      for (const conn of [...this.connections]) { conn.close(); }
-      for (const socket of this.sockets) { socket.destroy(); }
-      if (!this.server.listening) { resolve(); }
+      for (const conn of [...this.connections]) {
+        try { conn.close(); } catch (err) { console.error('[marcode] daemon: close failed', err); }
+      }
     });
     return this.closing;
   }
