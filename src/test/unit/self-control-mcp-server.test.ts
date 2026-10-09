@@ -613,7 +613,7 @@ suite('SelfControlMcpServer cross-session messaging', () => {
     await server.dispose();
   });
 
-  test('send_message resolves the caller from sid, delivers to the named target', async () => {
+  test('send_message resolves the caller from sid, delivers to the named target without interrupting', async () => {
     let interrupted = false;
     let sent: unknown[] = [];
     const target = { interrupt: async () => { interrupted = true; }, send: (...args: unknown[]) => { sent = args; } };
@@ -629,7 +629,7 @@ suite('SelfControlMcpServer cross-session messaging', () => {
     const config = await server.start();
     const result = await callToolAs(config, 's-caller', 'marcode__send_message', { to: 'b', text: 'do the thing' });
     assert.strictEqual(result.isError, undefined);
-    assert.strictEqual(interrupted, true);
+    assert.strictEqual(interrupted, false);
     assert.strictEqual(sent[0], 'do the thing');
     assert.deepStrictEqual(sent[4], { sessionId: 's-caller', name: 'a' });
     await server.dispose();
