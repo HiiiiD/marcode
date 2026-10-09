@@ -26,7 +26,7 @@ export interface ConnectionDeps {
   identity: DaemonIdentity;
   loginRecipes: LoginRecipeWire[];
   isBusy(): boolean;
-  makeRouter(emit: (m: HostToWebview) => void, hooks: RemoteHooks, hello: HelloFrame): { handle(m: WebviewToHost): Promise<void> };
+  makeRouter(emit: (m: HostToWebview) => void, hooks: RemoteHooks, hello: HelloFrame): ConnectionRouter;
   addToBus(client: PostClient): () => void;
   onRoots(roots: string[]): () => void;
   onShutdown(): void;
@@ -35,12 +35,14 @@ export interface ConnectionDeps {
   askTimeoutMs?: number;
 }
 
+export interface ConnectionRouter { handle(m: WebviewToHost): Promise<void>; dispose?(): void }
+
 interface PendingAsk { resolve(v: unknown): void; reject(e: Error): void; timer: ReturnType<typeof setTimeout> }
 
 export class DaemonConnection {
   private readonly decoder = new LineDecoder();
   private hello: HelloFrame | undefined;
-  private router: { handle(m: WebviewToHost): Promise<void> } | undefined;
+  private router: ConnectionRouter | undefined;
   private hooks: RemoteHooks | undefined;
   private unbus: (() => void) | undefined;
   private unroots: (() => void) | undefined;
@@ -154,6 +156,7 @@ export class DaemonConnection {
     this.closed = true;
     this.unbus?.();
     this.unroots?.();
+    try { this.router?.dispose?.(); } catch (err) { console.error('[marcode] daemon: router dispose failed', err); }
     for (const entry of this.pending.values()) { clearTimeout(entry.timer); entry.reject(new Error('closed')); }
     this.pending.clear();
     this.deps.onChange();

@@ -76,6 +76,14 @@ daemon that is not responding, or a spawn that failed. No such notice means the 
 `marcode daemon --status` from the same directory confirms it. `marcode login` always runs
 in-process and never starts a daemon.
 
+## Several clients
+
+Each attached client has its own set of shown panes, and the daemon shows the union of them: a
+second terminal attaching never hides, discards or digests a session the first one shows, and a
+session leaves memory's "hidden" set only when no client shows it. When the last client leaves,
+the last union stays as it was. The persisted pane layout is shared and last-writer-wins: each
+client restores whatever layout was saved last, by any of them.
+
 ## Quitting the TUI
 
 Quitting closes the TUI's connection only. Running turns, pending approvals and background tasks

@@ -10,6 +10,7 @@ import { endpointFor } from './endpoint';
 import { IdleMonitor, isBusy } from './idle-monitor';
 import { toLoginRecipesWire } from './login-recipes';
 import { PROTOCOL_VERSION } from './protocol';
+import { VisibleSets } from './visible-sets';
 
 export interface RunDaemonOptions {
   workspaceDir: string;
@@ -81,6 +82,14 @@ export async function runDaemon(opts: RunDaemonOptions): Promise<RunningDaemon> 
   })());
 
   let favorites = config.favoriteModels;
+  const visible = new VisibleSets({
+    visibleIds: () => host.manager.visibleIds(),
+    setVisible: (ids) => host.manager.setVisible(ids),
+    snapshot: async (id) => {
+      const session = host.manager.get(id) ?? await host.manager.open(id).catch(() => undefined);
+      return session?.snapshot();
+    },
+  });
   try {
     await host.init();
     server = new DaemonServer({
@@ -89,11 +98,11 @@ export async function runDaemon(opts: RunDaemonOptions): Promise<RunningDaemon> 
         token, identity,
         loginRecipes: toLoginRecipesWire(host.loginRecipes),
         isBusy: () => isBusy(host.manager.summaries()),
-        makeRouter: (emit, hooks, hello) => new MessageRouter(
+        makeRouter: (emit, hooks, hello) => visible.scope(new MessageRouter(
           host.manager, emit, hello.defaultCwd, hooks.editor, host.attachments, hooks.picker,
           config.review.pollIntervalMs, hooks.fileSearch, favorites,
           { setFavoriteModels: (ids) => { favorites = ids; hooks.configHost.setFavoriteModels(ids); } },
-        ),
+        ), emit),
         onShutdown: () => { log('shutdown requested'); void stop(); },
         onChange: check,
       },

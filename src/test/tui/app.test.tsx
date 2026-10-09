@@ -26,6 +26,14 @@ test('resumes the last session and posts its leaf as the visible set', async () 
   expect(m.posted.some((p) => p.t === 'set-visible' && p.sessionIds.length === 1 && p.sessionIds[0] === 's1')).toBe(true);
 });
 
+test('no set-visible is posted before the first hydrate', async () => {
+  m = await mount(<App {...props} />);
+  await tick();
+  expect(m.posted.filter((p) => p.t === 'set-visible').length).toBe(0);
+  await m.fromHost(hydrateMsg({ sessions: [], snapshots: [], layout: { root: { kind: 'leaf', sessionId: null, size: 100 }, presets: [] } }));
+  expect(m.posted.filter((p) => p.t === 'set-visible').length).toBe(1);
+});
+
 test('a prompt argument creates a session in the launch cwd with the prompt as seed, then focuses it', async () => {
   m = await mount(<App {...props} prompt="fix the tests" />);
   await m.fromHost(hydrateMsg({ sessions: [], snapshots: [] }));

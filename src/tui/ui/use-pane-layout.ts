@@ -65,7 +65,8 @@ export function usePaneLayout(): PaneLayoutApi {
     }
   }, [byIdKeys.join(','), state.sessions.map((s) => s.id).join(','), leafIds.join(',')]);
 
-  useEffect(() => { post({ t: 'set-visible', sessionIds: leafIds }); }, [leafIds.join(',')]);
+  // Before hydrate the layout is a placeholder; posting it would hide every pane a daemon still shows.
+  useEffect(() => { if (state.ready) { post({ t: 'set-visible', sessionIds: leafIds }); } }, [state.ready, leafIds.join(',')]);
 
   const placeOrFocus = useCallback((id: SessionId) => {
     const cur = stateRef.current;
