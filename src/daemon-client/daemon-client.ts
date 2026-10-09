@@ -42,6 +42,7 @@ export class SocketDaemonClient implements DaemonClient {
   private reconnecting = false;
   private readonly outbox = new Outbox();
   private lost = false;
+  private visible: Extract<WebviewToHost, { t: 'set-visible' }> | undefined;
 
   constructor(
     opened: Opened,
@@ -55,6 +56,7 @@ export class SocketDaemonClient implements DaemonClient {
   get loginRecipes(): LoginRecipeWire[] { return this.recipes; }
 
   post(msg: WebviewToHost): void {
+    if (msg.t === 'set-visible') { this.visible = msg; }
     if (!this.link) {
       if (this.closed || this.lost || !this.outbox.offer(msg)) {
         console.debug(`[marcode] daemon-client: dropped ${msg.t} while disconnected`);
@@ -160,6 +162,8 @@ export class SocketDaemonClient implements DaemonClient {
         this.adopt(opened);
         if (this.link !== opened.link) { continue; }
         this.post({ t: 'ready' });
+        // A respawned daemon starts with nothing shown, and the UI only re-posts when its panes change.
+        if (this.visible) { this.post(this.visible); }
         this.emit('connected');
         for (const m of this.outbox.drain()) { this.post(m); }
         return;

@@ -218,17 +218,26 @@ suite('daemon client', function () {
     if ('client' in again) { track(again.client); }
   });
 
-  test('a killed daemon is respawned: reconnecting, connected, then a hydrate', async () => {
+  test('a killed daemon is respawned: reconnecting, connected, a hydrate, then live patches for the shown pane', async () => {
     const c = await connected({ retryBaseMs: 20 });
     const statuses: ClientStatus[] = [];
     c.onStatus((s) => statuses.push(s));
     const got = inbox(c);
+    c.post({ t: 'create-session', providerId: 'fake', cwd: dir } as never);
+    await until(() => got.some((m) => m.t === 'session-snapshot'));
+    const snap = got.find((m) => m.t === 'session-snapshot');
+    const id = snap?.t === 'session-snapshot' ? snap.session.id : '';
+    c.post({ t: 'set-visible', sessionIds: [id] });
+    c.post({ t: 'send', id, text: 'hello' });
+    await until(() => got.some((m) => m.t === 'session-status' && m.id === id && m.status === 'idle' && got.some((p) => p.t === 'session-patch')));
     await daemons[0].stop();
-    c.post({ t: 'ready' });
+    got.length = 0;
     await until(() => statuses.includes('connected') && got.some((m) => m.t === 'hydrate'), 15000);
     assert.deepStrictEqual(statuses, ['reconnecting', 'connected']);
-    assert.strictEqual(got.some((m) => m.t === 'hydrate'), true);
     assert.strictEqual(spawns, 2);
+    c.post({ t: 'send', id, text: 'again' });
+    await until(() => got.some((m) => m.t === 'session-patch' && m.id === id));
+    assert.strictEqual(got.some((m) => m.t === 'session-patch' && m.id === id), true);
   });
 
   test('pushContext sends a ctx frame the daemon serves back as editor-context', async () => {
