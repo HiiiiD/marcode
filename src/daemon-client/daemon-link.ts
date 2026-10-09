@@ -53,13 +53,20 @@ export class Link {
   }
 }
 
-/** Never rejects: a refused connection, a mute peer or garbage all resolve as `failed`. */
+const NOBODY_THERE = new Set(['ECONNREFUSED', 'ENOENT']);
+
+/**
+ * Never rejects. Only a connect refused before `connect` is `unreachable`; a peer that
+ * accepted but never welcomed us (blocked, stopping, garbage) is `timeout`, never stale.
+ */
 export function openLink(endpoint: string, hello: HelloFrame, timeoutMs = DEFAULT_HANDSHAKE_TIMEOUT_MS): Promise<LinkResult> {
   return new Promise((resolve) => {
     const sock = net.connect(endpoint);
     const dec = new LineDecoder();
     let link: Link | undefined;
     let done = false;
+    let connected = false;
+    let code: string | undefined;
     const settle = (r: LinkResult) => {
       if (done) { return; }
       done = true;
@@ -70,9 +77,12 @@ export function openLink(endpoint: string, hello: HelloFrame, timeoutMs = DEFAUL
     const timer = setTimeout(() => settle({ failed: 'timeout' }), timeoutMs);
     timer.unref();
     sock.setEncoding('utf8');
-    sock.on('error', () => { /* 'close' follows and decides */ });
-    sock.on('close', () => { if (link) { link.dropped(); } else { settle({ failed: 'unreachable' }); } });
-    sock.on('connect', () => { sock.write(encodeFrame(hello)); });
+    sock.on('error', (err: NodeJS.ErrnoException) => { code ??= err.code; });
+    sock.on('close', () => {
+      if (link) { link.dropped(); return; }
+      settle({ failed: !connected && code !== undefined && NOBODY_THERE.has(code) ? 'unreachable' : 'timeout' });
+    });
+    sock.on('connect', () => { connected = true; sock.write(encodeFrame(hello)); });
     sock.on('data', (chunk: string) => {
       let lines: string[];
       try { lines = dec.push(chunk); } catch { sock.destroy(); return; }
@@ -87,7 +97,7 @@ export function openLink(endpoint: string, hello: HelloFrame, timeoutMs = DEFAUL
           settle({ rejected: frame });
           return;
         } else {
-          settle({ failed: 'unreachable' });
+          settle({ failed: 'timeout' });
           return;
         }
       }

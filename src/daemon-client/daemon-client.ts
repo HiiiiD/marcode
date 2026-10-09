@@ -38,6 +38,7 @@ export class SocketDaemonClient implements DaemonClient {
   private pushed: { ctx: unknown } | undefined;
   private timer: ReturnType<typeof setTimeout> | undefined;
   private wake: (() => void) | undefined;
+  private reconnecting = false;
 
   constructor(
     opened: Opened,
@@ -126,11 +127,18 @@ export class SocketDaemonClient implements DaemonClient {
   private onDropped(link: Link): void {
     if (this.closed || link !== this.link) { return; }
     this.link = undefined;
+    // A link that dies while the retry loop is adopting it is that loop's failed attempt, not a new outage.
+    if (this.reconnecting) { return; }
     this.emit('reconnecting');
     void this.reconnect();
   }
 
   private async reconnect(): Promise<void> {
+    this.reconnecting = true;
+    try { await this.retryLoop(); } finally { this.reconnecting = false; }
+  }
+
+  private async retryLoop(): Promise<void> {
     for (let n = 0; n < this.retry.attempts; n++) {
       await this.sleep(this.retry.baseMs * 2 ** n);
       if (this.closed) { return; }
@@ -141,6 +149,7 @@ export class SocketDaemonClient implements DaemonClient {
       if (this.closed) { opened?.link.destroy(); return; }
       if (opened) {
         this.adopt(opened);
+        if (this.link !== opened.link) { continue; }
         this.post({ t: 'ready' });
         this.emit('connected');
         return;

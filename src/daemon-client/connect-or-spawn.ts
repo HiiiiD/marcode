@@ -3,12 +3,12 @@ import { daemonInfoPath, readDaemonInfo, type DaemonInfo } from '../daemon/daemo
 import { requestShutdown } from '../daemon/request-shutdown';
 import type { ClientKind, DaemonIdentity } from '../protocol/daemon-wire';
 import { DEFAULT_RETRY, helloFrame, SocketDaemonClient, type ClientHooks, type DaemonClient, type Opened } from './daemon-client';
-import { openLink, type HelloFrame } from './daemon-link';
+import { DEFAULT_HANDSHAKE_TIMEOUT_MS, openLink, type HelloFrame } from './daemon-link';
 import { discover } from './discover';
 import { acquireSpawnLock } from './spawn-lock';
 import { decideAttach } from './version-policy';
 
-type FallbackReason = 'disabled' | 'newer-daemon' | 'busy-daemon' | 'spawn-failed' | 'rejected';
+type FallbackReason = 'disabled' | 'newer-daemon' | 'busy-daemon' | 'unresponsive-daemon' | 'spawn-failed' | 'rejected';
 type Fallback = { kind: 'fallback'; reason: FallbackReason; message: string };
 
 export type ConnectResult = { kind: 'attached'; client: DaemonClient } | Fallback;
@@ -25,10 +25,14 @@ export interface ConnectOptions {
   handshakeTimeoutMs?: number;
   /** Reconnect backoff base; attempt n waits base * 2^n. */
   retryBaseMs?: number;
+  /** Budget of one reconnect attempt, so the time to `lost` stays bounded. */
+  reconnectTimeoutMs?: number;
 }
 
 const POLL_MS = 100;
 const GONE_WAIT_MS = 5_000;
+const DEFAULT_TIMEOUT_MS = 10_000;
+const DEFAULT_RECONNECT_TIMEOUT_MS = 3_000;
 
 const fallback = (reason: FallbackReason, message: string): Fallback => ({ kind: 'fallback', reason, message });
 const sleep = (ms: number) => new Promise<void>((r) => { setTimeout(r, ms).unref(); });
@@ -43,22 +47,31 @@ async function waitGone(dir: string, token: string): Promise<boolean> {
   return false;
 }
 
-/** Only a record this client already failed to reach is removed, so a fresh daemon's file survives. */
+/** Only a record this client positively failed to reach is removed, so a fresh daemon's file survives. */
 async function removeStale(dir: string, token: string): Promise<void> {
   if ((await readDaemonInfo(dir))?.token !== token) { return; }
   await fs.rm(daemonInfoPath(dir), { force: true }).catch(() => { /* the spawned daemon overwrites it anyway */ });
 }
 
-async function establish(opts: ConnectOptions, cancelled: () => boolean = () => false): Promise<Opened | Fallback> {
+interface EstablishOpts {
+  timeoutMs: number;
+  cancelled: () => boolean;
+  /** Shared across reconnect attempts: a daemon spawned by an earlier attempt may still be booting. */
+  spawnGuard: { at: number };
+}
+
+async function establish(opts: ConnectOptions, run: EstablishOpts): Promise<Opened | Fallback> {
   const { workspaceDir: dir, identity } = opts;
+  const { cancelled, spawnGuard } = run;
   await fs.mkdir(dir, { recursive: true }).catch(() => { /* discover and spawn report the failure */ });
-  const deadline = Date.now() + (opts.timeoutMs ?? 10_000);
+  const deadline = Date.now() + run.timeoutMs;
+  const handshakeMs = opts.handshakeTimeoutMs ?? DEFAULT_HANDSHAKE_TIMEOUT_MS;
   const hello = (info: DaemonInfo): HelloFrame => helloFrame(info.token, {
     clientKind: opts.clientKind, roots: opts.roots, defaultCwd: opts.defaultCwd,
   }, identity);
   const stale = new Set<string>();
   let rediscovered = false;
-  let spawned = false;
+  let unresponsive = false;
   let release: (() => Promise<void>) | undefined;
 
   try {
@@ -70,7 +83,7 @@ async function establish(opts: ConnectOptions, cancelled: () => boolean = () => 
           return fallback('newer-daemon', 'The background host is a newer Marcode version; update this client');
         }
         if (decision === 'replace') {
-          const answer = await requestShutdown(info.endpoint, info.token, opts.handshakeTimeoutMs ?? 3_000);
+          const answer = await requestShutdown(info.endpoint, info.token, handshakeMs);
           if (answer === 'busy') {
             return fallback('busy-daemon', 'A newer Marcode build is needed but sessions are running; close them or restart');
           }
@@ -81,11 +94,12 @@ async function establish(opts: ConnectOptions, cancelled: () => boolean = () => 
             }
             continue;
           }
-          stale.add(info.token);
+          if (answer === 'unreachable') { stale.add(info.token); }
         } else {
-          const r = await openLink(info.endpoint, hello(info), opts.handshakeTimeoutMs);
+          const r = await openLink(info.endpoint, hello(info), handshakeMs);
           if ('link' in r) {
             if (cancelled()) { r.link.destroy(); break; }
+            spawnGuard.at = -Infinity;
             return r;
           }
           if ('rejected' in r) {
@@ -96,21 +110,28 @@ async function establish(opts: ConnectOptions, cancelled: () => boolean = () => 
             }
             return fallback('rejected', `The background host rejected this client (${reason})`);
           }
-          stale.add(info.token);
+          if (r.failed === 'unreachable') { stale.add(info.token); }
+        }
+        // A live record that did not answer is a blocked daemon, not a missing one: wait, never replace it.
+        if (!stale.has(info.token)) {
+          unresponsive = true;
+          await sleep(POLL_MS);
+          continue;
         }
       }
 
-      if (!spawned) {
+      const mayspawn = !release && Date.now() - spawnGuard.at > (opts.timeoutMs ?? DEFAULT_TIMEOUT_MS);
+      if (mayspawn && !cancelled()) {
         release = await acquireSpawnLock(dir);
         if (release) {
           const again = await discover(dir);
-          if (again && !stale.has(again.token)) {
+          if ((again && !stale.has(again.token)) || cancelled()) {
             await release();
             release = undefined;
             continue;
           }
           if (again) { await removeStale(dir, again.token); }
-          spawned = true;
+          spawnGuard.at = Date.now();
           try {
             await opts.spawn();
           } catch (err) {
@@ -122,7 +143,9 @@ async function establish(opts: ConnectOptions, cancelled: () => boolean = () => 
       }
       await sleep(POLL_MS);
     }
-    return fallback('spawn-failed', 'The background host did not start in time');
+    return unresponsive
+      ? fallback('unresponsive-daemon', 'The background host is not responding; it may be busy. Try again in a moment.')
+      : fallback('spawn-failed', 'The background host did not start in time');
   } catch (err) {
     return fallback('spawn-failed', `Could not reach the background host: ${errorText(err)}`);
   } finally {
@@ -131,10 +154,13 @@ async function establish(opts: ConnectOptions, cancelled: () => boolean = () => 
 }
 
 export async function connectOrSpawn(opts: ConnectOptions): Promise<ConnectResult> {
-  const first = await establish(opts);
+  const spawnGuard = { at: -Infinity };
+  const first = await establish(opts, { timeoutMs: opts.timeoutMs ?? DEFAULT_TIMEOUT_MS, cancelled: () => false, spawnGuard });
   if ('kind' in first) { return first; }
   const reopen = async (cancelled: () => boolean): Promise<Opened | undefined> => {
-    const r = await establish(opts, cancelled);
+    const r = await establish(opts, {
+      timeoutMs: opts.reconnectTimeoutMs ?? DEFAULT_RECONNECT_TIMEOUT_MS, cancelled, spawnGuard,
+    });
     return 'kind' in r ? undefined : r;
   };
   const retry = { ...DEFAULT_RETRY, baseMs: opts.retryBaseMs ?? DEFAULT_RETRY.baseMs };

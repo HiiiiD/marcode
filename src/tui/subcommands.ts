@@ -90,7 +90,7 @@ export async function runDaemonCommand(cmd: DaemonCommand, cwd: string, io: SubI
   }
   const answer = await requestShutdown(info.endpoint, info.token);
   if (answer === 'bye') { io.out('stopped'); return 0; }
-  io.err(answer === 'unreachable' ? 'unreachable' : `refused: ${answer}`);
+  io.err(answer === 'unreachable' ? 'unreachable' : answer === 'timeout' ? 'not responding' : `refused: ${answer}`);
   return 1;
 }
 

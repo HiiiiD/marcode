@@ -5,7 +5,8 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { daemonInfoPath, readDaemonInfo, writeDaemonInfo } from '../../daemon/daemon-info';
 import { runDaemon, type RunningDaemon, type RunDaemonOptions } from '../../daemon/run-daemon';
-import { attach, type ClientStatus, type DaemonClient } from '../../daemon-client/daemon-client';
+import { attach, SocketDaemonClient, type ClientStatus, type DaemonClient } from '../../daemon-client/daemon-client';
+import { Link } from '../../daemon-client/daemon-link';
 import { connectOrSpawn, type ConnectOptions } from '../../daemon-client/connect-or-spawn';
 import { daemonSpawnCommand } from '../../daemon-client/spawn-daemon';
 import { defaultHostConfig } from '../../host/host-config';
@@ -27,6 +28,7 @@ suite('daemon client', function () {
   let daemons: RunningDaemon[];
   let clients: DaemonClient[];
   let servers: net.Server[];
+  let held: net.Socket[];
   let spawns: number;
 
   const start = async (extra: Partial<RunDaemonOptions> = {}) => {
@@ -55,11 +57,12 @@ suite('daemon client', function () {
 
   setup(() => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mar-dcl-'));
-    daemons = []; clients = []; servers = []; spawns = 0;
+    daemons = []; clients = []; servers = []; held = []; spawns = 0;
   });
   teardown(async () => {
     for (const c of clients) { c.close(); }
     for (const d of daemons) { await d.stop(); }
+    for (const s of held) { s.destroy(); }
     for (const s of servers) { await new Promise((r) => s.close(r)); }
     fs.rmSync(dir, { recursive: true, force: true });
   });
@@ -107,18 +110,72 @@ suite('daemon client', function () {
     assert.strictEqual((await readDaemonInfo(dir))?.pid, process.pid);
   });
 
-  test('a daemon that never completes the handshake times out and the spawn path takes over', async () => {
+  const muteDaemon = async (protocolVersion: number) => {
     const endpoint = nowhere(dir, 'mute');
-    const held: net.Socket[] = [];
     const mute = net.createServer((s) => { held.push(s); s.on('error', () => {}); });
     servers.push(mute);
     await new Promise<void>((r) => mute.listen(endpoint, r));
-    await writeDaemonInfo(dir, { pid: process.pid, endpoint, token: 't', protocolVersion: 1, appVersion: '0', startedAt: 0 });
+    await writeDaemonInfo(dir, { pid: process.pid, endpoint, token: 't', protocolVersion, appVersion: '0', startedAt: 0 });
+    return fs.readFileSync(daemonInfoPath(dir), 'utf8');
+  };
+
+  test('a live daemon that accepts but never answers is waited on, never replaced', async () => {
+    const before = await muteDaemon(1);
     const t0 = Date.now();
-    await connected({ handshakeTimeoutMs: 300 });
-    assert.strictEqual(spawns, 1);
+    const r = await connectOrSpawn(opts({ handshakeTimeoutMs: 200, timeoutMs: 1500 }));
+    assert.strictEqual(r.kind === 'fallback' && r.reason, 'unresponsive-daemon');
     assert.strictEqual(Date.now() - t0 < 5000, true);
-    for (const s of held) { s.destroy(); }
+    assert.strictEqual(spawns, 0);
+    assert.strictEqual(fs.readFileSync(daemonInfoPath(dir), 'utf8'), before);
+  });
+
+  test('an older-protocol daemon that never answers shutdown is waited on, never replaced', async () => {
+    const before = await muteDaemon(0);
+    const r = await connectOrSpawn(opts({ handshakeTimeoutMs: 200, timeoutMs: 1500 }));
+    assert.strictEqual(r.kind === 'fallback' && r.reason, 'unresponsive-daemon');
+    assert.strictEqual(spawns, 0);
+    assert.strictEqual(fs.readFileSync(daemonInfoPath(dir), 'utf8'), before);
+  });
+
+  test('a link that drops while being adopted during reconnect never reports connected', async () => {
+    const welcome = { f: 'welcome' as const, clientId: 'x', loginRecipes: [], protocolVersion: 1, appVersion: 'x' };
+    const deadLink = () => { const l = new Link(new net.Socket()); l.dropped(); return l; };
+    let reopens = 0;
+    const first = new Link(new net.Socket());
+    const c = track(new SocketDaemonClient({ link: first, welcome }, {}, async () => { reopens++; return { link: deadLink(), welcome }; }, { attempts: 3, baseMs: 1 }));
+    const statuses: ClientStatus[] = [];
+    c.onStatus((s) => statuses.push(s));
+    first.dropped();
+    await until(() => statuses.includes('lost'));
+    assert.deepStrictEqual(statuses, ['reconnecting', 'lost']);
+    assert.strictEqual(reopens, 3);
+  });
+
+  test('a daemon req reaches hooks.ask and its res comes back; an act reaches hooks.act', async () => {
+    const file = path.join(dir, 'note.txt');
+    fs.writeFileSync(file, 'hi');
+    const asked: string[] = [];
+    const acted: Array<[string, unknown[]]> = [];
+    const c = await connected({
+      hooks: {
+        ask: async (op) => { asked.push(op); return [file]; },
+        act: (op, args) => { acted.push([op, args]); },
+      },
+    });
+    const got = inbox(c);
+    c.post({ t: 'create-session', providerId: 'fake', cwd: dir } as never);
+    const roster = () => got.find((m) => m.t === 'sessions-changed' && m.sessions.length > 0);
+    await until(() => roster() !== undefined);
+    const r = roster();
+    const id = r?.t === 'sessions-changed' ? r.sessions[0].id : '';
+    c.post({ t: 'attach-pick', id });
+    await until(() => got.some((m) => m.t === 'session-attachments' || m.t === 'attachments-rejected'));
+    assert.deepStrictEqual(asked, ['pick']);
+    const attached = got.find((m) => m.t === 'session-attachments');
+    assert.strictEqual(attached?.t === 'session-attachments' ? attached.attachments.length : -1, 1);
+    c.post({ t: 'open-external', url: 'https://example.com' });
+    await until(() => acted.length > 0);
+    assert.deepStrictEqual(acted, [['openExternal', ['https://example.com']]]);
   });
 
   test('an idle older-protocol daemon is replaced', async () => {
