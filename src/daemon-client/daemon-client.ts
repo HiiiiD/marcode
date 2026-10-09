@@ -3,6 +3,7 @@ import type { ClientTransport } from '../client-core/transport';
 import type { ActOp, AskOp, ClientFrame, DaemonIdentity, LoginRecipeWire, ServerFrame } from '../protocol/daemon-wire';
 import type { HostToWebview, WebviewToHost } from '../protocol/messages';
 import { openLink, type Link, type LinkFailure, type RejectFrame, type WelcomeFrame } from './daemon-link';
+import { Outbox } from './outbox';
 
 export type ClientStatus = 'connected' | 'reconnecting' | 'lost';
 
@@ -39,6 +40,8 @@ export class SocketDaemonClient implements DaemonClient {
   private timer: ReturnType<typeof setTimeout> | undefined;
   private wake: (() => void) | undefined;
   private reconnecting = false;
+  private readonly outbox = new Outbox();
+  private lost = false;
 
   constructor(
     opened: Opened,
@@ -52,7 +55,12 @@ export class SocketDaemonClient implements DaemonClient {
   get loginRecipes(): LoginRecipeWire[] { return this.recipes; }
 
   post(msg: WebviewToHost): void {
-    if (!this.link) { console.debug(`[marcode] daemon-client: dropped ${msg.t} while disconnected`); return; }
+    if (!this.link) {
+      if (this.closed || this.lost || !this.outbox.offer(msg)) {
+        console.debug(`[marcode] daemon-client: dropped ${msg.t} while disconnected`);
+      }
+      return;
+    }
     this.link.send({ f: 'msg', m: msg });
   }
 
@@ -78,6 +86,7 @@ export class SocketDaemonClient implements DaemonClient {
     this.wake?.();
     this.link?.destroy();
     this.link = undefined;
+    this.outbox.clear();
     this.listeners.clear();
     this.statusListeners.clear();
   }
@@ -152,9 +161,12 @@ export class SocketDaemonClient implements DaemonClient {
         if (this.link !== opened.link) { continue; }
         this.post({ t: 'ready' });
         this.emit('connected');
+        for (const m of this.outbox.drain()) { this.post(m); }
         return;
       }
     }
+    this.lost = true;
+    this.outbox.clear();
     if (!this.closed) { this.emit('lost'); }
   }
 
