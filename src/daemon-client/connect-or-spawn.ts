@@ -63,7 +63,7 @@ interface EstablishOpts {
   timeoutMs: number;
   cancelled: () => boolean;
   /** Shared across reconnect attempts: a daemon spawned by an earlier attempt may still be booting. */
-  spawnGuard: { at: number };
+  spawnGuard: { at: number; release?: () => Promise<void> };
   warnings: string[];
 }
 
@@ -81,6 +81,7 @@ async function establish(opts: ConnectOptions, run: EstablishOpts): Promise<Open
   let rediscovered = false;
   let unresponsive = false;
   let release: (() => Promise<void>) | undefined;
+  let spawned = false;
 
   try {
     while (Date.now() < deadline && !cancelled()) {
@@ -113,6 +114,9 @@ async function establish(opts: ConnectOptions, run: EstablishOpts): Promise<Open
         } else {
           const r = await openLink(info.endpoint, hello(info), handshakeMs);
           if ('link' in r) {
+            spawned = false;
+            await spawnGuard.release?.();
+            spawnGuard.release = undefined;
             if (cancelled()) { r.link.destroy(); break; }
             spawnGuard.at = -Infinity;
             return r;
@@ -152,11 +156,17 @@ async function establish(opts: ConnectOptions, run: EstablishOpts): Promise<Open
           } catch (err) {
             return fallback('spawn-failed', `Could not start the background host: ${errorText(err)}`);
           }
+          spawned = true;
           // The lock stays held while the spawned daemon comes up, so a second client cannot spawn a rival.
           continue;
         }
       }
       await sleep(POLL_MS);
+    }
+    if (spawned) {
+      // Our daemon may still be booting: the lock's staleness, not this timeout, decides when another client may spawn.
+      spawnGuard.release = release;
+      release = undefined;
     }
     return unresponsive
       ? fallback('unresponsive-daemon', 'The background host is not responding; it may be busy. Try again in a moment.')

@@ -106,11 +106,14 @@ path}` (the TUI treats a 5s silence as "attachment not found"); the rest arrive 
 - **Spawn lock:** spawns are serialized by an `O_EXCL` `daemon.lock` (pid + time; stale when the
   pid is dead or after 30s). Taking over a stale lock is itself serialized through an `O_EXCL`
   `daemon.lock.takeover`, so two clients judging the same stale lock cannot both win. The lock is
-  held until the spawned daemon answers.
+  held until the spawned daemon answers; a client whose spawned daemon never answered in time leaves
+  it to go stale rather than releasing it, so a slow boot cannot get a rival.
 - **Handshake:** a connection that sends no `hello` within 10s is dropped. Only attached
   connections count as clients for idle exit.
-- **Single owner:** `runDaemon` refuses to start while `daemon.json` names another live pid (on
-  POSIX `listen()` would otherwise unlink a live daemon's socket). On POSIX the socket directory is
+- **Single owner:** `runDaemon` refuses to start while `daemon.json` names another live pid, checked
+  at startup and again right before `listen()`. On POSIX an existing socket path is probe-connected
+  first and unlinked only when nobody answers (`ECONNREFUSED`/`ENOENT`), so a duplicate daemon never
+  unlinks a live one's socket. On POSIX the socket directory is
   vetted before listening: not a symlink, owned by this user, mode tightened to 0700.
 - **Spawn:** the extension runs `process.execPath` with `ELECTRON_RUN_AS_NODE=1` on bundled
   `dist/daemon.js`, detached, stdio ignored. The TUI binary runs `marcode daemon`. Both call

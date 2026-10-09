@@ -195,6 +195,16 @@ suite('runDaemon', function () {
     assert.strictEqual(lines.some((l) => l.startsWith('startup failed:')), true);
   });
 
+  test('a live owner that appears while the host boots is caught right before listening', async () => {
+    const owner: DaemonInfo = { pid: process.ppid, endpoint: 'x', token: 't', protocolVersion: 1, appVersion: '1', startedAt: 1 };
+    let error = '';
+    await start({ onHost: () => { fs.writeFileSync(daemonInfoPath(dir), JSON.stringify(owner)); } })
+      .then((d) => d.stop(), (e: Error) => { error = e.message; });
+    daemon = undefined;
+    assert.strictEqual(error, `a daemon is already running for this workspace (pid ${process.ppid})`);
+    assert.deepStrictEqual(await readDaemonInfo(dir), owner);
+  });
+
   test('a live daemon owning the workspace is refused, and its daemon.json is left alone', async () => {
     const owner: DaemonInfo = { pid: process.ppid, endpoint: 'x', token: 't', protocolVersion: 1, appVersion: '1', startedAt: 1 };
     await writeDaemonInfo(dir, owner);

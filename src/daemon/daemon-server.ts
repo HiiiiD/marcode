@@ -3,6 +3,7 @@ import * as net from 'node:net';
 import * as path from 'node:path';
 import type { PostBus } from '../host/post-bus';
 import { DaemonConnection, type ConnectionDeps, type FrameSocket } from './connection';
+import { probeEndpoint } from './probe-endpoint';
 
 const DEFAULT_HELLO_TIMEOUT_MS = 10_000;
 const END_GRACE_MS = 1_000;
@@ -42,6 +43,10 @@ export class DaemonServer {
       const dir = path.dirname(this.opts.endpoint);
       fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
       vetSocketDir(dir);
+      // Unlinking a live daemon's socket would orphan its clients; only a positive "nobody listens" frees it.
+      if (fs.existsSync(this.opts.endpoint) && await probeEndpoint(this.opts.endpoint) !== 'free') {
+        throw new Error(`Refusing to listen: ${this.opts.endpoint} is already served`);
+      }
       fs.rmSync(this.opts.endpoint, { force: true });
     }
     await new Promise<void>((resolve, reject) => {

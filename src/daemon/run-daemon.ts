@@ -43,12 +43,17 @@ export async function runDaemon(opts: RunDaemonOptions): Promise<RunningDaemon> 
   let server: DaemonServer | undefined;
   const check = () => { if (!stopped) { monitor?.check(); } };
 
+  const liveOwner = async (): Promise<string | undefined> => {
+    const existing = await readDaemonInfo(workspaceDir);
+    return existing && existing.pid !== process.pid && defaultLeaseDeps.pidAlive(existing.pid)
+      ? `a daemon is already running for this workspace (pid ${existing.pid})`
+      : undefined;
+  };
   // On POSIX, listen() unlinks the socket path first, which would orphan a live daemon's clients.
-  const existing = await readDaemonInfo(workspaceDir);
-  if (existing && existing.pid !== process.pid && defaultLeaseDeps.pidAlive(existing.pid)) {
-    const message = `a daemon is already running for this workspace (pid ${existing.pid})`;
-    log(`startup failed: ${message}`);
-    throw new Error(message);
+  const owned = await liveOwner();
+  if (owned) {
+    log(`startup failed: ${owned}`);
+    throw new Error(owned);
   }
 
   let host: HostHandle;
@@ -109,6 +114,9 @@ export async function runDaemon(opts: RunDaemonOptions): Promise<RunningDaemon> 
         onChange: check,
       },
     });
+    // Booting the host takes a while; a rival may have started in the meantime.
+    const rival = await liveOwner();
+    if (rival) { throw new Error(rival); }
     await server.listen();
   } catch (err) {
     log(`startup failed: ${errorText(err)}`);

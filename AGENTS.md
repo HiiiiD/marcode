@@ -74,7 +74,7 @@ the TUI attaches today; the extension is the next plan. See `docs/daemon.md`.
 | `src/daemon/idle-monitor.ts` | `isBusy` (any session not `idle`/`error`) and the idle-exit timer |
 | `src/daemon/client-wants.ts`, `remote-hooks.ts` | `wantsFor(clientKind)`, the bus gating per client; the router's editor, picker, file-search and config hooks proxied to the client as `ctx`/`act`/`req` |
 | `src/daemon/connection.ts` | One connection's state machine: hello, version and token checks, ask timeout, slow-client drop, `shutdown` (accepted before `hello`) |
-| `src/daemon/daemon-server.ts` | `net.Server` on the endpoint: hello deadline, attached-only client count, roots union, POSIX socket-dir vetting |
+| `src/daemon/daemon-server.ts`, `probe-endpoint.ts` | `net.Server` on the endpoint: hello deadline, attached-only client count, roots union, POSIX socket-dir vetting; a POSIX socket path is unlinked only after a probe-connect finds nobody listening |
 | `src/daemon/run-daemon.ts` | `runDaemon`: refuses beside a live daemon, `createHost` + server, `daemon.json` lifecycle, idle exit |
 | `src/daemon/login-recipes.ts`, `request-shutdown.ts`, `daemon-main.ts` | Login recipes for `welcome`; the `shutdown` round trip used by `--stop` and upgrades; the JSX-free `marcode daemon …` entry plain Node can load |
 | `src/daemon-client/discover.ts`, `spawn-lock.ts`, `version-policy.ts` | `daemon.json` with a live pid; the `O_EXCL` spawn lock with serialized stale takeover; attach, replace or refuse-newer |
