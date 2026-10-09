@@ -1,4 +1,5 @@
 import * as assert from 'node:assert';
+import { spawnSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as net from 'node:net';
 import * as os from 'node:os';
@@ -264,6 +265,15 @@ suite('daemon client', function () {
     assert.deepStrictEqual(statuses, []);
     assert.strictEqual(messages, 0);
     assert.strictEqual(spawns, 1);
+  });
+
+  test('waiting on a spawned daemon keeps the process alive until connectOrSpawn settles', () => {
+    const script = `require(${JSON.stringify(path.resolve('src/daemon-client/connect-or-spawn.ts'))}).connectOrSpawn({
+      workspaceDir: process.argv[1], clientKind: 'tui', roots: [], defaultCwd: '.',
+      identity: { protocolVersion: 1, appVersion: 'x' }, hooks: {}, spawn: async () => {}, timeoutMs: 800,
+    }).then((r) => console.log('settled ' + r.kind));`;
+    const r = spawnSync(process.execPath, ['--require', 'tsx/cjs', '-e', script, dir], { encoding: 'utf8', timeout: 20000 });
+    assert.strictEqual(r.stdout.trim(), 'settled fallback');
   });
 
   test('daemonSpawnCommand: a Bun script re-runs its entry, a compiled binary runs itself', () => {

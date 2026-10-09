@@ -35,7 +35,8 @@ const DEFAULT_TIMEOUT_MS = 10_000;
 const DEFAULT_RECONNECT_TIMEOUT_MS = 3_000;
 
 const fallback = (reason: FallbackReason, message: string): Fallback => ({ kind: 'fallback', reason, message });
-const sleep = (ms: number) => new Promise<void>((r) => { setTimeout(r, ms).unref(); });
+// Never unref'd: while a spawned daemon boots this poll is the only thing keeping a fresh client process alive.
+const sleep = (ms: number) => new Promise<void>((r) => { setTimeout(r, ms); });
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
 async function waitGone(dir: string, token: string): Promise<boolean> {
