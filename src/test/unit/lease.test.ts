@@ -25,6 +25,14 @@ suite('lease', () => {
     if (!b.ok) { assert.strictEqual(b.owner.host, 'vscode'); assert.strictEqual(b.owner.instance, 'A'); }
   });
 
+  test('a daemon lease round-trips through readLease', async () => {
+    await fs.writeFile(file, JSON.stringify({
+      pid: 1, host: 'daemon', instance: 'i', machine: 'm', heartbeat: 1,
+    }));
+    const info = await readLease(file);
+    assert.strictEqual(info?.host, 'daemon');
+  });
+
   test('two hosts in one process are still different owners', async () => {
     await claimLease(file, { host: 'vscode', instance: 'A' }, deps());
     const b = await claimLease(file, { host: 'tui', instance: 'B' }, deps());

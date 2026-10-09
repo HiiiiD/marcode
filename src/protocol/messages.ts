@@ -190,7 +190,7 @@ export interface SessionState {
    * the label says where it is running. Host-derived from the lease files and
    * stripped before the index is written.
    */
-  owner?: { host: 'vscode' | 'tui'; pid: number };
+  owner?: { host: 'vscode' | 'tui' | 'daemon'; pid: number };
   cwd: string;
   status: SessionStatus;
   /**
