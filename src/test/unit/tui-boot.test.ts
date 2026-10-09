@@ -9,7 +9,7 @@ import { runDaemon, type RunningDaemon } from '../../daemon/run-daemon';
 import { STALE_CONFIG_WARNING } from '../../daemon-client/connect-or-spawn';
 import { discover } from '../../daemon-client/discover';
 import { requestAttachmentPath } from '../../tui/attachment-request';
-import { bootHost, configChangedNotice, type BootOptions, type Booted } from '../../tui/boot';
+import { bootHost, configChangedNotice, initialNotice, type BootOptions, type Booted } from '../../tui/boot';
 import type { HostToWebview, WebviewToHost } from '../../protocol/messages';
 import { loadConfig } from '../../host/config-file';
 import type { HostHandle } from '../../host/create-host';
@@ -203,6 +203,14 @@ suite('tui boot, daemon mode', function () {
     assert.strictEqual(/background host/.test(b.warnings[0]), true);
     const h = await hydrated(b);
     assert.strictEqual(h?.catalog.some((p) => p.id === 'fake'), true);
+  });
+
+  test('the background-host notice is shown first even after a config warning, and names the host once', async () => {
+    await fs.mkdir(home, { recursive: true });
+    await fs.writeFile(path.join(home, 'config.json'), JSON.stringify({ daemon: { idleMinutes: 0 } }));
+    const b = await boot({ spawnDaemon: async () => { throw new Error('no binary'); } });
+    assert.strictEqual(b.warnings.length, 2);
+    assert.strictEqual(initialNotice(b), 'Running without the background host: could not start it: no binary');
   });
 
   test('open-attachment for a missing attachment warns through the daemon round-trip', async () => {

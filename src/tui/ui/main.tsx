@@ -2,7 +2,7 @@ import { createCliRenderer, type CliRenderer } from '@opentui/core';
 import { createRoot } from '@opentui/react';
 import type { ClientStatus } from '../../daemon-client/daemon-client';
 import { watchConfig } from '../../host/config-file';
-import { bootHost, configChangedNotice, type Booted } from '../boot';
+import { bootHost, configChangedNotice, initialNotice, type Booted } from '../boot';
 import { parseArgs, USAGE, type CliCommand } from '../cli';
 import { createShutdown, installExitSignals } from '../shutdown';
 import { runConfig, runDaemonCommand, runLogin, runMigrate } from '../subcommands';
@@ -108,7 +108,7 @@ async function runTui(cmd: Extract<CliCommand, { kind: 'run' }>): Promise<void> 
             prompt={cmd.prompt}
             forceNew={cmd.forceNew}
             loginCommands={loginCommands}
-            initialNotice={booted.warnings[0]}
+            initialNotice={initialNotice(booted)}
             subscribeNotices={notices.subscribe}
             onQuit={() => { void shutdown(0); }}
           />

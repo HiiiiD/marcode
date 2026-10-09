@@ -28,7 +28,6 @@ function vetSocketDir(dir: string): void {
 export class DaemonServer {
   private readonly server = net.createServer((socket) => this.accept(socket));
   private readonly connections = new Set<DaemonConnection>();
-  private readonly sockets = new Set<net.Socket>();
   private readonly rootsByConn = new Map<object, string[]>();
   private readonly rootsListeners: Array<() => void> = [];
   private closing: Promise<void> | undefined;
@@ -95,7 +94,6 @@ export class DaemonServer {
   private accept(socket: net.Socket): void {
     socket.setEncoding('utf8');
     socket.on('error', () => {});
-    this.sockets.add(socket);
     const key = {};
     const conn = new DaemonConnection(this.frameSocket(socket), {
       ...this.opts.connectionDeps,
@@ -112,7 +110,6 @@ export class DaemonServer {
     socket.once('close', () => {
       clearTimeout(deadline);
       this.connections.delete(conn);
-      this.sockets.delete(socket);
     });
   }
 

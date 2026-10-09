@@ -37,6 +37,8 @@ interface BootedBase {
   fileConfig: HostConfig;
   warnings: string[];
   fallbackReason?: string;
+  /** The warning about the background host itself, if any; outranks config warnings as the first notice. */
+  daemonNotice?: string;
   onStatus(cb: (s: ClientStatus) => void): () => void;
   shutdown(): Promise<void>;
 }
@@ -56,6 +58,8 @@ export interface DaemonBooted extends BootedBase {
 }
 
 export type Booted = InProcessBooted | DaemonBooted;
+
+export const initialNotice = (b: Booted): string | undefined => b.daemonNotice ?? b.warnings[0];
 
 /** A restart re-attaches to the same daemon, which keeps the config.json it was started with. */
 export const configChangedNotice = (mode: Booted['mode']): string => (mode === 'daemon'
@@ -96,10 +100,12 @@ export async function bootHost(opts: BootOptions): Promise<Booted> {
     });
     if (r.kind === 'attached') {
       for (const w of r.warnings ?? []) { warn(w); }
+      base.daemonNotice = r.warnings?.[0];
       return daemonBooted(r.client, fileIndex, base, warn);
     }
     await fileIndex.dispose();
-    warn(`Running without the background host: ${r.message}`);
+    base.daemonNotice = `Running without the background host: ${r.message}`;
+    warn(base.daemonNotice);
     base.fallbackReason = r.reason;
   }
   return inProcessBooted(opts, config, workspaceDir, favorites, base, warn);

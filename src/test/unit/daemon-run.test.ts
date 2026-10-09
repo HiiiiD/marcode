@@ -171,6 +171,25 @@ suite('runDaemon', function () {
     assert.strictEqual(fs.existsSync(daemonInfoPath(dir)), false);
   });
 
+  test('a host dispose that hangs is logged and abandoned: stop still removes daemon.json and resolves done', async () => {
+    const lines: string[] = [];
+    let slow: Promise<void> | undefined;
+    const d = await start({
+      disposeTimeoutMs: 50, log: (l) => lines.push(l),
+      onHost: (h) => {
+        const real = h.dispose.bind(h);
+        h.dispose = () => (slow = new Promise<void>((r) => setTimeout(r, 1000)).then(real));
+      },
+    });
+    const t0 = Date.now();
+    await d.stop();
+    await d.done;
+    assert.strictEqual(Date.now() - t0 < 900, true);
+    assert.strictEqual(fs.existsSync(daemonInfoPath(dir)), false);
+    assert.strictEqual(lines.some((l) => l.startsWith('host dispose timed out')), true);
+    await slow;
+  });
+
   test('a startup failure is logged with its cause and rejects', async () => {
     fs.mkdirSync(daemonInfoPath(dir));
     const lines: string[] = [];

@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { spawn, type SpawnOptions } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
@@ -19,12 +19,17 @@ export function daemonSpawnCommand(
     : { command: runtime.execPath, args: tail };
 }
 
+// cwd: a detached daemon must not pin the client's directory (Windows refuses to remove a process's cwd).
+export const daemonSpawnOptions = (workspaceDir: string, log: number): SpawnOptions => ({
+  cwd: workspaceDir, detached: true, stdio: ['ignore', log, log], windowsHide: true,
+});
+
 export async function spawnDetached(workspaceDir: string, roots: string[]): Promise<void> {
   const { command, args } = daemonSpawnCommand(workspaceDir, roots);
   await fs.promises.mkdir(workspaceDir, { recursive: true });
   const log = fs.openSync(path.join(workspaceDir, 'daemon.log'), 'a');
   try {
-    const child = spawn(command, args, { detached: true, stdio: ['ignore', log, log], windowsHide: true });
+    const child = spawn(command, args, daemonSpawnOptions(workspaceDir, log));
     child.on('error', (err) => { console.error('[marcode] daemon spawn failed', err); });
     child.unref();
   } finally {

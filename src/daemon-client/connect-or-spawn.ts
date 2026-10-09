@@ -9,6 +9,7 @@ import { acquireSpawnLock } from './spawn-lock';
 import { decideAttach } from './version-policy';
 
 type FallbackReason = 'disabled' | 'newer-daemon' | 'busy-daemon' | 'unresponsive-daemon' | 'spawn-failed' | 'rejected';
+/** `message` completes "Running without the background host: …". */
 type Fallback = { kind: 'fallback'; reason: FallbackReason; message: string };
 
 /** `warnings` are things the user should know about the daemon this client attached to. */
@@ -91,7 +92,7 @@ async function establish(opts: ConnectOptions, run: EstablishOpts): Promise<Open
         const oldConfig = decision === 'attach' && opts.configSignature !== undefined && info.configSignature !== undefined
           && info.configSignature !== opts.configSignature && !keepConfig.has(info.token);
         if (decision === 'refuse-newer') {
-          return fallback('newer-daemon', 'The background host is a newer Marcode version; update this client');
+          return fallback('newer-daemon', 'it is a newer Marcode version; update this client');
         }
         if (decision === 'replace' || oldConfig) {
           const answer = await requestShutdown(info.endpoint, info.token, handshakeMs);
@@ -101,12 +102,12 @@ async function establish(opts: ConnectOptions, run: EstablishOpts): Promise<Open
             continue;
           }
           if (answer === 'busy') {
-            return fallback('busy-daemon', 'A newer Marcode build is needed but sessions are running; close them or restart');
+            return fallback('busy-daemon', 'it is an older Marcode build and sessions are running in it; close them or restart');
           }
-          if (answer === 'bad-token') { return fallback('rejected', 'The background host refused to shut down (bad token)'); }
+          if (answer === 'bad-token') { return fallback('rejected', 'it refused to shut down (bad token)'); }
           if (answer === 'bye') {
             if (!(await waitGone(dir, info.token))) {
-              return fallback('spawn-failed', 'The old background host did not exit');
+              return fallback('spawn-failed', 'the old one did not exit');
             }
             continue;
           }
@@ -127,7 +128,7 @@ async function establish(opts: ConnectOptions, run: EstablishOpts): Promise<Open
               rediscovered = true;
               continue;
             }
-            return fallback('rejected', `The background host rejected this client (${reason})`);
+            return fallback('rejected', `it rejected this client (${reason})`);
           }
           if (r.failed === 'unreachable') { stale.add(info.token); }
         }
@@ -154,7 +155,7 @@ async function establish(opts: ConnectOptions, run: EstablishOpts): Promise<Open
           try {
             await opts.spawn();
           } catch (err) {
-            return fallback('spawn-failed', `Could not start the background host: ${errorText(err)}`);
+            return fallback('spawn-failed', `could not start it: ${errorText(err)}`);
           }
           spawned = true;
           // The lock stays held while the spawned daemon comes up, so a second client cannot spawn a rival.
@@ -169,10 +170,10 @@ async function establish(opts: ConnectOptions, run: EstablishOpts): Promise<Open
       release = undefined;
     }
     return unresponsive
-      ? fallback('unresponsive-daemon', 'The background host is not responding; it may be busy. Try again in a moment.')
-      : fallback('spawn-failed', 'The background host did not start in time');
+      ? fallback('unresponsive-daemon', 'it is not responding; it may be busy. Try again in a moment.')
+      : fallback('spawn-failed', 'it did not start in time');
   } catch (err) {
-    return fallback('spawn-failed', `Could not reach the background host: ${errorText(err)}`);
+    return fallback('spawn-failed', `could not reach it: ${errorText(err)}`);
   } finally {
     await release?.();
   }

@@ -9,7 +9,7 @@ import { runDaemon, type RunningDaemon, type RunDaemonOptions } from '../../daem
 import { attach, SocketDaemonClient, type ClientStatus, type DaemonClient } from '../../daemon-client/daemon-client';
 import { Link } from '../../daemon-client/daemon-link';
 import { connectOrSpawn, type ConnectOptions } from '../../daemon-client/connect-or-spawn';
-import { daemonSpawnCommand } from '../../daemon-client/spawn-daemon';
+import { daemonSpawnCommand, daemonSpawnOptions } from '../../daemon-client/spawn-daemon';
 import { defaultHostConfig } from '../../host/host-config';
 import type { HostToWebview } from '../../protocol/messages';
 
@@ -283,6 +283,12 @@ suite('daemon client', function () {
     }).then((r) => console.log('settled ' + r.kind));`;
     const r = spawnSync(process.execPath, ['--require', 'tsx/cjs', '-e', script, dir], { encoding: 'utf8', timeout: 20000 });
     assert.strictEqual(r.stdout.trim(), 'settled fallback');
+  });
+
+  test('the detached daemon runs in its workspace dir, not the client cwd', () => {
+    const o = daemonSpawnOptions('/w', 7);
+    assert.strictEqual(o.cwd, '/w');
+    assert.strictEqual(o.detached, true);
   });
 
   test('daemonSpawnCommand: a Bun script re-runs its entry, a compiled binary runs itself', () => {

@@ -5,6 +5,7 @@ import { MessageRouter } from '../host/message-router';
 import { PostBus } from '../host/post-bus';
 import type { HostToWebview } from '../protocol/messages';
 import { DaemonServer } from './daemon-server';
+import { disposeWithin } from './dispose-within';
 import { newToken, readDaemonInfo, removeDaemonInfo, writeDaemonInfo, type DaemonInfo } from './daemon-info';
 import { endpointFor } from './endpoint';
 import { IdleMonitor, isBusy } from './idle-monitor';
@@ -23,9 +24,13 @@ export interface RunDaemonOptions {
   /** Written to daemon.json so a client can tell this daemon runs an older config.json. */
   configSignature?: string;
   log?: (line: string) => void;
+  /** How long stop() waits for the host to dispose before exiting anyway. */
+  disposeTimeoutMs?: number;
   /** Test seam: the host, once built, so a test can move a session without a client attached. */
   onHost?: (host: HostHandle) => void;
 }
+
+const DISPOSE_TIMEOUT_MS = 10_000;
 
 const errorText = (err: unknown) => (err instanceof Error ? err.stack ?? err.message : String(err));
 
@@ -78,7 +83,7 @@ export async function runDaemon(opts: RunDaemonOptions): Promise<RunningDaemon> 
     monitor?.dispose();
     try {
       await server?.close();
-      await host.dispose();
+      await disposeWithin(host, opts.disposeTimeoutMs ?? DISPOSE_TIMEOUT_MS, log);
       await removeDaemonInfo(workspaceDir, process.pid);
     } catch (err) {
       log(`stop failed: ${errorText(err)}`);

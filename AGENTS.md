@@ -75,7 +75,8 @@ the TUI attaches today; the extension is the next plan. See `docs/daemon.md`.
 | `src/daemon/client-wants.ts`, `remote-hooks.ts` | `wantsFor(clientKind)`, the bus gating per client; the router's editor, picker, file-search and config hooks proxied to the client as `ctx`/`act`/`req` |
 | `src/daemon/connection.ts` | One connection's state machine: hello, version and token checks, ask timeout, slow-client drop, `shutdown` (accepted before `hello`) |
 | `src/daemon/daemon-server.ts`, `probe-endpoint.ts` | `net.Server` on the endpoint: hello deadline, attached-only client count, roots union, POSIX socket-dir vetting; a POSIX socket path is unlinked only after a probe-connect finds nobody listening |
-| `src/daemon/run-daemon.ts` | `runDaemon`: refuses beside a live daemon, `createHost` + server, `daemon.json` lifecycle, idle exit |
+| `src/daemon/run-daemon.ts`, `dispose-within.ts` | `runDaemon`: refuses beside a live daemon (at startup and again before listening), `createHost` + server, `daemon.json` lifecycle, idle exit; a host dispose that hangs is abandoned after 10s |
+| `src/daemon/visible-sets.ts` | Each connection's `set-visible` kept apart; the host shows their union, recomputed when a client leaves and kept when the last one does |
 | `src/daemon/login-recipes.ts`, `request-shutdown.ts`, `daemon-main.ts` | Login recipes for `welcome`; the `shutdown` round trip used by `--stop` and upgrades; the JSX-free `marcode daemon …` entry plain Node can load |
 | `src/daemon-client/discover.ts`, `spawn-lock.ts`, `version-policy.ts` | `daemon.json` with a live pid; the `O_EXCL` spawn lock with serialized stale takeover; attach, replace or refuse-newer |
 | `src/daemon-client/daemon-link.ts`, `daemon-client.ts`, `outbox.ts` | One handshaken socket; `DaemonClient` (a `ClientTransport`) with reconnect, re-`ready` and an outbox for prompts and drafts typed while reconnecting |

@@ -78,7 +78,8 @@ In `~/.marcode/config.json` (see `config.md`):
 
 When the TUI cannot use a daemon it runs the host in-process and its first notice line says
 `Running without the background host: <reason>`, for example a newer daemon, a busy older one, a
-daemon that is not responding, or a spawn that failed. No such notice means the TUI is attached.
+daemon that is not responding, or a spawn that failed. That notice comes first, ahead of any
+`config.json` warning. No such notice means the TUI is attached.
 `marcode daemon --status` from the same directory confirms it. `marcode login` always runs
 in-process and never starts a daemon.
 
@@ -93,7 +94,9 @@ client restores whatever layout was saved last, by any of them.
 ## Quitting the TUI
 
 Quitting closes the TUI's connection only. Running turns, pending approvals and background tasks
-keep going in the daemon; start `marcode` again to pick them up. To stop everything, quit and run
+keep going in the daemon; start `marcode` again to pick them up. The daemon keeps its session leases
+until it exits, so VS Code shows those sessions read-only ("Running in daemon") for up to
+`daemon.idleMinutes` after the last client quits. To stop everything, quit and run
 `marcode daemon --stop` (or interrupt the sessions first if it answers `refused: busy`).
 
 ## Provider caveat

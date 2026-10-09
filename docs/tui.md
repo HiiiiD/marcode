@@ -6,8 +6,9 @@ It uses the same `~/.marcode/workspaces/<slug>` directory and renders with OpenT
 transcripts and `config.json` are shared with the extension.
 
 Quitting the TUI no longer stops running agents: turns, approvals and background tasks keep going in
-the daemon, and the next `marcode` picks them up. `marcode daemon --stop` stops it. See
-[daemon.md](daemon.md).
+the daemon, and the next `marcode` picks them up. The daemon also keeps the session leases until it
+exits, so VS Code shows those sessions read-only for up to `daemon.idleMinutes` after you quit.
+`marcode daemon --stop` stops it. See [daemon.md](daemon.md).
 
 ## Install and run
 
