@@ -4,7 +4,7 @@ import { watchConfig } from '../../host/config-file';
 import { bootHost, type Booted } from '../boot';
 import { parseArgs, USAGE, type CliCommand } from '../cli';
 import { createShutdown, installExitSignals } from '../shutdown';
-import { runConfig, runLogin, runMigrate } from '../subcommands';
+import { runConfig, runDaemonCommand, runLogin, runMigrate } from '../subcommands';
 import { App } from './app';
 import { TuiStoreProvider } from './store';
 import { detectTokens } from './tokens/detect-tokens';
@@ -20,6 +20,7 @@ async function runSubcommand(cmd: CliCommand): Promise<number | undefined> {
     case 'login': return runLogin(cmd.provider, process.cwd());
     case 'config': return runConfig();
     case 'migrate': return runMigrate(cmd.oldDir, process.cwd());
+    case 'daemon': return runDaemonCommand(cmd, process.cwd());
     case 'run': return undefined;
   }
 }
@@ -117,6 +118,8 @@ async function main(): Promise<void> {
     console.error(`marcode: ${message(err)}`);
     process.exitCode = 1;
   }
+  // A stopped daemon's provider children or timers must not keep the process alive.
+  if (cmd.kind === 'daemon' && cmd.action === 'serve') { process.exit(process.exitCode ?? 0); }
 }
 
 main().catch((err: unknown) => {
