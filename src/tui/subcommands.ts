@@ -10,6 +10,7 @@ import { defaultHostConfig, type HostConfig } from '../host/host-config';
 import { defaultLeaseDeps } from '../host/lease';
 import { importOldStorage } from '../host/migrate-storage';
 import { marcodeHome, resolveWorkspaceDir } from '../host/workspace-dir';
+import { APP_VERSION } from '../shared/app-version';
 import { bootHost } from './boot';
 import type { CliCommand } from './cli';
 import { findGitRoot } from './workspace-root';
@@ -36,13 +37,13 @@ export const realIo: SubIo = {
 
 export async function runLogin(providerId: string, cwd: string, io: SubIo = realIo): Promise<number> {
   const booted = await bootHost({
-    cwd, home: io.home, notify: io.err,
+    cwd, home: io.home, notify: io.err, inProcess: true,
     config: { memory: { enabled: false, summarizer: undefined }, ...io.bootConfig },
   });
   try {
-    const recipe = booted.host.loginRecipes.get(providerId);
+    const recipe = booted.loginRecipes.get(providerId);
     if (!recipe) {
-      const known = [...booted.host.loginRecipes.keys()].join(', ') || 'none';
+      const known = [...booted.loginRecipes.keys()].join(', ') || 'none';
       io.err(`marcode: no sign-in flow for ${providerId}; known: ${known}`);
       return 1;
     }
@@ -69,9 +70,6 @@ export async function runMigrate(oldDir: string, cwd: string, io: SubIo = realIo
   io.out(`Imported ${result.sessions} session${result.sessions === 1 ? '' : 's'}`);
   return 0;
 }
-
-// require, not import: package.json sits outside rootDir, and both tsx and bun resolve it at runtime.
-const APP_VERSION = (require('../../package.json') as { version: string }).version;
 
 type DaemonCommand = Extract<CliCommand, { kind: 'daemon' }>;
 

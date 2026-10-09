@@ -1,5 +1,6 @@
 import { createCliRenderer, type CliRenderer } from '@opentui/core';
 import { createRoot } from '@opentui/react';
+import type { ClientStatus } from '../../daemon-client/daemon-client';
 import { watchConfig } from '../../host/config-file';
 import { bootHost, type Booted } from '../boot';
 import { parseArgs, USAGE, type CliCommand } from '../cli';
@@ -12,6 +13,13 @@ import { DetectedTokensProvider } from './tokens/tokens-provider';
 import { TuiThemeProvider } from './tui-theme';
 
 const message = (err: unknown) => (err instanceof Error ? err.message : String(err));
+
+// The client only reports `connected` after a reconnect, never at first attach.
+const STATUS_NOTICE: Record<ClientStatus, string> = {
+  reconnecting: 'Reconnecting to the background host…',
+  lost: 'Lost the background host; restart marcode',
+  connected: 'Reconnected to the background host',
+};
 
 async function runSubcommand(cmd: CliCommand): Promise<number | undefined> {
   switch (cmd.kind) {
@@ -51,6 +59,7 @@ async function runTui(cmd: Extract<CliCommand, { kind: 'run' }>): Promise<void> 
     process.exit(1);
   }
   booting = false;
+  booted.onStatus((s) => { notices.notify(STATUS_NOTICE[s]); });
 
   const watcher = watchConfig(booted.configFile, booted.fileConfig, () => {
     notices.notify('config.json changed — restart to apply');
@@ -89,7 +98,7 @@ async function runTui(cmd: Extract<CliCommand, { kind: 'run' }>): Promise<void> 
 
   const live = renderer;
   const detect = () => detectTokens(live);
-  const loginCommands = Object.fromEntries([...booted.host.loginRecipes].map(([id, r]) => [id, r.command]));
+  const loginCommands = Object.fromEntries([...booted.loginRecipes].map(([id, r]) => [id, r.command]));
   createRoot(renderer).render(
     <DetectedTokensProvider detect={detect}>
       <TuiThemeProvider>
