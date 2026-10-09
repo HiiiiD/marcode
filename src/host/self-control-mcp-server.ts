@@ -550,7 +550,7 @@ export class SelfControlMcpServer {
         const port = randomPort();
         const onError = (err: NodeJS.ErrnoException) => {
           http.removeListener('listening', onListening);
-          if (err.code === 'EADDRINUSE' && tries > 1) { attempt(tries - 1); return; }
+          if ((err.code === 'EADDRINUSE' || err.code === 'EACCES') && tries > 1) { attempt(tries - 1); return; }
           reject(err);
         };
         const onListening = () => {
