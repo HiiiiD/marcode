@@ -54,6 +54,9 @@ daemon process                            clients
   `PostBus` with the `wants` predicate for its `clientKind`.
 - Each extension surface (sidebar, review, fleet, history) opens its own connection, so
   existing per-surface gating carries over unchanged.
+- `set-visible` is recorded per connection and the host shows the union, so one client never hides
+  another's panes. A client leaving recomputes the union; the last one leaving keeps it. The
+  persisted layout stays shared, last writer wins.
 - `hostKind` and `LeaseHost` gain `'daemon'`.
 - `workspaceRoots()` is the union of attached clients' `roots`; while nobody is attached it
   falls back to the roots the daemon was started with (`--root`), not the last union. Recall
@@ -130,7 +133,9 @@ path}` (the TUI treats a 5s silence as "attachment not found"); the rest arrive 
   client attaching resets the timer. Exit releases leases and removes `daemon.json`.
 - **Crash:** clients see the socket close, show a reconnecting state, re-attach or respawn,
   and re-run `hydrate`. A prompt or draft typed while reconnecting is queued (50 max) and sent
-  after the re-`ready`. Sessions that were mid-turn come back `error` with a transcript item.
+  after the re-`ready`, and the client replays its last `set-visible` so a respawned daemon shows
+  the same panes. Sessions restored from disk come back `idle` (`SessionManager.init`); a turn the
+  crash cut short is not marked in the transcript.
 - **Provider caveat:** a provider that never reports its long-running work as non-idle would
   look idle to the daemon. That is a provider bug the daemon exposes; each provider gets a test.
   Shipped state: Claude reports background tasks after `turn-end`; Codex reports each rejoined
@@ -158,8 +163,8 @@ path}` (the TUI treats a 5s silence as "attachment not found"); the rest arrive 
   matrix; idle timer and busy rule including a background task; spawn lock; stale
   `daemon.json` recovery.
 - **Integration:** real pipe, in-process daemon, two fake clients: fan-out gating by
-  `clientKind`, `req`/`res` timeouts, slow-client drop; kill the daemon mid-turn and check
-  reconnect plus `error` transcript item.
+  `clientKind`, `req`/`res` timeouts, slow-client drop; kill the daemon and check reconnect,
+  re-hydrate and live patches for the shown panes from the respawned daemon.
 - **Cross-runtime:** Node daemon with Bun client and the reverse; one test with the compiled
   `bin/marcode`.
 - **Existing DOM and TUI suites pass unchanged**; that is the check the webview contract

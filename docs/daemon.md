@@ -18,8 +18,10 @@ read-only ("Running in daemon (pid …)"), the same as any other foreign lease.
 - **Attach.** The client reads `daemon.json`, checks the pid, connects and sends `hello` with the
   token. The daemon answers `welcome` and then serves the client exactly like the in-process router.
 - **Reconnect.** If the link drops, the TUI shows "Reconnecting to the background host…", retries
-  with backoff (respawning if the daemon is gone), and re-hydrates. A prompt or draft typed while
-  reconnecting is queued and delivered after the reconnect. After the retries run out it shows
+  with backoff (respawning if the daemon is gone), re-hydrates and re-sends the panes it shows. A
+  prompt or draft typed while reconnecting is queued and delivered after the reconnect. After a
+  daemon crash, sessions restored from disk come back `idle`; a turn the crash cut short is not
+  resumed or marked. After the retries run out it shows
   "Lost the background host; restart marcode".
 - **Idle exit.** With no attached client and no busy session for `daemon.idleMinutes`, the daemon
   exits. Busy means any session not `idle` and not `error`: a running turn, a pending approval, or
