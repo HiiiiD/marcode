@@ -188,6 +188,13 @@ export class CodexRun implements AgentRun {
    */
   private readonly childThreads = new Map<string, string>();
 
+  /**
+   * Subagent threads with a turn in flight, reported as background tasks so the session stays busy
+   * after the parent's own turn ends. Not `childThreads`: a child that finishes normally stays
+   * tracked there until its collect, which would pin the session `running`.
+   */
+  private readonly activeChildren = new Set<string>();
+
   /** This run's own thread — latest cumulative total, replace not add (Codex already sums it). */
   private ownUsageTotal: UsageTotals | undefined;
 
@@ -262,10 +269,12 @@ export class CodexRun implements AgentRun {
         if (method === 'thread/tokenUsage/updated') {
           this.captureChildUsage(named as string, (params as { tokenUsage?: ThreadTokenUsage } | undefined)?.tokenUsage);
         }
+        if (method === 'turn/started') { this.setChildActive(named as string, true); }
         for (const event of mapNotification(method, params)) {
           if (event.kind === 'tool-start' || event.kind === 'tool-end') {
             this.events.push({ ...event, parentId: fromChild });
           }
+          if (event.kind === 'turn-end') { this.setChildActive(named as string, false); }
         }
         return;
       }
@@ -286,6 +295,8 @@ export class CodexRun implements AgentRun {
           const agentThreadId = event.tool.target;
           if (agentThreadId) {
             this.childThreads.set(agentThreadId, event.id);
+            // Already running when we rejoin, so its own turn/started may never reach us.
+            this.setChildActive(agentThreadId, true);
             void this.rejoinSubagentThread(agentThreadId);
           }
         }
@@ -404,12 +415,25 @@ export class CodexRun implements AgentRun {
    */
   private async leaveSubagentThread(agentThreadId: string): Promise<void> {
     this.childThreads.delete(agentThreadId);
+    this.setChildActive(agentThreadId, false);
     if (this.dead) { return; }
     try {
       await this.server.request('thread/unsubscribe', { threadId: agentThreadId });
     } catch {
       // Best-effort, as above.
     }
+  }
+
+  private setChildActive(agentThreadId: string, active: boolean): void {
+    if (this.activeChildren.has(agentThreadId) === active) { return; }
+    if (active) { this.activeChildren.add(agentThreadId); } else { this.activeChildren.delete(agentThreadId); }
+    this.events.push({ kind: 'background-tasks-changed', taskIds: [...this.activeChildren] });
+  }
+
+  private clearActiveChildren(): void {
+    if (this.activeChildren.size === 0) { return; }
+    this.activeChildren.clear();
+    this.events.push({ kind: 'background-tasks-changed', taskIds: [] });
   }
 
   /**
@@ -766,6 +790,7 @@ export class CodexRun implements AgentRun {
     // pins the session at `awaiting-approval` for a turn that is gone.
     this.cancelParkedApprovals();
     this.cancelParkedQuestions();
+    this.clearActiveChildren();
     this.events.push({ kind: 'turn-end', reason: 'interrupted' });
   }
 
@@ -802,6 +827,7 @@ export class CodexRun implements AgentRun {
     // response shape.
     this.cancelParkedApprovals();
     this.cancelParkedQuestions();
+    this.clearActiveChildren();
     // Every rejoined subagent thread first, unsubscribed directly rather
     // than through `leaveSubagentThread` — that helper's own `dead` guard
     // includes `disposed`, already true above, and would swallow every one

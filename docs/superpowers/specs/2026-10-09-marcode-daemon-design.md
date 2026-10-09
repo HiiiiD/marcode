@@ -133,8 +133,9 @@ path}` (the TUI treats a 5s silence as "attachment not found"); the rest arrive 
   after the re-`ready`. Sessions that were mid-turn come back `error` with a transcript item.
 - **Provider caveat:** a provider that never reports its long-running work as non-idle would
   look idle to the daemon. That is a provider bug the daemon exposes; each provider gets a test.
-  Shipped state: Claude reports background tasks after `turn-end`; OpenCode's task subagents run
-  inside the turn; a Codex subagent thread that outlives its parent turn is not reported (open bug).
+  Shipped state: Claude reports background tasks after `turn-end`; Codex reports each rejoined
+  subagent thread with a turn in flight as a background task until that thread's own turn completes;
+  OpenCode's task subagents run inside the turn (assumes `opencode acp` has no work after `end_turn`).
 
 ## Client changes
 

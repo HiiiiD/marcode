@@ -10,6 +10,8 @@ import { TranscriptStore } from '../../host/transcript-store';
 import type { SessionState } from '../../protocol/messages';
 import { AcpRun } from '../../providers/acp/acp-run';
 import { ClaudeProvider } from '../../providers/claude/claude-provider';
+import { AppServer } from '../../providers/codex/app-server';
+import { CodexRun } from '../../providers/codex/codex-run';
 import { openCodeModeId } from '../../providers/opencode/map-modes';
 import { openCodeTools } from '../../providers/opencode/map-tools';
 import type { AgentProvider, AgentRun } from '../../providers/types';
@@ -37,19 +39,20 @@ const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 /** What the daemon's idle monitor reads. */
 const daemonBusy = (s: AgentSession) => isBusy([{ status: s.state.status }]);
 
-// Codex is absent on purpose: a spawned subagent thread outlives the parent's turn-end with no busy
-// signal, so the session reads idle (a known gap in CodexRun, not special-cased in the daemon).
 suite('daemon busy: background work per provider', () => {
   let dir: string;
   let store: TranscriptStore;
   let sessions: AgentSession[];
+  let teardownHooks: Array<() => void>;
 
   setup(async () => {
     dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mar-busy-'));
     store = new TranscriptStore(dir);
     sessions = [];
+    teardownHooks = [];
   });
   teardown(async () => {
+    for (const h of teardownHooks) { h(); }
     for (const s of sessions) { await s.dispose(); }
     await fs.rm(dir, { recursive: true, force: true });
   });
@@ -85,7 +88,36 @@ suite('daemon busy: background work per provider', () => {
     assert.strictEqual(daemonBusy(s), true);
   });
 
-  test('OpenCode: a task subagent holds the turn open, so the session stays busy until it returns', async () => {
+  test('Codex: a subagent thread still running after the parent turn completes keeps the session busy', async () => {
+    const stdin = new PassThrough();
+    const stdout = new PassThrough();
+    const server = new AppServer({ stdin, stdout, kill: () => {} });
+    const notify = (method: string, params: unknown) => { stdout.write(`${JSON.stringify({ method, params })}
+`); };
+    const run = new CodexRun(server, { cwd: '/w', permissionMode: 'default', sessionId: 's1' });
+    const s = session('codex', holding('codex', run));
+    // An unanswered thread/unsubscribe would otherwise hold the teardown's dispose() open.
+    teardownHooks.push(() => server.close('test done'));
+    s.send('delegate to a subagent');
+    await settle();
+    server.ingest(`${JSON.stringify({ id: 1, result: { thread: { id: 'th_1' } } })}
+`);
+    await settle();
+    notify('item/started', { threadId: 'th_1', item: { type: 'subAgentActivity', id: 'sa_1', kind: 'started', agentThreadId: 'th_child', agentPath: 'reviewer' } });
+    notify('turn/completed', { threadId: 'th_1', turn: {} });
+    await settle();
+    assert.strictEqual(s.state.status, 'running');
+    assert.strictEqual(daemonBusy(s), true);
+
+    notify('turn/completed', { threadId: 'th_child', turn: {} });
+    await settle();
+    assert.strictEqual(s.state.status, 'idle');
+    assert.strictEqual(daemonBusy(s), false);
+  });
+
+  // Assumes `opencode acp` has no work left after it answers the prompt with end_turn: its task subagents
+  // run inside the prompt call, so there is no post-turn background work to report.
+  test('OpenCode: a task subagent holds the turn open, so the session stays busy until it returns (no work after end_turn)', async () => {
     const toAgent = new PassThrough();
     const toClient = new PassThrough();
     const sent: Record<string, unknown>[] = [];

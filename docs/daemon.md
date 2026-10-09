@@ -97,8 +97,9 @@ keep going in the daemon; start `marcode` again to pick them up. To stop everyth
 ## Provider caveat
 
 The daemon's idle check trusts a session's status. Claude reports background tasks after a turn
-ends; OpenCode's subagents finish inside the turn. A Codex subagent thread that outlives its parent
-turn is not reported yet, so a daemon with no client attached could exit under it.
+ends, and Codex reports a subagent thread whose turn is still in flight the same way. OpenCode's
+subagents finish inside the turn; this assumes `opencode acp` has no work left once it answers
+`end_turn`.
 
 ## Troubleshooting
 
