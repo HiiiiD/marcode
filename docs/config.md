@@ -82,6 +82,6 @@ Default: `true`
 
 ## `daemon.idleMinutes`
 
-Minutes a daemon with no connected client and no running session waits before exiting. A whole number of at least 1. A change takes a restart of the TUI; an already-running daemon keeps its idle value until it exits.
+Minutes a daemon with no connected client and no running session waits before exiting. A whole number of at least 1. A running daemon keeps the config it started with: the next `marcode` replaces it when it is idle, and otherwise attaches with a warning to run `marcode daemon --stop` once sessions finish.
 
 Default: `10`

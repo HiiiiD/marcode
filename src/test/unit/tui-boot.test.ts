@@ -6,11 +6,13 @@ import * as path from 'node:path';
 import type { ClientTransport } from '../../client-core/transport';
 import { daemonInfoPath } from '../../daemon/daemon-info';
 import { runDaemon, type RunningDaemon } from '../../daemon/run-daemon';
+import { STALE_CONFIG_WARNING } from '../../daemon-client/connect-or-spawn';
 import { discover } from '../../daemon-client/discover';
 import { requestAttachmentPath } from '../../tui/attachment-request';
-import { bootHost, type BootOptions, type Booted } from '../../tui/boot';
+import { bootHost, configChangedNotice, type BootOptions, type Booted } from '../../tui/boot';
 import type { HostToWebview, WebviewToHost } from '../../protocol/messages';
 import { loadConfig } from '../../host/config-file';
+import type { HostHandle } from '../../host/create-host';
 import { defaultHostConfig, reloadSignature } from '../../host/host-config';
 import { resolveWorkspaceDir } from '../../host/workspace-dir';
 
@@ -166,6 +168,25 @@ suite('tui boot, daemon mode', function () {
     const h = await hydrated(second);
     assert.strictEqual(h?.sessions.find((s) => s.id === id)?.status, 'awaiting-approval');
     assert.strictEqual(daemons.length, 1);
+  });
+
+  test('a busy daemon started with an older config.json is attached, with one warning', async () => {
+    let host: HostHandle | undefined;
+    daemons.push(await runDaemon({
+      workspaceDir, config, appVersion: 'test', initialRoots: [tmp], idleMsOverride: 600_000,
+      configSignature: 'stale', onHost: (h) => { host = h; },
+    }));
+    (await host!.manager.create('fake', tmp)).send('permission fixture');
+    await until(() => host!.manager.summaries().some((s) => s.status === 'awaiting-approval'));
+    const b = await boot();
+    assert.strictEqual(b.mode, 'daemon');
+    assert.deepStrictEqual(b.warnings, [STALE_CONFIG_WARNING]);
+  });
+
+  test('a config.json change points a daemon client at --stop, never at a restart that re-attaches', () => {
+    assert.strictEqual(configChangedNotice('in-process'), 'config.json changed — restart to apply');
+    assert.strictEqual(/restart to apply/.test(configChangedNotice('daemon')), false);
+    assert.strictEqual(configChangedNotice('daemon').includes('marcode daemon --stop'), true);
   });
 
   test('daemon.enabled false boots in-process and writes no daemon.json', async () => {

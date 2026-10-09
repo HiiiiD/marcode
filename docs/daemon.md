@@ -30,6 +30,10 @@ read-only ("Running in daemon (pid …)"), the same as any other foreign lease.
   - Daemon older and idle: the client asks it to shut down, waits for it to exit, and spawns its own.
   - Daemon older and busy: left alone; the client falls back to in-process.
   - Daemon newer: never replaced; the client falls back and says to update.
+- **Config change.** `daemon.json` records a signature of the `config.json` the daemon started
+  with. A client whose `config.json` differs replaces an idle daemon the same way as an older one;
+  a busy one is attached anyway, with the notice "The background host is running with an older
+  config.json; run `marcode daemon --stop` once sessions finish".
 - **Unresponsive.** A daemon whose record is live but that accepts and never answers is waited on
   and never replaced. Only a refused connect (nobody listening) marks a record stale.
 
@@ -39,7 +43,7 @@ All in the workspace directory.
 
 | File | Purpose |
 |---|---|
-| `daemon.json` | `{pid, endpoint, token, protocolVersion, appVersion, startedAt}`, written atomically once listening, user-only permissions. Removed on clean exit |
+| `daemon.json` | `{pid, endpoint, token, protocolVersion, appVersion, startedAt, configSignature}`, written atomically once listening, user-only permissions. Removed on clean exit |
 | `daemon.lock` | Spawn lock (`O_EXCL`), held by the spawning client until the daemon answers. A lock whose pid is dead, or older than 30 s, is taken over |
 | `daemon.lock.takeover` | Short-lived marker that serializes the takeover of a stale `daemon.lock` |
 | `daemon.log` | The daemon's stdout/stderr and its own lines: `listening on …`, `shutdown requested`, `idle; exiting`, `stopped`, `startup failed: …` |
@@ -66,7 +70,7 @@ In `~/.marcode/config.json` (see `config.md`):
 | Key | Default | Effect |
 |---|---|---|
 | `daemon.enabled` | `true` | `false` makes the TUI run its host in-process, as before |
-| `daemon.idleMinutes` | `10` | Minutes with no client and nothing busy before the daemon exits. A running daemon keeps the value it started with |
+| `daemon.idleMinutes` | `10` | Minutes with no client and nothing busy before the daemon exits. A running daemon keeps the value it started with until it is replaced (see Config change) |
 
 ## Daemon or in-process
 

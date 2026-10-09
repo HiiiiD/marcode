@@ -11,7 +11,10 @@ import { decideAttach } from './version-policy';
 type FallbackReason = 'disabled' | 'newer-daemon' | 'busy-daemon' | 'unresponsive-daemon' | 'spawn-failed' | 'rejected';
 type Fallback = { kind: 'fallback'; reason: FallbackReason; message: string };
 
-export type ConnectResult = { kind: 'attached'; client: DaemonClient } | Fallback;
+/** `warnings` are things the user should know about the daemon this client attached to. */
+export type ConnectResult = { kind: 'attached'; client: DaemonClient; warnings?: string[] } | Fallback;
+
+export const STALE_CONFIG_WARNING = 'The background host is running with an older config.json; run `marcode daemon --stop` once sessions finish';
 
 export interface ConnectOptions {
   workspaceDir: string;
@@ -27,6 +30,8 @@ export interface ConnectOptions {
   retryBaseMs?: number;
   /** Budget of one reconnect attempt, so the time to `lost` stays bounded. */
   reconnectTimeoutMs?: number;
+  /** reloadSignature of this client's config.json; an idle daemon started with another one is replaced. */
+  configSignature?: string;
 }
 
 const POLL_MS = 100;
@@ -59,6 +64,7 @@ interface EstablishOpts {
   cancelled: () => boolean;
   /** Shared across reconnect attempts: a daemon spawned by an earlier attempt may still be booting. */
   spawnGuard: { at: number };
+  warnings: string[];
 }
 
 async function establish(opts: ConnectOptions, run: EstablishOpts): Promise<Opened | Fallback> {
@@ -71,6 +77,7 @@ async function establish(opts: ConnectOptions, run: EstablishOpts): Promise<Open
     clientKind: opts.clientKind, roots: opts.roots, defaultCwd: opts.defaultCwd,
   }, identity);
   const stale = new Set<string>();
+  const keepConfig = new Set<string>();
   let rediscovered = false;
   let unresponsive = false;
   let release: (() => Promise<void>) | undefined;
@@ -80,11 +87,18 @@ async function establish(opts: ConnectOptions, run: EstablishOpts): Promise<Open
       const info = await discover(dir);
       if (info && !stale.has(info.token)) {
         const decision = decideAttach(info.protocolVersion, identity.protocolVersion);
+        const oldConfig = decision === 'attach' && opts.configSignature !== undefined && info.configSignature !== undefined
+          && info.configSignature !== opts.configSignature && !keepConfig.has(info.token);
         if (decision === 'refuse-newer') {
           return fallback('newer-daemon', 'The background host is a newer Marcode version; update this client');
         }
-        if (decision === 'replace') {
+        if (decision === 'replace' || oldConfig) {
           const answer = await requestShutdown(info.endpoint, info.token, handshakeMs);
+          if (answer === 'busy' && oldConfig) {
+            keepConfig.add(info.token);
+            run.warnings.push(STALE_CONFIG_WARNING);
+            continue;
+          }
           if (answer === 'busy') {
             return fallback('busy-daemon', 'A newer Marcode build is needed but sessions are running; close them or restart');
           }
@@ -156,14 +170,16 @@ async function establish(opts: ConnectOptions, run: EstablishOpts): Promise<Open
 
 export async function connectOrSpawn(opts: ConnectOptions): Promise<ConnectResult> {
   const spawnGuard = { at: -Infinity };
-  const first = await establish(opts, { timeoutMs: opts.timeoutMs ?? DEFAULT_TIMEOUT_MS, cancelled: () => false, spawnGuard });
+  const warnings: string[] = [];
+  const first = await establish(opts, { timeoutMs: opts.timeoutMs ?? DEFAULT_TIMEOUT_MS, cancelled: () => false, spawnGuard, warnings });
   if ('kind' in first) { return first; }
   const reopen = async (cancelled: () => boolean): Promise<Opened | undefined> => {
     const r = await establish(opts, {
-      timeoutMs: opts.reconnectTimeoutMs ?? DEFAULT_RECONNECT_TIMEOUT_MS, cancelled, spawnGuard,
+      timeoutMs: opts.reconnectTimeoutMs ?? DEFAULT_RECONNECT_TIMEOUT_MS, cancelled, spawnGuard, warnings: [],
     });
     return 'kind' in r ? undefined : r;
   };
   const retry = { ...DEFAULT_RETRY, baseMs: opts.retryBaseMs ?? DEFAULT_RETRY.baseMs };
-  return { kind: 'attached', client: new SocketDaemonClient(first, opts.hooks, reopen, retry) };
+  const client = new SocketDaemonClient(first, opts.hooks, reopen, retry);
+  return warnings.length > 0 ? { kind: 'attached', client, warnings } : { kind: 'attached', client };
 }

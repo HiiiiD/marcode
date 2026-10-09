@@ -20,6 +20,8 @@ export interface RunDaemonOptions {
   idleMsOverride?: number;
   /** Test seam: the version advertised in daemon.json and required at hello. */
   protocolVersionOverride?: number;
+  /** Written to daemon.json so a client can tell this daemon runs an older config.json. */
+  configSignature?: string;
   log?: (line: string) => void;
   /** Test seam: the host, once built, so a test can move a session without a client attached. */
   onHost?: (host: HostHandle) => void;
@@ -114,7 +116,10 @@ export async function runDaemon(opts: RunDaemonOptions): Promise<RunningDaemon> 
     throw err;
   }
 
-  const info: DaemonInfo = { pid: process.pid, endpoint, token, ...identity, startedAt: Date.now() };
+  const info: DaemonInfo = {
+    pid: process.pid, endpoint, token, ...identity, startedAt: Date.now(),
+    ...(opts.configSignature !== undefined ? { configSignature: opts.configSignature } : {}),
+  };
   try {
     await writeDaemonInfo(workspaceDir, info);
   } catch (err) {

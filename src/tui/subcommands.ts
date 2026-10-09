@@ -6,7 +6,7 @@ import { readDaemonInfo } from '../daemon/daemon-info';
 import { requestShutdown } from '../daemon/request-shutdown';
 import { runDaemon } from '../daemon/run-daemon';
 import { configPath, loadConfig, seedConfigFileSafely } from '../host/config-file';
-import { defaultHostConfig, type HostConfig } from '../host/host-config';
+import { defaultHostConfig, reloadSignature, type HostConfig } from '../host/host-config';
 import { defaultLeaseDeps } from '../host/lease';
 import { importOldStorage } from '../host/migrate-storage';
 import { marcodeHome, resolveWorkspaceDir } from '../host/workspace-dir';
@@ -104,7 +104,9 @@ async function serveDaemon(workspaceDir: string, roots: string[], home: string, 
   const loaded = await loadConfig(configPath(home));
   for (const w of loaded.warnings) { log(w); }
   const config: HostConfig = { ...defaultHostConfig(), ...loaded.config, ...io.bootConfig };
-  const daemon = await runDaemon({ workspaceDir, config, appVersion: APP_VERSION, initialRoots: roots, log });
+  const daemon = await runDaemon({
+    workspaceDir, config, appVersion: APP_VERSION, initialRoots: roots, log, configSignature: reloadSignature(loaded.config),
+  });
   const onSignal = () => { void daemon.stop(); };
   const onCrash = (err: unknown) => {
     log(`fatal: ${err instanceof Error ? err.stack ?? err.message : String(err)}`);

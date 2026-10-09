@@ -10,6 +10,8 @@ export interface DaemonInfo {
   protocolVersion: number;
   appVersion: string;
   startedAt: number;
+  /** reloadSignature of the config.json the daemon started with; absent from older daemons. */
+  configSignature?: string;
 }
 
 export const daemonInfoPath = (dir: string): string => path.join(dir, 'daemon.json');
@@ -19,7 +21,8 @@ function isInfo(v: unknown): v is DaemonInfo {
   if (typeof v !== 'object' || v === null) { return false; }
   const o = v as Record<string, unknown>;
   return typeof o.pid === 'number' && typeof o.endpoint === 'string' && typeof o.token === 'string'
-    && typeof o.protocolVersion === 'number' && typeof o.appVersion === 'string' && typeof o.startedAt === 'number';
+    && typeof o.protocolVersion === 'number' && typeof o.appVersion === 'string' && typeof o.startedAt === 'number'
+    && (o.configSignature === undefined || typeof o.configSignature === 'string');
 }
 
 export async function readDaemonInfo(dir: string): Promise<DaemonInfo | undefined> {

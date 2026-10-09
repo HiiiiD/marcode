@@ -7,7 +7,7 @@ import type { ClientHooks, ClientStatus, DaemonClient } from '../daemon-client/d
 import { spawnDetached } from '../daemon-client/spawn-daemon';
 import { configPath, favoriteModelsSource, loadConfig } from '../host/config-file';
 import { createHost, type HostHandle, type LoginRecipe } from '../host/create-host';
-import { defaultHostConfig, type HostConfig } from '../host/host-config';
+import { defaultHostConfig, reloadSignature, type HostConfig } from '../host/host-config';
 import { MessageRouter } from '../host/message-router';
 import { createTerminalFileIndex } from '../host/terminal-file-index';
 import { marcodeHome, resolveWorkspaceDir } from '../host/workspace-dir';
@@ -57,6 +57,11 @@ export interface DaemonBooted extends BootedBase {
 
 export type Booted = InProcessBooted | DaemonBooted;
 
+/** A restart re-attaches to the same daemon, which keeps the config.json it was started with. */
+export const configChangedNotice = (mode: Booted['mode']): string => (mode === 'daemon'
+  ? 'config.json changed — the background host keeps its old config; run `marcode daemon --stop` once sessions finish'
+  : 'config.json changed — restart to apply');
+
 type Favorites = ReturnType<typeof favoriteModelsSource>;
 type FileIndex = ReturnType<typeof createTerminalFileIndex>;
 type Base = Omit<BootedBase, 'loginRecipes' | 'onStatus' | 'shutdown'>;
@@ -83,12 +88,16 @@ export async function bootHost(opts: BootOptions): Promise<Booted> {
       workspaceDir, clientKind: 'tui', roots: [workspaceRoot], defaultCwd: opts.cwd,
       identity: { protocolVersion: PROTOCOL_VERSION, appVersion: APP_VERSION },
       hooks: daemonHooks(fileIndex, favorites),
+      configSignature: reloadSignature(loaded.config),
       spawn: async () => {
         await fs.mkdir(workspaceDir, { recursive: true });
         await spawn(workspaceDir, [workspaceRoot]);
       },
     });
-    if (r.kind === 'attached') { return daemonBooted(r.client, fileIndex, base, warn); }
+    if (r.kind === 'attached') {
+      for (const w of r.warnings ?? []) { warn(w); }
+      return daemonBooted(r.client, fileIndex, base, warn);
+    }
     await fileIndex.dispose();
     warn(`Running without the background host: ${r.message}`);
     base.fallbackReason = r.reason;

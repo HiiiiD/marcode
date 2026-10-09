@@ -43,6 +43,13 @@ suite('daemon info', () => {
     assert.strictEqual(await readDaemonInfo(dir), undefined);
   });
 
+  test('configSignature is optional, and round-trips when present', async () => {
+    await writeDaemonInfo(dir, { ...info(), configSignature: 'sig' });
+    assert.strictEqual((await readDaemonInfo(dir))?.configSignature, 'sig');
+    await fs.writeFile(path.join(dir, 'daemon.json'), JSON.stringify({ ...info(), configSignature: 5 }));
+    assert.strictEqual(await readDaemonInfo(dir), undefined);
+  });
+
   test('tokens are long and distinct', () => {
     assert.strictEqual(newToken().length >= 32, true);
     assert.notStrictEqual(newToken(), newToken());

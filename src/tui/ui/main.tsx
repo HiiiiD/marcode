@@ -2,7 +2,7 @@ import { createCliRenderer, type CliRenderer } from '@opentui/core';
 import { createRoot } from '@opentui/react';
 import type { ClientStatus } from '../../daemon-client/daemon-client';
 import { watchConfig } from '../../host/config-file';
-import { bootHost, type Booted } from '../boot';
+import { bootHost, configChangedNotice, type Booted } from '../boot';
 import { parseArgs, USAGE, type CliCommand } from '../cli';
 import { createShutdown, installExitSignals } from '../shutdown';
 import { runConfig, runDaemonCommand, runLogin, runMigrate } from '../subcommands';
@@ -62,7 +62,7 @@ async function runTui(cmd: Extract<CliCommand, { kind: 'run' }>): Promise<void> 
   booted.onStatus((s) => { notices.notify(STATUS_NOTICE[s]); });
 
   const watcher = watchConfig(booted.configFile, booted.fileConfig, () => {
-    notices.notify('config.json changed — restart to apply');
+    notices.notify(configChangedNotice(booted.mode));
   });
   let renderer: CliRenderer | undefined;
   let fatal: string | undefined;

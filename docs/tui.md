@@ -112,8 +112,11 @@ Each session is owned by one host through a lease (`sessions/<id>.lock`). A sess
 another live host, VS Code or another terminal, shows up read-only with a `host·pid` label such as
 `vscode·1234`; its transcript follows the owner. When the owner lets go (closes or hides it) the
 composer returns. With a daemon attached the daemon holds the leases, so VS Code shows those sessions
-as owned by `daemon`. Changes to `config.json` are not applied live: the TUI shows a "restart to apply"
-notice, then restart it. See `config.md`.
+as owned by `daemon`. Changes to `config.json` are not applied live. In-process, the TUI shows a
+"restart to apply" notice; restart it. With a daemon, a restart re-attaches to the same daemon, which
+keeps the config it was started with, so the notice says to run `marcode daemon --stop` once sessions
+finish. The next `marcode` also replaces an idle daemon started with an older `config.json` on its
+own, and attaches to a busy one with the same warning. See `config.md`.
 
 ## Runtime and limits
 
