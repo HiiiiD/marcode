@@ -63,6 +63,48 @@ suite('daemon client policy', () => {
     assert.strictEqual(await fs.access(lockFile()).then(() => true, () => false), true);
   });
 
+  async function race(seed: () => Promise<void>, opts: Parameters<typeof acquireSpawnLock>[1]) {
+    for (let i = 0; i < 20; i++) {
+      await fs.rm(dir, { recursive: true, force: true });
+      await fs.mkdir(dir, { recursive: true });
+      await seed();
+      const results = await Promise.all(Array.from({ length: 6 }, () => acquireSpawnLock(dir, opts)));
+      const winners = results.filter((r) => r !== undefined);
+      assert.strictEqual(winners.length, 1);
+      await winners[0]?.();
+    }
+  }
+  const notDead = (pid: number) => pid !== 999;
+
+  test('exactly one of six wins a takeover of a dead-pid lock', async () => {
+    await race(() => fs.writeFile(lockFile(), JSON.stringify({ pid: 999, at: Date.now() })), { pidAlive: notDead });
+  });
+
+  test('exactly one of six wins a takeover of a lock stale by age', async () => {
+    await race(
+      () => fs.writeFile(lockFile(), JSON.stringify({ pid: process.pid, at: Date.now() })),
+      { pidAlive: () => true, staleMs: 30_000, now: () => Date.now() + 120_000 },
+    );
+  });
+
+  test('exactly one of six wins a takeover of an unparsable lock', async () => {
+    await race(() => fs.writeFile(lockFile(), '{oops'), { pidAlive: notDead });
+  });
+
+  test('a stale takeover file is cleaned and the next acquire succeeds', async () => {
+    await fs.writeFile(lockFile(), JSON.stringify({ pid: 999, at: Date.now() }));
+    await fs.writeFile(lockFile() + '.takeover', JSON.stringify({ pid: 999, at: Date.now() }));
+    assert.strictEqual(await acquireSpawnLock(dir, { pidAlive: notDead }), undefined);
+    assert.strictEqual(typeof (await acquireSpawnLock(dir, { pidAlive: notDead })), 'function');
+  });
+
+  test('release does not delete a lock with the same pid but a different at', async () => {
+    const release = await acquireSpawnLock(dir, { now: () => 1000 });
+    await fs.writeFile(lockFile(), JSON.stringify({ pid: process.pid, at: 2000 }));
+    await release?.();
+    assert.strictEqual(await fs.access(lockFile()).then(() => true, () => false), true);
+  });
+
   test('version policy: equal attaches, older daemon is replaced, newer is never killed', () => {
     assert.strictEqual(decideAttach(1, 1), 'attach');
     assert.strictEqual(decideAttach(1, 2), 'replace');

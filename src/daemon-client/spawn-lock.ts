@@ -9,9 +9,18 @@ interface SpawnLockOpts {
   now?: () => number;
 }
 
-async function readLock(file: string): Promise<{ pid: number; at: number } | undefined> {
+const TAKEOVER_STALE_MS = 5_000;
+
+interface LockBody { pid: number; at: number }
+
+async function readRaw(file: string): Promise<string | undefined> {
+  try { return await fs.readFile(file, 'utf8'); } catch { return undefined; }
+}
+
+function parse(raw: string | undefined): LockBody | undefined {
+  if (raw === undefined) { return undefined; }
   try {
-    const v = JSON.parse(await fs.readFile(file, 'utf8')) as Record<string, unknown>;
+    const v = JSON.parse(raw) as Record<string, unknown> | null;
     return typeof v?.pid === 'number' && typeof v.at === 'number' ? { pid: v.pid, at: v.at } : undefined;
   } catch {
     return undefined;
@@ -24,24 +33,46 @@ export async function acquireSpawnLock(
 ): Promise<(() => Promise<void>) | undefined> {
   const { staleMs = 30_000, pidAlive = defaultLeaseDeps.pidAlive, now = () => Date.now() } = opts;
   const file = path.join(dir, 'daemon.lock');
-  const body = JSON.stringify({ pid: process.pid, at: now() });
+  const takeoverFile = `${file}.takeover`;
+  const at = now();
+  const body = JSON.stringify({ pid: process.pid, at });
+  const isLive = (held: LockBody | undefined): boolean =>
+    held !== undefined && pidAlive(held.pid) && now() - held.at <= staleMs;
+
+  const releaser = (): (() => Promise<void>) => {
+    let released = false;
+    return async () => {
+      if (released) { return; }
+      released = true;
+      const held = parse(await readRaw(file));
+      if (held?.pid !== process.pid || held.at !== at) { return; }
+      await fs.rm(file, { force: true }).catch(() => { /* best effort */ });
+    };
+  };
 
   try {
-    if (!(await createExclusive(file, body))) {
-      const held = await readLock(file);
-      if (held && pidAlive(held.pid) && now() - held.at <= staleMs) { return undefined; }
+    if (await createExclusive(file, body)) { return releaser(); }
+
+    const judged = await readRaw(file);
+    if (isLive(parse(judged))) { return undefined; }
+
+    if (!(await createExclusive(takeoverFile, body))) {
+      const taker = parse(await readRaw(takeoverFile));
+      if (!taker || now() - taker.at > TAKEOVER_STALE_MS || !pidAlive(taker.pid)) {
+        await fs.rm(takeoverFile, { force: true });
+      }
+      return undefined;
+    }
+
+    try {
+      const current = await readRaw(file);
+      if (current !== judged && isLive(parse(current))) { return undefined; }
       await fs.rm(file, { force: true });
-      if (!(await createExclusive(file, body))) { return undefined; }
+      return (await createExclusive(file, body)) ? releaser() : undefined;
+    } finally {
+      await fs.rm(takeoverFile, { force: true }).catch(() => { /* best effort */ });
     }
   } catch {
     return undefined;
   }
-
-  let released = false;
-  return async () => {
-    if (released) { return; }
-    released = true;
-    if ((await readLock(file))?.pid !== process.pid) { return; }
-    await fs.rm(file, { force: true }).catch(() => { /* best effort */ });
-  };
 }
