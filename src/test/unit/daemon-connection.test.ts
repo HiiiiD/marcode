@@ -179,6 +179,52 @@ suite('daemon connection', () => {
     assert.deepStrictEqual(await picked, ['/r/a.ts']);
   });
 
+  test('an unanswered ask times out empty and a late res is ignored', async () => {
+    const t = setup({ askTimeoutMs: 5 });
+    t.sock.feed(HELLO);
+    const picked = t.hooks()!.picker.pick();
+    const req = t.sock.out.find((f) => f.f === 'req') as Extract<ServerFrame, { f: 'req' }>;
+    assert.deepStrictEqual(await picked, []);
+    t.sock.feed({ f: 'res', id: req.id, ok: true, result: ['/late'] });
+    assert.strictEqual(t.sock.ended, false);
+  });
+
+  for (const [name, over] of [
+    ['roots null', { roots: null }],
+    ['roots a string', { roots: '/r' }],
+    ['an unknown clientKind', { clientKind: 'nope' }],
+    ['a non-string defaultCwd', { defaultCwd: 3 }],
+    ['a non-string appVersion', { appVersion: 1 }],
+  ] as const) {
+    test(`a hello with ${name} is rejected bad-hello and registers nothing`, () => {
+      const t = setup();
+      t.sock.feed({ ...HELLO, ...over });
+      assert.strictEqual((t.sock.out[0] as { reason: string }).reason, 'bad-hello');
+      assert.strictEqual(t.sock.ended, true);
+      assert.strictEqual(t.bus.length, 0);
+      assert.strictEqual(t.state.roots.length, 0);
+    });
+  }
+
+  test('a dep that throws mid-hello closes only that connection and unregisters', () => {
+    const origError = console.error;
+    console.error = () => {};
+    try {
+      const t = setup({ makeRouter: () => { throw new Error('boom'); } });
+      assert.doesNotThrow(() => t.sock.feed(HELLO));
+      assert.strictEqual(t.sock.ended, true);
+      assert.strictEqual(t.state.roots.length, 1);
+      assert.strictEqual(t.state.rootsDropped, 1);
+      assert.strictEqual(t.bus.length, 0);
+      assert.strictEqual(t.conn.attached, false);
+      const other = setup();
+      other.sock.feed(HELLO);
+      assert.strictEqual(other.conn.attached, true);
+    } finally {
+      console.error = origError;
+    }
+  });
+
   test('a close with a pending ask resolves it empty', async () => {
     const t = setup();
     t.sock.feed(HELLO);

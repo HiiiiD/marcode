@@ -1,4 +1,4 @@
-import type { ClientFrame, ServerFrame } from '../protocol/daemon-wire';
+import type { ClientFrame, ClientKind, ServerFrame } from '../protocol/daemon-wire';
 
 export const PROTOCOL_VERSION = 1;
 export const MAX_LINE_CHARS = 64 * 1024 * 1024;
@@ -36,6 +36,16 @@ export class LineDecoder {
     }
     return lines;
   }
+}
+
+const CLIENT_KINDS: readonly string[] = ['sidebar', 'review', 'fleet', 'history', 'tui'] satisfies ClientKind[];
+
+/** Token and version are checked separately, so their failures get their own reject reasons. */
+export function isHelloShape(h: Extract<ClientFrame, { f: 'hello' }>): boolean {
+  return Array.isArray(h.roots) && h.roots.every((r) => typeof r === 'string')
+    && CLIENT_KINDS.includes(h.clientKind)
+    && typeof h.defaultCwd === 'string'
+    && typeof h.appVersion === 'string';
 }
 
 export function parseFrame(line: string): { f: string } | undefined {

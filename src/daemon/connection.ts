@@ -4,13 +4,14 @@ import type { HostToWebview, WebviewToHost } from '../protocol/messages';
 import type { PostClient } from '../host/post-bus';
 import { wantsFor } from './client-wants';
 import { createRemoteHooks } from './remote-hooks';
-import { encodeFrame, LineDecoder, parseFrame } from './protocol';
+import { encodeFrame, isHelloShape, LineDecoder, parseFrame } from './protocol';
 
 export type HelloFrame = Extract<ClientFrame, { f: 'hello' }>;
 type ResFrame = Extract<ClientFrame, { f: 'res' }>;
 type RemoteHooks = ReturnType<typeof createRemoteHooks>;
 
 const DEFAULT_MAX_BUFFERED = 32 * 1024 * 1024;
+const DEFAULT_ASK_TIMEOUT_MS = 30_000;
 
 export interface FrameSocket {
   write(data: string): boolean;
@@ -31,7 +32,10 @@ export interface ConnectionDeps {
   onShutdown(): void;
   onChange(): void;
   maxBuffered?: number;
+  askTimeoutMs?: number;
 }
+
+interface PendingAsk { resolve(v: unknown): void; reject(e: Error): void; timer: ReturnType<typeof setTimeout> }
 
 export class DaemonConnection {
   private readonly decoder = new LineDecoder();
@@ -42,7 +46,7 @@ export class DaemonConnection {
   private unroots: (() => void) | undefined;
   private closed = false;
   private nextId = 1;
-  private readonly pending = new Map<number, { resolve(v: unknown): void; reject(e: Error): void }>();
+  private readonly pending = new Map<number, PendingAsk>();
 
   constructor(private readonly socket: FrameSocket, private readonly deps: ConnectionDeps) {
     socket.onData((chunk) => this.onChunk(chunk));
@@ -62,7 +66,11 @@ export class DaemonConnection {
     for (const line of lines) {
       const frame = parseFrame(line);
       if (!frame) { this.close(); return; }
-      this.onFrame(frame as ClientFrame);
+      // A throwing dep must not escape the socket callback and take the whole daemon down.
+      try { this.onFrame(frame as ClientFrame); } catch (err) {
+        console.error('[marcode] daemon: frame failed', err);
+        this.close();
+      }
       if (this.closed) { return; }
     }
   }
@@ -94,6 +102,7 @@ export class DaemonConnection {
   private onHello(hello: HelloFrame): void {
     if (hello.token !== this.deps.token) { this.reject('bad-token'); return; }
     if (hello.protocolVersion !== this.deps.identity.protocolVersion) { this.reject('protocol-mismatch'); return; }
+    if (!isHelloShape(hello)) { this.reject('bad-hello'); return; }
     this.hello = hello;
     this.unroots = this.deps.onRoots(hello.roots);
     const hooks = createRemoteHooks({
@@ -101,7 +110,8 @@ export class DaemonConnection {
       ask: (op, args) => new Promise((resolve, reject) => {
         if (this.closed) { reject(new Error('closed')); return; }
         const id = this.nextId++;
-        this.pending.set(id, { resolve, reject });
+        const timer = setTimeout(() => { this.pending.delete(id); reject(new Error('timeout')); }, this.deps.askTimeoutMs ?? DEFAULT_ASK_TIMEOUT_MS);
+        this.pending.set(id, { resolve, reject, timer });
         this.send({ f: 'req', id, op, args });
       }),
     });
@@ -135,6 +145,7 @@ export class DaemonConnection {
     const entry = this.pending.get(res.id);
     if (!entry) { return; }
     this.pending.delete(res.id);
+    clearTimeout(entry.timer);
     if (res.ok) { entry.resolve(res.result); } else { entry.reject(new Error(res.error)); }
   }
 
@@ -143,7 +154,7 @@ export class DaemonConnection {
     this.closed = true;
     this.unbus?.();
     this.unroots?.();
-    for (const entry of this.pending.values()) { entry.reject(new Error('closed')); }
+    for (const entry of this.pending.values()) { clearTimeout(entry.timer); entry.reject(new Error('closed')); }
     this.pending.clear();
     this.deps.onChange();
   }
