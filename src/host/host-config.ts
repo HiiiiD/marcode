@@ -12,6 +12,7 @@ export interface HostConfig {
   memory: { enabled: boolean; summarizer: unknown };
   review: { fileCap: number; pollIntervalMs: number; baseRefs: string[] };
   favoriteModels: string[];
+  daemon: { enabled: boolean; idleMinutes: number };
 }
 
 export const MOVED_SETTING_IDS: readonly string[] = [
@@ -29,6 +30,7 @@ export function defaultHostConfig(): HostConfig {
     memory: { enabled: true, summarizer: undefined },
     review: { fileCap: clampCap(undefined), pollIntervalMs: 750, baseRefs: [] },
     favoriteModels: [],
+    daemon: { enabled: true, idleMinutes: 10 },
   };
 }
 
@@ -92,6 +94,22 @@ export function parseHostConfig(raw: unknown): { config: HostConfig; warnings: s
   }
   config.favoriteModels = (Array.isArray(raw.favoriteModels) ? raw.favoriteModels : [])
     .filter((id): id is string => typeof id === 'string' && id.trim() !== '');
+
+  if (raw.daemon !== undefined) {
+    if (!isObject(raw.daemon)) {
+      warnings.push('config.json: daemon is not an object; using the default.');
+    } else {
+      if (raw.daemon.enabled !== undefined) {
+        if (typeof raw.daemon.enabled === 'boolean') { config.daemon.enabled = raw.daemon.enabled; }
+        else { warnings.push('config.json: daemon.enabled is not a boolean; using the default.'); }
+      }
+      if (raw.daemon.idleMinutes !== undefined) {
+        const m = raw.daemon.idleMinutes;
+        if (typeof m === 'number' && Number.isFinite(m) && m >= 1) { config.daemon.idleMinutes = Math.floor(m); }
+        else { warnings.push('config.json: daemon.idleMinutes must be a number of at least 1; using the default.'); }
+      }
+    }
+  }
 
   return { config, warnings };
 }

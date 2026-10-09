@@ -74,3 +74,14 @@ Starred model rows, each entry "providerId modelId" (e.g. "opencode gpt-4"). Man
 
 Default: `[]`
 
+## `daemon.enabled`
+
+Let the terminal client run its host in a per-workspace background daemon so sessions outlive the TUI. A change takes a window reload or a restart of the TUI.
+
+Default: `true`
+
+## `daemon.idleMinutes`
+
+Minutes a daemon with no connected client and no running session waits before exiting. A whole number of at least 1. A change takes a restart of the TUI; an already-running daemon keeps its idle value until it exits.
+
+Default: `10`
