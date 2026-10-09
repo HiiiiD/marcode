@@ -1,8 +1,13 @@
 # Marcode TUI
 
-A terminal client for the same sessions the VS Code panel runs. It boots its own host in-process
-(`createHost`), uses the same `~/.marcode/workspaces/<slug>` directory, and renders with OpenTUI.
-Sessions, transcripts and `config.json` are shared with the extension.
+A terminal client for the same sessions the VS Code panel runs. Its host (`createHost`) runs in a
+per-workspace background daemon, started on first launch, or in-process when no daemon can be used.
+It uses the same `~/.marcode/workspaces/<slug>` directory and renders with OpenTUI. Sessions,
+transcripts and `config.json` are shared with the extension.
+
+Quitting the TUI no longer stops running agents: turns, approvals and background tasks keep going in
+the daemon, and the next `marcode` picks them up. `marcode daemon --stop` stops it. See
+[daemon.md](daemon.md).
 
 ## Install and run
 
@@ -19,6 +24,7 @@ yarn build:tui:bin    # bin/marcode.exe (bin/marcode elsewhere): standalone, Bun
 | `marcode login <provider>` | hand the terminal to the provider's sign-in flow (`claude`, `codex`) |
 | `marcode config` | print the path of `config.json` and open it in `$EDITOR` |
 | `marcode migrate <old-dir>` | copy an old VS Code storage folder into the workspace directory |
+| `marcode daemon --status` / `--stop` | show or stop this workspace's background host (see [daemon.md](daemon.md)) |
 | `marcode -- <prompt...>` | a prompt that starts with a subcommand word |
 
 `MARCODE_HOME` overrides `~/.marcode`. Exit codes: 0 ok, 2 usage error, 1 other failure.
@@ -105,7 +111,8 @@ Pending chips above the composer open on click or with Ctrl+O (the last one).
 Each session is owned by one host through a lease (`sessions/<id>.lock`). A session leased by
 another live host, VS Code or another terminal, shows up read-only with a `host·pid` label such as
 `vscode·1234`; its transcript follows the owner. When the owner lets go (closes or hides it) the
-composer returns. Changes to `config.json` are not applied live: the TUI shows a "restart to apply"
+composer returns. With a daemon attached the daemon holds the leases, so VS Code shows those sessions
+as owned by `daemon`. Changes to `config.json` are not applied live: the TUI shows a "restart to apply"
 notice, then restart it. See `config.md`.
 
 ## Runtime and limits

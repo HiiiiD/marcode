@@ -55,8 +55,9 @@ daemon process                            clients
 - Each extension surface (sidebar, review, fleet, history) opens its own connection, so
   existing per-surface gating carries over unchanged.
 - `hostKind` and `LeaseHost` gain `'daemon'`.
-- `workspaceRoots()` is the union of attached clients' `roots`; the last union is kept while
-  nobody is attached. Recall scoping already picks the innermost folder containing a session's cwd.
+- `workspaceRoots()` is the union of attached clients' `roots`; while nobody is attached it
+  falls back to the roots the daemon was started with (`--root`), not the last union. Recall
+  scoping already picks the innermost folder containing a session's cwd.
 
 ## Wire protocol
 
@@ -66,10 +67,12 @@ framing, handshake) in `src/daemon/`. `messages.ts` stays types-only and unchang
 | Frame | Direction | Purpose |
 |---|---|---|
 | `hello {protocolVersion, appVersion, clientKind, token, roots, defaultCwd}` | C to D | First frame. `clientKind`: `sidebar`, `review`, `fleet`, `history`, `tui` |
-| `welcome {protocolVersion, appVersion, clientId}` / `reject {reason, daemon}` | D to C | `reason`: `protocol-mismatch`, `bad-token`, `upgrade-busy` |
+| `welcome {protocolVersion, appVersion, clientId, loginRecipes}` / `reject {reason, daemon}` | D to C | `reason`: `protocol-mismatch`, `bad-token`, `upgrade-busy`, `bad-hello`. `loginRecipes` because the TUI's login hint derives from daemon-side config |
 | `msg {m}` | both | A `WebviewToHost` or `HostToWebview` message, unchanged |
-| `req {id, op, args}` / `res {id, result or error}` | D to C / C to D | Client-local work; timeout, failure is state |
-| `shutdown` -> `bye` / `refuse {busy}` | C to D | Version replacement; refused while busy |
+| `act {op, args}` | D to C | One-way client-local work: `reveal`, `openDiff`, `openSettings`, `openExternal`, `exportCsv`, `exportImage`, `login`, `setFavoriteModels` |
+| `req {id, op, args}` / `res {id, result or error}` | D to C / C to D | Only `pick` and `search`, which need an answer. 30s ask timeout; a timeout or failure is state |
+| `ctx {ctx}` | C to D | Editor context, pushed by the client right after `welcome` and on change |
+| `shutdown {token}` -> `bye` / `refuse {busy or bad-token}` | C to D | Version replacement and `--stop`; refused while busy. Accepted before `hello`, since a client of an incompatible version is rejected at `hello` and must still be able to replace an idle daemon |
 
 - A malformed line closes the connection. An unknown frame type is ignored (debug log), so
   additive changes need no bump. Only a breaking change bumps `PROTOCOL_VERSION`.
@@ -79,28 +82,43 @@ framing, handshake) in `src/daemon/`. `messages.ts` stays types-only and unchang
 ### Client-local hooks
 
 `MessageRouter` takes `EditorContextHost`, `AttachmentHost.pick`, `FileSearch` and `ConfigHost`
-by injection. In the daemon each connection gets proxies that turn each call into `req`/`res`;
-the client answers with its real VS Code or terminal implementation. The router is unchanged
-and the host imports nothing client-specific.
+by injection. In the daemon each connection gets proxies: `pick` and `search` become `req`/`res`,
+fire-and-forget calls become `act`, and `EditorContextHost.current()` (synchronous) serves the last
+`ctx` the client pushed. The client answers with its real VS Code or terminal implementation.
+The router is unchanged and the host imports nothing client-specific.
 
 ### Direct manager calls become messages
 
 `canOpenFile`, `attachmentPath`, `layout`/`setLayout` and the memory status/estimate/reindex
 calls are made directly on the manager today. Each gets a typed request/reply pair in
-`messages.ts`; session-scoped ones carry a `SessionId`. The plan inventories them exactly.
+`messages.ts`; session-scoped ones carry a `SessionId`. The TUI needed only `attachmentPath`, which
+shipped as `request-attachment-path {id, attachmentId, itemId?, reqId}` / `attachment-path {reqId,
+path}` (the TUI treats a 5s silence as "attachment not found"); the rest arrive with the extension.
 
 ## Lifecycle
 
 - **Discovery:** `<workspaceDir>/daemon.json` = `{pid, endpoint, token, protocolVersion,
   appVersion, startedAt}`, written atomically once listening, user-only permissions.
-- **Attach:** read `daemon.json`, check pid alive, connect. Stale file or refused connection
-  means spawn. Spawns are serialized by an `O_EXCL` lock file.
+- **Attach:** read `daemon.json`, check pid alive, connect. A dead pid or a refused connect
+  (`ECONNREFUSED`/`ENOENT`) marks the record stale and means spawn. A handshake **timeout** never
+  does: a record on disk means that daemon got as far as listening, so a silent one is blocked, not
+  gone. The client waits and, if it never answers, falls back with reason `unresponsive-daemon`.
+- **Spawn lock:** spawns are serialized by an `O_EXCL` `daemon.lock` (pid + time; stale when the
+  pid is dead or after 30s). Taking over a stale lock is itself serialized through an `O_EXCL`
+  `daemon.lock.takeover`, so two clients judging the same stale lock cannot both win. The lock is
+  held until the spawned daemon answers.
+- **Handshake:** a connection that sends no `hello` within 10s is dropped. Only attached
+  connections count as clients for idle exit.
+- **Single owner:** `runDaemon` refuses to start while `daemon.json` names another live pid (on
+  POSIX `listen()` would otherwise unlink a live daemon's socket). On POSIX the socket directory is
+  vetted before listening: not a symlink, owned by this user, mode tightened to 0700.
 - **Spawn:** the extension runs `process.execPath` with `ELECTRON_RUN_AS_NODE=1` on bundled
   `dist/daemon.js`, detached, stdio ignored. The TUI binary runs `marcode daemon`. Both call
   the same `createHost` wrapper.
-- **Version:** an incompatible `hello` is rejected with a typed error. If the daemon is idle
-  the client sends `shutdown`, waits for exit and spawns its own build. If busy, the client
-  surfaces "update or close sessions".
+- **Version:** an incompatible `hello` is rejected with a typed error. If the daemon is older
+  and idle the client sends `shutdown`, waits for exit and spawns its own build. If busy, the
+  client falls back and surfaces "update or close sessions". A client never replaces a daemon
+  whose `protocolVersion` is newer than its own; it falls back and says to update.
 - **Busy:** the daemon is busy if any session status is not `idle` and not `error`. A
   background task keeps a session `running` (`agent-session.ts` `recomputeWaitingStatus`), so
   background subagents are covered. A session parked on an approval with no client attached
@@ -108,20 +126,25 @@ calls are made directly on the manager today. Each gets a typed request/reply pa
 - **Idle exit:** after `daemon.idleMinutes` (default 10) with zero clients and not busy. A
   client attaching resets the timer. Exit releases leases and removes `daemon.json`.
 - **Crash:** clients see the socket close, show a reconnecting state, re-attach or respawn,
-  and re-run `hydrate`. Sessions that were mid-turn come back `error` with a transcript item.
+  and re-run `hydrate`. A prompt or draft typed while reconnecting is queued (50 max) and sent
+  after the re-`ready`. Sessions that were mid-turn come back `error` with a transcript item.
 - **Provider caveat:** a provider that never reports its long-running work as non-idle would
   look idle to the daemon. That is a provider bug the daemon exposes; each provider gets a test.
+  Shipped state: Claude reports background tasks after `turn-end`; OpenCode's task subagents run
+  inside the turn; a Codex subagent thread that outlives its parent turn is not reported (open bug).
 
 ## Client changes
 
 - `src/daemon-client/` (no `vscode`): `connectOrSpawn({workspaceDir, clientKind, roots, hooks,
-  spawn})` and `DaemonTransport implements ClientTransport`. Owns discovery, spawn lock,
-  handshake, version policy, reconnect and re-hydrate.
+  spawn})` and `DaemonClient` (shipped name of `DaemonTransport`), a `ClientTransport`. Owns
+  discovery, spawn lock, handshake, version policy, reconnect and re-hydrate.
 - **Extension:** `activate()` tries `connectOrSpawn`; on failure, today's `createHost` path
   and a one-line notice. `MessageRouter` and `PostBus` gating live daemon-side. Webviews and
   reducers are untouched.
-- **TUI:** `bootHost` swaps its loopback for `DaemonTransport`, same fallback.
-- **CLI:** `marcode daemon`, with `--status` and `--stop`.
+- **TUI:** `bootHost` swaps its loopback for the `DaemonClient`, same fallback.
+- **CLI:** `marcode daemon`, with `--status` (exit 1 when none is running) and `--stop` (exit 0
+  when none is running, 1 when refused, unreachable or not responding). `src/daemon/daemon-main.ts`
+  is the JSX-free entry, loadable by plain Node, that the extension's `dist/daemon.js` will use.
 - **Config** (`config.json`, `docs/config.md`): `daemon.enabled` (default true),
   `daemon.idleMinutes` (default 10). Disabled means a plain in-process host.
 

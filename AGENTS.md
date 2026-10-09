@@ -51,6 +51,14 @@ extension.ts
   transcript, composer, roster, diff   narrow ReviewState (no byId, no layout, no composer)
 ```
 
+**The daemon** is the same `createHost` in a detached per-workspace process (`hostKind: 'daemon'`)
+with a named pipe / unix socket in front of it. Each connection sends `hello` and gets its own
+`MessageRouter` and a `PostBus` registration gated by its `clientKind`; frames are NDJSON
+(`src/protocol/daemon-wire.ts`). Client-local work flows back as `act` (one-way) and `req`/`res`
+(`pick`, `search`) frames, editor context as pushed `ctx` frames. The TUI attaches through
+`src/daemon-client/` (`connectOrSpawn`) and falls back to an in-process host when it cannot. Only
+the TUI attaches today; the extension is the next plan. See `docs/daemon.md`.
+
 | Path | Responsibility |
 |---|---|
 | `src/extension.ts` | `activate()`: resolve the workspace directory under `~/.marcode`, load `config.json`, offer the one-time migration, call `createHost`, then construct `PostBus` + `ReviewPanel`, register the sidebar webview view, the `marcode.review.open` command, and the review tab's `WebviewPanelSerializer` |
@@ -61,6 +69,19 @@ extension.ts
 | `src/host/host-config.ts`, `src/host/config-file.ts` | `HostConfig` and its validation; `config.json` load, first-import seed from old VS Code settings, patch-write and reload watch |
 | `src/host/migrate-storage.ts` | Copy-only import of the old `storageUri` into the workspace directory; never modifies the source |
 | `src/protocol/messages.ts` | Shared wire types. **Types only.** The one module every bundle imports. |
+| `src/protocol/daemon-wire.ts` | Daemon frame types (`hello`/`welcome`/`reject`, `msg`, `act`, `req`/`res`, `ctx`, `shutdown`/`bye`/`refuse`). **Types only.** |
+| `src/daemon/protocol.ts`, `endpoint.ts`, `daemon-info.ts` | `PROTOCOL_VERSION`, NDJSON encode and capped `LineDecoder`; the pipe/socket path for a workspace dir; `daemon.json` read/write/remove and the token |
+| `src/daemon/idle-monitor.ts` | `isBusy` (any session not `idle`/`error`) and the idle-exit timer |
+| `src/daemon/client-wants.ts`, `remote-hooks.ts` | `wantsFor(clientKind)`, the bus gating per client; the router's editor, picker, file-search and config hooks proxied to the client as `ctx`/`act`/`req` |
+| `src/daemon/connection.ts` | One connection's state machine: hello, version and token checks, ask timeout, slow-client drop, `shutdown` (accepted before `hello`) |
+| `src/daemon/daemon-server.ts` | `net.Server` on the endpoint: hello deadline, attached-only client count, roots union, POSIX socket-dir vetting |
+| `src/daemon/run-daemon.ts` | `runDaemon`: refuses beside a live daemon, `createHost` + server, `daemon.json` lifecycle, idle exit |
+| `src/daemon/login-recipes.ts`, `request-shutdown.ts`, `daemon-main.ts` | Login recipes for `welcome`; the `shutdown` round trip used by `--stop` and upgrades; the JSX-free `marcode daemon …` entry plain Node can load |
+| `src/daemon-client/discover.ts`, `spawn-lock.ts`, `version-policy.ts` | `daemon.json` with a live pid; the `O_EXCL` spawn lock with serialized stale takeover; attach, replace or refuse-newer |
+| `src/daemon-client/daemon-link.ts`, `daemon-client.ts`, `outbox.ts` | One handshaken socket; `DaemonClient` (a `ClientTransport`) with reconnect, re-`ready` and an outbox for prompts and drafts typed while reconnecting |
+| `src/daemon-client/connect-or-spawn.ts`, `spawn-daemon.ts` | Discover, attach, replace or spawn, else a typed fallback reason; the detached spawn recipe for a Bun script or the compiled binary |
+| `src/tui/attachment-request.ts` | `request-attachment-path` / `attachment-path` round trip, so a daemon-attached TUI never reads the store itself |
+| `src/shared/app-version.ts` | `APP_VERSION`, advertised in `hello`/`welcome` and `daemon.json` |
 | `src/providers/types.ts` | `AgentProvider`, `AgentRun`, `AgentEvent`, `ModelInfo` |
 | `src/providers/fake/fake-provider.ts` | Scripted provider for tests and the walking skeleton |
 | `src/providers/claude/` | Claude Agent SDK adapter and `SDKMessage` → `AgentEvent` mapping |
@@ -140,8 +161,17 @@ integration (`yarn test`).
 
 These are not style preferences. Breaking one breaks the design.
 
-- **`src/protocol/messages.ts` is types-only.** No runtime code, no `vscode` import.
+- **`src/protocol/messages.ts` is types-only.** No runtime code, no `vscode` import. So is
+  `src/protocol/daemon-wire.ts`.
 - **Nothing under `src/tui/` or `src/client-core/` imports `vscode`; `src/client-core/` has no React or DOM.**
+- **The daemon is `createHost` plus a transport; nothing under `src/daemon/` or `src/daemon-client/`
+  imports `vscode`.**
+- **A client never touches a session's JSONL or the manager directly when a daemon is attached.**
+  Everything goes over the socket as messages, including what used to be a direct call (the
+  attachment path is the `request-attachment-path` / `attachment-path` pair).
+- **A client never replaces a daemon it cannot prove is gone or older and idle.** A newer-protocol
+  daemon is left alone (fallback), a busy older one too, and a handshake timeout never marks
+  `daemon.json` stale; only a refused connect does.
 - **Nothing under `src/providers/` or `src/protocol/` imports `vscode`.** Neither does
   `src/host/message-router.ts`. This is what keeps them unit-testable outside the
   extension host.
