@@ -14,6 +14,7 @@ const REPO = path.resolve(import.meta.dir, '../../..');
 const ENTRY = path.join(REPO, 'src', 'daemon', 'daemon-main.ts');
 
 let child: ChildProcess | undefined;
+let daemonPid: number | undefined;
 let client: DaemonClient | undefined;
 let tmp: string | undefined;
 
@@ -25,6 +26,9 @@ afterEach(async () => {
     await new Promise((r) => { child?.once('exit', r); setTimeout(r, 3000); });
   }
   child = undefined;
+  // Under yarn, `node` is a shim, so the daemon may be a grandchild that killing `child` misses.
+  if (daemonPid !== undefined) { try { process.kill(daemonPid); } catch { /* already gone */ } }
+  daemonPid = undefined;
   if (tmp) { await fs.rm(tmp, { recursive: true, force: true }).catch(() => {}); tmp = undefined; }
 });
 
@@ -60,7 +64,7 @@ async function attachTo(runtime: 'node' | 'bun'): Promise<void> {
     if (exited.code !== null) { throw new Error(`daemon exited early with ${exited.code}`); }
     return readDaemonInfo(ws);
   }, 'daemon.json');
-  expect(info.pid).toBe(child.pid as number);
+  daemonPid = info.pid;
 
   const r = await connectOrSpawn({
     workspaceDir: ws, clientKind: 'tui', roots: [tmp], defaultCwd: tmp,
@@ -84,6 +88,7 @@ async function attachTo(runtime: 'node' | 'bun'): Promise<void> {
   expect(await requestShutdown(info.endpoint, info.token)).toBe('bye');
   const code = await waitFor(() => exited.code ?? undefined, 'daemon exit', 15_000);
   expect(code).toBe(0);
+  daemonPid = undefined;
 }
 
 test('a Bun client attaches to a daemon served by Node', async () => { await attachTo('node'); }, 90_000);
