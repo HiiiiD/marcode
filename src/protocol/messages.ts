@@ -563,6 +563,7 @@ export type WebviewToHost =
    * attachment, absent means one still pending on the composer.
    */
   | { t: 'open-attachment'; id: SessionId; attachmentId: string; itemId?: string }
+  | { t: 'request-attachment-path'; id: SessionId; attachmentId: string; itemId?: string; reqId: number }
   /**
    * A clipboard or dropped `File` the webview could not read, so no bytes
    * ever reached the host.
@@ -872,6 +873,7 @@ export type HostToWebview =
       probing?: boolean }
   /** Broadcast, not session-addressed: every composer shows the same editor. */
   | { t: 'editor-context'; ctx: EditorContext | null }
+  | { t: 'attachment-path'; reqId: number; path: string | null }
   | { t: 'context-breakdown'; id: SessionId; result: ContextResult }
   /**
    * Broadcast, not session-addressed, and not a reply: account usage belongs
