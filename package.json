@@ -260,7 +260,8 @@
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "0.132.0",
-    "@modelcontextprotocol/sdk": "^1.32.1",
+    "@modelcontextprotocol/node": "^2.1.1",
+    "@modelcontextprotocol/server": "^2.3.1",
     "@opentui/core": "0.5.13",
     "@opentui/react": "0.5.13",
     "@tailwindcss/cli": "^4.3.3",

@@ -1,8 +1,8 @@
 import { randomBytes } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
 import * as path from 'node:path';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { NodeStreamableHTTPServerTransport } from "@modelcontextprotocol/node";
+import { McpServer } from "@modelcontextprotocol/server";
 import { z } from 'zod';
 import { digestText } from '../memory/digest';
 import type { MemoryStore } from '../memory/types';
@@ -153,10 +153,10 @@ export class SelfControlMcpServer {
           + 'with each model\'s common name and effort levels. Pass `query` (an id, a name, or a '
           + 'misspelling like "sonet 5") to get only lookalikes across providers, each with a 0-1 '
           + '`score`, best first. Optional `provider` restricts the search to one provider.',
-        inputSchema: {
-          provider: z.string().optional().describe('A provider id from this window\'s catalog.'),
-          query: z.string().optional().describe('Fuzzy search over model id and name.'),
-        },
+        inputSchema: z.object({
+                  provider: z.string().optional().describe('A provider id from this window\'s catalog.'),
+                  query: z.string().optional().describe('Fuzzy search over model id and name.'),
+                }),
       },
       async ({ provider, query }) => {
         let entries = this.sessionManager.catalog();
@@ -204,15 +204,15 @@ export class SelfControlMcpServer {
           + 'rejected, even when only inherited from a bypass-mode caller — inheritance falls back '
           + 'to the provider default in that case instead of failing. The new session is opened in '
           + 'a pane. Returns the new session\'s id.',
-        inputSchema: {
-          provider: z.string().optional().describe('A provider id from this window\'s catalog. Omit to inherit the caller\'s provider.'),
-          model: z.string().optional().describe('A model id the chosen provider offers (see marcode__list_models). Omit to inherit the caller\'s model.'),
-          effort: z.enum(['low', 'medium', 'high', 'xhigh', 'max', 'ultra']).optional()
-            .describe('The model effort level. Omit to inherit the caller\'s effort.'),
-          mode: z.string().optional().describe('A permission mode id the chosen provider offers. Omit to inherit the caller\'s mode.'),
-          cwd: z.string().describe('Absolute working directory for the new session.'),
-          prompt: z.string().describe('The first message sent to the new session.'),
-        },
+        inputSchema: z.object({
+                  provider: z.string().optional().describe('A provider id from this window\'s catalog. Omit to inherit the caller\'s provider.'),
+                  model: z.string().optional().describe('A model id the chosen provider offers (see marcode__list_models). Omit to inherit the caller\'s model.'),
+                  effort: z.enum(['low', 'medium', 'high', 'xhigh', 'max', 'ultra']).optional()
+                    .describe('The model effort level. Omit to inherit the caller\'s effort.'),
+                  mode: z.string().optional().describe('A permission mode id the chosen provider offers. Omit to inherit the caller\'s mode.'),
+                  cwd: z.string().describe('Absolute working directory for the new session.'),
+                  prompt: z.string().describe('The first message sent to the new session.'),
+                }),
       },
       async ({ provider, model, effort, mode, cwd, prompt }) => {
         const from = caller();
@@ -313,11 +313,11 @@ export class SelfControlMcpServer {
             + 'this one conversation. Use this to find what a different session already figured '
             + 'out. Returns one-line pointers, not transcripts — call marcode__recall_fetch with a '
             + "result's sessionId to read its digest.",
-          inputSchema: {
-            query: z.string().describe('Keywords to search for.'),
-            providerId: z.string().optional().describe('Restrict to one provider, e.g. "claude".'),
-            limit: z.number().optional().describe('Max results. Defaults to 20.'),
-          },
+          inputSchema: z.object({
+                      query: z.string().describe('Keywords to search for.'),
+                      providerId: z.string().optional().describe('Restrict to one provider, e.g. "claude".'),
+                      limit: z.number().optional().describe('Max results. Defaults to 20.'),
+                    }),
         },
         async ({ query, providerId, limit }) => {
           const hits = await memory.search(query, {
@@ -336,11 +336,11 @@ export class SelfControlMcpServer {
             + 'with just a sessionId from a marcode__recall result. Pass detail "transcript" and that '
             + "result's itemId to read a bounded slice of the raw conversation instead. Never call this "
             + 'with an id you invented.',
-          inputSchema: {
-            sessionId: z.string().describe('A sessionId from a marcode__recall result.'),
-            itemId: z.string().optional().describe('The itemId from that result. Only for detail "transcript".'),
-            detail: z.enum(['digest', 'transcript']).optional().describe('Defaults to "digest".'),
-          },
+          inputSchema: z.object({
+                      sessionId: z.string().describe('A sessionId from a marcode__recall result.'),
+                      itemId: z.string().optional().describe('The itemId from that result. Only for detail "transcript".'),
+                      detail: z.enum(['digest', 'transcript']).optional().describe('Defaults to "digest".'),
+                    }),
         },
         async ({ sessionId, itemId, detail }) => {
           if (detail === 'transcript') {
@@ -375,7 +375,7 @@ export class SelfControlMcpServer {
           + '"ListAgents"/"list my teammates" harness tool, which lists your own harness\'s agents, '
           + 'not the sessions in this VS Code panel. Your own entry is marked "self": true — call '
           + 'this to find out your own name.',
-        inputSchema: {},
+        inputSchema: z.object({}),
       },
       async () => {
         const visible = new Set(this.sessionManager.visibleIds());
@@ -401,10 +401,10 @@ export class SelfControlMcpServer {
           + 'message to yourself, the user, or a subagent of this conversation. Get the target name '
           + 'from marcode__list_sessions first. Delivery is immediate and does not wait for a reply '
           + '— a reply, if any, is that session calling marcode__send_message back.',
-        inputSchema: {
-          to: z.string().describe('The target session\'s name, from marcode__list_sessions.'),
-          text: z.string().describe('The message to deliver.'),
-        },
+        inputSchema: z.object({
+                  to: z.string().describe('The target session\'s name, from marcode__list_sessions.'),
+                  text: z.string().describe('The message to deliver.'),
+                }),
       },
       async ({ to, text }) => {
         const from = caller();
@@ -449,9 +449,9 @@ export class SelfControlMcpServer {
           + 'spawned with marcode__spawn_session has sent its result back via marcode__send_message '
           + 'and is done; close it to clean up its pane. Get the target name from '
           + 'marcode__list_sessions first.',
-        inputSchema: {
-          to: z.string().describe('The target session\'s name, from marcode__list_sessions.'),
-        },
+        inputSchema: z.object({
+                  to: z.string().describe('The target session\'s name, from marcode__list_sessions.'),
+                }),
       },
       async ({ to }) => {
         const from = caller();
@@ -481,12 +481,12 @@ export class SelfControlMcpServer {
           + 'this conversation. Get the target name from marcode__list_sessions first. Nothing '
           + 'about another session is ever pulled in automatically — call this yourself whenever '
           + 'you decide you need to know what it did or said.',
-        inputSchema: {
-          name: z.string().describe('The target session\'s name, from marcode__list_sessions.'),
-          limit: z.number().optional().describe(
-            'Max transcript items to return, most recent. Defaults to 30, hard-capped at 200.',
-          ),
-        },
+        inputSchema: z.object({
+                  name: z.string().describe('The target session\'s name, from marcode__list_sessions.'),
+                  limit: z.number().optional().describe(
+                    'Max transcript items to return, most recent. Defaults to 30, hard-capped at 200.',
+                  ),
+                }),
       },
       async ({ name, limit }) => {
         const from = caller();
@@ -523,7 +523,7 @@ export class SelfControlMcpServer {
       // normally or the client disconnected early, so nothing leaks.
       const sid = new URL(req.url ?? '', 'http://127.0.0.1').searchParams.get('sid') ?? undefined;
       const mcp = this.buildMcpServer(sid);
-      const transport = new StreamableHTTPServerTransport({
+      const transport = new NodeStreamableHTTPServerTransport({
         sessionIdGenerator: undefined,
         // The test client (and the callers this mirrors: a provider's MCP client
         // over stdio-style JSON-RPC) reads one JSON body per response — no need
@@ -550,7 +550,7 @@ export class SelfControlMcpServer {
         const port = randomPort();
         const onError = (err: NodeJS.ErrnoException) => {
           http.removeListener('listening', onListening);
-          if (err.code === 'EADDRINUSE' && tries > 1) { attempt(tries - 1); return; }
+          if ((err.code === 'EADDRINUSE' || err.code === 'EACCES') && tries > 1) { attempt(tries - 1); return; }
           reject(err);
         };
         const onListening = () => {
