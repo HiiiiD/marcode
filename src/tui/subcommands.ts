@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { format } from 'node:util';
 import { readDaemonInfo } from '../daemon/daemon-info';
 import { requestShutdown } from '../daemon/request-shutdown';
 import { runDaemon } from '../daemon/run-daemon';
@@ -100,6 +101,8 @@ async function serveDaemon(workspaceDir: string, roots: string[], home: string, 
     try { fs.appendFileSync(logFile, `${new Date().toISOString()} ${line}
 `); } catch { /* a log that cannot be written must not stop the daemon */ }
   };
+  // Detached with stdio ignored: the server's and host's console diagnostics would otherwise vanish.
+  console.error = console.warn = (...args: unknown[]) => log(format(...args));
   const loaded = await loadConfig(configPath(home));
   for (const w of loaded.warnings) { log(w); }
   const config: HostConfig = { ...defaultHostConfig(), ...loaded.config, ...io.bootConfig };

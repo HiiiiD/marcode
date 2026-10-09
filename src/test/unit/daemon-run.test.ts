@@ -3,10 +3,11 @@ import * as fs from 'node:fs';
 import * as net from 'node:net';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { daemonInfoPath, readDaemonInfo, type DaemonInfo } from '../../daemon/daemon-info';
+import { daemonInfoPath, readDaemonInfo, writeDaemonInfo, type DaemonInfo } from '../../daemon/daemon-info';
 import { toLoginRecipesWire } from '../../daemon/login-recipes';
 import { encodeFrame, LineDecoder } from '../../daemon/protocol';
 import { runDaemon, type RunningDaemon, type RunDaemonOptions } from '../../daemon/run-daemon';
+import type { HostHandle } from '../../host/create-host';
 import { defaultHostConfig } from '../../host/host-config';
 
 interface Client { sock: net.Socket; frames: any[]; send(f: object): void; closed(): boolean }
@@ -146,5 +147,63 @@ suite('runDaemon', function () {
     assert.strictEqual(c.frames[0].reason, 'protocol-mismatch');
     assert.strictEqual(c.frames[0].daemon.protocolVersion, 99);
     c.sock.destroy();
+  });
+
+  test('a session leaving awaiting-approval with no client attached lets the idle daemon exit', async () => {
+    let host: HostHandle | undefined;
+    const d = await start({ idleMsOverride: 100, onHost: (h) => { host = h; } });
+    const isDone = settled(d.done);
+    const c = await client(d.info.endpoint);
+    c.send(hello(d.info));
+    c.send({ f: 'msg', m: { t: 'create-session', providerId: 'fake', cwd: dir, seed: { text: 'permission fixture' } } });
+    const parked = () => c.frames.find((f) => f.f === 'msg' && f.m.t === 'session-status' && f.m.status === 'awaiting-approval');
+    await until(() => parked() !== undefined);
+    const id = parked().m.id;
+    c.sock.destroy();
+    await new Promise((r) => setTimeout(r, 400));
+    assert.strictEqual(isDone(), false);
+    const items = (await host?.manager.transcriptTail(id))?.items ?? [];
+    const ask = items.find((i) => i.role === 'permission');
+    assert.strictEqual(ask?.role, 'permission');
+    if (ask?.role === 'permission') { host?.manager.get(id)?.respondToPermission(ask.requestId, { allow: true }); }
+    await until(isDone);
+    assert.strictEqual(isDone(), true);
+    assert.strictEqual(fs.existsSync(daemonInfoPath(dir)), false);
+  });
+
+  test('a startup failure is logged with its cause and rejects', async () => {
+    fs.mkdirSync(daemonInfoPath(dir));
+    const lines: string[] = [];
+    let rejected = false;
+    await start({ log: (l) => lines.push(l) }).catch(() => { rejected = true; });
+    daemon = undefined;
+    assert.strictEqual(rejected, true);
+    assert.strictEqual(lines.some((l) => l.startsWith('startup failed:')), true);
+  });
+
+  test('a listen failure is logged with its cause and rejects', async function () {
+    if (process.platform !== 'win32') { this.skip(); }
+    const first = await start();
+    const lines: string[] = [];
+    let rejected = false;
+    await runDaemon({
+      workspaceDir: dir, appVersion: '1', initialRoots: [dir], log: (l) => lines.push(l),
+      config: { ...defaultHostConfig(), enabledProviders: ['fake'], memory: { enabled: false, summarizer: undefined } },
+    }).catch(() => { rejected = true; });
+    daemon = first;
+    assert.strictEqual(rejected, true);
+    assert.strictEqual(lines.some((l) => l.startsWith('startup failed:')), true);
+  });
+
+  test('a live daemon owning the workspace is refused, and its daemon.json is left alone', async () => {
+    const owner: DaemonInfo = { pid: process.ppid, endpoint: 'x', token: 't', protocolVersion: 1, appVersion: '1', startedAt: 1 };
+    await writeDaemonInfo(dir, owner);
+    const lines: string[] = [];
+    let error = '';
+    await start({ log: (l) => lines.push(l) }).catch((e: Error) => { error = e.message; });
+    daemon = undefined;
+    assert.strictEqual(error, `a daemon is already running for this workspace (pid ${process.ppid})`);
+    assert.strictEqual(lines.some((l) => l.startsWith('startup failed:')), true);
+    assert.deepStrictEqual(await readDaemonInfo(dir), owner);
   });
 });
