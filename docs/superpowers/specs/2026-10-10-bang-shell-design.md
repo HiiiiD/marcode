@@ -41,9 +41,12 @@ allow-list of tags the router accepts; an unlisted tag is dropped.
 New `src/host/shell-runner.ts`, no `vscode` import. Pure Node `child_process.spawn`.
 
 - **Shell:** `bash -c` by default on every platform. On Windows it resolves Git Bash (`bash.exe` on PATH, then
-  the Git for Windows install); if none is found, the run ends with an error saying so and pointing at the
-  `!pwsh` prefix. A `!pwsh <command>` or `!powershell <command>` prefix selects PowerShell
-  (`-NoProfile -Command`) explicitly, on any platform where it exists. `windowsHide: true`.
+  the Git for Windows install); if none is found, the run ends with an error that names the `shell.aliases`
+  setting. `windowsHide: true`.
+- **Aliases:** if the command's first token, followed by whitespace, matches an alias, the rest of the line is
+  run through that alias instead of bash. Resolution is host-side: the client sends the raw text after `!`.
+  An alias shadows a same-named program, so `!pwsh --version` runs PowerShell, not a `pwsh` found by bash;
+  a user who wants the program wraps it (`!bash -c 'pwsh --version'`).
 - **cwd:** the session's current `cwd`, read when the command starts, so a worktree move is honoured.
 - **Environment:** `process.env` as the host has it. No secrets are added.
 - **Limits:** 120s wall timeout, 256 KiB of output across both streams. At the cap the process is killed and
@@ -59,6 +62,24 @@ New `src/host/shell-runner.ts`, no `vscode` import. Pure Node `child_process.spa
 Router case: resolve the session (`manager.get`), refuse if missing or `isForeign`, then
 `runner.start(...)`. The handler is single-use, so it stays inline in the router with the process logic in
 `shell-runner.ts`.
+
+## Config
+
+`shell.aliases` in `~/.marcode/config.json`, read by `createHost` like every host setting (`docs/config.md`,
+reload to apply; stored as `shellAliases` per the `codexPath` flat-key precedent in `host-config.ts`).
+
+```json
+{ "shell": { "aliases": { "pwsh": { "command": "pwsh", "args": ["-NoProfile", "-Command"] } } } }
+```
+
+- The line after the alias is appended as the final argument. No shell string-building, so no quoting layer.
+- Built-in defaults: `pwsh` (`pwsh -NoProfile -Command`) and `powershell` (`powershell.exe -NoProfile
+  -Command`). A user entry with the same name replaces the default; `null` removes it.
+- Validation drops malformed entries (non-string `command`, non-string-array `args`, a name with whitespace or
+  starting with `-`) and keeps the rest, as the other list settings do.
+- An alias whose executable cannot be spawned ends the run with `shell-done { error }`.
+- Aliases are host config, never client input: a client cannot define one, so it cannot choose an arbitrary
+  executable beyond what the user typed after `!`, which is already arbitrary by design.
 
 ## Client state
 
@@ -126,7 +147,7 @@ The webview reducer and the TUI store share the `client-core` slice, so the logi
 - Feeding output to the model, or saving it to the transcript (explicit decision; revisit if wanted: it
   would add a transcript item kind and a pending-context queue, and those are the pieces that were left out).
 - Interactive programs (stdin, TTY, `vim`, `top`). No stdin is attached; they fail or exit.
-- Per-command permission rules, history recall, shell selection setting.
+- Per-command permission rules, history recall, a default-shell setting (aliases cover choosing a shell per run).
 
 ## Tests
 
@@ -143,4 +164,4 @@ The webview reducer and the TUI store share the `client-core` slice, so the logi
 ## Open points for the plan
 
 - Confirm `bind-surface` does not intercept `run-shell`.
-- Windows tree-kill details, Git Bash discovery order, and whether the prefix should instead be a setting.
+- Windows tree-kill details and Git Bash discovery order.
