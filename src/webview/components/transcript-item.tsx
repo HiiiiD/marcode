@@ -1,5 +1,5 @@
 import { LogInIcon } from 'lucide-react';
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { AttachmentChip } from './attachment-chips';
 import { CompactionCard } from './compaction-card';
@@ -14,7 +14,7 @@ import { SubagentCard } from './subagent-card';
 import { ToolCard } from './tool-card';
 import { TranscriptItemShell } from './transcript-item-shell';
 import { shouldOfferLogin } from '../lib/provider-login';
-import { useStore } from '../store';
+import { usePost, useStore } from '../store';
 import type { FileRef, SessionId, SessionRef, TranscriptItem } from '../../protocol/messages';
 
 /**
@@ -25,20 +25,22 @@ import type { FileRef, SessionId, SessionRef, TranscriptItem } from '../../proto
  */
 const FORKABLE_ROLES: ReadonlySet<TranscriptItem['role']> = new Set(['user', 'assistant', 'tool']);
 
-export function TranscriptItemView({
-  item, sessionId,
+/**
+ * Memoized and free of `state` reads on purpose: with several panes streaming,
+ * any re-render here re-parses every Markdown block in every pane. `canFork`
+ * is the whole session being idle (not per-turn: a live turn can leave a
+ * dangling unanswered tool call or permission past any item in it), computed
+ * once by the transcript and passed in.
+ */
+export const TranscriptItemView = memo(function TranscriptItemView({
+  item, sessionId, canFork = false,
 }: {
   item: TranscriptItem;
   sessionId: SessionId;
+  canFork?: boolean;
 }) {
-  const { post, state } = useStore();
-  // Gated on the whole session being idle, not on which turn this item
-  // belongs to: a live turn can leave a dangling unanswered tool call or
-  // permission past any item in it, and telling those apart per-item is not
-  // worth the complexity a coarse "not mid-turn" gate avoids entirely.
-  const canFork = FORKABLE_ROLES.has(item.role)
-    && state.byId[sessionId]?.summary.status === 'idle';
-  const onFork = canFork
+  const post = usePost();
+  const onFork = canFork && FORKABLE_ROLES.has(item.role)
     ? () => post({ t: 'fork-session', id: sessionId, itemId: item.id })
     : undefined;
 
@@ -68,34 +70,8 @@ export function TranscriptItemView({
         ? <SubagentCard item={item} sessionId={sessionId} />
         : <ToolCard item={item} onFork={onFork} />;
 
-    case 'error': {
-      // Only offered when the message reads as a sign-in failure, or the
-      // session's provider says otherwise via its own loginKind (see
-      // shouldOfferLogin) — a dead binary or an unrecognized failure would
-      // not be fixed by a login terminal. The provider to sign in to is the
-      // session's own, not parsed back out of the message text.
-      const providerId = state.byId[sessionId]?.summary.providerId;
-      const loginKind = state.catalog.find((p) => p.id === providerId)?.loginKind
-        ?? state.unavailable.find((p) => p.id === providerId)?.loginKind;
-      return (
-        <TranscriptItemShell role="error" label="Error" ts={item.ts}>
-          <div className="max-h-48 overflow-auto rounded border border-destructive px-2 py-1 text-xs wrap-break-word whitespace-pre-wrap text-destructive">
-            {item.message}
-          </div>
-          {shouldOfferLogin(item.message, loginKind) && providerId !== undefined && (
-            <Button
-              size="sm"
-              variant="outline"
-              className="mt-1.5"
-              onClick={() => post({ t: 'login-provider', providerId })}
-            >
-              <LogInIcon aria-hidden />
-              Log in
-            </Button>
-          )}
-        </TranscriptItemShell>
-      );
-    }
+    case 'error':
+      return <ErrorItem item={item} sessionId={sessionId} />;
 
     case 'permission':
       return <PermissionCard item={item} sessionId={sessionId} />;
@@ -132,6 +108,41 @@ export function TranscriptItemView({
         <div className="my-0 text-xs text-muted-foreground">Unsupported item</div>
       );
   }
+});
+
+function ErrorItem({
+  item, sessionId,
+}: {
+  item: Extract<TranscriptItem, { role: 'error' }>;
+  sessionId: SessionId;
+}) {
+  const { post, state } = useStore();
+  // Only offered when the message reads as a sign-in failure, or the
+  // session's provider says otherwise via its own loginKind (see
+  // shouldOfferLogin) — a dead binary or an unrecognized failure would
+  // not be fixed by a login terminal. The provider to sign in to is the
+  // session's own, not parsed back out of the message text.
+  const providerId = state.byId[sessionId]?.summary.providerId;
+  const loginKind = state.catalog.find((p) => p.id === providerId)?.loginKind
+    ?? state.unavailable.find((p) => p.id === providerId)?.loginKind;
+  return (
+    <TranscriptItemShell role="error" label="Error" ts={item.ts}>
+      <div className="max-h-48 overflow-auto rounded border border-destructive px-2 py-1 text-xs wrap-break-word whitespace-pre-wrap text-destructive">
+        {item.message}
+      </div>
+      {shouldOfferLogin(item.message, loginKind) && providerId !== undefined && (
+        <Button
+          size="sm"
+          variant="outline"
+          className="mt-1.5"
+          onClick={() => post({ t: 'login-provider', providerId })}
+        >
+          <LogInIcon aria-hidden />
+          Log in
+        </Button>
+      )}
+    </TranscriptItemShell>
+  );
 }
 
 function UserItem({
@@ -141,7 +152,7 @@ function UserItem({
   sessionId: SessionId;
   onFork?: () => void;
 }) {
-  const { post } = useStore();
+  const post = usePost();
   const ctx = item.context;
   // The item's `text` is the composed prompt, blocks included — it has to be,
   // since it is exactly what the provider received. For display the blocks are

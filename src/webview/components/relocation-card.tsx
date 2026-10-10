@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { useStore } from '../store';
+import { usePost } from '../store';
 import { folderName } from '../format';
 import type { SessionId, TranscriptItem } from '../../protocol/messages';
 import { TranscriptItemShell } from './transcript-item-shell';
@@ -21,7 +21,7 @@ export function RelocationCard({
   item: RelocationItem;
   sessionId: SessionId;
 }) {
-  const { post } = useStore();
+  const post = usePost();
   const name = folderName(item.path);
   // The host drops a second answer for an already-settled item, and the patch
   // that would settle it here has to round-trip. Without local state both

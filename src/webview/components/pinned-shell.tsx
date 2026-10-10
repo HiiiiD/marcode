@@ -3,14 +3,14 @@ import { Button } from "@/components/ui/button";
 import type { PaneState } from "../../client-core/reducer";
 import { runningShell } from "../../client-core/running-shell";
 import type { SessionId } from "../../protocol/messages";
-import { useStore } from "../store";
+import { usePost } from '../store';
 
 /**
  * The card for a running command scrolls away with the transcript, so the one
  * control that can stop it is mirrored here, above the composer.
  */
 export function PinnedShell({ pane, sessionId }: { pane: PaneState; sessionId: SessionId }) {
-  const { post } = useStore();
+  const post = usePost();
   const item = pane.summary.owner ? undefined : runningShell(pane.items);
   if (!item) { return null; }
   return (

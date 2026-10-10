@@ -4,11 +4,11 @@ import { FileText, ImageIcon, X } from 'lucide-react';
 import type { Attachment } from '../../protocol/messages';
 import { previewUriOf } from '../lib/attachment-preview';
 import type { PaneState } from '../reducer';
-import { useStore } from '../store';
+import { usePost } from '../store';
 
 /** The files the next turn will carry, each with its own removal action. */
 export function AttachmentChips({ pane }: { pane: PaneState }) {
-  const { post } = useStore();
+  const post = usePost();
   if (pane.attachments.length === 0) { return null; }
 
   return (

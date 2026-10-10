@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { TranscriptItem } from '../../protocol/messages';
 import { ToolBody } from './tool-body';
-import { useStore } from '../store';
+import { usePost } from '../store';
 import { describeInput, describeOutput, describeTool, type ToolGlyph } from './tool-render';
 
 type ToolItem = Extract<TranscriptItem, { role: 'tool' }>;
@@ -38,7 +38,7 @@ export function ToolCard({
   streaming?: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen);
-  const { post } = useStore();
+  const post = usePost();
   const tool = item.tool;
   const planPath = item.output?.kind === 'plan' ? item.output.filePath : undefined;
   useEffect(() => {

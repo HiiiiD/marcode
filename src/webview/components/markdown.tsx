@@ -13,7 +13,7 @@ import remarkGfm from 'remark-gfm';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { useStore } from '../store';
+import { usePost } from '../store';
 import { classifyHref } from './markdown-link';
 import { hastText } from './hast-text';
 import { tableRows, toCsv, toTsv } from './markdown-table';
@@ -85,7 +85,7 @@ export function Markdown({ children }: { children: string }) {
 }
 
 function MarkdownLink({ href, children }: { href?: string; children: ReactNode }) {
-  const { post } = useStore();
+  const post = usePost();
   const link = classifyHref(href);
   if (link.kind === 'none') { return <>{children}</>; }
 
@@ -145,7 +145,7 @@ function CodeBlock({ node, children }: { node?: Element; children: ReactNode }) 
  * would be circular.
  */
 function MarkdownTable({ node, children }: { node?: Element; children: ReactNode }) {
-  const { post } = useStore();
+  const post = usePost();
   const rows = useMemo(() => (node ? tableRows(node) : []), [node]);
 
   return (
