@@ -185,7 +185,9 @@ export async function connectOrSpawn(opts: ConnectOptions): Promise<ConnectResul
   const first = await establish(opts, { timeoutMs: opts.timeoutMs ?? DEFAULT_TIMEOUT_MS, cancelled: () => false, spawnGuard, warnings });
   if ('kind' in first) { return first; }
   const reopen = async (cancelled: () => boolean): Promise<Opened | undefined> => {
-    const r = await establish(opts, {
+    // Only the first attach may replace a daemon over config.json: a reconnect would otherwise ping-pong
+    // with a daemon respawned from a newer config, or one the user restarted on purpose.
+    const r = await establish({ ...opts, configSignature: undefined }, {
       timeoutMs: opts.reconnectTimeoutMs ?? DEFAULT_RECONNECT_TIMEOUT_MS, cancelled, spawnGuard, warnings: [],
     });
     return 'kind' in r ? undefined : r;

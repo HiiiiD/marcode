@@ -81,4 +81,24 @@ suite('daemon client: config signature', function () {
     assert.deepStrictEqual(r.warnings ?? [], []);
     assert.strictEqual((await readDaemonInfo(dir))?.token, d.info.token);
   });
+
+  test('a reconnect attaches to a respawned daemon with another config signature instead of replacing it', async () => {
+    await start({ configSignature: 'new' });
+    const lines: string[] = [];
+    const r = await connectOrSpawn({
+      ...opts(), retryBaseMs: 20,
+      spawn: async () => { spawns++; await start({ configSignature: 'newer', log: (l) => lines.push(l) }); },
+    });
+    if (r.kind !== 'attached') { throw new Error(r.message); }
+    clients.push(r.client);
+    const statuses: string[] = [];
+    r.client.onStatus((s) => statuses.push(s));
+    await daemons[0].stop();
+    await until(() => statuses.includes('connected') || statuses.includes('lost'), 15000);
+    await new Promise((res) => setTimeout(res, 300));
+    assert.deepStrictEqual(statuses, ['reconnecting', 'connected']);
+    assert.strictEqual(spawns, 1);
+    assert.strictEqual(lines.includes('shutdown requested'), false);
+    assert.strictEqual((await readDaemonInfo(dir))?.configSignature, 'newer');
+  });
 });
