@@ -1251,3 +1251,93 @@ suite('SelfControlMcpServer spawn_collaborators', () => {
     await server.dispose();
   });
 });
+
+suite('SelfControlMcpServer get_context_usage', () => {
+  const me = {
+    id: 'me', name: 'Me', providerId: 'claude', model: 'sonnet',
+    permissionMode: 'default' as const, status: 'running', cwd: '/repo',
+  };
+  const other = { ...me, id: 'ot', name: 'Other' };
+  const breakdown = {
+    systemPercent: 10, memoryPercent: 5, conversationPercent: 25, freePercent: 60, memoryFiles: [],
+    usedTokens: 80_000, windowTokens: 200_000,
+  };
+
+  test('reports the caller\'s own percentage and window', async () => {
+    let asked = '';
+    const server = new SelfControlMcpServer(fakeManager({
+      summaries: () => [me, other], visibleIds: () => ['me', 'ot'],
+      contextBreakdown: async (id) => { asked = id; return { ok: true, breakdown }; },
+    }));
+    const config = await server.start();
+    const res = await callToolAs(config, 'me', 'marcode__get_context_usage', {});
+    assert.strictEqual(res.isError, undefined);
+    assert.deepStrictEqual(JSON.parse(res.content[0].text), { percent: 40, usedTokens: 80_000, windowTokens: 200_000 });
+    assert.strictEqual(asked, 'me');
+    await server.dispose();
+  });
+
+  test('a name targets another visible session', async () => {
+    let asked = '';
+    const server = new SelfControlMcpServer(fakeManager({
+      summaries: () => [me, other], visibleIds: () => ['me', 'ot'],
+      contextBreakdown: async (id) => { asked = id; return { ok: true, breakdown }; },
+    }));
+    const config = await server.start();
+    await callToolAs(config, 'me', 'marcode__get_context_usage', { name: 'other' });
+    assert.strictEqual(asked, 'ot');
+    await server.dispose();
+  });
+
+  test('a session the caller cannot see is unknown', async () => {
+    const server = new SelfControlMcpServer(fakeManager({
+      summaries: () => [me, other], visibleIds: () => ['me'],
+      contextBreakdown: async () => ({ ok: true, breakdown }),
+    }));
+    const config = await server.start();
+    const res = await callToolAs(config, 'me', 'marcode__get_context_usage', { name: 'Other' });
+    assert.strictEqual(res.isError, true);
+    assert.strictEqual(res.content[0].text.includes('Unknown session'), true);
+    await server.dispose();
+  });
+
+  test('tokens are omitted when the provider reported neither, and stale is passed through', async () => {
+    const { usedTokens: _u, windowTokens: _w, ...bare } = breakdown;
+    const server = new SelfControlMcpServer(fakeManager({
+      summaries: () => [me], visibleIds: () => ['me'],
+      contextBreakdown: async () => ({ ok: true, breakdown: bare, stale: true }),
+    }));
+    const config = await server.start();
+    const res = await callToolAs(config, 'me', 'marcode__get_context_usage', {});
+    assert.deepStrictEqual(JSON.parse(res.content[0].text), { percent: 40, stale: true });
+    await server.dispose();
+  });
+
+  test('a provider that cannot report becomes an error, never a number', async () => {
+    const server = new SelfControlMcpServer(fakeManager({
+      summaries: () => [me], visibleIds: () => ['me'],
+      contextBreakdown: async () => ({ ok: false, reason: 'This provider does not report context usage' }),
+    }));
+    const config = await server.start();
+    const res = await callToolAs(config, 'me', 'marcode__get_context_usage', {});
+    assert.strictEqual(res.isError, true);
+    assert.strictEqual(res.content[0].text.includes('does not report'), true);
+    await server.dispose();
+  });
+
+  test('a manager without contextBreakdown is an error', async () => {
+    const server = new SelfControlMcpServer(fakeManager({ summaries: () => [me], visibleIds: () => ['me'] }));
+    const config = await server.start();
+    const res = await callToolAs(config, 'me', 'marcode__get_context_usage', {});
+    assert.strictEqual(res.isError, true);
+    await server.dispose();
+  });
+
+  test('no sid and no name cannot be answered', async () => {
+    const server = new SelfControlMcpServer(fakeManager({ contextBreakdown: async () => ({ ok: true, breakdown }) }));
+    const config = await server.start();
+    const res = await callTool(config, 'marcode__get_context_usage', {});
+    assert.strictEqual(res.isError, true);
+    await server.dispose();
+  });
+});
