@@ -3,12 +3,14 @@ import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { suite, test } from 'mocha';
+import { focusSession } from '../../host/focus-session';
 import { SelfControlMcpServer, type SessionManagerLike } from '../../host/self-control-mcp-server';
 import { SessionManager } from '../../host/session-manager';
 import { TranscriptStore } from '../../host/transcript-store';
 import type { MemoryHit, MemoryStore } from '../../memory/types';
 import { FakeProvider } from '../../providers/fake/fake-provider';
 import type { AgentProvider, SelfControlMcpConfig } from '../../providers/types';
+import { leafSessionIds } from '../../webview/components/layout-tree';
 
 function fakeManager(overrides: Partial<SessionManagerLike> = {}): SessionManagerLike {
   return {
@@ -799,6 +801,45 @@ suite('SelfControlMcpServer cross-session messaging', () => {
       await server.dispose();
     } finally {
       await second.dispose();
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('a real team spawn puts every worker in a visible pane, like spawn_session', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mar-self-control-'));
+    const provider = new FakeProvider(() => [{ kind: 'turn-end', reason: 'done' }]);
+    const manager = new SessionManager(new TranscriptStore(dir), new Map<string, AgentProvider>([['fake', provider]]), () => {});
+    await manager.init();
+    try {
+      const lead = await manager.create('fake', process.cwd());
+      await focusSession(manager, lead.state.id);
+      const server = new SelfControlMcpServer({
+        catalog: () => manager.catalog(),
+        create: (p, cwd, model, effort, mode) => manager.create(p, cwd, model, effort, mode),
+        setVisible: (ids) => manager.setVisible(ids as never),
+        reveal: (id) => focusSession(manager, id as never),
+        summaries: () => manager.summaries(),
+        visibleIds: () => manager.visibleIds(),
+        get: async (id) => manager.get(id as never),
+        transcriptTail: (id, limit) => manager.transcriptTail(id as never, limit),
+        close: (id) => manager.close(id as never),
+      });
+      const config = await server.start();
+      const res = await callToolAs(config, lead.state.id, 'marcode__spawn_collaborators', {
+        workers: [{ task: 'a' }, { task: 'b' }, { task: 'c' }],
+      });
+      assert.strictEqual(res.isError, undefined);
+      const out = JSON.parse(res.content[0].text) as { workers: { sessionId: string }[] };
+      const ids = manager.summaries().filter((s) => out.workers.some((w) => w.sessionId === s.name)).map((s) => s.id);
+      assert.strictEqual(ids.length, 3);
+      const inLayout = leafSessionIds(manager.layout().root);
+      for (const id of [lead.state.id, ...ids]) {
+        assert.strictEqual(inLayout.includes(id as never), true, `layout is missing ${id}`);
+        assert.strictEqual(manager.visibleIds().includes(id as never), true, `visible set is missing ${id}`);
+      }
+      await server.dispose();
+    } finally {
+      await manager.dispose();
       await fs.rm(dir, { recursive: true, force: true });
     }
   });
