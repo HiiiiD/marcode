@@ -1463,4 +1463,78 @@ suite('MessageRouter (session owned by another host)', () => {
     assert.strictEqual(items.some((i) => i.role === 'user'), false);
     assert.strictEqual(copy?.state.status === 'running', false);
   });
+
+  test('a run-shell for a foreign session is refused', async () => {
+    const owner = await host('vscode');
+    const session = await owner.manager.create('fake', '/w');
+    await owner.manager.persistNow();
+    const guest = await host('tui');
+    await guest.manager.syncRoster();
+
+    await guest.router.handle({ t: 'run-shell', id: session.state.id, command: 'echo nope' });
+    await settle();
+
+    const copy = guest.manager.get(session.state.id);
+    const items = copy ? (await copy.snapshot()).items : [];
+    assert.strictEqual(items.some((i) => i.role === 'shell'), false);
+  });
+});
+
+
+suite('MessageRouter shell', () => {
+  let dir: string;
+  let sent: HostToWebview[];
+  let manager: SessionManager;
+  let router: MessageRouter;
+
+  setup(async () => {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mar-router-shell-'));
+    sent = [];
+    const providers = new Map<string, AgentProvider>([['fake', new FakeProvider(() => [])]]);
+    manager = new SessionManager(new TranscriptStore(dir), providers, (m) => sent.push(m));
+    manager.setShellAliases({ node: { command: process.execPath, args: ['-e'] } });
+    await manager.init();
+    router = new MessageRouter(manager, (m) => sent.push(m), '/tmp');
+  });
+
+  teardown(async () => {
+    await manager.dispose();
+    await fs.rm(dir, { recursive: true, force: true });
+  });
+
+  const shellOf = async (id: string) =>
+    (await manager.get(id)!.snapshot()).items.find((i) => i.role === 'shell');
+  async function waitFor(cond: () => Promise<boolean>) {
+    for (let i = 0; i < 150 && !(await cond()); i++) { await new Promise((r) => setTimeout(r, 20)); }
+  }
+
+  test('run-shell appends a shell item to the session transcript', async () => {
+    const s = await manager.create('fake', os.tmpdir());
+    await router.handle({ t: 'run-shell', id: s.state.id, command: 'node console.log("routed")' });
+    await waitFor(async () => (await shellOf(s.state.id))?.state === 'done');
+    const item = await shellOf(s.state.id);
+    assert.strictEqual(item?.role === 'shell' && item.output.trim(), 'routed');
+  });
+
+  test('run-shell for an unknown session does nothing', async () => {
+    await router.handle({ t: 'run-shell', id: 'nope', command: 'node 1' });
+    assert.strictEqual(sent.some((m) => m.t === 'session-patch'), false);
+  });
+
+  test('a blank command is ignored', async () => {
+    const s = await manager.create('fake', os.tmpdir());
+    await router.handle({ t: 'run-shell', id: s.state.id, command: '   ' });
+    assert.strictEqual(await shellOf(s.state.id), undefined);
+  });
+
+  test('cancel-shell stops a running command', async () => {
+    const s = await manager.create('fake', os.tmpdir());
+    await router.handle({ t: 'run-shell', id: s.state.id, command: 'node setInterval(()=>{},1000)' });
+    const running = await shellOf(s.state.id);
+    assert.strictEqual(running?.id !== undefined, true);
+    await router.handle({ t: 'cancel-shell', id: s.state.id, itemId: running!.id });
+    await waitFor(async () => (await shellOf(s.state.id))?.state === 'cancelled');
+    const item = await shellOf(s.state.id);
+    assert.strictEqual(item?.role === 'shell' && item.state, 'cancelled');
+  });
 });

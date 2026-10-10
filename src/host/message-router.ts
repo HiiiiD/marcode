@@ -315,6 +315,22 @@ export class MessageRouter {
         await this.manager.deletePreset(msg.id);
         return;
 
+      case 'run-shell': {
+        const command = msg.command.trim();
+        if (command === '') { return; }
+        const known = this.manager.get(msg.id);
+        const session = known && !this.manager.isForeign(msg.id) ? known : await this.reopen(msg.id);
+        if (!session || this.manager.isForeign(msg.id)) { return; }
+        session.runShell(command);
+        return;
+      }
+
+      case 'cancel-shell': {
+        if (this.manager.isForeign(msg.id)) { return; }
+        this.manager.get(msg.id)?.cancelShell(msg.itemId);
+        return;
+      }
+
       case 'send': {
         // open() takes a foreign session over when its owner has let go; while it still holds on,
         // the dormant copy would park the message and sit busy with nothing ever running it.
@@ -783,7 +799,7 @@ const KNOWN_MESSAGE_TAGS = new Set<WebviewToHost['t']>([
   'memory-estimate', 'request-memory-status', 'memory-reindex', 'memory-resummarize', 'memory-cancel',
   'refresh-catalog', 'refresh-usage', 'open-settings', 'login-provider', 'open-external', 'export-table-csv',
   'export-image',
-  'file-search', 'set-favorite-models',
+  'file-search', 'set-favorite-models', 'run-shell', 'cancel-shell',
 ]);
 
 function isLayoutNode(node: unknown, seen = new Set<object>()): boolean {
