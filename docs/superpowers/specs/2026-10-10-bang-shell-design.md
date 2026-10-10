@@ -32,17 +32,18 @@ HostToWebview:
 ```
 
 Both host messages are replies, so they go out through the router's `emit` to the asking connection.
-`wantsFor` needs no change: `REVIEW_WANTS`, `FLEET_WANTS` and `HISTORY_WANTS` are allow-lists for
-`bus.post`, and nothing here is posted there. `run-shell` is added to the router's client-only set
-(`message-router.ts`, the list near line 777) if that list is what bind-surface uses to decide what is
-not forwarded; to be confirmed in the plan.
+`wantsFor` needs no change: `REVIEW_WANTS`, `FLEET_WANTS` and `HISTORY_WANTS` gate `bus.post`, and nothing here is
+posted there. `run-shell` and `cancel-shell` must be added to `KNOWN_MESSAGE_TAGS` in `message-router.ts`, the
+allow-list of tags the router accepts; an unlisted tag is dropped.
 
 ## Host
 
 New `src/host/shell-runner.ts`, no `vscode` import. Pure Node `child_process.spawn`.
 
-- **Shell:** `bash -c` on POSIX; on Windows, `powershell.exe -NoProfile -Command` (the platform's primary
-  shell). `windowsHide: true`.
+- **Shell:** `bash -c` by default on every platform. On Windows it resolves Git Bash (`bash.exe` on PATH, then
+  the Git for Windows install); if none is found, the run ends with an error saying so and pointing at the
+  `!pwsh` prefix. A `!pwsh <command>` or `!powershell <command>` prefix selects PowerShell
+  (`-NoProfile -Command`) explicitly, on any platform where it exists. `windowsHide: true`.
 - **cwd:** the session's current `cwd`, read when the command starts, so a worktree move is honoured.
 - **Environment:** `process.env` as the host has it. No secrets are added.
 - **Limits:** 120s wall timeout, 256 KiB of output across both streams. At the cap the process is killed and
@@ -141,5 +142,5 @@ The webview reducer and the TUI store share the `client-core` slice, so the logi
 
 ## Open points for the plan
 
-- Confirm how `bind-surface` and the router's client-only list treat `run-shell`.
-- Windows tree-kill details and whether `powershell.exe` or `pwsh` is preferred.
+- Confirm `bind-surface` does not intercept `run-shell`.
+- Windows tree-kill details, Git Bash discovery order, and whether the prefix should instead be a setting.
