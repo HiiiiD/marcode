@@ -1,74 +1,54 @@
 import * as vscode from 'vscode';
+import { requestAttachmentPath } from '../client-core/attachment-request';
 import type { AgentsMdNudgeController } from './agents-md-nudge';
-import type { AttachmentStore } from './attachment-store';
-import {
-  MessageRouter, type AttachmentHost, type ConfigHost, type EditorContextHost, type FileSearch,
-  type UpdateNotifyHost,
-} from './message-router';
-import type { SessionManager } from './session-manager';
+import { bindSurface, type SurfaceBinding } from './bind-surface';
+import { trackLayout } from './layout-cache';
+import type { SurfaceLink } from './surface-link';
 import { renderWebviewHtml } from './webview-html';
-import type { HostToWebview, SessionId, WebviewToHost } from '../protocol/messages';
+import type { HostToWebview, PaneLayout, SessionId } from '../protocol/messages';
+
+export interface SidebarActions {
+  openReview(): void;
+  openHistory(): void;
+  openFleet(focus?: { sessionId: SessionId; itemId: string }): void;
+}
 
 export class PanelViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'mar-code.panel';
   private view: vscode.WebviewView | undefined;
+  private binding: SurfaceBinding | undefined;
+  private layoutCache: ReturnType<typeof trackLayout> | undefined;
 
   constructor(
     private readonly extensionUri: vscode.Uri,
-    private readonly manager: SessionManager,
-    private readonly defaultCwd: string,
-    private readonly editor: EditorContextHost,
-    private readonly attachments: AttachmentStore | undefined,
-    private readonly picker: AttachmentHost | undefined,
-    private readonly onOpenReview: () => void,
-    private readonly onOpenFleet: (focus?: { sessionId: SessionId; itemId: string }) => void,
-    private readonly fileSearch?: FileSearch,
+    private readonly connect: () => Promise<SurfaceLink>,
+    /** Pasted attachments are previewed from disk, so this joins `dist` as a resource root. */
+    private readonly attachmentsBaseDir: string,
+    private readonly actions: SidebarActions,
     private readonly agentsMdNudge?: AgentsMdNudgeController,
-    /** `marcode.favoriteModels`, read fresh each time the view resolves. */
-    private readonly favoriteModels?: () => string[],
-    private readonly configHost?: ConfigHost,
-    private readonly updateNotify?: UpdateNotifyHost,
-    /** `marcode.showCacheTimer`. Static like `enabledProviders` — a change needs a reload. */
+    /** A VS Code setting the daemon cannot see, so it is stamped onto `hydrate` here. Reload to change. */
     private readonly showCacheTimer: boolean = false,
-    private readonly onOpenHistory: () => void = () => {},
   ) {}
 
   post(msg: HostToWebview): void {
     void this.view?.webview.postMessage(msg);
   }
 
-  /**
-   * Best-effort: the path comes from a provider's context report and can
-   * name a file that has since moved or that this window cannot read. A
-   * failed open is logged, never surfaced as an error dialog — the user
-   * asked to peek at a memory file, not to run a command.
-   *
-   * The path is checked against the memory-file set the named session most
-   * recently reported before anything is opened. `Uri.file` already pins
-   * the scheme, so this is not about command escalation; it is that a path
-   * arriving over `postMessage` has no relationship to anything the host
-   * has seen, and a buggy or compromised provider must not be able to get
-   * an arbitrary file on disk opened in an editor.
-   */
-  private async openFile(id: SessionId, path: string): Promise<void> {
-    if (!this.manager.canOpenFile(id, path)) {
-      console.error('[mar-code] refusing to open a path this session never reported', path);
-      return;
-    }
-    try {
-      const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(path));
-      await vscode.window.showTextDocument(doc, { preview: true });
-    } catch (err) {
-      console.error('[mar-code] could not open', path, err);
-    }
+  /** The editor chip tracks the active file; the daemon needs the same value for sends. */
+  pushContext(ctx: unknown): void {
+    this.post({ t: 'editor-context', ctx: ctx as never });
+    this.binding?.link()?.pushContext(ctx);
   }
 
-  private async openAttachment(id: SessionId, attachmentId: string, itemId?: string): Promise<void> {
-    const path = await this.manager.attachmentPath(id, attachmentId, itemId);
+  layout(): PaneLayout | undefined {
+    return this.layoutCache?.current();
+  }
+
+  private async openAttachment(link: SurfaceLink, ref: { id: string; attachmentId: string; itemId?: string }): Promise<void> {
+    const path = await requestAttachmentPath(link.transport, ref);
     if (!path) { return; }
     try {
-      // `vscode.open` picks the right editor: the image viewer for a
-      // screenshot, a text editor otherwise. `openTextDocument` fails on images.
+      // `vscode.open` picks the right editor: the image viewer for a screenshot, a text editor otherwise.
       await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(path));
     } catch (err) {
       console.error('[mar-code] could not open attachment', path, err);
@@ -79,71 +59,48 @@ export class PanelViewProvider implements vscode.WebviewViewProvider {
     this.view = view;
     view.webview.options = {
       enableScripts: true,
-      // The attachment store joins `dist` as a root so a pasted screenshot can
-      // be previewed from disk instead of having its bytes re-sent as a data
-      // URL on every render. Still local-only: this widens the roots by one
-      // directory the extension itself owns, and the CSP is untouched.
       localResourceRoots: [
         vscode.Uri.joinPath(this.extensionUri, 'dist'),
-        ...(this.attachments ? [vscode.Uri.file(this.attachments.baseDir)] : []),
+        vscode.Uri.file(this.attachmentsBaseDir),
       ],
     };
     view.webview.html = this.render(view.webview);
 
-    const router = new MessageRouter(
-      this.manager, (m) => this.post(m), this.defaultCwd, this.editor, this.attachments, this.picker,
-      undefined, this.fileSearch, this.favoriteModels?.() ?? [], this.configHost, this.updateNotify,
-      this.showCacheTimer,
-    );
-    view.webview.onDidReceiveMessage(async (raw: WebviewToHost) => {
-      try {
-        // `open-file` is the one message needing the `vscode` API, which
-        // MessageRouter must not import (it is unit-tested outside the
-        // extension host). Intercept it here rather than widening the
-        // router's dependencies.
-        if (raw?.t === 'open-file') {
-          await this.openFile(raw.id, raw.path);
-          return;
+    const binding = bindSurface(view.webview, this.connect, {
+      intercept: async (raw, link) => {
+        switch (raw?.t) {
+          case 'open-attachment': await this.openAttachment(link, raw); return true;
+          case 'open-review': this.actions.openReview(); return true;
+          case 'open-history': this.actions.openHistory(); return true;
+          case 'open-fleet': this.actions.openFleet(); return true;
+          case 'open-fleet-subagent': this.actions.openFleet({ sessionId: raw.sessionId, itemId: raw.itemId }); return true;
+          case 'agents-md-nudge-action': await this.agentsMdNudge?.handleAction(raw.action, raw.dirs); return true;
+          case 'ready':
+            // A lost link drops this ready, and the webview has no state to show why until told.
+            if (link.status() !== 'connected') { this.post({ t: 'host-link', status: link.status() }); }
+            return false;
+          default: return false;
         }
-        if (raw?.t === 'open-attachment') {
-          await this.openAttachment(raw.id, raw.attachmentId, raw.itemId);
-          return;
-        }
-        if (raw?.t === 'open-review') {
-          this.onOpenReview();
-          return;
-        }
-        if (raw?.t === 'open-history') {
-          this.onOpenHistory();
-          return;
-        }
-        if (raw?.t === 'open-fleet') {
-          this.onOpenFleet();
-          return;
-        }
-        if (raw?.t === 'open-fleet-subagent') {
-          this.onOpenFleet({ sessionId: raw.sessionId, itemId: raw.itemId });
-          return;
-        }
-        // Same reason as open-file: this needs workspaceState/fs, which
-        // MessageRouter must not import.
-        if (raw?.t === 'agents-md-nudge-action') {
-          await this.agentsMdNudge?.handleAction(raw.action, raw.dirs);
-          return;
-        }
-        await router.handle(raw);
-        if (raw?.t === 'ready') {
-          await this.agentsMdNudge?.resend();
-        }
-      } catch (err) {
-        console.error('[mar-code] message handling failed', err);
-      }
+      },
+      onHostMessage: (m) => (m.t === 'hydrate' ? { ...m, showCacheTimer: this.showCacheTimer } : undefined),
+      // hydrate resets the nudge card, so the hits go out again after every one (reloads and reconnects included).
+      afterHostMessage: (m) => { if (m.t === 'hydrate') { void this.agentsMdNudge?.resend(); } },
+      onLink: (link) => {
+        const cache = trackLayout(link.transport);
+        this.layoutCache = cache;
+        const offStatus = link.onStatus((status) => { this.post({ t: 'host-link', status }); });
+        return () => { offStatus(); cache.dispose(); };
+      },
     });
+    this.binding = binding;
 
     // One scan per activate/reload, not a live watcher — see agents-md-nudge.ts.
     void this.agentsMdNudge?.scan();
 
-    view.onDidDispose(() => { this.view = undefined; });
+    view.onDidDispose(() => {
+      if (this.binding === binding) { this.binding = undefined; this.layoutCache = undefined; this.view = undefined; }
+      binding.dispose();
+    });
   }
 
   render(webview: vscode.Webview): string {
@@ -155,9 +112,7 @@ export class PanelViewProvider implements vscode.WebviewViewProvider {
         vscode.Uri.joinPath(this.extensionUri, 'dist', 'webview.css'),
       ),
       title: 'Marcode',
-      attachmentBase: this.attachments
-        ? webview.asWebviewUri(vscode.Uri.file(this.attachments.baseDir)).toString()
-        : '',
+      attachmentBase: webview.asWebviewUri(vscode.Uri.file(this.attachmentsBaseDir)).toString(),
     });
   }
 }

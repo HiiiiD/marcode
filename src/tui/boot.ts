@@ -12,7 +12,7 @@ import { MessageRouter } from '../host/message-router';
 import { createTerminalFileIndex } from '../host/terminal-file-index';
 import { marcodeHome, resolveWorkspaceDir } from '../host/workspace-dir';
 import { APP_VERSION } from '../shared/app-version';
-import { requestAttachmentPath } from './attachment-request';
+import { requestAttachmentPath } from '../client-core/attachment-request';
 import { openPath } from './open-path';
 import { terminalConfigHost, terminalEditorHost } from './tui-hooks';
 import { findGitRoot } from './workspace-root';
@@ -92,7 +92,7 @@ export async function bootHost(opts: BootOptions): Promise<Booted> {
       workspaceDir, clientKind: 'tui', roots: [workspaceRoot], defaultCwd: opts.cwd,
       identity: { protocolVersion: PROTOCOL_VERSION, appVersion: APP_VERSION },
       hooks: daemonHooks(fileIndex, favorites),
-      configSignature: reloadSignature(loaded.config),
+      configSignature: reloadSignature(loaded.config), replaceOlderBuild: true,
       spawn: async () => {
         await fs.mkdir(workspaceDir, { recursive: true });
         await spawn(workspaceDir, [workspaceRoot]);
@@ -117,6 +117,8 @@ function daemonHooks(fileIndex: FileIndex, favorites: Favorites): ClientHooks {
     context: () => null,
     act: (op, args) => {
       if (op === 'setFavoriteModels') { void favorites.set(args[0] as string[]); return; }
+      // Sent to sidebar clients only; a terminal has no toast to show.
+      if (op === 'notify' || op === 'shellNoise') { return; }
       (editor[op] as (...a: unknown[]) => void)(...args);
     },
     // The TUI has no file picker; an empty pick is what the in-process router's missing picker yields too.

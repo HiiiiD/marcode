@@ -5,9 +5,10 @@ the TUI would otherwise run in-process, plus a local socket that clients attach 
 agents run in the daemon rather than in the client, quitting the TUI no longer stops them, and the
 next client to attach sees the same sessions still running.
 
-There is one daemon per workspace directory (`~/.marcode/workspaces/<slug>`). Today only the TUI
-attaches to it; the VS Code extension still runs its own host and shows daemon-owned sessions
-read-only ("Running in daemon (pid …)"), the same as any other foreign lease.
+There is one daemon per workspace directory (`~/.marcode/workspaces/<slug>`). The TUI and the
+VS Code extension both attach to it, so a session running in one is live in the other. When a client
+cannot use the daemon it runs its own host and shows daemon-owned sessions read-only
+("Running in daemon (pid …)"), the same as any other foreign lease.
 
 ## Lifecycle
 
@@ -39,6 +40,25 @@ read-only ("Running in daemon (pid …)"), the same as any other foreign lease.
   starts; a reconnect attaches to whatever daemon it finds.
 - **Unresponsive.** A daemon whose record is live but that accepts and never answers is waited on
   and never replaced. Only a refused connect (nobody listening) marks a record stale.
+
+## VS Code extension
+
+- **Spawn.** The extension runs its bundled `dist/daemon.js` with `process.execPath` and
+  `ELECTRON_RUN_AS_NODE=1`, detached, logging to `daemon.log`. Checked against VS Code's Electron 42 / Node 24:
+  the bundle starts, `node:sqlite` has FTS5, and `memory.sqlite` is created.
+- **Connections.** One per surface: the sidebar at activation, and the Changes, Fleet and History tabs when they
+  open or are restored. A window's mode (daemon or in-process) is decided once, by the sidebar connection.
+- **Reload.** Closing or reloading a window closes its sockets only; running turns continue and the next window
+  re-hydrates. A dropped link shows "Reconnecting to the background host…" in the sidebar, then
+  "Lost the background host; reload the window" if the retries run out.
+- **Fallback.** When the daemon cannot be used the window runs the host in-process and shows
+  `Running without the background host: <reason>` once. `daemon.enabled = false` does the same silently.
+- **Notices.** Daemon-side warnings, shell-profile noise and "provider update available" reach the sidebar of
+  every attached window as `notify` / `shellNoise` acts, and are logged to `daemon.log`. Warnings raised before any
+  window is attached appear only in the log.
+- **Stale builds.** With the same protocol, an idle daemon whose app version is older than the client's is replaced;
+  a busy one is attached with a notice; a newer one is never replaced. Dev or prerelease versions are left alone.
+- **Settings the daemon cannot see.** `marcode.showCacheTimer` is stamped onto `hydrate` by the sidebar.
 
 ## Files
 

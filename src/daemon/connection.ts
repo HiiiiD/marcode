@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { ClientFrame, ClientKind, DaemonIdentity, LoginRecipeWire, RejectReason, ServerFrame } from '../protocol/daemon-wire';
+import type { ActOp, ClientFrame, ClientKind, DaemonIdentity, LoginRecipeWire, RejectReason, ServerFrame } from '../protocol/daemon-wire';
 import type { HostToWebview, WebviewToHost } from '../protocol/messages';
 import type { PostClient } from '../host/post-bus';
 import { wantsFor } from './client-wants';
@@ -57,6 +57,8 @@ export class DaemonConnection {
 
   get kind(): ClientKind | undefined { return this.hello?.clientKind; }
   get attached(): boolean { return this.unbus !== undefined && !this.closed; }
+  act(op: ActOp, args: unknown[]): void { if (this.hello) { this.send({ f: 'act', op, args }); } }
+
   close(): void { this.socket.end(); this.teardown(); }
 
   private send(frame: ServerFrame): void { if (!this.closed) { this.socket.write(encodeFrame(frame)); } }

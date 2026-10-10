@@ -55,13 +55,18 @@ extension.ts
 with a named pipe / unix socket in front of it. Each connection sends `hello` and gets its own
 `MessageRouter` and a `PostBus` registration gated by its `clientKind`; frames are NDJSON
 (`src/protocol/daemon-wire.ts`). Client-local work flows back as `act` (one-way) and `req`/`res`
-(`pick`, `search`) frames, editor context as pushed `ctx` frames. The TUI attaches through
-`src/daemon-client/` (`connectOrSpawn`) and falls back to an in-process host when it cannot. Only
-the TUI attaches today; the extension is the next plan. See `docs/daemon.md`.
+(`pick`, `search`) frames, editor context as pushed `ctx` frames. The TUI and the extension attach
+through `src/daemon-client/` (`connectOrSpawn`) and fall back to an in-process host when they cannot.
+In the extension every panel holds a `SurfaceLink` from `host/host-connection.ts`, never a manager or
+router. See `docs/daemon.md`.
 
 | Path | Responsibility |
 |---|---|
-| `src/extension.ts` | `activate()`: resolve the workspace directory under `~/.marcode`, load `config.json`, offer the one-time migration, call `createHost`, then construct `PostBus` + `ReviewPanel`, register the sidebar webview view, the `marcode.review.open` command, and the review tab's `WebviewPanelSerializer` |
+| `src/extension.ts` | Thin entry: `activate`/`deactivate` delegate to `host/activate.ts`, which resolves the workspace directory under `~/.marcode`, loads `config.json`, runs the one-time migration, opens the host connection (daemon or in-process), builds the panels over `SurfaceLink`s, and registers the views, commands and tab serializers |
+| `src/host/surface-link.ts`, `host-connection.ts`, `in-process-link.ts` | `SurfaceLink`/`HostConnection`; `openHostConnection` decides daemon or in-process once and hands each panel a link (a `DaemonClient`, or a router + bus loopback) |
+| `src/host/bind-surface.ts`, `layout-cache.ts`, `await-message.ts` | Wires one webview to a link (queues until the link exists, intercepts client-only messages); the sidebar's last `PaneLayout`; a request/reply helper for commands |
+| `src/host/activate.ts`, `commands.ts`, `activation-support.ts`, `memory-reindex-flow.ts` | The body of `activate()`; command registration; legacy-settings seed, storage import and profile warning; the memory reindex dialog logic |
+| `src/host/vscode-hooks.ts`, `act-adapter.ts`, `editor-actions.ts` | The VS Code implementation of the editor/picker/search/config/update hooks; adapting them to a `DaemonClient` act/ask; reveal, diff, export, open-external, login terminal |
 | `src/host/create-host.ts` | `createHost()`: the store, memory, self-control server, provider and summarizer wiring, with no `vscode` import — what `activate()` and a terminal client both call |
 | `src/host/workspace-dir.ts` + `src/shared/workspace-dir.ts` | `marcodeHome` (`MARCODE_HOME` or `~/.marcode`) and `resolveWorkspaceDir`: a workspace to `workspaces/<slug>`, verified by `workspace.json`, numbered on a slug collision |
 | `src/host/lease.ts`, `src/host/session-ownership.ts` | Per-session lease files (`sessions/<id>.lock`), one heartbeat timer; a lease is stale after 20s or when its pid is dead on the same machine |
@@ -110,7 +115,7 @@ the TUI attaches today; the extension is the next plan. See `docs/daemon.md`.
 | `src/host/post-bus.ts` | Fan-out to registered clients; `REVIEW_WANTS` is the review tab's allow-list |
 | `src/host/review-panel.ts` | The review editor tab: creation, restore, transport |
 | `src/host/history-panel.ts` | The session history editor tab: creation, restore, transport. Its bus allow-list (`HISTORY_WANTS`) is `sessions-changed` only — every column it shows is already on `SessionState` |
-| `src/host/focus-session.ts` | Adds a session to the sidebar split and reveals the sidebar; shared by the fleet and history tabs |
+| `src/host/focus-session.ts` | Adds a session to the split (`focus-session` in the router); the fleet and history tabs reveal the sidebar themselves |
 | `src/memory/session-digest.ts` | Thin wrapper: `digestSession(items)` = the extractive `indexLine`, kept for the memory-off history path |
 | `src/memory/digest.ts` | `SessionDigest`, the extractive digest, `indexLine` (the one-line pointer), `digestText` |
 | `src/host/digest/digest-service.ts` | The only writer of a digest: serial queue, close-time refresh, reindex with resume |
@@ -140,7 +145,7 @@ the TUI attaches today; the extension is the next plan. See `docs/daemon.md`.
 | `src/tui/ui/tokens/` | `deriveTokens` (terminal palette to RGB surfaces, diff and syntax tints), `TokensProvider`, `detectTokens`; consumers fall back to named colors when tokens are `undefined` |
 | `src/tui/ui/transcript/panel.tsx`, `diff-block.tsx`, `diff-view.ts` | Tinted left-bar card frame; native `<diff>` with width-chosen split/unified; hunk validation before a patch reaches the renderer |
 
-**Build:** esbuild produces five bundles — `dist/extension.js` (node/CJS, the host) and four
+**Build:** esbuild produces six bundles — `dist/extension.js` (node/CJS, the host), `dist/daemon.js` (node/CJS, the detached daemon the extension spawns) and four
 browser/IIFE webview bundles, one per surface: `dist/webview.js`/`.css` for the sidebar,
 `dist/review.js`/`.css` for the review tab, `dist/fleet.js`/`.css` for the fleet tab and
 `dist/history.js`/`.css` for the history tab. TypeScript, React 19, Tailwind v4.
@@ -170,6 +175,9 @@ These are not style preferences. Breaking one breaks the design.
 - **A client never touches a session's JSONL or the manager directly when a daemon is attached.**
   Everything goes over the socket as messages, including what used to be a direct call (the
   attachment path is the `request-attachment-path` / `attachment-path` pair).
+- **Extension panels hold a `SurfaceLink`, never a `SessionManager`, `PostBus` or `MessageRouter`.** A window's mode
+  (daemon or in-process) is decided once, by the sidebar's connect; later surfaces never re-decide it. With a daemon
+  attached, `deactivate()` closes sockets and never disposes a host.
 - **A client never replaces a daemon it cannot prove is gone or older and idle.** A newer-protocol
   daemon is left alone (fallback), a busy older one too, and a handshake timeout never marks
   `daemon.json` stale; only a refused connect does.
@@ -273,7 +281,7 @@ These are not style preferences. Breaking one breaks the design.
   `fleet-diff`) — a new message type posted through the manager defaults to
   not reaching review, and `session-patch` never will, because the review
   client simply never asks for it. It is not the whole story, though:
-  `ReviewPanel` also owns its own `MessageRouter`, whose `emit` posts straight
+  The review tab's link also carries its own `MessageRouter` (daemon-side, or local in-process), whose `emit` posts straight
   to the same webview outside the bus entirely — that is how `hydrate` and
   `editor-context` actually reach this client, each in direct answer to a
   message it sent (`ready`). The allow-list is what stops an *unsolicited*

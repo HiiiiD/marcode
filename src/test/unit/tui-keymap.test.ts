@@ -5,8 +5,8 @@ const idle = { running: false };
 const busy = { running: true };
 
 suite('tui keymap', () => {
-  test('Ctrl+C interrupts a running turn and otherwise asks to quit', () => {
-    assert.deepStrictEqual(actionFor('composer', { name: 'c', ctrl: true }, busy), { do: 'interrupt' });
+  test('Ctrl+C asks to quit even while a turn runs, so leaving never stops the agent', () => {
+    assert.deepStrictEqual(actionFor('composer', { name: 'c', ctrl: true }, busy), { do: 'quit-request' });
     assert.deepStrictEqual(actionFor('composer', { name: 'c', ctrl: true }, idle), { do: 'quit-request' });
   });
   test('Esc interrupts only while running', () => {

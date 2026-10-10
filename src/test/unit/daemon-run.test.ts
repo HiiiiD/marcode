@@ -73,6 +73,26 @@ suite('runDaemon', function () {
     c.sock.destroy();
   });
 
+  test('host warnings and shell noise reach a sidebar client as acts, and are harmless before one attaches', async () => {
+    let notifier: { warn(m: string): void; shellNoise(p: string): void } | undefined;
+    const d = await start({ onNotifier: (n) => { notifier = n; } });
+    notifier?.warn('before anyone');
+    const sidebar = await client(d.info.endpoint);
+    const tui = await client(d.info.endpoint);
+    sidebar.send({ ...hello(d.info), clientKind: 'sidebar' });
+    tui.send(hello(d.info));
+    await until(() => sidebar.frames.length > 0 && tui.frames.length > 0);
+    notifier?.warn('boom');
+    notifier?.shellNoise('Profile.ps1');
+    await until(() => sidebar.frames.filter((f) => f.f === 'act').length === 2);
+    assert.deepStrictEqual(
+      sidebar.frames.filter((f) => f.f === 'act').map((f) => [f.op, f.args]),
+      [['notify', ['warn', 'boom']], ['shellNoise', ['Profile.ps1']]],
+    );
+    assert.strictEqual(tui.frames.some((f) => f.f === 'act'), false);
+    sidebar.sock.destroy(); tui.sock.destroy();
+  });
+
   test('stop() removes daemon.json, closes the socket, resolves done, and is idempotent', async () => {
     const d = await start();
     const c = await client(d.info.endpoint);

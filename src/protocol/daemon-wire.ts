@@ -14,7 +14,8 @@ export type RejectReason = 'protocol-mismatch' | 'bad-token' | 'upgrade-busy' | 
 
 export type ActOp =
   | 'reveal' | 'openDiff' | 'openSettings' | 'openExternal'
-  | 'exportCsv' | 'exportImage' | 'login' | 'setFavoriteModels';
+  | 'exportCsv' | 'exportImage' | 'login' | 'setFavoriteModels'
+  | 'notify' | 'shellNoise';
 export type AskOp = 'pick' | 'search';
 
 export interface DaemonIdentity { protocolVersion: number; appVersion: string }

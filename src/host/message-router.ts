@@ -1,5 +1,6 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { focusSession } from './focus-session';
 import type { SessionManager } from './session-manager';
 import type { AgentSession } from './agent-session';
 import { MAX_PENDING, type AttachmentStore } from './attachment-store';
@@ -602,13 +603,12 @@ export class MessageRouter {
         return;
       }
 
-      // PanelViewProvider intercepts this before delegating (it needs the
-      // `vscode` API, which this module must not import) and is also where
-      // `msg.path` is validated against the memory files `msg.id` reported —
-      // that check stays on the provider/manager side for the same reason.
-      // It is listed here, and in KNOWN_MESSAGE_TAGS, so a stray one is a
-      // deliberate no-op rather than a "malformed message" error log.
       case 'open-file':
+        if (!this.manager.canOpenFile(msg.id, msg.path)) {
+          console.error('[mar-code] refusing to open a path this session never reported', msg.path);
+          return;
+        }
+        this.editor.reveal(msg.path);
         return;
 
       // Intercepted by PanelViewProvider (needs `vscode`), like open-file.
@@ -642,13 +642,8 @@ export class MessageRouter {
       case 'open-fleet-subagent':
         return;
 
-      // Same precedent as open-review: FleetPanel intercepts this before
-      // delegating, since revealing the sidebar view container needs the
-      // vscode API this module must not import. Listed here, and in
-      // KNOWN_MESSAGE_TAGS, so a stray one — this router also backs
-      // PanelViewProvider itself, where nothing intercepts it — is a
-      // deliberate no-op rather than a "malformed message" error log.
       case 'focus-session':
+        await focusSession(this.manager, msg.id);
         return;
 
       case 'focus-pane':
@@ -667,6 +662,10 @@ export class MessageRouter {
         // Before the sweep: the strip and row buttons should not wait on however many digests are stale.
         this.emit({ t: 'memory-status', ...this.manager.memoryStatus() });
         await this.manager.ensureSummaries();
+        return;
+
+      case 'request-memory-status':
+        this.emit({ t: 'memory-status', ...this.manager.memoryStatus() });
         return;
 
       case 'memory-estimate': {
@@ -781,7 +780,7 @@ const KNOWN_MESSAGE_TAGS = new Set<WebviewToHost['t']>([
   'request-fleet-diff', 'request-branch-refs', 'open-file-diff', 'open-review', 'open-fleet',
   'open-fleet-subagent',
   'focus-session', 'focus-pane', 'set-pinned', 'set-draft', 'request-history-summaries', 'open-history',
-  'memory-estimate', 'memory-reindex', 'memory-resummarize', 'memory-cancel',
+  'memory-estimate', 'request-memory-status', 'memory-reindex', 'memory-resummarize', 'memory-cancel',
   'refresh-catalog', 'refresh-usage', 'open-settings', 'login-provider', 'open-external', 'export-table-csv',
   'export-image',
   'file-search', 'set-favorite-models',

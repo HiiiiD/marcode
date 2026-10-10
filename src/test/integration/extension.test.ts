@@ -4,12 +4,13 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { PanelViewProvider } from '../../host/panel-view-provider';
-import type { EditorContextHost } from '../../host/message-router';
-import type { SessionManager } from '../../host/session-manager';
 
 suite('extension', () => {
   suiteSetup(() => {
-    process.env.MARCODE_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'marcode-it-'));
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'marcode-it-'));
+    process.env.MARCODE_HOME = home;
+    // A real activation would otherwise spawn a detached daemon that outlives the test run.
+    fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ daemon: { enabled: false } }));
   });
 
   test('activates and registers the panel view', async () => {
@@ -37,38 +38,26 @@ suite('PanelViewProvider CSP', () => {
   }
 
   const extensionUri = vscode.Uri.file(__dirname);
-  // render() never touches the manager; these tests exercise only HTML
-  // generation, so an untyped stub is sufficient.
-  const managerStub = {} as unknown as SessionManager;
-  const editorStub: EditorContextHost = {
-    current: () => null, reveal: () => {}, openDiff: () => {}, openSettings: () => {},
-    openExternal: () => {},
-    exportCsv: () => {},
-    exportImage: () => {},
-    login: () => {},
-  };
+  // render() never opens a link; these tests exercise only HTML generation.
+  const connectStub = () => Promise.reject(new Error('not used'));
+  const actions = { openReview: () => {}, openHistory: () => {}, openFleet: () => {} };
+  const newProvider = () => new PanelViewProvider(extensionUri, connectStub, '/tmp/attachments', actions);
 
   test('CSP contains default-src none', () => {
-    const provider = new PanelViewProvider(
-      extensionUri, managerStub, '/tmp', editorStub, undefined, undefined, () => {}, () => {},
-    );
+    const provider = newProvider();
     const html = provider.render(makeWebviewStub());
     assert.match(html, /default-src 'none'/);
   });
 
   test('CSP does not contain unsafe-inline or unsafe-eval', () => {
-    const provider = new PanelViewProvider(
-      extensionUri, managerStub, '/tmp', editorStub, undefined, undefined, () => {}, () => {},
-    );
+    const provider = newProvider();
     const html = provider.render(makeWebviewStub());
     assert.ok(!html.includes('unsafe-inline'), 'CSP should not contain unsafe-inline');
     assert.ok(!html.includes('unsafe-eval'), 'CSP should not contain unsafe-eval');
   });
 
   test('nonce in the CSP meta tag matches the nonce on the script tag', () => {
-    const provider = new PanelViewProvider(
-      extensionUri, managerStub, '/tmp', editorStub, undefined, undefined, () => {}, () => {},
-    );
+    const provider = newProvider();
     const html = provider.render(makeWebviewStub());
 
     const cspMatch = html.match(/Content-Security-Policy" content="[^"]*script-src 'nonce-([^']+)'/);
@@ -80,9 +69,7 @@ suite('PanelViewProvider CSP', () => {
   });
 
   test('two separate renders produce different nonces', () => {
-    const provider = new PanelViewProvider(
-      extensionUri, managerStub, '/tmp', editorStub, undefined, undefined, () => {}, () => {},
-    );
+    const provider = newProvider();
     const first = provider.render(makeWebviewStub());
     const second = provider.render(makeWebviewStub());
 

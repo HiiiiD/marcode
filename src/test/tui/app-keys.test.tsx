@@ -37,13 +37,14 @@ test('the quit arm expires: the notice clears and the next Ctrl+C arms again', a
   expect(m.frame()).toContain('Press Ctrl+C again');
 });
 
-test('Ctrl+C during a running turn interrupts instead of quitting', async () => {
+test('Ctrl+C during a running turn arms quit and never interrupts', async () => {
   let quit = 0;
   m = await mount(<App {...props} onQuit={() => { quit++; }} />);
   await m.fromHost(hydrateMsg({ sessions: [summary('s1', { status: 'running' })], snapshots: [snapshot('s1', { status: 'running' })] }));
   await m.press('c', { ctrl: true });
   expect(quit).toBe(0);
-  expect(m.posted.some((p) => p.t === 'interrupt' && p.id === 's1')).toBe(true);
+  expect(m.frame()).toContain('Press Ctrl+C again');
+  expect(m.posted.some((p) => p.t === 'interrupt')).toBe(false);
 });
 
 test('Esc during a running turn interrupts', async () => {
@@ -127,15 +128,15 @@ test('a foreign session: Esc and the cyclers post nothing for it', async () => {
   expect(m.frame().includes('Search:') || m.frame().includes('Permission mode')).toBe(false);
 });
 
-test('an owned running session: the first Ctrl+C interrupts, a second within the window quits', async () => {
+test('an owned running session: two Ctrl+C within the window quit and post no interrupt', async () => {
   let quit = 0;
   m = await mount(<App {...props} onQuit={() => { quit++; }} />);
   await m.fromHost(hydrateMsg({ sessions: [summary('s1', { status: 'running' })], snapshots: [snapshot('s1', { status: 'running' })] }));
   await m.press('c', { ctrl: true });
-  expect(m.posted.filter((p) => p.t === 'interrupt').length).toBe(1);
   expect(quit).toBe(0);
   await m.press('c', { ctrl: true });
   expect(quit).toBe(1);
+  expect(m.posted.some((p) => p.t === 'interrupt')).toBe(false);
 });
 
 test('the new-session dialog keeps its option rows visible in a short terminal', async () => {

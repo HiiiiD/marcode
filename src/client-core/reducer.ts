@@ -145,6 +145,8 @@ export interface ClientState {
    * absent from the next message rather than merged against.
    */
   agentsMdNudgeHits: Array<{ dir: string; kind: 'migrate' | 'add-stub'; error?: string }>;
+  /** Carried across hydrate: a reconnect re-hydrates, and the banner clears on the `connected` that follows. */
+  hostLink: 'connected' | 'reconnecting' | 'lost';
   /**
    * `marcode.favoriteModels`: starred rows, keyed `"providerId modelId"`
    * (see `shared/model-catalog.ts#modelKey`). Global client state, not
@@ -198,6 +200,7 @@ export const initialState: ClientState = {
   handoffPhase: {},
   fileSearchBySession: {},
   agentsMdNudgeHits: [],
+  hostLink: 'connected',
   favoriteModels: [],
   showCacheTimer: false,
   pendingSlotPath: null,
@@ -333,10 +336,11 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
         // keystroke ask for", and a reload has no box left holding one.
         fileSearchBySession: {},
         // Cleared, not carried: the host re-posts the settled hits right
-        // after every hydrate (panel-view-provider.ts, on `ready`), and that
+        // after every hydrate (panel-view-provider.ts, afterHostMessage), and that
         // `agents-md-nudge` message is the total rebuild here — same posture
         // as `staleTrees`.
         agentsMdNudgeHits: [],
+        hostLink: state.hostLink,
         // Absent reads as empty, not "carry the previous reload's list
         // forward" — same posture as `probing`: a host that predates this
         // field (or a hand-built fixture) has not said otherwise.
@@ -567,6 +571,9 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
 
     case 'agents-md-nudge':
       return { ...state, agentsMdNudgeHits: msg.hits };
+
+    case 'host-link':
+      return { ...state, hostLink: msg.status };
 
     case 'session-mcp': {
       const pane = state.byId[msg.id];

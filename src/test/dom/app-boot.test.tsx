@@ -21,6 +21,13 @@ suite('App boot', () => {
     screen.getByText('Loading…');
   });
 
+  test('a lost background host is explained even before hydrate ever arrives', () => {
+    renderApp();
+    sendFromHost({ t: 'host-link', status: 'lost' });
+    screen.getByText(/Lost the background host/);
+    screen.getByText('Loading…');
+  });
+
   test('mount posts ready once, and set-visible for an empty pane set', () => {
     renderApp();
 

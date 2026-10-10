@@ -56,6 +56,35 @@ suite('MessageRouter', () => {
     assert.strictEqual(hydrate.reviewPollIntervalMs, 750);
   });
 
+  test('open-file reveals a path the session reported and refuses any other', async () => {
+    const revealed: string[] = [];
+    const editor = {
+      current: () => null, reveal: (p: string) => { revealed.push(p); }, openDiff: () => {},
+      openSettings: () => {}, openExternal: () => {}, exportCsv: () => {}, exportImage: () => {}, login: () => {},
+    };
+    const r = new MessageRouter(manager, (m) => sent.push(m), '/tmp', editor, attachments);
+    const id = (await manager.create('fake', '/tmp')).state.id;
+    manager.canOpenFile = (i, p) => i === id && p === '/mem/a.md';
+    await r.handle({ t: 'open-file', id, path: '/mem/a.md' });
+    await r.handle({ t: 'open-file', id, path: '/etc/passwd' });
+    assert.deepStrictEqual(revealed, ['/mem/a.md']);
+  });
+
+  test('focus-session adds a hidden session to the split', async () => {
+    const a = (await manager.create('fake', '/tmp')).state.id;
+    await manager.setVisible([]);
+    await router.handle({ t: 'focus-session', id: a });
+    assert.strictEqual(leafSessionIds(manager.layout().root).includes(a), true);
+    assert.strictEqual(manager.visibleIds().includes(a), true);
+  });
+
+  test('request-memory-status answers memory-status', async () => {
+    sent.length = 0;
+    await router.handle({ t: 'request-memory-status' });
+    const s = sent.find((m) => m.t === 'memory-status') as Extract<HostToWebview, { t: 'memory-status' }>;
+    assert.strictEqual(typeof s.enabled, 'boolean');
+  });
+
   test('hydrate carries a configured review poll interval', async () => {
     const configured = new MessageRouter(
       manager, (m) => sent.push(m), '/tmp', undefined, attachments, undefined, 2000,
@@ -832,7 +861,7 @@ suite('MessageRouter', () => {
     assert.strictEqual(reply.result.ok, false);
   });
 
-  test('open-file is accepted but not acted on by the router', async () => {
+  test('open-file for an unreported path emits nothing', async () => {
     sent.length = 0;
     await router.handle({ t: 'open-file', id: 's1', path: '/repo/CLAUDE.md' });
     assert.deepStrictEqual(sent, []);
@@ -872,17 +901,6 @@ suite('MessageRouter', () => {
     }
     assert.deepStrictEqual(sent, []);
     assert.deepStrictEqual(errors, [], 'a known tag must not log as malformed');
-  });
-
-  test('focus-session survives the wire guard as a deliberate no-op, same as open-review', async () => {
-    // Same trap as `answer-relocation` above: a tag missing from
-    // KNOWN_MESSAGE_TAGS is silently dropped as "malformed" at runtime while
-    // every type check still passes. This router also backs `PanelViewProvider`
-    // directly, unlike `focus-session`, which `FleetPanel` always intercepts
-    // first — so a regression here is not latent the same way.
-    sent.length = 0;
-    await router.handle({ t: 'focus-session', id: 's1' as any });
-    assert.deepStrictEqual(sent, []);
   });
 
   test('send attaches the tracked context when the session opts in', async () => {

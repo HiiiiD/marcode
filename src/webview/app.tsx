@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { Toaster } from '@/components/ui/sonner';
 import { AgentsMdNudgeCard } from './components/agents-md-nudge-card';
+import { HostLinkBanner } from './components/host-link-banner';
 import { PaneGroup } from './components/pane-group';
 import { SessionPicker } from './components/session-picker';
 import { NARROW_PX, usePanelWidth } from './components/use-is-narrow';
@@ -108,6 +109,7 @@ export function App() {
     <TooltipProvider>
       <Toaster position="bottom-right" />
       <div ref={rootRef} data-narrow-observer className="flex h-screen flex-col">
+        <HostLinkBanner />
         {state.ready ? (
           <>
             <SessionPicker

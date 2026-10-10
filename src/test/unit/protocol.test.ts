@@ -72,6 +72,7 @@ function describeInbound(m: WebviewToHost): string {
     case 'delete-preset': return 'delete-preset';
     case 'replace-session': return 'replace-session';
     case 'memory-estimate': return 'memory-estimate';
+    case 'request-memory-status': return 'request-memory-status';
     case 'memory-reindex': return 'memory-reindex';
     case 'memory-resummarize': return 'memory-resummarize';
     case 'memory-cancel': return 'memory-cancel';
@@ -108,6 +109,7 @@ function describeOutbound(m: HostToWebview): string {
     case 'review-visibility': return 'review-visibility';
     case 'file-search-result': return 'file-search-result';
     case 'agents-md-nudge': return 'agents-md-nudge';
+    case 'host-link': return 'host-link';
     case 'favorite-models': return 'favorite-models';
     case 'layout-changed': return 'layout-changed';
     case 'fleet-focus-subagent': return 'fleet-focus-subagent';

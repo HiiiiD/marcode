@@ -300,4 +300,13 @@ suite('daemon client', function () {
     const bin = daemonSpawnCommand('/w', ['/r'], { execPath: '/x/marcode.exe', argv1: '/ignored' });
     assert.deepStrictEqual(bin, { command: '/x/marcode.exe', args: ['daemon', '--serve', '--workspace-dir', '/w', '--root', '/r'] });
   });
+
+  test('daemonSpawnCommand: the extension runs its bundled script as node', () => {
+    const r = daemonSpawnCommand('/w', ['/r'], { execPath: '/code', argv1: undefined }, { script: '/x/dist/daemon.js' });
+    assert.deepStrictEqual(r, {
+      command: '/code',
+      args: ['/x/dist/daemon.js', 'daemon', '--serve', '--workspace-dir', '/w', '--root', '/r'],
+      env: { ELECTRON_RUN_AS_NODE: '1' },
+    });
+  });
 });

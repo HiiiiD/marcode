@@ -1,8 +1,10 @@
 import { parseArgs, USAGE } from '../tui/cli';
+import { scrubDaemonEnv } from './daemon-env';
 import { runDaemonCommand } from '../tui/subcommands';
 
 /** JSX-free `marcode daemon …` entry, loadable by plain Node (the extension's bundle) as well as Bun. */
 async function main(): Promise<void> {
+  scrubDaemonEnv();
   const cmd = parseArgs(process.argv.slice(2));
   if (cmd.kind !== 'daemon') {
     console.error(`marcode: this entry only runs \`marcode daemon …\`\n${USAGE}`);
