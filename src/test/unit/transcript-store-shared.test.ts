@@ -45,6 +45,31 @@ suite('TranscriptStore (shared directory)', () => {
     assert.strictEqual(tuiRoot.kind === 'leaf' && tuiRoot.sessionId === 'y', true);
   });
 
+  test('a daemon host with no layout file of its own starts from the vscode layout', async () => {
+    const layout = {
+      root: {
+        kind: 'split' as const, orientation: 'horizontal' as const, size: 100,
+        children: [
+          { kind: 'leaf' as const, sessionId: 'a', size: 50 },
+          { kind: 'leaf' as const, sessionId: 'b', size: 50 },
+        ],
+      },
+      presets: [],
+    };
+    await new TranscriptStore(dir).writeIndex({ version: 2, sessions: [state('a'), state('b')], layout });
+    const seeded = (await new TranscriptStore(dir, 'daemon').readIndex()).layout;
+    assert.deepStrictEqual(seeded, layout);
+  });
+
+  test('once a daemon host has its own layout file, the vscode layout no longer seeds it', async () => {
+    const vs = new TranscriptStore(dir);
+    await vs.writeIndex({ version: 2, sessions: [state('a')], layout: { root: { kind: 'leaf', sessionId: 'a', size: 100 }, presets: [] } });
+    const daemon = new TranscriptStore(dir, 'daemon');
+    await daemon.writeIndex({ version: 2, sessions: [state('a')], layout: { root: { kind: 'leaf', sessionId: null, size: 100 }, presets: [] } });
+    const root = (await new TranscriptStore(dir, 'daemon').readIndex()).layout.root;
+    assert.strictEqual(root.kind === 'leaf' && root.sessionId === null, true);
+  });
+
   test('a foreign session is never written: append, replace, flush and remove are no-ops', async () => {
     const owner = new TranscriptStore(dir);
     owner.append('s1', item('i1', 'one'));
