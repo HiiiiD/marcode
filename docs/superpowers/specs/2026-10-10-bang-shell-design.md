@@ -65,8 +65,8 @@ The router case is inline and thin; the session owns the item.
   Windows install); if none is found the item ends `done` with an `error` naming the `shell.aliases` setting.
   `windowsHide: true`.
 - **Aliases:** if the command's first token, followed by whitespace, matches an alias, the rest of the line is
-  run through that alias instead of bash. Resolution is host-side. An alias shadows a same-named program, so
-  `!pwsh --version` runs PowerShell; to run the program itself, `!bash -c 'pwsh --version'`.
+  run through that alias instead of bash. Resolution is host-side and looks only at that first token, so
+  `!bash -c 'pwsh --version'` runs bash and the real `pwsh` on PATH, never the alias.
 - **cwd:** the session's `cwd` when the command starts, so a worktree move is honoured. A move while a command
   is running does not retarget it.
 - **Cancel:** kills the process tree (`taskkill /T /F` on Windows, the process group on POSIX); the item ends

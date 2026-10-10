@@ -339,9 +339,9 @@ client, and it does not start a model turn:
 
 `!zsh echo $SHELL` then runs `zsh -c "echo $SHELL"`. `pwsh` (`pwsh -NoProfile -Command`) and
 `powershell` (`powershell.exe -NoProfile -Command`) are built in, so `!pwsh Get-Date` works with no
-configuration. An entry with the same name replaces a built-in, and `null` removes it. An alias hides
-a program of the same name, so run that program through bash with `!bash -c 'pwsh --version'`. Reload
-the window (or restart the daemon) after changing it. See [docs/config.md](docs/config.md#shellaliases).
+configuration. An entry with the same name replaces a built-in, and `null` removes it. Only the first word
+after the `!` is looked up, so `!bash -c 'pwsh --version'` runs bash and finds the real `pwsh` on your
+`PATH`; the alias is not involved. Reload the window (or restart the daemon) after changing it. See [docs/config.md](docs/config.md#shellaliases).
 
 ### Provider behavior and quirks
 

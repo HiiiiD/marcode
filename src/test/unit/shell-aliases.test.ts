@@ -36,6 +36,13 @@ suite('shell aliases', () => {
     assert.deepStrictEqual(resolveShellCommand('pwsh', DEFAULT_SHELL_ALIASES), { kind: 'bash', script: 'pwsh' });
     assert.deepStrictEqual(resolveShellCommand('toString x', DEFAULT_SHELL_ALIASES), { kind: 'bash', script: 'toString x' });
   });
+  test('resolve: an alias name later in the line is plain bash, so the real program runs', () => {
+    assert.deepStrictEqual(
+      resolveShellCommand("bash -c 'pwsh --version'", DEFAULT_SHELL_ALIASES),
+      { kind: 'bash', script: "bash -c 'pwsh --version'" },
+    );
+    assert.deepStrictEqual(resolveShellCommand('echo pwsh Get-Date', DEFAULT_SHELL_ALIASES), { kind: 'bash', script: 'echo pwsh Get-Date' });
+  });
   test('host config reads shell.aliases', () => {
     const { config } = parseHostConfig({ shell: { aliases: { zsh: { command: 'zsh', args: ['-c'] } } } });
     assert.deepStrictEqual(config.shell.aliases.zsh, { command: 'zsh', args: ['-c'] });
