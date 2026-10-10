@@ -99,4 +99,20 @@ suite('daemon visible set is per connection', function () {
     assert.deepStrictEqual(host!.manager.visibleIds(), [id]);
     assert.strictEqual(roster().includes(id), true);
   });
+
+  test('stopping with clients still attached never shrinks the visible set: no hide, discard or digest', async () => {
+    const a = await attach();
+    const empty = await createShown(a);
+    const b = await attach();
+    const worked = await createShown(b);
+    b.send({ f: 'msg', m: { t: 'send', id: worked, text: 'hello' } });
+    await until(() => msgs(b, 'session-status').some((m) => m.id === worked && m.status === 'idle'));
+    const calls: string[][] = [];
+    const real = host!.manager.setVisible.bind(host!.manager);
+    host!.manager.setVisible = (ids) => { calls.push([...ids]); return real(ids); };
+    await daemon!.stop();
+    assert.deepStrictEqual(calls, []);
+    const index = JSON.parse(fs.readFileSync(path.join(dir, 'index.json'), 'utf8')) as { sessions: { id: string }[] };
+    assert.strictEqual(index.sessions.some((x) => x.id === empty), true);
+  });
 });

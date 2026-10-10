@@ -78,9 +78,11 @@ export async function runDaemon(opts: RunDaemonOptions): Promise<RunningDaemon> 
   let resolveDone!: () => void;
   const done = new Promise<void>((r) => { resolveDone = r; });
   let stopping: Promise<void> | undefined;
+  let visible: VisibleSets | undefined;
   const stop = (): Promise<void> => (stopping ??= (async () => {
     stopped = true;
     monitor?.dispose();
+    visible?.freeze();
     try {
       await server?.close();
       await disposeWithin(host, opts.disposeTimeoutMs ?? DISPOSE_TIMEOUT_MS, log);
@@ -94,7 +96,7 @@ export async function runDaemon(opts: RunDaemonOptions): Promise<RunningDaemon> 
   })());
 
   let favorites = config.favoriteModels;
-  const visible = new VisibleSets({
+  visible = new VisibleSets({
     visibleIds: () => host.manager.visibleIds(),
     setVisible: (ids) => host.manager.setVisible(ids),
     snapshot: async (id) => {
