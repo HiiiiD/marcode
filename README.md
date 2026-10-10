@@ -19,6 +19,9 @@ loop.
   - "Message the codex-2 pane and ask if it's finished the migration."
   - "Ask the other session in this panel whether it's still running tests."
   - "Tell the OpenCode session to pull latest before it starts."
+- Shell commands from the composer: start a line with `!` (for example `!git status`) to run it
+  in the session's working directory without a model turn. The command and its output stay in
+  the transcript, for you only. See [Shell commands](#shell-commands).
 - A roster of concurrent agent sessions, each its own conversation with its own status,
   model, effort level and permission mode.
 - Split panes over the visible subset of that roster, with a persisted layout.
@@ -303,6 +306,42 @@ it from the index.
   offers per-session re-summarize.
 
 Reload the window after changing either setting.
+
+### Shell commands
+
+A composer line starting with `!` runs as a shell command on the host (the background daemon or
+the extension), in the session's working directory. It works in the sidebar and in the terminal
+client, and it does not start a model turn:
+
+- The command and its output become a card in the transcript, saved with the session.
+- The model never sees it. Paste the output into your next message if the agent needs it.
+- Only one command runs per session at a time. While it runs, a bar above the composer shows it with a
+  **Cancel** button (in the terminal client, click the bar or press Esc when no turn is running), so you can
+  stop it wherever its card has scrolled to. A command is cut off after 120 seconds, and the saved output keeps
+  the last 64K characters.
+- It is not an agent action, so it never asks for permission. Agents cannot trigger it.
+- Commands run in `bash`. On Windows that means Git Bash, found on `PATH` or in the Git for
+  Windows install folder.
+
+`shell.aliases` in `~/.marcode/config.json` picks another shell by name. The first word after the
+`!` selects an alias, and the rest of the line is passed to it as the last argument:
+
+```jsonc
+{
+  "shell": {
+    "aliases": {
+      "zsh": { "command": "zsh", "args": ["-c"] },
+      "powershell": null
+    }
+  }
+}
+```
+
+`!zsh echo $SHELL` then runs `zsh -c "echo $SHELL"`. `pwsh` (`pwsh -NoProfile -Command`) and
+`powershell` (`powershell.exe -NoProfile -Command`) are built in, so `!pwsh Get-Date` works with no
+configuration. An entry with the same name replaces a built-in, and `null` removes it. Only the first word
+after the `!` is looked up, so `!bash -c 'pwsh --version'` runs bash and finds the real `pwsh` on your
+`PATH`; the alias is not involved. Reload the window (or restart the daemon) after changing it. See [docs/config.md](docs/config.md#shellaliases).
 
 ### Provider behavior and quirks
 

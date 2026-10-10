@@ -149,7 +149,18 @@ export type TranscriptItem =
    * nothing about why, and "the session just moved cwd" is not implied by
    * the interrupted turn's own transcript.
    */
-  | (ItemBase & { role: 'switch'; kind: 'model' | 'effort' | 'relocation'; text: string });
+  | (ItemBase & { role: 'switch'; kind: 'model' | 'effort' | 'relocation'; text: string })
+  /**
+   * A shell command the human ran with `!` in the composer. Never a model turn:
+   * the host runs it, and the next typed prompt carries it to the model as context.
+   * `output` is stdout and stderr interleaved in arrival order, tail-capped.
+   */
+  | (ItemBase & {
+      role: 'shell'; command: string; state: 'running' | 'done' | 'cancelled'; output: string;
+      exitCode?: number; signal?: string; truncated?: boolean; timedOut?: boolean; error?: string;
+    });
+
+export type ShellItem = Extract<TranscriptItem, { role: 'shell' }>;
 
 export type TranscriptPatch =
   | { op: 'append'; item: TranscriptItem; parentItemId?: string }
@@ -565,6 +576,8 @@ export type WebviewToHost =
    */
   | { t: 'open-attachment'; id: SessionId; attachmentId: string; itemId?: string }
   | { t: 'request-attachment-path'; id: SessionId; attachmentId: string; itemId?: string; reqId: number }
+  | { t: 'run-shell'; id: SessionId; command: string }
+  | { t: 'cancel-shell'; id: SessionId; itemId: string }
   /**
    * A clipboard or dropped `File` the webview could not read, so no bytes
    * ever reached the host.

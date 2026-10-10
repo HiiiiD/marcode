@@ -5,6 +5,7 @@ import { ApprovalPrompt } from './approval-prompt';
 import { Composer } from './composer';
 import { ForeignBanner } from './foreign-banner';
 import { QuestionPrompt } from './question-prompt';
+import { ShellStrip } from './shell-strip';
 import { useTuiStore } from './store';
 
 export function BottomSlotView({ sessionId, focused, onOpenPicker }: { sessionId: SessionId; focused: boolean; onOpenPicker?: (kind: PickerKind) => void }) {
@@ -17,6 +18,12 @@ export function BottomSlotView({ sessionId, focused, onOpenPicker }: { sessionId
     case 'permission':
       return <ApprovalPrompt key={slot.request.requestId} sessionId={sessionId} request={slot.request} focused={focused} />;
     case 'foreign': return <ForeignBanner text={slot.text} />;
-    case 'composer': return <Composer key={sessionId} sessionId={sessionId} focused={focused} onOpenPicker={onOpenPicker} />;
+    case 'composer':
+      return (
+        <box flexDirection="column">
+          <ShellStrip sessionId={sessionId} />
+          <Composer key={sessionId} sessionId={sessionId} focused={focused} onOpenPicker={onOpenPicker} />
+        </box>
+      );
   }
 }

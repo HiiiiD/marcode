@@ -76,6 +76,8 @@ function describeInbound(m: WebviewToHost): string {
     case 'memory-reindex': return 'memory-reindex';
     case 'memory-resummarize': return 'memory-resummarize';
     case 'memory-cancel': return 'memory-cancel';
+    case 'run-shell': return 'run-shell';
+    case 'cancel-shell': return 'cancel-shell';
     default: return assertNever(m);
   }
 }

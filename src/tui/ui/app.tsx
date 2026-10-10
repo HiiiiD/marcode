@@ -18,6 +18,7 @@ import { ContextDialog } from './context-dialog';
 import { LayoutDialog } from './layout-dialog';
 import { StatusLine } from './status-line';
 import { ZoneLine } from './zone-line';
+import { runningShell } from '../../client-core/running-shell';
 import { activeRelocation } from '../view/relocation-view';
 import { useTuiStore } from './store';
 import { useAppKeys } from './use-app-keys';
@@ -112,6 +113,7 @@ export function App(props: AppProps) {
     openPicker: setPicker,
     cycleZone: () => { setZone(zones[(zones.indexOf(current) + 1) % zones.length] ?? 'composer'); },
     relocation: summary && !summary.owner ? activeRelocation(pane?.items ?? []) : undefined,
+    runningShellId: summary && !summary.owner ? runningShell(pane?.items ?? [])?.id : undefined,
   });
 
   const onFocusSession = (id: SessionId) => {

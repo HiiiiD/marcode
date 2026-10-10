@@ -10,11 +10,13 @@ export type Action =
   | { do: 'option-next' } | { do: 'option-prev' } | { do: 'option-toggle' } | { do: 'submit-answers' }
   | { do: 'roster-pin' } | { do: 'roster-filter' } | { do: 'roster-delete' } | { do: 'attach-remove' } | { do: 'attach-clipboard' } | { do: 'attach-open' } | { do: 'attachment-next' } | { do: 'attachment-prev' }
   | { do: 'refresh-catalog' } | { do: 'pane-prefix' } | { do: 'fork-item' } | { do: 'roster-handoff' }
-  | { do: 'refresh-usage' } | { do: 'relocation-move' } | { do: 'relocation-stay' };
+  | { do: 'refresh-usage' } | { do: 'relocation-move' } | { do: 'relocation-stay' } | { do: 'cancel-shell' };
 
 const act = <T extends Action['do']>(d: T) => ({ do: d }) as Extract<Action, { do: T }>;
 
-function globalAction(key: KeyInput, zone: Zone, ctx: { running: boolean }): Action | undefined {
+export interface KeyContext { running: boolean; shellRunning?: boolean }
+
+function globalAction(key: KeyInput, zone: Zone, ctx: KeyContext): Action | undefined {
   if (key.ctrl) {
     switch (key.name) {
       case 'b': return act('toggle-roster');
@@ -32,7 +34,10 @@ function globalAction(key: KeyInput, zone: Zone, ctx: { running: boolean }): Act
     }
     return undefined;
   }
-  if (key.name === 'escape') { return ctx.running ? act('interrupt') : undefined; }
+  if (key.name === 'escape') {
+    if (ctx.running) { return act('interrupt'); }
+    return ctx.shellRunning ? act('cancel-shell') : undefined;
+  }
   if (key.name === 'tab') {
     if (key.shift) { return act('open-mode'); }
     return zone === 'approval' || zone === 'question' ? undefined : act('cycle-zone');
@@ -40,7 +45,7 @@ function globalAction(key: KeyInput, zone: Zone, ctx: { running: boolean }): Act
   return undefined;
 }
 
-export function actionFor(zone: Zone, key: KeyInput, ctx: { running: boolean }): Action | undefined {
+export function actionFor(zone: Zone, key: KeyInput, ctx: KeyContext): Action | undefined {
   const global = globalAction(key, zone, ctx);
   if (global) { return global; }
   if (key.ctrl && key.name === 'j' && zone === 'composer') { return act('newline'); }

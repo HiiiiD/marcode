@@ -1,4 +1,5 @@
 import { compactionHeadline } from '../../client-core/compaction';
+import { shellAsTool } from '../../client-core/shell-as-tool';
 import { describeTool, type ToolHeader } from '../../client-core/tool-render';
 import { activeRelocation, relocationCard, type RelocationCard } from './relocation-view';
 import type { Attachment, TranscriptItem } from '../../protocol/messages';
@@ -10,7 +11,11 @@ export interface FoldedPermission { state: 'pending' | 'allowed' | 'denied'; rea
 export type TranscriptRow =
   | { kind: 'user'; id: string; text: string; fromName?: string; attachments?: Attachment[] }
   | { kind: 'assistant'; id: string; text: string; streaming: boolean }
-  | { kind: 'tool'; id: string; item: ToolItem; header: ToolHeader; state: 'running' | 'ok' | 'error'; permission?: FoldedPermission }
+  | {
+      kind: 'tool'; id: string; item: ToolItem; header: ToolHeader; state: 'running' | 'ok' | 'error'; permission?: FoldedPermission;
+      /** A `!` command: opens by default, so an Enter on it collapses rather than expands. */
+      userShell?: true;
+    }
   | { kind: 'permission'; id: string; header: ToolHeader; state: 'pending' | 'allowed' | 'denied'; reason?: string }
   | { kind: 'question'; id: string; state: string; text: string }
   | { kind: 'relocation'; id: string; card: RelocationCard; active: boolean }
@@ -64,6 +69,11 @@ export function transcriptRows(items: TranscriptItem[], running: boolean): Trans
       case 'relocation':
         rows.push({ kind: 'relocation', id: item.id, card: relocationCard(item), active: item.id === activeId });
         break;
+      case 'shell': {
+        const asTool = shellAsTool(item);
+        rows.push({ kind: 'tool', id: item.id, item: asTool, header: describeTool(asTool.tool), state: asTool.state, userShell: true });
+        break;
+      }
       default: {
         const unhandled: never = item;
         return unhandled;

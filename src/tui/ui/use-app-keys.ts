@@ -20,6 +20,7 @@ export interface AppKeys {
   openPicker(kind: PickerKind): void;
   cycleZone(): void;
   relocation: RelocationItem | undefined;
+  runningShellId: string | undefined;
 }
 
 export function useAppKeys(k: AppKeys): void {
@@ -60,7 +61,7 @@ export function useAppKeys(k: AppKeys): void {
     // A foreign session is read-only here: no interrupt and no model/effort/mode switch may be posted for it.
     const s = k.summary && !k.summary.owner ? k.summary : undefined;
     const busy = s?.status === 'running' || s?.status === 'awaiting-approval';
-    const action = actionFor(k.zone, key, { running: busy });
+    const action = actionFor(k.zone, key, { running: busy, shellRunning: k.runningShellId !== undefined });
     switch (action?.do) {
       case 'toggle-roster': k.toggleRoster(); return;
       case 'new-session': k.openDialog(); return;
@@ -72,6 +73,11 @@ export function useAppKeys(k: AppKeys): void {
         if (key.name === 'escape' && (k.zone === 'approval' || k.zone === 'question')) {
           queueMicrotask(() => { if (!key.defaultPrevented) { interrupt(); } });
         } else { interrupt(); }
+        return;
+      }
+      case 'cancel-shell': {
+        if (!s || !k.runningShellId) { return; }
+        post({ t: 'cancel-shell', id: s.id, itemId: k.runningShellId });
         return;
       }
       case 'quit-request': quitRequest(); return;

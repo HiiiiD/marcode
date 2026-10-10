@@ -75,6 +75,11 @@ export function Transcript({ sessionId, focused, onFork, relocationKeys = 'none'
     }
     if (row?.kind !== 'tool') { return; }
     const id = row.id;
+    if (row.userShell) {
+      // A set member here means collapsed: these cards open by default.
+      setOpen((o) => { const n = new Set(o); if (n.has(id)) { n.delete(id); } else { n.add(id); } return n; });
+      return;
+    }
     const blocked = row.item.tool.kind === 'subagent' && summarizeSubagent(row.item, 0).blocked;
     const effective = open.has(id) || (blocked && !closed.has(id));
     const flip = (s: ReadonlySet<string>, on: boolean) => { const n = new Set(s); if (on) { n.add(id); } else { n.delete(id); } return n; };

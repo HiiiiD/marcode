@@ -8,6 +8,7 @@ import { Markdown } from './markdown';
 import { PermissionCard } from './permission-card';
 import { QuestionCard } from './question-card';
 import { ReasoningBlock } from './reasoning-block';
+import { shellAsTool } from '../../client-core/shell-as-tool';
 import { RelocationCard } from './relocation-card';
 import { SubagentCard } from './subagent-card';
 import { ToolCard } from './tool-card';
@@ -107,6 +108,9 @@ export function TranscriptItemView({
 
     case 'compaction':
       return <CompactionCard item={item} />;
+
+    case 'shell':
+      return <ToolCard item={shellAsTool(item)} defaultOpen streaming />;
 
     case 'switch': {
       const label = item.kind === 'model' ? 'Model' : item.kind === 'effort' ? 'Effort' : 'Worktree';

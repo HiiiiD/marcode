@@ -64,7 +64,7 @@ export function RowView(props: {
     case 'tool':
       return row.item.tool.kind === 'subagent' && row.item.tool.action !== 'message'
         ? <SubagentCard item={row.item} open={props.expanded} userClosed={props.closed} selected={props.selected} />
-        : <ToolCard item={row.item} permission={row.permission} open={props.expanded} selected={props.selected} />;
+        : <ToolCard item={row.item} permission={row.permission} open={row.userShell ? !props.expanded : props.expanded} streaming={row.userShell === true} selected={props.selected} />;
     case 'permission':
       return <PermissionCard header={row.header} state={row.state} reason={row.reason} selected={props.selected} />;
     case 'question':

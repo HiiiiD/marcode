@@ -1187,6 +1187,24 @@ suite('SessionManager', () => {
     assert.strictEqual(jsonl.includes('"state":"stale"'), false);
   });
 
+  test('a shell command still running in a previous process reads back as interrupted', async () => {
+    const a = await manager.create('fake', '/tmp');
+    const id = a.state.id;
+    store.append(id, { id: 'sh-old', ts: 1, role: 'shell', command: 'sleep 99', state: 'running', output: 'partial' });
+    await store.flush(id);
+    await manager.close(id);
+    sent.length = 0;
+
+    await manager.setVisible([id]);
+    const snapshot = sent.find((m) => m.t === 'session-snapshot') as
+      { session: { items: { id: string; role: string; state?: string; error?: string }[] } } | undefined;
+    const item = snapshot?.session.items.find((i) => i.id === 'sh-old');
+    assert.deepStrictEqual([item?.state, item?.error], ['cancelled', 'interrupted']);
+    await new Promise((r) => setTimeout(r, 100));
+    const jsonl = await fs.readFile(path.join(dir, 'sessions', `${id}.jsonl`), 'utf8');
+    assert.strictEqual(jsonl.includes('"error":"interrupted"'), true);
+  });
+
   test('creating a session probes its cwd and emits the catalog to a visible pane', async () => {
     const { manager, provider, emitted } = await makeManager();
     provider.invocables = [{ name: 'init' }];

@@ -69,6 +69,8 @@ yarn build:tui:bin    # bin/marcode.exe (bin/marcode elsewhere): standalone, Bun
 | Shift+D, then y / n | roster | delete the session after confirming; refused for a session owned by another host |
 | @ then Up / Down, Tab or Enter, Esc | composer | file mention popup: a pick inserts `@path`, and the file's content travels with the message |
 | / at the start of the box, then Up / Down, Tab or Enter, Esc | composer | skill and slash-command menu for the session's provider: a pick inserts the command. Typed built-ins (`/model`, `/layout`, ...) still work |
+| `!` at the start of the box, then Enter | composer | run the rest as a shell command in the session's cwd; no model turn, and the model never sees it |
+| Esc, or click the bar above the box | composer / transcript | with no turn running, cancels a running `!` command, which stays pinned above the composer while it runs (a running turn is interrupted first) |
 | Ctrl+X | composer | remove the last attachment |
 | Ctrl+V | composer | attach an image from the clipboard |
 | Ctrl+O | composer | open the last pending attachment |
@@ -90,6 +92,16 @@ maximized (view only; saved sizes are untouched). A `▪` in the roster marks a 
 Mouse: click a pane, a roster row or a tool card header; drag the divider between panes to resize (one layout
 write on release; dragging out of the window cancels); click ✕ in a title to hide the pane; the wheel scrolls
 the pane under the pointer. Every mouse action has a keyboard equivalent.
+
+## Shell commands
+
+A line starting with `!` (for example `!git status`) runs on the host in the session's working directory and
+shows up in the transcript as a "You ran" card, the same card the VS Code panel shows. It opens with the output
+shown (long output is clamped like any tool result), Enter collapses it, and a status line such as `[exit 2]`,
+`[cancelled]` or `[timed out]` closes the output when the run did not end cleanly. It is saved with the session, appears in the VS Code panel too, and is
+never sent to the model. One command runs per session at a time. Commands
+run in bash (Git Bash on Windows); `shell.aliases` in `config.json` adds others, and `!pwsh ...` works out of the
+box. See the README's Shell commands section.
 
 ## Attachments
 

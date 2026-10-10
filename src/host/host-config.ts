@@ -1,6 +1,7 @@
 import type { UsageMirror } from '../providers/types';
 import { DEFAULT_PROVIDER_IDS, KNOWN_PROVIDER_IDS } from '../shared/settings';
 import { clampCap } from './fleet-diff';
+import { DEFAULT_SHELL_ALIASES, parseShellAliases, type ShellAliasTable } from './shell/shell-aliases';
 
 export interface HostConfig {
   enabledProviders: string[];
@@ -13,6 +14,7 @@ export interface HostConfig {
   review: { fileCap: number; pollIntervalMs: number; baseRefs: string[] };
   favoriteModels: string[];
   daemon: { enabled: boolean; idleMinutes: number };
+  shell: { aliases: ShellAliasTable };
 }
 
 export const MOVED_SETTING_IDS: readonly string[] = [
@@ -31,6 +33,7 @@ export function defaultHostConfig(): HostConfig {
     review: { fileCap: clampCap(undefined), pollIntervalMs: 750, baseRefs: [] },
     favoriteModels: [],
     daemon: { enabled: true, idleMinutes: 10 },
+    shell: { aliases: { ...DEFAULT_SHELL_ALIASES } },
   };
 }
 
@@ -94,6 +97,16 @@ export function parseHostConfig(raw: unknown): { config: HostConfig; warnings: s
   }
   config.favoriteModels = (Array.isArray(raw.favoriteModels) ? raw.favoriteModels : [])
     .filter((id): id is string => typeof id === 'string' && id.trim() !== '');
+
+  if (raw.shell !== undefined) {
+    if (!isObject(raw.shell)) {
+      warnings.push('config.json: shell is not an object; using the default.');
+    } else {
+      const parsed = parseShellAliases(raw.shell.aliases);
+      config.shell.aliases = parsed.aliases;
+      warnings.push(...parsed.warnings);
+    }
+  }
 
   if (raw.daemon !== undefined) {
     if (!isObject(raw.daemon)) {

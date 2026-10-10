@@ -502,7 +502,9 @@ export class SelfControlMcpServer {
         if (!tail) {
           return { isError: true, content: [{ type: 'text', text: `Session ${name} is not available.` }] };
         }
-        return { content: [{ type: 'text', text: JSON.stringify({ items: tail.items }) }] };
+        // Commands the user ran with `!` are for the user alone, so another agent never reads them.
+        const items = tail.items.filter((i) => i.role !== 'shell');
+        return { content: [{ type: 'text', text: JSON.stringify({ items }) }] };
       },
     );
 
