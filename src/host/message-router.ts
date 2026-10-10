@@ -602,13 +602,12 @@ export class MessageRouter {
         return;
       }
 
-      // PanelViewProvider intercepts this before delegating (it needs the
-      // `vscode` API, which this module must not import) and is also where
-      // `msg.path` is validated against the memory files `msg.id` reported —
-      // that check stays on the provider/manager side for the same reason.
-      // It is listed here, and in KNOWN_MESSAGE_TAGS, so a stray one is a
-      // deliberate no-op rather than a "malformed message" error log.
       case 'open-file':
+        if (!this.manager.canOpenFile(msg.id, msg.path)) {
+          console.error('[mar-code] refusing to open a path this session never reported', msg.path);
+          return;
+        }
+        this.editor.reveal(msg.path);
         return;
 
       // Intercepted by PanelViewProvider (needs `vscode`), like open-file.

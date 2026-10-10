@@ -56,6 +56,20 @@ suite('MessageRouter', () => {
     assert.strictEqual(hydrate.reviewPollIntervalMs, 750);
   });
 
+  test('open-file reveals a path the session reported and refuses any other', async () => {
+    const revealed: string[] = [];
+    const editor = {
+      current: () => null, reveal: (p: string) => { revealed.push(p); }, openDiff: () => {},
+      openSettings: () => {}, openExternal: () => {}, exportCsv: () => {}, exportImage: () => {}, login: () => {},
+    };
+    const r = new MessageRouter(manager, (m) => sent.push(m), '/tmp', editor, attachments);
+    const id = (await manager.create('fake', '/tmp')).state.id;
+    manager.canOpenFile = (i, p) => i === id && p === '/mem/a.md';
+    await r.handle({ t: 'open-file', id, path: '/mem/a.md' });
+    await r.handle({ t: 'open-file', id, path: '/etc/passwd' });
+    assert.deepStrictEqual(revealed, ['/mem/a.md']);
+  });
+
   test('hydrate carries a configured review poll interval', async () => {
     const configured = new MessageRouter(
       manager, (m) => sent.push(m), '/tmp', undefined, attachments, undefined, 2000,
@@ -832,7 +846,7 @@ suite('MessageRouter', () => {
     assert.strictEqual(reply.result.ok, false);
   });
 
-  test('open-file is accepted but not acted on by the router', async () => {
+  test('open-file for an unreported path emits nothing', async () => {
     sent.length = 0;
     await router.handle({ t: 'open-file', id: 's1', path: '/repo/CLAUDE.md' });
     assert.deepStrictEqual(sent, []);
