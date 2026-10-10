@@ -36,6 +36,7 @@ import type {
   SessionRef, SessionSnapshot, SessionState, SessionStatus, SessionSummary, StaleTree,
   TranscriptItem, TranscriptPatch, TreeDiff, UnavailableProvider,
 } from '../protocol/messages';
+import { DEFAULT_SHELL_ALIASES, type ShellAliasTable } from './shell/shell-aliases';
 
 let counter = 0;
 function newSessionId(): string {
@@ -956,6 +957,15 @@ export class SessionManager implements SessionSink {
     let reopenedAny = false;
     let staleAny = false;
     for (const [at, item] of items.entries()) {
+      if (item.role === 'shell' && item.state === 'running' && !this.isForeign(id)
+          && !this.live.get(id)?.isShellRunning(item.id)) {
+        const stopped: TranscriptItem = { ...item, state: 'cancelled', error: 'interrupted' };
+        this.store.replace(id, stopped);
+        if (items === snapshot.items) { items = [...items]; }
+        items[at] = stopped;
+        reopenedAny = true;
+        continue;
+      }
       if (item.role === 'relocation' && item.state === 'queued' && item.id !== queued) {
         const reopened: TranscriptItem = { ...item, state: 'pending' };
         // The store too, not just the copy going out: `load-more` pages
@@ -2138,6 +2148,10 @@ export class SessionManager implements SessionSink {
 
   /** Injected because this class imports no `vscode`; the extension supplies the open workspace folders. */
   setWorkspaceRoots(roots: () => string[]): void { this.workspaceRoots = roots; }
+
+  private shellAliasTable: ShellAliasTable = DEFAULT_SHELL_ALIASES;
+  setShellAliases(table: ShellAliasTable): void { this.shellAliasTable = table; }
+  shellAliases(): ShellAliasTable { return this.shellAliasTable; }
 
   private ownership?: SessionOwnership;
   private tailIntervalMs = 750;

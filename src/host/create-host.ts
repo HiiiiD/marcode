@@ -88,6 +88,7 @@ export async function createHost(opts: CreateHostOptions): Promise<HostHandle> {
   );
   const ownership = new SessionOwnership(path.join(opts.workspaceDir, 'sessions'), opts.hostKind);
   manager.setOwnership(ownership, { tailIntervalMs: opts.pollMs });
+  manager.setShellAliases(config.shell.aliases);
 
   const selfControlServer = new SelfControlMcpServer({
     catalog: () => manager.catalog(),

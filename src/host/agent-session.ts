@@ -21,6 +21,8 @@ import { persistableAnswers } from './question-persistence';
 import type { TranscriptStore } from './transcript-store';
 import { detectWorktreeAdd } from './worktree-detect';
 import { lifecycleDebug } from '../shared/lifecycle-debug';
+import { DEFAULT_SHELL_ALIASES, type ShellAliasTable } from './shell/shell-aliases';
+import { ShellController } from './shell/shell-controller';
 
 export interface SessionSink {
   patch(id: SessionId, patch: TranscriptPatch): void;
@@ -83,6 +85,8 @@ export interface SessionSink {
    * answers "no" by omission, and the composer queue just drains as usual.
    */
   hasQueuedRelocation?(id: SessionId): boolean;
+  /** The configured shell aliases; absent means the built-in defaults. */
+  shellAliases?(): ShellAliasTable;
 }
 
 const TITLE_MAX = 60;
@@ -163,6 +167,9 @@ export class AgentSession {
    */
   private queuedContext = new Map<string, EditorContext | undefined>();
   private disposed = false;
+  private readonly shell: ShellController;
+  private shellReady = false;
+  private shellPrimed: Promise<void> | undefined;
   /**
    * TranscriptStore.flush() is not safe to call concurrently for the same
    * session id — two overlapping calls can both observe the same pending
@@ -251,6 +258,19 @@ export class AgentSession {
       ],
     });
     this.pumping = this.pump();
+    this.shell = new ShellController({
+      cwd: () => this._state.cwd,
+      aliases: () => this.sink.shellAliases?.() ?? DEFAULT_SHELL_ALIASES,
+      nextId: () => nextId('sh'),
+      append: (item) => { this.appendItem(item); void this.scheduleFlush(); },
+      replace: (item) => {
+        this.replaceItem(item);
+        if (item.state !== 'running') { void this.scheduleFlush(); }
+      },
+      refuse: (message) => { void this.noteError(message); },
+    });
+    // A session whose state never moved past creation has no stored history to prime from.
+    this.shellReady = _state.updatedAt === _state.createdAt;
     this._state.activityLabel = this.activityLabelFor(this._state.status);
     delete this._state.backgroundTasks;
   }
@@ -437,6 +457,15 @@ export class AgentSession {
     text: string, context?: EditorContext, refs?: SessionRef[], fileRefs?: FileRef[],
     attachments: Attachment[] = [], from?: { sessionId: SessionId; name: string },
   ): void {
+    if (!this.shellReady) {
+      // Read on first use, not at construction: a load racing the session's first append would drop that item from the cache.
+      this.shellPrimed ??= this.store.tail(this._state.id, 200)
+        .then(({ items }) => { this.shell.prime(items); })
+        .catch(() => {})
+        .then(() => { this.shellReady = true; });
+      void this.shellPrimed.then(() => { this.deliver(text, context, refs, fileRefs, attachments, from); });
+      return;
+    }
     if (this._state.title === 'Untitled' && text.trim().length > 0) {
       this._state.title = text.trim().slice(0, TITLE_MAX);
     }
@@ -464,7 +493,9 @@ export class AgentSession {
     const withSender = from
       ? `[Delegated request from session "${from.name}", via Marcode's inter-session tool.]\n\n${text}`
       : text;
-    const outgoing = this.seed ? `${this.seed}\n\n---\n\n${withSender}` : withSender;
+    const shellBlock = from ? '' : this.shell.takeBlock();
+    const withShell = shellBlock ? `${shellBlock}\n\n${withSender}` : withSender;
+    const outgoing = this.seed ? `${this.seed}\n\n---\n\n${withShell}` : withShell;
     const wantsRecall = !this.firstDelivered && !this.seed && !from && !this.resumed
       && this.sink.recall !== undefined;
     this.firstDelivered = true;
@@ -957,6 +988,7 @@ export class AgentSession {
 
   async dispose(): Promise<void> {
     if (this.disposed) { return; }
+    this.shell.dispose();
     this.disposed = true;
     for (const requestId of [...this.pending.keys()]) {
       this.pending.delete(requestId);
@@ -1403,6 +1435,10 @@ export class AgentSession {
     this.appendItem({ id: nextId('e'), ts: Date.now(), role: 'error', message });
     await this.scheduleFlush();
   }
+
+  runShell(command: string): void { this.shell.start(command); }
+  cancelShell(itemId: string): void { this.shell.cancel(itemId); }
+  isShellRunning(itemId: string): boolean { return this.shell.isRunning(itemId); }
 
   private fail(message: string): void {
     this.turnActive = false;

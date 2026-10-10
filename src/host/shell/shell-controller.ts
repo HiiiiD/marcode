@@ -52,7 +52,8 @@ export class ShellController {
   }
 
   prime(items: TranscriptItem[]): void {
-    this.undelivered = undeliveredShells(items);
+    const known = new Set(this.undelivered.map((i) => i.id));
+    this.undelivered = [...undeliveredShells(items).filter((i) => !known.has(i.id)), ...this.undelivered];
   }
 
   takeBlock(): string {
