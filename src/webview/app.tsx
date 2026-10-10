@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { Toaster } from '@/components/ui/sonner';
 import { AgentsMdNudgeCard } from './components/agents-md-nudge-card';
+import { HostLinkBanner } from './components/host-link-banner';
 import { PaneGroup } from './components/pane-group';
 import { SessionPicker } from './components/session-picker';
 import { NARROW_PX, usePanelWidth } from './components/use-is-narrow';
@@ -116,6 +117,7 @@ export function App() {
               onFleet={() => post({ t: 'open-fleet' })}
               onHistory={() => post({ t: 'open-history' })}
             />
+            <HostLinkBanner />
             <AgentsMdNudgeCard />
             <div className="min-h-0 flex-1">
               <PaneGroup narrow={narrow} />

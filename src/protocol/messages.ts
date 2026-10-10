@@ -947,4 +947,6 @@ export type HostToWebview =
    * file added mid-session surfaces on the next reload, not immediately.
    */
   | { t: 'agents-md-nudge'; hits: Array<{ dir: string; kind: 'migrate' | 'add-stub';
-      error?: string }> };
+      error?: string }> }
+  /** The sidebar's link to the background host. Posted by the extension itself; absent means connected. */
+  | { t: 'host-link'; status: 'connected' | 'reconnecting' | 'lost' };

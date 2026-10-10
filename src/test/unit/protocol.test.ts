@@ -109,6 +109,7 @@ function describeOutbound(m: HostToWebview): string {
     case 'review-visibility': return 'review-visibility';
     case 'file-search-result': return 'file-search-result';
     case 'agents-md-nudge': return 'agents-md-nudge';
+    case 'host-link': return 'host-link';
     case 'favorite-models': return 'favorite-models';
     case 'layout-changed': return 'layout-changed';
     case 'fleet-focus-subagent': return 'fleet-focus-subagent';
