@@ -10,6 +10,8 @@ import { TOOL_GLYPHS } from './tool-glyphs';
 
 export function ToolCard(props: {
   item: ToolItem; open: boolean; selected: boolean; headerOnly?: boolean; permission?: FoldedPermission;
+  /** Show text output while the call is still running (a live `!` command). */
+  streaming?: boolean;
 }) {
   const { item } = props;
   const theme = useTheme();
@@ -28,7 +30,8 @@ export function ToolCard(props: {
     : failed ? { text: 'failed', fg: theme.colors.error } : undefined;
   const open = props.open && props.headerOnly !== true;
   const muted = theme.colors.mutedForeground;
-  const output = open ? describeOutput(item.tool.kind, item.output, item.state) : [];
+  const outputState = props.streaming && running && item.output?.kind === 'text' ? 'ok' : item.state;
+  const output = open ? describeOutput(item.tool.kind, item.output, outputState) : [];
   const tokens = useTokens();
   const inputBlocks = open ? describeInput(item.tool) : [];
   const wide = inputBlocks.some((b) => nativeDiff(b, tokens) !== undefined);

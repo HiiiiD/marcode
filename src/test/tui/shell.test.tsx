@@ -56,39 +56,44 @@ test('a bang the parser rejects shows no shell hint', async () => {
   expect(m.frame()).not.toContain('shell command');
 });
 
-test('a finished command renders its command, output and exit code', async () => {
+test('a finished command is a You ran card with its output open', async () => {
   m = await mount(<Transcript sessionId="s1" focused />);
   await m.fromHost(withShell(shell()));
-  expect(m.frame()).toContain('$ ls -la');
+  expect(m.frame()).toContain('You ran');
+  expect(m.frame()).toContain('ls -la');
   expect(m.frame()).toContain('file-b');
-  expect(m.frame()).toContain('exit 0');
 });
 
-test('a running command says so', async () => {
+test('a running command streams its output inside the card', async () => {
   m = await mount(<Transcript sessionId="s1" focused />);
-  await m.fromHost(withShell(shell({ state: 'running', exitCode: undefined })));
-  expect(m.frame()).toContain('running…');
+  await m.fromHost(withShell(shell({ state: 'running', exitCode: undefined, output: 'tick-1' })));
+  expect(m.frame()).toContain('You ran');
+  expect(m.frame()).toContain('tick-1');
 });
 
-test('a failed command shows its exit code', async () => {
+test('a failed command is marked failed and shows its exit code', async () => {
   m = await mount(<Transcript sessionId="s1" focused />);
   await m.fromHost(withShell(shell({ exitCode: 2 })));
-  expect(m.frame()).toContain('exit 2');
+  expect(m.frame()).toContain('failed');
+  expect(m.frame()).toContain('[exit 2]');
 });
 
-test('a long finished output is clamped inside the card until expanded', async () => {
+test('a very long output is clamped with the hidden-lines divider', async () => {
   m = await mount(<Transcript sessionId="s1" focused />, { width: 100, height: 60 });
-  const long = Array.from({ length: 30 }, (_, i) => `row-a${i}`).join('\n');
+  const long = Array.from({ length: 80 }, (_, i) => `row-a${i}`).join('\n');
   await m.fromHost(withShell(shell({ output: long })));
-  expect(m.frame()).toContain('row-a29');
-  expect(m.frame()).toContain('18 earlier lines');
-  expect(m.frame()).not.toContain('row-a0');
+  expect(m.frame()).toContain('lines hidden');
+  expect(m.frame()).not.toContain('row-a40');
+});
+
+test('Enter collapses the card and Enter again reopens it', async () => {
+  m = await mount(<Transcript sessionId="s1" focused />);
+  await m.fromHost(withShell(shell()));
   await m.press('j');
   await m.press('return');
-  expect(m.frame()).toContain('row-a0');
-  expect(m.frame()).not.toContain('earlier lines');
+  expect(m.frame()).not.toContain('file-b');
   await m.press('return');
-  expect(m.frame()).toContain('18 earlier lines');
+  expect(m.frame()).toContain('file-b');
 });
 
 test('a running command is pinned above the composer with its cancel hint', async () => {

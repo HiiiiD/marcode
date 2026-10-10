@@ -96,8 +96,9 @@ the pane under the pointer. Every mouse action has a keyboard equivalent.
 ## Shell commands
 
 A line starting with `!` (for example `!git status`) runs on the host in the session's working directory and
-shows up as a card in the transcript: `$ command`, its output (the last 12 lines, with Enter on the card to show or hide the rest), and a footer such
-as `exit 0`, `cancelled` or `timed out`. It is saved with the session, appears in the VS Code panel too, and is
+shows up in the transcript as a "You ran" card, the same card the VS Code panel shows. It opens with the output
+shown (long output is clamped like any tool result), Enter collapses it, and a status line such as `[exit 2]`,
+`[cancelled]` or `[timed out]` closes the output when the run did not end cleanly. It is saved with the session, appears in the VS Code panel too, and is
 never sent to the model. One command runs per session at a time. Commands
 run in bash (Git Bash on Windows); `shell.aliases` in `config.json` adds others, and `!pwsh ...` works out of the
 box. See the README's Shell commands section.

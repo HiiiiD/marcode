@@ -7,7 +7,6 @@ import { useSyntaxStyle, useTokens } from '../tokens/tokens-provider';
 import { BAR_CHARS } from './bar-border';
 import { SentAttachments } from '../attachment-chips';
 import { CompactionCard } from './compaction-card';
-import { ShellCard } from './shell-card';
 import { PermissionCard } from './permission-card';
 import { RelocationCardView, type RelocationKeys } from './relocation-card';
 import { SubagentCard } from './subagent-card';
@@ -65,7 +64,7 @@ export function RowView(props: {
     case 'tool':
       return row.item.tool.kind === 'subagent' && row.item.tool.action !== 'message'
         ? <SubagentCard item={row.item} open={props.expanded} userClosed={props.closed} selected={props.selected} />
-        : <ToolCard item={row.item} permission={row.permission} open={props.expanded} selected={props.selected} />;
+        : <ToolCard item={row.item} permission={row.permission} open={row.userShell ? !props.expanded : props.expanded} streaming={row.userShell === true} selected={props.selected} />;
     case 'permission':
       return <PermissionCard header={row.header} state={row.state} reason={row.reason} selected={props.selected} />;
     case 'question':
@@ -79,8 +78,6 @@ export function RowView(props: {
       return <RelocationCardView card={row.card} active={row.active} keys={props.relocationKeys} selected={props.selected} />;
     case 'compaction':
       return <CompactionCard row={row} open={props.expanded} selected={props.selected} />;
-    case 'shell':
-      return <ShellCard row={row} expanded={props.expanded} selected={props.selected} />;
     case 'notice':
       return <text attributes={bold} fg={row.tone === 'error' ? theme.colors.error : theme.colors.mutedForeground} wrapMode="word">{row.text}</text>;
   }
