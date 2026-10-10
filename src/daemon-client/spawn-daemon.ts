@@ -12,8 +12,12 @@ export function daemonSpawnCommand(
   workspaceDir: string,
   roots: string[],
   runtime: Runtime = current(),
-): { command: string; args: string[] } {
+  extension?: { script: string },
+): { command: string; args: string[]; env?: Record<string, string> } {
   const tail = ['daemon', '--serve', '--workspace-dir', workspaceDir, ...roots.flatMap((r) => ['--root', r])];
+  if (extension) {
+    return { command: runtime.execPath, args: [extension.script, ...tail], env: { ELECTRON_RUN_AS_NODE: '1' } };
+  }
   return isBun(runtime.execPath) && runtime.argv1
     ? { command: runtime.execPath, args: [runtime.argv1, ...tail] }
     : { command: runtime.execPath, args: tail };
@@ -24,12 +28,12 @@ export const daemonSpawnOptions = (workspaceDir: string, log: number): SpawnOpti
   cwd: workspaceDir, detached: true, stdio: ['ignore', log, log], windowsHide: true,
 });
 
-export async function spawnDetached(workspaceDir: string, roots: string[]): Promise<void> {
-  const { command, args } = daemonSpawnCommand(workspaceDir, roots);
+export async function spawnDetached(workspaceDir: string, roots: string[], extension?: { script: string }): Promise<void> {
+  const { command, args, env } = daemonSpawnCommand(workspaceDir, roots, current(), extension);
   await fs.promises.mkdir(workspaceDir, { recursive: true });
   const log = fs.openSync(path.join(workspaceDir, 'daemon.log'), 'a');
   try {
-    const child = spawn(command, args, daemonSpawnOptions(workspaceDir, log));
+    const child = spawn(command, args, { ...daemonSpawnOptions(workspaceDir, log), ...(env ? { env: { ...process.env, ...env } } : {}) });
     child.on('error', (err) => { console.error('[marcode] daemon spawn failed', err); });
     child.unref();
   } finally {

@@ -82,6 +82,17 @@ async function main() {
 		alias: { '@': require('path').resolve(__dirname, 'src/webview') },
 	});
 
+	// The detached daemon the extension spawns with ELECTRON_RUN_AS_NODE; no vscode import is reachable from it.
+	const daemonCtx = await esbuild.context({
+		...common,
+		entryPoints: ['src/daemon/daemon-main.ts'],
+		format: 'cjs',
+		platform: 'node',
+		outfile: 'dist/daemon.js',
+		external: ['@anthropic-ai/claude-agent-sdk', 'bun:sqlite'],
+		alias: { '@': require('path').resolve(__dirname, 'src/webview') },
+	});
+
 	const webviewCtx = await esbuild.context({
 		...common,
 		entryPoints: ['src/webview/main.tsx'],
@@ -135,7 +146,7 @@ async function main() {
 		plugins: [tailwindPlugin('src/history/index.css', 'dist/history.css'), ...common.plugins],
 	});
 
-	const all = [hostCtx, webviewCtx, reviewCtx, fleetCtx, historyCtx];
+	const all = [hostCtx, daemonCtx, webviewCtx, reviewCtx, fleetCtx, historyCtx];
 	if (watch) {
 		await Promise.all(all.map((c) => c.watch()));
 	} else {
