@@ -110,7 +110,7 @@ router. See `docs/daemon.md`.
 | `src/host/session-manager.ts` | Roster; create/close/delete; patch fan-out to the visible set |
 | `src/host/shell/shell-aliases.ts`, `shell-runner.ts` | `shell.aliases` validation and `!` line resolution; the pure-Node spawn with output cap, timeout, cancel and tree kill, and Git Bash discovery on Windows |
 | `src/host/shell/shell-controller.ts` | One session's current `!` run, owned by `AgentSession`; the output is transcript-only and never reaches the model |
-| `src/client-core/shell-command.ts`, `shell-card.ts` | `parseShellCommand` (a leading `!`) and the card view model shared by the webview and the TUI |
+| `src/client-core/shell-command.ts`, `shell-card.ts`, `shell-as-tool.ts`, `running-shell.ts` | `parseShellCommand` (a leading `!`); the TUI card's view model; the adapter that renders a shell item as a Bash tool card in the webview; the running command the pinned cancel bar targets |
 | `src/host/self-control-mcp-server.ts` | One loopback HTTP MCP server exposing `marcode__spawn_session` to every session's provider; started at `activate()`, token/url threaded into all three provider constructors |
 | `src/host/message-router.ts` | `WebviewToHost` → manager calls. No `vscode` import, so it unit-tests. |
 | `src/host/panel-view-provider.ts` | `WebviewViewProvider`; HTML + nonce; transport |

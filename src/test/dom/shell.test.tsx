@@ -29,12 +29,18 @@ suite('shell commands', () => {
     assert.strictEqual(run.command, 'git status');
   });
 
-  test('a finished command renders its command, output and exit', async () => {
+  test('a finished command renders as a Bash card with its output shown', async () => {
     renderApp();
     hydrateWith([shell()]);
-    await screen.findByText('ls -la');
+    await screen.findByText('Bash');
+    assert.strictEqual(screen.getAllByText('ls -la').length > 0, true);
     screen.getByText(/file-a/);
-    screen.getByText('exit 0');
+  });
+
+  test('a running command streams its output inside the card', async () => {
+    renderApp();
+    hydrateWith([shell({ state: 'running', exitCode: undefined, output: 'tick-1' })]);
+    await screen.findByText(/tick-1/);
   });
 
   test('a running command is pinned above the composer with a Cancel that posts cancel-shell', async () => {
@@ -49,14 +55,15 @@ suite('shell commands', () => {
   test('a finished command is not pinned', async () => {
     renderApp();
     hydrateWith([shell()]);
-    await screen.findByText('ls -la');
+    await screen.findByText('Bash');
     assert.strictEqual(screen.queryByRole('region', { name: 'Running shell command' }) === null, true);
   });
 
-  test('a failed command says so in text', async () => {
+  test('a failed command is marked failed and shows its exit code', async () => {
     renderApp();
     hydrateWith([shell({ exitCode: 2 })]);
-    await screen.findByText('exit 2');
+    await screen.findByText('failed');
+    screen.getByText(/\[exit 2\]/);
   });
 
   test('a bang the parser rejects does not claim to be a shell command', async () => {

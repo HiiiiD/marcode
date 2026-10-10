@@ -28,8 +28,16 @@ const GLYPHS: Record<ToolGlyph, typeof TerminalIcon> = {
   'image': ImageIcon,
 };
 
-export function ToolCard({ item, onFork }: { item: ToolItem; onFork?: () => void }) {
-  const [open, setOpen] = useState(false);
+export function ToolCard({
+  item, onFork, defaultOpen = false, streaming = false,
+}: {
+  item: ToolItem; onFork?: () => void;
+  /** Starts expanded: a command the user ran themselves wants its output in view. */
+  defaultOpen?: boolean;
+  /** Shows text output while the call is still running (a live shell command). */
+  streaming?: boolean;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
   const { post } = useStore();
   const tool = item.tool;
   const planPath = item.output?.kind === 'plan' ? item.output.filePath : undefined;
@@ -47,7 +55,10 @@ export function ToolCard({ item, onFork }: { item: ToolItem; onFork?: () => void
   const Chevron = open ? ChevronDownIcon : ChevronRightIcon;
 
   const input = describeInput(tool);
-  const output = describeOutput(tool.kind, item.output, item.state);
+  const output = describeOutput(
+    tool.kind, item.output,
+    streaming && item.state === 'running' && item.output?.kind === 'text' ? 'ok' : item.state,
+  );
 
   return (
     // `group/item`, not a second `<button>` nested inside the toggle: the
