@@ -7,6 +7,7 @@ import { useSyntaxStyle, useTokens } from '../tokens/tokens-provider';
 import { BAR_CHARS } from './bar-border';
 import { SentAttachments } from '../attachment-chips';
 import { CompactionCard } from './compaction-card';
+import { ShellCard } from './shell-card';
 import { PermissionCard } from './permission-card';
 import { RelocationCardView, type RelocationKeys } from './relocation-card';
 import { SubagentCard } from './subagent-card';
@@ -79,7 +80,7 @@ export function RowView(props: {
     case 'compaction':
       return <CompactionCard row={row} open={props.expanded} selected={props.selected} />;
     case 'shell':
-      return <text wrapMode="word">{row.card.command}</text>;
+      return <ShellCard row={row} selected={props.selected} />;
     case 'notice':
       return <text attributes={bold} fg={row.tone === 'error' ? theme.colors.error : theme.colors.mutedForeground} wrapMode="word">{row.text}</text>;
   }

@@ -13,6 +13,15 @@ suite('tui keymap', () => {
     assert.deepStrictEqual(actionFor('composer', { name: 'escape' }, busy), { do: 'interrupt' });
     assert.strictEqual(actionFor('composer', { name: 'escape' }, idle), undefined);
   });
+  test('Esc cancels a running shell command when no turn is running', () => {
+    assert.deepStrictEqual(actionFor('composer', { name: 'escape' }, { running: false, shellRunning: true }), { do: 'cancel-shell' });
+  });
+  test('Esc still interrupts a running turn first', () => {
+    assert.deepStrictEqual(actionFor('composer', { name: 'escape' }, { running: true, shellRunning: true }), { do: 'interrupt' });
+  });
+  test('Esc with nothing running does nothing', () => {
+    assert.strictEqual(actionFor('composer', { name: 'escape' }, { running: false, shellRunning: false }), undefined);
+  });
   test('composer: Enter sends, Ctrl+J and Alt+Enter insert a newline, Up recalls', () => {
     assert.deepStrictEqual(actionFor('composer', { name: 'return' }, idle), { do: 'send' });
     assert.deepStrictEqual(actionFor('composer', { name: 'j', ctrl: true }, idle), { do: 'newline' });

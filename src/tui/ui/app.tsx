@@ -112,6 +112,7 @@ export function App(props: AppProps) {
     openPicker: setPicker,
     cycleZone: () => { setZone(zones[(zones.indexOf(current) + 1) % zones.length] ?? 'composer'); },
     relocation: summary && !summary.owner ? activeRelocation(pane?.items ?? []) : undefined,
+    runningShellId: summary && !summary.owner ? pane?.items.findLast((i) => i.role === 'shell' && i.state === 'running')?.id : undefined,
   });
 
   const onFocusSession = (id: SessionId) => {

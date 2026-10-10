@@ -2,6 +2,7 @@ import { useKeyboard } from '@opentui/react';
 import type { KeyBinding, TextareaRenderable } from '@opentui/core';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { parseAttachCommand, parsePastedPaths } from '../../client-core/path-paste';
+import { parseShellCommand } from '../../client-core/shell-command';
 import { promptHistory } from '../../client-core/prompt-history';
 import type { SessionId } from '../../protocol/messages';
 import { existingFileUris } from '../attach-paths';
@@ -46,8 +47,9 @@ export function Composer({ sessionId, focused, onOpenPicker }: { sessionId: Sess
   const [text, setText] = useState('');
   const [caret, setCaret] = useState(0);
   const tokens = useTokens();
-  const popup = useMentionPopup({ sessionId, text, caret });
-  const slash = useInvocablePopup({ sessionId, text });
+  const shellMode = text.trimStart().startsWith('!');
+  const popup = useMentionPopup({ sessionId, text: shellMode ? '' : text, caret });
+  const slash = useInvocablePopup({ sessionId, text: shellMode ? '' : text });
   const anyOpen = popup.open || slash.open;
   useEffect(() => { setMentionOpen(anyOpen); return () => { setMentionOpen(false); }; }, [anyOpen]);
 
@@ -111,6 +113,15 @@ export function Composer({ sessionId, focused, onOpenPicker }: { sessionId: Sess
   const submit = () => {
     const value = (box.current?.plainText ?? '').trim();
     if (value === '') { return; }
+    const shell = parseShellCommand(value);
+    if (shell !== undefined) {
+      post({ t: 'run-shell', id: sessionId, command: shell });
+      setBox('');
+      drafts.set(sessionId, '');
+      pending.current = '';
+      flush();
+      return;
+    }
     const picker = parsePickerCommand(value);
     if (picker && onOpenPicker) {
       setBox('');
@@ -187,6 +198,7 @@ export function Composer({ sessionId, focused, onOpenPicker }: { sessionId: Sess
       {popup.open ? <MentionPopup rows={popup.rows} index={popup.index} /> : null}
       {slash.open ? <InvocablePopup rows={slash.rows} overflow={slash.overflow} index={slash.index} /> : null}
       <AttachmentChips attachments={attachments} rejected={rejected} onOpen={(a) => { post({ t: 'open-attachment', id: sessionId, attachmentId: a.id }); }} />
+      {shellMode ? <text fg={tokens?.textMuted ?? 'gray'}>shell command: Enter runs it here, nothing goes to the model</text> : null}
       {queued.map((q) => <text key={q.id} fg={tokens?.textMuted ?? 'gray'}>{`queued: ${q.text}`}</text>)}
       <Surface tone="panel" padX={1} padY={1}>
         <textarea
