@@ -31,4 +31,10 @@ suite('daemon remote hooks', () => {
     assert.deepStrictEqual(await h.picker.pick(), ['/x']);
     assert.deepStrictEqual(await h.fileSearch.search('q'), []);
   });
+  test('updateNotify becomes a notify act', () => {
+    const acts: [string, unknown[]][] = [];
+    const h = createRemoteHooks({ act: (op, args) => { acts.push([op, args]); }, ask: async () => undefined });
+    h.updateNotify.notify('Claude', '1.0', '1.1');
+    assert.deepStrictEqual(acts, [['notify', ['info', 'Claude 1.0 → 1.1 available.']]]);
+  });
 });

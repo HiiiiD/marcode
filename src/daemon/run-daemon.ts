@@ -3,6 +3,7 @@ import type { HostConfig } from '../host/host-config';
 import { defaultLeaseDeps } from '../host/lease';
 import { MessageRouter } from '../host/message-router';
 import { PostBus } from '../host/post-bus';
+import type { ActOp } from '../protocol/daemon-wire';
 import type { HostToWebview } from '../protocol/messages';
 import { DaemonServer } from './daemon-server';
 import { disposeWithin } from './dispose-within';
@@ -28,11 +29,15 @@ export interface RunDaemonOptions {
   disposeTimeoutMs?: number;
   /** Test seam: the host, once built, so a test can move a session without a client attached. */
   onHost?: (host: HostHandle) => void;
+  /** Test seam: the sink host warnings and shell noise go through. */
+  onNotifier?: (n: Notifier) => void;
 }
 
 const DISPOSE_TIMEOUT_MS = 10_000;
 
 const errorText = (err: unknown) => (err instanceof Error ? err.stack ?? err.message : String(err));
+
+interface Notifier { warn(message: string): void; shellNoise(profile: string): void }
 
 export interface RunningDaemon { info: DaemonInfo; done: Promise<void>; stop(): Promise<void> }
 
@@ -61,13 +66,20 @@ export async function runDaemon(opts: RunDaemonOptions): Promise<RunningDaemon> 
     throw new Error(owned);
   }
 
+  const toSidebar = (op: ActOp, args: unknown[]) => server?.broadcastAct('sidebar', op, args);
+  const notifier: Notifier = {
+    warn: (m) => { log(m); toSidebar('notify', ['warn', m]); },
+    shellNoise: (profile) => toSidebar('shellNoise', [profile]),
+  };
+  opts.onNotifier?.(notifier);
+
   let host: HostHandle;
   try {
     host = await createHost({
       workspaceDir, config, hostKind: 'daemon',
       workspaceRoots: () => (server?.roots().length ? server.roots() : opts.initialRoots),
       emit: (m: HostToWebview) => { bus.post(m); if (m.t === 'session-status') { check(); } },
-      notify: { warn: log },
+      notify: notifier, onShellNoise: notifier.shellNoise,
     });
   } catch (err) {
     log(`startup failed: ${errorText(err)}`);
@@ -116,6 +128,7 @@ export async function runDaemon(opts: RunDaemonOptions): Promise<RunningDaemon> 
           host.manager, emit, hello.defaultCwd, hooks.editor, host.attachments, hooks.picker,
           config.review.pollIntervalMs, hooks.fileSearch, favorites,
           { setFavoriteModels: (ids) => { favorites = ids; hooks.configHost.setFavoriteModels(ids); } },
+          hello.clientKind === 'sidebar' ? hooks.updateNotify : undefined,
         ), emit),
         onShutdown: () => { log('shutdown requested'); void stop(); },
         onChange: check,

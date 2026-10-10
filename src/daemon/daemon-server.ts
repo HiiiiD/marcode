@@ -1,6 +1,7 @@
 import * as fs from 'node:fs';
 import * as net from 'node:net';
 import * as path from 'node:path';
+import type { ActOp, ClientKind } from '../protocol/daemon-wire';
 import type { PostBus } from '../host/post-bus';
 import { DaemonConnection, type ConnectionDeps, type FrameSocket } from './connection';
 import { probeEndpoint } from './probe-endpoint';
@@ -69,6 +70,12 @@ export class DaemonServer {
       }
     });
     return this.closing;
+  }
+
+  broadcastAct(kind: ClientKind, op: ActOp, args: unknown[]): void {
+    for (const conn of this.connections) {
+      if (conn.attached && conn.kind === kind) { conn.act(op, args); }
+    }
   }
 
   clientCount(): number {

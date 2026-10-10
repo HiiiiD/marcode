@@ -117,6 +117,8 @@ function daemonHooks(fileIndex: FileIndex, favorites: Favorites): ClientHooks {
     context: () => null,
     act: (op, args) => {
       if (op === 'setFavoriteModels') { void favorites.set(args[0] as string[]); return; }
+      // Sent to sidebar clients only; a terminal has no toast to show.
+      if (op === 'notify' || op === 'shellNoise') { return; }
       (editor[op] as (...a: unknown[]) => void)(...args);
     },
     // The TUI has no file picker; an empty pick is what the in-process router's missing picker yields too.

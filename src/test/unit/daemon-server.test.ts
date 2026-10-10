@@ -67,6 +67,20 @@ suite('daemon server', () => {
     tui.sock.destroy(); review.sock.destroy();
   });
 
+  test('broadcastAct reaches only attached clients of that kind, and is a no-op with none', async () => {
+    server.broadcastAct('sidebar', 'notify', ['warn', 'early']);
+    const sidebar = await client(endpoint);
+    const review = await client(endpoint);
+    sidebar.send(HELLO('sidebar', ['/a']));
+    review.send(HELLO('review', ['/a']));
+    await until(() => sidebar.frames.length > 0 && review.frames.length > 0);
+    server.broadcastAct('sidebar', 'notify', ['warn', 'hi']);
+    await until(() => sidebar.frames.some((f) => f.f === 'act'));
+    assert.deepStrictEqual(sidebar.frames.filter((f) => f.f === 'act').map((f) => [f.op, f.args]), [['notify', ['warn', 'hi']]]);
+    assert.strictEqual(review.frames.some((f) => f.f === 'act'), false);
+    sidebar.sock.destroy(); review.sock.destroy();
+  });
+
   test('a client sending garbage does not disturb another', async () => {
     const good = await client(endpoint);
     const bad = await client(endpoint);

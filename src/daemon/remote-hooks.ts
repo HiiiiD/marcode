@@ -1,5 +1,5 @@
 import type { ActOp, AskOp } from '../protocol/daemon-wire';
-import type { AttachmentHost, ConfigHost, EditorContextHost, FileSearch } from '../host/message-router';
+import type { AttachmentHost, ConfigHost, EditorContextHost, FileSearch, UpdateNotifyHost } from '../host/message-router';
 
 type EditorContext = ReturnType<EditorContextHost['current']>;
 
@@ -37,5 +37,8 @@ export function createRemoteHooks(io: HookIo) {
     },
   };
   const configHost: ConfigHost = { setFavoriteModels: (ids) => io.act('setFavoriteModels', [ids]) };
-  return { editor, picker, fileSearch, configHost, setContext: (c: EditorContext) => { ctx = c; } };
+  const updateNotify: UpdateNotifyHost = {
+    notify: (name, current, latest) => io.act('notify', ['info', `${name} ${current} → ${latest} available.`]),
+  };
+  return { editor, picker, fileSearch, configHost, updateNotify, setContext: (c: EditorContext) => { ctx = c; } };
 }
