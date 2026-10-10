@@ -140,7 +140,7 @@ export class SelfControlMcpServer {
         + 'OpenCode) and a different working directory. These marcode__* tools are how you interact '
         + 'with the panel itself, not with files or the user directly: marcode__list_sessions to see '
         + 'who else is running, marcode__send_message to message another session, marcode__spawn_session '
-        + 'to start a new one (marcode__list_models finds the provider/model ids it accepts), marcode__spawn_collaborators to start a whole team on one working tree, marcode__get_context_usage to see how full your context window is,marcode__close_session to close one (e.g. a worker you spawned once it '
+        + 'to start a new one (marcode__list_models finds the provider/model ids it accepts), marcode__spawn_collaborators to start a whole team on one working tree, marcode__get_context_usage to see how full your context window is, marcode__close_session to close one (e.g. a worker you spawned once it '
         + `has reported back)${recallClause}. Check marcode__list_sessions whenever coordinating with, or delegating `
         + 'to, another session would help — do not assume you are alone just because nothing mentioned '
         + 'these tools yet.',
