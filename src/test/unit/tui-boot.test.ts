@@ -8,7 +8,7 @@ import { daemonInfoPath } from '../../daemon/daemon-info';
 import { runDaemon, type RunningDaemon } from '../../daemon/run-daemon';
 import { STALE_CONFIG_WARNING } from '../../daemon-client/connect-or-spawn';
 import { discover } from '../../daemon-client/discover';
-import { requestAttachmentPath } from '../../tui/attachment-request';
+import { requestAttachmentPath } from '../../client-core/attachment-request';
 import { bootHost, configChangedNotice, initialNotice, type BootOptions, type Booted } from '../../tui/boot';
 import type { HostToWebview, WebviewToHost } from '../../protocol/messages';
 import { loadConfig } from '../../host/config-file';

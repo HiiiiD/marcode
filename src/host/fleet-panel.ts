@@ -1,10 +1,8 @@
 import * as vscode from 'vscode';
-import { MessageRouter, type EditorContextHost } from './message-router';
-import { PostBus, FLEET_WANTS } from './post-bus';
-import type { SessionManager } from './session-manager';
+import { bindSurface } from './bind-surface';
+import type { SurfaceLink } from './surface-link';
 import { renderWebviewHtml } from './webview-html';
-import { focusSession } from './focus-session';
-import type { SessionId, WebviewToHost } from '../protocol/messages';
+import type { SessionId } from '../protocol/messages';
 
 export const FLEET_VIEW_TYPE = 'mar-code.fleet';
 
@@ -16,7 +14,6 @@ export const FLEET_VIEW_TYPE = 'mar-code.fleet';
  */
 export class FleetPanel {
   private panel: vscode.WebviewPanel | undefined;
-  private unregister: (() => void) | undefined;
   /** Every subscription `adopt()` makes on the current `panel` — tracked and
    * disposed together with it, the same discipline `ReviewPanel` applies. */
   private subscriptions: vscode.Disposable[] = [];
@@ -31,10 +28,7 @@ export class FleetPanel {
 
   constructor(
     private readonly extensionUri: vscode.Uri,
-    private readonly manager: SessionManager,
-    private readonly bus: PostBus,
-    private readonly defaultCwd: string,
-    private readonly editor: EditorContextHost,
+    private readonly connect: () => Promise<SurfaceLink>,
   ) {}
 
   open(focus?: { sessionId: SessionId; itemId: string }): void {
@@ -78,8 +72,6 @@ export class FleetPanel {
     // do it — see `ReviewPanel.restore()` for why that ordering matters.
     const old = this.panel;
     if (old !== undefined) {
-      this.unregister?.();
-      this.unregister = undefined;
       this.panel = undefined;
       this.pendingFocus = undefined;
       for (const sub of this.subscriptions.splice(0)) { sub.dispose(); }
@@ -104,55 +96,36 @@ export class FleetPanel {
       title: 'Fleet',
     });
 
-    this.unregister = this.bus.add({
-      post: (msg) => { void panel.webview.postMessage(msg); },
-      wants: FLEET_WANTS,
-    });
-
-    const router = new MessageRouter(
-      this.manager, (m) => { void panel.webview.postMessage(m); },
-      this.defaultCwd, this.editor,
-    );
-    const messageSub = panel.webview.onDidReceiveMessage(async (raw: WebviewToHost) => {
-      try {
-        // Same precedent as PanelViewProvider's open-file/open-review
-        // intercepts: this needs the vscode API MessageRouter must not
-        // import.
-        if (raw?.t === 'focus-session') {
-          await focusSession(this.manager, raw.id);
-          await vscode.commands.executeCommand('workbench.view.extension.mar-code');
-          return;
+    const binding = bindSurface(panel.webview, this.connect, {
+      // The router places the session; revealing the sidebar needs the vscode API.
+      intercept: async (raw, link) => {
+        if (raw?.t !== 'focus-session') { return false; }
+        link.transport.post(raw);
+        await vscode.commands.executeCommand('workbench.view.extension.mar-code');
+        return true;
+      },
+      // Held until this panel's own hydrate arrives, which the target session is guaranteed to be inside.
+      onHostMessage: (m) => {
+        if (m.t === 'hydrate' && this.pendingFocus) {
+          void panel.webview.postMessage({ t: 'fleet-focus-subagent', ...this.pendingFocus });
+          this.pendingFocus = undefined;
         }
-        if (raw?.t === 'ready') {
-          await router.handle(raw);
-          if (this.pendingFocus) {
-            void panel.webview.postMessage({ t: 'fleet-focus-subagent', ...this.pendingFocus });
-            this.pendingFocus = undefined;
-          }
-          return;
-        }
-        await router.handle(raw);
-      } catch (err) {
-        console.error('[mar-code] fleet message handling failed', err);
-      }
+      },
     });
 
     const disposeSub = panel.onDidDispose(() => {
       // Guards against `onDidDispose` outliving the panel it was registered
       // for — see `ReviewPanel`'s identical guard.
       if (this.panel !== panel) { return; }
-      this.unregister?.();
-      this.unregister = undefined;
       this.panel = undefined;
       this.pendingFocus = undefined;
       for (const sub of this.subscriptions.splice(0)) { sub.dispose(); }
     });
 
-    this.subscriptions = [messageSub, disposeSub];
+    this.subscriptions = [binding, disposeSub];
   }
 
   dispose(): void {
-    this.unregister?.();
     for (const sub of this.subscriptions.splice(0)) { sub.dispose(); }
     this.panel?.dispose();
   }

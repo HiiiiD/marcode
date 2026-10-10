@@ -1,9 +1,7 @@
 import * as vscode from 'vscode';
-import { MessageRouter, type EditorContextHost } from './message-router';
-import { PostBus, REVIEW_WANTS } from './post-bus';
-import type { SessionManager } from './session-manager';
+import { bindSurface } from './bind-surface';
+import type { SurfaceLink } from './surface-link';
 import { renderWebviewHtml } from './webview-html';
-import type { WebviewToHost } from '../protocol/messages';
 
 export const REVIEW_VIEW_TYPE = 'mar-code.review';
 
@@ -21,7 +19,6 @@ export const REVIEW_VIEW_TYPE = 'mar-code.review';
  */
 export class ReviewPanel {
   private panel: vscode.WebviewPanel | undefined;
-  private unregister: (() => void) | undefined;
   /** Every subscription `adopt()` makes on the current `panel` — tracked and
    * disposed together with it, the same discipline `extension.ts` applies to
    * every other subscription in the extension. */
@@ -29,13 +26,7 @@ export class ReviewPanel {
 
   constructor(
     private readonly extensionUri: vscode.Uri,
-    private readonly manager: SessionManager,
-    private readonly bus: PostBus,
-    private readonly defaultCwd: string,
-    private readonly editor: EditorContextHost,
-    /** `marcode.review.pollIntervalMs`, forwarded to this tab's own
-     * `MessageRouter` so its `hydrate` carries it. */
-    private readonly reviewPollIntervalMs: number = 750,
+    private readonly connect: () => Promise<SurfaceLink>,
   ) {}
 
   open(): void {
@@ -70,8 +61,6 @@ export class ReviewPanel {
     // below is the second, independent safety net.
     const old = this.panel;
     if (old !== undefined) {
-      this.unregister?.();
-      this.unregister = undefined;
       this.panel = undefined;
       for (const sub of this.subscriptions.splice(0)) { sub.dispose(); }
       old.dispose();
@@ -95,32 +84,13 @@ export class ReviewPanel {
       title: 'Changes',
     });
 
-    this.unregister = this.bus.add({
-      post: (msg) => { void panel.webview.postMessage(msg); },
-      wants: REVIEW_WANTS,
-    });
-
-    const router = new MessageRouter(
-      this.manager, (m) => { void panel.webview.postMessage(m); },
-      this.defaultCwd, this.editor, undefined, undefined, this.reviewPollIntervalMs,
-    );
-    const messageSub = panel.webview.onDidReceiveMessage(async (raw: WebviewToHost) => {
-      try {
-        // Answered here, off the client's own `ready` — not synthesized at
-        // attach time. `onDidChangeViewState` only fires on a future
-        // transition, never on registration, and a restored panel VS Code
-        // drops straight into a background editor group has
-        // `retainContextWhenHidden: false`, so its webview script has not
-        // even loaded yet; a post made in `adopt()` before that happens is
-        // simply dropped. `ready` is the one signal that cannot race the
-        // script load, because the client sent it from inside that script.
-        if (raw?.t === 'ready') {
-          void panel.webview.postMessage({ t: 'review-visibility', visible: panel.visible });
-        }
-        await router.handle(raw);
-      } catch (err) {
-        console.error('[mar-code] review message handling failed', err);
-      }
+    // Answered here, off the client's own `ready` rather than at attach time: a restored tab in a
+    // background group has not loaded its script yet, so an earlier post would be dropped.
+    const binding = bindSurface(panel.webview, this.connect, {
+      intercept: (raw) => {
+        if (raw?.t === 'ready') { void panel.webview.postMessage({ t: 'review-visibility', visible: panel.visible }); }
+        return false;
+      },
     });
 
     const viewStateSub = panel.onDidChangeViewState(() => {
@@ -133,8 +103,6 @@ export class ReviewPanel {
       // before disposing the old panel, but this check makes the handler
       // correct on its own even if that ordering ever changes.
       if (this.panel !== panel) { return; }
-      this.unregister?.();
-      this.unregister = undefined;
       this.panel = undefined;
       // The ordinary path — the user closes the tab — lands here, not in
       // `restore()`'s explicit clear above. Without this, these three
@@ -146,11 +114,10 @@ export class ReviewPanel {
       for (const sub of this.subscriptions.splice(0)) { sub.dispose(); }
     });
 
-    this.subscriptions = [messageSub, viewStateSub, disposeSub];
+    this.subscriptions = [binding, viewStateSub, disposeSub];
   }
 
   dispose(): void {
-    this.unregister?.();
     for (const sub of this.subscriptions.splice(0)) { sub.dispose(); }
     this.panel?.dispose();
   }

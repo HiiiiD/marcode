@@ -12,7 +12,7 @@ import { MessageRouter } from '../host/message-router';
 import { createTerminalFileIndex } from '../host/terminal-file-index';
 import { marcodeHome, resolveWorkspaceDir } from '../host/workspace-dir';
 import { APP_VERSION } from '../shared/app-version';
-import { requestAttachmentPath } from './attachment-request';
+import { requestAttachmentPath } from '../client-core/attachment-request';
 import { openPath } from './open-path';
 import { terminalConfigHost, terminalEditorHost } from './tui-hooks';
 import { findGitRoot } from './workspace-root';

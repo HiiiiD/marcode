@@ -1,10 +1,7 @@
 import * as vscode from 'vscode';
-import { focusSession } from './focus-session';
-import { MessageRouter, type EditorContextHost } from './message-router';
-import { PostBus, HISTORY_WANTS } from './post-bus';
-import type { SessionManager } from './session-manager';
+import { bindSurface } from './bind-surface';
+import type { SurfaceLink } from './surface-link';
 import { renderWebviewHtml } from './webview-html';
-import type { WebviewToHost } from '../protocol/messages';
 
 export const HISTORY_VIEW_TYPE = 'mar-code.history';
 
@@ -15,15 +12,11 @@ export const HISTORY_VIEW_TYPE = 'mar-code.history';
  */
 export class HistoryPanel {
   private panel: vscode.WebviewPanel | undefined;
-  private unregister: (() => void) | undefined;
   private subscriptions: vscode.Disposable[] = [];
 
   constructor(
     private readonly extensionUri: vscode.Uri,
-    private readonly manager: SessionManager,
-    private readonly bus: PostBus,
-    private readonly defaultCwd: string,
-    private readonly editor: EditorContextHost,
+    private readonly connect: () => Promise<SurfaceLink>,
   ) {}
 
   open(): void {
@@ -44,8 +37,6 @@ export class HistoryPanel {
     // null out the new panel's bookkeeping.
     const old = this.panel;
     if (old !== undefined) {
-      this.unregister?.();
-      this.unregister = undefined;
       this.panel = undefined;
       for (const sub of this.subscriptions.splice(0)) { sub.dispose(); }
       old.dispose();
@@ -69,42 +60,26 @@ export class HistoryPanel {
       title: 'Session history',
     });
 
-    this.unregister = this.bus.add({
-      post: (msg) => { void panel.webview.postMessage(msg); },
-      wants: HISTORY_WANTS,
-    });
-
-    const router = new MessageRouter(
-      this.manager, (m) => { void panel.webview.postMessage(m); },
-      this.defaultCwd, this.editor,
-    );
-    const messageSub = panel.webview.onDidReceiveMessage(async (raw: WebviewToHost) => {
-      try {
-        // Needs the vscode API, which MessageRouter must not import.
-        if (raw?.t === 'focus-session') {
-          await focusSession(this.manager, raw.id);
-          await vscode.commands.executeCommand('workbench.view.extension.mar-code');
-          return;
-        }
-        await router.handle(raw);
-      } catch (err) {
-        console.error('[mar-code] history message handling failed', err);
-      }
+    const binding = bindSurface(panel.webview, this.connect, {
+      // The router places the session; revealing the sidebar needs the vscode API.
+      intercept: async (raw, link) => {
+        if (raw?.t !== 'focus-session') { return false; }
+        link.transport.post(raw);
+        await vscode.commands.executeCommand('workbench.view.extension.mar-code');
+        return true;
+      },
     });
 
     const disposeSub = panel.onDidDispose(() => {
       if (this.panel !== panel) { return; }
-      this.unregister?.();
-      this.unregister = undefined;
       this.panel = undefined;
       for (const sub of this.subscriptions.splice(0)) { sub.dispose(); }
     });
 
-    this.subscriptions = [messageSub, disposeSub];
+    this.subscriptions = [binding, disposeSub];
   }
 
   dispose(): void {
-    this.unregister?.();
     for (const sub of this.subscriptions.splice(0)) { sub.dispose(); }
     this.panel?.dispose();
   }
