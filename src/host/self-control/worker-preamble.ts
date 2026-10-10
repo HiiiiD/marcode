@@ -5,6 +5,7 @@ interface PreambleInput {
   self: TeamMember;
   siblings: TeamMember[];
   scope?: string;
+  brief?: string;
   commit: boolean;
 }
 
@@ -25,6 +26,14 @@ export function buildWorkerPreamble(o: PreambleInput): string {
     ...o.siblings.map((s) => `- ${s.name}: ${s.task}`),
     'Do not revert or overwrite changes you did not make.',
   ];
+  if (o.siblings.length > 0) {
+    lines.push(
+      'Coordinate anything shared (devices, ports, builds, files) with your teammates: agree a protocol among yourselves. '
+        + 'Message them directly with marcode__send_message, using the names above. '
+        + 'Message the lead only for results, blockers, or a decision nobody else can make.',
+    );
+  }
+  if (o.brief) { lines.push(`Team brief: ${o.brief}`); }
   if (o.scope) { lines.push(`Your scope: ${o.scope}. Do not edit outside it.`); }
   lines.push(
     ...(o.commit ? COMMIT_RULES : ['Do not commit. Leave your changes uncommitted for the lead to review.']),

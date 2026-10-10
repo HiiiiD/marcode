@@ -1242,6 +1242,21 @@ suite('SelfControlMcpServer spawn_collaborators', () => {
     await server.dispose();
   });
 
+  test('the team brief reaches every worker', async () => {
+    const sent: Record<string, string> = {};
+    const server = new SelfControlMcpServer(teamManager(sent));
+    const config = await server.start();
+    const res = await callToolAs(config, 'lead', 'marcode__spawn_collaborators', {
+      brief: 'One shared emulator: ask the group before using it.',
+      workers: [{ task: 'a' }, { task: 'b' }],
+    });
+    assert.strictEqual(res.isError, undefined);
+    for (const id of ['w1', 'w2']) {
+      assert.strictEqual(sent[id].includes('Team brief: One shared emulator: ask the group before using it.'), true);
+    }
+    await server.dispose();
+  });
+
   test('commit false is honoured per worker', async () => {
     const sent: Record<string, string> = {};
     const server = new SelfControlMcpServer(teamManager(sent));

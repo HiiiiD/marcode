@@ -18,6 +18,7 @@ One lead (the caller) spawns N workers in one call. All share one working tree.
 ```
 workers: [{ task, scope?, commit?, provider?, model?, effort? }]
 cwd?: string            // default: caller's cwd; must be absolute
+brief?: string          // shared context/rules copied to every worker
 ```
 
 Returns `{ workers: [{ sessionId, task }] }`.
@@ -48,6 +49,9 @@ Team membership is not persisted in v1. It exists only in the preambles. (A `tea
   - Do not push. Only the lead pushes.
   - Follow the repo's commit conventions.
 - When `commit` is `false`: leave changes uncommitted for the lead to review.
+- Coordinate shared resources (devices, ports, builds) directly with teammates via `marcode__send_message`,
+  agreeing a protocol among themselves; message the lead only for results, blockers or decisions.
+- The team `brief`, if given.
 - When done, `marcode__send_message` the lead a short result plus the commit hashes made, or
   "no commits".
 

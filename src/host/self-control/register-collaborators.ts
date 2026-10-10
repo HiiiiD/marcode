@@ -16,12 +16,14 @@ export function registerCollaboratorsTool(mcp: McpServer, { sessionManager, call
       description: 'Marcode-specific: you become the lead of a small team. Creates one new top-level '
         + 'Marcode session per entry in `workers`, all in the SAME working tree (`cwd`, default: yours), '
         + 'each in its own pane. Every worker is told only about you and its teammates from this call — '
-        + 'never about other sessions — plus its `scope` (files or folders it owns), safe git rules for a '
-        + 'shared tree, and to report back to you with marcode__send_message. Workers commit their own '
+        + 'never about other sessions — plus its `scope` (files or folders it owns), your optional `brief`, '
+        + 'and safe git rules for a shared tree. Workers coordinate shared resources directly with each other '
+        + 'via marcode__send_message and message you only for results, blockers or decisions. Workers commit their own '
         + 'files unless `commit` is false; they never push, only you do. Unlike marcode__spawn_session '
         + 'this is one call for the whole team. Not subagents of this conversation. Before you push, '
         + 'run `git status` and `git log` to confirm every worker finished and nothing is left dirty.',
       inputSchema: z.object({
+        brief: z.string().optional().describe('Shared context and rules for the whole team, given to every worker (e.g. how to take turns on a shared device).'),
         cwd: z.string().optional().describe('Absolute working directory shared by the team. Omit to use yours.'),
         workers: z.array(z.object({
           task: z.string().describe('What this worker should do.'),
@@ -34,7 +36,7 @@ export function registerCollaboratorsTool(mcp: McpServer, { sessionManager, call
         })).min(1).max(MAX_WORKERS),
       }),
     },
-    async ({ cwd, workers }) => {
+    async ({ cwd, brief, workers }) => {
       const from = caller();
       if (!from) { return fail('Could not identify the calling session.'); }
       const teamCwd = cwd ?? from.cwd;
@@ -62,6 +64,7 @@ export function registerCollaboratorsTool(mcp: McpServer, { sessionManager, call
           self: team[i],
           siblings: team.filter((_, j) => j !== i),
           scope: workers[i].scope,
+          brief,
           commit: workers[i].commit !== false,
         }));
         await openPane(sessionManager, c.id);

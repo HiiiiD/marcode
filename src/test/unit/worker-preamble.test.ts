@@ -43,6 +43,23 @@ suite('buildWorkerPreamble', () => {
     assert.strictEqual(text.includes('Your scope: src/parser/'), true);
   });
 
+  test('tells workers to coordinate shared things with teammates directly, and the lead only for results', () => {
+    const text = buildWorkerPreamble(base);
+    assert.strictEqual(text.includes('Message them directly with marcode__send_message'), true);
+    assert.strictEqual(text.includes('Message the lead only for results, blockers'), true);
+  });
+
+  test('a lone worker is not told to coordinate with teammates', () => {
+    const text = buildWorkerPreamble({ ...base, siblings: [] });
+    assert.strictEqual(text.includes('Message them directly'), false);
+  });
+
+  test('the team brief is passed on when given and absent otherwise', () => {
+    assert.strictEqual(buildWorkerPreamble(base).includes('Team brief'), false);
+    const text = buildWorkerPreamble({ ...base, brief: 'One shared emulator: take turns.' });
+    assert.strictEqual(text.includes('Team brief: One shared emulator: take turns.'), true);
+  });
+
   test('a lone worker has no sibling line', () => {
     const text = buildWorkerPreamble({ ...base, siblings: [] });
     assert.strictEqual(text.includes('siblings'), false);
