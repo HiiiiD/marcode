@@ -86,7 +86,7 @@ export class PanelViewProvider implements vscode.WebviewViewProvider {
       // hydrate resets the nudge card, so the hits go out again after every one (reloads and reconnects included).
       afterHostMessage: (m) => { if (m.t === 'hydrate') { void this.agentsMdNudge?.resend(); } },
       onLink: (link) => {
-        const cache = trackLayout(link.transport.onMessage);
+        const cache = trackLayout(link.transport);
         this.layoutCache = cache;
         const offStatus = link.onStatus((status) => { this.post({ t: 'host-link', status }); });
         return () => { offStatus(); cache.dispose(); };

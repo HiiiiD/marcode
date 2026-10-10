@@ -7,15 +7,18 @@ const layout = (id: string): PaneLayout => ({
 } as unknown as PaneLayout);
 
 suite('layout cache', () => {
-  function feed() {
-    const listeners = new Set<(m: HostToWebview) => void>();
-    const onMessage = (l: (m: HostToWebview) => void) => { listeners.add(l); return () => { listeners.delete(l); }; };
-    return { onMessage, send: (m: HostToWebview) => { for (const l of [...listeners]) { l(m); } }, count: () => listeners.size };
+  // A class, like the real DaemonClient: onMessage reads `this`, so it breaks if detached from its owner.
+  class Feed {
+    private readonly listeners = new Set<(m: HostToWebview) => void>();
+    onMessage(l: (m: HostToWebview) => void): () => void { this.listeners.add(l); return () => { this.listeners.delete(l); }; }
+    send(m: HostToWebview): void { for (const l of [...this.listeners]) { l(m); } }
+    count(): number { return this.listeners.size; }
   }
+  const feed = () => new Feed();
 
   test('keeps the last layout from hydrate or layout-changed and ignores other messages', () => {
     const f = feed();
-    const cache = trackLayout(f.onMessage);
+    const cache = trackLayout(f);
     assert.strictEqual(cache.current() === undefined, true);
     f.send({ t: 'hydrate', layout: layout('a') } as unknown as HostToWebview);
     assert.deepStrictEqual(cache.current(), layout('a'));
@@ -26,7 +29,7 @@ suite('layout cache', () => {
 
   test('dispose stops tracking', () => {
     const f = feed();
-    const cache = trackLayout(f.onMessage);
+    const cache = trackLayout(f);
     cache.dispose();
     assert.strictEqual(f.count(), 0);
     f.send({ t: 'layout-changed', layout: layout('c') });
