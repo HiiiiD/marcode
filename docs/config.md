@@ -76,7 +76,7 @@ Default: `[]`
 
 ## `daemon.enabled`
 
-Let the terminal client run its host in a per-workspace background daemon so sessions outlive the TUI. A change takes a window reload or a restart of the TUI.
+Let the terminal client and the VS Code extension run their host in a per-workspace background daemon so sessions outlive the TUI and a window reload. A change takes a window reload or a restart of the TUI.
 
 Default: `true`
 

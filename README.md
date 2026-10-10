@@ -33,6 +33,9 @@ loop.
   env vars, never stored in settings.
 - A terminal client (**TUI**): the same sessions, split panes, approvals, memory and plan usage
   in a terminal, sharing `~/.marcode` with the extension. See [Terminal client](#terminal-client).
+- A background host: a detached per-workspace daemon runs the agents, so a running turn survives
+  a window reload or closing the TUI, and the extension and the TUI share live sessions. See
+  [docs/daemon.md](docs/daemon.md).
 - A fleet diff review tab (**Marcode: Review fleet changes**) showing every session's
   changes against a base ref, attributed to the session whose tool calls made them.
 - A fleet view (**Marcode: Open fleet view**) for drilling into one session's running or
@@ -57,10 +60,15 @@ loop.
 
 ## Terminal client
 
-Marcode also ships a terminal UI (TUI) for the same sessions. It boots its own host in-process,
-uses the same `~/.marcode/workspaces/<slug>` directory and `config.json` as the extension, and
-renders with OpenTUI. A session you start in the terminal shows up in VS Code and the other way
-round; one open in both is owned by one host at a time and is read-only in the other.
+Marcode also ships a terminal UI (TUI) for the same sessions. It uses the same
+`~/.marcode/workspaces/<slug>` directory and `config.json` as the extension, and renders with
+OpenTUI. Both attach to one per-workspace background daemon (started on demand), so a session you
+start in the terminal shows up live in VS Code and the other way round. Quitting the TUI leaves
+running turns going in the daemon; press Ctrl+C twice to quit, and Esc to interrupt a turn. The
+daemon exits after `daemon.idleMinutes` with nothing attached or running. If a client cannot use
+the daemon (disabled, a newer or busy older build) it runs its own host and says why; a session
+owned by another host is then read-only. See [docs/daemon.md](docs/daemon.md) and
+[docs/config.md](docs/config.md#daemonenabled).
 
 It has the roster, resizable split panes with a saved layout, tool approvals and questions,
 model / effort / permission-mode dialogs, `@file` mentions and the `/` skill menu, file
