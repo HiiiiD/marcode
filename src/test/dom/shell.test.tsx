@@ -29,10 +29,10 @@ suite('shell commands', () => {
     assert.strictEqual(run.command, 'git status');
   });
 
-  test('a finished command renders as the shell tool card, labelled User shell, with its output shown', async () => {
+  test('a finished command renders as the shell tool card, labelled You ran, with its output shown', async () => {
     renderApp();
     hydrateWith([shell()]);
-    await screen.findByText('User shell');
+    await screen.findByText('You ran');
     assert.strictEqual(screen.getAllByText('ls -la').length > 0, true);
     screen.getByText(/file-a/);
   });
@@ -55,7 +55,7 @@ suite('shell commands', () => {
   test('a finished command is not pinned', async () => {
     renderApp();
     hydrateWith([shell()]);
-    await screen.findByText('User shell');
+    await screen.findByText('You ran');
     assert.strictEqual(screen.queryByRole('region', { name: 'Running shell command' }) === null, true);
   });
 

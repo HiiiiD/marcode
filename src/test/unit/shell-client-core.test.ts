@@ -54,10 +54,10 @@ suite('runningShell', () => {
 });
 
 suite('shellAsTool', () => {
-  test('maps to a command tool card labelled User shell', () => {
+  test('maps to a command tool card labelled You ran', () => {
     const t = shellAsTool(item({ command: 'git status', output: 'clean\n' }));
     assert.deepStrictEqual([t.role, t.tool.kind, t.tool.kind === 'command' && t.tool.command, t.toolId], ['tool', 'command', 'git status', 'sh1']);
-    assert.strictEqual(t.tool.label, 'User shell');
+    assert.strictEqual(t.tool.label, 'You ran');
     assert.deepStrictEqual([t.state, t.output], ['ok', { kind: 'text', text: 'clean\n' }]);
   });
   test('running stays running and keeps its output so far', () => {
