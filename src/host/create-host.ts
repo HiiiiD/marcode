@@ -18,6 +18,7 @@ import { validateSystemPrompts } from '../shared/system-prompts';
 import { AttachmentStore } from './attachment-store';
 import { FallbackSummarizer } from './digest/fallback-summarizer';
 import { LlmSummarizer } from './digest/llm-summarizer';
+import { focusSession } from './focus-session';
 import type { HostConfig } from './host-config';
 import { SelfControlMcpServer } from './self-control-mcp-server';
 import { SessionManager } from './session-manager';
@@ -94,6 +95,7 @@ export async function createHost(opts: CreateHostOptions): Promise<HostHandle> {
     catalog: () => manager.catalog(),
     create: (providerId, cwd, model, effort, mode) => manager.create(providerId, cwd, model, effort, mode),
     setVisible: (ids) => manager.setVisible(ids as SessionId[]),
+    reveal: (id) => focusSession(manager, id as SessionId),
     summaries: () => manager.summaries(),
     isForeign: (id) => manager.isForeign(id as SessionId),
     visibleIds: () => manager.visibleIds(),
