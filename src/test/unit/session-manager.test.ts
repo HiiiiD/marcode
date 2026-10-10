@@ -888,6 +888,39 @@ suite('SessionManager', () => {
     await local.dispose();
   });
 
+  test('contextBreakdown marks the cached fallback stale when a running session times out', async () => {
+    const provider = new FakeProvider(() => [], { context: remembered });
+    const local = new SessionManager(new TranscriptStore(dir), new Map([['fake', provider]]), () => {});
+    await local.init();
+    const session = await local.create('fake', '/tmp');
+    await session.contextBreakdown();
+    provider.runs[0].contextBreakdown = () => new Promise(() => {});
+    (session.state as { status: string }).status = 'running';
+    (local as unknown as { contextTimeoutMs: number }).contextTimeoutMs = 20;
+
+    const result = await local.contextBreakdown(session.state.id);
+
+    if (!result.ok) { assert.fail(result.reason); }
+    assert.strictEqual(result.stale, true);
+    assert.deepStrictEqual(result.breakdown, remembered);
+    await local.dispose();
+  });
+
+  test('contextBreakdown does not mark a fallback stale when the session is idle', async () => {
+    const provider = new FakeProvider(() => [], { context: remembered });
+    const local = new SessionManager(new TranscriptStore(dir), new Map([['fake', provider]]), () => {});
+    await local.init();
+    const session = await local.create('fake', '/tmp');
+    await session.contextBreakdown();
+    provider.runs[0].contextBreakdown = () => Promise.reject(new Error('boom'));
+
+    const result = await local.contextBreakdown(session.state.id);
+
+    if (!result.ok) { assert.fail(result.reason); }
+    assert.strictEqual(result.stale, undefined);
+    await local.dispose();
+  });
+
   test('canOpenFile vouches for a memory file the persisted breakdown listed', async () => {
     // The popover renders those paths as links, so a breakdown served from
     // the cache has to be openable — otherwise every link in it is inert.

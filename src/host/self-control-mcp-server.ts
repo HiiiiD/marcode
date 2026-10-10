@@ -6,9 +6,12 @@ import { McpServer } from "@modelcontextprotocol/server";
 import { z } from 'zod';
 import { digestText } from '../memory/digest';
 import type { MemoryStore } from '../memory/types';
-import type { PermissionMode, TranscriptItem } from '../protocol/messages';
+import type { ContextResult, PermissionMode, TranscriptItem } from '../protocol/messages';
 import type { EffortLevel, SelfControlMcpConfig } from '../providers/types';
 import { rankByQuery } from '../shared/fuzzy-score';
+import { registerCollaboratorsTool } from './self-control/register-collaborators';
+import { registerContextUsageTool } from './self-control/register-context-usage';
+import { openPane, resolveSpawn, sendPrompt } from './self-control/spawn-support';
 
 /**
  * The slice of `SessionManager` this server needs. Declared structurally, not
@@ -80,6 +83,8 @@ export interface SessionManagerLike {
    * Hides (or discards, if empty/untitled) the target session's pane and indexes it. See `marcode__close_session`.
    */
   close(id: string): Promise<void>;
+  /** The live context measurement, falling back to the last recorded one. Absent in minimal fakes. */
+  contextBreakdown?(id: string): Promise<ContextResult>;
 }
 
 const PORT_ATTEMPTS = 5;
@@ -135,7 +140,7 @@ export class SelfControlMcpServer {
         + 'OpenCode) and a different working directory. These marcode__* tools are how you interact '
         + 'with the panel itself, not with files or the user directly: marcode__list_sessions to see '
         + 'who else is running, marcode__send_message to message another session, marcode__spawn_session '
-        + 'to start a new one (marcode__list_models finds the provider/model ids it accepts), marcode__close_session to close one (e.g. a worker you spawned once it '
+        + 'to start a new one (marcode__list_models finds the provider/model ids it accepts), marcode__spawn_collaborators to start a whole team on one working tree, marcode__get_context_usage to see how full your context window is, marcode__close_session to close one (e.g. a worker you spawned once it '
         + `has reported back)${recallClause}. Check marcode__list_sessions whenever coordinating with, or delegating `
         + 'to, another session would help — do not assume you are alone just because nothing mentioned '
         + 'these tools yet.',
@@ -146,6 +151,9 @@ export class SelfControlMcpServer {
       if (!sid) { return undefined; }
       return this.sessionManager.summaries().find((s) => s.id === sid);
     };
+
+    registerCollaboratorsTool(mcp, { sessionManager: this.sessionManager, caller });
+    registerContextUsageTool(mcp, { sessionManager: this.sessionManager, caller });
 
     mcp.registerTool(
       'marcode__list_models',
@@ -217,90 +225,13 @@ export class SelfControlMcpServer {
                 }),
       },
       async ({ provider, model, effort, mode, cwd, prompt }) => {
-        const from = caller();
-        const providerId = provider ?? from?.providerId;
-        if (!providerId) {
-          return { isError: true, content: [{ type: 'text', text: 'provider is required when the calling session cannot be identified' }] };
-        }
-        const entry = this.sessionManager.catalog().find((p) => p.id === providerId);
-        if (!entry) {
-          return { isError: true, content: [{ type: 'text', text: `Unknown or unavailable provider: ${providerId}` }] };
-        }
-        const effectiveModel = model ?? from?.model;
-        // Alias-aware, like `findModel()` in shared/model-catalog.ts (that
-        // helper itself isn't reused here — its `ModelInfo` requires fields,
-        // e.g. `displayName`, this file's structural `SessionManagerLike`
-        // deliberately doesn't carry). A caller's persisted `model` can be a
-        // canonical/wire id that only an alias row's `resolvedModel` covers
-        // (any session predating the dynamic catalog); matching on `id`
-        // alone would reject a model `sessionManager.create()` resolves fine.
-        const modelEntry = effectiveModel === undefined
-          ? entry.models[0]
-          : entry.models.find((m) => m.id === effectiveModel || m.resolvedModel === effectiveModel);
-        if (effectiveModel !== undefined && !modelEntry) {
-          return { isError: true, content: [{ type: 'text', text: `Provider ${providerId} has no model ${effectiveModel}` }] };
-        }
-        // Mirrors `resolveEffort()` in shared/model-catalog.ts (not reused
-        // directly for the same structural-typing reason `findModel` isn't,
-        // a few lines up): effort is a property of the model, not something
-        // a caller can force onto one that doesn't have it. A model with no
-        // effort control takes none at all; one that has it but doesn't
-        // publish the requested level falls back to its own default — the
-        // same graceful-downgrade treatment `mode: "bypass"` gets below,
-        // rather than rejecting the spawn outright.
-        const requestedEffort = effort ?? from?.effort;
-        const effectiveEffort = modelEntry?.effort
-          ? (requestedEffort && modelEntry.effort.levels.includes(requestedEffort)
-            ? requestedEffort
-            : modelEntry.effort.default as EffortLevel)
-          : undefined;
-        const explicitMode = mode as PermissionMode | undefined;
-        let modeId = (explicitMode ?? from?.permissionMode) as PermissionMode | undefined;
-        if (modeId !== undefined && !entry.permissionModes.some((m) => m.id === modeId)) {
-          return { isError: true, content: [{ type: 'text', text: `Provider ${providerId} has no mode ${modeId}` }] };
-        }
-        // `bypass` skips every permission check. An explicit request for it
-        // is refused outright — a session running in a restricted mode
-        // (e.g. `plan`) must not be able to delegate around its own
-        // restriction by spawning a `bypass` child, regardless of whether
-        // the target provider's own catalog happens to list `bypass` among
-        // its modes. A caller that merely *is* bypass itself and left `mode`
-        // unset never asked for that; propagating it silently would be a
-        // surprise a plain inherit shouldn't cause, so it is dropped back to
-        // the provider's own default (see `resolvePermissionMode`) instead
-        // of blocking the spawn outright.
-        if (explicitMode === 'bypass') {
-          return {
-            isError: true,
-            content: [{ type: 'text', text: 'spawn_session cannot create bypass-mode sessions' }],
-          };
-        }
-        if (modeId === 'bypass') { modeId = undefined; }
-        // Absolute-path check only: this module deliberately carries no
-        // `vscode` import (see the class doc), so it has no clean way to
-        // consult `vscode.workspace.workspaceFolders` without introducing
-        // one. A relative `cwd` is rejected outright as the cheap, always
-        // available check; confining it to known workspace roots is left for
-        // a follow-up that either threads folder list in or accepts the
-        // import. See the spec's Error handling section for the same note.
-        if (!path.isAbsolute(cwd)) {
-          return { isError: true, content: [{ type: 'text', text: `cwd must be an absolute path: ${cwd}` }] };
-        }
+        const resolved = resolveSpawn(this.sessionManager, caller(), { provider, model, effort, mode, cwd });
+        if (!resolved.ok) { return { isError: true, content: [{ type: 'text', text: resolved.error }] }; }
+        const s = resolved.spawn;
         try {
-          const session = await this.sessionManager.create(providerId, cwd, effectiveModel, effectiveEffort, modeId);
-          // `send` is deliberately not part of `SessionManagerLike`: the manager
-          // hands back a live session object, and this is the same shape
-          // `MessageRouter`'s 'send' case calls — see agent-session.ts's `send`.
-          // Guarded rather than asserted, so a minimal `SessionManagerLike` fake
-          // (one that only satisfies the structural type, without a real
-          // `AgentSession` behind it) doesn't blow up delivering the prompt.
-          const sendable = session as unknown as { send?: (text: string) => void };
-          if (typeof sendable.send === 'function') { sendable.send(prompt); }
-          if (this.sessionManager.reveal) {
-            await this.sessionManager.reveal(session.state.id);
-          } else {
-            await this.sessionManager.setVisible([...new Set([...this.sessionManager.visibleIds(), session.state.id])]);
-          }
+          const session = await this.sessionManager.create(s.providerId, s.cwd, s.model, s.effort, s.mode);
+          sendPrompt(session, prompt);
+          await openPane(this.sessionManager, session.state.id);
           return { content: [{ type: 'text', text: JSON.stringify({ sessionId: session.state.name }) }] };
         } catch (err) {
           return { isError: true, content: [{ type: 'text', text: err instanceof Error ? err.message : String(err) }] };

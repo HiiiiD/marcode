@@ -112,6 +112,7 @@ router. See `docs/daemon.md`.
 | `src/host/shell/shell-controller.ts` | One session's current `!` run, owned by `AgentSession`; the output is transcript-only and never reaches the model |
 | `src/client-core/shell-command.ts`, `shell-card.ts`, `shell-as-tool.ts`, `running-shell.ts` | `parseShellCommand` (a leading `!`); the adapter that renders a shell item as a "You ran" tool card in both the webview and the TUI; the running command the pinned cancel bar targets |
 | `src/host/self-control-mcp-server.ts` | One loopback HTTP MCP server exposing `marcode__spawn_session` to every session's provider; started at `activate()`, token/url threaded into all three provider constructors |
+| `src/host/self-control/` | The self-control tools' parts: `spawn-support.ts` (`resolveSpawn` shared by `spawn_session` and `spawn_collaborators`), `worker-preamble.ts` (what a collaborator is told), `register-collaborators.ts`, `register-context-usage.ts` |
 | `src/host/message-router.ts` | `WebviewToHost` → manager calls. No `vscode` import, so it unit-tests. |
 | `src/host/panel-view-provider.ts` | `WebviewViewProvider`; HTML + nonce; transport |
 | `src/host/webview-html.ts` | One CSP and nonce for every webview surface |

@@ -365,7 +365,7 @@ export interface UnavailableProvider {
 }
 
 export type ContextResult =
-  | { ok: true; breakdown: ContextBreakdown }
+  | { ok: true; breakdown: ContextBreakdown; stale?: true }
   | { ok: false; reason: string };
 
 /**

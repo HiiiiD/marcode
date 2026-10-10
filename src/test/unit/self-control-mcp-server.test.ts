@@ -3,12 +3,14 @@ import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { suite, test } from 'mocha';
+import { focusSession } from '../../host/focus-session';
 import { SelfControlMcpServer, type SessionManagerLike } from '../../host/self-control-mcp-server';
 import { SessionManager } from '../../host/session-manager';
 import { TranscriptStore } from '../../host/transcript-store';
 import type { MemoryHit, MemoryStore } from '../../memory/types';
 import { FakeProvider } from '../../providers/fake/fake-provider';
 import type { AgentProvider, SelfControlMcpConfig } from '../../providers/types';
+import { leafSessionIds } from '../../webview/components/layout-tree';
 
 function fakeManager(overrides: Partial<SessionManagerLike> = {}): SessionManagerLike {
   return {
@@ -803,6 +805,45 @@ suite('SelfControlMcpServer cross-session messaging', () => {
     }
   });
 
+  test('a real team spawn puts every worker in a visible pane, like spawn_session', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mar-self-control-'));
+    const provider = new FakeProvider(() => [{ kind: 'turn-end', reason: 'done' }]);
+    const manager = new SessionManager(new TranscriptStore(dir), new Map<string, AgentProvider>([['fake', provider]]), () => {});
+    await manager.init();
+    try {
+      const lead = await manager.create('fake', process.cwd());
+      await focusSession(manager, lead.state.id);
+      const server = new SelfControlMcpServer({
+        catalog: () => manager.catalog(),
+        create: (p, cwd, model, effort, mode) => manager.create(p, cwd, model, effort, mode),
+        setVisible: (ids) => manager.setVisible(ids as never),
+        reveal: (id) => focusSession(manager, id as never),
+        summaries: () => manager.summaries(),
+        visibleIds: () => manager.visibleIds(),
+        get: async (id) => manager.get(id as never),
+        transcriptTail: (id, limit) => manager.transcriptTail(id as never, limit),
+        close: (id) => manager.close(id as never),
+      });
+      const config = await server.start();
+      const res = await callToolAs(config, lead.state.id, 'marcode__spawn_collaborators', {
+        workers: [{ task: 'a' }, { task: 'b' }, { task: 'c' }],
+      });
+      assert.strictEqual(res.isError, undefined);
+      const out = JSON.parse(res.content[0].text) as { workers: { sessionId: string }[] };
+      const ids = manager.summaries().filter((s) => out.workers.some((w) => w.sessionId === s.name)).map((s) => s.id);
+      assert.strictEqual(ids.length, 3);
+      const inLayout = leafSessionIds(manager.layout().root);
+      for (const id of [lead.state.id, ...ids]) {
+        assert.strictEqual(inLayout.includes(id as never), true, `layout is missing ${id}`);
+        assert.strictEqual(manager.visibleIds().includes(id as never), true, `visible set is missing ${id}`);
+      }
+      await server.dispose();
+    } finally {
+      await manager.dispose();
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+
   test('a real send_message call delivers into the target session\'s real transcript, tagged with from', async () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mar-self-control-msg-'));
     const store = new TranscriptStore(dir);
@@ -1133,5 +1174,247 @@ suite('SelfControlMcpServer marcode__list_models', () => {
     assert.strictEqual(data[0].models[0].id, 'sonnet');
     assert.strictEqual(typeof data[0].models[0].score, 'number');
     assert.strictEqual(data.some((p: { provider: string }) => p.provider === 'codex'), false);
+  });
+});
+
+suite('SelfControlMcpServer spawn_collaborators', () => {
+  const catalog = () => [{
+    id: 'claude', models: [{ id: 'sonnet' }], permissionModes: [{ id: 'default' }],
+  }];
+  const lead = {
+    id: 'lead', name: 'Lead', providerId: 'claude', model: 'sonnet',
+    permissionMode: 'default' as const, status: 'idle', cwd: '/repo',
+  };
+  const bystander = { ...lead, id: 'by', name: 'bystander' };
+
+  function teamManager(sent: Record<string, string>, created: string[] = [], closed: string[] = []) {
+    let n = 0;
+    return fakeManager({
+      catalog,
+      summaries: () => [lead, bystander],
+      visibleIds: () => ['lead', 'by'],
+      create: async () => {
+        n += 1;
+        const id = `w${n}`;
+        created.push(id);
+        return { state: { id, name: `worker${n}` }, send: (t: string) => { sent[id] = t; } } as never;
+      },
+      close: async (id) => { closed.push(id); },
+    });
+  }
+
+  test('spawns every worker, inherits cwd, and each prompt names only the team', async () => {
+    const sent: Record<string, string> = {};
+    const server = new SelfControlMcpServer(teamManager(sent));
+    const config = await server.start();
+    const res = await callToolAs(config, 'lead', 'marcode__spawn_collaborators', {
+      workers: [{ task: 'parser', scope: 'src/p/' }, { task: 'tests' }],
+    });
+    assert.strictEqual(res.isError, undefined);
+    const out = JSON.parse(res.content[0].text) as { workers: { sessionId: string; task: string }[] };
+    assert.deepStrictEqual(out.workers.map((w) => w.sessionId), ['worker1', 'worker2']);
+    assert.strictEqual(sent.w1.includes('worker2: tests'), true);
+    assert.strictEqual(sent.w1.includes('Your scope: src/p/'), true);
+    assert.strictEqual(sent.w1.includes('"Lead"'), true);
+    assert.strictEqual(sent.w1.includes('bystander'), false);
+    assert.strictEqual(sent.w2.includes('bystander'), false);
+    await server.dispose();
+  });
+
+  test('an inherited mode the worker\'s provider lacks falls back to its default', async () => {
+    const seen: unknown[][] = [];
+    const base = teamManager({});
+    const server = new SelfControlMcpServer({
+      ...base,
+      catalog: () => [
+        { id: 'claude', models: [{ id: 'sonnet' }], permissionModes: [{ id: 'default' }, { id: 'acceptEdits' }] },
+        { id: 'codex', models: [{ id: 'gpt' }], permissionModes: [{ id: 'default' }] },
+      ],
+      summaries: () => [{ ...lead, permissionMode: 'acceptEdits' as const }],
+      create: async (...a) => { seen.push(a); return base.create(...a); },
+    });
+    const config = await server.start();
+    const res = await callToolAs(config, 'lead', 'marcode__spawn_collaborators', {
+      workers: [{ task: 'x', provider: 'codex', model: 'gpt' }],
+    });
+    assert.strictEqual(res.isError, undefined);
+    assert.deepStrictEqual(seen[0].slice(0, 5), ['codex', '/repo', 'gpt', undefined, undefined]);
+    await server.dispose();
+  });
+
+  test('the team brief reaches every worker', async () => {
+    const sent: Record<string, string> = {};
+    const server = new SelfControlMcpServer(teamManager(sent));
+    const config = await server.start();
+    const res = await callToolAs(config, 'lead', 'marcode__spawn_collaborators', {
+      brief: 'One shared emulator: ask the group before using it.',
+      workers: [{ task: 'a' }, { task: 'b' }],
+    });
+    assert.strictEqual(res.isError, undefined);
+    for (const id of ['w1', 'w2']) {
+      assert.strictEqual(sent[id].includes('Team brief: One shared emulator: ask the group before using it.'), true);
+    }
+    await server.dispose();
+  });
+
+  test('commit false is honoured per worker', async () => {
+    const sent: Record<string, string> = {};
+    const server = new SelfControlMcpServer(teamManager(sent));
+    const config = await server.start();
+    await callToolAs(config, 'lead', 'marcode__spawn_collaborators', {
+      workers: [{ task: 'a', commit: false }, { task: 'b' }],
+    });
+    assert.strictEqual(sent.w1.includes('Do not commit'), true);
+    assert.strictEqual(sent.w2.includes('git commit -m'), true);
+    await server.dispose();
+  });
+
+  test('one invalid worker creates nothing', async () => {
+    const created: string[] = [];
+    const server = new SelfControlMcpServer(teamManager({}, created));
+    const config = await server.start();
+    const res = await callToolAs(config, 'lead', 'marcode__spawn_collaborators', {
+      workers: [{ task: 'ok' }, { task: 'bad', provider: 'nope' }],
+    });
+    assert.strictEqual(res.isError, true);
+    assert.strictEqual(res.content[0].text.includes('nope'), true);
+    assert.deepStrictEqual(created, []);
+    await server.dispose();
+  });
+
+  test('a relative cwd is rejected before anything is created', async () => {
+    const created: string[] = [];
+    const server = new SelfControlMcpServer(teamManager({}, created));
+    const config = await server.start();
+    const res = await callToolAs(config, 'lead', 'marcode__spawn_collaborators', {
+      workers: [{ task: 'x' }],
+      cwd: 'relative/path',
+    });
+    assert.strictEqual(res.isError, true);
+    assert.deepStrictEqual(created, []);
+    await server.dispose();
+  });
+
+  test('a create failure midway closes the workers already created', async () => {
+    const created: string[] = [];
+    const closed: string[] = [];
+    const base = teamManager({}, created, closed);
+    let calls = 0;
+    const server = new SelfControlMcpServer({
+      ...base,
+      create: async (...a) => {
+        calls += 1;
+        if (calls === 2) { throw new Error('provider exploded'); }
+        return base.create(...a);
+      },
+    });
+    const config = await server.start();
+    const res = await callToolAs(config, 'lead', 'marcode__spawn_collaborators', {
+      workers: [{ task: 'a' }, { task: 'b' }],
+    });
+    assert.strictEqual(res.isError, true);
+    assert.strictEqual(res.content[0].text.includes('provider exploded'), true);
+    assert.deepStrictEqual(closed, ['w1']);
+    await server.dispose();
+  });
+
+  test('an unidentifiable caller gets an error and no team', async () => {
+    const created: string[] = [];
+    const server = new SelfControlMcpServer(teamManager({}, created));
+    const config = await server.start();
+    const res = await callTool(config, 'marcode__spawn_collaborators', { workers: [{ task: 'a' }] });
+    assert.strictEqual(res.isError, true);
+    assert.deepStrictEqual(created, []);
+    await server.dispose();
+  });
+});
+
+suite('SelfControlMcpServer get_context_usage', () => {
+  const me = {
+    id: 'me', name: 'Me', providerId: 'claude', model: 'sonnet',
+    permissionMode: 'default' as const, status: 'running', cwd: '/repo',
+  };
+  const other = { ...me, id: 'ot', name: 'Other' };
+  const breakdown = {
+    systemPercent: 10, memoryPercent: 5, conversationPercent: 25, freePercent: 60, memoryFiles: [],
+    usedTokens: 80_000, windowTokens: 200_000,
+  };
+
+  test('reports the caller\'s own percentage and window', async () => {
+    let asked = '';
+    const server = new SelfControlMcpServer(fakeManager({
+      summaries: () => [me, other], visibleIds: () => ['me', 'ot'],
+      contextBreakdown: async (id) => { asked = id; return { ok: true, breakdown }; },
+    }));
+    const config = await server.start();
+    const res = await callToolAs(config, 'me', 'marcode__get_context_usage', {});
+    assert.strictEqual(res.isError, undefined);
+    assert.deepStrictEqual(JSON.parse(res.content[0].text), { percent: 40, usedTokens: 80_000, windowTokens: 200_000 });
+    assert.strictEqual(asked, 'me');
+    await server.dispose();
+  });
+
+  test('a name targets another visible session', async () => {
+    let asked = '';
+    const server = new SelfControlMcpServer(fakeManager({
+      summaries: () => [me, other], visibleIds: () => ['me', 'ot'],
+      contextBreakdown: async (id) => { asked = id; return { ok: true, breakdown }; },
+    }));
+    const config = await server.start();
+    await callToolAs(config, 'me', 'marcode__get_context_usage', { name: 'other' });
+    assert.strictEqual(asked, 'ot');
+    await server.dispose();
+  });
+
+  test('a session the caller cannot see is unknown', async () => {
+    const server = new SelfControlMcpServer(fakeManager({
+      summaries: () => [me, other], visibleIds: () => ['me'],
+      contextBreakdown: async () => ({ ok: true, breakdown }),
+    }));
+    const config = await server.start();
+    const res = await callToolAs(config, 'me', 'marcode__get_context_usage', { name: 'Other' });
+    assert.strictEqual(res.isError, true);
+    assert.strictEqual(res.content[0].text.includes('Unknown session'), true);
+    await server.dispose();
+  });
+
+  test('tokens are omitted when the provider reported neither, and stale is passed through', async () => {
+    const { usedTokens: _u, windowTokens: _w, ...bare } = breakdown;
+    const server = new SelfControlMcpServer(fakeManager({
+      summaries: () => [me], visibleIds: () => ['me'],
+      contextBreakdown: async () => ({ ok: true, breakdown: bare, stale: true }),
+    }));
+    const config = await server.start();
+    const res = await callToolAs(config, 'me', 'marcode__get_context_usage', {});
+    assert.deepStrictEqual(JSON.parse(res.content[0].text), { percent: 40, stale: true });
+    await server.dispose();
+  });
+
+  test('a provider that cannot report becomes an error, never a number', async () => {
+    const server = new SelfControlMcpServer(fakeManager({
+      summaries: () => [me], visibleIds: () => ['me'],
+      contextBreakdown: async () => ({ ok: false, reason: 'This provider does not report context usage' }),
+    }));
+    const config = await server.start();
+    const res = await callToolAs(config, 'me', 'marcode__get_context_usage', {});
+    assert.strictEqual(res.isError, true);
+    assert.strictEqual(res.content[0].text.includes('does not report'), true);
+    await server.dispose();
+  });
+
+  test('a manager without contextBreakdown is an error', async () => {
+    const server = new SelfControlMcpServer(fakeManager({ summaries: () => [me], visibleIds: () => ['me'] }));
+    const config = await server.start();
+    const res = await callToolAs(config, 'me', 'marcode__get_context_usage', {});
+    assert.strictEqual(res.isError, true);
+    await server.dispose();
+  });
+
+  test('no sid and no name cannot be answered', async () => {
+    const server = new SelfControlMcpServer(fakeManager({ contextBreakdown: async () => ({ ok: true, breakdown }) }));
+    const config = await server.start();
+    const res = await callTool(config, 'marcode__get_context_usage', {});
+    assert.strictEqual(res.isError, true);
+    await server.dispose();
   });
 });
