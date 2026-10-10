@@ -89,8 +89,8 @@ handler is single-use, so it stays inline.
 ## What the model sees
 
 The item itself is never sent. On the next delivery of a **user-typed** prompt, `AgentSession.deliver` prepends
-a block for each shell item that came after the last `user` item and has not been shown to the model, ahead of
-the seed and the prompt, the same way `seed` is folded in:
+a block for each shell item that came after the last `user` item and has not been shown to the model, after
+the seed and ahead of the prompt, the same way `seed` is folded in:
 
 ```
 <shell-input>git status</shell-input>
@@ -118,7 +118,7 @@ the seed and the prompt, the same way `seed` is folded in:
 ## Config
 
 `shell.aliases` in `~/.marcode/config.json`, read by `createHost` like every host setting (`docs/config.md`,
-reload to apply; flat key `shellAliases`, per the `codexPath` precedent in `host-config.ts`).
+reload to apply; nested as `shell.aliases`, and `HostConfig.shell.aliases` holds the validated table).
 
 ```json
 { "shell": { "aliases": { "pwsh": { "command": "pwsh", "args": ["-NoProfile", "-Command"] } } } }

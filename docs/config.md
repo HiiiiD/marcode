@@ -38,6 +38,14 @@ Copies plan usage from one provider after matching turns in another. Example: ^o
 
 Default: `[]`
 
+## `shell.aliases`
+
+Names for the shell a `!` command runs through. `!pwsh Get-Date` runs `Get-Date` through the `pwsh` alias; anything else runs in bash. The text after the alias is passed as the last argument. `pwsh` and `powershell` are built in; an entry with the same name replaces one, and `null` removes it. Takes effect after a window reload.
+
+```json
+{ "shell": { "aliases": { "zsh": { "command": "zsh", "args": ["-c"] } } } }
+```
+
 ## `memory.enabled`
 
 Index closed sessions and let agents recall them. Turn off if another memory plugin already does this. Requires a window reload.
