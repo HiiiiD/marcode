@@ -70,6 +70,14 @@ suite('MessageRouter', () => {
     assert.deepStrictEqual(revealed, ['/mem/a.md']);
   });
 
+  test('focus-session adds a hidden session to the split', async () => {
+    const a = (await manager.create('fake', '/tmp')).state.id;
+    await manager.setVisible([]);
+    await router.handle({ t: 'focus-session', id: a });
+    assert.strictEqual(leafSessionIds(manager.layout().root).includes(a), true);
+    assert.strictEqual(manager.visibleIds().includes(a), true);
+  });
+
   test('hydrate carries a configured review poll interval', async () => {
     const configured = new MessageRouter(
       manager, (m) => sent.push(m), '/tmp', undefined, attachments, undefined, 2000,
@@ -886,17 +894,6 @@ suite('MessageRouter', () => {
     }
     assert.deepStrictEqual(sent, []);
     assert.deepStrictEqual(errors, [], 'a known tag must not log as malformed');
-  });
-
-  test('focus-session survives the wire guard as a deliberate no-op, same as open-review', async () => {
-    // Same trap as `answer-relocation` above: a tag missing from
-    // KNOWN_MESSAGE_TAGS is silently dropped as "malformed" at runtime while
-    // every type check still passes. This router also backs `PanelViewProvider`
-    // directly, unlike `focus-session`, which `FleetPanel` always intercepts
-    // first — so a regression here is not latent the same way.
-    sent.length = 0;
-    await router.handle({ t: 'focus-session', id: 's1' as any });
-    assert.deepStrictEqual(sent, []);
   });
 
   test('send attaches the tracked context when the session opts in', async () => {

@@ -1,5 +1,6 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { focusSession } from './focus-session';
 import type { SessionManager } from './session-manager';
 import type { AgentSession } from './agent-session';
 import { MAX_PENDING, type AttachmentStore } from './attachment-store';
@@ -641,13 +642,8 @@ export class MessageRouter {
       case 'open-fleet-subagent':
         return;
 
-      // Same precedent as open-review: FleetPanel intercepts this before
-      // delegating, since revealing the sidebar view container needs the
-      // vscode API this module must not import. Listed here, and in
-      // KNOWN_MESSAGE_TAGS, so a stray one — this router also backs
-      // PanelViewProvider itself, where nothing intercepts it — is a
-      // deliberate no-op rather than a "malformed message" error log.
       case 'focus-session':
+        await focusSession(this.manager, msg.id);
         return;
 
       case 'focus-pane':

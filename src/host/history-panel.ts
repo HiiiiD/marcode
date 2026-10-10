@@ -83,6 +83,7 @@ export class HistoryPanel {
         // Needs the vscode API, which MessageRouter must not import.
         if (raw?.t === 'focus-session') {
           await focusSession(this.manager, raw.id);
+          await vscode.commands.executeCommand('workbench.view.extension.mar-code');
           return;
         }
         await router.handle(raw);

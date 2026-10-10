@@ -120,6 +120,7 @@ export class FleetPanel {
         // import.
         if (raw?.t === 'focus-session') {
           await focusSession(this.manager, raw.id);
+          await vscode.commands.executeCommand('workbench.view.extension.mar-code');
           return;
         }
         if (raw?.t === 'ready') {
