@@ -39,6 +39,8 @@ export interface SessionManagerLike {
     providerId: string, cwd: string, model?: string, effort?: EffortLevel, mode?: PermissionMode,
   ): Promise<{ state: { id: string; name: string } }>;
   setVisible(ids: string[]): Promise<void>;
+  /** Shows the session in a pane: visible set and split layout. Falls back to `setVisible` when absent. */
+  reveal?(id: string): Promise<void>;
   /** The folder `marcode__recall` is scoped to for this caller; absent means unscoped. */
   recallRoot?(sid: string): string | undefined;
   /** Every session's addressable identity — see `marcode__list_sessions`. */
@@ -294,7 +296,11 @@ export class SelfControlMcpServer {
           // `AgentSession` behind it) doesn't blow up delivering the prompt.
           const sendable = session as unknown as { send?: (text: string) => void };
           if (typeof sendable.send === 'function') { sendable.send(prompt); }
-          await this.sessionManager.setVisible([...new Set([...this.sessionManager.visibleIds(), session.state.id])]);
+          if (this.sessionManager.reveal) {
+            await this.sessionManager.reveal(session.state.id);
+          } else {
+            await this.sessionManager.setVisible([...new Set([...this.sessionManager.visibleIds(), session.state.id])]);
+          }
           return { content: [{ type: 'text', text: JSON.stringify({ sessionId: session.state.name }) }] };
         } catch (err) {
           return { isError: true, content: [{ type: 'text', text: err instanceof Error ? err.message : String(err) }] };
