@@ -302,6 +302,7 @@
     "@base-ui/react": "^1.8.0",
     "@headless-tree/core": "1.7.0",
     "@headless-tree/react": "1.7.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@opencode-ai/sdk": "^1.18.34",
     "@shadcn/react": "^0.3.1",
     "class-variance-authority": "^0.7.1",
