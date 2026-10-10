@@ -915,9 +915,23 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@opentui/core-darwin-arm64@npm:0.5.14":
+  version: 0.5.14
+  resolution: "@opentui/core-darwin-arm64@npm:0.5.14"
+  conditions: os=darwin & cpu=arm64
+  languageName: node
+  linkType: hard
+
 "@opentui/core-darwin-x64@npm:0.5.13":
   version: 0.5.13
   resolution: "@opentui/core-darwin-x64@npm:0.5.13"
+  conditions: os=darwin & cpu=x64
+  languageName: node
+  linkType: hard
+
+"@opentui/core-darwin-x64@npm:0.5.14":
+  version: 0.5.14
+  resolution: "@opentui/core-darwin-x64@npm:0.5.14"
   conditions: os=darwin & cpu=x64
   languageName: node
   linkType: hard
@@ -929,9 +943,23 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@opentui/core-linux-arm64-musl@npm:0.5.14":
+  version: 0.5.14
+  resolution: "@opentui/core-linux-arm64-musl@npm:0.5.14"
+  conditions: os=linux & cpu=arm64 & libc=musl
+  languageName: node
+  linkType: hard
+
 "@opentui/core-linux-arm64@npm:0.5.13":
   version: 0.5.13
   resolution: "@opentui/core-linux-arm64@npm:0.5.13"
+  conditions: os=linux & cpu=arm64
+  languageName: node
+  linkType: hard
+
+"@opentui/core-linux-arm64@npm:0.5.14":
+  version: 0.5.14
+  resolution: "@opentui/core-linux-arm64@npm:0.5.14"
   conditions: os=linux & cpu=arm64
   languageName: node
   linkType: hard
@@ -943,9 +971,23 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@opentui/core-linux-x64-musl@npm:0.5.14":
+  version: 0.5.14
+  resolution: "@opentui/core-linux-x64-musl@npm:0.5.14"
+  conditions: os=linux & cpu=x64 & libc=musl
+  languageName: node
+  linkType: hard
+
 "@opentui/core-linux-x64@npm:0.5.13":
   version: 0.5.13
   resolution: "@opentui/core-linux-x64@npm:0.5.13"
+  conditions: os=linux & cpu=x64
+  languageName: node
+  linkType: hard
+
+"@opentui/core-linux-x64@npm:0.5.14":
+  version: 0.5.14
+  resolution: "@opentui/core-linux-x64@npm:0.5.14"
   conditions: os=linux & cpu=x64
   languageName: node
   linkType: hard
@@ -957,9 +999,23 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@opentui/core-win32-arm64@npm:0.5.14":
+  version: 0.5.14
+  resolution: "@opentui/core-win32-arm64@npm:0.5.14"
+  conditions: os=win32 & cpu=arm64
+  languageName: node
+  linkType: hard
+
 "@opentui/core-win32-x64@npm:0.5.13":
   version: 0.5.13
   resolution: "@opentui/core-win32-x64@npm:0.5.13"
+  conditions: os=win32 & cpu=x64
+  languageName: node
+  linkType: hard
+
+"@opentui/core-win32-x64@npm:0.5.14":
+  version: 0.5.14
+  resolution: "@opentui/core-win32-x64@npm:0.5.14"
   conditions: os=win32 & cpu=x64
   languageName: node
   linkType: hard
@@ -1001,6 +1057,46 @@ __metadata:
     "@opentui/core-win32-x64":
       optional: true
   checksum: 10c0/b1267ffb8326c4c0429208af4d686e483d1d74da76f9fd3fedd2214b89ee9bb09554b51c096396d6d4f12785650b9e5779bb244b846320de0db3b3a36ec16271
+  languageName: node
+  linkType: hard
+
+"@opentui/core@npm:0.5.14":
+  version: 0.5.14
+  resolution: "@opentui/core@npm:0.5.14"
+  dependencies:
+    "@opentui/core-darwin-arm64": "npm:0.5.14"
+    "@opentui/core-darwin-x64": "npm:0.5.14"
+    "@opentui/core-linux-arm64": "npm:0.5.14"
+    "@opentui/core-linux-arm64-musl": "npm:0.5.14"
+    "@opentui/core-linux-x64": "npm:0.5.14"
+    "@opentui/core-linux-x64-musl": "npm:0.5.14"
+    "@opentui/core-win32-arm64": "npm:0.5.14"
+    "@opentui/core-win32-x64": "npm:0.5.14"
+    bun-ffi-structs: "npm:0.3.1"
+    diff: "npm:9.0.0"
+    marked: "npm:17.0.1"
+    string-width: "npm:7.2.0"
+    strip-ansi: "npm:7.1.2"
+  peerDependencies:
+    web-tree-sitter: 0.25.10
+  dependenciesMeta:
+    "@opentui/core-darwin-arm64":
+      optional: true
+    "@opentui/core-darwin-x64":
+      optional: true
+    "@opentui/core-linux-arm64":
+      optional: true
+    "@opentui/core-linux-arm64-musl":
+      optional: true
+    "@opentui/core-linux-x64":
+      optional: true
+    "@opentui/core-linux-x64-musl":
+      optional: true
+    "@opentui/core-win32-arm64":
+      optional: true
+    "@opentui/core-win32-x64":
+      optional: true
+  checksum: 10c0/fa26d68c9fc83cc5ef3ed58094bfac808f798f64255fe1aca9291a11a151868d3f641e46ef877eefcf8aa979f6281811566e96b05db7dfebf0de6945e8a3d0ea
   languageName: node
   linkType: hard
 
@@ -4576,7 +4672,7 @@ __metadata:
     "@modelcontextprotocol/sdk": "npm:^1.29.0"
     "@modelcontextprotocol/server": "npm:^2.3.1"
     "@opencode-ai/sdk": "npm:^1.18.34"
-    "@opentui/core": "npm:0.5.13"
+    "@opentui/core": "npm:0.5.14"
     "@opentui/react": "npm:0.5.13"
     "@shadcn/react": "npm:^0.3.1"
     "@tailwindcss/cli": "npm:^4.3.3"
