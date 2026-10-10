@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import * as assert from 'assert';
 import type { ShellItem } from '../../protocol/messages';
@@ -37,12 +37,20 @@ suite('shell commands', () => {
     screen.getByText('exit 0');
   });
 
-  test('a running command offers Cancel, which posts cancel-shell', async () => {
+  test('a running command is pinned above the composer with a Cancel that posts cancel-shell', async () => {
     renderApp();
     hydrateWith([shell({ state: 'running', exitCode: undefined })]);
-    await userEvent.click(await screen.findByRole('button', { name: /cancel/i }));
+    const region = await screen.findByRole('region', { name: 'Running shell command' });
+    await userEvent.click(within(region).getByRole('button', { name: /cancel/i }));
     const cancel = posted().find((m) => m.t === 'cancel-shell') as { itemId: string } | undefined;
     assert.strictEqual(cancel?.itemId, 'sh1');
+  });
+
+  test('a finished command is not pinned', async () => {
+    renderApp();
+    hydrateWith([shell()]);
+    await screen.findByText('ls -la');
+    assert.strictEqual(screen.queryByRole('region', { name: 'Running shell command' }) === null, true);
   });
 
   test('a failed command says so in text', async () => {

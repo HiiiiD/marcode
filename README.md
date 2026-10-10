@@ -315,8 +315,9 @@ client, and it does not start a model turn:
 
 - The command and its output become a card in the transcript, saved with the session.
 - The model never sees it. Paste the output into your next message if the agent needs it.
-- Only one command runs per session at a time. **Cancel** on the card, or Esc in the terminal client
-  when no turn is running, stops it. A command is cut off after 120 seconds, and the saved output keeps
+- Only one command runs per session at a time. While it runs, a bar above the composer shows it with a
+  **Cancel** button (in the terminal client, click the bar or press Esc when no turn is running), so you can
+  stop it wherever its card has scrolled to. A command is cut off after 120 seconds, and the saved output keeps
   the last 64K characters.
 - It is not an agent action, so it never asks for permission. Agents cannot trigger it.
 - Commands run in `bash`. On Windows that means Git Bash, found on `PATH` or in the Git for

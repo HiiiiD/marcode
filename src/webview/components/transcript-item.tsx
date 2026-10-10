@@ -110,7 +110,7 @@ export function TranscriptItemView({
       return <CompactionCard item={item} />;
 
     case 'shell':
-      return <ShellCard item={item} sessionId={sessionId} />;
+      return <ShellCard item={item} />;
 
     case 'switch': {
       const label = item.kind === 'model' ? 'Model' : item.kind === 'effort' ? 'Effort' : 'Worktree';

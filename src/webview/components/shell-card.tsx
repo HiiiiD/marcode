@@ -1,12 +1,9 @@
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { shellCard } from "../../client-core/shell-card";
-import type { SessionId, ShellItem } from "../../protocol/messages";
-import { useStore } from "../store";
+import type { ShellItem } from "../../protocol/messages";
 import { TranscriptItemShell } from "./transcript-item-shell";
 
-export function ShellCard({ item, sessionId }: { item: ShellItem; sessionId: SessionId }) {
-  const { post } = useStore();
+export function ShellCard({ item }: { item: ShellItem }) {
   const card = shellCard(item);
   return (
     <TranscriptItemShell role="tool" label="Shell" ts={item.ts}>
@@ -21,16 +18,6 @@ export function ShellCard({ item, sessionId }: { item: ShellItem; sessionId: Ses
           <span className={cn("min-w-0 wrap-break-word text-muted-foreground", card.failed && "text-destructive")}>
             {card.footer}
           </span>
-          {card.running ? (
-            <Button
-              variant="outline"
-              size="xs"
-              className="shrink-0"
-              onClick={() => post({ t: "cancel-shell", id: sessionId, itemId: item.id })}
-            >
-              Cancel
-            </Button>
-          ) : null}
         </div>
       </div>
     </TranscriptItemShell>

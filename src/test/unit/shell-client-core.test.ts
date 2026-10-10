@@ -1,6 +1,7 @@
 import * as assert from 'assert';
 import { parseShellCommand } from '../../client-core/shell-command';
 import { shellCard } from '../../client-core/shell-card';
+import { runningShell } from '../../client-core/running-shell';
 import type { ShellItem } from '../../protocol/messages';
 
 const item = (over: Partial<ShellItem> = {}): ShellItem => ({
@@ -37,5 +38,16 @@ suite('shellCard', () => {
     assert.strictEqual(shellCard(item({ truncated: true })).footer, 'exit 0 · output truncated');
     const err = shellCard(item({ exitCode: undefined, error: 'spawn failed' }));
     assert.deepStrictEqual([err.failed, err.footer], [true, 'spawn failed']);
+  });
+});
+
+suite('runningShell', () => {
+  test('finds the last running shell item, ignoring finished ones', () => {
+    const items = [item({ id: 'a', state: 'running' }), item({ id: 'b' }), item({ id: 'c', state: 'running' }), item({ id: 'd' })];
+    assert.strictEqual(runningShell(items)?.id, 'c');
+  });
+  test('is undefined when nothing runs', () => {
+    assert.strictEqual(runningShell([item()]), undefined);
+    assert.strictEqual(runningShell([]), undefined);
   });
 });

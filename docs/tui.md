@@ -70,7 +70,7 @@ yarn build:tui:bin    # bin/marcode.exe (bin/marcode elsewhere): standalone, Bun
 | @ then Up / Down, Tab or Enter, Esc | composer | file mention popup: a pick inserts `@path`, and the file's content travels with the message |
 | / at the start of the box, then Up / Down, Tab or Enter, Esc | composer | skill and slash-command menu for the session's provider: a pick inserts the command. Typed built-ins (`/model`, `/layout`, ...) still work |
 | `!` at the start of the box, then Enter | composer | run the rest as a shell command in the session's cwd; no model turn, and the model never sees it |
-| Esc | composer / transcript | with no turn running, cancels a running `!` command (a running turn is interrupted first) |
+| Esc, or click the bar above the box | composer / transcript | with no turn running, cancels a running `!` command, which stays pinned above the composer while it runs (a running turn is interrupted first) |
 | Ctrl+X | composer | remove the last attachment |
 | Ctrl+V | composer | attach an image from the clipboard |
 | Ctrl+O | composer | open the last pending attachment |

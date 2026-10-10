@@ -1,4 +1,5 @@
 import { afterEach, expect, test } from 'bun:test';
+import { BottomSlotView } from '../../tui/ui/bottom-slot';
 import { Composer } from '../../tui/ui/composer';
 import { Transcript } from '../../tui/ui/transcript/transcript';
 import { hydrateMsg, mount, type Mounted } from './harness';
@@ -88,4 +89,17 @@ test('a long finished output is clamped inside the card until expanded', async (
   expect(m.frame()).not.toContain('earlier lines');
   await m.press('return');
   expect(m.frame()).toContain('18 earlier lines');
+});
+
+test('a running command is pinned above the composer with its cancel hint', async () => {
+  m = await mount(<BottomSlotView sessionId="s1" focused />);
+  await m.fromHost(withShell(shell({ state: 'running', exitCode: undefined })));
+  expect(m.frame()).toContain('$ ls -la');
+  expect(m.frame()).toContain('Esc');
+});
+
+test('nothing is pinned once the command has finished', async () => {
+  m = await mount(<BottomSlotView sessionId="s1" focused />);
+  await m.fromHost(withShell(shell()));
+  expect(m.frame()).not.toContain('$ ls -la');
 });
