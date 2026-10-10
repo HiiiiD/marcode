@@ -59,8 +59,8 @@ worker finished and nothing is left staged or dirty.
 ### Errors
 
 Same validation as `spawn_session` per worker. Validate all workers before creating any, so a bad
-entry does not leave a partial team. A failure while creating worker K closes none of the earlier
-ones but reports which were created and which failed.
+entry does not leave a partial team. A failure while creating worker K closes the workers already
+created (still empty, so discarded) and reports the error.
 
 ### Non-goals (v1)
 
@@ -75,7 +75,7 @@ ones but reports which were created and which failed.
 
 ### Shape
 
-No required arguments. The caller is identified as in the other tools. Optional `sessionId` lets a
+No required arguments. The caller is identified as in the other tools. Optional `name` (as in the other tools) lets a
 lead check a worker.
 
 Returns `{ percent, usedTokens, windowTokens, stale? }`.
@@ -83,7 +83,8 @@ Returns `{ percent, usedTokens, windowTokens, stale? }`.
 - `percent` is the headline, `Math.round(100 - freePercent)`, the same number the ring shows.
 - `usedTokens` / `windowTokens` are the context dialog's single permitted token exception (see
   AGENTS.md); providers report both or neither. If absent they are omitted.
-- `stale: true` when the value is the cached `lastContext` rather than a fresh measurement.
+- `stale: true` when the live query failed or timed out while the session is mid-turn, so the value is the
+  cached `lastContext` from the end of the previous turn. An idle session's cache is current and is not marked.
 
 ### Behavior
 
@@ -116,6 +117,14 @@ the turn-start value.
 First implementation step: call `getContextUsage()` during a long Bash tool call on a Claude session
 and measure latency. If it blocks, fall back to deriving a running figure from per-assistant-message
 `usage` in the stream, if the SDK emits it, and update this spec with the outcome.
+
+Implementation note: `SessionManager.contextBreakdown(id)` already provided the live query, timeout and
+cached fallback; the tool exposes it, and `ContextResult` gained the optional `stale` flag.
+
+**Probe status: PENDING.** Needs a live Claude session on the new build: in A run Bash `sleep 90`; in B call
+`marcode__get_context_usage` with A's `name` while it runs. Fresh in about 1-3s with no `stale` means the risk
+is cleared; `stale: true` after the ~5s manager timeout, or an answer only after the sleep ends, means the SDK
+queues control requests behind the running tool. Record the outcome here.
 
 ## Testing
 
