@@ -93,6 +93,12 @@ class EventChannel implements AsyncIterable<AgentEvent> {
   }
 }
 
+/** `turn/steer` raced the end of the turn: nothing active, or a newer turn id. */
+function isStaleTurnError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return /no active turn|expected active turn id/i.test(message);
+}
+
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
@@ -139,6 +145,10 @@ export class CodexRun implements AgentRun {
   private startPromise: Promise<string | undefined> | undefined;
   /** Set true after the first `send()`; guards `withMarcodeIntro`. */
   private introduced = false;
+  /** The turn a `turn/steer` would fold into; set on `turn/started`, cleared when it ends. */
+  private activeTurnId: string | undefined;
+  private sendChain: Promise<void> = Promise.resolve();
+  readonly queuesNatively = true;
   private disposed = false;
 
   /**
@@ -279,6 +289,12 @@ export class CodexRun implements AgentRun {
         return;
       }
 
+      if (method === 'turn/started') {
+        this.activeTurnId = (params as { turn?: { id?: string } } | undefined)?.turn?.id;
+      }
+      if (method === 'turn/completed' || (method === 'error' && !(params as { willRetry?: boolean } | undefined)?.willRetry)) {
+        this.activeTurnId = undefined;
+      }
       if (method === 'thread/tokenUsage/updated') {
         const tokenUsage = (params as { tokenUsage?: ThreadTokenUsage } | undefined)?.tokenUsage;
         this.captureContextUsage(tokenUsage);
@@ -583,10 +599,33 @@ export class CodexRun implements AgentRun {
     for (const image of imageAttachments(attachments)) {
       input.push({ type: 'localImage', path: image.path, detail: 'auto' });
     }
-    this.ensureStarted().then((threadId) => {
+    // Serialized so a second send waits for the first `turn/start` to report
+    // its turn id, then steers it instead of racing a second turn in.
+    this.sendChain = this.sendChain.then(async () => {
+      const threadId = await this.ensureStarted();
       if (this.dead || !threadId) { return; }
-      const settings = codexSettings(this.mode);
-      this.server.request('turn/start', {
+      if (this.activeTurnId) {
+        try {
+          await this.server.request('turn/steer', {
+            threadId, expectedTurnId: this.activeTurnId, input,
+          });
+          return;
+        } catch (err) {
+          if (!isStaleTurnError(err)) {
+            this.events.push({ kind: 'turn-end', reason: 'error', error: errorMessage(err) });
+            return;
+          }
+          this.activeTurnId = undefined;
+        }
+      }
+      await this.startTurn(threadId, input);
+    });
+  }
+
+  private async startTurn(threadId: string, input: UserInput[]): Promise<void> {
+    const settings = codexSettings(this.mode);
+    try {
+      const result = await this.server.request<{ turn?: { id?: string } }>('turn/start', {
         threadId,
         input,
         // Codex has no in-place "patch the live thread" request —
@@ -604,13 +643,11 @@ export class CodexRun implements AgentRun {
         sandboxPolicy: sandboxPolicyOf(this.mode),
         model: this.model,
         effort: this.effort,
-      }).catch((err: unknown) => {
-        this.events.push({ kind: 'turn-end', reason: 'error', error: errorMessage(err) });
       });
-      // ensureStarted() never rejects (its own catch above turns a failure
-      // into a turn-end event and resolves with undefined), so this .then
-      // needs no paired .catch.
-    });
+      this.activeTurnId ??= result?.turn?.id;
+    } catch (err) {
+      this.events.push({ kind: 'turn-end', reason: 'error', error: errorMessage(err) });
+    }
   }
 
   /**
