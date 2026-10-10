@@ -17,7 +17,7 @@ test('under Bun memory follows config: the store opens and nothing warns at laun
   const notified: string[] = [];
   const home = path.join(tmp, 'home');
   booted = await bootHost({
-    cwd: tmp, home, notify: (m) => { notified.push(m); },
+    cwd: tmp, home, inProcess: true, notify: (m) => { notified.push(m); },
     config: { enabledProviders: ['fake'], memory: { enabled: true, summarizer: undefined } },
   });
   const files = await fs.readdir(home, { recursive: true });

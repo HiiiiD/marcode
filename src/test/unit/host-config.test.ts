@@ -62,4 +62,21 @@ suite('host-config', () => {
     assert.strictEqual(reloadSignature(a), reloadSignature(b));
     assert.notStrictEqual(reloadSignature(a), reloadSignature(c));
   });
+
+  test('daemon defaults to enabled with a 10 minute idle timeout', () => {
+    assert.deepStrictEqual(parseHostConfig(undefined).config.daemon, { enabled: true, idleMinutes: 10 });
+  });
+
+  test('daemon.enabled false and a numeric idleMinutes are honoured', () => {
+    const { config } = parseHostConfig({ daemon: { enabled: false, idleMinutes: 3 } });
+    assert.deepStrictEqual(config.daemon, { enabled: false, idleMinutes: 3 });
+  });
+
+  test('a bad daemon block warns and keeps the defaults', () => {
+    const a = parseHostConfig({ daemon: 5 });
+    assert.strictEqual(a.warnings.length, 1);
+    const b = parseHostConfig({ daemon: { enabled: 'yes', idleMinutes: -1 } });
+    assert.deepStrictEqual(b.config.daemon, { enabled: true, idleMinutes: 10 });
+    assert.strictEqual(b.warnings.length, 2);
+  });
 });

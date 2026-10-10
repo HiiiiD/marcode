@@ -615,6 +615,12 @@ export class MessageRouter {
       case 'open-attachment':
         return;
 
+      case 'request-attachment-path': {
+        const found = await this.manager.attachmentPath(msg.id, msg.attachmentId, msg.itemId);
+        this.emit({ t: 'attachment-path', reqId: msg.reqId, path: found ?? null });
+        return;
+      }
+
       // Same precedent as `open-file` above: `PanelViewProvider` intercepts
       // this before delegating, since opening the review tab needs the
       // `vscode` API this module must not import. Listed here, and in
@@ -769,7 +775,7 @@ const KNOWN_MESSAGE_TAGS = new Set<WebviewToHost['t']>([
   'answer-relocation', 'cancel-relocation', 'fork-session',
   'set-include-context', 'reveal-file',
   'attach-paste', 'attach-pick', 'attach-drop', 'attach-remove', 'attach-failed',
-  'request-context', 'open-file', 'open-attachment',
+  'request-context', 'open-file', 'open-attachment', 'request-attachment-path',
   'request-bring-back', 'bring-back',
   'request-stale-trees', 'remove-stale-tree',
   'request-fleet-diff', 'request-branch-refs', 'open-file-diff', 'open-review', 'open-fleet',

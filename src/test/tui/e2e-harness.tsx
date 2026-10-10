@@ -3,7 +3,7 @@ import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { act } from 'react';
-import { bootHost, type Booted } from '../../tui/boot';
+import { bootHost, type InProcessBooted } from '../../tui/boot';
 import { App } from '../../tui/ui/app';
 import { PromptArmContext } from '../../tui/ui/prompt-arm';
 import { TuiStoreProvider } from '../../tui/ui/store';
@@ -38,10 +38,12 @@ export async function mountBooted(opts: MountBootedOpts = {}) {
   const ownTmp = opts.home && opts.cwd ? undefined : await makeTmp();
   const home = opts.home ?? path.join(ownTmp as string, 'home');
   const cwd = opts.cwd ?? (ownTmp as string);
-  const booted: Booted = await bootHost({
-    cwd, home, notify: () => {},
+  const boot = await bootHost({
+    cwd, home, notify: () => {}, inProcess: true,
     config: { enabledProviders: ['fake'], memory: { enabled: false, summarizer: undefined } },
   });
+  if (boot.mode !== 'in-process') { throw new Error('mountBooted: expected an in-process host'); }
+  const booted: InProcessBooted = boot;
   actEnv(true);
   let setup!: Awaited<ReturnType<typeof testRender>>;
   await act(async () => {

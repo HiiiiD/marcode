@@ -5,7 +5,7 @@ import { createExclusive, writeFileAtomic } from './atomic-file';
 export const HEARTBEAT_MS = 5_000;
 export const STALE_MS = 20_000;
 
-export type LeaseHost = 'vscode' | 'tui';
+export type LeaseHost = 'vscode' | 'tui' | 'daemon';
 
 export interface LeaseInfo {
   pid: number;
@@ -37,7 +37,7 @@ function isLeaseInfo(value: unknown): value is LeaseInfo {
   if (typeof value !== 'object' || value === null) { return false; }
   const v = value as Record<string, unknown>;
   return typeof v.pid === 'number' && typeof v.instance === 'string' && typeof v.machine === 'string'
-    && typeof v.heartbeat === 'number' && (v.host === 'vscode' || v.host === 'tui');
+    && typeof v.heartbeat === 'number' && (v.host === 'vscode' || v.host === 'tui' || v.host === 'daemon');
 }
 
 /**

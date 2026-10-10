@@ -478,6 +478,19 @@ suite('MessageRouter', () => {
     assert.strictEqual(await manager.attachmentPath('nope', pending.id), undefined);
   });
 
+  test('request-attachment-path answers with the path or null, echoing reqId', async () => {
+    await router.handle({ t: 'create-session', providerId: 'fake', cwd: '/tmp' });
+    const id = manager.summaries()[0].id;
+    await router.handle({
+      t: 'attach-paste', id, name: 'shot.png', mediaType: 'image/png', base64: 'iVBORw==',
+    });
+    const pending = manager.get(id)!.pendingAttachments[0];
+    await router.handle({ t: 'request-attachment-path', id, attachmentId: pending.id, reqId: 7 });
+    assert.deepStrictEqual(sent.at(-1), { t: 'attachment-path', reqId: 7, path: pending.path });
+    await router.handle({ t: 'request-attachment-path', id, attachmentId: 'zz', reqId: 8 });
+    assert.deepStrictEqual(sent.at(-1), { t: 'attachment-path', reqId: 8, path: null });
+  });
+
   test('an attachment message for an unknown session is a no-op', async () => {
     await router.handle({ t: 'attach-remove', id: 'nope', attachmentId: 'x' });
     assert.strictEqual(manager.summaries().length, 0);

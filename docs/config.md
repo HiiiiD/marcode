@@ -74,3 +74,14 @@ Starred model rows, each entry "providerId modelId" (e.g. "opencode gpt-4"). Man
 
 Default: `[]`
 
+## `daemon.enabled`
+
+Let the terminal client run its host in a per-workspace background daemon so sessions outlive the TUI. A change takes a window reload or a restart of the TUI.
+
+Default: `true`
+
+## `daemon.idleMinutes`
+
+Minutes a daemon with no connected client and no running session waits before exiting. A whole number of at least 1. A running daemon keeps the config it started with: the next `marcode` replaces it when it is idle, and otherwise attaches with a warning to run `marcode daemon --stop` once sessions finish.
+
+Default: `10`

@@ -1,9 +1,18 @@
 import { spawn } from 'node:child_process';
-import { configPath, seedConfigFileSafely } from '../host/config-file';
-import type { HostConfig } from '../host/host-config';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { format } from 'node:util';
+import { readDaemonInfo } from '../daemon/daemon-info';
+import { requestShutdown } from '../daemon/request-shutdown';
+import { runDaemon } from '../daemon/run-daemon';
+import { configPath, loadConfig, seedConfigFileSafely } from '../host/config-file';
+import { defaultHostConfig, reloadSignature, type HostConfig } from '../host/host-config';
+import { defaultLeaseDeps } from '../host/lease';
 import { importOldStorage } from '../host/migrate-storage';
 import { marcodeHome, resolveWorkspaceDir } from '../host/workspace-dir';
+import { APP_VERSION } from '../shared/app-version';
 import { bootHost } from './boot';
+import type { CliCommand } from './cli';
 import { findGitRoot } from './workspace-root';
 
 export interface SubIo {
@@ -28,13 +37,13 @@ export const realIo: SubIo = {
 
 export async function runLogin(providerId: string, cwd: string, io: SubIo = realIo): Promise<number> {
   const booted = await bootHost({
-    cwd, home: io.home, notify: io.err,
+    cwd, home: io.home, notify: io.err, inProcess: true,
     config: { memory: { enabled: false, summarizer: undefined }, ...io.bootConfig },
   });
   try {
-    const recipe = booted.host.loginRecipes.get(providerId);
+    const recipe = booted.loginRecipes.get(providerId);
     if (!recipe) {
-      const known = [...booted.host.loginRecipes.keys()].join(', ') || 'none';
+      const known = [...booted.loginRecipes.keys()].join(', ') || 'none';
       io.err(`marcode: no sign-in flow for ${providerId}; known: ${known}`);
       return 1;
     }
@@ -60,4 +69,61 @@ export async function runMigrate(oldDir: string, cwd: string, io: SubIo = realIo
   if (result.kind === 'none') { io.out(`nothing to import from ${oldDir}`); return 0; }
   io.out(`Imported ${result.sessions} session${result.sessions === 1 ? '' : 's'}`);
   return 0;
+}
+
+type DaemonCommand = Extract<CliCommand, { kind: 'daemon' }>;
+
+export async function runDaemonCommand(cmd: DaemonCommand, cwd: string, io: SubIo = realIo): Promise<number> {
+  const home = io.home ?? marcodeHome();
+  if (cmd.action === 'serve') { return serveDaemon(cmd.workspaceDir as string, cmd.roots, home, io); }
+  const dir = await resolveWorkspaceDir(home, await findGitRoot(cwd));
+  const info = await readDaemonInfo(dir);
+  if (!info || !defaultLeaseDeps.pidAlive(info.pid)) {
+    io.out('not running');
+    return cmd.action === 'status' ? 1 : 0;
+  }
+  if (cmd.action === 'status') {
+    io.out(`running pid=${info.pid} protocol=${info.protocolVersion} started=${new Date(info.startedAt).toISOString()}`);
+    return 0;
+  }
+  const answer = await requestShutdown(info.endpoint, info.token);
+  if (answer === 'bye') { io.out('stopped'); return 0; }
+  io.err(answer === 'unreachable' ? 'unreachable' : answer === 'timeout' ? 'not responding' : `refused: ${answer}`);
+  return 1;
+}
+
+async function serveDaemon(workspaceDir: string, roots: string[], home: string, io: SubIo): Promise<number> {
+  fs.mkdirSync(workspaceDir, { recursive: true });
+  const logFile = path.join(workspaceDir, 'daemon.log');
+  const log = (line: string) => {
+    try { fs.appendFileSync(logFile, `${new Date().toISOString()} ${line}
+`); } catch { /* a log that cannot be written must not stop the daemon */ }
+  };
+  // Detached with stdio ignored: the server's and host's console diagnostics would otherwise vanish.
+  console.error = console.warn = (...args: unknown[]) => log(format(...args));
+  const loaded = await loadConfig(configPath(home));
+  for (const w of loaded.warnings) { log(w); }
+  const config: HostConfig = { ...defaultHostConfig(), ...loaded.config, ...io.bootConfig };
+  const daemon = await runDaemon({
+    workspaceDir, config, appVersion: APP_VERSION, initialRoots: roots, log, configSignature: reloadSignature(loaded.config),
+  });
+  const onSignal = () => { void daemon.stop(); };
+  const onCrash = (err: unknown) => {
+    log(`fatal: ${err instanceof Error ? err.stack ?? err.message : String(err)}`);
+    process.exitCode = 1;
+    void daemon.stop();
+  };
+  process.on('SIGTERM', onSignal);
+  process.on('SIGINT', onSignal);
+  process.on('uncaughtException', onCrash);
+  process.on('unhandledRejection', onCrash);
+  try {
+    await daemon.done;
+  } finally {
+    process.off('SIGTERM', onSignal);
+    process.off('SIGINT', onSignal);
+    process.off('uncaughtException', onCrash);
+    process.off('unhandledRejection', onCrash);
+  }
+  return typeof process.exitCode === 'number' ? process.exitCode : 0;
 }

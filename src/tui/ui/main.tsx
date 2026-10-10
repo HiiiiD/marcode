@@ -1,10 +1,11 @@
 import { createCliRenderer, type CliRenderer } from '@opentui/core';
 import { createRoot } from '@opentui/react';
+import type { ClientStatus } from '../../daemon-client/daemon-client';
 import { watchConfig } from '../../host/config-file';
-import { bootHost, type Booted } from '../boot';
+import { bootHost, configChangedNotice, initialNotice, type Booted } from '../boot';
 import { parseArgs, USAGE, type CliCommand } from '../cli';
 import { createShutdown, installExitSignals } from '../shutdown';
-import { runConfig, runLogin, runMigrate } from '../subcommands';
+import { runConfig, runDaemonCommand, runLogin, runMigrate } from '../subcommands';
 import { App } from './app';
 import { TuiStoreProvider } from './store';
 import { detectTokens } from './tokens/detect-tokens';
@@ -13,6 +14,13 @@ import { TuiThemeProvider } from './tui-theme';
 
 const message = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
+// The client only reports `connected` after a reconnect, never at first attach.
+const STATUS_NOTICE: Record<ClientStatus, string> = {
+  reconnecting: 'Reconnecting to the background host…',
+  lost: 'Lost the background host; restart marcode',
+  connected: 'Reconnected to the background host',
+};
+
 async function runSubcommand(cmd: CliCommand): Promise<number | undefined> {
   switch (cmd.kind) {
     case 'help': console.log(USAGE); return 0;
@@ -20,6 +28,7 @@ async function runSubcommand(cmd: CliCommand): Promise<number | undefined> {
     case 'login': return runLogin(cmd.provider, process.cwd());
     case 'config': return runConfig();
     case 'migrate': return runMigrate(cmd.oldDir, process.cwd());
+    case 'daemon': return runDaemonCommand(cmd, process.cwd());
     case 'run': return undefined;
   }
 }
@@ -50,9 +59,10 @@ async function runTui(cmd: Extract<CliCommand, { kind: 'run' }>): Promise<void> 
     process.exit(1);
   }
   booting = false;
+  booted.onStatus((s) => { notices.notify(STATUS_NOTICE[s]); });
 
   const watcher = watchConfig(booted.configFile, booted.fileConfig, () => {
-    notices.notify('config.json changed — restart to apply');
+    notices.notify(configChangedNotice(booted.mode));
   });
   let renderer: CliRenderer | undefined;
   let fatal: string | undefined;
@@ -88,7 +98,7 @@ async function runTui(cmd: Extract<CliCommand, { kind: 'run' }>): Promise<void> 
 
   const live = renderer;
   const detect = () => detectTokens(live);
-  const loginCommands = Object.fromEntries([...booted.host.loginRecipes].map(([id, r]) => [id, r.command]));
+  const loginCommands = Object.fromEntries([...booted.loginRecipes].map(([id, r]) => [id, r.command]));
   createRoot(renderer).render(
     <DetectedTokensProvider detect={detect}>
       <TuiThemeProvider>
@@ -98,7 +108,7 @@ async function runTui(cmd: Extract<CliCommand, { kind: 'run' }>): Promise<void> 
             prompt={cmd.prompt}
             forceNew={cmd.forceNew}
             loginCommands={loginCommands}
-            initialNotice={booted.warnings[0]}
+            initialNotice={initialNotice(booted)}
             subscribeNotices={notices.subscribe}
             onQuit={() => { void shutdown(0); }}
           />
@@ -117,6 +127,8 @@ async function main(): Promise<void> {
     console.error(`marcode: ${message(err)}`);
     process.exitCode = 1;
   }
+  // A stopped daemon's provider children or timers must not keep the process alive.
+  if (cmd.kind === 'daemon' && cmd.action === 'serve') { process.exit(process.exitCode ?? 0); }
 }
 
 main().catch((err: unknown) => {

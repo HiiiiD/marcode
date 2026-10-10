@@ -29,7 +29,7 @@ export interface LoginRecipe { terminalName: string; command: string; env: NodeJ
 export interface CreateHostOptions {
   workspaceDir: string;
   config: HostConfig;
-  hostKind: 'vscode' | 'tui';
+  hostKind: 'vscode' | 'tui' | 'daemon';
   workspaceRoots: () => string[];
   emit: (msg: HostToWebview) => void;
   notify: { warn(message: string): void };

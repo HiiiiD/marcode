@@ -30,6 +30,7 @@ function describeInbound(m: WebviewToHost): string {
     case 'attach-drop': return 'attach-drop';
     case 'attach-remove': return 'attach-remove';
     case 'open-attachment': return 'open-attachment';
+    case 'request-attachment-path': return 'request-attachment-path';
     case 'attach-failed': return 'attach-failed';
     case 'reveal-file': return 'reveal-file';
     case 'set-model': return 'set-model';
@@ -95,6 +96,7 @@ function describeOutbound(m: HostToWebview): string {
     case 'memory-estimate': return 'memory-estimate';
     case 'session-invocables': return 'session-invocables';
     case 'editor-context': return 'editor-context';
+    case 'attachment-path': return 'attachment-path';
     case 'catalog': return 'catalog';
     case 'context-breakdown': return 'context-breakdown';
     case 'usage-windows': return 'usage-windows';

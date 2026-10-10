@@ -23,6 +23,24 @@ suite('tui cli', () => {
     assert.strictEqual(parseArgs(['migrate']).kind, 'error');
     assert.strictEqual(parseArgs(['--bogus']).kind, 'error');
   });
+  test('daemon actions', () => {
+    assert.deepStrictEqual(parseArgs(['daemon', '--serve', '--workspace-dir', '/w', '--root', '/r']),
+      { kind: 'daemon', action: 'serve', workspaceDir: '/w', roots: ['/r'] });
+    assert.deepStrictEqual(parseArgs(['daemon', '--serve', '--workspace-dir', '/w', '--root', '/a', '--root', '/b']),
+      { kind: 'daemon', action: 'serve', workspaceDir: '/w', roots: ['/a', '/b'] });
+    assert.deepStrictEqual(parseArgs(['daemon', '--status']), { kind: 'daemon', action: 'status', roots: [] });
+    assert.deepStrictEqual(parseArgs(['daemon', '--stop']), { kind: 'daemon', action: 'stop', roots: [] });
+  });
+  test('daemon misuse is an error', () => {
+    const bare = parseArgs(['daemon']);
+    assert.strictEqual(bare.kind, 'error');
+    const msg = bare.kind === 'error' ? bare.message : '';
+    assert.strictEqual(['--serve', '--status', '--stop'].every((f) => msg.includes(f)), true);
+    assert.strictEqual(parseArgs(['daemon', '--serve']).kind, 'error');
+    assert.strictEqual(parseArgs(['daemon', '--serve', '--workspace-dir']).kind, 'error');
+    assert.strictEqual(parseArgs(['daemon', '--status', '--stop']).kind, 'error');
+    assert.strictEqual(parseArgs(['daemon', '--bogus']).kind, 'error');
+  });
   test('a prompt that begins with a login-like word needs --', () => {
     assert.deepStrictEqual(parseArgs(['--', 'login', 'page']), { kind: 'run', prompt: 'login page', forceNew: false });
   });
