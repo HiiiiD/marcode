@@ -6,7 +6,7 @@ import { DEFAULT_RETRY, helloFrame, SocketDaemonClient, type ClientHooks, type D
 import { DEFAULT_HANDSHAKE_TIMEOUT_MS, openLink, type HelloFrame } from './daemon-link';
 import { discover } from './discover';
 import { acquireSpawnLock } from './spawn-lock';
-import { decideAttach } from './version-policy';
+import { decideAttach, isOlderBuild } from './version-policy';
 
 type FallbackReason = 'disabled' | 'newer-daemon' | 'busy-daemon' | 'unresponsive-daemon' | 'spawn-failed' | 'rejected';
 /** `message` completes "Running without the background host: …". */
@@ -16,6 +16,8 @@ type Fallback = { kind: 'fallback'; reason: FallbackReason; message: string };
 export type ConnectResult = { kind: 'attached'; client: DaemonClient; warnings?: string[] } | Fallback;
 
 export const STALE_CONFIG_WARNING = 'The background host is running with an older config.json; run `marcode daemon --stop` once sessions finish';
+
+export const STALE_BUILD_WARNING = 'The background host is an older build and sessions are running in it; reload or restart once they finish';
 
 export interface ConnectOptions {
   workspaceDir: string;
@@ -33,6 +35,8 @@ export interface ConnectOptions {
   reconnectTimeoutMs?: number;
   /** reloadSignature of this client's config.json; an idle daemon started with another one is replaced. */
   configSignature?: string;
+  /** First attach only: an idle daemon with an older app version is replaced like an older protocol. */
+  replaceOlderBuild?: boolean;
 }
 
 const POLL_MS = 100;
@@ -91,14 +95,16 @@ async function establish(opts: ConnectOptions, run: EstablishOpts): Promise<Open
         const decision = decideAttach(info.protocolVersion, identity.protocolVersion);
         const oldConfig = decision === 'attach' && opts.configSignature !== undefined && info.configSignature !== undefined
           && info.configSignature !== opts.configSignature && !keepConfig.has(info.token);
+        const oldBuild = decision === 'attach' && opts.replaceOlderBuild === true
+          && isOlderBuild(info.appVersion, identity.appVersion) && !keepConfig.has(info.token);
         if (decision === 'refuse-newer') {
           return fallback('newer-daemon', 'it is a newer Marcode version; update this client');
         }
-        if (decision === 'replace' || oldConfig) {
+        if (decision === 'replace' || oldConfig || oldBuild) {
           const answer = await requestShutdown(info.endpoint, info.token, handshakeMs);
-          if (answer === 'busy' && oldConfig) {
+          if (answer === 'busy' && (oldConfig || oldBuild)) {
             keepConfig.add(info.token);
-            run.warnings.push(STALE_CONFIG_WARNING);
+            run.warnings.push(oldConfig ? STALE_CONFIG_WARNING : STALE_BUILD_WARNING);
             continue;
           }
           if (answer === 'busy') {
@@ -187,7 +193,7 @@ export async function connectOrSpawn(opts: ConnectOptions): Promise<ConnectResul
   const reopen = async (cancelled: () => boolean): Promise<Opened | undefined> => {
     // Only the first attach may replace a daemon over config.json: a reconnect would otherwise ping-pong
     // with a daemon respawned from a newer config, or one the user restarted on purpose.
-    const r = await establish({ ...opts, configSignature: undefined }, {
+    const r = await establish({ ...opts, configSignature: undefined, replaceOlderBuild: false }, {
       timeoutMs: opts.reconnectTimeoutMs ?? DEFAULT_RECONNECT_TIMEOUT_MS, cancelled, spawnGuard, warnings: [],
     });
     return 'kind' in r ? undefined : r;

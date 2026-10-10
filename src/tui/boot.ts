@@ -92,7 +92,7 @@ export async function bootHost(opts: BootOptions): Promise<Booted> {
       workspaceDir, clientKind: 'tui', roots: [workspaceRoot], defaultCwd: opts.cwd,
       identity: { protocolVersion: PROTOCOL_VERSION, appVersion: APP_VERSION },
       hooks: daemonHooks(fileIndex, favorites),
-      configSignature: reloadSignature(loaded.config),
+      configSignature: reloadSignature(loaded.config), replaceOlderBuild: true,
       spawn: async () => {
         await fs.mkdir(workspaceDir, { recursive: true });
         await spawn(workspaceDir, [workspaceRoot]);
