@@ -1,72 +1,124 @@
 # `!` shell commands in the composer
 
 A composer line starting with `!` runs as a shell command in the session's working directory, in the TUI and
-in the extension sidebar. It never reaches the model.
+in the extension sidebar, with no model turn. The command and its output become a transcript item, so they are
+persisted, shown on every client, and handed to the model with the next prompt. This is how Claude Code's
+bash mode behaves.
 
 ## Decisions
 
 | Question | Decision |
 |---|---|
 | Where it runs | The host (daemon or in-process), in the session's `cwd`. A client never spawns it |
-| Persistence | None. Output is not written to the JSONL, not in `SessionState`, not fed to the model. A reload or reconnect drops it |
-| Who sees it | Only the connection that asked. Answered through the router's `emit`, not the `PostBus` |
+| Persistence | A `shell` transcript item in the session JSONL; survives reload and reconnect |
+| Who sees it | Every client showing the session, through ordinary transcript patches. No reply messages |
+| Model visibility | Prepended to the next user prompt as context. Never starts a turn by itself |
 | Permissions | None. The user typed it; it sits outside the permission modes, same as in Claude Code |
 | Agent access | None. Accepted from client connections only; never from `marcode__*` or any provider path |
 | Foreign sessions | Refused, like every mutator |
-| Streaming | Yes, with cancel. Timeout and output cap |
+| Shell | `bash` by default; `shell.aliases` in config select others (`!pwsh ...`) |
 
 ## Wire
 
-`src/protocol/messages.ts`, types only. Every message carries `SessionId`, plus a client-chosen `runId` so
-one client can run several.
+`src/protocol/messages.ts`, types only. Both messages carry the `SessionId`.
 
 ```
 WebviewToHost:
-  { t: 'run-shell';    id: SessionId; runId: number; command: string }
-  { t: 'cancel-shell'; id: SessionId; runId: number }
-
-HostToWebview:
-  { t: 'shell-chunk';  id: SessionId; runId: number; stream: 'stdout' | 'stderr'; text: string }
-  { t: 'shell-done';   id: SessionId; runId: number; exitCode: number | null; signal?: string;
-                       truncated?: boolean; timedOut?: boolean; error?: string }
+  { t: 'run-shell';    id: SessionId; command: string }
+  { t: 'cancel-shell'; id: SessionId; itemId: string }
 ```
 
-Both host messages are replies, so they go out through the router's `emit` to the asking connection.
-`wantsFor` needs no change: `REVIEW_WANTS`, `FLEET_WANTS` and `HISTORY_WANTS` gate `bus.post`, and nothing here is
-posted there. `run-shell` and `cancel-shell` must be added to `KNOWN_MESSAGE_TAGS` in `message-router.ts`, the
-allow-list of tags the router accepts; an unlisted tag is dropped.
+There is no reply message: the host appends and updates the transcript item, and the existing
+`session-patch` fan-out carries it to the visible sessions. Both tags are added to `KNOWN_MESSAGE_TAGS` in
+`message-router.ts`, the allow-list of tags the router accepts; an unlisted tag is dropped.
+`wantsFor` and the review/fleet/history allow-lists need no change, since `session-patch` was never theirs.
+
+### Transcript item
+
+```
+| (ItemBase & {
+    role: 'shell'; command: string;
+    state: 'running' | 'done' | 'cancelled';
+    output: string;                       // stdout and stderr interleaved in arrival order
+    exitCode?: number; signal?: string;
+    truncated?: boolean; timedOut?: boolean; error?: string;
+  })
+```
+
+`command` is the text after `!`, exactly as typed (alias token included), so the card reads like the line the
+user wrote. Interleaving keeps it one string; the cost is that a client cannot colour stderr. Accepted for now.
 
 ## Host
 
-New `src/host/shell-runner.ts`, no `vscode` import. Pure Node `child_process.spawn`.
+New `src/host/shell/` folder: `shell-runner.ts` (spawn, limits, kill), `shell-aliases.ts` (resolve and
+validate), `shell-context.ts` (the model-facing block). No `vscode` import. Pure Node `child_process.spawn`.
+The router case is inline and thin; the session owns the item.
 
-- **Shell:** `bash -c` by default on every platform. On Windows it resolves Git Bash (`bash.exe` on PATH, then
-  the Git for Windows install); if none is found, the run ends with an error that names the `shell.aliases`
-  setting. `windowsHide: true`.
+- **Session ownership:** `AgentSession.runShell(command)` appends a `running` item, starts the runner, and
+  updates the item as output arrives. The process belongs to the session, not to the connection that asked, so
+  a client dropping or a daemon-attached window reloading does not kill it, and any client can cancel it.
+- **Streaming into the transcript:** output is coalesced and written with a `replace` patch at most every
+  250ms, then once more on exit. A `replace` carries the whole item, which the output cap keeps small.
+- **Persistence cap:** `output` is capped at 64 KiB, keeping the tail and setting `truncated`. The run is not
+  killed at the cap; it keeps draining so the process cannot block on a full pipe, and further output is
+  dropped. The wall timeout is 120s (`timedOut`, then the tree is killed).
+- **Shell:** `bash -c` on every platform. On Windows it resolves Git Bash (`bash.exe` on PATH, then the Git for
+  Windows install); if none is found the item ends `done` with an `error` naming the `shell.aliases` setting.
+  `windowsHide: true`.
 - **Aliases:** if the command's first token, followed by whitespace, matches an alias, the rest of the line is
-  run through that alias instead of bash. Resolution is host-side: the client sends the raw text after `!`.
-  An alias shadows a same-named program, so `!pwsh --version` runs PowerShell, not a `pwsh` found by bash;
-  a user who wants the program wraps it (`!bash -c 'pwsh --version'`).
-- **cwd:** the session's current `cwd`, read when the command starts, so a worktree move is honoured.
-- **Environment:** `process.env` as the host has it. No secrets are added.
-- **Limits:** 120s wall timeout, 256 KiB of output across both streams. At the cap the process is killed and
-  `shell-done` carries `truncated: true`; on timeout `timedOut: true`.
-- **Chunking:** stdout/stderr coalesced to one frame per 50ms so a noisy command cannot flood the socket or
-  trip the slow-client drop in `daemon/connection.ts`.
-- **Cancel:** `cancel-shell` kills the process tree (`taskkill /T /F` on Windows, process group on POSIX).
-- **Lifecycle:** runs are owned by the router (one per connection). `MessageRouter.dispose` kills everything it
-  started, so a dropped client leaves no orphan. A run whose session is deleted or goes foreign is killed.
-- **Errors are state:** spawn failure becomes `shell-done { error }`. Nothing rejects across the wire.
-- **Redaction:** no. The output goes only to the user who ran the command and is never stored.
+  run through that alias instead of bash. Resolution is host-side. An alias shadows a same-named program, so
+  `!pwsh --version` runs PowerShell; to run the program itself, `!bash -c 'pwsh --version'`.
+- **cwd:** the session's `cwd` when the command starts, so a worktree move is honoured. A move while a command
+  is running does not retarget it.
+- **Cancel:** kills the process tree (`taskkill /T /F` on Windows, the process group on POSIX); the item ends
+  `cancelled`.
+- **Concurrency:** one running command per session. A second `run-shell` while one is running is refused with
+  an `error` transcript item (via `noteError`), not queued. Independent of the turn: a command may run while the
+  session is `running`, and session status is untouched.
+- **Lifecycle:** dispose or close of the session kills a running command. A `running` item found on load (the
+  host died mid-command) is turned into `cancelled` with `error: 'interrupted'`, alongside the existing
+  `queued`-relocation fix-up in `session-manager.ts`.
+- **Errors are state:** spawn failure becomes `error` on the item. Nothing rejects across the wire.
+- **Redaction:** none, matching how tool output is stored today; it is the user's own command in their own cwd.
+- **`updatedAt`:** the item goes through `appendItem`/`replaceItem`, so it bumps `updatedAt` like any
+  transcript write. That is correct: the session has activity.
 
-Router case: resolve the session (`manager.get`), refuse if missing or `isForeign`, then
-`runner.start(...)`. The handler is single-use, so it stays inline in the router with the process logic in
-`shell-runner.ts`.
+Router case: resolve the session, refuse if missing or `isForeign`, then `session.runShell(command)`; the
+handler is single-use, so it stays inline.
+
+## What the model sees
+
+The item itself is never sent. On the next delivery of a **user-typed** prompt, `AgentSession.deliver` prepends
+a block for each shell item that came after the last `user` item and has not been shown to the model, ahead of
+the seed and the prompt, the same way `seed` is folded in:
+
+```
+<shell-input>git status</shell-input>
+<shell-output exit="0">...</shell-output>
+
+<prompt text>
+```
+
+- **Stateless rule:** undelivered shell items are exactly those after the last `user` transcript item. No queue
+  to persist or lose: a reload recomputes the same set from the JSONL. Delivery appends a `user` item, which
+  moves the boundary past them.
+- A `running` item at delivery time is included with the output so far and `status="running"`, so it is not
+  lost when the boundary moves.
+- A prompt delivered with `from` (inter-session) does not carry shell blocks: they are the human's, not that
+  sender's business. They wait for the next typed prompt, so the boundary rule must ignore `user` items that
+  have `from` set.
+- The `user` transcript item still records only the typed text, like `seed`; the blocks are context handed to
+  the provider, not words the user wrote.
+- Cap of the block: the last 16 KiB of each output with a `[truncated]` marker, so a chatty command cannot eat
+  the context window.
+- Other consumers of `TranscriptItem`: `host/replay.ts` (fork, handoff and replace-session seeds) renders the
+  item as `SHELL: <command> -> exit N`; the digest and memory index ignore it, since they describe what the
+  user and agent said; the `switch (role)` sites the compiler flags are handled in the plan.
 
 ## Config
 
 `shell.aliases` in `~/.marcode/config.json`, read by `createHost` like every host setting (`docs/config.md`,
-reload to apply; stored as `shellAliases` per the `codexPath` flat-key precedent in `host-config.ts`).
+reload to apply; flat key `shellAliases`, per the `codexPath` precedent in `host-config.ts`).
 
 ```json
 { "shell": { "aliases": { "pwsh": { "command": "pwsh", "args": ["-NoProfile", "-Command"] } } } }
@@ -77,91 +129,74 @@ reload to apply; stored as `shellAliases` per the `codexPath` flat-key precedent
   -Command`). A user entry with the same name replaces the default; `null` removes it.
 - Validation drops malformed entries (non-string `command`, non-string-array `args`, a name with whitespace or
   starting with `-`) and keeps the rest, as the other list settings do.
-- An alias whose executable cannot be spawned ends the run with `shell-done { error }`.
-- Aliases are host config, never client input: a client cannot define one, so it cannot choose an arbitrary
-  executable beyond what the user typed after `!`, which is already arbitrary by design.
-
-## Client state
-
-`src/client-core/`, no React or DOM. A small reducer slice, `shellRuns: Record<SessionId, ShellRun[]>`:
-
-```
-ShellRun { runId; command; output: string; status: 'running' | 'done'; exitCode?; truncated?; timedOut?; error? }
-```
-
-- Local actions `shell-started` (adds the run before the host answers) and a per-session cap of the last
-  10 runs.
-- `shell-chunk` / `shell-done` fold into the run. Chunks for an unknown `runId` are dropped (the run was
-  dismissed or the state reset).
-- Cleared on `hydrate`: a reload or reconnect is a fresh start, which is the "not saved" decision.
-- `runId` comes from a client-local counter. It is only unique within one connection, which is all the
-  host's per-connection runner needs.
+- An alias whose executable cannot be spawned ends the item with `error`.
+- Aliases are host config, never client input: a client cannot define one.
 
 ## Composer behaviour
 
 Shared parse in `client-core`: `parseShellCommand(text)` returns the command when the trimmed text starts with
 `!` followed by non-whitespace, else `undefined`. A lone `!` and `!!` are sent as ordinary prompts.
 
-- **Submit:** post `run-shell`, clear the box and draft, add the run locally. Nothing is sent to the model, no
-  `queued:` line, and it works while the session is `running` (the shell is independent of the turn).
-- **Draft:** the `!` text is a normal draft until submit; it persists like any draft.
+- **Submit:** post `run-shell`, clear the box and draft. Nothing is sent to the model and there is no `queued:`
+  line. It works while the session is `running`.
 - **Mode hint:** while the text starts with `!`, the placeholder and frame tone change to a shell cue
-  (`Shell — Enter run, Esc cancel`). Cosmetic only.
-- **Mentions and slash popups:** closed in shell mode. `@` and `/` mean paths and flags here.
-- **History:** shell commands are not added to prompt history (they are not in the transcript, which is
-  the history's source). Up-arrow recall of `!` lines is out of scope.
+  (`Shell — Enter run`). Cosmetic only.
+- **Mentions and slash popups:** closed in shell mode; `@` and `/` mean paths and flags here.
+- **Prompt history:** `promptHistory` reads `user` items, so shell lines are not recalled with Up. Out of scope.
+- **Busy shell:** while a command is running in this session, submitting another `!` line shows the host's
+  refusal item; the composer does not need to track it.
 
 ## TUI
 
-Ephemeral blocks render **below the transcript, above the composer**, in the pane. They are not transcript
-items, so they do not scroll with history and vanish on dismiss.
-
-- A block shows `$ command`, the output (clamped to the last 12 lines while running; full after with
-  scroll), and a footer: `running…` / `exit 0` / `exit 1` / `cancelled` / `timed out` / `truncated`.
-- Built on the existing `panel.tsx` frame and `tool-blocks.tsx` command/output rendering. ANSI is stripped.
-- Esc on a running block sends `cancel-shell`; Esc on a finished block dismisses it. Key routing goes through
-  `keymap.ts`, as every other binding does.
-- The animation uses the shared `use-ticker.ts` only while a run is active.
+A `ShellCard` in `src/tui/ui/transcript/`, built on `panel.tsx` and `tool-blocks.tsx` command/output rendering,
+ANSI stripped. Header `$ command`; the output clamped to the last 12 lines while `running`, full after;
+footer `running…` / `exit 0` / `exit 1` / `cancelled` / `timed out` / `truncated`. Esc while the composer is
+empty and a command is running posts `cancel-shell`, routed through `keymap.ts` like the other bindings. The
+spinner uses `use-ticker.ts`, active only while running.
 
 ## Extension sidebar
 
-A `ShellRunCard` in `src/webview/components/`, above the composer in the pane, using the same slice via the
-webview reducer. shadcn only: `Button` for cancel/dismiss, `cn` for classes. Monospace output in a clamped,
-scrollable region, status as text plus colour, never colour alone. The composer gets the same `!` mode cue.
-Verified with the impeccable detector and `Operate` mode in mind: 300-500px width, long lines wrap or scroll
-horizontally inside the card rather than widening the pane.
-
-The webview reducer and the TUI store share the `client-core` slice, so the logic is written once.
+A `ShellCard` in `src/webview/components/` rendered by the transcript for `role: 'shell'`, using shadcn
+(`Button` for cancel, `cn` for classes). Monospace output in a clamped, scrollable region; status as text plus
+colour, never colour alone; long lines scroll inside the card rather than widening the 300-500px pane. The
+composer gets the same `!` cue. The change goes through the impeccable detector, in Operate mode.
 
 ## Invariants kept
 
 - `messages.ts` stays types-only; the new messages carry `SessionId`.
 - Nothing in the TUI, `client-core`, or `daemon` imports `vscode`.
-- Over a daemon, the client posts messages; it never executes the command or reads host files.
-- A host never acts on a session it does not own.
+- Over a daemon, a client posts messages; it never executes the command or reads host files.
+- A host never writes a session it does not own: foreign sessions are refused, and `markForeign` already
+  turns the appends into no-ops.
 - Errors are state; no unhandled rejection from the runner.
-- Not persisted, so no JSONL, `updatedAt`, digest, or memory involvement.
+- Transcript patches fan out only to visible sessions, so a hidden session's command still runs and is stored,
+  and a client sees it when it shows the session.
 
 ## Out of scope
 
-- Feeding output to the model, or saving it to the transcript (explicit decision; revisit if wanted: it
-  would add a transcript item kind and a pending-context queue, and those are the pieces that were left out).
 - Interactive programs (stdin, TTY, `vim`, `top`). No stdin is attached; they fail or exit.
-- Per-command permission rules, history recall, a default-shell setting (aliases cover choosing a shell per run).
+- Per-command permission rules, a default-shell setting, up-arrow recall of `!` lines, separate stdout and
+  stderr streams, more than one concurrent command per session.
 
 ## Tests
 
-- **Unit (mocha):** `parseShellCommand` cases; the reducer slice (chunk folding, cap of 10, unknown `runId`,
-  clear on `hydrate`); `shell-runner` with real short commands (`node -e`): exit code, stderr, truncation,
-  timeout (injected short limit), cancel, and dispose-kills.
-- **Router:** unknown session, foreign session, and a second connection never receiving the first's chunks.
-- **DOM:** `!ls` in the real `StoreProvider` posts `run-shell` and not `send`; `shell-chunk` and `shell-done`
-  from `sendFromHost` render the card; Esc/Cancel posts `cancel-shell`. Assertions on strings and counts,
-  never DOM nodes.
-- **TUI (bun test):** composer routing and block view model; no renderable handed to an assertion.
-- **Daemon:** an attached client's run streams over the socket and stops when the socket closes.
+- **Unit (mocha):** `parseShellCommand`; alias resolve and validation (defaults, override, `null`, malformed);
+  `shell-runner` with real short commands (`node -e`): exit code, stderr, tail truncation with continued
+  draining, timeout (injected short limit), cancel, dispose-kills; `shell-context` block building and its cap.
+- **Session:** `runShell` appends then replaces and persists to the JSONL; reload turns a `running` item into
+  `cancelled`; the next `send` carries the block and the `user` item records only the typed text; a second
+  `send` does not repeat it; a `from` delivery does not carry it; a running item is included at delivery; a
+  command during a running turn leaves status alone; a second concurrent command is refused.
+- **Router:** unknown session, foreign session, and `run-shell` being unreachable from the self-control path.
+- **DOM:** `!ls` in the real `StoreProvider` posts `run-shell` and not `send`; a `session-patch` carrying a
+  shell item renders the card; Cancel posts `cancel-shell`. Assertions on strings and counts, never DOM nodes.
+- **TUI (bun test):** composer routing and the card view model; no renderable handed to an assertion.
+- **Daemon:** a command started by one attached client appears on a second, and survives the first
+  disconnecting.
 
 ## Open points for the plan
 
 - Confirm `bind-surface` does not intercept `run-shell`.
 - Windows tree-kill details and Git Bash discovery order.
+- Whether `replace` every 250ms is acceptable for the JSONL writer, or the store should coalesce replaces of
+  one item id before flush.
