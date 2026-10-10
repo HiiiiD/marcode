@@ -38,8 +38,7 @@ yarn build:tui:bin    # bin/marcode.exe (bin/marcode elsewhere): standalone, Bun
 | Ctrl+J, Alt+Enter | composer | newline (terminals deliver Ctrl+J as `linefeed`) |
 | Up | composer, box empty or cursor at the very start | walk prompt history (keeps walking while the cursor is on the first line) |
 | Esc | your own session's turn is running or awaiting approval | interrupt |
-| Ctrl+C | your own session's turn is running or awaiting approval | interrupt; a second Ctrl+C within 2 s quits even if the turn has not stopped |
-| Ctrl+C twice | idle, or a session owned by another host | quit |
+| Ctrl+C twice | anywhere | quit; the first press only arms it. It never interrupts a turn, so with the background host a running turn keeps going after you leave (without it, quitting ends the turn) |
 | Tab | anywhere but approval/question | cycle composer, transcript, roster. The two lines at the bottom say where you are: the first shows the zone (an inverted `COMPOSER`, `TRANSCRIPT` or `ROSTER` badge) with the keys that work there, the second is the session status and the shortcuts that work everywhere. Entering the transcript selects the newest message |
 | Ctrl+B | anywhere | toggle the roster |
 | Ctrl+N | anywhere | new session dialog |

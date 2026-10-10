@@ -92,7 +92,7 @@ test('Esc on a permission prompt interrupts the turn', async () => {
   expect(m!.posted.filter((p) => p.t === 'interrupt').length).toBe(1);
 });
 
-test('Ctrl+C while awaiting approval interrupts, and a second press quits', async () => {
+test('Ctrl+C while awaiting approval only arms quit, and a second press quits without interrupting', async () => {
   let quit = 0;
   m = await mount(<App {...props} onQuit={() => { quit++; }} />);
   await m.fromHost(hydrateMsg({
@@ -101,10 +101,9 @@ test('Ctrl+C while awaiting approval interrupts, and a second press quits', asyn
   }));
   await m.press('c', { ctrl: true });
   expect(quit).toBe(0);
-  expect(m.posted.filter((p) => p.t === 'interrupt').length).toBe(1);
   await m.press('c', { ctrl: true });
   expect(quit).toBe(1);
-  expect(m.posted.filter((p) => p.t === 'interrupt').length).toBe(1);
+  expect(m.posted.some((p) => p.t === 'interrupt')).toBe(false);
 });
 
 test('Esc inside the deny-reason entry only goes back to the choice', async () => {

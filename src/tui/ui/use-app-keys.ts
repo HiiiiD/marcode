@@ -52,7 +52,7 @@ export function useAppKeys(k: AppKeys): void {
   // send/newline/history belong to the composer's own textarea bindings; acting on them here would send twice.
   useKeyboard((key) => {
     if (k.inert || key.defaultPrevented) { return; }
-    // Ctrl+C copies a live selection instead of interrupting or arming quit.
+    // Ctrl+C copies a live selection instead of arming quit.
     if (key.ctrl && key.name === 'c' && copySelection(renderer)) { key.preventDefault(); return; }
     // A popup or the roster filter owns Esc and Tab while open; Esc must not also interrupt the turn.
     if (key.name === 'tab' && ((mentionOpen && !key.shift) || rosterFiltering)) { return; }
@@ -67,13 +67,6 @@ export function useAppKeys(k: AppKeys): void {
       case 'cycle-zone': k.cycleZone(); return;
       case 'interrupt': {
         if (!s) { return; }
-        // The second Ctrl+C quits even mid-turn, so a provider that never stops cannot trap the user.
-        if (key.ctrl) {
-          if (quitArmed()) { quitRequest(); return; }
-          post({ t: 'interrupt', id: s.id });
-          quitRequest();
-          return;
-        }
         const interrupt = () => { post({ t: 'interrupt', id: s.id }); };
         // Prompts subscribe after App, so they see this Esc later; one that uses it (leaving a text entry) marks it.
         if (key.name === 'escape' && (k.zone === 'approval' || k.zone === 'question')) {

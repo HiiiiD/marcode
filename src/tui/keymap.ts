@@ -19,7 +19,8 @@ function globalAction(key: KeyInput, zone: Zone, ctx: { running: boolean }): Act
     switch (key.name) {
       case 'b': return act('toggle-roster');
       case 'n': return act('new-session');
-      case 'c': return ctx.running ? act('interrupt') : act('quit-request');
+      // Never an interrupt: leaving must not stop a turn the daemon could keep running. Esc interrupts.
+      case 'c': return act('quit-request');
       case 'p': return act('open-model');
       case 'e': return act('open-effort');
       case 't': return act('open-context');
