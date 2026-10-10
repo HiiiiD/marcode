@@ -506,6 +506,7 @@ export type WebviewToHost =
   | { t: 'set-draft'; id: SessionId; text: string }
   | { t: 'request-history-summaries' }
   | { t: 'memory-estimate'; scope: DigestScopeWire }
+  | { t: 'request-memory-status' }
   | { t: 'memory-reindex'; scope: DigestScopeWire }
   | { t: 'memory-resummarize'; id: SessionId }
   | { t: 'memory-cancel' }

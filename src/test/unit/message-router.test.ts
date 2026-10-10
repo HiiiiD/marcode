@@ -78,6 +78,13 @@ suite('MessageRouter', () => {
     assert.strictEqual(manager.visibleIds().includes(a), true);
   });
 
+  test('request-memory-status answers memory-status', async () => {
+    sent.length = 0;
+    await router.handle({ t: 'request-memory-status' });
+    const s = sent.find((m) => m.t === 'memory-status') as Extract<HostToWebview, { t: 'memory-status' }>;
+    assert.strictEqual(typeof s.enabled, 'boolean');
+  });
+
   test('hydrate carries a configured review poll interval', async () => {
     const configured = new MessageRouter(
       manager, (m) => sent.push(m), '/tmp', undefined, attachments, undefined, 2000,

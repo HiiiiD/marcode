@@ -664,6 +664,10 @@ export class MessageRouter {
         await this.manager.ensureSummaries();
         return;
 
+      case 'request-memory-status':
+        this.emit({ t: 'memory-status', ...this.manager.memoryStatus() });
+        return;
+
       case 'memory-estimate': {
         const estimate = await this.manager.memoryEstimate(msg.scope);
         // Nothing to confirm when no model call is coming: the extractive pass is free, so just run it.
@@ -776,7 +780,7 @@ const KNOWN_MESSAGE_TAGS = new Set<WebviewToHost['t']>([
   'request-fleet-diff', 'request-branch-refs', 'open-file-diff', 'open-review', 'open-fleet',
   'open-fleet-subagent',
   'focus-session', 'focus-pane', 'set-pinned', 'set-draft', 'request-history-summaries', 'open-history',
-  'memory-estimate', 'memory-reindex', 'memory-resummarize', 'memory-cancel',
+  'memory-estimate', 'request-memory-status', 'memory-reindex', 'memory-resummarize', 'memory-cancel',
   'refresh-catalog', 'refresh-usage', 'open-settings', 'login-provider', 'open-external', 'export-table-csv',
   'export-image',
   'file-search', 'set-favorite-models',

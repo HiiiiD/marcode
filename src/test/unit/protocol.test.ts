@@ -72,6 +72,7 @@ function describeInbound(m: WebviewToHost): string {
     case 'delete-preset': return 'delete-preset';
     case 'replace-session': return 'replace-session';
     case 'memory-estimate': return 'memory-estimate';
+    case 'request-memory-status': return 'request-memory-status';
     case 'memory-reindex': return 'memory-reindex';
     case 'memory-resummarize': return 'memory-resummarize';
     case 'memory-cancel': return 'memory-cancel';
