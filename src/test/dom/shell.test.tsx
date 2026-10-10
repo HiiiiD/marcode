@@ -51,6 +51,14 @@ suite('shell commands', () => {
     await screen.findByText('exit 2');
   });
 
+  test('a bang the parser rejects does not claim to be a shell command', async () => {
+    renderApp();
+    hydrateWith([]);
+    const box = await screen.findByPlaceholderText(/Message the agent/);
+    await userEvent.type(box, '! cat .env');
+    assert.strictEqual(screen.queryByText(/nothing goes to the model/) === null, true);
+  });
+
   test('typing a bang shows the shell hint', async () => {
     renderApp();
     hydrateWith([]);

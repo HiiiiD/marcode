@@ -48,6 +48,13 @@ test('shell mode shows its own hint', async () => {
   expect(m.frame()).toContain('shell');
 });
 
+test('a bang the parser rejects shows no shell hint', async () => {
+  m = await mount(<Composer sessionId="s1" focused />);
+  await m.fromHost(hydrateMsg());
+  await m.type('! ls');
+  expect(m.frame()).not.toContain('shell command');
+});
+
 test('a finished command renders its command, output and exit code', async () => {
   m = await mount(<Transcript sessionId="s1" focused />);
   await m.fromHost(withShell(shell()));

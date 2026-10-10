@@ -1205,6 +1205,20 @@ suite('SessionManager', () => {
     assert.strictEqual(jsonl.includes('"error":"interrupted"'), true);
   });
 
+  test('a session reopened with no cached transcript still carries stored shell output to its next prompt', async () => {
+    const a = await manager.create('fake', os.tmpdir());
+    const id = a.state.id;
+    store.append(id, { id: 'sh-stored', ts: 1, role: 'shell', command: 'git status', state: 'done', output: 'STORED-OUT', exitCode: 0 });
+    await store.flush(id);
+    await manager.close(id);
+    store.invalidate(id);
+
+    const reopened = await manager.open(id);
+    reopened.send('what did that say?');
+    await settle();
+    assert.strictEqual(provider.sent.some((m) => m.text.includes('STORED-OUT')), true);
+  });
+
   test('creating a session probes its cwd and emits the catalog to a visible pane', async () => {
     const { manager, provider, emitted } = await makeManager();
     provider.invocables = [{ name: 'init' }];

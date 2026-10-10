@@ -47,7 +47,7 @@ export function Composer({ sessionId, focused, onOpenPicker }: { sessionId: Sess
   const [text, setText] = useState('');
   const [caret, setCaret] = useState(0);
   const tokens = useTokens();
-  const shellMode = text.trimStart().startsWith('!');
+  const shellMode = parseShellCommand(text) !== undefined;
   const popup = useMentionPopup({ sessionId, text: shellMode ? '' : text, caret });
   const slash = useInvocablePopup({ sessionId, text: shellMode ? '' : text });
   const anyOpen = popup.open || slash.open;

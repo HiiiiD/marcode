@@ -94,6 +94,19 @@ suite('AgentSession shell', () => {
     assert.strictEqual(provider.sent[1].text.includes('private-out'), true);
   });
 
+  test('a slash command stays at the start of the prompt and the output waits for the next one', async () => {
+    const { session, sink, provider } = make();
+    session.runShell('node console.log("held-back")');
+    await until(() => shellItems(sink).at(-1)?.state === 'done');
+    session.send('/compact');
+    await until(() => provider.sent.length > 0);
+    assert.strictEqual(provider.sent[0].text, '/compact');
+    await until(() => session.state.status === 'idle');
+    session.send('what was that?');
+    await until(() => provider.sent.length > 1);
+    assert.strictEqual(provider.sent[1].text.includes('held-back'), true);
+  });
+
   test('a second command while one runs is refused with an error item', async () => {
     const { session, sink } = make();
     session.runShell('node setInterval(()=>{},1000)');

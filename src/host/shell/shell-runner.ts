@@ -9,7 +9,7 @@ export interface ShellResult {
 export interface ShellRunHandle { cancel(): void; done: Promise<ShellResult> }
 export interface ShellRunOptions {
   cwd: string; spec: ResolvedShell;
-  timeoutMs?: number; maxOutput?: number; flushMs?: number;
+  timeoutMs?: number; maxOutput?: number; flushMs?: number; graceMs?: number;
   bashPath?: () => string | undefined;
 }
 
@@ -51,6 +51,7 @@ function killTree(child: ChildProcess): void {
 export function runShell(opts: ShellRunOptions, onUpdate: (output: string, truncated: boolean) => void): ShellRunHandle {
   const cap = opts.maxOutput ?? OUTPUT_CAP;
   const flushMs = opts.flushMs ?? 250;
+  const graceMs = opts.graceMs ?? 500;
   let cancelFn = () => {};
   const done = new Promise<ShellResult>((resolve) => {
     let file: string; let args: string[];
@@ -80,17 +81,33 @@ export function runShell(opts: ShellRunOptions, onUpdate: (output: string, trunc
       stream?.setEncoding('utf8');
       stream?.on('data', take);
     }
-    const wall = setTimeout(() => { timedOut = true; killTree(child); }, opts.timeoutMs ?? WALL_TIMEOUT_MS);
-    cancelFn = () => { cancelled = true; killTree(child); };
+    // A backgrounded grandchild can hold the pipes open after the shell is gone (and on Windows taskkill cannot
+    // reach it once its parent has exited), so `close` alone may never fire. Past the grace the streams are cut.
+    let exit: ShellResult | undefined;
+    let graceTimer: ReturnType<typeof setTimeout> | undefined;
+    const forceFinish = () => {
+      child.stdout?.destroy();
+      child.stderr?.destroy();
+      finish(exit ?? {});
+    };
+    const armGrace = () => { graceTimer ??= setTimeout(forceFinish, graceMs); };
+    const stop = () => { killTree(child); armGrace(); };
+    const wall = setTimeout(() => { timedOut = true; stop(); }, opts.timeoutMs ?? WALL_TIMEOUT_MS);
+    cancelFn = () => { cancelled = true; stop(); };
     const finish = (result: ShellResult) => {
       if (settled) { return; }
       settled = true;
       clearTimeout(wall);
+      clearTimeout(graceTimer);
       if (timer) { clearTimeout(timer); }
       onUpdate(output, truncated);
       resolve({ ...result, ...(truncated ? { truncated } : {}), ...(timedOut ? { timedOut } : {}), ...(cancelled ? { cancelled } : {}) });
     };
     child.on('error', (err) => finish({ error: err.message }));
+    child.on('exit', (code, signal) => {
+      exit = { ...(code !== null ? { exitCode: code } : {}), ...(signal ? { signal } : {}) };
+      armGrace();
+    });
     child.on('close', (code, signal) => finish({
       ...(code !== null ? { exitCode: code } : {}), ...(signal ? { signal } : {}),
     }));

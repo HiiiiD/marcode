@@ -190,7 +190,7 @@ export function Composer({
     )
     : [];
   const refListId = `session-refs-${pane.summary.id}`;
-  const shellMode = text.trimStart().startsWith("!");
+  const shellMode = parseShellCommand(text) !== undefined;
   const refMenu = useMentionMenu({
     triggered: refHit !== undefined && !shellMode,
     rows: refRows,

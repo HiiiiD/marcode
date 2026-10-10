@@ -455,11 +455,10 @@ export class AgentSession {
     attachments: Attachment[] = [], from?: { sessionId: SessionId; name: string },
   ): void {
     if (!this.shellPrimed) {
-      this.shellPrimed = true;
       // Synchronous on purpose: a deferred deliver would let send() return before the status flips to running.
       // A transcript no pane has loaded is not primed; a visible pane (the only place `!` is typed) always is.
       const stored = this.store.cachedItems(this._state.id);
-      if (stored) { this.shell.prime(stored); }
+      if (stored) { this.shellPrimed = true; this.shell.prime(stored); }
     }
     if (this._state.title === 'Untitled' && text.trim().length > 0) {
       this._state.title = text.trim().slice(0, TITLE_MAX);
@@ -488,7 +487,8 @@ export class AgentSession {
     const withSender = from
       ? `[Delegated request from session "${from.name}", via Marcode's inter-session tool.]\n\n${text}`
       : text;
-    const shellBlock = from ? '' : this.shell.takeBlock();
+    // A backend command is only recognised at the very start of the message, so the block waits for the next prompt.
+    const shellBlock = from || /^\/\S/.test(text) ? '' : this.shell.takeBlock();
     const withShell = shellBlock ? `${shellBlock}\n\n${withSender}` : withSender;
     const outgoing = this.seed ? `${this.seed}\n\n---\n\n${withShell}` : withShell;
     const wantsRecall = !this.firstDelivered && !this.seed && !from && !this.resumed

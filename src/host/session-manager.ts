@@ -1699,6 +1699,8 @@ export class SessionManager implements SessionSink {
       await this.adoptDiskCopy(state);
     }
     state.status = 'idle';
+    // Loads the transcript so the session can tell which shell output the model has not seen yet.
+    await this.store.tail(id, 1).catch(() => {});
     const session = new AgentSession(state, provider, this.store, this);
     this.live.set(id, session);
     const cached = this.catalogSvc.get(this.keyOf(state));

@@ -41,6 +41,14 @@ suite('runShell', () => {
     const result = await handle.done;
     assert.strictEqual(result.cancelled, true);
   });
+  test('a backgrounded grandchild holding the pipes does not keep the run open', async () => {
+    const started = Date.now();
+    const { result } = await run(
+      "require('child_process').spawn(process.execPath, ['-e', 'setTimeout(() => {}, 6000)'], { stdio: 'inherit', detached: true }).unref()",
+      { graceMs: 200 });
+    assert.strictEqual(result.exitCode, 0);
+    assert.strictEqual(Date.now() - started < 3000, true);
+  });
   test('the cwd is honoured', async () => {
     const { output } = await run('console.log(process.cwd())', { cwd: os.tmpdir() });
     assert.strictEqual(output.trim().toLowerCase().includes(require('path').basename(os.tmpdir()).toLowerCase()), true);
