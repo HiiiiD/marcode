@@ -1135,3 +1135,119 @@ suite('SelfControlMcpServer marcode__list_models', () => {
     assert.strictEqual(data.some((p: { provider: string }) => p.provider === 'codex'), false);
   });
 });
+
+suite('SelfControlMcpServer spawn_collaborators', () => {
+  const catalog = () => [{
+    id: 'claude', models: [{ id: 'sonnet' }], permissionModes: [{ id: 'default' }],
+  }];
+  const lead = {
+    id: 'lead', name: 'Lead', providerId: 'claude', model: 'sonnet',
+    permissionMode: 'default' as const, status: 'idle', cwd: '/repo',
+  };
+  const bystander = { ...lead, id: 'by', name: 'bystander' };
+
+  function teamManager(sent: Record<string, string>, created: string[] = [], closed: string[] = []) {
+    let n = 0;
+    return fakeManager({
+      catalog,
+      summaries: () => [lead, bystander],
+      visibleIds: () => ['lead', 'by'],
+      create: async () => {
+        n += 1;
+        const id = `w${n}`;
+        created.push(id);
+        return { state: { id, name: `worker${n}` }, send: (t: string) => { sent[id] = t; } } as never;
+      },
+      close: async (id) => { closed.push(id); },
+    });
+  }
+
+  test('spawns every worker, inherits cwd, and each prompt names only the team', async () => {
+    const sent: Record<string, string> = {};
+    const server = new SelfControlMcpServer(teamManager(sent));
+    const config = await server.start();
+    const res = await callToolAs(config, 'lead', 'marcode__spawn_collaborators', {
+      workers: [{ task: 'parser', scope: 'src/p/' }, { task: 'tests' }],
+    });
+    assert.strictEqual(res.isError, undefined);
+    const out = JSON.parse(res.content[0].text) as { workers: { sessionId: string; task: string }[] };
+    assert.deepStrictEqual(out.workers.map((w) => w.sessionId), ['worker1', 'worker2']);
+    assert.strictEqual(sent.w1.includes('worker2: tests'), true);
+    assert.strictEqual(sent.w1.includes('Your scope: src/p/'), true);
+    assert.strictEqual(sent.w1.includes('"Lead"'), true);
+    assert.strictEqual(sent.w1.includes('bystander'), false);
+    assert.strictEqual(sent.w2.includes('bystander'), false);
+    await server.dispose();
+  });
+
+  test('commit false is honoured per worker', async () => {
+    const sent: Record<string, string> = {};
+    const server = new SelfControlMcpServer(teamManager(sent));
+    const config = await server.start();
+    await callToolAs(config, 'lead', 'marcode__spawn_collaborators', {
+      workers: [{ task: 'a', commit: false }, { task: 'b' }],
+    });
+    assert.strictEqual(sent.w1.includes('Do not commit'), true);
+    assert.strictEqual(sent.w2.includes('git commit -m'), true);
+    await server.dispose();
+  });
+
+  test('one invalid worker creates nothing', async () => {
+    const created: string[] = [];
+    const server = new SelfControlMcpServer(teamManager({}, created));
+    const config = await server.start();
+    const res = await callToolAs(config, 'lead', 'marcode__spawn_collaborators', {
+      workers: [{ task: 'ok' }, { task: 'bad', provider: 'nope' }],
+    });
+    assert.strictEqual(res.isError, true);
+    assert.strictEqual(res.content[0].text.includes('nope'), true);
+    assert.deepStrictEqual(created, []);
+    await server.dispose();
+  });
+
+  test('a relative cwd is rejected before anything is created', async () => {
+    const created: string[] = [];
+    const server = new SelfControlMcpServer(teamManager({}, created));
+    const config = await server.start();
+    const res = await callToolAs(config, 'lead', 'marcode__spawn_collaborators', {
+      workers: [{ task: 'x' }],
+      cwd: 'relative/path',
+    });
+    assert.strictEqual(res.isError, true);
+    assert.deepStrictEqual(created, []);
+    await server.dispose();
+  });
+
+  test('a create failure midway closes the workers already created', async () => {
+    const created: string[] = [];
+    const closed: string[] = [];
+    const base = teamManager({}, created, closed);
+    let calls = 0;
+    const server = new SelfControlMcpServer({
+      ...base,
+      create: async (...a) => {
+        calls += 1;
+        if (calls === 2) { throw new Error('provider exploded'); }
+        return base.create(...a);
+      },
+    });
+    const config = await server.start();
+    const res = await callToolAs(config, 'lead', 'marcode__spawn_collaborators', {
+      workers: [{ task: 'a' }, { task: 'b' }],
+    });
+    assert.strictEqual(res.isError, true);
+    assert.strictEqual(res.content[0].text.includes('provider exploded'), true);
+    assert.deepStrictEqual(closed, ['w1']);
+    await server.dispose();
+  });
+
+  test('an unidentifiable caller gets an error and no team', async () => {
+    const created: string[] = [];
+    const server = new SelfControlMcpServer(teamManager({}, created));
+    const config = await server.start();
+    const res = await callTool(config, 'marcode__spawn_collaborators', { workers: [{ task: 'a' }] });
+    assert.strictEqual(res.isError, true);
+    assert.deepStrictEqual(created, []);
+    await server.dispose();
+  });
+});
