@@ -87,9 +87,10 @@ handler is single-use, so it stays inline.
 
 ## What the model sees
 
-Nothing. The item is transcript-only: `AgentSession.deliver` does not read it, and `host/replay.ts` renders it
-as a one-line `SHELL:` entry only for fork, handoff and replace-session seeds. The digest and memory index ignore
-it. (An earlier draft prepended undelivered output to the next typed prompt, as Claude Code does; it was dropped
+Nothing, by any path. The item is transcript-only: `AgentSession.deliver` does not read it, `host/replay.ts`
+leaves it out of fork, handoff and replace-session seeds, the extractive digest, the LLM summarizer prompt and the
+memory index only read user, assistant and file-edit items, and `marcode__get_session_context` filters it out of
+the tail another agent reads. Tests pin each of those. (An earlier draft prepended undelivered output to the next typed prompt, as Claude Code does; it was dropped
 because the extra delivery path interacted with slash commands, session takeover and reload priming, and the
 user prefers a shell that is for them alone.)
 
