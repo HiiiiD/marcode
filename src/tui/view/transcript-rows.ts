@@ -1,4 +1,5 @@
 import { compactionHeadline } from '../../client-core/compaction';
+import { shellCard, type ShellCardModel } from '../../client-core/shell-card';
 import { describeTool, type ToolHeader } from '../../client-core/tool-render';
 import { activeRelocation, relocationCard, type RelocationCard } from './relocation-view';
 import type { Attachment, TranscriptItem } from '../../protocol/messages';
@@ -15,6 +16,7 @@ export type TranscriptRow =
   | { kind: 'question'; id: string; state: string; text: string }
   | { kind: 'relocation'; id: string; card: RelocationCard; active: boolean }
   | { kind: 'compaction'; id: string; state: 'running' | 'done' | 'failed'; headline: string; summary?: string; error?: string }
+  | { kind: 'shell'; id: string; card: ShellCardModel }
   | { kind: 'notice'; id: string; tone: 'error' | 'info'; text: string };
 
 export function transcriptRows(items: TranscriptItem[], running: boolean): TranscriptRow[] {
@@ -63,6 +65,9 @@ export function transcriptRows(items: TranscriptItem[], running: boolean): Trans
         break;
       case 'relocation':
         rows.push({ kind: 'relocation', id: item.id, card: relocationCard(item), active: item.id === activeId });
+        break;
+      case 'shell':
+        rows.push({ kind: 'shell', id: item.id, card: shellCard(item) });
         break;
       default: {
         const unhandled: never = item;

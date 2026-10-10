@@ -78,6 +78,8 @@ export function RowView(props: {
       return <RelocationCardView card={row.card} active={row.active} keys={props.relocationKeys} selected={props.selected} />;
     case 'compaction':
       return <CompactionCard row={row} open={props.expanded} selected={props.selected} />;
+    case 'shell':
+      return <text wrapMode="word">{row.card.command}</text>;
     case 'notice':
       return <text attributes={bold} fg={row.tone === 'error' ? theme.colors.error : theme.colors.mutedForeground} wrapMode="word">{row.text}</text>;
   }
