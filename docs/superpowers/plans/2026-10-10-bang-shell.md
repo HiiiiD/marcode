@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **Superseded in part:** the model-context feature (Task 4, and the `deliver` / priming parts of Tasks 5 and 6) was removed after review. `!` output is transcript-only and never reaches the model; see the spec.
+
 **Goal:** A composer line starting with `!` runs as a shell command on the host in the session's cwd, is stored as a `shell` transcript item shown on every client, and is handed to the model with the next typed prompt.
 
 **Architecture:** A new `shell` transcript item is owned by `AgentSession` through a `ShellController` (`src/host/shell/`), which drives a pure-Node `shell-runner`. Clients post `run-shell` / `cancel-shell`; there are no reply messages, only ordinary `session-patch` fan-out. Alias resolution lives in host config (`shell.aliases`). The TUI and the webview render the same `shellCard` view model from `client-core`.

@@ -60,30 +60,6 @@ suite('ShellController', () => {
     await settle();
     assert.deepStrictEqual([items.get('sh1')!.state, items.get('sh1')!.error], ['done', 'boom']);
   });
-  test('takeBlock returns the finished command once, then nothing', async () => {
-    const { c, runs } = harness();
-    c.start('echo hi');
-    runs[0].push('hi\n');
-    runs[0].finish({ exitCode: 0 });
-    await settle();
-    const first = c.takeBlock();
-    assert.strictEqual(first.includes('<shell-input>echo hi</shell-input>'), true);
-    assert.strictEqual(c.takeBlock(), '');
-  });
-  test('takeBlock includes a still-running command with its output so far', () => {
-    const { c, runs } = harness();
-    c.start('tail -f x');
-    runs[0].push('line\n');
-    assert.strictEqual(c.takeBlock().includes('status="running"'), true);
-  });
-  test('prime restores undelivered items from stored history', () => {
-    const { c } = harness();
-    c.prime([
-      { id: 'u', ts: 1, role: 'user', text: 'hi' },
-      { id: 'old', ts: 2, role: 'shell', command: 'pwd', state: 'done', output: '/repo\n', exitCode: 0 },
-    ]);
-    assert.strictEqual(c.takeBlock().includes('pwd'), true);
-  });
   test('dispose marks a running item cancelled/interrupted and kills it', () => {
     const { c, items, runs } = harness();
     c.start('sleep 9');

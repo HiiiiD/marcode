@@ -168,7 +168,6 @@ export class AgentSession {
   private queuedContext = new Map<string, EditorContext | undefined>();
   private disposed = false;
   private readonly shell: ShellController;
-  private shellPrimed = false;
   /**
    * TranscriptStore.flush() is not safe to call concurrently for the same
    * session id — two overlapping calls can both observe the same pending
@@ -454,12 +453,6 @@ export class AgentSession {
     text: string, context?: EditorContext, refs?: SessionRef[], fileRefs?: FileRef[],
     attachments: Attachment[] = [], from?: { sessionId: SessionId; name: string },
   ): void {
-    if (!this.shellPrimed) {
-      // Synchronous on purpose: a deferred deliver would let send() return before the status flips to running.
-      // A transcript no pane has loaded is not primed; a visible pane (the only place `!` is typed) always is.
-      const stored = this.store.cachedItems(this._state.id);
-      if (stored) { this.shellPrimed = true; this.shell.prime(stored); }
-    }
     if (this._state.title === 'Untitled' && text.trim().length > 0) {
       this._state.title = text.trim().slice(0, TITLE_MAX);
     }
@@ -487,10 +480,7 @@ export class AgentSession {
     const withSender = from
       ? `[Delegated request from session "${from.name}", via Marcode's inter-session tool.]\n\n${text}`
       : text;
-    // A backend command is only recognised at the very start of the message, so the block waits for the next prompt.
-    const shellBlock = from || /^\/\S/.test(text) ? '' : this.shell.takeBlock();
-    const withShell = shellBlock ? `${shellBlock}\n\n${withSender}` : withSender;
-    const outgoing = this.seed ? `${this.seed}\n\n---\n\n${withShell}` : withShell;
+    const outgoing = this.seed ? `${this.seed}\n\n---\n\n${withSender}` : withSender;
     const wantsRecall = !this.firstDelivered && !this.seed && !from && !this.resumed
       && this.sink.recall !== undefined;
     this.firstDelivered = true;

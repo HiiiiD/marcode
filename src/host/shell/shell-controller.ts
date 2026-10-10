@@ -1,6 +1,5 @@
-import type { ShellItem, TranscriptItem } from '../../protocol/messages';
+import type { ShellItem } from '../../protocol/messages';
 import { resolveShellCommand, type ShellAliasTable } from './shell-aliases';
-import { shellContextBlock, undeliveredShells } from './shell-context';
 import { runShell, type ShellRunHandle } from './shell-runner';
 
 export interface ShellHost {
@@ -14,7 +13,6 @@ export interface ShellHost {
 
 export class ShellController {
   private current: { item: ShellItem; handle: ShellRunHandle } | undefined;
-  private undelivered: ShellItem[] = [];
   private disposed = false;
 
   constructor(private readonly host: ShellHost, private readonly run: typeof runShell = runShell) {}
@@ -28,7 +26,6 @@ export class ShellController {
       id: this.host.nextId(), ts: Date.now(), role: 'shell', command, state: 'running', output: '',
     };
     this.host.append(item);
-    this.undelivered.push(item);
     const handle = this.run(
       { cwd: this.host.cwd(), spec: resolveShellCommand(command, this.host.aliases()) },
       (output, truncated) => this.update({ output, ...(truncated ? { truncated } : {}) }),
@@ -51,17 +48,6 @@ export class ShellController {
     if (this.current?.item.id === itemId) { this.current.handle.cancel(); }
   }
 
-  prime(items: readonly TranscriptItem[]): void {
-    const known = new Set(this.undelivered.map((i) => i.id));
-    this.undelivered = [...undeliveredShells(items).filter((i) => !known.has(i.id)), ...this.undelivered];
-  }
-
-  takeBlock(): string {
-    const block = shellContextBlock(this.undelivered);
-    this.undelivered = [];
-    return block;
-  }
-
   dispose(): void {
     if (!this.current) { return; }
     const { handle } = this.current;
@@ -75,7 +61,6 @@ export class ShellController {
     if (this.disposed || !this.current) { return; }
     const next = { ...this.current.item, ...patch } as ShellItem;
     this.current.item = next;
-    this.undelivered = this.undelivered.map((i) => (i.id === next.id ? next : i));
     this.host.replace(next);
   }
 }

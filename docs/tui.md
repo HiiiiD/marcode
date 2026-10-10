@@ -69,7 +69,7 @@ yarn build:tui:bin    # bin/marcode.exe (bin/marcode elsewhere): standalone, Bun
 | Shift+D, then y / n | roster | delete the session after confirming; refused for a session owned by another host |
 | @ then Up / Down, Tab or Enter, Esc | composer | file mention popup: a pick inserts `@path`, and the file's content travels with the message |
 | / at the start of the box, then Up / Down, Tab or Enter, Esc | composer | skill and slash-command menu for the session's provider: a pick inserts the command. Typed built-ins (`/model`, `/layout`, ...) still work |
-| `!` at the start of the box, then Enter | composer | run the rest as a shell command in the session's cwd; no model turn, and the output reaches the model with your next message |
+| `!` at the start of the box, then Enter | composer | run the rest as a shell command in the session's cwd; no model turn, and the model never sees it |
 | Esc | composer / transcript | with no turn running, cancels a running `!` command (a running turn is interrupted first) |
 | Ctrl+X | composer | remove the last attachment |
 | Ctrl+V | composer | attach an image from the clipboard |
@@ -98,7 +98,7 @@ the pane under the pointer. Every mouse action has a keyboard equivalent.
 A line starting with `!` (for example `!git status`) runs on the host in the session's working directory and
 shows up as a card in the transcript: `$ command`, its output (the last 12 lines while it runs), and a footer such
 as `exit 0`, `cancelled` or `timed out`. It is saved with the session, appears in the VS Code panel too, and is
-attached to your next typed message as context for the model. One command runs per session at a time. Commands
+never sent to the model. One command runs per session at a time. Commands
 run in bash (Git Bash on Windows); `shell.aliases` in `config.json` adds others, and `!pwsh ...` works out of the
 box. See the README's Shell commands section.
 

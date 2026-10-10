@@ -64,49 +64,6 @@ suite('AgentSession shell', () => {
     assert.strictEqual(snap.items.some((i) => i.role === 'shell' && i.state === 'done'), true);
   });
 
-  test('the next typed prompt carries the output once; the user item records only the typed text', async () => {
-    const { session, sink, provider } = make();
-    session.runShell('node console.log("marker-123")');
-    await until(() => shellItems(sink).at(-1)?.state === 'done');
-    session.send('what did that print?');
-    await until(() => provider.sent.length > 0);
-    assert.strictEqual(provider.sent[0].text.includes('marker-123'), true);
-    assert.strictEqual(provider.sent[0].text.endsWith('what did that print?'), true);
-    const snap = await session.snapshot();
-    const user = snap.items.find((i) => i.role === 'user');
-    assert.strictEqual(user?.role === 'user' && user.text, 'what did that print?');
-    await until(() => session.state.status === 'idle');
-    session.send('again');
-    await until(() => provider.sent.length > 1);
-    assert.strictEqual(provider.sent[1].text.includes('marker-123'), false);
-  });
-
-  test('a delegated prompt does not carry the shell output', async () => {
-    const { session, sink, provider } = make();
-    session.runShell('node console.log("private-out")');
-    await until(() => shellItems(sink).at(-1)?.state === 'done');
-    session.send('hello from peer', undefined, undefined, undefined, { sessionId: 's2', name: 'peer' });
-    await until(() => provider.sent.length > 0);
-    assert.strictEqual(provider.sent[0].text.includes('private-out'), false);
-    await until(() => session.state.status === 'idle');
-    session.send('now me');
-    await until(() => provider.sent.length > 1);
-    assert.strictEqual(provider.sent[1].text.includes('private-out'), true);
-  });
-
-  test('a slash command stays at the start of the prompt and the output waits for the next one', async () => {
-    const { session, sink, provider } = make();
-    session.runShell('node console.log("held-back")');
-    await until(() => shellItems(sink).at(-1)?.state === 'done');
-    session.send('/compact');
-    await until(() => provider.sent.length > 0);
-    assert.strictEqual(provider.sent[0].text, '/compact');
-    await until(() => session.state.status === 'idle');
-    session.send('what was that?');
-    await until(() => provider.sent.length > 1);
-    assert.strictEqual(provider.sent[1].text.includes('held-back'), true);
-  });
-
   test('a second command while one runs is refused with an error item', async () => {
     const { session, sink } = make();
     session.runShell('node setInterval(()=>{},1000)');
@@ -132,16 +89,4 @@ suite('AgentSession shell', () => {
     assert.strictEqual(session.state.status, before);
   });
 
-  test('a finished command stored by an earlier process reaches the next prompt after a reload', async () => {
-    store.append('s1', { id: 'u0', ts: 1, role: 'user', text: 'earlier' });
-    store.append('s1', { id: 'sh0', ts: 2, role: 'shell', command: 'pwd', state: 'done', output: 'PRE-RELOAD\n', exitCode: 0 });
-    await store.flush('s1');
-    const provider = new FakeProvider(() => [{ kind: 'text', delta: 'ok' }, { kind: 'turn-end', reason: 'done' }]);
-    const session = new AgentSession(baseState(), provider, store, new Sink());
-    open.push(session);
-    await session.snapshot();
-    session.send('continue');
-    await until(() => provider.sent.length > 0);
-    assert.strictEqual(provider.sent.at(-1)!.text.includes('PRE-RELOAD'), true);
-  });
 });

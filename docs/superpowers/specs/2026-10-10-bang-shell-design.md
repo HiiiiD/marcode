@@ -2,8 +2,7 @@
 
 A composer line starting with `!` runs as a shell command in the session's working directory, in the TUI and
 in the extension sidebar, with no model turn. The command and its output become a transcript item, so they are
-persisted, shown on every client, and handed to the model with the next prompt. This is how Claude Code's
-bash mode behaves.
+persisted and shown on every client. It is never sent to the model.
 
 ## Decisions
 
@@ -12,7 +11,7 @@ bash mode behaves.
 | Where it runs | The host (daemon or in-process), in the session's `cwd`. A client never spawns it |
 | Persistence | A `shell` transcript item in the session JSONL; survives reload and reconnect |
 | Who sees it | Every client showing the session, through ordinary transcript patches. No reply messages |
-| Model visibility | Prepended to the next user prompt as context. Never starts a turn by itself |
+| Model visibility | None. The model never sees it; the user pastes output into a prompt if needed |
 | Permissions | None. The user typed it; it sits outside the permission modes, same as in Claude Code |
 | Agent access | None. Accepted from client connections only; never from `marcode__*` or any provider path |
 | Foreign sessions | Refused, like every mutator |
@@ -51,7 +50,7 @@ user wrote. Interleaving keeps it one string; the cost is that a client cannot c
 ## Host
 
 New `src/host/shell/` folder: `shell-runner.ts` (spawn, limits, kill), `shell-aliases.ts` (resolve and
-validate), `shell-context.ts` (the model-facing block). No `vscode` import. Pure Node `child_process.spawn`.
+validate), and `shell-controller.ts` (one session's run). No `vscode` import. Pure Node `child_process.spawn`.
 The router case is inline and thin; the session owns the item.
 
 - **Session ownership:** `AgentSession.runShell(command)` appends a `running` item, starts the runner, and
@@ -88,32 +87,11 @@ handler is single-use, so it stays inline.
 
 ## What the model sees
 
-The item itself is never sent. On the next delivery of a **user-typed** prompt, `AgentSession.deliver` prepends
-a block for each shell item that came after the last `user` item and has not been shown to the model, after
-the seed and ahead of the prompt, the same way `seed` is folded in:
-
-```
-<shell-input>git status</shell-input>
-<shell-output exit="0">...</shell-output>
-
-<prompt text>
-```
-
-- **Stateless rule:** undelivered shell items are exactly those after the last `user` transcript item. No queue
-  to persist or lose: a reload recomputes the same set from the JSONL. Delivery appends a `user` item, which
-  moves the boundary past them.
-- A `running` item at delivery time is included with the output so far and `status="running"`, so it is not
-  lost when the boundary moves.
-- A prompt delivered with `from` (inter-session) does not carry shell blocks: they are the human's, not that
-  sender's business. They wait for the next typed prompt, so the boundary rule must ignore `user` items that
-  have `from` set.
-- The `user` transcript item still records only the typed text, like `seed`; the blocks are context handed to
-  the provider, not words the user wrote.
-- Cap of the block: the last 16 KiB of each output with a `[truncated]` marker, so a chatty command cannot eat
-  the context window.
-- Other consumers of `TranscriptItem`: `host/replay.ts` (fork, handoff and replace-session seeds) renders the
-  item as `SHELL: <command> -> exit N`; the digest and memory index ignore it, since they describe what the
-  user and agent said; the `switch (role)` sites the compiler flags are handled in the plan.
+Nothing. The item is transcript-only: `AgentSession.deliver` does not read it, and `host/replay.ts` renders it
+as a one-line `SHELL:` entry only for fork, handoff and replace-session seeds. The digest and memory index ignore
+it. (An earlier draft prepended undelivered output to the next typed prompt, as Claude Code does; it was dropped
+because the extra delivery path interacted with slash commands, session takeover and reload priming, and the
+user prefers a shell that is for them alone.)
 
 ## Config
 
@@ -183,10 +161,8 @@ composer gets the same `!` cue. The change goes through the impeccable detector,
 - **Unit (mocha):** `parseShellCommand`; alias resolve and validation (defaults, override, `null`, malformed);
   `shell-runner` with real short commands (`node -e`): exit code, stderr, tail truncation with continued
   draining, timeout (injected short limit), cancel, dispose-kills; `shell-context` block building and its cap.
-- **Session:** `runShell` appends then replaces and persists to the JSONL; reload turns a `running` item into
-  `cancelled`; the next `send` carries the block and the `user` item records only the typed text; a second
-  `send` does not repeat it; a `from` delivery does not carry it; a running item is included at delivery; a
-  command during a running turn leaves status alone; a second concurrent command is refused.
+- **Session:** `runShell` appends then replaces and persists to the JSONL; a command during a running turn
+  leaves status alone; a second concurrent command is refused.
 - **Router:** unknown session, foreign session, and `run-shell` being unreachable from the self-control path.
 - **DOM:** `!ls` in the real `StoreProvider` posts `run-shell` and not `send`; a `session-patch` carrying a
   shell item renders the card; Cancel posts `cancel-shell`. Assertions on strings and counts, never DOM nodes.

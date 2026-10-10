@@ -21,7 +21,7 @@ loop.
   - "Tell the OpenCode session to pull latest before it starts."
 - Shell commands from the composer: start a line with `!` (for example `!git status`) to run it
   in the session's working directory without a model turn. The command and its output stay in
-  the transcript and reach the model with your next message. See [Shell commands](#shell-commands).
+  the transcript, for you only. See [Shell commands](#shell-commands).
 - A roster of concurrent agent sessions, each its own conversation with its own status,
   model, effort level and permission mode.
 - Split panes over the visible subset of that roster, with a persisted layout.
@@ -314,8 +314,7 @@ the extension), in the session's working directory. It works in the sidebar and 
 client, and it does not start a model turn:
 
 - The command and its output become a card in the transcript, saved with the session.
-- The next message you type carries them to the model as context. Messages another session sends
-  do not.
+- The model never sees it. Paste the output into your next message if the agent needs it.
 - Only one command runs per session at a time. **Cancel** on the card, or Esc in the terminal client
   when no turn is running, stops it. A command is cut off after 120 seconds, and the saved output keeps
   the last 64K characters.
