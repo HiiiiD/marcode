@@ -35,7 +35,8 @@ read-only ("Running in daemon (pid …)"), the same as any other foreign lease.
 - **Config change.** `daemon.json` records a signature of the `config.json` the daemon started
   with. A client whose `config.json` differs replaces an idle daemon the same way as an older one;
   a busy one is attached anyway, with the notice "The background host is running with an older
-  config.json; run `marcode daemon --stop` once sessions finish".
+  config.json; run `marcode daemon --stop` once sessions finish". This check runs only when a client
+  starts; a reconnect attaches to whatever daemon it finds.
 - **Unresponsive.** A daemon whose record is live but that accepts and never answers is waited on
   and never replaced. Only a refused connect (nobody listening) marks a record stale.
 
@@ -87,7 +88,7 @@ in-process and never starts a daemon.
 
 Each attached client has its own set of shown panes, and the daemon shows the union of them: a
 second terminal attaching never hides, discards or digests a session the first one shows, and a
-session leaves memory's "hidden" set only when no client shows it. When the last client leaves,
+session becomes hidden (stored and recallable in memory) only when no client shows it. When the last client leaves,
 the last union stays as it was. The persisted pane layout is shared and last-writer-wins: each
 client restores whatever layout was saved last, by any of them.
 
