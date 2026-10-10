@@ -46,6 +46,9 @@ async function started(
   await tick();
   server.ingest(`${JSON.stringify({ id: 1, result: { thread: { id: threadId } } })}\n`);
   await tick();
+  // No turn id in the reply, so a later send starts a turn rather than steering one.
+  server.ingest(`${JSON.stringify({ id: 2, result: {} })}\n`);
+  await tick();
   return run;
 }
 
@@ -904,5 +907,76 @@ suite('CodexRun', () => {
     assert.ok(last);
     assert.strictEqual(last.kind, 'turn-end');
     assert.strictEqual(last.kind === 'turn-end' && last.reason, 'error');
+  });
+});
+
+suite('CodexRun mid-turn steering', () => {
+  const reply = (server: AppServer, id: unknown, result: unknown): void => {
+    server.ingest(`${JSON.stringify({ id, result })}\n`);
+  };
+  const methods = (sent: () => { method?: string }[]) => sent().map((f) => f.method);
+
+  test('a send while a turn is active steers it instead of starting another', async () => {
+    const { server, sent } = stub();
+    const run = await started(server, 'th_1');
+    run.send('first');
+    await tick();
+    reply(server, sent().filter((f) => f.method === 'turn/start').at(-1)?.id, { turn: { id: 'turn_1' } });
+    await tick();
+
+    run.send('also do X');
+    await tick();
+    const steer = sent().find((f) => f.method === 'turn/steer');
+    assert.strictEqual(steer?.params.threadId, 'th_1');
+    assert.strictEqual(steer?.params.expectedTurnId, 'turn_1');
+    assert.strictEqual(steer?.params.input[0].text.includes('also do X'), true);
+    assert.strictEqual(methods(sent).filter((m) => m === 'turn/start').length, 2);
+    assert.strictEqual(run.queuesNatively, true);
+  });
+
+  test('a steer that finds no active turn falls back to a fresh turn', async () => {
+    const { server, sent } = stub();
+    const run = await started(server, 'th_1');
+    run.send('first');
+    await tick();
+    reply(server, sent().filter((f) => f.method === 'turn/start').at(-1)?.id, { turn: { id: 'turn_1' } });
+    await tick();
+
+    run.send('late');
+    await tick();
+    const steer = sent().find((f) => f.method === 'turn/steer');
+    server.ingest(`${JSON.stringify({ id: steer?.id, error: { code: -32600, message: 'no active turn to steer' } })}\n`);
+    await tick();
+    assert.strictEqual(methods(sent).filter((m) => m === 'turn/start').length, 3);
+  });
+
+  test('a send after turn/completed starts a new turn', async () => {
+    const { server, send, sent } = stub();
+    const run = await started(server, 'th_1');
+    run.send('first');
+    await tick();
+    reply(server, sent().filter((f) => f.method === 'turn/start').at(-1)?.id, { turn: { id: 'turn_1' } });
+    await tick();
+    send({ method: 'turn/completed', params: { threadId: 'th_1', turn: { id: 'turn_1', status: 'completed' } } });
+    await tick();
+
+    run.send('next');
+    await tick();
+    assert.strictEqual(methods(sent).includes('turn/steer'), false);
+    assert.strictEqual(methods(sent).filter((m) => m === 'turn/start').length, 3);
+  });
+
+  test('two quick sends do not both start a turn', async () => {
+    const { server, sent } = stub();
+    const run = new CodexRun(server, { cwd: '/repo', permissionMode: 'default', sessionId: 's' });
+    run.send('one');
+    run.send('two');
+    await tick();
+    reply(server, 1, { thread: { id: 'th_1' } });
+    await tick();
+    reply(server, sent().find((f) => f.method === 'turn/start')?.id, { turn: { id: 'turn_1' } });
+    await tick();
+    assert.strictEqual(methods(sent).filter((m) => m === 'turn/start').length, 1);
+    assert.strictEqual(methods(sent).filter((m) => m === 'turn/steer').length, 1);
   });
 });
