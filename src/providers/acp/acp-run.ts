@@ -59,6 +59,13 @@ export interface AcpRunOptions {
    */
   modeId(mode: PermissionMode): string | undefined;
   clientName: string;
+  /**
+   * The agent accepts a `session/prompt` while another is in flight and folds
+   * it into the running loop (OpenCode does, though not between every tool
+   * round). The run then overlaps prompts and reports one `turn-end`, when the
+   * last reply arrives. Leave unset for an agent that takes one prompt at a time.
+   */
+  queuesNatively?: boolean;
   /** This run's owning session — appended to the self-control URL below. */
   sessionId: SessionId;
   /** The loopback MCP server this run's agent should connect to, if any. */
@@ -231,6 +238,9 @@ export class AcpRun implements AgentRun {
    */
   private childFailure: string | undefined;
   private disposed = false;
+  /** `session/prompt` requests awaiting a reply. Above 1 only when `queuesNatively`. */
+  private inflight = 0;
+  readonly queuesNatively?: boolean;
 
   /**
    * Attached only once a `usage_update` has actually arrived — `AgentSession`
@@ -253,6 +263,7 @@ export class AcpRun implements AgentRun {
   ) {
     this.mode = opts.permissionMode;
     this.model = opts.model;
+    if (opts.queuesNatively) { this.queuesNatively = true; }
     this.startup = this.start();
     if (this.opts.childEvents) { void this.pumpChildEvents(this.opts.childEvents); }
   }
@@ -632,9 +643,14 @@ export class AcpRun implements AgentRun {
       });
       return;
     }
+    this.inflight += 1;
     try {
       const reply = await conn.prompt({ sessionId, prompt: blocks });
+      this.inflight -= 1;
       if (this.disposed) { return; }
+      // Overlapping prompts resolve together with one shared result, so only
+      // the last reply may report usage or end the turn.
+      if (this.inflight > 0) { return; }
       const usage = reply?.usage;
       if (usage) {
         // No cache fields on the wire (PromptUsage has none) — a real 0,
@@ -648,6 +664,10 @@ export class AcpRun implements AgentRun {
       }
       this.events.push({ kind: 'turn-end', reason: turnEndReason(reply?.stopReason) });
     } catch (err) {
+      // A throw after the decrement above is impossible (only pushes follow),
+      // so a catch here always means the request itself failed.
+      this.inflight -= 1;
+      if (this.inflight > 0) { return; }
       // A dead peer reaches us as the SDK's generic "ACP connection closed".
       // The child's own exit reason — code/signal plus the stderr tail — is
       // the one a user can act on, so it wins whenever the spawn recipe

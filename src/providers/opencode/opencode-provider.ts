@@ -318,6 +318,7 @@ export class OpenCodeProvider implements AgentProvider {
       tools: openCodeTools,
       modeId: openCodeModeId,
       clientName: 'mar-code',
+      queuesNatively: true,
       selfControlMcp: opts.withoutSelfControl ? undefined : this.selfControlMcp,
       childEvents: watch.events,
       skillNames: () => this.listSkillNames(this.binPath, this.mergedEnv(), opts.cwd),

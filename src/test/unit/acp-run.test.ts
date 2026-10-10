@@ -534,6 +534,40 @@ suite('AcpRun', () => {
     await run.dispose();
   });
 
+  test('queuesNatively: a send mid-turn overlaps, and only the last reply ends the turn', async () => {
+    const p = peer();
+    const events: AgentEvent[] = [];
+    const run = new AcpRun(p.child, {
+      cwd: '/w', permissionMode: 'default', tools: openCodeTools, queuesNatively: true,
+      modeId: openCodeModeId, clientName: 'mar-code', sessionId: 'test-session', });
+    collect(run, events);
+    await handshake(p);
+
+    run.send('one');
+    run.send('two');
+    const [first, second] = await promptWrites(p, 2);
+    const reply = { stopReason: 'end_turn', usage: { inputTokens: 10, outputTokens: 5 } };
+    p.emit({ jsonrpc: '2.0', id: first.id, result: reply });
+    await new Promise((r) => setTimeout(r, 20));
+    assert.strictEqual(events.some((e) => e.kind === 'turn-end'), false);
+
+    p.emit({ jsonrpc: '2.0', id: second.id, result: reply });
+    await new Promise((r) => setTimeout(r, 20));
+    assert.strictEqual(events.filter((e) => e.kind === 'turn-end').length, 1);
+    assert.strictEqual(events.filter((e) => e.kind === 'usage').length, 1);
+    assert.strictEqual(run.queuesNatively, true);
+    await run.dispose();
+  });
+
+  test('without queuesNatively the run does not claim to queue', async () => {
+    const p = peer();
+    const run = new AcpRun(p.child, {
+      cwd: '/w', permissionMode: 'default', tools: openCodeTools,
+      modeId: openCodeModeId, clientName: 'mar-code', sessionId: 'test-session', });
+    assert.strictEqual(run.queuesNatively, undefined);
+    await run.dispose();
+  });
+
   test('interrupt() converges the turn locally even when the peer never replies to session/prompt', async () => {
     // Real-world case: the peer accepts session/cancel but its reply to the
     // in-flight session/prompt request never arrives (dropped, crashed
