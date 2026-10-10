@@ -17,6 +17,14 @@ function bash(id: string, command: string): TranscriptItem {
 }
 
 suite('buildSeed', () => {
+  test('shell commands the user ran never enter a seed', () => {
+    const shell: TranscriptItem = { id: 'sh1', ts: 3, role: 'shell', command: 'cat .env', state: 'done', output: 'SECRET=1', exitCode: 0 };
+    const seed = buildSeed([user('u1', 'hello'), shell, assistant('a1', 'ok')]);
+    assert.strictEqual(seed.includes('cat .env'), false);
+    assert.strictEqual(seed.includes('SECRET'), false);
+    assert.strictEqual(seed.includes('hello'), true);
+  });
+
   test('returns empty string for an empty transcript', () => {
     assert.strictEqual(buildSeed([]), '');
   });

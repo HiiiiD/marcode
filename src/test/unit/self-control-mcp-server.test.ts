@@ -995,6 +995,25 @@ suite('SelfControlMcpServer session context', () => {
     await server.dispose();
   });
 
+  test('marcode__get_session_context leaves out shell commands the user ran', async () => {
+    const items = [
+      { id: 'u1', ts: 1, role: 'user', text: 'hi' },
+      { id: 'sh1', ts: 2, role: 'shell', command: 'cat .env', state: 'done', output: 'SECRET=1', exitCode: 0 },
+    ] as never[];
+    const manager = fakeManager({
+      summaries: () => [{ id: 's-target', name: 'b', providerId: 'claude', status: 'idle', cwd: '/w' } as never],
+      visibleIds: () => ['s-target'],
+      transcriptTail: async () => ({ items }),
+    });
+    const server = new SelfControlMcpServer(manager);
+    const config = await server.start();
+    const result = await callTool(config, 'marcode__get_session_context', { name: 'b' });
+    const body = JSON.parse(result.content[0].text) as { items: { id: string }[] };
+    assert.deepStrictEqual(body.items.map((i) => i.id), ['u1']);
+    assert.strictEqual(result.content[0].text.includes('SECRET'), false);
+    await server.dispose();
+  });
+
   test('marcode__get_session_context passes a custom limit through', async () => {
     let seenLimit: number | undefined;
     const manager = fakeManager({
