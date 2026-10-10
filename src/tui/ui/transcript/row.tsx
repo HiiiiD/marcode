@@ -80,7 +80,7 @@ export function RowView(props: {
     case 'compaction':
       return <CompactionCard row={row} open={props.expanded} selected={props.selected} />;
     case 'shell':
-      return <ShellCard row={row} selected={props.selected} />;
+      return <ShellCard row={row} expanded={props.expanded} selected={props.selected} />;
     case 'notice':
       return <text attributes={bold} fg={row.tone === 'error' ? theme.colors.error : theme.colors.mutedForeground} wrapMode="word">{row.text}</text>;
   }

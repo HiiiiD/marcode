@@ -96,7 +96,7 @@ the pane under the pointer. Every mouse action has a keyboard equivalent.
 ## Shell commands
 
 A line starting with `!` (for example `!git status`) runs on the host in the session's working directory and
-shows up as a card in the transcript: `$ command`, its output (the last 12 lines while it runs), and a footer such
+shows up as a card in the transcript: `$ command`, its output (the last 12 lines, with Enter on the card to show or hide the rest), and a footer such
 as `exit 0`, `cancelled` or `timed out`. It is saved with the session, appears in the VS Code panel too, and is
 never sent to the model. One command runs per session at a time. Commands
 run in bash (Git Bash on Windows); `shell.aliases` in `config.json` adds others, and `!pwsh ...` works out of the

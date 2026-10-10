@@ -74,3 +74,18 @@ test('a failed command shows its exit code', async () => {
   await m.fromHost(withShell(shell({ exitCode: 2 })));
   expect(m.frame()).toContain('exit 2');
 });
+
+test('a long finished output is clamped inside the card until expanded', async () => {
+  m = await mount(<Transcript sessionId="s1" focused />, { width: 100, height: 60 });
+  const long = Array.from({ length: 30 }, (_, i) => `row-a${i}`).join('\n');
+  await m.fromHost(withShell(shell({ output: long })));
+  expect(m.frame()).toContain('row-a29');
+  expect(m.frame()).toContain('18 earlier lines');
+  expect(m.frame()).not.toContain('row-a0');
+  await m.press('j');
+  await m.press('return');
+  expect(m.frame()).toContain('row-a0');
+  expect(m.frame()).not.toContain('earlier lines');
+  await m.press('return');
+  expect(m.frame()).toContain('18 earlier lines');
+});
