@@ -44,7 +44,9 @@ export function resolveSpawn(
   const explicitMode = req.mode as PermissionMode | undefined;
   let mode = (explicitMode ?? from?.permissionMode) as PermissionMode | undefined;
   if (mode !== undefined && !entry.permissionModes.some((m) => m.id === mode)) {
-    return { ok: false, error: `Provider ${providerId} has no mode ${mode}` };
+    // An inherited mode the target provider lacks (e.g. acceptEdits on Codex) is not something the caller asked for.
+    if (explicitMode !== undefined) { return { ok: false, error: `Provider ${providerId} has no mode ${mode}` }; }
+    mode = undefined;
   }
   // An explicit bypass would let a restricted session delegate around its restriction; an inherited one is merely dropped.
   if (explicitMode === 'bypass') { return { ok: false, error: 'spawn_session cannot create bypass-mode sessions' }; }

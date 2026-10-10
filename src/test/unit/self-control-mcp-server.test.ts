@@ -1180,6 +1180,27 @@ suite('SelfControlMcpServer spawn_collaborators', () => {
     await server.dispose();
   });
 
+  test('an inherited mode the worker\'s provider lacks falls back to its default', async () => {
+    const seen: unknown[][] = [];
+    const base = teamManager({});
+    const server = new SelfControlMcpServer({
+      ...base,
+      catalog: () => [
+        { id: 'claude', models: [{ id: 'sonnet' }], permissionModes: [{ id: 'default' }, { id: 'acceptEdits' }] },
+        { id: 'codex', models: [{ id: 'gpt' }], permissionModes: [{ id: 'default' }] },
+      ],
+      summaries: () => [{ ...lead, permissionMode: 'acceptEdits' as const }],
+      create: async (...a) => { seen.push(a); return base.create(...a); },
+    });
+    const config = await server.start();
+    const res = await callToolAs(config, 'lead', 'marcode__spawn_collaborators', {
+      workers: [{ task: 'x', provider: 'codex', model: 'gpt' }],
+    });
+    assert.strictEqual(res.isError, undefined);
+    assert.deepStrictEqual(seen[0].slice(0, 5), ['codex', '/repo', 'gpt', undefined, undefined]);
+    await server.dispose();
+  });
+
   test('commit false is honoured per worker', async () => {
     const sent: Record<string, string> = {};
     const server = new SelfControlMcpServer(teamManager(sent));
