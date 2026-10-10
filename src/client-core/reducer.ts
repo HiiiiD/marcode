@@ -336,7 +336,7 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
         // keystroke ask for", and a reload has no box left holding one.
         fileSearchBySession: {},
         // Cleared, not carried: the host re-posts the settled hits right
-        // after every hydrate (panel-view-provider.ts, on `ready`), and that
+        // after every hydrate (panel-view-provider.ts, afterHostMessage), and that
         // `agents-md-nudge` message is the total rebuild here — same posture
         // as `staleTrees`.
         agentsMdNudgeHits: [],

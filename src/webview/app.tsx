@@ -109,6 +109,7 @@ export function App() {
     <TooltipProvider>
       <Toaster position="bottom-right" />
       <div ref={rootRef} data-narrow-observer className="flex h-screen flex-col">
+        <HostLinkBanner />
         {state.ready ? (
           <>
             <SessionPicker
@@ -117,7 +118,6 @@ export function App() {
               onFleet={() => post({ t: 'open-fleet' })}
               onHistory={() => post({ t: 'open-history' })}
             />
-            <HostLinkBanner />
             <AgentsMdNudgeCard />
             <div className="min-h-0 flex-1">
               <PaneGroup narrow={narrow} />

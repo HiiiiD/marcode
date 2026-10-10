@@ -32,6 +32,7 @@ export function createInProcessLink(d: InProcessLinkDeps): SurfaceLink {
   return {
     transport: loopback.transport,
     onStatus: () => () => {},
+    status: () => 'connected',
     pushContext: () => {},
     dispose: () => { if (!disposed) { disposed = true; unregister(); } },
   };

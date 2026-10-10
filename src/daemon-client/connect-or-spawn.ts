@@ -17,7 +17,7 @@ export type ConnectResult = { kind: 'attached'; client: DaemonClient; warnings?:
 
 export const STALE_CONFIG_WARNING = 'The background host is running with an older config.json; run `marcode daemon --stop` once sessions finish';
 
-export const STALE_BUILD_WARNING = 'The background host is an older build and sessions are running in it; reload or restart once they finish';
+export const STALE_BUILD_WARNING = 'The background host is an older build and sessions are running in it; memory links, focusing a session from Fleet or History, and memory reindex do nothing until they finish and the window is reloaded';
 
 export interface ConnectOptions {
   workspaceDir: string;

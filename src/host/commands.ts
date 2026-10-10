@@ -31,7 +31,7 @@ function reindexIo(link: SurfaceLink): ReindexIo {
       const wait = awaitMessage(transport, (m) => m.t === 'memory-status', STATUS_WAIT_MS);
       transport.post({ t: 'request-memory-status' });
       const m = await wait;
-      if (m?.t !== 'memory-status') { throw new Error('the background host did not answer'); }
+      if (m?.t !== 'memory-status') { throw new Error('the background host did not answer (it may be an older build)'); }
       return { enabled: m.enabled, llm: m.llm };
     },
     estimate: async () => {

@@ -7,6 +7,8 @@ import type { LoginRecipe } from './create-host';
 export interface SurfaceLink {
   readonly transport: ClientTransport;
   onStatus(cb: (s: ClientStatus) => void): () => void;
+  /** The current state, for a surface that subscribed after the transition. */
+  status(): ClientStatus;
   /** Daemon links forward editor context to the daemon; in-process routers read it from the hooks. */
   pushContext(ctx: unknown): void;
   dispose(): void;

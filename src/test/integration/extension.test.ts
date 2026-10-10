@@ -7,7 +7,10 @@ import { PanelViewProvider } from '../../host/panel-view-provider';
 
 suite('extension', () => {
   suiteSetup(() => {
-    process.env.MARCODE_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'marcode-it-'));
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'marcode-it-'));
+    process.env.MARCODE_HOME = home;
+    // A real activation would otherwise spawn a detached daemon that outlives the test run.
+    fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ daemon: { enabled: false } }));
   });
 
   test('activates and registers the panel view', async () => {

@@ -62,7 +62,7 @@ router. See `docs/daemon.md`.
 
 | Path | Responsibility |
 |---|---|
-| `src/extension.ts` | `activate()`: resolve the workspace directory under `~/.marcode`, load `config.json`, offer the one-time migration, call `createHost`, then construct `PostBus` + `ReviewPanel`, register the sidebar webview view, the `marcode.review.open` command, and the review tab's `WebviewPanelSerializer` |
+| `src/extension.ts` | Thin entry: `activate`/`deactivate` delegate to `host/activate.ts`, which resolves the workspace directory under `~/.marcode`, loads `config.json`, runs the one-time migration, opens the host connection (daemon or in-process), builds the panels over `SurfaceLink`s, and registers the views, commands and tab serializers |
 | `src/host/surface-link.ts`, `host-connection.ts`, `in-process-link.ts` | `SurfaceLink`/`HostConnection`; `openHostConnection` decides daemon or in-process once and hands each panel a link (a `DaemonClient`, or a router + bus loopback) |
 | `src/host/bind-surface.ts`, `layout-cache.ts`, `await-message.ts` | Wires one webview to a link (queues until the link exists, intercepts client-only messages); the sidebar's last `PaneLayout`; a request/reply helper for commands |
 | `src/host/activate.ts`, `commands.ts`, `activation-support.ts`, `memory-reindex-flow.ts` | The body of `activate()`; command registration; legacy-settings seed, storage import and profile warning; the memory reindex dialog logic |
@@ -115,7 +115,7 @@ router. See `docs/daemon.md`.
 | `src/host/post-bus.ts` | Fan-out to registered clients; `REVIEW_WANTS` is the review tab's allow-list |
 | `src/host/review-panel.ts` | The review editor tab: creation, restore, transport |
 | `src/host/history-panel.ts` | The session history editor tab: creation, restore, transport. Its bus allow-list (`HISTORY_WANTS`) is `sessions-changed` only — every column it shows is already on `SessionState` |
-| `src/host/focus-session.ts` | Adds a session to the sidebar split and reveals the sidebar; shared by the fleet and history tabs |
+| `src/host/focus-session.ts` | Adds a session to the split (`focus-session` in the router); the fleet and history tabs reveal the sidebar themselves |
 | `src/memory/session-digest.ts` | Thin wrapper: `digestSession(items)` = the extractive `indexLine`, kept for the memory-off history path |
 | `src/memory/digest.ts` | `SessionDigest`, the extractive digest, `indexLine` (the one-line pointer), `digestText` |
 | `src/host/digest/digest-service.ts` | The only writer of a digest: serial queue, close-time refresh, reindex with resume |
@@ -281,7 +281,7 @@ These are not style preferences. Breaking one breaks the design.
   `fleet-diff`) — a new message type posted through the manager defaults to
   not reaching review, and `session-patch` never will, because the review
   client simply never asks for it. It is not the whole story, though:
-  `ReviewPanel` also owns its own `MessageRouter`, whose `emit` posts straight
+  The review tab's link also carries its own `MessageRouter` (daemon-side, or local in-process), whose `emit` posts straight
   to the same webview outside the bus entirely — that is how `hydrate` and
   `editor-context` actually reach this client, each in direct answer to a
   message it sent (`ready`). The allow-list is what stops an *unsolicited*

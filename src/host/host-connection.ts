@@ -35,17 +35,21 @@ type OptionsFor = (kind: ClientKind, first: boolean) => ConnectOptions;
 const deadLink = (): SurfaceLink => ({
   transport: { post: () => {}, onMessage: () => () => {} },
   onStatus: (cb: (s: ClientStatus) => void) => { queueMicrotask(() => cb('lost')); return () => {}; },
+  status: () => 'lost',
   pushContext: () => {},
   dispose: () => {},
 });
 
-function daemonLink(client: DaemonClient, forget: () => void): SurfaceLink {
+function daemonLink(client: DaemonClient, initial: ClientStatus, forget: () => void): SurfaceLink {
   let closed = false;
+  let status = initial;
+  const offStatus = client.onStatus((s) => { status = s; });
   return {
     transport: client,
     onStatus: (cb) => client.onStatus(cb),
+    status: () => status,
     pushContext: (ctx) => client.pushContext(ctx),
-    dispose: () => { if (!closed) { closed = true; client.close(); forget(); } },
+    dispose: () => { if (!closed) { closed = true; offStatus(); client.close(); forget(); } },
   };
 }
 
@@ -75,12 +79,16 @@ function daemonConnection(
   deps: HostConnectionDeps, options: OptionsFor, firstClient: DaemonClient, warnings: string[], attachmentsBaseDir: string,
 ): HostConnection {
   const links = new Set<SurfaceLink>();
+  let disposed = false;
   let held: DaemonClient | undefined = firstClient;
+  // The sidebar may open long after activation; by then this client can already be reconnecting or lost.
+  let heldStatus: ClientStatus = 'connected';
+  const offHeld = firstClient.onStatus((s) => { heldStatus = s; });
   const recipes = new Map<string, LoginRecipe>(firstClient.loginRecipes.map((r): [string, LoginRecipe] => [
     r.id, { terminalName: r.terminalName, command: r.command, env: { ...process.env, ...r.env } },
   ]));
-  const track = (client: DaemonClient): SurfaceLink => {
-    const link: SurfaceLink = daemonLink(client, () => links.delete(link));
+  const track = (client: DaemonClient, status: ClientStatus = 'connected'): SurfaceLink => {
+    const link: SurfaceLink = daemonLink(client, status, () => links.delete(link));
     links.add(link);
     return link;
   };
@@ -88,20 +96,27 @@ function daemonConnection(
   return {
     mode: 'daemon', fallbackNotice: undefined, warnings, loginRecipes: recipes, attachmentsBaseDir,
     connect: async (kind) => {
+      if (disposed) { return deadLink(); }
       if (kind === 'sidebar' && held) {
         const client = held;
         held = undefined;
-        return track(client);
+        offHeld();
+        if (heldStatus === 'connected') { return track(client); }
+        client.close();
       }
       try {
         const r = await connect(options(kind, false));
-        return r.kind === 'attached' ? track(r.client) : deadLink();
+        if (r.kind !== 'attached') { return deadLink(); }
+        if (disposed) { r.client.close(); return deadLink(); }
+        return track(r.client);
       } catch (err) {
         console.error('[mar-code] could not connect a surface to the background host', err);
         return deadLink();
       }
     },
     dispose: async () => {
+      disposed = true;
+      offHeld();
       held?.close();
       held = undefined;
       for (const link of [...links]) { link.dispose(); }

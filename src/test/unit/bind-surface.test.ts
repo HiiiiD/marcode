@@ -23,7 +23,7 @@ function fakeLink() {
   let disposed = 0;
   const link: SurfaceLink = {
     transport: { post: (m) => { sent.push(m); }, onMessage: (l) => { listener = l; return () => { listener = undefined; }; } },
-    onStatus: () => () => {}, pushContext: () => {}, dispose: () => { disposed++; },
+    onStatus: () => () => {}, status: () => 'connected', pushContext: () => {}, dispose: () => { disposed++; },
   };
   return { link, sent, emit: (m: HostToWebview) => listener?.(m), disposed: () => disposed, listening: () => listener !== undefined };
 }
@@ -68,6 +68,36 @@ suite('bind surface', () => {
     l.emit({ t: 'memory-status', enabled: true, llm: false });
     l.emit({ t: 'sessions-changed' } as never);
     assert.deepStrictEqual(w.posted, [{ t: 'memory-status', enabled: false, llm: false }, { t: 'sessions-changed' }]);
+  });
+
+  test('afterHostMessage runs once the message has been posted to the webview', async () => {
+    const w = fakeWebview();
+    const l = fakeLink();
+    const seenAtCall: number[] = [];
+    bindSurface(w.webview as never, async () => l.link, { afterHostMessage: () => { seenAtCall.push(w.posted.length); } });
+    await tick();
+    l.emit({ t: 'sessions-changed' } as never);
+    assert.deepStrictEqual(seenAtCall, [1]);
+  });
+
+  test('messages sent while an async intercept is replaying the queue do not overtake it', async () => {
+    const w = fakeWebview();
+    const l = fakeLink();
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    let resolve!: (link: SurfaceLink) => void;
+    bindSurface(w.webview as never, () => new Promise((r) => { resolve = r; }), {
+      intercept: async (raw) => { if (raw.t === 'open-review') { await gate; return true; } return false; },
+    });
+    w.send({ t: 'open-review' });
+    w.send({ t: 'ready' });
+    resolve(l.link);
+    await tick();
+    w.send({ t: 'refresh-usage' } as never);
+    await tick();
+    release();
+    await tick();
+    assert.deepStrictEqual(l.sent.map((m) => m.t), ['ready', 'refresh-usage']);
   });
 
   test('an intercepted message is not forwarded', async () => {

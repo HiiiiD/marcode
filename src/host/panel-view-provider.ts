@@ -76,13 +76,15 @@ export class PanelViewProvider implements vscode.WebviewViewProvider {
           case 'open-fleet-subagent': this.actions.openFleet({ sessionId: raw.sessionId, itemId: raw.itemId }); return true;
           case 'agents-md-nudge-action': await this.agentsMdNudge?.handleAction(raw.action, raw.dirs); return true;
           case 'ready':
-            link.transport.post(raw);
-            await this.agentsMdNudge?.resend();
-            return true;
+            // A lost link drops this ready, and the webview has no state to show why until told.
+            if (link.status() !== 'connected') { this.post({ t: 'host-link', status: link.status() }); }
+            return false;
           default: return false;
         }
       },
       onHostMessage: (m) => (m.t === 'hydrate' ? { ...m, showCacheTimer: this.showCacheTimer } : undefined),
+      // hydrate resets the nudge card, so the hits go out again after every one (reloads and reconnects included).
+      afterHostMessage: (m) => { if (m.t === 'hydrate') { void this.agentsMdNudge?.resend(); } },
       onLink: (link) => {
         const cache = trackLayout(link.transport.onMessage);
         this.layoutCache = cache;

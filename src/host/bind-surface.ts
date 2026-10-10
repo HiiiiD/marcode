@@ -7,6 +7,8 @@ export interface SurfaceHandlers {
   intercept?(raw: WebviewToHost, link: SurfaceLink): boolean | Promise<boolean>;
   /** Sees every host message before it is posted to the webview; a returned message replaces it. */
   onHostMessage?(msg: HostToWebview, link: SurfaceLink): HostToWebview | void;
+  /** Runs after the (possibly replaced) message has been posted to the webview. */
+  afterHostMessage?(msg: HostToWebview, link: SurfaceLink): void;
   /** Runs once the link exists; whatever it returns is called on dispose. */
   onLink?(link: SurfaceLink): (() => void) | void;
 }
@@ -29,7 +31,9 @@ export function bindSurface(
 ): SurfaceBinding {
   let link: SurfaceLink | undefined;
   let disposed = false;
+  // Messages wait here until the link exists and the backlog has drained, so a late message never overtakes an early one.
   const queue: WebviewToHost[] = [];
+  let draining = true;
   const cleanups: Array<() => void> = [];
 
   const post = (msg: HostToWebview) => { void webview.postMessage(msg); };
@@ -44,7 +48,7 @@ export function bindSurface(
   };
 
   const received = webview.onDidReceiveMessage((raw: WebviewToHost) => {
-    if (link) { void dispatch(raw, link); } else { queue.push(raw); }
+    if (link && !draining) { void dispatch(raw, link); } else { queue.push(raw); }
   });
 
   connect().then(async (l) => {
@@ -54,10 +58,12 @@ export function bindSurface(
       let out = m;
       try { out = handlers.onHostMessage?.(m, l) ?? m; } catch (err) { console.error('[mar-code] host message handler failed', m.t, err); }
       post(out);
+      try { handlers.afterHostMessage?.(m, l); } catch (err) { console.error('[mar-code] host message handler failed', m.t, err); }
     }));
     const undo = handlers.onLink?.(l);
     if (undo) { cleanups.push(undo); }
-    for (const raw of queue.splice(0)) { await dispatch(raw, l); }
+    while (queue.length > 0 && !disposed) { await dispatch(queue.shift() as WebviewToHost, l); }
+    draining = false;
   }).catch((err: unknown) => { console.error('[mar-code] could not connect a surface', err); });
 
   return {

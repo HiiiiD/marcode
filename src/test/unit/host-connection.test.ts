@@ -21,13 +21,18 @@ const hooks = {
 };
 const notices = { info: noop, warn: noop, shellNoise: noop };
 
-function fakeClient(): DaemonClient & { closed: number } {
+type FakeClient = DaemonClient & { closed: number; setStatus(s: ClientStatus): void };
+
+function fakeClient(): FakeClient {
+  const listeners = new Set<(s: ClientStatus) => void>();
   const c = {
     closed: 0, loginRecipes: [],
-    post: noop, onMessage: () => noop, onStatus: () => noop, pushContext: noop,
+    post: noop, onMessage: () => noop, pushContext: noop,
+    onStatus: (cb: (s: ClientStatus) => void) => { listeners.add(cb); return () => { listeners.delete(cb); }; },
+    setStatus: (s: ClientStatus) => { for (const l of [...listeners]) { l(s); } },
     close: () => { c.closed++; },
   };
-  return c as unknown as DaemonClient & { closed: number };
+  return c as unknown as FakeClient;
 }
 
 suite('host connection', () => {
@@ -47,7 +52,7 @@ suite('host connection', () => {
 
   test('attached: daemon mode, later surfaces connect without the first-attach policies', async () => {
     const calls: ConnectOptions[] = [];
-    const clients: Array<DaemonClient & { closed: number }> = [];
+    const clients: FakeClient[] = [];
     const conn = await openHostConnection(deps({
       connectOrSpawn: async (o): Promise<ConnectResult> => {
         calls.push(o);
@@ -74,6 +79,36 @@ suite('host connection', () => {
     assert.deepStrictEqual(clients.map((c) => c.closed), [1, 1]);
     sidebar.dispose();
     assert.strictEqual(clients[0].closed, 1);
+  });
+
+  test('a sidebar client that was lost before the sidebar opened is replaced, not handed over', async () => {
+    const clients: FakeClient[] = [];
+    const conn = await openHostConnection(deps({
+      connectOrSpawn: async (): Promise<ConnectResult> => {
+        const client = fakeClient();
+        clients.push(client);
+        return { kind: 'attached', client };
+      },
+    }));
+    clients[0].setStatus('lost');
+    const link = await conn.connect('sidebar');
+    assert.strictEqual(clients.length, 2);
+    assert.strictEqual(clients[0].closed, 1);
+    assert.strictEqual(link.status(), 'connected');
+    clients[1].setStatus('reconnecting');
+    assert.strictEqual(link.status(), 'reconnecting');
+    await conn.dispose();
+  });
+
+  test('connect after dispose hands back a dead link instead of reaching the daemon', async () => {
+    let asked = 0;
+    const conn = await openHostConnection(deps({
+      connectOrSpawn: async (): Promise<ConnectResult> => { asked++; return { kind: 'attached', client: fakeClient() }; },
+    }));
+    await conn.dispose();
+    const link = await conn.connect('review');
+    assert.strictEqual(asked, 1);
+    assert.strictEqual(link.status(), 'lost');
   });
 
   test('a fallback runs the host in-process and says why', async () => {
