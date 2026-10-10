@@ -34,6 +34,8 @@ function fakeLoadQuery(opts: {
   setModel?: (model?: string) => Promise<void>;
   /** What `supportedModels()` answers, for a test that seeds the catalog. */
   models?: unknown[];
+  /** What the running query's `supportedCommands()` answers. */
+  commands?: unknown[];
   /** Observes the `options` object passed to every fake `query()` call. */
   onQuery?: (options: unknown) => void;
 } = {}) {
@@ -71,6 +73,7 @@ function fakeLoadQuery(opts: {
       close: () => void;
       mcpServerStatus: () => Promise<FakeSdkServerStatus[]>;
       supportedModels: () => Promise<unknown[]>;
+      supportedCommands: () => Promise<unknown[]>;
     };
     gen.interrupt = async () => undefined;
     gen.setPermissionMode = async () => { /* no-op fake */ };
@@ -82,6 +85,7 @@ function fakeLoadQuery(opts: {
     gen.close = () => { closed = true; stop(); };
     gen.mcpServerStatus = opts.mcpServerStatus ?? (async () => []);
     gen.supportedModels = async () => opts.models ?? [];
+    gen.supportedCommands = async () => opts.commands ?? [];
     return gen;
   };
 
@@ -615,6 +619,28 @@ suite('ClaudeProvider (lazy start)', () => {
     const sent = JSON.stringify(first.value);
     assert.strictEqual(sent.includes('summarize this'), true);
     assert.strictEqual(sent.includes('marcode-context'), false);
+    await run.dispose();
+  });
+
+  test('a builtin command sent mid-session goes out verbatim, without the editor context', async () => {
+    const fake = fakeLoadQuery({
+      commands: [{ name: 'compact', description: '', argumentHint: '', builtin: true }],
+    });
+    const provider = new ClaudeProvider(fake.load as never);
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default', sessionId: 's' });
+    const ctx = {
+      path: 'a.ts', languageId: 'typescript',
+      selection: { ranges: [{ startLine: 1, endLine: 2, text: 'x' }], truncated: false },
+    };
+    run.send('hi');
+    await flushMicrotasks();
+    await flushMacrotask();
+    run.send('/compact', ctx);
+    const it = fake.calls[0].prompt[Symbol.asyncIterator]();
+    await it.next();
+    const second = JSON.stringify((await it.next()).value);
+    assert.strictEqual(second.includes('"text":"/compact"'), true);
+    assert.strictEqual(second.includes('a.ts'), false);
     await run.dispose();
   });
 
