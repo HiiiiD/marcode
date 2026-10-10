@@ -2,7 +2,7 @@ import type { ShellItem, TranscriptItem } from '../protocol/messages';
 
 type ToolItem = Extract<TranscriptItem, { role: 'tool' }>;
 
-/** A `!` command rendered as the Bash tool call it looks like, so every client shows it with the same card. */
+/** A `!` command rendered as a tool call labelled "User shell", so the sidebar reuses the tool card while keeping it distinct from the agent's Bash calls. */
 export function shellAsTool(item: ShellItem): ToolItem {
   const notes: string[] = [];
   if (item.error) { notes.push(item.error); }
@@ -18,7 +18,7 @@ export function shellAsTool(item: ShellItem): ToolItem {
     && (Boolean(item.error) || item.timedOut === true || Boolean(item.signal) || (item.exitCode ?? 0) !== 0);
   return {
     id: item.id, ts: item.ts, role: 'tool', toolId: item.id,
-    tool: { kind: 'command', label: 'Bash', command: item.command },
+    tool: { kind: 'command', label: 'User shell', command: item.command },
     state: item.state === 'running' ? 'running' : failed ? 'error' : 'ok',
     output: text === '' ? { kind: 'none' } : { kind: 'text', text },
   };
