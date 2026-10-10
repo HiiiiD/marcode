@@ -530,7 +530,7 @@ export class TranscriptStore {
     }
     const layout = this.layoutHost === 'vscode'
       ? migrateLayout(parsed.layout)
-      : await this.readOwnLayout();
+      : await this.readOwnLayout() ?? migrateLayout(parsed.layout);
     return {
       index: {
         version: TRANSCRIPT_VERSION,
