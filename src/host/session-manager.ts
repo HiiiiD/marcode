@@ -1532,7 +1532,12 @@ export class SessionManager implements SessionSink {
       // The common failure here is a Claude session restored across a
       // reload: its run is constructed lazily on the first send, so there
       // is no query to measure yet even though the conversation is intact.
-      if (remembered) { return { ok: true, breakdown: remembered }; }
+      if (remembered) {
+        // Mid-turn the conversation has grown past what the last turn recorded.
+        return session.state.status === 'idle'
+          ? { ok: true, breakdown: remembered }
+          : { ok: true, breakdown: remembered, stale: true };
+      }
       return { ok: false, reason: err instanceof Error ? err.message : String(err) };
     }
   }

@@ -6,7 +6,7 @@ import { McpServer } from "@modelcontextprotocol/server";
 import { z } from 'zod';
 import { digestText } from '../memory/digest';
 import type { MemoryStore } from '../memory/types';
-import type { PermissionMode, TranscriptItem } from '../protocol/messages';
+import type { ContextResult, PermissionMode, TranscriptItem } from '../protocol/messages';
 import type { EffortLevel, SelfControlMcpConfig } from '../providers/types';
 import { rankByQuery } from '../shared/fuzzy-score';
 import { openPane, resolveSpawn, sendPrompt } from './self-control/spawn-support';
@@ -81,6 +81,8 @@ export interface SessionManagerLike {
    * Hides (or discards, if empty/untitled) the target session's pane and indexes it. See `marcode__close_session`.
    */
   close(id: string): Promise<void>;
+  /** The live context measurement, falling back to the last recorded one. Absent in minimal fakes. */
+  contextBreakdown?(id: string): Promise<ContextResult>;
 }
 
 const PORT_ATTEMPTS = 5;

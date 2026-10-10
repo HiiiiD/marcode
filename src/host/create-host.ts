@@ -111,6 +111,7 @@ export async function createHost(opts: CreateHostOptions): Promise<HostHandle> {
     },
     transcriptTail: (id, limit) => manager.transcriptTail(id as SessionId, limit),
     close: (id) => manager.close(id as SessionId),
+    contextBreakdown: (id) => manager.contextBreakdown(id as SessionId),
     recallRoot: (id) => manager.recallRootOfSession(id as SessionId),
   }, memory);
   manager.setWorkspaceRoots(opts.workspaceRoots);
