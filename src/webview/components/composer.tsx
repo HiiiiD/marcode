@@ -8,6 +8,7 @@ import { Clock, Loader, Paperclip, SendHorizontal, Square, TriangleAlert, X } fr
 import { useEffect, useRef, useState } from "react";
 import type { Invocable, ModelInfo } from "../../protocol/messages";
 import { fileMentions, fileRefsOf, type FileMentionPayload } from "../../client-core/mentions/file-mentions";
+import { parseShellCommand } from "../../client-core/shell-command";
 import { interceptFor } from "../lib/intercepts";
 import { insertionFor, menuQuery, menuView } from "../../client-core/invocables/invocable-menu";
 import { expandedDisplayName, sortFavoritesFirst } from "../../shared/model-catalog";
@@ -28,6 +29,7 @@ import { base64Of, urisOf } from "../lib/read-attachment";
 import type { PaneState } from "../reducer";
 import { useStore } from "../store";
 import { CacheTimer } from "./cache-timer";
+import { ShellCue } from "./shell-cue";
 import { ContextRing } from "./context-ring";
 import { AttachmentChip, AttachmentChips } from "./attachment-chips";
 import { EditorContextToggle } from "./editor-context-toggle";
@@ -188,8 +190,9 @@ export function Composer({
     )
     : [];
   const refListId = `session-refs-${pane.summary.id}`;
+  const shellMode = text.trimStart().startsWith("!");
   const refMenu = useMentionMenu({
-    triggered: refHit !== undefined,
+    triggered: refHit !== undefined && !shellMode,
     rows: refRows,
     // The two menus never share the screen: `/` only triggers on an empty box
     // at position 0, `@` only on a word boundary, and `/` wins if both ever
@@ -263,6 +266,17 @@ export function Composer({
     // would print the same numbers as a wall of transcript text under the
     // dialog that already shows them. The box is still cleared, so the
     // command behaves like any other submission.
+    const shellCommand = parseShellCommand(trimmed);
+    if (shellCommand !== undefined) {
+      post({ t: "run-shell", id: pane.summary.id, command: shellCommand });
+      setText("");
+      recall.reset();
+      setGhost("");
+      setRefs([]);
+      menu.reset();
+      refMenu.reset();
+      return;
+    }
     const intercept = interceptFor(trimmed);
     if (intercept === "context") {
       setContextOpen(true);
@@ -481,6 +495,11 @@ export function Composer({
                 </Button>
               </div>
             )}
+          </InputGroupAddon>
+        )}
+        {shellMode && (
+          <InputGroupAddon align="block-start" className="p-1">
+            <ShellCue />
           </InputGroupAddon>
         )}
         <InputGroupTextarea
