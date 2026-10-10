@@ -650,6 +650,15 @@ export class ClaudeProvider implements AgentProvider {
             // See comment above: a synchronous throw from the call itself is
             // exactly as non-fatal as an async rejection.
           }
+          // The CLI only pushes `commands_changed` when skills are discovered
+          // mid-session, so without this pull `bareCommands` stays empty and
+          // `/compact` is sent with the editor context prepended.
+          try {
+            session.supportedCommands().then(
+              (commands) => { if (!disposed) { bareCommands = bareNamesOf(toInvocables(commands)); } },
+              () => { /* menu still works from the catalog probe */ },
+            ).catch(() => { /* handler must not throw async */ });
+          } catch { /* synchronous throw from a torn-down transport */ }
           for await (const msg of session) {
             lifecycleDebug('claude.sdk-message', {
               sessionId: opts.sessionId,
