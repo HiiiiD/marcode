@@ -267,6 +267,11 @@ export class TranscriptStore {
     return items;
   }
 
+  /** The items already in memory for `id`, if a read has loaded them. Never reads disk. */
+  cachedItems(id: SessionId): readonly TranscriptItem[] | undefined {
+    return this.cache.get(id);
+  }
+
   append(id: SessionId, item: TranscriptItem): void {
     if (this.foreign.has(id)) { return; }
     const cached = this.cache.get(id);

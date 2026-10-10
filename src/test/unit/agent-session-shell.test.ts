@@ -124,8 +124,9 @@ suite('AgentSession shell', () => {
     store.append('s1', { id: 'sh0', ts: 2, role: 'shell', command: 'pwd', state: 'done', output: 'PRE-RELOAD\n', exitCode: 0 });
     await store.flush('s1');
     const provider = new FakeProvider(() => [{ kind: 'text', delta: 'ok' }, { kind: 'turn-end', reason: 'done' }]);
-    const session = new AgentSession({ ...baseState(), updatedAt: 5 }, provider, store, new Sink());
+    const session = new AgentSession(baseState(), provider, store, new Sink());
     open.push(session);
+    await session.snapshot();
     session.send('continue');
     await until(() => provider.sent.length > 0);
     assert.strictEqual(provider.sent.at(-1)!.text.includes('PRE-RELOAD'), true);

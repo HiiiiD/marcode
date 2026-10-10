@@ -168,8 +168,7 @@ export class AgentSession {
   private queuedContext = new Map<string, EditorContext | undefined>();
   private disposed = false;
   private readonly shell: ShellController;
-  private shellReady = false;
-  private shellPrimed: Promise<void> | undefined;
+  private shellPrimed = false;
   /**
    * TranscriptStore.flush() is not safe to call concurrently for the same
    * session id — two overlapping calls can both observe the same pending
@@ -269,8 +268,6 @@ export class AgentSession {
       },
       refuse: (message) => { void this.noteError(message); },
     });
-    // A session whose state never moved past creation has no stored history to prime from.
-    this.shellReady = _state.updatedAt === _state.createdAt;
     this._state.activityLabel = this.activityLabelFor(this._state.status);
     delete this._state.backgroundTasks;
   }
@@ -457,14 +454,12 @@ export class AgentSession {
     text: string, context?: EditorContext, refs?: SessionRef[], fileRefs?: FileRef[],
     attachments: Attachment[] = [], from?: { sessionId: SessionId; name: string },
   ): void {
-    if (!this.shellReady) {
-      // Read on first use, not at construction: a load racing the session's first append would drop that item from the cache.
-      this.shellPrimed ??= this.store.tail(this._state.id, 200)
-        .then(({ items }) => { this.shell.prime(items); })
-        .catch(() => {})
-        .then(() => { this.shellReady = true; });
-      void this.shellPrimed.then(() => { this.deliver(text, context, refs, fileRefs, attachments, from); });
-      return;
+    if (!this.shellPrimed) {
+      this.shellPrimed = true;
+      // Synchronous on purpose: a deferred deliver would let send() return before the status flips to running.
+      // A transcript no pane has loaded is not primed; a visible pane (the only place `!` is typed) always is.
+      const stored = this.store.cachedItems(this._state.id);
+      if (stored) { this.shell.prime(stored); }
     }
     if (this._state.title === 'Untitled' && text.trim().length > 0) {
       this._state.title = text.trim().slice(0, TITLE_MAX);

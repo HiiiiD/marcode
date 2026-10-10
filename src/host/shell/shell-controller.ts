@@ -51,7 +51,7 @@ export class ShellController {
     if (this.current?.item.id === itemId) { this.current.handle.cancel(); }
   }
 
-  prime(items: TranscriptItem[]): void {
+  prime(items: readonly TranscriptItem[]): void {
     const known = new Set(this.undelivered.map((i) => i.id));
     this.undelivered = [...undeliveredShells(items).filter((i) => !known.has(i.id)), ...this.undelivered];
   }
