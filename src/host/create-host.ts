@@ -93,7 +93,8 @@ export async function createHost(opts: CreateHostOptions): Promise<HostHandle> {
 
   const selfControlServer = new SelfControlMcpServer({
     catalog: () => manager.catalog(),
-    create: (providerId, cwd, model, effort, mode) => manager.create(providerId, cwd, model, effort, mode),
+    create: (providerId, cwd, model, effort, mode, worktree, includeEditorContext) =>
+      manager.create(providerId, cwd, model, effort, mode, worktree, includeEditorContext),
     setVisible: (ids) => manager.setVisible(ids as SessionId[]),
     reveal: (id) => focusSession(manager, id as SessionId),
     summaries: () => manager.summaries(),

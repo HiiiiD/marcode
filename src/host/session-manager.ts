@@ -708,6 +708,7 @@ export class SessionManager implements SessionSink {
     providerId: string, cwd: string, model?: string, effort?: EffortLevel,
     mode: PermissionMode = 'default',
     worktree?: { branch: string; base?: string },
+    includeEditorContext = true,
   ): Promise<AgentSession> {
     const provider = this.providers.get(providerId);
     if (!provider) { throw new Error(`Unknown provider: ${providerId}`); }
@@ -764,7 +765,7 @@ export class SessionManager implements SessionSink {
     const state: SessionState = {
       id: newSessionId(), providerId, model: pinnedModelId(chosen), effort: resolvedEffort,
       title: 'Untitled', name: this.defaultName(providerId), cwd: resolvedCwd, status: 'idle', permissionMode: resolvedMode,
-      includeEditorContext: true,
+      includeEditorContext,
       resumeTokens: {},
       createdAt: now, updatedAt: now,
     };
@@ -1902,6 +1903,7 @@ export class SessionManager implements SessionSink {
     try {
       fresh = await this.create(
         state.providerId, state.cwd, state.model, state.effort, state.permissionMode,
+        undefined, state.includeEditorContext,
       );
     } catch (err) {
       console.warn('[mar-code] session-manager: replaceSession could not create a replacement', err);

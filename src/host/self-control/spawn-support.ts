@@ -15,6 +15,7 @@ export interface ResolvedSpawn {
   effort: EffortLevel | undefined;
   mode: PermissionMode | undefined;
   cwd: string;
+  includeEditorContext: boolean | undefined;
 }
 
 type Resolution = { ok: true; spawn: ResolvedSpawn } | { ok: false; error: string };
@@ -52,7 +53,7 @@ export function resolveSpawn(
   if (explicitMode === 'bypass') { return { ok: false, error: 'spawn_session cannot create bypass-mode sessions' }; }
   if (mode === 'bypass') { mode = undefined; }
   if (!path.isAbsolute(req.cwd)) { return { ok: false, error: `cwd must be an absolute path: ${req.cwd}` }; }
-  return { ok: true, spawn: { providerId, model: effectiveModel, effort, mode, cwd: req.cwd } };
+  return { ok: true, spawn: { providerId, model: effectiveModel, effort, mode, cwd: req.cwd, includeEditorContext: from?.includeEditorContext } };
 }
 
 export async function openPane(manager: SessionManagerLike, id: string): Promise<void> {
