@@ -5,7 +5,7 @@ import {
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { useStore } from '../store';
+import { usePost } from '../store';
 import { clampLines, type ToolBlock } from './tool-render';
 
 export type Clamp = { head: number; tail: number };
@@ -108,7 +108,7 @@ function Block({ block, clamp }: { block: ToolBlock; clamp?: Clamp }) {
  * placement as `CodeBlock`'s copy button in markdown.tsx, one file over.
  */
 function ImageBlock({ dataUri }: { dataUri: string }) {
-  const { post } = useStore();
+  const post = usePost();
   return (
     <div className="relative">
       <img
@@ -175,7 +175,7 @@ async function copyImage(dataUri: string): Promise<void> {
  * touched should be reachable without retyping it.
  */
 function PathRow({ path, hint }: { path: string; hint?: string }) {
-  const { post } = useStore();
+  const post = usePost();
   return (
     <Button
       variant="ghost"

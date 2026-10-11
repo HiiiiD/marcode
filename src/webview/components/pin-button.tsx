@@ -2,14 +2,14 @@ import { PinIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
-import { useStore } from '../store';
+import { usePost } from '../store';
 import type { SessionSummary } from '../../protocol/messages';
 
 export function PinButton({ session, accessibleTitle }: {
   session: SessionSummary;
   accessibleTitle: string;
 }) {
-  const { post } = useStore();
+  const post = usePost();
   const pinned = session.pinned === true;
   const label = `${pinned ? 'Unpin' : 'Pin'} ${accessibleTitle}`;
 

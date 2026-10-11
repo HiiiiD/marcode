@@ -1,13 +1,12 @@
 import {
-  createContext, useCallback, useContext, useEffect, useReducer, useRef, type ReactNode,
+  createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, type ReactNode,
 } from 'react';
 import { initialState, reduce, type ClientState } from './reducer';
 import { createDraftStore, type DraftStore } from './lib/draft-store';
 import { vscodeTransport } from './vscode-transport';
 import type { SessionId, WebviewToHost } from '../protocol/messages';
 
-interface StoreValue {
-  state: ClientState;
+interface StoreActions {
   post: (msg: WebviewToHost) => void;
   /**
    * Record that the user is working in `id`. Client-local — nothing is
@@ -24,7 +23,18 @@ interface StoreValue {
   setPendingSlot: (path: number[] | null) => void;
 }
 
+interface StoreValue extends StoreActions {
+  state: ClientState;
+}
+
 const StoreContext = createContext<StoreValue | undefined>(undefined);
+
+/**
+ * Split from `StoreContext` so a component that only posts (markdown links,
+ * tool cards) does not re-render on every state change. Its value is stable
+ * for the provider's lifetime.
+ */
+const ActionsContext = createContext<StoreActions | undefined>(undefined);
 
 /**
  * Separate from `StoreContext` on purpose: `DraftStore` notifies per-session
@@ -90,20 +100,36 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const focus = (id: SessionId) => {
-    dispatch({ t: 'local-focus', id });
-    vscodeTransport.post({ t: 'focus-pane', sessionId: id });
-  };
-  const dismissRejection = (id: SessionId) => dispatch({ t: 'local-dismiss-rejection', id });
-  const setPendingSlot = (path: number[] | null) => dispatch({ t: 'local-pending-slot', path });
+  const actions = useMemo<StoreActions>(() => ({
+    post,
+    focus: (id) => {
+      dispatch({ t: 'local-focus', id });
+      vscodeTransport.post({ t: 'focus-pane', sessionId: id });
+    },
+    dismissRejection: (id) => dispatch({ t: 'local-dismiss-rejection', id }),
+    setPendingSlot: (path) => dispatch({ t: 'local-pending-slot', path }),
+  }), [post]);
+  const value = useMemo<StoreValue>(() => ({ state, ...actions }), [state, actions]);
 
   return (
-    <StoreContext.Provider value={{ state, post, focus, dismissRejection, setPendingSlot }}>
-      <DraftStoreContext.Provider value={draftStore}>
-        {children}
-      </DraftStoreContext.Provider>
-    </StoreContext.Provider>
+    <ActionsContext.Provider value={actions}>
+      <StoreContext.Provider value={value}>
+        <DraftStoreContext.Provider value={draftStore}>
+          {children}
+        </DraftStoreContext.Provider>
+      </StoreContext.Provider>
+    </ActionsContext.Provider>
   );
+}
+
+export function useActions(): StoreActions {
+  const value = useContext(ActionsContext);
+  if (!value) { throw new Error('useActions must be used inside StoreProvider'); }
+  return value;
+}
+
+export function usePost(): StoreActions['post'] {
+  return useActions().post;
 }
 
 export function useStore(): StoreValue {

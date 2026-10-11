@@ -29,6 +29,7 @@ export function Transcript({
 }) {
   const first = pane.items[0];
   const last = pane.items[pane.items.length - 1];
+  const idle = pane.summary.status === 'idle';
   const working = pane.summary.status === 'running' && !tailIsLive(pane);
   // Only reached by a session whose transcript is empty — a brand new session
   // sending its first message. Every other case has a host timestamp to
@@ -78,7 +79,7 @@ export function Transcript({
             )}
             {pane.items.map((item) => (
               <MessageScrollerItem key={item.id} messageId={item.id}>
-                <TranscriptItemView item={item} sessionId={pane.summary.id} />
+                <TranscriptItemView item={item} sessionId={pane.summary.id} canFork={idle} />
               </MessageScrollerItem>
             ))}
             {/* Not a MessageScrollerItem: it is a state of the session, not
