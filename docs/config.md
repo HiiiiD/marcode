@@ -93,3 +93,24 @@ Default: `true`
 Minutes a daemon with no connected client and no running session waits before exiting. A whole number of at least 1. A running daemon keeps the config it started with: the next `marcode` replaces it when it is idle, and otherwise attaches with a warning to run `marcode daemon --stop` once sessions finish.
 
 Default: `10`
+
+## `theme`
+
+Custom colors for the VS Code panels and the terminal client, from one flat set of names. Values are `#rgb` or `#rrggbb`; an unknown key or invalid value is dropped with a warning. A key you leave out keeps today's color (the VS Code theme in the panels, the terminal palette in the TUI). Takes effect after a window reload (restart the TUI).
+
+```json
+{ "theme": { "background": "#1e1e2e", "foreground": "#cdd6f4", "primary": "#89b4fa", "added": "#a6e3a1", "deleted": "#f38ba8" } }
+```
+
+| Group | Keys |
+|---|---|
+| Core | `background` `foreground` `muted` `border` `focus` |
+| Surfaces | `pane` `paneActive` `card` `popover` `element` `hover` |
+| Actions / status | `primary` `primaryForeground` `secondaryForeground` `danger` `dangerForeground` `added` `modified` `deleted` `renamed` |
+| Diff (TUI only) | `diffAddedBg` `diffRemovedBg` `diffContextBg` `diffAddedLineNumberBg` `diffRemovedLineNumberBg` `diffLineNumber` `diffAddedSign` `diffRemovedSign` |
+| Syntax (TUI only) | `syntaxComment` `syntaxKeyword` `syntaxString` `syntaxNumber` `syntaxFunction` `syntaxType` `syntaxOperator` `syntaxVariable` `syntaxPunctuation` |
+| Markdown (TUI only) | `markdownHeading` `markdownLink` `markdownCode` `markdownQuote` `markdownStrong` |
+
+A specific key beats the broad key it derives from, which beats the automatic color: `diffAddedBg` beats `added`, which beats the terminal's green. `pane` wins over `background` in the panels; `paneActive` is TUI-only. A terminal that does not report its palette is only themed when both `background` and `foreground` are set.
+
+Default: `{}`
