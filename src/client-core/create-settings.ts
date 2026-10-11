@@ -11,6 +11,7 @@ export interface CreateSettings {
   model: string;
   effort?: EffortLevel;
   mode: PermissionMode;
+  includeEditorContext?: boolean;
 }
 
 /**
@@ -44,6 +45,7 @@ export function settingsFor(
     // this model's scale does not name has to give way to its default.
     effort: resolveEffort(model, inherited ? source?.effort : undefined),
     mode: source?.permissionMode ?? "default",
+    includeEditorContext: source?.includeEditorContext,
   };
 }
 
@@ -87,6 +89,7 @@ export function createMessage(
     model: settings.model,
     ...(settings.effort ? { effort: settings.effort } : {}),
     mode: settings.mode,
+    ...(settings.includeEditorContext === undefined ? {} : { includeEditorContext: settings.includeEditorContext }),
     ...(seed ? { seed } : {}),
     ...(worktree ? { worktree } : {}),
   };
@@ -110,5 +113,8 @@ export function settingsForChoice(
   const mode = source && provider.permissionModes.some((m) => m.id === source.permissionMode)
     ? source.permissionMode
     : 'default';
-  return { providerId, model: model.id, effort: resolveEffort(model, source?.effort), mode };
+  return {
+    providerId, model: model.id, effort: resolveEffort(model, source?.effort), mode,
+    includeEditorContext: source?.includeEditorContext,
+  };
 }

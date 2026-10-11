@@ -67,6 +67,7 @@ suite('SessionCreateMenu', () => {
       model: 'fake-medium',
       effort: 'low',
       mode: 'plan',
+      includeEditorContext: true,
     });
   });
 
@@ -90,6 +91,7 @@ suite('SessionCreateMenu', () => {
       model: 'fake-large',
       effort: 'high',
       mode: 'bypass',
+      includeEditorContext: true,
     });
   });
 
@@ -125,6 +127,7 @@ suite('SessionCreateMenu', () => {
       model: 'fake-medium',
       effort: 'low',
       mode: 'default',
+      includeEditorContext: true,
     });
   });
 
@@ -136,7 +139,7 @@ suite('SessionCreateMenu', () => {
     await userEvent.click(newButton());
 
     assert.deepStrictEqual(posted().at(-1), {
-      t: 'create-session', providerId: 'fake', cwd: '', model: 'fake-small', mode: 'default',
+      t: 'create-session', providerId: 'fake', cwd: '', model: 'fake-small', mode: 'default', includeEditorContext: true,
     });
   });
 

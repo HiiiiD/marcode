@@ -248,6 +248,7 @@ export class MessageRouter {
       case 'create-session': {
         const session = await this.manager.create(
           msg.providerId, msg.cwd || this.defaultCwd, msg.model, msg.effort, msg.mode, msg.worktree,
+          msg.includeEditorContext,
         );
         if (msg.seed) {
           const handoffFrom = msg.seed.handoffFrom;

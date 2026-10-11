@@ -12,7 +12,12 @@ suite('create settings: choice inherits from the source session', () => {
     const state = { catalog: withModes(), sessions: [summary('s1', { effort: 'high', permissionMode: 'acceptEdits' })] };
     assert.deepStrictEqual(settingsForChoice(state, 's1', 'fake', 'fake-large'), {
       providerId: 'fake', model: 'fake-large', effort: 'high', mode: 'acceptEdits',
+      includeEditorContext: true,
     });
+  });
+  test('carries the editor-context toggle of the source session', () => {
+    const state = { catalog: catalog(), sessions: [summary('s1', { includeEditorContext: false })] };
+    assert.strictEqual(settingsForChoice(state, 's1', 'fake', 'fake-large')?.includeEditorContext, false);
   });
   test('effort falls back to the model default when its scale lacks the level', () => {
     const state = { catalog: withModes(), sessions: [summary('s1', { effort: 'high' })] };
@@ -25,7 +30,7 @@ suite('create settings: choice inherits from the source session', () => {
   test('no source session means catalog defaults; unknown provider yields nothing', () => {
     const state = { catalog: catalog(), sessions: [] };
     assert.deepStrictEqual(settingsForChoice(state, undefined, 'fake', 'fake-large'), {
-      providerId: 'fake', model: 'fake-large', effort: 'medium', mode: 'default',
+      providerId: 'fake', model: 'fake-large', effort: 'medium', mode: 'default', includeEditorContext: undefined,
     });
     assert.strictEqual(settingsForChoice(state, undefined, 'nope', undefined), undefined);
   });

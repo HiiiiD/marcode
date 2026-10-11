@@ -487,6 +487,8 @@ export type WebviewToHost =
    */
   | { t: 'create-session'; providerId: string; cwd: string; model?: string;
       effort?: EffortLevel; mode?: PermissionMode;
+      /** Whether the new session attaches the editor context; omitted means on. */
+      includeEditorContext?: boolean;
       /**
        * The new session's first message, sent immediately after creation.
        * Carried on creation rather than posted as a follow-up `send` because

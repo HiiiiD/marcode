@@ -36,6 +36,7 @@ export function NewSessionDialog(props: Props) {
       t: 'create-session', providerId, cwd: props.cwd, model,
       ...(inherited?.effort ? { effort: inherited.effort } : {}),
       ...(inherited ? { mode: inherited.mode } : {}),
+      ...(inherited?.includeEditorContext === undefined ? {} : { includeEditorContext: inherited.includeEditorContext }),
       ...(handoff && handoffSource
         ? { seed: { text: seed, handoffFrom: handoffSource.id } }
         : props.initialPrompt ? { seed: { text: props.initialPrompt } } : {}),

@@ -40,6 +40,7 @@ export interface SessionManagerLike {
   }[];
   create(
     providerId: string, cwd: string, model?: string, effort?: EffortLevel, mode?: PermissionMode,
+    worktree?: undefined, includeEditorContext?: boolean,
   ): Promise<{ state: { id: string; name: string } }>;
   setVisible(ids: string[]): Promise<void>;
   /** Shows the session in a pane: visible set and split layout. Falls back to `setVisible` when absent. */
@@ -50,6 +51,7 @@ export interface SessionManagerLike {
   summaries(): {
     id: string; name: string; providerId: string; model: string; effort?: EffortLevel;
     permissionMode: PermissionMode; status: string; cwd: string;
+    includeEditorContext?: boolean;
     owner?: { host: string; pid: number };
   }[];
   /** Leased by another Marcode host: this window can read it but not run it. */
@@ -229,7 +231,7 @@ export class SelfControlMcpServer {
         if (!resolved.ok) { return { isError: true, content: [{ type: 'text', text: resolved.error }] }; }
         const s = resolved.spawn;
         try {
-          const session = await this.sessionManager.create(s.providerId, s.cwd, s.model, s.effort, s.mode);
+          const session = await this.sessionManager.create(s.providerId, s.cwd, s.model, s.effort, s.mode, undefined, s.includeEditorContext);
           sendPrompt(session, prompt);
           await openPane(this.sessionManager, session.state.id);
           return { content: [{ type: 'text', text: JSON.stringify({ sessionId: session.state.name }) }] };

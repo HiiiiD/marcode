@@ -2,7 +2,7 @@ import * as assert from 'node:assert';
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { suite, test } from 'mocha';
+import { suite, teardown, test } from 'mocha';
 import { focusSession } from '../../host/focus-session';
 import { SelfControlMcpServer, type SessionManagerLike } from '../../host/self-control-mcp-server';
 import { SessionManager } from '../../host/session-manager';
@@ -11,6 +11,19 @@ import type { MemoryHit, MemoryStore } from '../../memory/types';
 import { FakeProvider } from '../../providers/fake/fake-provider';
 import type { AgentProvider, SelfControlMcpConfig } from '../../providers/types';
 import { leafSessionIds } from '../../webview/components/layout-tree';
+
+const started: SelfControlMcpServer[] = [];
+
+// A red assertion skips the test's own dispose(); the listener it leaves open keeps mocha alive and hangs CI.
+function trackedServer(...args: ConstructorParameters<typeof SelfControlMcpServer>): SelfControlMcpServer {
+  const server = new SelfControlMcpServer(...args);
+  started.push(server);
+  return server;
+}
+
+async function disposeTracked(): Promise<void> {
+  await Promise.all(started.splice(0).map((s) => s.dispose()));
+}
 
 function fakeManager(overrides: Partial<SessionManagerLike> = {}): SessionManagerLike {
   return {
@@ -90,8 +103,10 @@ function fakeMemory(overrides: Partial<MemoryStore> = {}): MemoryStore {
 }
 
 suite('SelfControlMcpServer', () => {
+  teardown(disposeTracked);
+
   test('start() returns a loopback url and a token', async () => {
-    const server = new SelfControlMcpServer(fakeManager());
+    const server = trackedServer(fakeManager());
     const config = await server.start();
     assert.strictEqual(config.url.startsWith('http://127.0.0.1:'), true);
     assert.strictEqual(typeof config.token === 'string' && config.token.length > 0, true);
@@ -100,7 +115,7 @@ suite('SelfControlMcpServer', () => {
 
   test('rejects an unknown provider without touching create()', async () => {
     let created = false;
-    const server = new SelfControlMcpServer(fakeManager({
+    const server = trackedServer(fakeManager({
       create: async () => { created = true; return { state: { id: 'x', name: 'claude-x' } }; },
     }));
     const config = await server.start();
@@ -122,7 +137,7 @@ suite('SelfControlMcpServer', () => {
   });
 
   test('rejects a request with no/wrong bearer token', async () => {
-    const server = new SelfControlMcpServer(fakeManager());
+    const server = trackedServer(fakeManager());
     const config = await server.start();
     const res = await fetch(config.url, {
       method: 'POST',
@@ -138,7 +153,7 @@ suite('SelfControlMcpServer', () => {
 
   test('spawn_session calls create() with the requested provider/cwd/prompt and returns a sessionId', async () => {
     let seenArgs: unknown[] = [];
-    const server = new SelfControlMcpServer(fakeManager({
+    const server = trackedServer(fakeManager({
       catalog: () => [{
         id: 'claude', models: [{ id: 'sonnet', effort: { levels: ['low', 'high'], default: 'low' } }],
         permissionModes: [{ id: 'default' }, { id: 'plan' }],
@@ -170,7 +185,7 @@ suite('SelfControlMcpServer', () => {
   test('spawn_session inherits omitted settings from the calling session and opens its pane', async () => {
     let seenArgs: unknown[] = [];
     let visible: string[] = [];
-    const server = new SelfControlMcpServer(fakeManager({
+    const server = trackedServer(fakeManager({
       catalog: () => [{
         id: 'claude', models: [{ id: 'sonnet', effort: { levels: ['low', 'high'], default: 'low' } }],
         permissionModes: [{ id: 'default' }, { id: 'plan' }],
@@ -188,14 +203,35 @@ suite('SelfControlMcpServer', () => {
       cwd: '/tmp/work', prompt: 'delegate this',
     });
     assert.strictEqual(result.isError, undefined);
-    assert.deepStrictEqual(seenArgs, ['claude', '/tmp/work', 'sonnet', 'high', 'plan']);
+    assert.deepStrictEqual(seenArgs.slice(0, 5), ['claude', '/tmp/work', 'sonnet', 'high', 'plan']);
     assert.deepStrictEqual(visible, ['caller', 's-inherited']);
+    await server.dispose();
+  });
+
+  test('spawn_session inherits the caller\'s editor-context toggle', async () => {
+    let seenArgs: unknown[] = [];
+    const server = trackedServer(fakeManager({
+      catalog: () => [{
+        id: 'claude', models: [{ id: 'sonnet' }], permissionModes: [{ id: 'default' }],
+      }],
+      summaries: () => [{
+        id: 'caller', name: 'Caller', providerId: 'claude', model: 'sonnet',
+        permissionMode: 'default', status: 'idle', cwd: '/tmp', includeEditorContext: false,
+      }],
+      create: async (...args) => { seenArgs = args; return { state: { id: 's-ctx', name: 'claude-ctx' } }; },
+    }));
+    const config = await server.start();
+    const result = await callToolAs(config, 'caller', 'marcode__spawn_session', {
+      cwd: '/tmp/work', prompt: 'delegate this',
+    });
+    assert.strictEqual(result.isError, undefined);
+    assert.strictEqual(seenArgs[6], false);
     await server.dispose();
   });
 
   test('spawn_session inherits an alias-covered model id (resolvedModel match)', async () => {
     let seenArgs: unknown[] = [];
-    const server = new SelfControlMcpServer(fakeManager({
+    const server = trackedServer(fakeManager({
       catalog: () => [{
         id: 'claude',
         models: [{ id: 'sonnet', resolvedModel: 'claude-sonnet-5', effort: { levels: ['low', 'high'], default: 'low' } }],
@@ -220,7 +256,7 @@ suite('SelfControlMcpServer', () => {
 
   test('spawn_session drops an inherited bypass mode to the provider default instead of rejecting', async () => {
     let seenArgs: unknown[] = [];
-    const server = new SelfControlMcpServer(fakeManager({
+    const server = trackedServer(fakeManager({
       catalog: () => [
         { id: 'claude', models: [{ id: 'sonnet' }], permissionModes: [{ id: 'default' }, { id: 'bypass' }] },
       ],
@@ -241,7 +277,7 @@ suite('SelfControlMcpServer', () => {
 
   test('spawn_session rejects an incompatible effective configuration before create()', async () => {
     let created = false;
-    const server = new SelfControlMcpServer(fakeManager({
+    const server = trackedServer(fakeManager({
       catalog: () => [
         { id: 'claude', models: [{ id: 'sonnet' }], permissionModes: [{ id: 'default' }] },
         { id: 'codex', models: [{ id: 'gpt' }], permissionModes: [{ id: 'default' }] },
@@ -264,7 +300,7 @@ suite('SelfControlMcpServer', () => {
 
   test('spawn_session falls back an unsupported explicit effort to the model default instead of erroring', async () => {
     let seenArgs: unknown[] = [];
-    const server = new SelfControlMcpServer(fakeManager({
+    const server = trackedServer(fakeManager({
       catalog: () => [
         { id: 'claude', models: [{ id: 'sonnet' }], permissionModes: [{ id: 'default' }] },
       ],
@@ -287,7 +323,7 @@ suite('SelfControlMcpServer', () => {
 
   test('spawn_session falls back an effort inherited onto a model with no effort support', async () => {
     let seenArgs: unknown[] = [];
-    const server = new SelfControlMcpServer(fakeManager({
+    const server = trackedServer(fakeManager({
       catalog: () => [
         { id: 'claude', models: [{ id: 'sonnet' }], permissionModes: [{ id: 'default' }] },
       ],
@@ -308,7 +344,7 @@ suite('SelfControlMcpServer', () => {
 
   test('spawn_session falls back an unsupported effort to the model\'s own default when it has other levels', async () => {
     let seenArgs: unknown[] = [];
-    const server = new SelfControlMcpServer(fakeManager({
+    const server = trackedServer(fakeManager({
       catalog: () => [
         {
           id: 'claude',
@@ -348,7 +384,7 @@ suite('SelfControlMcpServer', () => {
     await manager.init();
 
     try {
-      const server = new SelfControlMcpServer(manager);
+      const server = trackedServer(manager);
       const config = await server.start();
       const res = await fetch(config.url, {
         method: 'POST',
@@ -387,7 +423,7 @@ suite('SelfControlMcpServer', () => {
 
   test('rejects a relative cwd', async () => {
     let created = false;
-    const server = new SelfControlMcpServer(fakeManager({
+    const server = trackedServer(fakeManager({
       create: async () => { created = true; return { state: { id: 'x', name: 'claude-x' } }; },
     }));
     const config = await server.start();
@@ -414,7 +450,7 @@ suite('SelfControlMcpServer', () => {
 
   test('rejects mode: bypass even when the provider advertises it', async () => {
     let created = false;
-    const server = new SelfControlMcpServer(fakeManager({
+    const server = trackedServer(fakeManager({
       catalog: () => [
         { id: 'claude', models: [{ id: 'sonnet' }], permissionModes: [{ id: 'default' }, { id: 'bypass' }] },
       ],
@@ -448,7 +484,7 @@ suite('SelfControlMcpServer', () => {
     // transport-globally. Two independent MCP clients naturally both start
     // at id 1, so without per-request transports the second POST's id->stream
     // mapping overwrites the first's, misdelivering responses.
-    const server = new SelfControlMcpServer(fakeManager({
+    const server = trackedServer(fakeManager({
       create: async (providerId, cwd) => ({ state: { id: `s-${cwd}`, name: `claude-${cwd}` } }),
     }));
     const config = await server.start();
@@ -479,7 +515,7 @@ suite('SelfControlMcpServer', () => {
   });
 
   test('a post-bind server error does not crash the process (permanent error listener)', async () => {
-    const server = new SelfControlMcpServer(fakeManager());
+    const server = trackedServer(fakeManager());
     const config = await server.start();
     const http = (server as unknown as { http: import('node:http').Server }).http;
     assert.strictEqual(http.listenerCount('error') > 0, true);
@@ -491,10 +527,12 @@ suite('SelfControlMcpServer', () => {
 });
 
 suite('SelfControlMcpServer memory tools', () => {
+  teardown(disposeTracked);
+
   test('marcode__recall returns snippets from MemoryStore.search()', async () => {
     const hit: MemoryHit = { sessionId: 's1', itemId: 'u1', snippet: 'Fixed the flaky login test', score: 1, ts: 1000, cwd: '/r' };
     const memory = fakeMemory({ search: async (query) => { assert.strictEqual(query, 'login'); return [hit]; } });
-    const server = new SelfControlMcpServer(fakeManager(), memory);
+    const server = trackedServer(fakeManager(), memory);
     const config = await server.start();
     const result = await callTool(config, 'marcode__recall', { query: 'login' });
     assert.deepStrictEqual(JSON.parse(result.content[0].text), [hit]);
@@ -509,7 +547,7 @@ suite('SelfControlMcpServer memory tools', () => {
         return { sessionId: 's1', items: [{ id: 'u1', ts: 0, role: 'user', text: 'hi' }] };
       },
     });
-    const server = new SelfControlMcpServer(fakeManager(), memory);
+    const server = trackedServer(fakeManager(), memory);
     const config = await server.start();
     const result = await callTool(config, 'marcode__recall_fetch', { sessionId: 's1', itemId: 'u1', detail: 'transcript' });
     const body = JSON.parse(result.content[0].text) as { items: unknown[] };
@@ -520,7 +558,7 @@ suite('SelfControlMcpServer memory tools', () => {
   test('marcode__recall searches inside the calling session\'s workspace folder', async () => {
     let seen: { cwdWithin?: string } | undefined;
     const memory = fakeMemory({ search: async (_q, opts) => { seen = opts; return []; } });
-    const server = new SelfControlMcpServer(fakeManager({ recallRoot: (sid) => (sid === 's1' ? '/ws/app' : undefined) }), memory);
+    const server = trackedServer(fakeManager({ recallRoot: (sid) => (sid === 's1' ? '/ws/app' : undefined) }), memory);
     const config = await server.start();
     await callToolAs(config, 's1', 'marcode__recall', { query: 'login' });
     assert.strictEqual(seen?.cwdWithin, '/ws/app');
@@ -536,7 +574,7 @@ suite('SelfControlMcpServer memory tools', () => {
           }
         : undefined),
     });
-    const server = new SelfControlMcpServer(fakeManager(), memory);
+    const server = trackedServer(fakeManager(), memory);
     const config = await server.start();
     const result = await callTool(config, 'marcode__recall_fetch', { sessionId: 's1' });
     assert.strictEqual(result.content[0].text.includes('Learned: Fixture raced'), true);
@@ -544,7 +582,7 @@ suite('SelfControlMcpServer memory tools', () => {
   });
 
   test('marcode__recall_fetch says so when a session has no digest', async () => {
-    const server = new SelfControlMcpServer(fakeManager(), fakeMemory({ getDigest: async () => undefined }));
+    const server = trackedServer(fakeManager(), fakeMemory({ getDigest: async () => undefined }));
     const config = await server.start();
     const result = await callTool(config, 'marcode__recall_fetch', { sessionId: 'nope' });
     assert.strictEqual(result.isError, true);
@@ -552,7 +590,7 @@ suite('SelfControlMcpServer memory tools', () => {
   });
 
   test('marcode__recall_fetch transcript detail needs an itemId', async () => {
-    const server = new SelfControlMcpServer(fakeManager(), fakeMemory({}));
+    const server = trackedServer(fakeManager(), fakeMemory({}));
     const config = await server.start();
     const result = await callTool(config, 'marcode__recall_fetch', { sessionId: 's1', detail: 'transcript' });
     assert.strictEqual(result.isError, true);
@@ -560,7 +598,7 @@ suite('SelfControlMcpServer memory tools', () => {
   });
 
   test('the recall tools are not listed without a MemoryStore', async () => {
-    const server = new SelfControlMcpServer(fakeManager());
+    const server = trackedServer(fakeManager());
     const config = await server.start();
     const names = await listToolNames(config);
     assert.strictEqual(names.includes('marcode__recall'), false);
@@ -570,7 +608,7 @@ suite('SelfControlMcpServer memory tools', () => {
   });
 
   test('the recall tools are listed with a MemoryStore', async () => {
-    const server = new SelfControlMcpServer(fakeManager(), fakeMemory());
+    const server = trackedServer(fakeManager(), fakeMemory());
     const config = await server.start();
     const names = await listToolNames(config);
     assert.strictEqual(names.includes('marcode__recall'), true);
@@ -580,6 +618,8 @@ suite('SelfControlMcpServer memory tools', () => {
 });
 
 suite('SelfControlMcpServer cross-session messaging', () => {
+  teardown(disposeTracked);
+
   test('marcode__list_sessions returns only sessions with an open pane', async () => {
     const manager = fakeManager({
       summaries: () => [
@@ -590,7 +630,7 @@ suite('SelfControlMcpServer cross-session messaging', () => {
       // session nobody has looked at) — only s1 should be listed.
       visibleIds: () => ['s1'],
     });
-    const server = new SelfControlMcpServer(manager);
+    const server = trackedServer(manager);
     const config = await server.start();
     const result = await callTool(config, 'marcode__list_sessions', {});
     const list = JSON.parse(result.content[0].text) as { name: string }[];
@@ -607,7 +647,7 @@ suite('SelfControlMcpServer cross-session messaging', () => {
       // Neither session has an open pane.
       visibleIds: () => [],
     });
-    const server = new SelfControlMcpServer(manager);
+    const server = trackedServer(manager);
     const config = await server.start();
     const result = await callToolAs(config, 's-caller', 'marcode__list_sessions', {});
     const list = JSON.parse(result.content[0].text) as { name: string; self?: boolean }[];
@@ -627,7 +667,7 @@ suite('SelfControlMcpServer cross-session messaging', () => {
       visibleIds: () => ['s-caller', 's-target'],
       get: async (id: string) => (id === 's-target' ? target as never : undefined),
     });
-    const server = new SelfControlMcpServer(manager);
+    const server = trackedServer(manager);
     const config = await server.start();
     const result = await callToolAs(config, 's-caller', 'marcode__send_message', { to: 'b', text: 'do the thing' });
     assert.strictEqual(result.isError, undefined);
@@ -649,7 +689,7 @@ suite('SelfControlMcpServer cross-session messaging', () => {
       get: async (id: string) => (id === 's-target' ? target as never : undefined),
       isForeign: (id: string) => id === 's-target',
     });
-    const server = new SelfControlMcpServer(manager);
+    const server = trackedServer(manager);
     const config = await server.start();
     const result = await callToolAs(config, 's-caller', 'marcode__send_message', { to: 'b', text: 'hi' });
     assert.strictEqual(result.isError, true);
@@ -669,7 +709,7 @@ suite('SelfControlMcpServer cross-session messaging', () => {
       visibleIds: () => ['s-caller', 's-target'],
       get: async (id: string) => (id === 's-target' ? target as never : undefined),
     });
-    const server = new SelfControlMcpServer(manager);
+    const server = trackedServer(manager);
     const config = await server.start();
     const result = await callToolAs(config, 's-caller', 'marcode__send_message', { to: 'RECEIVER', text: 'hi' });
     assert.strictEqual(result.isError, undefined);
@@ -681,7 +721,7 @@ suite('SelfControlMcpServer cross-session messaging', () => {
     const manager = fakeManager({
       summaries: () => [{ id: 's-caller', name: 'Alice', providerId: 'claude', status: 'idle', cwd: '/w' } as never],
     });
-    const server = new SelfControlMcpServer(manager);
+    const server = trackedServer(manager);
     const config = await server.start();
     const result = await callToolAs(config, 's-caller', 'marcode__send_message', { to: 'alice', text: 'hi' });
     assert.strictEqual(result.isError, true);
@@ -692,7 +732,7 @@ suite('SelfControlMcpServer cross-session messaging', () => {
     const manager = fakeManager({
       summaries: () => [{ id: 's-caller', name: 'a', providerId: 'claude', status: 'idle', cwd: '/w' } as never],
     });
-    const server = new SelfControlMcpServer(manager);
+    const server = trackedServer(manager);
     const config = await server.start();
     const result = await callToolAs(config, 's-caller', 'marcode__send_message', { to: 'nobody', text: 'hi' });
     assert.strictEqual(result.isError, true);
@@ -703,7 +743,7 @@ suite('SelfControlMcpServer cross-session messaging', () => {
     const manager = fakeManager({
       summaries: () => [{ id: 's-caller', name: 'a', providerId: 'claude', status: 'idle', cwd: '/w' } as never],
     });
-    const server = new SelfControlMcpServer(manager);
+    const server = trackedServer(manager);
     const config = await server.start();
     const result = await callToolAs(config, 's-caller', 'marcode__send_message', { to: 'a', text: 'hi' });
     assert.strictEqual(result.isError, true);
@@ -712,7 +752,7 @@ suite('SelfControlMcpServer cross-session messaging', () => {
 
   test('send_message errors when sid is missing or unrecognized', async () => {
     const manager = fakeManager();
-    const server = new SelfControlMcpServer(manager);
+    const server = trackedServer(manager);
     const config = await server.start();
     const missing = await callTool(config, 'marcode__send_message', { to: 'b', text: 'hi' });
     assert.strictEqual(missing.isError, true);
@@ -752,7 +792,7 @@ suite('SelfControlMcpServer cross-session messaging', () => {
     assert.strictEqual(second.get(sender.state.id), undefined, 'restored session must not be live yet');
 
     try {
-      const server = new SelfControlMcpServer({
+      const server = trackedServer({
         catalog: () => second.catalog(),
         create: (providerId, cwd, model, effort, mode) => second.create(providerId, cwd, model, effort, mode),
         summaries: () => second.summaries(),
@@ -813,7 +853,7 @@ suite('SelfControlMcpServer cross-session messaging', () => {
     try {
       const lead = await manager.create('fake', process.cwd());
       await focusSession(manager, lead.state.id);
-      const server = new SelfControlMcpServer({
+      const server = trackedServer({
         catalog: () => manager.catalog(),
         create: (p, cwd, model, effort, mode) => manager.create(p, cwd, model, effort, mode),
         setVisible: (ids) => manager.setVisible(ids as never),
@@ -862,7 +902,7 @@ suite('SelfControlMcpServer cross-session messaging', () => {
       manager.rename(b.state.id, 'receiver');
       await manager.setVisible([a.state.id, b.state.id]);
 
-      const server = new SelfControlMcpServer(manager);
+      const server = trackedServer(manager);
       const config = await server.start();
       const res = await fetch(`${config.url}?sid=${a.state.id}`, {
         method: 'POST',
@@ -890,6 +930,8 @@ suite('SelfControlMcpServer cross-session messaging', () => {
 });
 
 suite('SelfControlMcpServer close_session', () => {
+  teardown(disposeTracked);
+
   test('close_session resolves the caller from sid, closes the named target', async () => {
     let closedId: string | undefined;
     const manager = fakeManager({
@@ -900,7 +942,7 @@ suite('SelfControlMcpServer close_session', () => {
       visibleIds: () => ['s-caller', 's-target'],
       close: async (id) => { closedId = id; },
     });
-    const server = new SelfControlMcpServer(manager);
+    const server = trackedServer(manager);
     const config = await server.start();
     const result = await callToolAs(config, 's-caller', 'marcode__close_session', { to: 'b' });
     assert.strictEqual(result.isError, undefined);
@@ -918,7 +960,7 @@ suite('SelfControlMcpServer close_session', () => {
       visibleIds: () => ['s-caller', 's-target'],
       close: async (id) => { closedId = id; },
     });
-    const server = new SelfControlMcpServer(manager);
+    const server = trackedServer(manager);
     const config = await server.start();
     const result = await callToolAs(config, 's-caller', 'marcode__close_session', { to: 'WORKER' });
     assert.strictEqual(result.isError, undefined);
@@ -932,7 +974,7 @@ suite('SelfControlMcpServer close_session', () => {
       summaries: () => [{ id: 's-caller', name: 'Alice', providerId: 'claude', status: 'idle', cwd: '/w' } as never],
       close: async () => { closed = true; },
     });
-    const server = new SelfControlMcpServer(manager);
+    const server = trackedServer(manager);
     const config = await server.start();
     const result = await callToolAs(config, 's-caller', 'marcode__close_session', { to: 'alice' });
     assert.strictEqual(result.isError, true);
@@ -946,7 +988,7 @@ suite('SelfControlMcpServer close_session', () => {
       summaries: () => [{ id: 's-caller', name: 'a', providerId: 'claude', status: 'idle', cwd: '/w' } as never],
       close: async () => { closed = true; },
     });
-    const server = new SelfControlMcpServer(manager);
+    const server = trackedServer(manager);
     const config = await server.start();
     const result = await callToolAs(config, 's-caller', 'marcode__close_session', { to: 'nobody' });
     assert.strictEqual(result.isError, true);
@@ -957,7 +999,7 @@ suite('SelfControlMcpServer close_session', () => {
   test('close_session errors when sid is missing or unrecognized', async () => {
     let closed = false;
     const manager = fakeManager({ close: async () => { closed = true; } });
-    const server = new SelfControlMcpServer(manager);
+    const server = trackedServer(manager);
     const config = await server.start();
     const missing = await callTool(config, 'marcode__close_session', { to: 'b' });
     assert.strictEqual(missing.isError, true);
@@ -986,7 +1028,7 @@ suite('SelfControlMcpServer close_session', () => {
       await manager.setVisible([root.state.id, worker.state.id]);
       worker.send('hello');
 
-      const server = new SelfControlMcpServer(manager);
+      const server = trackedServer(manager);
       const config = await server.start();
       const res = await fetch(`${config.url}?sid=${root.state.id}`, {
         method: 'POST',
@@ -1014,6 +1056,8 @@ suite('SelfControlMcpServer close_session', () => {
 });
 
 suite('SelfControlMcpServer session context', () => {
+  teardown(disposeTracked);
+
   test('marcode__get_session_context returns the target session\'s transcript tail', async () => {
     const items = [{ id: 'u1', ts: 1, role: 'user', text: 'hi' } as never];
     let seenId: string | undefined;
@@ -1026,7 +1070,7 @@ suite('SelfControlMcpServer session context', () => {
       visibleIds: () => ['s-target'],
       transcriptTail: async (id, limit) => { seenId = id; seenLimit = limit; return { items }; },
     });
-    const server = new SelfControlMcpServer(manager);
+    const server = trackedServer(manager);
     const config = await server.start();
     const result = await callTool(config, 'marcode__get_session_context', { name: 'b' });
     const body = JSON.parse(result.content[0].text) as { items: unknown[] };
@@ -1046,7 +1090,7 @@ suite('SelfControlMcpServer session context', () => {
       visibleIds: () => ['s-target'],
       transcriptTail: async () => ({ items }),
     });
-    const server = new SelfControlMcpServer(manager);
+    const server = trackedServer(manager);
     const config = await server.start();
     const result = await callTool(config, 'marcode__get_session_context', { name: 'b' });
     const body = JSON.parse(result.content[0].text) as { items: { id: string }[] };
@@ -1062,7 +1106,7 @@ suite('SelfControlMcpServer session context', () => {
       visibleIds: () => ['s-target'],
       transcriptTail: async (_id, limit) => { seenLimit = limit; return { items: [] }; },
     });
-    const server = new SelfControlMcpServer(manager);
+    const server = trackedServer(manager);
     const config = await server.start();
     await callTool(config, 'marcode__get_session_context', { name: 'b', limit: 5 });
     assert.strictEqual(seenLimit, 5);
@@ -1070,7 +1114,7 @@ suite('SelfControlMcpServer session context', () => {
   });
 
   test('marcode__get_session_context errors on an unknown session name', async () => {
-    const server = new SelfControlMcpServer(fakeManager());
+    const server = trackedServer(fakeManager());
     const config = await server.start();
     const result = await callTool(config, 'marcode__get_session_context', { name: 'nobody' });
     assert.strictEqual(result.isError, true);
@@ -1081,7 +1125,7 @@ suite('SelfControlMcpServer session context', () => {
     const manager = fakeManager({
       summaries: () => [{ id: 's-caller', name: 'Alice', providerId: 'claude', status: 'idle', cwd: '/w' } as never],
     });
-    const server = new SelfControlMcpServer(manager);
+    const server = trackedServer(manager);
     const config = await server.start();
     const result = await callToolAs(config, 's-caller', 'marcode__get_session_context', { name: 'alice' });
     assert.strictEqual(result.isError, true);
@@ -1105,7 +1149,7 @@ suite('SelfControlMcpServer session context', () => {
       await manager.setVisible([target.state.id]);
       target.send('hello');
 
-      const server = new SelfControlMcpServer({
+      const server = trackedServer({
         catalog: () => manager.catalog(),
         create: (providerId, cwd, model, effort, mode) => manager.create(providerId, cwd, model, effort, mode),
         summaries: () => manager.summaries(),
@@ -1128,6 +1172,8 @@ suite('SelfControlMcpServer session context', () => {
 });
 
 suite('SelfControlMcpServer marcode__list_models', () => {
+  teardown(disposeTracked);
+
   const catalog = () => [
     {
       id: 'claude', displayName: 'Claude',
@@ -1140,7 +1186,7 @@ suite('SelfControlMcpServer marcode__list_models', () => {
     { id: 'codex', displayName: 'Codex', models: [{ id: 'gpt-5-codex', displayName: 'GPT-5 Codex' }], permissionModes: [{ id: 'default' }] },
   ];
   const run = async (args: Record<string, unknown>) => {
-    const server = new SelfControlMcpServer(fakeManager({ catalog }));
+    const server = trackedServer(fakeManager({ catalog }));
     const config = await server.start();
     try {
       const res = await callTool(config, 'marcode__list_models', args);
@@ -1178,6 +1224,8 @@ suite('SelfControlMcpServer marcode__list_models', () => {
 });
 
 suite('SelfControlMcpServer spawn_collaborators', () => {
+  teardown(disposeTracked);
+
   const catalog = () => [{
     id: 'claude', models: [{ id: 'sonnet' }], permissionModes: [{ id: 'default' }],
   }];
@@ -1205,7 +1253,7 @@ suite('SelfControlMcpServer spawn_collaborators', () => {
 
   test('spawns every worker, inherits cwd, and each prompt names only the team', async () => {
     const sent: Record<string, string> = {};
-    const server = new SelfControlMcpServer(teamManager(sent));
+    const server = trackedServer(teamManager(sent));
     const config = await server.start();
     const res = await callToolAs(config, 'lead', 'marcode__spawn_collaborators', {
       workers: [{ task: 'parser', scope: 'src/p/' }, { task: 'tests' }],
@@ -1224,7 +1272,7 @@ suite('SelfControlMcpServer spawn_collaborators', () => {
   test('an inherited mode the worker\'s provider lacks falls back to its default', async () => {
     const seen: unknown[][] = [];
     const base = teamManager({});
-    const server = new SelfControlMcpServer({
+    const server = trackedServer({
       ...base,
       catalog: () => [
         { id: 'claude', models: [{ id: 'sonnet' }], permissionModes: [{ id: 'default' }, { id: 'acceptEdits' }] },
@@ -1244,7 +1292,7 @@ suite('SelfControlMcpServer spawn_collaborators', () => {
 
   test('the team brief reaches every worker', async () => {
     const sent: Record<string, string> = {};
-    const server = new SelfControlMcpServer(teamManager(sent));
+    const server = trackedServer(teamManager(sent));
     const config = await server.start();
     const res = await callToolAs(config, 'lead', 'marcode__spawn_collaborators', {
       brief: 'One shared emulator: ask the group before using it.',
@@ -1259,7 +1307,7 @@ suite('SelfControlMcpServer spawn_collaborators', () => {
 
   test('commit false is honoured per worker', async () => {
     const sent: Record<string, string> = {};
-    const server = new SelfControlMcpServer(teamManager(sent));
+    const server = trackedServer(teamManager(sent));
     const config = await server.start();
     await callToolAs(config, 'lead', 'marcode__spawn_collaborators', {
       workers: [{ task: 'a', commit: false }, { task: 'b' }],
@@ -1271,7 +1319,7 @@ suite('SelfControlMcpServer spawn_collaborators', () => {
 
   test('one invalid worker creates nothing', async () => {
     const created: string[] = [];
-    const server = new SelfControlMcpServer(teamManager({}, created));
+    const server = trackedServer(teamManager({}, created));
     const config = await server.start();
     const res = await callToolAs(config, 'lead', 'marcode__spawn_collaborators', {
       workers: [{ task: 'ok' }, { task: 'bad', provider: 'nope' }],
@@ -1284,7 +1332,7 @@ suite('SelfControlMcpServer spawn_collaborators', () => {
 
   test('a relative cwd is rejected before anything is created', async () => {
     const created: string[] = [];
-    const server = new SelfControlMcpServer(teamManager({}, created));
+    const server = trackedServer(teamManager({}, created));
     const config = await server.start();
     const res = await callToolAs(config, 'lead', 'marcode__spawn_collaborators', {
       workers: [{ task: 'x' }],
@@ -1300,7 +1348,7 @@ suite('SelfControlMcpServer spawn_collaborators', () => {
     const closed: string[] = [];
     const base = teamManager({}, created, closed);
     let calls = 0;
-    const server = new SelfControlMcpServer({
+    const server = trackedServer({
       ...base,
       create: async (...a) => {
         calls += 1;
@@ -1320,7 +1368,7 @@ suite('SelfControlMcpServer spawn_collaborators', () => {
 
   test('an unidentifiable caller gets an error and no team', async () => {
     const created: string[] = [];
-    const server = new SelfControlMcpServer(teamManager({}, created));
+    const server = trackedServer(teamManager({}, created));
     const config = await server.start();
     const res = await callTool(config, 'marcode__spawn_collaborators', { workers: [{ task: 'a' }] });
     assert.strictEqual(res.isError, true);
@@ -1330,6 +1378,8 @@ suite('SelfControlMcpServer spawn_collaborators', () => {
 });
 
 suite('SelfControlMcpServer get_context_usage', () => {
+  teardown(disposeTracked);
+
   const me = {
     id: 'me', name: 'Me', providerId: 'claude', model: 'sonnet',
     permissionMode: 'default' as const, status: 'running', cwd: '/repo',
@@ -1342,7 +1392,7 @@ suite('SelfControlMcpServer get_context_usage', () => {
 
   test('reports the caller\'s own percentage and window', async () => {
     let asked = '';
-    const server = new SelfControlMcpServer(fakeManager({
+    const server = trackedServer(fakeManager({
       summaries: () => [me, other], visibleIds: () => ['me', 'ot'],
       contextBreakdown: async (id) => { asked = id; return { ok: true, breakdown }; },
     }));
@@ -1356,7 +1406,7 @@ suite('SelfControlMcpServer get_context_usage', () => {
 
   test('a name targets another visible session', async () => {
     let asked = '';
-    const server = new SelfControlMcpServer(fakeManager({
+    const server = trackedServer(fakeManager({
       summaries: () => [me, other], visibleIds: () => ['me', 'ot'],
       contextBreakdown: async (id) => { asked = id; return { ok: true, breakdown }; },
     }));
@@ -1367,7 +1417,7 @@ suite('SelfControlMcpServer get_context_usage', () => {
   });
 
   test('a session the caller cannot see is unknown', async () => {
-    const server = new SelfControlMcpServer(fakeManager({
+    const server = trackedServer(fakeManager({
       summaries: () => [me, other], visibleIds: () => ['me'],
       contextBreakdown: async () => ({ ok: true, breakdown }),
     }));
@@ -1380,7 +1430,7 @@ suite('SelfControlMcpServer get_context_usage', () => {
 
   test('tokens are omitted when the provider reported neither, and stale is passed through', async () => {
     const { usedTokens: _u, windowTokens: _w, ...bare } = breakdown;
-    const server = new SelfControlMcpServer(fakeManager({
+    const server = trackedServer(fakeManager({
       summaries: () => [me], visibleIds: () => ['me'],
       contextBreakdown: async () => ({ ok: true, breakdown: bare, stale: true }),
     }));
@@ -1391,7 +1441,7 @@ suite('SelfControlMcpServer get_context_usage', () => {
   });
 
   test('a provider that cannot report becomes an error, never a number', async () => {
-    const server = new SelfControlMcpServer(fakeManager({
+    const server = trackedServer(fakeManager({
       summaries: () => [me], visibleIds: () => ['me'],
       contextBreakdown: async () => ({ ok: false, reason: 'This provider does not report context usage' }),
     }));
@@ -1403,7 +1453,7 @@ suite('SelfControlMcpServer get_context_usage', () => {
   });
 
   test('a manager without contextBreakdown is an error', async () => {
-    const server = new SelfControlMcpServer(fakeManager({ summaries: () => [me], visibleIds: () => ['me'] }));
+    const server = trackedServer(fakeManager({ summaries: () => [me], visibleIds: () => ['me'] }));
     const config = await server.start();
     const res = await callToolAs(config, 'me', 'marcode__get_context_usage', {});
     assert.strictEqual(res.isError, true);
@@ -1411,7 +1461,7 @@ suite('SelfControlMcpServer get_context_usage', () => {
   });
 
   test('no sid and no name cannot be answered', async () => {
-    const server = new SelfControlMcpServer(fakeManager({ contextBreakdown: async () => ({ ok: true, breakdown }) }));
+    const server = trackedServer(fakeManager({ contextBreakdown: async () => ({ ok: true, breakdown }) }));
     const config = await server.start();
     const res = await callTool(config, 'marcode__get_context_usage', {});
     assert.strictEqual(res.isError, true);
