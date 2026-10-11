@@ -46,6 +46,14 @@ test('detectTokens gives up when the terminal never answers', async () => {
   expect(Date.now() - t0 < 500).toBe(true);
 });
 
+test('detectTokens keeps a full theme when getPalette rejects or never answers', async () => {
+  const theme = { background: '#1e1e2e', foreground: '#cdd6f4' };
+  const rejected = await detectTokens({ getPalette: async () => { throw new Error('unsupported'); } }, 30, theme);
+  expect(rejected?.text).toBe('#cdd6f4');
+  const silent = await detectTokens({ getPalette: () => new Promise<TerminalColorsLike>(() => undefined) }, 30, theme);
+  expect(silent?.text).toBe('#cdd6f4');
+});
+
 test('DetectedTokensProvider renders at once without tokens, then switches them in when detection resolves', async () => {
   let resolve!: (t: ReturnType<typeof deriveTokens>) => void;
   const detect = () => new Promise<ReturnType<typeof deriveTokens>>((r) => { resolve = r; });

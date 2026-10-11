@@ -17,6 +17,8 @@ export interface WebviewHtmlOptions {
   title: string;
   /** Empty when the surface has no attachment store — the review tab has none. */
   attachmentBase?: string;
+  /** A validated `:root{…}` rule from `themeToCss`, never raw user text. */
+  themeCss?: string;
 }
 
 /**
@@ -31,10 +33,13 @@ export function renderWebviewHtml(webview: HtmlWebview, opts: WebviewHtmlOptions
   const csp = [
     `default-src 'none'`,
     `img-src ${webview.cspSource} data:`,
-    `style-src ${webview.cspSource}`,
+    `style-src ${webview.cspSource} 'nonce-${nonce}'`,
     `font-src ${webview.cspSource}`,
     `script-src 'nonce-${nonce}'`,
   ].join('; ');
+
+  const themeStyle = opts.themeCss ? `<style nonce="${nonce}">${opts.themeCss}</style>
+` : '';
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -43,7 +48,7 @@ export function renderWebviewHtml(webview: HtmlWebview, opts: WebviewHtmlOptions
 <meta http-equiv="Content-Security-Policy" content="${csp}">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link href="${opts.styleUri.toString()}" rel="stylesheet">
-<title>${opts.title}</title>
+${themeStyle}<title>${opts.title}</title>
 </head>
 <body>
 <div id="root" data-attachment-base="${opts.attachmentBase ?? ''}"></div>

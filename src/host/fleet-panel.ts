@@ -29,6 +29,7 @@ export class FleetPanel {
   constructor(
     private readonly extensionUri: vscode.Uri,
     private readonly connect: () => Promise<SurfaceLink>,
+    private readonly themeCss: string = '',
   ) {}
 
   open(focus?: { sessionId: SessionId; itemId: string }): void {
@@ -93,6 +94,7 @@ export class FleetPanel {
       styleUri: panel.webview.asWebviewUri(
         vscode.Uri.joinPath(this.extensionUri, 'dist', 'fleet.css'),
       ),
+      themeCss: this.themeCss,
       title: 'Fleet',
     });
 

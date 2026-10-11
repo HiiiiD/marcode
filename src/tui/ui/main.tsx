@@ -97,7 +97,7 @@ async function runTui(cmd: Extract<CliCommand, { kind: 'run' }>): Promise<void> 
   }
 
   const live = renderer;
-  const detect = () => detectTokens(live);
+  const detect = () => detectTokens(live, undefined, booted.fileConfig.theme);
   const loginCommands = Object.fromEntries([...booted.loginRecipes].map(([id, r]) => [id, r.command]));
   createRoot(renderer).render(
     <DetectedTokensProvider detect={detect}>

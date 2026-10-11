@@ -27,6 +27,7 @@ export class ReviewPanel {
   constructor(
     private readonly extensionUri: vscode.Uri,
     private readonly connect: () => Promise<SurfaceLink>,
+    private readonly themeCss: string = '',
   ) {}
 
   open(): void {
@@ -81,6 +82,7 @@ export class ReviewPanel {
       styleUri: panel.webview.asWebviewUri(
         vscode.Uri.joinPath(this.extensionUri, 'dist', 'review.css'),
       ),
+      themeCss: this.themeCss,
       title: 'Changes',
     });
 

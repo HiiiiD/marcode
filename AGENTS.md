@@ -127,6 +127,7 @@ router. See `docs/daemon.md`.
 | `src/host/digest/llm-prompt.ts` | Trimmed summary prompt and the tolerant JSON reply parser |
 | `src/shared/memory-settings.ts` | `marcode.memory.enabled` and `marcode.memory.summarizer` ids and validation |
 | `src/shared/path-scope.ts` | `isWithin(root, path)`: separator- and case-aware folder containment for recall scoping |
+| `src/shared/theme-settings.ts`, `theme-css.ts` | The `theme` key vocabulary and hex validation; the webview mapping to `:root` CSS variables, injected by `webview-html.ts` under the style nonce. The TUI side is `deriveTokens`' overrides |
 | `src/history/` | The history client: its own narrow reducer, store and surface (toolbar, table, rows) |
 | `src/history/history-rows.ts` | Pure filter/sort/group of the roster into pinned and rest |
 | `src/host/fleet-diff.ts` | One tree's change set: base resolution, numstat + untracked parsing |
@@ -220,7 +221,7 @@ These are not style preferences. Breaking one breaks the design.
   elsewhere" from a missing index row that this host has not itself seen on disk.
 - **`config.json` is the single source of truth for host settings.** Every setting the host consumes
   (`enabledProviders`, `providerInstances`, `systemPrompts`, `codex.path`, `opencode.path`,
-  `usageMirrors`, `memory.*`, `review.*`, `favoriteModels`) lives in `~/.marcode/config.json`, read by
+  `usageMirrors`, `memory.*`, `review.*`, `favoriteModels`, `theme`) lives in `~/.marcode/config.json`, read by
   `createHost`, the account-setup wizard and the favorites handler alike. Only pure-UI settings stay in
   VS Code (`marcode.debug`, `marcode.showCacheTimer`, `marcode.agentsMdNudge.excludePaths`). A change
   takes a window reload. See `docs/config.md`.

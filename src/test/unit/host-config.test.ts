@@ -79,4 +79,17 @@ suite('host-config', () => {
     assert.deepStrictEqual(b.config.daemon, { enabled: true, idleMinutes: 10 });
     assert.strictEqual(b.warnings.length, 2);
   });
+
+  test('theme defaults to empty and is parsed from config.json', () => {
+    assert.deepStrictEqual(defaultHostConfig().theme, {});
+    const { config, warnings } = parseHostConfig({ theme: { primary: '#ABC', nope: '#fff', muted: 'red' } });
+    assert.deepStrictEqual(config.theme, { primary: '#aabbcc' });
+    assert.strictEqual(warnings.length, 2);
+  });
+
+  test('a theme change alters the reload signature', () => {
+    const a = parseHostConfig({ theme: { primary: '#ffffff' } }).config;
+    const b = parseHostConfig({ theme: { primary: '#000000' } }).config;
+    assert.notStrictEqual(reloadSignature(a), reloadSignature(b));
+  });
 });
