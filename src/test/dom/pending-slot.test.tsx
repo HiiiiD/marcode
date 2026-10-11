@@ -74,7 +74,7 @@ suite('pending slot', () => {
     await userEvent.click(screen.getAllByRole('button', { name: 'New session' })[0]);
 
     assert.deepStrictEqual(posted().at(-1), {
-      t: 'create-session', providerId: 'fake', cwd: '', model: 'fake-large', effort: 'medium', mode: 'default',
+      t: 'create-session', providerId: 'fake', cwd: '', model: 'fake-large', effort: 'medium', mode: 'default', includeEditorContext: true,
     });
 
     await act(async () => arrive('b'));
