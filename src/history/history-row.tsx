@@ -57,10 +57,11 @@ export function HistoryRow({ session }: { session: SessionSummary }) {
             <Button
               variant="outline"
               size="sm"
-              aria-label={`Open ${session.name}`}
+              aria-label={`${session.open ? 'Opened' : 'Open'} ${session.name}`}
+              disabled={session.open === true}
               onClick={() => post({ t: 'focus-session', id: session.id })}
             >
-              Open
+              {session.open ? 'Opened' : 'Open'}
             </Button>
           </div>
         </TableCell>
