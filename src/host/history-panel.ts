@@ -17,6 +17,7 @@ export class HistoryPanel {
   constructor(
     private readonly extensionUri: vscode.Uri,
     private readonly connect: () => Promise<SurfaceLink>,
+    private readonly themeCss: string = '',
   ) {}
 
   open(): void {
@@ -57,6 +58,7 @@ export class HistoryPanel {
       styleUri: panel.webview.asWebviewUri(
         vscode.Uri.joinPath(this.extensionUri, 'dist', 'history.css'),
       ),
+      themeCss: this.themeCss,
       title: 'Session history',
     });
 

@@ -28,6 +28,7 @@ export class PanelViewProvider implements vscode.WebviewViewProvider {
     private readonly agentsMdNudge?: AgentsMdNudgeController,
     /** A VS Code setting the daemon cannot see, so it is stamped onto `hydrate` here. Reload to change. */
     private readonly showCacheTimer: boolean = false,
+    private readonly themeCss: string = '',
   ) {}
 
   post(msg: HostToWebview): void {
@@ -111,6 +112,7 @@ export class PanelViewProvider implements vscode.WebviewViewProvider {
       styleUri: webview.asWebviewUri(
         vscode.Uri.joinPath(this.extensionUri, 'dist', 'webview.css'),
       ),
+      themeCss: this.themeCss,
       title: 'Marcode',
       attachmentBase: webview.asWebviewUri(vscode.Uri.file(this.attachmentsBaseDir)).toString(),
     });
