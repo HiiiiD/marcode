@@ -1,5 +1,6 @@
 import type { UsageMirror } from '../providers/types';
 import { DEFAULT_PROVIDER_IDS, KNOWN_PROVIDER_IDS } from '../shared/settings';
+import { parseTheme, type ThemeColors } from '../shared/theme-settings';
 import { clampCap } from './fleet-diff';
 import { DEFAULT_SHELL_ALIASES, parseShellAliases, type ShellAliasTable } from './shell/shell-aliases';
 
@@ -15,6 +16,7 @@ export interface HostConfig {
   favoriteModels: string[];
   daemon: { enabled: boolean; idleMinutes: number };
   shell: { aliases: ShellAliasTable };
+  theme: ThemeColors;
 }
 
 export const MOVED_SETTING_IDS: readonly string[] = [
@@ -34,6 +36,7 @@ export function defaultHostConfig(): HostConfig {
     favoriteModels: [],
     daemon: { enabled: true, idleMinutes: 10 },
     shell: { aliases: { ...DEFAULT_SHELL_ALIASES } },
+    theme: {},
   };
 }
 
@@ -123,6 +126,10 @@ export function parseHostConfig(raw: unknown): { config: HostConfig; warnings: s
       }
     }
   }
+
+  const themed = parseTheme(raw.theme);
+  config.theme = themed.theme;
+  warnings.push(...themed.warnings);
 
   return { config, warnings };
 }
