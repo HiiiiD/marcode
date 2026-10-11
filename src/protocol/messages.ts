@@ -275,6 +275,8 @@ export interface SessionState {
   queued?: QueuedMessage[];
   /** Survives close; absent means false so older index.json files load unchanged. */
   pinned?: boolean;
+  /** Set only on wire summaries: a pane shows this session right now. Never persisted. */
+  open?: boolean;
   /** The composer's unsent text. Absent means empty; never moves `updatedAt`. */
   draft?: string;
   /** Cache of `digestSession()`, stale once `forUpdatedAt !== updatedAt`. Never a source of truth. */

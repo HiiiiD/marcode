@@ -107,6 +107,15 @@ suite('history app', () => {
     ]);
   });
 
+  test('an open session shows a disabled Opened button', async () => {
+    renderHistory();
+    hydrate([summary('a', { name: 'alpha-name', open: true }), summary('b', { name: 'beta-name' })]);
+    const btn = screen.getByRole('button', { name: 'Opened alpha-name' });
+    assert.strictEqual((btn as HTMLButtonElement).disabled, true);
+    assert.strictEqual(btn.textContent, 'Opened');
+    assert.strictEqual((screen.getByRole('button', { name: 'Open beta-name' }) as HTMLButtonElement).disabled, false);
+  });
+
   test('sessions-changed updates the rows', () => {
     renderHistory();
     hydrate(sessions());

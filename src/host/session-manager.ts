@@ -575,7 +575,9 @@ export class SessionManager implements SessionSink {
   }
 
   summaries(): SessionSummary[] {
-    return [...this.meta.values()].sort((a, b) => b.updatedAt - a.updatedAt);
+    return [...this.meta.values()]
+      .map((s) => (this.visible.has(s.id) ? { ...s, open: true } : s))
+      .sort((a, b) => b.updatedAt - a.updatedAt);
   }
 
   /**
@@ -1723,6 +1725,7 @@ export class SessionManager implements SessionSink {
     // row's overflow menu can ever remove. Same discard rule as close().
     const removed = [...this.visible].filter((id) => !next.has(id));
     this.visible = next;
+    if (added.length > 0 || removed.length > 0) { this.emit({ t: 'sessions-changed', sessions: this.summaries() }); }
 
     // Recall covers hidden sessions only; a revealed one would otherwise point at itself.
     for (const id of added) { await this.digests?.forget(id); }
