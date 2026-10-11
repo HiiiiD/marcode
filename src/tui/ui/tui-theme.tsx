@@ -15,9 +15,16 @@ const named = {
 export const tuiTheme = createTheme({ name: 'marcode', colors: named });
 
 // Secondary text and rules come from the terminal's own foreground/background mix once it is known.
-const themeFor = (tokens: TuiTokens | undefined) => (tokens
-  ? createTheme({ name: 'marcode', colors: { ...named, muted: tokens.textMuted, mutedForeground: tokens.textMuted, border: tokens.menu } })
-  : tuiTheme);
+export const themeFor = (tokens: TuiTokens | undefined) => {
+  if (!tokens) { return tuiTheme; }
+  const colors = { ...named, muted: tokens.textMuted, mutedForeground: tokens.textMuted, border: tokens.border ?? tokens.menu };
+  if (tokens.primary) { colors.primary = colors.accent = colors.info = tokens.primary; }
+  if (tokens.added) { colors.success = tokens.added; }
+  if (tokens.modified) { colors.warning = tokens.modified; }
+  if (tokens.danger) { colors.error = tokens.danger; }
+  if (tokens.focus) { colors.focusRing = tokens.focus; }
+  return createTheme({ name: 'marcode', colors });
+};
 
 export function TuiThemeProvider({ children }: { children: ReactNode }) {
   const tokens = useTokens();
