@@ -160,6 +160,8 @@ export interface ClientState {
    * how `enabledProviders` removes a backend rather than graying it out.
    */
   showCacheTimer: boolean;
+  /** The host placed an agent-spawned session in a full hand-made layout; ephemeral, never carried over a hydrate. */
+  rearrangeOffer: boolean;
   /**
    * A tree path the next freshly-created session should be assigned into,
    * rather than appended as a new top-level sibling — set right before
@@ -203,6 +205,7 @@ export const initialState: ClientState = {
   hostLink: 'connected',
   favoriteModels: [],
   showCacheTimer: false,
+  rearrangeOffer: false,
   pendingSlotPath: null,
 };
 
@@ -223,6 +226,8 @@ export type ClientAction =
   | { t: 'local-layout'; layout: PaneLayout }
   /** Focus landed somewhere inside `id`'s pane. Client-local; see `focusedSessionId`. */
   | { t: 'local-focus'; id: SessionId }
+  /** The user answered or dismissed the rearrange offer. */
+  | { t: 'local-dismiss-rearrange' }
   /**
    * The user closed the composer's rejection line. Client-local because the
    * host emits rejections and forgets them — `rejectionBySession` is the only
@@ -268,6 +273,12 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
     case 'toggle-maximize-pane':
       if (state.maximizedId !== null) { return { ...state, maximizedId: null }; }
       return state.focusedSessionId === null ? state : { ...state, maximizedId: state.focusedSessionId };
+
+    case 'offer-rearrange':
+      return state.rearrangeOffer ? state : { ...state, rearrangeOffer: true };
+
+    case 'local-dismiss-rearrange':
+      return state.rearrangeOffer ? { ...state, rearrangeOffer: false } : state;
 
     case 'local-focus':
       return state.focusedSessionId === msg.id ? state : { ...state, focusedSessionId: msg.id };
@@ -346,6 +357,7 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
         // field (or a hand-built fixture) has not said otherwise.
         favoriteModels: msg.favoriteModels ?? [],
         showCacheTimer: msg.showCacheTimer ?? false,
+        rearrangeOffer: false,
         // Not carried forward, same reasoning as `focusedSessionId`: it
         // names a path into panes hydrate is about to rebuild from scratch,
         // and a session created against a pre-reload path could land

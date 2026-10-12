@@ -24,6 +24,7 @@ export interface TuiStoreValue {
   /** Pulls plan usage again; a no-op while a round is already in flight. */
   refreshUsage(): void;
   dismissRejection(id: SessionId): void;
+  dismissRearrange(): void;
 }
 
 const Ctx = createContext<TuiStoreValue | undefined>(undefined);
@@ -71,11 +72,12 @@ export function TuiStoreProvider({ transport, children }: { transport: ClientTra
   const setLocalLayout = useCallback((layout: PaneLayout) => { dispatch({ t: 'local-layout', layout }); }, []);
 
   const dismissRejection = useCallback((id: SessionId) => { dispatch({ t: 'local-dismiss-rejection', id }); }, []);
+  const dismissRearrange = useCallback(() => { dispatch({ t: 'local-dismiss-rearrange' }); }, []);
 
   const focusedId = state.focusedSessionId ?? null;
   const value = useMemo<TuiStoreValue>(
-    () => ({ state, post, drafts, focusedId, focus, setLocalLayout, chordArmed, notice, setNotice, mentionOpen, setMentionOpen, rosterFiltering, setRosterFiltering, refreshUsage, dismissRejection }),
-    [state, post, drafts, focusedId, focus, setLocalLayout, chordArmed, notice, mentionOpen, rosterFiltering, refreshUsage, dismissRejection],
+    () => ({ state, post, drafts, focusedId, focus, setLocalLayout, chordArmed, notice, setNotice, mentionOpen, setMentionOpen, rosterFiltering, setRosterFiltering, refreshUsage, dismissRejection, dismissRearrange }),
+    [state, post, drafts, focusedId, focus, setLocalLayout, chordArmed, notice, mentionOpen, rosterFiltering, refreshUsage, dismissRejection, dismissRearrange],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

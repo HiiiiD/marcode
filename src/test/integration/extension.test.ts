@@ -40,7 +40,7 @@ suite('PanelViewProvider CSP', () => {
   const extensionUri = vscode.Uri.file(__dirname);
   // render() never opens a link; these tests exercise only HTML generation.
   const connectStub = () => Promise.reject(new Error('not used'));
-  const actions = { openReview: () => {}, openHistory: () => {}, openFleet: () => {} };
+  const actions = { openReview: () => {}, openHistory: () => {}, openFleet: () => {}, expandSidebar: () => {} };
   const newProvider = () => new PanelViewProvider(extensionUri, connectStub, '/tmp/attachments', actions);
 
   test('CSP contains default-src none', () => {

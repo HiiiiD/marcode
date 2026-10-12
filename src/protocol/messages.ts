@@ -688,6 +688,13 @@ export type WebviewToHost =
    * `open-review` already gets, and for the same reason.
    */
   | { t: 'open-fleet' }
+  /** Maximize the secondary sidebar so a grid has room for more columns. Handled in `PanelViewProvider`, like `open-fleet`. */
+  | { t: 'expand-sidebar' }
+  /**
+   * The panel's size and smallest useful pane, in this client's own units (pixels in the webview, height-doubled
+   * cells in the terminal). The host places agent-spawned sessions with it; the last client to report wins.
+   */
+  | { t: 'set-viewport'; viewport: { width: number; height: number }; minPane: { width: number; height: number } }
   /**
    * Open one file's change in VS Code's own diff editor. Carries the tree
    * because a repo-relative path is meaningless without it, and the base
@@ -829,6 +836,8 @@ export type HostToWebview =
    * initiate itself.
    */
   | { t: 'layout-changed'; layout: PaneLayout }
+  /** An agent-spawned session landed in a full hand-made layout; the client may offer to regrid it. */
+  | { t: 'offer-rearrange' }
   /**
    * Pushes a specific subagent open in the Fleet tab — the answer to
    * `open-fleet-subagent`. Sent directly by `FleetPanel` (its own

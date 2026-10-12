@@ -505,6 +505,17 @@ suite('webview reducer', () => {
     assert.deepStrictEqual(withoutList.favoriteModels, []);
   });
 
+  test('offer-rearrange raises the offer, a local dismiss clears it, and a hydrate never carries it over', () => {
+    const offered = reduce(initialState, { t: 'offer-rearrange' });
+    assert.strictEqual(initialState.rearrangeOffer, false);
+    assert.strictEqual(offered.rearrangeOffer, true);
+    assert.strictEqual(reduce(offered, { t: 'local-dismiss-rearrange' }).rearrangeOffer, false);
+    const rehydrated = reduce(offered, {
+      t: 'hydrate', sessions: [], layout: layoutOf([]), snapshots: [], catalog: [], unavailable: [], usage: {},
+    });
+    assert.strictEqual(rehydrated.rearrangeOffer, false);
+  });
+
   test('hydrate seeds showCacheTimer, defaulting to false when the host omits it', () => {
     const on = reduce(initialState, {
       t: 'hydrate', sessions: [], layout: layoutOf([]),

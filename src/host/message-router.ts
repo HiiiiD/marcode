@@ -653,6 +653,14 @@ export class MessageRouter {
       case 'open-fleet':
         return;
 
+      // Intercepted by PanelViewProvider too: maximizing the sidebar needs the vscode API.
+      case 'expand-sidebar':
+        return;
+
+      case 'set-viewport':
+        this.manager.setGridGeometry({ viewport: msg.viewport, minPane: msg.minPane });
+        return;
+
       // Same precedent as open-fleet: PanelViewProvider intercepts this
       // before delegating, since opening the fleet tab at a specific
       // subagent needs the vscode API this module must not import.
@@ -795,7 +803,7 @@ const KNOWN_MESSAGE_TAGS = new Set<WebviewToHost['t']>([
   'request-bring-back', 'bring-back',
   'request-stale-trees', 'remove-stale-tree',
   'request-fleet-diff', 'request-branch-refs', 'open-file-diff', 'open-review', 'open-fleet',
-  'open-fleet-subagent',
+  'expand-sidebar', 'set-viewport', 'open-fleet-subagent',
   'focus-session', 'focus-pane', 'set-pinned', 'set-draft', 'request-history-summaries', 'open-history',
   'memory-estimate', 'request-memory-status', 'memory-reindex', 'memory-resummarize', 'memory-cancel',
   'refresh-catalog', 'refresh-usage', 'open-settings', 'login-provider', 'open-external', 'export-table-csv',

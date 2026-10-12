@@ -1,18 +1,22 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { Toaster } from '@/components/ui/sonner';
 import { AgentsMdNudgeCard } from './components/agents-md-nudge-card';
 import { HostLinkBanner } from './components/host-link-banner';
 import { PaneGroup } from './components/pane-group';
+import { RearrangeNotice } from './components/rearrange-notice';
 import { SessionPicker } from './components/session-picker';
 import { NARROW_PX, usePanelWidth } from './components/use-is-narrow';
+import { rearrange } from '../client-core/auto-grid';
 import { assignAt, leafSessionIds } from './components/layout-tree';
 import { reconcilePaneLayout, rosterSessionIds } from './components/pane-layout';
 import { UsageStrip } from './components/usage-strip';
 import { useStore } from './store';
 
+const MIN_PANE = { width: 320, height: 200 };
+
 export function App() {
-  const { state, post, setPendingSlot } = useStore();
+  const { state, post, setPendingSlot, dismissRearrange } = useStore();
   // A single observer on the panel root, shared by both children: they used
   // to each run their own `ResizeObserver` against their own root element,
   // and because one root carries padding the other doesn't, `contentRect`
@@ -26,6 +30,16 @@ export function App() {
   // started at `false`, and the layout must not flash stacked before the
   // first measurement lands.
   const narrow = width > 0 && width < NARROW_PX;
+  const [height, setHeight] = useState(window.innerHeight);
+  useEffect(() => {
+    const onResize = () => setHeight(window.innerHeight);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  // The host places agent-spawned sessions with this; an unmeasured panel has nothing to report.
+  useEffect(() => {
+    if (state.ready && width > 0) { post({ t: 'set-viewport', viewport: { width, height }, minPane: MIN_PANE }); }
+  }, [state.ready, width, height]);
 
   const byIdKeys = Object.keys(state.byId);
   const rosterKey = state.sessions.map((s) => s.id).join(',');
@@ -118,6 +132,17 @@ export function App() {
               onFleet={() => post({ t: 'open-fleet' })}
               onHistory={() => post({ t: 'open-history' })}
             />
+            {state.rearrangeOffer && (
+              <RearrangeNotice
+                onRearrange={() => {
+                  const root = rearrange(state.layout.root, { width, height }, MIN_PANE);
+                  post({ t: 'set-layout', layout: { ...state.layout, root } });
+                  dismissRearrange();
+                }}
+                onKeep={dismissRearrange}
+                onExpand={width < 2 * MIN_PANE.width ? () => post({ t: 'expand-sidebar' }) : undefined}
+              />
+            )}
             <AgentsMdNudgeCard />
             <div className="min-h-0 flex-1">
               <PaneGroup narrow={narrow} />

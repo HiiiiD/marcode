@@ -96,7 +96,7 @@ export async function createHost(opts: CreateHostOptions): Promise<HostHandle> {
     create: (providerId, cwd, model, effort, mode, worktree, includeEditorContext) =>
       manager.create(providerId, cwd, model, effort, mode, worktree, includeEditorContext),
     setVisible: (ids) => manager.setVisible(ids as SessionId[]),
-    reveal: (id) => focusSession(manager, id as SessionId),
+    reveal: (id) => focusSession(manager, id as SessionId, config.layout.autoGrid ? manager.autoGrid() : undefined),
     summaries: () => manager.summaries(),
     isForeign: (id) => manager.isForeign(id as SessionId),
     visibleIds: () => manager.visibleIds(),

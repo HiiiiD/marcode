@@ -22,6 +22,9 @@ suite('tui pane chords', () => {
   test('g opens the layout dialog', () => {
     assert.deepStrictEqual(chordStep(100, 200, { name: 'g' }), { armedAt: null, consumed: true, action: { do: 'layout' } });
   });
+  test('a rearranges the panes into a grid', () => {
+    assert.deepStrictEqual(chordStep(100, 200, { name: 'a' }), { armedAt: null, consumed: true, action: { do: 'rearrange' } });
+  });
   test('shifted letters resize', () => {
     assert.deepStrictEqual(chordStep(100, 200, { name: 'l', shift: true }).action, { do: 'resize', dir: 'right' });
     assert.deepStrictEqual(chordStep(100, 200, { name: 'k', shift: true }).action, { do: 'resize', dir: 'up' });

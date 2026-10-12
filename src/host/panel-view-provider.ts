@@ -11,6 +11,7 @@ export interface SidebarActions {
   openReview(): void;
   openHistory(): void;
   openFleet(focus?: { sessionId: SessionId; itemId: string }): void;
+  expandSidebar(): void;
 }
 
 export class PanelViewProvider implements vscode.WebviewViewProvider {
@@ -74,6 +75,7 @@ export class PanelViewProvider implements vscode.WebviewViewProvider {
           case 'open-review': this.actions.openReview(); return true;
           case 'open-history': this.actions.openHistory(); return true;
           case 'open-fleet': this.actions.openFleet(); return true;
+          case 'expand-sidebar': this.actions.expandSidebar(); return true;
           case 'open-fleet-subagent': this.actions.openFleet({ sessionId: raw.sessionId, itemId: raw.itemId }); return true;
           case 'agents-md-nudge-action': await this.agentsMdNudge?.handleAction(raw.action, raw.dirs); return true;
           case 'ready':
