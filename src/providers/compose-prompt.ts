@@ -35,9 +35,10 @@ export function composePrompt(
   bare: ReadonlySet<string>,
   introduced: boolean,
   isResume: boolean,
+  introNote?: string,
 ): { body: string; introduced: boolean } {
   const command = leadingCommand(text);
   if (command !== undefined && bare.has(command)) { return { body: text, introduced }; }
   const withContext = context ? `${formatEditorContext(context)}\n\n${text}` : text;
-  return { body: withMarcodeIntro(withContext, introduced, isResume), introduced: true };
+  return { body: withMarcodeIntro(withContext, introduced, isResume, introNote), introduced: true };
 }

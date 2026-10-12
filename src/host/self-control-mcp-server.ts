@@ -482,7 +482,14 @@ export class SelfControlMcpServer {
     this.http = http;
     // Not `/mcp`: Avast's Web Shield rewrites responses to any URL with an `mcp` segment
     // into unframed `transfer-encoding: chunked`, which Claude's client rejects as InvalidHTTPResponse.
-    return { url: `http://127.0.0.1:${port}/self-control`, token: this.token };
+    return {
+      url: `http://127.0.0.1:${port}/self-control`,
+      token: this.token,
+      isSessionHandle: (target) => {
+        const wanted = target.trim().toLowerCase();
+        return this.sessionManager.summaries().some((s) => s.id.toLowerCase() === wanted || s.name.toLowerCase() === wanted);
+      },
+    };
   }
 
   private listen(http: Server): Promise<number> {

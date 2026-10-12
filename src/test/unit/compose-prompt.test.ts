@@ -29,6 +29,13 @@ suite('composePrompt', () => {
     assert.strictEqual(r.introduced, true);
   });
 
+  test('the intro carries a provider note only when one is given', () => {
+    const plain = composePrompt('hi', undefined, bare, false, false);
+    const noted = composePrompt('hi', undefined, bare, false, false, 'NOTE');
+    assert.strictEqual(plain.body.includes('SendMessage'), false);
+    assert.strictEqual(noted.body.includes('NOTE</marcode-context>'), true);
+  });
+
   test('a bare name only matches at the start of the message', () => {
     const r = composePrompt('run /compact please', ctx, bare, true, false);
     assert.strictEqual(r.body.startsWith('<editor-context'), true);
