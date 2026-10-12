@@ -51,6 +51,7 @@ function describeInbound(m: WebviewToHost): string {
     case 'open-review': return 'open-review';
     case 'open-fleet': return 'open-fleet';
     case 'expand-sidebar': return 'expand-sidebar';
+    case 'set-viewport': return 'set-viewport';
     case 'focus-session': return 'focus-session';
     case 'focus-pane': return 'focus-pane';
     case 'set-pinned': return 'set-pinned';
@@ -115,6 +116,7 @@ function describeOutbound(m: HostToWebview): string {
     case 'host-link': return 'host-link';
     case 'favorite-models': return 'favorite-models';
     case 'layout-changed': return 'layout-changed';
+    case 'offer-rearrange': return 'offer-rearrange';
     case 'fleet-focus-subagent': return 'fleet-focus-subagent';
     case 'handoff-progress': return 'handoff-progress';
     case 'focus-pane': return 'focus-pane';

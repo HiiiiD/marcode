@@ -21,6 +21,7 @@ interface StoreActions {
   dismissRejection: (id: SessionId) => void;
   /** See `ClientState.pendingSlotPath`. */
   setPendingSlot: (path: number[] | null) => void;
+  dismissRearrange: () => void;
 }
 
 interface StoreValue extends StoreActions {
@@ -108,6 +109,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     },
     dismissRejection: (id) => dispatch({ t: 'local-dismiss-rejection', id }),
     setPendingSlot: (path) => dispatch({ t: 'local-pending-slot', path }),
+    dismissRearrange: () => dispatch({ t: 'local-dismiss-rearrange' }),
   }), [post]);
   const value = useMemo<StoreValue>(() => ({ state, ...actions }), [state, actions]);
 

@@ -133,7 +133,7 @@ export async function activateExtension(context: vscode.ExtensionContext): Promi
       openFleet: (focus) => { fleet.open(focus); },
       expandSidebar: () => { void vscode.commands.executeCommand('workbench.action.toggleMaximizedAuxiliaryBar'); },
     },
-    agentsMdNudge, showCacheTimer(), themeCss, config.layout.autoGrid,
+    agentsMdNudge, showCacheTimer(), themeCss,
   );
   const contextSub = tracker.onChange((ctx) => provider.pushContext(ctx));
 

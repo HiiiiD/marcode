@@ -96,7 +96,7 @@ Default: `10`
 
 ## `layout.autoGrid`
 
-When a new session arrives and every pane is taken, rebuild the layout into the grid (rows × columns) that fits the panel best, keeping reading order. A hand-made layout (nested splits) is left alone: the session is placed beside the focused pane as before, and the panel offers to rearrange it into a grid (a notice in VS Code, `^W a` in the terminal). Set to `false` to always place beside the focused pane. A change takes a window reload or a restart of the TUI.
+When an agent spawns a session (`marcode__spawn_session`, `marcode__spawn_collaborators`) and every pane is taken, rebuild the layout into the grid (rows × columns) that fits the panel best, keeping reading order. Sessions you open yourself (**+ New**, the roster, the fleet and history tabs) always keep the normal placement. A hand-made layout (nested splits) is never rebuilt unasked: the session is placed beside the focused pane as before, and the panel offers to rearrange it into a grid (a notice in VS Code, `^W a` in the terminal). The host sizes the grid from the last size a client reported, so nothing is regridded until a panel has reported one. A change takes a window reload or a restart of the TUI.
 
 Default: `true`
 

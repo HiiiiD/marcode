@@ -691,6 +691,11 @@ export type WebviewToHost =
   /** Maximize the secondary sidebar so a grid has room for more columns. Handled in `PanelViewProvider`, like `open-fleet`. */
   | { t: 'expand-sidebar' }
   /**
+   * The panel's size and smallest useful pane, in this client's own units (pixels in the webview, height-doubled
+   * cells in the terminal). The host places agent-spawned sessions with it; the last client to report wins.
+   */
+  | { t: 'set-viewport'; viewport: { width: number; height: number }; minPane: { width: number; height: number } }
+  /**
    * Open one file's change in VS Code's own diff editor. Carries the tree
    * because a repo-relative path is meaningless without it, and the base
    * because the left-hand side is that file at the branch point.
@@ -810,13 +815,7 @@ export type HostToWebview =
        * and the reducer treats an absent value as `false`, matching the
        * setting's own default rather than inventing a third state.
        */
-      showCacheTimer?: boolean;
-      /**
-       * `layout.autoGrid` from config.json. Injected by each client (the
-       * extension's panel provider, the TUI's boot) rather than sent by the
-       * host, so a surface that injects nothing keeps today's placement.
-       */
-      autoGrid?: boolean }
+      showCacheTimer?: boolean }
   /**
    * The `marcode.favoriteModels` setting, after `set-favorite-models` wrote
    * it. Broadcast rather than a reply to whichever pane sent it: the New
@@ -837,6 +836,8 @@ export type HostToWebview =
    * initiate itself.
    */
   | { t: 'layout-changed'; layout: PaneLayout }
+  /** An agent-spawned session landed in a full hand-made layout; the client may offer to regrid it. */
+  | { t: 'offer-rearrange' }
   /**
    * Pushes a specific subagent open in the Fleet tab — the answer to
    * `open-fleet-subagent`. Sent directly by `FleetPanel` (its own

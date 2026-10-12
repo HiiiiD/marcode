@@ -1,8 +1,8 @@
 import { useTerminalDimensions } from '@opentui/react';
 import { useCallback, useEffect, useRef } from 'react';
-import { placeSessionAuto, rearrange, type AutoGridOptions } from '../../client-core/auto-grid';
+import { rearrange } from '../../client-core/auto-grid';
 import {
-  findPath, leafSessionIds, removeSession, rootOrientation, type LayoutNode,
+  findPath, leafSessionIds, placeSession, removeSession, rootOrientation, type LayoutNode,
 } from '../../client-core/layout-tree';
 import { reconcilePaneLayout, rosterSessionIds } from '../../client-core/pane-layout';
 import { splitAtSession } from '../../client-core/pane-ops';
@@ -27,22 +27,17 @@ export interface PaneLayoutApi {
   applyRoot(root: LayoutNode): void;
   /** The next unseen session was asked for by the user, so it takes focus. */
   expectArrival(): void;
-  /** Regrids every pane in reading order and withdraws the offer. */
+  /** Regrids every pane in reading order, if the host offered to; otherwise does nothing. */
   rearrangeNow(): void;
 }
 
 export function usePaneLayout(): PaneLayoutApi {
-  const { state, post, focus, focusedId, setLocalLayout, setNotice } = useTuiStore();
+  const { state, post, focus, focusedId, setLocalLayout, setNotice, dismissRearrange } = useTuiStore();
   const { width, height } = useTerminalDimensions();
-  const stateRef = useRef(state);
-  stateRef.current = state;
-  const autoGrid = (): AutoGridOptions => ({
-    enabled: stateRef.current.autoGrid,
-    viewport: { width, height: height * CELL_ASPECT },
-    minPane: MIN_PANE,
-  });
   const root = state.layout.root;
   const leafIds = leafSessionIds(root);
+  const stateRef = useRef(state);
+  stateRef.current = state;
   const known = useRef<Set<string>>(new Set());
   const split = useRef<{ orientation: 'horizontal' | 'vertical'; until: number } | null>(null);
   const expecting = useRef<number | null>(null);
@@ -66,10 +61,9 @@ export function usePaneLayout(): PaneLayoutApi {
       split.current = null;
     } else {
       const result = reconcilePaneLayout(
-        cur.layout.root, roster, byIdKeys, before, cur.focusedSessionId ?? cur.layout.focusedSessionId, autoGrid(),
+        cur.layout.root, roster, byIdKeys, before, cur.focusedSessionId ?? cur.layout.focusedSessionId,
       );
       known.current = result.knownSessionIds;
-      if (result.offerRearrange) { setNotice(REARRANGE_NOTICE); }
       if (result.root) { applyRoot(result.root); }
     }
     if (arrived.length > 0) {
@@ -80,24 +74,30 @@ export function usePaneLayout(): PaneLayoutApi {
     }
   }, [byIdKeys.join(','), state.sessions.map((s) => s.id).join(','), leafIds.join(',')]);
 
+  // The host places agent-spawned sessions with this; the last client to report wins.
+  useEffect(() => {
+    if (state.ready) { post({ t: 'set-viewport', viewport: { width, height: height * CELL_ASPECT }, minPane: MIN_PANE }); }
+  }, [state.ready, width, height]);
+
+  useEffect(() => { if (state.rearrangeOffer) { setNotice(REARRANGE_NOTICE); } }, [state.rearrangeOffer]);
+
   // Before hydrate the layout is a placeholder; posting it would hide every pane a daemon still shows.
   useEffect(() => { if (state.ready) { post({ t: 'set-visible', sessionIds: leafIds }); } }, [state.ready, leafIds.join(',')]);
 
   const placeOrFocus = useCallback((id: SessionId) => {
     const cur = stateRef.current;
     if (findPath(cur.layout.root, id) === undefined) {
-      const placed = placeSessionAuto(cur.layout.root, id, cur.focusedSessionId, rootOrientation(cur.layout.root), autoGrid());
-      applyRoot(placed.root);
-      if (placed.offerRearrange) { setNotice(REARRANGE_NOTICE); }
+      applyRoot(placeSession(cur.layout.root, id, cur.focusedSessionId, rootOrientation(cur.layout.root)));
     }
     focus(id);
   }, [applyRoot, focus]);
 
   const rearrangeNow = useCallback(() => {
-    const { viewport, minPane } = autoGrid();
-    applyRoot(rearrange(stateRef.current.layout.root, viewport, minPane));
+    if (!stateRef.current.rearrangeOffer) { return; }
+    applyRoot(rearrange(stateRef.current.layout.root, { width, height: height * CELL_ASPECT }, MIN_PANE));
+    dismissRearrange();
     setNotice(null);
-  }, [applyRoot, width, height, setNotice]);
+  }, [applyRoot, width, height, dismissRearrange, setNotice]);
 
   return {
     root, leafIds, placeOrFocus, applyRoot, rearrangeNow,

@@ -29,6 +29,7 @@ import { FILE_CAP } from '../shared/file-cap';
 import { resolvePermissionMode } from '../shared/permission-catalog';
 import { threadKey, threadKeyCwd } from '../shared/thread-key';
 import { orderWindows } from '../shared/usage-windows';
+import type { AutoGridOptions } from '../client-core/auto-grid';
 import { emptySession, replaceLeafSession, stripSessionIds } from '../webview/components/layout-tree';
 import type {
   Attachment,
@@ -696,6 +697,21 @@ export class SessionManager implements SessionSink {
     this.paneLayout = { ...layout, focusedSessionId: this.paneLayout.focusedSessionId };
     if (!this.disposed) { this.emit({ t: 'layout-changed', layout }); }
     this.schedulePersist();
+  }
+
+  /** Reported by clients; absent until one has, so a spawn before then keeps the old placement. */
+  private gridGeometry: Omit<AutoGridOptions, 'enabled'> | undefined;
+
+  setGridGeometry(geometry: Omit<AutoGridOptions, 'enabled'>): void {
+    this.gridGeometry = geometry;
+  }
+
+  autoGrid(): AutoGridOptions | undefined {
+    return this.gridGeometry ? { enabled: true, ...this.gridGeometry } : undefined;
+  }
+
+  offerRearrange(): void {
+    if (!this.disposed) { this.emit({ t: 'offer-rearrange' }); }
   }
 
   setFocusedPane(id: SessionId): void {

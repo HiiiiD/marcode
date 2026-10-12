@@ -1,6 +1,5 @@
 import * as vscode from 'vscode';
 import { requestAttachmentPath } from '../client-core/attachment-request';
-import { stampHydrate } from '../client-core/hydrate-stamp';
 import type { AgentsMdNudgeController } from './agents-md-nudge';
 import { bindSurface, type SurfaceBinding } from './bind-surface';
 import { trackLayout } from './layout-cache';
@@ -31,8 +30,6 @@ export class PanelViewProvider implements vscode.WebviewViewProvider {
     /** A VS Code setting the daemon cannot see, so it is stamped onto `hydrate` here. Reload to change. */
     private readonly showCacheTimer: boolean = false,
     private readonly themeCss: string = '',
-    /** `layout.autoGrid` from config.json, stamped onto `hydrate` like `showCacheTimer`. */
-    private readonly autoGrid: boolean = false,
   ) {}
 
   post(msg: HostToWebview): void {
@@ -88,7 +85,7 @@ export class PanelViewProvider implements vscode.WebviewViewProvider {
           default: return false;
         }
       },
-      onHostMessage: (m) => (m.t === 'hydrate' ? stampHydrate({ ...m, showCacheTimer: this.showCacheTimer }, { autoGrid: this.autoGrid }) : undefined),
+      onHostMessage: (m) => (m.t === 'hydrate' ? { ...m, showCacheTimer: this.showCacheTimer } : undefined),
       // hydrate resets the nudge card, so the hits go out again after every one (reloads and reconnects included).
       afterHostMessage: (m) => { if (m.t === 'hydrate') { void this.agentsMdNudge?.resend(); } },
       onLink: (link) => {

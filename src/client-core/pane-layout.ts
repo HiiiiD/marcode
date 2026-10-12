@@ -6,7 +6,6 @@
 // Built on the `LayoutNode` tree from `./layout-tree`, which mirrors
 // `PaneLayout` from `protocol/messages.ts` structurally.
 
-import { placeSessionAuto, type AutoGridOptions } from './auto-grid';
 import {
   emptySession, flattenLeaves, leafSessionIds, placeSession, rootOrientation, type FlatLeaf, type LayoutNode,
 } from './layout-tree';
@@ -73,8 +72,6 @@ export interface ReconcileResult {
    * as `knownSessionIds` on the next call (see below).
    */
   knownSessionIds: Set<string>;
-  /** A full hand-made layout took a new session the old way; the client may offer a regrid. */
-  offerRearrange: boolean;
 }
 
 /**
@@ -121,11 +118,10 @@ export interface ReconcileResult {
  */
 export function reconcilePaneLayout(
   root: LayoutNode, roster: ReadonlySet<string>, snapshotArrivedIds: string[], knownSessionIds: ReadonlySet<string>,
-  focusedSessionId: string | null = null, auto?: AutoGridOptions,
+  focusedSessionId: string | null = null,
 ): ReconcileResult {
   let next = root;
   let changed = false;
-  let offerRearrange = false;
   for (const id of leafSessionIds(root)) {
     if (!roster.has(id)) { next = emptySession(next, id); changed = true; }
   }
@@ -136,19 +132,13 @@ export function reconcilePaneLayout(
   );
   for (const id of newlyArrived) {
     changed = true;
-    if (auto) {
-      const placed = placeSessionAuto(next, id, focusedSessionId, rootOrientation(next), auto);
-      next = placed.root;
-      offerRearrange ||= placed.offerRearrange;
-    } else {
-      next = placeSession(next, id, focusedSessionId, rootOrientation(next));
-    }
+    next = placeSession(next, id, focusedSessionId, rootOrientation(next));
   }
 
   const nextKnown = new Set(knownSessionIds);
   for (const id of snapshotArrivedIds) { nextKnown.add(id); }
 
-  return { root: changed ? next : null, knownSessionIds: nextKnown, offerRearrange };
+  return { root: changed ? next : null, knownSessionIds: nextKnown };
 }
 
 export interface TitledSession {

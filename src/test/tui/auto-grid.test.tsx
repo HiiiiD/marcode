@@ -22,37 +22,48 @@ const CUSTOM: LayoutNode = {
 };
 
 const rows = (ids: string[]) => ids.map((id) => summary(id));
-const lastRoot = () => {
-  const last = m!.posted.filter((p) => p.t === 'set-layout').at(-1);
-  if (!last || last.t !== 'set-layout') { throw new Error('no set-layout posted'); }
-  return last.layout.root;
-};
+const layouts = () => m!.posted.flatMap((p) => (p.t === 'set-layout' ? [p.layout.root] : []));
 const ids = (root: LayoutNode) => flattenLeaves(root).map((l) => l.sessionId).filter(Boolean);
 
-async function boot(layout: { root: LayoutNode; presets: [] }, shown: string[], autoGrid: boolean) {
+async function boot(root: LayoutNode, shown: string[]) {
   m = await mount(<App {...props} />, SIZE);
-  await m.fromHost(hydrateMsg({ sessions: rows(shown), layout, snapshots: shown.map((id) => snapshot(id)), autoGrid }));
-  await m.fromHost({ t: 'sessions-changed', sessions: rows([...shown, 'new']) }, { t: 'session-snapshot', session: snapshot('new') });
+  await m.fromHost(hydrateMsg({
+    sessions: rows(shown), layout: { root, presets: [] }, snapshots: shown.map((id) => snapshot(id)),
+  }));
 }
 
-test('a full plain grid is regridded when a session arrives', async () => {
-  const four = ['s1', 's2', 's3', 's4'];
-  await boot({ root: gridLayout(2, 2, four).root, presets: [] }, four, true);
-  expect(gridDims(lastRoot()) !== undefined).toBe(true);
-  expect(ids(lastRoot()).length).toBe(5);
+test('the terminal reports its size with heights doubled for cell shape, and its smallest pane', async () => {
+  await boot(CUSTOM, ['s1', 's2', 's3']);
+  const sent = m!.posted.filter((p) => p.t === 'set-viewport').at(-1);
+  expect(sent?.t === 'set-viewport' && sent.viewport.width).toBe(160);
+  expect(sent?.t === 'set-viewport' && sent.viewport.height).toBe(80);
+  expect(sent?.t === 'set-viewport' && sent.minPane.width).toBe(40);
 });
 
-test('a full custom layout offers a rearrange that ^W a accepts', async () => {
-  await boot({ root: CUSTOM, presets: [] }, ['s1', 's2', 's3'], true);
-  expect(gridDims(lastRoot()) === undefined).toBe(true);
+test('a session the user creates into a full plain grid keeps the old placement', async () => {
+  const four = ['s1', 's2', 's3', 's4'];
+  await boot(gridLayout(2, 2, four).root, four);
+  await m!.fromHost({ t: 'sessions-changed', sessions: rows([...four, 'new']) }, { t: 'session-snapshot', session: snapshot('new') });
+  const root = layouts().at(-1) as LayoutNode;
+  expect(ids(root).length).toBe(5);
+  expect(gridDims(root) === undefined).toBe(true);
+});
+
+test('the host offering a rearrange shows a hint that ^W a accepts', async () => {
+  await boot(CUSTOM, ['s1', 's2', 's3']);
+  await m!.fromHost({ t: 'offer-rearrange' });
   expect(m!.frame()).toContain('^W a');
   await m!.press('w', { ctrl: true });
   await m!.press('a');
-  expect(gridDims(lastRoot()) !== undefined).toBe(true);
-  expect(ids(lastRoot()).length).toBe(4);
+  const root = layouts().at(-1) as LayoutNode;
+  expect(gridDims(root) !== undefined).toBe(true);
+  expect(ids(root).length).toBe(3);
 });
 
-test('with autoGrid off a custom layout offers nothing', async () => {
-  await boot({ root: CUSTOM, presets: [] }, ['s1', 's2', 's3'], false);
-  expect(m!.frame()).not.toContain('^W a');
+test('without an offer ^W a does nothing to the layout', async () => {
+  await boot(CUSTOM, ['s1', 's2', 's3']);
+  const before = layouts().length;
+  await m!.press('w', { ctrl: true });
+  await m!.press('a');
+  expect(layouts().length).toBe(before);
 });
