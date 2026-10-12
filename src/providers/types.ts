@@ -165,6 +165,8 @@ export interface StartOptions {
 export interface SelfControlMcpConfig {
   url: string;
   token: string;
+  /** Whether `target` is the id or name of a session in this roster; lets a provider keep its harness's own messaging tool off them. */
+  isSessionHandle?: (target: string) => boolean;
 }
 
 export type ToolDecision =

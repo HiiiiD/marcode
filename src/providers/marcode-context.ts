@@ -10,8 +10,17 @@ export const MARCODE_INTRO =
   '<marcode-context>You are running inside Marcode, a VS Code extension that hosts you in '
   + 'a resizable split-pane session alongside other concurrent agent sessions.</marcode-context>';
 
-/** Prepends `MARCODE_INTRO` ahead of `body`, once, for a session's first outgoing message. */
-export function withMarcodeIntro(body: string, alreadyIntroduced: boolean, isResume: boolean): string {
+/**
+ * Claude-only addendum: its harness ships a built-in SendMessage/ListAgents that
+ * can reach other Marcode sessions behind the panel's back.
+ */
+export const CLAUDE_INTRO_NOTE =
+  'To message another session use marcode__send_message (find sessions with marcode__list_sessions, '
+  + 'never ListAgents); the built-in SendMessage is only for subagents you spawned yourself.';
+
+/** Prepends `MARCODE_INTRO` (plus an optional provider `note`) ahead of `body`, once, for a session's first outgoing message. */
+export function withMarcodeIntro(body: string, alreadyIntroduced: boolean, isResume: boolean, note?: string): string {
   if (alreadyIntroduced || isResume) { return body; }
-  return `${MARCODE_INTRO}\n\n${body}`;
+  const intro = note ? MARCODE_INTRO.replace('</marcode-context>', ` ${note}</marcode-context>`) : MARCODE_INTRO;
+  return `${intro}\n\n${body}`;
 }

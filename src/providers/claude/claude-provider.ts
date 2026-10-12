@@ -137,6 +137,8 @@ import { authFailureReason } from './auth-failure';
 import { toInvocables } from './map-commands';
 import { toContextBreakdown, toUsageWindows, type ContextUsageLike, type UsageResponseLike } from './map-context';
 import { claudeUsageDelta, mapEvent } from './map-events';
+import { CLAUDE_INTRO_NOTE } from '../marcode-context';
+import { sendMessageDenial } from './send-message-guard';
 import { toPermissionMeta, toQuestionSpecs, toSdkAnswers } from './map-questions';
 import { toToolCall } from './map-tools';
 import { redactSecrets } from './redact';
@@ -591,6 +593,20 @@ export class ClaudeProvider implements AgentProvider {
         // `persistSession: false` also keeps the run out of `~/.claude/projects`, i.e. out of the CLI's own history.
         ...(opts.withoutSelfControl ? { settingSources: [], tools: [], persistSession: false } : {}),
         ...(this.selfControlMcp && !opts.withoutSelfControl ? {
+          hooks: {
+            PreToolUse: [{
+              matcher: 'SendMessage',
+              hooks: [async (hookInput) => {
+                const isSession = this.selfControlMcp?.isSessionHandle;
+                const reason = hookInput.hook_event_name === 'PreToolUse' && isSession
+                  ? sendMessageDenial(hookInput.tool_input, isSession)
+                  : undefined;
+                return reason
+                  ? { hookSpecificOutput: { hookEventName: 'PreToolUse' as const, permissionDecision: 'deny' as const, permissionDecisionReason: reason } }
+                  : {};
+              }],
+            }],
+          },
           mcpServers: {
             marcode_self_control: {
               type: 'http' as const,
@@ -734,7 +750,8 @@ export class ClaudeProvider implements AgentProvider {
           turnGeneration: turnGen,
         });
         ensureStarted();
-        const composed = composePrompt(text, context, bareCommands, introduced, Boolean(opts.resumeToken));
+        const composed = composePrompt(text, context, bareCommands, introduced, Boolean(opts.resumeToken),
+          this.selfControlMcp && !opts.withoutSelfControl ? CLAUDE_INTRO_NOTE : undefined);
         const body = composed.body;
         introduced = composed.introduced;
         const content: ContentBlockParam[] = [
