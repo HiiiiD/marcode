@@ -160,6 +160,8 @@ export interface ClientState {
    * how `enabledProviders` removes a backend rather than graying it out.
    */
   showCacheTimer: boolean;
+  /** `layout.autoGrid`; absent from hydrate reads as off so an uninjected surface keeps the old placement. */
+  autoGrid: boolean;
   /**
    * A tree path the next freshly-created session should be assigned into,
    * rather than appended as a new top-level sibling — set right before
@@ -203,6 +205,7 @@ export const initialState: ClientState = {
   hostLink: 'connected',
   favoriteModels: [],
   showCacheTimer: false,
+  autoGrid: false,
   pendingSlotPath: null,
 };
 
@@ -346,6 +349,7 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
         // field (or a hand-built fixture) has not said otherwise.
         favoriteModels: msg.favoriteModels ?? [],
         showCacheTimer: msg.showCacheTimer ?? false,
+        autoGrid: msg.autoGrid ?? false,
         // Not carried forward, same reasoning as `focusedSessionId`: it
         // names a path into panes hydrate is about to rebuild from scratch,
         // and a session created against a pre-reload path could land

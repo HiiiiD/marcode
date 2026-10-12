@@ -1,15 +1,19 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { Toaster } from '@/components/ui/sonner';
 import { AgentsMdNudgeCard } from './components/agents-md-nudge-card';
 import { HostLinkBanner } from './components/host-link-banner';
 import { PaneGroup } from './components/pane-group';
+import { RearrangeNotice } from './components/rearrange-notice';
 import { SessionPicker } from './components/session-picker';
 import { NARROW_PX, usePanelWidth } from './components/use-is-narrow';
+import { rearrange, type AutoGridOptions } from '../client-core/auto-grid';
 import { assignAt, leafSessionIds } from './components/layout-tree';
 import { reconcilePaneLayout, rosterSessionIds } from './components/pane-layout';
 import { UsageStrip } from './components/usage-strip';
 import { useStore } from './store';
+
+const MIN_PANE = { width: 320, height: 200 };
 
 export function App() {
   const { state, post, setPendingSlot } = useStore();
@@ -26,6 +30,11 @@ export function App() {
   // started at `false`, and the layout must not flash stacked before the
   // first measurement lands.
   const narrow = width > 0 && width < NARROW_PX;
+  const [offerRearrange, setOfferRearrange] = useState(false);
+  // An unmeasured panel has no viewport to fit a grid to, so placement stays the old way until it is.
+  const autoGrid = (): AutoGridOptions => ({
+    enabled: state.autoGrid && width > 0, viewport: { width, height: window.innerHeight }, minPane: MIN_PANE,
+  });
 
   const byIdKeys = Object.keys(state.byId);
   const rosterKey = state.sessions.map((s) => s.id).join(',');
@@ -69,8 +78,10 @@ export function App() {
 
     const result = reconcilePaneLayout(
       root, roster, byIdKeys, knownSessionIdsRef.current, state.focusedSessionId ?? state.layout.focusedSessionId,
+      autoGrid(),
     );
     knownSessionIdsRef.current = result.knownSessionIds;
+    if (result.offerRearrange) { setOfferRearrange(true); }
     if (result.root) {
       post({ t: 'set-layout', layout: { ...state.layout, root: result.root } });
     } else if (filledPendingSlot) {
@@ -118,6 +129,17 @@ export function App() {
               onFleet={() => post({ t: 'open-fleet' })}
               onHistory={() => post({ t: 'open-history' })}
             />
+            {offerRearrange && (
+              <RearrangeNotice
+                onRearrange={() => {
+                  const { viewport, minPane } = autoGrid();
+                  post({ t: 'set-layout', layout: { ...state.layout, root: rearrange(state.layout.root, viewport, minPane) } });
+                  setOfferRearrange(false);
+                }}
+                onKeep={() => setOfferRearrange(false)}
+                onExpand={width < 2 * MIN_PANE.width ? () => post({ t: 'expand-sidebar' }) : undefined}
+              />
+            )}
             <AgentsMdNudgeCard />
             <div className="min-h-0 flex-1">
               <PaneGroup narrow={narrow} />

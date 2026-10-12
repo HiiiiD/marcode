@@ -16,6 +16,7 @@ export interface HostConfig {
   favoriteModels: string[];
   daemon: { enabled: boolean; idleMinutes: number };
   shell: { aliases: ShellAliasTable };
+  layout: { autoGrid: boolean };
   theme: ThemeColors;
 }
 
@@ -36,6 +37,7 @@ export function defaultHostConfig(): HostConfig {
     favoriteModels: [],
     daemon: { enabled: true, idleMinutes: 10 },
     shell: { aliases: { ...DEFAULT_SHELL_ALIASES } },
+    layout: { autoGrid: true },
     theme: {},
   };
 }
@@ -124,6 +126,15 @@ export function parseHostConfig(raw: unknown): { config: HostConfig; warnings: s
         if (typeof m === 'number' && Number.isFinite(m) && m >= 1) { config.daemon.idleMinutes = Math.floor(m); }
         else { warnings.push('config.json: daemon.idleMinutes must be a number of at least 1; using the default.'); }
       }
+    }
+  }
+
+  if (raw.layout !== undefined) {
+    if (!isObject(raw.layout)) {
+      warnings.push('config.json: layout is not an object; using the default.');
+    } else if (raw.layout.autoGrid !== undefined) {
+      if (typeof raw.layout.autoGrid === 'boolean') { config.layout.autoGrid = raw.layout.autoGrid; }
+      else { warnings.push('config.json: layout.autoGrid is not a boolean; using the default.'); }
     }
   }
 

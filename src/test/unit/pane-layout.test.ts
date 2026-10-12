@@ -3,6 +3,7 @@ import {
   accessibleTitles, leafDisplayState, reconcilePaneLayout, rosterSessionIds, visibleLeaves,
 } from '../../webview/components/pane-layout';
 import type { LayoutNode } from '../../webview/components/layout-tree';
+import { gridDims, gridLayout, leafSessionIds } from '../../client-core/layout-tree';
 
 suite('pane-layout rosterSessionIds', () => {
   test('every session id in the roster', () => {
@@ -163,6 +164,39 @@ suite('pane-layout reconcilePaneLayout', () => {
         { kind: 'leaf', sessionId: 'b', size: 100 / 3 },
       ],
     });
+  });
+});
+
+suite('pane-layout reconcilePaneLayout autoGrid', () => {
+  const auto = { enabled: true, viewport: { width: 1800, height: 900 }, minPane: { width: 320, height: 200 } };
+
+  test('a new session regrids a full plain grid and no rearrange is offered', () => {
+    const root = gridLayout(2, 2, ['a', 'b', 'c', 'd']).root;
+    const ids = ['a', 'b', 'c', 'd', 'e'];
+    const result = reconcilePaneLayout(root, new Set(ids), ids, new Set(['a', 'b', 'c', 'd']), null, auto);
+    assert.deepStrictEqual(result.root && gridDims(result.root), { rows: 2, cols: 3 });
+    assert.strictEqual(result.offerRearrange, false);
+  });
+
+  test('a new session in a full custom layout is placed as before and a rearrange is offered', () => {
+    const custom: LayoutNode = {
+      kind: 'split', orientation: 'horizontal', size: 100,
+      children: [
+        { kind: 'leaf', sessionId: 'a', size: 50 },
+        { kind: 'split', orientation: 'vertical', size: 50, children: [
+          { kind: 'leaf', sessionId: 'b', size: 50 }, { kind: 'leaf', sessionId: 'c', size: 50 }] },
+      ],
+    };
+    const ids = ['a', 'b', 'c', 'd'];
+    const result = reconcilePaneLayout(custom, new Set(ids), ids, new Set(['a', 'b', 'c']), null, auto);
+    assert.deepStrictEqual(result.root && leafSessionIds(result.root), ['a', 'b', 'c', 'd']);
+    assert.strictEqual(result.offerRearrange, true);
+  });
+
+  test('without auto options nothing is offered', () => {
+    const root = gridLayout(1, 1, ['a']).root;
+    const result = reconcilePaneLayout(root, new Set(['a', 'b']), ['a', 'b'], new Set(['a']));
+    assert.strictEqual(result.offerRearrange, false);
   });
 });
 

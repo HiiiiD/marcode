@@ -3,6 +3,7 @@ import { createRoot } from '@opentui/react';
 import type { ClientStatus } from '../../daemon-client/daemon-client';
 import { watchConfig } from '../../host/config-file';
 import { bootHost, configChangedNotice, initialNotice, type Booted } from '../boot';
+import { withHydrateStamp } from '../../client-core/hydrate-stamp';
 import { parseArgs, USAGE, type CliCommand } from '../cli';
 import { createShutdown, installExitSignals } from '../shutdown';
 import { runConfig, runDaemonCommand, runLogin, runMigrate } from '../subcommands';
@@ -98,11 +99,12 @@ async function runTui(cmd: Extract<CliCommand, { kind: 'run' }>): Promise<void> 
 
   const live = renderer;
   const detect = () => detectTokens(live, undefined, booted.fileConfig.theme);
+  const transport = withHydrateStamp(booted.loopback.transport, { autoGrid: booted.fileConfig.layout.autoGrid });
   const loginCommands = Object.fromEntries([...booted.loginRecipes].map(([id, r]) => [id, r.command]));
   createRoot(renderer).render(
     <DetectedTokensProvider detect={detect}>
       <TuiThemeProvider>
-        <TuiStoreProvider transport={booted.loopback.transport}>
+        <TuiStoreProvider transport={transport}>
           <App
             launchCwd={booted.launchCwd}
             prompt={cmd.prompt}

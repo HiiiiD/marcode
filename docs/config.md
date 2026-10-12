@@ -94,6 +94,12 @@ Minutes a daemon with no connected client and no running session waits before ex
 
 Default: `10`
 
+## `layout.autoGrid`
+
+When a new session arrives and every pane is taken, rebuild the layout into the grid (rows × columns) that fits the panel best, keeping reading order. A hand-made layout (nested splits) is left alone: the session is placed beside the focused pane as before, and the panel offers to rearrange it into a grid (a notice in VS Code, `^W a` in the terminal). Set to `false` to always place beside the focused pane. A change takes a window reload or a restart of the TUI.
+
+Default: `true`
+
 ## `theme`
 
 Custom colors for the VS Code panels and the terminal client, from one flat set of names. Values are `#rgb` or `#rrggbb`; an unknown key or invalid value is dropped with a warning. A key you leave out keeps today's color (the VS Code theme in the panels, the terminal palette in the TUI). Takes effect after a window reload (restart the TUI).

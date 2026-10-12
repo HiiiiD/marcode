@@ -50,6 +50,7 @@ function describeInbound(m: WebviewToHost): string {
     case 'request-branch-refs': return 'request-branch-refs';
     case 'open-review': return 'open-review';
     case 'open-fleet': return 'open-fleet';
+    case 'expand-sidebar': return 'expand-sidebar';
     case 'focus-session': return 'focus-session';
     case 'focus-pane': return 'focus-pane';
     case 'set-pinned': return 'set-pinned';

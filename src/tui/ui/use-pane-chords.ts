@@ -6,7 +6,7 @@ import { CHORD_MS, chordStep, type PaneAction } from '../view/pane-keys';
 import type { PaneLayoutApi } from './use-pane-layout';
 import { useTuiStore } from './store';
 
-const HINT = '^W: h j k l focus · | - split · m max · = even · H J K L resize · x hide · g layout';
+const HINT = '^W: h j k l focus · | - split · m max · = even · H J K L resize · x hide · g layout · a grid';
 const RESIZE_PCT = 5;
 
 export interface PaneChords {
@@ -36,6 +36,7 @@ export function usePaneChords(c: PaneChords): void {
 
   const run = (action: PaneAction) => {
     if (action.do === 'layout') { c.onOpenLayout(); return; }
+    if (action.do === 'rearrange') { c.layout.rearrangeNow(); return; }
     if (!focusedId) { return; }
     const { layout } = c;
     switch (action.do) {

@@ -80,6 +80,24 @@ suite('host-config', () => {
     assert.strictEqual(b.warnings.length, 2);
   });
 
+  test('layout.autoGrid defaults to on and honours an explicit false', () => {
+    assert.deepStrictEqual(parseHostConfig(undefined).config.layout, { autoGrid: true });
+    assert.deepStrictEqual(parseHostConfig({ layout: { autoGrid: false } }).config.layout, { autoGrid: false });
+  });
+
+  test('a bad layout block warns and keeps autoGrid on', () => {
+    const a = parseHostConfig({ layout: 5 });
+    assert.strictEqual(a.warnings.length, 1);
+    const b = parseHostConfig({ layout: { autoGrid: 'no' } });
+    assert.deepStrictEqual(b.config.layout, { autoGrid: true });
+    assert.strictEqual(b.warnings.length, 1);
+  });
+
+  test('layout.autoGrid is part of the reload signature', () => {
+    const a = defaultHostConfig();
+    assert.notStrictEqual(reloadSignature(a), reloadSignature({ ...a, layout: { autoGrid: false } }));
+  });
+
   test('theme defaults to empty and is parsed from config.json', () => {
     assert.deepStrictEqual(defaultHostConfig().theme, {});
     const { config, warnings } = parseHostConfig({ theme: { primary: '#ABC', nope: '#fff', muted: 'red' } });

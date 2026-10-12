@@ -688,6 +688,8 @@ export type WebviewToHost =
    * `open-review` already gets, and for the same reason.
    */
   | { t: 'open-fleet' }
+  /** Maximize the secondary sidebar so a grid has room for more columns. Handled in `PanelViewProvider`, like `open-fleet`. */
+  | { t: 'expand-sidebar' }
   /**
    * Open one file's change in VS Code's own diff editor. Carries the tree
    * because a repo-relative path is meaningless without it, and the base
@@ -808,7 +810,13 @@ export type HostToWebview =
        * and the reducer treats an absent value as `false`, matching the
        * setting's own default rather than inventing a third state.
        */
-      showCacheTimer?: boolean }
+      showCacheTimer?: boolean;
+      /**
+       * `layout.autoGrid` from config.json. Injected by each client (the
+       * extension's panel provider, the TUI's boot) rather than sent by the
+       * host, so a surface that injects nothing keeps today's placement.
+       */
+      autoGrid?: boolean }
   /**
    * The `marcode.favoriteModels` setting, after `set-favorite-models` wrote
    * it. Broadcast rather than a reply to whichever pane sent it: the New

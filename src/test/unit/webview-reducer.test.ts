@@ -505,6 +505,20 @@ suite('webview reducer', () => {
     assert.deepStrictEqual(withoutList.favoriteModels, []);
   });
 
+  test('hydrate seeds autoGrid, defaulting to false when the client does not inject it', () => {
+    const on = reduce(initialState, {
+      t: 'hydrate', sessions: [], layout: layoutOf([]),
+      snapshots: [], catalog: [], unavailable: [], usage: {}, autoGrid: true,
+    });
+    assert.strictEqual(on.autoGrid, true);
+
+    const off = reduce(initialState, {
+      t: 'hydrate', sessions: [], layout: layoutOf([]),
+      snapshots: [], catalog: [], unavailable: [], usage: {},
+    });
+    assert.strictEqual(off.autoGrid, false);
+  });
+
   test('hydrate seeds showCacheTimer, defaulting to false when the host omits it', () => {
     const on = reduce(initialState, {
       t: 'hydrate', sessions: [], layout: layoutOf([]),

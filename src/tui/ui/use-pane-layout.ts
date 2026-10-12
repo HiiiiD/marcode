@@ -1,6 +1,8 @@
+import { useTerminalDimensions } from '@opentui/react';
 import { useCallback, useEffect, useRef } from 'react';
+import { placeSessionAuto, rearrange, type AutoGridOptions } from '../../client-core/auto-grid';
 import {
-  findPath, leafSessionIds, placeSession, removeSession, rootOrientation, type LayoutNode,
+  findPath, leafSessionIds, removeSession, rootOrientation, type LayoutNode,
 } from '../../client-core/layout-tree';
 import { reconcilePaneLayout, rosterSessionIds } from '../../client-core/pane-layout';
 import { splitAtSession } from '../../client-core/pane-ops';
@@ -9,6 +11,10 @@ import { useTuiStore } from './store';
 
 // An arm older than this was for a session the host never produced; whatever arrives later is not it.
 const ARM_MS = 15_000;
+// A cell is about twice as tall as wide, so heights are doubled to compare like with like against the pixel-shaped scoring.
+const CELL_ASPECT = 2;
+const MIN_PANE = { width: 40, height: 10 * CELL_ASPECT };
+export const REARRANGE_NOTICE = 'Layout is custom — ^W a rearranges it into a grid';
 
 export interface PaneLayoutApi {
   root: LayoutNode;
@@ -21,14 +27,22 @@ export interface PaneLayoutApi {
   applyRoot(root: LayoutNode): void;
   /** The next unseen session was asked for by the user, so it takes focus. */
   expectArrival(): void;
+  /** Regrids every pane in reading order and withdraws the offer. */
+  rearrangeNow(): void;
 }
 
 export function usePaneLayout(): PaneLayoutApi {
-  const { state, post, focus, focusedId, setLocalLayout } = useTuiStore();
-  const root = state.layout.root;
-  const leafIds = leafSessionIds(root);
+  const { state, post, focus, focusedId, setLocalLayout, setNotice } = useTuiStore();
+  const { width, height } = useTerminalDimensions();
   const stateRef = useRef(state);
   stateRef.current = state;
+  const autoGrid = (): AutoGridOptions => ({
+    enabled: stateRef.current.autoGrid,
+    viewport: { width, height: height * CELL_ASPECT },
+    minPane: MIN_PANE,
+  });
+  const root = state.layout.root;
+  const leafIds = leafSessionIds(root);
   const known = useRef<Set<string>>(new Set());
   const split = useRef<{ orientation: 'horizontal' | 'vertical'; until: number } | null>(null);
   const expecting = useRef<number | null>(null);
@@ -52,9 +66,10 @@ export function usePaneLayout(): PaneLayoutApi {
       split.current = null;
     } else {
       const result = reconcilePaneLayout(
-        cur.layout.root, roster, byIdKeys, before, cur.focusedSessionId ?? cur.layout.focusedSessionId,
+        cur.layout.root, roster, byIdKeys, before, cur.focusedSessionId ?? cur.layout.focusedSessionId, autoGrid(),
       );
       known.current = result.knownSessionIds;
+      if (result.offerRearrange) { setNotice(REARRANGE_NOTICE); }
       if (result.root) { applyRoot(result.root); }
     }
     if (arrived.length > 0) {
@@ -71,13 +86,21 @@ export function usePaneLayout(): PaneLayoutApi {
   const placeOrFocus = useCallback((id: SessionId) => {
     const cur = stateRef.current;
     if (findPath(cur.layout.root, id) === undefined) {
-      applyRoot(placeSession(cur.layout.root, id, cur.focusedSessionId, rootOrientation(cur.layout.root)));
+      const placed = placeSessionAuto(cur.layout.root, id, cur.focusedSessionId, rootOrientation(cur.layout.root), autoGrid());
+      applyRoot(placed.root);
+      if (placed.offerRearrange) { setNotice(REARRANGE_NOTICE); }
     }
     focus(id);
   }, [applyRoot, focus]);
 
+  const rearrangeNow = useCallback(() => {
+    const { viewport, minPane } = autoGrid();
+    applyRoot(rearrange(stateRef.current.layout.root, viewport, minPane));
+    setNotice(null);
+  }, [applyRoot, width, height, setNotice]);
+
   return {
-    root, leafIds, placeOrFocus, applyRoot,
+    root, leafIds, placeOrFocus, applyRoot, rearrangeNow,
     hide: (id) => { applyRoot(removeSession(stateRef.current.layout.root, id)); },
     armSplit: (o) => { split.current = o ? { orientation: o, until: Date.now() + ARM_MS } : null; },
     splitArmed: () => split.current !== null && split.current.until > Date.now(),
