@@ -30,7 +30,7 @@ import { resolvePermissionMode } from '../shared/permission-catalog';
 import { threadKey, threadKeyCwd } from '../shared/thread-key';
 import { orderWindows } from '../shared/usage-windows';
 import type { AutoGridOptions } from '../client-core/auto-grid';
-import { emptySession, replaceLeafSession, stripSessionIds } from '../webview/components/layout-tree';
+import { closeSession, replaceLeafSession, stripSessionIds } from '../webview/components/layout-tree';
 import type {
   Attachment,
   ContextResult, HostToWebview, LayoutPreset, McpServerStatus, PaneLayout, PermissionMode, ProviderInfo, SessionId,
@@ -1972,7 +1972,7 @@ export class SessionManager implements SessionSink {
       state.updatedAt = Date.now();
     }
     this.visible.delete(id);
-    this.setLayout({ ...this.paneLayout, root: emptySession(this.paneLayout.root, id) });
+    this.setLayout({ ...this.paneLayout, root: closeSession(this.paneLayout.root, id) });
     if (state && !wasForeign) { await this.digestHidden(id); }
     this.changed();
   }
@@ -2077,7 +2077,7 @@ export class SessionManager implements SessionSink {
     } catch (err) {
       console.error('[mar-code] memory forget failed', err);
     }
-    this.paneLayout = { ...this.paneLayout, root: emptySession(this.paneLayout.root, id) };
+    this.paneLayout = { ...this.paneLayout, root: closeSession(this.paneLayout.root, id) };
     this.changed();
   }
 

@@ -2,7 +2,7 @@ import * as assert from 'assert';
 import {
   emptyRoot, flattenLeaves, leafSessionIds, findPath, slotCount,
   splitAt, assignAt, removeSession, replaceLeafSession, fillShape, stripSessionIds,
-  at, replaceAt, freshTargetPath, emptySession, fillShapeKeepingOverflow, maximizeSizes, gridDims, removeSlotAt, placeSession, gridLayout, swapLeaves,
+  at, replaceAt, freshTargetPath, emptySession, closeSession, fillShapeKeepingOverflow, maximizeSizes, gridDims, removeSlotAt, placeSession, gridLayout, swapLeaves,
 } from '../../webview/components/layout-tree';
 
 suite('layout-tree read helpers', () => {
@@ -411,6 +411,17 @@ suite('layout-tree emptySession', () => {
   test('unknown id is a no-op', () => {
     const root = S('vertical', [L('a'), L('b')]);
     assert.strictEqual(emptySession(root, 'z'), root);
+  });
+});
+
+suite('layout-tree closeSession', () => {
+  test('removes the slot of a non-transient leaf', () => {
+    const root = S('vertical', [L('a', 30), L('b', 20), L('c', 50)]);
+    assert.deepStrictEqual(closeSession(root, 'a'), S('vertical', [L('b', 50), L('c', 50)]));
+  });
+
+  test('collapses to the survivor in a two-child split', () => {
+    assert.deepStrictEqual(closeSession(S('vertical', [L('a'), L('b')]), 'a'), L('b', 100));
   });
 });
 
