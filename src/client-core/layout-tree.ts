@@ -222,6 +222,11 @@ export function emptySession(root: LayoutNode, sessionId: string): LayoutNode {
   return target.transient ? removeSlotAt(emptied, path) : emptied;
 }
 
+/** Closing a session removes its slot too; the last remaining slot stays as an empty root. */
+export function closeSession(root: LayoutNode, sessionId: string): LayoutNode {
+  return removeSession(root, sessionId);
+}
+
 /** Explicit "Remove slot": only an empty non-root leaf can go; the parent collapses like `removeSession`. */
 export function removeSlotAt(root: LayoutNode, path: number[]): LayoutNode {
   const target = at(root, path);

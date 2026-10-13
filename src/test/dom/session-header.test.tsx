@@ -166,7 +166,7 @@ suite("SessionHeader status", () => {
     screen.getByTitle("Session a");
   });
 
-  test("the pane X removes the pane without closing the session", async () => {
+  test("the pane X removes the pane and its slot without closing the session", async () => {
     renderApp();
     hydrateTwoPanes();
 
@@ -177,7 +177,7 @@ suite("SessionHeader status", () => {
     const paneIds = finalLayout.root.kind === "split"
       ? finalLayout.root.children.map((child) => child.kind === "leaf" ? child.sessionId : null)
       : [finalLayout.root.sessionId];
-    assert.deepStrictEqual(paneIds, [null, "b"]);
+    assert.deepStrictEqual(paneIds, ["b"]);
     assert.ok(
       !posted().some((m) => m.t === "close-session"),
       "X means hide; hiding is what makes a session indexable",
