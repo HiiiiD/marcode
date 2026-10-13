@@ -107,9 +107,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@anthropic-ai/sdk@npm:0.132.0":
-  version: 0.132.0
-  resolution: "@anthropic-ai/sdk@npm:0.132.0"
+"@anthropic-ai/sdk@npm:0.133.0":
+  version: 0.133.0
+  resolution: "@anthropic-ai/sdk@npm:0.133.0"
   dependencies:
     json-schema-to-ts: "npm:^3.1.1"
     standardwebhooks: "npm:^1.0.0"
@@ -120,7 +120,7 @@ __metadata:
       optional: true
   bin:
     anthropic-ai-sdk: bin/cli
-  checksum: 10c0/e169ecfbed6124dce903b766ed71338d65e50d6576b5f51f042f73c01a04f8cbb50da081050aa2c494b99e4c1339827fcfc561401b2c2dafdc0369283f393eb7
+  checksum: 10c0/87f93c3bed92732eb739d83a287db2662d239b468a4076ec54897773dd0087675bfee144b60ba8b15a6de017cf74d995537e4adf7b4529b42c58072699114dc9
   languageName: node
   linkType: hard
 
@@ -4575,7 +4575,7 @@ __metadata:
   dependencies:
     "@agentclientprotocol/sdk": "npm:^1.7.0"
     "@anthropic-ai/claude-agent-sdk": "npm:0.3.293"
-    "@anthropic-ai/sdk": "npm:0.132.0"
+    "@anthropic-ai/sdk": "npm:0.133.0"
     "@base-ui/react": "npm:^1.9.0"
     "@headless-tree/core": "npm:1.7.0"
     "@headless-tree/react": "npm:1.7.0"
