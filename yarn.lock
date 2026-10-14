@@ -922,9 +922,23 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@opentui/core-darwin-arm64@npm:0.6.0":
+  version: 0.6.0
+  resolution: "@opentui/core-darwin-arm64@npm:0.6.0"
+  conditions: os=darwin & cpu=arm64
+  languageName: node
+  linkType: hard
+
 "@opentui/core-darwin-x64@npm:0.5.13":
   version: 0.5.13
   resolution: "@opentui/core-darwin-x64@npm:0.5.13"
+  conditions: os=darwin & cpu=x64
+  languageName: node
+  linkType: hard
+
+"@opentui/core-darwin-x64@npm:0.6.0":
+  version: 0.6.0
+  resolution: "@opentui/core-darwin-x64@npm:0.6.0"
   conditions: os=darwin & cpu=x64
   languageName: node
   linkType: hard
@@ -936,9 +950,23 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@opentui/core-linux-arm64-musl@npm:0.6.0":
+  version: 0.6.0
+  resolution: "@opentui/core-linux-arm64-musl@npm:0.6.0"
+  conditions: os=linux & cpu=arm64 & libc=musl
+  languageName: node
+  linkType: hard
+
 "@opentui/core-linux-arm64@npm:0.5.13":
   version: 0.5.13
   resolution: "@opentui/core-linux-arm64@npm:0.5.13"
+  conditions: os=linux & cpu=arm64
+  languageName: node
+  linkType: hard
+
+"@opentui/core-linux-arm64@npm:0.6.0":
+  version: 0.6.0
+  resolution: "@opentui/core-linux-arm64@npm:0.6.0"
   conditions: os=linux & cpu=arm64
   languageName: node
   linkType: hard
@@ -950,9 +978,23 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@opentui/core-linux-x64-musl@npm:0.6.0":
+  version: 0.6.0
+  resolution: "@opentui/core-linux-x64-musl@npm:0.6.0"
+  conditions: os=linux & cpu=x64 & libc=musl
+  languageName: node
+  linkType: hard
+
 "@opentui/core-linux-x64@npm:0.5.13":
   version: 0.5.13
   resolution: "@opentui/core-linux-x64@npm:0.5.13"
+  conditions: os=linux & cpu=x64
+  languageName: node
+  linkType: hard
+
+"@opentui/core-linux-x64@npm:0.6.0":
+  version: 0.6.0
+  resolution: "@opentui/core-linux-x64@npm:0.6.0"
   conditions: os=linux & cpu=x64
   languageName: node
   linkType: hard
@@ -964,9 +1006,23 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@opentui/core-win32-arm64@npm:0.6.0":
+  version: 0.6.0
+  resolution: "@opentui/core-win32-arm64@npm:0.6.0"
+  conditions: os=win32 & cpu=arm64
+  languageName: node
+  linkType: hard
+
 "@opentui/core-win32-x64@npm:0.5.13":
   version: 0.5.13
   resolution: "@opentui/core-win32-x64@npm:0.5.13"
+  conditions: os=win32 & cpu=x64
+  languageName: node
+  linkType: hard
+
+"@opentui/core-win32-x64@npm:0.6.0":
+  version: 0.6.0
+  resolution: "@opentui/core-win32-x64@npm:0.6.0"
   conditions: os=win32 & cpu=x64
   languageName: node
   linkType: hard
@@ -1011,17 +1067,57 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@opentui/react@npm:0.5.13":
-  version: 0.5.13
-  resolution: "@opentui/react@npm:0.5.13"
+"@opentui/core@npm:0.6.0":
+  version: 0.6.0
+  resolution: "@opentui/core@npm:0.6.0"
   dependencies:
-    "@opentui/core": "npm:0.5.13"
+    "@opentui/core-darwin-arm64": "npm:0.6.0"
+    "@opentui/core-darwin-x64": "npm:0.6.0"
+    "@opentui/core-linux-arm64": "npm:0.6.0"
+    "@opentui/core-linux-arm64-musl": "npm:0.6.0"
+    "@opentui/core-linux-x64": "npm:0.6.0"
+    "@opentui/core-linux-x64-musl": "npm:0.6.0"
+    "@opentui/core-win32-arm64": "npm:0.6.0"
+    "@opentui/core-win32-x64": "npm:0.6.0"
+    bun-ffi-structs: "npm:0.3.1"
+    diff: "npm:9.0.0"
+    marked: "npm:17.0.1"
+    string-width: "npm:7.2.0"
+    strip-ansi: "npm:7.1.2"
+  peerDependencies:
+    web-tree-sitter: 0.25.10
+  dependenciesMeta:
+    "@opentui/core-darwin-arm64":
+      optional: true
+    "@opentui/core-darwin-x64":
+      optional: true
+    "@opentui/core-linux-arm64":
+      optional: true
+    "@opentui/core-linux-arm64-musl":
+      optional: true
+    "@opentui/core-linux-x64":
+      optional: true
+    "@opentui/core-linux-x64-musl":
+      optional: true
+    "@opentui/core-win32-arm64":
+      optional: true
+    "@opentui/core-win32-x64":
+      optional: true
+  checksum: 10c0/ba133b30df651cac1e25bdcb99283f2444d15121b016d2c0e4f5e04cbbc1a2e13545b0985f1f3193d8b4cc04da2c7f0282ab351d8d3930de4a0feab8a81f0a6d
+  languageName: node
+  linkType: hard
+
+"@opentui/react@npm:0.6.0":
+  version: 0.6.0
+  resolution: "@opentui/react@npm:0.6.0"
+  dependencies:
+    "@opentui/core": "npm:0.6.0"
     react-reconciler: "npm:^0.33.0"
   peerDependencies:
     react: ">=19.2.0"
     react-devtools-core: ^7.0.1
     ws: ^8.18.0
-  checksum: 10c0/5a2026579fe7ae658c5487e78d90a875805085ffd94a3f23caf3d43256231c1f1139e0e65063c9ae916df691eabb13f130bc3e5e6d889179b8917456144a99a2
+  checksum: 10c0/b7b19c839e397f1087d469143ff6e24f089f817277c79f22d43d4a827a019aed81933d32de0f755d3d2a9e030077b5567d3b2ea536fe671427800855d969ce41
   languageName: node
   linkType: hard
 
@@ -4584,7 +4680,7 @@ __metadata:
     "@modelcontextprotocol/server": "npm:^2.3.1"
     "@opencode-ai/sdk": "npm:^1.18.35"
     "@opentui/core": "npm:0.5.13"
-    "@opentui/react": "npm:0.5.13"
+    "@opentui/react": "npm:0.6.0"
     "@shadcn/react": "npm:^0.3.1"
     "@tailwindcss/cli": "npm:^4.3.3"
     "@testing-library/dom": "npm:^10.4.2"
