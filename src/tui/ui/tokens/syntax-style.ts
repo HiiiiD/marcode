@@ -1,8 +1,8 @@
-import { SyntaxStyle } from '@opentui/core';
+import { SyntaxStyle, type NativeResourceOwner } from '@opentui/core';
 import type { TuiTokens } from './derive-tokens';
 
-export function buildSyntaxStyle(t: TuiTokens | undefined): SyntaxStyle {
-  if (!t) { return SyntaxStyle.create(); }
+export function buildSyntaxStyle(t: TuiTokens | undefined, owner: NativeResourceOwner): SyntaxStyle {
+  if (!t) { return SyntaxStyle.create(owner); }
   const { syntax: s, markdown: md } = t;
   return SyntaxStyle.fromStyles({
     default: { fg: t.text },
@@ -23,5 +23,5 @@ export function buildSyntaxStyle(t: TuiTokens | undefined): SyntaxStyle {
     'markup.link': { fg: md.link },
     'markup.link.url': { fg: md.link, underline: true },
     'markup.quote': { fg: md.quote, italic: true },
-  });
+  }, owner);
 }
