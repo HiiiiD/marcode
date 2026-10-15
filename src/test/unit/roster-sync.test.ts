@@ -123,6 +123,13 @@ suite('mergeRoster', () => {
     assert.strictEqual(updated.update[0].status, 'idle');
   });
 
+  test('an unleased awaiting row drops its waitingOn along with its status', () => {
+    const r = mergeRoster({
+      ours: new Map(), disk: [s('a', { status: 'awaiting-approval', waitingOn: 'question' })], owners: new Map(), knownOnDisk: new Set(),
+    });
+    assert.strictEqual(r.adopt[0].waitingOn, undefined);
+  });
+
   test('a free row taken from disk settles: a second merge reports no change', () => {
     const local = s('a', { title: 'old', updatedAt: 1 });
     const disk = [s('a', { title: 'new', updatedAt: 5, status: 'running' })];

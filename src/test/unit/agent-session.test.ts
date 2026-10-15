@@ -1728,6 +1728,12 @@ suite('AgentSession activityLabel', () => {
     await session.dispose();
   });
 
+  test('a restored state does not carry a stale waitingOn', async () => {
+    const session = new AgentSession({ ...baseState(), waitingOn: 'question' }, new FakeProvider(() => []), store, sink);
+    assert.strictEqual(session.state.waitingOn, undefined);
+    await session.dispose();
+  });
+
   test('returns to Idle once the turn ends', async () => {
     const provider = new FakeProvider(() => [
       { kind: 'tool-start', id: 't1', tool: { kind: 'command', label: 'Bash', command: 'ls' } },

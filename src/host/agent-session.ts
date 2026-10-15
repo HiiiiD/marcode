@@ -269,6 +269,7 @@ export class AgentSession {
     });
     this._state.activityLabel = this.activityLabelFor(this._state.status);
     delete this._state.backgroundTasks;
+    delete this._state.waitingOn;
   }
 
   get state(): SessionState { return this._state; }
