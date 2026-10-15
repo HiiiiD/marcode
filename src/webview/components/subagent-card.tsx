@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { ChevronRightIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import {
+  TraceCollapsible, TraceCollapsibleContent, TraceCollapsibleTrigger,
+} from '@/components/ui/trace';
 import { cn } from '@/lib/utils';
 import { PermissionCard } from './permission-card';
 import { ToolCard } from './tool-card';
@@ -44,9 +45,8 @@ export function SubagentCard({ item, sessionId }: { item: ToolItem; sessionId: S
 
   return (
     <TranscriptItemShell role="subagent" label="Subagent" ts={item.ts}>
-      <Collapsible
+      <TraceCollapsible
         open={expanded}
-        className="rounded border border-border text-xs"
         onOpenChange={(next) => {
           setOpen(next);
           // Only a collapse that actually overrides a force-open (i.e. the
@@ -56,22 +56,7 @@ export function SubagentCard({ item, sessionId }: { item: ToolItem; sessionId: S
           if (!next && summary.blocked) { setManuallyCollapsed(true); }
         }}
       >
-        <CollapsibleTrigger
-          render={
-            // Matches tool-card.tsx: override the size variant's gap/padding
-            // and justification, never its height.
-            <Button
-              variant="ghost"
-              size="sm"
-              className="flex w-full items-center justify-start gap-2 px-2 font-normal"
-            />
-          }
-        >
-          <ChevronRightIcon
-            aria-hidden
-            className={cn('shrink-0 transition-transform duration-200', expanded && 'rotate-90')}
-          />
-
+        <TraceCollapsibleTrigger className="w-full flex-none">
           <span className="truncate font-medium">{subagentLabel(item)}</span>
           <span className="shrink-0 text-muted-foreground">
             {isBackgroundDispatch(item) ? (
@@ -111,10 +96,10 @@ export function SubagentCard({ item, sessionId }: { item: ToolItem; sessionId: S
               Needs you
             </span>
           )}
-        </CollapsibleTrigger>
+        </TraceCollapsibleTrigger>
 
-        <CollapsibleContent>
-          <div className="border-t border-border px-2 py-1">
+        <TraceCollapsibleContent className="py-1">
+          <div>
             {/*
               "Open full transcript" used to appear only once the inline
               window truncated something — but it doesn't just show more
@@ -151,8 +136,8 @@ export function SubagentCard({ item, sessionId }: { item: ToolItem; sessionId: S
               )}
             </div>
           </div>
-        </CollapsibleContent>
-      </Collapsible>
+        </TraceCollapsibleContent>
+      </TraceCollapsible>
     </TranscriptItemShell>
   );
 }

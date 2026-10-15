@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
 import {
-  BotIcon, ChevronRightIcon, FilePenIcon, FilePlusIcon, FileTextIcon,
+  BotIcon, FilePenIcon, FilePlusIcon, FileTextIcon,
   FolderSearchIcon, GitForkIcon, GlobeIcon, ImageIcon, ListTodoIcon, Loader2Icon, SearchIcon,
   SendIcon, TerminalIcon, WrenchIcon,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import {
+  TraceCollapsible, TraceCollapsibleContent, TraceCollapsibleTrigger,
+} from '@/components/ui/trace';
 import { cn } from '@/lib/utils';
 import type { TranscriptItem } from '../../protocol/messages';
 import { ToolBody } from './tool-body';
@@ -65,19 +67,9 @@ export function ToolCard({
     // toggle below IS a button, and a fork button placed inside it would be
     // interactive-inside-interactive — the same trap the roster row's own
     // actions trigger sits beside its checkbox item to avoid, not inside it.
-    <Collapsible open={open} onOpenChange={setOpen} className="group/item my-0 rounded border border-border text-xs">
+    <TraceCollapsible open={open} onOpenChange={setOpen} className="group/item my-0">
       <div className="flex items-center">
-        <CollapsibleTrigger
-          render={
-            // `gap-2`/`px-2`/`justify-start` override `size="sm"`'s own gap/px —
-            // the fixed h-7 the variant sets is kept, not hand-written.
-            <Button
-              variant="ghost"
-              size="sm"
-              className="flex min-w-0 flex-1 items-center justify-start gap-2 px-2 font-normal"
-            />
-          }
-        >
+        <TraceCollapsibleTrigger>
           <Glyph
             aria-hidden
             className={cn(
@@ -111,15 +103,7 @@ export function ToolCard({
               failed
             </span>
           )}
-          <ChevronRightIcon
-            aria-hidden
-            className={cn(
-              'shrink-0 text-muted-foreground transition-transform duration-200',
-              item.state !== 'error' && 'ml-auto',
-              open && 'rotate-90',
-            )}
-          />
-        </CollapsibleTrigger>
+        </TraceCollapsibleTrigger>
 
         {onFork && (
           <Button
@@ -135,8 +119,7 @@ export function ToolCard({
         )}
       </div>
 
-      <CollapsibleContent>
-        <div className="flex flex-col gap-1.5 border-t border-border px-2 py-1.5">
+      <TraceCollapsibleContent className="flex flex-col gap-1.5">
           <ToolBody blocks={input} />
           {output.length > 0 && (
             <div className="flex flex-col gap-1.5">
@@ -149,8 +132,7 @@ export function ToolCard({
           {item.state === 'running' && (
             <p className="text-muted-foreground">Running…</p>
           )}
-        </div>
-      </CollapsibleContent>
-    </Collapsible>
+      </TraceCollapsibleContent>
+    </TraceCollapsible>
   );
 }
