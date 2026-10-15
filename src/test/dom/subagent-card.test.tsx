@@ -55,7 +55,7 @@ suite('SubagentCard', () => {
     renderWithStore(<SubagentCard item={subagent([child('c1', 'Read')])} sessionId="s1" />);
     await userEvent.click(screen.getByRole('button', { expanded: false }));
 
-    const panel = document.getElementById('subagent-task1');
+    const panel = document.getElementById(screen.getByRole('button', { expanded: true }).getAttribute('aria-controls')!);
     assert.ok(panel);
     assert.ok(within(panel!).getByText('Read'));
   });

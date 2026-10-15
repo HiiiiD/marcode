@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { ChevronDownIcon, ChevronRightIcon } from 'lucide-react';
+import { ChevronRightIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { cn } from '@/lib/utils';
 import { PermissionCard } from './permission-card';
 import { ToolCard } from './tool-card';
@@ -40,30 +41,37 @@ export function SubagentCard({ item, sessionId }: { item: ToolItem; sessionId: S
   // collapsed, and the header keeps reporting the block, so the card never
   // fights them.
   const expanded = open || (summary.blocked && !manuallyCollapsed);
-  const panelId = `subagent-${item.toolId}`;
 
   return (
     <TranscriptItemShell role="subagent" label="Subagent" ts={item.ts}>
-      <div className="rounded border border-border text-xs">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => {
-            const next = !expanded;
-            setOpen(next);
-            // Only a collapse that actually overrides a force-open (i.e. the
-            // card is blocked right now) should suppress future force-opens.
-            // Collapsing an unblocked running card is just tidying up and
-            // must not silence a permission that arrives later.
-            if (!next && summary.blocked) { setManuallyCollapsed(true); }
-          }}
-          aria-expanded={expanded}
-          aria-controls={panelId}
-          // Matches tool-card.tsx: override the size variant's gap/padding
-          // and justification, never its height.
-          className="flex w-full items-center justify-start gap-2 px-2 font-normal"
+      <Collapsible
+        open={expanded}
+        className="rounded border border-border text-xs"
+        onOpenChange={(next) => {
+          setOpen(next);
+          // Only a collapse that actually overrides a force-open (i.e. the
+          // card is blocked right now) should suppress future force-opens.
+          // Collapsing an unblocked running card is just tidying up and
+          // must not silence a permission that arrives later.
+          if (!next && summary.blocked) { setManuallyCollapsed(true); }
+        }}
+      >
+        <CollapsibleTrigger
+          render={
+            // Matches tool-card.tsx: override the size variant's gap/padding
+            // and justification, never its height.
+            <Button
+              variant="ghost"
+              size="sm"
+              className="flex w-full items-center justify-start gap-2 px-2 font-normal"
+            />
+          }
         >
-          {expanded ? <ChevronDownIcon aria-hidden /> : <ChevronRightIcon aria-hidden />}
+          <ChevronRightIcon
+            aria-hidden
+            className={cn('shrink-0 transition-transform duration-200', expanded && 'rotate-90')}
+          />
+
           <span className="truncate font-medium">{subagentLabel(item)}</span>
           <span className="shrink-0 text-muted-foreground">
             {isBackgroundDispatch(item) ? (
@@ -103,10 +111,10 @@ export function SubagentCard({ item, sessionId }: { item: ToolItem; sessionId: S
               Needs you
             </span>
           )}
-        </Button>
+        </CollapsibleTrigger>
 
-        {expanded && (
-          <div id={panelId} className="border-t border-border px-2 py-1">
+        <CollapsibleContent>
+          <div className="border-t border-border px-2 py-1">
             {/*
               "Open full transcript" used to appear only once the inline
               window truncated something — but it doesn't just show more
@@ -143,8 +151,8 @@ export function SubagentCard({ item, sessionId }: { item: ToolItem; sessionId: S
               )}
             </div>
           </div>
-        )}
-      </div>
+        </CollapsibleContent>
+      </Collapsible>
     </TranscriptItemShell>
   );
 }

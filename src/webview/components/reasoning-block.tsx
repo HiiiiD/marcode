@@ -1,7 +1,10 @@
-import { useId, useState } from 'react';
-import { ChevronDownIcon, ChevronRightIcon } from 'lucide-react';
+import { useState } from 'react';
+import { ChevronRightIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { cn } from '@/lib/utils';
+import { InlineMarkdown } from './inline-markdown';
+import { Markdown } from './markdown';
 
 /**
  * The first line worth showing. Reasoning routinely starts with a blank line
@@ -34,35 +37,35 @@ function preview(text: string): string {
  */
 export function ReasoningBlock({ text }: { text: string }) {
   const [open, setOpen] = useState(false);
-  const bodyId = useId();
-  const Chevron = open ? ChevronDownIcon : ChevronRightIcon;
 
   return (
-    <div className="mb-1 text-xs">
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-        aria-controls={bodyId}
-        // gap/px/justify override `size="sm"`'s own, keeping the h-7 the
-        // variant sets rather than hand-writing a height — the same
-        // discipline as the tool-card header this borrows its shape from.
-        className="flex w-full items-center justify-start gap-1.5 px-1 font-normal"
+    <Collapsible open={open} onOpenChange={setOpen} className="mb-1 text-xs">
+      <CollapsibleTrigger
+        render={
+          // gap/px/justify override `size="sm"`'s own, keeping the h-7 the
+          // variant sets rather than hand-writing a height.
+          <Button
+            variant="ghost"
+            size="sm"
+            className="flex w-full items-center justify-start gap-1.5 px-1 font-normal"
+          />
+        }
       >
-        <Chevron aria-hidden className="shrink-0 text-muted-foreground" />
+        <ChevronRightIcon
+          aria-hidden
+          className={cn('shrink-0 text-muted-foreground transition-transform duration-200', open && 'rotate-90')}
+        />
         <span className="shrink-0 font-medium">Reasoning</span>
-        <span className="min-w-0 truncate text-muted-foreground italic">{preview(text)}</span>
-      </Button>
+        <span className="min-w-0 truncate text-muted-foreground italic">
+          <InlineMarkdown>{preview(text)}</InlineMarkdown>
+        </span>
+      </CollapsibleTrigger>
 
-      {open && (
-        <div
-          id={bodyId}
-          className="max-h-48 overflow-auto border-l border-border pl-2 wrap-break-word whitespace-pre-wrap text-muted-foreground italic"
-        >
-          {text}
+      <CollapsibleContent>
+        <div className="max-h-48 overflow-auto border-l border-border pl-2 text-muted-foreground">
+          <Markdown>{text}</Markdown>
         </div>
-      )}
-    </div>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
