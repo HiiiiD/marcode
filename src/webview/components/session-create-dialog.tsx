@@ -102,6 +102,7 @@ export function SessionCreateDialog({
   catalog,
   initial,
   seedable,
+  initialSeed,
   busy,
   onCreate,
 }: {
@@ -112,6 +113,8 @@ export function SessionCreateDialog({
   initial: CreateSettings;
   /** True for the handoff dialog: adds the first-message field and relabels. */
   seedable?: boolean;
+  /** Prefills the first-message field each time the dialog opens. */
+  initialSeed?: string;
   /** A handoff summary is in flight: the form is locked and the button says so. */
   busy?: boolean;
   onCreate: (
@@ -138,6 +141,7 @@ export function SessionCreateDialog({
             catalog={catalog}
             initial={initial}
             seedable={seedable}
+            initialSeed={initialSeed}
             busy={busy}
             onCreate={onCreate}
           />
@@ -151,12 +155,14 @@ function CreateForm({
   catalog,
   initial,
   seedable,
+  initialSeed,
   busy,
   onCreate,
 }: {
   catalog: ProviderInfo[];
   initial: CreateSettings;
   seedable?: boolean;
+  initialSeed?: string;
   busy?: boolean;
   onCreate: (
     settings: CreateSettings, seed?: string, worktree?: { branch: string; base?: string },
@@ -166,7 +172,7 @@ function CreateForm({
   const { state, post } = useStore();
   const [picked, setPicked] = useState(valueOf(initial.providerId, initial.model));
   const [mode, setMode] = useState<PermissionMode>(initial.mode);
-  const [seedText, setSeedText] = useState("");
+  const [seedText, setSeedText] = useState(initialSeed ?? "");
   const [includeSummary, setIncludeSummary] = useState(true);
   const [branch, setBranch] = useState("");
   const [base, setBase] = useState("");

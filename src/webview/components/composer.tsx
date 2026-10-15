@@ -68,6 +68,7 @@ export function Composer({
   // action branch has somewhere to signal it opened.
   const [handoffOpen, setHandoffOpen] = useState(false);
   const [handoffBusy, setHandoffBusy] = useState(false);
+  const [handoffSeed, setHandoffSeed] = useState("");
   const handoffPhase = state.handoffPhase[pane.summary.id];
   // Keyed on the phase changing, not on `handoffBusy`: a stale 'done' from an earlier handoff must not close a new dialog.
   useEffect(() => {
@@ -232,6 +233,7 @@ export function Composer({
       // An action row inserts no token: it opens a dialog instead of
       // referencing anything. Strip the query the user typed to get there.
       setText(spliceMention(text, refHit.start, caret, '').text);
+      setHandoffSeed("");
       setHandoffOpen(true);
       return;
     }
@@ -266,6 +268,16 @@ export function Composer({
     // would print the same numbers as a wall of transcript text under the
     // dialog that already shows them. The box is still cleared, so the
     // command behaves like any other submission.
+    const handoffMatch = /^@handoff(?:\s+([\s\S]*))?$/.exec(trimmed);
+    if (handoffSettings !== undefined && handoffMatch) {
+      setHandoffSeed(handoffMatch[1]?.trim() ?? "");
+      setText("");
+      setGhost("");
+      setRefs([]);
+      refMenu.reset();
+      setHandoffOpen(true);
+      return;
+    }
     const shellCommand = parseShellCommand(trimmed);
     if (shellCommand !== undefined) {
       post({ t: "run-shell", id: pane.summary.id, command: shellCommand });
@@ -746,6 +758,7 @@ export function Composer({
           catalog={state.catalog}
           initial={handoffSettings}
           seedable
+          initialSeed={handoffSeed}
           busy={handoffBusy}
           onCreate={(chosen, seed, worktree, includeSummary) => {
             const pruned = pruneMentions(seed ?? "", refs);

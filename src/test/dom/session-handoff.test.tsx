@@ -309,6 +309,31 @@ suite('session handoff', () => {
     assert.strictEqual(sent.seed?.refs, undefined);
   });
 
+  test('a typed @handoff with text opens the dialog prefilled and sends nothing to the model', () => {
+    renderApp();
+    hydrateTwoSessions();
+
+    const box = messageBox();
+    fireEvent.change(box, { target: { value: '@handoff fix the flaky test' } });
+    fireEvent.keyDown(box, { key: 'Enter' });
+
+    assert.strictEqual(posted().filter((m) => m.t === 'send').length, 0);
+    assert.strictEqual((screen.getByLabelText('First message') as HTMLTextAreaElement).value, 'fix the flaky test');
+    assert.strictEqual((box as HTMLTextAreaElement).value, '');
+  });
+
+  test('a typed bare @handoff opens the dialog with an empty seed', () => {
+    renderApp();
+    hydrateTwoSessions();
+
+    const box = messageBox();
+    fireEvent.change(box, { target: { value: '@handoff ' } });
+    fireEvent.keyDown(box, { key: 'Enter' });
+
+    assert.strictEqual(posted().filter((m) => m.t === 'send').length, 0);
+    assert.strictEqual((screen.getByLabelText('First message') as HTMLTextAreaElement).value, '');
+  });
+
   function openHandoff(): void {
     const box = messageBox();
     fireEvent.change(box, { target: { value: '@hand' } });
