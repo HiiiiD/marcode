@@ -52,6 +52,8 @@ export async function mount(ui: ReactNode, size = { width: 100, height: 30 }, op
     );
   });
   await setup.renderOnce();
+  // OpenTUI 0.6 fires onSizeChange inside the first frame; the state it sets needs a second one.
+  await setup.renderOnce();
   actEnv(true);
   const settle = async (fn: () => void | Promise<void>) => {
     await act(async () => { await fn(); });
