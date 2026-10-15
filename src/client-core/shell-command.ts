@@ -5,3 +5,9 @@ export function parseShellCommand(text: string): string | undefined {
   const rest = t.slice(1);
   return /^\s|^!/.test(rest) ? undefined : rest;
 }
+
+/** True from the first `!`, before a command exists — drives the cue, not submission. */
+export function isShellPrefix(text: string): boolean {
+  const t = text.trimStart();
+  return t[0] === '!' && t[1] !== '!' && !/^!\s/.test(t);
+}

@@ -8,7 +8,7 @@ import { Clock, Loader, Paperclip, SendHorizontal, Square, TriangleAlert, X } fr
 import { useEffect, useRef, useState } from "react";
 import type { Invocable, ModelInfo } from "../../protocol/messages";
 import { fileMentions, fileRefsOf, type FileMentionPayload } from "../../client-core/mentions/file-mentions";
-import { parseShellCommand } from "../../client-core/shell-command";
+import { isShellPrefix, parseShellCommand } from "../../client-core/shell-command";
 import { interceptFor } from "../lib/intercepts";
 import { insertionFor, menuQuery, menuView } from "../../client-core/invocables/invocable-menu";
 import { expandedDisplayName, sortFavoritesFirst } from "../../shared/model-catalog";
@@ -190,7 +190,7 @@ export function Composer({
     )
     : [];
   const refListId = `session-refs-${pane.summary.id}`;
-  const shellMode = parseShellCommand(text) !== undefined;
+  const shellMode = isShellPrefix(text);
   const refMenu = useMentionMenu({
     triggered: refHit !== undefined && !shellMode,
     rows: refRows,
