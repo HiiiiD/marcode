@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { ChevronRightIcon } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { cn } from '@/lib/utils';
+import {
+  TraceCollapsible, TraceCollapsibleContent, TraceCollapsibleTrigger,
+  TraceDescription, TraceLine, TraceTitle,
+} from '@/components/ui/trace';
 import { InlineMarkdown } from './inline-markdown';
 import { Markdown } from './markdown';
 
@@ -39,33 +39,19 @@ export function ReasoningBlock({ text }: { text: string }) {
   const [open, setOpen] = useState(false);
 
   return (
-    <Collapsible open={open} onOpenChange={setOpen} className="mb-1 text-xs">
-      <CollapsibleTrigger
-        render={
-          // gap/px/justify override `size="sm"`'s own, keeping the h-7 the
-          // variant sets rather than hand-writing a height.
-          <Button
-            variant="ghost"
-            size="sm"
-            className="flex w-full items-center justify-start gap-1.5 px-1 font-normal"
-          />
-        }
-      >
-        <ChevronRightIcon
-          aria-hidden
-          className={cn('shrink-0 text-muted-foreground transition-transform duration-200', open && 'rotate-90')}
-        />
-        <span className="shrink-0 font-medium">Reasoning</span>
-        <span className="min-w-0 truncate text-muted-foreground italic">
-          <InlineMarkdown>{preview(text)}</InlineMarkdown>
-        </span>
-      </CollapsibleTrigger>
+    <TraceCollapsible open={open} onOpenChange={setOpen} className="mb-1 rounded-none border-0">
+      <TraceCollapsibleTrigger className="h-6 w-fit max-w-full flex-none gap-1.5 px-0 text-muted-foreground hover:bg-transparent hover:text-foreground">
+        <TraceLine>
+          <TraceTitle className="shrink-0 font-medium">Reasoning</TraceTitle>
+          <TraceDescription className="min-w-0 shrink truncate italic">
+            <InlineMarkdown>{preview(text)}</InlineMarkdown>
+          </TraceDescription>
+        </TraceLine>
+      </TraceCollapsibleTrigger>
 
-      <CollapsibleContent>
-        <div className="max-h-48 overflow-auto border-l border-border pl-2 text-muted-foreground">
-          <Markdown>{text}</Markdown>
-        </div>
-      </CollapsibleContent>
-    </Collapsible>
+      <TraceCollapsibleContent className="mt-1 ml-2 max-h-48 overflow-auto border-t-0 border-l px-0 pl-3 py-0 text-muted-foreground">
+        <Markdown>{text}</Markdown>
+      </TraceCollapsibleContent>
+    </TraceCollapsible>
   );
 }
