@@ -915,79 +915,78 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@opentui/core-darwin-arm64@npm:0.5.13":
-  version: 0.5.13
-  resolution: "@opentui/core-darwin-arm64@npm:0.5.13"
+"@opentui/core-darwin-arm64@npm:0.6.6":
+  version: 0.6.6
+  resolution: "@opentui/core-darwin-arm64@npm:0.6.6"
   conditions: os=darwin & cpu=arm64
   languageName: node
   linkType: hard
 
-"@opentui/core-darwin-x64@npm:0.5.13":
-  version: 0.5.13
-  resolution: "@opentui/core-darwin-x64@npm:0.5.13"
+"@opentui/core-darwin-x64@npm:0.6.6":
+  version: 0.6.6
+  resolution: "@opentui/core-darwin-x64@npm:0.6.6"
   conditions: os=darwin & cpu=x64
   languageName: node
   linkType: hard
 
-"@opentui/core-linux-arm64-musl@npm:0.5.13":
-  version: 0.5.13
-  resolution: "@opentui/core-linux-arm64-musl@npm:0.5.13"
+"@opentui/core-linux-arm64-musl@npm:0.6.6":
+  version: 0.6.6
+  resolution: "@opentui/core-linux-arm64-musl@npm:0.6.6"
   conditions: os=linux & cpu=arm64 & libc=musl
   languageName: node
   linkType: hard
 
-"@opentui/core-linux-arm64@npm:0.5.13":
-  version: 0.5.13
-  resolution: "@opentui/core-linux-arm64@npm:0.5.13"
+"@opentui/core-linux-arm64@npm:0.6.6":
+  version: 0.6.6
+  resolution: "@opentui/core-linux-arm64@npm:0.6.6"
   conditions: os=linux & cpu=arm64
   languageName: node
   linkType: hard
 
-"@opentui/core-linux-x64-musl@npm:0.5.13":
-  version: 0.5.13
-  resolution: "@opentui/core-linux-x64-musl@npm:0.5.13"
+"@opentui/core-linux-x64-musl@npm:0.6.6":
+  version: 0.6.6
+  resolution: "@opentui/core-linux-x64-musl@npm:0.6.6"
   conditions: os=linux & cpu=x64 & libc=musl
   languageName: node
   linkType: hard
 
-"@opentui/core-linux-x64@npm:0.5.13":
-  version: 0.5.13
-  resolution: "@opentui/core-linux-x64@npm:0.5.13"
+"@opentui/core-linux-x64@npm:0.6.6":
+  version: 0.6.6
+  resolution: "@opentui/core-linux-x64@npm:0.6.6"
   conditions: os=linux & cpu=x64
   languageName: node
   linkType: hard
 
-"@opentui/core-win32-arm64@npm:0.5.13":
-  version: 0.5.13
-  resolution: "@opentui/core-win32-arm64@npm:0.5.13"
+"@opentui/core-win32-arm64@npm:0.6.6":
+  version: 0.6.6
+  resolution: "@opentui/core-win32-arm64@npm:0.6.6"
   conditions: os=win32 & cpu=arm64
   languageName: node
   linkType: hard
 
-"@opentui/core-win32-x64@npm:0.5.13":
-  version: 0.5.13
-  resolution: "@opentui/core-win32-x64@npm:0.5.13"
+"@opentui/core-win32-x64@npm:0.6.6":
+  version: 0.6.6
+  resolution: "@opentui/core-win32-x64@npm:0.6.6"
   conditions: os=win32 & cpu=x64
   languageName: node
   linkType: hard
 
-"@opentui/core@npm:0.5.13":
-  version: 0.5.13
-  resolution: "@opentui/core@npm:0.5.13"
+"@opentui/core@npm:0.6.6":
+  version: 0.6.6
+  resolution: "@opentui/core@npm:0.6.6"
   dependencies:
-    "@opentui/core-darwin-arm64": "npm:0.5.13"
-    "@opentui/core-darwin-x64": "npm:0.5.13"
-    "@opentui/core-linux-arm64": "npm:0.5.13"
-    "@opentui/core-linux-arm64-musl": "npm:0.5.13"
-    "@opentui/core-linux-x64": "npm:0.5.13"
-    "@opentui/core-linux-x64-musl": "npm:0.5.13"
-    "@opentui/core-win32-arm64": "npm:0.5.13"
-    "@opentui/core-win32-x64": "npm:0.5.13"
+    "@opentui/core-darwin-arm64": "npm:0.6.6"
+    "@opentui/core-darwin-x64": "npm:0.6.6"
+    "@opentui/core-linux-arm64": "npm:0.6.6"
+    "@opentui/core-linux-arm64-musl": "npm:0.6.6"
+    "@opentui/core-linux-x64": "npm:0.6.6"
+    "@opentui/core-linux-x64-musl": "npm:0.6.6"
+    "@opentui/core-win32-arm64": "npm:0.6.6"
+    "@opentui/core-win32-x64": "npm:0.6.6"
     bun-ffi-structs: "npm:0.3.1"
     diff: "npm:9.0.0"
     marked: "npm:17.0.1"
     string-width: "npm:7.2.0"
-    strip-ansi: "npm:7.1.2"
   peerDependencies:
     web-tree-sitter: 0.25.10
   dependenciesMeta:
@@ -1007,21 +1006,21 @@ __metadata:
       optional: true
     "@opentui/core-win32-x64":
       optional: true
-  checksum: 10c0/b1267ffb8326c4c0429208af4d686e483d1d74da76f9fd3fedd2214b89ee9bb09554b51c096396d6d4f12785650b9e5779bb244b846320de0db3b3a36ec16271
+  checksum: 10c0/325cf4224f187706e6eab99b4631d758609051274af133e48239ada6dcca882ba08bf11f8d935c97d71cb1ca7dc57af3fe1745fcd137b5ff1d918fb5753dbdc0
   languageName: node
   linkType: hard
 
-"@opentui/react@npm:0.5.13":
-  version: 0.5.13
-  resolution: "@opentui/react@npm:0.5.13"
+"@opentui/react@npm:0.6.6":
+  version: 0.6.6
+  resolution: "@opentui/react@npm:0.6.6"
   dependencies:
-    "@opentui/core": "npm:0.5.13"
+    "@opentui/core": "npm:0.6.6"
     react-reconciler: "npm:^0.33.0"
   peerDependencies:
     react: ">=19.2.0"
     react-devtools-core: ^7.0.1
     ws: ^8.18.0
-  checksum: 10c0/5a2026579fe7ae658c5487e78d90a875805085ffd94a3f23caf3d43256231c1f1139e0e65063c9ae916df691eabb13f130bc3e5e6d889179b8917456144a99a2
+  checksum: 10c0/d8138d2a34cf72a8776c7c1b809ec9b82d441f3cb133593f14efa00d87c9d384e4e2e46dce95bdfe6becd7f6f6f01345f6682887ecedf621dd492afa2857c786
   languageName: node
   linkType: hard
 
@@ -1848,13 +1847,6 @@ __metadata:
   version: 5.0.1
   resolution: "ansi-regex@npm:5.0.1"
   checksum: 10c0/9a64bb8627b434ba9327b60c027742e5d17ac69277960d041898596271d992d4d52ba7267a63ca10232e29f6107fc8a835f6ce8d719b88c5f8493f8254813737
-  languageName: node
-  linkType: hard
-
-"ansi-regex@npm:^6.0.1":
-  version: 6.4.0
-  resolution: "ansi-regex@npm:6.4.0"
-  checksum: 10c0/e42f68ffa21aac4c4de27aad601bb5ea415b5a07b127681ef44728195f22231b77bc39230ce0c976420d84650b7bf5a5b60eb4e7500c1f74e9a3f3cd4a68f3f6
   languageName: node
   linkType: hard
 
@@ -4583,8 +4575,8 @@ __metadata:
     "@modelcontextprotocol/sdk": "npm:^1.29.0"
     "@modelcontextprotocol/server": "npm:^2.3.1"
     "@opencode-ai/sdk": "npm:^1.18.35"
-    "@opentui/core": "npm:0.5.13"
-    "@opentui/react": "npm:0.5.13"
+    "@opentui/core": "npm:0.6.6"
+    "@opentui/react": "npm:0.6.6"
     "@shadcn/react": "npm:^0.3.1"
     "@tailwindcss/cli": "npm:^4.3.3"
     "@testing-library/dom": "npm:^10.4.2"
@@ -6621,15 +6613,6 @@ __metadata:
   dependencies:
     ansi-regex: "npm:^5.0.1"
   checksum: 10c0/1ae5f212a126fe5b167707f716942490e3933085a5ff6c008ab97ab2f272c8025d3aa218b7bd6ab25729ca20cc81cddb252102f8751e13482a5199e873680952
-  languageName: node
-  linkType: hard
-
-"strip-ansi@npm:7.1.2":
-  version: 7.1.2
-  resolution: "strip-ansi@npm:7.1.2"
-  dependencies:
-    ansi-regex: "npm:^6.0.1"
-  checksum: 10c0/0d6d7a023de33368fd042aab0bf48f4f4077abdfd60e5393e73c7c411e85e1b3a83507c11af2e656188511475776215df9ca589b4da2295c9455cc399ce1858b
   languageName: node
   linkType: hard
 
