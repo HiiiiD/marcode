@@ -269,6 +269,7 @@ export class AgentSession {
     });
     this._state.activityLabel = this.activityLabelFor(this._state.status);
     delete this._state.backgroundTasks;
+    delete this._state.waitingOn;
   }
 
   get state(): SessionState { return this._state; }
@@ -816,6 +817,11 @@ export class AgentSession {
     return 'Idle';
   }
 
+  private waitingOnFor(status: SessionStatus): SessionState['waitingOn'] {
+    if (status !== 'awaiting-approval') { return undefined; }
+    return this.pending.size > 0 ? 'permission' : 'question';
+  }
+
   private backgroundOnlyCount(): number | undefined {
     const count = this.activeBackgroundTasks.size;
     return this._state.status === 'running' && !this.turnActive && count > 0 ? count : undefined;
@@ -832,8 +838,10 @@ export class AgentSession {
   private refreshActivityLabel(): void {
     const label = this.activityLabelFor(this._state.status);
     const tasks = this.backgroundOnlyCount();
-    if (this._state.activityLabel === label && this._state.backgroundTasks === tasks) { return; }
+    const waitingOn = this.waitingOnFor(this._state.status);
+    if (this._state.activityLabel === label && this._state.backgroundTasks === tasks && this._state.waitingOn === waitingOn) { return; }
     this._state.activityLabel = label;
+    if (waitingOn === undefined) { delete this._state.waitingOn; } else { this._state.waitingOn = waitingOn; }
     if (tasks === undefined) { delete this._state.backgroundTasks; } else { this._state.backgroundTasks = tasks; }
     this._state.updatedAt = Date.now();
     this.sink.changed();

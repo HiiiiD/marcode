@@ -25,6 +25,7 @@ import { useAppKeys } from './use-app-keys';
 import { useFocusFallback } from './use-focus-fallback';
 import { usePaneChords } from './use-pane-chords';
 import { usePaneLayout } from './use-pane-layout';
+import { useProgramStatus } from './use-program-status';
 
 export interface AppProps {
   launchCwd: string;
@@ -42,6 +43,7 @@ type PaneZone = 'composer' | 'transcript' | 'roster';
 export function App(props: AppProps) {
   const { state, post, setNotice } = useTuiStore();
   const layout = usePaneLayout();
+  useProgramStatus(state.sessions);
   const { shownId: focusedId, focusSession: focus } = useFocusFallback(layout.placeOrFocus);
   const { width, height } = useTerminalDimensions();
   const wide = width >= 100;

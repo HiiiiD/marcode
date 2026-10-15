@@ -212,6 +212,8 @@ export interface SessionState {
    * event.
    */
   activityLabel?: string;
+  /** Present only while `status` is `awaiting-approval`: a permission outranks a question when both are open. */
+  waitingOn?: 'permission' | 'question';
   /**
    * How many background tasks are the only thing keeping this session
    * `running` — the turn itself has ended. Absent otherwise, including

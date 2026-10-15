@@ -31,7 +31,7 @@ function stripOwner(state: SessionState): SessionState {
 
 // Nothing runs a session nobody holds a lease on: a 'running' row there is a crashed owner's last word.
 function unleased(state: SessionState): SessionState {
-  const { owner: _owner, queued: _queued, ...rest } = state;
+  const { owner: _owner, queued: _queued, waitingOn: _waitingOn, ...rest } = state;
   return { ...rest, status: 'idle' } as SessionState;
 }
 

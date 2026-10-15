@@ -1706,6 +1706,34 @@ suite('AgentSession activityLabel', () => {
     await session.dispose();
   });
 
+  test('waitingOn tells a question from a permission and clears when nothing waits', async () => {
+    const provider = new FakeProvider(() => [
+      { kind: 'question', id: 'q1', blocking: true, questions: [QUESTION_SPEC] },
+      { kind: 'permission', id: 'r1', tool: { kind: 'command', label: 'Bash', command: 'ls' } },
+    ]);
+    const session = new AgentSession(baseState(), provider, store, sink);
+    assert.strictEqual(session.state.waitingOn, undefined);
+    session.send('go');
+    await settle();
+    assert.strictEqual(session.state.waitingOn, 'permission', 'a permission outranks a question');
+    await session.dispose();
+  });
+
+  test('waitingOn is question when only a question is open', async () => {
+    const provider = new FakeProvider(() => [{ kind: 'question', id: 'q1', blocking: true, questions: [QUESTION_SPEC] }]);
+    const session = new AgentSession(baseState(), provider, store, sink);
+    session.send('go');
+    await settle();
+    assert.strictEqual(session.state.waitingOn, 'question');
+    await session.dispose();
+  });
+
+  test('a restored state does not carry a stale waitingOn', async () => {
+    const session = new AgentSession({ ...baseState(), waitingOn: 'question' }, new FakeProvider(() => []), store, sink);
+    assert.strictEqual(session.state.waitingOn, undefined);
+    await session.dispose();
+  });
+
   test('returns to Idle once the turn ends', async () => {
     const provider = new FakeProvider(() => [
       { kind: 'tool-start', id: 't1', tool: { kind: 'command', label: 'Bash', command: 'ls' } },
