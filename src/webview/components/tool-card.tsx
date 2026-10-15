@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import {
-  BotIcon, ChevronDownIcon, ChevronRightIcon, FilePenIcon, FilePlusIcon, FileTextIcon,
+  BotIcon, ChevronRightIcon, FilePenIcon, FilePlusIcon, FileTextIcon,
   FolderSearchIcon, GitForkIcon, GlobeIcon, ImageIcon, ListTodoIcon, Loader2Icon, SearchIcon,
   SendIcon, TerminalIcon, WrenchIcon,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { cn } from '@/lib/utils';
 import type { TranscriptItem } from '../../protocol/messages';
 import { ToolBody } from './tool-body';
@@ -52,7 +53,6 @@ export function ToolCard({
   // — still running, and failed — get a visible mark. `state` still has a
   // text equivalent below, so nothing is carried by the icon alone.
   const Glyph = item.state === 'running' ? Loader2Icon : GLYPHS[header.glyph];
-  const Chevron = open ? ChevronDownIcon : ChevronRightIcon;
 
   const input = describeInput(tool);
   const output = describeOutput(
@@ -65,18 +65,18 @@ export function ToolCard({
     // toggle below IS a button, and a fork button placed inside it would be
     // interactive-inside-interactive — the same trap the roster row's own
     // actions trigger sits beside its checkbox item to avoid, not inside it.
-    <div className="group/item my-0 rounded border border-border text-xs">
+    <Collapsible open={open} onOpenChange={setOpen} className="group/item my-0 rounded border border-border text-xs">
       <div className="flex items-center">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => setOpen((v) => !v)}
-          aria-expanded={open}
-          aria-controls={`tool-${item.toolId}`}
-          // `gap-2`/`px-2`/`justify-start` override `size="sm"`'s own gap/px —
-          // the fixed h-7 the variant sets is kept, not hand-written, per the
-          // Task 2 discipline against overriding a size variant's height.
-          className="flex min-w-0 flex-1 items-center justify-start gap-2 px-2 font-normal"
+        <CollapsibleTrigger
+          render={
+            // `gap-2`/`px-2`/`justify-start` override `size="sm"`'s own gap/px —
+            // the fixed h-7 the variant sets is kept, not hand-written.
+            <Button
+              variant="ghost"
+              size="sm"
+              className="flex min-w-0 flex-1 items-center justify-start gap-2 px-2 font-normal"
+            />
+          }
         >
           <Glyph
             aria-hidden
@@ -111,8 +111,15 @@ export function ToolCard({
               failed
             </span>
           )}
-          <Chevron aria-hidden className={cn('shrink-0 text-muted-foreground', item.state !== 'error' && 'ml-auto')} />
-        </Button>
+          <ChevronRightIcon
+            aria-hidden
+            className={cn(
+              'shrink-0 text-muted-foreground transition-transform duration-200',
+              item.state !== 'error' && 'ml-auto',
+              open && 'rotate-90',
+            )}
+          />
+        </CollapsibleTrigger>
 
         {onFork && (
           <Button
@@ -128,8 +135,8 @@ export function ToolCard({
         )}
       </div>
 
-      {open && (
-        <div id={`tool-${item.toolId}`} className="flex flex-col gap-1.5 border-t border-border px-2 py-1.5">
+      <CollapsibleContent>
+        <div className="flex flex-col gap-1.5 border-t border-border px-2 py-1.5">
           <ToolBody blocks={input} />
           {output.length > 0 && (
             <div className="flex flex-col gap-1.5">
@@ -143,7 +150,7 @@ export function ToolCard({
             <p className="text-muted-foreground">Running…</p>
           )}
         </div>
-      )}
-    </div>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }

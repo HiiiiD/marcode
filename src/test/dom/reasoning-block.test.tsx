@@ -67,7 +67,30 @@ suite('Reasoning disclosure', () => {
     await userEvent.click(screen.getByRole('button', { name: /Reasoning/ }));
 
     const controls = screen.getByRole('button', { name: /Reasoning/ }).getAttribute('aria-controls')!;
-    assert.ok(/max-h-\d/.test(document.getElementById(controls)!.className));
+    assert.ok(document.getElementById(controls)!.querySelector('[class*="max-h-"]') !== null);
+  });
+
+  test('reasoning renders as markdown, not raw source', async () => {
+    renderWithStore(
+      <TranscriptItemView item={item({ thinking: 'Plan:\n\n- **first** step\n- second step' })} sessionId="a" />,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: /Reasoning/ }));
+
+    assert.strictEqual(document.querySelectorAll('li').length, 2);
+    assert.strictEqual(document.querySelector('strong')?.textContent, 'first');
+  });
+
+  test('the collapsed preview renders inline markdown without its markers', () => {
+    renderWithStore(
+      <TranscriptItemView item={item({ thinking: '\n**Planning** the `fix` [here](https://x.dev)' })} sessionId="a" />,
+    );
+
+    const toggle = screen.getByRole('button', { name: /Reasoning/ });
+    assert.strictEqual(toggle.querySelector('strong')?.textContent, 'Planning');
+    assert.strictEqual(toggle.querySelector('code')?.textContent, 'fix');
+    assert.strictEqual(toggle.querySelector('a, button') === null, true);
+    assert.strictEqual(toggle.textContent?.includes('**'), false);
   });
 
   test('the answer still renders as markdown alongside the reasoning', () => {
