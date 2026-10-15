@@ -289,7 +289,7 @@
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.71.1",
     "web-tree-sitter": "0.25.10",
-    "zod": "^4.6.5"
+    "zod": "^4.6.6"
   },
   "overrides": {
     "diff": "^8.0.4",
