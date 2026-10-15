@@ -19,14 +19,12 @@ suite('tui program status', () => {
     assert.strictEqual(r.state === 'blocked' && r.message, '2 sessions await approval');
   });
 
-  test('a loaded pane with only questions reports kind question', () => {
-    const panes = { a: { pending: [], pendingQuestions: [{ requestId: 'q', questions: [], blocking: true }] } };
-    const r = programStatus([s('a', 'awaiting-approval', 'Ask')], panes);
+  test('a session waiting on a question reports kind question', () => {
+    const r = programStatus([{ ...s('a', 'awaiting-approval', 'Ask'), waitingOn: 'question' }]);
     assert.deepStrictEqual(r, { state: 'blocked', kind: 'question', app: 'marcode', title: 'Ask', message: 'Ask awaits an answer' });
   });
-  test('a permission alongside a question stays permission', () => {
-    const panes = { a: { pending: [{}], pendingQuestions: [{}] } } as never;
-    const r = programStatus([s('a', 'awaiting-approval')], panes);
+  test('any permission among the waiting sessions keeps kind permission', () => {
+    const r = programStatus([{ ...s('a', 'awaiting-approval'), waitingOn: 'question' }, { ...s('b', 'awaiting-approval'), waitingOn: 'permission' }]);
     assert.strictEqual(r.state === 'blocked' && r.kind, 'permission');
   });
 });

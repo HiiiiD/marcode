@@ -1,5 +1,4 @@
-import type { PaneState } from '../../client-core/reducer';
-import type { SessionId, SessionSummary } from '../../protocol/messages';
+import type { SessionSummary } from '../../protocol/messages';
 
 export type ProgramStatusReport =
   | { state: 'idle' }
@@ -9,20 +8,12 @@ export type ProgramStatusReport =
 
 const APP = 'marcode';
 
-type Panes = Readonly<Record<SessionId, Pick<PaneState, 'pending' | 'pendingQuestions'> | undefined>>;
-
-// `awaiting-approval` covers both shapes; only a loaded pane can say it is a question and nothing else.
-const asksQuestion = (id: SessionId, panes: Panes): boolean => {
-  const pane = panes[id];
-  return pane !== undefined && pane.pending.length === 0 && pane.pendingQuestions.length > 0;
-};
-
-export function programStatus(sessions: readonly SessionSummary[], panes: Panes = {}): ProgramStatusReport {
+export function programStatus(sessions: readonly SessionSummary[]): ProgramStatusReport {
   const waiting = sessions.filter((s) => s.status === 'awaiting-approval');
   if (waiting.length > 0) {
     const first = waiting[0]!;
     const name = first.name || first.title;
-    const questions = waiting.every((s) => asksQuestion(s.id, panes));
+    const questions = waiting.every((s) => s.waitingOn === 'question');
     const noun = questions ? 'an answer' : 'approval';
     return {
       state: 'blocked', kind: questions ? 'question' : 'permission', app: APP, title: name,

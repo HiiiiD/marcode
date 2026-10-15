@@ -43,7 +43,7 @@ type PaneZone = 'composer' | 'transcript' | 'roster';
 export function App(props: AppProps) {
   const { state, post, setNotice } = useTuiStore();
   const layout = usePaneLayout();
-  useProgramStatus(state.sessions, state.byId);
+  useProgramStatus(state.sessions);
   const { shownId: focusedId, focusSession: focus } = useFocusFallback(layout.placeOrFocus);
   const { width, height } = useTerminalDimensions();
   const wide = width >= 100;
