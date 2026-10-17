@@ -232,13 +232,13 @@ export interface PermissionsRequestApprovalResponse {
 }
 
 /**
- * `item/tool/requestUserInput`'s response, and MCP elicitation's decline
+ * `item/tool/requestUserInput`'s response, and MCP elicitation's
  * response — verified against the codex-cli 0.147.0 generated bindings
  * (`ToolRequestUserInputResponse`, `McpServerElicitationRequestResponse`).
  *
  * `item/tool/requestUserInput` is now answered as a real `question` event
  * (see `map-events.ts`'s `questionEventOf` and `CodexRun.respondToQuestion`);
- * MCP elicitation is still declined outright — see `DECLINED_INPUT_METHODS`.
+ * Empty-form MCP consent is answered through the permission flow.
  * Both response types have required fields, so `{}` fails deserialization
  * server-side and a blocking request goes unanswered — the exact hang a
  * cancellation's empty map/decline action exists to prevent. `answers` is a

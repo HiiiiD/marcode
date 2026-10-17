@@ -5,19 +5,6 @@ import type {
   McpServerStatusUpdatedNotification, McpServerStartupState, ThreadItem,
 } from './wire';
 
-/**
- * Server requests that ask for typed input this panel still cannot render.
- *
- * `item/tool/requestUserInput` used to live here too, but it now maps to a
- * real `question` event (see `questionEventOf`) instead of being declined.
- * MCP elicitation is deliberately unmodelled and stays declined — see
- * codex-run.ts. Experimental upstream, and only fires if an MCP server uses
- * it.
- */
-export const DECLINED_INPUT_METHODS = [
-  'mcpServer/elicitation/request',
-];
-
 const APPROVAL_METHODS: Record<string, string> = {
   'item/commandExecution/requestApproval': 'commandExecution',
   'item/fileChange/requestApproval': 'fileChange',

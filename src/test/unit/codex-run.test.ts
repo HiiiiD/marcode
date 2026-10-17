@@ -402,7 +402,7 @@ suite('CodexRun', () => {
     assert.deepStrictEqual(cancelled.sort(), ['51', '52']);
   });
 
-  test('an MCP elicitation is still declined with an action', async () => {
+  test('an unsupported MCP elicitation is declined with an action', async () => {
     const { server, send, sent } = stub();
     const run = await started(server, 'th_1');
     collect(run);
