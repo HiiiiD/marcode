@@ -287,6 +287,7 @@ suite('AcpRun', () => {
     const created = await p.waitFor('session/new');
     p.emit({ jsonrpc: '2.0', id: created.id, result: frames.newSession });
     await new Promise((r) => setTimeout(r, 20));
+    await assert.rejects(() => run.contextBreakdown(), /has not sent a usage update/);
     p.emit({ jsonrpc: '2.0', method: 'session/update', params: {
       sessionId: 'ses_ff0400c8affe2kYFjqc6OUHpG3', update: frames.updates.usageUpdate } });
     await new Promise((r) => setTimeout(r, 20));
@@ -311,6 +312,12 @@ suite('AcpRun', () => {
       sessionId: 'ses_old', update: frames.updates.agentMessageChunk } });
     await new Promise((r) => setTimeout(r, 20));
     assert.strictEqual(events.some((e) => e.kind === 'text'), false);
+    p.emit({ jsonrpc: '2.0', method: 'session/update', params: {
+      sessionId: 'ses_old', update: frames.updates.usageUpdate } });
+    await new Promise((r) => setTimeout(r, 20));
+    const breakdown = await run.contextBreakdown();
+    assert.strictEqual(breakdown.usedTokens, 8896);
+    assert.strictEqual(breakdown.windowTokens, 200000);
     await run.dispose();
   });
 
