@@ -6,12 +6,13 @@ import type {
   PermissionMode, QuestionAnswers, SelfControlMcpConfig, StartOptions, ToolDecision, UsageTotals, UsageWindow,
 } from '../types';
 import type { RequestId } from './app-server';
-import { approvalEventOf, DECLINED_INPUT_METHODS, mapNotification, questionEventOf } from './map-events';
+import { approvalEventOf, mapNotification, questionEventOf } from './map-events';
+import { elicitationApprovalOf, elicitationResponse } from './elicitation';
 import { codexSettings, sandboxPolicyOf } from './map-settings';
 import { toInvocables } from './map-skills';
 import { toContextBreakdown, toUsageWindows } from './map-usage';
 import type {
-  FileChangeApprovalDecision, McpServerElicitationRequestResponse,
+  FileChangeApprovalDecision,
   PermissionsRequestApprovalResponse, RateLimitsReadResponse, SkillsListResponse,
   ThreadResponse, ThreadTokenUsage, TokenUsageBreakdown, ToolRequestUserInputResponse, UserInput,
 } from './wire';
@@ -358,16 +359,14 @@ export class CodexRun implements AgentRun {
         return;
       }
 
-      if (DECLINED_INPUT_METHODS.includes(method)) {
-        // MCP elicitation has its own required-field response shape — `{}`
-        // fails deserialization server-side, which leaves the blocking
-        // request unanswered and hangs the turn, i.e. exactly what this
-        // branch exists to prevent.
-        const refusal: McpServerElicitationRequestResponse
-          = { action: 'decline', content: null, _meta: null };
-        // Elicitation is deliberately unmodelled, but an unanswered blocking
-        // request hangs the turn — so it is declined immediately, and the
-        // transcript says so rather than failing silently.
+      if (method === 'mcpServer/elicitation/request') {
+        const approval = elicitationApprovalOf(id, params);
+        if (approval) {
+          this.pendingApprovals.set(approval.id, { rpcId: id, method });
+          this.events.push(fromChild ? { ...approval, parentId: fromChild } : approval);
+          return;
+        }
+        // Unsupported forms still need a valid reply or the turn hangs.
         const toolId = String(id);
         this.events.push({
           kind: 'tool-start', id: toolId,
@@ -379,7 +378,7 @@ export class CodexRun implements AgentRun {
           output: { kind: 'text', text: 'The panel cannot answer this request yet.' },
           ...(fromChild ? { parentId: fromChild } : {}),
         });
-        this.server.respond(id, refusal);
+        this.server.respond(id, elicitationResponse(false));
         return;
       }
 
@@ -681,6 +680,10 @@ export class CodexRun implements AgentRun {
     const pending = this.pendingApprovals.get(id);
     if (!pending) { return; }
     this.pendingApprovals.delete(id);
+    if (pending.method === 'mcpServer/elicitation/request') {
+      this.server.respond(pending.rpcId, elicitationResponse(decision.allow));
+      return;
+    }
     if (pending.method === 'item/permissions/requestApproval') {
       const result: PermissionsRequestApprovalResponse = { permissions: {}, scope: 'turn' };
       this.server.respond(pending.rpcId, result);
@@ -739,7 +742,9 @@ export class CodexRun implements AgentRun {
    */
   private cancelParkedApprovals(): void {
     for (const [id, pending] of this.pendingApprovals) {
-      if (pending.method === 'item/permissions/requestApproval') {
+      if (pending.method === 'mcpServer/elicitation/request') {
+        this.server.respond(pending.rpcId, elicitationResponse(false));
+      } else if (pending.method === 'item/permissions/requestApproval') {
         const empty: PermissionsRequestApprovalResponse = { permissions: {}, scope: 'turn' };
         this.server.respond(pending.rpcId, empty);
       } else {
