@@ -178,6 +178,19 @@ suite('opencode toToolCall', () => {
     });
   });
 
+  test('new self-control tools are recognized as MCP calls', () => {
+    for (const tool of ['marcode__list_models', 'marcode__spawn_collaborators']) {
+      const call = {
+        toolCallId: 't', kind: 'other', title: `marcode_self_control_${tool}`,
+        rawInput: { query: 'test' },
+      } as unknown as AcpToolCall;
+      assert.deepStrictEqual(toToolCall(call), {
+        kind: 'mcp', label: tool, server: 'marcode_self_control', tool,
+        input: { query: 'test' },
+      });
+    }
+  });
+
   // Observed live (opencode 1.18.30): the native `skill` tool always titles
   // itself `Loaded skill: <name>`, kind 'other', rawInput `{ name }`.
   test('a skill invocation is recognised from its title, not its kind', () => {

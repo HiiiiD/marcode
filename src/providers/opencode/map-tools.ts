@@ -33,7 +33,9 @@ function patchFiles(patchText: unknown): FileEdit[] {
  */
 const SELF_CONTROL_TOOLS = [
   'marcode__spawn_session', 'marcode__send_message', 'marcode__list_sessions',
-  'marcode__get_session_context', 'marcode__recall', 'marcode__recall_fetch',
+  'marcode__get_session_context', 'marcode__get_context_usage', 'marcode__close_session',
+  'marcode__list_models', 'marcode__spawn_collaborators',
+  'marcode__recall', 'marcode__recall_fetch',
 ];
 
 function parseSelfControlTitle(title: string | undefined): { server: string; tool: string } | undefined {
