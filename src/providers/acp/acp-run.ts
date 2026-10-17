@@ -242,17 +242,16 @@ export class AcpRun implements AgentRun {
   private inflight = 0;
   readonly queuesNatively?: boolean;
 
-  /**
-   * Attached only once a `usage_update` has actually arrived — `AgentSession`
-   * reads this method's mere presence as "this provider reports context
-   * usage", so resolving it from nothing would be a fabricated breakdown.
-   * Same conditional shape as `CodexRun`'s, for the same reason.
-   */
   private lastBreakdown: ContextBreakdown | undefined;
 
   /** One session's tool calls, folded across the partial frames that describe them. */
   private readonly calls = new ToolCallLog();
-  contextBreakdown?: () => Promise<ContextBreakdown>;
+  async contextBreakdown(): Promise<ContextBreakdown> {
+    if (!this.lastBreakdown) {
+      throw new Error('Context usage is not available yet: the agent has not sent a usage update');
+    }
+    return this.lastBreakdown;
+  }
 
   /** Running cumulative total across every turn this run has sent. Never a subagent field — ACP's prompt reply has no per-thread concept to hang one off. */
   private usageTotal: UsageTotals | undefined;
@@ -451,8 +450,7 @@ export class AcpRun implements AgentRun {
   // ------------------------------------------------------------- incoming
 
   private onSessionUpdate(params: unknown): void {
-    // Replayed history: swallowed, and each one restarts the idle countdown.
-    if (this.loading) { this.armLoadTimer(); return; }
+    if (this.loading) { this.armLoadTimer(); }
     const p = (params ?? {}) as { sessionId?: string; update?: Record<string, unknown> };
     if (!p.update) { return; }
     // One connection serves one session here, but a stray id is still not ours.
@@ -462,6 +460,8 @@ export class AcpRun implements AgentRun {
       this.captureUsage(p.update as { used?: unknown; size?: unknown });
       return;
     }
+    // Replay is transcript history, but its usage snapshot is still current.
+    if (this.loading) { return; }
     for (const event of toAgentEvents(p.update, this.opts.tools, this.calls)) {
       if (event.kind === 'invocables') { this.classifyCommands(event.entries); }
       this.events.push(event);
@@ -487,12 +487,6 @@ export class AcpRun implements AgentRun {
   private captureUsage(update: { used?: unknown; size?: unknown }): void {
     if (typeof update.used !== 'number' || typeof update.size !== 'number') { return; }
     this.lastBreakdown = toContextBreakdown({ used: update.used, size: update.size });
-    if (!this.contextBreakdown) {
-      // Non-null by construction: this closure only exists once lastBreakdown
-      // has been assigned, and nothing clears it back to undefined.
-      this.contextBreakdown = (): Promise<ContextBreakdown> =>
-        Promise.resolve(this.lastBreakdown as ContextBreakdown);
-    }
   }
 
   /**
