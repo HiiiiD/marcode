@@ -321,6 +321,7 @@ export class OpenCodeProvider implements AgentProvider {
       queuesNatively: true,
       selfControlMcp: opts.withoutSelfControl ? undefined : this.selfControlMcp,
       childEvents: watch.events,
+      contextBreakdown: () => watch.contextBreakdown(opts.cwd),
       skillNames: () => this.listSkillNames(this.binPath, this.mergedEnv(), opts.cwd),
       // `onSessionId` fires once, the moment a real opencode session id
       // exists (see `AcpRunOptions`) — the earliest point a fresh process

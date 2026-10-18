@@ -1,4 +1,5 @@
-import type { AgentEvent, PermissionMeta, ToolCall, ToolDecision } from '../types';
+import type { AgentEvent, ContextBreakdown, PermissionMeta, ToolCall, ToolDecision } from '../types';
+import { readOpenCodeContext } from './context-usage';
 import { subagentToolCall, subagentToolOutput, type RawToolPart } from './map-subagent-tools';
 
 /**
@@ -47,6 +48,7 @@ type NestableToolEvent = Extract<AgentEvent, { kind: 'tool-start' | 'tool-update
  */
 export interface SubagentSdk {
   globalEvent(): Promise<{ stream: AsyncIterable<EventEnvelope> }>;
+  contextBreakdown?(sessionID: string, directory: string): Promise<ContextBreakdown>;
   permissionReply(params: { requestID: string; reply: 'once' | 'always' | 'reject'; directory?: string; workspace?: string }): Promise<unknown>;
 }
 
@@ -66,6 +68,7 @@ async function connectSdk(baseUrl: string, token: string, signal?: AbortSignal):
     baseUrl, signal, headers: { Authorization: `Basic ${Buffer.from(`opencode:${token}`).toString('base64')}` },
   });
   return {
+    contextBreakdown: (sessionID, directory) => readOpenCodeContext(client, sessionID, directory),
     globalEvent: () => client.global.event() as unknown as Promise<{ stream: AsyncIterable<EventEnvelope> }>,
     permissionReply: (params) => client.permission.reply(params),
   };
@@ -169,6 +172,13 @@ export class SubagentWatch {
   setRootSessionId(id: string): void {
     this.rootSessionId = id;
     this.watched.add(id);
+  }
+
+  async contextBreakdown(directory: string): Promise<ContextBreakdown> {
+    if (!this.sdk?.contextBreakdown || !this.rootSessionId || this.closed) {
+      throw new Error('OpenCode context connection is not available yet');
+    }
+    return this.sdk.contextBreakdown(this.rootSessionId, directory);
   }
 
   /** The parent's own `task` tool-start id — every event from `childId` nests under it. */
