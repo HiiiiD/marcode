@@ -23,6 +23,8 @@ type RawEvent =
 
 type RawPart = ({ type: 'tool' } & RawToolPart) | { type: string };
 
+interface EventEnvelope { directory?: string; workspace?: string; payload?: unknown }
+
 /**
  * `state.metadata.sessionId` off a `task` tool part — opencode writes it the
  * moment the part leaves `pending`, before the subagent runs anything, and a
@@ -44,8 +46,8 @@ type NestableToolEvent = Extract<AgentEvent, { kind: 'tool-start' | 'tool-update
  * makes in `acp-run.ts`, so a test scripts a fake without importing the SDK.
  */
 export interface SubagentSdk {
-  globalEvent(): Promise<{ stream: AsyncIterable<{ payload?: unknown }> }>;
-  permissionReply(params: { requestID: string; reply: 'once' | 'always' | 'reject'; directory?: string }): Promise<unknown>;
+  globalEvent(): Promise<{ stream: AsyncIterable<EventEnvelope> }>;
+  permissionReply(params: { requestID: string; reply: 'once' | 'always' | 'reject'; directory?: string; workspace?: string }): Promise<unknown>;
 }
 
 /**
@@ -64,7 +66,7 @@ async function connectSdk(baseUrl: string, token: string, signal?: AbortSignal):
     baseUrl, signal, headers: { Authorization: `Basic ${Buffer.from(`opencode:${token}`).toString('base64')}` },
   });
   return {
-    globalEvent: () => client.global.event() as unknown as Promise<{ stream: AsyncIterable<{ payload?: unknown }> }>,
+    globalEvent: () => client.global.event() as unknown as Promise<{ stream: AsyncIterable<EventEnvelope> }>,
     permissionReply: (params) => client.permission.reply(params),
   };
 }
@@ -225,7 +227,7 @@ export class SubagentWatch {
       const { stream } = await sdk.globalEvent();
       for await (const envelope of stream) {
         if (this.closed) { return; }
-        if (envelope.payload) { this.handle(envelope.payload as RawEvent); }
+        if (envelope.payload) { this.handle(envelope.payload as RawEvent, envelope); }
       }
     } catch {
       // Best-effort tap: a dead connection here degrades to "no nested
@@ -234,7 +236,7 @@ export class SubagentWatch {
     }
   }
 
-  private handle(event: RawEvent): void {
+  private handle(event: RawEvent, envelope: EventEnvelope): void {
     if (event.type === 'session.created') {
       const props = event.properties as Extract<RawEvent, { type: 'session.created' }>['properties'];
       const { sessionID, info } = props;
@@ -277,7 +279,7 @@ export class SubagentWatch {
     }
     if (event.type === 'permission.asked') {
       const props = event.properties as Extract<RawEvent, { type: 'permission.asked' }>['properties'];
-      this.handlePermission(props);
+      this.handlePermission(props, envelope);
     }
   }
 
@@ -346,7 +348,7 @@ export class SubagentWatch {
   private handlePermission(properties: {
     id: string; sessionID: string; permission: string; metadata: Record<string, unknown>;
     tool?: { messageID: string; callID: string };
-  }): void {
+  }, envelope: EventEnvelope): void {
     // Same root exclusion as `handlePart`: the root's own asks already travel
     // ACP's `session/request_permission` path, and relaying them here too
     // would raise a second card nothing can ever answer.
@@ -366,13 +368,18 @@ export class SubagentWatch {
     // pushes a permission event onto the run's channel. We only need to call
     // the handler and relay the decision back to the SDK.
     void this.permissionHandler(namespacedId, tool, { title: properties.permission }, parentId)
-      .then((decision) => this.replyPermission(properties.id, decision))
-      .catch(() => this.replyPermission(properties.id, undefined));
+      .then((decision) => this.replyPermission(properties.id, decision, envelope))
+      .catch(() => this.replyPermission(properties.id, undefined, envelope));
   }
 
-  private replyPermission(requestID: string, decision: ToolDecision | undefined): void {
+  private replyPermission(requestID: string, decision: ToolDecision | undefined, envelope: EventEnvelope): void {
     if (!this.sdk) { return; }
     const reply = !decision ? 'reject' : decision.allow ? 'once' : 'reject';
-    void this.sdk.permissionReply({ requestID, reply, directory: undefined }).catch(() => {});
+    // Pending requests are instance-scoped. Omitting the event's directory
+    // routes the reply to the server's cwd and leaves the real request blocked.
+    void this.sdk.permissionReply({
+      requestID, reply, directory: envelope.directory,
+      ...(envelope.workspace ? { workspace: envelope.workspace } : {}),
+    }).catch(() => {});
   }
 }
