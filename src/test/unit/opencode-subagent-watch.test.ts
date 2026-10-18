@@ -41,6 +41,26 @@ async function settle(): Promise<void> {
 }
 
 suite('SubagentWatch', () => {
+  test('context queries target this run’s root session and cwd, not a child', async () => {
+    const { sdk } = fakeSdk([]);
+    let asked: unknown;
+    sdk.contextBreakdown = async (sessionID, directory) => {
+      asked = { sessionID, directory };
+      return { systemPercent: 0, memoryPercent: 0, conversationPercent: 20, freePercent: 80, memoryFiles: [] };
+    };
+    const watch = new SubagentWatch({ connect: async () => sdk });
+    watch.open('http://x', 't');
+    watch.setRootSessionId('worker-root');
+    watch.setParentToolCallId('nested-child', 'task');
+    await settle();
+    try {
+      assert.strictEqual((await watch.contextBreakdown('/worker')).freePercent, 80);
+      assert.deepStrictEqual(asked, { sessionID: 'worker-root', directory: '/worker' });
+    } finally {
+      watch.close();
+    }
+  });
+
   test('a tool part on a watched child session becomes a nested tool-start', async () => {
     const { sdk } = fakeSdk([
       { type: 'session.created', properties: { sessionID: 'child_1', info: { id: 'child_1', parentID: 'root' } } },

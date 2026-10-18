@@ -78,6 +78,8 @@ export interface AcpRunOptions {
    * auxiliary source.
    */
   childEvents?: AsyncIterable<AgentEvent>;
+  /** Optional vendor query for usage while ACP is still waiting for the turn to finish. */
+  contextBreakdown?: () => Promise<ContextBreakdown>;
   /** Fired once, the instant this run's own session id is known. */
   onSessionId?: (id: string) => void;
   /** The names of this agent's skills, when the agent can say; `undefined` if it cannot. */
@@ -247,6 +249,10 @@ export class AcpRun implements AgentRun {
   /** One session's tool calls, folded across the partial frames that describe them. */
   private readonly calls = new ToolCallLog();
   async contextBreakdown(): Promise<ContextBreakdown> {
+    if (this.opts.contextBreakdown) {
+      await this.startup;
+      return this.opts.contextBreakdown();
+    }
     if (!this.lastBreakdown) {
       throw new Error('Context usage is not available yet: the agent has not sent a usage update');
     }

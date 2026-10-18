@@ -297,6 +297,32 @@ suite('AcpRun', () => {
     await run.dispose();
   });
 
+  test('a vendor context query works before the first ACP turn completes', async () => {
+    const p = peer();
+    let used = 10000;
+    const events: AgentEvent[] = [];
+    const run = new AcpRun(p.child, {
+      cwd: '/w', permissionMode: 'default', tools: openCodeTools,
+      modeId: openCodeModeId, clientName: 'mar-code', sessionId: 'test-session',
+      contextBreakdown: async () => ({
+        systemPercent: 0, memoryPercent: 0, conversationPercent: used / 1000,
+        freePercent: 100 - used / 1000, memoryFiles: [], usedTokens: used, windowTokens: 100000,
+      }),
+    });
+    collect(run, events);
+    try {
+      await handshake(p);
+      run.send('work as a collaborator');
+      await p.waitFor('session/prompt');
+      assert.strictEqual((await run.contextBreakdown()).usedTokens, 10000);
+      used = 30000;
+      assert.strictEqual((await run.contextBreakdown()).usedTokens, 30000);
+      assert.strictEqual(events.some((e) => e.kind === 'turn-end'), false);
+    } finally {
+      await run.dispose();
+    }
+  });
+
   test('a replayed update during session/load is suppressed', async () => {
     const p = peer();
     const events: AgentEvent[] = [];
