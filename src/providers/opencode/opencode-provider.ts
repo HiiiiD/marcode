@@ -5,6 +5,7 @@ import { connectAcp, CLIENT_CAPABILITIES, PROTOCOL_VERSION, type AcpChild } from
 import { modelConfigId, toEffort, toModels, type ConfigOption } from '../acp/config-options';
 import { AcpRun } from '../acp/acp-run';
 import { openCodeModeId } from './map-modes';
+import { postMoveSession, waitForServer, type MoveFetch } from './move-session';
 import { openCodeTools } from './map-tools';
 import { reserveLoopbackPort } from './reserve-port';
 import { listOpenCodeSkillNames } from './skill-names';
@@ -14,7 +15,7 @@ import {
 } from '../update-check';
 import type {
   AgentProvider, AgentRun, ModelInfo, PermissionModeInfo, SelfControlMcpConfig,
-  StartOptions, ThreadScope,
+  MoveThreadArgs, MoveThreadResult, StartOptions, ThreadScope,
 } from '../types';
 
 const STDERR_TAIL_BYTES = 2000;
@@ -48,6 +49,9 @@ const CONFIG_OPTION_TIMEOUT_MS = 3000;
  *  `opencode acp`'s own bind. Same shape as `self-control-mcp-server.ts`'s
  *  `PORT_ATTEMPTS`. */
 const SPAWN_PORT_ATTEMPTS = 5;
+
+const MOVE_READY_BUDGET_MS = 8000;
+const MOVE_READY_INTERVAL_MS = 200;
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -146,6 +150,8 @@ export class OpenCodeProvider implements AgentProvider {
   private readonly configOptionTimeoutMs: number;
   /** Test-only override for `reserveLoopbackPort` — see `attemptSpawn`. */
   private readonly reservePort: () => Promise<number>;
+  private readonly moveFetch: MoveFetch;
+  private readonly moveReadyIntervalMs: number;
 
   /**
    * Deliberately never assigned. ACP carries no plan-usage data, so this
@@ -173,6 +179,8 @@ export class OpenCodeProvider implements AgentProvider {
     fetchLatest?: FetchFn;
     configOptionTimeoutMs?: number;
     reservePort?: () => Promise<number>;
+    moveFetch?: MoveFetch;
+    moveReadyIntervalMs?: number;
   } = {}) {
     this.id = opts.id ?? 'opencode';
     this.displayName = opts.displayName ?? 'OpenCode';
@@ -187,11 +195,34 @@ export class OpenCodeProvider implements AgentProvider {
     this.fetchLatest = opts.fetchLatest;
     this.configOptionTimeoutMs = opts.configOptionTimeoutMs ?? CONFIG_OPTION_TIMEOUT_MS;
     this.reservePort = opts.reservePort ?? reserveLoopbackPort;
+    this.moveFetch = opts.moveFetch ?? fetch;
+    this.moveReadyIntervalMs = opts.moveReadyIntervalMs ?? MOVE_READY_INTERVAL_MS;
   }
 
   /** Instance env merged over `process.env`, or `undefined` when there is no override. */
   private mergedEnv(): NodeJS.ProcessEnv | undefined {
     return this.env ? { ...process.env, ...this.env } : undefined;
+  }
+
+  async moveThread(args: MoveThreadArgs): Promise<MoveThreadResult | false> {
+    let child: AcpChild | undefined;
+    try {
+      const port = await this.reservePort();
+      const token = randomBytes(24).toString('hex');
+      const env = { ...(this.mergedEnv() ?? process.env), OPENCODE_SERVER_PASSWORD: token };
+      child = this.spawn(this.binPath ?? 'opencode', env, port);
+      let dead = false;
+      child.onFailure?.(() => { dead = true; });
+      const baseUrl = `http://127.0.0.1:${port}`;
+      const up = await waitForServer(baseUrl, this.moveFetch, () => dead, MOVE_READY_BUDGET_MS, this.moveReadyIntervalMs);
+      if (!up) { return false; }
+      const ok = await postMoveSession(baseUrl, token, args.resumeToken, args.to, this.moveFetch);
+      return ok ? { resumeToken: args.resumeToken, dropOldKey: true } : false;
+    } catch {
+      return false;
+    } finally {
+      try { child?.kill(); } catch { /* already gone */ }
+    }
   }
 
   listModels(): ModelInfo[] { return this.models; }
