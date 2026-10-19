@@ -88,7 +88,9 @@ router. See `docs/daemon.md`.
 | `src/daemon-client/connect-or-spawn.ts`, `spawn-daemon.ts` | Discover, attach, replace or spawn, else a typed fallback reason; the detached spawn recipe for a Bun script or the compiled binary |
 | `src/tui/attachment-request.ts` | `request-attachment-path` / `attachment-path` round trip, so a daemon-attached TUI never reads the store itself |
 | `src/shared/app-version.ts` | `APP_VERSION`, advertised in `hello`/`welcome` and `daemon.json` |
-| `src/providers/types.ts` | `AgentProvider`, `AgentRun`, `AgentEvent`, `ModelInfo` |
+| `src/providers/types.ts` | `AgentProvider`, `AgentRun`, `AgentEvent`, `ModelInfo`, and the optional `moveThread` hook |
+| `src/providers/claude/session-file.ts` | Claude's per-project session JSONL: the cwd slug, the `projects` root, and the copy that moves a session to a new cwd |
+| `src/providers/opencode/move-session.ts` | POST to OpenCode's control-plane move endpoint with a bounded timeout, and the wait for a freshly spawned server to answer |
 | `src/providers/fake/fake-provider.ts` | Scripted provider for tests and the walking skeleton |
 | `src/providers/claude/` | Claude Agent SDK adapter and `SDKMessage` → `AgentEvent` mapping |
 | `src/providers/claude/map-context.ts` | SDK context response → `ContextBreakdown`; structured usage response → `UsageWindow[]` |

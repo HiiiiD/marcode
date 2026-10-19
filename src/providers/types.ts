@@ -468,10 +468,20 @@ export interface AgentRun {
  */
 export type ThreadScope = 'cwd' | 'global';
 
+export interface MoveThreadArgs { resumeToken: string; from: string; to: string; }
+export interface MoveThreadResult { resumeToken: string; dropOldKey?: boolean; }
+
 export interface AgentProvider {
   readonly id: string;
   readonly displayName: string;
   readonly threadScope: ThreadScope;
+  /**
+   * Re-homes a vendor thread to a new directory so the move keeps the real
+   * conversation instead of seeding a fresh one. `false` means "could not":
+   * the host falls back to the seed. Must not be relied on to settle; the
+   * host bounds it with a timeout.
+   */
+  moveThread?(args: MoveThreadArgs): Promise<MoveThreadResult | false>;
   /**
    * Whether a terminal login flow exists for this instance, and if so what
    * kind. `undefined` for a provider that predates this field — the webview

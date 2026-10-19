@@ -130,10 +130,11 @@ import type {
   AgentEvent, AgentProvider, AgentRun, Attachment,
   ContextBreakdown,
   EditorContext,
-  EffortLevel, Invocable, ModelInfo, PermissionMode, PermissionModeInfo,
+  EffortLevel, Invocable, ModelInfo, MoveThreadArgs, MoveThreadResult, PermissionMode, PermissionModeInfo,
   QuestionAnswers, SelfControlMcpConfig, StartOptions, ThreadScope, ToolDecision, UsageTotals, UsageWindow,
 } from '../types';
 import { authFailureReason } from './auth-failure';
+import { copySessionFile, sessionsRoot } from './session-file';
 import { toInvocables } from './map-commands';
 import { toContextBreakdown, toUsageWindows, type ContextUsageLike, type UsageResponseLike } from './map-context';
 import { claudeUsageDelta, mapEvent } from './map-events';
@@ -317,6 +318,11 @@ export class ClaudeProvider implements AgentProvider {
   }
 
   listModels(): ModelInfo[] { return this.models; }
+
+  async moveThread(args: MoveThreadArgs): Promise<MoveThreadResult | false> {
+    const ok = await copySessionFile(sessionsRoot(this.env), args.from, args.to, args.resumeToken);
+    return ok ? { resumeToken: args.resumeToken } : false;
+  }
 
   async checkForUpdate(): Promise<UpdateInfo | undefined> {
     const bin = this.pathToClaudeCodeExecutable ?? 'claude';
