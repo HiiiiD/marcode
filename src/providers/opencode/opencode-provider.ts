@@ -50,7 +50,9 @@ const CONFIG_OPTION_TIMEOUT_MS = 3000;
  *  `PORT_ATTEMPTS`. */
 const SPAWN_PORT_ATTEMPTS = 5;
 
-const MOVE_READY_BUDGET_MS = 8000;
+// Readiness (budget + one last probe) plus the POST timeout must stay under the manager's 15 s.
+const MOVE_READY_BUDGET_MS = 6000;
+const MOVE_PROBE_TIMEOUT_MS = 1000;
 const MOVE_READY_INTERVAL_MS = 200;
 
 function errorMessage(err: unknown): string {
@@ -214,7 +216,7 @@ export class OpenCodeProvider implements AgentProvider {
       let dead = false;
       child.onFailure?.(() => { dead = true; });
       const baseUrl = `http://127.0.0.1:${port}`;
-      const up = await waitForServer(baseUrl, this.moveFetch, () => dead, MOVE_READY_BUDGET_MS, this.moveReadyIntervalMs);
+      const up = await waitForServer(baseUrl, this.moveFetch, () => dead, MOVE_READY_BUDGET_MS, this.moveReadyIntervalMs, MOVE_PROBE_TIMEOUT_MS);
       if (!up) { return false; }
       const ok = await postMoveSession(baseUrl, token, args.resumeToken, args.to, this.moveFetch);
       return ok ? { resumeToken: args.resumeToken, dropOldKey: true } : false;

@@ -33,18 +33,25 @@ suite('postMoveSession', () => {
 suite('OpenCodeProvider.moveThread', () => {
   const args = { resumeToken: 'ses_1', from: '/a', to: '/b' };
 
-  function harness(opts: { fetchImpl: (url: string, n: number) => Response; reserve?: () => Promise<number> }) {
+  function harness(opts: {
+    fetchImpl: (url: string, n: number, init?: RequestInit) => Response | Promise<Response>;
+    reserve?: () => Promise<number>;
+    failOnSpawn?: boolean;
+  }) {
     const state = { killed: 0, spawnEnv: undefined as NodeJS.ProcessEnv | undefined, urls: [] as string[] };
     let n = 0;
     const provider = new OpenCodeProvider({
       spawn: (_bin, env) => {
         state.spawnEnv = env;
-        return { stdin: new PassThrough(), stdout: new PassThrough(), kill: () => { state.killed++; } };
+        return {
+          stdin: new PassThrough(), stdout: new PassThrough(), kill: () => { state.killed++; },
+          onFailure: (cb: (reason: string) => void) => { if (opts.failOnSpawn) { cb('exited'); } },
+        };
       },
       reservePort: opts.reserve ?? (async () => 4321),
-      moveFetch: (async (url: string) => {
+      moveFetch: (async (url: string, init?: RequestInit) => {
         state.urls.push(url);
-        return opts.fetchImpl(url, n++);
+        return opts.fetchImpl(url, n++, init);
       }) as unknown as typeof fetch,
       moveReadyIntervalMs: 1,
     });
@@ -77,5 +84,30 @@ suite('OpenCodeProvider.moveThread', () => {
     assert.notStrictEqual(await provider.moveThread!(args), false);
     assert.strictEqual(state.urls.length, 4);
     assert.strictEqual(state.urls[3].endsWith('/move-session'), true);
+  });
+
+  test('a POST that never answers is aborted and the child is killed', async function () {
+    this.timeout(10000);
+    const { provider, state } = harness({
+      fetchImpl: (url, _n, init) => {
+        if (!url.endsWith('/move-session')) { return reply(404); }
+        return new Promise<Response>((_, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+        });
+      },
+    });
+    assert.strictEqual(await provider.moveThread!(args), false);
+    assert.strictEqual(state.killed, 1);
+  });
+
+  test('stops waiting when the child reports failure', async () => {
+    const { provider, state } = harness({
+      failOnSpawn: true,
+      fetchImpl: () => { throw new Error('ECONNREFUSED'); },
+    });
+    const started = Date.now();
+    assert.strictEqual(await provider.moveThread!(args), false);
+    assert.strictEqual(Date.now() - started < 1000, true);
+    assert.strictEqual(state.killed, 1);
   });
 });
