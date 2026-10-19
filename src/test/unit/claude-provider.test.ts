@@ -1740,3 +1740,31 @@ suite('checkForUpdate', () => {
     assert.strictEqual(seenBin, '/opt/claude/claude');
   });
 });
+
+suite('ClaudeProvider.moveThread', () => {
+  const setupRoot = () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'marcode-move-'));
+    const old = path.join(dir, 'projects', '-a-old');
+    fs.mkdirSync(old, { recursive: true });
+    fs.writeFileSync(path.join(old, 'tok.jsonl'), 'x');
+    return dir;
+  };
+
+  test('returns the same resume token on success', async () => {
+    const dir = setupRoot();
+    try {
+      const provider = new ClaudeProvider(undefined, undefined, { env: { CLAUDE_CONFIG_DIR: dir } });
+      const r = await provider.moveThread({ resumeToken: 'tok', from: '/a/old', to: '/b/new' });
+      assert.deepStrictEqual(r, { resumeToken: 'tok' });
+      assert.strictEqual(fs.existsSync(path.join(dir, 'projects', '-b-new', 'tok.jsonl')), true);
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  test('returns false when copy fails', async () => {
+    const dir = setupRoot();
+    try {
+      const provider = new ClaudeProvider(undefined, undefined, { env: { CLAUDE_CONFIG_DIR: dir } });
+      assert.strictEqual(await provider.moveThread({ resumeToken: 'missing', from: '/a/old', to: '/b/new' }), false);
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+});
