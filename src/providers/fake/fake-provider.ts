@@ -101,7 +101,7 @@ export class FakeProvider implements AgentProvider {
   /** Every run whose interrupt() was called, in order — a run can appear more than once. */
   readonly interrupted: FakeRun[] = [];
   private sessionCounter = 0;
-  moveThreadResult: MoveThreadResult | false | Error | 'never' = false;
+  moveThreadResult: MoveThreadResult | false | Error | 'never' | Promise<MoveThreadResult | false> = false;
   readonly moveThreadCalls: MoveThreadArgs[] = [];
 
   async moveThread(args: MoveThreadArgs): Promise<MoveThreadResult | false> {

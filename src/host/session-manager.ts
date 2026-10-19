@@ -26,6 +26,7 @@ import type {
 } from '../providers/types';
 import { findModel, pinnedModelId, resolveEffort } from '../shared/model-catalog';
 import { FILE_CAP } from '../shared/file-cap';
+import { lifecycleDebug } from '../shared/lifecycle-debug';
 import { resolvePermissionMode } from '../shared/permission-catalog';
 import { threadKey, threadKeyCwd } from '../shared/thread-key';
 import { orderWindows } from '../shared/usage-windows';
@@ -863,7 +864,9 @@ export class SessionManager implements SessionSink {
    * A move is `hide()` -> `open()` with one field changed, which is why it
    * introduces almost no lifecycle: dispose the run, repoint `cwd`, and
    * rebuild. Whether the new thread resumes or is seeded is decided by
-   * `threadKey` — the provider declares whether its tokens travel.
+   * `threadKey` — the provider declares whether its tokens travel — or, for a
+   * provider with `moveThread`, by whether it re-homed the vendor thread to
+   * the new directory (see `moveTo`).
    *
    * Never rejects for a decision that simply cannot be honored: an unknown
    * session and an already-answered item are both no-ops, because this is
@@ -1025,6 +1028,10 @@ export class SessionManager implements SessionSink {
    * way a session changes directory and two code paths doing it their own way
    * is how the two would drift.
    *
+   * Before repointing, a provider with `moveThread` gets one bounded chance
+   * to re-home the vendor thread natively; a refusal, throw or timeout falls
+   * back to seeding a fresh thread. Only on a session this host owns.
+   *
    * `forgetThreadAt` is the directory the session is *leaving* when that
    * directory is about to stop existing. Its resume token is dropped so a
    * future worktree created at the same path cannot resume this conversation
@@ -1034,9 +1041,24 @@ export class SessionManager implements SessionSink {
     id: SessionId, session: AgentSession, state: SessionState, to: string,
     forgetThreadAt?: string,
   ): Promise<void> {
+    if (this.isForeign(id)) { return; }
     const provider = this.providers.get(state.providerId);
     if (!provider) { return; }
 
+    // There is no live run for the whole move; without this an open() landing
+    // mid-move would build a second session on the old cwd.
+    const rebuilt = this.rebuildAt(id, session, state, provider, to, forgetThreadAt);
+    const gate = rebuilt.then((moved) => moved ?? Promise.reject(new Error(`Unknown session: ${id}`)));
+    this.opening.set(id, gate);
+    const clear = () => { if (this.opening.get(id) === gate) { this.opening.delete(id); } };
+    void gate.then(clear, clear);
+    await rebuilt;
+  }
+
+  private async rebuildAt(
+    id: SessionId, session: AgentSession, state: SessionState, provider: AgentProvider,
+    to: string, forgetThreadAt?: string,
+  ): Promise<AgentSession | undefined> {
     await session.dispose();
     this.live.delete(id);
 
@@ -1045,15 +1067,21 @@ export class SessionManager implements SessionSink {
     let native: MoveThreadResult | undefined;
     if (provider.moveThread && oldToken) {
       let timer: ReturnType<typeof setTimeout> | undefined;
+      let fallback: string | undefined;
       try {
         const result = await Promise.race([
           provider.moveThread({ resumeToken: oldToken, from: state.cwd, to }),
-          new Promise<false>((r) => { timer = setTimeout(() => r(false), this.moveThreadTimeoutMs); }),
+          new Promise<'timeout'>((r) => { timer = setTimeout(() => r('timeout'), this.moveThreadTimeoutMs); }),
         ]);
-        if (result) { native = result; }
-      } catch { /* falls back to the seed */ }
-      finally { clearTimeout(timer); }
+        if (result === 'timeout') { fallback = 'timed out'; }
+        else if (result) { native = result; }
+        else { fallback = 'declined'; }
+      } catch (err) {
+        fallback = `threw: ${err instanceof Error ? err.message : String(err)}`;
+      } finally { clearTimeout(timer); }
+      if (fallback) { lifecycleDebug('session.move-fallback', { id, providerId: provider.id, reason: fallback }); }
     }
+    if (this.disposed || this.meta.get(id) !== state) { return undefined; }
 
     state.cwd = to;
     state.updatedAt = Date.now();
@@ -1082,6 +1110,7 @@ export class SessionManager implements SessionSink {
     const seed = state.resumeTokens[key]
       ? undefined
       : buildSeed((await this.store.tail(id, 200)).items, undefined, state.cwd);
+    if (this.disposed || this.meta.get(id) !== state) { return undefined; }
 
     const moved = new AgentSession(state, provider, this.store, this, seed);
     this.live.set(id, moved);
@@ -1097,6 +1126,7 @@ export class SessionManager implements SessionSink {
     if (this.visible.has(id)) {
       this.emitSnapshot(id, await moved.snapshot());
     }
+    return moved;
   }
 
   /**
@@ -1715,7 +1745,9 @@ export class SessionManager implements SessionSink {
   open(id: SessionId): Promise<AgentSession> {
     const inflight = this.opening.get(id);
     if (inflight) { return inflight; }
-    const run = this.openOnce(id).finally(() => { this.opening.delete(id); });
+    const run: Promise<AgentSession> = this.openOnce(id).finally(() => {
+      if (this.opening.get(id) === run) { this.opening.delete(id); }
+    });
     this.opening.set(id, run);
     return run;
   }

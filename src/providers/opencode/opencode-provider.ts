@@ -133,9 +133,9 @@ export class OpenCodeProvider implements AgentProvider {
   /**
    * Measured on 1.18.18: a `session/load` from a directory other than the one
    * that created the session replays the full history and then never answers.
-   * Relocation therefore reseeds by replay rather than resuming natively.
-   * This hang applies only to a session not moved natively; `moveThread` moves
-   * it through the control-plane endpoint instead.
+   * So a relocated session is never resumed from its old directory: `moveThread`
+   * re-homes it through the control-plane endpoint first, and when that fails
+   * the move reseeds by replay instead.
    */
   readonly threadScope: ThreadScope = 'cwd';
   readonly loginKind?: 'oauth' | 'none';
