@@ -22,7 +22,7 @@ import { DigestService, type DigestEstimate, type DigestScope } from './digest/d
 import { buildMemoryBlock, queryTermsOf } from '../memory/prime-block';
 import type { MemoryStore } from '../memory/types';
 import type {
-  AgentProvider, EffortLevel, Invocable, ModelInfo, UpdateInfo, UsageMirror, UsageWindow,
+  AgentProvider, EffortLevel, Invocable, ModelInfo, MoveThreadResult, UpdateInfo, UsageMirror, UsageWindow,
 } from '../providers/types';
 import { findModel, pinnedModelId, resolveEffort } from '../shared/model-catalog';
 import { FILE_CAP } from '../shared/file-cap';
@@ -234,6 +234,7 @@ export class SessionManager implements SessionSink {
      */
     private readonly randomSuffix: () => string = randomNameSuffix,
     private readonly usageMirrors: UsageMirror[] = [],
+    private readonly moveThreadTimeoutMs = 15000,
   ) {
     this.compiledUsageMirrors = usageMirrors.flatMap((mirror) => {
       try { return [{ mirror, pattern: new RegExp(mirror.modelPattern) }]; } catch { return []; }
@@ -1038,8 +1039,30 @@ export class SessionManager implements SessionSink {
 
     await session.dispose();
     this.live.delete(id);
+
+    const oldKey = threadKey(provider.id, provider.threadScope, state.cwd);
+    const oldToken = state.resumeTokens[oldKey];
+    let native: MoveThreadResult | undefined;
+    if (provider.moveThread && oldToken) {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        const result = await Promise.race([
+          provider.moveThread({ resumeToken: oldToken, from: state.cwd, to }),
+          new Promise<false>((r) => { timer = setTimeout(() => r(false), this.moveThreadTimeoutMs); }),
+        ]);
+        if (result) { native = result; }
+      } catch { /* falls back to the seed */ }
+      finally { clearTimeout(timer); }
+    }
+
     state.cwd = to;
     state.updatedAt = Date.now();
+
+    if (native) {
+      const newKey = threadKey(provider.id, provider.threadScope, to);
+      state.resumeTokens[newKey] = native.resumeToken;
+      if (native.dropOldKey && oldKey !== newKey) { delete state.resumeTokens[oldKey]; }
+    }
 
     if (forgetThreadAt !== undefined) {
       const stale = threadKey(provider.id, provider.threadScope, forgetThreadAt);

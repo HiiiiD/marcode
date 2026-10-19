@@ -3,7 +3,7 @@ import type {
   Attachment,
   ContextBreakdown,
   EditorContext,
-  EffortLevel, Invocable, ModelInfo, PermissionMode, PermissionModeInfo, QuestionAnswers,
+  EffortLevel, Invocable, ModelInfo, MoveThreadArgs, MoveThreadResult, PermissionMode, PermissionModeInfo, QuestionAnswers,
   StartOptions, ThreadScope, ToolDecision,
   UsageWindow
 } from '../types';
@@ -101,6 +101,16 @@ export class FakeProvider implements AgentProvider {
   /** Every run whose interrupt() was called, in order — a run can appear more than once. */
   readonly interrupted: FakeRun[] = [];
   private sessionCounter = 0;
+  moveThreadResult: MoveThreadResult | false | Error | 'never' = false;
+  readonly moveThreadCalls: MoveThreadArgs[] = [];
+
+  async moveThread(args: MoveThreadArgs): Promise<MoveThreadResult | false> {
+    this.moveThreadCalls.push(args);
+    const r = this.moveThreadResult;
+    if (r === 'never') { return new Promise(() => {}); }
+    if (r instanceof Error) { throw r; }
+    return r;
+  }
 
   /** The options the most recent run was started with, for assertions. */
   get lastStart(): StartOptions | undefined { return this.starts[this.starts.length - 1]; }
