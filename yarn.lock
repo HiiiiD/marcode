@@ -4521,16 +4521,16 @@ __metadata:
   languageName: node
   linkType: hard
 
-"lucide-react@npm:^1.58.0":
-  version: 1.58.0
-  resolution: "lucide-react@npm:1.58.0"
+"lucide-react@npm:^1.59.0":
+  version: 1.59.0
+  resolution: "lucide-react@npm:1.59.0"
   peerDependencies:
     "@types/react": "*"
     react: ^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0
   peerDependenciesMeta:
     "@types/react":
       optional: true
-  checksum: 10c0/2206d52aef1224292bf41285b7c1d224e3718bc9bbb1ae57fbaba346ec7600793b594730288ed065aa3165c98966bee275c8765ab1802620867a18787bfdf20c
+  checksum: 10c0/e02dbdda8a9689527988ffb8ed7f01675755146ee7abfebbbe46b843fbc477f23dc0a4524fe257d0daa3d8eb3289a46f8bdce4a1dcbbdeeab5d158bfa68842c4
   languageName: node
   linkType: hard
 
@@ -4597,7 +4597,7 @@ __metadata:
     eslint: "npm:^10.12.0"
     global-jsdom: "npm:^29.0.0"
     jsdom: "npm:^30.1.3"
-    lucide-react: "npm:^1.58.0"
+    lucide-react: "npm:^1.59.0"
     mocha: "npm:^12.0.3"
     npm-run-all: "npm:^4.1.5"
     react: "npm:^19.2.8"
