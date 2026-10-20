@@ -660,10 +660,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@headless-tree/core@npm:1.7.0":
-  version: 1.7.0
-  resolution: "@headless-tree/core@npm:1.7.0"
-  checksum: 10c0/e586dad212fc3a34f5f28d9dfa23e98fa71e5f0aec380e337f5d98fa8952d9569aeb33913c0d2cd11c261ea03e8bda40c3afa397e90f1197c8829d9fa7f1f02c
+"@headless-tree/core@npm:1.8.0":
+  version: 1.8.0
+  resolution: "@headless-tree/core@npm:1.8.0"
+  checksum: 10c0/e0503692a269684e67970117dc2bdd59f1a69b2f1754e70e2e33377ba8fe3f91c325830f795e09584a26e20c8a09836b6d03d854a20cc551e85cf5424110229d
   languageName: node
   linkType: hard
 
@@ -4569,7 +4569,7 @@ __metadata:
     "@anthropic-ai/claude-agent-sdk": "npm:0.3.301"
     "@anthropic-ai/sdk": "npm:0.133.0"
     "@base-ui/react": "npm:^1.9.0"
-    "@headless-tree/core": "npm:1.7.0"
+    "@headless-tree/core": "npm:1.8.0"
     "@headless-tree/react": "npm:1.7.0"
     "@modelcontextprotocol/node": "npm:^2.1.1"
     "@modelcontextprotocol/sdk": "npm:^1.29.0"
