@@ -89,7 +89,7 @@ export const TranscriptItemView = memo(function TranscriptItemView({
       return <ToolCard item={shellAsTool(item)} defaultOpen streaming />;
 
     case 'switch': {
-      const label = item.kind === 'model' ? 'Model' : item.kind === 'effort' ? 'Effort' : 'Worktree';
+      const label = item.kind === 'model' ? 'Model' : item.kind === 'effort' ? 'Effort' : item.kind === 'restart' ? 'Session' : 'Worktree';
       return (
         <TranscriptItemShell role="tool" label={label} ts={item.ts}>
           <div className="text-xs text-muted-foreground">{item.text}</div>

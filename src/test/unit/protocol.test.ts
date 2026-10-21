@@ -38,6 +38,12 @@ function describeInbound(m: WebviewToHost): string {
     case 'question-answer': return 'question-answer';
     case 'load-more': return 'load-more';
     case 'request-context': return 'request-context';
+    case 'mcp-open': return 'mcp-open';
+    case 'mcp-add': return 'mcp-add';
+    case 'mcp-remove': return 'mcp-remove';
+    case 'mcp-reconnect': return 'mcp-reconnect';
+    case 'mcp-sign-in': return 'mcp-sign-in';
+    case 'restart-session': return 'restart-session';
     case 'open-file': return 'open-file';
     case 'answer-relocation': return 'answer-relocation';
     case 'cancel-relocation': return 'cancel-relocation';
@@ -92,6 +98,7 @@ function describeOutbound(m: HostToWebview): string {
     case 'session-prepend': return 'session-prepend';
     case 'session-status': return 'session-status';
     case 'session-mcp': return 'session-mcp';
+    case 'mcp-panel': return 'mcp-panel';
     case 'session-cache-window': return 'session-cache-window';
     case 'session-attachments': return 'session-attachments';
     case 'attachments-rejected': return 'attachments-rejected';
