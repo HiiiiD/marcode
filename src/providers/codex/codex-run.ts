@@ -2,7 +2,7 @@ import { attachmentLines, imageAttachments } from '../attachment-payload';
 import { composePrompt } from '../compose-prompt';
 import { sumUsageTotals } from '../../shared/usage-totals';
 import type {
-  AgentEvent, AgentRun, Attachment, ContextBreakdown, EditorContext, EffortLevel, McpServerStatus,
+  AgentEvent, AgentRun, Attachment, ContextBreakdown, EditorContext, EffortLevel, McpControl, McpServerStatus,
   PermissionMode, QuestionAnswers, SelfControlMcpConfig, StartOptions, ToolDecision, UsageTotals, UsageWindow,
 } from '../types';
 import type { RequestId } from './app-server';
@@ -10,6 +10,7 @@ import { approvalEventOf, mapNotification, questionEventOf } from './map-events'
 import { elicitationApprovalOf, elicitationResponse } from './elicitation';
 import { codexSettings, sandboxPolicyOf } from './map-settings';
 import { toInvocables } from './map-skills';
+import { codexMcpControl } from './mcp-control';
 import { toContextBreakdown, toUsageWindows } from './map-usage';
 import type {
   FileChangeApprovalDecision,
@@ -226,6 +227,8 @@ export class CodexRun implements AgentRun {
    * the strip showing only whichever server reported last.
    */
   private readonly mcpServers = new Map<string, McpServerStatus>();
+  private loadedAt: number | undefined;
+  readonly mcp: McpControl;
 
   /**
    * The last-known context occupancy. `contextBreakdown` (below) is attached
@@ -257,6 +260,12 @@ export class CodexRun implements AgentRun {
     this.mode = opts.permissionMode;
     this.model = opts.model;
     this.effort = opts.effort;
+    this.mcp = codexMcpControl({
+      request: (method, params) => this.server.request(method, params),
+      cwd: opts.cwd,
+      threadId: () => this._threadId,
+      startupState: (name) => this.mcpServers.get(name)?.state,
+    });
 
     server.onNotification((method, params) => {
       const named = threadIdOf(method, params);
@@ -301,6 +310,7 @@ export class CodexRun implements AgentRun {
         this.captureContextUsage(tokenUsage);
         this.captureOwnUsage(tokenUsage);
       }
+      if (method === 'mcpServer/oauthLogin/completed') { void this.refreshMcp(); }
       if (method === 'skills/changed') {
         // A pure invalidation signal — `SkillsChangedNotification` is
         // `Record<string, never>`, i.e. an empty object, so there is nothing
@@ -575,6 +585,7 @@ export class CodexRun implements AgentRun {
       const id = result?.thread?.id;
       if (!id) { throw new Error('Codex started a thread without an id.'); }
       this.setThreadId(id);
+      this.loadedAt = Date.now();
       // Emitted here rather than left to `thread/started` for the same
       // reason: a resumed thread never gets that notification, and a session
       // whose resume token is never recorded is one that starts from nothing
@@ -762,6 +773,17 @@ export class CodexRun implements AgentRun {
    * See `mcpServers` for why: the notification is per-server, the event is a
    * full replacement.
    */
+  /** When this run's thread read Codex's config; undefined before the first send. */
+  configLoadedAt(): number | undefined { return this.loadedAt; }
+
+  private async refreshMcp(): Promise<void> {
+    try {
+      this.events.push({ kind: 'mcp-servers', servers: await this.mcp.status() });
+    } catch {
+      // A missed refresh leaves the last roster; the next /mcp open re-reads it.
+    }
+  }
+
   private mergeMcpServers(servers: McpServerStatus[]): AgentEvent {
     for (const server of servers) { this.mcpServers.set(server.name, server); }
     return { kind: 'mcp-servers', servers: [...this.mcpServers.values()] };

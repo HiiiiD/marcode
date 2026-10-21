@@ -11,6 +11,7 @@ import { CodexRun, type CodexConnection } from './codex-run';
 import { CODEX_MODES, effortLevelsOf } from './map-settings';
 import { toInvocables } from './map-skills';
 import { toUsageWindows } from './map-usage';
+import { CodexMcpConfig } from './mcp-config';
 import type {
   AccountReadResponse, CodexModel, ModelListResponse, RateLimitsReadResponse, SkillsListResponse,
 } from './wire';
@@ -223,6 +224,7 @@ export class CodexProvider implements AgentProvider {
 
   /** Instance env override, merged into every spawned `app-server` process's env. */
   private readonly env?: NodeJS.ProcessEnv;
+  readonly mcpConfig: CodexMcpConfig;
 
   constructor(private readonly opts: {
     id?: string;
@@ -244,6 +246,10 @@ export class CodexProvider implements AgentProvider {
     this.binPath = opts.binPath;
     this.teardownGraceMs = opts.teardownGraceMs ?? 5000;
     this.env = opts.env;
+    this.mcpConfig = new CodexMcpConfig({
+      request: (method, params) => this.connection().then((server) => server.request(method, params)),
+      env: this.env,
+    });
     this.loginKind = opts.loginKind;
   }
 
