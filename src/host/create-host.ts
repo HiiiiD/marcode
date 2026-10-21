@@ -136,7 +136,7 @@ export async function createHost(opts: CreateHostOptions): Promise<HostHandle> {
 
   if (enabled.has('claude')) {
     providers.set('claude', new ClaudeProvider(undefined, selfControlConfig, {
-      systemPrompt: systemPrompts.claude,
+      systemPrompt: systemPrompts.claude, claudeAiConnectors: config.claude.claudeAiConnectors,
     }));
   }
   const codexProvider = enabled.has('codex')
@@ -210,6 +210,7 @@ export async function createHost(opts: CreateHostOptions): Promise<HostHandle> {
       providers.set(cfg.id, new ClaudeProvider(undefined, selfControlConfig, {
         id: cfg.id, displayName: cfg.displayName, env: mergedEnv,
         pathToClaudeCodeExecutable: cfg.binPath, loginKind, systemPrompt: systemPrompts[cfg.id],
+        claudeAiConnectors: config.claude.claudeAiConnectors,
       }));
       if (loginKind === 'oauth') {
         loginRecipes.set(cfg.id, {

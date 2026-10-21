@@ -8,6 +8,17 @@ suite('host-config', () => {
     assert.deepStrictEqual(warnings, []);
   });
 
+  test('claude.claudeAiConnectors defaults to false', () => {
+    assert.strictEqual(defaultHostConfig().claude.claudeAiConnectors, false);
+    assert.strictEqual(parseHostConfig({ claude: { claudeAiConnectors: true } }).config.claude.claudeAiConnectors, true);
+  });
+
+  test('a non-boolean claude.claudeAiConnectors falls back and names the key', () => {
+    const { config, warnings } = parseHostConfig({ claude: { claudeAiConnectors: 'yes' } });
+    assert.strictEqual(config.claude.claudeAiConnectors, false);
+    assert.strictEqual(warnings.some((w) => w.includes('claude.claudeAiConnectors')), true);
+  });
+
   test('the default provider list matches the extension default', () => {
     assert.deepStrictEqual(defaultHostConfig().enabledProviders, ['claude', 'codex', 'opencode']);
   });

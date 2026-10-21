@@ -143,6 +143,8 @@ import { sendMessageDenial } from './send-message-guard';
 import { toPermissionMeta, toQuestionSpecs, toSdkAnswers } from './map-questions';
 import { toToolCall } from './map-tools';
 import { redactSecrets } from './redact';
+import { bundledClaudeCli, ClaudeMcpConfig } from './mcp-config';
+import { toMcpStatuses, type SdkMcpStatusLike } from './mcp-status';
 import { lifecycleDebug } from '../../shared/lifecycle-debug';
 
 /**
@@ -258,6 +260,16 @@ class Channel<T> implements AsyncIterable<T> {
   }
 }
 
+/** Servers connect after init, so a fresh probe polls until none is still pending (bounded). */
+async function settledMcpStatus(query: Query): Promise<unknown[]> {
+  let servers = await query.mcpServerStatus();
+  for (let i = 0; i < 10 && servers.some((s) => s.status === 'pending'); i++) {
+    await new Promise((r) => setTimeout(r, 500));
+    servers = await query.mcpServerStatus();
+  }
+  return servers;
+}
+
 function errorMessage(err: unknown): string {
   const raw = err instanceof Error ? err.message : String(err);
   return redactSecrets(raw);
@@ -284,6 +296,9 @@ export class ClaudeProvider implements AgentProvider {
 
   /** Instance env override, merged into every `Options.env` this provider builds. */
   private readonly env?: NodeJS.ProcessEnv;
+  /** What every query and probe runs with: `env` plus the claude.ai connectors switch. */
+  private readonly runEnv?: NodeJS.ProcessEnv;
+  readonly mcpConfig: ClaudeMcpConfig;
   /** Instance binary override — a second Claude Code install, not just a second account. */
   private readonly pathToClaudeCodeExecutable?: string;
   /** Test seam: overrides localVersion's default execFile call. */
@@ -305,12 +320,21 @@ export class ClaudeProvider implements AgentProvider {
       execVersion?: ExecVersionFn;
       fetchLatest?: FetchFn;
       systemPrompt?: string | { preset: 'claude_code'; append?: string };
+      /** `config.json` claude.claudeAiConnectors; anything but `true` keeps them out. */
+      claudeAiConnectors?: boolean;
     },
   ) {
     this.id = instance?.id ?? 'claude';
     this.displayName = instance?.displayName ?? 'Claude';
     this.env = instance?.env;
+    this.runEnv = instance?.claudeAiConnectors === true
+      ? this.env
+      : { ...(this.env ?? process.env), ENABLE_CLAUDEAI_MCP_SERVERS: 'false' };
     this.pathToClaudeCodeExecutable = instance?.pathToClaudeCodeExecutable;
+    this.mcpConfig = new ClaudeMcpConfig({
+      env: this.env,
+      cliPath: () => this.pathToClaudeCodeExecutable ?? bundledClaudeCli(),
+    });
     this.loginKind = instance?.loginKind;
     this.execVersion = instance?.execVersion;
     this.fetchLatest = instance?.fetchLatest;
@@ -405,17 +429,17 @@ export class ClaudeProvider implements AgentProvider {
    * each one is a CLI subprocess, and the close must not depend on the
    * request succeeding.
    */
-  private async probe<T>(cwd: string, ask: (query: Query) => Promise<T>): Promise<T> {
+  private async probe<T>(cwd: string, ask: (query: Query) => Promise<T>, keepOpen = false): Promise<T> {
     const query = await this.loadQueryFn();
-    // A channel that is closed immediately: the query needs an async iterable
-    // for `prompt`, and this one ends without ever yielding a message.
+    // Closed immediately unless the caller needs the CLI to stay up (MCP
+    // servers connect after init, and a closed stream ends the query first).
     const prompts = new Channel<SDKUserMessage>();
-    prompts.close();
+    if (!keepOpen) { prompts.close(); }
     const probe = query({
       prompt: prompts,
       options: {
         cwd,
-        ...(this.env ? { env: this.env } : {}),
+        ...(this.runEnv ? { env: this.runEnv } : {}),
         ...(this.pathToClaudeCodeExecutable ? { pathToClaudeCodeExecutable: this.pathToClaudeCodeExecutable } : {}),
       },
     });
@@ -426,6 +450,7 @@ export class ClaudeProvider implements AgentProvider {
       // leak a CLI subprocess for the life of the window.
       try {
         probe.close();
+        prompts.close();
       } catch {
         // Best-effort: the probe is being discarded regardless.
       }
@@ -471,6 +496,7 @@ export class ClaudeProvider implements AgentProvider {
     let introduced = Boolean(opts.withoutSelfControl);
     let bareCommands: ReadonlySet<string> = new Set();
     let queryRef: Query | undefined;
+    let configLoadedAt: number | undefined;
     // Effective mode/effort for a query not yet constructed. Read by
     // ensureStarted() -> buildOptions() at the moment the query actually
     // gets built (first send()); mutated directly by setPermissionMode()/
@@ -590,7 +616,7 @@ export class ClaudeProvider implements AgentProvider {
             ? this.systemPrompt
             : { type: 'preset' as const, ...this.systemPrompt },
         } : {}),
-        ...(this.env ? { env: this.env } : {}),
+        ...(this.runEnv ? { env: this.runEnv } : {}),
         ...(this.pathToClaudeCodeExecutable ? { pathToClaudeCodeExecutable: this.pathToClaudeCodeExecutable } : {}),
         ...(effort !== undefined ? { effort: effort as SdkEffortLevel } : {}),
         ...(isBypassMode ? { allowDangerouslySkipPermissions: true } : {}),
@@ -636,6 +662,7 @@ export class ClaudeProvider implements AgentProvider {
           const constructedOptions = buildOptions();
           const session = query({ prompt: prompts, options: constructedOptions });
           queryRef = session;
+          configLoadedAt = Date.now();
           resolveQueryReady?.(session);
           // The init message already produced a name+status snapshot via
           // map-events. This pull supersedes it with the full shape — error
@@ -654,17 +681,7 @@ export class ClaudeProvider implements AgentProvider {
             session.mcpServerStatus().then(
               (servers) => {
                 if (disposed || servers.length === 0) { return; }
-                events.push({
-                  kind: 'mcp-servers',
-                  servers: servers.map((s) => ({
-                    name: s.name,
-                    state: s.status === 'connected' || s.status === 'failed'
-                      || s.status === 'needs-auth' || s.status === 'pending'
-                      || s.status === 'disabled' ? s.status : 'pending',
-                    ...(s.tools ? { toolCount: s.tools.length } : {}),
-                    ...(s.error ? { error: redactSecrets(s.error) } : {}),
-                  })),
-                });
+                events.push({ kind: 'mcp-servers', servers: toMcpStatuses(servers as SdkMcpStatusLike[]) });
               },
               () => { /* see comment above: degraded strip, not a failed turn */ },
             ).catch(() => { /* belt-and-braces: .then's rejection handler itself must not throw async */ });
@@ -884,6 +901,18 @@ export class ClaudeProvider implements AgentProvider {
         return toUsageWindows(
           await query.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET() as UsageResponseLike,
         );
+      },
+      configLoadedAt: () => configLoadedAt,
+      mcp: {
+        status: async () => {
+          const query = started ? (queryRef ?? await queryReady) : undefined;
+          if (query) { return toMcpStatuses(await query.mcpServerStatus() as SdkMcpStatusLike[]); }
+          return toMcpStatuses(await this.probe(opts.cwd, settledMcpStatus, true) as SdkMcpStatusLike[]);
+        },
+        reconnect: async (name: string) => {
+          const query = started ? (queryRef ?? await queryReady) : undefined;
+          if (query) { await query.reconnectMcpServer(name); }
+        },
       },
       contextBreakdown: async (): Promise<ContextBreakdown> => {
         // queryRef is only assigned once the query is constructed, which is

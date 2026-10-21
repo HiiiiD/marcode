@@ -18,6 +18,7 @@ export interface HostConfig {
   shell: { aliases: ShellAliasTable };
   layout: { autoGrid: boolean };
   theme: ThemeColors;
+  claude: { claudeAiConnectors: boolean };
 }
 
 export const MOVED_SETTING_IDS: readonly string[] = [
@@ -39,6 +40,7 @@ export function defaultHostConfig(): HostConfig {
     shell: { aliases: { ...DEFAULT_SHELL_ALIASES } },
     layout: { autoGrid: true },
     theme: {},
+    claude: { claudeAiConnectors: false },
   };
 }
 
@@ -135,6 +137,15 @@ export function parseHostConfig(raw: unknown): { config: HostConfig; warnings: s
     } else if (raw.layout.autoGrid !== undefined) {
       if (typeof raw.layout.autoGrid === 'boolean') { config.layout.autoGrid = raw.layout.autoGrid; }
       else { warnings.push('config.json: layout.autoGrid is not a boolean; using the default.'); }
+    }
+  }
+
+  if (raw.claude !== undefined) {
+    if (!isObject(raw.claude)) {
+      warnings.push('config.json: claude is not an object; using the default.');
+    } else if (raw.claude.claudeAiConnectors !== undefined) {
+      if (typeof raw.claude.claudeAiConnectors === 'boolean') { config.claude.claudeAiConnectors = raw.claude.claudeAiConnectors; }
+      else { warnings.push('config.json: claude.claudeAiConnectors is not a boolean; using the default.'); }
     }
   }
 
