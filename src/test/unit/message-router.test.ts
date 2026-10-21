@@ -44,6 +44,33 @@ suite('MessageRouter', () => {
     await fs.rm(dir, { recursive: true, force: true });
   });
 
+  test('mcp-open is answered with mcp-panel for that session', async () => {
+    const id = (await manager.create('fake', dir)).state.id;
+    await router.handle({ t: 'mcp-open', id });
+    const panels = sent.filter((m) => m.t === 'mcp-panel');
+    assert.deepStrictEqual(panels.map((m) => m.t === 'mcp-panel' ? [m.id, m.panel.capabilities?.reconnect] : []), [[id, 'per-server']]);
+  });
+
+  test('mcp-sign-in opens the url through the editor host', async () => {
+    const opened: string[] = [];
+    const editor = {
+      current: () => null, reveal: () => {}, openDiff: () => {}, openSettings: () => {},
+      openExternal: (u: string) => { opened.push(u); }, exportCsv: () => {}, exportImage: () => {}, login: () => {},
+    };
+    const r = new MessageRouter(manager, (m) => sent.push(m), '/tmp', editor, attachments);
+    const id = (await manager.create('fake', dir)).state.id;
+    await r.handle({ t: 'mcp-sign-in', id, name: 'srv' });
+    assert.deepStrictEqual(opened, ['https://auth.example/srv']);
+  });
+
+  test('restart-session emits a restarting panel then a settled one', async () => {
+    const id = (await manager.create('fake', dir)).state.id;
+    await router.handle({ t: 'restart-session', id });
+    const flags = sent.filter((m) => m.t === 'mcp-panel').map((m) => m.t === 'mcp-panel' && m.panel.restarting);
+    assert.deepStrictEqual(flags, [true, false]);
+    assert.strictEqual(provider.starts.length, 2);
+  });
+
   test('ready produces a hydrate carrying the catalog', async () => {
     await router.handle({ t: 'ready' });
     const hydrate = sent.find((m) => m.t === 'hydrate') as

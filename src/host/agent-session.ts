@@ -9,7 +9,7 @@ import type {
   Attachment,
   ContextBreakdown,
   EditorContext,
-  EffortLevel, Invocable, PermissionMode, QuestionAnswers, ToolDecision,
+  EffortLevel, Invocable, McpControl, PermissionMode, QuestionAnswers, ToolDecision,
   UsageWindow,
 } from '../providers/types';
 import { findModel, resolveEffort } from '../shared/model-catalog';
@@ -134,6 +134,7 @@ function nextId(prefix: string): string {
 
 export class AgentSession {
   private run: AgentRun;
+  private readonly builtAt = Date.now();
   private pending = new Map<string, PermissionRequest>();
   private pendingQuestions = new Map<string, QuestionRequest>();
   private openAssistantId: string | undefined;
@@ -853,6 +854,18 @@ export class AgentSession {
    * failure into the `{ ok: false, reason }` the wire carries, so there is
    * exactly one shape of "unavailable" reaching the webview.
    */
+  get mcp(): McpControl | undefined { return this.run.mcp; }
+
+  /** When the backend read its MCP config; a run without lazy start read it when it was built. */
+  configLoadedAt(): number | undefined {
+    return this.run.configLoadedAt ? this.run.configLoadedAt() : this.builtAt;
+  }
+
+  setMcpServers(servers: McpServerStatus[]): void {
+    this.mcpServers = servers;
+    this.sink.mcp(this._state.id, servers);
+  }
+
   async contextBreakdown(): Promise<ContextBreakdown> {
     if (!this.run.contextBreakdown) {
       throw new Error('This provider does not report context usage');
@@ -1235,8 +1248,7 @@ export class AgentSession {
       case 'mcp-servers':
         // Replace-whole, not a merge: the provider always sends the full
         // array, so hydrate and live update are the same code path.
-        this.mcpServers = event.servers;
-        this.sink.mcp(this._state.id, event.servers);
+        this.setMcpServers(event.servers);
         return;
 
       case 'background-tasks-changed':
@@ -1408,6 +1420,14 @@ export class AgentSession {
    * its own. Flushed eagerly for the same reason as `replaceRelocation`: the
    * manager disposes and rebuilds this session right after.
    */
+  async noteRestart(): Promise<void> {
+    this.appendItem({
+      id: nextId('sw'), ts: Date.now(), role: 'switch', kind: 'restart',
+      text: 'Session restarted to apply MCP changes',
+    });
+    await this.scheduleFlush();
+  }
+
   async noteInterruptedMove(path: string): Promise<void> {
     this.appendItem({
       id: nextId('sw'), ts: Date.now(), role: 'switch', kind: 'relocation',

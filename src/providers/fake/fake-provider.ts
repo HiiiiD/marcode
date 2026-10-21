@@ -1,4 +1,5 @@
 import type {
+  McpCapabilities, McpConfigStore, McpServerStatus,
   AgentEvent, AgentProvider, AgentRun,
   Attachment,
   ContextBreakdown,
@@ -112,6 +113,34 @@ export class FakeProvider implements AgentProvider {
     return r;
   }
 
+  /** Scripted MCP answers for `run.mcp` / `mcpConfig`, for the host's MCP tests. */
+  mcpStatus: McpServerStatus[] = [];
+  mcpLoadedAt: number | undefined = 0;
+  /** When set, the next mcpConfig add/remove rejects with this message. */
+  mcpFail: string | undefined;
+  readonly mcpWrites: { op: 'add' | 'remove'; name: string; path: string }[] = [];
+  readonly mcpReconnects: string[] = [];
+  readonly mcpConfig: McpConfigStore & { capabilities: McpCapabilities } = {
+    capabilities: { reconnect: 'per-server', signIn: true, sse: false, workingDirectory: true },
+    targets: async (at) => ({ repo: { path: `${at.repoRoot}/.fake-mcp.json` }, global: { path: '/home/.fake-mcp.json' } }),
+    add: async (at, scope, server) => {
+      const fail = this.mcpFail;
+      this.mcpFail = undefined;
+      if (fail) { throw new Error(fail); }
+      const target = scope === 'repo' ? `${at.repoRoot}/.fake-mcp.json` : '/home/.fake-mcp.json';
+      this.mcpWrites.push({ op: 'add', name: server.name, path: target });
+      return target;
+    },
+    remove: async (at, origin, name) => {
+      const fail = this.mcpFail;
+      this.mcpFail = undefined;
+      if (fail) { throw new Error(fail); }
+      const target = origin === 'global' ? '/home/.fake-mcp.json' : `${at.repoRoot}/.fake-mcp.json`;
+      this.mcpWrites.push({ op: 'remove', name, path: target });
+      return target;
+    },
+  };
+
   /** The options the most recent run was started with, for assertions. */
   get lastStart(): StartOptions | undefined { return this.starts[this.starts.length - 1]; }
 
@@ -182,6 +211,12 @@ export class FakeProvider implements AgentProvider {
       },
       dispose: async () => { channel.close(); },
       emit: (event: AgentEvent) => { channel.push(event); },
+      mcp: {
+        status: async () => this.mcpStatus,
+        reconnect: async (name: string) => { this.mcpReconnects.push(name); },
+        signIn: async (name: string) => `https://auth.example/${name}`,
+      },
+      configLoadedAt: () => this.mcpLoadedAt,
       usageWindows: async (): Promise<UsageWindow[] | undefined> =>
         (this.reports.usageUnavailable ? undefined : (this.reports.windows ?? [])),
     };

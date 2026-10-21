@@ -38,6 +38,8 @@ import type {
   SessionRef, SessionSnapshot, SessionState, SessionStatus, SessionSummary, StaleTree,
   TranscriptItem, TranscriptPatch, TreeDiff, UnavailableProvider,
 } from '../protocol/messages';
+import { withTimeout } from '../shared/with-timeout';
+import { McpService } from './mcp/mcp-service';
 import { DEFAULT_SHELL_ALIASES, type ShellAliasTable } from './shell/shell-aliases';
 
 let counter = 0;
@@ -57,21 +59,6 @@ const NAME_SUFFIX_ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789';
 function randomNameSuffix(): string {
   const bytes = randomBytes(8);
   return Array.from(bytes, (b) => NAME_SUFFIX_ALPHABET[b % NAME_SUFFIX_ALPHABET.length]).join('');
-}
-
-/**
- * Rejects with `reason` if `work` has not settled within `ms`. The timer is
- * cleared either way: a pending `setTimeout` would otherwise keep the
- * extension host's event loop alive past dispose.
- */
-function withTimeout<T>(work: Promise<T>, ms: number, reason: string): Promise<T> {
-  let timer: NodeJS.Timeout | undefined;
-  const bound = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error(reason)), ms);
-  });
-  return Promise.race([work, bound]).finally(() => {
-    if (timer) { clearTimeout(timer); }
-  }) as Promise<T>;
 }
 
 interface Reconciled {
@@ -858,6 +845,14 @@ export class SessionManager implements SessionSink {
 
   get(id: SessionId): AgentSession | undefined { return this.live.get(id); }
 
+  readonly mcpService = new McpService(this);
+
+  mcpContext(id: SessionId): { cwd: string; provider: AgentProvider } | undefined {
+    const state = this.meta.get(id);
+    const provider = state && this.providers.get(state.providerId);
+    return state && provider ? { cwd: state.cwd, provider } : undefined;
+  }
+
   /**
    * Answers a pending relocation offer.
    *
@@ -1045,19 +1040,37 @@ export class SessionManager implements SessionSink {
     const provider = this.providers.get(state.providerId);
     if (!provider) { return; }
 
-    // There is no live run for the whole move; without this an open() landing
-    // mid-move would build a second session on the old cwd.
-    const rebuilt = this.rebuildAt(id, session, state, provider, to, forgetThreadAt);
+    await this.gateRebuild(id, this.rebuildAt(id, session, state, provider, to, forgetThreadAt));
+  }
+
+  /**
+   * Rebuilds the run in place so the backend re-reads its config (MCP servers),
+   * keeping the conversation. A turn in flight is cut short first.
+   */
+  async restart(id: SessionId): Promise<void> {
+    const state = this.meta.get(id);
+    const session = this.live.get(id);
+    if (!state || !session || this.isForeign(id)) { return; }
+    const provider = this.providers.get(state.providerId);
+    if (!provider) { return; }
+    if (state.status !== 'idle' && state.status !== 'error') { await session.interrupt(); }
+    const fresh = await this.gateRebuild(id, this.rebuildAt(id, session, state, provider, state.cwd, undefined, true));
+    await fresh?.noteRestart();
+  }
+
+  // There is no live run for the whole rebuild; without this an open() landing
+  // mid-rebuild would build a second session.
+  private async gateRebuild(id: SessionId, rebuilt: Promise<AgentSession | undefined>): Promise<AgentSession | undefined> {
     const gate = rebuilt.then((moved) => moved ?? Promise.reject(new Error(`Unknown session: ${id}`)));
     this.opening.set(id, gate);
     const clear = () => { if (this.opening.get(id) === gate) { this.opening.delete(id); } };
     void gate.then(clear, clear);
-    await rebuilt;
+    return rebuilt;
   }
 
   private async rebuildAt(
     id: SessionId, session: AgentSession, state: SessionState, provider: AgentProvider,
-    to: string, forgetThreadAt?: string,
+    to: string, forgetThreadAt?: string, inPlace = false,
   ): Promise<AgentSession | undefined> {
     await session.dispose();
     this.live.delete(id);
@@ -1065,7 +1078,7 @@ export class SessionManager implements SessionSink {
     const oldKey = threadKey(provider.id, provider.threadScope, state.cwd);
     const oldToken = state.resumeTokens[oldKey];
     let native: MoveThreadResult | undefined;
-    if (provider.moveThread && oldToken) {
+    if (!inPlace && provider.moveThread && oldToken) {
       let timer: ReturnType<typeof setTimeout> | undefined;
       let fallback: string | undefined;
       try {
@@ -1083,8 +1096,10 @@ export class SessionManager implements SessionSink {
     }
     if (this.disposed || this.meta.get(id) !== state) { return undefined; }
 
-    state.cwd = to;
-    state.updatedAt = Date.now();
+    if (!inPlace) {
+      state.cwd = to;
+      state.updatedAt = Date.now();
+    }
 
     if (native) {
       const newKey = threadKey(provider.id, provider.threadScope, to);
