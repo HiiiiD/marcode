@@ -4,7 +4,7 @@ import type { SessionId } from '../../protocol/messages';
 import { addUsageTotals } from '../../shared/usage-totals';
 import type {
   AgentEvent, AgentRun, Attachment, ContextBreakdown, EditorContext,
-  EffortLevel, Invocable, PermissionMeta, PermissionMode, QuestionAnswers,
+  EffortLevel, Invocable, McpControl, PermissionMeta, PermissionMode, QuestionAnswers,
   SelfControlMcpConfig, ToolCall, ToolDecision, UsageTotals,
 } from '../types';
 import { CLIENT_CAPABILITIES, connectAcp, PROTOCOL_VERSION, type AcpChild } from './acp-client';
@@ -80,6 +80,9 @@ export interface AcpRunOptions {
   childEvents?: AsyncIterable<AgentEvent>;
   /** Optional vendor query for usage while ACP is still waiting for the turn to finish. */
   contextBreakdown?: () => Promise<ContextBreakdown>;
+  /** A vendor's own MCP control channel; ACP itself has none. */
+  mcp?: McpControl;
+  configLoadedAt?: () => number | undefined;
   /** Fired once, the instant this run's own session id is known. */
   onSessionId?: (id: string) => void;
   /** The names of this agent's skills, when the agent can say; `undefined` if it cannot. */
@@ -182,6 +185,8 @@ function turnEndReason(stopReason: string | undefined): 'done' | 'interrupted' |
  */
 export class AcpRun implements AgentRun {
   readonly events = new EventChannel();
+  readonly mcp?: McpControl;
+  readonly configLoadedAt?: () => number | undefined;
 
   private conn: AcpConnection | undefined;
   private sessionId: string | undefined;
@@ -266,6 +271,8 @@ export class AcpRun implements AgentRun {
     private readonly child: AcpChild,
     private readonly opts: AcpRunOptions,
   ) {
+    this.mcp = opts.mcp;
+    this.configLoadedAt = opts.configLoadedAt;
     this.mode = opts.permissionMode;
     this.model = opts.model;
     if (opts.queuesNatively) { this.queuesNatively = true; }

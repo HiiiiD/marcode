@@ -10,6 +10,8 @@ import { openCodeTools } from './map-tools';
 import { reserveLoopbackPort } from './reserve-port';
 import { listOpenCodeSkillNames } from './skill-names';
 import { SubagentWatch } from './subagent-watch';
+import { toOpenCodeStatuses } from './map-mcp-status';
+import { findRepoRoot, OpenCodeMcpConfig } from './mcp-config';
 import {
   localVersion, githubLatestVersion, type ExecVersionFn, type FetchFn, type UpdateInfo,
 } from '../update-check';
@@ -148,6 +150,7 @@ export class OpenCodeProvider implements AgentProvider {
   private readonly selfControlMcp?: SelfControlMcpConfig;
   /** Instance env override, merged into every spawned `opencode acp` process's env. */
   private readonly env?: NodeJS.ProcessEnv;
+  readonly mcpConfig: OpenCodeMcpConfig;
   private readonly execVersion?: ExecVersionFn;
   private readonly fetchLatest?: FetchFn;
   /** Test-only override for `CONFIG_OPTION_TIMEOUT_MS` — see `probe`. */
@@ -194,6 +197,7 @@ export class OpenCodeProvider implements AgentProvider {
     this.listSkillNames = opts.skillNames ?? listOpenCodeSkillNames;
     this.selfControlMcp = opts.selfControlMcp;
     this.env = opts.env;
+    this.mcpConfig = new OpenCodeMcpConfig({ env: this.mergedEnv() ?? process.env });
     this.loginKind = opts.loginKind;
     this.execVersion = opts.execVersion;
     this.fetchLatest = opts.fetchLatest;
@@ -357,6 +361,15 @@ export class OpenCodeProvider implements AgentProvider {
       selfControlMcp: opts.withoutSelfControl ? undefined : this.selfControlMcp,
       childEvents: watch.events,
       contextBreakdown: () => watch.contextBreakdown(opts.cwd),
+      mcp: {
+        status: async () => toOpenCodeStatuses(
+          await watch.mcpStatus(opts.cwd),
+          await this.mcpConfig.origins({ cwd: opts.cwd, repoRoot: findRepoRoot(opts.cwd) }),
+        ),
+        reconnect: (name) => watch.mcpReconnect(name, opts.cwd),
+        signIn: (name) => watch.mcpAuthStart(name, opts.cwd),
+      },
+      configLoadedAt: () => watch.connectedAt(),
       skillNames: () => this.listSkillNames(this.binPath, this.mergedEnv(), opts.cwd),
       // `onSessionId` fires once, the moment a real opencode session id
       // exists (see `AcpRunOptions`) — the earliest point a fresh process
