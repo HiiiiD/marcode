@@ -126,7 +126,9 @@ suite("invocable menu", () => {
 
     await userEvent.click(screen.getByLabelText("Skills and commands"));
 
-    assert.strictEqual(screen.getAllByRole("option").length, ENTRIES.length);
+    // + the panel's own /mcp, appended after the provider's entries.
+    assert.strictEqual(screen.getAllByRole("option").length, ENTRIES.length + 1);
+    assert.strictEqual(screen.getAllByRole("option").at(-1)?.textContent?.includes("mcp"), true);
   });
 
   /**
