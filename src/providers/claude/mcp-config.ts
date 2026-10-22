@@ -33,6 +33,12 @@ export function toClaudeJson(spec: McpServerSpec): Record<string, unknown> {
     : { type: spec.transport, url: spec.url, headers: spec.headers };
 }
 
+export async function refuseTaken(file: string, keyPath: string[], name: string): Promise<void> {
+  if ((await readJsonMembers(file, keyPath)).includes(name)) {
+    throw new Error(`A server named ${name} is already in ${file}.`);
+  }
+}
+
 function cliError(err: unknown): Error {
   const stderr = (err as { stderr?: string }).stderr?.trim();
   return new Error(stderr || (err instanceof Error ? err.message : String(err)));
@@ -67,11 +73,13 @@ export class ClaudeMcpConfig implements McpConfigStore {
     const body = toClaudeJson(server);
     if (scope === 'repo') {
       const file = path.join(at.repoRoot, '.mcp.json');
+      await refuseTaken(file, ['mcpServers'], server.name);
       await setJsonMember(file, ['mcpServers', server.name], body);
       return file;
     }
     const file = this.globalFile();
     if (await this.viaCli(['mcp', 'add-json', server.name, JSON.stringify(body), '-s', 'user'], at.repoRoot)) { return file; }
+    await refuseTaken(file, ['mcpServers'], server.name);
     await setJsonMember(file, ['mcpServers', server.name], body);
     await this.verify(file, ['mcpServers'], server.name, true);
     return file;
@@ -90,10 +98,12 @@ export class ClaudeMcpConfig implements McpConfigStore {
       return file;
     }
     let cliFailure: unknown;
-    try { await this.viaCli(['mcp', 'remove', name, '-s', 'local'], at.repoRoot); } catch (err) { cliFailure = err; }
+    // `-s local` is keyed by the process cwd: the session's own folder, which may sit below the repo root.
+    try { await this.viaCli(['mcp', 'remove', name, '-s', 'local'], at.cwd); } catch (err) { cliFailure = err; }
     // The CLI only knows one spelling of the project path; Windows leaves others behind.
     let removed = false;
-    for (const key of await projectKeysFor(file, at.repoRoot)) {
+    const keys = new Set([...await projectKeysFor(file, at.cwd), ...await projectKeysFor(file, at.repoRoot)]);
+    for (const key of keys) {
       removed = (await removeJsonMember(file, ['projects', key, 'mcpServers', name])) || removed;
     }
     if (cliFailure !== undefined && !removed) { throw cliFailure; }

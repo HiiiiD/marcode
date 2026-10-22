@@ -88,6 +88,31 @@ suite('ClaudeMcpConfig', () => {
     await assert.rejects(store.add(at(), 'global', spec), /already exists in user config/);
   });
 
+  test('repo add refuses a name already in .mcp.json', async () => {
+    const store = new ClaudeMcpConfig({ env: { CLAUDE_CONFIG_DIR: home } });
+    await store.add(at(), 'repo', spec);
+    await assert.rejects(store.add(at(), 'repo', spec), /already/);
+  });
+
+  test('global add without a CLI refuses a name already there', async () => {
+    const store = new ClaudeMcpConfig({ env: { CLAUDE_CONFIG_DIR: home }, cliPath: () => undefined });
+    await store.add(at(), 'global', spec);
+    await assert.rejects(store.add(at(), 'global', spec), /already/);
+  });
+
+  test('private remove runs the CLI from the session cwd and cleans that project key', async () => {
+    const sub = path.join(repo, 'packages', 'x');
+    const file = path.join(home, '.claude.json');
+    const key = sub.split(path.sep).join('/');
+    await fs.writeFile(file, JSON.stringify({ projects: { [key]: { mcpServers: { blender: {} } } } }, null, 2));
+    const calls: { cwd: string }[] = [];
+    const exec: ExecCli = async (_f, _a, o) => { calls.push({ cwd: o.cwd }); throw Object.assign(new Error('x'), { stderr: 'No MCP server found' }); };
+    const store = new ClaudeMcpConfig({ env: { CLAUDE_CONFIG_DIR: home }, cliPath: () => 'claude.exe', exec });
+    await store.remove({ cwd: sub, repoRoot: repo }, 'repo-private', 'blender');
+    assert.deepStrictEqual(calls, [{ cwd: sub }]);
+    assert.deepStrictEqual(Object.keys(JSON.parse(await fs.readFile(file, 'utf8')).projects[key].mcpServers), []);
+  });
+
   test('repo remove of a missing server says so', async () => {
     const store = new ClaudeMcpConfig({ env: { CLAUDE_CONFIG_DIR: home } });
     await assert.rejects(store.remove(at(), 'repo', 'nope'), /isn't in/);

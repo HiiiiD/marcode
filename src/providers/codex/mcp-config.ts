@@ -53,6 +53,11 @@ export class CodexMcpConfig implements McpConfigStore {
       await addTomlServer(file, server.name, value as Parameters<typeof addTomlServer>[2]);
       return file;
     }
+    const read = await this.deps.request<ConfigReadLike>('config/read', { includeLayers: true, cwd: at.cwd });
+    const user = read.layers?.find((l) => l.name?.type === 'user');
+    if (Object.keys(user?.config?.mcp_servers ?? {}).includes(server.name)) {
+      throw new Error(`A server named ${server.name} is already in ${this.userFile()}.`);
+    }
     return this.writeUser(server.name, value);
   }
 

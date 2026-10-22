@@ -82,6 +82,13 @@ suite('OpenCodeMcpConfig', () => {
     assert.deepStrictEqual([...(await store.origins(at())).entries()].sort(), [['onlyg', 'global'], ['same', 'repo']]);
   });
 
+  test('add refuses a name already in the target file', async () => {
+    const store = new OpenCodeMcpConfig({ env: {}, configDir });
+    const s = { name: 'r', transport: 'http' as const, url: 'https://r', headers: {} };
+    await store.add(at(), 'repo', s);
+    await assert.rejects(store.add(at(), 'repo', s), /already/);
+  });
+
   test('remove of a missing server says so', async () => {
     await assert.rejects(new OpenCodeMcpConfig({ env: {}, configDir }).remove(at(), 'repo', 'nope'), /isn't in/);
   });

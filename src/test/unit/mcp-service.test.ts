@@ -137,6 +137,25 @@ suite('McpService', () => {
     assert.strictEqual(panel.restarting, false);
   });
 
+  test('the host refuses an invalid name even if the client did not check', async () => {
+    const { manager, provider, cwd, handle } = await setup();
+    const a = await manager.create('fake', cwd);
+    const panel = await handle({ t: 'mcp-add', id: a.state.id, scope: 'repo', server: { ...SPEC, name: 'bad]name' } });
+    assert.strictEqual(typeof panel.error, 'string');
+    assert.strictEqual(provider.mcpWrites.length, 0);
+  });
+
+  test('two restarts at once build one new run, not two', async () => {
+    const { manager, provider, cwd, handle } = await setup();
+    const a = await manager.create('fake', cwd);
+    await Promise.all([
+      handle({ t: 'restart-session', id: a.state.id }),
+      handle({ t: 'restart-session', id: a.state.id }),
+    ]);
+    await settle();
+    assert.strictEqual(provider.starts.length, 2);
+  });
+
   test('unknown session answers an empty read-only panel', async () => {
     const { handle } = await setup();
     const panel = await handle({ t: 'mcp-open', id: 'nope' });

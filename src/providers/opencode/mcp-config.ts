@@ -67,6 +67,9 @@ export class OpenCodeMcpConfig implements McpConfigStore {
 
   async add(at: McpLocation, scope: McpScope, server: McpServerSpec): Promise<string> {
     const file = await this.fileFor(at, scope);
+    if ((await readJsonMembers(file, ['mcp'])).includes(server.name)) {
+      throw new Error(`A server named ${server.name} is already in ${file}.`);
+    }
     await setJsonMember(file, ['mcp', server.name], toOpenCodeValue(server));
     return file;
   }

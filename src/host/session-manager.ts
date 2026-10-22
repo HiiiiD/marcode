@@ -1050,7 +1050,8 @@ export class SessionManager implements SessionSink {
   async restart(id: SessionId): Promise<void> {
     const state = this.meta.get(id);
     const session = this.live.get(id);
-    if (!state || !session || this.isForeign(id)) { return; }
+    // A rebuild already in flight owns this session; a second would build a run nobody disposes.
+    if (!state || !session || this.isForeign(id) || this.opening.has(id)) { return; }
     const provider = this.providers.get(state.providerId);
     if (!provider) { return; }
     if (state.status !== 'idle' && state.status !== 'error') { await session.interrupt(); }

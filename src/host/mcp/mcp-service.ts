@@ -2,6 +2,7 @@ import type { McpPanel, SessionId, WebviewToHost } from '../../protocol/messages
 import type { AgentProvider, McpLocation, McpScope, McpTarget } from '../../providers/types';
 import { withTimeout } from '../../shared/with-timeout';
 import type { AgentSession } from '../agent-session';
+import { validateSpec } from '../../client-core/mcp/validate-spec';
 import { McpChangeLog } from './change-log';
 import { resolveRepoRoot } from './repo-root';
 
@@ -57,6 +58,9 @@ export class McpService {
       case 'mcp-add': {
         if (this.host.isForeign(msg.id)) { throw new Error(FOREIGN); }
         if (!store) { throw new Error("This provider can't manage MCP servers from Marcode."); }
+        // Clients validate too, but a daemon client is not trusted to, and the name reaches TOML headers and key paths.
+        const invalid = validateSpec(msg.server, []);
+        if (invalid) { throw new Error(invalid); }
         const file = await store.add(at, msg.scope, msg.server);
         this.log.record(file, msg.server.name, msg.scope, 'added');
         return;
@@ -89,6 +93,7 @@ export class McpService {
   }
 
   private async restart(id: SessionId, provider: AgentProvider, at: McpLocation, interim?: (panel: McpPanel) => void): Promise<void> {
+    if (this.restarting.has(id)) { throw new Error('This session is already restarting.'); }
     this.restarting.add(id);
     try {
       interim?.(await this.panel(id, provider, at));

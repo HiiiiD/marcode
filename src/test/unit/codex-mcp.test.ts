@@ -75,10 +75,16 @@ suite('CodexMcpConfig', () => {
     const { s, calls } = store({ 'config/batchWrite': { filePath: 'C:\\home\\config.toml' } });
     const file = await s.add(at(), 'global', { name: 'h', transport: 'http', url: 'https://h', headers: { A: 'b' } });
     assert.strictEqual(file, 'C:\\home\\config.toml');
-    assert.deepStrictEqual(calls, [{ method: 'config/batchWrite', params: {
+    assert.deepStrictEqual(calls.filter((c) => c.method === 'config/batchWrite'), [{ method: 'config/batchWrite', params: {
       edits: [{ keyPath: 'mcp_servers.h', value: { url: 'https://h', http_headers: { A: 'b' } }, mergeStrategy: 'replace' }],
       reloadUserConfig: true,
     } }]);
+  });
+
+  test('global add refuses a name already in the user config', async () => {
+    const { s, calls } = store({ 'config/read': { layers: [{ name: { type: 'user' }, config: { mcp_servers: { h: {} } } }] } });
+    await assert.rejects(s.add(at(), 'global', { name: 'h', transport: 'http', url: 'https://h', headers: {} }), /already/);
+    assert.strictEqual(calls.some((c) => c.method === 'config/batchWrite'), false);
   });
 
   test('global remove writes null', async () => {
