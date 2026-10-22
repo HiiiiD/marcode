@@ -5,11 +5,24 @@ import * as path from 'path';
 import { AccountCache } from '../../host/account-cache/account-cache';
 import { SessionManager } from '../../host/session-manager';
 import { TranscriptStore } from '../../host/transcript-store';
+import { openPlainDatabase } from '../../memory/sqlite-driver';
+import type { HostToWebview } from '../../protocol/messages';
 import { FakeProvider } from '../../providers/fake/fake-provider';
-import type { AgentProvider, UsageWindow } from '../../providers/types';
+import type { AgentProvider, UsageMirror, UsageWindow } from '../../providers/types';
 import { modelProvider, unavailableProvider } from './helpers/model-providers';
 
 const win = (id: string, usedPercent = 10): UsageWindow => ({ id, label: id, usedPercent });
+const settle = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+async function waitFor(cond: () => boolean, timeoutMs = 1500): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!cond()) {
+    if (Date.now() > deadline) { throw new Error('condition not met in time'); }
+    await settle(10);
+  }
+}
+
+type UsageMsg = Extract<HostToWebview, { t: 'usage-windows' }>;
 
 suite('SessionManager with AccountCache', () => {
   let workspace: string;
@@ -17,6 +30,7 @@ suite('SessionManager with AccountCache', () => {
   let cacheFile: string;
   let caches: AccountCache[];
   let managers: SessionManager[];
+  let extraDirs: string[];
 
   const openCache = (p = cacheFile): AccountCache => {
     const c = AccountCache.open(p);
@@ -34,17 +48,37 @@ suite('SessionManager with AccountCache', () => {
     return m;
   }
 
+  /** A host on its own workspace dir and cache connection, polling fast, recording its usage emits. */
+  async function pollingHost(
+    providers: Map<string, AgentProvider>, mirrors: UsageMirror[] = [],
+  ): Promise<{ m: SessionManager; usage: UsageMsg[] }> {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mar-sm-ws-'));
+    extraDirs.push(dir);
+    const usage: UsageMsg[] = [];
+    const m = new SessionManager(
+      new TranscriptStore(dir), providers,
+      (msg) => { if (msg.t === 'usage-windows') { usage.push(msg); } },
+      undefined, undefined, undefined, undefined, [], undefined, undefined, mirrors,
+    );
+    managers.push(m);
+    m.setAccountCache(openCache(), { pollMs: 20 });
+    await m.init();
+    return { m, usage };
+  }
+
   setup(async () => {
     workspace = await fs.mkdtemp(path.join(os.tmpdir(), 'mar-sm-ws-'));
     cacheDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mar-sm-cache-'));
     cacheFile = path.join(cacheDir, 'account.sqlite');
     caches = [];
     managers = [];
+    extraDirs = [];
   });
 
   teardown(async () => {
     for (const m of managers) { await m.dispose(); }
     for (const c of caches) { c.close(); }
+    for (const d of extraDirs) { await fs.rm(d, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }); }
     await fs.rm(workspace, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
     await fs.rm(cacheDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
   });
@@ -183,5 +217,111 @@ suite('SessionManager with AccountCache', () => {
     const exists = async (name: string) => fs.access(path.join(workspace, name)).then(() => true, () => false);
     assert.strictEqual(await exists('usage.json'), false);
     assert.strictEqual(await exists('catalog.json'), false);
+  });
+
+  test('two pulls for one instance in quick succession both land', async () => {
+    const cache = openCache();
+    const m = await managerWith(cache, new Map<string, AgentProvider>([['fake', new FakeProvider(() => [])]]));
+
+    m.usageWindows('fake', [win('five-hour', 20)], undefined, 'pull');
+    m.usageWindows('fake', undefined, undefined, 'pull');
+
+    const row = openCache().readUsage().find((r) => r.instance === 'fake');
+    assert.strictEqual(row?.windows, null);
+  });
+
+  test("another host's fresher usage is adopted and emitted", async () => {
+    const a = await pollingHost(new Map<string, AgentProvider>([
+      ['fake', new FakeProvider(() => [], { windows: [win('five-hour', 61)] })],
+    ]));
+    const b = await pollingHost(new Map<string, AgentProvider>([['fake', new FakeProvider(() => [])]]));
+
+    await a.m.refreshUsage('/repo');
+
+    await waitFor(() => b.usage.length > 0);
+    assert.deepStrictEqual(b.usage, [{ t: 'usage-windows', providerId: 'fake', windows: [win('five-hour', 61)] }]);
+    assert.deepStrictEqual(b.m.usageSnapshot(), { fake: [win('five-hour', 61)] });
+  });
+
+  test('an adopted mirror row carries its display name', async () => {
+    const b = await pollingHost(new Map<string, AgentProvider>([
+      ['source', new FakeProvider(() => [])], ['codex', new FakeProvider(() => [])],
+    ]), [{ sourceProviderId: 'source', modelPattern: '^openai/', targetProviderId: 'codex',
+      usageProviderId: 'source-openai', displayName: 'OpenCode (OpenAI)' }]);
+
+    openCache().writeUsage({ instance: 'source-openai', windows: [win('five-hour', 12)], fetchedAt: Date.now() });
+
+    await waitFor(() => b.usage.length > 0);
+    assert.deepStrictEqual(b.usage, [{
+      t: 'usage-windows', providerId: 'source-openai', windows: [win('five-hour', 12)], displayName: 'OpenCode (OpenAI)',
+    }]);
+  });
+
+  test('own write does not re-emit', async () => {
+    const a = await pollingHost(new Map<string, AgentProvider>([
+      ['fake', new FakeProvider(() => [], { windows: [win('five-hour', 61)] })],
+    ]));
+
+    await a.m.refreshUsage('/repo');
+    await settle(60);
+
+    assert.strictEqual(a.usage.length, 1);
+  });
+
+  test('an older shared row is not adopted', async () => {
+    const b = await pollingHost(new Map<string, AgentProvider>([
+      ['fake', new FakeProvider(() => [], { windows: [win('five-hour', 70)] })],
+    ]));
+    await b.m.refreshUsage('/repo');
+    b.usage.length = 0;
+
+    // The cache's own upsert refuses an older row, so it is forced in underneath it.
+    const raw = openPlainDatabase(cacheFile);
+    try {
+      raw.prepare('UPDATE usage SET windows_json = ?, fetched_at = ? WHERE instance = ?')
+        .run(JSON.stringify([win('five-hour', 5)]), 1, 'fake');
+    } finally {
+      raw.close();
+    }
+    await settle(60);
+
+    assert.deepStrictEqual(b.usage, []);
+    assert.deepStrictEqual(b.m.usageSnapshot(), { fake: [win('five-hour', 70)] });
+  });
+
+  test('a shared tombstone clears the strip', async () => {
+    openCache().writeUsage({ instance: 'fake', windows: [win('five-hour')], fetchedAt: 1 });
+    const a = await pollingHost(new Map<string, AgentProvider>([
+      ['fake', new FakeProvider(() => [], { usageUnavailable: true })],
+    ]));
+    const b = await pollingHost(new Map<string, AgentProvider>([['fake', new FakeProvider(() => [])]]));
+    assert.deepStrictEqual(Object.keys(b.m.usageSnapshot()), ['fake']);
+
+    await a.m.refreshUsage('/repo');
+
+    await waitFor(() => b.usage.length > 0);
+    assert.deepStrictEqual(b.usage, [{ t: 'usage-windows', providerId: 'fake', windows: [] }]);
+    assert.deepStrictEqual(b.m.usageSnapshot(), {});
+  });
+
+  test('rows for unconfigured instances are not emitted', async () => {
+    const b = await pollingHost(new Map<string, AgentProvider>([['fake', new FakeProvider(() => [])]]));
+
+    openCache().writeUsage({ instance: 'ghost', windows: [win('five-hour')], fetchedAt: Date.now() });
+    await settle(60);
+
+    assert.deepStrictEqual(b.usage, []);
+    assert.deepStrictEqual(b.m.usageSnapshot(), {});
+  });
+
+  test('no timer survives dispose', async () => {
+    const b = await pollingHost(new Map<string, AgentProvider>([['fake', new FakeProvider(() => [])]]));
+    await b.m.dispose();
+    managers.splice(managers.indexOf(b.m), 1);
+
+    openCache().writeUsage({ instance: 'fake', windows: [win('five-hour')], fetchedAt: Date.now() });
+    await settle(60);
+
+    assert.deepStrictEqual(b.usage, []);
   });
 });

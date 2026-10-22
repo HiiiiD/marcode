@@ -288,7 +288,7 @@ export class SessionManager implements SessionSink {
     this.knownOnDisk = new Set(index.sessions.map((s) => s.id));
 
     const cache = this.accountCache;
-    if (cache) {
+    if (cache && !this.disposed) {
       // The cache is machine-wide, so it holds rows for instances other hosts configure.
       for (const row of cache.readUsage()) {
         if (!this.isUsageKey(row.instance)) { continue; }
@@ -301,6 +301,9 @@ export class SessionManager implements SessionSink {
       for (const row of cache.readCatalog()) {
         this.seededModels.set(row.instance, row.models);
       }
+      cache.hasChanged();
+      this.accountTimer = setInterval(() => { this.adoptSharedUsage(); }, this.usagePollMs ?? 4000);
+      this.accountTimer.unref();
     }
 
     // A schema bump (or a first launch with memory on) leaves the index empty; without this, recall
@@ -2165,6 +2168,7 @@ export class SessionManager implements SessionSink {
     // every session has actually finished disposing.
     this.disposed = true;
     if (this.rosterTimer) { clearInterval(this.rosterTimer); }
+    if (this.accountTimer) { clearInterval(this.accountTimer); }
     for (const tail of this.foreign.values()) { tail.stop(); }
     this.queuedMoves.clear();
     const liveSessions = [...this.live.values()];
@@ -2259,6 +2263,7 @@ export class SessionManager implements SessionSink {
   private readonly deleted = new Set<SessionId>();
   private knownOnDisk = new Set<SessionId>();
   private rosterTimer?: NodeJS.Timeout;
+  private accountTimer?: NodeJS.Timeout;
 
   /** Call before `init()`. The manager reads and writes the cache but never closes it. */
   setAccountCache(cache: AccountCache, opts: { pollMs?: number } = {}): void {
@@ -2469,13 +2474,35 @@ export class SessionManager implements SessionSink {
     // A run can report `undefined` merely because its query had no answer; only a pull is authoritative
     // enough to tombstone a reading other hosts share.
     if (windows !== undefined || origin === 'pull') {
-      const fetchedAt = Date.now();
+      // The cache's newer-wins upsert is strict, so a second write in the same millisecond would be dropped.
+      const fetchedAt = Math.max(Date.now(), (this.usageFetchedAt.get(providerId) ?? 0) + 1);
       this.accountCache?.writeUsage({
         instance: providerId, windows: windows === undefined ? null : this.windowsFor(providerId), fetchedAt,
       });
       this.usageFetchedAt.set(providerId, fetchedAt);
     }
     this.emit({ t: 'usage-windows', providerId, windows: this.windowsFor(providerId), ...(displayName ? { displayName } : {}) });
+  }
+
+  /** Adopts rows another host wrote; never writes back, so two hosts cannot ping-pong a reading. */
+  private adoptSharedUsage(): void {
+    const cache = this.accountCache;
+    if (!cache?.hasChanged()) { return; }
+    for (const row of cache.readUsage()) {
+      if (!this.isUsageKey(row.instance)) { continue; }
+      if (row.fetchedAt <= (this.usageFetchedAt.get(row.instance) ?? -Infinity)) { continue; }
+      if (row.windows) {
+        this.usage.set(row.instance, new Map(row.windows.map((w) => [w.id, w])));
+      } else {
+        this.usage.delete(row.instance);
+      }
+      this.usageFetchedAt.set(row.instance, row.fetchedAt);
+      const displayName = this.usageMirrors.find((m) => m.usageProviderId === row.instance)?.displayName;
+      this.emit({
+        t: 'usage-windows', providerId: row.instance, windows: this.windowsFor(row.instance),
+        ...(displayName ? { displayName } : {}),
+      });
+    }
   }
 
   private isUsageKey(id: string): boolean {
