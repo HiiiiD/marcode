@@ -21,22 +21,27 @@ export class AccountCache {
 
   private constructor(private db: SqlDb | undefined) {}
 
-  static open(dbPath: string): AccountCache {
+  static open(dbPath: string, opts: { busyTimeoutMs?: number } = {}): AccountCache {
     let db: SqlDb | undefined;
     try {
       db = openPlainDatabase(dbPath);
-      db.exec('PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;');
+      db.exec(`PRAGMA busy_timeout = ${opts.busyTimeoutMs ?? 5000};`);
       const { user_version: version } = db.prepare('PRAGMA user_version').get() as { user_version: number };
       if (version > ACCOUNT_CACHE_SCHEMA) {
         db.close();
         return new AccountCache(undefined);
+      }
+      // WAL only lets readers run beside a writer; a host that could not switch (another one mid-write) still works.
+      try { db.exec('PRAGMA journal_mode = WAL;'); } catch (err) {
+        console.warn('[mar-code] account-cache: could not switch to WAL, continuing without it', err);
       }
       if (version === 0) {
         db.exec(SCHEMA_SQL);
         db.exec(`PRAGMA user_version = ${ACCOUNT_CACHE_SCHEMA};`);
       }
       return new AccountCache(db);
-    } catch {
+    } catch (err) {
+      console.warn('[mar-code] account-cache: could not open, plan usage will not be shared', err);
       try { db?.close(); } catch { /* already unusable */ }
       return new AccountCache(undefined);
     }
@@ -130,7 +135,9 @@ export class AccountCache {
   }
 
   private run(sql: string, ...params: unknown[]): void {
-    try { this.db?.prepare(sql).run(...params); } catch { /* a failed write is a missed cache update */ }
+    try { this.db?.prepare(sql).run(...params); } catch (err) {
+      console.warn('[mar-code] account-cache: write dropped', err);
+    }
   }
 }
 
