@@ -39,6 +39,13 @@ export async function refuseTaken(file: string, keyPath: string[], name: string)
   }
 }
 
+// execFile reports a process that never started with a string errno (ENOENT, EACCES, EINVAL for a .cmd shim, …);
+// one that ran and failed has a numeric exit code, and a timeout has `code: null`.
+function isSpawnFailure(err: unknown): boolean {
+  const { code, stderr } = err as { code?: unknown; stderr?: string };
+  return typeof code === 'string' && !stderr?.trim();
+}
+
 function cliError(err: unknown): Error {
   const stderr = (err as { stderr?: string }).stderr?.trim();
   return new Error(stderr || (err instanceof Error ? err.message : String(err)));
@@ -110,7 +117,7 @@ export class ClaudeMcpConfig implements McpConfigStore {
     return file;
   }
 
-  /** `false` when no CLI is available; a CLI that ran and failed rejects with its own message. */
+  /** `false` when no CLI can be spawned; a CLI that ran and failed rejects with its own message. */
   private async viaCli(args: string[], cwd: string): Promise<boolean> {
     const cli = this.cliPath();
     if (!cli) { return false; }
@@ -118,7 +125,7 @@ export class ClaudeMcpConfig implements McpConfigStore {
       await this.exec(cli, args, { cwd, env: this.env });
       return true;
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === 'ENOENT') { return false; }
+      if (isSpawnFailure(err)) { return false; }
       throw cliError(err);
     }
   }

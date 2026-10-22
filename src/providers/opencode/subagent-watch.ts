@@ -162,6 +162,8 @@ export class SubagentWatch {
   private closed = false;
   private sdk: SubagentSdk | undefined;
   private sdkAt: number | undefined;
+  /** The server `sdkAt` belongs to: another `open` of the same process must not look like a config reload. */
+  private sdkUrl: string | undefined;
   /** Aborts the real SSE connection's own retry loop — see `run`/`close`. */
   private abortController: AbortController | undefined;
 
@@ -272,7 +274,10 @@ export class SubagentWatch {
       // just replaced it with.
       if (this.closed || signal.aborted) { return; }
       this.sdk = sdk;
-      this.sdkAt = Date.now();
+      if (this.sdkUrl !== baseUrl) {
+        this.sdkUrl = baseUrl;
+        this.sdkAt = Date.now();
+      }
       const { stream } = await sdk.globalEvent();
       for await (const envelope of stream) {
         if (this.closed) { return; }

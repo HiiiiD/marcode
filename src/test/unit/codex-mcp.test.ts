@@ -53,6 +53,69 @@ suite('toml-mcp', () => {
   });
 });
 
+suite('toml-mcp validity and neighbours', () => {
+  let dir: string;
+  setup(async () => { dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mar-toml2-')); });
+  teardown(async () => { await fs.rm(dir, { recursive: true, force: true }); });
+
+  test('add refuses a malformed file and leaves it untouched', async () => {
+    const file = path.join(dir, 'config.toml');
+    const bad = 'model = "o3"\nthis is not toml\n';
+    await fs.writeFile(file, bad);
+    await assert.rejects(addTomlServer(file, 'h', { url: 'https://h' }), /isn't valid TOML \(line 2\)/);
+    assert.strictEqual(await fs.readFile(file, 'utf8'), bad);
+  });
+
+  test('add refuses an unterminated string or an unclosed header', async () => {
+    const file = path.join(dir, 'config.toml');
+    await fs.writeFile(file, 'model = "o3\n');
+    await assert.rejects(addTomlServer(file, 'h', { url: 'https://h' }), /isn't valid TOML \(line 1\)/);
+    await fs.writeFile(file, 'a = 1\n[profiles\n');
+    await assert.rejects(addTomlServer(file, 'h', { url: 'https://h' }), /isn't valid TOML \(line 2\)/);
+  });
+
+  test('add accepts multi-line arrays, multi-line strings, inline tables and comments', async () => {
+    const file = path.join(dir, 'config.toml');
+    const ok = [
+      '# comment with "quote',
+      'model = "o3" # trailing',
+      'args = [',
+      '  "a", # one',
+      '  "b",',
+      ']',
+      'notes = """',
+      'line [ with = stuff',
+      '"""',
+      "lit = '''x # y'''",
+      "path = 'C:\\no\\escape'",
+      'esc = "a \\" b"',
+      'tbl = { a = "b", c = [1, 2] }',
+      '"quoted key" = 1',
+      'dotted.key = true',
+      '[[profiles]]',
+      'name = "x"',
+      '',
+    ].join('\n');
+    await fs.writeFile(file, ok);
+    await addTomlServer(file, 'h', { url: 'https://h' });
+    assert.strictEqual((await fs.readFile(file, 'utf8')).startsWith(ok), true);
+  });
+
+  test('remove keeps the comment that introduces the next table', async () => {
+    const file = path.join(dir, 'config.toml');
+    await fs.writeFile(file, '[mcp_servers.a]\ncommand = "x"\n\n# the b server\n[mcp_servers.b]\nurl = "y"\n');
+    assert.strictEqual(await removeTomlServer(file, 'a'), true);
+    assert.strictEqual(await fs.readFile(file, 'utf8'), '# the b server\n[mcp_servers.b]\nurl = "y"\n');
+  });
+
+  test('remove drops a comment before the removed server\'s own sub-table and at the end of the file', async () => {
+    const file = path.join(dir, 'config.toml');
+    await fs.writeFile(file, 'x = 1\n[mcp_servers.a]\ncommand = "x"\n# env for a\n[mcp_servers.a.env]\nK = "v"\n# trailing\n');
+    assert.strictEqual(await removeTomlServer(file, 'a'), true);
+    assert.strictEqual(await fs.readFile(file, 'utf8'), 'x = 1\n');
+  });
+});
+
 suite('CodexMcpConfig', () => {
   let dir: string;
   setup(async () => { dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mar-codex-mcp-')); });
@@ -126,6 +189,18 @@ suite('codexMcpControl', () => {
     });
     return { c, calls };
   }
+
+  test('a failed server toolsError is redacted before it reaches a client', async () => {
+    const { c } = control({
+      'mcpServerStatus/list': { data: [
+        { name: 'g', runtimeStatus: 'failed', toolsError: 'handshake failed: Bearer abc.SECRET.token\nmore', tools: {}, authStatus: 'unsupported' },
+      ], nextCursor: null },
+      'config/read': { layers: [] },
+    });
+    const [row] = await c.status();
+    assert.strictEqual(row.error?.includes('SECRET'), false);
+    assert.strictEqual(row.error?.includes('[redacted]'), true);
+  });
 
   test('status merges list, layers and startup state', async () => {
     const { c, calls } = control({

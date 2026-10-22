@@ -42,9 +42,10 @@ function render(value: unknown, indent: string, style: Style): string {
  * Inserts or replaces one member. jsonc-parser's own formatter re-flows the
  * whole enclosing object, so siblings are spliced around by hand instead.
  */
-function setEdit(text: string, keyPath: KeyPath, value: unknown, style: Style): string {
+function setEdit(file: string, text: string, keyPath: KeyPath, value: unknown, style: Style): string {
   const root = parseTree(text);
-  if (!root || root.type !== 'object') { return render(nest(keyPath, value), '', style) + style.eol; }
+  if (!root) { return render(nest(keyPath, value), '', style) + style.eol; }
+  if (root.type !== 'object') { throw new Error(`Can't edit ${file}: its top level isn't an object.`); }
   const existing = findNodeAtLocation(root, keyPath);
   if (existing) {
     const indent = lineIndent(text, existing.parent!.offset);
@@ -107,7 +108,7 @@ export async function setJsonMember(file: string, keyPath: KeyPath, value: unkno
     return;
   }
   parseOrThrow(file, text);
-  await writeFileAtomic(file, setEdit(text, keyPath, value, styleOf(text)));
+  await writeFileAtomic(file, setEdit(file, text, keyPath, value, styleOf(text)));
 }
 
 /** `false` when the member (or the file) was not there; nothing is written then. */

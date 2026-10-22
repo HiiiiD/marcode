@@ -1,3 +1,4 @@
+import { redactSecrets } from '../redact';
 import type { McpControl, McpOrigin, McpServerStatus } from '../types';
 import type { CodexRequest, ConfigReadLike } from './mcp-config';
 
@@ -58,7 +59,7 @@ export function codexMcpControl(deps: {
           return {
             name: s.name,
             state,
-            ...(s.toolsError && state === 'failed' ? { error: s.toolsError.split('\n')[0] } : {}),
+            ...(s.toolsError && state === 'failed' ? { error: redactSecrets(s.toolsError.split('\n')[0]) } : {}),
             toolCount: Object.keys(s.tools ?? {}).length,
             ...(at ? { origin: at.origin } : {}),
             ...(at?.label ? { originLabel: at.label } : {}),

@@ -82,6 +82,23 @@ suite('ClaudeMcpConfig', () => {
     assert.deepStrictEqual([json.numStartups, Object.keys(json.mcpServers)], [3, ['blender']]);
   });
 
+  test('a CLI that cannot be spawned at all falls back to the direct edit', async () => {
+    for (const code of ['EACCES', 'EINVAL', 'EFTYPE', 'UNKNOWN']) {
+      await fs.rm(path.join(home, '.claude.json'), { force: true });
+      const exec: ExecCli = async () => { throw Object.assign(new Error(`spawn ${code}`), { code }); };
+      const store = new ClaudeMcpConfig({ env: { CLAUDE_CONFIG_DIR: home }, cliPath: () => 'claude.cmd', exec });
+      await store.add(at(), 'global', spec);
+      const json = JSON.parse(await fs.readFile(path.join(home, '.claude.json'), 'utf8'));
+      assert.deepStrictEqual(Object.keys(json.mcpServers), ['blender']);
+    }
+  });
+
+  test('a CLI that ran and exited non-zero still surfaces its stderr', async () => {
+    const exec: ExecCli = async () => { throw Object.assign(new Error('Command failed'), { code: 1, stderr: 'Invalid scope: user\n' }); };
+    const store = new ClaudeMcpConfig({ env: { CLAUDE_CONFIG_DIR: home }, cliPath: () => 'claude.exe', exec });
+    await assert.rejects(store.add(at(), 'global', spec), /Invalid scope: user/);
+  });
+
   test('a failing CLI surfaces its stderr', async () => {
     const exec: ExecCli = async () => { throw Object.assign(new Error('exit 1'), { stderr: 'MCP server h already exists in user config\n' }); };
     const store = new ClaudeMcpConfig({ env: { CLAUDE_CONFIG_DIR: home }, cliPath: () => 'claude.exe', exec });

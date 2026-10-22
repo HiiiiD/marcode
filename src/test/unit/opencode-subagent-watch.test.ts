@@ -472,6 +472,28 @@ suite('SubagentWatch', () => {
   });
 });
 
+suite('SubagentWatch configLoadedAt', () => {
+  test('reopening the same server keeps when it first connected; a new server resets it', async () => {
+    const { sdk } = fakeSdk([]);
+    const watch = new SubagentWatch({ connect: async () => sdk });
+    try {
+      watch.open('http://127.0.0.1:1', 't');
+      await settle();
+      const first = watch.connectedAt();
+      assert.strictEqual(typeof first, 'number');
+      await new Promise((r) => setTimeout(r, 15));
+      watch.open('http://127.0.0.1:1', 't');
+      await settle();
+      assert.strictEqual(watch.connectedAt(), first);
+      watch.open('http://127.0.0.1:2', 't');
+      await settle();
+      assert.strictEqual((watch.connectedAt() ?? 0) > (first ?? 0), true);
+    } finally {
+      watch.close();
+    }
+  });
+});
+
 suite('SubagentWatch compaction', () => {
   test('root compaction part, summary message and session.compacted become started then done', async () => {
     const { sdk } = fakeSdk([

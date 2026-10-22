@@ -1,3 +1,4 @@
+import { redactSecrets } from '../redact';
 import type { McpOrigin, McpServerStatus } from '../types';
 
 export type OpenCodeMcpStatus = Record<string, { status?: string; error?: string }>;
@@ -17,7 +18,7 @@ export function toOpenCodeStatuses(raw: OpenCodeMcpStatus, origins: Map<string, 
       return {
         name,
         state,
-        ...(s.error && state === 'failed' ? { error: s.error } : {}),
+        ...(s.error && state === 'failed' ? { error: redactSecrets(s.error) } : {}),
         ...(origin ? { origin } : {}),
         canSignIn: state === 'needs-auth',
       };

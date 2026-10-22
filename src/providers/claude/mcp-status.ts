@@ -1,4 +1,4 @@
-import { redactSecrets } from './redact';
+import { redactSecrets } from '../redact';
 import type { McpOrigin, McpServerStatus } from '../types';
 
 /** The fields of the SDK's `McpServerStatus` this mapping reads. `config` is deliberately never read. */

@@ -142,7 +142,7 @@ import { CLAUDE_INTRO_NOTE } from '../marcode-context';
 import { sendMessageDenial } from './send-message-guard';
 import { toPermissionMeta, toQuestionSpecs, toSdkAnswers } from './map-questions';
 import { toToolCall } from './map-tools';
-import { redactSecrets } from './redact';
+import { redactSecrets } from '../redact';
 import { bundledClaudeCli, ClaudeMcpConfig } from './mcp-config';
 import { toMcpStatuses, type SdkMcpStatusLike } from './mcp-status';
 import { lifecycleDebug } from '../../shared/lifecycle-debug';
@@ -260,11 +260,17 @@ class Channel<T> implements AsyncIterable<T> {
   }
 }
 
-/** Servers connect after init, so a fresh probe polls until none is still pending (bounded). */
-async function settledMcpStatus(query: Query): Promise<unknown[]> {
+/** Well under `McpService`'s status timeout, so a slow cold start answers pending rows instead of an error. */
+export const MCP_POLL_BUDGET_MS = 6_000;
+
+/** Servers connect after init, so a fresh probe polls until none is still pending or the budget is spent. */
+export async function settledMcpStatus(
+  query: Pick<Query, 'mcpServerStatus'>, budgetMs = MCP_POLL_BUDGET_MS, intervalMs = 500,
+): Promise<unknown[]> {
+  const deadline = Date.now() + budgetMs;
   let servers = await query.mcpServerStatus();
-  for (let i = 0; i < 10 && servers.some((s) => s.status === 'pending'); i++) {
-    await new Promise((r) => setTimeout(r, 500));
+  while (servers.some((s) => s.status === 'pending') && Date.now() + intervalMs <= deadline) {
+    await new Promise((r) => setTimeout(r, intervalMs));
     servers = await query.mcpServerStatus();
   }
   return servers;
@@ -907,7 +913,7 @@ export class ClaudeProvider implements AgentProvider {
         status: async () => {
           const query = started ? (queryRef ?? await queryReady) : undefined;
           if (query) { return toMcpStatuses(await query.mcpServerStatus() as SdkMcpStatusLike[]); }
-          return toMcpStatuses(await this.probe(opts.cwd, settledMcpStatus, true) as SdkMcpStatusLike[]);
+          return toMcpStatuses(await this.probe(opts.cwd, (q) => settledMcpStatus(q), true) as SdkMcpStatusLike[]);
         },
         reconnect: async (name: string) => {
           const query = started ? (queryRef ?? await queryReady) : undefined;

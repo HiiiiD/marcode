@@ -27,6 +27,15 @@ suite('jsonc-config', () => {
     assert.deepStrictEqual(await readJsonMembers(file, ['mcp']), ['other', 'a']);
   });
 
+  test('refuses a file whose top level is not an object and leaves it untouched', async () => {
+    const file = path.join(dir, '.mcp.json');
+    for (const body of ['[]\n', 'null\n', '1\n']) {
+      await fs.writeFile(file, body);
+      await assert.rejects(setJsonMember(file, ['mcpServers', 'a'], {}), /its top level isn't an object/);
+      assert.strictEqual(await fs.readFile(file, 'utf8'), body);
+    }
+  });
+
   test('refuses malformed JSON and leaves the file untouched', async () => {
     const file = path.join(dir, '.mcp.json');
     await fs.writeFile(file, '{ "mcpServers": { ');

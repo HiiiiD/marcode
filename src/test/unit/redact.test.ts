@@ -1,5 +1,5 @@
 import * as assert from 'assert';
-import { redactSecrets } from '../../providers/claude/redact';
+import { redactSecrets } from '../../providers/redact';
 
 suite('redactSecrets', () => {
   test('a realistic auth-failure stderr tail survives readably, not deleted', () => {

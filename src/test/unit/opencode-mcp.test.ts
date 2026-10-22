@@ -25,6 +25,14 @@ suite('OpenCode MCP status mapping', () => {
   });
 });
 
+suite('OpenCode MCP status redaction', () => {
+  test('a failed server error is redacted before it reaches a client', () => {
+    const [row] = toOpenCodeStatuses({ b: { status: 'failed', error: 'auth failed: api_key=sk-live-SECRET123 rejected' } }, new Map());
+    assert.strictEqual(row.error?.includes('SECRET123'), false);
+    assert.strictEqual(row.error?.includes('[redacted]'), true);
+  });
+});
+
 suite('OpenCodeMcpConfig', () => {
   let dir: string;
   let repo: string;
