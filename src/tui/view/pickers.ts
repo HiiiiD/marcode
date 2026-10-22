@@ -50,9 +50,9 @@ export function windowAround(length: number, index: number, size: number): { sta
   return { start, end: start + size };
 }
 
-export type PickerKind = 'model' | 'mode' | 'effort' | 'context' | 'layout';
+export type PickerKind = 'model' | 'mode' | 'effort' | 'context' | 'layout' | 'mcp';
 
 export function parsePickerCommand(text: string): PickerKind | undefined {
-  const match = /^\/(model|mode|effort|context|layout)$/.exec(text.trim());
+  const match = /^\/(model|mode|effort|context|layout|mcp)$/.exec(text.trim());
   return match?.[1] as PickerKind | undefined;
 }
