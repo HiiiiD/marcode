@@ -1,9 +1,7 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import type { PaneLayout, SessionId, SessionState, TranscriptItem } from '../protocol/messages';
-import type { ModelInfo, UsageWindow } from '../providers/types';
 import { writeFileAtomic } from './atomic-file';
-import { validCatalogProviders, validUsageProviders } from './account-cache/validate';
 
 /**
  * Bumped when a persisted `TranscriptItem` shape changes in a way an older
@@ -18,16 +16,6 @@ export interface StoredIndex {
   version: number;
   sessions: SessionState[];
   layout: PaneLayout;
-}
-
-export interface StoredUsage {
-  /** providerId -> that provider's last known window set. */
-  providers: Record<string, UsageWindow[]>;
-}
-
-export interface StoredCatalog {
-  /** providerId -> the model list its last successful probe returned. */
-  providers: Record<string, ModelInfo[]>;
 }
 
 const emptyIndex = (): StoredIndex => ({
@@ -480,57 +468,5 @@ export class TranscriptStore {
       path.join(this.rootDir, 'index.json'),
       JSON.stringify({ ...index, layout, version: TRANSCRIPT_VERSION }, null, 2),
     );
-  }
-
-  /**
-   * Its own file rather than a field on `index.json`: this is account data,
-   * it is keyed by provider rather than by session, and it is rewritten on a
-   * different cadence from the roster. A corrupt or absent file is an empty
-   * set — usage is decoration over a working panel, and refusing to start
-   * because a percentage could not be read would be absurd. Unlike
-   * `readIndex` (whose corruption is caught a layer up, in `extension.ts`),
-   * this is the one boundary containing that failure — nothing above
-   * `SessionManager.init()` catches a bad `usage.json`, and `init()` must
-   * not throw — so `JSON.parse` succeeding is not enough: the shape has to
-   * be checked too, not just cast past with `as`.
-   */
-  async readUsage(): Promise<StoredUsage> {
-    try {
-      const raw = await fs.readFile(path.join(this.rootDir, 'usage.json'), 'utf8');
-      const parsed: unknown = JSON.parse(raw);
-      return { providers: validUsageProviders(parsed) };
-    } catch {
-      return { providers: {} };
-    }
-  }
-
-  async writeUsage(usage: StoredUsage): Promise<void> {
-    await writeFileAtomic(path.join(this.rootDir, 'usage.json'), JSON.stringify(usage, null, 2));
-  }
-
-  /**
-   * The last model list each provider's backend returned. Its own file for
-   * the same reasons `usage.json` is: keyed by provider rather than session,
-   * rewritten on a different cadence from the roster, and — most of all —
-   * `init()` must not throw over it, so the shape is checked rather than cast
-   * past. See `validCatalogProviders` for what "valid" means here.
-   *
-   * This is a *seed*, never an authority: it exists so a restored panel has a
-   * live model switcher during the second before the real probe answers, and
-   * `SessionManager.refreshModels` discards it — as a list or as a provider —
-   * the moment that probe says anything at all.
-   */
-  async readCatalog(): Promise<StoredCatalog> {
-    try {
-      const raw = await fs.readFile(path.join(this.rootDir, 'catalog.json'), 'utf8');
-      const parsed: unknown = JSON.parse(raw);
-      return { providers: validCatalogProviders(parsed) };
-    } catch {
-      return { providers: {} };
-    }
-  }
-
-  async writeCatalog(catalog: StoredCatalog): Promise<void> {
-    await writeFileAtomic(path.join(this.rootDir, 'catalog.json'), JSON.stringify(catalog, null, 2));
   }
 }

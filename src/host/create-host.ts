@@ -15,6 +15,8 @@ import {
 import type { ProviderInstanceKind } from '../shared/provider-instances';
 import { KNOWN_PROVIDER_IDS } from '../shared/settings';
 import { validateSystemPrompts } from '../shared/system-prompts';
+import { AccountCache } from './account-cache/account-cache';
+import { seedFromWorkspaces } from './account-cache/seed-from-workspaces';
 import { AttachmentStore } from './attachment-store';
 import { FallbackSummarizer } from './digest/fallback-summarizer';
 import { LlmSummarizer } from './digest/llm-summarizer';
@@ -37,6 +39,8 @@ export interface CreateHostOptions {
   onShellNoise?: (profile: string) => void;
   /** Poll interval for roster sync and foreign-session tails; tests shrink it. */
   pollMs?: number;
+  /** Machine-wide plan usage and model catalog; defaults to `<home>/account.sqlite` beside `workspaces/`; `MARCODE_ACCOUNT_CACHE` overrides it for tests. */
+  accountCachePath?: string;
 }
 
 export interface HostHandle {
@@ -90,6 +94,10 @@ export async function createHost(opts: CreateHostOptions): Promise<HostHandle> {
   const ownership = new SessionOwnership(path.join(opts.workspaceDir, 'sessions'), opts.hostKind);
   manager.setOwnership(ownership, { tailIntervalMs: opts.pollMs });
   manager.setShellAliases(config.shell.aliases);
+  const accountCache = AccountCache.open(
+    opts.accountCachePath ?? process.env.MARCODE_ACCOUNT_CACHE ?? path.join(path.dirname(path.dirname(opts.workspaceDir)), 'account.sqlite'),
+  );
+  manager.setAccountCache(accountCache, { pollMs: opts.pollMs });
 
   const selfControlServer = new SelfControlMcpServer({
     catalog: () => manager.catalog(),
@@ -270,11 +278,13 @@ export async function createHost(opts: CreateHostOptions): Promise<HostHandle> {
   return {
     manager, store, attachments, providers, enabled, loginRecipes, selfControlServer,
     init: async () => {
+      await seedFromWorkspaces(accountCache, path.dirname(opts.workspaceDir));
       await manager.init();
       manager.startRosterSync(opts.pollMs);
     },
     dispose: async () => {
       await manager.dispose();
+      accountCache.close();
       await selfControlServer.dispose();
       await digestLock.dispose();
       fts?.close();

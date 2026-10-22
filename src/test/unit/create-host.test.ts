@@ -7,12 +7,17 @@ import { defaultHostConfig } from '../../host/host-config';
 import type { HostToWebview } from '../../protocol/messages';
 
 suite('createHost', () => {
+  let root: string;
   let dir: string;
   const handles: { dispose(): Promise<void> }[] = [];
-  setup(async () => { dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mar-host-')); });
+  setup(async () => {
+    root = await fs.mkdtemp(path.join(os.tmpdir(), 'mar-host-'));
+    dir = path.join(root, 'workspaces', 'w');
+    await fs.mkdir(dir, { recursive: true });
+  });
   teardown(async () => {
     for (const h of handles.splice(0)) { await h.dispose(); }
-    await fs.rm(dir, { recursive: true, force: true });
+    await fs.rm(root, { recursive: true, force: true });
   });
 
   const build = async (over: Partial<ReturnType<typeof defaultHostConfig>> = {}, warnings: string[] = []) => {

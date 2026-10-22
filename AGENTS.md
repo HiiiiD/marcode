@@ -114,7 +114,8 @@ router. See `docs/daemon.md`.
 | `src/shared/jsonc-config.ts`, `toml-mcp.ts`, `atomic-file.ts`, `with-timeout.ts` | Comment-preserving JSON member edits (hand-spliced: jsonc-parser's formatter re-flows siblings); `[mcp_servers.<name>]` table-block edits; atomic writes; a cleared-timer race |
 | `src/shared/file-cap.ts` | `FILE_CAP`/`MAX_FILE_CAP` — shared so the host and the review webview agree on the default and ceiling without importing across the host/webview boundary |
 | `src/memory/sqlite-driver.ts` | `openDatabase`: `bun:sqlite` under Bun, `node:sqlite` otherwise, behind the narrow `SqlDb` the FTS store uses; finalizes each statement after one use (Bun's `close()` otherwise leaves the file locked) and probes FTS5 at open |
-| `src/host/transcript-store.ts` | `index.json` + per-session JSONL under the workspace directory; append, load, page. Index, usage and catalog writes are atomic; a foreign session's writes are refused |
+| `src/host/transcript-store.ts` | `index.json` + per-session JSONL under the workspace directory; append, load, page. Index writes are atomic; a foreign session's writes are refused |
+| `src/host/account-cache/` | `account-cache.ts`: machine-wide `~/.marcode/account.sqlite` (plan usage and model catalog rows, newest `fetchedAt` wins); `validate.ts`: shape checks on stored rows; `seed-from-workspaces.ts`: one-time import of per-workspace `usage.json`/`catalog.json` |
 | `src/host/agent-session.ts` | One conversation: transcript, status, pending approvals |
 | `src/host/session-manager.ts` | Roster; create/close/delete; patch fan-out to the visible set |
 | `src/host/shell/shell-aliases.ts`, `shell-runner.ts` | `shell.aliases` validation and `!` line resolution; the pure-Node spawn with output cap, timeout, cancel and tree kill, and Git Bash discovery on Windows |
@@ -257,7 +258,7 @@ These are not style preferences. Breaking one breaks the design.
   rest, and `unavailable()` carries them with the reason their last probe gave.
   Re-probing (`refreshModels`) is the whole mechanism for re-checking an install.
   The one permitted stand-in is `SessionManager.seededModels`, restored from
-  `catalog.json`: the list a provider's **last successful probe** returned, consulted only
+  the shared `~/.marcode/account.sqlite` `catalog` table (seeded across workspaces): the list a provider's **last successful probe** returned, consulted only
   while its own `listModels()` is still empty. It exists because hydrate ships whatever
   `catalog()` says at `ready`, and without it every restored pane spends the first second
   read-only with a dead model switcher. It is a stand-in for an answer, never a substitute
@@ -285,7 +286,7 @@ These are not style preferences. Breaking one breaks the design.
   build, the user) is **unattributed**, and says so. Claims are never persisted:
   they describe a tree at an instant, and a restored claim would describe an
   install nobody checked this launch, the same reason a failed model probe never
-  reaches `catalog.json`. `SessionManager` rebuilds the pre-launch half from the
+  reaches the catalog table. `SessionManager` rebuilds the pre-launch half from the
   JSONL on demand. Attribution is recorded **above** the subagent early return in
   `agent-session.ts`, unlike relocation: a subagent's edit changed *this*
   session's tree and is this session's change on disk.
