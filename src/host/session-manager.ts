@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { join, resolve } from 'node:path';
 import { AgentSession, type SessionSink } from './agent-session';
 import type { AttachmentStore } from './attachment-store';
+import type { AccountCache } from './account-cache/account-cache';
 import { catalogKey, CatalogService } from './catalog-service';
 import { claimedPaths, toRepoRelative } from './claim-paths';
 import { listBranchRefs, treeChanges } from './fleet-diff';
@@ -145,6 +146,10 @@ export class SessionManager implements SessionSink {
    * a restored session must not carry a percentage that has since moved.
    */
   private usage = new Map<string, Map<string, UsageWindow>>();
+  /** Last `fetchedAt` known per usage instance: our own writes and rows adopted from the cache. */
+  private usageFetchedAt = new Map<string, number>();
+  private accountCache?: AccountCache;
+  private usagePollMs?: number;
   /**
    * providerId -> why its last model probe failed.
    *
@@ -156,7 +161,7 @@ export class SessionManager implements SessionSink {
   private probeFailures = new Map<string, string>();
   /**
    * providerId -> the model list its last successful probe returned, restored
-   * from disk at `init()`.
+   * from the shared `AccountCache` at `init()`.
    *
    * Unlike `probeFailures` this IS persisted, and the asymmetry is the point.
    * A restored *failure* would assert something about an install nobody has
@@ -282,18 +287,20 @@ export class SessionManager implements SessionSink {
     this.paneLayout = index.layout;
     this.knownOnDisk = new Set(index.sessions.map((s) => s.id));
 
-    const usage = await this.store.readUsage();
-    for (const [providerId, windows] of Object.entries(usage.providers)) {
-      this.usage.set(providerId, new Map(windows.map((w) => [w.id, w])));
-    }
-
-    // A seed for a provider this build no longer configures is harmless and
-    // needs no filtering here: every reader — `modelsFor`, and through it
-    // `catalog()` and `catalogSnapshot()` — iterates `this.providers`, so an
-    // orphan is never read and never rewritten.
-    const catalog = await this.store.readCatalog();
-    for (const [providerId, models] of Object.entries(catalog.providers)) {
-      this.seededModels.set(providerId, models);
+    const cache = this.accountCache;
+    if (cache) {
+      // The cache is machine-wide, so it holds rows for instances other hosts configure.
+      for (const row of cache.readUsage()) {
+        if (!this.isUsageKey(row.instance)) { continue; }
+        this.usageFetchedAt.set(row.instance, row.fetchedAt);
+        if (row.windows) { this.usage.set(row.instance, new Map(row.windows.map((w) => [w.id, w]))); }
+      }
+      // A seed for a provider this build no longer configures is harmless and
+      // needs no filtering here: `modelsFor`, and through it `catalog()`,
+      // iterates `this.providers`, so an orphan is never read.
+      for (const row of cache.readCatalog()) {
+        this.seededModels.set(row.instance, row.models);
+      }
     }
 
     // A schema bump (or a first launch with memory on) leaves the index empty; without this, recall
@@ -334,16 +341,6 @@ export class SessionManager implements SessionSink {
   private modelsFor(p: AgentProvider): ModelInfo[] {
     const live = p.listModels();
     return live.length > 0 ? live : this.seededModels.get(p.id) ?? [];
-  }
-
-  /** Every provider's usable model list, for `catalog.json`. */
-  private catalogSnapshot(): Record<string, ModelInfo[]> {
-    const out: Record<string, ModelInfo[]> = {};
-    for (const p of this.providers.values()) {
-      const models = this.modelsFor(p);
-      if (models.length > 0) { out[p.id] = models; }
-    }
-    return out;
   }
 
   /**
@@ -402,7 +399,14 @@ export class SessionManager implements SessionSink {
         // Success clears the seed as well: the provider now has a live list,
         // and keeping a stand-in for an answer that has arrived is how a
         // cache starts disagreeing with the thing it caches.
-        () => { this.probeFailures.delete(p.id); this.seededModels.delete(p.id); },
+        () => {
+          this.probeFailures.delete(p.id);
+          this.seededModels.delete(p.id);
+          const models = p.listModels();
+          if (!this.disposed && models.length > 0) {
+            this.accountCache?.writeCatalog({ instance: p.id, models, fetchedAt: Date.now() });
+          }
+        },
         (err: unknown) => {
           // Errors are state, never exceptions — and the state here is "this
           // provider cannot be picked, and here is why". Still worth a
@@ -437,9 +441,6 @@ export class SessionManager implements SessionSink {
     this.emit({
       t: 'catalog', catalog: this.catalog(), unavailable: this.unavailable(), probing: false,
     });
-    // Record what the backend just said, so the next launch's panel comes up
-    // with a live model switcher instead of waiting on this same probe.
-    this.schedulePersist();
   }
 
   /**
@@ -487,10 +488,10 @@ export class SessionManager implements SessionSink {
         // rejection) and skipping every provider queued after it, instead
         // of being caught by the .then rejection handler below.
         .map((p) => Promise.resolve().then(() => p.fetchUsage!(cwd)).then(
-          (windows) => { if (!this.disposed) { this.usageWindows(p.id, windows); } },
+          (windows) => { if (!this.disposed) { this.usageWindows(p.id, windows, undefined, 'pull'); } },
           (err: unknown) => {
             // Errors are state, never exceptions — and the state here is
-            // "whatever the last pull or the persisted file said still
+            // "whatever the last pull or the shared cache said still
             // stands". Worth a developer-facing trace: a permanently broken
             // CLI would otherwise be indistinguishable from an account that
             // genuinely has no plan limits.
@@ -524,7 +525,7 @@ export class SessionManager implements SessionSink {
   private async refreshMirroredUsage(target: AgentProvider, cwd: string, mirror: UsageMirror): Promise<void> {
     try {
       const windows = await target.fetchUsage!(cwd);
-      if (!this.disposed) { this.usageWindows(mirror.usageProviderId, windows, mirror.displayName); }
+      if (!this.disposed) { this.usageWindows(mirror.usageProviderId, windows, mirror.displayName, 'pull'); }
     } catch (err: unknown) {
       console.warn('[mar-code] usage mirror failed for', mirror.usageProviderId, err);
     }
@@ -2259,6 +2260,12 @@ export class SessionManager implements SessionSink {
   private knownOnDisk = new Set<SessionId>();
   private rosterTimer?: NodeJS.Timeout;
 
+  /** Call before `init()`. The manager reads and writes the cache but never closes it. */
+  setAccountCache(cache: AccountCache, opts: { pollMs?: number } = {}): void {
+    this.accountCache = cache;
+    if (opts.pollMs !== undefined) { this.usagePollMs = opts.pollMs; }
+  }
+
   setOwnership(ownership: SessionOwnership, opts: { tailIntervalMs?: number } = {}): void {
     this.ownership = ownership;
     if (opts.tailIntervalMs !== undefined) { this.tailIntervalMs = opts.tailIntervalMs; }
@@ -2432,7 +2439,9 @@ export class SessionManager implements SessionSink {
     this.catalogSvc.set(this.keyOf(state), entries);
   }
 
-  usageWindows(providerId: string, windows: UsageWindow[] | undefined, displayName?: string): void {
+  usageWindows(
+    providerId: string, windows: UsageWindow[] | undefined, displayName?: string, origin: 'run' | 'pull' = 'run',
+  ): void {
     // A pull is a snapshot, so it REPLACES the provider's map rather than
     // upserting into it — that is what lets a window the account stopped
     // reporting actually disappear. (The old push carried one window at a
@@ -2457,8 +2466,20 @@ export class SessionManager implements SessionSink {
     } else {
       this.usage.set(providerId, new Map(next.map((w) => [w.id, w])));
     }
+    // A run can report `undefined` merely because its query had no answer; only a pull is authoritative
+    // enough to tombstone a reading other hosts share.
+    if (windows !== undefined || origin === 'pull') {
+      const fetchedAt = Date.now();
+      this.accountCache?.writeUsage({
+        instance: providerId, windows: windows === undefined ? null : this.windowsFor(providerId), fetchedAt,
+      });
+      this.usageFetchedAt.set(providerId, fetchedAt);
+    }
     this.emit({ t: 'usage-windows', providerId, windows: this.windowsFor(providerId), ...(displayName ? { displayName } : {}) });
-    this.schedulePersist();
+  }
+
+  private isUsageKey(id: string): boolean {
+    return this.providers.has(id) || this.usageMirrors.some((m) => m.usageProviderId === id);
   }
 
   mcp(id: SessionId, servers: McpServerStatus[]): void {
@@ -2512,10 +2533,6 @@ export class SessionManager implements SessionSink {
       await this.store.writeIndex(index);
       if (this.ownership) { this.knownOnDisk = new Set(sessions.map((x) => x.id)); }
     }
-    // usageSnapshot() prunes reset windows on the way out, so a file written
-    // now cannot resurrect one on the next load.
-    await this.store.writeUsage({ providers: this.usageSnapshot() });
-    await this.store.writeCatalog({ providers: this.catalogSnapshot() });
     // Deviation from the brief: TranscriptStore.flush() previously was not
     // safe to call concurrently for the same session id from two different
     // call sites. AgentSession serializes *its own* flush() calls through an

@@ -2,8 +2,10 @@ import * as assert from 'assert';
 import * as fs from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
+import { AccountCache } from '../../host/account-cache/account-cache';
 import { AttachmentStore } from '../../host/attachment-store';
 import { SessionManager } from '../../host/session-manager';
+import { openPlainDatabase } from '../../memory/sqlite-driver';
 import { TranscriptStore } from '../../host/transcript-store';
 import type { HostToWebview, SessionState } from '../../protocol/messages';
 import { FakeProvider } from '../../providers/fake/fake-provider';
@@ -11,6 +13,7 @@ import type {
   AgentProvider, ModelInfo, PermissionModeInfo, UsageWindow,
 } from '../../providers/types';
 import { layoutOf } from '../fixtures/protocol';
+import { modelProvider, unavailableProvider } from './helpers/model-providers';
 
 async function settle() {
   for (let i = 0; i < 10; i++) { await new Promise((r) => setImmediate(r)); }
@@ -25,6 +28,12 @@ suite('SessionManager', () => {
   let manager: SessionManager;
   let attachments: AttachmentStore;
   let extra: { manager: SessionManager; dir: string }[];
+  let caches: AccountCache[];
+  const openCache = (): AccountCache => {
+    const c = AccountCache.open(path.join(dir, 'account.sqlite'));
+    caches.push(c);
+    return c;
+  };
 
   setup(async () => {
     dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mar-manager-'));
@@ -41,11 +50,13 @@ suite('SessionManager', () => {
     );
     await manager.init();
     extra = [];
+    caches = [];
   });
 
   teardown(async () => {
     await manager.dispose();
-    await fs.rm(dir, { recursive: true, force: true });
+    for (const c of caches) { c.close(); }
+    await fs.rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
     for (const e of extra) {
       await e.manager.dispose();
       await fs.rm(e.dir, { recursive: true, force: true });
@@ -1071,42 +1082,49 @@ suite('SessionManager', () => {
   });
 
   test('the window set survives a reload, minus anything already reset', async () => {
-    manager.usageWindows('fake', [
+    const first = new SessionManager(new TranscriptStore(dir), providers, () => {});
+    first.setAccountCache(openCache());
+    await first.init();
+    first.usageWindows('fake', [
       { id: 'five-hour', label: 'Session (5h)', usedPercent: 62, resetsAt: Date.now() + 3_600_000 },
       { id: 'seven-day', label: 'Week', usedPercent: 18, resetsAt: Date.now() - 1 },
     ]);
-    await settle();
-    await manager.dispose();
+    await first.dispose();
 
     const revived = new SessionManager(new TranscriptStore(dir), providers, () => {});
+    revived.setAccountCache(openCache());
     await revived.init();
     assert.deepStrictEqual(revived.usageSnapshot().fake.map((w) => w.id), ['five-hour']);
+    await revived.dispose();
   });
 
-  test('init() survives a structurally-corrupt usage.json instead of throwing', async () => {
-    await fs.writeFile(path.join(dir, 'usage.json'), JSON.stringify({ providers: 'oops' }), 'utf8');
+  /** Writes a usage row straight into the cache file, bypassing `writeUsage`'s serialization. */
+  function insertRawUsage(instance: string, windowsJson: string): void {
+    openCache();
+    const db = openPlainDatabase(path.join(dir, 'account.sqlite'));
+    try {
+      db.prepare('INSERT INTO usage(instance, windows_json, fetched_at) VALUES(?, ?, ?)').run(instance, windowsJson, 1);
+    } finally {
+      db.close();
+    }
+  }
+
+  test('init() survives a structurally-corrupt usage row instead of throwing', async () => {
+    insertRawUsage('fake', '{"providers": "oops"');
 
     const revived = new SessionManager(new TranscriptStore(dir), providers, () => {});
+    revived.setAccountCache(openCache());
     await assert.doesNotReject(() => revived.init());
     assert.deepStrictEqual(revived.usageSnapshot(), {});
     await revived.dispose();
   });
 
-  test('init() survives a usage.json whose window elements are malformed, not just its providers', async () => {
-    // `windows.map((w) => [w.id, w])` — the exact line that would throw
-    // trying to read `.id` off `null` — is what this exercises. A `null`
-    // element is dropped; a valid sibling in the same array survives.
-    await fs.writeFile(
-      path.join(dir, 'usage.json'),
-      JSON.stringify({
-        providers: {
-          fake: [null, { id: 'five-hour', label: 'Session (5h)', usedPercent: 62 }],
-        },
-      }),
-      'utf8',
-    );
+  test('init() survives a usage row whose window elements are malformed', async () => {
+    // A `null` element is dropped; a valid sibling in the same array survives.
+    insertRawUsage('fake', JSON.stringify([null, { id: 'five-hour', label: 'Session (5h)', usedPercent: 62 }]));
 
     const revived = new SessionManager(new TranscriptStore(dir), providers, () => {});
+    revived.setAccountCache(openCache());
     await assert.doesNotReject(() => revived.init());
     assert.deepStrictEqual(revived.usageSnapshot().fake.map((w) => w.id), ['five-hour']);
     await revived.dispose();
@@ -1442,28 +1460,6 @@ suite('SessionManager', () => {
     await restored.dispose();
   });
 
-  /**
-   * A provider whose model list is only correct after `fetchModels` — the
-   * shape of every real backend, where the catalog lives in the CLI.
-   */
-  function modelProvider(
-    id: string, onFetch?: () => Promise<never>, loginKind?: 'oauth' | 'none',
-  ): AgentProvider {
-    let models: ModelInfo[] = [{ id: 'stale', displayName: 'Stale' }];
-    return {
-      id, displayName: id, threadScope: 'cwd',
-      ...(loginKind ? { loginKind } : {}),
-      listModels: () => models,
-      listPermissionModes: () => [],
-      fetchModels: async (cwd: string) => {
-        if (onFetch) { await onFetch(); }
-        models = [{ id: `fresh-${cwd}`, displayName: 'Fresh' }];
-        return models;
-      },
-      start: () => { throw new Error('not used'); },
-    };
-  }
-
   test('catalog() passes through a provider\'s loginKind', async () => {
     const m = new SessionManager(
       new TranscriptStore(dir), new Map([['claude', modelProvider('claude', undefined, 'none')]]), () => {},
@@ -1518,18 +1514,6 @@ suite('SessionManager', () => {
     await m.dispose();
   });
 
-  /** A provider that can offer nothing until — and unless — a probe succeeds. */
-  function unavailableProvider(id: string, reason: string, loginKind?: 'oauth' | 'none'): AgentProvider {
-    return {
-      id, displayName: id, threadScope: 'cwd',
-      ...(loginKind ? { loginKind } : {}),
-      listModels: () => [],
-      listPermissionModes: () => [],
-      fetchModels: () => Promise.reject(new Error(reason)),
-      start: () => { throw new Error('not used'); },
-    };
-  }
-
   test('unavailable() passes through a provider\'s loginKind', async () => {
     const m = new SessionManager(
       new TranscriptStore(dir),
@@ -1582,15 +1566,15 @@ suite('SessionManager', () => {
     // moment the webview says `ready`, and a backend-answered provider knows
     // nothing until its probe lands. Without a seed every restored pane spends
     // that first second with a dead model switcher.
-    await new TranscriptStore(dir).writeCatalog({
-      providers: { claude: [{ id: 'opus', displayName: 'Opus 5' }] },
-    });
+    const cache = openCache();
+    cache.writeCatalog({ instance: 'claude', models: [{ id: 'opus', displayName: 'Opus 5' }], fetchedAt: 1 });
 
     const m = new SessionManager(
       new TranscriptStore(dir),
       new Map([['claude', unavailableProvider('claude', 'Claude Code CLI not found.')]]),
       () => {},
     );
+    m.setAccountCache(cache);
     await m.init();
 
     assert.deepStrictEqual(m.catalog(), [{
@@ -1601,13 +1585,13 @@ suite('SessionManager', () => {
   });
 
   test('a successful probe replaces the seed with what the backend actually said', async () => {
-    await new TranscriptStore(dir).writeCatalog({
-      providers: { claude: [{ id: 'opus', displayName: 'Opus 5' }] },
-    });
+    const cache = openCache();
+    cache.writeCatalog({ instance: 'claude', models: [{ id: 'opus', displayName: 'Opus 5' }], fetchedAt: 1 });
 
     const m = new SessionManager(
       new TranscriptStore(dir), new Map([['claude', modelProvider('claude')]]), () => {},
     );
+    m.setAccountCache(cache);
     await m.init();
     await m.refreshModels('/repo');
 
@@ -1622,15 +1606,15 @@ suite('SessionManager', () => {
     // A seed that outlives the install it describes is the same lie a stale
     // `probeFailures` entry would be. Once the probe has actually answered,
     // its answer is the only thing that speaks.
-    await new TranscriptStore(dir).writeCatalog({
-      providers: { claude: [{ id: 'opus', displayName: 'Opus 5' }] },
-    });
+    const cache = openCache();
+    cache.writeCatalog({ instance: 'claude', models: [{ id: 'opus', displayName: 'Opus 5' }], fetchedAt: 1 });
 
     const m = new SessionManager(
       new TranscriptStore(dir),
       new Map([['claude', unavailableProvider('claude', 'Claude Code CLI not found.')]]),
       () => {},
     );
+    m.setAccountCache(cache);
     await m.init();
     await m.refreshModels('/repo');
 
@@ -1641,18 +1625,18 @@ suite('SessionManager', () => {
     await m.dispose();
   });
 
-  test('the probed catalog is persisted, so the next launch seeds from it', async () => {
+  test('the probed catalog is cached, so the next launch seeds from it', async () => {
     const m = new SessionManager(
       new TranscriptStore(dir), new Map([['claude', modelProvider('claude')]]), () => {},
     );
+    m.setAccountCache(openCache());
     await m.init();
     await m.refreshModels('/repo');
-    await settle();
     await m.dispose();
 
-    assert.deepStrictEqual(await new TranscriptStore(dir).readCatalog(), {
-      providers: { claude: [{ id: 'fresh-/repo', displayName: 'Fresh' }] },
-    });
+    assert.deepStrictEqual(openCache().readCatalog().map(({ instance, models }) => ({ instance, models })), [
+      { instance: 'claude', models: [{ id: 'fresh-/repo', displayName: 'Fresh' }] },
+    ]);
   });
 
   test('a provider that starts answering stops being reported as unavailable', async () => {
