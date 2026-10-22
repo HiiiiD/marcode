@@ -73,3 +73,7 @@ export function openDatabase(dbPath: string): SqlDb {
   }
   return db;
 }
+
+export function openPlainDatabase(dbPath: string): SqlDb {
+  return wrapDatabase(openRaw(dbPath));
+}
