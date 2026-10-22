@@ -63,6 +63,12 @@ const esbuildProblemMatcherPlugin = {
 };
 
 async function main() {
+	// jsonc-parser's `main` is a UMD build whose relative require()s esbuild cannot follow; its ESM build bundles.
+	const hostAlias = {
+		'@': require('path').resolve(__dirname, 'src/webview'),
+		'jsonc-parser': require('path').resolve(__dirname, 'node_modules/jsonc-parser/lib/esm/main.js'),
+	};
+
 	const common = {
 		bundle: true,
 		minify: production,
@@ -79,7 +85,7 @@ async function main() {
 		platform: 'node',
 		outfile: 'dist/extension.js',
 		external: ['vscode', '@anthropic-ai/claude-agent-sdk', 'bun:sqlite'],
-		alias: { '@': require('path').resolve(__dirname, 'src/webview') },
+		alias: hostAlias,
 	});
 
 	// The detached daemon the extension spawns with ELECTRON_RUN_AS_NODE; no vscode import is reachable from it.
@@ -90,7 +96,7 @@ async function main() {
 		platform: 'node',
 		outfile: 'dist/daemon.js',
 		external: ['@anthropic-ai/claude-agent-sdk', 'bun:sqlite'],
-		alias: { '@': require('path').resolve(__dirname, 'src/webview') },
+		alias: hostAlias,
 	});
 
 	const webviewCtx = await esbuild.context({

@@ -1,6 +1,7 @@
 // Best-effort redaction for text that may end up either persisted to disk
 // (AgentSession.appendItem -> a session's JSONL transcript file) or shown in
-// the UI as a turn-end error string. Applied in two places: claude-provider.ts's
+// the UI as a turn-end error string. Vendor-neutral: every provider's MCP status
+// errors go through it too. For Claude it is applied in: claude-provider.ts's
 // `errorMessage()` (thrown-`Error` text — process spawn/exit failures), and
 // map-events.ts's `type === 'result'` branch (the SDK's own `errors: string[]`
 // field on a failed result — see that file's header comment). Both paths can

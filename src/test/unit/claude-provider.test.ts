@@ -16,6 +16,7 @@ type CanUseToolLike = (
 type FakeSdkServerStatus = {
   name: string;
   status: string;
+  source?: string;
   tools?: { name: string }[];
   error?: string;
 };
@@ -45,6 +46,7 @@ function fakeLoadQuery(opts: {
   /** Every settings patch pushed at the *running* query via applyFlagSettings, in order. */
   const flagSettings: Record<string, unknown>[] = [];
   let closed = false;
+  const reconnects: string[] = [];
 
   const queryFn = (params: { prompt: AsyncIterable<unknown>; options: Record<string, unknown> }) => {
     calls.push({ options: params.options, prompt: params.prompt });
@@ -72,6 +74,7 @@ function fakeLoadQuery(opts: {
       setModel: (model?: string) => Promise<void>;
       close: () => void;
       mcpServerStatus: () => Promise<FakeSdkServerStatus[]>;
+      reconnectMcpServer: (name: string) => Promise<void>;
       supportedModels: () => Promise<unknown[]>;
       supportedCommands: () => Promise<unknown[]>;
     };
@@ -84,6 +87,7 @@ function fakeLoadQuery(opts: {
     };
     gen.close = () => { closed = true; stop(); };
     gen.mcpServerStatus = opts.mcpServerStatus ?? (async () => []);
+    gen.reconnectMcpServer = async (name: string) => { reconnects.push(name); };
     gen.supportedModels = async () => opts.models ?? [];
     gen.supportedCommands = async () => opts.commands ?? [];
     return gen;
@@ -94,6 +98,7 @@ function fakeLoadQuery(opts: {
     calls,
     setModels,
     flagSettings,
+    reconnects,
     isClosed: () => closed,
   };
 }
@@ -1766,5 +1771,80 @@ suite('ClaudeProvider.moveThread', () => {
       const provider = new ClaudeProvider(undefined, undefined, { env: { CLAUDE_CONFIG_DIR: dir } });
       assert.strictEqual(await provider.moveThread({ resumeToken: 'missing', from: '/a/old', to: '/b/new' }), false);
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+});
+
+suite('ClaudeProvider MCP management', () => {
+  const envOf = (o: Record<string, unknown>) => o.env as NodeJS.ProcessEnv | undefined;
+
+  test('connectors off (the default) adds ENABLE_CLAUDEAI_MCP_SERVERS=false to a full env, run and probe alike', async () => {
+    const fake = fakeLoadQuery();
+    const provider = new ClaudeProvider(fake.load as never);
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default', sessionId: 's' });
+    run.send('go');
+    await flushMacrotask();
+    await provider.listInvocables('/tmp');
+    assert.deepStrictEqual(fake.calls.map((c) => envOf(c.options)?.ENABLE_CLAUDEAI_MCP_SERVERS), ['false', 'false']);
+    assert.deepStrictEqual(fake.calls.map((c) => envOf(c.options)?.PATH === process.env.PATH), [true, true]);
+    await run.dispose();
+  });
+
+  test('connectors on passes no override', async () => {
+    const fake = fakeLoadQuery();
+    const provider = new ClaudeProvider(fake.load as never, undefined, { claudeAiConnectors: true });
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default', sessionId: 's' });
+    run.send('go');
+    await flushMacrotask();
+    assert.strictEqual(envOf(fake.calls[0].options)?.ENABLE_CLAUDEAI_MCP_SERVERS, undefined);
+    await run.dispose();
+  });
+
+  test('connectors off keeps an instance env override', async () => {
+    const fake = fakeLoadQuery();
+    const provider = new ClaudeProvider(fake.load as never, undefined, { env: { CLAUDE_CONFIG_DIR: '/cfg' } });
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default', sessionId: 's' });
+    run.send('go');
+    await flushMacrotask();
+    const env = envOf(fake.calls[0].options);
+    assert.deepStrictEqual([env?.CLAUDE_CONFIG_DIR, env?.ENABLE_CLAUDEAI_MCP_SERVERS], ['/cfg', 'false']);
+    await run.dispose();
+  });
+
+  test('status before the first send asks a probe and maps origins', async () => {
+    const fake = fakeLoadQuery({ mcpServerStatus: async () => [{ name: 'shadcn', status: 'connected', source: 'project' }] });
+    const provider = new ClaudeProvider(fake.load as never);
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default', sessionId: 's' });
+    const servers = await run.mcp!.status();
+    assert.deepStrictEqual(servers, [{ name: 'shadcn', state: 'connected', origin: 'repo', canSignIn: false }]);
+    assert.strictEqual(fake.calls.length, 1);
+    assert.strictEqual(fake.isClosed(), true);
+    await run.dispose();
+  });
+
+  test('configLoadedAt is undefined until the query is built', async () => {
+    const fake = fakeLoadQuery();
+    const provider = new ClaudeProvider(fake.load as never);
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default', sessionId: 's' });
+    assert.strictEqual(run.configLoadedAt!(), undefined);
+    run.send('go');
+    await flushMacrotask();
+    assert.strictEqual(typeof run.configLoadedAt!(), 'number');
+    await run.dispose();
+  });
+
+  test('reconnect goes to the live query', async () => {
+    const fake = fakeLoadQuery();
+    const provider = new ClaudeProvider(fake.load as never);
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default', sessionId: 's' });
+    run.send('go');
+    await flushMacrotask();
+    await run.mcp!.reconnect!('shadcn');
+    assert.deepStrictEqual(fake.reconnects, ['shadcn']);
+    await run.dispose();
+  });
+
+  test('provider exposes a Claude config store', () => {
+    const provider = new ClaudeProvider(fakeLoadQuery().load as never);
+    assert.deepStrictEqual(provider.mcpConfig.capabilities, { reconnect: 'per-server', signIn: false, sse: true, workingDirectory: false });
   });
 });

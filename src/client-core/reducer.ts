@@ -7,7 +7,7 @@ import type {
   FileRef,
   HostToWebview, Invocable, McpServerStatus, PaneLayout, PermissionRequest, ProviderInfo,
   QuestionRequest,
-  SessionId, SessionSummary, StaleTree, TranscriptItem, TreeDiff, UnavailableProvider, UsageWindow,
+  McpPanel, SessionId, SessionSummary, StaleTree, TranscriptItem, TreeDiff, UnavailableProvider, UsageWindow,
 } from '../protocol/messages';
 
 export interface PaneState {
@@ -18,6 +18,8 @@ export interface PaneState {
   /** The cwd's catalog. Absent until the host has one; see the spec's States. */
   invocables?: Invocable[];
   mcpServers: McpServerStatus[];
+  /** The last `/mcp` answer for this pane; absent until the dialog has asked. */
+  mcpPanel?: McpPanel;
   /** The prompt cache's live warm/cold state, Claude-only. Absent = unknown. */
   cacheWindow?: { anchorAt: number; ttlMs: number };
   /** Composed but not sent. Host state mirrored for this pane. */
@@ -594,6 +596,12 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
         ...state,
         byId: { ...state.byId, [msg.id]: { ...pane, mcpServers: msg.servers } },
       };
+    }
+
+    case 'mcp-panel': {
+      const pane = state.byId[msg.id];
+      if (!pane) { return state; }
+      return { ...state, byId: { ...state.byId, [msg.id]: { ...pane, mcpPanel: msg.panel } } };
     }
 
     case 'session-cache-window': {

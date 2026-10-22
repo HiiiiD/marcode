@@ -127,7 +127,7 @@ import type { AgentEvent, McpServerStatus, UsageTotals } from '../types';
 import { authFailureReason } from './auth-failure';
 import { toInvocables } from './map-commands';
 import { toToolCall, toToolOutput } from './map-tools';
-import { redactSecrets } from './redact';
+import { redactSecrets } from '../redact';
 
 interface Block {
   type: string;

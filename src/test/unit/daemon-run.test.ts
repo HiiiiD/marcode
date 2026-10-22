@@ -93,6 +93,23 @@ suite('runDaemon', function () {
     sidebar.sock.destroy(); tui.sock.destroy();
   });
 
+  test('mcp-sign-in over the socket answers mcp-panel to the asker and proxies openExternal as an act', async () => {
+    const d = await start();
+    const sidebar = await client(d.info.endpoint);
+    sidebar.send({ ...hello(d.info), clientKind: 'sidebar' });
+    sidebar.send({ f: 'msg', m: { t: 'ready' } });
+    await until(() => sidebar.frames.some((f) => f.f === 'msg' && f.m.t === 'hydrate'));
+    sidebar.send({ f: 'msg', m: { t: 'create-session', providerId: 'fake', cwd: dir } });
+    await until(() => sidebar.frames.some((f) => f.f === 'msg' && f.m.t === 'sessions-changed' && f.m.sessions.length > 0));
+    const id = sidebar.frames.filter((f) => f.f === 'msg' && f.m.t === 'sessions-changed').pop()!.m.sessions[0].id as string;
+    sidebar.send({ f: 'msg', m: { t: 'mcp-sign-in', id, name: 'srv' } });
+    await until(() => sidebar.frames.some((f) => f.f === 'msg' && f.m.t === 'mcp-panel'));
+    const panel = sidebar.frames.find((f) => f.f === 'msg' && f.m.t === 'mcp-panel');
+    assert.strictEqual(panel?.m.id, id);
+    assert.deepStrictEqual(sidebar.frames.filter((f) => f.f === 'act' && f.op === 'openExternal').map((f) => f.args), [['https://auth.example/srv']]);
+    sidebar.sock.destroy();
+  });
+
   test('stop() removes daemon.json, closes the socket, resolves done, and is idempotent', async () => {
     const d = await start();
     const c = await client(d.info.endpoint);

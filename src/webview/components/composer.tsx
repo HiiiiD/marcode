@@ -9,6 +9,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Invocable, ModelInfo } from "../../protocol/messages";
 import { fileMentions, fileRefsOf, type FileMentionPayload } from "../../client-core/mentions/file-mentions";
 import { isShellPrefix, parseShellCommand } from "../../client-core/shell-command";
+import { withPanelCommands } from "../../client-core/invocables/panel-commands";
 import { interceptFor } from "../lib/intercepts";
 import { insertionFor, menuQuery, menuView } from "../../client-core/invocables/invocable-menu";
 import { expandedDisplayName, sortFavoritesFirst } from "../../shared/model-catalog";
@@ -31,6 +32,7 @@ import { useStore } from "../store";
 import { CacheTimer } from "./cache-timer";
 import { ShellCue } from "./shell-cue";
 import { ContextRing } from "./context-ring";
+import { McpDialog } from "./mcp/mcp-dialog";
 import { AttachmentChip, AttachmentChips } from "./attachment-chips";
 import { EditorContextToggle } from "./editor-context-toggle";
 import { InvocableMenu } from "./invocable-menu";
@@ -80,6 +82,7 @@ export function Composer({
    * rather than inside the ring.
    */
   const [contextOpen, setContextOpen] = useState(false);
+  const [mcpOpen, setMcpOpen] = useState(false);
   const [dragging, setDragging] = useState(false);
   // The control has to hand focus back to the box: every key the menu answers
   // to is bound on the textarea, so a menu opened by a click that left focus
@@ -128,7 +131,7 @@ export function Composer({
 
   const handoffSettings = settingsFor(state, pane.summary.id);
 
-  const entries = pane.invocables ?? [];
+  const entries = withPanelCommands(pane.invocables);
   /**
    * Two entry points, ONE state machine. The control does not have an
    * "opened by click" flag of its own — it types the `/` for the user and
@@ -292,6 +295,8 @@ export function Composer({
     const intercept = interceptFor(trimmed);
     if (intercept === "context") {
       setContextOpen(true);
+    } else if (intercept === "mcp") {
+      setMcpOpen(true);
     } else {
       // `ghost` is presentation only — the arg hint is never part of the message.
       const pruned = pruneMentions(trimmed, refs);
@@ -749,6 +754,7 @@ export function Composer({
           )}
           {state.showCacheTimer && <CacheTimer window={pane.cacheWindow} />}
           <ContextRing pane={pane} open={contextOpen} onOpenChange={setContextOpen} />
+          <McpDialog id={pane.summary.id} open={mcpOpen} onOpenChange={setMcpOpen} />
         </InputGroupAddon>
       </InputGroup>
       {handoffSettings && (

@@ -121,12 +121,25 @@ suite("invocable menu", () => {
     assert.strictEqual(screen.queryByRole("listbox"), null);
   });
 
+  test("a provider's own /mcp is replaced by the panel's, without its argument hint", async () => {
+    const providerMcp: Invocable = { name: "mcp", description: "Manage MCP servers", argHint: "[reconnect|enable|disable [<server>|all]]", bare: true };
+    renderWithStore(<Composer pane={pane([...ENTRIES, providerMcp])} model={NO_EFFORT} models={[]} />);
+    await userEvent.click(screen.getByLabelText("Skills and commands"));
+    const texts = screen.getAllByRole("option").map((o) => o.textContent ?? "");
+    assert.strictEqual(texts.length, ENTRIES.length + 1);
+    assert.strictEqual(texts.filter((t) => t.includes("mcp")).length, 1);
+    assert.strictEqual(texts.some((t) => t.includes("reconnect|enable")), false);
+    assert.strictEqual(texts.some((t) => t.includes("Manage this session's MCP servers")), true);
+  });
+
   test("the control opens the full list unfiltered", async () => {
     renderWithStore(<Composer pane={pane(ENTRIES)} model={NO_EFFORT} models={[]} />);
 
     await userEvent.click(screen.getByLabelText("Skills and commands"));
 
-    assert.strictEqual(screen.getAllByRole("option").length, ENTRIES.length);
+    // + the panel's own /mcp, appended after the provider's entries.
+    assert.strictEqual(screen.getAllByRole("option").length, ENTRIES.length + 1);
+    assert.strictEqual(screen.getAllByRole("option").at(-1)?.textContent?.includes("mcp"), true);
   });
 
   /**

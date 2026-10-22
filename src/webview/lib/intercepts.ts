@@ -10,21 +10,26 @@
  * the same problem and the same answer, and each is one entry plus the
  * surface it names.
  */
-export type InterceptId = 'context';
+export type InterceptId = 'context' | 'mcp';
 
 const TABLE: Record<string, InterceptId> = {
   '/context': 'context',
+  '/mcp': 'mcp',
 };
 
 /**
  * The surface `text` should open instead of being sent, or `undefined` when
  * the message belongs to the agent.
  *
- * Only a bare command matches. A command carrying arguments is asking for
+ * Only a bare command matches, except `/mcp`: the CLI's own subcommands for it
+ * (reconnect/enable/disable) are the dialog's job too. A command carrying arguments is asking for
  * something this panel cannot do anything with, so it goes to the agent
  * untouched — as does anything that merely starts with an intercepted
  * command's characters (`/contextual-help`).
  */
 export function interceptFor(text: string): InterceptId | undefined {
-  return TABLE[text.trim()];
+  const trimmed = text.trim();
+  if (/^\/mcp(\s|$)/.test(trimmed)) { return 'mcp'; }
+  return TABLE[trimmed];
 }
+

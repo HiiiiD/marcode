@@ -1,5 +1,6 @@
 import type { AgentEvent, ContextBreakdown, PermissionMeta, ToolCall, ToolDecision } from '../types';
 import { readOpenCodeContext } from './context-usage';
+import type { OpenCodeMcpStatus } from './map-mcp-status';
 import { subagentToolCall, subagentToolOutput, type RawToolPart } from './map-subagent-tools';
 
 /**
@@ -50,6 +51,9 @@ export interface SubagentSdk {
   globalEvent(): Promise<{ stream: AsyncIterable<EventEnvelope> }>;
   contextBreakdown?(sessionID: string, directory: string): Promise<ContextBreakdown>;
   permissionReply(params: { requestID: string; reply: 'once' | 'always' | 'reject'; directory?: string; workspace?: string }): Promise<unknown>;
+  mcpStatus?(directory: string): Promise<OpenCodeMcpStatus>;
+  mcpReconnect?(name: string, directory: string): Promise<void>;
+  mcpAuthStart?(name: string, directory: string): Promise<string>;
 }
 
 /**
@@ -71,6 +75,17 @@ async function connectSdk(baseUrl: string, token: string, signal?: AbortSignal):
     contextBreakdown: (sessionID, directory) => readOpenCodeContext(client, sessionID, directory),
     globalEvent: () => client.global.event() as unknown as Promise<{ stream: AsyncIterable<EventEnvelope> }>,
     permissionReply: (params) => client.permission.reply(params),
+    mcpStatus: async (directory) => ((await client.mcp.status({ directory })).data ?? {}) as OpenCodeMcpStatus,
+    mcpReconnect: async (name, directory) => {
+      await client.mcp.disconnect({ name, directory });
+      await client.mcp.connect({ name, directory });
+    },
+    mcpAuthStart: async (name, directory) => {
+      const res = await client.mcp.auth.start({ name, directory });
+      const url = (res.data as { authorizationUrl?: string } | undefined)?.authorizationUrl;
+      if (!url) { throw new Error(`OpenCode gave no sign-in link for ${name}.`); }
+      return url;
+    },
   };
 }
 
@@ -146,6 +161,9 @@ export class SubagentWatch {
     | undefined;
   private closed = false;
   private sdk: SubagentSdk | undefined;
+  private sdkAt: number | undefined;
+  /** The server `sdkAt` belongs to: another `open` of the same process must not look like a config reload. */
+  private sdkUrl: string | undefined;
   /** Aborts the real SSE connection's own retry loop — see `run`/`close`. */
   private abortController: AbortController | undefined;
 
@@ -172,6 +190,28 @@ export class SubagentWatch {
   setRootSessionId(id: string): void {
     this.rootSessionId = id;
     this.watched.add(id);
+  }
+
+  /** When the run's server first answered, i.e. when it had read its config. */
+  connectedAt(): number | undefined { return this.sdkAt; }
+
+  private mcpSdk(): SubagentSdk {
+    if (!this.sdk || this.closed) { throw new Error('OpenCode is still starting; try again in a moment.'); }
+    return this.sdk;
+  }
+
+  async mcpStatus(directory: string): Promise<OpenCodeMcpStatus> {
+    return (await this.mcpSdk().mcpStatus?.(directory)) ?? {};
+  }
+
+  async mcpReconnect(name: string, directory: string): Promise<void> {
+    await this.mcpSdk().mcpReconnect?.(name, directory);
+  }
+
+  async mcpAuthStart(name: string, directory: string): Promise<string> {
+    const start = this.mcpSdk().mcpAuthStart;
+    if (!start) { throw new Error("This OpenCode build can't start a sign-in."); }
+    return start(name, directory);
   }
 
   async contextBreakdown(directory: string): Promise<ContextBreakdown> {
@@ -234,6 +274,10 @@ export class SubagentWatch {
       // just replaced it with.
       if (this.closed || signal.aborted) { return; }
       this.sdk = sdk;
+      if (this.sdkUrl !== baseUrl) {
+        this.sdkUrl = baseUrl;
+        this.sdkAt = Date.now();
+      }
       const { stream } = await sdk.globalEvent();
       for await (const envelope of stream) {
         if (this.closed) { return; }

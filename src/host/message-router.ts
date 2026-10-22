@@ -620,6 +620,22 @@ export class MessageRouter {
         return;
       }
 
+      case 'mcp-open':
+      case 'mcp-add':
+      case 'mcp-remove':
+      case 'mcp-reconnect':
+      case 'mcp-sign-in':
+      case 'restart-session': {
+        const id = msg.id;
+        const panel = await this.manager.mcpService.handle(
+          msg,
+          (url) => { this.editor.openExternal(url); },
+          (interim) => { this.emit({ t: 'mcp-panel', id, panel: interim }); },
+        );
+        this.emit({ t: 'mcp-panel', id, panel });
+        return;
+      }
+
       case 'open-file':
         if (!this.manager.canOpenFile(msg.id, msg.path)) {
           console.error('[mar-code] refusing to open a path this session never reported', msg.path);
@@ -809,6 +825,7 @@ const KNOWN_MESSAGE_TAGS = new Set<WebviewToHost['t']>([
   'refresh-catalog', 'refresh-usage', 'open-settings', 'login-provider', 'open-external', 'export-table-csv',
   'export-image',
   'file-search', 'set-favorite-models', 'run-shell', 'cancel-shell',
+  'mcp-open', 'mcp-add', 'mcp-remove', 'mcp-reconnect', 'mcp-sign-in', 'restart-session',
 ]);
 
 function isLayoutNode(node: unknown, seen = new Set<object>()): boolean {

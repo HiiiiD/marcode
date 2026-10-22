@@ -270,7 +270,41 @@ export type McpServerStatus = {
   state: 'pending' | 'connected' | 'failed' | 'needs-auth' | 'disabled';
   toolCount?: number;
   error?: string;
+  origin?: McpOrigin;
+  /** Badge text for origin 'other' (e.g. 'managed', 'plugin'). */
+  originLabel?: string;
+  canSignIn?: boolean;
 };
+
+export type McpScope = 'repo' | 'global';
+/** Where a listed server is defined. 'repo-private' = Claude's per-project block in ~/.claude.json. */
+export type McpOrigin = McpScope | 'repo-private' | 'other';
+export type McpRemovableOrigin = Exclude<McpOrigin, 'other'>;
+export type McpServerSpec =
+  | { name: string; transport: 'stdio'; command: string; args: string[]; env: Record<string, string>; cwd?: string }
+  | { name: string; transport: 'http' | 'sse'; url: string; headers: Record<string, string> };
+/** `note`: the file is written but the backend may ignore it (e.g. Codex on an untrusted project). */
+export type McpTarget = { path: string; note?: string } | { unavailable: string };
+export interface McpCapabilities {
+  reconnect: 'per-server' | 'restart';
+  signIn: boolean;
+  sse: boolean;
+  workingDirectory: boolean;
+}
+export interface McpLocation { cwd: string; repoRoot: string }
+export interface McpControl {
+  status(): Promise<McpServerStatus[]>;
+  reconnect?(name: string): Promise<void>;
+  /** Resolves to the authorization URL to open. */
+  signIn?(name: string): Promise<string>;
+}
+export interface McpConfigStore {
+  readonly capabilities: McpCapabilities;
+  targets(at: McpLocation): Promise<Record<McpScope, McpTarget>>;
+  /** Resolves to the file written. Rejects with a user-readable message. */
+  add(at: McpLocation, scope: McpScope, server: McpServerSpec): Promise<string>;
+  remove(at: McpLocation, origin: McpRemovableOrigin, name: string): Promise<string>;
+}
 
 export interface UsageTotals {
   inputTokens: number;
@@ -449,6 +483,9 @@ export interface AgentRun {
    * a time (Codex, ACP, fake).
    */
   readonly queuesNatively?: boolean;
+  readonly mcp?: McpControl;
+  /** Epoch ms when the backend read its MCP config; undefined until it has (lazy start). */
+  configLoadedAt?(): number | undefined;
   dispose(): Promise<void>;
 }
 
@@ -547,6 +584,7 @@ export interface AgentProvider {
    * exactly when the menu is wanted.
    */
   listInvocables?(cwd: string): Promise<Invocable[]>;
+  readonly mcpConfig?: McpConfigStore;
 }
 
 /** Copies account usage from one provider for turns using a matching model. */

@@ -1,16 +1,29 @@
 import type {
   Attachment, AttachmentKind, ContextBreakdown, EditorContext, EffortLevel, FileEdit, Invocable,
-  McpServerStatus, ModelInfo, PermissionMeta, PermissionMode, PermissionModeInfo, QuestionAnswers,
+  McpCapabilities, McpOrigin, McpRemovableOrigin, McpScope, McpServerSpec, McpServerStatus, McpTarget, ModelInfo, PermissionMeta, PermissionMode, PermissionModeInfo, QuestionAnswers,
   QuestionOption, QuestionSpec, TodoStatus, ToolCall, ToolDecision, ToolOutput, UsageTotals, UsageWindow,
 } from '../providers/types';
 
 export type {
   Attachment, AttachmentKind, ContextBreakdown, EditorContext, EffortLevel, FileEdit, Invocable,
-  McpServerStatus, ModelInfo, PermissionMeta, PermissionMode, PermissionModeInfo, QuestionAnswers,
+  McpCapabilities, McpOrigin, McpRemovableOrigin, McpScope, McpServerSpec, McpServerStatus, McpTarget, ModelInfo, PermissionMeta, PermissionMode, PermissionModeInfo, QuestionAnswers,
   QuestionOption, QuestionSpec, TodoStatus, ToolCall, ToolDecision, ToolOutput, UsageTotals, UsageWindow,
 };
 
 export type SessionId = string;
+
+export interface McpPendingChange { name: string; origin: McpScope | 'repo-private'; change: 'added' | 'removed' }
+export interface McpPanel {
+  /** null = this provider cannot manage MCP (list is read-only). */
+  capabilities: McpCapabilities | null;
+  /** Why the list is read-only when the provider could manage it (e.g. another window owns the session). */
+  readOnly?: string;
+  targets: Record<McpScope, McpTarget> | null;
+  pending: McpPendingChange[];
+  restarting: boolean;
+  /** Last action's failure, cleared by the next successful action. */
+  error?: string;
+}
 export type SessionStatus = 'idle' | 'running' | 'awaiting-approval' | 'error';
 
 export type RefKind = 'message' | 'plan';
@@ -149,7 +162,7 @@ export type TranscriptItem =
    * nothing about why, and "the session just moved cwd" is not implied by
    * the interrupted turn's own transcript.
    */
-  | (ItemBase & { role: 'switch'; kind: 'model' | 'effort' | 'relocation'; text: string })
+  | (ItemBase & { role: 'switch'; kind: 'model' | 'effort' | 'relocation' | 'restart'; text: string })
   /**
    * A shell command the human ran with `!` in the composer. Never a model turn:
    * the host runs it, and the next typed prompt carries it to the model as context.
@@ -601,6 +614,14 @@ export type WebviewToHost =
   | { t: 'question-answer'; id: SessionId; requestId: string; answers: QuestionAnswers }
   | { t: 'load-more'; id: SessionId; beforeItemId: string }
   | { t: 'request-context'; id: SessionId }
+  /** The MCP dialog opened; answered with `mcp-panel`, servers refreshed via `session-mcp`. */
+  | { t: 'mcp-open'; id: SessionId }
+  | { t: 'mcp-add'; id: SessionId; scope: McpScope; server: McpServerSpec }
+  | { t: 'mcp-remove'; id: SessionId; name: string; origin: McpRemovableOrigin }
+  | { t: 'mcp-reconnect'; id: SessionId; name: string }
+  | { t: 'mcp-sign-in'; id: SessionId; name: string }
+  /** Rebuilds the session's run on the same resume token, so the backend re-reads its config. */
+  | { t: 'restart-session'; id: SessionId }
   /**
    * Distinct from `reveal-file`, which opens an editor-context path the host
    * itself produced. `path` here originates in a *provider's* context report,
@@ -868,6 +889,8 @@ export type HostToWebview =
   | { t: 'memory-estimate'; scope: DigestScopeWire; sessions: number; approxInputTokens: number }
   | { t: 'session-invocables'; id: SessionId; entries: Invocable[] }
   | { t: 'session-mcp'; id: SessionId; servers: McpServerStatus[] }
+  /** Answers every `mcp-*` / `restart-session` message, straight to the asker. */
+  | { t: 'mcp-panel'; id: SessionId; panel: McpPanel }
   | { t: 'session-cache-window'; id: SessionId; window: { anchorAt: number; ttlMs: number } }
   /** Full replacement of the host-owned pending attachment set. */
   | { t: 'session-attachments'; id: SessionId; attachments: Attachment[] }

@@ -100,6 +100,14 @@ When an agent spawns a session (`marcode__spawn_session`, `marcode__spawn_collab
 
 Default: `true`
 
+## `claude.claudeAiConnectors`
+
+Whether Marcode's Claude sessions load your claude.ai connectors (Gmail, Drive, Calendar and the like). When `false`, every Claude session and probe Marcode starts runs with `ENABLE_CLAUDEAI_MCP_SERVERS=false`, so those connectors neither connect nor add tools to the context. It only affects sessions Marcode starts: Claude Code in a terminal keeps them. The `/mcp` dialog never lists claude.ai connectors either way. Read when the host starts, so a change takes a window reload (restart the daemon when one is attached).
+
+This default changed: earlier builds loaded the connectors. Set it to `true` to get them back.
+
+Default: `false`
+
 ## `theme`
 
 Custom colors for the VS Code panels and the terminal client, from one flat set of names. Values are `#rgb` or `#rrggbb`; an unknown key or invalid value is dropped with a warning. A key you leave out keeps today's color (the VS Code theme in the panels, the terminal palette in the TUI). Takes effect after a window reload (restart the TUI).

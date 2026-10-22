@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { insertionFor, menuQuery, menuView, nextIndex } from '../../client-core/invocables/invocable-menu';
+import { withPanelCommands } from '../../client-core/invocables/panel-commands';
 import type { Invocable, SessionId } from '../../protocol/messages';
 import { useTuiStore } from './store';
 
@@ -25,7 +26,7 @@ export function useInvocablePopup(opts: { sessionId: SessionId; text: string }):
   useEffect(() => { setDismissedQuery((d) => (d === query ? d : null)); }, [query]);
   useEffect(() => { setDismissedQuery(null); }, [opts.sessionId]);
 
-  const entries = state.byId[opts.sessionId]?.invocables ?? [];
+  const entries = withPanelCommands(state.byId[opts.sessionId]?.invocables);
   const { rows, overflow } = query === undefined ? { rows: [], overflow: 0 } : menuView(entries, query);
   const open = query !== undefined && dismissedQuery !== query && rows.length > 0;
   const clamped = Math.min(index, Math.max(0, rows.length - 1));
