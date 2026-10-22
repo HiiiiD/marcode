@@ -120,6 +120,30 @@ suite('client-core mcp', () => {
     assert.deepStrictEqual([rows[0].canRemove, rows[0].canReconnect], [false, false]);
   });
 
+  test('while restarting every row reads pending, keeps its order and offers no action', () => {
+    const servers = [
+      { name: 'ok', state: 'connected' as const, toolCount: 3, origin: 'repo' as const },
+      { name: 'bad', state: 'failed' as const, error: 'boom', origin: 'global' as const },
+      { name: 'l', state: 'needs-auth' as const, origin: 'global' as const, canSignIn: true },
+    ];
+    const rows = mcpRows(servers, panel({ restarting: true, capabilities: { ...caps, signIn: true } }));
+    assert.deepStrictEqual(rows.map((r) => [r.name, r.state, r.detail, r.canReconnect, r.canRemove, r.canSignIn, r.busy]), [
+      ['bad', 'pending', 'restarting…', false, false, false, true],
+      ['l', 'pending', 'restarting…', false, false, false, true],
+      ['ok', 'pending', 'restarting…', false, false, false, true],
+    ]);
+  });
+
+  test('VS Code servers wrapper is understood and its inputs ignored', () => {
+    const r = parseMcpSnippet('{"inputs": [{"id": "key", "type": "promptString"}], "servers": {"gh": {"type": "http", "url": "https://gh/mcp"}}}');
+    assert.deepStrictEqual(r, { server: { name: 'gh', transport: 'http', url: 'https://gh/mcp', headers: {} } });
+  });
+
+  test('JSONC with comments and trailing commas is accepted', () => {
+    const r = parseMcpSnippet('{\n  // from the README\n  "mcpServers": {\n    "b": { "command": "uv", "args": ["run", "b",], },\n  },\n}');
+    assert.deepStrictEqual(r, { server: { name: 'b', transport: 'stdio', command: 'uv', args: ['run', 'b'], env: {} } });
+  });
+
   test('summary counts failing', () => {
     assert.strictEqual(mcpSummary(mcpRows([{ name: 'a', state: 'failed' }, { name: 'b', state: 'connected' }], undefined)), '2 servers · 1 failing');
     assert.strictEqual(mcpSummary(mcpRows([{ name: 'a', state: 'connected' }], undefined)), '1 server');

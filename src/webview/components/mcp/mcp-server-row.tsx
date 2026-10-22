@@ -18,12 +18,12 @@ const STATE_LABEL: Record<McpRow["state"], string> = {
   connected: "Connected", failed: "Failed", "needs-auth": "Needs sign-in", pending: "Pending", disabled: "Disabled",
 };
 
-function IconAction({ label, tip, onClick, children }: {
-  label: string; tip: string; onClick: () => void; children: React.ReactNode;
+function IconAction({ label, tip, onClick, disabled, children }: {
+  label: string; tip: string; onClick: () => void; disabled?: boolean; children: React.ReactNode;
 }) {
   return (
     <Tooltip>
-      <TooltipTrigger render={<Button variant="ghost" size="icon-xs" aria-label={label} onClick={onClick} />}>
+      <TooltipTrigger render={<Button variant="ghost" size="icon-xs" aria-label={label} disabled={disabled} onClick={onClick} />}>
         {children}
       </TooltipTrigger>
       <TooltipContent>{tip}</TooltipContent>
@@ -52,10 +52,11 @@ export function McpServerRow({ row, removeFrom, reconnectRestarts, onReconnect, 
           {row.canSignIn && (
             <IconAction label={`Sign in to ${row.name}`} tip="Sign in" onClick={onSignIn}><LogInIcon aria-hidden /></IconAction>
           )}
-          {row.canReconnect && (
+          {(row.canReconnect || row.busy) && (
             <IconAction
               label={`Reconnect ${row.name}`}
-              tip={reconnectRestarts ? "Restarts this session" : "Reconnect"}
+              tip={row.busy ? "Restarting…" : reconnectRestarts ? "Restarts this session" : "Reconnect"}
+              disabled={row.busy}
               onClick={onReconnect}
             >
               <RefreshCwIcon aria-hidden />

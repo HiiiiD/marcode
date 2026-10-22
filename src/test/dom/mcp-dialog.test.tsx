@@ -77,6 +77,16 @@ suite("MCP dialog", () => {
     assert.deepStrictEqual(posted().at(-1), { t: "mcp-reconnect", id: "a", name: "figma" });
   });
 
+  test("while restarting, rows read restarting and Reconnect is disabled", async () => {
+    const dialog = await openMcp(panel({ restarting: true }));
+    const reconnect = dialog.getByRole("button", { name: "Reconnect figma" });
+    assert.strictEqual(reconnect.hasAttribute("disabled") || reconnect.getAttribute("aria-disabled") === "true", true);
+    assert.strictEqual(dialog.queryByRole("button", { name: "Delete shadcn" }) === null, true);
+    assert.strictEqual(dialog.getAllByText("restarting…").length, 3);
+    await userEvent.click(reconnect);
+    assert.strictEqual(posted().some((m) => m.t === "mcp-reconnect"), false);
+  });
+
   test("a read-only panel says why and offers no add, delete or reconnect", async () => {
     const dialog = await openMcp(panel({ capabilities: null, readOnly: "This session is open in another window." }));
     assert.strictEqual(dialog.getByText("This session is open in another window.").textContent?.length !== 0, true);

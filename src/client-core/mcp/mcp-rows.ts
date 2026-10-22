@@ -9,6 +9,8 @@ export interface McpRow {
   canRemove: boolean;
   canSignIn: boolean;
   removeOrigin?: McpRemovableOrigin;
+  /** The session is restarting: the row is pending and nothing on it can be acted on. */
+  busy?: boolean;
 }
 
 const SELF_CONTROL = 'marcode_self_control';
@@ -42,7 +44,10 @@ export function mcpRows(servers: McpServerStatus[], panel: McpPanel | undefined)
 
   return [...listed, ...added]
     .sort((a, b) => RANK[a.state] - RANK[b.state] || a.name.localeCompare(b.name))
-    .map((s) => {
+    .map((s): McpRow => {
+      if (panel?.restarting) {
+        return { name: s.name, state: 'pending', badge: badgeOf(s), detail: 'restarting…', canReconnect: false, canRemove: false, canSignIn: false, busy: true };
+      }
       const isAdded = added.includes(s);
       const isRemoved = removed.has(s.name);
       const removable = caps !== null && s.origin !== undefined && s.origin !== 'other' && !isRemoved;

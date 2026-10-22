@@ -4,6 +4,7 @@ import { splitCommandLine } from '../../../client-core/mcp/split-command';
 import { validateSpec } from '../../../client-core/mcp/validate-spec';
 import type { McpCapabilities, McpScope, McpServerSpec, McpTarget } from '../../../protocol/messages';
 import { Dialog } from '../termcn/components/ui/dialog';
+import { parsePairs } from '../../view/mcp-pairs';
 import { useSyncState } from '../use-sync-state';
 
 type Kind = 'stdio' | 'http' | 'sse' | 'json';
@@ -22,16 +23,6 @@ function fieldsFor(kind: Kind, caps: McpCapabilities): FieldId[] {
   if (kind === 'json') { return ['type', 'json']; }
   if (kind === 'stdio') { return ['type', 'name', 'command', ...(caps.workingDirectory ? ['cwd' as const] : []), 'env', 'scope']; }
   return ['type', 'name', 'url', 'headers', 'scope'];
-}
-
-/** `K=V A="b c"` → a record; a token with no `=` is ignored. */
-function pairs(line: string): Record<string, string> {
-  const split = splitCommandLine(line);
-  if ('error' in split) { return {}; }
-  return Object.fromEntries([split.command, ...split.args].flatMap((tok) => {
-    const at = tok.indexOf('=');
-    return at > 0 ? [[tok.slice(0, at), tok.slice(at + 1)]] : [];
-  }));
 }
 
 const unpairs = (r: Record<string, string>): string => Object.entries(r).map(([k, v]) => (/\s/.test(v) ? `${k}="${v}"` : `${k}=${v}`)).join(' ');
@@ -64,10 +55,14 @@ export function McpAddForm({ capabilities, targets, error, onSubmit, onBack }: {
     if (f.kind === 'stdio') {
       const split = splitCommandLine(f.command);
       if ('error' in split) { st.set({ error: split.error }); return; }
-      spec = { name: f.name.trim(), transport: 'stdio', command: split.command, args: split.args, env: pairs(f.env) };
+      const env = parsePairs(f.env);
+      if ('error' in env) { st.set({ error: `Env: ${env.error}` }); return; }
+      spec = { name: f.name.trim(), transport: 'stdio', command: split.command, args: split.args, env: env.pairs };
       if (capabilities.workingDirectory && f.cwd.trim()) { spec.cwd = f.cwd.trim(); }
     } else {
-      spec = { name: f.name.trim(), transport: f.kind, url: f.url.trim(), headers: pairs(f.headers) };
+      const headers = parsePairs(f.headers);
+      if ('error' in headers) { st.set({ error: `Headers: ${headers.error}` }); return; }
+      spec = { name: f.name.trim(), transport: f.kind, url: f.url.trim(), headers: headers.pairs };
     }
     const invalid = validateSpec(spec, []);
     if (invalid) { st.set({ error: invalid }); return; }

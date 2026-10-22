@@ -1,6 +1,6 @@
 import * as assert from 'assert';
 import { mcpListKey } from '../../tui/view/mcp-keys';
-import type { McpRow } from '../../client-core/mcp/mcp-rows';
+import { mcpRows, type McpRow } from '../../client-core/mcp/mcp-rows';
 import { parsePickerCommand } from '../../tui/view/pickers';
 
 const row = (over: Partial<McpRow> = {}): McpRow => ({
@@ -9,6 +9,19 @@ const row = (over: Partial<McpRow> = {}): McpRow => ({
 });
 const ctx = (over: Partial<Parameters<typeof mcpListKey>[1]> = {}) => ({
   rows: [row(), row({ name: 'figma', state: 'failed' as const, canSignIn: true })], index: 0, pending: false, canAdd: true, ...over,
+});
+
+suite('tui mcp keys while restarting', () => {
+  test('r, s and d do nothing while the session restarts', () => {
+    const caps = { reconnect: 'per-server' as const, signIn: true, sse: true, workingDirectory: false };
+    const rows = mcpRows(
+      [{ name: 'a', state: 'needs-auth', origin: 'repo', canSignIn: true }],
+      { capabilities: caps, targets: null, pending: [], restarting: true },
+    );
+    for (const key of ['r', 's', 'd']) {
+      assert.strictEqual(mcpListKey(key, { rows, index: 0, pending: false, canAdd: true }), undefined);
+    }
+  });
 });
 
 suite('tui mcp keys', () => {

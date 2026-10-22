@@ -1,3 +1,4 @@
+import { parse, type ParseError } from 'jsonc-parser';
 import type { McpServerSpec } from '../../protocol/messages';
 
 type Json = Record<string, unknown>;
@@ -29,21 +30,23 @@ function toSpec(name: string, raw: Json): McpServerSpec | undefined {
   return spec;
 }
 
-/** A README-style snippet → one server spec. A bare server object leaves `name` blank. */
+/** A README-style snippet (JSON or JSONC) → one server spec. A bare server object leaves `name` blank. */
 export function parseMcpSnippet(text: string): { server: McpServerSpec } | { error: string } {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    return { error: "That isn't valid JSON." };
-  }
+  // README snippets are often JSONC: comments and trailing commas.
+  const errors: ParseError[] = [];
+  const parsed: unknown = parse(text, errors, { allowTrailingComma: true });
+  if (errors.length > 0) { return { error: "That isn't valid JSON." }; }
   if (!isObject(parsed)) { return { error: 'Paste a JSON object describing one server.' }; }
 
   let entries: [string, unknown][];
   if (looksLikeServer(parsed)) {
     entries = [['', parsed]];
   } else {
-    const container = isObject(parsed.mcpServers) ? parsed.mcpServers : isObject(parsed.mcp) ? parsed.mcp : parsed;
+    // `servers` is VS Code's mcp.json wrapper; its sibling `inputs` is not a server.
+    const container = isObject(parsed.mcpServers) ? parsed.mcpServers
+      : isObject(parsed.mcp) ? parsed.mcp
+        : isObject(parsed.servers) ? parsed.servers
+          : parsed;
     entries = Object.entries(container);
   }
   if (entries.length === 0) { return { error: 'No server found in that JSON.' }; }
