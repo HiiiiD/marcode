@@ -1848,3 +1848,57 @@ suite('ClaudeProvider MCP management', () => {
     assert.deepStrictEqual(provider.mcpConfig.capabilities, { reconnect: 'per-server', signIn: false, sse: true, workingDirectory: false });
   });
 });
+
+suite('ClaudeProvider (console-signal exit)', () => {
+  const SIGNAL = 'Claude Code process exited with code 3221225786';
+
+  function dyingProvider(message: string): ClaudeProvider {
+    const queryFn = () => {
+      const gen = (async function* () { throw new Error(message); })() as AsyncGenerator<never, void> & {
+        mcpServerStatus: () => Promise<never[]>;
+        supportedCommands: () => Promise<never[]>;
+        close: () => void;
+      };
+      gen.mcpServerStatus = async () => [];
+      gen.supportedCommands = async () => [];
+      gen.close = () => { /* no-op fake */ };
+      return gen;
+    };
+    const provider = new ClaudeProvider((async () => queryFn) as never);
+    provider.signalExitGraceMs = 20;
+    return provider;
+  }
+
+  async function collect(run: { events: AsyncIterable<AgentEvent> }): Promise<AgentEvent[]> {
+    const seen: AgentEvent[] = [];
+    for await (const event of run.events) { seen.push(event); }
+    return seen;
+  }
+
+  test('a signal exit during dispose is not reported as an error', async () => {
+    const run = dyingProvider(SIGNAL).start({ cwd: '/tmp', permissionMode: 'default', sessionId: 's' });
+    run.send('go');
+    await flushMicrotasks();
+    await run.dispose();
+    const seen = await collect(run);
+    assert.strictEqual(seen.some((e) => e.kind === 'turn-end' && e.reason === 'error'), false);
+  });
+
+  test('a signal exit with no teardown still surfaces after the grace period', async () => {
+    const run = dyingProvider(SIGNAL).start({ cwd: '/tmp', permissionMode: 'default', sessionId: 's' });
+    run.send('go');
+    const seen = await collect(run);
+    assert.strictEqual(seen.some((e) => e.kind === 'turn-end' && e.reason === 'error'), true);
+  });
+
+  test('any other exit code is reported immediately', async () => {
+    const run = dyingProvider('Claude Code process exited with code 1').start({
+      cwd: '/tmp', permissionMode: 'default', sessionId: 's',
+    });
+    run.send('go');
+    await flushMicrotasks();
+    await run.dispose();
+    const seen = await collect(run);
+    assert.strictEqual(seen.some((e) => e.kind === 'turn-end' && e.reason === 'error'), true);
+  });
+});

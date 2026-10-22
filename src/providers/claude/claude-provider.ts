@@ -281,6 +281,11 @@ function errorMessage(err: unknown): string {
   return redactSecrets(raw);
 }
 
+// Windows STATUS_CONTROL_C_EXIT (0xC000013A) as the CLI reports it.
+function isConsoleSignalExit(message: string): boolean {
+  return /exited with code 3221225786\b/.test(message);
+}
+
 /** Sentinel: a parked question settled by cancellation, not by an answer. */
 const CANCELLED: QuestionAnswers = Object.freeze({ __cancelled__: [] }) as QuestionAnswers;
 
@@ -288,6 +293,7 @@ export class ClaudeProvider implements AgentProvider {
   readonly id: string;
   readonly displayName: string;
   readonly threadScope: ThreadScope = 'cwd';
+  signalExitGraceMs = 1500;
   readonly loginKind?: 'oauth' | 'none';
 
   /**
@@ -498,6 +504,8 @@ export class ClaudeProvider implements AgentProvider {
       else { entry.resolve(CANCELLED); }
     };
     let disposed = false;
+    let markDisposed: () => void = () => undefined;
+    const disposedSignal = new Promise<void>((resolve) => { markDisposed = resolve; });
     let started = false;
     let introduced = Boolean(opts.withoutSelfControl);
     let bareCommands: ReadonlySet<string> = new Set();
@@ -753,7 +761,18 @@ export class ClaudeProvider implements AgentProvider {
           }
         } catch (err) {
           const raw = errorMessage(err);
-          events.push({ kind: 'turn-end', reason: 'error', error: authFailureReason(raw) ?? raw });
+          lifecycleDebug('claude.run-exit', { sessionId: opts.sessionId, message: raw, turnGeneration: turnGen });
+          // A window reload or close signals the CLI's console before dispose() runs, so the exit
+          // arrives first. Give a teardown the chance to land; a genuine death still surfaces.
+          if (isConsoleSignalExit(raw) && !disposed) {
+            await Promise.race([
+              new Promise<void>((resolve) => { setTimeout(resolve, this.signalExitGraceMs).unref?.(); }),
+              disposedSignal,
+            ]);
+          }
+          if (!disposed || !isConsoleSignalExit(raw)) {
+            events.push({ kind: 'turn-end', reason: 'error', error: authFailureReason(raw) ?? raw });
+          }
           // Unblocks a usageWindows() call that is awaiting this exact
           // construction — resolving to undefined so it degrades to "no
           // windows" rather than hanging on a query that will never exist.
@@ -977,6 +996,7 @@ export class ClaudeProvider implements AgentProvider {
       dispose: async () => {
         if (disposed) { return; }
         disposed = true;
+        markDisposed();
         for (const [, entry] of parked) {
           if (entry.kind === 'permission') { entry.resolve({ allow: false, reason: 'Session closed' }); }
           // CANCELLED, never `{}`: an empty answer map is a real answer here —
