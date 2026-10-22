@@ -33,7 +33,7 @@ export function McpServerList({ servers, panel, onAction, onAdd }: {
       )}
       {panel?.error && <p role="alert" className="text-destructive wrap-break-word">{panel.error}</p>}
       {panel !== undefined && !canManage && (
-        <p className="text-muted-foreground">This provider can&apos;t manage MCP servers from Marcode.</p>
+        <p className="text-muted-foreground">{panel.readOnly ?? "This provider can't manage MCP servers from Marcode."}</p>
       )}
       {rows.length === 0 ? (
         <p className="py-2 text-muted-foreground">No MCP servers yet.</p>

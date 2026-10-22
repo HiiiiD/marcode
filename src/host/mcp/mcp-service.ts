@@ -117,8 +117,10 @@ export class McpService {
     }
     const keys = targets ? Object.values(targets).flatMap((t) => ('path' in t ? [t.path, `${t.path}#${at.repoRoot}`] : [])) : [];
     const error = this.errors.get(id);
+    const foreign = this.host.isForeign(id);
     return {
-      capabilities: store ? { ...store.capabilities } : null,
+      capabilities: store && !foreign ? { ...store.capabilities } : null,
+      ...(foreign ? { readOnly: FOREIGN } : {}),
       targets,
       pending: this.log.pendingFor(keys, this.host.get(id)?.configLoadedAt()),
       restarting: this.restarting.has(id),

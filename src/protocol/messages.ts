@@ -16,6 +16,8 @@ export interface McpPendingChange { name: string; origin: McpScope | 'repo-priva
 export interface McpPanel {
   /** null = this provider cannot manage MCP (list is read-only). */
   capabilities: McpCapabilities | null;
+  /** Why the list is read-only when the provider could manage it (e.g. another window owns the session). */
+  readOnly?: string;
   targets: Record<McpScope, McpTarget> | null;
   pending: McpPendingChange[];
   restarting: boolean;

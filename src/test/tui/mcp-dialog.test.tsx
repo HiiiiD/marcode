@@ -51,6 +51,13 @@ test('d then y removes the selected server from its origin', async () => {
   expect(last?.t === 'mcp-remove' && `${last.name}:${last.origin}`).toBe('shadcn:repo');
 });
 
+test('a read-only panel says why and a does nothing', async () => {
+  await open({ ...PANEL, capabilities: null, readOnly: 'This session is open in another window.' });
+  expect(m!.frame()).toContain('open in another window');
+  await m!.press('a');
+  expect(m!.frame().includes('Add MCP server')).toBe(false);
+});
+
 test('R restarts when the banner shows', async () => {
   await open({ ...PANEL, pending: [{ name: 'x', origin: 'repo', change: 'added' }] });
   expect(m!.frame()).toContain('Restart');

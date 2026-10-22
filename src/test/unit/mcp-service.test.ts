@@ -84,6 +84,14 @@ suite('McpService', () => {
     assert.strictEqual(next.error, undefined);
   });
 
+  test('a foreign session gets a read-only panel that says why', async () => {
+    const { manager, cwd, handle } = await setup();
+    const a = await manager.create('fake', cwd);
+    manager.isForeign = () => true;
+    const panel = await handle({ t: 'mcp-open', id: a.state.id });
+    assert.deepStrictEqual([panel.capabilities, panel.readOnly], [null, 'This session is open in another window.']);
+  });
+
   test('foreign session add is refused', async () => {
     const { manager, provider, cwd, handle } = await setup();
     const a = await manager.create('fake', cwd);

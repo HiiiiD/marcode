@@ -848,12 +848,6 @@ export class AgentSession {
     this.sink.changed();
   }
 
-  /**
-   * Rejects rather than returning a sentinel when the provider does not
-   * implement this: SessionManager is the single place that converts a
-   * failure into the `{ ok: false, reason }` the wire carries, so there is
-   * exactly one shape of "unavailable" reaching the webview.
-   */
   get mcp(): McpControl | undefined { return this.run.mcp; }
 
   /** When the backend read its MCP config; a run without lazy start read it when it was built. */
@@ -866,6 +860,12 @@ export class AgentSession {
     this.sink.mcp(this._state.id, servers);
   }
 
+  /**
+   * Rejects rather than returning a sentinel when the provider does not
+   * implement this: SessionManager is the single place that converts a
+   * failure into the `{ ok: false, reason }` the wire carries, so there is
+   * exactly one shape of "unavailable" reaching the webview.
+   */
   async contextBreakdown(): Promise<ContextBreakdown> {
     if (!this.run.contextBreakdown) {
       throw new Error('This provider does not report context usage');
@@ -1414,12 +1414,7 @@ export class AgentSession {
     await this.scheduleFlush();
   }
 
-  /**
-   * Records that the turn in flight was cut short to perform a queued move —
-   * distinct from a user-initiated Stop, which leaves no transcript item of
-   * its own. Flushed eagerly for the same reason as `replaceRelocation`: the
-   * manager disposes and rebuilds this session right after.
-   */
+  /** Flushed eagerly: the manager has just rebuilt the run, and this item explains the gap. */
   async noteRestart(): Promise<void> {
     this.appendItem({
       id: nextId('sw'), ts: Date.now(), role: 'switch', kind: 'restart',
@@ -1428,6 +1423,12 @@ export class AgentSession {
     await this.scheduleFlush();
   }
 
+  /**
+   * Records that the turn in flight was cut short to perform a queued move —
+   * distinct from a user-initiated Stop, which leaves no transcript item of
+   * its own. Flushed eagerly for the same reason as `replaceRelocation`: the
+   * manager disposes and rebuilds this session right after.
+   */
   async noteInterruptedMove(path: string): Promise<void> {
     this.appendItem({
       id: nextId('sw'), ts: Date.now(), role: 'switch', kind: 'relocation',

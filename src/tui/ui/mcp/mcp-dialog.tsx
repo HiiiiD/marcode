@@ -76,7 +76,7 @@ export function McpDialog({ sessionId, onClose }: { sessionId: SessionId; onClos
           <text fg="yellow">{panel?.restarting ? 'Restarting…' : 'Config changed. Restart the session to load it (R).'}</text>
         ) : null}
         {panel?.error ? <text fg="red">{panel.error}</text> : null}
-        {panel && !panel.capabilities ? <text fg="gray">This provider can&apos;t manage MCP servers from Marcode.</text> : null}
+        {panel && !panel.capabilities ? <text fg="gray">{panel.readOnly ?? "This provider can't manage MCP servers from Marcode."}</text> : null}
         {rows.length === 0 ? <text fg="gray">No MCP servers yet.</text> : null}
         {rows.map((r, i) => (
           <box key={r.name} flexDirection="column">

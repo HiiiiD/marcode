@@ -767,12 +767,6 @@ export class CodexRun implements AgentRun {
     this.pendingApprovals.clear();
   }
 
-  /**
-   * Folds one server's status into the roster and returns the whole of it.
-   *
-   * See `mcpServers` for why: the notification is per-server, the event is a
-   * full replacement.
-   */
   /** When this run's thread read Codex's config; undefined before the first send. */
   configLoadedAt(): number | undefined { return this.loadedAt; }
 
@@ -784,6 +778,12 @@ export class CodexRun implements AgentRun {
     }
   }
 
+  /**
+   * Folds one server's status into the roster and returns the whole of it.
+   *
+   * See `mcpServers` for why: the notification is per-server, the event is a
+   * full replacement.
+   */
   private mergeMcpServers(servers: McpServerStatus[]): AgentEvent {
     for (const server of servers) { this.mcpServers.set(server.name, server); }
     return { kind: 'mcp-servers', servers: [...this.mcpServers.values()] };

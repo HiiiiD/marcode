@@ -77,6 +77,14 @@ suite("MCP dialog", () => {
     assert.deepStrictEqual(posted().at(-1), { t: "mcp-reconnect", id: "a", name: "figma" });
   });
 
+  test("a read-only panel says why and offers no add, delete or reconnect", async () => {
+    const dialog = await openMcp(panel({ capabilities: null, readOnly: "This session is open in another window." }));
+    assert.strictEqual(dialog.getByText("This session is open in another window.").textContent?.length !== 0, true);
+    assert.strictEqual(dialog.queryByText(/can't manage MCP servers/) === null, true);
+    assert.strictEqual(dialog.queryByRole("button", { name: "Add server" }) === null, true);
+    assert.strictEqual(dialog.queryByRole("button", { name: /^(Delete|Reconnect) / }) === null, true);
+  });
+
   test("the restart banner appears for pending changes and posts restart-session", async () => {
     const dialog = await openMcp(panel({ pending: [{ name: "new", origin: "repo", change: "added" }] }));
     assert.strictEqual(dialog.getByText("Config changed. Restart to load it.").textContent, "Config changed. Restart to load it.");
