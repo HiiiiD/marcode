@@ -37,7 +37,7 @@ suite('daemon visible set is per connection', function () {
   setup(async () => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mar-vis-'));
     daemon = await runDaemon({
-      workspaceDir: dir,
+      workspaceDir: dir, marcodeHome: dir,
       config: { ...defaultHostConfig(), enabledProviders: ['fake'], memory: { enabled: false, summarizer: undefined } },
       appVersion: '9.9.9', initialRoots: [dir], onHost: (h) => { host = h; },
     });

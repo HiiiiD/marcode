@@ -41,7 +41,7 @@ suite('runDaemon', function () {
   let daemon: RunningDaemon | undefined;
   const start = async (extra: Partial<RunDaemonOptions> = {}) => {
     daemon = await runDaemon({
-      workspaceDir: dir,
+      workspaceDir: dir, marcodeHome: dir,
       config: { ...defaultHostConfig(), enabledProviders: ['fake'], memory: { enabled: false, summarizer: undefined } },
       appVersion: '9.9.9',
       initialRoots: [dir],
@@ -243,7 +243,7 @@ suite('runDaemon', function () {
     const lines: string[] = [];
     let rejected = false;
     await runDaemon({
-      workspaceDir: dir, appVersion: '1', initialRoots: [dir], log: (l) => lines.push(l),
+      workspaceDir: dir, marcodeHome: dir, appVersion: '1', initialRoots: [dir], log: (l) => lines.push(l),
       config: { ...defaultHostConfig(), enabledProviders: ['fake'], memory: { enabled: false, summarizer: undefined } },
     }).catch(() => { rejected = true; });
     daemon = first;

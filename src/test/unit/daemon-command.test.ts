@@ -34,7 +34,7 @@ suite('marcode daemon --status/--stop', function () {
 
   const start = async () => {
     daemon = await runDaemon({
-      workspaceDir, appVersion: '1', initialRoots: [cwd],
+      workspaceDir, marcodeHome: home, appVersion: '1', initialRoots: [cwd],
       config: { ...defaultHostConfig(), enabledProviders: ['fake'], memory: { enabled: false, summarizer: undefined } },
     });
     return daemon;

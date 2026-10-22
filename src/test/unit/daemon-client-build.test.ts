@@ -22,7 +22,7 @@ suite('daemon client: app version', function () {
 
   const start = async (appVersion: string, extra: Partial<RunDaemonOptions> = {}) => {
     const d = await runDaemon({
-      workspaceDir: dir,
+      workspaceDir: dir, marcodeHome: dir,
       config: { ...defaultHostConfig(), enabledProviders: ['fake'], memory: { enabled: false, summarizer: undefined } },
       appVersion, initialRoots: [dir], idleMsOverride: 600_000, ...extra,
     });

@@ -34,7 +34,7 @@ suite('daemon client', function () {
 
   const start = async (extra: Partial<RunDaemonOptions> = {}) => {
     const d = await runDaemon({
-      workspaceDir: dir,
+      workspaceDir: dir, marcodeHome: dir,
       config: { ...defaultHostConfig(), enabledProviders: ['fake'], memory: { enabled: false, summarizer: undefined } },
       appVersion: '9.9.9',
       initialRoots: [dir],

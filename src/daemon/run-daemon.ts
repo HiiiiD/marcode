@@ -16,7 +16,7 @@ import { VisibleSets } from './visible-sets';
 
 export interface RunDaemonOptions {
   workspaceDir: string;
-  marcodeHome?: string;
+  marcodeHome: string;
   config: HostConfig;
   appVersion: string;
   initialRoots: string[];
