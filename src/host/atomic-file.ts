@@ -3,6 +3,10 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 
 const RETRYABLE = new Set(['EPERM', 'EBUSY', 'EACCES']);
+// Windows scanners and indexers can hold a fresh file well past 200ms; the
+// daemon dies at startup if its daemon.json rename loses that race.
+const MAX_ATTEMPTS = 10;
+const RETRY_STEP_MS = 50;
 
 function tmpName(file: string): string {
   return `${file}.${process.pid}.${randomBytes(4).toString('hex')}.tmp`;
@@ -15,8 +19,8 @@ async function renameWithRetry(from: string, to: string): Promise<void> {
       return;
     } catch (err) {
       const code = (err as NodeJS.ErrnoException).code ?? '';
-      if (attempt >= 4 || !RETRYABLE.has(code)) { throw err; }
-      await new Promise((resolve) => setTimeout(resolve, 20 * (attempt + 1)));
+      if (attempt >= MAX_ATTEMPTS - 1 || !RETRYABLE.has(code)) { throw err; }
+      await new Promise((resolve) => setTimeout(resolve, RETRY_STEP_MS * (attempt + 1)));
     }
   }
 }
