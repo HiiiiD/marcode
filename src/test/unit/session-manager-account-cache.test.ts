@@ -183,6 +183,30 @@ suite('SessionManager with AccountCache', () => {
     ]);
   });
 
+  test('a pulled undefined after a run-path undefined still writes a tombstone', async () => {
+    const cache = openCache();
+    cache.writeUsage({ instance: 'fake', windows: [win('five-hour')], fetchedAt: 1 });
+    const p = new FakeProvider(() => [], { usageUnavailable: true });
+    const m = await managerWith(cache, new Map<string, AgentProvider>([['fake', p]]));
+
+    m.usageWindows('fake', undefined);
+    await m.refreshUsage('/repo');
+
+    const row = openCache().readUsage().find((r) => r.instance === 'fake');
+    assert.strictEqual(row?.windows, null);
+  });
+
+  test('a repeated pulled undefined does not rewrite the tombstone', async () => {
+    const cache = openCache();
+    cache.writeUsage({ instance: 'fake', windows: null, fetchedAt: 1 });
+    const p = new FakeProvider(() => [], { usageUnavailable: true });
+    const m = await managerWith(cache, new Map<string, AgentProvider>([['fake', p]]));
+
+    await m.refreshUsage('/repo');
+
+    assert.deepStrictEqual(openCache().readUsage(), [{ instance: 'fake', windows: null, fetchedAt: 1 }]);
+  });
+
   test('init ignores usage rows for unconfigured instances', async () => {
     const cache = openCache();
     cache.writeUsage({ instance: 'ghost', windows: [win('five-hour')], fetchedAt: 1 });
@@ -194,7 +218,10 @@ suite('SessionManager with AccountCache', () => {
   });
 
   test('init survives an unavailable cache', async () => {
-    const cache = openCache(cacheDir);
+    const realWarn = console.warn;
+    console.warn = () => {};
+    let cache: AccountCache;
+    try { cache = openCache(cacheDir); } finally { console.warn = realWarn; }
     assert.strictEqual(cache.available, false);
 
     const m = new SessionManager(

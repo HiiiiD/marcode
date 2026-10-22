@@ -289,10 +289,12 @@ export class SessionManager implements SessionSink {
 
     const cache = this.accountCache;
     if (cache && !this.disposed) {
+      // Baseline first: a commit landing between the read and the baseline would otherwise go unseen.
+      cache.hasChanged();
       // The cache is machine-wide, so it holds rows for instances other hosts configure.
       for (const row of cache.readUsage()) {
         if (!this.isUsageKey(row.instance)) { continue; }
-        this.usageFetchedAt.set(row.instance, row.fetchedAt);
+        this.noteSharedUsage(row.instance, row.windows, row.fetchedAt);
         if (row.windows) { this.usage.set(row.instance, new Map(row.windows.map((w) => [w.id, w]))); }
       }
       // A seed for a provider this build no longer configures is harmless and
@@ -301,7 +303,7 @@ export class SessionManager implements SessionSink {
       for (const row of cache.readCatalog()) {
         this.seededModels.set(row.instance, row.models);
       }
-      cache.hasChanged();
+      if (this.accountTimer) { clearInterval(this.accountTimer); }
       this.accountTimer = setInterval(() => { this.adoptSharedUsage(); }, this.usagePollMs ?? 4000);
       this.accountTimer.unref();
     }
@@ -2264,6 +2266,8 @@ export class SessionManager implements SessionSink {
   private knownOnDisk = new Set<SessionId>();
   private rosterTimer?: NodeJS.Timeout;
   private accountTimer?: NodeJS.Timeout;
+  /** Instances whose last known shared row is a tombstone, so a repeated pull-path undefined writes nothing. */
+  private readonly sharedTombstones = new Set<string>();
 
   /** Call before `init()`. The manager reads and writes the cache but never closes it. */
   setAccountCache(cache: AccountCache, opts: { pollMs?: number } = {}): void {
@@ -2462,7 +2466,11 @@ export class SessionManager implements SessionSink {
       w.id === next[i]?.id
       && w.usedPercent === next[i]?.usedPercent
       && w.resetsAt === next[i]?.resetsAt);
-    if (same && (windows !== undefined || !this.usage.has(providerId))) { return; }
+    const localSame = same && (windows !== undefined || !this.usage.has(providerId));
+    // A run-path undefined already cleared the local map without tombstoning the shared row; the pull still owes it.
+    const tombstoneOwed = windows === undefined && origin === 'pull' && this.accountCache !== undefined
+      && !this.sharedTombstones.has(providerId);
+    if (localSame && !tombstoneOwed) { return; }
 
     if (windows === undefined) {
       // A positive "this account has no plan limits". Drop the provider so a
@@ -2476,11 +2484,11 @@ export class SessionManager implements SessionSink {
     if (windows !== undefined || origin === 'pull') {
       // The cache's newer-wins upsert is strict, so a second write in the same millisecond would be dropped.
       const fetchedAt = Math.max(Date.now(), (this.usageFetchedAt.get(providerId) ?? 0) + 1);
-      this.accountCache?.writeUsage({
-        instance: providerId, windows: windows === undefined ? null : this.windowsFor(providerId), fetchedAt,
-      });
-      this.usageFetchedAt.set(providerId, fetchedAt);
+      const shared = windows === undefined ? null : this.windowsFor(providerId);
+      this.accountCache?.writeUsage({ instance: providerId, windows: shared, fetchedAt });
+      this.noteSharedUsage(providerId, shared, fetchedAt);
     }
+    if (localSame) { return; }
     this.emit({ t: 'usage-windows', providerId, windows: this.windowsFor(providerId), ...(displayName ? { displayName } : {}) });
   }
 
@@ -2496,13 +2504,18 @@ export class SessionManager implements SessionSink {
       } else {
         this.usage.delete(row.instance);
       }
-      this.usageFetchedAt.set(row.instance, row.fetchedAt);
+      this.noteSharedUsage(row.instance, row.windows, row.fetchedAt);
       const displayName = this.usageMirrors.find((m) => m.usageProviderId === row.instance)?.displayName;
       this.emit({
         t: 'usage-windows', providerId: row.instance, windows: this.windowsFor(row.instance),
         ...(displayName ? { displayName } : {}),
       });
     }
+  }
+
+  private noteSharedUsage(instance: string, windows: UsageWindow[] | null, fetchedAt: number): void {
+    this.usageFetchedAt.set(instance, fetchedAt);
+    if (windows === null) { this.sharedTombstones.add(instance); } else { this.sharedTombstones.delete(instance); }
   }
 
   private isUsageKey(id: string): boolean {
