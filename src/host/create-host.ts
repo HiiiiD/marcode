@@ -39,8 +39,8 @@ export interface CreateHostOptions {
   onShellNoise?: (profile: string) => void;
   /** Poll interval for roster sync and foreign-session tails; tests shrink it. */
   pollMs?: number;
-  /** Machine-wide plan usage and model catalog; defaults to `<home>/account.sqlite` beside `workspaces/`; `MARCODE_ACCOUNT_CACHE` overrides it for tests. */
-  accountCachePath?: string;
+  /** The Marcode home; holds the machine-wide `account.sqlite`. Absent means no shared cache. */
+  marcodeHome?: string;
 }
 
 export interface HostHandle {
@@ -94,10 +94,8 @@ export async function createHost(opts: CreateHostOptions): Promise<HostHandle> {
   const ownership = new SessionOwnership(path.join(opts.workspaceDir, 'sessions'), opts.hostKind);
   manager.setOwnership(ownership, { tailIntervalMs: opts.pollMs });
   manager.setShellAliases(config.shell.aliases);
-  const accountCache = AccountCache.open(
-    opts.accountCachePath ?? process.env.MARCODE_ACCOUNT_CACHE ?? path.join(path.dirname(path.dirname(opts.workspaceDir)), 'account.sqlite'),
-  );
-  manager.setAccountCache(accountCache, { pollMs: opts.pollMs });
+  const accountCache = opts.marcodeHome ? AccountCache.open(path.join(opts.marcodeHome, 'account.sqlite')) : undefined;
+  if (accountCache) { manager.setAccountCache(accountCache, { pollMs: opts.pollMs }); }
 
   const selfControlServer = new SelfControlMcpServer({
     catalog: () => manager.catalog(),
@@ -278,13 +276,15 @@ export async function createHost(opts: CreateHostOptions): Promise<HostHandle> {
   return {
     manager, store, attachments, providers, enabled, loginRecipes, selfControlServer,
     init: async () => {
-      await seedFromWorkspaces(accountCache, path.dirname(opts.workspaceDir));
+      if (accountCache && opts.marcodeHome) {
+        await seedFromWorkspaces(accountCache, path.join(opts.marcodeHome, 'workspaces'));
+      }
       await manager.init();
       manager.startRosterSync(opts.pollMs);
     },
     dispose: async () => {
       await manager.dispose();
-      accountCache.close();
+      accountCache?.close();
       await selfControlServer.dispose();
       await digestLock.dispose();
       fts?.close();

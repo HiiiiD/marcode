@@ -73,7 +73,7 @@ export async function activateExtension(context: vscode.ExtensionContext): Promi
   // The daemon reports an update once per `ready`; this keeps the per-window dedup the in-process hook has.
   const shownUpdates = new Set<string>();
   connection = await openHostConnection({
-    workspaceDir, config, roots: () => vscode.workspace.workspaceFolders?.map((f) => f.uri.fsPath) ?? [],
+    workspaceDir, marcodeHome: home, config, roots: () => vscode.workspace.workspaceFolders?.map((f) => f.uri.fsPath) ?? [],
     defaultCwd, configSignature: reloadSignature(config), hooks, showCacheTimer: showCacheTimer(),
     favoriteModels: () => favorites.get(), context: () => tracker.current,
     notices: {

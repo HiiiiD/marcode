@@ -16,6 +16,7 @@ import { VisibleSets } from './visible-sets';
 
 export interface RunDaemonOptions {
   workspaceDir: string;
+  marcodeHome?: string;
   config: HostConfig;
   appVersion: string;
   initialRoots: string[];
@@ -76,7 +77,7 @@ export async function runDaemon(opts: RunDaemonOptions): Promise<RunningDaemon> 
   let host: HostHandle;
   try {
     host = await createHost({
-      workspaceDir, config, hostKind: 'daemon',
+      workspaceDir, marcodeHome: opts.marcodeHome, config, hostKind: 'daemon',
       workspaceRoots: () => (server?.roots().length ? server.roots() : opts.initialRoots),
       emit: (m: HostToWebview) => { bus.post(m); if (m.t === 'session-status') { check(); } },
       notify: notifier, onShellNoise: notifier.shellNoise,

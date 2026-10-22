@@ -258,7 +258,8 @@ These are not style preferences. Breaking one breaks the design.
   rest, and `unavailable()` carries them with the reason their last probe gave.
   Re-probing (`refreshModels`) is the whole mechanism for re-checking an install.
   The one permitted stand-in is `SessionManager.seededModels`, restored from
-  the shared `~/.marcode/account.sqlite` `catalog` table (seeded across workspaces): the list a provider's **last successful probe** returned, consulted only
+  the shared `~/.marcode/account.sqlite` `catalog` table (seeded across workspaces): the list
+  a provider's **last successful probe** returned, consulted only
   while its own `listModels()` is still empty. It exists because hydrate ships whatever
   `catalog()` says at `ready`, and without it every restored pane spends the first second
   read-only with a dead model switcher. It is a stand-in for an answer, never a substitute

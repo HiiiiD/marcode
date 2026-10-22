@@ -14,6 +14,7 @@ import type { HostConnection, SurfaceLink } from './surface-link';
 
 export interface HostConnectionDeps {
   workspaceDir: string;
+  marcodeHome?: string;
   config: HostConfig;
   roots: () => string[];
   defaultCwd: string;
@@ -129,7 +130,7 @@ async function inProcessConnection(
 ): Promise<HostConnection> {
   const bus = new PostBus();
   const host: HostHandle = await (deps.createHost ?? realCreateHost)({
-    workspaceDir: deps.workspaceDir, config: deps.config, hostKind: 'vscode',
+    workspaceDir: deps.workspaceDir, marcodeHome: deps.marcodeHome, config: deps.config, hostKind: 'vscode',
     workspaceRoots: deps.roots, emit: (m) => bus.post(m),
     notify: { warn: deps.notices.warn }, onShellNoise: deps.notices.shellNoise,
   });
