@@ -126,7 +126,7 @@ suite('tui boot, daemon mode', function () {
   });
 
   const spawnDaemon = async (dir: string, roots: string[]) => {
-    daemons.push(await runDaemon({ workspaceDir: dir, config, appVersion: 'test', initialRoots: roots, idleMsOverride: 600_000 }));
+    daemons.push(await runDaemon({ workspaceDir: dir, marcodeHome: home, config, appVersion: 'test', initialRoots: roots, idleMsOverride: 600_000 }));
   };
   const boot = async (extra: Partial<BootOptions> = {}) => {
     const b = await bootHost({ cwd: tmp, home, notify: () => {}, config, spawnDaemon, ...extra });
@@ -173,7 +173,7 @@ suite('tui boot, daemon mode', function () {
   test('a busy daemon started with an older config.json is attached, with one warning', async () => {
     let host: HostHandle | undefined;
     daemons.push(await runDaemon({
-      workspaceDir, config, appVersion: 'test', initialRoots: [tmp], idleMsOverride: 600_000,
+      workspaceDir, marcodeHome: home, config, appVersion: 'test', initialRoots: [tmp], idleMsOverride: 600_000,
       configSignature: 'stale', onHost: (h) => { host = h; },
     }));
     (await host!.manager.create('fake', tmp)).send('permission fixture');

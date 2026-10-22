@@ -105,7 +105,7 @@ async function serveDaemon(workspaceDir: string, roots: string[], home: string, 
   for (const w of loaded.warnings) { log(w); }
   const config: HostConfig = { ...defaultHostConfig(), ...loaded.config, ...io.bootConfig };
   const daemon = await runDaemon({
-    workspaceDir, config, appVersion: APP_VERSION, initialRoots: roots, log, configSignature: reloadSignature(loaded.config),
+    workspaceDir, marcodeHome: home, config, appVersion: APP_VERSION, initialRoots: roots, log, configSignature: reloadSignature(loaded.config),
   });
   const onSignal = () => { void daemon.stop(); };
   const onCrash = (err: unknown) => {

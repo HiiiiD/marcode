@@ -167,7 +167,7 @@ async function inProcessBooted(
     return router?.handle(msg);
   });
   const host = await createHost({
-    workspaceDir, config, hostKind: 'tui',
+    workspaceDir, marcodeHome: opts.home ?? marcodeHome(), config, hostKind: 'tui',
     workspaceRoots: () => [workspaceRoot],
     emit: (msg) => loopback.deliver(msg),
     notify: { warn },

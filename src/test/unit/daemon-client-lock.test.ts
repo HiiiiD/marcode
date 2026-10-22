@@ -33,7 +33,7 @@ suite('daemon client: spawn lock lifetime', function () {
   test('a successful attach releases the lock', async () => {
     const r = await connectOrSpawn(opts(async () => {
       daemons.push(await runDaemon({
-        workspaceDir: dir, appVersion: '9.9.9', initialRoots: [dir], idleMsOverride: 600_000,
+        workspaceDir: dir, marcodeHome: dir, appVersion: '9.9.9', initialRoots: [dir], idleMsOverride: 600_000,
         config: { ...defaultHostConfig(), enabledProviders: ['fake'], memory: { enabled: false, summarizer: undefined } },
       }));
     }));

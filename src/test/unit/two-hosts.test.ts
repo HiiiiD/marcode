@@ -7,17 +7,20 @@ import { defaultHostConfig } from '../../host/host-config';
 import type { HostToWebview } from '../../protocol/messages';
 
 suite('two hosts, one directory', () => {
+  let root: string;
   let dir: string;
   const handles: HostHandle[] = [];
   const sent: Record<string, HostToWebview[]> = { vscode: [], tui: [] };
   setup(async () => {
-    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mar-two-'));
+    root = await fs.mkdtemp(path.join(os.tmpdir(), 'mar-two-'));
+    dir = path.join(root, 'workspaces', 'w');
+    await fs.mkdir(dir, { recursive: true });
     sent.vscode = [];
     sent.tui = [];
   });
   teardown(async () => {
     for (const h of handles.splice(0)) { await h.dispose(); }
-    await fs.rm(dir, { recursive: true, force: true });
+    await fs.rm(root, { recursive: true, force: true });
   });
 
   const make = async (kind: 'vscode' | 'tui') => {

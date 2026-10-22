@@ -58,7 +58,7 @@ suite('shell commands over the daemon', function () {
   setup(async () => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mar-shell-d-'));
     daemon = await runDaemon({
-      workspaceDir: dir, config, appVersion: '9.9.9', initialRoots: [dir], idleMsOverride: 600_000,
+      workspaceDir: dir, marcodeHome: dir, config, appVersion: '9.9.9', initialRoots: [dir], idleMsOverride: 600_000,
     });
   });
   teardown(async () => {

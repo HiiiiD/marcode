@@ -153,7 +153,7 @@ export class AgentSession {
    * Not persisted, and deliberately: a claim describes a tree at an instant,
    * and a restored claim would describe an install nobody checked this
    * launch — the same reason a failed model probe never reaches
-   * `catalog.json`. `SessionManager` rebuilds the pre-launch part from the
+   * the catalog table. `SessionManager` rebuilds the pre-launch part from the
    * transcript on demand instead.
    */
   private readonly claims = new Set<string>();

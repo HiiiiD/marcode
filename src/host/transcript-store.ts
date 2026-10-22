@@ -1,7 +1,6 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import type { PaneLayout, SessionId, SessionState, TranscriptItem } from '../protocol/messages';
-import type { ModelInfo, UsageWindow } from '../providers/types';
 import { writeFileAtomic } from './atomic-file';
 
 /**
@@ -17,16 +16,6 @@ export interface StoredIndex {
   version: number;
   sessions: SessionState[];
   layout: PaneLayout;
-}
-
-export interface StoredUsage {
-  /** providerId -> that provider's last known window set. */
-  providers: Record<string, UsageWindow[]>;
-}
-
-export interface StoredCatalog {
-  /** providerId -> the model list its last successful probe returned. */
-  providers: Record<string, ModelInfo[]>;
 }
 
 const emptyIndex = (): StoredIndex => ({
@@ -68,93 +57,6 @@ function migrateLayout(layout: unknown): PaneLayout | undefined {
     },
     presets: [],
   };
-}
-
-/**
- * Narrows a parsed `usage.json` into something `SessionManager.init()` can
- * consume without throwing. `init()` does exactly two things with this
- * value: `Object.entries(usage.providers)`, and, per provider,
- * `windows.map((w) => [w.id, w])` to build a `Map` keyed on `w.id`. Every
- * check below exists to make one of those two calls safe on *any* file
- * content, and no further: `providers` must be a non-null object (so
- * `Object.entries` cannot throw and cannot iterate a string's characters);
- * each provider's value must be an array (so `.map()` exists); and each
- * element of that array must be a non-null object with a string `id` (so
- * `w.id` can be read and used as a Map key without throwing on `null`,
- * `42`, or an object with no `id`). `resetsAt` is deliberately NOT checked
- * past that: a malformed value there is display corruption the strip
- * already renders safely — `Ring` guards with `Number.isFinite`, and a
- * non-number `resetsAt` simply fails the `> now` comparison and is dropped —
- * not a crash, so validating it would make this a schema validator rather
- * than a throw-guard. `label` and `usedPercent` do NOT get that pass: both
- * are rendered directly as React children in `usage-strip.tsx`, and React
- * throws on an object or array child, which would take down the whole
- * panel rather than just misrender one chip. So those two are checked here
- * too — a string `label`, a numeric `usedPercent` — for the same reason as
- * `id`: to keep the two calls above safe, this time by keeping what they
- * hand to React safe rather than what they hand to `Map`/`Object.entries`.
- * A provider whose value fails the array check, or an individual window
- * that fails the element check, is dropped rather than failing the whole
- * file — one corrupt provider or window does not blank out its siblings.
- */
-function validProviders(parsed: unknown): Record<string, UsageWindow[]> {
-  if (typeof parsed !== 'object' || parsed === null) { return {}; }
-  const providers = (parsed as { providers?: unknown }).providers;
-  if (typeof providers !== 'object' || providers === null) { return {}; }
-  const out: Record<string, UsageWindow[]> = {};
-  for (const [providerId, windows] of Object.entries(providers)) {
-    if (!Array.isArray(windows)) { continue; }
-    out[providerId] = windows.filter(isUsageWindow);
-  }
-  return out;
-}
-
-/**
- * Narrows a parsed `catalog.json` the same way, and for the same reason, as
- * `validProviders` does for usage: `SessionManager.init()` must not throw on
- * any file content, and this one additionally feeds a *picker*.
- *
- * A row survives only if it has the two fields that make it usable at all —
- * `id`, which `findModel` matches on and `create()` resolves, and
- * `displayName`, which the model Select renders. A row without either would
- * sit in the menu as a blank, unselectable line. `resolvedModel` and `effort`
- * are deliberately NOT checked past that: a malformed `effort` costs the
- * effort slider its levels (`resolveEffort` reads through `?.` and simply
- * finds nothing), which is degraded display over a working switcher, not a
- * crash — the same line `isUsageWindow` draws at `resetsAt`.
- */
-function validCatalogProviders(parsed: unknown): Record<string, ModelInfo[]> {
-  if (typeof parsed !== 'object' || parsed === null) { return {}; }
-  const providers = (parsed as { providers?: unknown }).providers;
-  if (typeof providers !== 'object' || providers === null) { return {}; }
-  const out: Record<string, ModelInfo[]> = {};
-  for (const [providerId, models] of Object.entries(providers)) {
-    if (!Array.isArray(models)) { continue; }
-    const usable = models.filter(isModelInfo);
-    // An empty list is not a seed — it is exactly what "this provider
-    // answered nothing" looks like, and writing it into the catalog would
-    // put a provider there with no models, which `catalog()` filters out
-    // anyway. Drop the key so the shape matches what was actually usable.
-    if (usable.length > 0) { out[providerId] = usable; }
-  }
-  return out;
-}
-
-function isModelInfo(value: unknown): value is ModelInfo {
-  return (
-    typeof value === 'object' && value !== null
-    && typeof (value as { id?: unknown }).id === 'string'
-    && typeof (value as { displayName?: unknown }).displayName === 'string'
-  );
-}
-
-function isUsageWindow(value: unknown): value is UsageWindow {
-  return (
-    typeof value === 'object' && value !== null
-    && typeof (value as { id?: unknown }).id === 'string'
-    && typeof (value as { label?: unknown }).label === 'string'
-    && typeof (value as { usedPercent?: unknown }).usedPercent === 'number'
-  );
 }
 
 export class TranscriptStore {
@@ -566,57 +468,5 @@ export class TranscriptStore {
       path.join(this.rootDir, 'index.json'),
       JSON.stringify({ ...index, layout, version: TRANSCRIPT_VERSION }, null, 2),
     );
-  }
-
-  /**
-   * Its own file rather than a field on `index.json`: this is account data,
-   * it is keyed by provider rather than by session, and it is rewritten on a
-   * different cadence from the roster. A corrupt or absent file is an empty
-   * set — usage is decoration over a working panel, and refusing to start
-   * because a percentage could not be read would be absurd. Unlike
-   * `readIndex` (whose corruption is caught a layer up, in `extension.ts`),
-   * this is the one boundary containing that failure — nothing above
-   * `SessionManager.init()` catches a bad `usage.json`, and `init()` must
-   * not throw — so `JSON.parse` succeeding is not enough: the shape has to
-   * be checked too, not just cast past with `as`.
-   */
-  async readUsage(): Promise<StoredUsage> {
-    try {
-      const raw = await fs.readFile(path.join(this.rootDir, 'usage.json'), 'utf8');
-      const parsed: unknown = JSON.parse(raw);
-      return { providers: validProviders(parsed) };
-    } catch {
-      return { providers: {} };
-    }
-  }
-
-  async writeUsage(usage: StoredUsage): Promise<void> {
-    await writeFileAtomic(path.join(this.rootDir, 'usage.json'), JSON.stringify(usage, null, 2));
-  }
-
-  /**
-   * The last model list each provider's backend returned. Its own file for
-   * the same reasons `usage.json` is: keyed by provider rather than session,
-   * rewritten on a different cadence from the roster, and — most of all —
-   * `init()` must not throw over it, so the shape is checked rather than cast
-   * past. See `validCatalogProviders` for what "valid" means here.
-   *
-   * This is a *seed*, never an authority: it exists so a restored panel has a
-   * live model switcher during the second before the real probe answers, and
-   * `SessionManager.refreshModels` discards it — as a list or as a provider —
-   * the moment that probe says anything at all.
-   */
-  async readCatalog(): Promise<StoredCatalog> {
-    try {
-      const raw = await fs.readFile(path.join(this.rootDir, 'catalog.json'), 'utf8');
-      const parsed: unknown = JSON.parse(raw);
-      return { providers: validCatalogProviders(parsed) };
-    } catch {
-      return { providers: {} };
-    }
-  }
-
-  async writeCatalog(catalog: StoredCatalog): Promise<void> {
-    await writeFileAtomic(path.join(this.rootDir, 'catalog.json'), JSON.stringify(catalog, null, 2));
   }
 }
