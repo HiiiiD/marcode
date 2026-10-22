@@ -105,6 +105,13 @@ router. See `docs/daemon.md`.
 | `src/providers/opencode/subagent-watch.ts` | A second `@opencode-ai/sdk` connection to the same `opencode acp` server, watching for task-tool child sessions ACP itself never forwards; republishes their tool calls and permission asks as nested `AgentEvent`s |
 | `src/providers/opencode/map-subagent-tools.ts` | Raw `ToolPart` → the same `AcpToolCall` shape the ACP bridge already produces, so classification stays in `map-tools.ts` alone |
 | `src/shared/usage-windows.ts` | Fixed display order for usage windows; shared so neither provider nor host owns the other's table |
+| `src/host/mcp/` | `/mcp`: `McpService` (owned by `SessionManager`, routes `mcp-*`/`restart-session`, answers `mcp-panel`; errors are state), `McpChangeLog` (config edits keyed per file, so every session loading that file shows the restart banner), repo-root resolution |
+| `src/client-core/mcp/` | Pure `/mcp` logic shared by the webview and the TUI: list rows and summary, command-line splitting (no escapes; Windows paths), README-snippet parsing, spec validation |
+| `src/webview/components/mcp/`, `src/tui/ui/mcp/`, `src/tui/view/mcp-keys.ts` | The `/mcp` dialog (list ⇄ add form) in the sidebar and the terminal |
+| `src/providers/claude/mcp-status.ts`, `mcp-config.ts` | SDK status → `McpServerStatus` (drops `claudeai` by `source`, never forwards `config`); Claude config edits — `.mcp.json` directly, `~/.claude.json` through Claude's own CLI |
+| `src/providers/codex/mcp-control.ts`, `mcp-config.ts` | Codex status (`mcpServerStatus/list` + `config/read` layers) and sign-in; user config via `config/batchWrite`, repo `.codex/config.toml` via `src/shared/toml-mcp.ts` (the app-server refuses project files) |
+| `src/providers/opencode/map-mcp-status.ts`, `mcp-config.ts` | OpenCode `GET /mcp` → statuses over the run's own server; `opencode.json(c)` edits and the instance's global-config rule |
+| `src/shared/jsonc-config.ts`, `toml-mcp.ts`, `atomic-file.ts`, `with-timeout.ts` | Comment-preserving JSON member edits (hand-spliced: jsonc-parser's formatter re-flows siblings); `[mcp_servers.<name>]` table-block edits; atomic writes; a cleared-timer race |
 | `src/shared/file-cap.ts` | `FILE_CAP`/`MAX_FILE_CAP` — shared so the host and the review webview agree on the default and ceiling without importing across the host/webview boundary |
 | `src/memory/sqlite-driver.ts` | `openDatabase`: `bun:sqlite` under Bun, `node:sqlite` otherwise, behind the narrow `SqlDb` the FTS store uses; finalizes each statement after one use (Bun's `close()` otherwise leaves the file locked) and probes FTS5 at open |
 | `src/host/transcript-store.ts` | `index.json` + per-session JSONL under the workspace directory; append, load, page. Index, usage and catalog writes are atomic; a foreign session's writes are refused |
@@ -223,7 +230,7 @@ These are not style preferences. Breaking one breaks the design.
   elsewhere" from a missing index row that this host has not itself seen on disk.
 - **`config.json` is the single source of truth for host settings.** Every setting the host consumes
   (`enabledProviders`, `providerInstances`, `systemPrompts`, `codex.path`, `opencode.path`,
-  `usageMirrors`, `memory.*`, `review.*`, `favoriteModels`, `theme`) lives in `~/.marcode/config.json`, read by
+  `usageMirrors`, `memory.*`, `review.*`, `favoriteModels`, `theme`, `claude.claudeAiConnectors`) lives in `~/.marcode/config.json`, read by
   `createHost`, the account-setup wizard and the favorites handler alike. Only pure-UI settings stay in
   VS Code (`marcode.debug`, `marcode.showCacheTimer`, `marcode.agentsMdNudge.excludePaths`). A change
   takes a window reload. See `docs/config.md`.
