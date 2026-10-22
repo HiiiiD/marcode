@@ -49,6 +49,15 @@ suite("MCP dialog", () => {
     assert.strictEqual(dialog.getByText("MCP servers").textContent, "MCP servers");
   });
 
+  test("/mcp with arguments still opens the dialog and sends nothing to the agent", async () => {
+    renderApp();
+    hydrate();
+    await userEvent.type(screen.getByLabelText("Message"), "/mcp reconnect github{Enter}");
+    await settle();
+    assert.strictEqual(posted().some((m) => m.t === "send"), false);
+    assert.strictEqual(posted().some((m) => m.t === "mcp-open" && m.id === "a"), true);
+  });
+
   test("the session header has no MCP button any more", () => {
     renderApp();
     hydrate();

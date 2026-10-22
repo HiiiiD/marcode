@@ -27,6 +27,9 @@ suite('tui mcp keys while restarting', () => {
 suite('tui mcp keys', () => {
   test('/mcp is a picker command', () => {
     assert.strictEqual(parsePickerCommand('/mcp'), 'mcp');
+    assert.strictEqual(parsePickerCommand('/mcp reconnect github'), 'mcp');
+    assert.strictEqual(parsePickerCommand('/mcpx'), undefined);
+    assert.strictEqual(parsePickerCommand('/model x'), undefined);
   });
 
   test('arrows move within the rows', () => {

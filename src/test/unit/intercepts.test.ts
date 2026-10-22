@@ -33,4 +33,14 @@ suite('interceptFor', () => {
   test('does not claim a longer command that merely starts the same way', () => {
     assert.strictEqual(interceptFor('/contextual-help'), undefined);
   });
+
+  test('claims /mcp, with or without arguments', () => {
+    assert.strictEqual(interceptFor('/mcp'), 'mcp');
+    assert.strictEqual(interceptFor('/mcp reconnect github'), 'mcp');
+    assert.strictEqual(interceptFor('  /mcp   enable all '), 'mcp');
+  });
+
+  test('does not claim a longer command that starts like /mcp', () => {
+    assert.strictEqual(interceptFor('/mcpx'), undefined);
+  });
 });
