@@ -20,6 +20,8 @@ async function renameWithRetry(from: string, to: string): Promise<void> {
     } catch (err) {
       const code = (err as NodeJS.ErrnoException).code ?? '';
       if (attempt >= MAX_ATTEMPTS - 1 || !RETRYABLE.has(code)) { throw err; }
+      // Unconditional: the daemon never sees marcode.debug, and this only fires when a rename already failed.
+      console.warn(`[marcode:atomic-rename] ${code} on ${path.basename(to)}, attempt ${attempt + 1}/${MAX_ATTEMPTS}`);
       await new Promise((resolve) => setTimeout(resolve, RETRY_STEP_MS * (attempt + 1)));
     }
   }
