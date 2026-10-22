@@ -5,6 +5,9 @@ import * as path from 'path';
 import { SessionManager } from '../../host/session-manager';
 import { TranscriptStore } from '../../host/transcript-store';
 import { McpChangeLog } from '../../host/mcp/change-log';
+import { MCP_STATUS_TIMEOUT_MS, McpService } from '../../host/mcp/mcp-service';
+import { resolveRepoRoot } from '../../host/mcp/repo-root';
+import { MCP_POLL_BUDGET_MS, settledMcpStatus } from '../../providers/claude/claude-provider';
 import { FakeProvider } from '../../providers/fake/fake-provider';
 import type { AgentProvider, McpServerSpec } from '../../providers/types';
 import type { HostToWebview } from '../../protocol/messages';
@@ -164,6 +167,31 @@ suite('McpService', () => {
     assert.strictEqual(provider.starts.length, 2);
   });
 
+  test('a repo-root lookup that throws becomes panel.error, not a rejection', async () => {
+    const { manager, cwd } = await setup();
+    const a = await manager.create('fake', cwd);
+    const service = new McpService(manager, new McpChangeLog(), 1000, async () => { throw new Error('git exploded'); });
+    const panel = await service.handle({ t: 'mcp-open', id: a.state.id }, () => {});
+    assert.strictEqual(panel.error, 'git exploded');
+  });
+
+  test('restart of a foreign session says why instead of doing nothing', async () => {
+    const { manager, provider, cwd, handle } = await setup();
+    const a = await manager.create('fake', cwd);
+    manager.isForeign = () => true;
+    const panel = await handle({ t: 'restart-session', id: a.state.id });
+    assert.strictEqual(panel.error, 'This session is open in another window.');
+    assert.strictEqual(provider.starts.length, 1);
+  });
+
+  test('restart of a session with no live run says it is not running', async () => {
+    const { manager, cwd, handle } = await setup();
+    const a = await manager.create('fake', cwd);
+    manager.get = () => undefined;
+    const panel = await handle({ t: 'restart-session', id: a.state.id });
+    assert.strictEqual(panel.error, "This session isn't running.");
+  });
+
   test('unknown session answers an empty read-only panel', async () => {
     const { handle } = await setup();
     const panel = await handle({ t: 'mcp-open', id: 'nope' });
@@ -171,25 +199,63 @@ suite('McpService', () => {
   });
 });
 
+suite('resolveRepoRoot', () => {
+  test('outside a repo answers the cwd itself', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mar-norepo-'));
+    try {
+      assert.strictEqual(await resolveRepoRoot(dir), dir);
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+suite('MCP status budgets', () => {
+  test('the probe poll gives up well before the service times out', () => {
+    assert.strictEqual(typeof MCP_POLL_BUDGET_MS, 'number');
+    assert.strictEqual(MCP_POLL_BUDGET_MS + 3000 <= MCP_STATUS_TIMEOUT_MS, true);
+  });
+
+  test('a probe still pending when the budget runs out answers its pending rows', async () => {
+    let asks = 0;
+    const query = { mcpServerStatus: async () => { asks++; return [{ name: 'slow', status: 'pending' }]; } };
+    const started = Date.now();
+    const servers = await settledMcpStatus(query as never, 200, 20);
+    assert.strictEqual(Date.now() - started < 1000, true);
+    assert.deepStrictEqual(servers, [{ name: 'slow', status: 'pending' }]);
+    assert.strictEqual(asks > 1, true);
+  });
+});
+
 suite('McpChangeLog', () => {
+  test('a # in the file path does not leak a per-repo change to another repo', () => {
+    const log = new McpChangeLog();
+    log.record({ file: '/x/a#b/.claude.json', scope: '/repoA' }, 'a', 'repo-private', 'removed', 10);
+    assert.deepStrictEqual(log.pendingFor([{ file: '/x/a#b/.claude.json', scope: '/repoB' }], 5), []);
+    assert.deepStrictEqual(
+      log.pendingFor([{ file: '/x/a#b/.claude.json', scope: '/repoA' }], 5),
+      [{ name: 'a', origin: 'repo-private', change: 'removed' }],
+    );
+  });
+
   test('treats E:\\x and e:\\x as the same file on win32', function () {
     if (process.platform !== 'win32') { this.skip(); }
     const log = new McpChangeLog();
-    log.record('E:\\x\\.mcp.json', 'a', 'repo', 'added', 10);
-    assert.deepStrictEqual(log.pendingFor(['e:/x/.mcp.json'], 5), [{ name: 'a', origin: 'repo', change: 'added' }]);
+    log.record({ file: 'E:\\x\\.mcp.json' }, 'a', 'repo', 'added', 10);
+    assert.deepStrictEqual(log.pendingFor([{ file: 'e:/x/.mcp.json' }], 5), [{ name: 'a', origin: 'repo', change: 'added' }]);
   });
 
   test('changes older than the load are not pending', () => {
     const log = new McpChangeLog();
-    log.record('/x/.mcp.json', 'a', 'repo', 'added', 10);
-    assert.deepStrictEqual(log.pendingFor(['/x/.mcp.json'], 20), []);
-    assert.deepStrictEqual(log.pendingFor(['/x/.mcp.json'], undefined), []);
+    log.record({ file: '/x/.mcp.json' }, 'a', 'repo', 'added', 10);
+    assert.deepStrictEqual(log.pendingFor([{ file: '/x/.mcp.json' }], 20), []);
+    assert.deepStrictEqual(log.pendingFor([{ file: '/x/.mcp.json' }], undefined), []);
   });
 
   test('add then remove of the same name cancels out', () => {
     const log = new McpChangeLog();
-    log.record('/x/.mcp.json', 'a', 'repo', 'added', 10);
-    log.record('/x/.mcp.json', 'a', 'repo', 'removed', 11);
-    assert.deepStrictEqual(log.pendingFor(['/x/.mcp.json'], 5), []);
+    log.record({ file: '/x/.mcp.json' }, 'a', 'repo', 'added', 10);
+    log.record({ file: '/x/.mcp.json' }, 'a', 'repo', 'removed', 11);
+    assert.deepStrictEqual(log.pendingFor([{ file: '/x/.mcp.json' }], 5), []);
   });
 });

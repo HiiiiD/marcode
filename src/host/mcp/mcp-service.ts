@@ -19,6 +19,9 @@ export interface McpServiceHost {
 
 const EMPTY: McpPanel = { capabilities: null, targets: null, pending: [], restarting: false };
 const FOREIGN = 'This session is open in another window.';
+const NOT_RUNNING = "This session isn't running.";
+/** Above the Claude probe's own poll budget, so a cold first open answers pending rows instead of timing out. */
+export const MCP_STATUS_TIMEOUT_MS = 15_000;
 
 /** Routes `/mcp` actions to the session's provider and answers with an `McpPanel`. Errors are state. */
 export class McpService {
@@ -28,15 +31,16 @@ export class McpService {
   constructor(
     private readonly host: McpServiceHost,
     private readonly log = new McpChangeLog(),
-    private readonly statusTimeoutMs = 8000,
+    private readonly statusTimeoutMs = MCP_STATUS_TIMEOUT_MS,
     private readonly repoRoot: (cwd: string) => Promise<string> = resolveRepoRoot,
   ) {}
 
   async handle(msg: McpMessage, openExternal: (url: string) => void, interim?: (panel: McpPanel) => void): Promise<McpPanel> {
     const ctx = this.host.mcpContext(msg.id);
     if (!ctx) { return EMPTY; }
-    const at: McpLocation = { cwd: ctx.cwd, repoRoot: await this.repoRoot(ctx.cwd) };
+    let at: McpLocation = { cwd: ctx.cwd, repoRoot: ctx.cwd };
     try {
+      at = { cwd: ctx.cwd, repoRoot: await this.repoRoot(ctx.cwd) };
       await this.act(msg, ctx.provider, at, openExternal, interim);
       this.errors.delete(msg.id);
     } catch (err) {
@@ -62,14 +66,14 @@ export class McpService {
         const invalid = validateSpec(msg.server, []);
         if (invalid) { throw new Error(invalid); }
         const file = await store.add(at, msg.scope, msg.server);
-        this.log.record(file, msg.server.name, msg.scope, 'added');
+        this.log.record({ file }, msg.server.name, msg.scope, 'added');
         return;
       }
       case 'mcp-remove': {
         if (this.host.isForeign(msg.id)) { throw new Error(FOREIGN); }
         if (!store) { throw new Error("This provider can't manage MCP servers from Marcode."); }
         const file = await store.remove(at, msg.origin, msg.name);
-        this.log.record(msg.origin === 'repo-private' ? `${file}#${at.repoRoot}` : file, msg.name, msg.origin, 'removed');
+        this.log.record(msg.origin === 'repo-private' ? { file, scope: at.repoRoot } : { file }, msg.name, msg.origin, 'removed');
         return;
       }
       case 'mcp-reconnect':
@@ -93,6 +97,8 @@ export class McpService {
   }
 
   private async restart(id: SessionId, provider: AgentProvider, at: McpLocation, interim?: (panel: McpPanel) => void): Promise<void> {
+    if (this.host.isForeign(id)) { throw new Error(FOREIGN); }
+    if (!this.host.get(id)) { throw new Error(NOT_RUNNING); }
     if (this.restarting.has(id)) { throw new Error('This session is already restarting.'); }
     this.restarting.add(id);
     try {
@@ -115,7 +121,7 @@ export class McpService {
     if (store) {
       try { targets = await store.targets(at); } catch { targets = null; }
     }
-    const keys = targets ? Object.values(targets).flatMap((t) => ('path' in t ? [t.path, `${t.path}#${at.repoRoot}`] : [])) : [];
+    const keys = targets ? Object.values(targets).flatMap((t) => ('path' in t ? [{ file: t.path }, { file: t.path, scope: at.repoRoot }] : [])) : [];
     const error = this.errors.get(id);
     const foreign = this.host.isForeign(id);
     return {
