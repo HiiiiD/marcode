@@ -23,6 +23,24 @@ suite('atomic-file', () => {
     assert.strictEqual(await fs.readFile(file, 'utf8'), 'ok');
   });
 
+  test('writeFileAtomic retries a rename that is blocked for a while (EPERM)', async () => {
+    const file = path.join(dir, 'a.json');
+    const mod = require('node:fs/promises') as { rename: typeof fs.rename };
+    const real = mod.rename;
+    let calls = 0;
+    mod.rename = async (from, to) => {
+      if (++calls <= 6) { throw Object.assign(new Error('EPERM'), { code: 'EPERM' }); }
+      return real(from, to);
+    };
+    try {
+      await writeFileAtomic(file, 'ok');
+    } finally {
+      mod.rename = real;
+    }
+    assert.strictEqual(await fs.readFile(file, 'utf8'), 'ok');
+    assert.strictEqual(calls, 7);
+  });
+
   test('createExclusive: the first caller wins and the loser does not overwrite', async () => {
     const file = path.join(dir, 'lock');
     assert.strictEqual(await createExclusive(file, 'first'), true);
