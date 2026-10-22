@@ -157,11 +157,13 @@ suite('McpService', () => {
   });
 
   test('two restarts at once build one new run, not two', async () => {
-    const { manager, provider, cwd, handle } = await setup();
+    const { manager, provider, cwd } = await setup();
     const a = await manager.create('fake', cwd);
+    // A real git spawn per call would let the second land after the first finished: a legitimate second restart.
+    const service = new McpService(manager, new McpChangeLog(), 1000, async (c) => c);
     await Promise.all([
-      handle({ t: 'restart-session', id: a.state.id }),
-      handle({ t: 'restart-session', id: a.state.id }),
+      service.handle({ t: 'restart-session', id: a.state.id }, () => {}),
+      service.handle({ t: 'restart-session', id: a.state.id }, () => {}),
     ]);
     await settle();
     assert.strictEqual(provider.starts.length, 2);
@@ -182,6 +184,26 @@ suite('McpService', () => {
     const panel = await handle({ t: 'restart-session', id: a.state.id });
     assert.strictEqual(panel.error, 'This session is open in another window.');
     assert.strictEqual(provider.starts.length, 1);
+  });
+
+  test('a second restart mid-rebuild says already restarting, not not running', async () => {
+    let live = true;
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    const provider = new FakeProvider(() => []);
+    const host = {
+      get: () => (live ? ({ configLoadedAt: () => undefined } as never) : undefined),
+      mcpContext: () => ({ cwd: '/x', provider }),
+      isForeign: () => false,
+      restart: async () => { live = false; await gate; live = true; },
+    };
+    const service = new McpService(host, new McpChangeLog(), 1000, async (c) => c);
+    const first = service.handle({ t: 'restart-session', id: 's' }, () => {});
+    await settle();
+    const second = await service.handle({ t: 'restart-session', id: 's' }, () => {});
+    assert.strictEqual(second.error, 'This session is already restarting.');
+    release();
+    await first;
   });
 
   test('restart of a session with no live run says it is not running', async () => {

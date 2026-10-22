@@ -98,8 +98,9 @@ export class McpService {
 
   private async restart(id: SessionId, provider: AgentProvider, at: McpLocation, interim?: (panel: McpPanel) => void): Promise<void> {
     if (this.host.isForeign(id)) { throw new Error(FOREIGN); }
-    if (!this.host.get(id)) { throw new Error(NOT_RUNNING); }
+    // The rebuild drops the live run, so a second restart mid-rebuild must hear this, not NOT_RUNNING.
     if (this.restarting.has(id)) { throw new Error('This session is already restarting.'); }
+    if (!this.host.get(id)) { throw new Error(NOT_RUNNING); }
     this.restarting.add(id);
     try {
       interim?.(await this.panel(id, provider, at));
