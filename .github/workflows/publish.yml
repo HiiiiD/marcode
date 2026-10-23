@@ -16,9 +16,9 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
 
@@ -30,7 +30,7 @@ jobs:
       - run: yarn run test:dom
       - run: node esbuild.js --production
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: dist
           path: dist/
@@ -80,9 +80,9 @@ jobs:
             os: darwin
             cpu: arm64
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
 
@@ -100,7 +100,7 @@ jobs:
       - run: corepack enable
       - run: yarn install --frozen-lockfile
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: dist
           path: dist/
@@ -122,7 +122,7 @@ jobs:
       # skips node_modules entirely and would drop the native binary).
       - run: npx @vscode/vsce package --target ${{ matrix.target }} --out marcode-${{ matrix.target }}.vsix --no-yarn
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: vsix-${{ matrix.target }}
           path: marcode-${{ matrix.target }}.vsix
@@ -146,9 +146,9 @@ jobs:
           - { target: darwin-x64, runner: macos-15-intel, ext: '' }
           - { target: darwin-arm64, runner: macos-latest, ext: '' }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
 
@@ -162,7 +162,7 @@ jobs:
         shell: bash
         run: mv "bin/marcode${{ matrix.ext }}" "marcode-tui-${{ matrix.target }}${{ matrix.ext }}"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: tui-${{ matrix.target }}
           path: marcode-tui-${{ matrix.target }}${{ matrix.ext }}
@@ -200,13 +200,13 @@ jobs:
           - darwin-x64
           - darwin-arm64
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: vsix-${{ matrix.target }}
 
       # Entra ID workload identity federation — no PAT, no stored secret.
       # Azure DevOps retires global PATs on 2026-12-01.
-      - uses: azure/login@v2
+      - uses: azure/login@v3
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
@@ -242,9 +242,9 @@ jobs:
     steps:
       # gh release create --generate-notes shells out to git to diff against
       # the previous tag; without a checkout there is no .git and it fails.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: '{vsix,tui}-*'
           merge-multiple: true
@@ -253,7 +253,7 @@ jobs:
       # (`sha256sum -c SHA256SUMS`, `gh attestation verify <file> -R <repo>`).
       - run: sha256sum marcode-tui-* > SHA256SUMS
 
-      - uses: actions/attest-build-provenance@v2
+      - uses: actions/attest-build-provenance@v4
         with:
           subject-path: 'marcode-tui-*'
 
