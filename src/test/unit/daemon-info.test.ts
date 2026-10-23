@@ -50,6 +50,31 @@ suite('daemon info', () => {
     assert.strictEqual(await readDaemonInfo(dir), undefined);
   });
 
+  test('a read that lands mid-write retries instead of reporting no daemon', async () => {
+    const file = path.join(dir, 'daemon.json');
+    await fs.writeFile(file, '');
+    setTimeout(() => { void fs.writeFile(file, JSON.stringify(info(9))); }, 30);
+    assert.strictEqual((await readDaemonInfo(dir))?.pid, 9);
+  });
+
+  test('write overwrites an existing file in place', async () => {
+    await writeDaemonInfo(dir, info(1));
+    await writeDaemonInfo(dir, info(2));
+    assert.strictEqual((await readDaemonInfo(dir))?.pid, 2);
+    assert.deepStrictEqual((await fs.readdir(dir)).sort(), ['daemon.json']);
+  });
+
+  test('writes succeed while another handle holds daemon.json open', async () => {
+    await writeDaemonInfo(dir, info(1));
+    const held = await fs.open(path.join(dir, 'daemon.json'), 'r');
+    try {
+      await writeDaemonInfo(dir, info(2));
+      assert.strictEqual((await readDaemonInfo(dir))?.pid, 2);
+    } finally {
+      await held.close();
+    }
+  });
+
   test('tokens are long and distinct', () => {
     assert.strictEqual(newToken().length >= 32, true);
     assert.notStrictEqual(newToken(), newToken());
