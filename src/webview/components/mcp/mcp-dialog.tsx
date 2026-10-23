@@ -35,7 +35,7 @@ export function McpDialog({ id, open, onOpenChange }: { id: SessionId; open: boo
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="gap-3 text-xs">
+      <DialogContent className="max-h-[calc(100dvh-2rem)] gap-3 overflow-y-auto text-xs">
         <DialogHeader>
           <div className="flex items-baseline justify-between gap-2 border-b border-border pr-7 pb-2">
             <DialogTitle className="text-sm">{view === "add" ? "Add MCP server" : "MCP servers"}</DialogTitle>
