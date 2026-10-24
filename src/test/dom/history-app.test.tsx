@@ -137,6 +137,56 @@ suite('history app', () => {
     await userEvent.type(screen.getByRole('textbox', { name: 'Filter sessions' }), 'zzzz');
     assert.strictEqual(screen.getByText('No sessions match').textContent, 'No sessions match');
   });
+
+  test('hidden blocked sessions are identifiable, filterable and stoppable without opening a pane', async () => {
+    renderHistory();
+    const blocked = summary('blocked', {
+      title: 'Platform worker', name: 'opencode-hidden-worker', status: 'awaiting-approval', open: false,
+    });
+    hydrate([
+      blocked,
+      summary('question', { name: 'question-worker', status: 'awaiting-approval', waitingOn: 'question' }),
+      summary('running', { name: 'running-worker', status: 'running' }),
+      summary('error', { name: 'failed-worker', status: 'error' }),
+      summary('idle', { name: 'idle-worker', status: 'idle' }),
+    ]);
+    assert.strictEqual(screen.getByRole('columnheader', { name: 'Status' }).textContent, 'Status');
+    assert.strictEqual(screen.getByText('opencode-hidden-worker').textContent, 'opencode-hidden-worker');
+    assert.strictEqual(screen.getByText('Waiting for approval').textContent, 'Waiting for approval');
+    assert.strictEqual(screen.getByText('Waiting for answer').textContent, 'Waiting for answer');
+    assert.strictEqual(screen.getByText('Running').textContent, 'Running');
+    assert.strictEqual(screen.queryByRole('button', { name: 'Stop idle-worker' }) === null, true);
+    assert.strictEqual(screen.queryByRole('button', { name: 'Stop failed-worker' }) === null, true);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Needs attention' }));
+    assert.strictEqual(screen.getByRole('button', { name: 'Needs attention' }).getAttribute('aria-pressed'), 'true');
+    assert.strictEqual(screen.queryByText('running-worker') === null, true);
+    assert.strictEqual(screen.queryByText('idle-worker') === null, true);
+    assert.strictEqual(screen.getByText('failed-worker').textContent, 'failed-worker');
+    await userEvent.type(screen.getByRole('textbox', { name: 'Filter sessions' }), 'opencode-hidden');
+    assert.strictEqual(screen.queryByText('question-worker') === null, true);
+    await userEvent.click(screen.getByRole('button', { name: 'Stop opencode-hidden-worker' }));
+    assert.deepStrictEqual(posted().filter((m) => m.t === 'interrupt'), [{ t: 'interrupt', id: 'blocked' }]);
+    assert.strictEqual(posted().some((m) => m.t === 'focus-session'), false);
+
+    sendFromHost({ t: 'sessions-changed', sessions: [{ ...blocked, status: 'idle' }] });
+    assert.strictEqual(screen.queryByText('Platform worker') === null, true);
+    assert.strictEqual(screen.getByText('No sessions match').textContent, 'No sessions match');
+    await userEvent.click(screen.getByRole('button', { name: 'Needs attention' }));
+    assert.strictEqual(screen.getByText('Idle').textContent, 'Idle');
+    assert.strictEqual(screen.queryByRole('button', { name: 'Stop opencode-hidden-worker' }) === null, true);
+  });
+
+  test('running sessions can be stopped but a foreign session cannot be interrupted here', async () => {
+    renderHistory();
+    hydrate([
+      summary('running', { name: 'running-worker', status: 'running' }),
+      summary('foreign', { name: 'foreign-worker', status: 'awaiting-approval', owner: { host: 'tui', pid: 123 } }),
+    ]);
+    await userEvent.click(screen.getByRole('button', { name: 'Stop running-worker' }));
+    assert.deepStrictEqual(posted().filter((m) => m.t === 'interrupt'), [{ t: 'interrupt', id: 'running' }]);
+    assert.strictEqual((screen.getByRole('button', { name: 'Stop foreign-worker' }) as HTMLButtonElement).disabled, true);
+  });
 });
 
 suite('history memory actions', () => {

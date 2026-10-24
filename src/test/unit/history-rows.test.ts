@@ -58,4 +58,18 @@ suite('queryHistory', () => {
     assert.deepStrictEqual(ids(queryHistory(list, DEFAULT_QUERY).rest), ['y', 'z']);
     assert.deepStrictEqual(ids(list), before);
   });
+
+  test('needs attention includes blocked and errored sessions and combines with text and pins', () => {
+    const list = [
+      summary('idle', { status: 'idle', name: 'worker-idle' }),
+      summary('running', { status: 'running', name: 'worker-running' }),
+      summary('approval', { status: 'awaiting-approval', name: 'worker-approval', pinned: true }),
+      summary('question', { status: 'awaiting-approval', waitingOn: 'question', name: 'worker-question' }),
+      summary('error', { status: 'error', name: 'other-error' }),
+    ];
+    const result = queryHistory(list, { ...DEFAULT_QUERY, needsAttention: true, text: 'worker' });
+    assert.deepStrictEqual(ids(result.pinned), ['approval']);
+    assert.deepStrictEqual(ids(result.rest), ['question']);
+    assert.deepStrictEqual(ids(queryHistory(list, { ...DEFAULT_QUERY, needsAttention: true }).rest), ['error', 'question']);
+  });
 });
