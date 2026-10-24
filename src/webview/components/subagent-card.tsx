@@ -5,6 +5,7 @@ import {
 } from '@/components/ui/trace';
 import { cn } from '@/lib/utils';
 import { PermissionCard } from './permission-card';
+import { QuestionCard } from './question-card';
 import { ToolCard } from './tool-card';
 import { TranscriptItemShell } from './transcript-item-shell';
 import {
@@ -130,6 +131,8 @@ export function SubagentCard({ item, sessionId }: { item: ToolItem; sessionId: S
                 child.role === 'permission' ? (
                   // A pending approval is answered in the pinned strip above the composer, not here.
                   child.state === 'pending' ? null : <PermissionCard key={child.id} item={child} sessionId={sessionId} />
+                ) : child.role === 'question' ? (
+                  child.state === 'pending' ? null : <QuestionCard key={child.id} item={child} sessionId={sessionId} />
                 ) : child.role === 'tool' ? (
                   <ToolCard key={child.id} item={child} />
                 ) : null,

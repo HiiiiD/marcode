@@ -3,6 +3,7 @@ import {
   SUBAGENT_CHILD_WINDOW, formatElapsed, isBackgroundDispatch, pendingSubagentPermissions, summarizeSubagent, windowChildren,
 } from '../../client-core/subagent-window';
 import type { TranscriptItem } from '../../protocol/messages';
+import { question } from '../fixtures/protocol';
 
 function child(id: string, state: 'running' | 'ok' | 'error' = 'ok'): TranscriptItem {
   return {
@@ -33,6 +34,13 @@ suite('subagent window', () => {
   test('settled approvals outside the window are dropped', () => {
     const children = [perm('p', 'allowed'), ...Array.from({ length: 25 }, (_, i) => child(`c${i}`))];
     assert.strictEqual(windowChildren(children).length, 10);
+  });
+
+  test('retains unanswered questions beyond the child window until they settle', () => {
+    const ask = question();
+    const tail = Array.from({ length: 25 }, (_, i) => child(`c${i}`));
+    assert.strictEqual(windowChildren([ask, ...tail])[0].id, ask.id);
+    assert.strictEqual(windowChildren([{ ...ask, state: 'answered' }, ...tail]).length, 10);
   });
 
   test('pendingSubagentPermissions finds nested pending approvals only', () => {

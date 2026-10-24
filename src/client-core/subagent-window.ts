@@ -23,7 +23,7 @@ export const SUBAGENT_CHILD_WINDOW = 10;
 export function windowChildren(children: TranscriptItem[]): TranscriptItem[] {
   if (children.length <= SUBAGENT_CHILD_WINDOW) { return children; }
   const cut = children.length - SUBAGENT_CHILD_WINDOW;
-  return children.filter((c, i) => i >= cut || (c.role === 'permission' && c.state === 'pending'));
+  return children.filter((c, i) => i >= cut || ((c.role === 'permission' || c.role === 'question') && c.state === 'pending'));
 }
 
 export interface PendingSubagentPermission {
