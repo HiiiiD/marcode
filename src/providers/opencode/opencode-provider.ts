@@ -6,12 +6,13 @@ import { modelConfigId, toEffort, toModels, type ConfigOption } from '../acp/con
 import { AcpRun } from '../acp/acp-run';
 import { openCodeModeId } from './map-modes';
 import { postMoveSession, waitForServer, type MoveFetch } from './move-session';
-import { openCodeTools } from './map-tools';
+import { createOpenCodeTools } from './map-tools';
 import { reserveLoopbackPort } from './reserve-port';
 import { listOpenCodeSkillNames } from './skill-names';
 import { SubagentWatch } from './subagent-watch';
 import { toOpenCodeStatuses } from './map-mcp-status';
 import { findRepoRoot, OpenCodeMcpConfig } from './mcp-config';
+import { withTimeout } from '../../shared/with-timeout';
 import {
   localVersion, githubLatestVersion, type ExecVersionFn, type FetchFn, type UpdateInfo,
 } from '../update-check';
@@ -345,7 +346,14 @@ export class OpenCodeProvider implements AgentProvider {
   start(opts: StartOptions): AgentRun {
     const token = randomBytes(24).toString('hex');
     let sessionId: string | undefined;
-    const watch = new SubagentWatch(); // opened once a real child has actually spawned — see attemptSpawn
+    const tools = createOpenCodeTools(async () => {
+      const [origins, status] = await Promise.all([
+        this.mcpConfig.origins({ cwd: opts.cwd, repoRoot: findRepoRoot(opts.cwd) }).catch(() => new Map()),
+        withTimeout(watch.mcpStatus(opts.cwd), 2000, 'MCP discovery timed out').catch(() => ({})),
+      ]);
+      return [...new Set([...origins.keys(), ...Object.keys(status)])];
+    });
+    const watch = new SubagentWatch({ tools });
     const { child, markStarted } = this.spawnWithPort(token, watch);
     const run = new AcpRun(child, {
       cwd: opts.cwd,
@@ -354,7 +362,7 @@ export class OpenCodeProvider implements AgentProvider {
       permissionMode: opts.permissionMode,
       resumeToken: opts.resumeToken,
       sessionId: opts.sessionId,
-      tools: openCodeTools,
+      tools,
       modeId: openCodeModeId,
       clientName: 'mar-code',
       queuesNatively: true,

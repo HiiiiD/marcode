@@ -18,6 +18,8 @@ export interface AcpToolCall {
  * this file reusable by a second ACP agent.
  */
 export interface ToolMapper {
+  /** Load vendor tool identities after session creation, before the first prompt. */
+  ready?(): Promise<void>;
   call(c: AcpToolCall): ToolCall;
   output(c: AcpToolCall): ToolOutput;
   /**

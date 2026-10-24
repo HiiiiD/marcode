@@ -82,7 +82,7 @@ export function toolPartToAcpCall(part: RawToolPart): AcpToolCall {
     : undefined;
   return {
     toolCallId: part.callID,
-    title,
+    title: title ?? part.tool,
     kind: toAcpKind(part.tool),
     status: statusOf(state.status),
     rawInput: state.input,

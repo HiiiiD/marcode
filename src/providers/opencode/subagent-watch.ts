@@ -1,6 +1,8 @@
 import type { AgentEvent, ContextBreakdown, PermissionMeta, ToolCall, ToolDecision } from '../types';
 import { readOpenCodeContext } from './context-usage';
 import type { OpenCodeMcpStatus } from './map-mcp-status';
+import type { ToolMapper } from '../acp/map-updates';
+import { toolPartToAcpCall } from './map-subagent-tools';
 import { subagentToolCall, subagentToolOutput, type RawToolPart } from './map-subagent-tools';
 
 /**
@@ -119,6 +121,7 @@ class EventChannel implements AsyncIterable<AgentEvent> {
 }
 
 export interface SubagentWatchOptions {
+  tools?: ToolMapper;
   /** Injected so a test never opens a real socket. Defaults to `connectSdk`. */
   connect?: (baseUrl: string, token: string, signal?: AbortSignal) => Promise<SubagentSdk>;
 }
@@ -376,7 +379,7 @@ export class SubagentWatch {
     // calls already reach the transcript down ACP's normal path — republishing
     // them here would double every card the user sees.
     if (sessionId === this.rootSessionId || !this.watched.has(sessionId)) { return; }
-    const tool = subagentToolCall(toolPart);
+    const tool = this.opts.tools?.call(toolPartToAcpCall(toolPart)) ?? subagentToolCall(toolPart);
     // Namespaced like the permission ids below: `callID` is only unique within
     // its own session, and an unnamespaced collision with the root's own tool
     // call would fold two unrelated cards into one.
@@ -387,7 +390,7 @@ export class SubagentWatch {
         ? { kind: 'tool-update', id, tool }
         : {
             kind: 'tool-end', id, ok: toolPart.state.status === 'completed',
-            output: subagentToolOutput(toolPart), tool,
+            output: this.opts.tools?.output(toolPartToAcpCall(toolPart)) ?? subagentToolOutput(toolPart), tool,
           };
     const parentId = this.nestingIdFor(sessionId);
     if (parentId) {
