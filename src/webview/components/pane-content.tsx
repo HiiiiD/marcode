@@ -6,7 +6,7 @@ import { unavailabilityFor } from "../lib/provider-availability";
 import { useStore } from "../store";
 import { Composer } from "./composer";
 import { PinnedShell } from "./pinned-shell";
-import { PinnedSubagentPermissions } from "./pinned-subagent-permissions";
+import { PinnedPrompts } from "./pinned-prompts";
 import { SessionHeader } from "./session-header";
 import { SubagentDrillInContext } from "./subagent-drill-in-context";
 import { Transcript } from "./transcript";
@@ -72,7 +72,7 @@ export function PaneContent({ sessionId, accessibleTitle }: PaneContentProps) {
             />
           </div>
         </SubagentDrillInContext.Provider>
-        <PinnedSubagentPermissions pane={paneState} sessionId={sessionId} />
+        <PinnedPrompts pane={paneState} sessionId={sessionId} />
         <PinnedShell pane={paneState} sessionId={sessionId} />
         <Composer
           pane={paneState}

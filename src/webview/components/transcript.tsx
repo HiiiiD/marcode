@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { TranscriptItemView } from './transcript-item';
 import { WorkingRow } from './working-row';
 import type { PaneState } from '../reducer';
+import { isLivePrompt } from '../lib/pending-prompts';
 
 /**
  * Whether the tail of the transcript is already saying "something is
@@ -77,7 +78,7 @@ export function Transcript({
                 Load earlier messages
               </Button>
             )}
-            {pane.items.map((item) => (
+            {pane.items.filter((item) => !isLivePrompt(item, pane)).map((item) => (
               <MessageScrollerItem key={item.id} messageId={item.id}>
                 <TranscriptItemView item={item} sessionId={pane.summary.id} canFork={idle} />
               </MessageScrollerItem>
