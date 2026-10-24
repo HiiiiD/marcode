@@ -15,11 +15,19 @@ export function HistoryToolbar({ query, onChange }: Props) {
     <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">
       <Input
         aria-label="Filter sessions"
-        placeholder="Filter by title, model or summary"
+        placeholder="Filter by title, name, model or summary"
         value={query.text}
         onChange={(e) => onChange({ ...query, text: e.target.value })}
         className="h-7 max-w-sm min-w-48 flex-1 text-xs md:text-xs"
       />
+      <Button
+        variant={query.needsAttention ? 'secondary' : 'outline'}
+        size="sm"
+        aria-pressed={query.needsAttention === true}
+        onClick={() => onChange({ ...query, needsAttention: !query.needsAttention })}
+      >
+        Needs attention
+      </Button>
       <div className="ml-auto flex items-center gap-1">
         <Tabs
           value={query.sort}

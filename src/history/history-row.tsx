@@ -5,6 +5,7 @@ import { TableCell, TableRow } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
 import { formatWhen } from './format-when';
 import { TipButton } from './tip-button';
+import { HistoryStatus } from './history-status';
 import { useStore } from './store';
 import type { SessionSummary } from '../protocol/messages';
 
@@ -28,7 +29,11 @@ export function HistoryRow({ session }: { session: SessionSummary }) {
           </TipButton>
         </TableCell>
         <TableCell className="min-w-40 align-middle font-medium">
-          <span className="truncate">{session.title}</span>
+          <div className="truncate">{session.title}</div>
+          <div className="text-xs font-normal text-muted-foreground">{session.name}</div>
+        </TableCell>
+        <TableCell className="align-middle">
+          <HistoryStatus session={session} />
         </TableCell>
         <TableCell className="align-middle whitespace-nowrap text-muted-foreground">
           {`${session.providerId} · ${session.model}`}
@@ -36,8 +41,20 @@ export function HistoryRow({ session }: { session: SessionSummary }) {
         <TableCell className="align-middle whitespace-nowrap tabular-nums text-muted-foreground">
           {formatWhen(session.updatedAt)}
         </TableCell>
-        <TableCell className="sticky right-0 bg-background align-middle">
+        <TableCell className="right-0 bg-background align-middle md:sticky">
           <div className="flex items-center justify-end gap-1">
+            {(session.status === 'running' || session.status === 'awaiting-approval') && (
+              <Button
+                variant="outline"
+                size="sm"
+                aria-label={`Stop ${session.name}`}
+                disabled={session.owner !== undefined}
+                title={session.owner ? 'Stop this session in its owning host' : undefined}
+                onClick={() => post({ t: 'interrupt', id: session.id })}
+              >
+                Stop
+              </Button>
+            )}
             {state.memory?.enabled && (
               <TipButton
                 tip="Re-summarize"
@@ -69,7 +86,7 @@ export function HistoryRow({ session }: { session: SessionSummary }) {
       {open && (
         <TableRow className="hover:bg-transparent">
           <TableCell />
-          <TableCell colSpan={4} className="whitespace-normal pb-3 pt-0">
+          <TableCell colSpan={5} className="whitespace-normal pb-3 pt-0">
             <p className="text-muted-foreground">{summary}</p>
             <p className="mt-1 text-xs tabular-nums text-muted-foreground">
               {`Created ${formatWhen(session.createdAt)}`}
