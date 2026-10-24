@@ -3,7 +3,7 @@ import { PassThrough } from 'node:stream';
 import * as frames from '../fixtures/opencode-acp-frames.json';
 import { AcpRun } from '../../providers/acp/acp-run';
 import { openCodeModeId } from '../../providers/opencode/map-modes';
-import { openCodeTools } from '../../providers/opencode/map-tools';
+import { createOpenCodeTools, openCodeTools } from '../../providers/opencode/map-tools';
 import type { AgentEvent } from '../../providers/types';
 
 /** A scripted ACP agent. `sent` records what the run wrote; `emit` pushes a
@@ -92,6 +92,32 @@ const handshake = async (p: ReturnType<typeof peer>): Promise<Record<string, unk
 };
 
 suite('AcpRun', () => {
+  test('discovers MCP identities before mapping root session calls', async () => {
+    const p = peer();
+    const events: AgentEvent[] = [];
+    const run = new AcpRun(p.child, {
+      cwd: '/w', permissionMode: 'default',
+      tools: createOpenCodeTools(async () => ['OpenPencil']),
+      modeId: openCodeModeId, clientName: 'mar-code', sessionId: 'test-session',
+    });
+    collect(run, events);
+    try {
+      await handshake(p);
+      p.emit({ jsonrpc: '2.0', method: 'session/update', params: {
+        sessionId: frames.newSession.sessionId,
+        update: { sessionUpdate: 'tool_call', toolCallId: 'mcp', title: 'OpenPencil_query_nodes', kind: 'other' },
+      } });
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      const tool = events.find((event) => event.kind === 'tool-start');
+      assert.strictEqual(tool?.kind, 'tool-start');
+      if (tool?.kind === 'tool-start') {
+        assert.deepStrictEqual(tool.tool, {
+          kind: 'mcp', label: 'query_nodes', server: 'OpenPencil', tool: 'query_nodes',
+        });
+      }
+    } finally { await run.dispose(); }
+  });
+
   test('initializes with protocol version 1 and no fs or terminal capability', async () => {
     const p = peer();
     const run = new AcpRun(p.child, {

@@ -359,6 +359,7 @@ export class AcpRun implements AgentRun {
       this.applyConfigOptions(created.configOptions);
     }
     if (this.disposed || !this.sessionId) { return; }
+    await this.opts.tools.ready?.();
     this.events.push({ kind: 'session', resumeToken: this.sessionId });
     // ACP's `NewSessionRequest` carries NO mode field, and `AgentSession` only
     // calls `setPermissionMode` on a user change — so the mode a session was

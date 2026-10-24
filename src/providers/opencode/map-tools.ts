@@ -74,18 +74,14 @@ function parseTodos(rawInput: unknown): { status: ReturnType<typeof toTodoStatus
     .filter((item) => item.text.length > 0);
 }
 
-export function toToolCall(c: AcpToolCall): ToolCall {
+export function toToolCall(c: AcpToolCall, servers: readonly string[] = []): ToolCall {
   const raw = (c.rawInput ?? {}) as {
     command?: string; cwd?: string; filePath?: string; pattern?: string; path?: string;
     filepath?: string; file_path?: string; file?: string; content?: string; name?: string; patchText?: string;
   };
-  const skill = parseSkillTitle(c.title);
-  if (skill) { return { kind: 'command', label: 'Skill', command: '', skill: raw.name ?? skill }; }
-
-  const todos = parseTodos(c.rawInput);
-  if (todos) { return { kind: 'todos', label: 'Todos', items: todos }; }
-
-  const mcp = parseSelfControlTitle(c.title);
+  const server = servers.filter((name) => c.title?.startsWith(`${name}_`) && c.title.length > name.length + 1)
+    .sort((a, b) => b.length - a.length)[0];
+  const mcp = server ? { server, tool: c.title!.slice(server.length + 1) } : parseSelfControlTitle(c.title);
   if (mcp) {
     const record = (c.rawInput ?? {}) as Record<string, unknown>;
     return {
@@ -93,6 +89,12 @@ export function toToolCall(c: AcpToolCall): ToolCall {
       ...(Object.keys(record).length > 0 ? { input: record } : {}),
     };
   }
+
+  const skill = parseSkillTitle(c.title);
+  if (skill) { return { kind: 'command', label: 'Skill', command: '', skill: raw.name ?? skill }; }
+
+  const todos = parseTodos(c.rawInput);
+  if (todos) { return { kind: 'todos', label: 'Todos', items: todos }; }
 
   switch (c.kind) {
     case 'execute': {
@@ -183,12 +185,13 @@ export function toToolCall(c: AcpToolCall): ToolCall {
   return { kind: 'other', label: c.title ?? c.kind ?? 'Tool', raw: c.rawInput };
 }
 
-export function toToolOutput(c: AcpToolCall): ToolOutput {
-  if (c.kind === 'edit') { return { kind: 'none' }; }
+export function toToolOutput(c: AcpToolCall, servers: readonly string[] = []): ToolOutput {
   // Same reasoning as `edit`: the todo list is already the card's `items`
   // block, so re-showing opencode's JSON dump of that same array as text
   // output would just duplicate it.
-  if (parseTodos(c.rawInput)) { return { kind: 'none' }; }
+  if ((c.kind === 'edit' || parseTodos(c.rawInput)) && toToolCall(c, servers).kind !== 'mcp') {
+    return { kind: 'none' };
+  }
   const text = (c.content ?? [])
     .filter((b): b is ContentBlock => (b as ContentBlock)?.type === 'content')
     .map((b) => b.content?.text ?? '')
@@ -215,3 +218,13 @@ function subagentSpawn(update: Record<string, unknown>): { taskToolCallId: strin
 }
 
 export const openCodeTools: ToolMapper = { call: toToolCall, output: toToolOutput, subagentSpawn };
+
+export function createOpenCodeTools(loadServers: () => Promise<string[]>): ToolMapper {
+  let servers: string[] = [];
+  return {
+    ...openCodeTools,
+    ready: async () => { servers = await loadServers(); },
+    call: (call) => toToolCall(call, servers),
+    output: (call) => toToolOutput(call, servers),
+  };
+}

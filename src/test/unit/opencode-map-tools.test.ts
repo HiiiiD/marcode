@@ -1,9 +1,35 @@
 import * as assert from 'assert';
 import * as frames from '../fixtures/opencode-acp-frames.json';
-import { toToolCall, toToolOutput } from '../../providers/opencode/map-tools';
+import { createOpenCodeTools, toToolCall, toToolOutput } from '../../providers/opencode/map-tools';
 import type { AcpToolCall } from '../../providers/acp/map-updates';
 
 suite('opencode toToolCall', () => {
+  test('server discovery stays local to each run', async () => {
+    const tools = createOpenCodeTools(async () => ['OpenPencil']);
+    const other = createOpenCodeTools(async () => ['github']);
+    await tools.ready?.();
+    await other.ready?.();
+    const call = { toolCallId: 't', title: 'OpenPencil_query_nodes' };
+    assert.strictEqual(tools.call(call).kind, 'mcp');
+    assert.strictEqual(other.call(call).kind, 'other');
+  });
+
+  test('classifies a configured MCP server without losing underscores in its tool name', () => {
+    assert.deepStrictEqual(toToolCall({
+      toolCallId: 't', kind: 'other', title: 'OpenPencil_query_nodes', rawInput: { query: 'frame' },
+    }, ['OpenPencil']), {
+      kind: 'mcp', label: 'query_nodes', server: 'OpenPencil', tool: 'query_nodes', input: { query: 'frame' },
+    });
+  });
+
+  test('uses the longest known server prefix and classifies MCP before input heuristics', () => {
+    assert.deepStrictEqual(toToolCall({
+      toolCallId: 't', kind: 'search', title: 'design_tools_query_nodes', rawInput: { todos: [] },
+    }, ['design', 'design_tools']), {
+      kind: 'mcp', label: 'query_nodes', server: 'design_tools', tool: 'query_nodes', input: { todos: [] },
+    });
+  });
+
   test('an execute call carries the command and cwd', () => {
     assert.deepStrictEqual(
       toToolCall(frames.updates.bashToolCallInProgress as unknown as AcpToolCall), {
@@ -251,6 +277,15 @@ suite('opencode toToolCall', () => {
 });
 
 suite('opencode toToolOutput', () => {
+  test('an MCP call with todos input retains its server output', async () => {
+    const tools = createOpenCodeTools(async () => ['OpenPencil']);
+    await tools.ready?.();
+    assert.deepStrictEqual(tools.output({
+      toolCallId: 't', title: 'OpenPencil_update', rawInput: { todos: [] },
+      content: [{ type: 'content', content: { type: 'text', text: 'Updated' } }],
+    }), { kind: 'text', text: 'Updated' });
+  });
+
   test('text content becomes text output', () => {
     assert.deepStrictEqual(
       toToolOutput(frames.updates.bashToolCallCompleted as unknown as AcpToolCall),

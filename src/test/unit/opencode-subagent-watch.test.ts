@@ -2,6 +2,7 @@ import * as assert from 'node:assert/strict';
 import { suite, test } from 'mocha';
 import { SubagentWatch, type SubagentSdk } from '../../providers/opencode/subagent-watch';
 import type { AgentEvent } from '../../providers/types';
+import { createOpenCodeTools } from '../../providers/opencode/map-tools';
 
 /** A scripted `SubagentSdk` — feeds a fixed event list, records `permission.reply` calls. */
 function fakeSdk(payloads: unknown[]): { sdk: SubagentSdk; replies: unknown[] } {
@@ -41,6 +42,32 @@ async function settle(): Promise<void> {
 }
 
 suite('SubagentWatch', () => {
+  test('a pending child MCP call uses the run’s server catalog', async () => {
+    const tools = createOpenCodeTools(async () => ['OpenPencil']);
+    await tools.ready?.();
+    const { sdk } = fakeSdk([{
+      type: 'message.part.updated', properties: {
+        sessionID: 'child', part: {
+          type: 'tool', callID: 'call', tool: 'OpenPencil_query_nodes',
+          state: { status: 'pending', input: {}, raw: '' },
+        },
+      },
+    }]);
+    const watch = new SubagentWatch({ tools, connect: async () => sdk });
+    watch.setRootSessionId('root');
+    watch.setParentToolCallId('child', 'task');
+    watch.open('http://x', 't');
+    try {
+      const [event] = await collect(watch.events, 1);
+      assert.strictEqual(event.kind, 'tool-start');
+      if (event.kind === 'tool-start') {
+        assert.deepStrictEqual(event.tool, {
+          kind: 'mcp', label: 'query_nodes', server: 'OpenPencil', tool: 'query_nodes',
+        });
+      }
+    } finally { watch.close(); }
+  });
+
   test('context queries target this run’s root session and cwd, not a child', async () => {
     const { sdk } = fakeSdk([]);
     let asked: unknown;
