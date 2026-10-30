@@ -11,7 +11,7 @@ export function registerContextUsageTool(mcp: McpServer, { sessionManager, calle
       title: 'How full is a session\'s context window',
       description: 'Marcode-specific: returns how much of the context window a session has used, as a '
         + '`percent`, plus `usedTokens`/`windowTokens` when the provider reports them. With no `name` it '
-        + 'measures YOU — call it during long work to decide when to wrap up or hand off before the '
+        + 'measures YOU — call it during long work to decide when to wrap up before the '
         + 'window runs out. Measured live when the provider allows, so it can lag by up to one model '
         + 'call; `stale: true` means the live query failed mid-turn and the figure is from the end of '
         + 'the previous turn, so the real value is higher. Unrelated to any built-in context command. '

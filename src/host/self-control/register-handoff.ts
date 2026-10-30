@@ -13,8 +13,9 @@ export function registerHandoffTool(mcp: McpServer, { sessionManager, caller }: 
     'marcode__handoff',
     {
       title: 'Hand this session off to a fresh one',
-      description: 'Marcode-specific: moves your work to a brand-new session when your context is nearly '
-        + 'full (see marcode__get_context_usage). Summarizes THIS conversation first, then creates a new '
+      description: 'Marcode-specific: moves your work to a brand-new session. Call it ONLY when the user '
+        + 'explicitly asks for a handoff (or to continue in a fresh session) — never on your own initiative, '
+        + 'not even when your context is filling up. Summarizes THIS conversation first, then creates a new '
         + 'top-level session with the same provider, model, effort, mode and working directory, whose first '
         + 'prompt is that summary plus your optional `note`, and opens it in a pane. The new session\'s '
         + 'parent is you. Your own session is closed shortly after this call returns, so finish or commit '
