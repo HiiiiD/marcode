@@ -720,6 +720,7 @@ export class SessionManager implements SessionSink {
     mode: PermissionMode = 'default',
     worktree?: { branch: string; base?: string },
     includeEditorContext = true,
+    parentId?: SessionId,
   ): Promise<AgentSession> {
     const provider = this.providers.get(providerId);
     if (!provider) { throw new Error(`Unknown provider: ${providerId}`); }
@@ -777,6 +778,7 @@ export class SessionManager implements SessionSink {
       id: newSessionId(), providerId, model: pinnedModelId(chosen), effort: resolvedEffort,
       title: 'Untitled', name: this.defaultName(providerId), cwd: resolvedCwd, status: 'idle', permissionMode: resolvedMode,
       includeEditorContext,
+      ...(parentId ? { parentId } : {}),
       resumeTokens: {},
       createdAt: now, updatedAt: now,
     };

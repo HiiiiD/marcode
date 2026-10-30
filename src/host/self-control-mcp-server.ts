@@ -11,6 +11,7 @@ import type { EffortLevel, SelfControlMcpConfig } from '../providers/types';
 import { rankByQuery } from '../shared/fuzzy-score';
 import { registerCollaboratorsTool } from './self-control/register-collaborators';
 import { registerContextUsageTool } from './self-control/register-context-usage';
+import { registerHandoffTool } from './self-control/register-handoff';
 import { openPane, resolveSpawn, sendPrompt } from './self-control/spawn-support';
 
 /**
@@ -40,7 +41,7 @@ export interface SessionManagerLike {
   }[];
   create(
     providerId: string, cwd: string, model?: string, effort?: EffortLevel, mode?: PermissionMode,
-    worktree?: undefined, includeEditorContext?: boolean,
+    worktree?: undefined, includeEditorContext?: boolean, parentId?: string,
   ): Promise<{ state: { id: string; name: string } }>;
   setVisible(ids: string[]): Promise<void>;
   /** Shows the session in a pane: visible set and split layout. Falls back to `setVisible` when absent. */
@@ -53,6 +54,8 @@ export interface SessionManagerLike {
     permissionMode: PermissionMode; status: string; cwd: string;
     includeEditorContext?: boolean;
     owner?: { host: string; pid: number };
+    parentId?: string;
+    backgroundTasks?: number;
   }[];
   /** Leased by another Marcode host: this window can read it but not run it. */
   isForeign?(id: string): boolean;
@@ -85,6 +88,8 @@ export interface SessionManagerLike {
    * Hides (or discards, if empty/untitled) the target session's pane and indexes it. See `marcode__close_session`.
    */
   close(id: string): Promise<void>;
+  /** A digest of the session as prompt text, summarizer first; undefined when none can be produced. */
+  handoffSummary?(id: string): Promise<{ title: string; text: string } | undefined>;
   /** The live context measurement, falling back to the last recorded one. Absent in minimal fakes. */
   contextBreakdown?(id: string): Promise<ContextResult>;
 }
@@ -142,7 +147,7 @@ export class SelfControlMcpServer {
         + 'OpenCode) and a different working directory. These marcode__* tools are how you interact '
         + 'with the panel itself, not with files or the user directly: marcode__list_sessions to see '
         + 'who else is running, marcode__send_message to message another session, marcode__spawn_session '
-        + 'to start a new one (marcode__list_models finds the provider/model ids it accepts), marcode__spawn_collaborators to start a whole team on one working tree, marcode__get_context_usage to see how full your context window is, marcode__close_session to close one (e.g. a worker you spawned once it '
+        + 'to start a new one (marcode__list_models finds the provider/model ids it accepts), marcode__spawn_collaborators to start a whole team on one working tree, marcode__get_context_usage to see how full your context window is, marcode__handoff to move to a fresh session when the user asks for a handoff, marcode__close_session to close one (e.g. a worker you spawned once it '
         + `has reported back)${recallClause}. Check marcode__list_sessions whenever coordinating with, or delegating `
         + 'to, another session would help — do not assume you are alone just because nothing mentioned '
         + 'these tools yet.',
@@ -156,6 +161,7 @@ export class SelfControlMcpServer {
 
     registerCollaboratorsTool(mcp, { sessionManager: this.sessionManager, caller });
     registerContextUsageTool(mcp, { sessionManager: this.sessionManager, caller });
+    registerHandoffTool(mcp, { sessionManager: this.sessionManager, caller });
 
     mcp.registerTool(
       'marcode__list_models',
@@ -231,7 +237,7 @@ export class SelfControlMcpServer {
         if (!resolved.ok) { return { isError: true, content: [{ type: 'text', text: resolved.error }] }; }
         const s = resolved.spawn;
         try {
-          const session = await this.sessionManager.create(s.providerId, s.cwd, s.model, s.effort, s.mode, undefined, s.includeEditorContext);
+          const session = await this.sessionManager.create(s.providerId, s.cwd, s.model, s.effort, s.mode, undefined, s.includeEditorContext, caller()?.id);
           sendPrompt(session, prompt);
           await openPane(this.sessionManager, session.state.id);
           return { content: [{ type: 'text', text: JSON.stringify({ sessionId: session.state.name }) }] };
@@ -313,16 +319,20 @@ export class SelfControlMcpServer {
           + 'a list of files, tabs, or anything editor-related, and not the same thing as a generic '
           + '"ListAgents"/"list my teammates" harness tool, which lists your own harness\'s agents, '
           + 'not the sessions in this VS Code panel. Your own entry is marked "self": true — call '
-          + 'this to find out your own name.',
+          + 'this to find out your own name. The session that spawned you is marked "parent": true, '
+          + 'with "paneClosed": true when its pane is closed (it cannot receive messages then).',
         inputSchema: z.object({}),
       },
       async () => {
         const visible = new Set(this.sessionManager.visibleIds());
-        const sessions = this.sessionManager.summaries()
-          .filter((s) => visible.has(s.id) || s.id === sid)
+        const all = this.sessionManager.summaries();
+        const parentId = sid ? all.find((s) => s.id === sid)?.parentId : undefined;
+        const sessions = all
+          .filter((s) => visible.has(s.id) || s.id === sid || s.id === parentId)
           .map((s) => ({
             name: s.name, providerId: s.providerId, status: s.status, cwd: s.cwd,
             ...(s.id === sid ? { self: true } : {}),
+            ...(s.id === parentId ? { parent: true, ...(visible.has(s.id) ? {} : { paneClosed: true }) } : {}),
           }));
         return { content: [{ type: 'text', text: JSON.stringify(sessions) }] };
       },
