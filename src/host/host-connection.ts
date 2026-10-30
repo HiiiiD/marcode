@@ -15,6 +15,8 @@ import type { HostConnection, SurfaceLink } from './surface-link';
 export interface HostConnectionDeps {
   workspaceDir: string;
   marcodeHome?: string;
+  /** `MARCODE_NO_DAEMON` forces the in-process host, so a dev build never attaches to an installed daemon. */
+  env?: NodeJS.ProcessEnv;
   config: HostConfig;
   roots: () => string[];
   defaultCwd: string;
@@ -58,7 +60,7 @@ export async function openHostConnection(deps: HostConnectionDeps): Promise<Host
   const attachmentsBaseDir = path.join(deps.workspaceDir, 'attachments');
   let fallbackNotice: string | undefined;
 
-  if (deps.config.daemon.enabled) {
+  if (deps.config.daemon.enabled && !(deps.env ?? process.env).MARCODE_NO_DAEMON) {
     const options: OptionsFor = (kind, first) => ({
       workspaceDir: deps.workspaceDir, clientKind: kind, roots: deps.roots(), defaultCwd: deps.defaultCwd,
       identity: { protocolVersion: PROTOCOL_VERSION, appVersion: APP_VERSION },

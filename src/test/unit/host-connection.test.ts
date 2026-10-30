@@ -50,6 +50,18 @@ suite('host connection', () => {
     spawn: async () => {}, ...over,
   });
 
+  test('MARCODE_NO_DAEMON runs in-process without asking the daemon client, and without a notice', async () => {
+    let asked = false;
+    const conn = await openHostConnection(deps({
+      env: { MARCODE_NO_DAEMON: '1' },
+      connectOrSpawn: async (): Promise<ConnectResult> => { asked = true; throw new Error('must not connect'); },
+    }));
+    assert.strictEqual(conn.mode, 'in-process');
+    assert.strictEqual(asked, false);
+    assert.strictEqual(conn.fallbackNotice === undefined, true);
+    await conn.dispose();
+  });
+
   test('attached: daemon mode, later surfaces connect without the first-attach policies', async () => {
     const calls: ConnectOptions[] = [];
     const clients: FakeClient[] = [];
