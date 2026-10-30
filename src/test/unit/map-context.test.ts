@@ -44,6 +44,34 @@ suite('map-context', () => {
     assert.deepStrictEqual(breakdown.raw, { totalTokens: 5, maxTokens: 0 });
   });
 
+  test('reads the Claude Code categories, so a bloated messageBreakdown cannot inflate usage', () => {
+    // A real resumed session: 312K in the window, while messageBreakdown counts tool results at 1.4M.
+    const breakdown = toContextBreakdown({
+      totalTokens: 312_246, maxTokens: 1_000_000,
+      memoryFiles: [{ path: '/repo/CLAUDE.md', type: 'project', tokens: 2_520 }],
+      messageBreakdown: {
+        toolCallTokens: 45_965, toolResultTokens: 1_436_162, attachmentTokens: 46_218,
+        assistantMessageTokens: 85_238, userMessageTokens: 1_260,
+        redirectedContextTokens: 0, unattributedTokens: 0,
+      },
+      categories: [
+        { id: 'system_prompt', tokens: 142, kind: 'used' },
+        { id: 'system_tools', tokens: 5_681, kind: 'used' },
+        { id: 'system_tools_deferred', tokens: 13_427, kind: 'deferred' },
+        { id: 'memory_files', tokens: 2_520, kind: 'used' },
+        { id: 'skills', tokens: 9_930, kind: 'used' },
+        { id: 'messages', tokens: 293_973, kind: 'used' },
+        { id: 'autocompact_buffer', tokens: 33_000, kind: 'buffer' },
+        { id: 'free_space', tokens: 654_754, kind: 'free' },
+      ],
+    });
+    assert.deepStrictEqual(
+      [breakdown.systemPercent, breakdown.memoryPercent, breakdown.conversationPercent, breakdown.freePercent],
+      [2, 0, 29, 69],
+    );
+    assert.strictEqual(breakdown.usedTokens, 312_246);
+  });
+
   test('the four slices always sum to 100', () => {
     const breakdown = toContextBreakdown({
       totalTokens: 33_333, maxTokens: 100_000, memoryFiles: [], messageBreakdown: undefined,

@@ -13,6 +13,8 @@ export interface ContextUsageLike {
   rawMaxTokens?: number;
   isAutoCompactEnabled?: boolean;
   autoCompactThreshold?: number;
+  /** Claude Code's own `/context` rows. Absent from a CLI that predates them. */
+  categories?: { id?: string; tokens: number; kind?: string }[];
   memoryFiles: { path: string; type?: string; tokens: number }[];
   messageBreakdown?: {
     toolCallTokens: number;
@@ -81,8 +83,26 @@ export function toContextBreakdown(res: ContextUsageLike): ContextBreakdown {
   };
 }
 
-function mapBreakdown(res: ContextUsageLike): ContextBreakdown {
-  const max = res.maxTokens;
+/**
+ * Claude Code's own rows: they sum to `totalTokens`, so the slices cannot disagree with it. The
+ * `messageBreakdown` below does not: it counts tool results at their pre-trim size (a 312K session
+ * breaks down to 1.7M) and memory files twice.
+ */
+function fromCategories(categories: NonNullable<ContextUsageLike['categories']>) {
+  let systemTokens = 0;
+  let memoryTokens = 0;
+  let conversationTokens = 0;
+  for (const c of categories) {
+    if (c.kind !== 'used') { continue; }
+    if (c.id === 'memory_files') { memoryTokens += c.tokens; }
+    else if (c.id === 'messages') { conversationTokens += c.tokens; }
+    else { systemTokens += c.tokens; }
+  }
+  return { systemTokens, memoryTokens, conversationTokens };
+}
+
+/** For a CLI with no `categories`: whatever the total holds beyond memory and messages is system prompt and tools. */
+function fromBreakdown(res: ContextUsageLike) {
   const memoryTokens = res.memoryFiles.reduce((sum, f) => sum + f.tokens, 0);
   const m = res.messageBreakdown;
   const conversationTokens = m
@@ -90,10 +110,14 @@ function mapBreakdown(res: ContextUsageLike): ContextBreakdown {
       + m.assistantMessageTokens + m.userMessageTokens
       + m.redirectedContextTokens + m.unattributedTokens
     : 0;
-  // Whatever the SDK counts in the total but does not attribute to memory
-  // or messages is the system prompt and its tool definitions — the one
-  // slice the spec folds together.
-  const systemTokens = Math.max(0, res.totalTokens - memoryTokens - conversationTokens);
+  return { systemTokens: Math.max(0, res.totalTokens - memoryTokens - conversationTokens), memoryTokens, conversationTokens };
+}
+
+function mapBreakdown(res: ContextUsageLike): ContextBreakdown {
+  const max = res.maxTokens;
+  const { systemTokens, memoryTokens, conversationTokens } = res.categories
+    ? fromCategories(res.categories)
+    : fromBreakdown(res);
   const base = systemTokens + memoryTokens + conversationTokens;
 
   // No usable window size (or nothing attributed yet): every share is
