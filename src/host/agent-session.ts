@@ -1380,7 +1380,11 @@ export class AgentSession {
     const current = this.compactionItem;
     this.compactionItem = undefined;
     if (current?.state !== 'running') { return; }
-    this.replaceItem({ ...current, state: 'done' });
+    // Claude emits a boundary before the turn ends whenever a compaction finishes; ACP backends have no
+    // separate completion event, so for them the turn ending is the completion.
+    this.replaceItem(this.state.providerId === 'claude'
+      ? { ...current, state: 'failed', error: 'Compaction did not finish before the turn ended.' }
+      : { ...current, state: 'done' });
     void this.scheduleFlush();
   }
 

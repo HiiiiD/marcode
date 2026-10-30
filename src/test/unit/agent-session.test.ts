@@ -1894,4 +1894,18 @@ suite('AgentSession compaction', () => {
     assert.strictEqual((card as { state: string }).state, 'done');
     await session.dispose();
   });
+
+  test('on Claude a turn ending mid-compaction is a failed card, since a finished one always emits a boundary first', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mar-session-'));
+    const provider = new FakeProvider(() => [
+      { kind: 'compaction', state: 'started' },
+      { kind: 'turn-end', reason: 'done' },
+    ]);
+    const session = new AgentSession({ ...baseState(), providerId: 'claude' }, provider, new TranscriptStore(dir), new RecordingSink());
+    session.send('hello');
+    await settle();
+    const card = (await session.snapshot()).items.find((i) => i.role === 'compaction') as { state: string; error?: string };
+    assert.deepStrictEqual([card.state, card.error === undefined], ['failed', false]);
+    await session.dispose();
+  });
 });

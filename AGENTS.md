@@ -272,7 +272,7 @@ These are not style preferences. Breaking one breaks the design.
   (`usedTokens` / `windowTokens` on `ContextBreakdown`): a percentage cannot say which
   window it is a percentage of, and 17% of 258k and 17% of 1M are the same reading of very
   different sessions. It is quoted once, as the bar's caption, and providers report both
-  fields or neither. Everywhere else tokens stay inside the mappers
+  fields or neither. `ContextBreakdown.raw` carries the provider's unmapped numbers for `marcode__get_context_usage` only; no client renders it. Everywhere else tokens stay inside the mappers
   (`src/providers/claude/map-context.ts`, `src/providers/codex/map-usage.ts`).
 - **Plan usage is pulled, never read off `rate_limit_event`.** That event carries no
   utilization at steady state — only `status` is required — so a strip built on it renders
