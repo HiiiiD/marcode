@@ -258,6 +258,18 @@ export interface ContextBreakdown {
    */
   usedTokens?: number;
   windowTokens?: number;
+  /**
+   * The provider's own context numbers, unmapped and unclamped. Diagnostic only:
+   * read by `marcode__get_context_usage` to tell a wrong ring from a session that
+   * is genuinely over its window. No client renders it.
+   */
+  raw?: {
+    totalTokens: number;
+    maxTokens: number;
+    rawMaxTokens?: number;
+    autoCompactEnabled?: boolean;
+    autoCompactThreshold?: number;
+  };
 }
 
 /**

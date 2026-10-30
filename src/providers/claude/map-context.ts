@@ -10,6 +10,9 @@ import type { ContextBreakdown, UsageWindow } from '../types';
 export interface ContextUsageLike {
   totalTokens: number;
   maxTokens: number;
+  rawMaxTokens?: number;
+  isAutoCompactEnabled?: boolean;
+  autoCompactThreshold?: number;
   memoryFiles: { path: string; type?: string; tokens: number }[];
   messageBreakdown?: {
     toolCallTokens: number;
@@ -66,6 +69,19 @@ function largestRemainder(weights: number[], base: number, total: number): numbe
  * underlying token counts round.
  */
 export function toContextBreakdown(res: ContextUsageLike): ContextBreakdown {
+  return {
+    ...mapBreakdown(res),
+    raw: {
+      totalTokens: res.totalTokens,
+      maxTokens: res.maxTokens,
+      ...(res.rawMaxTokens !== undefined ? { rawMaxTokens: res.rawMaxTokens } : {}),
+      ...(res.isAutoCompactEnabled !== undefined ? { autoCompactEnabled: res.isAutoCompactEnabled } : {}),
+      ...(res.autoCompactThreshold !== undefined ? { autoCompactThreshold: res.autoCompactThreshold } : {}),
+    },
+  };
+}
+
+function mapBreakdown(res: ContextUsageLike): ContextBreakdown {
   const max = res.maxTokens;
   const memoryTokens = res.memoryFiles.reduce((sum, f) => sum + f.tokens, 0);
   const m = res.messageBreakdown;

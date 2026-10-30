@@ -14,7 +14,7 @@ export function registerContextUsageTool(mcp: McpServer, { sessionManager, calle
         + 'measures YOU — call it during long work to decide when to wrap up before the '
         + 'window runs out. Measured live when the provider allows, so it can lag by up to one model '
         + 'call; `stale: true` means the live query failed mid-turn and the figure is from the end of '
-        + 'the previous turn, so the real value is higher. Unrelated to any built-in context command. '
+        + 'the previous turn, so the real value is higher. `raw` is the unmapped provider numbers (total vs window tokens, autocompact flag and threshold) for checking the percent. Unrelated to any built-in context command. '
         + 'Pass `name` (from marcode__list_sessions) to check a teammate instead.',
       inputSchema: z.object({
         name: z.string().optional().describe('Another session\'s name. Omit to measure yourself.'),
@@ -40,6 +40,7 @@ export function registerContextUsageTool(mcp: McpServer, { sessionManager, calle
         ...(b.usedTokens !== undefined && b.windowTokens !== undefined
           ? { usedTokens: b.usedTokens, windowTokens: b.windowTokens } : {}),
         ...(res.stale ? { stale: true } : {}),
+        ...(b.raw ? { raw: b.raw } : {}),
       };
       return { content: [{ type: 'text' as const, text: JSON.stringify(out) }] };
     },
