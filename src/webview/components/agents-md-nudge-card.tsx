@@ -4,7 +4,7 @@ import { useStore } from '../store';
 
 const ACTION_LABEL: Record<'migrate' | 'add-stub', string> = {
   migrate: 'Migrate',
-  'add-stub': 'Add stub',
+  'add-stub': 'Add CLAUDE.md',
 };
 
 /**
@@ -41,7 +41,7 @@ export function AgentsMdNudgeCard() {
     <div className="mx-2 mt-2 rounded border-2 border-border bg-muted/40 p-2 text-xs">
       <div className="mb-1 flex items-baseline justify-between gap-2">
         <span className="font-medium">
-          {hits.length} file{hits.length === 1 ? '' : 's'} could use AGENTS.md
+          Agent instruction setup
         </span>
         <div className="flex items-baseline gap-2">
           <Button
@@ -50,7 +50,7 @@ export function AgentsMdNudgeCard() {
             className="h-auto shrink-0 px-1 py-0 text-xs"
             onClick={() => dispatch('migrate', hits.map((h) => h.dir))}
           >
-            Migrate all
+            Apply all
           </Button>
           <Button
             variant="ghost"
@@ -78,6 +78,7 @@ export function AgentsMdNudgeCard() {
                   size="sm"
                   className="h-auto px-1 py-0 text-xs"
                   disabled={busy}
+                  title={hit.kind === 'add-stub' ? 'Create CLAUDE.md containing @AGENTS.md so Claude reads the existing instructions' : undefined}
                   onClick={() => dispatch('migrate', [hit.dir])}
                 >
                   {ACTION_LABEL[hit.kind]}

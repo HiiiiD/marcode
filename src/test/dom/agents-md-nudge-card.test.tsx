@@ -25,7 +25,7 @@ suite('AgentsMdNudgeCard', () => {
 
     assert.strictEqual(screen.getByText('pkg-a').tagName, 'SPAN');
     assert.strictEqual(screen.getByRole('button', { name: 'Migrate' }).tagName, 'BUTTON');
-    assert.strictEqual(screen.getByRole('button', { name: 'Add stub' }).tagName, 'BUTTON');
+    assert.strictEqual(screen.getByRole('button', { name: 'Add CLAUDE.md' }).tagName, 'BUTTON');
   });
 
   test('clicking a row action posts agents-md-nudge-action for just that dir', async () => {
@@ -41,14 +41,14 @@ suite('AgentsMdNudgeCard', () => {
     assert.deepStrictEqual(msg, { t: 'agents-md-nudge-action', action: 'migrate', dirs: ['pkg-a'] });
   });
 
-  test('migrate all posts every listed dir', async () => {
+  test('apply all posts every listed dir', async () => {
     renderWithStore(<AgentsMdNudgeCard />);
     sendFromHost({
       t: 'agents-md-nudge',
       hits: [{ dir: 'pkg-a', kind: 'migrate' }, { dir: 'pkg-b', kind: 'add-stub' }],
     });
 
-    await userEvent.click(screen.getByRole('button', { name: 'Migrate all' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Apply all' }));
 
     const msg = posted().find((m) => m.t === 'agents-md-nudge-action');
     assert.deepStrictEqual(
