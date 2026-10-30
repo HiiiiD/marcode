@@ -49,7 +49,7 @@ export function registerCollaboratorsTool(mcp: McpServer, { sessionManager, call
       const created: { id: string; name: string; session: unknown }[] = [];
       try {
         for (const s of plans) {
-          const session = await sessionManager.create(s.providerId, s.cwd, s.model, s.effort, s.mode, undefined, s.includeEditorContext);
+          const session = await sessionManager.create(s.providerId, s.cwd, s.model, s.effort, s.mode, undefined, s.includeEditorContext, caller()?.id);
           created.push({ id: session.state.id, name: session.state.name, session });
         }
       } catch (err) {

@@ -215,6 +215,8 @@ export interface SessionState {
    * stripped before the index is written.
    */
   owner?: { host: 'vscode' | 'tui' | 'daemon'; pid: number };
+  /** The session that spawned this one via a self-control tool; absent for user-created sessions. */
+  parentId?: SessionId;
   cwd: string;
   status: SessionStatus;
   /**

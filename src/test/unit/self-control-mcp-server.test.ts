@@ -655,6 +655,42 @@ suite('SelfControlMcpServer cross-session messaging', () => {
     await server.dispose();
   });
 
+  test('marcode__list_sessions marks the callers parent, and flags it when its pane is closed', async () => {
+    const summaries = () => [
+      { id: 's-parent', name: 'p', providerId: 'claude', status: 'idle', cwd: '/w' } as never,
+      { id: 's-child', name: 'c', providerId: 'claude', status: 'idle', cwd: '/w', parentId: 's-parent' } as never,
+    ];
+    const open = trackedServer(fakeManager({ summaries, visibleIds: () => ['s-parent', 's-child'] }));
+    const openList = JSON.parse((await callToolAs(await open.start(), 's-child', 'marcode__list_sessions', {})).content[0].text) as
+      { name: string; parent?: boolean; paneClosed?: boolean }[];
+    assert.deepStrictEqual(openList.map((s) => [s.name, s.parent ?? false, s.paneClosed ?? false]), [['p', true, false], ['c', false, false]]);
+
+    const closed = trackedServer(fakeManager({ summaries, visibleIds: () => ['s-child'] }));
+    const closedList = JSON.parse((await callToolAs(await closed.start(), 's-child', 'marcode__list_sessions', {})).content[0].text) as
+      { name: string; parent?: boolean; paneClosed?: boolean }[];
+    assert.deepStrictEqual(closedList.map((s) => [s.name, s.parent ?? false, s.paneClosed ?? false]), [['p', true, true], ['c', false, false]]);
+  });
+
+  test('marcode__list_sessions omits a parent that no longer exists', async () => {
+    const server = trackedServer(fakeManager({
+      summaries: () => [{ id: 's-child', name: 'c', providerId: 'claude', status: 'idle', cwd: '/w', parentId: 'gone' } as never],
+      visibleIds: () => ['s-child'],
+    }));
+    const list = JSON.parse((await callToolAs(await server.start(), 's-child', 'marcode__list_sessions', {})).content[0].text) as { name: string }[];
+    assert.deepStrictEqual(list.map((s) => s.name), ['c']);
+  });
+
+  test('spawn_session records the caller as the new sessions parent', async () => {
+    let parent: unknown;
+    const server = trackedServer(fakeManager({
+      summaries: () => [{ id: 's-caller', name: 'a', providerId: 'claude', model: 'sonnet', status: 'idle', cwd: '/w', permissionMode: 'default' } as never],
+      create: async (...args: unknown[]) => { parent = args[7]; return { state: { id: 's-new', name: 'claude-new' } }; },
+    }));
+    const result = await callToolAs(await server.start(), 's-caller', 'marcode__spawn_session', { cwd: path.resolve('/w'), prompt: 'hi' });
+    assert.strictEqual(result.isError, undefined);
+    assert.strictEqual(parent, 's-caller');
+  });
+
   test('send_message resolves the caller from sid, delivers to the named target without interrupting', async () => {
     let interrupted = false;
     let sent: unknown[] = [];

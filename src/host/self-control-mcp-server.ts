@@ -40,7 +40,7 @@ export interface SessionManagerLike {
   }[];
   create(
     providerId: string, cwd: string, model?: string, effort?: EffortLevel, mode?: PermissionMode,
-    worktree?: undefined, includeEditorContext?: boolean,
+    worktree?: undefined, includeEditorContext?: boolean, parentId?: string,
   ): Promise<{ state: { id: string; name: string } }>;
   setVisible(ids: string[]): Promise<void>;
   /** Shows the session in a pane: visible set and split layout. Falls back to `setVisible` when absent. */
@@ -53,6 +53,7 @@ export interface SessionManagerLike {
     permissionMode: PermissionMode; status: string; cwd: string;
     includeEditorContext?: boolean;
     owner?: { host: string; pid: number };
+    parentId?: string;
   }[];
   /** Leased by another Marcode host: this window can read it but not run it. */
   isForeign?(id: string): boolean;
@@ -231,7 +232,7 @@ export class SelfControlMcpServer {
         if (!resolved.ok) { return { isError: true, content: [{ type: 'text', text: resolved.error }] }; }
         const s = resolved.spawn;
         try {
-          const session = await this.sessionManager.create(s.providerId, s.cwd, s.model, s.effort, s.mode, undefined, s.includeEditorContext);
+          const session = await this.sessionManager.create(s.providerId, s.cwd, s.model, s.effort, s.mode, undefined, s.includeEditorContext, caller()?.id);
           sendPrompt(session, prompt);
           await openPane(this.sessionManager, session.state.id);
           return { content: [{ type: 'text', text: JSON.stringify({ sessionId: session.state.name }) }] };
@@ -313,16 +314,20 @@ export class SelfControlMcpServer {
           + 'a list of files, tabs, or anything editor-related, and not the same thing as a generic '
           + '"ListAgents"/"list my teammates" harness tool, which lists your own harness\'s agents, '
           + 'not the sessions in this VS Code panel. Your own entry is marked "self": true — call '
-          + 'this to find out your own name.',
+          + 'this to find out your own name. The session that spawned you is marked "parent": true, '
+          + 'with "paneClosed": true when its pane is closed (it cannot receive messages then).',
         inputSchema: z.object({}),
       },
       async () => {
         const visible = new Set(this.sessionManager.visibleIds());
-        const sessions = this.sessionManager.summaries()
-          .filter((s) => visible.has(s.id) || s.id === sid)
+        const all = this.sessionManager.summaries();
+        const parentId = sid ? all.find((s) => s.id === sid)?.parentId : undefined;
+        const sessions = all
+          .filter((s) => visible.has(s.id) || s.id === sid || s.id === parentId)
           .map((s) => ({
             name: s.name, providerId: s.providerId, status: s.status, cwd: s.cwd,
             ...(s.id === sid ? { self: true } : {}),
+            ...(s.id === parentId ? { parent: true, ...(visible.has(s.id) ? {} : { paneClosed: true }) } : {}),
           }));
         return { content: [{ type: 'text', text: JSON.stringify(sessions) }] };
       },
