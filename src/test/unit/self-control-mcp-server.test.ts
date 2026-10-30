@@ -691,6 +691,70 @@ suite('SelfControlMcpServer cross-session messaging', () => {
     assert.strictEqual(parent, 's-caller');
   });
 
+  suite('marcode__handoff', () => {
+    const caller = { id: 's-old', name: 'old', providerId: 'claude', model: 'sonnet', status: 'running', cwd: path.resolve('/w'), permissionMode: 'default' };
+    const until = async (cond: () => boolean) => {
+      for (let i = 0; i < 60 && !cond(); i++) { await new Promise((r) => setTimeout(r, 100)); }
+    };
+
+    test('summarizes, spawns a child of the caller with the summary, opens it, then closes the caller', async () => {
+      const calls: string[] = [];
+      let sentPrompt = '';
+      let parent: unknown;
+      const server = trackedServer(fakeManager({
+        summaries: () => [caller as never],
+        handoffSummary: async () => ({ title: 'Old work', text: 'DIGEST-TEXT' }),
+        create: async (...args: unknown[]) => {
+          parent = args[7];
+          return { state: { id: 's-new', name: 'claude-new' }, send: (t: string) => { sentPrompt = t; } } as never;
+        },
+        setVisible: async () => { calls.push('open'); },
+        close: async (id: string) => { calls.push(`close:${id}`); },
+      }));
+      const result = await callToolAs(await server.start(), 's-old', 'marcode__handoff', { note: 'finish the tests' });
+      assert.strictEqual(result.isError, undefined);
+      assert.strictEqual(JSON.parse(result.content[0].text).sessionId, 'claude-new');
+      assert.strictEqual(parent, 's-old');
+      assert.strictEqual(sentPrompt.includes('DIGEST-TEXT') && sentPrompt.includes('finish the tests'), true);
+      assert.deepStrictEqual(calls, ['open']);
+      await until(() => calls.length > 1);
+      assert.deepStrictEqual(calls, ['open', 'close:s-old']);
+    });
+
+    test('refuses, and keeps the session, when no summary can be produced', async () => {
+      let created = false;
+      let closed = false;
+      const server = trackedServer(fakeManager({
+        summaries: () => [caller as never],
+        handoffSummary: async () => undefined,
+        create: async () => { created = true; return { state: { id: 'x', name: 'x' } }; },
+        close: async () => { closed = true; },
+      }));
+      const result = await callToolAs(await server.start(), 's-old', 'marcode__handoff', {});
+      assert.strictEqual(result.isError, true);
+      await new Promise((r) => setTimeout(r, 300));
+      assert.deepStrictEqual([created, closed], [false, false]);
+    });
+
+    test('refuses while background tasks or subagents are still running', async () => {
+      let created = false;
+      const server = trackedServer(fakeManager({
+        summaries: () => [{ ...caller, backgroundTasks: 2 } as never],
+        handoffSummary: async () => ({ title: 't', text: 'x' }),
+        create: async () => { created = true; return { state: { id: 'x', name: 'x' } }; },
+      }));
+      const result = await callToolAs(await server.start(), 's-old', 'marcode__handoff', {});
+      assert.strictEqual(result.isError, true);
+      assert.strictEqual(created, false);
+    });
+
+    test('refuses when the caller cannot be identified', async () => {
+      const server = trackedServer(fakeManager({ handoffSummary: async () => ({ title: 't', text: 'x' }) }));
+      const result = await callTool(await server.start(), 'marcode__handoff', {});
+      assert.strictEqual(result.isError, true);
+    });
+  });
+
   test('send_message resolves the caller from sid, delivers to the named target without interrupting', async () => {
     let interrupted = false;
     let sent: unknown[] = [];
