@@ -18,6 +18,9 @@
 				"--extensionDevelopmentPath=${workspaceFolder}",
 				"--disable-extensions"
 			],
+			// Shares ~/.marcode (so the same sessions) but runs the host in-process: otherwise the dev host attaches to
+			// the installed extension's daemon and runs its code. Close a session's pane in the installed window to free it.
+			"env": { "MARCODE_NO_DAEMON": "1" },
 			"outFiles": [
 				"${workspaceFolder}/dist/**/*.js"
 			],
@@ -35,6 +38,9 @@
 				"--extensionDevelopmentPath=${workspaceFolder}",
 				"--disable-extensions"
 			],
+			// Shares ~/.marcode (so the same sessions) but runs the host in-process: otherwise the dev host attaches to
+			// the installed extension's daemon and runs its code. Close a session's pane in the installed window to free it.
+			"env": { "MARCODE_NO_DAEMON": "1" },
 			"outFiles": [
 				"${workspaceFolder}/dist/**/*.js"
 			]
