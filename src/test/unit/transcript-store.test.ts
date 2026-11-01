@@ -22,6 +22,23 @@ suite('TranscriptStore', () => {
     await fs.rm(dir, { recursive: true, force: true });
   });
 
+  test('an item appended while the first load is in flight is not lost from the cache', async () => {
+    const loading = store.tail('s1');
+    store.append('s1', item('first', 'prompt'));
+    await loading;
+    store.append('s1', item('later', 'reply'));
+    const { items } = await store.tail('s1');
+    assert.deepStrictEqual(items.map((i) => i.id), ['first', 'later']);
+  });
+
+  test('a load that overlaps the first flush still sees the flushed item', async () => {
+    store.append('s1', item('first', 'prompt'));
+    const flushing = store.flush('s1');
+    const { items } = await store.tail('s1');
+    await flushing;
+    assert.deepStrictEqual(items.map((i) => i.id), ['first']);
+  });
+
   test('round-trips appended items through disk', async () => {
     store.append('s1', item('a', 'one'));
     store.append('s1', item('b', 'two'));
