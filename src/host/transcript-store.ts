@@ -81,6 +81,9 @@ export class TranscriptStore {
   private chains = new Map<SessionId, Promise<void>>();
 
   private foreign = new Set<SessionId>();
+  private loading = new Map<SessionId, Promise<TranscriptItem[]>>();
+  // Taken out of `pending` but not yet on disk: a read racing the append would otherwise miss them.
+  private writing = new Map<SessionId, TranscriptItem[]>();
 
   constructor(private readonly rootDir: string, private readonly layoutHost: string = 'vscode') {}
 
@@ -120,7 +123,16 @@ export class TranscriptStore {
   private async ensureLoaded(id: SessionId, opts: { dropTornTail?: boolean } = {}): Promise<TranscriptItem[]> {
     const cached = this.cache.get(id);
     if (cached) { return cached; }
+    if (opts.dropTornTail) { return this.loadFromDisk(id, opts); }
+    // Two concurrent cold loads would each cache their own array, and appends pushed into the first would vanish.
+    const inFlight = this.loading.get(id);
+    if (inFlight) { return inFlight; }
+    const load = this.loadFromDisk(id, opts).finally(() => { this.loading.delete(id); });
+    this.loading.set(id, load);
+    return load;
+  }
 
+  private async loadFromDisk(id: SessionId, opts: { dropTornTail?: boolean }): Promise<TranscriptItem[]> {
     let items: TranscriptItem[] = [];
     let skipped = 0;
     try {
@@ -160,6 +172,10 @@ export class TranscriptStore {
         role: 'error',
         message: `${skipped} unreadable transcript ${skipped === 1 ? 'line was' : 'lines were'} skipped (the file was damaged, most likely by an interrupted write).`,
       });
+    }
+    // append() reaches only `pending` while nothing is cached, so anything added during the read is merged here.
+    for (const q of [...(this.writing.get(id) ?? []), ...(this.pending.get(id) ?? [])]) {
+      if (!items.some((i) => i.id === q.id)) { items.push(q); }
     }
     const reps = this.replacements.get(id);
     if (reps) {
