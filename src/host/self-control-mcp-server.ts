@@ -233,7 +233,8 @@ export class SelfControlMcpServer {
           + 'failing, whether requested explicitly or only inherited. `mode: "bypass"` is always '
           + 'rejected, even when only inherited from a bypass-mode caller — inheritance falls back '
           + 'to the provider default in that case instead of failing. The new session is opened in '
-          + 'a pane. Returns the new session\'s id.',
+          + 'a pane. Returns the new session\'s id. For a bounded task whose answer you want back inline, '
+          + 'use marcode__spawn_subagent instead.',
         inputSchema: z.object({
                   provider: z.string().optional().describe('A provider id from this window\'s catalog. Omit to inherit the caller\'s provider.'),
                   model: z.string().optional().describe('A model id the chosen provider offers (see marcode__list_models). Omit to inherit the caller\'s model.'),
