@@ -1,0 +1,122 @@
+import type { AgentSession } from '../agent-session';
+import type { AgentEvent } from '../../providers/types';
+import { mirrorId } from './mirror-ids';
+
+export interface SubagentResult { ok: boolean; text: string; sessionId: string }
+
+export const EMPTY_REPLY = '(subagent finished with no output)';
+
+interface BridgeOptions {
+  parent: AgentSession;
+  child: AgentSession;
+  cardId: string;
+  prompt: string;
+  background?: boolean;
+}
+
+/** Mirrors one hosted child's events into its parent as a nested `subagent` card. */
+export class SubagentBridge {
+  private readonly parent: AgentSession;
+  private readonly child: AgentSession;
+  private readonly cardId: string;
+  private readonly prompt: string;
+  private readonly background: boolean;
+  private reply = '';
+  private settled = false;
+  private readonly openRequests = new Set<string>();
+  private resolveResult!: (r: SubagentResult) => void;
+  private readonly done = new Promise<SubagentResult>((resolve) => { this.resolveResult = resolve; });
+
+  constructor(o: BridgeOptions) {
+    this.parent = o.parent;
+    this.child = o.child;
+    this.cardId = o.cardId;
+    this.prompt = o.prompt;
+    this.background = o.background ?? false;
+  }
+
+  result(): Promise<SubagentResult> { return this.done; }
+
+  start(): void {
+    const { name, model } = this.child.state;
+    this.parent.ingestNested({
+      kind: 'tool-start', id: this.cardId,
+      tool: {
+        kind: 'subagent', label: 'Subagent', action: 'spawn', agent: name, model,
+        prompt: this.prompt, background: this.background,
+      },
+    });
+    this.child.setTap((event) => this.onChildEvent(event));
+    this.child.send(this.prompt);
+  }
+
+  cancel(): void {
+    if (this.settled) { return; }
+    void this.child.interrupt();
+    this.finish(false, 'Subagent cancelled');
+  }
+
+  private onChildEvent(event: AgentEvent): void {
+    if (this.settled) { return; }
+    const parentId = this.cardId;
+    const id = (raw: string) => mirrorId(this.child.state.id, raw);
+    switch (event.kind) {
+      case 'text':
+        this.reply += event.delta;
+        return;
+      case 'tool-start':
+        this.reply = '';
+        this.parent.ingestNested({ ...event, id: id(event.id), parentId });
+        return;
+      case 'tool-update':
+      case 'tool-end':
+        this.parent.ingestNested({ ...event, id: id(event.id), parentId });
+        return;
+      case 'permission': {
+        const mirrored = id(event.id);
+        this.openRequests.add(mirrored);
+        this.parent.ingestNested({ ...event, id: mirrored, parentId }, {
+          onDecision: (decision) => {
+            this.openRequests.delete(mirrored);
+            this.child.respondToPermission(event.id, decision);
+          },
+        });
+        return;
+      }
+      case 'question': {
+        const mirrored = id(event.id);
+        this.openRequests.add(mirrored);
+        this.parent.ingestNested({ ...event, id: mirrored }, {
+          onAnswer: (answers) => {
+            this.openRequests.delete(mirrored);
+            this.child.answerQuestion(event.id, answers);
+          },
+        });
+        return;
+      }
+      case 'request-cancelled':
+        this.openRequests.delete(id(event.id));
+        this.parent.ingestNested({ ...event, id: id(event.id) });
+        return;
+      case 'turn-end':
+        if (event.reason === 'done') { this.finish(true, this.reply.trim() || EMPTY_REPLY); }
+        else if (event.reason === 'interrupted') { this.finish(false, 'Subagent interrupted'); }
+        else { this.finish(false, event.error ?? 'Subagent failed'); }
+        return;
+      default:
+        return;
+    }
+  }
+
+  private finish(ok: boolean, text: string): void {
+    if (this.settled) { return; }
+    this.settled = true;
+    this.child.setTap(undefined);
+    for (const mirrored of this.openRequests) {
+      this.parent.ingestNested({ kind: 'request-cancelled', id: mirrored });
+    }
+    this.openRequests.clear();
+    this.parent.ingestNested({ kind: 'tool-end', id: this.cardId, ok, output: { kind: 'text', text } });
+    this.resolveResult({ ok, text, sessionId: this.child.state.name });
+  }
+}

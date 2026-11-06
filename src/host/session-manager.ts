@@ -41,6 +41,7 @@ import type {
 } from '../protocol/messages';
 import { withTimeout } from '../shared/with-timeout';
 import { McpService } from './mcp/mcp-service';
+import type { ResolvedSpawn } from './self-control/spawn-support';
 import { DEFAULT_SHELL_ALIASES, type ShellAliasTable } from './shell/shell-aliases';
 
 let counter = 0;
@@ -803,6 +804,14 @@ export class SessionManager implements SessionSink {
     this.changed();
     if (worktreeError) { void session.noteError(worktreeError); }
     return session;
+  }
+
+  /** A hidden child session owned by `parent`'s turn; it never gets a pane unless promoted. */
+  createSubagent(parent: SessionId, spec: ResolvedSpawn): Promise<AgentSession> {
+    return this.create(
+      spec.providerId, spec.cwd, spec.model, spec.effort, spec.mode, undefined,
+      spec.includeEditorContext ?? true, parent, 'subagent',
+    );
   }
 
   /**

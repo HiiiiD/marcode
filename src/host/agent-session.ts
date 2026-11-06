@@ -710,6 +710,7 @@ export class AgentSession {
    * own `'cancelled'` state.
    */
   private settleRequest(requestId: string, state: 'cancelled'): void {
+    this.delegates.delete(requestId);
     if (this.pending.delete(requestId)) {
       const existing = this.permissionItems.get(requestId);
       if (existing && existing.role === 'permission') {
@@ -1508,6 +1509,7 @@ export class AgentSession {
   isShellRunning(itemId: string): boolean { return this.shell.isRunning(itemId); }
 
   private fail(message: string): void {
+    this.tap?.({ kind: 'turn-end', reason: 'error', error: message });
     this.turnActive = false;
     this.appendItem({ id: nextId('e'), ts: Date.now(), role: 'error', message });
     this.setStatus('error');
