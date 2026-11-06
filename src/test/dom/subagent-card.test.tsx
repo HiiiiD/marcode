@@ -3,7 +3,7 @@ import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { SubagentCard } from '@/components/subagent-card';
 import { StoreProvider } from '@/store';
-import { renderWithStore, resetHost } from './harness';
+import { posted, renderWithStore, resetHost } from './harness';
 import type { TranscriptItem } from '../../protocol/messages';
 
 type ToolItem = Extract<TranscriptItem, { role: 'tool' }>;
@@ -155,5 +155,26 @@ suite('SubagentCard', () => {
         `nested scrolling would break the pane's MessageScroller: ${cls}`,
       );
     }
+  });
+});
+
+suite('SubagentCard hosted child', () => {
+  setup(() => { resetHost(); });
+
+  const hosted = (sessionId?: string) => subagent([], {
+    tool: { kind: 'subagent', label: 'Subagent', action: 'spawn', agent: 'claude-ab12', ...(sessionId ? { childSessionId: sessionId } : {}) },
+  });
+
+  test('a hosted subagent offers to open it as its own session', async () => {
+    renderWithStore(<SubagentCard item={hosted('s-child')} sessionId="s1" />);
+    await userEvent.click(screen.getByRole('button', { expanded: false }));
+    await userEvent.click(screen.getByRole('button', { name: /open as session/i }));
+    assert.deepStrictEqual(posted().filter((m) => m.t === 'promote-subagent'), [{ t: 'promote-subagent', id: 's-child' }]);
+  });
+
+  test('a vendor subagent has nothing to promote', async () => {
+    renderWithStore(<SubagentCard item={hosted()} sessionId="s1" />);
+    await userEvent.click(screen.getByRole('button', { expanded: false }));
+    assert.strictEqual(screen.queryAllByRole('button', { name: /open as session/i }).length, 0);
   });
 });

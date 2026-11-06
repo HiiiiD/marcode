@@ -7,11 +7,16 @@ import { z } from 'zod';
 import { digestText } from '../memory/digest';
 import type { MemoryStore } from '../memory/types';
 import type { ContextResult, PermissionMode, TranscriptItem } from '../protocol/messages';
-import type { EffortLevel, SelfControlMcpConfig } from '../providers/types';
+import type { ToolCall } from '../providers/canonical/tool-call';
+import type { EffortLevel, PermissionMeta, SelfControlMcpConfig, ToolDecision } from '../providers/types';
 import { rankByQuery } from '../shared/fuzzy-score';
 import { registerCollaboratorsTool } from './self-control/register-collaborators';
 import { registerContextUsageTool } from './self-control/register-context-usage';
 import { registerHandoffTool } from './self-control/register-handoff';
+import { gateSpawn } from './subagent/host-approval';
+import { registerAwaitSubagentTool } from './self-control/register-await-subagent';
+import { familyOf } from './self-control/family';
+import type { SubagentService } from './subagent/subagent-service';
 import { buildSpawnPreamble } from './self-control/spawn-preamble';
 import { openPane, resolveSpawn, sendPrompt } from './self-control/spawn-support';
 
@@ -26,6 +31,7 @@ type LiveSessionLike = {
   interrupt(): Promise<void>;
   send(text: string, context?: unknown, refs?: unknown, fileRefs?: unknown,
     from?: { sessionId: string; name: string }): void;
+  requestHostApproval?(tool: ToolCall, meta?: PermissionMeta): Promise<ToolDecision>;
 } | undefined;
 
 export interface SessionManagerLike {
@@ -50,14 +56,19 @@ export interface SessionManagerLike {
   /** The folder `marcode__recall` is scoped to for this caller; absent means unscoped. */
   recallRoot?(sid: string): string | undefined;
   /** Every session's addressable identity — see `marcode__list_sessions`. */
-  summaries(): {
+  summaries(opts?: { includeSubagents?: boolean }): {
     id: string; name: string; providerId: string; model: string; effort?: EffortLevel;
     permissionMode: PermissionMode; status: string; cwd: string;
     includeEditorContext?: boolean;
     owner?: { host: string; pid: number };
     parentId?: string;
+    kind?: string;
     backgroundTasks?: number;
   }[];
+  /** One session by id, subagents included; falls back to `summaries()` when absent. */
+  lookup?(id: string): ReturnType<SessionManagerLike['summaries']>[number] | undefined;
+  /** Hosted children that run inside a caller's conversation; absent in minimal fakes. */
+  subagents?: Pick<SubagentService, 'runBackground' | 'awaitResult' | 'prepare' | 'start' | 'discard'>;
   /** Leased by another Marcode host: this window can read it but not run it. */
   isForeign?(id: string): boolean;
   /** The ids of sessions with an open pane right now — see `marcode__list_sessions`. */
@@ -94,6 +105,10 @@ export interface SessionManagerLike {
   /** The live context measurement, falling back to the last recorded one. Absent in minimal fakes. */
   contextBreakdown?(id: string): Promise<ContextResult>;
 }
+
+const NESTED_DESCRIPTION = 'Run it nested inside this conversation instead of in its own pane: no pane, it shows as a card here, '
+  + 'its approvals are answered here, it closes when it finishes, and this call returns at once. Its reply arrives as a message '
+  + 'that starts your next turn, so you can end your turn and wait, or call marcode__await_subagent.';
 
 const PORT_ATTEMPTS = 5;
 /** Ephemeral port range; low enough to avoid the small set of IANA-reserved ports. */
@@ -157,12 +172,13 @@ export class SelfControlMcpServer {
     /** The calling session's own name, resolved from `sid` — undefined if `sid` is missing or stale. */
     const caller = () => {
       if (!sid) { return undefined; }
-      return this.sessionManager.summaries().find((s) => s.id === sid);
+      return this.sessionManager.lookup?.(sid) ?? this.sessionManager.summaries().find((s) => s.id === sid);
     };
 
     registerCollaboratorsTool(mcp, { sessionManager: this.sessionManager, caller });
     registerContextUsageTool(mcp, { sessionManager: this.sessionManager, caller });
     registerHandoffTool(mcp, { sessionManager: this.sessionManager, caller });
+    registerAwaitSubagentTool(mcp, { sessionManager: this.sessionManager, caller });
 
     mcp.registerTool(
       'marcode__list_models',
@@ -223,7 +239,7 @@ export class SelfControlMcpServer {
           + 'failing, whether requested explicitly or only inherited. `mode: "bypass"` is always '
           + 'rejected, even when only inherited from a bypass-mode caller — inheritance falls back '
           + 'to the provider default in that case instead of failing. The new session is opened in '
-          + 'a pane. Returns the new session\'s id.',
+          + 'a pane. Returns the new session\'s id. With `nested: true` it runs inside this conversation instead of a pane: see that option.',
         inputSchema: z.object({
                   provider: z.string().optional().describe('A provider id from this window\'s catalog. Omit to inherit the caller\'s provider.'),
                   model: z.string().optional().describe('A model id the chosen provider offers (see marcode__list_models). Omit to inherit the caller\'s model.'),
@@ -232,11 +248,22 @@ export class SelfControlMcpServer {
                   mode: z.string().optional().describe('A permission mode id the chosen provider offers. Omit to inherit the caller\'s mode.'),
                   cwd: z.string().describe('Absolute working directory for the new session.'),
                   prompt: z.string().describe('The first message sent to the new session.'),
+                  nested: z.boolean().optional().describe(NESTED_DESCRIPTION),
                 }),
       },
-      async ({ provider, model, effort, mode, cwd, prompt }) => {
+      async ({ provider, model, effort, mode, cwd, prompt, nested }) => {
         const resolved = resolveSpawn(this.sessionManager, caller(), { provider, model, effort, mode, cwd });
         if (!resolved.ok) { return { isError: true, content: [{ type: 'text', text: resolved.error }] }; }
+        const approval = await gateSpawn(this.sessionManager, caller(), resolved, prompt, nested ? 'subagent' : 'session');
+        if (!approval.ok) { return { isError: true, content: [{ type: 'text', text: approval.error }] }; }
+        if (nested) {
+          const from = caller();
+          const service = this.sessionManager.subagents;
+          if (!from || !service) { return { isError: true, content: [{ type: 'text', text: 'Could not identify the calling session.' }] }; }
+          const started = await service.runBackground(from.id, resolved.spawn, prompt);
+          if (!started.ok) { return { isError: true, content: [{ type: 'text', text: started.text }] }; }
+          return { content: [{ type: 'text', text: JSON.stringify({ sessionId: started.sessionId, status: 'running', nested: true }) }] };
+        }
         const s = resolved.spawn;
         try {
           const session = await this.sessionManager.create(s.providerId, s.cwd, s.model, s.effort, s.mode, undefined, s.includeEditorContext, caller()?.id);
@@ -328,15 +355,26 @@ export class SelfControlMcpServer {
       },
       async () => {
         const visible = new Set(this.sessionManager.visibleIds());
+        const everyone = this.sessionManager.summaries({ includeSubagents: true });
         const all = this.sessionManager.summaries();
-        const parentId = sid ? all.find((s) => s.id === sid)?.parentId : undefined;
-        const sessions = all
+        const me = sid ? everyone.find((s) => s.id === sid) : undefined;
+        const parentId = me?.parentId;
+        const shown = all
           .filter((s) => visible.has(s.id) || s.id === sid || s.id === parentId)
           .map((s) => ({
             name: s.name, providerId: s.providerId, status: s.status, cwd: s.cwd,
             ...(s.id === sid ? { self: true } : {}),
             ...(s.id === parentId ? { parent: true, ...(visible.has(s.id) ? {} : { paneClosed: true }) } : {}),
           }));
+        const family = me ? familyOf(everyone, me) : { children: [], siblings: [] };
+        const live = async (list: typeof everyone, flag: 'child' | 'sibling') => (await Promise.all(
+          list.map(async (s) => ((await this.sessionManager.get(s.id)) ? {
+            name: s.name, providerId: s.providerId, status: s.status, cwd: s.cwd, [flag]: true,
+          } : undefined)),
+        )).filter((s) => s !== undefined);
+        const own = me?.kind === 'subagent' && !shown.some((s) => 'self' in s)
+          ? [{ name: me.name, providerId: me.providerId, status: me.status, cwd: me.cwd, self: true }] : [];
+        const sessions = [...shown, ...own, ...await live(family.children, 'child'), ...await live(family.siblings, 'sibling')];
         return { content: [{ type: 'text', text: JSON.stringify(sessions) }] };
       },
     );
@@ -350,7 +388,7 @@ export class SelfControlMcpServer {
           + 'if the target is mid-turn the message is queued and handled after the current turn. If your harness also offers a generic "SendMessage"/"message another '
           + 'agent" tool, that one is unrelated — it addresses your own harness\'s agents, not the '
           + 'sessions in this VS Code panel; use marcode__send_message for those. This is not a '
-          + 'message to yourself, the user, or a subagent of this conversation. Get the target name '
+          + 'message to yourself or the user. You can also reach the nested sessions you started and, if you are one, your siblings. Get the target name '
           + 'from marcode__list_sessions first. Delivery is immediate and does not wait for a reply '
           + '— a reply, if any, is that session calling marcode__send_message back.',
         inputSchema: z.object({
@@ -369,8 +407,10 @@ export class SelfControlMcpServer {
         if (to.toLowerCase() === from.name.toLowerCase()) {
           return { isError: true, content: [{ type: 'text', text: 'Cannot send a message to yourself.' }] };
         }
+        const family = familyOf(this.sessionManager.summaries({ includeSubagents: true }), from);
         const target = this.sessionManager.summaries()
-          .find((s) => s.name.toLowerCase() === to.toLowerCase() && this.sessionManager.visibleIds().includes(s.id));
+          .find((s) => s.name.toLowerCase() === to.toLowerCase() && this.sessionManager.visibleIds().includes(s.id))
+          ?? [...family.children, ...family.siblings].find((s) => s.name.toLowerCase() === to.toLowerCase());
         if (!target) {
           return { isError: true, content: [{ type: 'text', text: `Unknown session: ${to}` }] };
         }

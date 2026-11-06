@@ -18,6 +18,7 @@ import { closeSession } from "./layout-tree";
 import { usePaneDrag } from "./pane-drag-context";
 import { PinButton } from "./pin-button";
 import { StatusBadge } from "./status-badge";
+import { SubagentSummary } from "./subagent-summary";
 
 interface SessionHeaderProps {
   pane: PaneState;
@@ -81,6 +82,7 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
   return (
     <div className="flex items-center gap-2 border-b border-border px-2 py-1 text-xs">
       <StatusBadge status={s.status} />
+      <SubagentSummary subagents={s.subagents} />
       {/*
         `h2`, not `h1`: this panel is a view inside VS Code's own document,
         not a page with its own top-level heading. One per pane gives a

@@ -41,6 +41,9 @@ import type {
 } from '../protocol/messages';
 import { withTimeout } from '../shared/with-timeout';
 import { McpService } from './mcp/mcp-service';
+import type { ResolvedSpawn } from './self-control/spawn-support';
+import { focusSession } from './focus-session';
+import { SubagentService } from './subagent/subagent-service';
 import { DEFAULT_SHELL_ALIASES, type ShellAliasTable } from './shell/shell-aliases';
 
 let counter = 0;
@@ -236,7 +239,7 @@ export class SessionManager implements SessionSink {
       this.digests = new DigestService({
         store: this.memory,
         source: {
-          sessions: () => [...this.meta.values()].map((s) => ({
+          sessions: () => [...this.meta.values()].filter((s) => s.kind !== 'subagent').map((s) => ({
             id: s.id, providerId: s.providerId, cwd: s.cwd, title: s.title,
             hidden: !this.visible.has(s.id), updatedAt: s.updatedAt,
           })),
@@ -286,6 +289,7 @@ export class SessionManager implements SessionSink {
     }
     this.paneLayout = index.layout;
     this.knownOnDisk = new Set(index.sessions.map((s) => s.id));
+    await this.sweepOrphanSubagents();
 
     const cache = this.accountCache;
     if (cache && !this.disposed) {
@@ -570,9 +574,14 @@ export class SessionManager implements SessionSink {
     );
   }
 
-  summaries(): SessionSummary[] {
+  summaries(opts?: { includeSubagents?: boolean }): SessionSummary[] {
     return [...this.meta.values()]
+      .filter((s) => opts?.includeSubagents || s.kind !== 'subagent')
       .map((s) => (this.visible.has(s.id) ? { ...s, open: true } : s))
+      .map((s) => {
+        const subagents = this.subagents.counts(s.id);
+        return subagents ? { ...s, subagents } : s;
+      })
       .sort((a, b) => b.updatedAt - a.updatedAt);
   }
 
@@ -586,6 +595,13 @@ export class SessionManager implements SessionSink {
    */
   visibleIds(): SessionId[] {
     return [...this.visible];
+  }
+
+  isSubagent(id: SessionId): boolean { return this.meta.get(id)?.kind === 'subagent'; }
+
+  /** Like `summaries()` for one id, but resolves a subagent too — a child can call the self-control tools. */
+  lookup(id: SessionId): SessionSummary | undefined {
+    return this.summaries({ includeSubagents: true }).find((s) => s.id === id);
   }
 
   /**
@@ -721,6 +737,7 @@ export class SessionManager implements SessionSink {
     worktree?: { branch: string; base?: string },
     includeEditorContext = true,
     parentId?: SessionId,
+    kind?: 'session' | 'subagent',
   ): Promise<AgentSession> {
     const provider = this.providers.get(providerId);
     if (!provider) { throw new Error(`Unknown provider: ${providerId}`); }
@@ -779,6 +796,7 @@ export class SessionManager implements SessionSink {
       title: 'Untitled', name: this.defaultName(providerId), cwd: resolvedCwd, status: 'idle', permissionMode: resolvedMode,
       includeEditorContext,
       ...(parentId ? { parentId } : {}),
+      ...(kind === 'subagent' ? { kind } : {}),
       resumeTokens: {},
       createdAt: now, updatedAt: now,
     };
@@ -793,6 +811,45 @@ export class SessionManager implements SessionSink {
     this.changed();
     if (worktreeError) { void session.noteError(worktreeError); }
     return session;
+  }
+
+  readonly subagents = new SubagentService(this);
+
+  /** Turns a hosted child into an ordinary session (keeping its parent link) and shows it. */
+  async promoteSubagent(id: SessionId): Promise<void> {
+    const state = this.meta.get(id);
+    if (!state) { return; }
+    if (state.kind !== 'subagent') {
+      if (state.parentId) { await focusSession(this, id); }
+      return;
+    }
+    this.subagents.detach(id);
+    await this.subagents.pendingRelease(id);
+    delete state.kind;
+    this.changed();
+    await focusSession(this, id);
+  }
+
+  removeSubagent(id: SessionId): Promise<void> { return this.remove(id); }
+
+  /** Disposes a finished child's live run; its row and JSONL stay so it can be promoted or inspected. */
+  async releaseSubagent(id: SessionId): Promise<void> {
+    this.subagents.cancelSubtree(id);
+    this.subagents.forget(id);
+    const session = this.live.get(id);
+    if (session) { await session.dispose(); this.live.delete(id); }
+    const state = this.meta.get(id);
+    if (state) { state.status = 'idle'; }
+    await this.ownership?.release(id);
+    this.changed();
+  }
+
+  /** A hidden child session owned by `parent`'s turn; it never gets a pane unless promoted. */
+  createSubagent(parent: SessionId, spec: ResolvedSpawn): Promise<AgentSession> {
+    return this.create(
+      spec.providerId, spec.cwd, spec.model, spec.effort, spec.mode, undefined,
+      spec.includeEditorContext ?? true, parent, 'subagent',
+    );
   }
 
   /**
@@ -1081,6 +1138,7 @@ export class SessionManager implements SessionSink {
     id: SessionId, session: AgentSession, state: SessionState, provider: AgentProvider,
     to: string, forgetThreadAt?: string, inPlace = false,
   ): Promise<AgentSession | undefined> {
+    this.subagents.cancelSubtree(id);
     await session.dispose();
     this.live.delete(id);
 
@@ -1423,7 +1481,7 @@ export class SessionManager implements SessionSink {
   private sessionsIn(root: string): SessionId[] {
     const ids: SessionId[] = [];
     for (const state of this.meta.values()) {
-      if (samePath(resolve(state.cwd), root)) { ids.push(state.id); }
+      if (state.kind !== 'subagent' && samePath(resolve(state.cwd), root)) { ids.push(state.id); }
     }
     return ids;
   }
@@ -1811,7 +1869,8 @@ export class SessionManager implements SessionSink {
     return session;
   }
 
-  async setVisible(ids: SessionId[]): Promise<void> {
+  async setVisible(requested: SessionId[]): Promise<void> {
+    const ids = requested.filter((id) => !this.isSubagent(id));
     const next = new Set(ids);
     const added = ids.filter((id) => !this.visible.has(id));
     // Captured before `visible` is replaced: hiding a pane is the *other*
@@ -2037,6 +2096,8 @@ export class SessionManager implements SessionSink {
     // Before the dispose below, which can report a final status: a closed
     // session must not relocate on its way out.
     this.queuedMoves.delete(id);
+    this.subagents.cancelSubtree(id);
+    this.subagents.forget(id);
     const wasForeign = this.isForeign(id);
     if (this.foreign.has(id)) { await this.detachForeign(id); }
     const session = this.live.get(id);
@@ -2062,7 +2123,7 @@ export class SessionManager implements SessionSink {
    * and `DigestService` never rejects, so neither can fail a lifecycle transition.
    */
   private async digestHidden(id: SessionId): Promise<void> {
-    if (!this.digests) { return; }
+    if (!this.digests || this.isSubagent(id)) { return; }
     await this.digests.refresh(id);
     void this.digests.upgrade(id);
   }
@@ -2121,7 +2182,7 @@ export class SessionManager implements SessionSink {
   // Writes `summary` without touching `updatedAt`: that field is both the sort key and this cache's key.
   private async runSummaries(): Promise<void> {
     const stale = [...this.meta.values()].filter(
-      (s) => s.title !== 'Untitled' && s.summary?.forUpdatedAt !== s.updatedAt,
+      (s) => s.kind !== 'subagent' && s.title !== 'Untitled' && s.summary?.forUpdatedAt !== s.updatedAt,
     );
     let touched = false;
     for (const state of stale) {
@@ -2138,8 +2199,20 @@ export class SessionManager implements SessionSink {
     if (touched && !this.disposed) { this.changed(); }
   }
 
+  /** A hosted child outlives nothing: with its parent gone it has no card to belong to. */
+  private async sweepOrphanSubagents(): Promise<void> {
+    const orphans = [...this.meta.values()].filter(
+      (s) => s.kind === 'subagent' && (!s.parentId || !this.meta.has(s.parentId)),
+    );
+    for (const s of orphans) { await this.remove(s.id).catch(() => undefined); }
+  }
+
   async remove(id: SessionId): Promise<void> {
     if (await this.ownedElsewhere(id)) { return; }
+    this.subagents.cancelSubtree(id);
+    for (const child of [...this.meta.values()]) {
+      if (child.kind === 'subagent' && child.parentId === id) { await this.remove(child.id); }
+    }
     await this.hide(id);
     if (this.ownership) { this.deleted.add(id); }
     this.meta.delete(id);
@@ -2175,6 +2248,7 @@ export class SessionManager implements SessionSink {
     if (this.accountTimer) { clearInterval(this.accountTimer); }
     for (const tail of this.foreign.values()) { tail.stop(); }
     this.queuedMoves.clear();
+    for (const id of this.live.keys()) { this.subagents.cancelSubtree(id); }
     const liveSessions = [...this.live.values()];
     await Promise.all(liveSessions.map((s) => s.dispose()));
     this.live.clear();
@@ -2198,7 +2272,7 @@ export class SessionManager implements SessionSink {
   }
 
   status(id: SessionId, status: SessionStatus): void {
-    this.emit({ t: 'session-status', id, status });
+    if (!this.isSubagent(id)) { this.emit({ t: 'session-status', id, status }); }
     if (status === 'idle') { this.drainQueuedMove(id); }
   }
 

@@ -533,6 +533,7 @@ suite('CodexProvider', () => {
         marcode_self_control: {
           url: 'http://127.0.0.1:1/mcp?sid=s-under-test',
           bearer_token_env_var: 'MARCODE_SELF_CONTROL_TOKEN',
+          tool_timeout_sec: 3600,
         },
       },
     });

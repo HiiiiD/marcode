@@ -9,7 +9,7 @@ import type {
   Attachment,
   ContextBreakdown,
   EditorContext,
-  EffortLevel, Invocable, McpControl, PermissionMode, QuestionAnswers, ToolDecision,
+  EffortLevel, Invocable, McpControl, PermissionMeta, PermissionMode, QuestionAnswers, ToolDecision,
   UsageWindow,
 } from '../providers/types';
 import { findModel, resolveEffort } from '../shared/model-catalog';
@@ -132,8 +132,20 @@ function nextId(prefix: string): string {
   return `${prefix}-${Date.now().toString(36)}-${(counter++).toString(36)}`;
 }
 
+/** Where the answer to an ingested (not provider-raised) request goes. */
+export interface NestedDelegate {
+  onDecision?: (decision: ToolDecision) => void;
+  onAnswer?: (answers: QuestionAnswers) => void;
+  onCancel?: () => void;
+}
+
 export class AgentSession {
   private run: AgentRun;
+  private tap: ((event: AgentEvent) => void) | undefined;
+  private readonly delegates = new Map<string, NestedDelegate>();
+  /** The working directory an ingested event's relative paths belong to, while it is being handled. */
+  private ingestCwd: string | undefined;
+  private readonly interruptListeners = new Set<() => void>();
   private readonly builtAt = Date.now();
   private pending = new Map<string, PermissionRequest>();
   private pendingQuestions = new Map<string, QuestionRequest>();
@@ -311,6 +323,9 @@ export class AgentSession {
    * `SessionManager`, which is the only thing that ever supplies one.
    */
   get pendingSeedText(): string | undefined { return this.seed; }
+
+  /** Context handed to the provider with the first send but never written to the transcript. */
+  setSeed(seed: string): void { this.seed = seed; }
 
   /**
    * The assistant item currently being streamed into, if any.
@@ -510,7 +525,15 @@ export class AgentSession {
     }
   }
 
+  /** Called when the user (or a tool) interrupts this session; returns the unsubscribe. */
+  onInterrupt(listener: () => void): () => void {
+    this.interruptListeners.add(listener);
+    return () => { this.interruptListeners.delete(listener); };
+  }
+
   async interrupt(): Promise<void> {
+    for (const listener of [...this.interruptListeners]) { listener(); }
+    this.cancelDelegated();
     try {
       await this.run.interrupt();
     } catch (err) {
@@ -617,8 +640,10 @@ export class AgentSession {
 
   respondToPermission(requestId: string, decision: ToolDecision): void {
     if (!this.pending.delete(requestId)) { return; }
+    const delegate = this.delegates.get(requestId);
+    this.delegates.delete(requestId);
     try {
-      this.run.respondToTool(requestId, decision);
+      if (delegate) { delegate.onDecision?.(decision); } else { this.run.respondToTool(requestId, decision); }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       // The provider rejected the decision, so the request is no longer
@@ -657,7 +682,7 @@ export class AgentSession {
       // just exited it. Only fires while still tracked as 'plan': a stray
       // ExitPlanMode call approved after some other mode switch already
       // happened must not clobber that later, unrelated choice.
-      if (existing.tool.kind === 'plan' && decision.allow && this._state.permissionMode === 'plan') {
+      if (!delegate && existing.tool.kind === 'plan' && decision.allow && this._state.permissionMode === 'plan') {
         this.setPermissionMode('default');
       }
     }
@@ -674,7 +699,9 @@ export class AgentSession {
   answerQuestion(requestId: string, answers: QuestionAnswers): void {
     if (!this.pendingQuestions.delete(requestId)) { return; }
     this.replaceQuestionItem(requestId, 'answered', answers);
-    this.run.respondToQuestion(requestId, answers);
+    const delegate = this.delegates.get(requestId);
+    this.delegates.delete(requestId);
+    if (delegate) { delegate.onAnswer?.(answers); } else { this.run.respondToQuestion(requestId, answers); }
     this.recomputeWaitingStatus();
   }
 
@@ -696,6 +723,7 @@ export class AgentSession {
    * own `'cancelled'` state.
    */
   private settleRequest(requestId: string, state: 'cancelled'): void {
+    this.delegates.delete(requestId);
     if (this.pending.delete(requestId)) {
       const existing = this.permissionItems.get(requestId);
       if (existing && existing.role === 'permission') {
@@ -996,6 +1024,7 @@ export class AgentSession {
     if (this.disposed) { return; }
     this.shell.dispose();
     this.disposed = true;
+    this.cancelDelegated();
     for (const requestId of [...this.pending.keys()]) {
       this.pending.delete(requestId);
       try {
@@ -1034,6 +1063,51 @@ export class AgentSession {
   }
 
   private handle(event: AgentEvent): void {
+    this.handleEvent(event);
+    this.tap?.(event);
+  }
+
+  /** Observe every event after the session has handled it, including ingested ones. */
+  setTap(tap: ((event: AgentEvent) => void) | undefined): void { this.tap = tap; }
+
+  /**
+   * Feeds an event that did not come from this session's own run (a hosted
+   * child's) through the normal handling, so it nests and settles like a
+   * vendor subagent's. A permission or question registers `delegate` as the
+   * place its answer goes.
+   */
+  ingestNested(event: AgentEvent, delegate?: NestedDelegate, cwd?: string): void {
+    if (delegate && (event.kind === 'permission' || event.kind === 'question')) {
+      this.delegates.set(event.id, delegate);
+    }
+    this.ingestCwd = cwd;
+    try { this.handle(event); } finally { this.ingestCwd = undefined; }
+  }
+
+  /** Parks a host-raised request (not a provider's) as a permission card; resolves with the user's decision and never rejects. */
+  requestHostApproval(tool: ToolCall, meta?: PermissionMeta): Promise<ToolDecision> {
+    return new Promise((settle) => {
+      this.ingestNested(
+        { kind: 'permission', id: nextId('ha'), tool, ...(meta ? { meta } : {}) },
+        { onDecision: settle },
+      );
+    });
+  }
+
+  private cancelDelegated(): void {
+    for (const [id, delegate] of [...this.delegates]) {
+      this.delegates.delete(id);
+      if (this.pending.has(id)) {
+        delegate.onDecision?.({ allow: false, reason: 'Turn cancelled' });
+        this.settleRequest(id, 'cancelled');
+      } else if (this.pendingQuestions.has(id)) {
+        delegate.onCancel?.();
+        this.settleRequest(id, 'cancelled');
+      }
+    }
+  }
+
+  private handleEvent(event: AgentEvent): void {
     switch (event.kind) {
       case 'session':
         this._state.resumeTokens[
@@ -1135,7 +1209,7 @@ export class AgentSession {
         // have moved bytes, and a claim is "this session wrote here", not
         // "this session succeeded here". The diff decides what is actually
         // there; a claimed path with no diff is simply never listed.
-        for (const path of claimedPaths(settled.tool, this._state.cwd)) {
+        for (const path of claimedPaths(settled.tool, this.ingestCwd ?? this._state.cwd)) {
           this.claims.add(path);
         }
 
@@ -1459,6 +1533,7 @@ export class AgentSession {
   isShellRunning(itemId: string): boolean { return this.shell.isRunning(itemId); }
 
   private fail(message: string): void {
+    this.tap?.({ kind: 'turn-end', reason: 'error', error: message });
     this.turnActive = false;
     this.appendItem({ id: nextId('e'), ts: Date.now(), role: 'error', message });
     this.setStatus('error');
@@ -1598,6 +1673,8 @@ export class AgentSession {
 
     for (const [toolId, item] of this.toolItems) {
       if (this.childOf.has(toolId) || item.role !== 'tool' || item.state !== 'running') { continue; }
+      // A hosted subagent's own bridge settles its card; ending the parent's turn must not.
+      if (item.tool.kind === 'subagent' && item.tool.childSessionId !== undefined) { continue; }
       const children = this.childrenByParent.get(toolId);
       const settled: TranscriptItem = {
         ...unsettled(item),

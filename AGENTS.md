@@ -123,6 +123,7 @@ router. See `docs/daemon.md`.
 | `src/client-core/shell-command.ts`, `shell-card.ts`, `shell-as-tool.ts`, `running-shell.ts` | `parseShellCommand` (a leading `!`); the adapter that renders a shell item as a "You ran" tool card in both the webview and the TUI; the running command the pinned cancel bar targets |
 | `src/host/self-control-mcp-server.ts` | One loopback HTTP MCP server exposing `marcode__spawn_session` to every session's provider; started at `activate()`, token/url threaded into all three provider constructors |
 | `src/host/self-control/` | The self-control tools' parts: `spawn-support.ts` (`resolveSpawn` shared by `spawn_session` and `spawn_collaborators`), `worker-preamble.ts` (what a collaborator is told), `register-collaborators.ts`, `register-context-usage.ts`, `register-handoff.ts` (`marcode__handoff`: summarize, spawn a child of the caller seeded with the digest, then close the caller) |
+| `src/host/subagent/` | Hosted nested sessions (`nested: true` on `marcode__spawn_session` and `marcode__spawn_collaborators`; `marcode__await_subagent` collects a reply; `self-control/family.ts` lets a nested child, its siblings and its parent message each other): `SubagentService` (owned by `SessionManager`; background-only runs whose reply is delivered to the parent as a message, `awaitResult`, subtree cancel, counts, detach for promote), `SubagentBridge` (taps a child `AgentSession` and re-ingests its events into the parent as one nested `subagent` card, with mirrored request ids from `mirror-ids.ts`), `host-approval.ts` (`gateSpawn`: an explicit `mode: "bypass"` spawn is a host-originated permission card on the caller); `SubagentService.prepare`/`start` split creation from running so a team can learn each other's names first |
 | `src/host/message-router.ts` | `WebviewToHost` → manager calls. No `vscode` import, so it unit-tests. |
 | `src/host/panel-view-provider.ts` | `WebviewViewProvider`; HTML + nonce; transport |
 | `src/host/webview-html.ts` | One CSP and nonce for every webview surface |
@@ -205,7 +206,9 @@ These are not style preferences. Breaking one breaks the design.
   with a transcript item. Nothing rejects across `postMessage`, and no handler leaves an
   unhandled rejection.
 - **Transcript patches fan out only to visible sessions.** `sessions-changed` and
-  `session-status` are ungated.
+  `session-status` are ungated. A hosted subagent (`SessionState.kind === 'subagent'`) is never visible and never in
+  `summaries()`; its events reach clients only through the parent, which ingests them (`AgentSession.ingestNested`)
+  under one card, so approvals are answered on the parent with namespaced request ids.
 - **The webview loads no remote resources.** No CDN scripts, styles, fonts or images.
 - **CSP:** `default-src 'none'`; scripts and styles restricted to `webview.cspSource` plus
   a per-load CSPRNG nonce; `localResourceRoots` pinned to `dist/`.

@@ -153,6 +153,10 @@ export function describeTool(tool: ToolCall): ToolHeader {
         const to = typeof tool.input?.to === 'string' ? tool.input.to : '';
         return header('send', tool.label, `Sent to ${to}`, false);
       }
+      // The nested subagent card below it carries the task and the result; this one is just the call.
+      if (tool.tool === 'marcode__spawn_subagent') {
+        return header('bot', tool.label, 'Delegated to a subagent', false);
+      }
       // The server already has its own chip in `tool-card.tsx`, inches to the
       // left — repeating it here read as `[wrench] github Call tool github ·
       // list_repos` at 300px. The tool name alone is the primary.
@@ -164,6 +168,9 @@ export function describeTool(tool: ToolCall): ToolHeader {
 
     case 'image':
       return header('image', tool.label, tool.note ?? '', false);
+
+    case 'spawn':
+      return header('bot', tool.label, `${tool.mode} session in ${tool.cwd}`, false);
   }
 }
 
@@ -321,6 +328,12 @@ export function describeInput(tool: ToolCall): ToolBlock[] {
 
     case 'image':
       if (tool.note) { blocks.push({ kind: 'note', text: tool.note }); }
+      break;
+
+    case 'spawn':
+      blocks.push({ kind: 'field', label: 'mode', value: tool.mode });
+      blocks.push({ kind: 'path', path: tool.cwd });
+      blocks.push({ kind: 'lines', text: tool.prompt, tone: 'output' });
       break;
   }
 

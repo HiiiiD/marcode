@@ -217,6 +217,10 @@ export interface SessionState {
   owner?: { host: 'vscode' | 'tui' | 'daemon'; pid: number };
   /** The session that spawned this one via a self-control tool; absent for user-created sessions. */
   parentId?: SessionId;
+  /** `'subagent'`: owned by `parentId`'s turn, rendered as a card in the parent, never a roster row or pane. Absent = a normal session. */
+  kind?: 'session' | 'subagent';
+  /** Host-derived while this session has hosted children running; never persisted. */
+  subagents?: { running: number; awaitingApproval: number };
   cwd: string;
   status: SessionStatus;
   /**
@@ -534,6 +538,8 @@ export type WebviewToHost =
    */
   | { t: 'focus-session'; id: SessionId }
   | { t: 'focus-pane'; sessionId: SessionId }
+  /** Turn a hosted subagent into a normal session and show it; `id` is the child. */
+  | { t: 'promote-subagent'; id: SessionId }
   | { t: 'set-pinned'; id: SessionId; pinned: boolean }
   | { t: 'set-draft'; id: SessionId; text: string }
   | { t: 'request-history-summaries' }

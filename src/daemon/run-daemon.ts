@@ -124,7 +124,7 @@ export async function runDaemon(opts: RunDaemonOptions): Promise<RunningDaemon> 
       connectionDeps: {
         token, identity,
         loginRecipes: toLoginRecipesWire(host.loginRecipes),
-        isBusy: () => isBusy(host.manager.summaries()),
+        isBusy: () => isBusy(host.manager.summaries({ includeSubagents: true })),
         makeRouter: (emit, hooks, hello) => visible.scope(new MessageRouter(
           host.manager, emit, hello.defaultCwd, hooks.editor, host.attachments, hooks.picker,
           config.review.pollIntervalMs, hooks.fileSearch, favorites,
@@ -164,7 +164,7 @@ export async function runDaemon(opts: RunDaemonOptions): Promise<RunningDaemon> 
   }
   const live = server;
   monitor = new IdleMonitor({
-    busy: () => isBusy(host.manager.summaries()),
+    busy: () => isBusy(host.manager.summaries({ includeSubagents: true })),
     clients: () => live.clientCount(),
     idleMs: opts.idleMsOverride ?? config.daemon.idleMinutes * 60_000,
     onIdle: () => { log('idle; exiting'); void stop(); },

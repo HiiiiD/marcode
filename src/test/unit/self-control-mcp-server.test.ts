@@ -449,7 +449,7 @@ suite('SelfControlMcpServer', () => {
     await server.dispose();
   });
 
-  test('rejects mode: bypass even when the provider advertises it', async () => {
+  test('refuses mode: bypass when the caller cannot be asked for approval', async () => {
     let created = false;
     const server = trackedServer(fakeManager({
       catalog: () => [

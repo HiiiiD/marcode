@@ -20,7 +20,7 @@ export function registerCollaboratorsTool(mcp: McpServer, { sessionManager, call
         + 'and safe git rules for a shared tree. Workers coordinate shared resources directly with each other '
         + 'via marcode__send_message and message you only for results, blockers or decisions. Workers commit their own '
         + 'files unless `commit` is false; they never push, only you do. Unlike marcode__spawn_session '
-        + 'this is one call for the whole team. Not subagents of this conversation. Before you push, '
+        + 'this is one call for the whole team. Before you push, '
         + 'run `git status` and `git log` to confirm every worker finished and nothing is left dirty.',
       inputSchema: z.object({
         brief: z.string().optional().describe('Shared context and rules for the whole team, given to every worker (e.g. how to take turns on a shared device).'),
@@ -34,9 +34,13 @@ export function registerCollaboratorsTool(mcp: McpServer, { sessionManager, call
           effort: z.enum(['low', 'medium', 'high', 'xhigh', 'max', 'ultra']).optional()
             .describe('Effort level. Omit to inherit yours.'),
         })).min(1).max(MAX_WORKERS),
+        nested: z.boolean().optional().describe(
+          'Run the workers nested inside this conversation (no panes, cards here, approvals answered here, each reply '
+          + 'arrives as a message to you) instead of one pane each. Workers can still message each other and you.',
+        ),
       }),
     },
-    async ({ cwd, brief, workers }) => {
+    async ({ cwd, brief, workers, nested }) => {
       const from = caller();
       if (!from) { return fail('Could not identify the calling session.'); }
       const teamCwd = cwd ?? from.cwd;
@@ -45,6 +49,41 @@ export function registerCollaboratorsTool(mcp: McpServer, { sessionManager, call
         const r = resolveSpawn(sessionManager, from, { ...w, cwd: teamCwd });
         if (!r.ok) { return fail(`workers[${i}]: ${r.error}`); }
         plans.push(r.spawn);
+      }
+      const service = sessionManager.subagents;
+      if (nested) {
+        if (!service) { return fail('Nested workers are not available in this window.'); }
+        const children = [];
+        for (const s of plans) {
+          const prepared = await service.prepare(from.id, s);
+          if (!prepared.ok) {
+            for (const c of children) { await service.discard(c.state.id); }
+            return fail(prepared.text);
+          }
+          children.push(prepared.child);
+        }
+        const members = children.map((c, i) => ({ name: c.state.name, task: workers[i].task }));
+        for (const [i, c] of children.entries()) {
+          service.start(from.id, c, workers[i].task, buildWorkerPreamble({
+            lead: from.name,
+            self: members[i],
+            siblings: members.filter((_, j) => j !== i),
+            scope: workers[i].scope,
+            brief,
+            commit: workers[i].commit !== false,
+            nested: true,
+          }));
+        }
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              workers: members.map((t) => ({ sessionId: t.name, task: t.task })),
+              nested: true,
+              note: 'Each worker\'s reply arrives as a message. Before pushing, run git status and git log.',
+            }),
+          }],
+        };
       }
       const created: { id: string; name: string; session: unknown }[] = [];
       try {

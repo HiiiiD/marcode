@@ -12,6 +12,7 @@ import {
   formatElapsed, isBackgroundDispatch, subagentLabel, subagentStateLabel, summarizeSubagent,
   windowChildren,
 } from '../../client-core/subagent-window';
+import { useStore } from '../store';
 import { useOpenSubagentTranscript } from './subagent-drill-in-context';
 import type { SessionId, TranscriptItem } from '../../protocol/messages';
 
@@ -22,6 +23,8 @@ export function SubagentCard({ item, sessionId }: { item: ToolItem; sessionId: S
   const [open, setOpen] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const openTranscript = useOpenSubagentTranscript();
+  const { post } = useStore();
+  const hostedId = item.tool.kind === 'subagent' ? item.tool.childSessionId : undefined;
 
   // A collapsed card must still tick: a row reading "12 tools · 34s" is not
   // a hang, and a static row is. One interval per running card, cleared the
@@ -114,17 +117,26 @@ export function SubagentCard({ item, sessionId }: { item: ToolItem; sessionId: S
               {children.length > shown.length && (
                 <p>showing last {shown.length} of {children.length}</p>
               )}
-              <Button
-                variant="ghost"
-                size="sm"
-                className={cn(
-                  'h-6 px-2 text-xs font-normal',
-                  children.length <= shown.length && 'ml-auto',
+              <div className={cn('flex items-center gap-1', children.length <= shown.length && 'ml-auto')}>
+                {hostedId && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 px-2 text-xs font-normal"
+                    onClick={() => post({ t: 'promote-subagent', id: hostedId })}
+                  >
+                    Open as session
+                  </Button>
                 )}
-                onClick={() => openTranscript(item.id)}
-              >
-                Open full transcript
-              </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 px-2 text-xs font-normal"
+                  onClick={() => openTranscript(item.id)}
+                >
+                  Open full transcript
+                </Button>
+              </div>
             </div>
             <div className={cn('flex flex-col gap-1')}>
               {shown.map((child) =>

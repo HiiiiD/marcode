@@ -45,6 +45,8 @@ export type ToolCall =
   | { kind: 'subagent'; label: string; action: 'spawn' | 'message' | 'collect';
       agent?: string; model?: string; isolation?: string; target?: string;
       summary?: string; prompt?: string; fields?: Field[];
+      /** Set only for a Marcode-hosted child: the session id `promote-subagent` takes. */
+      childSessionId?: string;
       // A `spawn` dispatched with `run_in_background: true` settles almost
       // immediately with a "launched" acknowledgement — its actual tool
       // activity happens in a separate spawned session/process this host
@@ -64,6 +66,8 @@ export type ToolCall =
   | { kind: 'mcp'; label: string; server: string; tool: string;
       input?: Record<string, unknown> }
   | { kind: 'image'; label: string; note?: string }
+  // A host-raised request to create a session: it has no provider tool behind it.
+  | { kind: 'spawn'; label: string; cwd: string; mode: string; prompt: string }
   | { kind: 'other'; label: string; fields?: Field[]; raw: unknown };
 
 /**
