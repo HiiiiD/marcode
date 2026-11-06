@@ -6,6 +6,8 @@ import { Separator } from '@/components/ui/separator';
 import { Slider } from '@/components/ui/slider';
 import { fillShapeKeepingOverflow, gridDims, gridLayout, leafSessionIds } from './layout-tree';
 import { MAX_GRID_DIM } from '../../client-core/layout-apply';
+import { rearrange } from '../../client-core/auto-grid';
+import { MIN_PANE } from '../min-pane';
 import { BUILTIN_PRESETS, shapeMatches } from '../../client-core/layout-presets';
 import { LayoutGridPreview } from './layout-grid-preview';
 import { LayoutOverflowDialog } from './layout-overflow-dialog';
@@ -57,6 +59,16 @@ export function LayoutMenu() {
           <LayoutGridPreview rows={rows} cols={cols} filled={openIds.length} />
           <Button size="sm" onClick={() => request(gridLayout(rows, cols, openIds))}>Apply</Button>
         </div>
+        <Separator />
+        <Button
+          variant="ghost"
+          size="sm"
+          className="justify-start"
+          disabled={openIds.length < 2}
+          onClick={() => commit(rearrange(state.layout.root, { width: window.innerWidth, height: window.innerHeight }, MIN_PANE))}
+        >
+          Auto arrange
+        </Button>
         <Separator />
         <div className="flex flex-col gap-0.5">
           {BUILTIN_PRESETS.map((preset) => (

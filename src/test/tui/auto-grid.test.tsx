@@ -60,10 +60,11 @@ test('the host offering a rearrange shows a hint that ^W a accepts', async () =>
   expect(ids(root).length).toBe(3);
 });
 
-test('without an offer ^W a does nothing to the layout', async () => {
+test('without an offer ^W a still regrids the panes', async () => {
   await boot(CUSTOM, ['s1', 's2', 's3']);
-  const before = layouts().length;
   await m!.press('w', { ctrl: true });
   await m!.press('a');
-  expect(layouts().length).toBe(before);
+  const root = layouts().at(-1) as LayoutNode;
+  expect(gridDims(root) !== undefined).toBe(true);
+  expect(ids(root).length).toBe(3);
 });

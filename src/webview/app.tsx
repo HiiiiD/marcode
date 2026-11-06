@@ -12,8 +12,7 @@ import { assignAt, leafSessionIds } from './components/layout-tree';
 import { reconcilePaneLayout, rosterSessionIds } from './components/pane-layout';
 import { UsageStrip } from './components/usage-strip';
 import { useStore } from './store';
-
-const MIN_PANE = { width: 320, height: 200 };
+import { MIN_PANE } from './min-pane';
 
 export function App() {
   const { state, post, setPendingSlot, dismissRearrange } = useStore();
