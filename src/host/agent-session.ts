@@ -143,6 +143,7 @@ export class AgentSession {
   private run: AgentRun;
   private tap: ((event: AgentEvent) => void) | undefined;
   private readonly delegates = new Map<string, NestedDelegate>();
+  private readonly interruptListeners = new Set<() => void>();
   private readonly builtAt = Date.now();
   private pending = new Map<string, PermissionRequest>();
   private pendingQuestions = new Map<string, QuestionRequest>();
@@ -519,7 +520,14 @@ export class AgentSession {
     }
   }
 
+  /** Called when the user (or a tool) interrupts this session; returns the unsubscribe. */
+  onInterrupt(listener: () => void): () => void {
+    this.interruptListeners.add(listener);
+    return () => { this.interruptListeners.delete(listener); };
+  }
+
   async interrupt(): Promise<void> {
+    for (const listener of [...this.interruptListeners]) { listener(); }
     this.cancelDelegated();
     try {
       await this.run.interrupt();

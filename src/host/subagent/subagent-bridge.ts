@@ -11,6 +11,8 @@ interface BridgeOptions {
   child: AgentSession;
   cardId: string;
   prompt: string;
+  /** What the child is actually sent, when it differs from the prompt shown on the card. */
+  message?: string;
   background?: boolean;
 }
 
@@ -20,6 +22,7 @@ export class SubagentBridge {
   private readonly child: AgentSession;
   private readonly cardId: string;
   private readonly prompt: string;
+  private readonly message: string;
   private readonly background: boolean;
   private reply = '';
   private settled = false;
@@ -32,6 +35,7 @@ export class SubagentBridge {
     this.child = o.child;
     this.cardId = o.cardId;
     this.prompt = o.prompt;
+    this.message = o.message ?? o.prompt;
     this.background = o.background ?? false;
   }
 
@@ -47,7 +51,7 @@ export class SubagentBridge {
       },
     });
     this.child.setTap((event) => this.onChildEvent(event));
-    this.child.send(this.prompt);
+    this.child.send(this.message);
   }
 
   cancel(): void {

@@ -42,6 +42,7 @@ import type {
 import { withTimeout } from '../shared/with-timeout';
 import { McpService } from './mcp/mcp-service';
 import type { ResolvedSpawn } from './self-control/spawn-support';
+import { SubagentService } from './subagent/subagent-service';
 import { DEFAULT_SHELL_ALIASES, type ShellAliasTable } from './shell/shell-aliases';
 
 let counter = 0;
@@ -804,6 +805,18 @@ export class SessionManager implements SessionSink {
     this.changed();
     if (worktreeError) { void session.noteError(worktreeError); }
     return session;
+  }
+
+  readonly subagents = new SubagentService(this);
+
+  /** Disposes a finished child's live run; its row and JSONL stay so it can be promoted or inspected. */
+  async releaseSubagent(id: SessionId): Promise<void> {
+    const session = this.live.get(id);
+    if (session) { await session.dispose(); this.live.delete(id); }
+    const state = this.meta.get(id);
+    if (state) { state.status = 'idle'; }
+    await this.ownership?.release(id);
+    this.changed();
   }
 
   /** A hidden child session owned by `parent`'s turn; it never gets a pane unless promoted. */
@@ -2057,6 +2070,7 @@ export class SessionManager implements SessionSink {
     // Before the dispose below, which can report a final status: a closed
     // session must not relocate on its way out.
     this.queuedMoves.delete(id);
+    this.subagents.cancelSubtree(id);
     const wasForeign = this.isForeign(id);
     if (this.foreign.has(id)) { await this.detachForeign(id); }
     const session = this.live.get(id);
@@ -2195,6 +2209,7 @@ export class SessionManager implements SessionSink {
     if (this.accountTimer) { clearInterval(this.accountTimer); }
     for (const tail of this.foreign.values()) { tail.stop(); }
     this.queuedMoves.clear();
+    for (const id of this.live.keys()) { this.subagents.cancelSubtree(id); }
     const liveSessions = [...this.live.values()];
     await Promise.all(liveSessions.map((s) => s.dispose()));
     this.live.clear();

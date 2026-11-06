@@ -12,6 +12,8 @@ import { rankByQuery } from '../shared/fuzzy-score';
 import { registerCollaboratorsTool } from './self-control/register-collaborators';
 import { registerContextUsageTool } from './self-control/register-context-usage';
 import { registerHandoffTool } from './self-control/register-handoff';
+import { registerSubagentTool } from './self-control/register-subagent';
+import type { SubagentService } from './subagent/subagent-service';
 import { buildSpawnPreamble } from './self-control/spawn-preamble';
 import { openPane, resolveSpawn, sendPrompt } from './self-control/spawn-support';
 
@@ -60,6 +62,8 @@ export interface SessionManagerLike {
   }[];
   /** One session by id, subagents included; falls back to `summaries()` when absent. */
   lookup?(id: string): ReturnType<SessionManagerLike['summaries']>[number] | undefined;
+  /** Hosted children that run inside a caller's conversation; absent in minimal fakes. */
+  subagents?: Pick<SubagentService, 'run'>;
   /** Leased by another Marcode host: this window can read it but not run it. */
   isForeign?(id: string): boolean;
   /** The ids of sessions with an open pane right now — see `marcode__list_sessions`. */
@@ -165,6 +169,7 @@ export class SelfControlMcpServer {
     registerCollaboratorsTool(mcp, { sessionManager: this.sessionManager, caller });
     registerContextUsageTool(mcp, { sessionManager: this.sessionManager, caller });
     registerHandoffTool(mcp, { sessionManager: this.sessionManager, caller });
+    registerSubagentTool(mcp, { sessionManager: this.sessionManager, caller });
 
     mcp.registerTool(
       'marcode__list_models',
