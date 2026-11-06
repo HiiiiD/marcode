@@ -258,3 +258,32 @@ suite("SessionHeader pin", () => {
     screen.getByRole("button", { name: "Unpin Session a" });
   });
 });
+
+suite("SessionHeader hosted subagents", () => {
+  test("names how many are running and how many wait on the user", () => {
+    renderApp();
+    hydrate({ subagents: { running: 2, awaitingApproval: 1 } });
+    screen.getByText("2 subagents");
+    screen.getByText("1 needs approval");
+  });
+
+  test("a single quiet subagent is singular and says nothing about approval", () => {
+    renderApp();
+    hydrate({ subagents: { running: 1, awaitingApproval: 0 } });
+    screen.getByText("1 subagent");
+    assert.strictEqual(screen.queryAllByText(/needs approval/).length, 0);
+  });
+
+  test("a session with no hosted subagents shows nothing", () => {
+    renderApp();
+    hydrate();
+    assert.strictEqual(screen.queryAllByText(/subagent/).length, 0);
+  });
+
+  test("the count follows the host", () => {
+    renderApp();
+    hydrate({ subagents: { running: 1, awaitingApproval: 0 } });
+    sendFromHost({ t: "sessions-changed", sessions: [summary("a")] });
+    assert.strictEqual(screen.queryAllByText(/subagent/).length, 0);
+  });
+});

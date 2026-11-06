@@ -57,7 +57,7 @@ export class SubagentBridge {
     this.parent.ingestNested({
       kind: 'tool-start', id: this.cardId,
       tool: {
-        kind: 'subagent', label: 'Subagent', action: 'spawn', agent: name, model,
+        kind: 'subagent', label: 'Subagent', action: 'spawn', agent: name, model, sessionId: this.child.state.id,
         prompt: this.prompt, background: this.background,
       },
     });
