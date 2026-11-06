@@ -14,10 +14,16 @@ export interface SubagentHost {
 interface Entry { bridge: SubagentBridge; childId: SessionId }
 
 const failure = (text: string): SubagentResult => ({ ok: false, text, sessionId: '' });
+const handleKey = (parentId: SessionId, name: string) => `${parentId}\n${name.toLowerCase()}`;
+
+export const SUBAGENT_APPROVAL_TIMEOUT_MS = 10 * 60 * 1000;
 
 /** Runs hosted children for their parents and tracks who is running under whom. */
 export class SubagentService {
   private readonly byParent = new Map<SessionId, Set<Entry>>();
+  private readonly handles = new Map<string, Promise<SubagentResult>>();
+  /** How long a background child may wait on an unanswered approval before it is denied. */
+  approvalTimeoutMs = SUBAGENT_APPROVAL_TIMEOUT_MS;
 
   constructor(private readonly host: SubagentHost) {}
 
@@ -38,18 +44,71 @@ export class SubagentService {
     }
   }
 
+  /** Foreground: resolves with the child's final reply. */
   async run(parentId: SessionId, spec: ResolvedSpawn, prompt: string): Promise<SubagentResult> {
+    const launched = await this.launch(parentId, spec, prompt, false);
+    return launched.ok ? launched.settled : launched.result;
+  }
+
+  /** Background: resolves as soon as the child is running; the reply is delivered to the parent as a message. */
+  async runBackground(
+    parentId: SessionId, spec: ResolvedSpawn, prompt: string,
+  ): Promise<{ ok: true; sessionId: string } | { ok: false; text: string }> {
+    const launched = await this.launch(parentId, spec, prompt, true);
+    if (!launched.ok) { return { ok: false, text: launched.result.text }; }
+    const { parent, child, settled } = launched;
+    this.handles.set(handleKey(parentId, child.state.name), settled);
+    void settled.then((result) => {
+      if (result.cancelled) { return; }
+      const verdict = result.ok ? 'finished' : 'failed';
+      try {
+        parent.send(
+          `Subagent "${child.state.name}" ${verdict}:\n${result.text}`,
+          undefined, undefined, undefined, { sessionId: child.state.id, name: child.state.name },
+        );
+      } catch { /* the parent went away; the card already holds the result */ }
+    });
+    return { ok: true, sessionId: child.state.name };
+  }
+
+  /** `undefined`: no such handle. `'pending'`: still running when the wait ran out. */
+  async awaitResult(parentId: SessionId, name: string, timeoutMs: number): Promise<SubagentResult | 'pending' | undefined> {
+    const settled = this.handles.get(handleKey(parentId, name));
+    if (!settled) { return undefined; }
+    let timer: NodeJS.Timeout | undefined;
+    const timeout = new Promise<'pending'>((resolve) => { timer = setTimeout(() => resolve('pending'), timeoutMs); });
+    try {
+      return await Promise.race([settled, timeout]);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  forget(parentId: SessionId): void {
+    for (const key of [...this.handles.keys()]) {
+      if (key.startsWith(`${parentId}\n`)) { this.handles.delete(key); }
+    }
+  }
+
+  private async launch(
+    parentId: SessionId, spec: ResolvedSpawn, prompt: string, background: boolean,
+  ): Promise<
+    { ok: false; result: SubagentResult }
+    | { ok: true; parent: AgentSession; child: AgentSession; settled: Promise<SubagentResult> }
+  > {
     const parent = this.host.get(parentId);
-    if (!parent) { return failure('The calling session is not live.'); }
+    if (!parent) { return { ok: false, result: failure('The calling session is not live.') }; }
     let child: AgentSession;
     try {
       child = await this.host.createSubagent(parentId, spec);
     } catch (err) {
-      return failure(err instanceof Error ? err.message : String(err));
+      return { ok: false, result: failure(err instanceof Error ? err.message : String(err)) };
     }
     const bridge = new SubagentBridge({
-      parent, child, cardId: `sub-${child.state.id}`, prompt,
+      parent, child, cardId: `sub-${child.state.id}`, prompt, background,
       message: `${buildSubagentPreamble({ parent: parent.state.name })}\n\n${prompt}`,
+      onChange: () => this.host.changed(),
+      approvalTimeoutMs: background ? this.approvalTimeoutMs : undefined,
     });
     const entry: Entry = { bridge, childId: child.state.id };
     const set = this.byParent.get(parentId) ?? new Set<Entry>();
@@ -58,12 +117,14 @@ export class SubagentService {
     const unlisten = parent.onInterrupt(() => bridge.cancel());
     this.host.changed();
     bridge.start();
-    const result = await bridge.result();
-    unlisten();
-    set.delete(entry);
-    if (set.size === 0) { this.byParent.delete(parentId); }
-    this.host.changed();
-    await this.host.releaseSubagent(child.state.id).catch(() => undefined);
-    return result;
+    const settled = bridge.result().then(async (result) => {
+      unlisten();
+      set.delete(entry);
+      if (set.size === 0) { this.byParent.delete(parentId); }
+      this.host.changed();
+      await this.host.releaseSubagent(child.state.id).catch(() => undefined);
+      return result;
+    });
+    return { ok: true, parent, child, settled };
   }
 }

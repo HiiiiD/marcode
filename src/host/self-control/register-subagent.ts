@@ -28,18 +28,50 @@ export function registerSubagentTool(mcp: McpServer, { sessionManager, caller }:
           .describe('Effort level. Omit to inherit yours.'),
         mode: z.string().optional().describe('A permission mode id the provider offers. Omit to inherit yours.'),
         cwd: z.string().optional().describe('Absolute working directory. Omit to use yours.'),
+        background: z.boolean().optional().describe(
+          'Return a handle at once instead of waiting. The reply arrives later as a message from the subagent, '
+          + 'or collect it with marcode__await_subagent.',
+        ),
       }),
     },
-    async ({ prompt, provider, model, effort, mode, cwd }) => {
+    async ({ prompt, provider, model, effort, mode, cwd, background }) => {
       const from = caller();
       if (!from) { return fail('Could not identify the calling session.'); }
       const resolved = resolveSpawn(sessionManager, from, { provider, model, effort, mode, cwd: cwd ?? from.cwd });
       if (!resolved.ok) { return fail(resolved.error); }
       const approval = await gateSpawn(sessionManager, from, resolved, prompt);
       if (!approval.ok) { return fail(approval.error); }
+      if (background) {
+        const started = await service.runBackground(from.id, resolved.spawn, prompt);
+        if (!started.ok) { return fail(started.text); }
+        return { content: [{ type: 'text' as const, text: JSON.stringify({ sessionId: started.sessionId, background: true }) }] };
+      }
       const result = await service.run(from.id, resolved.spawn, prompt);
       if (!result.ok) { return fail(result.text); }
       return { content: [{ type: 'text' as const, text: JSON.stringify(result) }] };
+    },
+  );
+
+  mcp.registerTool(
+    'marcode__await_subagent',
+    {
+      title: 'Wait for a background Marcode subagent',
+      description: 'Marcode-specific: waits for a subagent you started with marcode__spawn_subagent '
+        + '`background: true` and returns its final reply. Returns {"pending": true} if it is still running '
+        + 'after `timeoutSec` (default 600, max 3600); call again to keep waiting.',
+      inputSchema: z.object({
+        sessionId: z.string().describe('The sessionId returned by marcode__spawn_subagent.'),
+        timeoutSec: z.number().optional().describe('How long to wait. Default 600, max 3600.'),
+      }),
+    },
+    async ({ sessionId, timeoutSec }) => {
+      const from = caller();
+      if (!from) { return fail('Could not identify the calling session.'); }
+      const seconds = Math.min(Math.max(timeoutSec ?? 600, 1), 3600);
+      const got = await service.awaitResult(from.id, sessionId, seconds * 1000);
+      if (got === undefined) { return fail(`Unknown subagent: ${sessionId}`); }
+      if (got === 'pending') { return { content: [{ type: 'text' as const, text: JSON.stringify({ pending: true }) }] }; }
+      return { content: [{ type: 'text' as const, text: JSON.stringify(got) }] };
     },
   );
 }

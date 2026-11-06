@@ -66,7 +66,7 @@ export interface SessionManagerLike {
   /** One session by id, subagents included; falls back to `summaries()` when absent. */
   lookup?(id: string): ReturnType<SessionManagerLike['summaries']>[number] | undefined;
   /** Hosted children that run inside a caller's conversation; absent in minimal fakes. */
-  subagents?: Pick<SubagentService, 'run'>;
+  subagents?: Pick<SubagentService, 'run' | 'runBackground' | 'awaitResult'>;
   /** Leased by another Marcode host: this window can read it but not run it. */
   isForeign?(id: string): boolean;
   /** The ids of sessions with an open pane right now — see `marcode__list_sessions`. */

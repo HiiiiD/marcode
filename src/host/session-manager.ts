@@ -2075,6 +2075,7 @@ export class SessionManager implements SessionSink {
     // session must not relocate on its way out.
     this.queuedMoves.delete(id);
     this.subagents.cancelSubtree(id);
+    this.subagents.forget(id);
     const wasForeign = this.isForeign(id);
     if (this.foreign.has(id)) { await this.detachForeign(id); }
     const session = this.live.get(id);

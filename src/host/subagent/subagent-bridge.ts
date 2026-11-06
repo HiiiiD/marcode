@@ -2,7 +2,7 @@ import type { AgentSession } from '../agent-session';
 import type { AgentEvent } from '../../providers/types';
 import { mirrorId } from './mirror-ids';
 
-export interface SubagentResult { ok: boolean; text: string; sessionId: string }
+export interface SubagentResult { ok: boolean; text: string; sessionId: string; cancelled?: boolean }
 
 export const EMPTY_REPLY = '(subagent finished with no output)';
 
@@ -16,6 +16,8 @@ interface BridgeOptions {
   background?: boolean;
   /** Fired when the pending-approval count or the settled state changes. */
   onChange?: () => void;
+  /** Deny an approval nobody answered within this long (background children only). */
+  approvalTimeoutMs?: number;
 }
 
 /** Mirrors one hosted child's events into its parent as a nested `subagent` card. */
@@ -27,6 +29,8 @@ export class SubagentBridge {
   private readonly message: string;
   private readonly background: boolean;
   private readonly onChange: (() => void) | undefined;
+  private readonly approvalTimeoutMs: number | undefined;
+  private readonly timers = new Map<string, NodeJS.Timeout>();
   private reply = '';
   private settled = false;
   private readonly openRequests = new Set<string>();
@@ -41,6 +45,7 @@ export class SubagentBridge {
     this.message = o.message ?? o.prompt;
     this.background = o.background ?? false;
     this.onChange = o.onChange;
+    this.approvalTimeoutMs = o.approvalTimeoutMs;
   }
 
   pendingApprovals(): number { return this.openRequests.size; }
@@ -63,7 +68,7 @@ export class SubagentBridge {
   cancel(): void {
     if (this.settled) { return; }
     void this.child.interrupt();
-    this.finish(false, 'Subagent cancelled');
+    this.finish(false, 'Subagent cancelled', true);
   }
 
   private onChildEvent(event: AgentEvent): void {
@@ -88,9 +93,13 @@ export class SubagentBridge {
         this.parent.ingestNested({ ...event, id: mirrored, parentId }, {
           onDecision: (decision) => {
             this.openRequests.delete(mirrored);
+            this.clearTimer(mirrored);
             this.child.respondToPermission(event.id, decision);
             this.onChange?.();
           },
+        });
+        this.watchApproval(mirrored, () => {
+          this.parent.respondToPermission(mirrored, { allow: false, reason: 'Approval timed out' });
         });
         this.onChange?.();
         return;
@@ -101,14 +110,20 @@ export class SubagentBridge {
         this.parent.ingestNested({ ...event, id: mirrored }, {
           onAnswer: (answers) => {
             this.openRequests.delete(mirrored);
+            this.clearTimer(mirrored);
             this.child.answerQuestion(event.id, answers);
             this.onChange?.();
           },
+        });
+        this.watchApproval(mirrored, () => {
+          void this.child.interrupt();
+          this.finish(false, 'Subagent blocked: a question went unanswered');
         });
         this.onChange?.();
         return;
       }
       case 'request-cancelled':
+        this.clearTimer(id(event.id));
         this.openRequests.delete(id(event.id));
         this.parent.ingestNested({ ...event, id: id(event.id) });
         this.onChange?.();
@@ -123,15 +138,29 @@ export class SubagentBridge {
     }
   }
 
-  private finish(ok: boolean, text: string): void {
+  private watchApproval(mirrored: string, onTimeout: () => void): void {
+    if (this.approvalTimeoutMs === undefined) { return; }
+    const timer = setTimeout(() => { this.timers.delete(mirrored); onTimeout(); }, this.approvalTimeoutMs);
+    timer.unref();
+    this.timers.set(mirrored, timer);
+  }
+
+  private clearTimer(mirrored: string): void {
+    const timer = this.timers.get(mirrored);
+    if (timer) { clearTimeout(timer); this.timers.delete(mirrored); }
+  }
+
+  private finish(ok: boolean, text: string, cancelled = false): void {
     if (this.settled) { return; }
     this.settled = true;
+    for (const timer of this.timers.values()) { clearTimeout(timer); }
+    this.timers.clear();
     this.child.setTap(undefined);
     for (const mirrored of this.openRequests) {
       this.parent.ingestNested({ kind: 'request-cancelled', id: mirrored });
     }
     this.openRequests.clear();
     this.parent.ingestNested({ kind: 'tool-end', id: this.cardId, ok, output: { kind: 'text', text } });
-    this.resolveResult({ ok, text, sessionId: this.child.state.name });
+    this.resolveResult({ ok, text, sessionId: this.child.state.name, ...(cancelled ? { cancelled } : {}) });
   }
 }
