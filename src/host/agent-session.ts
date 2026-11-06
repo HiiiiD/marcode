@@ -132,8 +132,17 @@ function nextId(prefix: string): string {
   return `${prefix}-${Date.now().toString(36)}-${(counter++).toString(36)}`;
 }
 
+/** Where the answer to an ingested (not provider-raised) request goes. */
+export interface NestedDelegate {
+  onDecision?: (decision: ToolDecision) => void;
+  onAnswer?: (answers: QuestionAnswers) => void;
+  onCancel?: () => void;
+}
+
 export class AgentSession {
   private run: AgentRun;
+  private tap: ((event: AgentEvent) => void) | undefined;
+  private readonly delegates = new Map<string, NestedDelegate>();
   private readonly builtAt = Date.now();
   private pending = new Map<string, PermissionRequest>();
   private pendingQuestions = new Map<string, QuestionRequest>();
@@ -511,6 +520,7 @@ export class AgentSession {
   }
 
   async interrupt(): Promise<void> {
+    this.cancelDelegated();
     try {
       await this.run.interrupt();
     } catch (err) {
@@ -617,8 +627,10 @@ export class AgentSession {
 
   respondToPermission(requestId: string, decision: ToolDecision): void {
     if (!this.pending.delete(requestId)) { return; }
+    const delegate = this.delegates.get(requestId);
+    this.delegates.delete(requestId);
     try {
-      this.run.respondToTool(requestId, decision);
+      if (delegate) { delegate.onDecision?.(decision); } else { this.run.respondToTool(requestId, decision); }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       // The provider rejected the decision, so the request is no longer
@@ -674,7 +686,9 @@ export class AgentSession {
   answerQuestion(requestId: string, answers: QuestionAnswers): void {
     if (!this.pendingQuestions.delete(requestId)) { return; }
     this.replaceQuestionItem(requestId, 'answered', answers);
-    this.run.respondToQuestion(requestId, answers);
+    const delegate = this.delegates.get(requestId);
+    this.delegates.delete(requestId);
+    if (delegate) { delegate.onAnswer?.(answers); } else { this.run.respondToQuestion(requestId, answers); }
     this.recomputeWaitingStatus();
   }
 
@@ -996,6 +1010,7 @@ export class AgentSession {
     if (this.disposed) { return; }
     this.shell.dispose();
     this.disposed = true;
+    this.cancelDelegated();
     for (const requestId of [...this.pending.keys()]) {
       this.pending.delete(requestId);
       try {
@@ -1034,6 +1049,40 @@ export class AgentSession {
   }
 
   private handle(event: AgentEvent): void {
+    this.handleEvent(event);
+    this.tap?.(event);
+  }
+
+  /** Observe every event after the session has handled it, including ingested ones. */
+  setTap(tap: ((event: AgentEvent) => void) | undefined): void { this.tap = tap; }
+
+  /**
+   * Feeds an event that did not come from this session's own run (a hosted
+   * child's) through the normal handling, so it nests and settles like a
+   * vendor subagent's. A permission or question registers `delegate` as the
+   * place its answer goes.
+   */
+  ingestNested(event: AgentEvent, delegate?: NestedDelegate): void {
+    if (delegate && (event.kind === 'permission' || event.kind === 'question')) {
+      this.delegates.set(event.id, delegate);
+    }
+    this.handle(event);
+  }
+
+  private cancelDelegated(): void {
+    for (const [id, delegate] of [...this.delegates]) {
+      this.delegates.delete(id);
+      if (this.pending.has(id)) {
+        delegate.onDecision?.({ allow: false, reason: 'Turn cancelled' });
+        this.settleRequest(id, 'cancelled');
+      } else if (this.pendingQuestions.has(id)) {
+        delegate.onCancel?.();
+        this.settleRequest(id, 'cancelled');
+      }
+    }
+  }
+
+  private handleEvent(event: AgentEvent): void {
     switch (event.kind) {
       case 'session':
         this._state.resumeTokens[
