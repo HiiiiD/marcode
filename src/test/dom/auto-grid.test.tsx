@@ -93,6 +93,25 @@ suite('auto grid', () => {
     assert.strictEqual(layouts().length, before);
   });
 
+  test('the layout menu\'s Auto arrange regrids a custom layout without any offer', async () => {
+    renderApp();
+    resizeTo(1400);
+    hydrate({ root: CUSTOM, presets: [] }, ['s1', 's2', 's3']);
+    await userEvent.click(screen.getByRole('button', { name: 'Layout' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Auto arrange' }));
+    const root = layouts().at(-1) as LayoutNode;
+    assert.strictEqual(gridDims(root) !== undefined, true);
+    assert.strictEqual(flattenLeaves(root).filter((l) => l.sessionId).length, 3);
+  });
+
+  test('Auto arrange is disabled with a single open session', async () => {
+    renderApp();
+    resizeTo(1400);
+    hydrate(layoutOf(['s1']), ['s1']);
+    await userEvent.click(screen.getByRole('button', { name: 'Layout' }));
+    assert.strictEqual((screen.getByRole('button', { name: 'Auto arrange' }) as HTMLButtonElement).disabled, true);
+  });
+
   test('a panel too narrow for two columns offers to expand the sidebar, which asks the host to', async () => {
     renderApp();
     resizeTo(600);

@@ -93,7 +93,6 @@ export function usePaneLayout(): PaneLayoutApi {
   }, [applyRoot, focus]);
 
   const rearrangeNow = useCallback(() => {
-    if (!stateRef.current.rearrangeOffer) { return; }
     applyRoot(rearrange(stateRef.current.layout.root, { width, height: height * CELL_ASPECT }, MIN_PANE));
     dismissRearrange();
     setNotice(null);
