@@ -50,7 +50,7 @@ export interface SessionManagerLike {
   /** The folder `marcode__recall` is scoped to for this caller; absent means unscoped. */
   recallRoot?(sid: string): string | undefined;
   /** Every session's addressable identity — see `marcode__list_sessions`. */
-  summaries(): {
+  summaries(opts?: { includeSubagents?: boolean }): {
     id: string; name: string; providerId: string; model: string; effort?: EffortLevel;
     permissionMode: PermissionMode; status: string; cwd: string;
     includeEditorContext?: boolean;
@@ -58,6 +58,8 @@ export interface SessionManagerLike {
     parentId?: string;
     backgroundTasks?: number;
   }[];
+  /** One session by id, subagents included; falls back to `summaries()` when absent. */
+  lookup?(id: string): ReturnType<SessionManagerLike['summaries']>[number] | undefined;
   /** Leased by another Marcode host: this window can read it but not run it. */
   isForeign?(id: string): boolean;
   /** The ids of sessions with an open pane right now — see `marcode__list_sessions`. */
@@ -157,7 +159,7 @@ export class SelfControlMcpServer {
     /** The calling session's own name, resolved from `sid` — undefined if `sid` is missing or stale. */
     const caller = () => {
       if (!sid) { return undefined; }
-      return this.sessionManager.summaries().find((s) => s.id === sid);
+      return this.sessionManager.lookup?.(sid) ?? this.sessionManager.summaries().find((s) => s.id === sid);
     };
 
     registerCollaboratorsTool(mcp, { sessionManager: this.sessionManager, caller });

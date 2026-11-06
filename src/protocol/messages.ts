@@ -217,6 +217,8 @@ export interface SessionState {
   owner?: { host: 'vscode' | 'tui' | 'daemon'; pid: number };
   /** The session that spawned this one via a self-control tool; absent for user-created sessions. */
   parentId?: SessionId;
+  /** `'subagent'`: owned by `parentId`'s turn, rendered as a card in the parent, never a roster row or pane. Absent = a normal session. */
+  kind?: 'session' | 'subagent';
   cwd: string;
   status: SessionStatus;
   /**

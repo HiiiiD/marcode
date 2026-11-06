@@ -236,7 +236,7 @@ export class SessionManager implements SessionSink {
       this.digests = new DigestService({
         store: this.memory,
         source: {
-          sessions: () => [...this.meta.values()].map((s) => ({
+          sessions: () => [...this.meta.values()].filter((s) => s.kind !== 'subagent').map((s) => ({
             id: s.id, providerId: s.providerId, cwd: s.cwd, title: s.title,
             hidden: !this.visible.has(s.id), updatedAt: s.updatedAt,
           })),
@@ -570,8 +570,9 @@ export class SessionManager implements SessionSink {
     );
   }
 
-  summaries(): SessionSummary[] {
+  summaries(opts?: { includeSubagents?: boolean }): SessionSummary[] {
     return [...this.meta.values()]
+      .filter((s) => opts?.includeSubagents || s.kind !== 'subagent')
       .map((s) => (this.visible.has(s.id) ? { ...s, open: true } : s))
       .sort((a, b) => b.updatedAt - a.updatedAt);
   }
@@ -586,6 +587,13 @@ export class SessionManager implements SessionSink {
    */
   visibleIds(): SessionId[] {
     return [...this.visible];
+  }
+
+  isSubagent(id: SessionId): boolean { return this.meta.get(id)?.kind === 'subagent'; }
+
+  /** Like `summaries()` for one id, but resolves a subagent too — a child can call the self-control tools. */
+  lookup(id: SessionId): SessionSummary | undefined {
+    return this.summaries({ includeSubagents: true }).find((s) => s.id === id);
   }
 
   /**
@@ -721,6 +729,7 @@ export class SessionManager implements SessionSink {
     worktree?: { branch: string; base?: string },
     includeEditorContext = true,
     parentId?: SessionId,
+    kind?: 'session' | 'subagent',
   ): Promise<AgentSession> {
     const provider = this.providers.get(providerId);
     if (!provider) { throw new Error(`Unknown provider: ${providerId}`); }
@@ -779,6 +788,7 @@ export class SessionManager implements SessionSink {
       title: 'Untitled', name: this.defaultName(providerId), cwd: resolvedCwd, status: 'idle', permissionMode: resolvedMode,
       includeEditorContext,
       ...(parentId ? { parentId } : {}),
+      ...(kind === 'subagent' ? { kind } : {}),
       resumeTokens: {},
       createdAt: now, updatedAt: now,
     };
@@ -1423,7 +1433,7 @@ export class SessionManager implements SessionSink {
   private sessionsIn(root: string): SessionId[] {
     const ids: SessionId[] = [];
     for (const state of this.meta.values()) {
-      if (samePath(resolve(state.cwd), root)) { ids.push(state.id); }
+      if (state.kind !== 'subagent' && samePath(resolve(state.cwd), root)) { ids.push(state.id); }
     }
     return ids;
   }
@@ -1811,7 +1821,8 @@ export class SessionManager implements SessionSink {
     return session;
   }
 
-  async setVisible(ids: SessionId[]): Promise<void> {
+  async setVisible(requested: SessionId[]): Promise<void> {
+    const ids = requested.filter((id) => !this.isSubagent(id));
     const next = new Set(ids);
     const added = ids.filter((id) => !this.visible.has(id));
     // Captured before `visible` is replaced: hiding a pane is the *other*
@@ -2121,7 +2132,7 @@ export class SessionManager implements SessionSink {
   // Writes `summary` without touching `updatedAt`: that field is both the sort key and this cache's key.
   private async runSummaries(): Promise<void> {
     const stale = [...this.meta.values()].filter(
-      (s) => s.title !== 'Untitled' && s.summary?.forUpdatedAt !== s.updatedAt,
+      (s) => s.kind !== 'subagent' && s.title !== 'Untitled' && s.summary?.forUpdatedAt !== s.updatedAt,
     );
     let touched = false;
     for (const state of stale) {
