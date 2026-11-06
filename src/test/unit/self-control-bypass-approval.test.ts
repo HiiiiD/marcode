@@ -99,7 +99,7 @@ suite('bypass spawn approval', () => {
     await answer(parent.state.id, { allow: true });
     const res = await pending;
     assert.strictEqual(res.isError, undefined);
-    assert.strictEqual(JSON.parse(res.content[0].text).ok, true);
+    assert.strictEqual(JSON.parse(res.content[0].text).status, 'running');
   });
 
   test('interrupting the parent while the card is pending denies the spawn', async () => {

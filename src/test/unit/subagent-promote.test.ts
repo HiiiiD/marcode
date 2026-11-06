@@ -1,4 +1,5 @@
 import * as assert from 'assert';
+import { runSubagent } from './helpers/run-subagent';
 import * as fs from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
@@ -41,7 +42,7 @@ suite('subagent promote', () => {
 
   test('promoting a finished child makes it a roster session that keeps its parent', async () => {
     const parent = await manager.create('fake', dir);
-    await manager.subagents.run(parent.state.id, spec(dir), 'job');
+    await runSubagent(manager, parent.state.id, spec(dir), 'job');
     const child = childOf();
     await manager.promoteSubagent(child.id);
     const promoted = manager.summaries().find((s) => s.id === child.id)!;
@@ -78,7 +79,7 @@ suite('subagent promote', () => {
     const sent: HostToWebview[] = [];
     const router = new MessageRouter(manager, (m) => sent.push(m), dir);
     const parent = await manager.create('fake', dir);
-    await manager.subagents.run(parent.state.id, spec(dir), 'job');
+    await runSubagent(manager, parent.state.id, spec(dir), 'job');
     const child = childOf();
     await router.handle({ t: 'promote-subagent', id: child.id });
     assert.strictEqual(manager.summaries().some((s) => s.id === child.id), true);

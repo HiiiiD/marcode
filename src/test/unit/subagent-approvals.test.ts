@@ -1,4 +1,5 @@
 import * as assert from 'assert';
+import { runSubagent } from './helpers/run-subagent';
 import * as fs from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
@@ -42,7 +43,7 @@ suite('subagent approvals', () => {
   test('a child approval surfaces on the parent, rolls up, and clears once answered', async () => {
     scripts.a = [{ kind: 'permission', id: 'p-a', tool: BASH }];
     const parent = await manager.create('fake', dir);
-    const run = manager.subagents.run(parent.state.id, spec(dir), 'a');
+    const run = runSubagent(manager, parent.state.id, spec(dir), 'a');
     await tick();
     assert.strictEqual(parent.state.status, 'awaiting-approval');
     assert.strictEqual((parent.state.activityLabel ?? '').includes('Bash'), true);
@@ -58,8 +59,8 @@ suite('subagent approvals', () => {
     scripts.a = [{ kind: 'permission', id: 'p-a', tool: BASH }];
     scripts.b = [{ kind: 'permission', id: 'p-b', tool: BASH }];
     const parent = await manager.create('fake', dir);
-    const runA = manager.subagents.run(parent.state.id, spec(dir), 'a');
-    const runB = manager.subagents.run(parent.state.id, spec(dir), 'b');
+    const runA = runSubagent(manager, parent.state.id, spec(dir), 'a');
+    const runB = runSubagent(manager, parent.state.id, spec(dir), 'b');
     await tick();
     const ids = await pendingIds(parent);
     assert.strictEqual(ids.length, 2);
@@ -76,7 +77,7 @@ suite('subagent approvals', () => {
   test('a double answer is a no-op', async () => {
     scripts.a = [{ kind: 'permission', id: 'p-a', tool: BASH }];
     const parent = await manager.create('fake', dir);
-    const run = manager.subagents.run(parent.state.id, spec(dir), 'a');
+    const run = runSubagent(manager, parent.state.id, spec(dir), 'a');
     await tick();
     const [mirrored] = await pendingIds(parent);
     parent.respondToPermission(mirrored, { allow: true });
@@ -88,7 +89,7 @@ suite('subagent approvals', () => {
   test('interrupting the parent denies the pending request and clears waiting', async () => {
     scripts.a = [{ kind: 'permission', id: 'p-a', tool: BASH }];
     const parent = await manager.create('fake', dir);
-    const run = manager.subagents.run(parent.state.id, spec(dir), 'a');
+    const run = runSubagent(manager, parent.state.id, spec(dir), 'a');
     await tick();
     await parent.interrupt();
     assert.strictEqual((await run).ok, false);
@@ -99,7 +100,7 @@ suite('subagent approvals', () => {
   test('the roll-up is never written to the index', async () => {
     scripts.a = [{ kind: 'permission', id: 'p-a', tool: BASH }];
     const parent = await manager.create('fake', dir);
-    const run = manager.subagents.run(parent.state.id, spec(dir), 'a');
+    const run = runSubagent(manager, parent.state.id, spec(dir), 'a');
     await tick();
     await manager.persistNow();
     assert.strictEqual((await fs.readFile(path.join(dir, 'index.json'), 'utf8')).includes('awaitingApproval'), false);

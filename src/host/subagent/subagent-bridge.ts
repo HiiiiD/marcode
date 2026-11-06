@@ -11,10 +11,9 @@ interface BridgeOptions {
   child: AgentSession;
   cardId: string;
   prompt: string;
-  background?: boolean;
   /** Fired when the pending-approval count or the settled state changes. */
   onChange?: () => void;
-  /** Deny an approval nobody answered within this long (background children only). */
+  /** Deny an approval nobody answered within this long. */
   approvalTimeoutMs?: number;
 }
 
@@ -24,7 +23,6 @@ export class SubagentBridge {
   private readonly child: AgentSession;
   private readonly cardId: string;
   private readonly prompt: string;
-  private readonly background: boolean;
   private readonly onChange: (() => void) | undefined;
   private readonly approvalTimeoutMs: number | undefined;
   private readonly timers = new Map<string, NodeJS.Timeout>();
@@ -40,7 +38,6 @@ export class SubagentBridge {
     this.child = o.child;
     this.cardId = o.cardId;
     this.prompt = o.prompt;
-    this.background = o.background ?? false;
     this.onChange = o.onChange;
     this.approvalTimeoutMs = o.approvalTimeoutMs;
   }

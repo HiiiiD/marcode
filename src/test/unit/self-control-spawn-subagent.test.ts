@@ -44,16 +44,18 @@ suite('marcode__spawn_subagent', () => {
     await fs.rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
   });
 
-  test('a foreground call returns the child result and leaves no roster row', async () => {
+  test('a call returns a handle at once, leaves no roster row, and await returns the reply', async () => {
     const parent = await manager.create('fake', dir);
     const before = manager.summaries().length;
     const res = await call(config, parent.state.id, 'marcode__spawn_subagent', { prompt: 'do it' });
     assert.strictEqual(res.isError, undefined);
-    const body = JSON.parse(res.content[0].text) as { ok: boolean; text: string; sessionId: string };
-    assert.strictEqual(body.ok, true);
-    assert.strictEqual(body.text, 'the answer');
+    const handle = JSON.parse(res.content[0].text) as { sessionId: string; status: string };
+    assert.strictEqual(handle.status, 'running');
     assert.strictEqual(manager.summaries().length, before);
-    assert.strictEqual(manager.summaries({ includeSubagents: true }).some((s) => s.name === body.sessionId), true);
+    assert.strictEqual(manager.summaries({ includeSubagents: true }).some((s) => s.name === handle.sessionId), true);
+    const got = await call(config, parent.state.id, 'marcode__await_subagent', { sessionId: handle.sessionId });
+    const body = JSON.parse(got.content[0].text) as { ok: boolean; text: string };
+    assert.deepStrictEqual({ ok: body.ok, text: body.text }, { ok: true, text: 'the answer' });
   });
 
   test('a call with no identifiable caller is an error and creates nothing', async () => {
@@ -68,7 +70,7 @@ suite('marcode__spawn_subagent', () => {
     assert.strictEqual(res.isError, true);
   });
 
-  test('a failing child comes back as an error result', async () => {
+  test('a failing child reports ok:false with its reason when awaited', async () => {
     const provider = new FakeProvider(() => [{ kind: 'turn-end', reason: 'error', error: 'kaput' }]);
     const other = new SessionManager(new TranscriptStore(dir), new Map<string, AgentProvider>([['fake', provider]]), () => {});
     await other.init();
@@ -76,9 +78,12 @@ suite('marcode__spawn_subagent', () => {
     const cfg = await srv.start();
     try {
       const parent = await other.create('fake', dir);
-      const res = await call(cfg, parent.state.id, 'marcode__spawn_subagent', { prompt: 'x' });
-      assert.strictEqual(res.isError, true);
-      assert.strictEqual(res.content[0].text.includes('kaput'), true);
+      const started = await call(cfg, parent.state.id, 'marcode__spawn_subagent', { prompt: 'x' });
+      const { sessionId } = JSON.parse(started.content[0].text) as { sessionId: string };
+      const got = await call(cfg, parent.state.id, 'marcode__await_subagent', { sessionId });
+      const body = JSON.parse(got.content[0].text) as { ok: boolean; text: string };
+      assert.strictEqual(body.ok, false);
+      assert.strictEqual(body.text.includes('kaput'), true);
     } finally {
       await srv.dispose();
       await other.dispose();

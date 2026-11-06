@@ -1,4 +1,5 @@
 import * as assert from 'assert';
+import { runSubagent } from './helpers/run-subagent';
 import * as fs from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
@@ -66,7 +67,7 @@ suite('subagent review fixes', () => {
   test('disposing the parent while a child waits on a question settles the foreground call', async () => {
     scripts.job = [{ kind: 'question', id: 'q1', questions: [], blocking: true }];
     const parent = await manager.create('fake', dir);
-    const run = manager.subagents.run(parent.state.id, spec(dir), 'job');
+    const run = runSubagent(manager, parent.state.id, spec(dir), 'job');
     await tick();
     await parent.dispose();
     const result = await Promise.race([run, new Promise<'hung'>((r) => setTimeout(() => r('hung'), 500))]);
@@ -92,17 +93,5 @@ suite('subagent review fixes', () => {
     parent.ingestNested({ kind: 'permission', id: 'c:p1', tool: PLAN, parentId: 'card' }, { onDecision: () => {} });
     parent.respondToPermission('c:p1', { allow: true });
     assert.strictEqual(parent.state.permissionMode, 'plan');
-  });
-
-  test('aborting the request cancels a foreground subagent', async () => {
-    scripts.job = [{ kind: 'permission', id: 'p1', tool: BASH }];
-    const parent = await manager.create('fake', dir);
-    const abort = new AbortController();
-    const run = manager.subagents.run(parent.state.id, spec(dir), 'job', { signal: abort.signal });
-    await tick();
-    abort.abort();
-    const result = await run;
-    assert.strictEqual(result.ok, false);
-    assert.strictEqual(result.text, 'Subagent cancelled');
   });
 });

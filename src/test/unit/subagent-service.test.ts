@@ -1,4 +1,5 @@
 import * as assert from 'assert';
+import { runSubagent } from './helpers/run-subagent';
 import * as fs from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
@@ -40,7 +41,7 @@ suite('subagent service', () => {
   test('a foreground run returns the child text, frees the live child and keeps its row hidden', async () => {
     scripts.task = [{ kind: 'text', delta: 'answer' }, { kind: 'turn-end', reason: 'done' }];
     const parent = await manager.create('fake', dir);
-    const result = await manager.subagents.run(parent.state.id, spec(dir), 'task');
+    const result = await runSubagent(manager, parent.state.id, spec(dir), 'task');
     assert.strictEqual(result.ok, true);
     assert.strictEqual(result.text, 'answer');
     const child = manager.summaries({ includeSubagents: true }).find((s) => s.kind === 'subagent')!;
@@ -52,7 +53,7 @@ suite('subagent service', () => {
 
   test('the child is told who delegated to it and that its reply is returned', async () => {
     const parent = await manager.create('fake', dir);
-    await manager.subagents.run(parent.state.id, spec(dir), 'task');
+    await runSubagent(manager, parent.state.id, spec(dir), 'task');
     const sent = provider.sent[0].text;
     assert.strictEqual(sent.includes(parent.state.name), true);
     assert.strictEqual(sent.endsWith('task'), true);
@@ -60,7 +61,7 @@ suite('subagent service', () => {
 
   test('an unknown parent fails cleanly without creating anything', async () => {
     const before = manager.summaries({ includeSubagents: true }).length;
-    const result = await manager.subagents.run('s-nope', spec(dir), 'task');
+    const result = await runSubagent(manager, 's-nope', spec(dir), 'task');
     assert.strictEqual(result.ok, false);
     assert.strictEqual(manager.summaries({ includeSubagents: true }).length, before);
   });
@@ -68,7 +69,7 @@ suite('subagent service', () => {
   test('running() counts a blocked child and cancelSubtree settles it, idempotently', async () => {
     scripts.task = [{ kind: 'permission', id: 'p1', tool: BASH }];
     const parent = await manager.create('fake', dir);
-    const pending = manager.subagents.run(parent.state.id, spec(dir), 'task');
+    const pending = runSubagent(manager, parent.state.id, spec(dir), 'task');
     await tick();
     assert.strictEqual(manager.subagents.running(parent.state.id), 1);
     manager.subagents.cancelSubtree(parent.state.id);
@@ -82,7 +83,7 @@ suite('subagent service', () => {
   test('interrupting the parent cancels its running subagents', async () => {
     scripts.task = [{ kind: 'permission', id: 'p1', tool: BASH }];
     const parent = await manager.create('fake', dir);
-    const pending = manager.subagents.run(parent.state.id, spec(dir), 'task');
+    const pending = runSubagent(manager, parent.state.id, spec(dir), 'task');
     await tick();
     await parent.interrupt();
     assert.strictEqual((await pending).ok, false);
@@ -91,7 +92,7 @@ suite('subagent service', () => {
   test('closing the parent cancels its running subagents', async () => {
     scripts.task = [{ kind: 'permission', id: 'p1', tool: BASH }];
     const parent = await manager.create('fake', dir);
-    const pending = manager.subagents.run(parent.state.id, spec(dir), 'task');
+    const pending = runSubagent(manager, parent.state.id, spec(dir), 'task');
     await tick();
     await manager.close(parent.state.id);
     assert.strictEqual((await pending).ok, false);

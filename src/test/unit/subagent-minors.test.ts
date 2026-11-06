@@ -1,4 +1,5 @@
 import * as assert from 'assert';
+import { runSubagent } from './helpers/run-subagent';
 import * as fs from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
@@ -54,7 +55,7 @@ suite('subagent minors', () => {
 
   test('promoting an already-promoted child just shows it', async () => {
     const parent = await manager.create('fake', dir);
-    await manager.subagents.run(parent.state.id, spec(dir), 'job');
+    await runSubagent(manager, parent.state.id, spec(dir), 'job');
     const child = manager.summaries({ includeSubagents: true }).find((s) => s.kind === 'subagent')!;
     await manager.promoteSubagent(child.id);
     await manager.close(child.id);
@@ -75,17 +76,18 @@ suite('subagent minors', () => {
       changed: () => {},
     };
     const service = new SubagentService(host);
-    const run = service.run(parent.state.id, spec(dir), 'job');
+    const started = await service.runBackground(parent.state.id, spec(dir), 'job');
+    assert.ok(started.ok);
     await tick();
     assert.strictEqual(service.pendingRelease(childLive.state.id) !== undefined, true);
     resolveRelease();
-    await run;
+    await service.awaitResult(parent.state.id, started.sessionId, 5000);
     assert.strictEqual(service.pendingRelease(childLive.state.id), undefined);
   });
 
   test('the preamble reaches the model but not the child transcript or title', async () => {
     const parent = await manager.create('fake', dir);
-    await manager.subagents.run(parent.state.id, spec(dir), 'investigate the bug');
+    await runSubagent(manager, parent.state.id, spec(dir), 'investigate the bug');
     const child = manager.summaries({ includeSubagents: true }).find((s) => s.kind === 'subagent')!;
     assert.strictEqual(child.title, 'investigate the bug');
     assert.strictEqual(provider.sent[0].text.includes('You are a subagent'), true);
@@ -102,7 +104,7 @@ suite('subagent minors', () => {
       { kind: 'turn-end', reason: 'done' },
     ];
     const parent = await manager.create('fake', dir);
-    const result = await manager.subagents.run(parent.state.id, spec(dir), 'job');
+    const result = await runSubagent(manager, parent.state.id, spec(dir), 'job');
     assert.strictEqual(result.text, 'the answer');
   });
 
@@ -112,7 +114,7 @@ suite('subagent minors', () => {
       questions: [{ id: 'a', header: 'Which?', question: 'Pick one', multiSelect: false, allowOther: false, secret: false }],
     }];
     const parent = await manager.create('fake', dir);
-    const run = manager.subagents.run(parent.state.id, spec(dir), 'job');
+    const run = runSubagent(manager, parent.state.id, spec(dir), 'job');
     await tick();
     const [question] = (await parent.snapshot()).pendingQuestions;
     const child = manager.summaries({ includeSubagents: true }).find((s) => s.kind === 'subagent')!;
@@ -131,7 +133,7 @@ suite('subagent minors', () => {
       { kind: 'turn-end', reason: 'done' },
     ];
     const parent = await manager.create('fake', dir);
-    await manager.subagents.run(parent.state.id, spec(other), 'job');
+    await runSubagent(manager, parent.state.id, spec(other), 'job');
     const claimed = [...parent.claimedPaths].map((p) => path.resolve(p));
     assert.strictEqual(claimed.includes(path.resolve(other, 'x.ts')), true);
     assert.strictEqual(claimed.includes(path.resolve(dir, 'x.ts')), false);
@@ -139,7 +141,7 @@ suite('subagent minors', () => {
 
   test('session-status is never emitted for a subagent', async () => {
     const parent = await manager.create('fake', dir);
-    await manager.subagents.run(parent.state.id, spec(dir), 'job');
+    await runSubagent(manager, parent.state.id, spec(dir), 'job');
     const child = manager.summaries({ includeSubagents: true }).find((s) => s.kind === 'subagent')!;
     assert.strictEqual(sent.some((m) => m.t === 'session-status' && m.id === child.id), false);
   });

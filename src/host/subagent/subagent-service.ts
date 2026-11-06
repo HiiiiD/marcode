@@ -40,14 +40,6 @@ export class SubagentService {
     return { running: entries.size, awaitingApproval: awaiting };
   }
 
-  private cancelChild(parentId: SessionId, childId: SessionId): void {
-    for (const entry of this.byParent.get(parentId) ?? []) {
-      if (entry.childId !== childId) { continue; }
-      this.cancelSubtree(childId);
-      entry.bridge.cancel();
-    }
-  }
-
   cancelSubtree(parentId: SessionId): void {
     for (const entry of [...(this.byParent.get(parentId) ?? [])]) {
       this.cancelSubtree(entry.childId);
@@ -55,26 +47,11 @@ export class SubagentService {
     }
   }
 
-  /** Foreground: resolves with the child's final reply. */
-  async run(
-    parentId: SessionId, spec: ResolvedSpawn, prompt: string, opts: { signal?: AbortSignal } = {},
-  ): Promise<SubagentResult> {
-    const launched = await this.launch(parentId, spec, prompt, false);
-    if (!launched.ok) { return launched.result; }
-    const { signal } = opts;
-    if (signal) {
-      const abort = () => this.cancelChild(parentId, launched.child.state.id);
-      if (signal.aborted) { abort(); } else { signal.addEventListener('abort', abort, { once: true }); }
-      void launched.settled.then(() => signal.removeEventListener('abort', abort));
-    }
-    return launched.settled;
-  }
-
-  /** Background: resolves as soon as the child is running; the reply is delivered to the parent as a message. */
+  /** Resolves as soon as the child is running; the reply is delivered to the parent as a message. */
   async runBackground(
     parentId: SessionId, spec: ResolvedSpawn, prompt: string,
   ): Promise<{ ok: true; sessionId: string } | { ok: false; text: string }> {
-    const launched = await this.launch(parentId, spec, prompt, true);
+    const launched = await this.launch(parentId, spec, prompt);
     if (!launched.ok) { return { ok: false, text: launched.result.text }; }
     const { parent, child, settled } = launched;
     this.handles.set(handleKey(parentId, child.state.name), settled);
@@ -135,7 +112,7 @@ export class SubagentService {
   }
 
   private async launch(
-    parentId: SessionId, spec: ResolvedSpawn, prompt: string, background: boolean,
+    parentId: SessionId, spec: ResolvedSpawn, prompt: string,
   ): Promise<
     { ok: false; result: SubagentResult }
     | { ok: true; parent: AgentSession; child: AgentSession; settled: Promise<SubagentResult> }
@@ -150,9 +127,9 @@ export class SubagentService {
     }
     child.setSeed(buildSubagentPreamble({ parent: parent.state.name }));
     const bridge = new SubagentBridge({
-      parent, child, cardId: `sub-${child.state.id}`, prompt, background,
+      parent, child, cardId: `sub-${child.state.id}`, prompt,
       onChange: () => this.host.changed(),
-      approvalTimeoutMs: background ? this.approvalTimeoutMs : undefined,
+      approvalTimeoutMs: this.approvalTimeoutMs,
     });
     const entry: Entry = { bridge, childId: child.state.id };
     const set = this.byParent.get(parentId) ?? new Set<Entry>();

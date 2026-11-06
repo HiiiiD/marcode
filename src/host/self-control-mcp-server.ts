@@ -66,7 +66,7 @@ export interface SessionManagerLike {
   /** One session by id, subagents included; falls back to `summaries()` when absent. */
   lookup?(id: string): ReturnType<SessionManagerLike['summaries']>[number] | undefined;
   /** Hosted children that run inside a caller's conversation; absent in minimal fakes. */
-  subagents?: Pick<SubagentService, 'run' | 'runBackground' | 'awaitResult'>;
+  subagents?: Pick<SubagentService, 'runBackground' | 'awaitResult'>;
   /** Leased by another Marcode host: this window can read it but not run it. */
   isForeign?(id: string): boolean;
   /** The ids of sessions with an open pane right now — see `marcode__list_sessions`. */
@@ -233,8 +233,8 @@ export class SelfControlMcpServer {
           + 'failing, whether requested explicitly or only inherited. `mode: "bypass"` is always '
           + 'rejected, even when only inherited from a bypass-mode caller — inheritance falls back '
           + 'to the provider default in that case instead of failing. The new session is opened in '
-          + 'a pane. Returns the new session\'s id. For a bounded task whose answer you want back inline, '
-          + 'use marcode__spawn_subagent instead.',
+          + 'a pane. Returns the new session\'s id. For a bounded task you want done in the background with its reply delivered back to '
+          + 'you, use marcode__spawn_subagent instead.',
         inputSchema: z.object({
                   provider: z.string().optional().describe('A provider id from this window\'s catalog. Omit to inherit the caller\'s provider.'),
                   model: z.string().optional().describe('A model id the chosen provider offers (see marcode__list_models). Omit to inherit the caller\'s model.'),

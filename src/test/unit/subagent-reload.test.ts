@@ -1,4 +1,5 @@
 import * as assert from 'assert';
+import { runSubagent } from './helpers/run-subagent';
 import * as fs from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
@@ -62,7 +63,7 @@ suite('subagent reload', () => {
   test('a restored subagent row stays out of the roster and is idle', async () => {
     const first = await open();
     const parent = await first.create('fake', dir);
-    await first.subagents.run(parent.state.id, spec(dir), 'job');
+    await runSubagent(first, parent.state.id, spec(dir), 'job');
     await first.persistNow();
     await first.dispose();
 
@@ -86,7 +87,7 @@ suite('subagent reload', () => {
   test('removing a parent removes its subagents too', async () => {
     const first = await open();
     const parent = await first.create('fake', dir);
-    await first.subagents.run(parent.state.id, spec(dir), 'job');
+    await runSubagent(first, parent.state.id, spec(dir), 'job');
     const child = first.summaries({ includeSubagents: true }).find((s) => s.kind === 'subagent')!;
     await first.remove(parent.state.id);
     assert.strictEqual(first.lookup(child.id), undefined);
@@ -96,7 +97,7 @@ suite('subagent reload', () => {
   test('hiding a parent keeps its subagents', async () => {
     const first = await open();
     const parent = await first.create('fake', dir);
-    await first.subagents.run(parent.state.id, spec(dir), 'job');
+    await runSubagent(first, parent.state.id, spec(dir), 'job');
     const child = first.summaries({ includeSubagents: true }).find((s) => s.kind === 'subagent')!;
     await first.close(parent.state.id);
     assert.strictEqual(first.lookup(child.id) !== undefined, true);
