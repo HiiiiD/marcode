@@ -830,6 +830,8 @@ export class SessionManager implements SessionSink {
     await focusSession(this, id);
   }
 
+  removeSubagent(id: SessionId): Promise<void> { return this.remove(id); }
+
   /** Disposes a finished child's live run; its row and JSONL stay so it can be promoted or inspected. */
   async releaseSubagent(id: SessionId): Promise<void> {
     this.subagents.cancelSubtree(id);

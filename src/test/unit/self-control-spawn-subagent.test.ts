@@ -23,7 +23,7 @@ async function call(
   return (await res.json() as { result: { isError?: boolean; content: { type: string; text: string }[] } }).result;
 }
 
-suite('marcode__spawn_subagent', () => {
+suite('marcode__spawn_session nested', () => {
   let dir: string;
   let manager: SessionManager;
   let server: SelfControlMcpServer;
@@ -47,7 +47,7 @@ suite('marcode__spawn_subagent', () => {
   test('a call returns a handle at once, leaves no roster row, and await returns the reply', async () => {
     const parent = await manager.create('fake', dir);
     const before = manager.summaries().length;
-    const res = await call(config, parent.state.id, 'marcode__spawn_subagent', { prompt: 'do it' });
+    const res = await call(config, parent.state.id, 'marcode__spawn_session', { nested: true, cwd: dir, prompt: 'do it' });
     assert.strictEqual(res.isError, undefined);
     const handle = JSON.parse(res.content[0].text) as { sessionId: string; status: string };
     assert.strictEqual(handle.status, 'running');
@@ -59,14 +59,14 @@ suite('marcode__spawn_subagent', () => {
   });
 
   test('a call with no identifiable caller is an error and creates nothing', async () => {
-    const res = await call(config, undefined, 'marcode__spawn_subagent', { prompt: 'do it' });
+    const res = await call(config, undefined, 'marcode__spawn_session', { nested: true, cwd: dir, prompt: 'do it' });
     assert.strictEqual(res.isError, true);
     assert.strictEqual(manager.summaries({ includeSubagents: true }).length, 0);
   });
 
   test('an unknown provider is an error', async () => {
     const parent = await manager.create('fake', dir);
-    const res = await call(config, parent.state.id, 'marcode__spawn_subagent', { prompt: 'x', provider: 'nope' });
+    const res = await call(config, parent.state.id, 'marcode__spawn_session', { nested: true, cwd: dir, prompt: 'x', provider: 'nope' });
     assert.strictEqual(res.isError, true);
   });
 
@@ -78,7 +78,7 @@ suite('marcode__spawn_subagent', () => {
     const cfg = await srv.start();
     try {
       const parent = await other.create('fake', dir);
-      const started = await call(cfg, parent.state.id, 'marcode__spawn_subagent', { prompt: 'x' });
+      const started = await call(cfg, parent.state.id, 'marcode__spawn_session', { nested: true, cwd: dir, prompt: 'x' });
       const { sessionId } = JSON.parse(started.content[0].text) as { sessionId: string };
       const got = await call(cfg, parent.state.id, 'marcode__await_subagent', { sessionId });
       const body = JSON.parse(got.content[0].text) as { ok: boolean; text: string };

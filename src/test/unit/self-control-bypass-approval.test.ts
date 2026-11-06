@@ -94,7 +94,7 @@ suite('bypass spawn approval', () => {
 
   test('spawn_subagent with explicit bypass asks first, then runs', async () => {
     const parent = await manager.create('fake', dir);
-    const pending = call(config, parent.state.id, 'marcode__spawn_subagent', { mode: 'bypass', prompt: 'go' });
+    const pending = call(config, parent.state.id, 'marcode__spawn_session', { nested: true, cwd: dir, mode: 'bypass', prompt: 'go' });
     await tick();
     await answer(parent.state.id, { allow: true });
     const res = await pending;
@@ -105,7 +105,7 @@ suite('bypass spawn approval', () => {
   test('interrupting the parent while the card is pending denies the spawn', async () => {
     const parent = await manager.create('fake', dir);
     const before = manager.summaries({ includeSubagents: true }).length;
-    const pending = call(config, parent.state.id, 'marcode__spawn_subagent', { mode: 'bypass', prompt: 'go' });
+    const pending = call(config, parent.state.id, 'marcode__spawn_session', { nested: true, cwd: dir, mode: 'bypass', prompt: 'go' });
     await tick();
     await parent.interrupt();
     assert.strictEqual((await pending).isError, true);

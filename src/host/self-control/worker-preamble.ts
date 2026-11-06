@@ -7,6 +7,8 @@ interface PreambleInput {
   scope?: string;
   brief?: string;
   commit: boolean;
+  /** Hosted under the lead: the reply comes back on its own and the task travels as the prompt. */
+  nested?: boolean;
 }
 
 const COMMIT_RULES = [
@@ -37,10 +39,12 @@ export function buildWorkerPreamble(o: PreambleInput): string {
   if (o.scope) { lines.push(`Your scope: ${o.scope}. Do not edit outside it.`); }
   lines.push(
     ...(o.commit ? COMMIT_RULES : ['Do not commit. Leave your changes uncommitted for the lead to review.']),
-    `When finished, call marcode__send_message to "${o.lead}" with a short result`
-      + (o.commit ? ' and the hashes of the commits you made, or "no commits".' : '.'),
-    '',
-    `Your task: ${o.self.task}`,
+    o.nested
+      ? `Your final reply is returned to "${o.lead}" automatically: make it a short result`
+        + (o.commit ? ' and the hashes of the commits you made, or "no commits".' : '.')
+      : `When finished, call marcode__send_message to "${o.lead}" with a short result`
+        + (o.commit ? ' and the hashes of the commits you made, or "no commits".' : '.'),
   );
+  if (!o.nested) { lines.push('', `Your task: ${o.self.task}`); }
   return lines.join('\n');
 }

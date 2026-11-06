@@ -8,12 +8,12 @@ export interface SubagentHost {
   get(id: SessionId): AgentSession | undefined;
   createSubagent(parent: SessionId, spec: ResolvedSpawn): Promise<AgentSession>;
   releaseSubagent(id: SessionId): Promise<void>;
+  removeSubagent(id: SessionId): Promise<void>;
   changed(): void;
 }
 
 interface Entry { bridge: SubagentBridge; childId: SessionId; promoted?: boolean }
 
-const failure = (text: string): SubagentResult => ({ ok: false, text, sessionId: '' });
 const handleKey = (parentId: SessionId, name: string) => `${parentId}\n${name.toLowerCase()}`;
 
 export const SUBAGENT_APPROVAL_TIMEOUT_MS = 10 * 60 * 1000;
@@ -47,13 +47,39 @@ export class SubagentService {
     }
   }
 
+  /** Creates the hidden child without running it, so a team can learn each other's names first. */
+  async prepare(
+    parentId: SessionId, spec: ResolvedSpawn,
+  ): Promise<{ ok: true; child: AgentSession } | { ok: false; text: string }> {
+    if (!this.host.get(parentId)) { return { ok: false, text: 'The calling session is not live.' }; }
+    try {
+      return { ok: true, child: await this.host.createSubagent(parentId, spec) };
+    } catch (err) {
+      return { ok: false, text: err instanceof Error ? err.message : String(err) };
+    }
+  }
+
+  /** Drops a prepared child that will never run. */
+  async discard(childId: SessionId): Promise<void> {
+    await this.host.removeSubagent(childId).catch(() => undefined);
+  }
+
   /** Resolves as soon as the child is running; the reply is delivered to the parent as a message. */
   async runBackground(
-    parentId: SessionId, spec: ResolvedSpawn, prompt: string,
+    parentId: SessionId, spec: ResolvedSpawn, prompt: string, opts: { seed?: string } = {},
   ): Promise<{ ok: true; sessionId: string } | { ok: false; text: string }> {
-    const launched = await this.launch(parentId, spec, prompt);
-    if (!launched.ok) { return { ok: false, text: launched.result.text }; }
-    const { parent, child, settled } = launched;
+    const prepared = await this.prepare(parentId, spec);
+    if (!prepared.ok) { return prepared; }
+    return this.start(parentId, prepared.child, prompt, opts.seed);
+  }
+
+  /** Runs a prepared child. `seed` is hidden context; it defaults to "you were delegated this". */
+  start(
+    parentId: SessionId, child: AgentSession, prompt: string, seed?: string,
+  ): { ok: true; sessionId: string } | { ok: false; text: string } {
+    const parent = this.host.get(parentId);
+    if (!parent) { return { ok: false, text: 'The calling session is not live.' }; }
+    const settled = this.begin(parent, child, prompt, seed ?? buildSubagentPreamble({ parent: parent.state.name }));
     this.handles.set(handleKey(parentId, child.state.name), settled);
     while (this.handles.size > this.maxHandles) {
       const oldest = this.handles.keys().next().value;
@@ -111,21 +137,9 @@ export class SubagentService {
     }
   }
 
-  private async launch(
-    parentId: SessionId, spec: ResolvedSpawn, prompt: string,
-  ): Promise<
-    { ok: false; result: SubagentResult }
-    | { ok: true; parent: AgentSession; child: AgentSession; settled: Promise<SubagentResult> }
-  > {
-    const parent = this.host.get(parentId);
-    if (!parent) { return { ok: false, result: failure('The calling session is not live.') }; }
-    let child: AgentSession;
-    try {
-      child = await this.host.createSubagent(parentId, spec);
-    } catch (err) {
-      return { ok: false, result: failure(err instanceof Error ? err.message : String(err)) };
-    }
-    child.setSeed(buildSubagentPreamble({ parent: parent.state.name }));
+  private begin(parent: AgentSession, child: AgentSession, prompt: string, seed: string): Promise<SubagentResult> {
+    const parentId = parent.state.id;
+    child.setSeed(seed);
     const bridge = new SubagentBridge({
       parent, child, cardId: `sub-${child.state.id}`, prompt,
       onChange: () => this.host.changed(),
@@ -138,7 +152,7 @@ export class SubagentService {
     const unlisten = parent.onInterrupt(() => bridge.cancel());
     this.host.changed();
     bridge.start();
-    const settled = bridge.result().then(async (result) => {
+    return bridge.result().then(async (result) => {
       unlisten();
       set.delete(entry);
       if (set.size === 0) { this.byParent.delete(parentId); }
@@ -151,6 +165,5 @@ export class SubagentService {
       }
       return result;
     });
-    return { ok: true, parent, child, settled };
   }
 }

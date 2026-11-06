@@ -73,6 +73,7 @@ suite('subagent minors', () => {
       get: () => parent,
       createSubagent: async () => childLive,
       releaseSubagent: async () => { await gate; },
+      removeSubagent: async () => {},
       changed: () => {},
     };
     const service = new SubagentService(host);

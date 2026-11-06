@@ -108,7 +108,7 @@ suite('subagent background', () => {
     test('spawn returns a handle and await_subagent collects the reply', async () => {
       scripts.job = [{ kind: 'text', delta: 'reply' }, { kind: 'turn-end', reason: 'done' }];
       const parent = await manager.create('fake', dir);
-      const started = await call(parent.state.id, 'marcode__spawn_subagent', { prompt: 'job' });
+      const started = await call(parent.state.id, 'marcode__spawn_session', { nested: true, cwd: dir, prompt: 'job' });
       const handle = JSON.parse(started.content[0].text) as { sessionId: string; status: string };
       assert.strictEqual(handle.status, 'running');
       const got = await call(parent.state.id, 'marcode__await_subagent', { sessionId: handle.sessionId });
