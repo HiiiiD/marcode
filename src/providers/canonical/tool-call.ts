@@ -64,6 +64,8 @@ export type ToolCall =
   | { kind: 'mcp'; label: string; server: string; tool: string;
       input?: Record<string, unknown> }
   | { kind: 'image'; label: string; note?: string }
+  // A host-raised request to create a session: it has no provider tool behind it.
+  | { kind: 'spawn'; label: string; cwd: string; mode: string; prompt: string }
   | { kind: 'other'; label: string; fields?: Field[]; raw: unknown };
 
 /**

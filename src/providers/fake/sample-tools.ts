@@ -37,5 +37,6 @@ export const SAMPLE_TOOL_CALLS: Record<ToolCall['kind'], ToolCall> = {
   },
   'mcp': { kind: 'mcp', label: 'create_issue', server: 'github', tool: 'create_issue' },
   'image': { kind: 'image', label: 'Image', note: 'a red bicycle' },
+  'spawn': { kind: 'spawn', label: 'Spawn session', cwd: '/work', mode: 'bypass', prompt: 'Clean the build folder.' },
   'other': { kind: 'other', label: 'Bananas', raw: { peeled: true } },
 };

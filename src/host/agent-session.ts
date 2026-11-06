@@ -9,7 +9,7 @@ import type {
   Attachment,
   ContextBreakdown,
   EditorContext,
-  EffortLevel, Invocable, McpControl, PermissionMode, QuestionAnswers, ToolDecision,
+  EffortLevel, Invocable, McpControl, PermissionMeta, PermissionMode, QuestionAnswers, ToolDecision,
   UsageWindow,
 } from '../providers/types';
 import { findModel, resolveEffort } from '../shared/model-catalog';
@@ -1076,6 +1076,16 @@ export class AgentSession {
       this.delegates.set(event.id, delegate);
     }
     this.handle(event);
+  }
+
+  /** Parks a host-raised request (not a provider's) as a permission card; resolves with the user's decision and never rejects. */
+  requestHostApproval(tool: ToolCall, meta?: PermissionMeta): Promise<ToolDecision> {
+    return new Promise((settle) => {
+      this.ingestNested(
+        { kind: 'permission', id: nextId('ha'), tool, ...(meta ? { meta } : {}) },
+        { onDecision: settle },
+      );
+    });
   }
 
   private cancelDelegated(): void {

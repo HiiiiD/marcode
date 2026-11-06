@@ -7,11 +7,13 @@ import { z } from 'zod';
 import { digestText } from '../memory/digest';
 import type { MemoryStore } from '../memory/types';
 import type { ContextResult, PermissionMode, TranscriptItem } from '../protocol/messages';
-import type { EffortLevel, SelfControlMcpConfig } from '../providers/types';
+import type { ToolCall } from '../providers/canonical/tool-call';
+import type { EffortLevel, PermissionMeta, SelfControlMcpConfig, ToolDecision } from '../providers/types';
 import { rankByQuery } from '../shared/fuzzy-score';
 import { registerCollaboratorsTool } from './self-control/register-collaborators';
 import { registerContextUsageTool } from './self-control/register-context-usage';
 import { registerHandoffTool } from './self-control/register-handoff';
+import { gateSpawn } from './subagent/host-approval';
 import { registerSubagentTool } from './self-control/register-subagent';
 import type { SubagentService } from './subagent/subagent-service';
 import { buildSpawnPreamble } from './self-control/spawn-preamble';
@@ -28,6 +30,7 @@ type LiveSessionLike = {
   interrupt(): Promise<void>;
   send(text: string, context?: unknown, refs?: unknown, fileRefs?: unknown,
     from?: { sessionId: string; name: string }): void;
+  requestHostApproval?(tool: ToolCall, meta?: PermissionMeta): Promise<ToolDecision>;
 } | undefined;
 
 export interface SessionManagerLike {
@@ -244,6 +247,8 @@ export class SelfControlMcpServer {
       async ({ provider, model, effort, mode, cwd, prompt }) => {
         const resolved = resolveSpawn(this.sessionManager, caller(), { provider, model, effort, mode, cwd });
         if (!resolved.ok) { return { isError: true, content: [{ type: 'text', text: resolved.error }] }; }
+        const approval = await gateSpawn(this.sessionManager, caller(), resolved, prompt);
+        if (!approval.ok) { return { isError: true, content: [{ type: 'text', text: approval.error }] }; }
         const s = resolved.spawn;
         try {
           const session = await this.sessionManager.create(s.providerId, s.cwd, s.model, s.effort, s.mode, undefined, s.includeEditorContext, caller()?.id);

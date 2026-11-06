@@ -1,5 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
+import { gateSpawn } from '../subagent/host-approval';
 import { resolveSpawn } from './spawn-support';
 import type { ToolDeps } from './tool-deps';
 
@@ -34,6 +35,8 @@ export function registerSubagentTool(mcp: McpServer, { sessionManager, caller }:
       if (!from) { return fail('Could not identify the calling session.'); }
       const resolved = resolveSpawn(sessionManager, from, { provider, model, effort, mode, cwd: cwd ?? from.cwd });
       if (!resolved.ok) { return fail(resolved.error); }
+      const approval = await gateSpawn(sessionManager, from, resolved, prompt);
+      if (!approval.ok) { return fail(approval.error); }
       const result = await service.run(from.id, resolved.spawn, prompt);
       if (!result.ok) { return fail(result.text); }
       return { content: [{ type: 'text' as const, text: JSON.stringify(result) }] };

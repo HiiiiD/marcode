@@ -164,6 +164,9 @@ export function describeTool(tool: ToolCall): ToolHeader {
 
     case 'image':
       return header('image', tool.label, tool.note ?? '', false);
+
+    case 'spawn':
+      return header('bot', tool.label, `${tool.mode} session in ${tool.cwd}`, false);
   }
 }
 
@@ -321,6 +324,12 @@ export function describeInput(tool: ToolCall): ToolBlock[] {
 
     case 'image':
       if (tool.note) { blocks.push({ kind: 'note', text: tool.note }); }
+      break;
+
+    case 'spawn':
+      blocks.push({ kind: 'field', label: 'mode', value: tool.mode });
+      blocks.push({ kind: 'path', path: tool.cwd });
+      blocks.push({ kind: 'lines', text: tool.prompt, tone: 'output' });
       break;
   }
 

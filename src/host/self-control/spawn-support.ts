@@ -18,7 +18,7 @@ export interface ResolvedSpawn {
   includeEditorContext: boolean | undefined;
 }
 
-type Resolution = { ok: true; spawn: ResolvedSpawn } | { ok: false; error: string };
+export type Resolution = { ok: true; spawn: ResolvedSpawn; needsApproval?: 'bypass' } | { ok: false; error: string };
 
 export function resolveSpawn(
   manager: Pick<SessionManagerLike, 'catalog'>, from: Caller | undefined, req: SpawnRequest,
@@ -49,11 +49,15 @@ export function resolveSpawn(
     if (explicitMode !== undefined) { return { ok: false, error: `Provider ${providerId} has no mode ${mode}` }; }
     mode = undefined;
   }
-  // An explicit bypass would let a restricted session delegate around its restriction; an inherited one is merely dropped.
-  if (explicitMode === 'bypass') { return { ok: false, error: 'spawn_session cannot create bypass-mode sessions' }; }
-  if (mode === 'bypass') { mode = undefined; }
+  // An explicit bypass would let a restricted session delegate around its restriction, so the caller must ask the user; an inherited one is merely dropped.
+  const needsApproval = explicitMode === 'bypass';
+  if (!needsApproval && mode === 'bypass') { mode = undefined; }
   if (!path.isAbsolute(req.cwd)) { return { ok: false, error: `cwd must be an absolute path: ${req.cwd}` }; }
-  return { ok: true, spawn: { providerId, model: effectiveModel, effort, mode, cwd: req.cwd, includeEditorContext: from?.includeEditorContext } };
+  return {
+    ok: true,
+    spawn: { providerId, model: effectiveModel, effort, mode, cwd: req.cwd, includeEditorContext: from?.includeEditorContext },
+    ...(needsApproval ? { needsApproval: 'bypass' as const } : {}),
+  };
 }
 
 export async function openPane(manager: SessionManagerLike, id: string): Promise<void> {
