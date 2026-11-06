@@ -288,6 +288,7 @@ export class SessionManager implements SessionSink {
     }
     this.paneLayout = index.layout;
     this.knownOnDisk = new Set(index.sessions.map((s) => s.id));
+    await this.sweepOrphanSubagents();
 
     const cache = this.accountCache;
     if (cache && !this.disposed) {
@@ -2101,7 +2102,7 @@ export class SessionManager implements SessionSink {
    * and `DigestService` never rejects, so neither can fail a lifecycle transition.
    */
   private async digestHidden(id: SessionId): Promise<void> {
-    if (!this.digests) { return; }
+    if (!this.digests || this.isSubagent(id)) { return; }
     await this.digests.refresh(id);
     void this.digests.upgrade(id);
   }
@@ -2177,8 +2178,19 @@ export class SessionManager implements SessionSink {
     if (touched && !this.disposed) { this.changed(); }
   }
 
+  /** A hosted child outlives nothing: with its parent gone it has no card to belong to. */
+  private async sweepOrphanSubagents(): Promise<void> {
+    const orphans = [...this.meta.values()].filter(
+      (s) => s.kind === 'subagent' && (!s.parentId || !this.meta.has(s.parentId)),
+    );
+    for (const s of orphans) { await this.remove(s.id).catch(() => undefined); }
+  }
+
   async remove(id: SessionId): Promise<void> {
     if (await this.ownedElsewhere(id)) { return; }
+    for (const child of [...this.meta.values()]) {
+      if (child.kind === 'subagent' && child.parentId === id) { await this.remove(child.id); }
+    }
     await this.hide(id);
     if (this.ownership) { this.deleted.add(id); }
     this.meta.delete(id);
