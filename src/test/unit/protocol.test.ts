@@ -60,6 +60,7 @@ function describeInbound(m: WebviewToHost): string {
     case 'set-viewport': return 'set-viewport';
     case 'focus-session': return 'focus-session';
     case 'focus-pane': return 'focus-pane';
+    case 'promote-subagent': return 'promote-subagent';
     case 'set-pinned': return 'set-pinned';
     case 'set-draft': return 'set-draft';
     case 'request-history-summaries': return 'request-history-summaries';

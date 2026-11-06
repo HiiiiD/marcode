@@ -11,7 +11,7 @@ export interface SubagentHost {
   changed(): void;
 }
 
-interface Entry { bridge: SubagentBridge; childId: SessionId }
+interface Entry { bridge: SubagentBridge; childId: SessionId; promoted?: boolean }
 
 const failure = (text: string): SubagentResult => ({ ok: false, text, sessionId: '' });
 const handleKey = (parentId: SessionId, name: string) => `${parentId}\n${name.toLowerCase()}`;
@@ -59,7 +59,7 @@ export class SubagentService {
     const { parent, child, settled } = launched;
     this.handles.set(handleKey(parentId, child.state.name), settled);
     void settled.then((result) => {
-      if (result.cancelled) { return; }
+      if (result.cancelled || result.detached) { return; }
       const verdict = result.ok ? 'finished' : 'failed';
       try {
         parent.send(
@@ -82,6 +82,19 @@ export class SubagentService {
     } finally {
       clearTimeout(timer);
     }
+  }
+
+  /** Stops mirroring `childId` into its parent without stopping the child; true if it was running. */
+  detach(childId: SessionId): boolean {
+    for (const entries of this.byParent.values()) {
+      for (const entry of entries) {
+        if (entry.childId !== childId) { continue; }
+        entry.promoted = true;
+        entry.bridge.detach();
+        return true;
+      }
+    }
+    return false;
   }
 
   forget(parentId: SessionId): void {
@@ -122,7 +135,7 @@ export class SubagentService {
       set.delete(entry);
       if (set.size === 0) { this.byParent.delete(parentId); }
       this.host.changed();
-      await this.host.releaseSubagent(child.state.id).catch(() => undefined);
+      if (!entry.promoted) { await this.host.releaseSubagent(child.state.id).catch(() => undefined); }
       return result;
     });
     return { ok: true, parent, child, settled };

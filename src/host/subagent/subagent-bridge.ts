@@ -2,7 +2,7 @@ import type { AgentSession } from '../agent-session';
 import type { AgentEvent } from '../../providers/types';
 import { mirrorId } from './mirror-ids';
 
-export interface SubagentResult { ok: boolean; text: string; sessionId: string; cancelled?: boolean }
+export interface SubagentResult { ok: boolean; text: string; sessionId: string; cancelled?: boolean; detached?: boolean }
 
 export const EMPTY_REPLY = '(subagent finished with no output)';
 
@@ -68,7 +68,16 @@ export class SubagentBridge {
   cancel(): void {
     if (this.settled) { return; }
     void this.child.interrupt();
-    this.finish(false, 'Subagent cancelled', true);
+    this.finish(false, 'Subagent cancelled', { cancelled: true });
+  }
+
+  /** The child was promoted to its own session: stop mirroring and let it run on. */
+  detach(): void {
+    this.finish(
+      true,
+      `Opened as its own session "${this.child.state.name}". It keeps running there; its reply is no longer returned here.`,
+      { detached: true },
+    );
   }
 
   private onChildEvent(event: AgentEvent): void {
@@ -150,7 +159,7 @@ export class SubagentBridge {
     if (timer) { clearTimeout(timer); this.timers.delete(mirrored); }
   }
 
-  private finish(ok: boolean, text: string, cancelled = false): void {
+  private finish(ok: boolean, text: string, flags: { cancelled?: boolean; detached?: boolean } = {}): void {
     if (this.settled) { return; }
     this.settled = true;
     for (const timer of this.timers.values()) { clearTimeout(timer); }
@@ -161,6 +170,6 @@ export class SubagentBridge {
     }
     this.openRequests.clear();
     this.parent.ingestNested({ kind: 'tool-end', id: this.cardId, ok, output: { kind: 'text', text } });
-    this.resolveResult({ ok, text, sessionId: this.child.state.name, ...(cancelled ? { cancelled } : {}) });
+    this.resolveResult({ ok, text, sessionId: this.child.state.name, ...flags });
   }
 }

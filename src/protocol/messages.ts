@@ -538,6 +538,8 @@ export type WebviewToHost =
    */
   | { t: 'focus-session'; id: SessionId }
   | { t: 'focus-pane'; sessionId: SessionId }
+  /** Turn a hosted subagent into a normal session and show it; `id` is the child. */
+  | { t: 'promote-subagent'; id: SessionId }
   | { t: 'set-pinned'; id: SessionId; pinned: boolean }
   | { t: 'set-draft'; id: SessionId; text: string }
   | { t: 'request-history-summaries' }

@@ -42,6 +42,7 @@ import type {
 import { withTimeout } from '../shared/with-timeout';
 import { McpService } from './mcp/mcp-service';
 import type { ResolvedSpawn } from './self-control/spawn-support';
+import { focusSession } from './focus-session';
 import { SubagentService } from './subagent/subagent-service';
 import { DEFAULT_SHELL_ALIASES, type ShellAliasTable } from './shell/shell-aliases';
 
@@ -813,6 +814,16 @@ export class SessionManager implements SessionSink {
   }
 
   readonly subagents = new SubagentService(this);
+
+  /** Turns a hosted child into an ordinary session (keeping its parent link) and shows it. */
+  async promoteSubagent(id: SessionId): Promise<void> {
+    const state = this.meta.get(id);
+    if (!state || state.kind !== 'subagent') { return; }
+    this.subagents.detach(id);
+    delete state.kind;
+    this.changed();
+    await focusSession(this, id);
+  }
 
   /** Disposes a finished child's live run; its row and JSONL stay so it can be promoted or inspected. */
   async releaseSubagent(id: SessionId): Promise<void> {
