@@ -11,8 +11,6 @@ interface BridgeOptions {
   child: AgentSession;
   cardId: string;
   prompt: string;
-  /** What the child is actually sent, when it differs from the prompt shown on the card. */
-  message?: string;
   background?: boolean;
   /** Fired when the pending-approval count or the settled state changes. */
   onChange?: () => void;
@@ -26,12 +24,12 @@ export class SubagentBridge {
   private readonly child: AgentSession;
   private readonly cardId: string;
   private readonly prompt: string;
-  private readonly message: string;
   private readonly background: boolean;
   private readonly onChange: (() => void) | undefined;
   private readonly approvalTimeoutMs: number | undefined;
   private readonly timers = new Map<string, NodeJS.Timeout>();
   private reply = '';
+  private lastWords = '';
   private settled = false;
   private readonly openRequests = new Set<string>();
   private resolveResult!: (r: SubagentResult) => void;
@@ -42,7 +40,6 @@ export class SubagentBridge {
     this.child = o.child;
     this.cardId = o.cardId;
     this.prompt = o.prompt;
-    this.message = o.message ?? o.prompt;
     this.background = o.background ?? false;
     this.onChange = o.onChange;
     this.approvalTimeoutMs = o.approvalTimeoutMs;
@@ -57,12 +54,12 @@ export class SubagentBridge {
     this.parent.ingestNested({
       kind: 'tool-start', id: this.cardId,
       tool: {
-        kind: 'subagent', label: 'Subagent', action: 'spawn', agent: name, model, sessionId: this.child.state.id,
+        kind: 'subagent', label: 'Subagent', action: 'spawn', agent: name, model, childSessionId: this.child.state.id,
         prompt: this.prompt,
       },
     });
     this.child.setTap((event) => this.onChildEvent(event));
-    this.child.send(this.message);
+    this.child.send(this.prompt);
   }
 
   cancel(): void {
@@ -89,12 +86,13 @@ export class SubagentBridge {
         this.reply += event.delta;
         return;
       case 'tool-start':
+        if (this.reply.trim()) { this.lastWords = this.reply; }
         this.reply = '';
-        this.parent.ingestNested({ ...event, id: id(event.id), parentId });
+        this.parent.ingestNested({ ...event, id: id(event.id), parentId }, undefined, this.child.state.cwd);
         return;
       case 'tool-update':
       case 'tool-end':
-        this.parent.ingestNested({ ...event, id: id(event.id), parentId });
+        this.parent.ingestNested({ ...event, id: id(event.id), parentId }, undefined, this.child.state.cwd);
         return;
       case 'permission': {
         const mirrored = id(event.id);
@@ -108,7 +106,7 @@ export class SubagentBridge {
           },
         });
         this.watchApproval(mirrored, () => {
-          this.parent.respondToPermission(mirrored, { allow: false, reason: 'Approval timed out' });
+          this.parent.respondToPermission(mirrored, { allow: false, reason: 'Blocked: approval not granted' });
         });
         this.onChange?.();
         return;
@@ -116,7 +114,7 @@ export class SubagentBridge {
       case 'question': {
         const mirrored = id(event.id);
         this.openRequests.add(mirrored);
-        this.parent.ingestNested({ ...event, id: mirrored }, {
+        this.parent.ingestNested({ ...event, id: mirrored, questions: event.questions.map((q) => ({ ...q, header: `${this.child.state.name}: ${q.header}` })) }, {
           onAnswer: (answers) => {
             this.openRequests.delete(mirrored);
             this.clearTimer(mirrored);
@@ -139,7 +137,7 @@ export class SubagentBridge {
         this.onChange?.();
         return;
       case 'turn-end':
-        if (event.reason === 'done') { this.finish(true, this.reply.trim() || EMPTY_REPLY); }
+        if (event.reason === 'done') { this.finish(true, this.reply.trim() || this.lastWords.trim() || EMPTY_REPLY); }
         else if (event.reason === 'interrupted') { this.finish(false, 'Subagent interrupted'); }
         else { this.finish(false, event.error ?? 'Subagent failed'); }
         return;

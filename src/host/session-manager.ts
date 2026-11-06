@@ -818,8 +818,13 @@ export class SessionManager implements SessionSink {
   /** Turns a hosted child into an ordinary session (keeping its parent link) and shows it. */
   async promoteSubagent(id: SessionId): Promise<void> {
     const state = this.meta.get(id);
-    if (!state || state.kind !== 'subagent') { return; }
+    if (!state) { return; }
+    if (state.kind !== 'subagent') {
+      if (state.parentId) { await focusSession(this, id); }
+      return;
+    }
     this.subagents.detach(id);
+    await this.subagents.pendingRelease(id);
     delete state.kind;
     this.changed();
     await focusSession(this, id);
@@ -2202,6 +2207,7 @@ export class SessionManager implements SessionSink {
 
   async remove(id: SessionId): Promise<void> {
     if (await this.ownedElsewhere(id)) { return; }
+    this.subagents.cancelSubtree(id);
     for (const child of [...this.meta.values()]) {
       if (child.kind === 'subagent' && child.parentId === id) { await this.remove(child.id); }
     }
@@ -2264,7 +2270,7 @@ export class SessionManager implements SessionSink {
   }
 
   status(id: SessionId, status: SessionStatus): void {
-    this.emit({ t: 'session-status', id, status });
+    if (!this.isSubagent(id)) { this.emit({ t: 'session-status', id, status }); }
     if (status === 'idle') { this.drainQueuedMove(id); }
   }
 

@@ -3,7 +3,7 @@ import * as fs from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
 import { SubagentBridge } from '../../host/subagent/subagent-bridge';
-import { mirrorId, parseMirrorId } from '../../host/subagent/mirror-ids';
+import { mirrorId } from '../../host/subagent/mirror-ids';
 import { SessionManager } from '../../host/session-manager';
 import { TranscriptStore } from '../../host/transcript-store';
 import type { ToolCall, TranscriptItem } from '../../protocol/messages';
@@ -46,9 +46,8 @@ suite('subagent bridge', () => {
     return items.find((i): i is Extract<TranscriptItem, { role: 'tool' }> => i.role === 'tool' && i.toolId === 'card1')!;
   };
 
-  test('mirror ids round trip', () => {
-    assert.deepStrictEqual(parseMirrorId(mirrorId('s-1', 'p:1')), { childId: 's-1', requestId: 'p:1' });
-    assert.strictEqual(parseMirrorId('nope'), undefined);
+  test('a mirrored id is namespaced by the child', () => {
+    assert.strictEqual(mirrorId('s-1', 'p:1'), 's-1:p:1');
   });
 
   test('a child tool nests under the card and the final text closes it', async () => {

@@ -4,7 +4,7 @@ export interface ZoneBar { label: string; hints: string }
 
 const HINTS: Record<Zone, { label: string; keys: string[] }> = {
   composer: { label: 'composer', keys: ['Enter send', 'Ctrl+J newline', '^V image', '^O open attachment'] },
-  transcript: { label: 'transcript', keys: ['j/k select', 'Enter open', 'l attachments', 'f fork', 'End latest'] },
+  transcript: { label: 'transcript', keys: ['j/k select', 'Enter open', 'l attachments', 'f fork', 'o open subagent', 'End latest'] },
   roster: { label: 'roster', keys: ['j/k move', 'Enter focus', 'x hide', 'p pin', '/ filter'] },
   approval: { label: 'approval', keys: ['y allow', 'n deny', 'Enter confirm'] },
   question: { label: 'question', keys: ['↑/↓ choose', 'Space toggle', 'Enter submit'] },

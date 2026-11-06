@@ -7,13 +7,13 @@ type Approval = { ok: true } | { ok: false; error: string };
 interface Requester { requestHostApproval?(tool: ToolCall, meta?: PermissionMeta): Promise<ToolDecision> }
 
 export async function approveSpawn(
-  requester: Requester | undefined, spawn: ResolvedSpawn, prompt: string,
+  requester: Requester | undefined, spawn: ResolvedSpawn, prompt: string, kind: 'session' | 'subagent' = 'session',
 ): Promise<Approval> {
   if (!requester?.requestHostApproval) {
     return { ok: false, error: 'A bypass-mode session needs user approval, and this caller cannot ask for it.' };
   }
   const decision = await requester.requestHostApproval(
-    { kind: 'spawn', label: 'Spawn session', cwd: spawn.cwd, mode: spawn.mode ?? 'bypass', prompt },
+    { kind: 'spawn', label: kind === 'subagent' ? 'Spawn subagent' : 'Spawn session', cwd: spawn.cwd, mode: spawn.mode ?? 'bypass', prompt },
     { title: 'Allow a bypass-mode session?', description: 'It will run with no approval prompts.' },
   );
   if (decision.allow) { return { ok: true }; }
@@ -26,7 +26,8 @@ export async function gateSpawn(
   from: Caller | undefined,
   resolved: Extract<Resolution, { ok: true }>,
   prompt: string,
+  kind: 'session' | 'subagent' = 'session',
 ): Promise<Approval> {
   if (resolved.needsApproval !== 'bypass') { return { ok: true }; }
-  return approveSpawn(from ? await manager.get(from.id) : undefined, resolved.spawn, prompt);
+  return approveSpawn(from ? await manager.get(from.id) : undefined, resolved.spawn, prompt, kind);
 }

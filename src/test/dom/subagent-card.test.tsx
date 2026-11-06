@@ -162,7 +162,7 @@ suite('SubagentCard hosted child', () => {
   setup(() => { resetHost(); });
 
   const hosted = (sessionId?: string) => subagent([], {
-    tool: { kind: 'subagent', label: 'Subagent', action: 'spawn', agent: 'claude-ab12', ...(sessionId ? { sessionId } : {}) },
+    tool: { kind: 'subagent', label: 'Subagent', action: 'spawn', agent: 'claude-ab12', ...(sessionId ? { childSessionId: sessionId } : {}) },
   });
 
   test('a hosted subagent offers to open it as its own session', async () => {

@@ -24,7 +24,7 @@ export function SubagentCard({ item, sessionId }: { item: ToolItem; sessionId: S
   const [now, setNow] = useState(() => Date.now());
   const openTranscript = useOpenSubagentTranscript();
   const { post } = useStore();
-  const hostedId = item.tool.kind === 'subagent' ? item.tool.sessionId : undefined;
+  const hostedId = item.tool.kind === 'subagent' ? item.tool.childSessionId : undefined;
 
   // A collapsed card must still tick: a row reading "12 tools · 34s" is not
   // a hang, and a static row is. One interval per running card, cleared the

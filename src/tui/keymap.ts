@@ -9,7 +9,7 @@ export type Action =
   | { do: 'allow' } | { do: 'deny' } | { do: 'confirm' }
   | { do: 'option-next' } | { do: 'option-prev' } | { do: 'option-toggle' } | { do: 'submit-answers' }
   | { do: 'roster-pin' } | { do: 'roster-filter' } | { do: 'roster-delete' } | { do: 'attach-remove' } | { do: 'attach-clipboard' } | { do: 'attach-open' } | { do: 'attachment-next' } | { do: 'attachment-prev' }
-  | { do: 'refresh-catalog' } | { do: 'pane-prefix' } | { do: 'fork-item' } | { do: 'roster-handoff' }
+  | { do: 'refresh-catalog' } | { do: 'pane-prefix' } | { do: 'fork-item' } | { do: 'promote-item' } | { do: 'roster-handoff' }
   | { do: 'refresh-usage' } | { do: 'relocation-move' } | { do: 'relocation-stay' } | { do: 'cancel-shell' };
 
 const act = <T extends Action['do']>(d: T) => ({ do: d }) as Extract<Action, { do: T }>;
@@ -70,6 +70,7 @@ export function actionFor(zone: Zone, key: KeyInput, ctx: KeyContext): Action | 
         case 'pagedown': return act('page-down');
         case 'end': return act('repin');
         case 'f': return act('fork-item');
+        case 'o': return act('promote-item');
       }
       return undefined;
     case 'roster':

@@ -24,6 +24,9 @@ export class SubagentService {
   private readonly handles = new Map<string, Promise<SubagentResult>>();
   /** How long a background child may wait on an unanswered approval before it is denied. */
   approvalTimeoutMs = SUBAGENT_APPROVAL_TIMEOUT_MS;
+  /** Background results kept for `awaitResult`, newest last; older ones are dropped. */
+  maxHandles = 200;
+  private readonly releases = new Map<SessionId, Promise<void>>();
 
   constructor(private readonly host: SubagentHost) {}
 
@@ -75,6 +78,11 @@ export class SubagentService {
     if (!launched.ok) { return { ok: false, text: launched.result.text }; }
     const { parent, child, settled } = launched;
     this.handles.set(handleKey(parentId, child.state.name), settled);
+    while (this.handles.size > this.maxHandles) {
+      const oldest = this.handles.keys().next().value;
+      if (oldest === undefined) { break; }
+      this.handles.delete(oldest);
+    }
     void settled.then((result) => {
       if (result.cancelled || result.detached) { return; }
       const verdict = result.ok ? 'finished' : 'failed';
@@ -93,7 +101,10 @@ export class SubagentService {
     const settled = this.handles.get(handleKey(parentId, name));
     if (!settled) { return undefined; }
     let timer: NodeJS.Timeout | undefined;
-    const timeout = new Promise<'pending'>((resolve) => { timer = setTimeout(() => resolve('pending'), timeoutMs); });
+    const timeout = new Promise<'pending'>((resolve) => {
+      timer = setTimeout(() => resolve('pending'), timeoutMs);
+      timer.unref();
+    });
     try {
       return await Promise.race([settled, timeout]);
     } finally {
@@ -113,6 +124,9 @@ export class SubagentService {
     }
     return false;
   }
+
+  /** A release that has started and not finished; promote waits on it so it never shows a half-disposed child. */
+  pendingRelease(childId: SessionId): Promise<void> | undefined { return this.releases.get(childId); }
 
   forget(parentId: SessionId): void {
     for (const key of [...this.handles.keys()]) {
@@ -134,9 +148,9 @@ export class SubagentService {
     } catch (err) {
       return { ok: false, result: failure(err instanceof Error ? err.message : String(err)) };
     }
+    child.setSeed(buildSubagentPreamble({ parent: parent.state.name }));
     const bridge = new SubagentBridge({
       parent, child, cardId: `sub-${child.state.id}`, prompt, background,
-      message: `${buildSubagentPreamble({ parent: parent.state.name })}\n\n${prompt}`,
       onChange: () => this.host.changed(),
       approvalTimeoutMs: background ? this.approvalTimeoutMs : undefined,
     });
@@ -152,7 +166,12 @@ export class SubagentService {
       set.delete(entry);
       if (set.size === 0) { this.byParent.delete(parentId); }
       this.host.changed();
-      if (!entry.promoted) { await this.host.releaseSubagent(child.state.id).catch(() => undefined); }
+      if (!entry.promoted) {
+        const release = this.host.releaseSubagent(child.state.id).catch(() => undefined);
+        this.releases.set(child.state.id, release);
+        await release;
+        this.releases.delete(child.state.id);
+      }
       return result;
     });
     return { ok: true, parent, child, settled };

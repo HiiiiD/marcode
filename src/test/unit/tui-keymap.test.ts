@@ -37,6 +37,8 @@ suite('tui keymap', () => {
       assert.deepStrictEqual(actionFor(zone, { name: 'w', ctrl: true }, idle), { do: 'pane-prefix' });
     }
     assert.deepStrictEqual(actionFor('transcript', { name: 'f' }, idle), { do: 'fork-item' });
+    assert.deepStrictEqual(actionFor('transcript', { name: 'o' }, idle), { do: 'promote-item' });
+    assert.strictEqual(actionFor('composer', { name: 'o' }, idle), undefined);
     assert.strictEqual(actionFor('composer', { name: 'f' }, idle), undefined);
     assert.deepStrictEqual(actionFor('roster', { name: 'h', shift: true }, idle), { do: 'roster-handoff' });
     assert.strictEqual(actionFor('roster', { name: 'h' }, idle), undefined);

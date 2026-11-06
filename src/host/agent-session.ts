@@ -143,6 +143,8 @@ export class AgentSession {
   private run: AgentRun;
   private tap: ((event: AgentEvent) => void) | undefined;
   private readonly delegates = new Map<string, NestedDelegate>();
+  /** The working directory an ingested event's relative paths belong to, while it is being handled. */
+  private ingestCwd: string | undefined;
   private readonly interruptListeners = new Set<() => void>();
   private readonly builtAt = Date.now();
   private pending = new Map<string, PermissionRequest>();
@@ -321,6 +323,9 @@ export class AgentSession {
    * `SessionManager`, which is the only thing that ever supplies one.
    */
   get pendingSeedText(): string | undefined { return this.seed; }
+
+  /** Context handed to the provider with the first send but never written to the transcript. */
+  setSeed(seed: string): void { this.seed = seed; }
 
   /**
    * The assistant item currently being streamed into, if any.
@@ -1071,11 +1076,12 @@ export class AgentSession {
    * vendor subagent's. A permission or question registers `delegate` as the
    * place its answer goes.
    */
-  ingestNested(event: AgentEvent, delegate?: NestedDelegate): void {
+  ingestNested(event: AgentEvent, delegate?: NestedDelegate, cwd?: string): void {
     if (delegate && (event.kind === 'permission' || event.kind === 'question')) {
       this.delegates.set(event.id, delegate);
     }
-    this.handle(event);
+    this.ingestCwd = cwd;
+    try { this.handle(event); } finally { this.ingestCwd = undefined; }
   }
 
   /** Parks a host-raised request (not a provider's) as a permission card; resolves with the user's decision and never rejects. */
@@ -1203,7 +1209,7 @@ export class AgentSession {
         // have moved bytes, and a claim is "this session wrote here", not
         // "this session succeeded here". The diff decides what is actually
         // there; a claimed path with no diff is simply never listed.
-        for (const path of claimedPaths(settled.tool, this._state.cwd)) {
+        for (const path of claimedPaths(settled.tool, this.ingestCwd ?? this._state.cwd)) {
           this.claims.add(path);
         }
 
@@ -1668,7 +1674,7 @@ export class AgentSession {
     for (const [toolId, item] of this.toolItems) {
       if (this.childOf.has(toolId) || item.role !== 'tool' || item.state !== 'running') { continue; }
       // A hosted subagent's own bridge settles its card; ending the parent's turn must not.
-      if (item.tool.kind === 'subagent' && item.tool.sessionId !== undefined) { continue; }
+      if (item.tool.kind === 'subagent' && item.tool.childSessionId !== undefined) { continue; }
       const children = this.childrenByParent.get(toolId);
       const settled: TranscriptItem = {
         ...unsettled(item),

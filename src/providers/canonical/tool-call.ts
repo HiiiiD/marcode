@@ -46,7 +46,7 @@ export type ToolCall =
       agent?: string; model?: string; isolation?: string; target?: string;
       summary?: string; prompt?: string; fields?: Field[];
       /** Set only for a Marcode-hosted child: the session id `promote-subagent` takes. */
-      sessionId?: string;
+      childSessionId?: string;
       // A `spawn` dispatched with `run_in_background: true` settles almost
       // immediately with a "launched" acknowledgement — its actual tool
       // activity happens in a separate spawned session/process this host

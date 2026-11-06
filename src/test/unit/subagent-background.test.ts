@@ -72,7 +72,7 @@ suite('subagent background', () => {
     const started = await manager.subagents.runBackground(parent.state.id, spec(dir), 'job');
     assert.ok(started.ok);
     await tick(20);
-    assert.deepStrictEqual(provider.decisions.get('p1'), { allow: false, reason: 'Approval timed out' });
+    assert.deepStrictEqual(provider.decisions.get('p1'), { allow: false, reason: 'Blocked: approval not granted' });
     assert.notStrictEqual(parent.state.status, 'awaiting-approval');
   });
 

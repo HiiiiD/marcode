@@ -39,7 +39,7 @@ export function registerSubagentTool(mcp: McpServer, { sessionManager, caller }:
       if (!from) { return fail('Could not identify the calling session.'); }
       const resolved = resolveSpawn(sessionManager, from, { provider, model, effort, mode, cwd: cwd ?? from.cwd });
       if (!resolved.ok) { return fail(resolved.error); }
-      const approval = await gateSpawn(sessionManager, from, resolved, prompt);
+      const approval = await gateSpawn(sessionManager, from, resolved, prompt, 'subagent');
       if (!approval.ok) { return fail(approval.error); }
       if (background) {
         const started = await service.runBackground(from.id, resolved.spawn, prompt);

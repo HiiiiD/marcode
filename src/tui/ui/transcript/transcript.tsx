@@ -122,6 +122,11 @@ export function Transcript({ sessionId, focused, onFork, relocationKeys = 'none'
       if (owner) { setNotice(`Cannot fork "${pane.summary.name || pane.summary.title}": owned by ${owner.host}`); return; }
       onFork?.(row.id);
     }
+    else if (action.do === 'promote-item') {
+      const tool = current?.kind === 'tool' ? current.item.tool : undefined;
+      if (tool?.kind === 'subagent' && tool.childSessionId) { post({ t: 'promote-subagent', id: tool.childSessionId }); }
+      else { setNotice('Select a hosted subagent card to open it as a session'); }
+    }
     else if (action.do === 'repin') { setCursorId(undefined); box?.scrollTo(Number.MAX_SAFE_INTEGER); }
     if (action.do === 'page-up' || action.do === 'item-prev') { setTimeout(askOlder, 0); }
   });

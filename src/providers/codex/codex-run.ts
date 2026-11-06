@@ -1,4 +1,5 @@
 import { attachmentLines, imageAttachments } from '../attachment-payload';
+import { codexSelfControlConfig } from './self-control-config';
 import { composePrompt } from '../compose-prompt';
 import { sumUsageTotals } from '../../shared/usage-totals';
 import type {
@@ -558,14 +559,7 @@ export class CodexRun implements AgentRun {
       // `MARCODE_SELF_CONTROL_TOKEN` env var `CodexProvider.connect()` sets,
       // named here only by the env var it lives in.
       ...(this.opts.selfControlMcp ? {
-        config: {
-          mcp_servers: {
-            marcode_self_control: {
-              url: `${this.opts.selfControlMcp.url}?sid=${encodeURIComponent(this.opts.sessionId)}`,
-              bearer_token_env_var: 'MARCODE_SELF_CONTROL_TOKEN',
-            },
-          },
-        },
+        config: codexSelfControlConfig(this.opts.selfControlMcp.url, this.opts.sessionId),
       } : {}),
     };
     try {
