@@ -58,7 +58,7 @@ export class SubagentBridge {
       kind: 'tool-start', id: this.cardId,
       tool: {
         kind: 'subagent', label: 'Subagent', action: 'spawn', agent: name, model, sessionId: this.child.state.id,
-        prompt: this.prompt, background: this.background,
+        prompt: this.prompt,
       },
     });
     this.child.setTap((event) => this.onChildEvent(event));
@@ -67,8 +67,8 @@ export class SubagentBridge {
 
   cancel(): void {
     if (this.settled) { return; }
-    void this.child.interrupt();
     this.finish(false, 'Subagent cancelled', { cancelled: true });
+    void this.child.interrupt();
   }
 
   /** The child was promoted to its own session: stop mirroring and let it run on. */
@@ -123,6 +123,7 @@ export class SubagentBridge {
             this.child.answerQuestion(event.id, answers);
             this.onChange?.();
           },
+          onCancel: () => this.cancel(),
         });
         this.watchApproval(mirrored, () => {
           void this.child.interrupt();

@@ -37,6 +37,14 @@ export class SubagentService {
     return { running: entries.size, awaitingApproval: awaiting };
   }
 
+  private cancelChild(parentId: SessionId, childId: SessionId): void {
+    for (const entry of this.byParent.get(parentId) ?? []) {
+      if (entry.childId !== childId) { continue; }
+      this.cancelSubtree(childId);
+      entry.bridge.cancel();
+    }
+  }
+
   cancelSubtree(parentId: SessionId): void {
     for (const entry of [...(this.byParent.get(parentId) ?? [])]) {
       this.cancelSubtree(entry.childId);
@@ -45,9 +53,18 @@ export class SubagentService {
   }
 
   /** Foreground: resolves with the child's final reply. */
-  async run(parentId: SessionId, spec: ResolvedSpawn, prompt: string): Promise<SubagentResult> {
+  async run(
+    parentId: SessionId, spec: ResolvedSpawn, prompt: string, opts: { signal?: AbortSignal } = {},
+  ): Promise<SubagentResult> {
     const launched = await this.launch(parentId, spec, prompt, false);
-    return launched.ok ? launched.settled : launched.result;
+    if (!launched.ok) { return launched.result; }
+    const { signal } = opts;
+    if (signal) {
+      const abort = () => this.cancelChild(parentId, launched.child.state.id);
+      if (signal.aborted) { abort(); } else { signal.addEventListener('abort', abort, { once: true }); }
+      void launched.settled.then(() => signal.removeEventListener('abort', abort));
+    }
+    return launched.settled;
   }
 
   /** Background: resolves as soon as the child is running; the reply is delivered to the parent as a message. */

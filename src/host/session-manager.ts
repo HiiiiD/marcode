@@ -827,6 +827,8 @@ export class SessionManager implements SessionSink {
 
   /** Disposes a finished child's live run; its row and JSONL stay so it can be promoted or inspected. */
   async releaseSubagent(id: SessionId): Promise<void> {
+    this.subagents.cancelSubtree(id);
+    this.subagents.forget(id);
     const session = this.live.get(id);
     if (session) { await session.dispose(); this.live.delete(id); }
     const state = this.meta.get(id);
@@ -1129,6 +1131,7 @@ export class SessionManager implements SessionSink {
     id: SessionId, session: AgentSession, state: SessionState, provider: AgentProvider,
     to: string, forgetThreadAt?: string, inPlace = false,
   ): Promise<AgentSession | undefined> {
+    this.subagents.cancelSubtree(id);
     await session.dispose();
     this.live.delete(id);
 

@@ -677,7 +677,7 @@ export class AgentSession {
       // just exited it. Only fires while still tracked as 'plan': a stray
       // ExitPlanMode call approved after some other mode switch already
       // happened must not clobber that later, unrelated choice.
-      if (existing.tool.kind === 'plan' && decision.allow && this._state.permissionMode === 'plan') {
+      if (!delegate && existing.tool.kind === 'plan' && decision.allow && this._state.permissionMode === 'plan') {
         this.setPermissionMode('default');
       }
     }
@@ -1667,6 +1667,8 @@ export class AgentSession {
 
     for (const [toolId, item] of this.toolItems) {
       if (this.childOf.has(toolId) || item.role !== 'tool' || item.state !== 'running') { continue; }
+      // A hosted subagent's own bridge settles its card; ending the parent's turn must not.
+      if (item.tool.kind === 'subagent' && item.tool.sessionId !== undefined) { continue; }
       const children = this.childrenByParent.get(toolId);
       const settled: TranscriptItem = {
         ...unsettled(item),

@@ -34,7 +34,7 @@ export function registerSubagentTool(mcp: McpServer, { sessionManager, caller }:
         ),
       }),
     },
-    async ({ prompt, provider, model, effort, mode, cwd, background }) => {
+    async ({ prompt, provider, model, effort, mode, cwd, background }, extra) => {
       const from = caller();
       if (!from) { return fail('Could not identify the calling session.'); }
       const resolved = resolveSpawn(sessionManager, from, { provider, model, effort, mode, cwd: cwd ?? from.cwd });
@@ -46,7 +46,7 @@ export function registerSubagentTool(mcp: McpServer, { sessionManager, caller }:
         if (!started.ok) { return fail(started.text); }
         return { content: [{ type: 'text' as const, text: JSON.stringify({ sessionId: started.sessionId, background: true }) }] };
       }
-      const result = await service.run(from.id, resolved.spawn, prompt);
+      const result = await service.run(from.id, resolved.spawn, prompt, { signal: extra?.mcpReq?.signal });
       if (!result.ok) { return fail(result.text); }
       return { content: [{ type: 'text' as const, text: JSON.stringify(result) }] };
     },
