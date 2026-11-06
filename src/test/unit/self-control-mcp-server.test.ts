@@ -4,6 +4,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { suite, teardown, test } from 'mocha';
 import { focusSession } from '../../host/focus-session';
+import { buildSpawnPreamble } from '../../host/self-control/spawn-preamble';
 import { SelfControlMcpServer, type SessionManagerLike } from '../../host/self-control-mcp-server';
 import { SessionManager } from '../../host/session-manager';
 import { TranscriptStore } from '../../host/transcript-store';
@@ -689,6 +690,25 @@ suite('SelfControlMcpServer cross-session messaging', () => {
     const result = await callToolAs(await server.start(), 's-caller', 'marcode__spawn_session', { cwd: path.resolve('/w'), prompt: 'hi' });
     assert.strictEqual(result.isError, undefined);
     assert.strictEqual(parent, 's-caller');
+  });
+
+  test('spawn_session prepends a who-spawned-you preamble before the original prompt', async () => {
+    let sent = '';
+    const server = trackedServer(fakeManager({
+      summaries: () => [{ id: 's-caller', name: 'boss', providerId: 'claude', model: 'sonnet', status: 'idle', cwd: '/w', permissionMode: 'default' } as never],
+      create: async () => ({ state: { id: 's-new', name: 'claude-new' }, send: (t: string) => { sent = t; } } as never),
+    }));
+    await callToolAs(await server.start(), 's-caller', 'marcode__spawn_session', { cwd: path.resolve('/w'), prompt: 'ORIGINAL PROMPT' });
+    assert.strictEqual(sent, `${buildSpawnPreamble({ parent: 'boss' })}\n\nORIGINAL PROMPT`);
+  });
+
+  test('spawn_session sends the prompt unchanged when there is no caller', async () => {
+    let sent = '';
+    const server = trackedServer(fakeManager({
+      create: async () => ({ state: { id: 's-new', name: 'claude-new' }, send: (t: string) => { sent = t; } } as never),
+    }));
+    await callTool(await server.start(), 'marcode__spawn_session', { provider: 'claude', cwd: '/tmp', prompt: 'ORIGINAL PROMPT' });
+    assert.strictEqual(sent, 'ORIGINAL PROMPT');
   });
 
   suite('marcode__handoff', () => {

@@ -12,6 +12,7 @@ import { rankByQuery } from '../shared/fuzzy-score';
 import { registerCollaboratorsTool } from './self-control/register-collaborators';
 import { registerContextUsageTool } from './self-control/register-context-usage';
 import { registerHandoffTool } from './self-control/register-handoff';
+import { buildSpawnPreamble } from './self-control/spawn-preamble';
 import { openPane, resolveSpawn, sendPrompt } from './self-control/spawn-support';
 
 /**
@@ -214,7 +215,8 @@ export class SelfControlMcpServer {
         description: 'Marcode-specific: creates a new top-level Marcode session (its own pane, '
           + 'own provider/model, own conversation) and sends it an initial prompt — NOT a '
           + 'subagent of this conversation and unrelated to any built-in Task/subagent tool you '
-          + 'have. Use this to hand off independent work to a separate, freestanding session. '
+          + 'have. Use this to hand off independent work to a separate, freestanding session. The new session is told which session spawned it and '
+          + 'reports back to it with marcode__send_message when finished or blocked, so do not ask it to. '
           + 'Omitted provider, model, effort, and permission mode each inherit independently from '
           + 'the calling session; an incompatible provider or model is rejected. An effort the '
           + 'chosen model does not publish falls back to that model\'s own default instead of '
@@ -238,7 +240,8 @@ export class SelfControlMcpServer {
         const s = resolved.spawn;
         try {
           const session = await this.sessionManager.create(s.providerId, s.cwd, s.model, s.effort, s.mode, undefined, s.includeEditorContext, caller()?.id);
-          sendPrompt(session, prompt);
+          const parent = caller();
+          sendPrompt(session, parent ? `${buildSpawnPreamble({ parent: parent.name })}\n\n${prompt}` : prompt);
           await openPane(this.sessionManager, session.state.id);
           return { content: [{ type: 'text', text: JSON.stringify({ sessionId: session.state.name }) }] };
         } catch (err) {
