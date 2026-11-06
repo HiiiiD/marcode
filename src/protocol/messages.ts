@@ -219,6 +219,8 @@ export interface SessionState {
   parentId?: SessionId;
   /** `'subagent'`: owned by `parentId`'s turn, rendered as a card in the parent, never a roster row or pane. Absent = a normal session. */
   kind?: 'session' | 'subagent';
+  /** Host-derived while this session has hosted children running; never persisted. */
+  subagents?: { running: number; awaitingApproval: number };
   cwd: string;
   status: SessionStatus;
   /**

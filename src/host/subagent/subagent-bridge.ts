@@ -14,6 +14,8 @@ interface BridgeOptions {
   /** What the child is actually sent, when it differs from the prompt shown on the card. */
   message?: string;
   background?: boolean;
+  /** Fired when the pending-approval count or the settled state changes. */
+  onChange?: () => void;
 }
 
 /** Mirrors one hosted child's events into its parent as a nested `subagent` card. */
@@ -24,6 +26,7 @@ export class SubagentBridge {
   private readonly prompt: string;
   private readonly message: string;
   private readonly background: boolean;
+  private readonly onChange: (() => void) | undefined;
   private reply = '';
   private settled = false;
   private readonly openRequests = new Set<string>();
@@ -37,7 +40,10 @@ export class SubagentBridge {
     this.prompt = o.prompt;
     this.message = o.message ?? o.prompt;
     this.background = o.background ?? false;
+    this.onChange = o.onChange;
   }
+
+  pendingApprovals(): number { return this.openRequests.size; }
 
   result(): Promise<SubagentResult> { return this.done; }
 
@@ -83,8 +89,10 @@ export class SubagentBridge {
           onDecision: (decision) => {
             this.openRequests.delete(mirrored);
             this.child.respondToPermission(event.id, decision);
+            this.onChange?.();
           },
         });
+        this.onChange?.();
         return;
       }
       case 'question': {
@@ -94,13 +102,16 @@ export class SubagentBridge {
           onAnswer: (answers) => {
             this.openRequests.delete(mirrored);
             this.child.answerQuestion(event.id, answers);
+            this.onChange?.();
           },
         });
+        this.onChange?.();
         return;
       }
       case 'request-cancelled':
         this.openRequests.delete(id(event.id));
         this.parent.ingestNested({ ...event, id: id(event.id) });
+        this.onChange?.();
         return;
       case 'turn-end':
         if (event.reason === 'done') { this.finish(true, this.reply.trim() || EMPTY_REPLY); }

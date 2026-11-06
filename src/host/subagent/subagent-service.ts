@@ -8,6 +8,7 @@ export interface SubagentHost {
   get(id: SessionId): AgentSession | undefined;
   createSubagent(parent: SessionId, spec: ResolvedSpawn): Promise<AgentSession>;
   releaseSubagent(id: SessionId): Promise<void>;
+  changed(): void;
 }
 
 interface Entry { bridge: SubagentBridge; childId: SessionId }
@@ -21,6 +22,14 @@ export class SubagentService {
   constructor(private readonly host: SubagentHost) {}
 
   running(parentId: SessionId): number { return this.byParent.get(parentId)?.size ?? 0; }
+
+  counts(parentId: SessionId): { running: number; awaitingApproval: number } | undefined {
+    const entries = this.byParent.get(parentId);
+    if (!entries || entries.size === 0) { return undefined; }
+    let awaiting = 0;
+    for (const e of entries) { awaiting += e.bridge.pendingApprovals(); }
+    return { running: entries.size, awaitingApproval: awaiting };
+  }
 
   cancelSubtree(parentId: SessionId): void {
     for (const entry of [...(this.byParent.get(parentId) ?? [])]) {
@@ -47,11 +56,13 @@ export class SubagentService {
     set.add(entry);
     this.byParent.set(parentId, set);
     const unlisten = parent.onInterrupt(() => bridge.cancel());
+    this.host.changed();
     bridge.start();
     const result = await bridge.result();
     unlisten();
     set.delete(entry);
     if (set.size === 0) { this.byParent.delete(parentId); }
+    this.host.changed();
     await this.host.releaseSubagent(child.state.id).catch(() => undefined);
     return result;
   }

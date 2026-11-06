@@ -576,6 +576,10 @@ export class SessionManager implements SessionSink {
     return [...this.meta.values()]
       .filter((s) => opts?.includeSubagents || s.kind !== 'subagent')
       .map((s) => (this.visible.has(s.id) ? { ...s, open: true } : s))
+      .map((s) => {
+        const subagents = this.subagents.counts(s.id);
+        return subagents ? { ...s, subagents } : s;
+      })
       .sort((a, b) => b.updatedAt - a.updatedAt);
   }
 
