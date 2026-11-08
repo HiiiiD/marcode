@@ -18,6 +18,15 @@ suite('context-format: model', () => {
     const m = contextModel(breakdown({ memoryFiles: [{ path: '/a/CLAUDE.md', percent: 0 }, { path: '/b/X.md', percent: 3 }] }));
     assert.deepStrictEqual(m.memoryFiles.map((f) => f.percent), ['<1%', '3%']);
   });
+  test('discovered memory files preserve provenance and omit unknown usage', () => {
+    const m = contextModel(breakdown({
+      totalOnly: true, memoryFilesDiscovery: 'complete',
+      memoryFiles: [{ path: '/repo/AGENTS.md', source: 'discovered' }],
+    }));
+    assert.deepStrictEqual(m.memoryFiles, [{ path: '/repo/AGENTS.md', source: 'discovered' }]);
+    assert.strictEqual(m.memoryFilesDiscovery, 'complete');
+    assert.deepStrictEqual(m.slices.map((s) => s.label), ['Used context', 'Free']);
+  });
   test('the window line needs both token fields', () => {
     assert.strictEqual(contextModel(breakdown({ usedTokens: 43000, windowTokens: 258000 })).window, '43K of 258K tokens');
     assert.strictEqual(contextModel(breakdown({ usedTokens: 43000 })).window, undefined);

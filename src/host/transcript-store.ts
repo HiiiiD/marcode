@@ -317,6 +317,7 @@ export class TranscriptStore {
     const queued = this.pending.get(sessionId);
     if (!queued || queued.length === 0) { return; }
     this.pending.delete(sessionId);
+    this.writing.set(sessionId, queued);
     const body = queued.map((i) => JSON.stringify(i)).join('\n');
     try {
       await fs.appendFile(this.sessionFile(sessionId), `${body}\n`, 'utf8');
@@ -326,6 +327,9 @@ export class TranscriptStore {
       // and the dedupe in the dirty path above bounds the damage.
       this.requeue(sessionId, queued);
       throw err;
+    } finally {
+      // A cold read may have observed ENOENT before the append completed but not merged its queues yet.
+      try { await this.loading.get(sessionId); } finally { this.writing.delete(sessionId); }
     }
   }
 

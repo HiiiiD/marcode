@@ -157,6 +157,24 @@ suite('ContextRing', () => {
     assert.ok(screen.getByText('No memory files loaded'));
   });
 
+  test('OpenCode shows discovered instructions without inventing file usage or claiming no files loaded', async () => {
+    mount(43);
+    await open('Context 43% used');
+    sendFromHost({
+      t: 'context-breakdown', id: 'a', result: { ok: true, breakdown: breakdown({
+        totalOnly: true, memoryFiles: [{ path: '/repo/AGENTS.md', source: 'discovered' }],
+        memoryFilesDiscovery: 'complete',
+      }) },
+    });
+    assert.ok(screen.getByText('Used context'));
+    assert.ok(screen.getByText(/Loading and per-file usage are not reported/));
+    assert.equal(screen.queryByText('No memory files loaded') === null, true);
+    assert.equal(screen.queryByText('<1%') === null, true);
+    await userEvent.click(screen.getByRole('button', { name: /AGENTS\.md/ }));
+    await settle();
+    assert.deepEqual(posted().at(-1), { t: 'open-file', id: 'a', path: '/repo/AGENTS.md' });
+  });
+
   test('clicking a memory file asks the host to open it', async () => {
     mount(43);
     await open('Context 43% used');

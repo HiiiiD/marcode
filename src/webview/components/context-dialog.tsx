@@ -7,23 +7,9 @@ import { clampPercent, DANGER_PERCENT } from "../../client-core/context-format";
 import type { ContextResult, SessionState } from "../../protocol/messages";
 import type { PaneState } from "../reducer";
 import { useStore } from "../store";
+import { MemoryFiles } from './context-memory';
 
 export { DANGER_PERCENT };
-
-/** A listed file rounding to 0 is present but tiny — never "nothing". */
-function formatPercent(percent: number): string {
-  return percent === 0 ? "<1%" : `${percent}%`;
-}
-
-/**
- * `~/.claude/CLAUDE.md` and `./CLAUDE.md` are the common case, and the
- * basename alone renders them as two identical rows. Split so the parent can
- * be dimmed and dropped first.
- */
-function splitPath(path: string): { dir: string; base: string } {
-  const cut = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
-  return cut < 0 ? { dir: "", base: path } : { dir: path.slice(0, cut + 1), base: path.slice(cut + 1) };
-}
 
 /**
  * The three used slices, densest first, plus the track that stands for the
@@ -79,47 +65,6 @@ function Row({ slice, label, percent }: { slice: SliceKey; label: string; percen
       <span className={cn("shrink-0 tabular-nums", slice === "free" ? "text-muted-foreground" : undefined)}>
         {value}%
       </span>
-    </div>
-  );
-}
-
-function MemoryRow({
-  path,
-  percent,
-  onOpenFile,
-}: {
-  path: string;
-  percent: number;
-  onOpenFile: (path: string) => void;
-}) {
-  const { dir, base } = splitPath(path);
-  return (
-    <div className="flex items-center gap-2 py-0.5">
-      <Button
-        variant="link"
-        size="xs"
-        // pl-4 lines the filename up with the labels beside their swatches,
-        // so the files read as belonging to the Memory row above them.
-        // `shrink` overrides the Button base's own `shrink-0` — a different
-        // twMerge group from `flex-1`, so the two don't dedupe on their own —
-        // and without it a long path's dir never gives way and the row
-        // spills past the dialog's edge instead of truncating.
-        className="h-auto min-w-0 flex-1 shrink justify-start gap-0 px-0 pl-4 font-normal"
-        title={path}
-        onClick={() => onOpenFile(path)}
-      >
-        {dir && (
-          // The basename is the identifying part, so it never shrinks and
-          // the parent gives way first. `direction: rtl` puts the ellipsis
-          // at the *start* of the parent, which is the end a path can lose;
-          // the isolated `bdi` keeps the path itself reading left to right.
-          <span className="min-w-0 truncate text-muted-foreground [direction:rtl]">
-            <bdi dir="ltr">{dir}</bdi>
-          </span>
-        )}
-        <span className="shrink-0">{base}</span>
-      </Button>
-      <span className="shrink-0 tabular-nums text-muted-foreground">{formatPercent(clampPercent(percent))}</span>
     </div>
   );
 }
@@ -224,18 +169,17 @@ function Body({
         {tokens && <p className="text-right tabular-nums text-muted-foreground">{tokens}</p>}
       </div>
       <div>
-        <Row slice="system" label="System prompt" percent={b.systemPercent} />
-        <Row slice="memory" label="Memory" percent={b.memoryPercent} />
-        {b.memoryFiles.length === 0 ? (
-          <p className="py-0.5 pl-4 text-muted-foreground">No memory files loaded</p>
-        ) : (
-          b.memoryFiles.map((file) => (
-            <MemoryRow key={file.path} path={file.path} percent={file.percent} onOpenFile={onOpenFile} />
-          ))
-        )}
-        <Row slice="conversation" label="Conversation" percent={b.conversationPercent} />
+        {!b.totalOnly && <Row slice="system" label="System prompt" percent={b.systemPercent} />}
+        {!b.totalOnly && <Row slice="memory" label="Memory" percent={b.memoryPercent} />}
+        {!b.totalOnly && <MemoryFiles breakdown={b} onOpenFile={onOpenFile} />}
+        <Row slice="conversation" label={b.totalOnly ? 'Used context' : 'Conversation'} percent={b.conversationPercent} />
         <Row slice="free" label="Free" percent={b.freePercent} />
+        {b.totalOnly && <p className="py-1 text-muted-foreground">Includes system instructions, tools and conversation; separate usage is not reported.</p>}
       </div>
+      {b.totalOnly && <div className="min-w-0 border-t border-border pt-2">
+        <p>Memory files</p>
+        <MemoryFiles breakdown={b} onOpenFile={onOpenFile} />
+      </div>}
     </div>
   );
 }

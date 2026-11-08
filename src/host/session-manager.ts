@@ -1914,7 +1914,8 @@ export class SessionManager implements SessionSink {
    */
   canOpenFile(id: SessionId, path: string): boolean {
     if (this.live.get(id)?.reportedMemoryFile(path)) { return true; }
-    return this.meta.get(id)?.lastContext?.memoryFiles.some((f) => f.path === path) ?? false;
+    return !/^https?:\/\//.test(path)
+      && (this.meta.get(id)?.lastContext?.memoryFiles.some((f) => f.path === path) ?? false);
   }
 
   /** Concurrent callers share one open: two would build two sessions, and the orphan's tail polls forever. */

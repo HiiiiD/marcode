@@ -369,7 +369,7 @@ export class OpenCodeProvider implements AgentProvider {
       ]);
       return [...new Set([...origins.keys(), ...Object.keys(status)])];
     });
-    const watch = new SubagentWatch({ tools });
+    const watch = new SubagentWatch({ tools, env: this.mergedEnv() });
     const { child, markStarted } = this.spawnWithPort(token, watch);
     const run = new AcpRun(child, {
       cwd: opts.cwd,
