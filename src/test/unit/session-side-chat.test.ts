@@ -6,6 +6,7 @@ import { SessionManager } from '../../host/session-manager';
 import { TranscriptStore } from '../../host/transcript-store';
 import { FakeProvider } from '../../providers/fake/fake-provider';
 import type { AgentProvider } from '../../providers/types';
+import { leafSessionIds } from '../../webview/components/layout-tree';
 
 async function settle() {
   for (let i = 0; i < 10; i++) { await new Promise((r) => setImmediate(r)); }
@@ -20,20 +21,24 @@ suite('SessionManager.startSideChat', () => {
     while (dirs.length > 0) { await fs.rm(dirs.pop()!, { recursive: true, force: true }); }
   });
 
-  async function setup() {
-    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mar-side-'));
-    dirs.push(dir);
+  async function setup(existingDir?: string) {
+    const dir = existingDir ?? await fs.mkdtemp(path.join(os.tmpdir(), 'mar-side-'));
+    if (!existingDir) { dirs.push(dir); }
     const provider = new FakeProvider(() => [{ kind: 'text', delta: 'ok' }, { kind: 'turn-end', reason: 'done' }]);
     const manager = new SessionManager(
       new TranscriptStore(dir), new Map<string, AgentProvider>([['fake', provider]]), () => {},
     );
     managers.push(manager);
     await manager.init();
+    if (existingDir) { return { manager, parent: undefined as never, provider, dir }; }
     const parent = await manager.create('fake', '/repo', 'fake-small', undefined, 'bypass');
     parent.send('plan the feature');
     await settle();
-    return { manager, parent, provider };
+    return { manager, parent, provider, dir };
   }
+
+  const row = (m: SessionManager, id: string) => m.summaries({ includeSubagents: true }).find((x) => x.id === id);
+  const inLayout = (m: SessionManager, id: string) => leafSessionIds(m.layout().root).includes(id);
 
   const errorsOf = async (s: { snapshot(): Promise<{ items: { role: string }[] }> }) =>
     (await s.snapshot()).items.filter((i) => i.role === 'error').length;
@@ -111,5 +116,91 @@ suite('SessionManager.startSideChat', () => {
 
     assert.strictEqual(side!.state.permissionMode, 'plan');
     assert.strictEqual(provider.sent[provider.sent.length - 1].text.includes('plan the feature'), true);
+  });
+
+  test('closing an unused side chat deletes it', async () => {
+    const { manager, parent } = await setup();
+    const side = await manager.startSideChat(parent.state.id);
+
+    await manager.closeSideChat(side!.state.id);
+
+    assert.strictEqual(row(manager, side!.state.id), undefined);
+    assert.strictEqual(inLayout(manager, side!.state.id), false);
+  });
+
+  test('closing a used side chat keeps it hidden and out of the layout', async () => {
+    const { manager, parent } = await setup();
+    const side = await manager.startSideChat(parent.state.id, 'why?');
+    await settle();
+
+    await manager.closeSideChat(side!.state.id);
+
+    assert.strictEqual(row(manager, side!.state.id)?.kind, 'side');
+    assert.strictEqual(inLayout(manager, side!.state.id), false);
+    assert.strictEqual(manager.get(side!.state.id), undefined);
+    assert.strictEqual(manager.summaries().some((x) => x.id === side!.state.id), false);
+  });
+
+  test('a closed used side chat can be reopened', async () => {
+    const { manager, parent } = await setup();
+    const side = await manager.startSideChat(parent.state.id, 'why?');
+    await settle();
+    await manager.closeSideChat(side!.state.id);
+
+    await manager.setVisible([...leafSessionIds(manager.layout().root), side!.state.id]);
+
+    assert.strictEqual(manager.visibleIds().includes(side!.state.id), true);
+  });
+
+  test('promoting makes a normal roster session and keeps its lineage and mode', async () => {
+    const { manager, parent } = await setup();
+    const side = await manager.startSideChat(parent.state.id, 'why?');
+    await settle();
+
+    await manager.promoteSideChat(side!.state.id);
+
+    const promoted = row(manager, side!.state.id)!;
+    assert.strictEqual(promoted.kind, undefined);
+    assert.strictEqual(promoted.parentId, parent.state.id);
+    assert.strictEqual(promoted.origin, 'side');
+    assert.strictEqual(promoted.permissionMode, 'plan');
+    assert.strictEqual(manager.summaries().some((x) => x.id === side!.state.id), true);
+    assert.strictEqual(inLayout(manager, side!.state.id), true);
+  });
+
+  test('close and promote leave an ordinary session alone', async () => {
+    const { manager, parent } = await setup();
+
+    await manager.closeSideChat(parent.state.id);
+    await manager.promoteSideChat(parent.state.id);
+
+    assert.strictEqual(manager.summaries().some((x) => x.id === parent.state.id), true);
+    assert.strictEqual(manager.get(parent.state.id) !== undefined, true);
+  });
+
+  test('deleting the parent closes the pane of its open side chat', async () => {
+    const { manager, parent } = await setup();
+    const side = await manager.startSideChat(parent.state.id, 'why?');
+
+    await manager.remove(parent.state.id);
+
+    assert.strictEqual(row(manager, side!.state.id), undefined);
+    assert.strictEqual(inLayout(manager, side!.state.id), false);
+  });
+
+  test('after a reload a used side chat survives hidden and an unused one is gone', async () => {
+    const first = await setup();
+    const used = await first.manager.startSideChat(first.parent.state.id, 'why?');
+    await settle();
+    const unused = await first.manager.startSideChat(first.parent.state.id);
+    const ids = { used: used!.state.id, unused: unused!.state.id };
+    await first.manager.dispose();
+    managers.pop();
+
+    const second = await setup(first.dir);
+
+    assert.strictEqual(row(second.manager, ids.used)?.kind, 'side');
+    assert.strictEqual(inLayout(second.manager, ids.used), false);
+    assert.strictEqual(row(second.manager, ids.unused), undefined);
   });
 });

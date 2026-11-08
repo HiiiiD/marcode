@@ -518,6 +518,14 @@ export class MessageRouter {
         return;
       }
 
+      case 'close-side-chat':
+        await this.manager.closeSideChat(msg.id);
+        return;
+
+      case 'promote-side-chat':
+        await this.manager.promoteSideChat(msg.id);
+        return;
+
       case 'start-side-chat': {
         const side = await this.manager.startSideChat(msg.id, msg.text);
         if (side) { this.emit({ t: 'session-snapshot', session: await side.snapshot() }); }
@@ -822,7 +830,7 @@ const KNOWN_MESSAGE_TAGS = new Set<WebviewToHost['t']>([
   'delete-session', 'replace-session', 'save-preset', 'delete-preset', 'send', 'interrupt', 'cancel-queued',
   'set-effort', 'set-permission-mode', 'rename-session',
   'set-model', 'permission-decision', 'question-answer', 'load-more',
-  'answer-relocation', 'cancel-relocation', 'fork-session', 'start-side-chat',
+  'answer-relocation', 'cancel-relocation', 'fork-session', 'start-side-chat', 'close-side-chat', 'promote-side-chat',
   'set-include-context', 'reveal-file',
   'attach-paste', 'attach-pick', 'attach-drop', 'attach-remove', 'attach-failed',
   'request-context', 'open-file', 'open-attachment', 'request-attachment-path',

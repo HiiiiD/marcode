@@ -224,6 +224,8 @@ export interface SessionState {
   kind?: 'session' | 'subagent' | 'side';
   /** How this session came to have a `parentId`; survives promote so the parent's list can tell a promoted side chat from a fork. */
   origin?: 'fork' | 'side';
+  /** How many transcript items were copied from the parent at fork time; everything after is this session's own. */
+  forkedItemCount?: number;
   /** Host-derived while this session has hosted children running; never persisted. */
   subagents?: { running: number; awaitingApproval: number };
   cwd: string;
@@ -659,6 +661,10 @@ export type WebviewToHost =
    * with a `session-snapshot` for the new session, like `fork-session`.
    */
   | { t: 'start-side-chat'; id: SessionId; text?: string }
+  /** Closes a side chat's pane: an unused one is deleted, a used one stays reachable from its parent's list. */
+  | { t: 'close-side-chat'; id: SessionId }
+  /** Turns a side chat into an ordinary roster session, keeping its history, parent link and mode. */
+  | { t: 'promote-side-chat'; id: SessionId }
   /**
    * "Not any more." Calls off a move that is waiting for the turn to finish
    * and puts the offer back to `pending`. Deliberately not `answer-relocation`

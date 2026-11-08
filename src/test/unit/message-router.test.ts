@@ -1072,6 +1072,17 @@ suite('MessageRouter', () => {
     assert.deepStrictEqual(calls, [['s-1', 'why?'], ['s-1', undefined]]);
   });
 
+  test('close-side-chat and promote-side-chat survive the wire guard and reach the manager', async () => {
+    const calls: string[] = [];
+    manager.closeSideChat = async (id) => { calls.push(`close:${id}`); };
+    manager.promoteSideChat = async (id) => { calls.push(`promote:${id}`); };
+
+    await router.handle({ t: 'close-side-chat', id: 's-2' });
+    await router.handle({ t: 'promote-side-chat', id: 's-2' });
+
+    assert.deepStrictEqual(calls, ['close:s-2', 'promote:s-2']);
+  });
+
   test('both bring-back messages survive the wire guard and reach the manager', async () => {
     // Same trap as `answer-relocation` above, twice over: two new inbound arms
     // mean two new entries in KNOWN_MESSAGE_TAGS, and a missing one is dropped

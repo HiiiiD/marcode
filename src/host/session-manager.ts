@@ -15,6 +15,7 @@ import { buildSeed } from './replay';
 import { isHidden } from '../shared/session-kind';
 import { readOnlyModeFor } from '../shared/side-chat-mode';
 import { nativeFork, planNativeFork, type NativeForkPlan } from './native-fork';
+import { hasOwnTurns } from './side-chat';
 import { mergeRoster } from './roster-sync';
 import type { OwnClaim, OwnerInfo, SessionOwnership } from './session-ownership';
 import { findPayload, type ResolvedBlock } from './session-refs';
@@ -293,6 +294,7 @@ export class SessionManager implements SessionSink {
     this.paneLayout = index.layout;
     this.knownOnDisk = new Set(index.sessions.map((s) => s.id));
     await this.sweepOrphanSubagents();
+    await this.sweepSideChats();
 
     const cache = this.accountCache;
     if (cache && !this.disposed) {
@@ -907,7 +909,7 @@ export class SessionManager implements SessionSink {
       status: 'idle', permissionMode: state.permissionMode,
       includeEditorContext: state.includeEditorContext,
       resumeTokens: native ? { [native.key]: native.token } : {},
-      createdAt: now, updatedAt: now,
+      createdAt: now, updatedAt: now, forkedItemCount: items.length,
       ...extra,
     };
 
@@ -951,6 +953,22 @@ export class SessionManager implements SessionSink {
     await focusSession(this, session.state.id);
     if (text) { session.send(text); }
     return session;
+  }
+
+  /** An unused side chat is deleted; a used one only loses its pane and stays reachable from its parent's list. */
+  async closeSideChat(id: SessionId): Promise<void> {
+    const state = this.meta.get(id);
+    if (state?.kind !== 'side') { return; }
+    if (hasOwnTurns(state, (await this.store.tail(id, Number.MAX_SAFE_INTEGER)).items)) { await this.hide(id); return; }
+    await this.remove(id);
+  }
+
+  async promoteSideChat(id: SessionId): Promise<void> {
+    const state = this.meta.get(id);
+    if (state?.kind !== 'side') { return; }
+    delete state.kind;
+    this.changed();
+    await focusSession(this, id);
   }
 
   get(id: SessionId): AgentSession | undefined { return this.live.get(id); }
@@ -2168,7 +2186,7 @@ export class SessionManager implements SessionSink {
    * and `DigestService` never rejects, so neither can fail a lifecycle transition.
    */
   private async digestHidden(id: SessionId): Promise<void> {
-    if (!this.digests || this.isSubagent(id)) { return; }
+    if (!this.digests || isHidden(this.meta.get(id) ?? {})) { return; }
     await this.digests.refresh(id);
     void this.digests.upgrade(id);
   }
@@ -2250,6 +2268,15 @@ export class SessionManager implements SessionSink {
       (s) => (s.kind === 'subagent' || s.kind === 'side') && (!s.parentId || !this.meta.has(s.parentId)),
     );
     for (const s of orphans) { await this.remove(s.id).catch(() => undefined); }
+  }
+
+  /** A side chat's pane is never restored, so an unused one would be unreachable: it goes, a used one only loses its leaf. */
+  private async sweepSideChats(): Promise<void> {
+    for (const s of [...this.meta.values()].filter((x) => x.kind === 'side')) {
+      this.paneLayout = { ...this.paneLayout, root: closeSession(this.paneLayout.root, s.id) };
+      const items = (await this.store.tail(s.id, Number.MAX_SAFE_INTEGER)).items;
+      if (!hasOwnTurns(s, items)) { await this.remove(s.id).catch(() => undefined); }
+    }
   }
 
   async remove(id: SessionId): Promise<void> {
