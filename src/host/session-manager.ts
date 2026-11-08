@@ -13,6 +13,7 @@ import { dormantProvider } from './dormant-provider';
 import { ForeignTail } from './foreign-tail';
 import { buildSeed } from './replay';
 import { isHidden } from '../shared/session-kind';
+import { readOnlyModeFor } from '../shared/side-chat-mode';
 import { nativeFork, planNativeFork, type NativeForkPlan } from './native-fork';
 import { mergeRoster } from './roster-sync';
 import type { OwnClaim, OwnerInfo, SessionOwnership } from './session-ownership';
@@ -921,6 +922,34 @@ export class SessionManager implements SessionSink {
     if (cached) { session.setInvocables(cached); }
     this.catalogSvc.ensure(this.keyOf(forkState), provider, forkState.cwd);
     this.changed();
+    return session;
+  }
+
+  /**
+   * A hidden, read-only branch of `id` carrying its whole transcript, shown in
+   * a pane. Refusals are an error item on the source, never a throw.
+   */
+  async startSideChat(id: SessionId, text?: string): Promise<AgentSession | undefined> {
+    const state = this.meta.get(id);
+    const provider = state && this.providers.get(state.providerId);
+    if (!state || !provider) { return undefined; }
+    if (isHidden(state)) {
+      void this.live.get(id)?.noteError("Side chats can't be started from here.");
+      return undefined;
+    }
+    await this.live.get(id)?.snapshot();
+    const items = (await this.store.tail(id, Number.MAX_SAFE_INTEGER)).items;
+    if (items.length === 0) {
+      void this.live.get(id)?.noteError('Nothing to branch from yet.');
+      return undefined;
+    }
+    const session = await this.forkInto(state, provider, items, planNativeFork(items, items.length), {
+      parentId: id, origin: 'side', kind: 'side',
+      title: text ? `Side: ${text.slice(0, 40)}` : 'Side chat',
+      permissionMode: readOnlyModeFor(provider.listPermissionModes()).mode,
+    });
+    await focusSession(this, session.state.id);
+    if (text) { session.send(text); }
     return session;
   }
 

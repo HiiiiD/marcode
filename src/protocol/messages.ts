@@ -654,6 +654,12 @@ export type WebviewToHost =
    */
   | { t: 'fork-session'; id: SessionId; itemId: string }
   /**
+   * A temporary, read-only branch of `id` carrying its whole context, shown in
+   * a pane beside it. `text`, when given, is sent as its first message. Answered
+   * with a `session-snapshot` for the new session, like `fork-session`.
+   */
+  | { t: 'start-side-chat'; id: SessionId; text?: string }
+  /**
    * "Not any more." Calls off a move that is waiting for the turn to finish
    * and puts the offer back to `pending`. Deliberately not `answer-relocation`
    * with `move: false`: that is Stay, an answer, and it settles the item

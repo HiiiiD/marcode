@@ -48,6 +48,7 @@ function describeInbound(m: WebviewToHost): string {
     case 'answer-relocation': return 'answer-relocation';
     case 'cancel-relocation': return 'cancel-relocation';
     case 'fork-session': return 'fork-session';
+    case 'start-side-chat': return 'start-side-chat';
     case 'request-bring-back': return 'request-bring-back';
     case 'bring-back': return 'bring-back';
     case 'request-stale-trees': return 'request-stale-trees';
