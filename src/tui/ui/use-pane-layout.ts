@@ -4,7 +4,7 @@ import { rearrange } from '../../client-core/auto-grid';
 import {
   findPath, leafSessionIds, placeSession, removeSession, rootOrientation, type LayoutNode,
 } from '../../client-core/layout-tree';
-import { reconcilePaneLayout, rosterSessionIds } from '../../client-core/pane-layout';
+import { paneEligibleSessions, reconcilePaneLayout, rosterSessionIds } from '../../client-core/pane-layout';
 import { splitAtSession } from '../../client-core/pane-ops';
 import type { PaneLayout, SessionId } from '../../protocol/messages';
 import { useTuiStore } from './store';
@@ -51,7 +51,7 @@ export function usePaneLayout(): PaneLayoutApi {
   const byIdKeys = Object.keys(state.byId);
   useEffect(() => {
     const cur = stateRef.current;
-    const roster = rosterSessionIds(cur.sessions);
+    const roster = rosterSessionIds(paneEligibleSessions(cur.sessions, cur.byId));
     const before = known.current;
     const arrived = byIdKeys.filter((id) => roster.has(id) && !before.has(id) && !leafIds.includes(id));
     const armedSplit = split.current && split.current.until > Date.now() ? split.current.orientation : null;

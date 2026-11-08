@@ -16,7 +16,7 @@ import {
 } from "./layout-tree";
 import { LayoutNodeView } from "./layout-node-view";
 import { PaneDragProvider } from "./pane-drag-context";
-import { accessibleTitles, leafDisplayState, rosterSessionIds, visibleLeaves } from "./pane-layout";
+import { accessibleTitles, leafDisplayState, paneEligibleSessions, rosterSessionIds, visibleLeaves } from "./pane-layout";
 import { SessionCreateMenu } from "./session-create-menu";
 
 interface PaneGroupProps {
@@ -35,7 +35,7 @@ export function PaneGroup({ narrow }: PaneGroupProps) {
   // that are still in the roster (i.e. not deleted outright; see
   // pane-layout.ts for why eligibility is roster membership) and have an
   // arrived snapshot.
-  const roster = rosterSessionIds(state.sessions);
+  const roster = rosterSessionIds(paneEligibleSessions(state.sessions, state.byId));
   const snapshotArrived = new Set(Object.keys(state.byId));
   const leaves = visibleLeaves(state.layout.root, roster, snapshotArrived);
   const readyLeaves = leaves.filter((l) => l.state === "ready");

@@ -8,6 +8,7 @@ import { Composer } from "./composer";
 import { PinnedShell } from "./pinned-shell";
 import { PinnedPrompts } from "./pinned-prompts";
 import { SessionHeader } from "./session-header";
+import { SideChatBar } from "./side-chat-bar";
 import { SubagentDrillInContext } from "./subagent-drill-in-context";
 import { Transcript } from "./transcript";
 
@@ -62,6 +63,7 @@ export function PaneContent({ sessionId, accessibleTitle }: PaneContentProps) {
         }}
       >
         <SessionHeader pane={paneState} accessibleTitle={accessibleTitle} />
+        <SideChatBar sessionId={sessionId} />
         <SubagentDrillInContext.Provider
           value={(itemId) => post({ t: "open-fleet-subagent", sessionId, itemId })}
         >
