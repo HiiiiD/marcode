@@ -116,7 +116,14 @@ export function Composer({ sessionId, focused, onOpenPicker }: { sessionId: Sess
     if (value === '') { return; }
     const sideQuestion = sideChatText(value);
     if (sideQuestion !== undefined) {
-      post({ t: 'start-side-chat', id: sessionId, ...(sideQuestion ? { text: sideQuestion } : {}) });
+      popup.prune(value);
+      const sideFiles = popup.refs();
+      post({
+        t: 'start-side-chat', id: sessionId,
+        ...(sideQuestion ? { text: sideQuestion } : {}),
+        ...(sideFiles.length > 0 ? { fileRefs: sideFiles } : {}),
+      });
+      popup.reset();
       setBox('');
       drafts.set(sessionId, '');
       pending.current = '';

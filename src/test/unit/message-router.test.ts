@@ -1063,13 +1063,14 @@ suite('MessageRouter', () => {
   });
 
   test('start-side-chat survives the wire guard and reaches the manager with its text', async () => {
-    const calls: [string, string | undefined][] = [];
-    manager.startSideChat = async (id, text) => { calls.push([id, text]); return undefined; };
+    const calls: [string, string | undefined, unknown][] = [];
+    manager.startSideChat = async (id, text, fileRefs) => { calls.push([id, text, fileRefs]); return undefined; };
+    const fileRefs = [{ path: 'a.ts', name: 'a.ts' }];
 
-    await router.handle({ t: 'start-side-chat', id: 's-1', text: 'why?' });
+    await router.handle({ t: 'start-side-chat', id: 's-1', text: 'why?', fileRefs });
     await router.handle({ t: 'start-side-chat', id: 's-1' });
 
-    assert.deepStrictEqual(calls, [['s-1', 'why?'], ['s-1', undefined]]);
+    assert.deepStrictEqual(calls, [['s-1', 'why?', fileRefs], ['s-1', undefined, undefined]]);
   });
 
   test('close-side-chat and promote-side-chat survive the wire guard and reach the manager', async () => {

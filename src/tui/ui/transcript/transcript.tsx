@@ -119,6 +119,7 @@ export function Transcript({ sessionId, focused, onFork, relocationKeys = 'none'
       const row = rows[cursor];
       const owner = pane?.summary.owner;
       if (!row) { return; }
+      if (pane?.summary.kind === 'side') { setNotice('Promote this side chat before forking it'); return; }
       if (owner) { setNotice(`Cannot fork "${pane.summary.name || pane.summary.title}": owned by ${owner.host}`); return; }
       onFork?.(row.id);
     }

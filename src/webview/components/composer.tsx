@@ -284,7 +284,12 @@ export function Composer({
     }
     const sideQuestion = sideChatText(trimmed);
     if (sideQuestion !== undefined) {
-      post({ t: "start-side-chat", id: pane.summary.id, ...(sideQuestion ? { text: sideQuestion } : {}) });
+      const sideFiles = fileRefsOf(pruneMentions(trimmed, refs));
+      post({
+        t: "start-side-chat", id: pane.summary.id,
+        ...(sideQuestion ? { text: sideQuestion } : {}),
+        ...(sideFiles.length > 0 ? { fileRefs: sideFiles } : {}),
+      });
       setText("");
       recall.reset();
       setGhost("");

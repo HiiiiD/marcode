@@ -191,3 +191,17 @@ test('Ctrl+A selects the whole composer, so the next key replaces it', async () 
   expect(m!.frame()).toContain('X');
   expect(m!.frame().includes('first line') || m!.frame().includes('second line')).toBe(false);
 });
+
+test('a /side question carries its file mentions', async () => {
+  await open();
+  await m!.type('/side look at @ap');
+  await wait(250);
+  await m!.fromHost({ t: 'file-search-result', id: 's1', query: 'ap', files });
+  await m!.press('return');
+  await m!.press('return');
+  const started = m!.posted.filter((p) => p.t === 'start-side-chat');
+  expect(started.length).toBe(1);
+  const msg = started[0];
+  expect(msg.t === 'start-side-chat' && msg.fileRefs).toEqual([{ path: 'src/app.ts', name: 'app.ts' }]);
+  expect(sends().length).toBe(0);
+});

@@ -66,3 +66,11 @@ test('on an ordinary pane b and p do nothing and x still hides the pane', async 
   await chord('p');
   expect(sideMessages()).toEqual([]);
 });
+
+test('forking from inside a side chat is refused with a hint until it is promoted', async () => {
+  await mountWithSide('idle', { items: [{ id: 'u1', ts: 1, role: 'user', text: 'why?' }] });
+  await m!.press('tab');
+  await m!.press('f');
+  expect(m!.posted.filter((p) => p.t === 'fork-session').length).toBe(0);
+  expect(m!.frame()).toContain('Promote this side chat before forking it');
+});

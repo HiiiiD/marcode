@@ -39,7 +39,7 @@ import { orderWindows } from '../shared/usage-windows';
 import type { AutoGridOptions } from '../client-core/auto-grid';
 import { closeSession, replaceLeafSession, stripSessionIds } from '../webview/components/layout-tree';
 import type {
-  Attachment, ChildRef,
+  Attachment, ChildRef, FileRef,
   ContextResult, HostToWebview, LayoutPreset, McpServerStatus, PaneLayout, PermissionMode, ProviderInfo, SessionId,
   SessionRef, SessionSnapshot, SessionState, SessionStatus, SessionSummary, StaleTree,
   TranscriptItem, TranscriptPatch, TreeDiff, UnavailableProvider,
@@ -880,6 +880,10 @@ export class SessionManager implements SessionSink {
   async fork(id: SessionId, itemId: string): Promise<AgentSession | undefined> {
     const state = this.meta.get(id);
     if (!state) { return undefined; }
+    if (state.kind === 'side') {
+      void this.live.get(id)?.noteError('Promote this side chat before forking it.');
+      return undefined;
+    }
     const provider = this.providers.get(state.providerId);
     if (!provider) { return undefined; }
 
@@ -943,7 +947,7 @@ export class SessionManager implements SessionSink {
    * A hidden, read-only branch of `id` carrying its whole transcript, shown in
    * a pane. Refusals are an error item on the source, never a throw.
    */
-  async startSideChat(id: SessionId, text?: string): Promise<AgentSession | undefined> {
+  async startSideChat(id: SessionId, text?: string, fileRefs?: FileRef[]): Promise<AgentSession | undefined> {
     const state = this.meta.get(id);
     const provider = state && this.providers.get(state.providerId);
     if (!state || !provider) { return undefined; }
@@ -963,7 +967,7 @@ export class SessionManager implements SessionSink {
       permissionMode: readOnlyModeFor(provider.listPermissionModes()).mode,
     });
     await focusSession(this, session.state.id);
-    if (text) { session.send(text); }
+    if (text) { session.send(text, undefined, undefined, fileRefs); }
     return session;
   }
 

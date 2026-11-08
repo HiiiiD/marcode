@@ -301,4 +301,30 @@ suite('SessionManager.startSideChat', () => {
 
     assert.strictEqual(row(manager, side!.state.id)?.kind, 'side');
   });
+
+  test('a side chat cannot be forked until it is promoted', async () => {
+    const { manager, parent } = await setup();
+    const side = await manager.startSideChat(parent.state.id, 'why?');
+    await settle();
+    const itemId = (await side!.snapshot()).items[0].id;
+
+    const refused = await manager.fork(side!.state.id, itemId);
+
+    assert.strictEqual(refused, undefined);
+    assert.strictEqual(await errorsOf(side!), 1);
+    await manager.promoteSideChat(side!.state.id);
+    const forked = await manager.fork(side!.state.id, itemId);
+    assert.strictEqual(forked?.state.parentId, side!.state.id);
+  });
+
+  test('file mentions given with the question reach the first message', async () => {
+    const { manager, parent } = await setup();
+    const fileRefs = [{ path: 'src/app.ts', name: 'app.ts' }];
+
+    const side = await manager.startSideChat(parent.state.id, 'look at @src/app.ts', fileRefs);
+    await settle();
+
+    const user = (await side!.snapshot()).items.find((i) => i.role === 'user' && i.text.startsWith('look at'));
+    assert.deepStrictEqual(user?.role === 'user' && user.fileRefs, fileRefs);
+  });
 });

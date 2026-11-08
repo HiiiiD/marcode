@@ -100,4 +100,22 @@ suite("SideChatBar", () => {
 
     assert.strictEqual(screen.getAllByRole("group", { name: "Side chat" }).length, 1);
   });
+
+  test("a side chat's items offer no fork until it is promoted", () => {
+    renderApp();
+    sendFromHost({
+      t: "hydrate",
+      sessions: [summary("main")],
+      layout: layoutOf(["main", "side"]),
+      snapshots: [
+        snapshot("main"),
+        snapshot("side", { ...sideSummary(), items: [{ id: "u1", ts: 1, role: "user", text: "why?" }] }),
+      ],
+      catalog: catalog(),
+      unavailable: [],
+      usage: {},
+    });
+
+    assert.strictEqual(screen.queryAllByRole("button", { name: "Fork from here" }).length, 0);
+  });
 });

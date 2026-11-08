@@ -531,7 +531,7 @@ export class MessageRouter {
         return;
 
       case 'start-side-chat': {
-        const side = await this.manager.startSideChat(msg.id, msg.text);
+        const side = await this.manager.startSideChat(msg.id, msg.text, msg.fileRefs);
         if (side) { this.emit({ t: 'session-snapshot', session: await side.snapshot() }); }
         return;
       }

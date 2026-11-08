@@ -671,7 +671,7 @@ export type WebviewToHost =
    * a pane beside it. `text`, when given, is sent as its first message. Answered
    * with a `session-snapshot` for the new session, like `fork-session`.
    */
-  | { t: 'start-side-chat'; id: SessionId; text?: string }
+  | { t: 'start-side-chat'; id: SessionId; text?: string; fileRefs?: FileRef[] }
   /** Closes a side chat's pane: an unused one is deleted, a used one stays reachable from its parent's list. */
   | { t: 'close-side-chat'; id: SessionId }
   /** Turns a side chat into an ordinary roster session, keeping its history, parent link and mode. */
