@@ -10,7 +10,7 @@ export function SideChatBar({ summary }: { summary: SessionSummary }) {
     <box flexShrink={0} flexDirection="row">
       <text fg={theme.colors.mutedForeground} truncate>
         Side chat
-        {modeCanEdit(summary.permissionMode) ? <span fg={theme.colors.destructive}> · Can edit files</span> : null}
+        {modeCanEdit(summary.permissionMode) ? <span fg={theme.colors.warning}> · Can edit files</span> : null}
         {' · ^W b bring back · ^W p promote · ^W x close'}
       </text>
     </box>

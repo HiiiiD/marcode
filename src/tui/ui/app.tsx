@@ -15,6 +15,7 @@ import { NoticeLine } from './notice-line';
 import { PaneTree } from './pane-tree';
 import { Roster, ROSTER_W } from './roster';
 import { ContextDialog } from './context-dialog';
+import { ChildrenDialog } from './children-dialog';
 import { McpDialog } from './mcp/mcp-dialog';
 import { LayoutDialog } from './layout-dialog';
 import { StatusLine } from './status-line';
@@ -107,6 +108,7 @@ export function App(props: AppProps) {
     onSplit: (orientation) => { pendingSplit.current = orientation; openNewSession(); },
     toggleMaximize: () => { setMaximized((v) => !v); },
     onOpenLayout: () => { if (state.ready) { setPicker('layout'); } },
+    onOpenChildren: () => { if (state.ready && focusedId) { setPicker('children'); } },
   });
 
   useAppKeys({
@@ -176,6 +178,7 @@ export function App(props: AppProps) {
         <ModeDialog sessionId={focusedId} focus={picker === 'effort' ? 'effort' : 'modes'} onClose={() => { setPicker(null); }} />
       ) : null}
       {picker === 'context' && focusedId ? <ContextDialog sessionId={focusedId} onClose={() => { setPicker(null); }} /> : null}
+      {picker === 'children' && focusedId ? <ChildrenDialog sessionId={focusedId} onClose={() => { setPicker(null); }} /> : null}
       {picker === 'mcp' && focusedId ? <McpDialog sessionId={focusedId} onClose={() => { setPicker(null); }} /> : null}
       {picker === 'layout' ? <LayoutDialog onApply={layout.applyRoot} onClose={() => { setPicker(null); }} /> : null}
       {deleting ? <DeleteConfirm id={deleting.id} title={deleting.title} onDone={() => { setDeleting(null); }} /> : null}

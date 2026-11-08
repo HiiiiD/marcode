@@ -50,11 +50,12 @@ export function windowAround(length: number, index: number, size: number): { sta
   return { start, end: start + size };
 }
 
-export type PickerKind = 'model' | 'mode' | 'effort' | 'context' | 'layout' | 'mcp';
+export type PickerKind = 'model' | 'mode' | 'effort' | 'context' | 'layout' | 'mcp' | 'children';
 
 export function parsePickerCommand(text: string): PickerKind | undefined {
   const trimmed = text.trim();
   if (/^\/mcp(\s|$)/.test(trimmed)) { return 'mcp'; }
+  if (trimmed === '/branches') { return 'children'; }
   const match = /^\/(model|mode|effort|context|layout)$/.exec(trimmed);
   return match?.[1] as PickerKind | undefined;
 }

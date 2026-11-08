@@ -6,7 +6,7 @@ import { CHORD_MS, chordStep, type PaneAction } from '../view/pane-keys';
 import type { PaneLayoutApi } from './use-pane-layout';
 import { useTuiStore } from './store';
 
-const HINT = '^W: h j k l focus · | - split · m max · = even · H J K L resize · x hide · g layout · a grid';
+const HINT = '^W: h j k l focus · | - split · m max · = even · H J K L resize · x hide · g layout · a grid · f branches';
 const RESIZE_PCT = 5;
 
 export interface PaneChords {
@@ -17,6 +17,7 @@ export interface PaneChords {
   onSplit(orientation: 'horizontal' | 'vertical'): void;
   toggleMaximize(): void;
   onOpenLayout(): void;
+  onOpenChildren(): void;
 }
 
 export function usePaneChords(c: PaneChords): void {
@@ -37,6 +38,7 @@ export function usePaneChords(c: PaneChords): void {
   const run = (action: PaneAction) => {
     if (action.do === 'layout') { c.onOpenLayout(); return; }
     if (action.do === 'rearrange') { c.layout.rearrangeNow(); return; }
+    if (action.do === 'children') { c.onOpenChildren(); return; }
     if (!focusedId) { return; }
     const { layout } = c;
     const focused = state.byId[focusedId]?.summary;
