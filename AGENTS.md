@@ -213,6 +213,7 @@ These are not style preferences. Breaking one breaks the design.
   fork of `parentId` (`readOnlyModeFor`: `plan` where offered, never `bypass`), absent from `summaries()`, history, recall
   and the digest; a pane showing one is kept current by `side-summary`, never by `sessions-changed`. Its pane is not
   restored after a reload, an unused one (`hasOwnTurns`) is deleted on close or reload, and deleting the parent deletes it.
+  It cannot call `marcode__spawn_session`, `spawn_collaborators`, `send_message` or `handoff` (`SIDE_CHAT_REFUSAL`).
   Promote drops `kind` and keeps `parentId` and `origin`. `merge-side-chat` queues a digest as the parent's next-send seed;
   it is not the git `bring-back` flow. Every fork and side chat records `parentId` + `origin`, and the parent's
   `children` list is derived from them.

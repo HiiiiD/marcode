@@ -903,7 +903,10 @@ export class SessionManager implements SessionSink {
     state: SessionState, provider: AgentProvider, items: TranscriptItem[],
     plan: NativeForkPlan | undefined, extra: Pick<SessionState, 'title'> & Partial<SessionState>,
   ): Promise<AgentSession> {
-    const native = plan ? await nativeFork(provider, state, plan, this.moveThreadTimeoutMs) : undefined;
+    let native = plan ? await nativeFork(provider, state, plan, this.moveThreadTimeoutMs) : undefined;
+    // A whole-thread fork copies whatever the thread holds when the provider gets to it, which can include
+    // turns the copied transcript does not show.
+    if (native && plan?.turnIndex === undefined && !(await this.sourceUnchanged(state, items.length))) { native = undefined; }
     const now = Date.now();
     const forkState: SessionState = {
       id: newSessionId(), providerId: state.providerId, model: state.model,
@@ -928,6 +931,12 @@ export class SessionManager implements SessionSink {
     this.catalogSvc.ensure(this.keyOf(forkState), provider, forkState.cwd);
     this.changed();
     return session;
+  }
+
+  private async sourceUnchanged(state: SessionState, copied: number): Promise<boolean> {
+    await this.live.get(state.id)?.snapshot();
+    return state.status === 'idle'
+      && (await this.store.tail(state.id, Number.MAX_SAFE_INTEGER)).items.length === copied;
   }
 
   /**
@@ -2095,6 +2104,10 @@ export class SessionManager implements SessionSink {
    * disk, hence the store read on the non-live path.
    */
   private async isDiscardable(id: SessionId, state: SessionState): Promise<boolean> {
+    if (state.kind === 'side') {
+      await this.live.get(id)?.snapshot();
+      return !hasOwnTurns(state, (await this.store.tail(id, Number.MAX_SAFE_INTEGER)).items);
+    }
     if (state.title !== 'Untitled') { return false; }
     const session = this.live.get(id);
     if (session && !session.isEmpty) { return false; }

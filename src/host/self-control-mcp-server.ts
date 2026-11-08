@@ -18,7 +18,7 @@ import { registerAwaitSubagentTool } from './self-control/register-await-subagen
 import { familyOf } from './self-control/family';
 import type { SubagentService } from './subagent/subagent-service';
 import { buildSpawnPreamble } from './self-control/spawn-preamble';
-import { openPane, resolveSpawn, sendPrompt } from './self-control/spawn-support';
+import { openPane, resolveSpawn, sendPrompt, SIDE_CHAT_REFUSAL } from './self-control/spawn-support';
 
 /**
  * The slice of `SessionManager` this server needs. Declared structurally, not
@@ -400,6 +400,9 @@ export class SelfControlMcpServer {
         const from = caller();
         if (!from) {
           return { isError: true, content: [{ type: 'text', text: 'Could not identify the calling session.' }] };
+        }
+        if (from.kind === 'side') {
+          return { isError: true, content: [{ type: 'text', text: SIDE_CHAT_REFUSAL }] };
         }
         // Case-insensitive, matching `SessionManager.rename()`'s own
         // uniqueness rule: names are unique per window without regard to

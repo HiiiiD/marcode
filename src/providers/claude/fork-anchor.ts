@@ -5,12 +5,19 @@ export interface AnchorMessage {
   message: unknown;
 }
 
-/** A user message the person typed: not a tool result and not inside a subagent. */
+// The CLI's own bookkeeping, stored as ordinary user messages: the SDK skips them when it counts prompts.
+const NOT_A_PROMPT = /^(?:\s*<[a-z][\w-]*[\s>]|\[Request interrupted by user[^\]]*\])/;
+
+/** A user message the person typed: not a tool result, an interrupt marker or a tag message, and not inside a subagent. */
 function isPrompt(m: AnchorMessage): boolean {
   if (m.type !== 'user' || m.parent_tool_use_id !== null) { return false; }
   const content = (m.message as { content?: unknown } | null)?.content;
-  if (typeof content === 'string') { return true; }
-  return Array.isArray(content) && content.some((b) => (b as { type?: string }).type !== 'tool_result');
+  if (typeof content === 'string') { return !NOT_A_PROMPT.test(content); }
+  if (!Array.isArray(content)) { return false; }
+  const blocks = content as { type?: string; text?: string }[];
+  if (blocks.every((b) => b.type === 'tool_result')) { return false; }
+  const first = blocks.find((b) => b.type === 'text');
+  return !(first?.text !== undefined && NOT_A_PROMPT.test(first.text));
 }
 
 /**

@@ -280,4 +280,25 @@ suite('SessionManager.startSideChat', () => {
 
     assert.strictEqual(await errorsOf(side!), 1);
   });
+
+  test('closing the pane of an unused side chat by any route deletes it', async () => {
+    const { manager, parent } = await setup();
+    const viaClose = await manager.startSideChat(parent.state.id);
+    await manager.close(viaClose!.state.id);
+    const viaSplit = await manager.startSideChat(parent.state.id);
+    await manager.setVisible([]);
+
+    assert.strictEqual(row(manager, viaClose!.state.id), undefined);
+    assert.strictEqual(row(manager, viaSplit!.state.id), undefined);
+  });
+
+  test('hiding a used side chat from the split keeps it', async () => {
+    const { manager, parent } = await setup();
+    const side = await manager.startSideChat(parent.state.id, 'why?');
+    await settle();
+
+    await manager.setVisible([]);
+
+    assert.strictEqual(row(manager, side!.state.id)?.kind, 'side');
+  });
 });

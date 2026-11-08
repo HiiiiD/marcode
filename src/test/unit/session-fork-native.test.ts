@@ -12,6 +12,14 @@ async function settle() {
   for (let i = 0; i < 10; i++) { await new Promise((r) => setImmediate(r)); }
 }
 
+async function until(cond: () => boolean): Promise<void> {
+  const end = Date.now() + 5000;
+  while (!cond()) {
+    if (Date.now() > end) { throw new Error('timed out'); }
+    await new Promise((r) => setTimeout(r, 5));
+  }
+}
+
 const SEED_MARK = 'before it moved to this directory';
 
 suite('SessionManager.fork native thread fork', () => {
@@ -122,5 +130,35 @@ suite('SessionManager.fork native thread fork', () => {
 
     assert.strictEqual(ctx.provider.forkThreadCalls.length, 0);
     assert.deepStrictEqual(forked!.state.resumeTokens, {});
+  });
+
+  test('a parent that starts working while the provider forks falls back to the seed', async () => {
+    const ctx = await setup();
+    let release!: (r: { resumeToken: string }) => void;
+    ctx.provider.forkThreadResult = new Promise((r) => { release = r; });
+
+    const pending = ctx.manager.fork(ctx.session.state.id, ctx.items[ctx.items.length - 1].id);
+    await until(() => ctx.provider.forkThreadCalls.length > 0);
+    ctx.session.send('a new instruction');
+    await settle();
+    release({ resumeToken: 'forked-tok' });
+    const forked = await pending;
+
+    assert.deepStrictEqual(forked!.state.resumeTokens, {});
+  });
+
+  test('the same race for a side chat falls back to the seed', async () => {
+    const ctx = await setup();
+    let release!: (r: { resumeToken: string }) => void;
+    ctx.provider.forkThreadResult = new Promise((r) => { release = r; });
+
+    const pending = ctx.manager.startSideChat(ctx.session.state.id);
+    await until(() => ctx.provider.forkThreadCalls.length > 0);
+    ctx.session.send('a new instruction');
+    await settle();
+    release({ resumeToken: 'forked-tok' });
+    const side = await pending;
+
+    assert.deepStrictEqual(side!.state.resumeTokens, {});
   });
 });

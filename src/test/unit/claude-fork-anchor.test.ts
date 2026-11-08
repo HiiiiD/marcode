@@ -38,4 +38,18 @@ suite('anchorFor', () => {
     const sub: AnchorMessage = { ...prompt('s1'), parent_tool_use_id: 'task-1' };
     assert.strictEqual(anchorFor([prompt('u1'), sub, assistant('a1')], 0), 'a1');
   });
+
+  test('interrupt markers and tag-only messages are not turn boundaries', () => {
+    const text = (uuid: string, t: string): AnchorMessage => ({
+      type: 'user', uuid, parent_tool_use_id: null, message: { role: 'user', content: [{ type: 'text', text: t }] },
+    });
+    const seq = [
+      prompt('u1'), assistant('a1'), text('i1', '[Request interrupted by user]'),
+      text('t1', '<local-command-stdout>ok</local-command-stdout>'), prompt('u2'), assistant('a2'),
+    ];
+
+    assert.strictEqual(anchorFor(seq, 0), 't1');
+    assert.strictEqual(anchorFor(seq, 1), 'a2');
+    assert.strictEqual(anchorFor(seq, 2), undefined);
+  });
 });

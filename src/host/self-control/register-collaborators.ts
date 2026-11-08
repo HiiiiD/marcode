@@ -1,6 +1,6 @@
 import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
-import { openPane, resolveSpawn, sendPrompt, type ResolvedSpawn } from './spawn-support';
+import { openPane, resolveSpawn, sendPrompt, SIDE_CHAT_REFUSAL, type ResolvedSpawn } from './spawn-support';
 import type { ToolDeps } from './tool-deps';
 import { buildWorkerPreamble } from './worker-preamble';
 
@@ -43,6 +43,7 @@ export function registerCollaboratorsTool(mcp: McpServer, { sessionManager, call
     async ({ cwd, brief, workers, nested }) => {
       const from = caller();
       if (!from) { return fail('Could not identify the calling session.'); }
+      if (from.kind === 'side') { return fail(SIDE_CHAT_REFUSAL); }
       const teamCwd = cwd ?? from.cwd;
       const plans: ResolvedSpawn[] = [];
       for (const [i, w] of workers.entries()) {

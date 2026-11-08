@@ -105,7 +105,7 @@ export class FakeProvider implements AgentProvider {
   moveThreadResult: MoveThreadResult | false | Error | 'never' | Promise<MoveThreadResult | false> = false;
   readonly moveThreadCalls: MoveThreadArgs[] = [];
 
-  forkThreadResult: ForkThreadResult | false | Error | 'never' = false;
+  forkThreadResult: ForkThreadResult | false | Error | 'never' | Promise<ForkThreadResult | false> = false;
   readonly forkThreadCalls: ForkThreadArgs[] = [];
 
   async forkThread(args: ForkThreadArgs): Promise<ForkThreadResult | false> {
