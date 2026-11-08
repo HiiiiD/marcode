@@ -196,6 +196,15 @@ export interface QueuedMessage {
   from?: { sessionId: SessionId; name: string };
 }
 
+/** One entry in a session's list of forks and side chats; `hidden` is a side chat not yet promoted. */
+export interface ChildRef {
+  id: SessionId;
+  title: string;
+  origin: 'fork' | 'side';
+  hidden: boolean;
+  status: SessionStatus;
+}
+
 export interface SessionState {
   id: SessionId;
   providerId: string;
@@ -226,6 +235,8 @@ export interface SessionState {
   origin?: 'fork' | 'side';
   /** How many transcript items were copied from the parent at fork time; everything after is this session's own. */
   forkedItemCount?: number;
+  /** Host-derived: the forks and side chats branched off this session, newest first. Absent when there are none; never persisted. */
+  children?: ChildRef[];
   /** Host-derived while this session has hosted children running; never persisted. */
   subagents?: { running: number; awaitingApproval: number };
   cwd: string;
@@ -912,6 +923,8 @@ export type HostToWebview =
   | { t: 'session-prepend'; id: SessionId; items: TranscriptItem[]; hasMore: boolean }
   | { t: 'session-status'; id: SessionId; status: SessionStatus }
   | { t: 'sessions-changed'; sessions: SessionSummary[] }
+  /** The summary of a side chat shown in a pane: the roster never carries one, so this is how its pane stays current. */
+  | { t: 'side-summary'; session: SessionSummary }
   /** A handoff's source is being summarized. Answers `create-session`; sent straight to the asker, not fanned out. */
   | { t: 'handoff-progress'; sessionId: SessionId; phase: 'summarizing' | 'done' }
   | { t: 'memory-progress'; phase: 'extractive' | 'llm' | 'done' | 'cancelled'; done: number; total: number }

@@ -404,6 +404,12 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
       return { ...state, sessions: msg.sessions, byId, contextBySession, bringBackBySession };
     }
 
+    case 'side-summary': {
+      const pane = state.byId[msg.session.id];
+      if (!pane) { return state; }
+      return { ...state, byId: { ...state.byId, [msg.session.id]: { ...pane, summary: msg.session } } };
+    }
+
     case 'bring-back-plan': {
       // Same guard as `context-breakdown`: the question and its answer are two
       // round trips apart, so a session deleted in between must not have a

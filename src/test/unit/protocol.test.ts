@@ -102,6 +102,7 @@ function describeOutbound(m: HostToWebview): string {
     case 'session-patch': return 'session-patch';
     case 'session-prepend': return 'session-prepend';
     case 'session-status': return 'session-status';
+    case 'side-summary': return 'side-summary';
     case 'session-mcp': return 'session-mcp';
     case 'mcp-panel': return 'mcp-panel';
     case 'session-cache-window': return 'session-cache-window';

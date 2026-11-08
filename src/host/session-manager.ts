@@ -39,7 +39,7 @@ import { orderWindows } from '../shared/usage-windows';
 import type { AutoGridOptions } from '../client-core/auto-grid';
 import { closeSession, replaceLeafSession, stripSessionIds } from '../webview/components/layout-tree';
 import type {
-  Attachment,
+  Attachment, ChildRef,
   ContextResult, HostToWebview, LayoutPreset, McpServerStatus, PaneLayout, PermissionMode, ProviderInfo, SessionId,
   SessionRef, SessionSnapshot, SessionState, SessionStatus, SessionSummary, StaleTree,
   TranscriptItem, TranscriptPatch, TreeDiff, UnavailableProvider,
@@ -581,9 +581,11 @@ export class SessionManager implements SessionSink {
   }
 
   summaries(opts?: { includeSubagents?: boolean }): SessionSummary[] {
+    const children = this.childrenByParent();
     return [...this.meta.values()]
       .filter((s) => opts?.includeSubagents || !isHidden(s))
       .map((s) => (this.visible.has(s.id) ? { ...s, open: true } : s))
+      .map((s) => (children.has(s.id) ? { ...s, children: children.get(s.id) } : s))
       .map((s) => {
         const subagents = this.subagents.counts(s.id);
         return subagents ? { ...s, subagents } : s;
@@ -2710,8 +2712,24 @@ export class SessionManager implements SessionSink {
     this.emit({ t: 'session-attachments', id, attachments: pending });
   }
 
+  private childrenByParent(): Map<SessionId, ChildRef[]> {
+    const byParent = new Map<SessionId, ChildRef[]>();
+    const branches = [...this.meta.values()].filter((s) => s.parentId && s.origin).sort((a, b) => b.createdAt - a.createdAt);
+    for (const s of branches) {
+      const list = byParent.get(s.parentId!) ?? [];
+      list.push({ id: s.id, title: s.title, origin: s.origin!, hidden: s.kind === 'side', status: s.status });
+      byParent.set(s.parentId!, list);
+    }
+    return byParent;
+  }
+
   changed(): void {
     this.emit({ t: 'sessions-changed', sessions: this.summaries() });
+    for (const id of this.visible) {
+      if (this.meta.get(id)?.kind !== 'side') { continue; }
+      const session = this.summaries({ includeSubagents: true }).find((s) => s.id === id);
+      if (session) { this.emit({ t: 'side-summary', session }); }
+    }
     this.schedulePersist();
   }
 
