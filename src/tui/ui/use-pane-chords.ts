@@ -20,7 +20,7 @@ export interface PaneChords {
 }
 
 export function usePaneChords(c: PaneChords): void {
-  const { focusedId, notice, setNotice, chordArmed } = useTuiStore();
+  const { focusedId, notice, setNotice, chordArmed, state, post } = useTuiStore();
   const armed = useRef<number | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const noticeRef = useRef(notice);
@@ -39,6 +39,8 @@ export function usePaneChords(c: PaneChords): void {
     if (action.do === 'rearrange') { c.layout.rearrangeNow(); return; }
     if (!focusedId) { return; }
     const { layout } = c;
+    const focused = state.byId[focusedId]?.summary;
+    const isSide = focused?.kind === 'side';
     switch (action.do) {
       case 'focus': {
         const target = neighbour(visibleRects(layout.root, focusedId, c.area, c.maximized).panes, focusedId, action.dir);
@@ -49,7 +51,18 @@ export function usePaneChords(c: PaneChords): void {
       case 'maximize': c.toggleMaximize(); return;
       case 'even': layout.applyRoot(evenAll(layout.root)); return;
       case 'resize': layout.applyRoot(nudgeFocused(layout.root, focusedId, action.dir, RESIZE_PCT)); return;
-      case 'hide': layout.hide(focusedId); return;
+      case 'hide':
+        if (isSide) { post({ t: 'close-side-chat', id: focusedId }); } else { layout.hide(focusedId); }
+        return;
+      case 'side-promote':
+        if (isSide) { post({ t: 'promote-side-chat', id: focusedId }); }
+        return;
+      case 'side-merge': {
+        if (!isSide) { return; }
+        if (state.sessions.find((s) => s.id === focused.parentId)?.status !== 'idle') { setNotice('The main chat is working'); return; }
+        post({ t: 'merge-side-chat', id: focusedId });
+        return;
+      }
     }
   };
 
