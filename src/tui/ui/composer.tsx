@@ -3,6 +3,7 @@ import type { KeyBinding, TextareaRenderable } from '@opentui/core';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { parseAttachCommand, parsePastedPaths } from '../../client-core/path-paste';
 import { parseShellCommand } from '../../client-core/shell-command';
+import { sideChatText } from '../../client-core/side-chat-command';
 import { promptHistory } from '../../client-core/prompt-history';
 import type { SessionId } from '../../protocol/messages';
 import { existingFileUris } from '../attach-paths';
@@ -113,6 +114,15 @@ export function Composer({ sessionId, focused, onOpenPicker }: { sessionId: Sess
   const submit = () => {
     const value = (box.current?.plainText ?? '').trim();
     if (value === '') { return; }
+    const sideQuestion = sideChatText(value);
+    if (sideQuestion !== undefined) {
+      post({ t: 'start-side-chat', id: sessionId, ...(sideQuestion ? { text: sideQuestion } : {}) });
+      setBox('');
+      drafts.set(sessionId, '');
+      pending.current = '';
+      flush();
+      return;
+    }
     const shell = parseShellCommand(value);
     if (shell !== undefined) {
       post({ t: 'run-shell', id: sessionId, command: shell });
