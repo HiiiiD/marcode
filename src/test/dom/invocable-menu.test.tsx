@@ -15,6 +15,9 @@ const ENTRIES: Invocable[] = [
 
 const NO_EFFORT = catalog()[0].models[1];
 
+/** /mcp, /side and /btw: the commands the panel answers itself. */
+const PANEL_COMMAND_COUNT = 3;
+
 function pane(invocables?: Invocable[]): PaneState {
   return {
     summary: summary("a"), items: [], hasMore: false, pending: [], invocables,
@@ -126,7 +129,7 @@ suite("invocable menu", () => {
     renderWithStore(<Composer pane={pane([...ENTRIES, providerMcp])} model={NO_EFFORT} models={[]} />);
     await userEvent.click(screen.getByLabelText("Skills and commands"));
     const texts = screen.getAllByRole("option").map((o) => o.textContent ?? "");
-    assert.strictEqual(texts.length, ENTRIES.length + 1);
+    assert.strictEqual(texts.length, ENTRIES.length + PANEL_COMMAND_COUNT);
     assert.strictEqual(texts.filter((t) => t.includes("mcp")).length, 1);
     assert.strictEqual(texts.some((t) => t.includes("reconnect|enable")), false);
     assert.strictEqual(texts.some((t) => t.includes("Manage this session's MCP servers")), true);
@@ -137,9 +140,13 @@ suite("invocable menu", () => {
 
     await userEvent.click(screen.getByLabelText("Skills and commands"));
 
-    // + the panel's own /mcp, appended after the provider's entries.
-    assert.strictEqual(screen.getAllByRole("option").length, ENTRIES.length + 1);
-    assert.strictEqual(screen.getAllByRole("option").at(-1)?.textContent?.includes("mcp"), true);
+    // + the panel's own commands, appended after the provider's entries.
+    const texts = screen.getAllByRole("option").map((o) => o.textContent ?? "");
+    assert.strictEqual(texts.length, ENTRIES.length + PANEL_COMMAND_COUNT);
+    assert.deepStrictEqual(
+      texts.slice(ENTRIES.length).map((t) => ["mcp", "side", "btw"].find((n) => t.replace(/^\//, "").startsWith(n))),
+      ["mcp", "side", "btw"],
+    );
   });
 
   /**

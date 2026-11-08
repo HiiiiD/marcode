@@ -10,6 +10,7 @@ import type { Invocable, ModelInfo } from "../../protocol/messages";
 import { fileMentions, fileRefsOf, type FileMentionPayload } from "../../client-core/mentions/file-mentions";
 import { isShellPrefix, parseShellCommand } from "../../client-core/shell-command";
 import { withPanelCommands } from "../../client-core/invocables/panel-commands";
+import { sideChatText } from "../../client-core/side-chat-command";
 import { interceptFor } from "../lib/intercepts";
 import { insertionFor, menuQuery, menuView } from "../../client-core/invocables/invocable-menu";
 import { expandedDisplayName, sortFavoritesFirst } from "../../shared/model-catalog";
@@ -279,6 +280,17 @@ export function Composer({
       setRefs([]);
       refMenu.reset();
       setHandoffOpen(true);
+      return;
+    }
+    const sideQuestion = sideChatText(trimmed);
+    if (sideQuestion !== undefined) {
+      post({ t: "start-side-chat", id: pane.summary.id, ...(sideQuestion ? { text: sideQuestion } : {}) });
+      setText("");
+      recall.reset();
+      setGhost("");
+      setRefs([]);
+      menu.reset();
+      refMenu.reset();
       return;
     }
     const shellCommand = parseShellCommand(trimmed);

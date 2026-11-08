@@ -3,6 +3,8 @@ import type { Invocable } from '../../protocol/messages';
 /** Commands the panel answers itself, listed in the `/` menu so they can be found. */
 const PANEL_COMMANDS: Invocable[] = [
   { name: 'mcp', description: "Manage this session's MCP servers", bare: true },
+  { name: 'side', description: 'Ask a side question without interrupting this chat', argHint: '[question]' },
+  { name: 'btw', description: 'Ask a side question without interrupting this chat', argHint: '[question]' },
 ];
 
 /**

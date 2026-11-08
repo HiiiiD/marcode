@@ -6,8 +6,8 @@ suite('withPanelCommands', () => {
     assert.deepStrictEqual(withPanelCommands(undefined), []);
   });
 
-  test('appends the panel /mcp after the provider entries', () => {
-    assert.deepStrictEqual(withPanelCommands([{ name: 'compact' }]).map((e) => e.name), ['compact', 'mcp']);
+  test('appends the panel commands after the provider entries', () => {
+    assert.deepStrictEqual(withPanelCommands([{ name: 'compact' }]).map((e) => e.name), ['compact', 'mcp', 'side', 'btw']);
   });
 
   test("replaces a provider's own /mcp, dropping its argument hint", () => {
@@ -15,7 +15,7 @@ suite('withPanelCommands', () => {
       { name: 'mcp', description: 'Manage MCP servers', argHint: '[reconnect|enable|disable [<server>|all]]', bare: true },
       { name: 'compact' },
     ]);
-    assert.deepStrictEqual(out.map((e) => e.name), ['compact', 'mcp']);
+    assert.deepStrictEqual(out.map((e) => e.name), ['compact', 'mcp', 'side', 'btw']);
     assert.strictEqual(out[1].argHint, undefined);
     assert.strictEqual(out[1].description, "Manage this session's MCP servers");
   });
