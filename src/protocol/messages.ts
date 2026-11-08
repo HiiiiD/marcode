@@ -217,8 +217,13 @@ export interface SessionState {
   owner?: { host: 'vscode' | 'tui' | 'daemon'; pid: number };
   /** The session that spawned this one via a self-control tool; absent for user-created sessions. */
   parentId?: SessionId;
-  /** `'subagent'`: owned by `parentId`'s turn, rendered as a card in the parent, never a roster row or pane. Absent = a normal session. */
-  kind?: 'session' | 'subagent';
+  /**
+   * `'subagent'`: owned by `parentId`'s turn, rendered as a card in the parent, never a roster row or pane.
+   * `'side'`: a temporary read-only branch of `parentId`, hidden until promoted. Absent = a normal session.
+   */
+  kind?: 'session' | 'subagent' | 'side';
+  /** How this session came to have a `parentId`; survives promote so the parent's list can tell a promoted side chat from a fork. */
+  origin?: 'fork' | 'side';
   /** Host-derived while this session has hosted children running; never persisted. */
   subagents?: { running: number; awaitingApproval: number };
   cwd: string;

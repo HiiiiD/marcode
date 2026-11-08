@@ -12,6 +12,7 @@ import {
 import { dormantProvider } from './dormant-provider';
 import { ForeignTail } from './foreign-tail';
 import { buildSeed } from './replay';
+import { isHidden } from '../shared/session-kind';
 import { mergeRoster } from './roster-sync';
 import type { OwnClaim, OwnerInfo, SessionOwnership } from './session-ownership';
 import { findPayload, type ResolvedBlock } from './session-refs';
@@ -239,7 +240,7 @@ export class SessionManager implements SessionSink {
       this.digests = new DigestService({
         store: this.memory,
         source: {
-          sessions: () => [...this.meta.values()].filter((s) => s.kind !== 'subagent').map((s) => ({
+          sessions: () => [...this.meta.values()].filter((s) => !isHidden(s)).map((s) => ({
             id: s.id, providerId: s.providerId, cwd: s.cwd, title: s.title,
             hidden: !this.visible.has(s.id), updatedAt: s.updatedAt,
           })),
@@ -576,7 +577,7 @@ export class SessionManager implements SessionSink {
 
   summaries(opts?: { includeSubagents?: boolean }): SessionSummary[] {
     return [...this.meta.values()]
-      .filter((s) => opts?.includeSubagents || s.kind !== 'subagent')
+      .filter((s) => opts?.includeSubagents || !isHidden(s))
       .map((s) => (this.visible.has(s.id) ? { ...s, open: true } : s))
       .map((s) => {
         const subagents = this.subagents.counts(s.id);
@@ -737,7 +738,7 @@ export class SessionManager implements SessionSink {
     worktree?: { branch: string; base?: string },
     includeEditorContext = true,
     parentId?: SessionId,
-    kind?: 'session' | 'subagent',
+    kind?: 'session' | 'subagent' | 'side',
   ): Promise<AgentSession> {
     const provider = this.providers.get(providerId);
     if (!provider) { throw new Error(`Unknown provider: ${providerId}`); }
@@ -796,7 +797,7 @@ export class SessionManager implements SessionSink {
       title: 'Untitled', name: this.defaultName(providerId), cwd: resolvedCwd, status: 'idle', permissionMode: resolvedMode,
       includeEditorContext,
       ...(parentId ? { parentId } : {}),
-      ...(kind === 'subagent' ? { kind } : {}),
+      ...(kind === 'subagent' || kind === 'side' ? { kind } : {}),
       resumeTokens: {},
       createdAt: now, updatedAt: now,
     };
@@ -886,7 +887,7 @@ export class SessionManager implements SessionSink {
     const now = Date.now();
     const forkState: SessionState = {
       id: newSessionId(), providerId: state.providerId, model: state.model,
-      effort: state.effort, title: `Fork of ${state.title}`,
+      effort: state.effort, title: `Fork of ${state.title}`, parentId: id, origin: 'fork',
       name: this.defaultName(state.providerId), cwd: state.cwd,
       status: 'idle', permissionMode: state.permissionMode,
       includeEditorContext: state.includeEditorContext,
@@ -1481,7 +1482,7 @@ export class SessionManager implements SessionSink {
   private sessionsIn(root: string): SessionId[] {
     const ids: SessionId[] = [];
     for (const state of this.meta.values()) {
-      if (state.kind !== 'subagent' && samePath(resolve(state.cwd), root)) { ids.push(state.id); }
+      if (!isHidden(state) && samePath(resolve(state.cwd), root)) { ids.push(state.id); }
     }
     return ids;
   }
@@ -2182,7 +2183,7 @@ export class SessionManager implements SessionSink {
   // Writes `summary` without touching `updatedAt`: that field is both the sort key and this cache's key.
   private async runSummaries(): Promise<void> {
     const stale = [...this.meta.values()].filter(
-      (s) => s.kind !== 'subagent' && s.title !== 'Untitled' && s.summary?.forUpdatedAt !== s.updatedAt,
+      (s) => !isHidden(s) && s.title !== 'Untitled' && s.summary?.forUpdatedAt !== s.updatedAt,
     );
     let touched = false;
     for (const state of stale) {
@@ -2202,7 +2203,7 @@ export class SessionManager implements SessionSink {
   /** A hosted child outlives nothing: with its parent gone it has no card to belong to. */
   private async sweepOrphanSubagents(): Promise<void> {
     const orphans = [...this.meta.values()].filter(
-      (s) => s.kind === 'subagent' && (!s.parentId || !this.meta.has(s.parentId)),
+      (s) => (s.kind === 'subagent' || s.kind === 'side') && (!s.parentId || !this.meta.has(s.parentId)),
     );
     for (const s of orphans) { await this.remove(s.id).catch(() => undefined); }
   }
@@ -2211,7 +2212,7 @@ export class SessionManager implements SessionSink {
     if (await this.ownedElsewhere(id)) { return; }
     this.subagents.cancelSubtree(id);
     for (const child of [...this.meta.values()]) {
-      if (child.kind === 'subagent' && child.parentId === id) { await this.remove(child.id); }
+      if ((child.kind === 'subagent' || child.kind === 'side') && child.parentId === id) { await this.remove(child.id); }
     }
     await this.hide(id);
     if (this.ownership) { this.deleted.add(id); }
