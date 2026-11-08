@@ -12,6 +12,11 @@ import {
 import { dormantProvider } from './dormant-provider';
 import { ForeignTail } from './foreign-tail';
 import { buildSeed } from './replay';
+import { isHidden } from '../shared/session-kind';
+import { readOnlyModeFor } from '../shared/side-chat-mode';
+import { nativeFork, planNativeFork, type NativeForkPlan } from './native-fork';
+import { hasOwnTurns } from './side-chat';
+import { buildSideChatDigest, SIDE_CHAT_HEADER } from './side-chat-digest';
 import { mergeRoster } from './roster-sync';
 import type { OwnClaim, OwnerInfo, SessionOwnership } from './session-ownership';
 import { findPayload, type ResolvedBlock } from './session-refs';
@@ -34,7 +39,7 @@ import { orderWindows } from '../shared/usage-windows';
 import type { AutoGridOptions } from '../client-core/auto-grid';
 import { closeSession, replaceLeafSession, stripSessionIds } from '../webview/components/layout-tree';
 import type {
-  Attachment,
+  Attachment, ChildRef, FileRef,
   ContextResult, HostToWebview, LayoutPreset, McpServerStatus, PaneLayout, PermissionMode, ProviderInfo, SessionId,
   SessionRef, SessionSnapshot, SessionState, SessionStatus, SessionSummary, StaleTree,
   TranscriptItem, TranscriptPatch, TreeDiff, UnavailableProvider,
@@ -239,7 +244,7 @@ export class SessionManager implements SessionSink {
       this.digests = new DigestService({
         store: this.memory,
         source: {
-          sessions: () => [...this.meta.values()].filter((s) => s.kind !== 'subagent').map((s) => ({
+          sessions: () => [...this.meta.values()].filter((s) => !isHidden(s)).map((s) => ({
             id: s.id, providerId: s.providerId, cwd: s.cwd, title: s.title,
             hidden: !this.visible.has(s.id), updatedAt: s.updatedAt,
           })),
@@ -290,6 +295,7 @@ export class SessionManager implements SessionSink {
     this.paneLayout = index.layout;
     this.knownOnDisk = new Set(index.sessions.map((s) => s.id));
     await this.sweepOrphanSubagents();
+    await this.sweepSideChats();
 
     const cache = this.accountCache;
     if (cache && !this.disposed) {
@@ -575,9 +581,11 @@ export class SessionManager implements SessionSink {
   }
 
   summaries(opts?: { includeSubagents?: boolean }): SessionSummary[] {
+    const children = this.childrenByParent();
     return [...this.meta.values()]
-      .filter((s) => opts?.includeSubagents || s.kind !== 'subagent')
+      .filter((s) => opts?.includeSubagents || !isHidden(s))
       .map((s) => (this.visible.has(s.id) ? { ...s, open: true } : s))
+      .map((s) => (children.has(s.id) ? { ...s, children: children.get(s.id) } : s))
       .map((s) => {
         const subagents = this.subagents.counts(s.id);
         return subagents ? { ...s, subagents } : s;
@@ -737,7 +745,7 @@ export class SessionManager implements SessionSink {
     worktree?: { branch: string; base?: string },
     includeEditorContext = true,
     parentId?: SessionId,
-    kind?: 'session' | 'subagent',
+    kind?: 'session' | 'subagent' | 'side',
   ): Promise<AgentSession> {
     const provider = this.providers.get(providerId);
     if (!provider) { throw new Error(`Unknown provider: ${providerId}`); }
@@ -796,7 +804,7 @@ export class SessionManager implements SessionSink {
       title: 'Untitled', name: this.defaultName(providerId), cwd: resolvedCwd, status: 'idle', permissionMode: resolvedMode,
       includeEditorContext,
       ...(parentId ? { parentId } : {}),
-      ...(kind === 'subagent' ? { kind } : {}),
+      ...(kind === 'subagent' || kind === 'side' ? { kind } : {}),
       resumeTokens: {},
       createdAt: now, updatedAt: now,
     };
@@ -872,6 +880,10 @@ export class SessionManager implements SessionSink {
   async fork(id: SessionId, itemId: string): Promise<AgentSession | undefined> {
     const state = this.meta.get(id);
     if (!state) { return undefined; }
+    if (state.kind === 'side') {
+      void this.live.get(id)?.noteError('Promote this side chat before forking it.');
+      return undefined;
+    }
     const provider = this.providers.get(state.providerId);
     if (!provider) { return undefined; }
 
@@ -882,23 +894,40 @@ export class SessionManager implements SessionSink {
 
     const items = await this.store.upTo(id, itemId);
     if (items.length === 0) { return undefined; }
+    const plan = planNativeFork((await this.store.tail(id, Number.MAX_SAFE_INTEGER)).items, items.length);
+    return this.forkInto(state, provider, items, plan, { parentId: id, origin: 'fork', title: `Fork of ${state.title}` });
+  }
 
+  /**
+   * Writes `items` as a new session branched off `state`. With a `plan` the
+   * provider is asked for a native thread fork first; any other outcome seeds
+   * the first prompt with a `buildSeed()` summary of the copied history.
+   */
+  private async forkInto(
+    state: SessionState, provider: AgentProvider, items: TranscriptItem[],
+    plan: NativeForkPlan | undefined, extra: Pick<SessionState, 'title'> & Partial<SessionState>,
+  ): Promise<AgentSession> {
+    let native = plan ? await nativeFork(provider, state, plan, this.moveThreadTimeoutMs) : undefined;
+    // A whole-thread fork copies whatever the thread holds when the provider gets to it, which can include
+    // turns the copied transcript does not show.
+    if (native && plan?.turnIndex === undefined && !(await this.sourceUnchanged(state, items.length))) { native = undefined; }
     const now = Date.now();
     const forkState: SessionState = {
       id: newSessionId(), providerId: state.providerId, model: state.model,
-      effort: state.effort, title: `Fork of ${state.title}`,
+      effort: state.effort,
       name: this.defaultName(state.providerId), cwd: state.cwd,
       status: 'idle', permissionMode: state.permissionMode,
       includeEditorContext: state.includeEditorContext,
-      resumeTokens: {},
-      createdAt: now, updatedAt: now,
+      resumeTokens: native ? { [native.key]: native.token } : {},
+      createdAt: now, updatedAt: now, forkedItemCount: items.length,
+      ...extra,
     };
 
     for (const item of items) { this.store.append(forkState.id, item); }
     await this.store.flush(forkState.id);
 
     await this.ownership?.claim(forkState.id);
-    const session = new AgentSession(forkState, provider, this.store, this, buildSeed(items));
+    const session = new AgentSession(forkState, provider, this.store, this, native ? undefined : buildSeed(items));
     this.meta.set(forkState.id, forkState);
     this.live.set(forkState.id, session);
     const cached = this.catalogSvc.get(this.keyOf(forkState));
@@ -906,6 +935,71 @@ export class SessionManager implements SessionSink {
     this.catalogSvc.ensure(this.keyOf(forkState), provider, forkState.cwd);
     this.changed();
     return session;
+  }
+
+  private async sourceUnchanged(state: SessionState, copied: number): Promise<boolean> {
+    await this.live.get(state.id)?.snapshot();
+    return state.status === 'idle'
+      && (await this.store.tail(state.id, Number.MAX_SAFE_INTEGER)).items.length === copied;
+  }
+
+  /**
+   * A hidden, read-only branch of `id` carrying its whole transcript, shown in
+   * a pane. Refusals are an error item on the source, never a throw.
+   */
+  async startSideChat(id: SessionId, text?: string, fileRefs?: FileRef[]): Promise<AgentSession | undefined> {
+    const state = this.meta.get(id);
+    const provider = state && this.providers.get(state.providerId);
+    if (!state || !provider) { return undefined; }
+    if (isHidden(state)) {
+      void this.live.get(id)?.noteError("Side chats can't be started from here.");
+      return undefined;
+    }
+    await this.live.get(id)?.snapshot();
+    const items = (await this.store.tail(id, Number.MAX_SAFE_INTEGER)).items;
+    if (items.length === 0) {
+      void this.live.get(id)?.noteError('Nothing to branch from yet.');
+      return undefined;
+    }
+    const session = await this.forkInto(state, provider, items, planNativeFork(items, items.length), {
+      parentId: id, origin: 'side', kind: 'side',
+      title: text ? `Side: ${text.slice(0, 40)}` : 'Side chat',
+      permissionMode: readOnlyModeFor(provider.listPermissionModes()).mode,
+    });
+    await focusSession(this, session.state.id);
+    if (text) { session.send(text, undefined, undefined, fileRefs); }
+    return session;
+  }
+
+  /** An unused side chat is deleted; a used one only loses its pane and stays reachable from its parent's list. */
+  async closeSideChat(id: SessionId): Promise<void> {
+    const state = this.meta.get(id);
+    if (state?.kind !== 'side') { return; }
+    if (hasOwnTurns(state, (await this.store.tail(id, Number.MAX_SAFE_INTEGER)).items)) { await this.hide(id); return; }
+    await this.remove(id);
+  }
+
+  /** Hands the parent a digest of this side chat with its next message. Refusals are an error item on the side chat. */
+  async mergeSideChat(id: SessionId): Promise<void> {
+    const state = this.meta.get(id);
+    if (state?.origin !== 'side' || !state.parentId) { return; }
+    const side = this.live.get(id);
+    const parent = this.live.get(state.parentId);
+    const refuse = (why: string) => { void side?.noteError(why); };
+    if (!parent) { return refuse('The main chat is not open.'); }
+    if (parent.state.status !== 'idle') { return refuse('The main chat is still working. Bring this back when it is done.'); }
+    if (parent.pendingSeedText?.includes(SIDE_CHAT_HEADER)) { return refuse('A side chat is already waiting to be sent. Send a message in the main chat first.'); }
+    const digest = buildSideChatDigest((await this.store.tail(id, Number.MAX_SAFE_INTEGER)).items, state.forkedItemCount ?? 0);
+    if (!digest) { return refuse('Nothing to bring back yet.'); }
+    parent.appendSeed(digest);
+  }
+
+  async promoteSideChat(id: SessionId): Promise<void> {
+    const state = this.meta.get(id);
+    if (state?.kind !== 'side') { return; }
+    delete state.kind;
+    this.changed();
+    await focusSession(this, id);
   }
 
   get(id: SessionId): AgentSession | undefined { return this.live.get(id); }
@@ -1481,7 +1575,7 @@ export class SessionManager implements SessionSink {
   private sessionsIn(root: string): SessionId[] {
     const ids: SessionId[] = [];
     for (const state of this.meta.values()) {
-      if (state.kind !== 'subagent' && samePath(resolve(state.cwd), root)) { ids.push(state.id); }
+      if (!isHidden(state) && samePath(resolve(state.cwd), root)) { ids.push(state.id); }
     }
     return ids;
   }
@@ -2014,6 +2108,10 @@ export class SessionManager implements SessionSink {
    * disk, hence the store read on the non-live path.
    */
   private async isDiscardable(id: SessionId, state: SessionState): Promise<boolean> {
+    if (state.kind === 'side') {
+      await this.live.get(id)?.snapshot();
+      return !hasOwnTurns(state, (await this.store.tail(id, Number.MAX_SAFE_INTEGER)).items);
+    }
     if (state.title !== 'Untitled') { return false; }
     const session = this.live.get(id);
     if (session && !session.isEmpty) { return false; }
@@ -2123,7 +2221,7 @@ export class SessionManager implements SessionSink {
    * and `DigestService` never rejects, so neither can fail a lifecycle transition.
    */
   private async digestHidden(id: SessionId): Promise<void> {
-    if (!this.digests || this.isSubagent(id)) { return; }
+    if (!this.digests || isHidden(this.meta.get(id) ?? {})) { return; }
     await this.digests.refresh(id);
     void this.digests.upgrade(id);
   }
@@ -2182,7 +2280,7 @@ export class SessionManager implements SessionSink {
   // Writes `summary` without touching `updatedAt`: that field is both the sort key and this cache's key.
   private async runSummaries(): Promise<void> {
     const stale = [...this.meta.values()].filter(
-      (s) => s.kind !== 'subagent' && s.title !== 'Untitled' && s.summary?.forUpdatedAt !== s.updatedAt,
+      (s) => !isHidden(s) && s.title !== 'Untitled' && s.summary?.forUpdatedAt !== s.updatedAt,
     );
     let touched = false;
     for (const state of stale) {
@@ -2202,16 +2300,25 @@ export class SessionManager implements SessionSink {
   /** A hosted child outlives nothing: with its parent gone it has no card to belong to. */
   private async sweepOrphanSubagents(): Promise<void> {
     const orphans = [...this.meta.values()].filter(
-      (s) => s.kind === 'subagent' && (!s.parentId || !this.meta.has(s.parentId)),
+      (s) => (s.kind === 'subagent' || s.kind === 'side') && (!s.parentId || !this.meta.has(s.parentId)),
     );
     for (const s of orphans) { await this.remove(s.id).catch(() => undefined); }
+  }
+
+  /** A side chat's pane is never restored, so an unused one would be unreachable: it goes, a used one only loses its leaf. */
+  private async sweepSideChats(): Promise<void> {
+    for (const s of [...this.meta.values()].filter((x) => x.kind === 'side')) {
+      this.paneLayout = { ...this.paneLayout, root: closeSession(this.paneLayout.root, s.id) };
+      const items = (await this.store.tail(s.id, Number.MAX_SAFE_INTEGER)).items;
+      if (!hasOwnTurns(s, items)) { await this.remove(s.id).catch(() => undefined); }
+    }
   }
 
   async remove(id: SessionId): Promise<void> {
     if (await this.ownedElsewhere(id)) { return; }
     this.subagents.cancelSubtree(id);
     for (const child of [...this.meta.values()]) {
-      if (child.kind === 'subagent' && child.parentId === id) { await this.remove(child.id); }
+      if ((child.kind === 'subagent' || child.kind === 'side') && child.parentId === id) { await this.remove(child.id); }
     }
     await this.hide(id);
     if (this.ownership) { this.deleted.add(id); }
@@ -2622,8 +2729,24 @@ export class SessionManager implements SessionSink {
     this.emit({ t: 'session-attachments', id, attachments: pending });
   }
 
+  private childrenByParent(): Map<SessionId, ChildRef[]> {
+    const byParent = new Map<SessionId, ChildRef[]>();
+    const branches = [...this.meta.values()].filter((s) => s.parentId && s.origin).sort((a, b) => b.createdAt - a.createdAt);
+    for (const s of branches) {
+      const list = byParent.get(s.parentId!) ?? [];
+      list.push({ id: s.id, title: s.title, origin: s.origin!, hidden: s.kind === 'side', status: s.status });
+      byParent.set(s.parentId!, list);
+    }
+    return byParent;
+  }
+
   changed(): void {
     this.emit({ t: 'sessions-changed', sessions: this.summaries() });
+    for (const id of this.visible) {
+      if (this.meta.get(id)?.kind !== 'side') { continue; }
+      const session = this.summaries({ includeSubagents: true }).find((s) => s.id === id);
+      if (session) { this.emit({ t: 'side-summary', session }); }
+    }
     this.schedulePersist();
   }
 

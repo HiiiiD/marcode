@@ -80,7 +80,7 @@ export function Transcript({
             )}
             {pane.items.filter((item) => !isLivePrompt(item, pane)).map((item) => (
               <MessageScrollerItem key={item.id} messageId={item.id}>
-                <TranscriptItemView item={item} sessionId={pane.summary.id} canFork={idle} />
+                <TranscriptItemView item={item} sessionId={pane.summary.id} canFork={idle && pane.summary.kind !== 'side'} />
               </MessageScrollerItem>
             ))}
             {/* Not a MessageScrollerItem: it is a state of the session, not

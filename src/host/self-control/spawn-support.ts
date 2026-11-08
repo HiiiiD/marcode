@@ -20,9 +20,12 @@ export interface ResolvedSpawn {
 
 export type Resolution = { ok: true; spawn: ResolvedSpawn; needsApproval?: 'bypass' } | { ok: false; error: string };
 
+export const SIDE_CHAT_REFUSAL = 'Side chats are read-only: they cannot start sessions, message other sessions or hand off. Promote this one first.';
+
 export function resolveSpawn(
   manager: Pick<SessionManagerLike, 'catalog'>, from: Caller | undefined, req: SpawnRequest,
 ): Resolution {
+  if (from?.kind === 'side') { return { ok: false, error: SIDE_CHAT_REFUSAL }; }
   const providerId = req.provider ?? from?.providerId;
   if (!providerId) { return { ok: false, error: 'provider is required when the calling session cannot be identified' }; }
   const entry = manager.catalog().find((p) => p.id === providerId);

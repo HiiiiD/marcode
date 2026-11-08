@@ -1,6 +1,6 @@
 import { spawn as spawnChildProcess } from 'node:child_process';
 import type {
-  AgentProvider, AgentRun, Invocable, ModelInfo, PermissionModeInfo, SelfControlMcpConfig, StartOptions,
+  AgentProvider, AgentRun, ForkThreadArgs, ForkThreadResult, Invocable, ModelInfo, PermissionModeInfo, SelfControlMcpConfig, StartOptions,
   ThreadScope, UsageWindow,
 } from '../types';
 import {
@@ -361,6 +361,19 @@ export class CodexProvider implements AgentProvider {
       }
       for (const view of this.views) { view.closed(reason); }
     });
+  }
+
+  /** `thread/fork` cuts at a turn id, which the host does not hold, so only a whole-thread fork is native. */
+  async forkThread(args: ForkThreadArgs): Promise<ForkThreadResult | false> {
+    if (args.turnIndex !== undefined) { return false; }
+    try {
+      const server = await this.connection();
+      const result = await server.request<{ thread?: { id?: string } }>('thread/fork', { threadId: args.resumeToken, cwd: args.cwd });
+      const id = result?.thread?.id;
+      return id ? { resumeToken: id } : false;
+    } catch {
+      return false;
+    }
   }
 
   /**

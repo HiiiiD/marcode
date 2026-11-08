@@ -19,6 +19,10 @@ suite('tui pane chords', () => {
     assert.deepStrictEqual(chordStep(100, 200, { name: '=', sequence: '=' }).action, { do: 'even' });
     assert.deepStrictEqual(chordStep(100, 200, { name: 'x' }).action, { do: 'hide' });
   });
+  test('b brings a side chat back and p promotes it', () => {
+    assert.deepStrictEqual(chordStep(100, 200, { name: 'b' }).action, { do: 'side-merge' });
+    assert.deepStrictEqual(chordStep(100, 200, { name: 'p' }).action, { do: 'side-promote' });
+  });
   test('g opens the layout dialog', () => {
     assert.deepStrictEqual(chordStep(100, 200, { name: 'g' }), { armedAt: null, consumed: true, action: { do: 'layout' } });
   });

@@ -169,4 +169,26 @@ suite('file mentions in the composer', () => {
     fireEvent.click(chip);
     screen.getByText('export const x = 1;');
   });
+
+  test('a /side question carries its file mentions', async () => {
+    renderApp();
+    hydrateOneSession();
+
+    const box = messageBox();
+    fireEvent.change(box, { target: { value: '/side Look at @comp' } });
+    await pastDebounce();
+    sendFromHost({
+      t: 'file-search-result', id: 's-1', query: 'comp',
+      files: [{ path: 'src/webview/composer.tsx', name: 'composer.tsx' }],
+    });
+    fireEvent.keyDown(box, { key: 'Enter' });
+    fireEvent.change(box, { target: { value: `${(box as HTMLTextAreaElement).value} please` } });
+    fireEvent.keyDown(box, { key: 'Enter' });
+
+    const started = posted().filter((m) => m.t === 'start-side-chat');
+    assert.strictEqual(started.length, 1);
+    const msg = started[0] as { text?: string; fileRefs?: { path: string }[] };
+    assert.strictEqual(msg.fileRefs?.[0].path, 'src/webview/composer.tsx');
+    assert.strictEqual(msg.text?.startsWith('Look at @src/webview/composer.tsx'), true);
+  });
 });

@@ -48,6 +48,10 @@ function describeInbound(m: WebviewToHost): string {
     case 'answer-relocation': return 'answer-relocation';
     case 'cancel-relocation': return 'cancel-relocation';
     case 'fork-session': return 'fork-session';
+    case 'start-side-chat': return 'start-side-chat';
+    case 'close-side-chat': return 'close-side-chat';
+    case 'promote-side-chat': return 'promote-side-chat';
+    case 'merge-side-chat': return 'merge-side-chat';
     case 'request-bring-back': return 'request-bring-back';
     case 'bring-back': return 'bring-back';
     case 'request-stale-trees': return 'request-stale-trees';
@@ -98,6 +102,7 @@ function describeOutbound(m: HostToWebview): string {
     case 'session-patch': return 'session-patch';
     case 'session-prepend': return 'session-prepend';
     case 'session-status': return 'session-status';
+    case 'side-summary': return 'side-summary';
     case 'session-mcp': return 'session-mcp';
     case 'mcp-panel': return 'mcp-panel';
     case 'session-cache-window': return 'session-cache-window';

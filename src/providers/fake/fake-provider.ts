@@ -4,7 +4,7 @@ import type {
   Attachment,
   ContextBreakdown,
   EditorContext,
-  EffortLevel, Invocable, ModelInfo, MoveThreadArgs, MoveThreadResult, PermissionMode, PermissionModeInfo, QuestionAnswers,
+  EffortLevel, Invocable, ModelInfo, ForkThreadArgs, ForkThreadResult, MoveThreadArgs, MoveThreadResult, PermissionMode, PermissionModeInfo, QuestionAnswers,
   StartOptions, ThreadScope, ToolDecision,
   UsageWindow
 } from '../types';
@@ -104,6 +104,17 @@ export class FakeProvider implements AgentProvider {
   private sessionCounter = 0;
   moveThreadResult: MoveThreadResult | false | Error | 'never' | Promise<MoveThreadResult | false> = false;
   readonly moveThreadCalls: MoveThreadArgs[] = [];
+
+  forkThreadResult: ForkThreadResult | false | Error | 'never' | Promise<ForkThreadResult | false> = false;
+  readonly forkThreadCalls: ForkThreadArgs[] = [];
+
+  async forkThread(args: ForkThreadArgs): Promise<ForkThreadResult | false> {
+    this.forkThreadCalls.push(args);
+    const r = this.forkThreadResult;
+    if (r === 'never') { return new Promise(() => {}); }
+    if (r instanceof Error) { throw r; }
+    return r;
+  }
 
   async moveThread(args: MoveThreadArgs): Promise<MoveThreadResult | false> {
     this.moveThreadCalls.push(args);

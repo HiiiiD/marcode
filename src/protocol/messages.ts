@@ -196,6 +196,15 @@ export interface QueuedMessage {
   from?: { sessionId: SessionId; name: string };
 }
 
+/** One entry in a session's list of forks and side chats; `hidden` is a side chat not yet promoted. */
+export interface ChildRef {
+  id: SessionId;
+  title: string;
+  origin: 'fork' | 'side';
+  hidden: boolean;
+  status: SessionStatus;
+}
+
 export interface SessionState {
   id: SessionId;
   providerId: string;
@@ -217,8 +226,17 @@ export interface SessionState {
   owner?: { host: 'vscode' | 'tui' | 'daemon'; pid: number };
   /** The session that spawned this one via a self-control tool; absent for user-created sessions. */
   parentId?: SessionId;
-  /** `'subagent'`: owned by `parentId`'s turn, rendered as a card in the parent, never a roster row or pane. Absent = a normal session. */
-  kind?: 'session' | 'subagent';
+  /**
+   * `'subagent'`: owned by `parentId`'s turn, rendered as a card in the parent, never a roster row or pane.
+   * `'side'`: a temporary read-only branch of `parentId`, hidden until promoted. Absent = a normal session.
+   */
+  kind?: 'session' | 'subagent' | 'side';
+  /** How this session came to have a `parentId`; survives promote so the parent's list can tell a promoted side chat from a fork. */
+  origin?: 'fork' | 'side';
+  /** How many transcript items were copied from the parent at fork time; everything after is this session's own. */
+  forkedItemCount?: number;
+  /** Host-derived: the forks and side chats branched off this session, newest first. Absent when there are none; never persisted. */
+  children?: ChildRef[];
   /** Host-derived while this session has hosted children running; never persisted. */
   subagents?: { running: number; awaitingApproval: number };
   cwd: string;
@@ -649,6 +667,21 @@ export type WebviewToHost =
    */
   | { t: 'fork-session'; id: SessionId; itemId: string }
   /**
+   * A temporary, read-only branch of `id` carrying its whole context, shown in
+   * a pane beside it. `text`, when given, is sent as its first message. Answered
+   * with a `session-snapshot` for the new session, like `fork-session`.
+   */
+  | { t: 'start-side-chat'; id: SessionId; text?: string; fileRefs?: FileRef[] }
+  /** Closes a side chat's pane: an unused one is deleted, a used one stays reachable from its parent's list. */
+  | { t: 'close-side-chat'; id: SessionId }
+  /** Turns a side chat into an ordinary roster session, keeping its history, parent link and mode. */
+  | { t: 'promote-side-chat'; id: SessionId }
+  /**
+   * Queues a digest of side chat `id` (the side chat's own id) on its parent, delivered with the parent's
+   * next message. Refused while the parent is working or already holds one. Not the git `bring-back`.
+   */
+  | { t: 'merge-side-chat'; id: SessionId }
+  /**
    * "Not any more." Calls off a move that is waiting for the turn to finish
    * and puts the offer back to `pending`. Deliberately not `answer-relocation`
    * with `move: false`: that is Stay, an answer, and it settles the item
@@ -890,6 +923,8 @@ export type HostToWebview =
   | { t: 'session-prepend'; id: SessionId; items: TranscriptItem[]; hasMore: boolean }
   | { t: 'session-status'; id: SessionId; status: SessionStatus }
   | { t: 'sessions-changed'; sessions: SessionSummary[] }
+  /** The summary of a side chat shown in a pane: the roster never carries one, so this is how its pane stays current. */
+  | { t: 'side-summary'; session: SessionSummary }
   /** A handoff's source is being summarized. Answers `create-session`; sent straight to the asker, not fanned out. */
   | { t: 'handoff-progress'; sessionId: SessionId; phase: 'summarizing' | 'done' }
   | { t: 'memory-progress'; phase: 'extractive' | 'llm' | 'done' | 'cancelled'; done: number; total: number }

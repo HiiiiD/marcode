@@ -1062,6 +1062,37 @@ suite('MessageRouter', () => {
     assert.strictEqual(reached, true);
   });
 
+  test('start-side-chat survives the wire guard and reaches the manager with its text', async () => {
+    const calls: [string, string | undefined, unknown][] = [];
+    manager.startSideChat = async (id, text, fileRefs) => { calls.push([id, text, fileRefs]); return undefined; };
+    const fileRefs = [{ path: 'a.ts', name: 'a.ts' }];
+
+    await router.handle({ t: 'start-side-chat', id: 's-1', text: 'why?', fileRefs });
+    await router.handle({ t: 'start-side-chat', id: 's-1' });
+
+    assert.deepStrictEqual(calls, [['s-1', 'why?', fileRefs], ['s-1', undefined, undefined]]);
+  });
+
+  test('close-side-chat and promote-side-chat survive the wire guard and reach the manager', async () => {
+    const calls: string[] = [];
+    manager.closeSideChat = async (id) => { calls.push(`close:${id}`); };
+    manager.promoteSideChat = async (id) => { calls.push(`promote:${id}`); };
+
+    await router.handle({ t: 'close-side-chat', id: 's-2' });
+    await router.handle({ t: 'promote-side-chat', id: 's-2' });
+
+    assert.deepStrictEqual(calls, ['close:s-2', 'promote:s-2']);
+  });
+
+  test('merge-side-chat survives the wire guard and reaches the manager', async () => {
+    const calls: string[] = [];
+    manager.mergeSideChat = async (id) => { calls.push(id); };
+
+    await router.handle({ t: 'merge-side-chat', id: 's-3' });
+
+    assert.deepStrictEqual(calls, ['s-3']);
+  });
+
   test('both bring-back messages survive the wire guard and reach the manager', async () => {
     // Same trap as `answer-relocation` above, twice over: two new inbound arms
     // mean two new entries in KNOWN_MESSAGE_TAGS, and a missing one is dropped

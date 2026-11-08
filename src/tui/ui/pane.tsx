@@ -5,6 +5,7 @@ import type { PickerKind } from '../view/pickers';
 import { BottomSlotView } from './bottom-slot';
 import { paneTitleText, PaneTitle } from './pane-title';
 import { useTuiStore } from './store';
+import { SideChatBar } from './side-chat-bar';
 import { Surface } from './surface';
 import { useTheme } from './termcn/hooks/use-theme';
 import { Transcript } from './transcript/transcript';
@@ -21,7 +22,7 @@ export interface PaneProps {
 }
 
 export function Pane({ rect, compact, focused, liveZone, onFocus, onHide, onFork, onOpenPicker }: PaneProps) {
-  const { state } = useTuiStore();
+  const { state, post } = useTuiStore();
   const theme = useTheme();
   const id = rect.sessionId;
   const pane = state.byId[id];
@@ -43,7 +44,11 @@ export function Pane({ rect, compact, focused, liveZone, onFocus, onHide, onFork
       fallbackBorder={focused ? theme.colors.primary : theme.colors.border}
       onMouseDown={() => { onFocus(id); }}
     >
-      <PaneTitle text={title} focused={focused} onHide={() => { onHide(id); }} />
+      <PaneTitle
+        text={title} focused={focused}
+        onHide={() => { if (summary?.kind === 'side') { post({ t: 'close-side-chat', id }); } else { onHide(id); } }}
+      />
+      {summary ? <SideChatBar summary={summary} /> : null}
       <Transcript
         sessionId={id}
         focused={focused && liveZone === 'transcript'}

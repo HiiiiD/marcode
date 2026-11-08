@@ -9,7 +9,7 @@ import { SessionPicker } from './components/session-picker';
 import { NARROW_PX, usePanelWidth } from './components/use-is-narrow';
 import { rearrange } from '../client-core/auto-grid';
 import { assignAt, leafSessionIds } from './components/layout-tree';
-import { reconcilePaneLayout, rosterSessionIds } from './components/pane-layout';
+import { paneEligibleSessions, reconcilePaneLayout, rosterSessionIds } from './components/pane-layout';
 import { UsageStrip } from './components/usage-strip';
 import { useStore } from './store';
 import { MIN_PANE } from './min-pane';
@@ -59,7 +59,7 @@ export function App() {
   // reconcilePaneLayout() (pane-layout.ts) returns `layout: null` once the
   // layout already matches, so this doesn't loop.
   useEffect(() => {
-    const roster = rosterSessionIds(state.sessions);
+    const roster = rosterSessionIds(paneEligibleSessions(state.sessions, state.byId));
     let root = state.layout.root;
     let filledPendingSlot = false;
 

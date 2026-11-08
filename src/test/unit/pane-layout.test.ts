@@ -1,6 +1,6 @@
 import * as assert from 'assert';
 import {
-  accessibleTitles, leafDisplayState, reconcilePaneLayout, rosterSessionIds, visibleLeaves,
+  accessibleTitles, leafDisplayState, paneEligibleSessions, reconcilePaneLayout, rosterSessionIds, visibleLeaves,
 } from '../../webview/components/pane-layout';
 import type { LayoutNode } from '../../webview/components/layout-tree';
 
@@ -17,6 +17,22 @@ suite('pane-layout rosterSessionIds', () => {
 
   test('an empty roster yields an empty set', () => {
     assert.deepStrictEqual([...rosterSessionIds([])], []);
+  });
+});
+
+suite('pane-layout paneEligibleSessions', () => {
+  const pane = (kind?: 'side' | 'subagent') => ({ summary: { kind } });
+
+  test('a side chat with a pane is eligible although the roster never lists it', () => {
+    const eligible = paneEligibleSessions([{ id: 'main' }], { main: pane(), side: pane('side') });
+
+    assert.deepStrictEqual([...rosterSessionIds(eligible)].sort(), ['main', 'side']);
+  });
+
+  test('a pane for any other session that is not in the roster stays ineligible', () => {
+    const eligible = paneEligibleSessions([{ id: 'main' }], { main: pane(), deleted: pane(), child: pane('subagent') });
+
+    assert.deepStrictEqual([...rosterSessionIds(eligible)], ['main']);
   });
 });
 

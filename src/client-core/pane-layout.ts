@@ -29,6 +29,21 @@ export function rosterSessionIds(sessions: RosterEntry[]): Set<string> {
   return new Set(sessions.map((s) => s.id));
 }
 
+/**
+ * The roster plus every side chat that has a pane. The host never lists a
+ * side chat in `sessions-changed`, so its snapshot is the only sign it exists.
+ * A pane for anything else missing from the roster is a deleted session's stale entry.
+ */
+export function paneEligibleSessions(
+  sessions: RosterEntry[], byId: Record<string, { summary: { kind?: string } }>,
+): RosterEntry[] {
+  const listed = new Set(sessions.map((s) => s.id));
+  const sidePanes = Object.entries(byId)
+    .filter(([id, pane]) => pane.summary.kind === 'side' && !listed.has(id))
+    .map(([id]) => ({ id }));
+  return [...sessions, ...sidePanes];
+}
+
 export type LeafDisplayState = 'empty' | 'pending' | 'ready';
 
 /**
