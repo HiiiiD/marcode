@@ -320,6 +320,32 @@ suite('AgentSession subagent nesting', () => {
     await session.dispose();
   });
 
+  test('children of a background subagent survive a turn-end between them', async () => {
+    const provider = new FakeProvider(() => [
+      { kind: 'tool-start', id: 'task1', tool: TASK },
+      { kind: 'tool-end', id: 'task1', ok: true, output: { kind: 'text', text: 'launched' } },
+      { kind: 'tool-start', id: 'c1', tool: READ, parentId: 'task1' },
+      { kind: 'tool-end', id: 'c1', ok: true, output: { kind: 'text', text: 'one' } },
+      { kind: 'turn-end', reason: 'done' },
+    ]);
+    const session = new AgentSession(baseState(), provider, store, sink);
+    session.send('explore');
+    await settle();
+
+    provider.runs[0].emit({ kind: 'tool-start', id: 'c2', tool: GREP, parentId: 'task1' });
+    provider.runs[0].emit({ kind: 'tool-end', id: 'c2', ok: true, output: { kind: 'text', text: 'two' } });
+    await settle();
+
+    const snap = await session.snapshot();
+    const tools = toolItems(snap.items);
+    assert.strictEqual(tools.length, 1);
+    assert.deepStrictEqual(
+      (tools[0].children ?? []).map((c) => (c as Extract<TranscriptItem, { role: 'tool' }>).tool.label),
+      ['Read', 'Grep'],
+    );
+    await session.dispose();
+  });
+
   test('a plain tool call still produces no children field at all', async () => {
     const provider = new FakeProvider(() => [
       { kind: 'tool-start', id: 't1', tool: READ },

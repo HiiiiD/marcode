@@ -1151,7 +1151,7 @@ export class AgentSession {
         if (event.parentId && parentItemId) {
           const root = this.resolveParent(event.parentId);
           this.childOf.set(event.id, root);
-          const children = this.childrenByParent.get(root) ?? [];
+          const children = this.childBuffer(root);
           children.push(item);
           this.childrenByParent.set(root, children);
           // Deliberately no closeAssistant() here: a subagent's tool
@@ -1256,7 +1256,7 @@ export class AgentSession {
 
         if (parentSource && parentItemId) {
           const root = this.resolveParent(parentSource);
-          const children = this.childrenByParent.get(root) ?? [];
+          const children = this.childBuffer(root);
           children.push(item);
           this.childrenByParent.set(root, children);
           this.permissionChildOf.set(event.id, root);
@@ -1590,6 +1590,19 @@ export class AgentSession {
       current = next;
     }
     return current;
+  }
+
+  /**
+   * `flushUnsettledTools` clears every buffer at turn-end, but a background
+   * subagent keeps emitting children after that. Starting over from `[]` would
+   * make the next write-through overwrite the persisted children with only the
+   * new ones, so a missing buffer is seeded from the parent's stored list.
+   */
+  private childBuffer(root: string): TranscriptItem[] {
+    const buffered = this.childrenByParent.get(root);
+    if (buffered) { return buffered; }
+    const parent = this.toolItems.get(root);
+    return parent?.role === 'tool' && parent.children ? [...parent.children] : [];
   }
 
   /** The transcript item id of a resolved parent, if we ever saw its tool-start. */
