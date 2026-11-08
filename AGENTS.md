@@ -88,7 +88,7 @@ router. See `docs/daemon.md`.
 | `src/daemon-client/connect-or-spawn.ts`, `spawn-daemon.ts` | Discover, attach, replace or spawn, else a typed fallback reason; the detached spawn recipe for a Bun script or the compiled binary |
 | `src/tui/attachment-request.ts` | `request-attachment-path` / `attachment-path` round trip, so a daemon-attached TUI never reads the store itself |
 | `src/shared/app-version.ts` | `APP_VERSION`, advertised in `hello`/`welcome` and `daemon.json` |
-| `src/providers/types.ts` | `AgentProvider`, `AgentRun`, `AgentEvent`, `ModelInfo`, and the optional `moveThread` hook |
+| `src/providers/types.ts` | `AgentProvider`, `AgentRun`, `AgentEvent`, `ModelInfo`, and the optional `moveThread` and `forkThread` hooks (`forkThread`: native thread fork, `false` falls back to `buildSeed`; `host/native-fork.ts` decides when to ask) |
 | `src/providers/claude/session-file.ts` | Claude's per-project session JSONL: the cwd slug, the `projects` root, and the copy that moves a session to a new cwd |
 | `src/providers/opencode/move-session.ts` | POST to OpenCode's control-plane move endpoint with a bounded timeout, and the wait for a freshly spawned server to answer |
 | `src/providers/fake/fake-provider.ts` | Scripted provider for tests and the walking skeleton |
@@ -209,6 +209,13 @@ These are not style preferences. Breaking one breaks the design.
   `session-status` are ungated. A hosted subagent (`SessionState.kind === 'subagent'`) is never visible and never in
   `summaries()`; its events reach clients only through the parent, which ingests them (`AgentSession.ingestNested`)
   under one card, so approvals are answered on the parent with namespaced request ids.
+- **A side chat (`SessionState.kind === 'side'`) is hidden like a subagent but is its own pane.** It is a read-only
+  fork of `parentId` (`readOnlyModeFor`: `plan` where offered, never `bypass`), absent from `summaries()`, history, recall
+  and the digest; a pane showing one is kept current by `side-summary`, never by `sessions-changed`. Its pane is not
+  restored after a reload, an unused one (`hasOwnTurns`) is deleted on close or reload, and deleting the parent deletes it.
+  Promote drops `kind` and keeps `parentId` and `origin`. `merge-side-chat` queues a digest as the parent's next-send seed;
+  it is not the git `bring-back` flow. Every fork and side chat records `parentId` + `origin`, and the parent's
+  `children` list is derived from them.
 - **The webview loads no remote resources.** No CDN scripts, styles, fonts or images.
 - **CSP:** `default-src 'none'`; scripts and styles restricted to `webview.cspSource` plus
   a per-load CSPRNG nonce; `localResourceRoots` pinned to `dist/`.
