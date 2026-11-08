@@ -13,7 +13,6 @@ import { dormantProvider } from './dormant-provider';
 import { ForeignTail } from './foreign-tail';
 import { buildSeed } from './replay';
 import { isHidden } from '../shared/session-kind';
-import { readOnlyModeFor } from '../shared/side-chat-mode';
 import { nativeFork, planNativeFork, type NativeForkPlan } from './native-fork';
 import { hasOwnTurns } from './side-chat';
 import { buildSideChatDigest, SIDE_CHAT_HEADER } from './side-chat-digest';
@@ -944,7 +943,7 @@ export class SessionManager implements SessionSink {
   }
 
   /**
-   * A hidden, read-only branch of `id` carrying its whole transcript, shown in
+   * A hidden branch of `id` carrying its whole transcript, shown in
    * a pane. Refusals are an error item on the source, never a throw.
    */
   async startSideChat(id: SessionId, text?: string, fileRefs?: FileRef[]): Promise<AgentSession | undefined> {
@@ -964,7 +963,6 @@ export class SessionManager implements SessionSink {
     const session = await this.forkInto(state, provider, items, planNativeFork(items, items.length), {
       parentId: id, origin: 'side', kind: 'side',
       title: text ? `Side: ${text.slice(0, 40)}` : 'Side chat',
-      permissionMode: readOnlyModeFor(provider.listPermissionModes()).mode,
     });
     await focusSession(this, session.state.id);
     if (text) { session.send(text, undefined, undefined, fileRefs); }
@@ -987,7 +985,6 @@ export class SessionManager implements SessionSink {
     const parent = this.live.get(state.parentId);
     const refuse = (why: string) => { void side?.noteError(why); };
     if (!parent) { return refuse('The main chat is not open.'); }
-    if (parent.state.status !== 'idle') { return refuse('The main chat is still working. Bring this back when it is done.'); }
     if (parent.pendingSeedText?.includes(SIDE_CHAT_HEADER)) { return refuse('A side chat is already waiting to be sent. Send a message in the main chat first.'); }
     const digest = buildSideChatDigest((await this.store.tail(id, Number.MAX_SAFE_INTEGER)).items, state.forkedItemCount ?? 0);
     if (!digest) { return refuse('Nothing to bring back yet.'); }

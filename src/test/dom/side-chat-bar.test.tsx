@@ -33,7 +33,7 @@ suite("SideChatBar", () => {
     mount();
 
     assert.ok(screen.getByText("Side chat"));
-    assert.strictEqual(screen.queryByText("Can edit files"), null);
+    assert.strictEqual(screen.queryByText("Can edit files") === null, true);
   });
 
   test("warns once the side chat is in a mode that can edit", () => {
@@ -45,13 +45,17 @@ suite("SideChatBar", () => {
     assert.ok(screen.getByText("Can edit files"));
   });
 
-  test("Bring back is disabled while the main chat is working and enabled when it is idle", () => {
+  test("Bring back remains available while the main chat is working", async () => {
     mount("running");
-    assert.strictEqual((screen.getByRole("button", { name: "Bring back" }) as HTMLButtonElement).disabled, true);
+    assert.strictEqual((screen.getByRole("button", { name: "Bring back" }) as HTMLButtonElement).disabled, false);
+    await userEvent.click(screen.getByRole("button", { name: "Bring back" }));
 
+    sendFromHost({ t: "session-status", id: "main", status: "awaiting-approval" });
+    sendFromHost({ t: "session-status", id: "main", status: "running" });
+    assert.strictEqual((screen.getByRole("button", { name: "Queued for main chat" }) as HTMLButtonElement).disabled, true);
     sendFromHost({ t: "session-status", id: "main", status: "idle" });
 
-    assert.strictEqual((screen.getByRole("button", { name: "Bring back" }) as HTMLButtonElement).disabled, false);
+    assert.strictEqual((screen.getByRole("button", { name: "Queued for main chat" }) as HTMLButtonElement).disabled, true);
   });
 
   test("each action posts its message for the side chat", async () => {
@@ -69,12 +73,12 @@ suite("SideChatBar", () => {
     ]);
   });
 
-  test("after Bring back the button says it was sent and cannot be pressed twice", async () => {
+  test("after Bring back the button says it was queued and cannot be pressed twice", async () => {
     mount();
 
     await userEvent.click(screen.getByRole("button", { name: "Bring back" }));
 
-    const sent = screen.getByRole("button", { name: "Sent to main chat" }) as HTMLButtonElement;
+    const sent = screen.getByRole("button", { name: "Queued for main chat" }) as HTMLButtonElement;
     assert.strictEqual(sent.disabled, true);
   });
 

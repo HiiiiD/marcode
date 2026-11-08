@@ -45,10 +45,10 @@ test('Ctrl+W b brings the focused side chat back', async () => {
   expect(sideMessages()).toEqual([{ t: 'merge-side-chat', id: 'side1' }]);
 });
 
-test('Ctrl+W b is ignored while the main chat is working', async () => {
+test('Ctrl+W b queues a bring back while the main chat is working', async () => {
   await mountWithSide('running');
   await chord('b');
-  expect(sideMessages()).toEqual([]);
+  expect(sideMessages()).toEqual([{ t: 'merge-side-chat', id: 'side1' }]);
 });
 
 test('Ctrl+W p promotes it and Ctrl+W x closes it instead of hiding the pane', async () => {
