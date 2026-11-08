@@ -13,6 +13,7 @@ import { dormantProvider } from './dormant-provider';
 import { ForeignTail } from './foreign-tail';
 import { buildSeed } from './replay';
 import { isHidden } from '../shared/session-kind';
+import { nativeFork, planNativeFork, type NativeForkPlan } from './native-fork';
 import { mergeRoster } from './roster-sync';
 import type { OwnClaim, OwnerInfo, SessionOwnership } from './session-ownership';
 import { findPayload, type ResolvedBlock } from './session-refs';
@@ -883,23 +884,37 @@ export class SessionManager implements SessionSink {
 
     const items = await this.store.upTo(id, itemId);
     if (items.length === 0) { return undefined; }
+    const plan = planNativeFork((await this.store.tail(id, Number.MAX_SAFE_INTEGER)).items, items.length);
+    return this.forkInto(state, provider, items, plan, { parentId: id, origin: 'fork', title: `Fork of ${state.title}` });
+  }
 
+  /**
+   * Writes `items` as a new session branched off `state`. With a `plan` the
+   * provider is asked for a native thread fork first; any other outcome seeds
+   * the first prompt with a `buildSeed()` summary of the copied history.
+   */
+  private async forkInto(
+    state: SessionState, provider: AgentProvider, items: TranscriptItem[],
+    plan: NativeForkPlan | undefined, extra: Pick<SessionState, 'title'> & Partial<SessionState>,
+  ): Promise<AgentSession> {
+    const native = plan ? await nativeFork(provider, state, plan, this.moveThreadTimeoutMs) : undefined;
     const now = Date.now();
     const forkState: SessionState = {
       id: newSessionId(), providerId: state.providerId, model: state.model,
-      effort: state.effort, title: `Fork of ${state.title}`, parentId: id, origin: 'fork',
+      effort: state.effort,
       name: this.defaultName(state.providerId), cwd: state.cwd,
       status: 'idle', permissionMode: state.permissionMode,
       includeEditorContext: state.includeEditorContext,
-      resumeTokens: {},
+      resumeTokens: native ? { [native.key]: native.token } : {},
       createdAt: now, updatedAt: now,
+      ...extra,
     };
 
     for (const item of items) { this.store.append(forkState.id, item); }
     await this.store.flush(forkState.id);
 
     await this.ownership?.claim(forkState.id);
-    const session = new AgentSession(forkState, provider, this.store, this, buildSeed(items));
+    const session = new AgentSession(forkState, provider, this.store, this, native ? undefined : buildSeed(items));
     this.meta.set(forkState.id, forkState);
     this.live.set(forkState.id, session);
     const cached = this.catalogSvc.get(this.keyOf(forkState));

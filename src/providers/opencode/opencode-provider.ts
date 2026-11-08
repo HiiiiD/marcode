@@ -5,6 +5,7 @@ import { connectAcp, CLIENT_CAPABILITIES, PROTOCOL_VERSION, type AcpChild } from
 import { modelConfigId, toEffort, toModels, type ConfigOption } from '../acp/config-options';
 import { AcpRun } from '../acp/acp-run';
 import { openCodeModeId } from './map-modes';
+import { postForkSession } from './fork-session';
 import { postMoveSession, waitForServer, type MoveFetch } from './move-session';
 import { createOpenCodeTools } from './map-tools';
 import { reserveLoopbackPort } from './reserve-port';
@@ -18,7 +19,7 @@ import {
 } from '../update-check';
 import type {
   AgentProvider, AgentRun, ModelInfo, PermissionModeInfo, SelfControlMcpConfig,
-  MoveThreadArgs, MoveThreadResult, StartOptions, ThreadScope,
+  ForkThreadArgs, ForkThreadResult, MoveThreadArgs, MoveThreadResult, StartOptions, ThreadScope,
 } from '../types';
 
 const STDERR_TAIL_BYTES = 2000;
@@ -214,6 +215,22 @@ export class OpenCodeProvider implements AgentProvider {
   }
 
   async moveThread(args: MoveThreadArgs): Promise<MoveThreadResult | false> {
+    return this.withControlServer(async (baseUrl, token) => {
+      const ok = await postMoveSession(baseUrl, token, args.resumeToken, args.to, this.moveFetch);
+      return ok ? { resumeToken: args.resumeToken, dropOldKey: true } : false;
+    });
+  }
+
+  /** The endpoint can only cut at a message, so only a whole-thread fork is native. */
+  async forkThread(args: ForkThreadArgs): Promise<ForkThreadResult | false> {
+    if (args.turnIndex !== undefined) { return false; }
+    return this.withControlServer(async (baseUrl, token) => {
+      const id = await postForkSession(baseUrl, token, args.resumeToken, this.moveFetch);
+      return id === false ? false : { resumeToken: id };
+    });
+  }
+
+  private async withControlServer<T>(work: (baseUrl: string, token: string) => Promise<T | false>): Promise<T | false> {
     let child: AcpChild | undefined;
     try {
       const port = await this.reservePort();
@@ -225,8 +242,7 @@ export class OpenCodeProvider implements AgentProvider {
       const baseUrl = `http://127.0.0.1:${port}`;
       const up = await waitForServer(baseUrl, this.moveFetch, () => dead, MOVE_READY_BUDGET_MS, this.moveReadyIntervalMs, MOVE_PROBE_TIMEOUT_MS);
       if (!up) { return false; }
-      const ok = await postMoveSession(baseUrl, token, args.resumeToken, args.to, this.moveFetch);
-      return ok ? { resumeToken: args.resumeToken, dropOldKey: true } : false;
+      return await work(baseUrl, token);
     } catch {
       return false;
     } finally {

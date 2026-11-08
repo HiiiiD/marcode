@@ -130,7 +130,7 @@ import type {
   AgentEvent, AgentProvider, AgentRun, Attachment,
   ContextBreakdown,
   EditorContext,
-  EffortLevel, Invocable, ModelInfo, MoveThreadArgs, MoveThreadResult, PermissionMode, PermissionModeInfo,
+  EffortLevel, ForkThreadArgs, ForkThreadResult, Invocable, ModelInfo, MoveThreadArgs, MoveThreadResult, PermissionMode, PermissionModeInfo,
   QuestionAnswers, SelfControlMcpConfig, StartOptions, ThreadScope, ToolDecision, UsageTotals, UsageWindow,
 } from '../types';
 import { authFailureReason } from './auth-failure';
@@ -143,6 +143,7 @@ import { sendMessageDenial } from './send-message-guard';
 import { toPermissionMeta, toQuestionSpecs, toSdkAnswers } from './map-questions';
 import { toToolCall } from './map-tools';
 import { redactSecrets } from '../redact';
+import { anchorFor } from './fork-anchor';
 import { bundledClaudeCli, ClaudeMcpConfig } from './mcp-config';
 import { toMcpStatuses, type SdkMcpStatusLike } from './mcp-status';
 import { lifecycleDebug } from '../../shared/lifecycle-debug';
@@ -358,6 +359,25 @@ export class ClaudeProvider implements AgentProvider {
   async moveThread(args: MoveThreadArgs): Promise<MoveThreadResult | false> {
     const ok = await copySessionFile(sessionsRoot(this.env), args.from, args.to, args.resumeToken);
     return ok ? { resumeToken: args.resumeToken } : false;
+  }
+
+  async forkThread(args: ForkThreadArgs): Promise<ForkThreadResult | false> {
+    // The SDK's session functions read the config dir from process.env only.
+    if (this.env?.CLAUDE_CONFIG_DIR && this.env.CLAUDE_CONFIG_DIR !== process.env.CLAUDE_CONFIG_DIR) { return false; }
+    try {
+      const sdk = await import('@anthropic-ai/claude-agent-sdk');
+      let upToMessageId: string | undefined;
+      if (args.turnIndex !== undefined) {
+        upToMessageId = anchorFor(await sdk.getSessionMessages(args.resumeToken, { dir: args.cwd }), args.turnIndex);
+        if (upToMessageId === undefined) { return false; }
+      }
+      const { sessionId } = await sdk.forkSession(args.resumeToken, {
+        dir: args.cwd, ...(upToMessageId !== undefined ? { upToMessageId } : {}),
+      });
+      return { resumeToken: sessionId };
+    } catch {
+      return false;
+    }
   }
 
   async checkForUpdate(): Promise<UpdateInfo | undefined> {

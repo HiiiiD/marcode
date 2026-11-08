@@ -520,6 +520,10 @@ export type ThreadScope = 'cwd' | 'global';
 export interface MoveThreadArgs { resumeToken: string; from: string; to: string; }
 export interface MoveThreadResult { resumeToken: string; dropOldKey?: boolean; }
 
+/** `turnIndex` is the zero-based user turn the fork ends at (inclusive); omitted = the whole thread. */
+export interface ForkThreadArgs { resumeToken: string; cwd: string; turnIndex?: number; }
+export interface ForkThreadResult { resumeToken: string; }
+
 export interface AgentProvider {
   readonly id: string;
   readonly displayName: string;
@@ -531,6 +535,13 @@ export interface AgentProvider {
    * host bounds it with a timeout.
    */
   moveThread?(args: MoveThreadArgs): Promise<MoveThreadResult | false>;
+  /**
+   * Branches a vendor thread so a fork keeps the real conversation instead of
+   * a replayed seed. `false` means "could not" (including a `turnIndex` the
+   * provider cannot place): the host falls back to the seed. Bounded by the
+   * host with a timeout, like `moveThread`.
+   */
+  forkThread?(args: ForkThreadArgs): Promise<ForkThreadResult | false>;
   /**
    * Whether a terminal login flow exists for this instance, and if so what
    * kind. `undefined` for a provider that predates this field — the webview
