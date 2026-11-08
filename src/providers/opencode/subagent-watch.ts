@@ -68,13 +68,13 @@ export interface SubagentSdk {
  * it can check — `close()` aborting it is the only thing that ever stops
  * that loop once a server is unreachable, in production and in a test alike.
  */
-async function connectSdk(baseUrl: string, token: string, signal?: AbortSignal): Promise<SubagentSdk> {
+async function connectSdk(baseUrl: string, token: string, signal?: AbortSignal, env?: NodeJS.ProcessEnv): Promise<SubagentSdk> {
   const { createOpencodeClient } = await import('@opencode-ai/sdk/v2');
   const client = createOpencodeClient({
     baseUrl, signal, headers: { Authorization: `Basic ${Buffer.from(`opencode:${token}`).toString('base64')}` },
   });
   return {
-    contextBreakdown: (sessionID, directory) => readOpenCodeContext(client, sessionID, directory),
+    contextBreakdown: (sessionID, directory) => readOpenCodeContext(client, sessionID, directory, env),
     globalEvent: () => client.global.event() as unknown as Promise<{ stream: AsyncIterable<EventEnvelope> }>,
     permissionReply: (params) => client.permission.reply(params),
     mcpStatus: async (directory) => ((await client.mcp.status({ directory })).data ?? {}) as OpenCodeMcpStatus,
@@ -121,6 +121,7 @@ class EventChannel implements AsyncIterable<AgentEvent> {
 }
 
 export interface SubagentWatchOptions {
+  env?: NodeJS.ProcessEnv;
   tools?: ToolMapper;
   /** Injected so a test never opens a real socket. Defaults to `connectSdk`. */
   connect?: (baseUrl: string, token: string, signal?: AbortSignal) => Promise<SubagentSdk>;
@@ -269,7 +270,7 @@ export class SubagentWatch {
   }
 
   private async run(baseUrl: string, token: string, signal: AbortSignal): Promise<void> {
-    const connect = this.opts.connect ?? connectSdk;
+    const connect = this.opts.connect ?? ((url: string, token: string, signal?: AbortSignal) => connectSdk(url, token, signal, this.opts.env));
     try {
       const sdk = await connect(baseUrl, token, signal);
       // An older attempt's `connect` resolving late would otherwise install a

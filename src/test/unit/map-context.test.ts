@@ -215,7 +215,7 @@ suite('map-context', () => {
       ],
     });
     assert.strictEqual(
-      b.memoryFiles.reduce((sum, f) => sum + f.percent, 0), b.memoryPercent,
+      b.memoryFiles.reduce((sum, f) => sum + (f.percent ?? 0), 0), b.memoryPercent,
     );
   });
 
@@ -224,7 +224,7 @@ suite('map-context', () => {
       totalTokens: 200_000, maxTokens: 100_000,
       memoryFiles: [{ path: '/big', tokens: 150_000 }],
     });
-    assert.ok(b.memoryFiles[0].percent <= b.memoryPercent);
+    assert.ok(b.memoryFiles[0].percent !== undefined && b.memoryFiles[0].percent <= b.memoryPercent);
   });
 
   test('a file too small to round up still gets a row, at 0 — the UI reads it as <1%', () => {

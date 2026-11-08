@@ -924,7 +924,7 @@ export class AgentSession {
   private memoryPaths = new Set<string>();
 
   private rememberMemoryFiles(breakdown: ContextBreakdown): void {
-    this.memoryPaths = new Set(breakdown.memoryFiles.map((f) => f.path));
+    this.memoryPaths = new Set(breakdown.memoryFiles.filter((f) => !/^https?:\/\//.test(f.path)).map((f) => f.path));
   }
 
   /**

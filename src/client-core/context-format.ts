@@ -8,8 +8,10 @@ export type SliceKey = 'system' | 'memory' | 'conversation' | 'free';
 
 export interface ContextModel {
   slices: { key: SliceKey; label: string; percent: number }[];
-  memoryFiles: { path: string; percent: string }[];
+  memoryFiles: { path: string; percent?: string; source?: 'reported' | 'discovered' }[];
   window?: string;
+  memoryFilesDiscovery?: ContextBreakdown['memoryFilesDiscovery'];
+  totalOnly?: boolean;
 }
 
 /** A provider reports a percentage; nothing guarantees it is one. */
@@ -22,7 +24,10 @@ export function contextModel(b: ContextBreakdown): ContextModel {
     ? `${formatTokens(b.usedTokens)} of ${formatTokens(b.windowTokens)} tokens`
     : undefined;
   return {
-    slices: [
+    slices: b.totalOnly ? [
+      { key: 'conversation', label: 'Used context', percent: clampPercent(b.conversationPercent) },
+      { key: 'free', label: 'Free', percent: clampPercent(b.freePercent) },
+    ] : [
       { key: 'system', label: 'System prompt', percent: clampPercent(b.systemPercent) },
       { key: 'memory', label: 'Memory', percent: clampPercent(b.memoryPercent) },
       { key: 'conversation', label: 'Conversation', percent: clampPercent(b.conversationPercent) },
@@ -30,10 +35,13 @@ export function contextModel(b: ContextBreakdown): ContextModel {
     ],
     // A listed file rounding to 0 is present but tiny, never "nothing".
     memoryFiles: b.memoryFiles.map((f) => {
-      const p = clampPercent(f.percent);
-      return { path: f.path, percent: p === 0 ? '<1%' : `${p}%` };
+      const p = f.percent === undefined ? undefined : clampPercent(f.percent);
+      return { path: f.path, ...(f.source ? { source: f.source } : {}),
+        ...(p === undefined ? {} : { percent: p === 0 ? '<1%' : `${p}%` }) };
     }),
     ...(window ? { window } : {}),
+    ...(b.memoryFilesDiscovery ? { memoryFilesDiscovery: b.memoryFilesDiscovery } : {}),
+    ...(b.totalOnly ? { totalOnly: true } : {}),
   };
 }
 

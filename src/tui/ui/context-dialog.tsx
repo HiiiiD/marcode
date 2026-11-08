@@ -10,6 +10,24 @@ const PERCENT_COL = 5;
 const GLYPH: Record<SliceKey, string> = { system: '█', memory: '▓', conversation: '▒', free: '░' };
 const COLOR: Record<SliceKey, string> = { system: 'cyan', memory: 'blue', conversation: 'white', free: 'gray' };
 
+function MemoryFiles({ model }: { model: ReturnType<typeof contextModel> }) {
+  const discovered = model.memoryFilesDiscovery === 'complete' || model.memoryFiles.some((f) => f.source === 'discovered');
+  return (
+    <box flexDirection="column">
+      {model.memoryFilesDiscovery || discovered ? <text fg="gray">{model.memoryFilesDiscovery === 'unavailable'
+        ? 'Instruction-file discovery unavailable.'
+        : 'Discovered from OpenCode’s configuration. Loading and per-file usage are not reported.'}</text> : null}
+      {model.memoryFiles.length === 0 && model.memoryFilesDiscovery !== 'unavailable'
+        ? <text fg="gray">{discovered ? 'No instruction files discovered.' : '  No memory files loaded'}</text> : null}
+      {model.memoryFiles.map((f) => {
+        const suffix = f.source === 'discovered' ? ' discovered' : f.percent?.padStart(PERCENT_COL) ?? '';
+        const width = BAR_WIDTH - suffix.length - 2;
+        return <text key={f.path} fg="gray">{`  ${fitPath(f.path, width).padEnd(width)}${suffix}`}</text>;
+      })}
+    </box>
+  );
+}
+
 export function ContextDialog({ sessionId, onClose }: { sessionId: SessionId; onClose(): void }) {
   const { state, post } = useTuiStore();
   const summary = state.byId[sessionId]?.summary ?? state.sessions.find((s) => s.id === sessionId);
@@ -35,7 +53,6 @@ export function ContextDialog({ sessionId, onClose }: { sessionId: SessionId; on
   if (!summary || !present) { return null; }
   const header = headerLabel(summary.contextPercent);
   const model = result?.ok ? contextModel(result.breakdown) : undefined;
-  const pathWidth = BAR_WIDTH - PERCENT_COL - 2;
   return (
     <box flexDirection="column" flexShrink={0}>
       <Dialog isOpen interactive={false} title="Context">
@@ -53,14 +70,16 @@ export function ContextDialog({ sessionId, onClose }: { sessionId: SessionId; on
             {model.slices.map((s) => (
               <box key={s.key} flexDirection="column">
                 <text>{`${s.label.padEnd(BAR_WIDTH - PERCENT_COL)}${`${s.percent}%`.padStart(PERCENT_COL)}`}</text>
-                {s.key === 'memory' && model.memoryFiles.length === 0 ? <text fg="gray">  No memory files loaded</text> : null}
-                {s.key === 'memory' ? model.memoryFiles.map((f) => (
-                  <text key={f.path} fg="gray">
-                    {`  ${fitPath(f.path, pathWidth).padEnd(pathWidth)}${f.percent.padStart(PERCENT_COL)}`}
-                  </text>
-                )) : null}
+                {s.key === 'memory' ? <MemoryFiles model={model} /> : null}
               </box>
             ))}
+            {model.totalOnly ? <text fg="gray">Includes instructions, tools and conversation; separate usage is not reported.</text> : null}
+            {model.totalOnly ? (
+              <box flexDirection="column">
+                <text>Memory files</text>
+                <MemoryFiles model={model} />
+              </box>
+            ) : null}
           </>
         ) : null}
         <text fg="gray">Esc close</text>

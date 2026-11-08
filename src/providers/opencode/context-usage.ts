@@ -1,5 +1,6 @@
 import type { ContextBreakdown } from '../types';
 import { toContextBreakdown } from '../acp/map-updates';
+import { discoverInstructionFiles } from './instruction-files';
 
 interface AssistantUsage {
   role: string;
@@ -10,6 +11,8 @@ interface AssistantUsage {
 }
 
 interface ContextSdk {
+  path?: Parameters<typeof discoverInstructionFiles>[0]['path'];
+  config?: Parameters<typeof discoverInstructionFiles>[0]['config'];
   session: {
     messages(params: { sessionID: string; directory: string }, options: { throwOnError: true; signal: AbortSignal }):
       Promise<{ data?: { info: AssistantUsage }[] }>;
@@ -21,7 +24,7 @@ interface ContextSdk {
 }
 
 export async function readOpenCodeContext(
-  sdk: ContextSdk, sessionID: string, directory: string,
+  sdk: ContextSdk, sessionID: string, directory: string, env: NodeJS.ProcessEnv = process.env,
 ): Promise<ContextBreakdown> {
   const options = { throwOnError: true as const, signal: AbortSignal.timeout(4000) };
   const messages = await sdk.session.messages({ sessionID, directory }, options);
@@ -41,5 +44,8 @@ export async function readOpenCodeContext(
   // Match OpenCode's ACP contextTokens: cached input counts, generated output does not.
   const used = latest.tokens.input + latest.tokens.cache.read + latest.tokens.cache.write;
   if (!Number.isFinite(used)) { throw new Error('OpenCode reported invalid context usage'); }
-  return toContextBreakdown({ used, size });
+  const inventory = sdk.path && sdk.config
+    ? await discoverInstructionFiles({ path: sdk.path, config: sdk.config }, directory, env)
+    : { memoryFiles: [], memoryFilesDiscovery: 'unavailable' as const };
+  return { ...toContextBreakdown({ used, size }), totalOnly: true, ...inventory };
 }

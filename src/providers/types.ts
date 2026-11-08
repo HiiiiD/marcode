@@ -226,8 +226,8 @@ export interface UsageWindow {
 
 /**
  * How the model's context window is occupied, as percentages of that window.
- * The four `*Percent` fields sum to 100; `memoryFiles` percentages sum to
- * exactly `memoryPercent` — they are allocated within that slice, not
+ * The four `*Percent` fields sum to 100; reported `memoryFiles` percentages sum to
+ * `memoryPercent` when the provider supplies a breakdown — they are allocated within that slice, not
  * re-derived from token counts — so consumers must never re-derive a total
  * from the rows. A listed file rounding to 0 means "under 1%", never
  * "absent" — the UI renders that case as `<1%`.
@@ -238,8 +238,12 @@ export interface ContextBreakdown {
   memoryPercent: number;
   conversationPercent: number;
   freePercent: number;
-  /** Absolute paths, with each file's share of the window. */
-  memoryFiles: { path: string; percent: number }[];
+  /** Paths or configured URLs. Missing source means provider-reported, including persisted older entries. */
+  memoryFiles: { path: string; percent?: number; source?: 'reported' | 'discovered' }[];
+  /** Discovery does not prove loading; an unavailable inventory is not an empty one. */
+  memoryFilesDiscovery?: 'complete' | 'unavailable';
+  /** The provider reports only a total; the conversation slice includes system and memory. */
+  totalOnly?: boolean;
   /**
    * The window's size in tokens, and how many of them are occupied.
    *
