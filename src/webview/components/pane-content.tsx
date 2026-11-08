@@ -4,6 +4,7 @@ import type { SessionId } from "../../protocol/messages";
 import { ownerReason } from "../lib/owner-reason";
 import { unavailabilityFor } from "../lib/provider-availability";
 import { useStore } from "../store";
+import { ChildrenList } from "./children-list";
 import { Composer } from "./composer";
 import { PinnedShell } from "./pinned-shell";
 import { PinnedPrompts } from "./pinned-prompts";
@@ -64,6 +65,7 @@ export function PaneContent({ sessionId, accessibleTitle }: PaneContentProps) {
       >
         <SessionHeader pane={paneState} accessibleTitle={accessibleTitle} />
         <SideChatBar sessionId={sessionId} />
+        <ChildrenList sessionId={sessionId} />
         <SubagentDrillInContext.Provider
           value={(itemId) => post({ t: "open-fleet-subagent", sessionId, itemId })}
         >
