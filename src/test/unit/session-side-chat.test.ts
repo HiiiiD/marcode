@@ -25,7 +25,7 @@ suite('SessionManager.startSideChat', () => {
   async function setup(existingDir?: string) {
     const dir = existingDir ?? await fs.mkdtemp(path.join(os.tmpdir(), 'mar-side-'));
     if (!existingDir) { dirs.push(dir); }
-    const provider = new FakeProvider(() => [{ kind: 'text', delta: 'ok' }, { kind: 'turn-end', reason: 'done' }]);
+    const provider = new FakeProvider((text) => text === 'keep working' ? [] : [{ kind: 'text', delta: 'ok' }, { kind: 'turn-end', reason: 'done' }]);
     const manager = new SessionManager(
       new TranscriptStore(dir), new Map<string, AgentProvider>([['fake', provider]]), () => {},
     );
@@ -44,12 +44,12 @@ suite('SessionManager.startSideChat', () => {
   const errorsOf = async (s: { snapshot(): Promise<{ items: { role: string }[] }> }) =>
     (await s.snapshot()).items.filter((i) => i.role === 'error').length;
 
-  test('a side chat of a bypass parent starts in plan and is hidden', async () => {
+  test('a side chat inherits bypass permissions from its parent and is hidden', async () => {
     const { manager, parent } = await setup();
 
     const side = await manager.startSideChat(parent.state.id);
 
-    assert.strictEqual(side!.state.permissionMode, 'plan');
+    assert.strictEqual(side!.state.permissionMode, 'bypass');
     assert.strictEqual(side!.state.kind, 'side');
     assert.strictEqual(side!.state.origin, 'side');
     assert.strictEqual(side!.state.parentId, parent.state.id);
@@ -57,6 +57,23 @@ suite('SessionManager.startSideChat', () => {
     assert.strictEqual(side!.state.model, parent.state.model);
     assert.strictEqual(side!.state.cwd, parent.state.cwd);
     assert.strictEqual(manager.summaries().some((s) => s.id === side!.state.id), false);
+  });
+
+  test('each parent permission mode reaches the side chat provider unchanged', async () => {
+    const { manager, provider } = await setup();
+    for (const mode of ['default', 'acceptEdits', 'auto', 'plan', 'dontAsk', 'bypass'] as const) {
+      const parent = await manager.create('fake', '/repo', 'fake-small', undefined, mode);
+      parent.send('hello');
+      await settle();
+
+      const side = await manager.startSideChat(parent.state.id, 'why?');
+      await settle();
+
+      assert.strictEqual(side!.state.permissionMode, mode);
+      assert.strictEqual(provider.lastStart!.permissionMode, mode);
+      assert.strictEqual(parent.state.permissionMode, mode);
+      await manager.closeSideChat(side!.state.id);
+    }
   });
 
   test('the side chat is shown in a pane', async () => {
@@ -115,7 +132,7 @@ suite('SessionManager.startSideChat', () => {
     const side = await manager.startSideChat(parent.state.id, 'status?');
     await settle();
 
-    assert.strictEqual(side!.state.permissionMode, 'plan');
+    assert.strictEqual(side!.state.permissionMode, 'bypass');
     assert.strictEqual(provider.sent[provider.sent.length - 1].text.includes('plan the feature'), true);
   });
 
@@ -164,7 +181,7 @@ suite('SessionManager.startSideChat', () => {
     assert.strictEqual(promoted.kind, undefined);
     assert.strictEqual(promoted.parentId, parent.state.id);
     assert.strictEqual(promoted.origin, 'side');
-    assert.strictEqual(promoted.permissionMode, 'plan');
+    assert.strictEqual(promoted.permissionMode, 'bypass');
     assert.strictEqual(manager.summaries().some((x) => x.id === side!.state.id), true);
     assert.strictEqual(inLayout(manager, side!.state.id), true);
   });
@@ -234,16 +251,28 @@ suite('SessionManager.startSideChat', () => {
     assert.strictEqual(row(manager, side!.state.id)?.kind, 'side');
   });
 
-  test('bringing back is refused while the parent is working', async () => {
-    const { manager, parent } = await setup();
+  test('bringing back while the parent is working queues the digest for its next message', async () => {
+    const { manager, parent, provider } = await setup();
     const side = await manager.startSideChat(parent.state.id, 'why?');
     await settle();
-    parent.state.status = 'running';
+    parent.send('keep working');
+    await settle();
+    const sentBeforeMerge = provider.sent.length;
 
     await manager.mergeSideChat(side!.state.id);
 
+    assert.strictEqual(parent.pendingSeedText?.includes('USER: why?'), true);
+    assert.strictEqual(await errorsOf(side!), 0);
+    assert.strictEqual(parent.state.status, 'running');
+    assert.strictEqual(provider.sent.length, sentBeforeMerge);
+    provider.runs[0].emit({ kind: 'turn-end', reason: 'done' });
+    await settle();
+    assert.strictEqual(parent.state.status, 'idle');
+    assert.strictEqual(parent.pendingSeedText?.includes(SIDE_CHAT_HEADER), true);
+    parent.send('use that answer');
+    await settle();
+    assert.strictEqual(provider.sent.at(-1)!.text.includes(SIDE_CHAT_HEADER), true);
     assert.strictEqual(parent.pendingSeedText, undefined);
-    assert.strictEqual(await errorsOf(side!), 1);
   });
 
   test('a second bring back before the parent speaks is refused and changes nothing', async () => {

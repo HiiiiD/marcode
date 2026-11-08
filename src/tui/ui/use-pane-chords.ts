@@ -61,7 +61,6 @@ export function usePaneChords(c: PaneChords): void {
         return;
       case 'side-merge': {
         if (!isSide) { return; }
-        if (state.sessions.find((s) => s.id === focused.parentId)?.status !== 'idle') { setNotice('The main chat is working'); return; }
         post({ t: 'merge-side-chat', id: focusedId });
         return;
       }
