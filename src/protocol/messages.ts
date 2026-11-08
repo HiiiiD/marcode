@@ -666,6 +666,11 @@ export type WebviewToHost =
   /** Turns a side chat into an ordinary roster session, keeping its history, parent link and mode. */
   | { t: 'promote-side-chat'; id: SessionId }
   /**
+   * Queues a digest of side chat `id` (the side chat's own id) on its parent, delivered with the parent's
+   * next message. Refused while the parent is working or already holds one. Not the git `bring-back`.
+   */
+  | { t: 'merge-side-chat'; id: SessionId }
+  /**
    * "Not any more." Calls off a move that is waiting for the turn to finish
    * and puts the offer back to `pending`. Deliberately not `answer-relocation`
    * with `move: false`: that is Stay, an answer, and it settles the item

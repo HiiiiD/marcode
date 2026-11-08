@@ -6,6 +6,7 @@ import { SessionManager } from '../../host/session-manager';
 import { TranscriptStore } from '../../host/transcript-store';
 import { FakeProvider } from '../../providers/fake/fake-provider';
 import type { AgentProvider } from '../../providers/types';
+import { SIDE_CHAT_HEADER } from '../../host/side-chat-digest';
 import { leafSessionIds } from '../../webview/components/layout-tree';
 
 async function settle() {
@@ -202,5 +203,81 @@ suite('SessionManager.startSideChat', () => {
     assert.strictEqual(row(second.manager, ids.used)?.kind, 'side');
     assert.strictEqual(inLayout(second.manager, ids.used), false);
     assert.strictEqual(row(second.manager, ids.unused), undefined);
+  });
+
+  test('bringing back queues the side chat for the next parent message only', async () => {
+    const { manager, parent, provider } = await setup();
+    const side = await manager.startSideChat(parent.state.id, 'why a clamp?');
+    await settle();
+
+    await manager.mergeSideChat(side!.state.id);
+
+    assert.strictEqual(parent.pendingSeedText?.includes(SIDE_CHAT_HEADER), true);
+    assert.strictEqual(parent.pendingSeedText?.includes('USER: why a clamp?'), true);
+    parent.send('thanks');
+    await settle();
+    const delivered = provider.sent[provider.sent.length - 1].text;
+    assert.strictEqual(delivered.includes(SIDE_CHAT_HEADER) && delivered.includes('thanks'), true);
+    const users = (await parent.snapshot()).items.filter((i) => i.role === 'user');
+    assert.strictEqual(users[users.length - 1].role === 'user' && users[users.length - 1].text, 'thanks');
+    assert.strictEqual(parent.pendingSeedText, undefined);
+  });
+
+  test('bringing back leaves the side chat open and promotable', async () => {
+    const { manager, parent } = await setup();
+    const side = await manager.startSideChat(parent.state.id, 'why?');
+    await settle();
+
+    await manager.mergeSideChat(side!.state.id);
+
+    assert.strictEqual(manager.visibleIds().includes(side!.state.id), true);
+    assert.strictEqual(row(manager, side!.state.id)?.kind, 'side');
+  });
+
+  test('bringing back is refused while the parent is working', async () => {
+    const { manager, parent } = await setup();
+    const side = await manager.startSideChat(parent.state.id, 'why?');
+    await settle();
+    parent.state.status = 'running';
+
+    await manager.mergeSideChat(side!.state.id);
+
+    assert.strictEqual(parent.pendingSeedText, undefined);
+    assert.strictEqual(await errorsOf(side!), 1);
+  });
+
+  test('a second bring back before the parent speaks is refused and changes nothing', async () => {
+    const { manager, parent } = await setup();
+    const side = await manager.startSideChat(parent.state.id, 'why?');
+    await settle();
+    await manager.mergeSideChat(side!.state.id);
+    const queued = parent.pendingSeedText;
+
+    await manager.mergeSideChat(side!.state.id);
+
+    assert.strictEqual(parent.pendingSeedText, queued);
+    assert.strictEqual(await errorsOf(side!), 1);
+  });
+
+  test('a side chat nobody has spoken in has nothing to bring back', async () => {
+    const { manager, parent } = await setup();
+    const side = await manager.startSideChat(parent.state.id);
+
+    await manager.mergeSideChat(side!.state.id);
+
+    assert.strictEqual(parent.pendingSeedText, undefined);
+    assert.strictEqual(await errorsOf(side!), 1);
+  });
+
+  test('a promoted side chat whose parent was deleted cannot be brought back', async () => {
+    const { manager, parent } = await setup();
+    const side = await manager.startSideChat(parent.state.id, 'why?');
+    await settle();
+    await manager.promoteSideChat(side!.state.id);
+    await manager.remove(parent.state.id);
+
+    await manager.mergeSideChat(side!.state.id);
+
+    assert.strictEqual(await errorsOf(side!), 1);
   });
 });

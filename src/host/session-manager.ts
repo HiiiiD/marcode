@@ -16,6 +16,7 @@ import { isHidden } from '../shared/session-kind';
 import { readOnlyModeFor } from '../shared/side-chat-mode';
 import { nativeFork, planNativeFork, type NativeForkPlan } from './native-fork';
 import { hasOwnTurns } from './side-chat';
+import { buildSideChatDigest, SIDE_CHAT_HEADER } from './side-chat-digest';
 import { mergeRoster } from './roster-sync';
 import type { OwnClaim, OwnerInfo, SessionOwnership } from './session-ownership';
 import { findPayload, type ResolvedBlock } from './session-refs';
@@ -961,6 +962,21 @@ export class SessionManager implements SessionSink {
     if (state?.kind !== 'side') { return; }
     if (hasOwnTurns(state, (await this.store.tail(id, Number.MAX_SAFE_INTEGER)).items)) { await this.hide(id); return; }
     await this.remove(id);
+  }
+
+  /** Hands the parent a digest of this side chat with its next message. Refusals are an error item on the side chat. */
+  async mergeSideChat(id: SessionId): Promise<void> {
+    const state = this.meta.get(id);
+    if (state?.origin !== 'side' || !state.parentId) { return; }
+    const side = this.live.get(id);
+    const parent = this.live.get(state.parentId);
+    const refuse = (why: string) => { void side?.noteError(why); };
+    if (!parent) { return refuse('The main chat is not open.'); }
+    if (parent.state.status !== 'idle') { return refuse('The main chat is still working. Bring this back when it is done.'); }
+    if (parent.pendingSeedText?.includes(SIDE_CHAT_HEADER)) { return refuse('A side chat is already waiting to be sent. Send a message in the main chat first.'); }
+    const digest = buildSideChatDigest((await this.store.tail(id, Number.MAX_SAFE_INTEGER)).items, state.forkedItemCount ?? 0);
+    if (!digest) { return refuse('Nothing to bring back yet.'); }
+    parent.appendSeed(digest);
   }
 
   async promoteSideChat(id: SessionId): Promise<void> {

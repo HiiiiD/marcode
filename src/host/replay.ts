@@ -49,7 +49,7 @@ function describe(tool: ToolCall): string {
   }
 }
 
-function lineFor(item: TranscriptItem): string | undefined {
+export function lineFor(item: TranscriptItem): string | undefined {
   switch (item.role) {
     case 'user': return `USER: ${item.text}`;
     case 'assistant': return item.text.trim() ? `ASSISTANT: ${item.text}` : undefined;
@@ -60,13 +60,12 @@ function lineFor(item: TranscriptItem): string | undefined {
   }
 }
 
-export function buildSeed(
-  items: TranscriptItem[], budgetChars = DEFAULT_BUDGET, newCwd?: string,
-): string {
-  const lines = items.map(lineFor).filter((l): l is string => l !== undefined);
+/**
+ * `header` then as many of the newest `lines` as fit `budgetChars`, with a
+ * notice when older ones were dropped. Empty when there are no lines.
+ */
+export function fitLines(header: string, lines: string[], budgetChars: number): string {
   if (lines.length === 0) { return ''; }
-
-  const header = `${preambleFor(newCwd)}\n\n`;
   const kept: string[] = [];
   let used = header.length;
 
@@ -93,4 +92,11 @@ export function buildSeed(
   return withNotice.length <= budgetChars
     ? withNotice
     : withNotice.slice(0, budgetChars);
+}
+
+export function buildSeed(
+  items: TranscriptItem[], budgetChars = DEFAULT_BUDGET, newCwd?: string,
+): string {
+  const lines = items.map(lineFor).filter((l): l is string => l !== undefined);
+  return fitLines(`${preambleFor(newCwd)}\n\n`, lines, budgetChars);
 }

@@ -51,6 +51,7 @@ function describeInbound(m: WebviewToHost): string {
     case 'start-side-chat': return 'start-side-chat';
     case 'close-side-chat': return 'close-side-chat';
     case 'promote-side-chat': return 'promote-side-chat';
+    case 'merge-side-chat': return 'merge-side-chat';
     case 'request-bring-back': return 'request-bring-back';
     case 'bring-back': return 'bring-back';
     case 'request-stale-trees': return 'request-stale-trees';

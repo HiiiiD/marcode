@@ -327,6 +327,11 @@ export class AgentSession {
   /** Context handed to the provider with the first send but never written to the transcript. */
   setSeed(seed: string): void { this.seed = seed; }
 
+  /** Adds context to whatever the next send will carry, keeping an unspent seed. */
+  appendSeed(block: string): void { this.seed = this.seed ? `${this.seed}
+
+${block}` : block; }
+
   /**
    * The assistant item currently being streamed into, if any.
    *
