@@ -39,6 +39,57 @@ suite('TranscriptStore', () => {
     assert.deepStrictEqual(items.map((i) => i.id), ['first']);
   });
 
+  test('a cold read retains an in-flight append even when its ENOENT arrives after the write completes', async () => {
+    const module = require('fs/promises') as typeof fs;
+    const realRead = module.readFile;
+    const realAppend = module.appendFile;
+    let releaseWrite!: () => void;
+    let releaseRead!: () => void;
+    let markWriting!: () => void;
+    let markMissing!: () => void;
+    let markWritten!: () => void;
+    const writeGate = new Promise<void>((resolve) => { releaseWrite = resolve; });
+    const readGate = new Promise<void>((resolve) => { releaseRead = resolve; });
+    const writing = new Promise<void>((resolve) => { markWriting = resolve; });
+    const missing = new Promise<void>((resolve) => { markMissing = resolve; });
+    const written = new Promise<void>((resolve) => { markWritten = resolve; });
+    module.appendFile = async (...args: Parameters<typeof fs.appendFile>) => {
+      markWriting();
+      await writeGate;
+      await realAppend(...args);
+      markWritten();
+    };
+    module.readFile = (async (...args: Parameters<typeof fs.readFile>) => {
+      try { return await realRead(...args); } catch (err) {
+        markMissing();
+        await readGate;
+        throw err;
+      }
+    }) as typeof fs.readFile;
+    let flushing: Promise<void> | undefined;
+    let loading: ReturnType<TranscriptStore['tail']> | undefined;
+    try {
+      store.append('s1', item('first', 'prompt'));
+      flushing = store.flush('s1');
+      await writing;
+      loading = store.tail('s1');
+      await missing;
+      releaseWrite();
+      await written;
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      releaseRead();
+      const { items } = await loading;
+      await flushing;
+      assert.deepStrictEqual(items.map((i) => i.id), ['first']);
+    } finally {
+      releaseWrite();
+      releaseRead();
+      await Promise.allSettled([flushing, loading]);
+      module.readFile = realRead;
+      module.appendFile = realAppend;
+    }
+  });
+
   test('round-trips appended items through disk', async () => {
     store.append('s1', item('a', 'one'));
     store.append('s1', item('b', 'two'));
