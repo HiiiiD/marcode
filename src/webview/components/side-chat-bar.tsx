@@ -1,7 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { XIcon } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
 import type { SessionId } from "../../protocol/messages";
 import { modeCanEdit } from "../../shared/side-chat-mode";
 import { useStore } from "../store";
@@ -10,19 +9,8 @@ import { useStore } from "../store";
 export function SideChatBar({ sessionId }: { sessionId: SessionId }) {
   const { state, post } = useStore();
   const summary = state.byId[sessionId]?.summary;
-  const parentStatus = state.sessions.find((s) => s.id === summary?.parentId)?.status;
-  const [sent, setSent] = useState(false);
-  const previousParentStatus = useRef(parentStatus);
-
-  // The digest rides the parent's next message, so a parent that has started working has taken it.
-  useEffect(() => {
-    if ((previousParentStatus.current === "idle" || previousParentStatus.current === "error") && parentStatus === "running") { setSent(false); }
-    previousParentStatus.current = parentStatus;
-  }, [parentStatus]);
-
   if (summary?.kind !== "side") { return null; }
   const canEdit = modeCanEdit(summary.permissionMode);
-  const blocked = sent;
 
   return (
     <div
@@ -40,11 +28,10 @@ export function SideChatBar({ sessionId }: { sessionId: SessionId }) {
         <Button
           size="xs"
           variant="ghost"
-          disabled={blocked}
           title="Queue this side chat for your next message in the main chat"
-          onClick={() => { post({ t: "merge-side-chat", id: sessionId }); setSent(true); }}
+          onClick={() => post({ t: "merge-side-chat", id: sessionId })}
         >
-          {sent ? "Queued for main chat" : "Bring back"}
+          Bring back
         </Button>
         <Button size="xs" variant="ghost" onClick={() => post({ t: "promote-side-chat", id: sessionId })}>
           Promote

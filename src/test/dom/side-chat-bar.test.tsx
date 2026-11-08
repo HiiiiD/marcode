@@ -52,10 +52,10 @@ suite("SideChatBar", () => {
 
     sendFromHost({ t: "session-status", id: "main", status: "awaiting-approval" });
     sendFromHost({ t: "session-status", id: "main", status: "running" });
-    assert.strictEqual((screen.getByRole("button", { name: "Queued for main chat" }) as HTMLButtonElement).disabled, true);
+    assert.strictEqual((screen.getByRole("button", { name: "Bring back" }) as HTMLButtonElement).disabled, false);
     sendFromHost({ t: "session-status", id: "main", status: "idle" });
 
-    assert.strictEqual((screen.getByRole("button", { name: "Queued for main chat" }) as HTMLButtonElement).disabled, true);
+    assert.strictEqual((screen.getByRole("button", { name: "Bring back" }) as HTMLButtonElement).disabled, false);
   });
 
   test("each action posts its message for the side chat", async () => {
@@ -73,23 +73,21 @@ suite("SideChatBar", () => {
     ]);
   });
 
-  test("after Bring back the button says it was queued and cannot be pressed twice", async () => {
+  test("a refused bring back can be retried without a parent status change", async () => {
     mount();
+    resetHost();
 
     await userEvent.click(screen.getByRole("button", { name: "Bring back" }));
-
-    const sent = screen.getByRole("button", { name: "Queued for main chat" }) as HTMLButtonElement;
-    assert.strictEqual(sent.disabled, true);
-  });
-
-  test("once the main chat has taken the digest the side chat can be brought back again", async () => {
-    mount();
+    sendFromHost({ t: "session-patch", id: "side", patch: { op: "append", item: {
+      id: "error1", ts: 1, role: "error", message: "Nothing to bring back yet.",
+    } } });
     await userEvent.click(screen.getByRole("button", { name: "Bring back" }));
 
-    sendFromHost({ t: "session-status", id: "main", status: "running" });
-    sendFromHost({ t: "session-status", id: "main", status: "idle" });
-
-    assert.strictEqual((screen.getByRole("button", { name: "Bring back" }) as HTMLButtonElement).disabled, false);
+    assert.deepStrictEqual(posted(), [
+      { t: "merge-side-chat", id: "side" },
+      { t: "merge-side-chat", id: "side" },
+    ]);
+    assert.strictEqual(screen.queryByRole("button", { name: "Queued for main chat" }) === null, true);
   });
 
   test("an ordinary session gets no bar", () => {
