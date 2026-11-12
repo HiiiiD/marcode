@@ -10,6 +10,7 @@ import type { ContextResult, PermissionMode, TranscriptItem } from '../protocol/
 import type { ToolCall } from '../providers/canonical/tool-call';
 import type { EffortLevel, PermissionMeta, SelfControlMcpConfig, ToolDecision } from '../providers/types';
 import { rankByQuery } from '../shared/fuzzy-score';
+import { nestedDescription, resolveNested, type SpawnPreference } from './self-control/spawn-preference';
 import { registerCollaboratorsTool } from './self-control/register-collaborators';
 import { registerContextUsageTool } from './self-control/register-context-usage';
 import { registerHandoffTool } from './self-control/register-handoff';
@@ -106,9 +107,6 @@ export interface SessionManagerLike {
   contextBreakdown?(id: string): Promise<ContextResult>;
 }
 
-const NESTED_DESCRIPTION = 'Run it nested inside this conversation instead of in its own pane: no pane, it shows as a card here, '
-  + 'its approvals are answered here, it closes when it finishes, and this call returns at once. Its reply arrives as a message '
-  + 'that starts your next turn, so you can end your turn and wait, or call marcode__await_subagent.';
 
 const PORT_ATTEMPTS = 5;
 /** Ephemeral port range; low enough to avoid the small set of IANA-reserved ports. */
@@ -132,6 +130,7 @@ export class SelfControlMcpServer {
   constructor(
     private readonly sessionManager: SessionManagerLike,
     private readonly memory?: MemoryStore,
+    private readonly spawnPreference: SpawnPreference = 'auto',
   ) {}
 
   /**
@@ -175,7 +174,7 @@ export class SelfControlMcpServer {
       return this.sessionManager.lookup?.(sid) ?? this.sessionManager.summaries().find((s) => s.id === sid);
     };
 
-    registerCollaboratorsTool(mcp, { sessionManager: this.sessionManager, caller });
+    registerCollaboratorsTool(mcp, { sessionManager: this.sessionManager, caller, spawnPreference: this.spawnPreference });
     registerContextUsageTool(mcp, { sessionManager: this.sessionManager, caller });
     registerHandoffTool(mcp, { sessionManager: this.sessionManager, caller });
     registerAwaitSubagentTool(mcp, { sessionManager: this.sessionManager, caller });
@@ -231,7 +230,7 @@ export class SelfControlMcpServer {
         description: 'Marcode-specific: creates a new top-level Marcode session (its own pane, '
           + 'own provider/model, own conversation) and sends it an initial prompt — NOT a '
           + 'subagent of this conversation and unrelated to any built-in Task/subagent tool you '
-          + 'have. Use this to hand off independent work to a separate, freestanding session. The new session is told which session spawned it, so it can reach you with marcode__send_message; '
+          + 'have. Use this for ONE session (nested or in a pane, see `nested`). To start two or more sessions, do not call this repeatedly: call marcode__spawn_collaborators once with `nested: true`. The new session is told which session spawned it, so it can reach you with marcode__send_message; '
           + 'say in the prompt if and when you want a report back. '
           + 'Omitted provider, model, effort, and permission mode each inherit independently from '
           + 'the calling session; an incompatible provider or model is rejected. An effort the '
@@ -248,15 +247,16 @@ export class SelfControlMcpServer {
                   mode: z.string().optional().describe('A permission mode id the chosen provider offers. Omit to inherit the caller\'s mode.'),
                   cwd: z.string().describe('Absolute working directory for the new session.'),
                   prompt: z.string().describe('The first message sent to the new session.'),
-                  nested: z.boolean().optional().describe(NESTED_DESCRIPTION),
+                  nested: z.boolean().optional().describe(nestedDescription(this.spawnPreference)),
                 }),
       },
       async ({ provider, model, effort, mode, cwd, prompt, nested }) => {
         const resolved = resolveSpawn(this.sessionManager, caller(), { provider, model, effort, mode, cwd });
         if (!resolved.ok) { return { isError: true, content: [{ type: 'text', text: resolved.error }] }; }
-        const approval = await gateSpawn(this.sessionManager, caller(), resolved, prompt, nested ? 'subagent' : 'session');
+        const runNested = resolveNested(nested, this.spawnPreference);
+        const approval = await gateSpawn(this.sessionManager, caller(), resolved, prompt, runNested ? 'subagent' : 'session');
         if (!approval.ok) { return { isError: true, content: [{ type: 'text', text: approval.error }] }; }
-        if (nested) {
+        if (runNested) {
           const from = caller();
           const service = this.sessionManager.subagents;
           if (!from || !service) { return { isError: true, content: [{ type: 'text', text: 'Could not identify the calling session.' }] }; }

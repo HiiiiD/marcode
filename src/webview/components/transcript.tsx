@@ -4,10 +4,12 @@ import {
   MessageScrollerItem, MessageScrollerViewport,
 } from '@/components/ui/message-scroller';
 import { Button } from '@/components/ui/button';
+import { SubagentGroupCard } from './subagent-group-card';
 import { TranscriptItemView } from './transcript-item';
 import { WorkingRow } from './working-row';
 import type { PaneState } from '../reducer';
 import { isLivePrompt } from '../lib/pending-prompts';
+import { groupSubagents } from '../lib/subagent-groups';
 
 /**
  * Whether the tail of the transcript is already saying "something is
@@ -78,9 +80,13 @@ export function Transcript({
                 Load earlier messages
               </Button>
             )}
-            {pane.items.filter((item) => !isLivePrompt(item, pane)).map((item) => (
-              <MessageScrollerItem key={item.id} messageId={item.id}>
-                <TranscriptItemView item={item} sessionId={pane.summary.id} canFork={idle && pane.summary.kind !== 'side'} />
+            {groupSubagents(pane.items.filter((item) => !isLivePrompt(item, pane))).map((entry) => entry.kind === 'group' ? (
+              <MessageScrollerItem key={entry.id} messageId={entry.id}>
+                <SubagentGroupCard items={entry.items} sessionId={pane.summary.id} />
+              </MessageScrollerItem>
+            ) : (
+              <MessageScrollerItem key={entry.item.id} messageId={entry.item.id}>
+                <TranscriptItemView item={entry.item} sessionId={pane.summary.id} canFork={idle && pane.summary.kind !== 'side'} />
               </MessageScrollerItem>
             ))}
             {/* Not a MessageScrollerItem: it is a state of the session, not

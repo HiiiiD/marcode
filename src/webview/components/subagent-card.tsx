@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils';
 import { PermissionCard } from './permission-card';
 import { QuestionCard } from './question-card';
 import { ToolCard } from './tool-card';
+import { ProviderStack, type MemberState } from './provider-stack';
 import { TranscriptItemShell } from './transcript-item-shell';
 import {
   formatElapsed, isBackgroundDispatch, subagentLabel, subagentStateLabel, summarizeSubagent,
@@ -18,7 +19,14 @@ import type { SessionId, TranscriptItem } from '../../protocol/messages';
 
 type ToolItem = Extract<TranscriptItem, { role: 'tool' }>;
 
-export function SubagentCard({ item, sessionId }: { item: ToolItem; sessionId: SessionId }) {
+export function memberState(item: ToolItem, blocked: boolean): MemberState {
+  if (blocked) { return 'blocked'; }
+  return item.state === 'running' ? 'running' : item.state === 'ok' ? 'done' : 'failed';
+}
+
+export function SubagentCard({
+  item, sessionId, embedded = false,
+}: { item: ToolItem; sessionId: SessionId; embedded?: boolean }) {
   const [manuallyCollapsed, setManuallyCollapsed] = useState(false);
   const [open, setOpen] = useState(false);
   const [now, setNow] = useState(() => Date.now());
@@ -47,8 +55,8 @@ export function SubagentCard({ item, sessionId }: { item: ToolItem; sessionId: S
   // fights them.
   const expanded = open || (summary.blocked && !manuallyCollapsed);
 
-  return (
-    <TranscriptItemShell role="subagent" label="Subagent" ts={item.ts}>
+  const hosted = item.tool.kind === 'subagent' && item.tool.provider !== undefined;
+  const card = (
       <TraceCollapsible
         open={expanded}
         onOpenChange={(next) => {
@@ -61,6 +69,11 @@ export function SubagentCard({ item, sessionId }: { item: ToolItem; sessionId: S
         }}
       >
         <TraceCollapsibleTrigger className="w-full flex-none">
+          {hosted && item.tool.kind === 'subagent' && (
+            <ProviderStack members={[{
+              providerId: item.tool.provider, name: subagentLabel(item), state: memberState(item, summary.blocked),
+            }]} />
+          )}
           <span className="truncate font-medium">{subagentLabel(item)}</span>
           <span className="shrink-0 text-muted-foreground">
             {isBackgroundDispatch(item) ? (
@@ -153,6 +166,6 @@ export function SubagentCard({ item, sessionId }: { item: ToolItem; sessionId: S
           </div>
         </TraceCollapsibleContent>
       </TraceCollapsible>
-    </TranscriptItemShell>
   );
+  return embedded ? card : <TranscriptItemShell role="subagent" label="Subagent" ts={item.ts}>{card}</TranscriptItemShell>;
 }

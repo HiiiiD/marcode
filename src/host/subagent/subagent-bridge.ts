@@ -11,6 +11,7 @@ interface BridgeOptions {
   child: AgentSession;
   cardId: string;
   prompt: string;
+  groupId?: string;
   /** Fired when the pending-approval count or the settled state changes. */
   onChange?: () => void;
   /** Deny an approval nobody answered within this long. */
@@ -23,6 +24,7 @@ export class SubagentBridge {
   private readonly child: AgentSession;
   private readonly cardId: string;
   private readonly prompt: string;
+  private readonly groupId: string | undefined;
   private readonly onChange: (() => void) | undefined;
   private readonly approvalTimeoutMs: number | undefined;
   private readonly timers = new Map<string, NodeJS.Timeout>();
@@ -38,6 +40,7 @@ export class SubagentBridge {
     this.child = o.child;
     this.cardId = o.cardId;
     this.prompt = o.prompt;
+    this.groupId = o.groupId;
     this.onChange = o.onChange;
     this.approvalTimeoutMs = o.approvalTimeoutMs;
   }
@@ -52,7 +55,7 @@ export class SubagentBridge {
       kind: 'tool-start', id: this.cardId,
       tool: {
         kind: 'subagent', label: 'Subagent', action: 'spawn', agent: name, model, childSessionId: this.child.state.id,
-        prompt: this.prompt,
+        prompt: this.prompt, provider: this.child.state.providerId, groupId: this.groupId,
       },
     });
     this.child.setTap((event) => this.onChildEvent(event));

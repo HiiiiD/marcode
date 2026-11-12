@@ -75,11 +75,11 @@ export class SubagentService {
 
   /** Runs a prepared child. `seed` is hidden context; it defaults to "you were delegated this". */
   start(
-    parentId: SessionId, child: AgentSession, prompt: string, seed?: string,
+    parentId: SessionId, child: AgentSession, prompt: string, seed?: string, groupId?: string,
   ): { ok: true; sessionId: string } | { ok: false; text: string } {
     const parent = this.host.get(parentId);
     if (!parent) { return { ok: false, text: 'The calling session is not live.' }; }
-    const settled = this.begin(parent, child, prompt, seed ?? buildSubagentPreamble({ parent: parent.state.name }));
+    const settled = this.begin(parent, child, prompt, seed ?? buildSubagentPreamble({ parent: parent.state.name }), groupId);
     this.handles.set(handleKey(parentId, child.state.name), settled);
     while (this.handles.size > this.maxHandles) {
       const oldest = this.handles.keys().next().value;
@@ -137,11 +137,11 @@ export class SubagentService {
     }
   }
 
-  private begin(parent: AgentSession, child: AgentSession, prompt: string, seed: string): Promise<SubagentResult> {
+  private begin(parent: AgentSession, child: AgentSession, prompt: string, seed: string, groupId?: string): Promise<SubagentResult> {
     const parentId = parent.state.id;
     child.setSeed(seed);
     const bridge = new SubagentBridge({
-      parent, child, cardId: `sub-${child.state.id}`, prompt,
+      parent, child, cardId: `sub-${child.state.id}`, prompt, groupId,
       onChange: () => this.host.changed(),
       approvalTimeoutMs: this.approvalTimeoutMs,
     });

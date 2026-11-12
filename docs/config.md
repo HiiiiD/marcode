@@ -128,3 +128,9 @@ Custom colors for the VS Code panels and the terminal client, from one flat set 
 A specific key beats the broad key it derives from, which beats the automatic color: `diffAddedBg` beats `added`, which beats the terminal's green. `pane` wins over `background` in the panels; `paneActive` is TUI-only. A terminal that does not report its palette is only themed when both `background` and `foreground` are set.
 
 Default: `{}`
+
+## `spawn.preference`
+
+Where `marcode__spawn_session` and `marcode__spawn_collaborators` run the sessions they start when the model does not say. `"auto"` leaves it to the model, and the tool descriptions steer it toward nesting for work it only waits on. `"nested"` makes nested (a card in the caller's transcript, one grouped card for a team) the default and `"pane"` makes a pane the default. An explicit `nested` argument from the model always wins, so a session the user needs to talk to can still be spawned in a pane. Requires a window reload.
+
+Default: `"auto"`

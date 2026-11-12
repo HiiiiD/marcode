@@ -123,7 +123,7 @@ export async function createHost(opts: CreateHostOptions): Promise<HostHandle> {
     contextBreakdown: (id) => manager.contextBreakdown(id as SessionId),
     handoffSummary: (id) => manager.handoffSummary(id as SessionId),
     recallRoot: (id) => manager.recallRootOfSession(id as SessionId),
-  }, memory);
+  }, memory, config.spawn.preference);
   manager.setWorkspaceRoots(opts.workspaceRoots);
   let selfControlConfig: SelfControlMcpConfig | undefined;
   try {
