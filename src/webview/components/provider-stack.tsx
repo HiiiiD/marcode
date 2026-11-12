@@ -2,7 +2,7 @@ import {
   Avatar, AvatarBadge, AvatarFallback, AvatarGroup, AvatarGroupCount,
 } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
-import { PROVIDER_LOGOS } from './provider-logos';
+import { PROVIDER_FILLS, PROVIDER_LOGOS } from './provider-logos';
 
 export type MemberState = 'running' | 'blocked' | 'done' | 'failed';
 
@@ -15,11 +15,22 @@ export interface StackMember {
 const MAX_SHOWN = 3;
 
 function Mark({ providerId }: { providerId: string | undefined }) {
-  const d = providerId === undefined ? undefined : PROVIDER_LOGOS[providerId] ?? PROVIDER_LOGOS[providerId.split(/[-:]/)[0]];
-  if (!d) { return <span className="text-[0.6rem] leading-none font-medium uppercase">{providerId?.[0] ?? '?'}</span>; }
+  const base = providerId?.split(/[-:]/)[0];
+  const key = providerId !== undefined && providerId in PROVIDER_LOGOS ? providerId : base;
+  const d = key === undefined ? undefined : PROVIDER_LOGOS[key];
+  if (!d || key === undefined) { return <span className="text-[0.6rem] leading-none font-medium uppercase">{providerId?.[0] ?? '?'}</span>; }
   return (
-    <svg viewBox="0 0 24 24" fill="currentColor" fillRule="evenodd" clipRule="evenodd" aria-hidden className="size-3.5 text-foreground">
-      <path d={d} />
+    <svg viewBox="0 0 24 24" fillRule={key === 'opencode' ? 'evenodd' : 'nonzero'} aria-hidden className="size-3.5 text-foreground">
+      {key === 'codex' && (
+        <defs>
+          <linearGradient id="marcode-codex-gradient" gradientUnits="userSpaceOnUse" x1="12" x2="12" y1="3" y2="21">
+            <stop stopColor="#B1A7FF" />
+            <stop offset=".5" stopColor="#7A9DFF" />
+            <stop offset="1" stopColor="#3941FF" />
+          </linearGradient>
+        </defs>
+      )}
+      <path d={d} fill={PROVIDER_FILLS[key] ?? 'currentColor'} />
     </svg>
   );
 }
