@@ -155,7 +155,6 @@ export function SubagentCard({
                 </Button>
               </div>
             </div>
-            <NestedMessageList childId={hostedId} />
             <div className={cn('flex flex-col gap-1')}>
               {shown.map((child) =>
                 child.role === 'permission' ? (
@@ -168,6 +167,7 @@ export function SubagentCard({
                 ) : null,
               )}
             </div>
+            <NestedMessageList childId={hostedId} />
           </div>
         </TraceCollapsibleContent>
       </TraceCollapsible>

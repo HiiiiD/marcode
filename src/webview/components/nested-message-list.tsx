@@ -9,7 +9,7 @@ export function NestedMessageList({ childId }: { childId: string | undefined }) 
   const messages = useNestedMessages(childId);
   if (messages.length === 0) { return null; }
   return (
-    <ul aria-label="Messages from this worker" className="mb-1 flex flex-col gap-0.5">
+    <ul aria-label="Messages from this worker" className="mt-1 flex flex-col gap-0.5">
       {messages.map((m) => {
         const { label, body, preview } = parseWorkerMessage(m.text);
         return (
