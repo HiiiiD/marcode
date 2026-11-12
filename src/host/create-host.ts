@@ -104,6 +104,8 @@ export async function createHost(opts: CreateHostOptions): Promise<HostHandle> {
     setVisible: (ids) => manager.setVisible(ids as SessionId[]),
     reveal: (id) => focusSession(manager, id as SessionId, config.layout.autoGrid ? manager.autoGrid() : undefined),
     summaries: () => manager.summaries(),
+    lookup: (id) => manager.lookup(id as SessionId),
+    subagents: manager.subagents,
     isForeign: (id) => manager.isForeign(id as SessionId),
     visibleIds: () => manager.visibleIds(),
     // `summaries()` spans every session, including one restored from disk that no
@@ -119,6 +121,7 @@ export async function createHost(opts: CreateHostOptions): Promise<HostHandle> {
     transcriptTail: (id, limit) => manager.transcriptTail(id as SessionId, limit),
     close: (id) => manager.close(id as SessionId),
     contextBreakdown: (id) => manager.contextBreakdown(id as SessionId),
+    handoffSummary: (id) => manager.handoffSummary(id as SessionId),
     recallRoot: (id) => manager.recallRootOfSession(id as SessionId),
   }, memory);
   manager.setWorkspaceRoots(opts.workspaceRoots);
