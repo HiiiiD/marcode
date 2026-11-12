@@ -1,5 +1,6 @@
 import type { AgentSession } from '../agent-session';
 import type { AgentEvent } from '../../providers/types';
+import { DETACHED_PREFIX } from '../../shared/subagent-markers';
 import { mirrorId } from './mirror-ids';
 
 export interface SubagentResult { ok: boolean; text: string; sessionId: string; cancelled?: boolean; detached?: boolean }
@@ -72,7 +73,7 @@ export class SubagentBridge {
   detach(): void {
     this.finish(
       true,
-      `Opened as its own session "${this.child.state.name}". It keeps running there; its reply is no longer returned here.`,
+      `${DETACHED_PREFIX} "${this.child.state.name}". It keeps running there; its reply is no longer returned here.`,
       { detached: true },
     );
   }

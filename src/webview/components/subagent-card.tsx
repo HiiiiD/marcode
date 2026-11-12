@@ -14,6 +14,8 @@ import {
   windowChildren,
 } from '../../client-core/subagent-window';
 import { useStore } from '../store';
+import { NestedMessageList } from './nested-message-list';
+import { expandedDisplayName, findModel } from '../../shared/model-catalog';
 import { useOpenSubagentTranscript } from './subagent-drill-in-context';
 import type { SessionId, TranscriptItem } from '../../protocol/messages';
 
@@ -31,7 +33,7 @@ export function SubagentCard({
   const [open, setOpen] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const openTranscript = useOpenSubagentTranscript();
-  const { post } = useStore();
+  const { post, state } = useStore();
   const hostedId = item.tool.kind === 'subagent' ? item.tool.childSessionId : undefined;
 
   // A collapsed card must still tick: a row reading "12 tools · 34s" is not
@@ -56,6 +58,10 @@ export function SubagentCard({
   const expanded = open || (summary.blocked && !manuallyCollapsed);
 
   const hosted = item.tool.kind === 'subagent' && item.tool.provider !== undefined;
+  const rawModel = item.tool.kind === 'subagent' ? item.tool.model : undefined;
+  const row = rawModel === undefined ? undefined
+    : findModel(state.catalog.find((p) => p.id === (item.tool.kind === 'subagent' ? item.tool.provider : undefined))?.models ?? [], rawModel);
+  const modelName = row ? expandedDisplayName(row) : rawModel;
   const card = (
       <TraceCollapsible
         open={expanded}
@@ -93,9 +99,7 @@ export function SubagentCard({
                 place to guess one. Printed as the SDK gave it: this is not a
                 session's model, so there is no catalog row to resolve a
                 display name from. */}
-            {item.tool.kind === 'subagent' && item.tool.model && (
-              <>{' · '}{item.tool.model}</>
-            )}
+            {modelName && <>{' · '}{modelName}</>}
           </span>
           {/*
             The visible state is carried by the chevron and, when blocked, by
@@ -151,6 +155,7 @@ export function SubagentCard({
                 </Button>
               </div>
             </div>
+            <NestedMessageList childId={hostedId} />
             <div className={cn('flex flex-col gap-1')}>
               {shown.map((child) =>
                 child.role === 'permission' ? (
@@ -167,5 +172,5 @@ export function SubagentCard({
         </TraceCollapsibleContent>
       </TraceCollapsible>
   );
-  return embedded ? card : <TranscriptItemShell role="subagent" label="Subagent" ts={item.ts}>{card}</TranscriptItemShell>;
+  return embedded ? card : <TranscriptItemShell role="subagent" label={hosted ? 'Worker' : 'Subagent'} ts={item.ts}>{card}</TranscriptItemShell>;
 }

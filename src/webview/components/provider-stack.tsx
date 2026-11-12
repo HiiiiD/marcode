@@ -2,6 +2,7 @@ import {
   Avatar, AvatarBadge, AvatarFallback, AvatarGroup, AvatarGroupCount,
 } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
+import { PROVIDER_LOGOS } from './provider-logos';
 
 export type MemberState = 'running' | 'blocked' | 'done' | 'failed';
 
@@ -13,20 +14,14 @@ export interface StackMember {
 
 const MAX_SHOWN = 3;
 
-// Original glyphs, not vendor logos: the webview loads no remote resources
-// and a one-colour mark has to read at 12px.
 function Mark({ providerId }: { providerId: string | undefined }) {
-  const common = { viewBox: '0 0 16 16', fill: 'none', stroke: 'currentColor', strokeWidth: 1.6, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true, className: 'size-3' } as const;
-  switch (providerId) {
-    case 'claude':
-      return <svg {...common}><path d="M8 2v12M2.8 5l10.4 6M13.2 5L2.8 11" /></svg>;
-    case 'codex':
-      return <svg {...common}><path d="M3.5 5.5 7 8l-3.5 2.5M8.5 11h4" /></svg>;
-    case 'opencode':
-      return <svg {...common}><path d="M5.5 3.5h-2v9h2M10.5 3.5h2v9h-2" /></svg>;
-    default:
-      return <span className="text-[0.6rem] leading-none font-medium uppercase">{providerId?.[0] ?? '?'}</span>;
-  }
+  const d = providerId === undefined ? undefined : PROVIDER_LOGOS[providerId] ?? PROVIDER_LOGOS[providerId.split(/[-:]/)[0]];
+  if (!d) { return <span className="text-[0.6rem] leading-none font-medium uppercase">{providerId?.[0] ?? '?'}</span>; }
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" fillRule="evenodd" clipRule="evenodd" aria-hidden className="size-3.5 text-foreground">
+      <path d={d} />
+    </svg>
+  );
 }
 
 const BADGE: Partial<Record<MemberState, string>> = {
