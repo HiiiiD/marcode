@@ -639,6 +639,47 @@ suite('SelfControlMcpServer cross-session messaging', () => {
     await server.dispose();
   });
 
+  test('marcode__list_modes reports ids, labels and the default per provider', async () => {
+    const manager = fakeManager({
+      catalog: () => [
+        { id: 'claude', models: [], permissionModes: [{ id: 'default' }, { id: 'auto', default: true }] },
+        { id: 'opencode', models: [], permissionModes: [{ id: 'default' }, { id: 'plan' }] },
+      ],
+    });
+    const server = trackedServer(manager);
+    const config = await server.start();
+    const all = JSON.parse((await callTool(config, 'marcode__list_modes', {})).content[0].text) as
+      { provider: string; default: string; modes: { id: string; label: string }[] }[];
+    assert.strictEqual(all[0].default, 'auto');
+    assert.deepStrictEqual(all[0].modes.map((m) => m.id), ['default', 'auto']);
+    assert.strictEqual(all[1].default, 'default');
+    assert.strictEqual(all[1].modes[0].label, 'Build');
+    const one = JSON.parse((await callTool(config, 'marcode__list_modes', { provider: 'claude' })).content[0].text) as unknown[];
+    assert.strictEqual(one.length, 1);
+    const bad = await callTool(config, 'marcode__list_modes', { provider: 'nope' });
+    assert.strictEqual(bad.isError, true);
+    await server.dispose();
+  });
+
+  test('marcode__get_usage_limits refreshes then reports percent windows', async () => {
+    let refreshedWith: string | undefined;
+    const manager = fakeManager({
+      summaries: () => [{ id: 's1', name: 'a', providerId: 'claude', status: 'idle', cwd: '/w' } as never],
+      refreshUsage: async (cwd) => { refreshedWith = cwd; },
+      usageSnapshot: () => ({ claude: [{ id: 'five-hour', label: 'Session (5h)', usedPercent: 41.6, resetsAt: 1_700_000_000_000 }] }),
+    });
+    const server = trackedServer(manager);
+    const config = await server.start();
+    const out = JSON.parse((await callToolAs(config, 's1', 'marcode__get_usage_limits', {})).content[0].text) as
+      { providers: { provider: string; windows: { usedPercent: number; resetsAt?: string }[] }[] };
+    assert.strictEqual(refreshedWith, '/w');
+    assert.strictEqual(out.providers[0].windows[0].usedPercent, 42);
+    assert.strictEqual(out.providers[0].windows[0].resetsAt, '2023-11-14T22:13:20.000Z');
+    const bad = await callTool(config, 'marcode__get_usage_limits', { provider: 'codex' });
+    assert.strictEqual(bad.isError, true);
+    await server.dispose();
+  });
+
   test('marcode__list_sessions always includes the caller, marked self, even when not visible', async () => {
     const manager = fakeManager({
       summaries: () => [

@@ -495,7 +495,7 @@ export class ClaudeProvider implements AgentProvider {
    */
   listPermissionModes(): PermissionModeInfo[] {
     return [
-      { id: 'default' }, { id: 'acceptEdits' }, { id: 'auto' },
+      { id: 'default' }, { id: 'acceptEdits' }, { id: 'auto', default: true },
       { id: 'plan' }, { id: 'dontAsk' }, { id: 'bypass' },
     ];
   }

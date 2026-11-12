@@ -27,6 +27,12 @@ suite('create settings: choice inherits from the source session', () => {
     const state = { catalog: catalog(), sessions: [summary('s1', { permissionMode: 'acceptEdits' })] };
     assert.strictEqual(settingsForChoice(state, 's1', 'fake', 'fake-large')?.mode, 'default');
   });
+  test('a provider-marked default mode applies when there is no usable source mode', () => {
+    const [p] = catalog();
+    const marked = [{ ...p, permissionModes: [{ id: 'default' as const }, { id: 'auto' as const, default: true as const }] }];
+    assert.strictEqual(settingsForChoice({ catalog: marked, sessions: [] }, undefined, 'fake', 'fake-large')?.mode, 'auto');
+    const state = { catalog: marked, sessions: [summary('s1', { permissionMode: 'acceptEdits' })] };
+    assert.strictEqual(settingsForChoice(state, 's1', 'fake', 'fake-large')?.mode, 'auto');  });
   test('no source session means catalog defaults; unknown provider yields nothing', () => {
     const state = { catalog: catalog(), sessions: [] };
     assert.deepStrictEqual(settingsForChoice(state, undefined, 'fake', 'fake-large'), {

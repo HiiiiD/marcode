@@ -12,14 +12,20 @@ import type { PermissionMode, PermissionModeInfo } from '../providers/types';
  * have loaded, and wiping a real choice is worse than honoring one we cannot
  * yet verify.
  *
- * The fallback is always 'default', never the requested-but-unavailable mode
- * and never 'bypass'. Bypass is settable only before a session's first
- * message; resolving *into* it would hand a session the one mode that runs
- * anything without asking, through a code path the user never touched.
+ * The fallback is the provider's declared default ('default' when none is
+ * marked), never the requested-but-unavailable mode and never 'bypass'.
+ * Bypass is settable only before a session's first message; resolving *into*
+ * it would hand a session the one mode that runs anything without asking,
+ * through a code path the user never touched.
  */
 export function resolvePermissionMode(
   modes: PermissionModeInfo[], requested: PermissionMode | undefined,
 ): PermissionMode {
   if (modes.length === 0) { return requested ?? 'default'; }
-  return requested && modes.some((m) => m.id === requested) ? requested : 'default';
+  return requested && modes.some((m) => m.id === requested) ? requested : defaultPermissionMode(modes);
+}
+
+export function defaultPermissionMode(modes: PermissionModeInfo[]): PermissionMode {
+  const marked = modes.find((m) => m.default && m.id !== 'bypass');
+  return marked?.id ?? 'default';
 }
