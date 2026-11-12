@@ -1,6 +1,7 @@
 import type { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import { openPane, resolveSpawn, sendPrompt, SIDE_CHAT_REFUSAL, type ResolvedSpawn } from './spawn-support';
+import { nestedDescription, resolveNested } from './spawn-preference';
 import type { ToolDeps } from './tool-deps';
 import { buildWorkerPreamble } from './worker-preamble';
 
@@ -8,7 +9,7 @@ const MAX_WORKERS = 8;
 
 const fail = (text: string) => ({ isError: true as const, content: [{ type: 'text' as const, text }] });
 
-export function registerCollaboratorsTool(mcp: McpServer, { sessionManager, caller }: ToolDeps): void {
+export function registerCollaboratorsTool(mcp: McpServer, { sessionManager, caller, spawnPreference }: ToolDeps): void {
   mcp.registerTool(
     'marcode__spawn_collaborators',
     {
@@ -34,10 +35,7 @@ export function registerCollaboratorsTool(mcp: McpServer, { sessionManager, call
           effort: z.enum(['low', 'medium', 'high', 'xhigh', 'max', 'ultra']).optional()
             .describe('Effort level. Omit to inherit yours.'),
         })).min(1).max(MAX_WORKERS),
-        nested: z.boolean().optional().describe(
-          'Run the workers nested inside this conversation (no panes, cards here, approvals answered here, each reply '
-          + 'arrives as a message to you) instead of one pane each. Workers can still message each other and you.',
-        ),
+        nested: z.boolean().optional().describe(nestedDescription(spawnPreference).replace('the session runs', 'the workers run').replace('one compact card', 'one grouped card')),
       }),
     },
     async ({ cwd, brief, workers, nested }) => {
@@ -52,7 +50,7 @@ export function registerCollaboratorsTool(mcp: McpServer, { sessionManager, call
         plans.push(r.spawn);
       }
       const service = sessionManager.subagents;
-      if (nested) {
+      if (resolveNested(nested, spawnPreference)) {
         if (!service) { return fail('Nested workers are not available in this window.'); }
         const children = [];
         for (const s of plans) {
@@ -63,6 +61,7 @@ export function registerCollaboratorsTool(mcp: McpServer, { sessionManager, call
           }
           children.push(prepared.child);
         }
+        const groupId = `team-${Date.now().toString(36)}-${children[0].state.id}`;
         const members = children.map((c, i) => ({ name: c.state.name, task: workers[i].task }));
         for (const [i, c] of children.entries()) {
           service.start(from.id, c, workers[i].task, buildWorkerPreamble({
@@ -73,7 +72,7 @@ export function registerCollaboratorsTool(mcp: McpServer, { sessionManager, call
             brief,
             commit: workers[i].commit !== false,
             nested: true,
-          }));
+          }), groupId);
         }
         return {
           content: [{

@@ -1,13 +1,17 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   MessageScroller, MessageScrollerButton, MessageScrollerContent,
   MessageScrollerItem, MessageScrollerViewport,
 } from '@/components/ui/message-scroller';
 import { Button } from '@/components/ui/button';
+import { NestedMessagesContext } from './nested-messages-context';
+import { SubagentGroupCard } from './subagent-group-card';
 import { TranscriptItemView } from './transcript-item';
 import { WorkingRow } from './working-row';
 import type { PaneState } from '../reducer';
 import { isLivePrompt } from '../lib/pending-prompts';
+import { splitNestedMessages } from '../lib/nested-messages';
+import { groupSubagents } from '../lib/subagent-groups';
 
 /**
  * Whether the tail of the transcript is already saying "something is
@@ -28,6 +32,7 @@ export function Transcript({
   pane: PaneState;
   onLoadMore: (beforeItemId: string) => void;
 }) {
+  const nested = useMemo(() => splitNestedMessages(pane.items), [pane.items]);
   const first = pane.items[0];
   const last = pane.items[pane.items.length - 1];
   const idle = pane.summary.status === 'idle';
@@ -54,7 +59,7 @@ export function Transcript({
     // level up, so that `SessionHeader` — a sibling of this component, not a
     // descendant — can call `useMessageScroller()` to reveal an item in this
     // transcript. Nothing else about the scroller moved.
-    <>
+    <NestedMessagesContext value={nested.byChild}>
       <MessageScroller className="h-full">
         <MessageScrollerViewport className="px-2" preserveScrollOnPrepend>
           {/* `justify-end` only bites while the content is shorter than the
@@ -78,9 +83,13 @@ export function Transcript({
                 Load earlier messages
               </Button>
             )}
-            {pane.items.filter((item) => !isLivePrompt(item, pane)).map((item) => (
-              <MessageScrollerItem key={item.id} messageId={item.id}>
-                <TranscriptItemView item={item} sessionId={pane.summary.id} canFork={idle && pane.summary.kind !== 'side'} />
+            {groupSubagents(nested.main.filter((item) => !isLivePrompt(item, pane))).map((entry) => entry.kind === 'group' ? (
+              <MessageScrollerItem key={entry.id} messageId={entry.id}>
+                <SubagentGroupCard items={entry.items} sessionId={pane.summary.id} />
+              </MessageScrollerItem>
+            ) : (
+              <MessageScrollerItem key={entry.item.id} messageId={entry.item.id}>
+                <TranscriptItemView item={entry.item} sessionId={pane.summary.id} canFork={idle && pane.summary.kind !== 'side'} />
               </MessageScrollerItem>
             ))}
             {/* Not a MessageScrollerItem: it is a state of the session, not
@@ -91,6 +100,6 @@ export function Transcript({
         </MessageScrollerViewport>
         <MessageScrollerButton />
       </MessageScroller>
-    </>
+    </NestedMessagesContext>
   );
 }

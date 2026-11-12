@@ -7,23 +7,34 @@ import { cn } from '@/lib/utils';
 import { PermissionCard } from './permission-card';
 import { QuestionCard } from './question-card';
 import { ToolCard } from './tool-card';
+import { ProviderStack, type MemberState } from './provider-stack';
 import { TranscriptItemShell } from './transcript-item-shell';
 import {
   formatElapsed, isBackgroundDispatch, subagentLabel, subagentStateLabel, summarizeSubagent,
   windowChildren,
 } from '../../client-core/subagent-window';
 import { useStore } from '../store';
+import { useNestedMessages } from './nested-messages-context';
+import { WorkerMessageRow } from './worker-message-row';
+import { expandedDisplayName, findModel } from '../../shared/model-catalog';
 import { useOpenSubagentTranscript } from './subagent-drill-in-context';
 import type { SessionId, TranscriptItem } from '../../protocol/messages';
 
 type ToolItem = Extract<TranscriptItem, { role: 'tool' }>;
 
-export function SubagentCard({ item, sessionId }: { item: ToolItem; sessionId: SessionId }) {
+export function memberState(item: ToolItem, blocked: boolean): MemberState {
+  if (blocked) { return 'blocked'; }
+  return item.state === 'running' ? 'running' : item.state === 'ok' ? 'done' : 'failed';
+}
+
+export function SubagentCard({
+  item, sessionId, embedded = false,
+}: { item: ToolItem; sessionId: SessionId; embedded?: boolean }) {
   const [manuallyCollapsed, setManuallyCollapsed] = useState(false);
   const [open, setOpen] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const openTranscript = useOpenSubagentTranscript();
-  const { post } = useStore();
+  const { post, state } = useStore();
   const hostedId = item.tool.kind === 'subagent' ? item.tool.childSessionId : undefined;
 
   // A collapsed card must still tick: a row reading "12 tools · 34s" is not
@@ -39,6 +50,11 @@ export function SubagentCard({ item, sessionId }: { item: ToolItem; sessionId: S
   const summary = summarizeSubagent(item, now);
   const children = item.children ?? [];
   const shown = windowChildren(children);
+  const messages = useNestedMessages(hostedId);
+  const timeline = [
+    ...shown.map((child) => ({ ts: child.ts, child })),
+    ...messages.map((message) => ({ ts: message.ts, message })),
+  ].sort((a, b) => a.ts - b.ts);
 
   // A blocked subagent forces itself open — an approval buried in a
   // collapsed row would be worse than a flat transcript, where it was at
@@ -47,8 +63,12 @@ export function SubagentCard({ item, sessionId }: { item: ToolItem; sessionId: S
   // fights them.
   const expanded = open || (summary.blocked && !manuallyCollapsed);
 
-  return (
-    <TranscriptItemShell role="subagent" label="Subagent" ts={item.ts}>
+  const hosted = item.tool.kind === 'subagent' && item.tool.provider !== undefined;
+  const rawModel = item.tool.kind === 'subagent' ? item.tool.model : undefined;
+  const row = rawModel === undefined ? undefined
+    : findModel(state.catalog.find((p) => p.id === (item.tool.kind === 'subagent' ? item.tool.provider : undefined))?.models ?? [], rawModel);
+  const modelName = row ? expandedDisplayName(row) : rawModel;
+  const card = (
       <TraceCollapsible
         open={expanded}
         onOpenChange={(next) => {
@@ -61,6 +81,11 @@ export function SubagentCard({ item, sessionId }: { item: ToolItem; sessionId: S
         }}
       >
         <TraceCollapsibleTrigger className="w-full flex-none">
+          {hosted && item.tool.kind === 'subagent' && (
+            <ProviderStack members={[{
+              providerId: item.tool.provider, name: subagentLabel(item), state: memberState(item, summary.blocked),
+            }]} />
+          )}
           <span className="truncate font-medium">{subagentLabel(item)}</span>
           <span className="shrink-0 text-muted-foreground">
             {isBackgroundDispatch(item) ? (
@@ -80,9 +105,7 @@ export function SubagentCard({ item, sessionId }: { item: ToolItem; sessionId: S
                 place to guess one. Printed as the SDK gave it: this is not a
                 session's model, so there is no catalog row to resolve a
                 display name from. */}
-            {item.tool.kind === 'subagent' && item.tool.model && (
-              <>{' · '}{item.tool.model}</>
-            )}
+            {modelName && <>{' · '}{modelName}</>}
           </span>
           {/*
             The visible state is carried by the chevron and, when blocked, by
@@ -138,21 +161,23 @@ export function SubagentCard({ item, sessionId }: { item: ToolItem; sessionId: S
                 </Button>
               </div>
             </div>
-            <div className={cn('flex flex-col gap-1')}>
-              {shown.map((child) =>
-                child.role === 'permission' ? (
+            <div className="flex flex-col gap-1">
+              {timeline.map((entry) => {
+                if ('message' in entry) { return <WorkerMessageRow key={entry.message.id} message={entry.message} />; }
+                const child = entry.child;
+                return child.role === 'permission' ? (
                   // A pending approval is answered in the pinned strip above the composer, not here.
                   child.state === 'pending' ? null : <PermissionCard key={child.id} item={child} sessionId={sessionId} />
                 ) : child.role === 'question' ? (
                   child.state === 'pending' ? null : <QuestionCard key={child.id} item={child} sessionId={sessionId} />
                 ) : child.role === 'tool' ? (
                   <ToolCard key={child.id} item={child} />
-                ) : null,
-              )}
+                ) : null;
+              })}
             </div>
           </div>
         </TraceCollapsibleContent>
       </TraceCollapsible>
-    </TranscriptItemShell>
   );
+  return embedded ? card : <TranscriptItemShell role="subagent" label={hosted ? 'Worker' : 'Subagent'} ts={item.ts}>{card}</TranscriptItemShell>;
 }

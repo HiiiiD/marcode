@@ -1,6 +1,7 @@
 import type { UsageMirror } from '../providers/types';
 import { DEFAULT_PROVIDER_IDS, KNOWN_PROVIDER_IDS } from '../shared/settings';
 import { parseTheme, type ThemeColors } from '../shared/theme-settings';
+import { SPAWN_PREFERENCES, type SpawnPreference } from './self-control/spawn-preference';
 import { clampCap } from './fleet-diff';
 import { DEFAULT_SHELL_ALIASES, parseShellAliases, type ShellAliasTable } from './shell/shell-aliases';
 
@@ -19,6 +20,7 @@ export interface HostConfig {
   layout: { autoGrid: boolean };
   theme: ThemeColors;
   claude: { claudeAiConnectors: boolean };
+  spawn: { preference: SpawnPreference };
 }
 
 export const MOVED_SETTING_IDS: readonly string[] = [
@@ -41,6 +43,7 @@ export function defaultHostConfig(): HostConfig {
     layout: { autoGrid: true },
     theme: {},
     claude: { claudeAiConnectors: false },
+    spawn: { preference: 'auto' },
   };
 }
 
@@ -146,6 +149,16 @@ export function parseHostConfig(raw: unknown): { config: HostConfig; warnings: s
     } else if (raw.claude.claudeAiConnectors !== undefined) {
       if (typeof raw.claude.claudeAiConnectors === 'boolean') { config.claude.claudeAiConnectors = raw.claude.claudeAiConnectors; }
       else { warnings.push('config.json: claude.claudeAiConnectors is not a boolean; using the default.'); }
+    }
+  }
+
+  if (raw.spawn !== undefined) {
+    if (!isObject(raw.spawn)) {
+      warnings.push('config.json: spawn is not an object; using the default.');
+    } else if (raw.spawn.preference !== undefined) {
+      const p = raw.spawn.preference;
+      if (SPAWN_PREFERENCES.includes(p as SpawnPreference)) { config.spawn.preference = p as SpawnPreference; }
+      else { warnings.push(`config.json: spawn.preference must be one of ${SPAWN_PREFERENCES.join(', ')}; using the default.`); }
     }
   }
 
