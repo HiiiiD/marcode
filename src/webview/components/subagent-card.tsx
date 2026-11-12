@@ -14,7 +14,8 @@ import {
   windowChildren,
 } from '../../client-core/subagent-window';
 import { useStore } from '../store';
-import { NestedMessageList } from './nested-message-list';
+import { useNestedMessages } from './nested-messages-context';
+import { WorkerMessageRow } from './worker-message-row';
 import { expandedDisplayName, findModel } from '../../shared/model-catalog';
 import { useOpenSubagentTranscript } from './subagent-drill-in-context';
 import type { SessionId, TranscriptItem } from '../../protocol/messages';
@@ -49,6 +50,11 @@ export function SubagentCard({
   const summary = summarizeSubagent(item, now);
   const children = item.children ?? [];
   const shown = windowChildren(children);
+  const messages = useNestedMessages(hostedId);
+  const timeline = [
+    ...shown.map((child) => ({ ts: child.ts, child })),
+    ...messages.map((message) => ({ ts: message.ts, message })),
+  ].sort((a, b) => a.ts - b.ts);
 
   // A blocked subagent forces itself open — an approval buried in a
   // collapsed row would be worse than a flat transcript, where it was at
@@ -155,19 +161,20 @@ export function SubagentCard({
                 </Button>
               </div>
             </div>
-            <div className={cn('flex flex-col gap-1')}>
-              {shown.map((child) =>
-                child.role === 'permission' ? (
+            <div className="flex flex-col gap-1">
+              {timeline.map((entry) => {
+                if ('message' in entry) { return <WorkerMessageRow key={entry.message.id} message={entry.message} />; }
+                const child = entry.child;
+                return child.role === 'permission' ? (
                   // A pending approval is answered in the pinned strip above the composer, not here.
                   child.state === 'pending' ? null : <PermissionCard key={child.id} item={child} sessionId={sessionId} />
                 ) : child.role === 'question' ? (
                   child.state === 'pending' ? null : <QuestionCard key={child.id} item={child} sessionId={sessionId} />
                 ) : child.role === 'tool' ? (
                   <ToolCard key={child.id} item={child} />
-                ) : null,
-              )}
+                ) : null;
+              })}
             </div>
-            <NestedMessageList childId={hostedId} />
           </div>
         </TraceCollapsibleContent>
       </TraceCollapsible>
