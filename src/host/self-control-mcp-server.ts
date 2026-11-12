@@ -8,11 +8,13 @@ import { digestText } from '../memory/digest';
 import type { MemoryStore } from '../memory/types';
 import type { ContextResult, PermissionMode, TranscriptItem } from '../protocol/messages';
 import type { ToolCall } from '../providers/canonical/tool-call';
-import type { EffortLevel, PermissionMeta, SelfControlMcpConfig, ToolDecision } from '../providers/types';
+import type { EffortLevel, PermissionMeta, SelfControlMcpConfig, ToolDecision, UsageWindow } from '../providers/types';
 import { rankByQuery } from '../shared/fuzzy-score';
 import { nestedDescription, resolveNested, type SpawnPreference } from './self-control/spawn-preference';
 import { registerCollaboratorsTool } from './self-control/register-collaborators';
 import { registerContextUsageTool } from './self-control/register-context-usage';
+import { registerModesTool } from './self-control/register-modes';
+import { registerUsageLimitsTool } from './self-control/register-usage-limits';
 import { registerHandoffTool } from './self-control/register-handoff';
 import { gateSpawn } from './subagent/host-approval';
 import { registerAwaitSubagentTool } from './self-control/register-await-subagent';
@@ -45,7 +47,7 @@ export interface SessionManagerLike {
     // canonical id, or inheriting that session's model here would reject a
     // model `sessionManager.create()` resolves just fine.
     models: { id: string; displayName?: string; resolvedModel?: string; effort?: { levels: string[]; default: string } }[];
-    permissionModes: { id: string }[];
+    permissionModes: { id: string; description?: string; default?: true }[];
   }[];
   create(
     providerId: string, cwd: string, model?: string, effort?: EffortLevel, mode?: PermissionMode,
@@ -105,6 +107,10 @@ export interface SessionManagerLike {
   handoffSummary?(id: string): Promise<{ title: string; text: string } | undefined>;
   /** The live context measurement, falling back to the last recorded one. Absent in minimal fakes. */
   contextBreakdown?(id: string): Promise<ContextResult>;
+  /** Plan usage windows per provider id. Absent in minimal fakes. */
+  usageSnapshot?(): Record<string, UsageWindow[]>;
+  usageDisplayNames?(): Record<string, string>;
+  refreshUsage?(cwd: string): Promise<void>;
 }
 
 
@@ -162,7 +168,7 @@ export class SelfControlMcpServer {
         + 'OpenCode) and a different working directory. These marcode__* tools are how you interact '
         + 'with the panel itself, not with files or the user directly: marcode__list_sessions to see '
         + 'who else is running, marcode__send_message to message another session, marcode__spawn_session '
-        + 'to start a new one (marcode__list_models finds the provider/model ids it accepts), marcode__spawn_collaborators to start a whole team on one working tree, marcode__get_context_usage to see how full your context window is, marcode__handoff to move to a fresh session when the user asks for a handoff, marcode__close_session to close one (e.g. a worker you spawned once it '
+        + 'to start a new one (marcode__list_models finds the provider/model ids it accepts), marcode__spawn_collaborators to start a whole team on one working tree, marcode__get_context_usage to see how full your context window is, marcode__get_usage_limits for plan usage limits, marcode__list_modes for the permission mode ids per provider, marcode__handoff to move to a fresh session when the user asks for a handoff, marcode__close_session to close one (e.g. a worker you spawned once it '
         + `has reported back)${recallClause}. Check marcode__list_sessions whenever coordinating with, or delegating `
         + 'to, another session would help — do not assume you are alone just because nothing mentioned '
         + 'these tools yet.',
@@ -176,6 +182,8 @@ export class SelfControlMcpServer {
 
     registerCollaboratorsTool(mcp, { sessionManager: this.sessionManager, caller, spawnPreference: this.spawnPreference });
     registerContextUsageTool(mcp, { sessionManager: this.sessionManager, caller });
+    registerUsageLimitsTool(mcp, { sessionManager: this.sessionManager, caller });
+    registerModesTool(mcp, { sessionManager: this.sessionManager, caller });
     registerHandoffTool(mcp, { sessionManager: this.sessionManager, caller });
     registerAwaitSubagentTool(mcp, { sessionManager: this.sessionManager, caller });
 
@@ -246,7 +254,7 @@ export class SelfControlMcpServer {
                   model: z.string().optional().describe('A model id the chosen provider offers (see marcode__list_models). Omit to inherit the caller\'s model.'),
                   effort: z.enum(['low', 'medium', 'high', 'xhigh', 'max', 'ultra']).optional()
                     .describe('The model effort level. Omit to inherit the caller\'s effort.'),
-                  mode: z.string().optional().describe('A permission mode id the chosen provider offers (not a display name; ids are provider-specific, e.g. "build" may not exist). Omit to inherit the caller\'s mode.'),
+                  mode: z.string().optional().describe('A permission mode id the chosen provider offers (not a display name; ids are provider-specific, see marcode__list_modes). Omit to inherit the caller\'s mode.'),
                   cwd: z.string().describe('Absolute working directory for the new session.'),
                   prompt: z.string().describe('The first message sent to the new session.'),
                   nested: z.boolean().optional().describe(nestedDescription(this.spawnPreference)),

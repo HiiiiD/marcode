@@ -2,6 +2,7 @@ import type {
   EffortLevel, FileRef, PermissionMode, SessionId, SessionRef, WebviewToHost,
 } from "../protocol/messages";
 import { findModel, resolveEffort } from "../shared/model-catalog";
+import { defaultPermissionMode, resolvePermissionMode } from "../shared/permission-catalog";
 import { leafSessionIds } from "./layout-tree";
 import type { ClientState } from "./reducer";
 
@@ -44,7 +45,9 @@ export function settingsFor(
     // Not the raw inherited level: effort belongs to the model, so a level
     // this model's scale does not name has to give way to its default.
     effort: resolveEffort(model, inherited ? source?.effort : undefined),
-    mode: source?.permissionMode ?? "default",
+    mode: inherited && source?.permissionMode
+      ? resolvePermissionMode(provider.permissionModes, source.permissionMode)
+      : defaultPermissionMode(provider.permissionModes),
     includeEditorContext: source?.includeEditorContext,
   };
 }
@@ -112,7 +115,7 @@ export function settingsForChoice(
   const source = state.sessions.find((s) => s.id === sourceId);
   const mode = source && provider.permissionModes.some((m) => m.id === source.permissionMode)
     ? source.permissionMode
-    : 'default';
+    : defaultPermissionMode(provider.permissionModes);
   return {
     providerId, model: model.id, effort: resolveEffort(model, source?.effort), mode,
     includeEditorContext: source?.includeEditorContext,

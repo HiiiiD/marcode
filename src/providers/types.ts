@@ -33,6 +33,8 @@ export interface PermissionModeInfo {
    * not always enough for the user to choose safely.
    */
   description?: string;
+  /** The mode a new session starts in and the fallback for an unavailable request. At most one row; absent means `'default'`. */
+  default?: true;
 }
 
 export interface ModelInfo {

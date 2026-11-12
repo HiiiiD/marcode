@@ -1,6 +1,6 @@
 import * as assert from 'assert';
 import type { PermissionModeInfo } from '../../providers/types';
-import { resolvePermissionMode } from '../../shared/permission-catalog';
+import { defaultPermissionMode, resolvePermissionMode } from '../../shared/permission-catalog';
 
 const CODEX: PermissionModeInfo[] = [
   { id: 'default' }, { id: 'auto' }, { id: 'plan' }, { id: 'dontAsk' }, { id: 'bypass' },
@@ -33,5 +33,16 @@ suite('resolvePermissionMode', () => {
 
   test('an absent request resolves to default', () => {
     assert.strictEqual(resolvePermissionMode(CODEX, undefined), 'default');
+  });
+
+  test('an absent or unavailable request resolves to the provider-marked default', () => {
+    const claude: PermissionModeInfo[] = [{ id: 'default' }, { id: 'auto', default: true }, { id: 'plan' }];
+    assert.strictEqual(resolvePermissionMode(claude, undefined), 'auto');
+    assert.strictEqual(resolvePermissionMode(claude, 'acceptEdits'), 'auto');
+    assert.strictEqual(resolvePermissionMode(claude, 'plan'), 'plan');
+  });
+
+  test('a bypass-marked default is ignored', () => {
+    assert.strictEqual(defaultPermissionMode([{ id: 'bypass', default: true }]), 'default');
   });
 });
