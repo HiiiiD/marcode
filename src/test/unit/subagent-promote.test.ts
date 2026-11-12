@@ -51,6 +51,19 @@ suite('subagent promote', () => {
     assert.strictEqual(manager.visibleIds().includes(child.id), true);
   });
 
+  test('a promoted child is told to report back with send_message on its next turn', async () => {
+    const parent = await manager.create('fake', dir);
+    await runSubagent(manager, parent.state.id, spec(dir), 'job');
+    const child = childOf();
+    await manager.promoteSubagent(child.id);
+    manager.get(child.id)!.send('carry on');
+    await tick();
+    const sent = provider.sent.map((x) => x.text).filter((t) => t.endsWith('carry on'));
+    assert.strictEqual(sent.length, 1);
+    assert.strictEqual(sent[0].includes('marcode__send_message'), true);
+    assert.strictEqual(sent[0].includes(parent.state.name), true);
+  });
+
   test('promoting a running child detaches it: the card settles, the child lives on with its own approval', async () => {
     scripts.job = [{ kind: 'permission', id: 'p1', tool: BASH }];
     const parent = await manager.create('fake', dir);

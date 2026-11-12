@@ -48,6 +48,7 @@ import { McpService } from './mcp/mcp-service';
 import type { ResolvedSpawn } from './self-control/spawn-support';
 import { focusSession } from './focus-session';
 import { SubagentService } from './subagent/subagent-service';
+import { buildPromotedNote } from './subagent/subagent-preamble';
 import { DEFAULT_SHELL_ALIASES, type ShellAliasTable } from './shell/shell-aliases';
 
 let counter = 0;
@@ -833,6 +834,8 @@ export class SessionManager implements SessionSink {
     this.subagents.detach(id);
     await this.subagents.pendingRelease(id);
     delete state.kind;
+    const parentName = state.parentId ? this.meta.get(state.parentId)?.name : undefined;
+    if (parentName) { (await this.open(id)).appendSeed(buildPromotedNote({ parent: parentName })); }
     this.changed();
     await focusSession(this, id);
   }
