@@ -227,24 +227,26 @@ export class SelfControlMcpServer {
       'marcode__spawn_session',
       {
         title: 'Spawn a new Marcode session',
-        description: 'Marcode-specific: creates a new top-level Marcode session (its own pane, '
-          + 'own provider/model, own conversation) and sends it an initial prompt — NOT a '
-          + 'subagent of this conversation and unrelated to any built-in Task/subagent tool you '
-          + 'have. Use this for ONE session (nested or in a pane, see `nested`). To start two or more sessions, do not call this repeatedly: call marcode__spawn_collaborators once with `nested: true`. The new session is told which session spawned it, so it can reach you with marcode__send_message; '
+        description: 'Marcode-specific: creates a new Marcode session (own provider/model, own '
+          + 'conversation) and sends it an initial prompt — unrelated to any built-in Task/subagent '
+          + 'tool you have. Decide where it runs BEFORE calling: if you only need its result or will '
+          + 'wait on it (reports, reviews, summaries, research), set `nested: true`; use a pane '
+          + '(the default for `nested: false`) only when the user needs to talk to or steer that '
+          + 'session. Use this for ONE session. To start two or more, do not call this repeatedly: call marcode__spawn_collaborators once with `nested: true`. The new session is told which session spawned it, so it can reach you with marcode__send_message; '
           + 'say in the prompt if and when you want a report back. '
           + 'Omitted provider, model, effort, and permission mode each inherit independently from '
           + 'the calling session; an incompatible provider or model is rejected. An effort the '
           + 'chosen model does not publish falls back to that model\'s own default instead of '
           + 'failing, whether requested explicitly or only inherited. `mode: "bypass"` is always '
           + 'rejected, even when only inherited from a bypass-mode caller — inheritance falls back '
-          + 'to the provider default in that case instead of failing. The new session is opened in '
-          + 'a pane. Returns the new session\'s id. With `nested: true` it runs inside this conversation instead of a pane: see that option.',
+          + 'to the provider default in that case instead of failing. Without `nested: true` the '
+          + 'session opens in its own pane. Returns the new session\'s id. With `nested: true` it runs inside this conversation instead of a pane: see that option.',
         inputSchema: z.object({
                   provider: z.string().optional().describe('A provider id from this window\'s catalog. Omit to inherit the caller\'s provider.'),
                   model: z.string().optional().describe('A model id the chosen provider offers (see marcode__list_models). Omit to inherit the caller\'s model.'),
                   effort: z.enum(['low', 'medium', 'high', 'xhigh', 'max', 'ultra']).optional()
                     .describe('The model effort level. Omit to inherit the caller\'s effort.'),
-                  mode: z.string().optional().describe('A permission mode id the chosen provider offers. Omit to inherit the caller\'s mode.'),
+                  mode: z.string().optional().describe('A permission mode id the chosen provider offers (not a display name; ids are provider-specific, e.g. "build" may not exist). Omit to inherit the caller\'s mode.'),
                   cwd: z.string().describe('Absolute working directory for the new session.'),
                   prompt: z.string().describe('The first message sent to the new session.'),
                   nested: z.boolean().optional().describe(nestedDescription(this.spawnPreference)),
