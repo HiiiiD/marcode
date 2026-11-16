@@ -399,6 +399,13 @@ suite('describeOutput', () => {
       [{ kind: 'lines', text: 'boom', tone: 'error' }]);
   });
 
+  test('a silent successful edit or todo update has no result block', () => {
+    assert.deepStrictEqual(describeOutput('file-edit', { kind: 'none' }, 'ok'), []);
+    assert.deepStrictEqual(describeOutput('todos', { kind: 'text', text: ' ' }, 'ok'), []);
+    assert.deepStrictEqual(describeOutput('file-edit', { kind: 'none' }, 'error'),
+      [{ kind: 'note', text: 'Failed with no output.' }]);
+  });
+
   test('no output says so, and says it differently when it failed', () => {
     assert.deepStrictEqual(describeOutput('command', { kind: 'none' }, 'ok'),
       [{ kind: 'note', text: 'No output.' }]);

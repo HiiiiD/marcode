@@ -125,11 +125,11 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
         // on every render, same principle as the roster row's own
         // hover-revealed actions trigger.
         <span className="group/name flex min-w-0 items-center gap-1">
-          <span className="truncate text-xs font-medium" title={s.name}>{s.name}</span>
+          <span className="min-w-[6ch] truncate text-xs font-medium" title={s.name}>{s.name}</span>
           <Button
             variant="ghost"
             size="icon-xs"
-            className="size-4 shrink-0 opacity-0 group-hover/name:opacity-100 focus-visible:opacity-100"
+            className="shrink-0 opacity-0 group-hover/name:opacity-100 focus-visible:opacity-100"
             aria-label={`Rename ${accessibleTitle}`}
             onClick={startEditingName}
           >
@@ -137,7 +137,7 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
           </Button>
         </span>
       )}
-      <span className="truncate text-muted-foreground" title={s.cwd}>
+      <span className="min-w-0 shrink-[4] truncate text-muted-foreground" title={s.cwd}>
         {folderName(s.cwd)}
       </span>
       {/*

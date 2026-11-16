@@ -79,7 +79,7 @@ function UsageRow({ label, tokens }: { label: string; tokens: number }) {
 }
 
 function UsageSection({ usage }: { usage: SessionState["usage"] }) {
-  if (!usage) {
+  if (!usage?.normal) {
     return <p className="py-0.5 text-muted-foreground">No usage yet</p>;
   }
   return (

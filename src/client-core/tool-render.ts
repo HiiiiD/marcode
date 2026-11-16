@@ -347,6 +347,10 @@ export function describeOutput(
 ): ToolBlock[] {
   if (state === 'running') { return []; }
 
+  // An edit or a todo update that succeeds silently has nothing to report; its input already shows the change.
+  const silentOk = state === 'ok' && (kind === 'file-edit' || kind === 'todos');
+  if (silentOk && (output === undefined || output.kind === 'none' || (output.kind === 'text' && output.text.trim().length === 0))) { return []; }
+
   if (output === undefined || output.kind === 'none') {
     return state === 'error'
       ? [{ kind: 'note', text: 'Failed with no output.' }]
