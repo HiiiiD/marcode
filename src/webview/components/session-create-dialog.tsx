@@ -8,7 +8,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Tabs, TabsIndicator, TabsList, TabsPanel, TabsTab } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import { GitBranch, LoaderCircle, Star } from "lucide-react";
+import { ChevronRight, GitBranch, LoaderCircle, Star } from "lucide-react";
 import { useId, useState } from "react";
 import type { EffortLevel, ModelInfo, PermissionMode, ProviderInfo } from "../../protocol/messages";
 import { expandedDisplayName, findModel, isFavorite, modelKey, resolveEffort } from "../../shared/model-catalog";
@@ -181,6 +181,7 @@ function CreateForm({
   // feature behind an extra click and hid the exact thing — the branch name
   // — someone opening this dialog to start isolated work wants to type first.
   const inWorktree = branch.trim().length > 0;
+  const [worktreeOpen, setWorktreeOpen] = useState(false);
   /** Filters the model rows below as the user types. Local — search position
    * is not something a reload needs to remember. */
   const [modelSearch, setModelSearch] = useState("");
@@ -263,39 +264,6 @@ function CreateForm({
           margins put the scrollbar on the popup's edge rather than inside its
           padding. */}
       <div className="-mx-4 flex min-h-0 flex-1 flex-col gap-3 overflow-x-hidden overflow-y-auto px-4">
-        <div className="flex flex-col gap-2 rounded-md border border-border bg-muted/30 p-2.5">
-          <div className="flex items-center gap-1.5 text-xs font-medium">
-            <GitBranch className="size-3.5 text-muted-foreground" aria-hidden />
-            New worktree
-          </div>
-          <div className="flex flex-col gap-1">
-            <label htmlFor={`${ids}-branch`} className="text-xs text-muted-foreground">
-              Branch name
-            </label>
-            <Input
-              id={`${ids}-branch`}
-              value={branch}
-              onChange={(e) => setBranch(e.target.value)}
-              placeholder="Leave empty to run here, in this workspace"
-              className="h-7 text-xs"
-            />
-          </div>
-          {inWorktree && (
-            <div className="flex flex-col gap-1">
-              <label htmlFor={`${ids}-base`} className="text-xs text-muted-foreground">
-                Base branch
-              </label>
-              <Input
-                id={`${ids}-base`}
-                value={base}
-                onChange={(e) => setBase(e.target.value)}
-                placeholder="current branch"
-                className="h-7 text-xs"
-              />
-            </div>
-          )}
-        </div>
-
         {seedable && (
           <div className="flex flex-col gap-2">
             <label htmlFor={`${ids}-seed`} className="text-xs font-medium text-muted-foreground">
@@ -345,7 +313,7 @@ function CreateForm({
                 <TabsIndicator />
               </TabsList>
 
-              <TabsPanel value="favorites" className="pt-2">
+              <TabsPanel value="favorites" className="max-h-56 overflow-y-auto pt-2">
                 {favoriteEntries.length === 0 ? (
                   <div className="flex flex-col items-start gap-1 px-0.5 py-1 text-xs text-muted-foreground">
                     <p>
@@ -379,7 +347,7 @@ function CreateForm({
                 )}
               </TabsPanel>
 
-              <TabsPanel value="all" className="pt-2">
+              <TabsPanel value="all" className="max-h-56 overflow-y-auto pt-2">
                 {groups.length === 0 && (
                   <p className="px-0.5 py-1 text-xs text-muted-foreground">
                     No models match "{modelSearch.trim()}".
@@ -441,7 +409,7 @@ function CreateForm({
               <div
                 key={m.value}
                 className={cn(
-                  "flex flex-col gap-0.5 rounded-md px-1.5 py-1.5",
+                  "flex flex-col rounded-md px-1.5 py-1",
                   "hover:bg-accent hover:text-accent-foreground",
                 )}
               >
@@ -464,9 +432,51 @@ function CreateForm({
             ))}
           </RadioGroup>
         </div>
+        <div className="flex flex-col gap-2">
+          <button
+            type="button"
+            aria-expanded={worktreeOpen}
+            onClick={() => setWorktreeOpen((o) => !o)}
+            className="flex items-center gap-1.5 rounded-sm text-left text-xs font-medium text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <ChevronRight className={cn("size-3.5 transition-transform", worktreeOpen && "rotate-90")} aria-hidden />
+            <GitBranch className="size-3.5" aria-hidden />
+            Run in a new worktree
+          </button>
+          {worktreeOpen && (
+            <div className="flex flex-col gap-2 pl-5">
+              <div className="flex flex-col gap-1">
+                <label htmlFor={`${ids}-branch`} className="text-xs text-muted-foreground">
+                  Branch name
+                </label>
+                <Input
+                  id={`${ids}-branch`}
+                  value={branch}
+                  onChange={(e) => setBranch(e.target.value)}
+                  placeholder="Leave empty to run here, in this workspace"
+                  className="h-7 text-xs"
+                />
+              </div>
+              {inWorktree && (
+                <div className="flex flex-col gap-1">
+                  <label htmlFor={`${ids}-base`} className="text-xs text-muted-foreground">
+                    Base branch
+                  </label>
+                  <Input
+                    id={`${ids}-base`}
+                    value={base}
+                    onChange={(e) => setBase(e.target.value)}
+                    placeholder="current branch"
+                    className="h-7 text-xs"
+                  />
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
-      <DialogFooter className="shrink-0">
+      <DialogFooter className="shrink-0 flex-row justify-end">
         <DialogClose render={<Button variant="outline" size="sm" />}>Cancel</DialogClose>
         <Button
           size="sm"
