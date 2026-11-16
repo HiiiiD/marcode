@@ -82,8 +82,16 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
   const dragLabel = `Drag ${accessibleTitle} to split or reassign a pane`;
 
   return (
-    <div className={cn("flex items-center border-b border-border px-2 text-xs", compact ? "gap-1 py-0.5" : "gap-2 py-1")}>
-      <StatusBadge status={s.status} />
+    <div
+      className={cn(
+        "flex items-center border-b border-border px-2 text-xs",
+        compact ? "gap-1 py-0.5" : "gap-2 py-1",
+        // A pane that needs a human or has failed announces it from across the stack, not only through a small pill.
+        s.status === "awaiting-approval" && "bg-primary/10 shadow-[inset_3px_0_0_var(--primary)]",
+        s.status === "error" && "bg-destructive/10 shadow-[inset_3px_0_0_var(--destructive)]",
+      )}
+    >
+      <StatusBadge status={s.status} quietIdle />
       <SubagentSummary subagents={s.subagents} />
       {/*
         `h2`, not `h1`: this panel is a view inside VS Code's own document,
