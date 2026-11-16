@@ -6,6 +6,7 @@ import { InputGroup, InputGroupAddon, InputGroupTextarea } from "@/components/ui
 import { cn } from "@/lib/utils";
 import { Clock, Loader, Paperclip, SendHorizontal, Square, TriangleAlert, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { usePaneDensity } from "./pane-density";
 import type { Invocable, ModelInfo } from "../../protocol/messages";
 import { fileMentions, fileRefsOf, type FileMentionPayload } from "../../client-core/mentions/file-mentions";
 import { isShellPrefix, parseShellCommand } from "../../client-core/shell-command";
@@ -60,6 +61,7 @@ export function Composer({
    */
   unavailableReason?: string;
 }) {
+  const compact = usePaneDensity() === "compact";
   const { state, post, dismissRejection } = useStore();
   const [text, setText] = useDraft(pane.summary.id);
   useDraftSync(pane.summary.id, text, post);
@@ -538,6 +540,7 @@ export function Composer({
         )}
         <InputGroupTextarea
           ref={box}
+          className={cn(compact && "max-h-24 min-h-9")}
           value={text}
           onChange={(e) => {
             setText(e.target.value);
@@ -613,7 +616,7 @@ export function Composer({
           grouping, so the action button still lands at the right edge of
           whichever line it wraps to.
         */}
-        <InputGroupAddon align="block-end" className="flex-wrap">
+        <InputGroupAddon align="block-end" className={cn(compact ? "flex-nowrap gap-1" : "flex-wrap")}>
           <Button
             variant="ghost"
             size="icon-xs"
@@ -690,7 +693,7 @@ export function Composer({
           >
             <ComboboxTrigger
               size="sm"
-              className="min-w-0 shrink truncate ml-auto"
+              className={cn("min-w-0 shrink truncate ml-auto", compact && "max-w-28")}
               aria-label="Model"
               // Never disabled. `Query.setModel` retargets the live session
               // (see claude-provider.ts), so a switch mid-conversation takes

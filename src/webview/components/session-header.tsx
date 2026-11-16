@@ -9,13 +9,14 @@ import {
 import { InputGroup, InputGroupInput } from "@/components/ui/input-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { GripVerticalIcon, MoreHorizontalIcon, PencilIcon, RefreshCwIcon, XIcon } from "lucide-react";
+import { GripVerticalIcon, MoreHorizontalIcon, PencilIcon, PinIcon, RefreshCwIcon, XIcon } from "lucide-react";
 import { folderName } from "../format";
 import type { PaneState } from "../reducer";
 import { useStore } from "../store";
 import { BringBackDialog } from "./bring-back-dialog";
 import { closeSession } from "./layout-tree";
 import { usePaneDrag } from "./pane-drag-context";
+import { usePaneDensity } from "./pane-density";
 import { PinButton } from "./pin-button";
 import { StatusBadge } from "./status-badge";
 import { SubagentSummary } from "./subagent-summary";
@@ -31,6 +32,7 @@ interface SessionHeaderProps {
 
 export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
   const { state, post } = useStore();
+  const compact = usePaneDensity() === "compact";
   const s = pane.summary;
   // Shown only when there's more than one provider to distinguish between —
   // with a single backend configured, naming it on every pane is noise.
@@ -80,7 +82,7 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
   const dragLabel = `Drag ${accessibleTitle} to split or reassign a pane`;
 
   return (
-    <div className="flex items-center gap-2 border-b border-border px-2 py-1 text-xs">
+    <div className={cn("flex items-center border-b border-border px-2 text-xs", compact ? "gap-1 py-0.5" : "gap-2 py-1")}>
       <StatusBadge status={s.status} />
       <SubagentSummary subagents={s.subagents} />
       {/*
@@ -137,9 +139,11 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
           </Button>
         </span>
       )}
-      <span className="min-w-0 shrink-[4] truncate text-muted-foreground" title={s.cwd}>
-        {folderName(s.cwd)}
-      </span>
+      {!compact && (
+        <span className="min-w-0 shrink-[4] truncate text-muted-foreground" title={s.cwd}>
+          {folderName(s.cwd)}
+        </span>
+      )}
       {/*
         Text, not a bare colored dot: a color alone would be invisible to a
         colorblind user and meaningless to a new one. Lives in the header
@@ -167,7 +171,7 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
         {s.permissionMode === "bypass" && "Bypassing permissions"}
       </span>
       <span className="ml-auto flex min-w-0 items-center text-muted-foreground">
-        {state.catalog.length > 1 && providerLabel && (
+        {!compact && state.catalog.length > 1 && providerLabel && (
           <span className="text-muted-foreground">
             <span>&nbsp;</span>
             <span>{providerLabel}</span>
@@ -180,7 +184,7 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
         the same way that door already was — an overflow menu whose single
         item is absent nine times out of ten teaches the user it is empty.
       */}
-      {canBringBack && (
+      {canBringBack && !compact && (
         <DropdownMenu>
           <DropdownMenuTrigger
             render={<Button variant="ghost" size="icon-xs" className="shrink-0" />}
@@ -205,7 +209,31 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
       {canBringBack && (
         <BringBackDialog pane={pane} open={bringBackOpen} onOpenChange={setBringBackOpen} />
       )}
-      <PinButton session={s} accessibleTitle={accessibleTitle} />
+      {compact ? (
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={<Button variant="ghost" size="icon-xs" className="shrink-0" />}
+            aria-label={`Pane actions for ${accessibleTitle}`}
+          >
+            <MoreHorizontalIcon aria-hidden />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent className="w-auto">
+            <DropdownMenuItem onClick={() => post({ t: "set-pinned", id: s.id, pinned: s.pinned !== true })}>
+              <PinIcon aria-hidden />
+              {s.pinned === true ? "Unpin" : "Pin"}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setReplaceOpen(true)}>
+              <RefreshCwIcon aria-hidden />
+              Replace…
+            </DropdownMenuItem>
+            {canBringBack && (
+              <DropdownMenuItem onClick={() => setBringBackOpen(true)}>Bring branch back…</DropdownMenuItem>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : (
+        <PinButton session={s} accessibleTitle={accessibleTitle} />
+      )}
       {/*
         Grab handle for drag-to-split: its own control rather than making the
         whole header draggable, since the header also hosts click targets
@@ -234,15 +262,17 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
       </TooltipTrigger>
       <TooltipContent>{dragLabel}</TooltipContent>
       </Tooltip>
-      <Button
-        variant="ghost"
-        size="icon-xs"
-        aria-label={`Replace ${accessibleTitle}`}
-        onClick={() => setReplaceOpen(true)}
-        className="shrink-0"
-      >
-        <RefreshCwIcon aria-hidden />
-      </Button>
+      {!compact && (
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          aria-label={`Replace ${accessibleTitle}`}
+          onClick={() => setReplaceOpen(true)}
+          className="shrink-0"
+        >
+          <RefreshCwIcon aria-hidden />
+        </Button>
+      )}
       {/*
         Replace still gets a confirm, but not because it's destructive: it
         isn't. `replaceSession` just swaps the pane's leaf to a fresh

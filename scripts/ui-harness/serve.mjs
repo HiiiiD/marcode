@@ -1,18 +1,19 @@
 // Static server: /dist/*, /fixture.json, /theme.css, and the harness page at /.
-// Usage: node scripts/ui-harness/serve.mjs [port]   Page: /?theme=dark|light&w=400&open=idA,idB&o=vertical|horizontal
+// Usage: node scripts/ui-harness/serve.mjs [port] [distDir]   Page: /?theme=dark|light&w=400&open=idA,idB&o=vertical|horizontal
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const port = Number(process.argv[2] ?? 4173);
+const distDir = process.argv[3] ?? 'dist';
 const types = { '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.html': 'text/html' };
 const harnessDir = fileURLToPath(new URL('.', import.meta.url));
 const route = (p) => {
   if (p === '/') return join(harnessDir, 'page.html');
   if (p === '/theme.css' || p === '/page.js') return join(harnessDir, p.slice(1));
   if (p === '/fixture.json') return '.ui-harness/fixture.json';
-  if (p.startsWith('/dist/')) return join('dist', normalize(p.slice(6)).replace(/^(\.\.[\\/])+/, ''));
+  if (p.startsWith('/dist/')) return join(distDir, normalize(p.slice(6)).replace(/^(\.\.[\\/])+/, ''));
   return null;
 };
 

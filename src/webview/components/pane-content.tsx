@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import { MessageScrollerProvider } from "@/components/ui/message-scroller";
 import { findModel } from "../../shared/model-catalog";
 import type { SessionId } from "../../protocol/messages";
@@ -6,6 +7,7 @@ import { unavailabilityFor } from "../lib/provider-availability";
 import { useStore } from "../store";
 import { ChildrenList } from "./children-list";
 import { Composer } from "./composer";
+import { COMPACT_BELOW_PX, PaneDensityContext, type PaneDensity } from "./pane-density";
 import { PinnedShell } from "./pinned-shell";
 import { PinnedPrompts } from "./pinned-prompts";
 import { SessionHeader } from "./session-header";
@@ -36,6 +38,19 @@ export function PaneContent({ sessionId, accessibleTitle }: PaneContentProps) {
   const paneState = state.byId[sessionId];
   const provider = state.catalog.find((p) => p.id === paneState.summary.providerId);
   const model = findModel(provider?.models ?? [], paneState.summary.model);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [density, setDensity] = useState<PaneDensity>('comfortable');
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el) { return; }
+    const observer = new ResizeObserver(([entry]) => {
+      const h = entry.contentRect.height;
+      // Dead band so a pane sitting on the threshold does not flip layouts while a header or composer resizes it.
+      setDensity((d) => (h < COMPACT_BELOW_PX ? 'compact' : h > COMPACT_BELOW_PX + 40 ? 'comfortable' : d));
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
   const running = paneState.summary.status === "running" || paneState.summary.status === "awaiting-approval";
 
   return (
@@ -48,8 +63,10 @@ export function PaneContent({ sessionId, accessibleTitle }: PaneContentProps) {
     // *top* of the viewport and streams the reply beneath it: that reads as
     // a document scrolling past, not a conversation. One provider per pane,
     // so two panes never share a scroll position.
+    <PaneDensityContext.Provider value={density}>
     <MessageScrollerProvider autoScroll defaultScrollPosition="end">
       <div
+        ref={rootRef}
         className="flex h-full flex-col"
         // Esc-to-stop, anywhere focus sits in this pane — header, transcript
         // or composer — not just the composer box. An Escape a descendant
@@ -86,5 +103,6 @@ export function PaneContent({ sessionId, accessibleTitle }: PaneContentProps) {
         />
       </div>
     </MessageScrollerProvider>
+    </PaneDensityContext.Provider>
   );
 }
