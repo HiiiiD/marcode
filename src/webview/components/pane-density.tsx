@@ -10,3 +10,6 @@ export function usePaneDensity(): PaneDensity {
 
 // Below this pane height the header and composer collapse to one slim row each; 5 stacked panes in a laptop sidebar land under it.
 export const COMPACT_BELOW_PX = 380;
+
+// A narrow pane, such as one of five side by side, cannot hold the full composer footer on one row either.
+export const COMPACT_BELOW_WIDTH_PX = 400;
