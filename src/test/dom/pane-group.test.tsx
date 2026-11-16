@@ -788,4 +788,18 @@ suite('PaneGroup keyboard navigation', () => {
     assert.strictEqual(document.querySelectorAll('[data-session-id]').length, 2);
     assert.strictEqual(layoutPosts(), before);
   });
+
+  test('the header maximize button toggles the pane and only exists with more than one pane', () => {
+    renderApp();
+    hydrate(['a', 'b']);
+    const layoutPosts = () => posted().filter((m) => m.t === 'set-layout').length;
+    const before = layoutPosts();
+    const buttons = () => screen.getAllByRole('button', { name: /^Maximize / });
+    assert.strictEqual(buttons().length, 2);
+    fireEvent.click(buttons()[0]);
+    assert.strictEqual(screen.getAllByRole('button', { name: /^Restore the split from / }).length, 1);
+    fireEvent.click(screen.getByRole('button', { name: /^Restore the split from / }));
+    assert.strictEqual(screen.queryAllByRole('button', { name: /^Restore the split from / }).length, 0);
+    assert.strictEqual(layoutPosts(), before);
+  });
 });

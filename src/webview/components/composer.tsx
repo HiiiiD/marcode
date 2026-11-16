@@ -6,7 +6,6 @@ import { InputGroup, InputGroupAddon, InputGroupTextarea } from "@/components/ui
 import { cn } from "@/lib/utils";
 import { Clock, Loader, Paperclip, SendHorizontal, Square, TriangleAlert, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { usePaneDensity } from "./pane-density";
 import type { Invocable, ModelInfo } from "../../protocol/messages";
 import { fileMentions, fileRefsOf, type FileMentionPayload } from "../../client-core/mentions/file-mentions";
 import { isShellPrefix, parseShellCommand } from "../../client-core/shell-command";
@@ -61,7 +60,6 @@ export function Composer({
    */
   unavailableReason?: string;
 }) {
-  const compact = usePaneDensity() === "compact";
   const { state, post, dismissRejection } = useStore();
   const [text, setText] = useDraft(pane.summary.id);
   useDraftSync(pane.summary.id, text, post);
@@ -93,8 +91,6 @@ export function Composer({
   const box = useRef<HTMLTextAreaElement | null>(null);
   const recall = usePromptHistory(promptHistory(pane.items), text, setText, box);
   const running = pane.summary.status === "running" || pane.summary.status === "awaiting-approval";
-  // A short or narrow pane the user is not working in keeps only its input row; the controls come back the moment it is focused or has something to stop.
-  const idleCollapsed = compact && state.focusedSessionId !== pane.summary.id && pane.summary.status !== "running" && !text.trim();
   const backgroundTasks = pane.summary.backgroundTasks;
   const stopLabel = backgroundTasks === undefined ? "Stop" : "Stop background task";
   // Session-scoped, not a bare literal: Composer renders once per pane, so a
@@ -542,8 +538,6 @@ export function Composer({
         )}
         <InputGroupTextarea
           ref={box}
-          rows={compact ? 1 : undefined}
-          className={cn(compact && "max-h-24 min-h-9")}
           value={text}
           onChange={(e) => {
             setText(e.target.value);
@@ -600,7 +594,7 @@ export function Composer({
           // button and `@` has nowhere else to be announced, and a second
           // button would push a control row that already wraps at 300px onto
           // another line.
-          placeholder={compact ? "Message…" : "Message the agent… @ names a session or file, paste or drop files"}
+          placeholder="Message the agent… @ names a session or file, paste or drop files"
           aria-label="Message"
           disabled={disabled}
           aria-describedby={disabled ? blockedReasonId : undefined}
@@ -619,7 +613,7 @@ export function Composer({
           grouping, so the action button still lands at the right edge of
           whichever line it wraps to.
         */}
-        <InputGroupAddon align="block-end" className={cn(compact ? "flex-nowrap gap-1" : "flex-wrap", idleCollapsed && "hidden")}>
+        <InputGroupAddon align="block-end" className="flex-wrap">
           <Button
             variant="ghost"
             size="icon-xs"
@@ -696,7 +690,7 @@ export function Composer({
           >
             <ComboboxTrigger
               size="sm"
-              className={cn("min-w-0 shrink truncate ml-auto", compact && "max-w-40")}
+              className="min-w-0 shrink truncate ml-auto"
               aria-label="Model"
               // Never disabled. `Query.setModel` retargets the live session
               // (see claude-provider.ts), so a switch mid-conversation takes

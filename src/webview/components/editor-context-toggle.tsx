@@ -3,7 +3,6 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { EditorContextLabel, contextTitle, lineSpan } from './editor-context-chip';
 import { useStore } from '../store';
-import { usePaneDensity } from './pane-density';
 import type { PaneState } from '../reducer';
 
 /**
@@ -28,7 +27,6 @@ import type { PaneState } from '../reducer';
  */
 export function EditorContextToggle({ pane }: { pane: PaneState }) {
   const { state, post } = useStore();
-  const compact = usePaneDensity() === 'compact';
   const ctx = state.editorContext;
   if (!ctx) { return null; }
 
@@ -52,9 +50,7 @@ export function EditorContextToggle({ pane }: { pane: PaneState }) {
       className={cn('min-w-0 max-w-40', !on && 'text-muted-foreground')}
     >
       <FileCode2 aria-hidden="true" />
-      {compact
-        ? <span className="shrink-0 tabular-nums">{lineSpan(ctx).slice(1)}</span>
-        : <EditorContextLabel ctx={ctx} className="hidden @[30rem]:flex" />}
+      <EditorContextLabel ctx={ctx} className="hidden @[30rem]:flex" />
     </Button>
   );
 }

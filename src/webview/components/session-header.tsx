@@ -9,12 +9,12 @@ import {
 import { InputGroup, InputGroupInput } from "@/components/ui/input-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { GripVerticalIcon, MoreHorizontalIcon, PencilIcon, PinIcon, RefreshCwIcon, XIcon } from "lucide-react";
+import { GripVerticalIcon, Maximize2Icon, MoreHorizontalIcon, Minimize2Icon, PencilIcon, PinIcon, RefreshCwIcon, XIcon } from "lucide-react";
 import { folderName } from "../format";
 import type { PaneState } from "../reducer";
 import { useStore } from "../store";
 import { BringBackDialog } from "./bring-back-dialog";
-import { closeSession } from "./layout-tree";
+import { closeSession, leafSessionIds } from "./layout-tree";
 import { usePaneDrag } from "./pane-drag-context";
 import { usePaneDensity } from "./pane-density";
 import { PinButton } from "./pin-button";
@@ -31,8 +31,9 @@ interface SessionHeaderProps {
 }
 
 export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
-  const { state, post } = useStore();
+  const { state, post, toggleMaximize } = useStore();
   const compact = usePaneDensity() === "compact";
+  const maximized = state.maximizedId === pane.summary.id;
   const s = pane.summary;
   // Shown only when there's more than one provider to distinguish between —
   // with a single backend configured, naming it on every pane is noise.
@@ -248,6 +249,19 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
         (rename, MCP popover, bring-back menu) that a `draggable` ancestor
         would fight for pointer events on every click.
       */}
+      {leafSessionIds(state.layout.root).length > 1 && (
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          aria-label={maximized ? `Restore the split from ${accessibleTitle}` : `Maximize ${accessibleTitle}`}
+          aria-pressed={maximized}
+          title={maximized ? "Restore split" : "Maximize pane"}
+          onClick={() => toggleMaximize(s.id)}
+          className="shrink-0"
+        >
+          {maximized ? <Minimize2Icon aria-hidden /> : <Maximize2Icon aria-hidden />}
+        </Button>
+      )}
       <Tooltip>
       <TooltipTrigger
         render={(

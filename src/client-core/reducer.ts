@@ -228,6 +228,8 @@ export type ClientAction =
   | { t: 'local-layout'; layout: PaneLayout }
   /** Focus landed somewhere inside `id`'s pane. Client-local; see `focusedSessionId`. */
   | { t: 'local-focus'; id: SessionId }
+  /** The pane header's maximize button: this pane fills the split, or gives it back if it already does. */
+  | { t: 'local-toggle-maximize'; id: SessionId }
   /** The user answered or dismissed the rearrange offer. */
   | { t: 'local-dismiss-rearrange' }
   /**
@@ -257,6 +259,9 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
         maximizedId: state.maximizedId === null ? null : msg.id,
       };
     }
+
+    case 'local-toggle-maximize':
+      return { ...state, maximizedId: state.maximizedId === msg.id ? null : msg.id, focusedSessionId: msg.id };
 
     case 'step-pane': {
       const ids = readyPaneIds(state);

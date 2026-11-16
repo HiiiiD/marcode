@@ -1,4 +1,3 @@
-import { usePaneDensity } from "./pane-density";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -68,8 +67,6 @@ export function ModeMenu({
   const saved = pane.summary.effort;
   const level = saved && effort?.levels.includes(saved) ? saved : effort?.default;
 
-  const compact = usePaneDensity() === "compact";
-
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
@@ -93,7 +90,7 @@ export function ModeMenu({
         }
       >
         <mode.icon className={cn(!bypassing && "text-muted-foreground")} />
-        <span className={cn("truncate", compact && !bypassing && "hidden @[26rem]:inline")}>{mode.label}</span>
+        <span className="truncate">{mode.label}</span>
       </DropdownMenuTrigger>
       {/* The popup defaults to the trigger's width, and this trigger is two
           words wide — the descriptions need the room the pane has instead,
