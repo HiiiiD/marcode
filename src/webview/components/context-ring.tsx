@@ -38,7 +38,7 @@ export function ContextRing({
               // than as a smaller thing. In the danger state the percentage
               // rides alongside, so the height is held but the width comes
               // from the content.
-              size={danger || percent !== undefined ? 'sm' : 'icon-sm'}
+              size={danger ? 'sm' : 'icon-sm'}
               aria-label={label}
               onClick={() => setOpen(true)}
               className={cn('ml-1 shrink-0', danger && 'px-1.5')}
@@ -52,10 +52,8 @@ export function ContextRing({
             The percentage rides beside it only in that state, so the width
             is spent where it earns its place.
           */}
-          {danger ? (
+          {danger && (
             <span className="text-xs tabular-nums text-destructive">{percent}%</span>
-          ) : percent !== undefined && (
-            <span className="hidden text-xs tabular-nums text-muted-foreground @[26rem]:inline">{percent}%</span>
           )}
         </TooltipTrigger>
         <TooltipContent>{label}</TooltipContent>
