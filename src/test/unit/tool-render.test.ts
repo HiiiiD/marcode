@@ -399,6 +399,14 @@ suite('describeOutput', () => {
       [{ kind: 'lines', text: 'boom', tone: 'error' }]);
   });
 
+  test('a shell header drops a leading cd into the workspace but keeps the command', () => {
+    const tool = (command: string) => ({ kind: 'command' as const, label: 'Bash', command, cwd: 'x' }) as Parameters<typeof describeTool>[0];
+    assert.strictEqual(describeTool(tool('cd "e:\Efebia\app" && yarn test')).primary, 'yarn test');
+    assert.strictEqual(describeTool(tool('cd /tmp/x && ls -la')).primary, 'ls -la');
+    assert.strictEqual(describeTool(tool('ls -la')).primary, 'ls -la');
+    assert.strictEqual(describeTool(tool('cd /tmp/x')).primary, 'cd /tmp/x');
+  });
+
   test('ANSI colour escapes are stripped from text output', () => {
     assert.deepStrictEqual(
       describeOutput('command', { kind: 'text', text: '[36m<th>[39m ok' }, 'ok'),

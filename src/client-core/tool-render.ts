@@ -86,6 +86,12 @@ export function clampLines(text: string, head = 12, tail = 8): Clamped {
   };
 }
 
+/** The header line is for telling commands apart, and a leading `cd <workspace> &&` is the same on every one of them. */
+function withoutLeadingCd(command: string): string {
+  const stripped = command.replace(/^\s*cd\s+(?:"[^"]*"|'[^']*'|[^\s&;]+)\s*&&\s*/, '');
+  return stripped.length > 0 ? stripped : command;
+}
+
 /** `full` is only worth carrying when the header will actually truncate. */
 function header(glyph: ToolGlyph, verb: string, primary: string, mono: boolean): ToolHeader {
   return { glyph, verb, mono, primary, ...(primary.length > 40 ? { full: primary } : {}) };
@@ -100,7 +106,7 @@ export function describeTool(tool: ToolCall): ToolHeader {
       // command is still one click away in `describeInput`.
       return tool.skill
         ? header('bot', tool.label, tool.skill, false)
-        : header('terminal', tool.label, tool.command, true);
+        : header('terminal', tool.label, withoutLeadingCd(tool.command), true);
 
     case 'file-edit': {
       const glyph = tool.files.length > 0 && tool.files.every((f) => f.op === 'create')
