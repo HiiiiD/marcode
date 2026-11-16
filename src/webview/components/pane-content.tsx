@@ -7,7 +7,7 @@ import { unavailabilityFor } from "../lib/provider-availability";
 import { useStore } from "../store";
 import { ChildrenList } from "./children-list";
 import { Composer } from "./composer";
-import { COMPACT_BELOW_PX, COMPACT_BELOW_WIDTH_PX, PaneDensityContext, type PaneDensity } from "./pane-density";
+import { COMPACT_BELOW_PX, COMPACT_BELOW_WIDTH_PX, STRIP_BELOW_PX, PaneDensityContext, type PaneDensity } from "./pane-density";
 import { PinnedShell } from "./pinned-shell";
 import { PinnedPrompts } from "./pinned-prompts";
 import { SessionHeader } from "./session-header";
@@ -47,6 +47,8 @@ export function PaneContent({ sessionId, accessibleTitle }: PaneContentProps) {
       const { height: h, width: w } = entry.contentRect;
       // Dead band so a pane sitting on a threshold does not flip layouts while a header or composer resizes it.
       setDensity((d) => {
+        if (h < STRIP_BELOW_PX) { return 'strip'; }
+        if (d === 'strip' && h < STRIP_BELOW_PX + 30) { return 'strip'; }
         if (h < COMPACT_BELOW_PX || w < COMPACT_BELOW_WIDTH_PX) { return 'compact'; }
         return h > COMPACT_BELOW_PX + 40 && w > COMPACT_BELOW_WIDTH_PX + 40 ? 'comfortable' : d;
       });
@@ -84,6 +86,7 @@ export function PaneContent({ sessionId, accessibleTitle }: PaneContentProps) {
         }}
       >
         <SessionHeader pane={paneState} accessibleTitle={accessibleTitle} />
+        {density !== "strip" && (<>
         <SideChatBar sessionId={sessionId} />
         <ChildrenList sessionId={sessionId} />
         <SubagentDrillInContext.Provider
@@ -104,6 +107,7 @@ export function PaneContent({ sessionId, accessibleTitle }: PaneContentProps) {
           models={provider?.models ?? []}
           unavailableReason={ownerReason(paneState.summary) ?? unavailabilityFor(state, paneState.summary.providerId)}
         />
+        </>)}
       </div>
     </MessageScrollerProvider>
     </PaneDensityContext.Provider>

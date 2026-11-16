@@ -112,7 +112,7 @@ function PresetTile({
         onClick={onApply}
         className={cn(
           'relative flex w-full flex-col items-center gap-1 rounded-md border px-1 pt-2 pb-1.5 text-muted-foreground outline-none transition-colors',
-          'hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50',
+          'hover:bg-accent hover:text-foreground focus-visible:ring-1 focus-visible:ring-foreground/30',
           active ? 'border-primary bg-primary/10 text-foreground' : 'border-border',
         )}
       >

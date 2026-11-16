@@ -690,7 +690,7 @@ export function Composer({
           >
             <ComboboxTrigger
               size="sm"
-              className="min-w-0 shrink truncate ml-auto"
+              className="min-w-0 shrink truncate"
               aria-label="Model"
               // Never disabled. `Query.setModel` retargets the live session
               // (see claude-provider.ts), so a switch mid-conversation takes
@@ -721,6 +721,8 @@ export function Composer({
             </ComboboxContent>
           </Combobox>
 
+          {/* Stop, Send and the ring wrap as one unit, so every pane breaks its footer the same way. */}
+          <div className="ml-auto flex shrink-0 items-center gap-1">
           {running && (
             <Button
               variant="outline"
@@ -734,6 +736,7 @@ export function Composer({
           )}
           <Button
             size="icon-sm"
+            className="disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100"
             onClick={submit}
             // Live during a run: the message is parked by the host, not
             // dropped, so there is nothing to disable. Only a dead provider,
@@ -771,6 +774,7 @@ export function Composer({
           )}
           {state.showCacheTimer && <CacheTimer window={pane.cacheWindow} />}
           <ContextRing pane={pane} open={contextOpen} onOpenChange={setContextOpen} />
+          </div>
           <McpDialog id={pane.summary.id} open={mcpOpen} onOpenChange={setMcpOpen} />
         </InputGroupAddon>
       </InputGroup>

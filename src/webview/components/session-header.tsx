@@ -32,7 +32,7 @@ interface SessionHeaderProps {
 
 export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
   const { state, post, toggleMaximize } = useStore();
-  const compact = usePaneDensity() === "compact";
+  const compact = usePaneDensity() !== "comfortable";
   const maximized = state.maximizedId === pane.summary.id;
   const s = pane.summary;
   // Shown only when there's more than one provider to distinguish between —

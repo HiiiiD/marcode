@@ -16,7 +16,7 @@ export function PinnedPrompts({ pane, sessionId }: { pane: PaneState; sessionId:
   const { parent } = entries[index];
   const total = entries.length;
   return (
-    <section aria-label="Pending prompts" className="flex max-h-[50%] min-h-0 flex-col gap-1 border-t border-border px-2 py-1">
+    <section aria-label="Pending prompts" className="flex max-h-[70%] min-h-0 flex-col gap-1 border-t border-border px-2 py-1">
       <div className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
         <span className="min-w-0 flex-1 truncate">
           {parent ? `Subagent: ${subagentLabel(parent)}` : 'Needs your response'}
