@@ -52,7 +52,7 @@ export const TranscriptItemView = memo(function TranscriptItemView({
       return (
         <TranscriptItemShell role="assistant" label="Agent" ts={item.ts} onFork={onFork}>
           {item.thinking && <ReasoningBlock text={item.thinking} />}
-          <Markdown>{item.text}</Markdown>
+          <div className="max-w-[90ch]"><Markdown>{item.text}</Markdown></div>
         </TranscriptItemShell>
       );
 

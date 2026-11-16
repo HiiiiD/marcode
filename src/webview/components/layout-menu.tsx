@@ -39,7 +39,7 @@ export function LayoutMenu() {
       <PopoverTrigger render={<Button variant="outline" size="icon-sm" aria-label="Layout" className="shrink-0" />}>
         <LayoutGridIcon aria-hidden />
       </PopoverTrigger>
-      <PopoverContent side="bottom" align="start" className="flex w-72 flex-col gap-3 p-3 text-xs">
+      <PopoverContent side="bottom" align="start" className="flex w-80 flex-col gap-3 p-3 text-xs">
         <Section title="Layouts">
           <div className="grid grid-cols-3 gap-1.5">
             {BUILTIN_PRESETS.map((preset) => (
@@ -67,7 +67,7 @@ export function LayoutMenu() {
             onPick={(rows, cols) => request(gridLayout(rows, cols, openIds))}
           />
         </Section>
-        <div className="-mx-1 flex items-center justify-between border-t border-border pt-2">
+        <div className="flex items-center justify-between gap-2 border-t border-border pt-2">
           <Button
             variant="ghost"
             size="sm"
@@ -77,7 +77,7 @@ export function LayoutMenu() {
             Auto arrange
           </Button>
           <Button variant="ghost" size="sm" onClick={() => setSaveOpen(true)}>
-            Save current layout as custom…
+            Save as preset…
           </Button>
         </div>
       </PopoverContent>
@@ -117,7 +117,7 @@ function PresetTile({
         )}
       >
         <LayoutThumb node={preset.root} />
-        <span className="w-full truncate text-center text-[0.6875rem] leading-none">{preset.name}</span>
+        <span className="line-clamp-2 w-full text-center text-[0.6875rem] leading-tight">{preset.name}</span>
       </button>
       {onDelete && (
         <Button
