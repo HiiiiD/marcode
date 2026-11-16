@@ -540,6 +540,7 @@ export function Composer({
         )}
         <InputGroupTextarea
           ref={box}
+          rows={compact ? 1 : undefined}
           className={cn(compact && "max-h-24 min-h-9")}
           value={text}
           onChange={(e) => {
@@ -597,7 +598,7 @@ export function Composer({
           // button and `@` has nowhere else to be announced, and a second
           // button would push a control row that already wraps at 300px onto
           // another line.
-          placeholder="Message the agent… @ names a session or file, paste or drop files"
+          placeholder={compact ? "Message…" : "Message the agent… @ names a session or file, paste or drop files"}
           aria-label="Message"
           disabled={disabled}
           aria-describedby={disabled ? blockedReasonId : undefined}
