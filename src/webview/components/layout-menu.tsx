@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { LayoutGridIcon, XIcon } from 'lucide-react';
+import { CheckIcon, LayoutGridIcon, XIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
@@ -111,11 +111,12 @@ function PresetTile({
         aria-pressed={active}
         onClick={onApply}
         className={cn(
-          'flex w-full flex-col items-center gap-1 rounded-md border px-1 pt-2 pb-1.5 text-muted-foreground outline-none transition-colors',
-          'hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring',
+          'relative flex w-full flex-col items-center gap-1 rounded-md border px-1 pt-2 pb-1.5 text-muted-foreground outline-none transition-colors',
+          'hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50',
           active ? 'border-primary bg-primary/10 text-foreground' : 'border-border',
         )}
       >
+        {active && <CheckIcon aria-hidden className="absolute top-1 left-1 size-3 text-primary" />}
         <LayoutThumb node={preset.root} />
         <span className="line-clamp-2 w-full text-center text-[0.6875rem] leading-tight">{preset.name}</span>
       </button>

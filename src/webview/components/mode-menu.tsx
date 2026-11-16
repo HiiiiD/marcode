@@ -68,7 +68,7 @@ export function ModeMenu({
   const saved = pane.summary.effort;
   const level = saved && effort?.levels.includes(saved) ? saved : effort?.default;
 
-  const iconOnly = usePaneDensity() === "compact" && !bypassing;
+  const compact = usePaneDensity() === "compact";
 
   return (
     <DropdownMenu>
@@ -93,7 +93,7 @@ export function ModeMenu({
         }
       >
         <mode.icon className={cn(!bypassing && "text-muted-foreground")} />
-        {!iconOnly && <span className="truncate">{mode.label}</span>}
+        <span className={cn("truncate", compact && !bypassing && "hidden @[26rem]:inline")}>{mode.label}</span>
       </DropdownMenuTrigger>
       {/* The popup defaults to the trigger's width, and this trigger is two
           words wide — the descriptions need the room the pane has instead,

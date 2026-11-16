@@ -399,6 +399,12 @@ suite('describeOutput', () => {
       [{ kind: 'lines', text: 'boom', tone: 'error' }]);
   });
 
+  test('ANSI colour escapes are stripped from text output', () => {
+    assert.deepStrictEqual(
+      describeOutput('command', { kind: 'text', text: '[36m<th>[39m ok' }, 'ok'),
+      [{ kind: 'lines', text: '<th> ok', tone: 'output' }]);
+  });
+
   test('a silent successful edit or todo update has no result block', () => {
     assert.deepStrictEqual(describeOutput('file-edit', { kind: 'none' }, 'ok'), []);
     assert.deepStrictEqual(describeOutput('todos', { kind: 'text', text: ' ' }, 'ok'), []);

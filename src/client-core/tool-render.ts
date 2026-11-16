@@ -340,12 +340,16 @@ export function describeInput(tool: ToolCall): ToolBlock[] {
   return blocks;
 }
 
+// Colour escapes from a shell are control bytes to a card; they would print as boxes.
+const ANSI = /\[[0-9;?]*[ -/]*[@-~]/g;
+
 export function describeOutput(
   kind: ToolCall['kind'],
-  output: ToolOutput | undefined,
+  rawOutput: ToolOutput | undefined,
   state: 'running' | 'ok' | 'error',
 ): ToolBlock[] {
   if (state === 'running') { return []; }
+  const output = rawOutput?.kind === 'text' ? { ...rawOutput, text: rawOutput.text.replace(ANSI, '') } : rawOutput;
 
   // An edit or a todo update that succeeds silently has nothing to report; its input already shows the change.
   const silentOk = state === 'ok' && (kind === 'file-edit' || kind === 'todos');

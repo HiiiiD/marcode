@@ -289,11 +289,13 @@ suite('ContextRing', () => {
     assert.ok(trigger.textContent?.includes('86%'));
   });
 
-  test('below 80% the ring stays a bare glyph', () => {
+  test('below 80% the percentage is muted, and only shown in a roomy pane', () => {
     mount(43);
 
     const trigger = screen.getByLabelText('Context 43% used');
-    assert.strictEqual(trigger.textContent, '');
+    assert.strictEqual(trigger.textContent, '43%');
+    assert.strictEqual(trigger.querySelector('.text-destructive') === null, true);
+    assert.strictEqual(trigger.querySelector('.hidden') === null, false);
   });
 
   test('shows no usage yet when the session has not reported any', async () => {
