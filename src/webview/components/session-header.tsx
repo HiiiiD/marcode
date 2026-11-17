@@ -88,7 +88,7 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
         "flex items-center border-b border-border px-2 text-xs",
         compact ? "gap-1 py-0.5" : "gap-2 py-1",
         // A pane that needs a human or has failed announces it from across the stack, not only through a small pill.
-        s.status === "awaiting-approval" && "bg-primary/10 shadow-[inset_3px_0_0_var(--primary)]",
+        s.status === "awaiting-approval" && "bg-attention/10 shadow-[inset_3px_0_0_var(--attention)]",
         s.status === "error" && "bg-destructive/10 shadow-[inset_3px_0_0_var(--destructive)]",
       )}
     >
@@ -136,7 +136,7 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
         // on every render, same principle as the roster row's own
         // hover-revealed actions trigger.
         <span className="group/name flex min-w-0 items-center gap-1">
-          <span className="min-w-[6ch] truncate text-xs font-medium" title={s.name}>{s.name}</span>
+          <span className="min-w-[10ch] truncate text-xs font-medium" title={s.name}>{s.name}</span>
           <Button
             variant="ghost"
             size="icon-xs"
@@ -231,6 +231,12 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
               <PinIcon aria-hidden />
               {s.pinned === true ? "Unpin" : "Pin"}
             </DropdownMenuItem>
+            {leafSessionIds(state.layout.root).length > 1 && (
+              <DropdownMenuItem onClick={() => toggleMaximize(s.id)}>
+                {maximized ? <Minimize2Icon aria-hidden /> : <Maximize2Icon aria-hidden />}
+                {maximized ? "Restore split" : "Maximize pane"}
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem onClick={() => setReplaceOpen(true)}>
               <RefreshCwIcon aria-hidden />
               Replace…
@@ -249,7 +255,7 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
         (rename, MCP popover, bring-back menu) that a `draggable` ancestor
         would fight for pointer events on every click.
       */}
-      {leafSessionIds(state.layout.root).length > 1 && (
+      {!compact && leafSessionIds(state.layout.root).length > 1 && (
         <Button
           variant="ghost"
           size="icon-xs"

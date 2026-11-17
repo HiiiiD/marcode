@@ -84,7 +84,7 @@ export function PaneGroup({ narrow }: PaneGroupProps) {
     : null;
   const viewRoot = maximizedId === null ? state.layout.root
     : peek?.id === maximizedId && peek.base === state.layout.root ? peek.root
-      : maximizeSizes(state.layout.root, maximizedId);
+      : maximizeSizes(state.layout.root, maximizedId, (o) => (o === "vertical" ? 4 : 10));
 
   const handleLayoutChanged = (path: number[], layout: Layout, meta: LayoutChangedMeta, children: LayoutNode[]) => {
     if (!meta.isUserInteraction) { return; }
@@ -305,6 +305,7 @@ export function PaneGroup({ narrow }: PaneGroupProps) {
           path={[]}
           topLevel
           narrow={narrow}
+          peeking={maximizedId !== null}
           leafState={(sessionId) => leafDisplayState(sessionId, roster, snapshotArrived)}
           names={names}
           activeId={activeId}

@@ -55,6 +55,8 @@
   --git-modified: var(--vscode-gitDecoration-modifiedResourceForeground, var(--vscode-charts-blue));
   --git-deleted: var(--vscode-gitDecoration-deletedResourceForeground, var(--vscode-charts-red));
   --git-renamed: var(--vscode-gitDecoration-renamedResourceForeground, var(--vscode-charts-purple));
+  /* "A human is needed": its own hue, so it is never mistaken for focus or the primary action, which share the accent blue. */
+  --attention: var(--vscode-editorWarning-foreground, var(--vscode-charts-yellow, #cca700));
   --radius: 4px;
 }
 
@@ -78,6 +80,7 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-attention: var(--attention);
   --color-git-added: var(--git-added);
   --color-git-modified: var(--git-modified);
   --color-git-deleted: var(--git-deleted);

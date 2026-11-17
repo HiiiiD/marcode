@@ -166,7 +166,7 @@ export function PermissionCard({
   }
 
   return (
-    <div className="my-0 rounded border border-primary/60 bg-primary/10 p-2 text-xs">
+    <div className="my-0 rounded border border-attention/60 bg-attention/10 p-2 text-xs">
       <div className="mb-1 flex items-baseline gap-2">
         {server && (
           // Muted, not colour-per-server — mirrors ToolCard's badge treatment.

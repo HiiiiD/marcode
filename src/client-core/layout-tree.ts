@@ -327,17 +327,21 @@ export const PEEK_SIZE = 15;
  * room every ancestor split allows, the rest left peeking at `PEEK_SIZE`.
  * Never persisted: the real layout keeps its own sizes.
  */
-export function maximizeSizes(root: LayoutNode, sessionId: string): LayoutNode {
+/** How much of a split's axis a non-maximized sibling keeps; a header strip needs far less height than width. */
+export type PeekSize = number | ((orientation: 'vertical' | 'horizontal') => number);
+
+export function maximizeSizes(root: LayoutNode, sessionId: string, peek: PeekSize = PEEK_SIZE): LayoutNode {
   const path = findPath(root, sessionId);
   if (path === undefined) { return root; }
   const walk = (node: LayoutNode, rest: number[]): LayoutNode => {
     if (node.kind === 'leaf' || rest.length === 0) { return node; }
     const [head, ...tail] = rest;
-    const main = 100 - PEEK_SIZE * (node.children.length - 1);
+    const each = typeof peek === 'number' ? peek : peek(node.orientation);
+    const main = 100 - each * (node.children.length - 1);
     return {
       ...node,
       children: node.children.map((child, i) => (
-        i === head ? { ...walk(child, tail), size: main } : { ...child, size: PEEK_SIZE }
+        i === head ? { ...walk(child, tail), size: main } : { ...child, size: each }
       )),
     };
   };

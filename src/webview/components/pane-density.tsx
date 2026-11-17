@@ -13,6 +13,7 @@ export const COMPACT_BELOW_PX = 380;
 
 // A pane this short (everything but one maximized pane) cannot show a transcript or composer; it is just its header, and a click brings it back.
 export const STRIP_BELOW_PX = 150;
+export const STRIP_BELOW_WIDTH_PX = 170;
 
 // A narrow pane, such as one of five side by side, cannot hold the full composer footer on one row either.
 export const COMPACT_BELOW_WIDTH_PX = 400;

@@ -10,6 +10,7 @@ body { margin: 0; font-family: "Segoe UI", system-ui, sans-serif; font-size: 13p
   --vscode-textLink-foreground: #4daafc; --vscode-badge-background: #616161; --vscode-badge-foreground: #ffffff;
   --vscode-font-family: "Segoe UI", sans-serif; --vscode-editor-font-family: Consolas, "Courier New", monospace; --vscode-font-size: 13px; --vscode-editor-font-size: 14px;
   --vscode-gitDecoration-addedResourceForeground: #81b88b; --vscode-gitDecoration-deletedResourceForeground: #c74e39; --vscode-charts-green: #89d185;
+  --vscode-editorWarning-foreground: #cca700;
   color-scheme: dark;
 }
 .vscode-light {
@@ -22,6 +23,7 @@ body { margin: 0; font-family: "Segoe UI", system-ui, sans-serif; font-size: 13p
   --vscode-textLink-foreground: #005fb8; --vscode-badge-background: #cccccc; --vscode-badge-foreground: #3b3b3b;
   --vscode-font-family: "Segoe UI", sans-serif; --vscode-editor-font-family: Consolas, "Courier New", monospace; --vscode-font-size: 13px; --vscode-editor-font-size: 14px;
   --vscode-gitDecoration-addedResourceForeground: #587c0c; --vscode-gitDecoration-deletedResourceForeground: #ad0707; --vscode-charts-green: #388a34;
+  --vscode-editorWarning-foreground: #bf8803;
   color-scheme: light;
 }
 #root { height: 100vh; }

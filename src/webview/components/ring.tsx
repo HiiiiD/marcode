@@ -44,7 +44,7 @@ export function Ring({
           strokeLinecap="round"
           strokeDasharray={`${(circumference * clamped) / 100} ${circumference}`}
           transform={`rotate(-90 ${center} ${center})`}
-          className={clamped >= 80 ? 'stroke-destructive' : 'stroke-primary'}
+          className={clamped >= 80 ? 'stroke-destructive' : 'stroke-muted-foreground'}
         />
       )}
     </svg>
