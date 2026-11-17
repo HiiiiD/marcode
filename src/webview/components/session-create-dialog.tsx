@@ -153,11 +153,10 @@ function CreateForm({
 
   return (
     <>
-      {/* A floor on the body so the dialog does not jump in height (and re-centre) as the steps change. */}
-      <div className="-mx-4 flex min-h-[min(55vh,26rem)] flex-1 flex-col gap-3 overflow-x-hidden overflow-y-auto px-4">
-        {step === 0 && <RecentCombos sessions={state.sessions} catalog={catalog} onPick={applyCombo} />}
-
-        <ol aria-label="Steps" className="flex gap-1">
+      {/* Nothing in here moves between steps: the step header is first and fixed, the body has one height (it
+          scrolls), and Recent lives inside step 1's own content. */}
+      <div className="-mx-4 flex min-h-0 flex-1 flex-col gap-3 overflow-hidden px-4">
+        <ol aria-label="Steps" className="flex shrink-0 gap-1">
           {STEPS.map((label, i) => (
             <li key={label} className="min-w-0 flex-1">
               <button
@@ -177,25 +176,31 @@ function CreateForm({
           ))}
         </ol>
 
-        {/* All three stay mounted so the search text, tab and typed values survive moving between steps. */}
-        <div hidden={step !== 0}><ModelStep catalog={catalog} picked={picked} onPick={(v) => { setPicked(v); setEffort(null); }} /></div>
-        <div hidden={step !== 1}>
-          <SettingsStep scale={model?.effort} level={level} onEffort={setEffort} rows={rows} mode={effectiveMode} onMode={setMode} />
-        </div>
-        <div hidden={step !== 2}>
-          <OptionsStep
-            seedable={Boolean(seedable)} seedText={seedText} onSeedText={setSeedText}
-            includeSummary={includeSummary} onIncludeSummary={setIncludeSummary}
-            branch={branch} onBranch={setBranch} base={base} onBase={setBase}
-          />
+        <div className="h-[min(52vh,24rem)] overflow-x-hidden overflow-y-auto">
+          {/* All three stay mounted so the search text, tab and typed values survive moving between steps. */}
+          <div hidden={step !== 0} className="flex flex-col gap-3">
+            <RecentCombos sessions={state.sessions} catalog={catalog} onPick={applyCombo} />
+            <ModelStep catalog={catalog} picked={picked} onPick={(v) => { setPicked(v); setEffort(null); }} />
+          </div>
+          <div hidden={step !== 1}>
+            <SettingsStep scale={model?.effort} level={level} onEffort={setEffort} rows={rows} mode={effectiveMode} onMode={setMode} />
+          </div>
+          <div hidden={step !== 2}>
+            <OptionsStep
+              seedable={Boolean(seedable)} seedText={seedText} onSeedText={setSeedText}
+              includeSummary={includeSummary} onIncludeSummary={setIncludeSummary}
+              branch={branch} onBranch={setBranch} base={base} onBase={setBase}
+            />
+          </div>
         </div>
       </div>
 
       <DialogFooter className="shrink-0 flex-row items-center justify-end">
         <DialogClose render={<Button variant="outline" size="sm" className="mr-auto" />}>Cancel</DialogClose>
-        {step > 0 && <Button variant="outline" size="sm" onClick={() => setStep(step - 1)}>Back</Button>}
-        {step < STEPS.length - 1 && <Button size="sm" onClick={() => setStep(step + 1)}>Next</Button>}
-        <Button size="sm" variant={step < STEPS.length - 1 ? "outline" : "default"} disabled={!canCreate} onClick={create}>
+        {/* Always rendered, only disabled at the ends, so no button ever changes place. */}
+        <Button variant="outline" size="sm" disabled={step === 0} onClick={() => setStep(step - 1)}>Back</Button>
+        <Button variant="outline" size="sm" disabled={step === STEPS.length - 1} onClick={() => setStep(step + 1)}>Next</Button>
+        <Button size="sm" disabled={!canCreate} onClick={create}>
           {busy ? (
             <>
               <LoaderCircle className="animate-spin" aria-hidden />

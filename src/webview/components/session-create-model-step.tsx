@@ -117,7 +117,7 @@ export function ModelStep({
             <TabsIndicator />
           </TabsList>
 
-          <TabsPanel value="favorites" className="max-h-[40vh] overflow-y-auto pt-2">
+          <TabsPanel value="favorites" className="pt-2">
             {favorites.length === 0 ? (
               <div className="flex flex-col items-start gap-1 px-0.5 py-1 text-xs text-muted-foreground">
                 <p>{allFavorites.length === 0 ? "No favorites yet." : `No favorites match "${search.trim()}".`}</p>
@@ -141,7 +141,7 @@ export function ModelStep({
             )}
           </TabsPanel>
 
-          <TabsPanel value="all" className="max-h-[40vh] overflow-y-auto pt-2">
+          <TabsPanel value="all" className="pt-2">
             {groups.length === 0 && <p className="px-0.5 py-1 text-xs text-muted-foreground">No models match "{search.trim()}".</p>}
             <div className="flex min-w-0 flex-col gap-2">
               {groups.map(({ provider: p, models }) => (
