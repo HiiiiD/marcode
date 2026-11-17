@@ -313,7 +313,7 @@ function CreateForm({
                 <TabsIndicator />
               </TabsList>
 
-              <TabsPanel value="favorites" className="max-h-40 overflow-y-auto pt-2">
+              <TabsPanel value="favorites" className="max-h-[28vh] overflow-y-auto pt-2">
                 {favoriteEntries.length === 0 ? (
                   <div className="flex flex-col items-start gap-1 px-0.5 py-1 text-xs text-muted-foreground">
                     <p>
@@ -347,7 +347,7 @@ function CreateForm({
                 )}
               </TabsPanel>
 
-              <TabsPanel value="all" className="max-h-40 overflow-y-auto pt-2">
+              <TabsPanel value="all" className="max-h-[28vh] overflow-y-auto pt-2">
                 {groups.length === 0 && (
                   <p className="px-0.5 py-1 text-xs text-muted-foreground">
                     No models match "{modelSearch.trim()}".

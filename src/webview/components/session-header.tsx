@@ -10,7 +10,7 @@ import { InputGroup, InputGroupInput } from "@/components/ui/input-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { GripVerticalIcon, Maximize2Icon, MoreHorizontalIcon, Minimize2Icon, PencilIcon, PinIcon, RefreshCwIcon, XIcon } from "lucide-react";
-import { folderName } from "../format";
+import { folderName, middleTruncate } from "../format";
 import type { PaneState } from "../reducer";
 import { useStore } from "../store";
 import { BringBackDialog } from "./bring-back-dialog";
@@ -138,7 +138,7 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
         // on every render, same principle as the roster row's own
         // hover-revealed actions trigger.
         <span className="group/name flex min-w-0 items-center gap-1">
-          <span className="min-w-[10ch] truncate text-xs font-medium" title={s.name}>{s.name}</span>
+          <span className="min-w-[10ch] truncate text-xs font-medium" title={s.name}>{compact ? middleTruncate(s.name, 16) : s.name}</span>
           <Button
             variant="ghost"
             size="icon-xs"

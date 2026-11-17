@@ -54,6 +54,14 @@ suite('WorkingRow', () => {
     assert.strictEqual(screen.queryByText('Look'), null);
   });
 
+  test('a token-streaming backend shows whole lines only, a block-emitting one shows everything', () => {
+    renderApp();
+    hydrate('running', [ASKED, { id: 'a1', ts: secondsAgo(1), role: 'assistant', text: 'First line.\nSecond li' }]);
+
+    screen.getByText('First line.');
+    assert.strictEqual(screen.queryByText(/Second li/), null);
+  });
+
   test('assistant text appears whole once the turn is over', () => {
     renderApp();
     hydrate('idle', [ASKED, { id: 'a1', ts: secondsAgo(1), role: 'assistant', text: 'Look' }]);

@@ -11,6 +11,7 @@ import type { PaneState } from '../reducer';
 import { isLivePrompt } from '../lib/pending-prompts';
 import { splitNestedMessages } from '../lib/nested-messages';
 import { groupSubagents } from '../lib/subagent-groups';
+import { settledPrefix } from '../lib/stream-text';
 
 export function Transcript({
   pane, onLoadMore,
@@ -21,9 +22,9 @@ export function Transcript({
   const nested = useMemo(() => splitNestedMessages(pane.items), [pane.items]);
   const first = pane.items[0];
   const idle = pane.summary.status === 'idle';
-  // A message still taking deltas is not shown: text arriving word by word jitters the column, so it appears whole once the turn moves past it. The activity line says "Writing…" meanwhile.
+  // Claude hands over finished blocks; every other backend streams tokens, so its half-written tail is held back to the last whole line or sentence rather than re-rendered per token.
   const last = pane.items[pane.items.length - 1];
-  const streamingId = pane.summary.status === 'running' && last?.role === 'assistant' && last.text.trim() ? last.id : undefined;
+  const streamingId = pane.summary.status === 'running' && !pane.summary.providerId.startsWith('claude') && last?.role === 'assistant' && last.text.trim() ? last.id : undefined;
 
   // `load-more` is a stateless lookup keyed on beforeItemId, not a consumed
   // cursor — two rapid clicks before the first session-prepend lands would
@@ -67,8 +68,8 @@ export function Transcript({
               </Button>
             )}
             {groupSubagents(nested.main
-              .filter((item) => !isLivePrompt(item, pane) && !(item.id === streamingId && item.role === 'assistant' && !item.thinking))
-              .map((item) => (item.id === streamingId && item.role === 'assistant' ? { ...item, text: '' } : item))).map((entry) => entry.kind === 'group' ? (
+              .map((item) => (item.id === streamingId && item.role === 'assistant' ? { ...item, text: settledPrefix(item.text) } : item))
+              .filter((item) => !isLivePrompt(item, pane) && !(item.role === 'assistant' && item.id === streamingId && !item.text && !item.thinking))).map((entry) => entry.kind === 'group' ? (
               <MessageScrollerItem key={entry.id} messageId={entry.id}>
                 <SubagentGroupCard items={entry.items} sessionId={pane.summary.id} />
               </MessageScrollerItem>
