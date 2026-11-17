@@ -32,9 +32,11 @@ const GLYPHS: Record<ToolGlyph, typeof TerminalIcon> = {
 };
 
 export function ToolCard({
-  item, onFork, defaultOpen = false, streaming = false, approval,
+  item, more, onFork, defaultOpen = false, streaming = false, approval,
 }: {
   item: ToolItem; onFork?: () => void;
+  /** Further calls folded into this row: identical consecutive calls read as one line with a count. */
+  more?: ToolItem[];
   /** Set when this row is the record of an approval: the row is the tool's own, plus a check (allowed) or a cross (denied). */
   approval?: 'allowed' | 'denied';
   /** Starts expanded: a command the user ran themselves wants its output in view. */
@@ -51,36 +53,32 @@ export function ToolCard({
   }, [item.state, planPath, post]);
   const server = tool.kind === 'mcp' ? tool.server : undefined;
   const header = describeTool(tool);
+  const all = [item, ...(more ?? [])];
+  const state = all.some((i) => i.state === 'error') ? 'error' : all.some((i) => i.state === 'running') ? 'running' : item.state;
   // A settled check mark on every row is noise in a column this narrow: the
   // transcript is a log of things that already happened, so success is the
   // default reading. Only the two states that change what the user should do
   // — still running, and failed — get a visible mark. `state` still has a
   // text equivalent below, so nothing is carried by the icon alone.
-  const Glyph = item.state === 'running' ? Loader2Icon : GLYPHS[header.glyph];
-
-  const input = describeInput(tool);
-  const output = describeOutput(
-    tool.kind, item.output,
-    streaming && item.state === 'running' && item.output?.kind === 'text' ? 'ok' : item.state,
-  );
+  const Glyph = state === 'running' ? Loader2Icon : GLYPHS[header.glyph];
 
   return (
     // `group/item`, not a second `<button>` nested inside the toggle: the
     // toggle below IS a button, and a fork button placed inside it would be
     // interactive-inside-interactive — the same trap the roster row's own
     // actions trigger sits beside its checkbox item to avoid, not inside it.
-    <TraceCollapsible open={open} onOpenChange={setOpen} className="group/item my-0">
+    <TraceCollapsible bare open={open} onOpenChange={setOpen} className="group/item my-0">
       <div className="flex items-center">
         <TraceCollapsibleTrigger>
           <Glyph
             aria-hidden
             className={cn(
               'shrink-0',
-              item.state === 'running' && 'animate-spin',
-              item.state === 'error' && 'text-destructive',
+              state === 'running' && 'animate-spin',
+              state === 'error' && 'text-destructive',
             )}
           />
-          <span className="sr-only">{item.state}</span>
+          <span className="sr-only">{state}</span>
           {server && (
             // Muted, not colour-per-server: a palette per server would collide
             // with the status tones already in use and buys nothing when the
@@ -98,12 +96,13 @@ export function ToolCard({
               {header.primary}
             </span>
           )}
+          {all.length > 1 && <span className="shrink-0 rounded bg-muted px-1 text-muted-foreground tabular-nums">×{all.length}</span>}
           {approval && (
             approval === 'allowed'
               ? <CheckIcon aria-label="allowed" role="img" className="ml-auto shrink-0 text-git-added" />
               : <XIcon aria-label="denied" role="img" className="ml-auto shrink-0 text-destructive" />
           )}
-          {item.state === 'error' && (
+          {state === 'error' && (
             // The `attention` spelling used elsewhere in the panel: a word plus
             // a quiet fill, never colour alone.
             <span className="ml-auto shrink-0 rounded-full border border-destructive/40 bg-destructive/10 px-1.5 font-medium text-destructive">
@@ -126,20 +125,30 @@ export function ToolCard({
         )}
       </div>
 
-      <TraceCollapsibleContent className="flex flex-col gap-1.5">
-          <ToolBody blocks={input} />
-          {output.length > 0 && (
-            <div className="flex flex-col gap-1.5">
-              <p className="text-muted-foreground">
-                {item.state === 'error' ? 'Error' : 'Result'}
-              </p>
-              <ToolBody blocks={output} />
-            </div>
-          )}
-          {item.state === 'running' && (
-            <p className="text-muted-foreground">Running…</p>
-          )}
+      <TraceCollapsibleContent inset className="flex flex-col gap-3">
+        {all.map((call) => <ToolDetail key={call.id} item={call} streaming={streaming} />)}
       </TraceCollapsibleContent>
     </TraceCollapsible>
+  );
+}
+
+/** One call's input and result, as the body of an opened row. */
+function ToolDetail({ item, streaming }: { item: ToolItem; streaming: boolean }) {
+  const input = describeInput(item.tool);
+  const output = describeOutput(
+    item.tool.kind, item.output,
+    streaming && item.state === 'running' && item.output?.kind === 'text' ? 'ok' : item.state,
+  );
+  return (
+    <div className="flex flex-col gap-2">
+      <ToolBody blocks={input} />
+      {output.length > 0 && (
+        <div className="flex flex-col gap-1.5">
+          {item.state === 'error' && <p className="font-medium text-destructive">Error</p>}
+          <ToolBody blocks={output} />
+        </div>
+      )}
+      {item.state === 'running' && <p className="text-muted-foreground">Running…</p>}
+    </div>
   );
 }

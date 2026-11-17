@@ -25,7 +25,7 @@ export type TranscriptItemRole =
  */
 const FRAME: Record<TranscriptItemRole, string> = {
   user: cn(
-    'ml-4 rounded-md border border-border px-2 py-1.5',
+    'ml-4 rounded-lg px-3 py-2',
     // Derived, not a token lookup: --muted is editorWidget-background, which
     // several themes set equal to the sidebar background. Mixing toward the
     // foreground guarantees the block separates from the column in light,
@@ -33,7 +33,7 @@ const FRAME: Record<TranscriptItemRole, string> = {
     'bg-[color-mix(in_oklch,var(--color-muted),var(--color-foreground)_7%)]',
   ),
   assistant: '',
-  tool: 'border-l border-l-border pl-2',
+  tool: '',
   // A subagent is a container of tool calls, not one call: a rule the eye can
   // separate from `tool` while scanning, without introducing a colour that
   // competes with `permission`/`error` (destructive).
@@ -71,8 +71,9 @@ export function TranscriptItemShell({
   children: ReactNode;
 }) {
   return (
-    <div className={cn('group/item my-0', FRAME[role])}>
-      <div className="mb-0.5 flex items-baseline gap-2">
+    <div className={cn('group/item relative my-0', FRAME[role])}>
+      {/* The agent's own prose carries no label: an uppercase name and time above every paragraph was chrome, not information. */}
+      {role !== 'assistant' && <div className="mb-0.5 flex items-baseline gap-2">
         <span
           className={cn(
             'text-[0.65rem] font-medium tracking-wide uppercase',
@@ -104,7 +105,19 @@ export function TranscriptItemShell({
             <GitForkIcon />
           </Button>
         )}
-      </div>
+      </div>}
+      {role === 'assistant' && onFork && (
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          aria-label="Fork from here"
+          title="Fork a new session from this point"
+          onClick={onFork}
+          className="absolute top-0 right-0 text-muted-foreground opacity-0 group-hover/item:opacity-100 focus:opacity-100"
+        >
+          <GitForkIcon />
+        </Button>
+      )}
       {children}
     </div>
   );

@@ -378,8 +378,10 @@ export function describeOutput(
   const output = rawOutput?.kind === 'text' ? { ...rawOutput, text: rawOutput.text.replace(ANSI, '') } : rawOutput;
 
   // An edit or a todo update that succeeds silently has nothing to report; its input already shows the change.
+  // The SDK's own "The file … has been updated successfully" sentence restates the diff already shown.
+  const editAck = kind === 'file-edit' && output?.kind === 'text' && /^The file .* has been (updated|created|overwritten) successfully/i.test(output.text.trim());
   const silentOk = state === 'ok' && (kind === 'file-edit' || kind === 'todos');
-  if (silentOk && (output === undefined || output.kind === 'none' || (output.kind === 'text' && output.text.trim().length === 0))) { return []; }
+  if (silentOk && (output === undefined || output.kind === 'none' || (output.kind === 'text' && (output.text.trim().length === 0 || editAck)))) { return []; }
 
   if (output === undefined || output.kind === 'none') {
     return state === 'error'

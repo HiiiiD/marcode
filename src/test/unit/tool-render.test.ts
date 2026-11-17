@@ -419,6 +419,12 @@ suite('describeOutput', () => {
     assert.strictEqual(describeTool(tool('cd /tmp/x')).primary, 'cd /tmp/x');
   });
 
+  test('the SDK edit acknowledgement is dropped, a real edit result is kept', () => {
+    assert.deepStrictEqual(describeOutput('file-edit', { kind: 'text', text: 'The file /a.ts has been updated successfully.' }, 'ok'), []);
+    assert.deepStrictEqual(describeOutput('file-edit', { kind: 'text', text: 'Permission denied' }, 'ok'),
+      [{ kind: 'lines', text: 'Permission denied', tone: 'output' }]);
+  });
+
   test('ANSI colour escapes are stripped from text output', () => {
     assert.deepStrictEqual(
       describeOutput('command', { kind: 'text', text: '[36m<th>[39m ok' }, 'ok'),

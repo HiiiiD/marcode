@@ -23,7 +23,7 @@ function hydrateWithItems(
 }
 
 suite('TranscriptItemView', () => {
-  test('every item is labelled by role', () => {
+  test('the user is labelled, agent prose carries no label', () => {
     renderApp();
     hydrateWithItems([
       { id: '1', ts: 1, role: 'user', text: 'hello' },
@@ -31,7 +31,7 @@ suite('TranscriptItemView', () => {
     ]);
 
     screen.getByText('You');
-    screen.getByText('Agent');
+    assert.strictEqual(screen.queryByText('Agent') === null, true);
   });
 
   test('assistant text is rendered as markdown', () => {

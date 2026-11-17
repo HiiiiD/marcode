@@ -20,14 +20,13 @@ suite('ToolCard', () => {
     assert.strictEqual(document.querySelector('pre'), null);
   });
 
-  test('expanding shows the command and the result under separate headings', async () => {
+  test('expanding shows the command and its result', async () => {
     renderWithStore(<ToolCard item={tool({
       tool: { kind: 'command', label: 'Bash', command: 'yarn test:unit' },
       output: { kind: 'text', text: '14 passing' },
     })} />);
     await expand();
 
-    screen.getByText('Result');
     screen.getByText('14 passing');
     // The `$` gutter is decoration for a screen reader — the command reads on
     // its own, without a stray dollar sign glued to it.

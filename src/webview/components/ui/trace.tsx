@@ -77,13 +77,18 @@ function TraceDescription({
 
 function TraceCollapsible({
   className,
+  bare,
   ...props
-}: React.ComponentProps<typeof Collapsible>) {
+}: React.ComponentProps<typeof Collapsible> & {
+  /** No frame: the row is just a line in a log, and its detail opens as a soft inset panel (see `TraceCollapsibleContent`'s `inset`). */
+  bare?: boolean
+}) {
   return (
     <Collapsible
       data-slot="trace-collapsible"
       className={cn(
-        "flex w-full min-w-0 flex-col rounded border border-border text-xs",
+        "flex w-full min-w-0 flex-col text-xs",
+        !bare && "rounded border border-border",
         className
       )}
       {...props}
@@ -116,14 +121,16 @@ function TraceCollapsibleTrigger({
 function TraceCollapsibleContent({
   className,
   children,
+  inset,
   ...props
-}: React.ComponentProps<typeof CollapsibleContent>) {
+}: React.ComponentProps<typeof CollapsibleContent> & { inset?: boolean }) {
   return (
     <CollapsibleContent data-slot="trace-collapsible-content" {...props}>
       <div
         data-slot="trace-collapsible-content-inner"
         className={cn(
-          "min-w-0 border-t border-border px-2 py-1.5 wrap-break-word",
+          "min-w-0 wrap-break-word",
+          inset ? "mt-0.5 mb-1 ml-5 rounded-md bg-muted/50 px-3 py-2" : "border-t border-border px-2 py-1.5",
           className
         )}
       >
