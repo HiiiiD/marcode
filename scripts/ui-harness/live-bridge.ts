@@ -2,13 +2,15 @@
 // bridged to the browser over HTTP + server-sent events, so the real webview bundle can be watched mid-turn.
 //   npx tsx scripts/ui-harness/live-bridge.ts [port]      then open http://127.0.0.1:4175/live?theme=dark
 // Everything lives in a throwaway MARCODE_HOME; no real session or account is touched.
-// Put `scenario:<name>` in a prompt: slow | quiet | permission | error (anything else answers "ok").
+// Put `scenario:<name>` in a prompt: slow | quiet | permission | perm-edit | perm-mcp | perm-meta | perm-plan | question | error (anything else answers "ok").
 import { createServer } from 'node:http';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { extname, join, normalize } from 'node:path';
 import { bootHost, type InProcessBooted } from '../../src/tui/boot';
 import type { FakeProvider, FakeRun } from '../../src/providers/fake/fake-provider';
+import type { ToolCall } from '../../src/providers/canonical/tool-call';
+import type { PermissionMeta } from '../../src/providers/types';
 import type { HostToWebview, WebviewToHost } from '../../src/protocol/messages';
 
 const port = Number(process.argv[2] ?? 4175);
@@ -26,6 +28,7 @@ const tool = (id: string, command: string, ms: number, output: string): Step => 
   await sleep(ms);
   run.emit({ kind: 'tool-end', id, ok: true, output: { kind: 'text', text: output } });
 };
+const ask = (toolCall: ToolCall, meta?: PermissionMeta): Step => async (run) => run.emit({ kind: 'permission', id: `p-${Date.now()}`, tool: toolCall, ...(meta ? { meta } : {}) });
 const stream = (words: string[], gap = 250): Step => async (run) => {
   for (const w of words) { run.emit({ kind: 'text', delta: `${w} ` }); await sleep(gap); }
 };
@@ -41,11 +44,23 @@ const SCENARIOS: Record<string, Step[]> = {
     think('I need to push. '), wait(1500),
     async (run) => run.emit({ kind: 'permission', id: `p-${Date.now()}`, tool: { kind: 'command', label: 'Bash', command: 'git push --force origin main' } }),
   ],
+  'perm-edit': [ask({ kind: 'file-edit', label: 'Edit', files: [{ path: '/repo/src/webview/components/permission-card.tsx', op: 'modify', edits: [{ before: 'border-2 border-destructive', after: 'border border-attention/60' }] }] })],
+  'perm-mcp': [ask({ kind: 'mcp', label: 'github', server: 'github', tool: 'create_pull_request', input: { owner: 'acme', repo: 'app', title: 'Fix header', base: 'main' } })],
+  'perm-meta': [ask(
+    { kind: 'command', label: 'Bash', command: 'rm -rf node_modules dist out .vscode-test && yarn install --frozen-lockfile && yarn run compile && yarn test:unit && yarn test:dom && git status --short' },
+    { title: 'Run a destructive shell command', description: 'Deletes build output, then reinstalls.', decisionReason: 'Command matches a protected pattern (rm -rf)', blockedPath: '/repo/node_modules' },
+  )],
+  'perm-plan': [ask({ kind: 'plan', label: 'ExitPlanMode', text: '## Plan\n\n1. Add a pinned activity line\n2. Move it above the composer\n3. Add tests' })],
+  question: [async (run) => run.emit({
+    kind: 'question', id: `q-${Date.now()}`, blocking: true,
+    questions: [{ id: 'q1', header: 'Layout', question: 'Where should the activity line live?', multiSelect: false, allowOther: true,
+      options: [{ label: 'Above the composer', description: 'Pinned, never shifts the transcript' }, { label: 'In the header', description: 'No row at all' }] }],
+  })],
   error: [think('Starting. '), wait(1500), end('error', 'Provider process exited unexpectedly (code 1)')],
 };
 
 function runScenario(prompt: string, run: FakeRun): void {
-  const name = /scenario:(\w+)/.exec(prompt)?.[1];
+  const name = /scenario:([\w-]+)/.exec(prompt)?.[1];
   const steps = name ? SCENARIOS[name] : undefined;
   if (!steps) { run.emit({ kind: 'text', delta: 'ok' }); run.emit({ kind: 'turn-end', reason: 'done' }); return; }
   void (async () => { for (const step of steps) { await step(run); } })();

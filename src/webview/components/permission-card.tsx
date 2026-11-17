@@ -1,8 +1,10 @@
 import { useState } from 'react';
+import { ListChecksIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useStore } from '../store';
 import { folderName } from '../format';
 import type { PermissionMeta, SessionId, TranscriptItem } from '../../protocol/messages';
+import { Markdown } from './markdown';
 import { ToolBody } from './tool-body';
 import { describeInput } from './tool-render';
 import { TranscriptItemShell } from './transcript-item-shell';
@@ -77,7 +79,9 @@ export function PermissionCard({
           <summary className="cursor-default text-muted-foreground">What was requested</summary>
           <div className="mt-1">
             <PermissionMetaDetail meta={item.meta} />
-            <ToolBody blocks={request} />
+            {tool.kind === 'plan'
+              ? <div className="max-h-64 overflow-y-auto rounded border border-border px-2.5 py-1.5"><Markdown>{tool.text}</Markdown></div>
+              : <ToolBody blocks={request} />}
           </div>
         </details>
       </TranscriptItemShell>
@@ -132,18 +136,19 @@ export function PermissionCard({
 
   if (tool.kind === 'plan') {
     return (
-      <div className="my-0 rounded border border-border bg-muted/20 p-2 text-xs">
-        <div className="mb-1 flex items-baseline gap-2">
+      <div className="my-0 flex flex-col gap-2 rounded border border-border bg-muted/20 p-2 text-xs">
+        <div className="flex items-center gap-2">
+          <ListChecksIcon aria-hidden className="size-4 shrink-0 text-primary" />
           <span className="font-medium">Plan ready</span>
           <span className="truncate text-muted-foreground" title={cwd}>{folderName(cwd)}</span>
         </div>
-        <div className="mb-2 flex flex-col gap-1.5">
-          <p>Review the plan before implementation begins.</p>
-          <p className="text-muted-foreground">
-            Starting implementation will leave read-only Plan mode and allow file changes.
-          </p>
-          <ToolBody blocks={request} />
+        {tool.path && <ToolBody blocks={[{ kind: 'path', path: tool.path, hint: 'Markdown plan' }]} />}
+        <div className="max-h-64 overflow-y-auto rounded border border-border bg-background px-2.5 py-1.5">
+          <Markdown>{tool.text}</Markdown>
         </div>
+        <p className="text-muted-foreground">
+          Starting implementation will leave read-only Plan mode and allow file changes.
+        </p>
         <div className="flex gap-2">
           <Button
             variant="outline"

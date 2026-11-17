@@ -92,6 +92,21 @@ function withoutLeadingCd(command: string): string {
   return stripped.length > 0 ? stripped : command;
 }
 
+const MAX_MCP_ARGS = 8;
+const MAX_MCP_VALUE = 240;
+
+/** What an MCP call is being asked to do: the arguments themselves, so an approval is made on the real values. */
+function mcpArguments(input: Record<string, unknown> | undefined): ToolBlock[] {
+  if (!input) { return []; }
+  const entries = Object.entries(input);
+  const shown = entries.slice(0, MAX_MCP_ARGS).map(([label, value]): ToolBlock => {
+    const text = typeof value === 'string' ? value : (JSON.stringify(value) ?? String(value));
+    return { kind: 'field', label, value: text.length > MAX_MCP_VALUE ? `${text.slice(0, MAX_MCP_VALUE)}…` : text };
+  });
+  if (entries.length > MAX_MCP_ARGS) { shown.push({ kind: 'note', text: `${entries.length - MAX_MCP_ARGS} more arguments` }); }
+  return shown;
+}
+
 /** `full` is only worth carrying when the header will actually truncate. */
 function header(glyph: ToolGlyph, verb: string, primary: string, mono: boolean): ToolHeader {
   return { glyph, verb, mono, primary, ...(primary.length > 40 ? { full: primary } : {}) };
@@ -319,6 +334,7 @@ export function describeInput(tool: ToolCall): ToolBlock[] {
       }
       if (tool.server) { blocks.push({ kind: 'field', label: 'server', value: tool.server }); }
       if (tool.tool) { blocks.push({ kind: 'field', label: 'tool', value: tool.tool }); }
+      blocks.push(...mcpArguments(tool.input));
       break;
 
     case 'other': {

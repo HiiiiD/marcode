@@ -323,6 +323,18 @@ suite('describeInput', () => {
     ]);
   });
 
+  test('an mcp call lists its arguments, long values clipped and extras counted', () => {
+    const input: Record<string, unknown> = { owner: 'acme', title: 'x'.repeat(300), labels: ['a', 'b'] };
+    for (let i = 0; i < 7; i += 1) { input[`k${i}`] = i; }
+    const blocks = describeInput({ kind: 'mcp', label: 'create_pr', server: 'github', tool: 'create_pr', input });
+    assert.deepStrictEqual(blocks.slice(2, 5), [
+      { kind: 'field', label: 'owner', value: 'acme' },
+      { kind: 'field', label: 'title', value: `${'x'.repeat(240)}…` },
+      { kind: 'field', label: 'labels', value: '["a","b"]' },
+    ]);
+    assert.deepStrictEqual(blocks.at(-1), { kind: 'note', text: '2 more arguments' });
+  });
+
   test('marcode__send_message surfaces the message text as a note, not server/tool fields', () => {
     const blocks = describeInput({
       kind: 'mcp', label: 'marcode__send_message', server: 'marcode-self-control',
