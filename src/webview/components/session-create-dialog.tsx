@@ -153,8 +153,9 @@ function CreateForm({
 
   return (
     <>
-      <div className="-mx-4 flex min-h-0 flex-1 flex-col gap-3 overflow-x-hidden overflow-y-auto px-4">
-        <RecentCombos sessions={state.sessions} catalog={catalog} onPick={applyCombo} />
+      {/* A floor on the body so the dialog does not jump in height (and re-centre) as the steps change. */}
+      <div className="-mx-4 flex min-h-[min(55vh,26rem)] flex-1 flex-col gap-3 overflow-x-hidden overflow-y-auto px-4">
+        {step === 0 && <RecentCombos sessions={state.sessions} catalog={catalog} onPick={applyCombo} />}
 
         <ol aria-label="Steps" className="flex gap-1">
           {STEPS.map((label, i) => (
@@ -193,8 +194,8 @@ function CreateForm({
       <DialogFooter className="shrink-0 flex-row items-center justify-end">
         <DialogClose render={<Button variant="outline" size="sm" className="mr-auto" />}>Cancel</DialogClose>
         {step > 0 && <Button variant="outline" size="sm" onClick={() => setStep(step - 1)}>Back</Button>}
-        {step < STEPS.length - 1 && <Button variant="outline" size="sm" onClick={() => setStep(step + 1)}>Next</Button>}
-        <Button size="sm" disabled={!canCreate} onClick={create}>
+        {step < STEPS.length - 1 && <Button size="sm" onClick={() => setStep(step + 1)}>Next</Button>}
+        <Button size="sm" variant={step < STEPS.length - 1 ? "outline" : "default"} disabled={!canCreate} onClick={create}>
           {busy ? (
             <>
               <LoaderCircle className="animate-spin" aria-hidden />

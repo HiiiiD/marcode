@@ -62,7 +62,7 @@ suite('PermissionCard', () => {
     assert.strictEqual((screen.getByLabelText('Deny Write (unavailable)') as HTMLButtonElement).disabled, true);
   });
 
-  test('a resolved item keeps the diff available under a details disclosure', () => {
+  test('a resolved item keeps the diff available under a collapsible row', () => {
     const item = permission({ state: 'denied', reason: 'nope' });
     renderWithStore(<PermissionCard item={item} sessionId="a" />);
     hydrateWith(LIVE);
@@ -70,7 +70,7 @@ suite('PermissionCard', () => {
     screen.getByText('denied');
     screen.getByText('nope');
     assert.strictEqual(screen.queryByLabelText('Allow Write') === null, true);
-    assert.strictEqual(document.querySelector('details') === null, false);
+    assert.strictEqual(document.querySelector('[data-slot="trace-collapsible"]') === null, false);
   });
 
   test('an edit-shaped input renders a diff preview', () => {
@@ -132,7 +132,7 @@ suite('PermissionCard', () => {
   test('a settled approval reads as a sentence about what happened', () => {
     const plan: ToolCall = { kind: 'plan', label: 'ExitPlanMode', text: '# Feed' };
     renderWithStore(<PermissionCard item={permission({ tool: plan, state: 'allowed' })} sessionId="a" />);
-    screen.getByText('approved · implementation started');
+    screen.getByText('Feed · implementation started');
     assert.strictEqual(screen.queryByText(/ExitPlanMode/i) === null, true);
   });
 

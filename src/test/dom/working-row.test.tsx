@@ -94,7 +94,7 @@ suite('WorkingRow', () => {
     renderApp();
     hydrate('running', [{ ...ASKED, ts: secondsAgo(125) }]);
 
-    screen.getByText('quiet 2:05');
+    screen.getByText('no activity 2:05');
   });
 
   test('a session awaiting approval shows no activity line — the approval card and status already say so', () => {

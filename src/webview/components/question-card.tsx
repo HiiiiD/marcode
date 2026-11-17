@@ -239,7 +239,7 @@ export function QuestionCard({
           is an answer is required, a plain border is an optional offer
           (relocation) — which is exactly what this card wore before, so a
           frozen composer looked like an invitation. */}
-      <div className="my-0 rounded border-2 border-primary/40 bg-primary/10 p-2 text-xs">
+      <div className="my-0 rounded border border-attention/60 bg-attention/10 p-2 text-xs">
         {stepped && (
           // Mounted for the life of the card and only its text changes — the
           // same shape as StatusBadge's live region, and the reason it is not

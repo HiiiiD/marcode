@@ -11,6 +11,7 @@ import { COMPACT_BELOW_WIDTH_PX, STRIP_BELOW_PX, STRIP_BELOW_WIDTH_PX, PaneDensi
 import { PinnedShell } from "./pinned-shell";
 import { PinnedPrompts } from "./pinned-prompts";
 import { SessionHeader } from "./session-header";
+import { PaneRail } from "./pane-rail";
 import { WorkingRow } from "./working-row";
 import { SideChatBar } from "./side-chat-bar";
 import { SubagentDrillInContext } from "./subagent-drill-in-context";
@@ -48,8 +49,10 @@ export function PaneContent({ sessionId, accessibleTitle }: PaneContentProps) {
       const { height: h, width: w } = entry.contentRect;
       // Dead band so a pane sitting on a threshold does not flip layouts while a header or composer resizes it.
       setDensity((d) => {
-        if (h < STRIP_BELOW_PX || w < STRIP_BELOW_WIDTH_PX) { return 'strip'; }
-        if (d === 'strip' && (h < STRIP_BELOW_PX + 30 || w < STRIP_BELOW_WIDTH_PX + 30)) { return 'strip'; }
+        if (w < STRIP_BELOW_WIDTH_PX) { return 'rail'; }
+        if (d === 'rail' && w < STRIP_BELOW_WIDTH_PX + 30) { return 'rail'; }
+        if (h < STRIP_BELOW_PX) { return 'strip'; }
+        if (d === 'strip' && h < STRIP_BELOW_PX + 30) { return 'strip'; }
         if (w < COMPACT_BELOW_WIDTH_PX) { return 'compact'; }
         return w > COMPACT_BELOW_WIDTH_PX + 40 ? 'comfortable' : d;
       });
@@ -86,8 +89,8 @@ export function PaneContent({ sessionId, accessibleTitle }: PaneContentProps) {
           }
         }}
       >
-        <SessionHeader pane={paneState} accessibleTitle={accessibleTitle} />
-        {density !== "strip" && (<>
+        {density === "rail" ? <PaneRail pane={paneState} /> : <SessionHeader pane={paneState} accessibleTitle={accessibleTitle} />}
+        {density !== "strip" && density !== "rail" && (<>
         <SideChatBar sessionId={sessionId} />
         <ChildrenList sessionId={sessionId} />
         <SubagentDrillInContext.Provider

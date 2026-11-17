@@ -43,11 +43,13 @@ const CHIP: Record<StatusView['tone'], string> = {
  * something to announce. A caller that always wants the chip (session-header)
  * leaves this off.
  */
-export function StatusBadge({ status, hideIdle, quietIdle }: {
+export function StatusBadge({ status, hideIdle, quietIdle, compact }: {
   status: SessionStatus;
   hideIdle?: boolean;
   /** Idle keeps its dot but drops the word, which is noise on every quiet pane; assistive tech still hears it. */
   quietIdle?: boolean;
+  /** Just the dot, the word kept for assistive tech: a rail has no room for it. */
+  compact?: boolean;
 }) {
   const view = statusView(status);
   if (hideIdle && status === 'idle') {
@@ -66,7 +68,7 @@ export function StatusBadge({ status, hideIdle, quietIdle }: {
       )}
     >
       <span className={cn('size-2 rounded-full', DOT[view.tone])} aria-hidden />
-      {quietIdle && status === 'idle' ? <span className="sr-only">{view.label}</span> : view.label}
+      {(quietIdle && status === 'idle') || compact ? <span className="sr-only">{view.label}</span> : view.label}
     </span>
   );
 }

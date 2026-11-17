@@ -1,5 +1,13 @@
 import type { ToolCall } from '../../providers/canonical/tool-call';
 
+/** What a plan is about: its first line of real content, minus Markdown markers and a bare "Plan" heading. */
+export function planTitle(text: string): string {
+  const line = text.split('\n')
+    .map((l) => l.replace(/^[#>\-*\d.\s]+/, '').trim())
+    .find((l) => l !== '' && !/^plan$/i.test(l));
+  return line ?? '';
+}
+
 const baseName = (path: string) => path.split(/[\\/]/).filter(Boolean).pop() ?? path;
 
 function editTarget(tool: Extract<ToolCall, { kind: 'file-edit' }>): string {
