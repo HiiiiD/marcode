@@ -806,6 +806,8 @@ export type WebviewToHost =
    * trusted-domain prompt to what survives.
    */
   | { t: 'open-external'; url: string }
+  /** A plan awaiting approval, opened in the editor the moment it arrives; `path` is the plan file when the agent wrote one. */
+  | { t: 'open-plan'; text: string; path?: string }
   /**
    * A markdown table's cells, already CSV-formatted, for the host to save to
    * disk. Not session-addressed — the table exists in rendered transcript

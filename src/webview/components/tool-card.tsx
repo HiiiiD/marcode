@@ -16,7 +16,7 @@ import { describeInput, describeOutput, describeTool, type ToolGlyph } from './t
 
 type ToolItem = Extract<TranscriptItem, { role: 'tool' }>;
 
-const GLYPHS: Record<ToolGlyph, typeof TerminalIcon> = {
+export const GLYPHS: Record<ToolGlyph, typeof TerminalIcon> = {
   'terminal': TerminalIcon,
   'file-pen': FilePenIcon,
   'file-plus': FilePlusIcon,

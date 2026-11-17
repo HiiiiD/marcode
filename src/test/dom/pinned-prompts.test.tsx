@@ -33,7 +33,7 @@ suite('Pinned prompts', () => {
       patch: { op: 'replace', item: { ...item, state: 'allowed' } },
     });
     assert.strictEqual(screen.queryByRole('region', { name: 'Pending prompts' }) === null, true);
-    screen.getByText('Edited a.txt');
+    screen.getByText('Write');
   });
 
   test('keeps question selections when navigating past a subagent permission', async () => {

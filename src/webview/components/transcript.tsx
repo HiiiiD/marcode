@@ -21,6 +21,9 @@ export function Transcript({
   const nested = useMemo(() => splitNestedMessages(pane.items), [pane.items]);
   const first = pane.items[0];
   const idle = pane.summary.status === 'idle';
+  // A message still taking deltas is not shown: text arriving word by word jitters the column, so it appears whole once the turn moves past it. The activity line says "Writing…" meanwhile.
+  const last = pane.items[pane.items.length - 1];
+  const streamingId = pane.summary.status === 'running' && last?.role === 'assistant' && last.text.trim() ? last.id : undefined;
 
   // `load-more` is a stateless lookup keyed on beforeItemId, not a consumed
   // cursor — two rapid clicks before the first session-prepend lands would
@@ -63,7 +66,9 @@ export function Transcript({
                 Load earlier messages
               </Button>
             )}
-            {groupSubagents(nested.main.filter((item) => !isLivePrompt(item, pane))).map((entry) => entry.kind === 'group' ? (
+            {groupSubagents(nested.main
+              .filter((item) => !isLivePrompt(item, pane) && !(item.id === streamingId && item.role === 'assistant' && !item.thinking))
+              .map((item) => (item.id === streamingId && item.role === 'assistant' ? { ...item, text: '' } : item))).map((entry) => entry.kind === 'group' ? (
               <MessageScrollerItem key={entry.id} messageId={entry.id}>
                 <SubagentGroupCard items={entry.items} sessionId={pane.summary.id} />
               </MessageScrollerItem>

@@ -90,7 +90,8 @@ export function ModeMenu({
         }
       >
         <mode.icon className={cn(!bypassing && "text-muted-foreground")} />
-        <span className="truncate">{mode.label}</span>
+        {/* Icon only in a small container; the title and menu still name the mode. */}
+        <span className={cn("truncate", !bypassing && "hidden @[24rem]:inline")}>{mode.label}</span>
       </DropdownMenuTrigger>
       {/* The popup defaults to the trigger's width, and this trigger is two
           words wide — the descriptions need the room the pane has instead,

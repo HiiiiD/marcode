@@ -253,8 +253,9 @@ function Lines({ lines, diff }: { lines: string[]; diff: boolean }) {
         <div
           key={i}
           className={cn(
-            diff && line.startsWith('+') && 'text-(--vscode-gitDecoration-addedResourceForeground)',
-            diff && line.startsWith('-') && 'text-(--vscode-gitDecoration-deletedResourceForeground)',
+            // The named tokens, which carry VS Code's always-registered chart colours as a fallback; the raw gitDecoration variables vanish on a theme or install that leaves them unset.
+            diff && line.startsWith('+') && '-mx-1.5 bg-git-added/15 px-1.5 text-git-added',
+            diff && line.startsWith('-') && '-mx-1.5 bg-git-deleted/15 px-1.5 text-git-deleted',
           )}
         >
           {line === '' ? ' ' : line}

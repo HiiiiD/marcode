@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import {
-  exportCsv, exportImage, openExternal, openFileDiff, openLoginTerminal, revealFile,
+  exportCsv, exportImage, openExternal, openPlan, openFileDiff, openLoginTerminal, revealFile,
 } from './editor-actions';
 import type { HookSet } from './act-adapter';
 import type { AttachmentHost, ConfigHost, EditorContextHost, FileSearch, UpdateNotifyHost } from './message-router';
@@ -32,6 +32,7 @@ export function createVscodeHooks(deps: VscodeHooksDeps): HookSet & { updateNoti
       }
     },
     openExternal: (url) => { void openExternal(url); },
+    openPlan: (text, planPath) => { void openPlan(text, planPath); },
     exportCsv: (csv) => { void exportCsv(csv); },
     exportImage: (dataUri) => { void exportImage(dataUri); },
     login: (providerId) => {

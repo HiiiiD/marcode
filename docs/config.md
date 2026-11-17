@@ -26,6 +26,12 @@ Path to the Codex CLI. Leave empty to use `codex` from PATH.
 
 Default: `""`
 
+## `planEditor`
+
+Terminal client only. The command a plan awaiting approval is opened with, given the plan file as its last argument (for example `code -r` or `nvim`). Empty means the plan stays in the approval card. In VS Code the plan always opens in an editor tab beside the panel, so this key is not read there.
+
+Default: `""`
+
 ## `opencode.path`
 
 Path to the opencode binary. Empty means use opencode from PATH.

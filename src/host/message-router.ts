@@ -74,6 +74,8 @@ export interface EditorContextHost {
    * needs `vscode.env`, which this module must not import.
    */
   openExternal(url: string): void;
+  /** Opens an approval-pending plan in the editor: the agent's plan file when it has one, else the text as a Markdown document. */
+  openPlan?(text: string, path?: string): void;
   /**
    * Saves `csv` to a file the user picks. Here for the same reason
    * `openDiff` is — it needs `vscode.window.showSaveDialog`, which this
@@ -602,6 +604,10 @@ export class MessageRouter {
         this.editor.openExternal(msg.url);
         return;
 
+      case 'open-plan':
+        this.editor.openPlan?.(msg.text, msg.path);
+        return;
+
       case 'export-table-csv':
         this.editor.exportCsv(msg.csv);
         return;
@@ -844,7 +850,7 @@ const KNOWN_MESSAGE_TAGS = new Set<WebviewToHost['t']>([
   'expand-sidebar', 'set-viewport', 'open-fleet-subagent',
   'focus-session', 'focus-pane', 'promote-subagent', 'set-pinned', 'set-draft', 'request-history-summaries', 'open-history',
   'memory-estimate', 'request-memory-status', 'memory-reindex', 'memory-resummarize', 'memory-cancel',
-  'refresh-catalog', 'refresh-usage', 'open-settings', 'login-provider', 'open-external', 'export-table-csv',
+  'refresh-catalog', 'refresh-usage', 'open-settings', 'login-provider', 'open-external', 'open-plan', 'export-table-csv',
   'export-image',
   'file-search', 'set-favorite-models', 'run-shell', 'cancel-shell',
   'mcp-open', 'mcp-add', 'mcp-remove', 'mcp-reconnect', 'mcp-sign-in', 'restart-session',

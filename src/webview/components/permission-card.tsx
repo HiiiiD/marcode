@@ -1,13 +1,15 @@
 import { useState } from 'react';
-import { ListChecksIcon, TriangleAlertIcon } from 'lucide-react';
+import { CheckIcon, ListChecksIcon, TriangleAlertIcon, XIcon } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { useStore } from '../store';
 import { folderName } from '../format';
 import type { PermissionMeta, SessionId, TranscriptItem } from '../../protocol/messages';
-import { requestTitle, resolvedText } from '../lib/permission-copy';
+import { requestTitle } from '../lib/permission-copy';
 import { Markdown } from './markdown';
 import { ToolBody } from './tool-body';
-import { describeInput } from './tool-render';
+import { GLYPHS } from './tool-card';
+import { describeInput, describeTool } from './tool-render';
 import { TranscriptItemShell } from './transcript-item-shell';
 
 type PermissionItem = Extract<TranscriptItem, { role: 'permission' }>;
@@ -73,21 +75,34 @@ export function PermissionCard({
   const [answered, setAnswered] = useState(false);
 
   if (item.state !== 'pending') {
-    const label = resolvedText(tool, name, server, item.state);
+    const allowed = item.state === 'allowed';
+    // The same header the tool's own card will wear (Bash, PowerShell, Read, …), so the approval and the run read as one thing.
+    const header = tool.kind === 'plan'
+      ? { glyph: 'list-todo' as const, verb: 'Plan', primary: allowed ? 'approved · implementation started' : 'not approved · kept planning', mono: false }
+      : describeTool(tool);
+    const Glyph = GLYPHS[header.glyph];
     return (
-      // Only a refusal keeps the red rule; an approval is a plain record of what ran.
-      <TranscriptItemShell role={item.state === 'denied' ? 'permission' : 'tool'} label={label} ts={item.ts}>
-        {item.reason && <div className="text-xs text-muted-foreground">{item.reason}</div>}
-        <details className="text-xs">
-          <summary className="cursor-default text-muted-foreground">What was requested</summary>
-          <div className="mt-1">
-            <PermissionMetaDetail meta={item.meta} />
-            {tool.kind === 'plan'
-              ? <div className="max-h-64 overflow-y-auto rounded border border-border px-2.5 py-1.5"><Markdown>{tool.text}</Markdown></div>
-              : <ToolBody blocks={request} />}
-          </div>
-        </details>
-      </TranscriptItemShell>
+      <details className="group/item my-0 text-xs">
+        <summary className="flex cursor-default list-none items-center gap-1.5 rounded px-1 py-0.5 hover:bg-muted [&::-webkit-details-marker]:hidden">
+          <Glyph aria-hidden className="shrink-0" />
+          <span className="sr-only">{item.state}</span>
+          {server && <span className="shrink-0 rounded bg-muted px-1 text-muted-foreground">{server}</span>}
+          <span className="shrink-0 font-medium">{item.meta?.displayName ?? header.verb}</span>
+          {header.primary && (
+            <span className={cn('min-w-0 truncate text-muted-foreground', header.mono && 'font-mono')}>{header.primary}</span>
+          )}
+          {allowed
+            ? <CheckIcon aria-hidden className="ml-auto shrink-0 text-git-added" />
+            : <XIcon aria-hidden className="ml-auto shrink-0 text-destructive" />}
+        </summary>
+        <div className="mt-1 flex flex-col gap-1.5 pl-1">
+          {item.reason && <div className="text-xs text-muted-foreground">{item.reason}</div>}
+          <PermissionMetaDetail meta={item.meta} />
+          {tool.kind === 'plan'
+            ? <div className="max-h-64 overflow-y-auto border-l-2 border-border pl-2.5"><Markdown>{tool.text}</Markdown></div>
+            : <ToolBody blocks={request} />}
+        </div>
+      </details>
     );
   }
 

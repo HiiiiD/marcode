@@ -66,7 +66,8 @@ suite('PermissionCard', () => {
     const item = permission({ state: 'denied', reason: 'nope' });
     renderWithStore(<PermissionCard item={item} sessionId="a" />);
     hydrateWith(LIVE);
-    screen.getByText('Denied edit of a.txt');
+    screen.getByText('Write');
+    screen.getByText('denied');
     screen.getByText('nope');
     assert.strictEqual(screen.queryByLabelText('Allow Write') === null, true);
     assert.strictEqual(document.querySelector('details') === null, false);
@@ -121,10 +122,17 @@ suite('PermissionCard', () => {
     screen.getByText('Run this command?');
   });
 
+  test('a file read is titled by the file', () => {
+    const read: ToolCall = { kind: 'file-read', label: 'Read', path: '/home/user/.ssh/config' };
+    renderWithStore(<PermissionCard item={permission({ tool: read })} sessionId="a" />);
+    hydrateWith([{ requestId: 'r1', tool: read }]);
+    screen.getByText('Read config?');
+  });
+
   test('a settled approval reads as a sentence about what happened', () => {
     const plan: ToolCall = { kind: 'plan', label: 'ExitPlanMode', text: '# Feed' };
     renderWithStore(<PermissionCard item={permission({ tool: plan, state: 'allowed' })} sessionId="a" />);
-    screen.getByText('Plan approved · implementation started');
+    screen.getByText('approved · implementation started');
     assert.strictEqual(screen.queryByText(/ExitPlanMode/i) === null, true);
   });
 
@@ -183,7 +191,8 @@ suite('PermissionCard', () => {
       const item = permission({ state: 'allowed', meta: META });
       renderWithStore(<PermissionCard item={item} sessionId="a" />);
       hydrateWith([]);
-      screen.getByText('Edited a.txt');
+      screen.getByText('Write');
+      screen.getByText('allowed');
       screen.getByText('Claude wants to write a.txt');
     });
   });

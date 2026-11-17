@@ -51,6 +51,14 @@ suite('WorkingRow', () => {
     hydrate('running', [ASKED, { id: 'a1', ts: secondsAgo(1), role: 'assistant', text: 'Look' }]);
 
     screen.getByText('Writing…');
+    assert.strictEqual(screen.queryByText('Look'), null);
+  });
+
+  test('assistant text appears whole once the turn is over', () => {
+    renderApp();
+    hydrate('idle', [ASKED, { id: 'a1', ts: secondsAgo(1), role: 'assistant', text: 'Look' }]);
+
+    screen.getByText('Look');
   });
 
   test('a thinking-only assistant item reads as Thinking', () => {
@@ -81,12 +89,12 @@ suite('WorkingRow', () => {
     screen.getByText('quiet 2:05');
   });
 
-  test('a session awaiting approval says it is waiting on the user, not working', () => {
+  test('a session awaiting approval shows no activity line — the approval card and status already say so', () => {
     renderApp();
     hydrate('awaiting-approval', [ASKED]);
 
-    screen.getByText('Waiting for you');
     assert.strictEqual(screen.queryByText('Working…'), null);
+    assert.strictEqual(screen.queryByText('Waiting for you'), null);
   });
 
   test('the elapsed count is not announced, so it cannot chatter once a second', () => {

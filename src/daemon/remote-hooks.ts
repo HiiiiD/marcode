@@ -16,6 +16,7 @@ export function createRemoteHooks(io: HookIo) {
     openDiff: (root, path, base) => io.act('openDiff', [root, path, base]),
     openSettings: (section) => io.act('openSettings', [section]),
     openExternal: (url) => io.act('openExternal', [url]),
+    openPlan: (text, path) => io.act('openPlan', [text, path]),
     exportCsv: (csv) => io.act('exportCsv', [csv]),
     exportImage: (uri) => io.act('exportImage', [uri]),
     login: (providerId) => io.act('login', [providerId]),

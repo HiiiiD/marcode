@@ -91,6 +91,7 @@ function describeInbound(m: WebviewToHost): string {
     case 'memory-cancel': return 'memory-cancel';
     case 'run-shell': return 'run-shell';
     case 'cancel-shell': return 'cancel-shell';
+    case 'open-plan': return 'open-plan';
     default: return assertNever(m);
   }
 }

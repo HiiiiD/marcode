@@ -34,6 +34,25 @@ export async function revealFile(target: string, startLine?: number): Promise<vo
 }
 
 /**
+ * Opens a plan awaiting approval beside the panel: the plan file the agent
+ * wrote when there is one, else the plan text as an unsaved Markdown
+ * document. Focus stays where the user was, so a plan arriving mid-sentence
+ * does not swallow their typing.
+ */
+export async function openPlan(text: string, planPath?: string): Promise<void> {
+  try {
+    const uri = planPath && path.isAbsolute(planPath) ? vscode.Uri.file(planPath) : undefined;
+    const doc = uri
+      ? await vscode.workspace.openTextDocument(uri)
+      : await vscode.workspace.openTextDocument({ language: 'markdown', content: text });
+    await vscode.window.showTextDocument(doc, { preview: false, preserveFocus: true, viewColumn: vscode.ViewColumn.Beside });
+    if (!uri) { await vscode.commands.executeCommand('markdown.showPreviewToSide'); }
+  } catch (err) {
+    console.error('[mar-code] could not open the plan', err);
+  }
+}
+
+/**
  * Opens one file's change in VS Code's own diff editor.
  *
  * The panel lists; VS Code renders. A side-by-side, syntax-highlit,

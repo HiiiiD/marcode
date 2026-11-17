@@ -2,7 +2,7 @@
 // bridged to the browser over HTTP + server-sent events, so the real webview bundle can be watched mid-turn.
 //   npx tsx scripts/ui-harness/live-bridge.ts [port]      then open http://127.0.0.1:4175/live?theme=dark
 // Everything lives in a throwaway MARCODE_HOME; no real session or account is touched.
-// Put `scenario:<name>` in a prompt: slow | quiet | permission | perm-edit | perm-mcp | perm-meta | perm-plan | question | error (anything else answers "ok").
+// Put `scenario:<name>` in a prompt: slow | quiet | permission | perm-read | perm-edit | perm-mcp | perm-meta | perm-plan | question | error (anything else answers "ok").
 import { createServer } from 'node:http';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -45,6 +45,7 @@ const SCENARIOS: Record<string, Step[]> = {
     async (run) => run.emit({ kind: 'permission', id: `p-${Date.now()}`, tool: { kind: 'command', label: 'Bash', command: 'git push --force origin main' } }),
   ],
   'perm-edit': [ask({ kind: 'file-edit', label: 'Edit', files: [{ path: '/repo/src/webview/components/permission-card.tsx', op: 'modify', edits: [{ before: 'border-2 border-destructive', after: 'border border-attention/60' }] }] })],
+  'perm-read': [ask({ kind: 'file-read', label: 'Read', path: '/home/user/.ssh/config' })],
   'perm-mcp': [ask({ kind: 'mcp', label: 'github', server: 'github', tool: 'create_pull_request', input: { owner: 'acme', repo: 'app', title: 'Fix header', base: 'main' } })],
   'perm-meta': [ask(
     { kind: 'command', label: 'Bash', command: 'rm -rf node_modules dist out .vscode-test && yarn install --frozen-lockfile && yarn run compile && yarn test:unit && yarn test:dom && git status --short' },
