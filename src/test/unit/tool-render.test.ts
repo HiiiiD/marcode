@@ -197,7 +197,7 @@ suite('describeInput', () => {
       files: [{ path: '/a.ts', op: 'modify', edits: [{ before: 'foo', after: 'bar' }] }],
     });
     assert.deepStrictEqual(blocks, [
-      { kind: 'path', path: '/a.ts' },
+      { kind: 'path', path: '/a.ts', hint: '+1 −1' },
       { kind: 'diff', lines: ['-foo', '+bar'] },
     ]);
   });
@@ -211,7 +211,7 @@ suite('describeInput', () => {
       }],
     });
     assert.deepStrictEqual(blocks, [
-      { kind: 'path', path: '/a.ts' },
+      { kind: 'path', path: '/a.ts', hint: '+1 −1' },
       { kind: 'diff', lines: ['-old', '+new'], unified: '--- a/a.ts\n+++ b/a.ts\n@@ -1 +1 @@\n-old\n+new' },
     ]);
   });
@@ -249,7 +249,7 @@ suite('describeInput', () => {
       }],
     });
     assert.deepStrictEqual(blocks, [
-      { kind: 'path', path: '/s.css' },
+      { kind: 'path', path: '/s.css', hint: '+1 −1' },
       {
         kind: 'diff', lines: ['--color-primary: red;', '++counter: 1;'],
         unified: '--- a/s.css\n+++ b/s.css\n@@ -1,2 +1,2 @@\n--color-primary: red;\n++counter: 1;',
@@ -266,7 +266,7 @@ suite('describeInput', () => {
       }],
     });
     assert.deepStrictEqual(blocks, [
-      { kind: 'path', path: '/a.ts' },
+      { kind: 'path', path: '/a.ts', hint: '+2 −2' },
       {
         kind: 'diff', lines: ['-old1', '+new1', '-old2', '+new2'],
         unified: '--- a/a.ts\n+++ b/a.ts\n@@ -1 +1 @@\n-old1\n+new1\n@@ -10 +10 @@\n-old2\n+new2',

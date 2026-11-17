@@ -197,6 +197,7 @@ export function describeTool(tool: ToolCall): ToolHeader {
 
 function editBlocks(file: FileEdit): ToolBlock[] {
   const blocks: ToolBlock[] = [{ kind: 'path', path: file.path }];
+  const pathBlock = blocks[0] as Extract<ToolBlock, { kind: 'path' }>;
   // A `create` is what the glyph already says (file-plus), and `modify` is
   // the assumed default everywhere else in this card — but a `delete` with
   // no diff body left renders as a pen glyph over an empty box, visually
@@ -216,6 +217,9 @@ function editBlocks(file: FileEdit): ToolBlock[] {
   // stripping them; an empty diff block is an empty bordered box.
   // Only a lone, hunk-bearing patch can be handed to a real diff renderer; mixed sources have no single patch.
   const unified = !file.edits?.length && file.unifiedDiff && /^@@/m.test(file.unifiedDiff) ? file.unifiedDiff : undefined;
+  const added = lines.filter((line) => line.startsWith('+')).length;
+  const removed = lines.filter((line) => line.startsWith('-')).length;
+  if (added + removed > 0) { pathBlock.hint = `+${added} −${removed}`; }
   if (lines.length > 0) { blocks.push(unified === undefined ? { kind: 'diff', lines } : { kind: 'diff', lines, unified }); }
   if (file.replaceAll) {
     blocks.push({ kind: 'field', label: 'scope', value: 'all occurrences' });
