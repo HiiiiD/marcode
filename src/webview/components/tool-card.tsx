@@ -69,7 +69,7 @@ export function ToolCard({
     // actions trigger sits beside its checkbox item to avoid, not inside it.
     <TraceCollapsible bare open={open} onOpenChange={setOpen} className="group/item my-0">
       <div className="flex items-center">
-        <TraceCollapsibleTrigger>
+        <TraceCollapsibleTrigger className="h-6 px-0 text-xs text-muted-foreground hover:bg-transparent hover:text-foreground">
           <Glyph
             aria-hidden
             className={cn(
@@ -87,7 +87,7 @@ export function ToolCard({
               {server}
             </span>
           )}
-          <span className="shrink-0 font-medium">{header.verb}</span>
+          <span className="shrink-0 font-medium text-foreground/80">{header.verb}</span>
           {header.primary && (
             <span
               className={cn('min-w-0 truncate text-muted-foreground', header.mono && 'font-mono')}

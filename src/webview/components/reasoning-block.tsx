@@ -47,7 +47,7 @@ export function ReasoningBlock({ text }: { text: string }) {
           <Button
             variant="ghost"
             size="sm"
-            className="flex w-full items-center justify-start gap-1.5 px-1 font-normal"
+            className="flex h-6 w-full items-center justify-start gap-1.5 px-0 font-normal text-muted-foreground hover:bg-transparent hover:text-foreground"
           />
         }
       >
@@ -55,8 +55,8 @@ export function ReasoningBlock({ text }: { text: string }) {
           aria-hidden
           className={cn('shrink-0 text-muted-foreground transition-transform duration-200', open && 'rotate-90')}
         />
-        <span className="shrink-0 font-medium">Reasoning</span>
-        <span className="min-w-0 truncate text-muted-foreground italic">
+        <span className="shrink-0">Reasoning</span>
+        <span className="min-w-0 truncate text-muted-foreground/70 italic">
           <InlineMarkdown>{preview(text)}</InlineMarkdown>
         </span>
       </CollapsibleTrigger>
