@@ -102,7 +102,7 @@ export function PaneContent({ sessionId, accessibleTitle }: PaneContentProps) {
         </SubagentDrillInContext.Provider>
         <PinnedPrompts pane={paneState} sessionId={sessionId} />
         <PinnedShell pane={paneState} sessionId={sessionId} />
-        {paneState.summary.status === "running" && <WorkingRow pane={paneState} />}
+        {(paneState.summary.status === "running" || paneState.summary.status === "awaiting-approval") && <WorkingRow pane={paneState} />}
         <Composer
           pane={paneState}
           model={model}

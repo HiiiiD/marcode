@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { AsteriskIcon } from 'lucide-react';
+import { AsteriskIcon, HandIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { describeTool } from '../../client-core/tool-render';
 import type { PaneState } from '../reducer';
@@ -70,24 +70,37 @@ export function WorkingRow({ pane }: { pane: PaneState }) {
     edits > 0 ? plural(edits, 'edit') : null,
   ].filter(Boolean).join(' · ');
 
+  const waiting = pane.summary.status === 'awaiting-approval';
+
   return (
     <div className="@container flex min-h-7 shrink-0 items-center gap-2 px-3 text-xs text-muted-foreground">
-      <AsteriskIcon aria-hidden className="size-3.5 shrink-0 text-primary motion-safe:animate-[spin_3s_linear_infinite]" />
+      {waiting ? (
+        <HandIcon aria-hidden className="size-4 shrink-0 text-attention" />
+      ) : (
+        <AsteriskIcon aria-hidden className="size-4 shrink-0 text-primary motion-safe:animate-[spin_3s_linear_infinite]" />
+      )}
       <span
-        title={step}
+        title={waiting ? 'Waiting for you' : step}
         className={cn(
-          'min-w-0 flex-1 truncate font-medium',
-          'bg-[linear-gradient(90deg,var(--muted-foreground)_0%,var(--foreground)_50%,var(--muted-foreground)_100%)] bg-[length:200%_100%] bg-clip-text text-transparent',
-          'motion-safe:animate-working-shimmer motion-reduce:bg-none motion-reduce:text-muted-foreground',
+          'min-w-0 truncate font-medium',
+          waiting
+            ? 'text-foreground'
+            : [
+              'bg-[linear-gradient(90deg,color-mix(in_oklch,var(--foreground)_65%,transparent)_0%,var(--foreground)_50%,color-mix(in_oklch,var(--foreground)_65%,transparent)_100%)] bg-[length:200%_100%] bg-clip-text text-transparent',
+              'motion-safe:animate-working-shimmer motion-reduce:bg-none motion-reduce:text-foreground',
+            ],
         )}
       >
-        {step}
+        {waiting ? 'Waiting for you' : step}
       </span>
-      {quiet > QUIET_AFTER_MS && (
+      {!waiting && quiet > QUIET_AFTER_MS && (
         <span aria-hidden className="shrink-0 tabular-nums text-attention">quiet {clock(quiet)}</span>
       )}
       <span aria-hidden className="shrink-0 tabular-nums">{meta}</span>
-      <span aria-hidden className="hidden shrink-0 opacity-70 @[26rem]:inline">esc to stop</span>
+      <span aria-hidden className="ml-auto shrink-0 opacity-70">
+        <span className="@[26rem]:hidden">esc</span>
+        <span className="hidden @[26rem]:inline">esc to stop</span>
+      </span>
     </div>
   );
 }

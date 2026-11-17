@@ -81,10 +81,11 @@ suite('WorkingRow', () => {
     screen.getByText('quiet 2:05');
   });
 
-  test('a session awaiting approval shows no activity line — it is blocked on the user', () => {
+  test('a session awaiting approval says it is waiting on the user, not working', () => {
     renderApp();
     hydrate('awaiting-approval', [ASKED]);
 
+    screen.getByText('Waiting for you');
     assert.strictEqual(screen.queryByText('Working…'), null);
   });
 
