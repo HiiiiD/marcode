@@ -1,16 +1,14 @@
 import { useState } from 'react';
-import { CheckIcon, ListChecksIcon, TriangleAlertIcon, XIcon } from 'lucide-react';
-import { TraceCollapsible, TraceCollapsibleContent, TraceCollapsibleTrigger } from '@/components/ui/trace';
-import { cn } from '@/lib/utils';
+import { ListChecksIcon, TriangleAlertIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useStore } from '../store';
 import { folderName } from '../format';
 import type { PermissionMeta, SessionId, TranscriptItem } from '../../protocol/messages';
-import { planTitle, requestTitle } from '../lib/permission-copy';
+import { requestTitle } from '../lib/permission-copy';
 import { Markdown } from './markdown';
 import { ToolBody } from './tool-body';
-import { GLYPHS } from './tool-card';
-import { describeInput, describeTool } from './tool-render';
+import { ToolCard } from './tool-card';
+import { describeInput } from './tool-render';
 import { TranscriptItemShell } from './transcript-item-shell';
 
 type PermissionItem = Extract<TranscriptItem, { role: 'permission' }>;
@@ -35,7 +33,7 @@ function PermissionMetaDetail({ meta }: { meta?: PermissionMeta }) {
       {description && <div className="wrap-break-word text-muted-foreground">{description}</div>}
       {decisionReason && (
         <div className="flex items-start gap-1.5 wrap-break-word text-foreground">
-          <TriangleAlertIcon aria-hidden className="mt-0.5 size-3.5 shrink-0 text-attention" />
+          <TriangleAlertIcon aria-hidden className="mt-0.5 size-3.5 shrink-0 text-destructive" />
           <span>{decisionReason}</span>
         </div>
       )}
@@ -76,36 +74,18 @@ export function PermissionCard({
   const [answered, setAnswered] = useState(false);
 
   if (item.state !== 'pending') {
-    const allowed = item.state === 'allowed';
-    // The same header the tool's own card will wear (Bash, PowerShell, Read, …), so the approval and the run read as one thing.
-    const header = tool.kind === 'plan'
-      ? { glyph: 'list-todo' as const, verb: 'Plan', primary: [planTitle(tool.text), allowed ? 'implementation started' : 'kept planning'].filter(Boolean).join(' · '), mono: false }
-      : describeTool(tool);
-    const Glyph = GLYPHS[header.glyph];
+    // What the backend and the user said about it rides along as the row's expandable result.
+    const m = item.meta;
+    const settledNotes = [item.reason, m?.title, m?.description, m?.decisionReason, m?.blockedPath].filter(Boolean).join('\n');
+    // The tool's own row, unchanged, with a check (or a cross) on it: an approved call reads exactly as the call does.
     return (
-      // The tool's own row, built from the same parts, so an approved call is indistinguishable in size and spacing from the call itself.
-      <TraceCollapsible className="group/item my-0">
-        <TraceCollapsibleTrigger>
-          {allowed
-            ? <CheckIcon aria-hidden className="shrink-0 text-git-added" />
-            : <XIcon aria-hidden className="shrink-0 text-destructive" />}
-          <Glyph aria-hidden className="shrink-0" />
-          <span className="sr-only">{item.state}</span>
-          {server && <span className="shrink-0 rounded bg-muted px-1 text-muted-foreground">{server}</span>}
-          <span className="shrink-0 font-medium">{item.meta?.displayName ?? header.verb}</span>
-          {header.primary && (
-            <span className={cn('min-w-0 truncate text-muted-foreground', header.mono && 'font-mono')}>{header.primary}</span>
-          )}
-        </TraceCollapsibleTrigger>
-        {/* Kept mounted while closed: what was approved stays in the DOM for search, tests and assistive tech. */}
-        <TraceCollapsibleContent keepMounted className="flex flex-col gap-1.5">
-          {item.reason && <div className="text-muted-foreground">{item.reason}</div>}
-          <PermissionMetaDetail meta={item.meta} />
-          {tool.kind === 'plan'
-            ? <div className="max-h-64 overflow-y-auto border-l-2 border-border pl-2.5"><Markdown>{tool.text}</Markdown></div>
-            : <ToolBody blocks={request} />}
-        </TraceCollapsibleContent>
-      </TraceCollapsible>
+      <ToolCard
+        approval={item.state}
+        item={{
+          id: item.id, ts: item.ts, role: 'tool', toolId: item.requestId, tool, state: 'ok',
+          ...(settledNotes ? { output: { kind: 'text' as const, text: settledNotes } } : {}),
+        }}
+      />
     );
   }
 
@@ -157,14 +137,14 @@ export function PermissionCard({
 
   if (tool.kind === 'plan') {
     return (
-      <div className="my-0 flex flex-col gap-2 rounded border border-attention/60 bg-attention/10 p-2 text-xs">
+      <div className="my-0 flex flex-col gap-2 rounded border border-border bg-muted/20 p-2 text-xs">
         <div className="flex items-center gap-2">
           <ListChecksIcon aria-hidden className="size-4 shrink-0 text-primary" />
           <span className="font-medium">Plan ready</span>
           <span className="truncate text-muted-foreground" title={cwd}>{folderName(cwd)}</span>
         </div>
         {tool.path && <ToolBody blocks={[{ kind: 'path', path: tool.path, hint: 'Markdown plan' }]} />}
-        <div className="max-h-64 overflow-y-auto border-l-2 border-attention/40 pl-2.5">
+        <div className="max-h-64 overflow-y-auto border-l-2 border-border pl-2.5">
           <Markdown>{tool.text}</Markdown>
         </div>
         <p className="text-foreground/80">
@@ -192,7 +172,7 @@ export function PermissionCard({
   }
 
   return (
-    <div className="my-0 rounded border border-attention/50 bg-attention/5 p-2 text-xs">
+    <div className="my-0 rounded border-2 border-destructive bg-destructive/10 p-2 text-xs">
       <div className="mb-1 flex items-baseline gap-2">
         {server && (
           // Muted, not colour-per-server — mirrors ToolCard's badge treatment.

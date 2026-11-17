@@ -84,9 +84,9 @@ export function WorkingRow({ pane }: { pane: PaneState }) {
         {step}
       </span>
       {quiet > QUIET_AFTER_MS && (
-        <span aria-hidden className="shrink-0 tabular-nums text-attention">no activity {clock(quiet)}</span>
+        <span aria-hidden className="shrink-0 font-medium tabular-nums text-foreground">no activity {clock(quiet)}</span>
       )}
-      <span aria-hidden className="shrink-0 tabular-nums">{meta}</span>
+      <span aria-hidden className="shrink-0 tabular-nums">{quiet > QUIET_AFTER_MS ? `total ${meta}` : meta}</span>
       <span aria-hidden className="ml-auto shrink-0 opacity-70">
         <span className="@[26rem]:hidden">esc</span>
         <span className="hidden @[26rem]:inline">esc to stop</span>

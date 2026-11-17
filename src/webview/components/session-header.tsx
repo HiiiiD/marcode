@@ -93,7 +93,7 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
         compact ? "gap-1 py-0.5" : "gap-2 py-1",
         strip && "cursor-pointer hover:bg-accent",
         // A pane that needs a human or has failed announces it from across the stack, not only through a small pill.
-        s.status === "awaiting-approval" && "bg-attention/10 shadow-[inset_3px_0_0_var(--attention)]",
+        s.status === "awaiting-approval" && "bg-primary/10 shadow-[inset_3px_0_0_var(--primary)]",
         s.status === "error" && "bg-destructive/10 shadow-[inset_3px_0_0_var(--destructive)]",
       )}
     >

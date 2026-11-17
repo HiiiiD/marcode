@@ -62,15 +62,15 @@ suite('PermissionCard', () => {
     assert.strictEqual((screen.getByLabelText('Deny Write (unavailable)') as HTMLButtonElement).disabled, true);
   });
 
-  test('a resolved item keeps the diff available under a collapsible row', () => {
+  test('a resolved item is the normal tool row with a cross, and keeps the reason when opened', async () => {
     const item = permission({ state: 'denied', reason: 'nope' });
     renderWithStore(<PermissionCard item={item} sessionId="a" />);
     hydrateWith(LIVE);
     screen.getByText('Write');
-    screen.getByText('denied');
-    screen.getByText('nope');
+    screen.getByLabelText('denied');
     assert.strictEqual(screen.queryByLabelText('Allow Write') === null, true);
-    assert.strictEqual(document.querySelector('[data-slot="trace-collapsible"]') === null, false);
+    await userEvent.click(screen.getByText('Write'));
+    screen.getByText('nope');
   });
 
   test('an edit-shaped input renders a diff preview', () => {
@@ -129,20 +129,12 @@ suite('PermissionCard', () => {
     screen.getByText('Read config?');
   });
 
-  test('clicking the label of a settled plan row expands it', async () => {
-    const plan: ToolCall = { kind: 'plan', label: 'ExitPlanMode', text: '# Feed\n\nstep one' };
-    renderWithStore(<PermissionCard item={permission({ tool: plan, state: 'allowed' })} sessionId="a" />);
-    const trigger = screen.getByRole('button', { name: /Plan/ });
-    assert.strictEqual(trigger.getAttribute('aria-expanded'), 'false');
-    await userEvent.click(screen.getByText('Plan'));
-    assert.strictEqual(trigger.getAttribute('aria-expanded'), 'true');
-  });
-
-  test('a settled approval reads as a sentence about what happened', () => {
-    const plan: ToolCall = { kind: 'plan', label: 'ExitPlanMode', text: '# Feed' };
-    renderWithStore(<PermissionCard item={permission({ tool: plan, state: 'allowed' })} sessionId="a" />);
-    screen.getByText('Feed · implementation started');
-    assert.strictEqual(screen.queryByText(/ExitPlanMode/i) === null, true);
+  test('an approved command is the normal command row plus a check', () => {
+    const command: ToolCall = { kind: 'command', label: 'Bash', command: 'git push origin main' };
+    renderWithStore(<PermissionCard item={permission({ tool: command, state: 'allowed' })} sessionId="a" />);
+    screen.getByText('Bash');
+    screen.getByText('git push origin main');
+    screen.getByLabelText('allowed');
   });
 
   test('a plan transition is neutral', () => {
@@ -196,13 +188,13 @@ suite('PermissionCard', () => {
       assert.strictEqual((screen.getByLabelText('Deny Write file') as HTMLButtonElement).disabled, false);
     });
 
-    test('a settled card still carries the metadata, under the disclosure', () => {
+    test('a settled card still carries the metadata, once the row is opened', async () => {
       const item = permission({ state: 'allowed', meta: META });
       renderWithStore(<PermissionCard item={item} sessionId="a" />);
       hydrateWith([]);
-      screen.getByText('Write');
-      screen.getByText('allowed');
-      screen.getByText('Claude wants to write a.txt');
+      screen.getByLabelText('allowed');
+      await userEvent.click(screen.getByText('Write'));
+      screen.getByText(/Claude wants to write a.txt/);
     });
   });
 

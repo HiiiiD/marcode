@@ -43,7 +43,7 @@ suite('WorkingRow', () => {
     renderApp();
     hydrate('running', [{ ...ASKED, ts: secondsAgo(75) }]);
 
-    screen.getByText('1:15');
+    screen.getByText('total 1:15');
   });
 
   test('streaming assistant text keeps the line, naming it Writing', () => {

@@ -24,7 +24,7 @@ export function PaneRail({ pane }: { pane: PaneState }) {
       className={cn(
         "flex h-full w-full min-w-0 flex-col items-center gap-2 px-1 py-2 text-xs outline-none",
         "hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring",
-        needsYou && "bg-attention/10 shadow-[inset_0_3px_0_var(--attention)]",
+        needsYou && "bg-primary/10 shadow-[inset_0_3px_0_var(--primary)]",
       )}
     >
       <StatusBadge status={s.status} quietIdle compact />

@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import {
-  BotIcon, FilePenIcon, FilePlusIcon, FileTextIcon,
+  BotIcon, CheckIcon, FilePenIcon, FilePlusIcon, FileTextIcon,
   FolderSearchIcon, GitForkIcon, GlobeIcon, ImageIcon, ListTodoIcon, Loader2Icon, SearchIcon,
-  SendIcon, TerminalIcon, WrenchIcon,
+  SendIcon, TerminalIcon, WrenchIcon, XIcon,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -16,7 +16,7 @@ import { describeInput, describeOutput, describeTool, type ToolGlyph } from './t
 
 type ToolItem = Extract<TranscriptItem, { role: 'tool' }>;
 
-export const GLYPHS: Record<ToolGlyph, typeof TerminalIcon> = {
+const GLYPHS: Record<ToolGlyph, typeof TerminalIcon> = {
   'terminal': TerminalIcon,
   'file-pen': FilePenIcon,
   'file-plus': FilePlusIcon,
@@ -32,9 +32,11 @@ export const GLYPHS: Record<ToolGlyph, typeof TerminalIcon> = {
 };
 
 export function ToolCard({
-  item, onFork, defaultOpen = false, streaming = false,
+  item, onFork, defaultOpen = false, streaming = false, approval,
 }: {
   item: ToolItem; onFork?: () => void;
+  /** Set when this row is the record of an approval: the row is the tool's own, plus a check (allowed) or a cross (denied). */
+  approval?: 'allowed' | 'denied';
   /** Starts expanded: a command the user ran themselves wants its output in view. */
   defaultOpen?: boolean;
   /** Shows text output while the call is still running (a live shell command). */
@@ -95,6 +97,11 @@ export function ToolCard({
             >
               {header.primary}
             </span>
+          )}
+          {approval && (
+            approval === 'allowed'
+              ? <CheckIcon aria-label="allowed" role="img" className="ml-auto shrink-0 text-git-added" />
+              : <XIcon aria-label="denied" role="img" className="ml-auto shrink-0 text-destructive" />
           )}
           {item.state === 'error' && (
             // The `attention` spelling used elsewhere in the panel: a word plus

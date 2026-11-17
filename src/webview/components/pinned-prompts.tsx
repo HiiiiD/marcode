@@ -29,7 +29,8 @@ export function PinnedPrompts({ pane, sessionId }: { pane: PaneState; sessionId:
   const total = entries.length;
   return (
     <section aria-label="Pending prompts" className="flex max-h-[70%] min-h-0 flex-col gap-1 border-t border-border px-2 py-1">
-      <div className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
+      {/* A lone prompt from the main agent already says what it needs; the extra header only repeated it. */}
+      {(total > 1 || parent) && <div className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
         <span className="min-w-0 flex-1 truncate">
           {parent ? `Subagent: ${subagentLabel(parent)}` : 'Needs your response'}
         </span>
@@ -50,7 +51,7 @@ export function PinnedPrompts({ pane, sessionId }: { pane: PaneState; sessionId:
             </Button>
           </>
         )}
-      </div>
+      </div>}
       <div className="min-h-0 overflow-y-auto">
         {/* Keep drafts mounted while navigating between unanswered questions. */}
         {entries.map(({ item }, i) => (

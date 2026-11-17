@@ -5,7 +5,7 @@ import type { SessionStatus } from '../../protocol/messages';
 const DOT: Record<StatusView['tone'], string> = {
   idle: 'bg-muted-foreground',
   busy: 'bg-primary animate-pulse',
-  attention: 'bg-attention',
+  attention: 'bg-primary',
   failed: 'bg-destructive',
 };
 
@@ -18,7 +18,7 @@ const DOT: Record<StatusView['tone'], string> = {
 const CHIP: Record<StatusView['tone'], string> = {
   idle: 'text-muted-foreground',
   busy: 'text-muted-foreground',
-  attention: 'border border-attention/50 bg-attention/15 px-1.5 py-0.5 text-foreground',
+  attention: 'border border-primary/40 bg-primary/10 px-1.5 py-0.5 text-foreground',
   failed: 'border border-destructive/40 bg-destructive/10 px-1.5 py-0.5 text-destructive',
 };
 
