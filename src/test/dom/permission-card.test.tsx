@@ -19,7 +19,7 @@ suite('PermissionCard', () => {
   test('a live pending request renders enabled Allow and Deny', () => {
     renderWithStore(<PermissionCard item={permission()} sessionId="a" />);
     hydrateWith(LIVE);
-    screen.getByText('Allow Write?');
+    screen.getByText('Edit a.txt?');
     assert.strictEqual((screen.getByLabelText('Allow Write') as HTMLButtonElement).disabled, false);
     assert.strictEqual((screen.getByLabelText('Deny Write') as HTMLButtonElement).disabled, false);
   });
@@ -66,7 +66,7 @@ suite('PermissionCard', () => {
     const item = permission({ state: 'denied', reason: 'nope' });
     renderWithStore(<PermissionCard item={item} sessionId="a" />);
     hydrateWith(LIVE);
-    screen.getByText('Write — denied');
+    screen.getByText('Denied edit of a.txt');
     screen.getByText('nope');
     assert.strictEqual(screen.queryByLabelText('Allow Write') === null, true);
     assert.strictEqual(document.querySelector('details') === null, false);
@@ -111,7 +111,21 @@ suite('PermissionCard', () => {
     renderWithStore(<PermissionCard item={permission({ tool })} sessionId="a" />);
     hydrateWith([{ requestId: 'r1', tool }]);
     assert.ok(screen.getAllByText('github').length > 0);
-    screen.getByText('Allow create_pr?');
+    screen.getByText('Call create_pr?');
+  });
+
+  test('a command and an edit are titled by their action, not the tool name', () => {
+    const command: ToolCall = { kind: 'command', label: 'Bash', command: 'git push --force origin main' };
+    renderWithStore(<PermissionCard item={permission({ tool: command })} sessionId="a" />);
+    hydrateWith([{ requestId: 'r1', tool: command }]);
+    screen.getByText('Run this command?');
+  });
+
+  test('a settled approval reads as a sentence about what happened', () => {
+    const plan: ToolCall = { kind: 'plan', label: 'ExitPlanMode', text: '# Feed' };
+    renderWithStore(<PermissionCard item={permission({ tool: plan, state: 'allowed' })} sessionId="a" />);
+    screen.getByText('Plan approved · implementation started');
+    assert.strictEqual(screen.queryByText(/ExitPlanMode/i) === null, true);
   });
 
   test('a plan transition is neutral', () => {
@@ -152,7 +166,7 @@ suite('PermissionCard', () => {
     test('no meta leaves the card exactly as it was', () => {
       renderWithStore(<PermissionCard item={permission()} sessionId="a" />);
       hydrateWith(LIVE);
-      screen.getByText('Allow Write?');
+      screen.getByText('Edit a.txt?');
       assert.strictEqual((screen.getByLabelText('Allow Write') as HTMLButtonElement).disabled, false);
     });
 
@@ -169,7 +183,7 @@ suite('PermissionCard', () => {
       const item = permission({ state: 'allowed', meta: META });
       renderWithStore(<PermissionCard item={item} sessionId="a" />);
       hydrateWith([]);
-      screen.getByText('Write — allowed');
+      screen.getByText('Edited a.txt');
       screen.getByText('Claude wants to write a.txt');
     });
   });

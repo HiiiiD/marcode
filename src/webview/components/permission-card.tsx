@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { ListChecksIcon } from 'lucide-react';
+import { ListChecksIcon, TriangleAlertIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useStore } from '../store';
 import { folderName } from '../format';
 import type { PermissionMeta, SessionId, TranscriptItem } from '../../protocol/messages';
+import { requestTitle, resolvedText } from '../lib/permission-copy';
 import { Markdown } from './markdown';
 import { ToolBody } from './tool-body';
 import { describeInput } from './tool-render';
@@ -30,7 +31,10 @@ function PermissionMetaDetail({ meta }: { meta?: PermissionMeta }) {
       {title && <div className="wrap-break-word">{title}</div>}
       {description && <div className="wrap-break-word text-muted-foreground">{description}</div>}
       {decisionReason && (
-        <div className="wrap-break-word text-muted-foreground">{decisionReason}</div>
+        <div className="flex items-start gap-1.5 wrap-break-word text-foreground">
+          <TriangleAlertIcon aria-hidden className="mt-0.5 size-3.5 shrink-0 text-attention" />
+          <span>{decisionReason}</span>
+        </div>
       )}
       {blockedPath && (
         <div className="min-w-0 truncate font-mono text-muted-foreground" title={blockedPath}>
@@ -69,11 +73,10 @@ export function PermissionCard({
   const [answered, setAnswered] = useState(false);
 
   if (item.state !== 'pending') {
-    const label = server
-      ? `${server} ${name} — ${item.state}`
-      : `${name} — ${item.state}`;
+    const label = resolvedText(tool, name, server, item.state);
     return (
-      <TranscriptItemShell role="permission" label={label} ts={item.ts}>
+      // Only a refusal keeps the red rule; an approval is a plain record of what ran.
+      <TranscriptItemShell role={item.state === 'denied' ? 'permission' : 'tool'} label={label} ts={item.ts}>
         {item.reason && <div className="text-xs text-muted-foreground">{item.reason}</div>}
         <details className="text-xs">
           <summary className="cursor-default text-muted-foreground">What was requested</summary>
@@ -136,17 +139,17 @@ export function PermissionCard({
 
   if (tool.kind === 'plan') {
     return (
-      <div className="my-0 flex flex-col gap-2 rounded border border-border bg-muted/20 p-2 text-xs">
+      <div className="my-0 flex flex-col gap-2 rounded border border-attention/60 bg-attention/10 p-2 text-xs">
         <div className="flex items-center gap-2">
           <ListChecksIcon aria-hidden className="size-4 shrink-0 text-primary" />
           <span className="font-medium">Plan ready</span>
           <span className="truncate text-muted-foreground" title={cwd}>{folderName(cwd)}</span>
         </div>
         {tool.path && <ToolBody blocks={[{ kind: 'path', path: tool.path, hint: 'Markdown plan' }]} />}
-        <div className="max-h-64 overflow-y-auto rounded border border-border bg-background px-2.5 py-1.5">
+        <div className="max-h-64 overflow-y-auto border-l-2 border-attention/40 pl-2.5">
           <Markdown>{tool.text}</Markdown>
         </div>
-        <p className="text-muted-foreground">
+        <p className="text-foreground/80">
           Starting implementation will leave read-only Plan mode and allow file changes.
         </p>
         <div className="flex gap-2">
@@ -179,12 +182,12 @@ export function PermissionCard({
             {server}
           </span>
         )}
-        <span className="font-medium">Allow {name}?</span>
+        <span className="font-medium">{requestTitle(tool, name, item.meta?.displayName !== undefined)}</span>
         <span className="truncate text-muted-foreground" title={cwd}>{folderName(cwd)}</span>
       </div>
       <div className="mb-2">
         <PermissionMetaDetail meta={item.meta} />
-        <ToolBody blocks={request} clamp={{ head: 4, tail: 2 }} />
+        <ToolBody blocks={tool.kind === "mcp" ? request.filter((b) => !(b.kind === "field" && (b.label === "server" || b.label === "tool"))) : request} clamp={{ head: 4, tail: 2 }} />
       </div>
       {/* Deny is the safe, reversible-feeling choice: it comes first in DOM
           and tab order, and Allow — the consequential, irreversible-feeling
