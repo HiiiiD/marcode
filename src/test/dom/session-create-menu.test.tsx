@@ -47,6 +47,7 @@ function focusPane(index: number) {
 
 const newButton = () => screen.getAllByRole('button', { name: 'New session' })[0];
 const optionsButton = () => screen.getAllByRole('button', { name: 'New session with options' })[0];
+const nextStep = async (times = 1) => { for (let i = 0; i < times; i += 1) { await userEvent.click(screen.getByRole('button', { name: 'Next' })); } };
 
 suite('SessionCreateMenu', () => {
   setup(() => resetHost());
@@ -162,6 +163,7 @@ suite('SessionCreateMenu', () => {
 
     await userEvent.click(optionsButton());
     await userEvent.click(await screen.findByRole('radio', { name: 'Other One' }));
+    await nextStep();
     await userEvent.click(screen.getByRole('radio', { name: 'Plan' }));
     await userEvent.click(screen.getByRole('button', { name: 'Create session' }));
 
@@ -186,6 +188,7 @@ suite('SessionCreateMenu', () => {
       (await screen.findByRole('radio', { name: 'Fake Medium' })).getAttribute('aria-checked'),
       'true',
     );
+    await nextStep();
     assert.strictEqual(
       screen.getByRole('radio', { name: 'Plan' }).getAttribute('aria-checked'),
       'true',
@@ -296,13 +299,12 @@ suite('SessionCreateMenu', () => {
     assert.ok(await screen.findByRole('button', { name: 'Unstar Fake Large' }));
   });
 
-  test('the branch name field sits behind the worktree disclosure, and Create stays enabled empty', async () => {
+  test('the branch name field is on the Options step, and Create stays enabled empty', async () => {
     renderApp();
     hydrate([summary('a')], twoProviders());
 
     await userEvent.click(optionsButton());
-    assert.strictEqual(screen.queryByLabelText('Branch name') === null, true);
-    await userEvent.click(screen.getByRole('button', { name: /Run in a new worktree/ }));
+    await nextStep(2);
 
     assert.ok(screen.getByLabelText('Branch name'));
     assert.strictEqual(screen.queryByLabelText('Base branch'), null);
@@ -317,7 +319,7 @@ suite('SessionCreateMenu', () => {
     hydrate([summary('a')], twoProviders());
 
     await userEvent.click(optionsButton());
-    await userEvent.click(screen.getByRole('button', { name: /Run in a new worktree/ }));
+    await nextStep(2);
     await userEvent.type(screen.getByLabelText('Branch name'), 'feat/thing');
 
     assert.ok(screen.getByLabelText('Base branch'));
@@ -328,7 +330,7 @@ suite('SessionCreateMenu', () => {
     hydrate([summary('a')], twoProviders());
 
     await userEvent.click(optionsButton());
-    await userEvent.click(screen.getByRole('button', { name: /Run in a new worktree/ }));
+    await nextStep(2);
     await userEvent.type(screen.getByLabelText('Branch name'), 'feat/thing');
     await userEvent.type(screen.getByLabelText('Base branch'), 'develop');
     await userEvent.click(screen.getByRole('button', { name: 'Create session' }));
@@ -349,7 +351,7 @@ suite('SessionCreateMenu', () => {
     hydrate([summary('a')], twoProviders());
 
     await userEvent.click(optionsButton());
-    await userEvent.click(screen.getByRole('button', { name: /Run in a new worktree/ }));
+    await nextStep(2);
     await userEvent.type(screen.getByLabelText('Branch name'), 'feat/thing');
     await userEvent.click(screen.getByRole('button', { name: 'Create session' }));
 
@@ -363,7 +365,7 @@ suite('SessionCreateMenu', () => {
     hydrate([summary('a')], twoProviders());
 
     await userEvent.click(optionsButton());
-    await userEvent.click(screen.getByRole('button', { name: /Run in a new worktree/ }));
+    await nextStep(2);
     await userEvent.type(screen.getByLabelText('Branch name'), '   ');
     await userEvent.click(screen.getByRole('button', { name: 'Create session' }));
 
@@ -396,5 +398,32 @@ suite('SessionCreateMenu', () => {
     for (const control of controls) {
       assert.ok((control as HTMLButtonElement).disabled);
     }
+  });
+
+  test('a recent combination is one click: it creates with that model, effort and mode', async () => {
+    renderApp();
+    hydrate([summary('a', { model: 'fake-medium', effort: 'low', permissionMode: 'plan' })]);
+
+    await userEvent.click(optionsButton());
+    const chip = await screen.findByRole('button', { name: /Fake Medium · low · Plan/ });
+    resetHost();
+    await userEvent.click(chip);
+
+    assert.deepStrictEqual(posted().at(-1), {
+      t: 'create-session', providerId: 'fake', cwd: '', model: 'fake-medium', effort: 'low', mode: 'plan',
+    });
+  });
+
+  test('the dialog is a three-step stepper that opens on the model', async () => {
+    renderApp();
+    hydrate();
+
+    await userEvent.click(optionsButton());
+    await screen.findByRole('radio', { name: 'Fake Large' });
+    assert.strictEqual(screen.getByRole('button', { name: /1 Model/ }).getAttribute('aria-current'), 'step');
+    await nextStep();
+    assert.strictEqual(screen.getByRole('button', { name: /2 Effort & mode/ }).getAttribute('aria-current'), 'step');
+    await userEvent.click(screen.getByRole('button', { name: 'Back' }));
+    assert.strictEqual(screen.getByRole('button', { name: /1 Model/ }).getAttribute('aria-current'), 'step');
   });
 });
