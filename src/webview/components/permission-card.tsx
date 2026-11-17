@@ -33,7 +33,7 @@ function PermissionMetaDetail({ meta }: { meta?: PermissionMeta }) {
       {description && <div className="wrap-break-word text-muted-foreground">{description}</div>}
       {decisionReason && (
         <div className="flex items-start gap-1.5 wrap-break-word text-foreground">
-          <TriangleAlertIcon aria-hidden className="mt-0.5 size-3.5 shrink-0 text-destructive" />
+          <TriangleAlertIcon aria-hidden className="mt-0.5 size-3.5 shrink-0 text-attention" />
           <span>{decisionReason}</span>
         </div>
       )}
@@ -172,7 +172,7 @@ export function PermissionCard({
   }
 
   return (
-    <div className="my-0 rounded border-2 border-destructive bg-destructive/10 p-2 text-xs">
+    <div className="my-0 rounded border border-attention/60 bg-attention/10 p-2 text-xs">
       <div className="mb-1 flex items-baseline gap-2">
         {server && (
           // Muted, not colour-per-server — mirrors ToolCard's badge treatment.

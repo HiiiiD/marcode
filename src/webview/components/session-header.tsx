@@ -97,7 +97,7 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
         s.status === "error" && "bg-destructive/10 shadow-[inset_3px_0_0_var(--destructive)]",
       )}
     >
-      <StatusBadge status={s.status} quietIdle />
+      <StatusBadge status={s.status} quietIdle={compact} />
       <SubagentSummary subagents={s.subagents} />
       {/*
         `h2`, not `h1`: this panel is a view inside VS Code's own document,

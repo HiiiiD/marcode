@@ -46,7 +46,7 @@ const CHIP: Record<StatusView['tone'], string> = {
 export function StatusBadge({ status, hideIdle, quietIdle, compact }: {
   status: SessionStatus;
   hideIdle?: boolean;
-  /** Idle keeps its dot but drops the word, which is noise on every quiet pane; assistive tech still hears it. */
+  /** Idle and working keep their dot but drop the word, for a narrow pane; "needs you" and "failed" keep theirs. Assistive tech hears all of them. */
   quietIdle?: boolean;
   /** Just the dot, the word kept for assistive tech: a rail has no room for it. */
   compact?: boolean;
@@ -68,7 +68,7 @@ export function StatusBadge({ status, hideIdle, quietIdle, compact }: {
       )}
     >
       <span className={cn('size-2 rounded-full', DOT[view.tone])} aria-hidden />
-      {(quietIdle && status === 'idle') || compact ? <span className="sr-only">{view.label}</span> : view.label}
+      {(quietIdle && (status === 'idle' || status === 'running')) || compact ? <span className="sr-only">{view.label}</span> : view.label}
     </span>
   );
 }
