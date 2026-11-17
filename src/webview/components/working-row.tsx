@@ -1,26 +1,43 @@
 import { useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
+import { describeTool } from '../../client-core/tool-render';
+import type { TranscriptItem } from '../../protocol/messages';
 
-function elapsed(ms: number): string {
+const QUIET_AFTER_MS = 60_000;
+
+function clock(ms: number): string {
   const total = Math.max(0, Math.floor(ms / 1000));
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
 }
 
+/** What the agent is doing right now, read off the tail of the transcript. */
+export function currentStep(last: TranscriptItem | undefined): string {
+  if (!last || last.role === 'user') { return 'Working…'; }
+  if (last.role === 'tool') {
+    if (last.state !== 'running') { return 'Thinking…'; }
+    const { verb, primary } = describeTool(last.tool);
+    return primary ? `${verb} · ${primary}` : verb;
+  }
+  if (last.role === 'assistant') { return last.text.trim() ? 'Writing…' : 'Thinking…'; }
+  return 'Working…';
+}
+
 /**
- * Dead air, made visible: the turn is running and nothing has arrived yet.
+ * The turn's one status line: present for the whole of a running turn, so it
+ * never blinks in and out between items, and it names the current step rather
+ * than saying "working".
  *
- * `since` is a host timestamp, not a mount time, so what the clock reports is
- * how long it has been since anything actually happened — which survives a
- * window reload, and is the number that answers the only question being asked
- * here ("is this alive, or should I go look at it?"). A mount-relative timer
- * would restart at 0:00 after a reload and quietly lie about a stuck turn.
- *
- * The count is `aria-hidden`: it changes every second, and any live region
- * around it would turn a waiting agent into a screen reader ticking over the
- * user's work. Status changes are announced once, by StatusBadge, which is
- * where they belong.
+ * Both clocks are host timestamps, not mount times, so a window reload does
+ * not restart them: the big one runs from the user's message, the "quiet"
+ * one from the last event, and only appears once that gap is long enough to be
+ * worth a look. Neither is announced — they change every second, and
+ * StatusBadge already announces the status change once.
  */
-export function WorkingRow({ since }: { since: number }) {
+export function WorkingRow({ turnStart, lastEventAt, last }: {
+  turnStart: number;
+  lastEventAt: number;
+  last: TranscriptItem | undefined;
+}) {
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -28,26 +45,21 @@ export function WorkingRow({ since }: { since: number }) {
     return () => clearInterval(timer);
   }, []);
 
+  const quiet = now - lastEventAt;
+
   return (
-    // pl-2.5 rather than pl-2: the transcript items are indented by a 2px
-    // gutter rule plus pl-2, and this row has no rule to contribute the 2px.
-    <div className="my-0 flex items-center gap-2 pl-2.5 text-xs text-muted-foreground">
-      <span aria-hidden className="flex shrink-0 items-center gap-1">
-        {['', '[animation-delay:140ms]', '[animation-delay:280ms]'].map((delay, i) => (
-          <span
-            key={i}
-            className={cn(
-              // motion-reduce leaves the dots at their own opacity rather
-              // than at the keyframe floor, so the row still reads as three
-              // dots and a label when the animation is off.
-              'size-1 rounded-full bg-current animate-working-dot motion-reduce:animate-none',
-              delay,
-            )}
-          />
-        ))}
+    <div className="my-0 flex min-h-7 items-center gap-2 rounded-md border border-border bg-muted/30 px-2 text-xs text-muted-foreground">
+      <span aria-hidden className="relative flex size-2 shrink-0">
+        <span className="absolute inline-flex size-full rounded-full bg-primary/50 motion-safe:animate-ping" />
+        <span className="relative inline-flex size-2 rounded-full bg-primary" />
       </span>
-      <span>Working…</span>
-      <span aria-hidden className="ml-auto tabular-nums">{elapsed(now - since)}</span>
+      <span className="min-w-0 flex-1 truncate" title={currentStep(last)}>{currentStep(last)}</span>
+      {quiet > QUIET_AFTER_MS && (
+        <span aria-hidden className={cn('shrink-0 tabular-nums text-attention')}>
+          quiet {clock(quiet)}
+        </span>
+      )}
+      <span aria-hidden className="shrink-0 tabular-nums">{clock(now - turnStart)}</span>
     </div>
   );
 }

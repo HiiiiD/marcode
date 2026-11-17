@@ -25,49 +25,63 @@ function hydrate(status: SessionStatus, items: TranscriptItem[]) {
 const ASKED: TranscriptItem = { id: 'u1', ts: secondsAgo(5), role: 'user', text: 'fix the scroll' };
 
 suite('WorkingRow', () => {
-  test('an idle session shows no working row', () => {
+  test('an idle session shows no activity line', () => {
     renderApp();
     hydrate('idle', [ASKED]);
 
     assert.strictEqual(screen.queryByText('Working…'), null);
   });
 
-  test('a running turn that has emitted nothing yet shows the row', () => {
+  test('a running turn that has emitted nothing yet says Working', () => {
     renderApp();
     hydrate('running', [ASKED]);
 
     screen.getByText('Working…');
   });
 
-  test('the row times the dead air from the last item, so a reload does not reset it', () => {
+  test('the big clock runs from the user message, so a reload does not reset it', () => {
     renderApp();
     hydrate('running', [{ ...ASKED, ts: secondsAgo(75) }]);
 
     screen.getByText('1:15');
   });
 
-  test('streaming assistant text replaces the row — the content is the signal', () => {
+  test('streaming assistant text keeps the line, naming it Writing', () => {
     renderApp();
     hydrate('running', [ASKED, { id: 'a1', ts: secondsAgo(1), role: 'assistant', text: 'Look' }]);
 
-    assert.strictEqual(screen.queryByText('Working…'), null);
+    screen.getByText('Writing…');
   });
 
-  test('a running tool replaces the row — its own card already spins', () => {
+  test('a thinking-only assistant item reads as Thinking', () => {
+    renderApp();
+    hydrate('running', [ASKED, { id: 'a1', ts: secondsAgo(1), role: 'assistant', text: '', thinking: 'hm' }]);
+
+    screen.getByText('Thinking…');
+  });
+
+  test('a running tool names the step', () => {
     renderApp();
     hydrate('running', [ASKED, tool({ id: 't1', ts: secondsAgo(1), state: 'running' })]);
 
-    assert.strictEqual(screen.queryByText('Working…'), null);
+    screen.getByTitle('Bash · yarn test:unit');
   });
 
-  test('the gap after a finished tool is dead air, and shows the row', () => {
+  test('the gap after a finished tool reads as Thinking', () => {
     renderApp();
     hydrate('running', [ASKED, tool({ id: 't1', ts: secondsAgo(3), state: 'ok' })]);
 
-    screen.getByText('Working…');
+    screen.getByText('Thinking…');
   });
 
-  test('a session awaiting approval shows no working row — it is blocked on the user', () => {
+  test('a long silence adds a quiet clock', () => {
+    renderApp();
+    hydrate('running', [{ ...ASKED, ts: secondsAgo(125) }]);
+
+    screen.getByText('quiet 2:05');
+  });
+
+  test('a session awaiting approval shows no activity line — it is blocked on the user', () => {
     renderApp();
     hydrate('awaiting-approval', [ASKED]);
 

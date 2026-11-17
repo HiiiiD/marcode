@@ -13,19 +13,6 @@ import { isLivePrompt } from '../lib/pending-prompts';
 import { splitNestedMessages } from '../lib/nested-messages';
 import { groupSubagents } from '../lib/subagent-groups';
 
-/**
- * Whether the tail of the transcript is already saying "something is
- * happening" on its own — an assistant item taking deltas, or a tool card
- * spinning. The working row fills the gaps between those, not the whole turn:
- * a second indicator running alongside live content is noise, and in a column
- * this narrow noise costs a line of the answer.
- */
-function tailIsLive(pane: PaneState): boolean {
-  const last = pane.items[pane.items.length - 1];
-  if (!last) { return false; }
-  return last.role === 'assistant' || (last.role === 'tool' && last.state === 'running');
-}
-
 export function Transcript({
   pane, onLoadMore,
 }: {
@@ -36,7 +23,8 @@ export function Transcript({
   const first = pane.items[0];
   const last = pane.items[pane.items.length - 1];
   const idle = pane.summary.status === 'idle';
-  const working = pane.summary.status === 'running' && !tailIsLive(pane);
+  const working = pane.summary.status === 'running';
+  const turnStart = [...pane.items].reverse().find((item) => item.role === 'user')?.ts;
   // Only reached by a session whose transcript is empty — a brand new session
   // sending its first message. Every other case has a host timestamp to
   // measure from, which is the point of `since`.
@@ -95,7 +83,7 @@ export function Transcript({
             {/* Not a MessageScrollerItem: it is a state of the session, not
                 an entry in it, and registering it as a message would make the
                 scroller treat every appearance as new content to anchor on. */}
-            {working && <WorkingRow since={last?.ts ?? mountedAt} />}
+            {working && <WorkingRow turnStart={turnStart ?? mountedAt} lastEventAt={last?.ts ?? mountedAt} last={last} />}
           </MessageScrollerContent>
         </MessageScrollerViewport>
         <MessageScrollerButton />
