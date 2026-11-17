@@ -50,7 +50,7 @@ export function Transcript({
               viewport (Content is `min-h-full`): a two-message session sits on
               the composer instead of stranding itself at the top with dead
               space below. Once it overflows, the rule is inert. */}
-          <MessageScrollerContent className="justify-end gap-1">
+          <MessageScrollerContent className="justify-end gap-0.5">
             {pane.hasMore && first && (
               <Button
                 variant="outline"

@@ -9,11 +9,9 @@ import { Markdown } from './markdown';
  * or two, and a preview that renders empty spends a row saying nothing.
  */
 function preview(text: string): string {
-  for (const line of text.split('\n')) {
-    const trimmed = line.trim();
-    if (trimmed) { return trimmed.length > 90 ? `${trimmed.slice(0, trimmed.lastIndexOf(' ', 90))}…` : trimmed; }
-  }
-  return '';
+  const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
+  const joined = lines.slice(0, 3).join(' ');
+  return joined.length > 220 ? `${joined.slice(0, joined.lastIndexOf(' ', 220))}…` : joined;
 }
 
 /**
@@ -31,12 +29,14 @@ export function ReasoningBlock({ text }: { text: string }) {
 
   return (
     <TraceCollapsible bare open={open} onOpenChange={setOpen} className="group/item my-0">
-      <TraceCollapsibleTrigger className="h-6 px-0 text-xs text-muted-foreground hover:bg-transparent hover:text-foreground [&>[data-slot=trace-icon]:last-child]:opacity-0 group-hover/item:[&>[data-slot=trace-icon]:last-child]:opacity-100 focus-visible:[&>[data-slot=trace-icon]:last-child]:opacity-100 aria-expanded:[&>[data-slot=trace-icon]:last-child]:opacity-100">
-        <BrainIcon aria-hidden className="shrink-0" />
-        <span className="shrink-0 font-medium text-foreground/80">Reasoning</span>
-        <span className="min-w-0 truncate text-muted-foreground">
-          <InlineMarkdown>{preview(text)}</InlineMarkdown>
-        </span>
+      <TraceCollapsibleTrigger className="h-auto min-h-8 items-start gap-2 px-0 py-1.5 text-xs text-muted-foreground hover:bg-transparent hover:text-foreground [&>[data-slot=trace-icon]:last-child]:opacity-0 group-hover/item:[&>[data-slot=trace-icon]:last-child]:opacity-100 focus-visible:[&>[data-slot=trace-icon]:last-child]:opacity-100 aria-expanded:[&>[data-slot=trace-icon]:last-child]:opacity-100">
+        <BrainIcon aria-hidden className="mt-0.5 shrink-0" />
+        <span className="min-w-[4.5rem] shrink-0 font-medium text-foreground/80">Reasoning</span>
+        {!open && (
+          <span className="line-clamp-2 min-w-0 flex-1 text-muted-foreground">
+            <InlineMarkdown>{preview(text)}</InlineMarkdown>
+          </span>
+        )}
       </TraceCollapsibleTrigger>
       <TraceCollapsibleContent inset className="max-h-64 overflow-y-auto text-muted-foreground">
         <Markdown>{text}</Markdown>

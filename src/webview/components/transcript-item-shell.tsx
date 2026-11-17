@@ -25,7 +25,7 @@ export type TranscriptItemRole =
  */
 const FRAME: Record<TranscriptItemRole, string> = {
   user: cn(
-    'ml-4 rounded-lg px-3 py-2',
+    'rounded-lg px-3 py-2',
     // Derived, not a token lookup: --muted is editorWidget-background, which
     // several themes set equal to the sidebar background. Mixing toward the
     // foreground guarantees the block separates from the column in light,
@@ -33,7 +33,7 @@ const FRAME: Record<TranscriptItemRole, string> = {
     'bg-[color-mix(in_oklch,var(--color-muted),var(--color-foreground)_7%)]',
   ),
   // The reading surface: more air above and below than the rows of tool activity around it, so the answer stands out from the machinery.
-  assistant: 'py-1.5 leading-relaxed',
+  assistant: 'py-2 leading-relaxed',
   tool: '',
   // A subagent is a container of tool calls, not one call: a rule the eye can
   // separate from `tool` while scanning, without introducing a colour that

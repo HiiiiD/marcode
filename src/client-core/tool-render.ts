@@ -92,6 +92,19 @@ function withoutLeadingCd(command: string): string {
   return stripped.length > 0 ? stripped : command;
 }
 
+const OTHER_TARGET_KEYS = ['skill', 'query', 'name', 'description', 'task_id', 'taskId', 'id', 'command', 'path', 'url', 'prompt'];
+
+/** For a tool we do not classify, the one argument that says what the call is about, so the row is never a bare name. */
+function otherTarget(raw: unknown): string {
+  if (typeof raw !== 'object' || raw === null) { return ''; }
+  const record = raw as Record<string, unknown>;
+  for (const key of OTHER_TARGET_KEYS) {
+    const value = record[key];
+    if (typeof value === 'string' && value.trim() !== '') { return value.trim().replace(/\s+/g, ' '); }
+  }
+  return '';
+}
+
 const MAX_MCP_ARGS = 8;
 const MAX_MCP_VALUE = 240;
 
@@ -185,7 +198,7 @@ export function describeTool(tool: ToolCall): ToolHeader {
     }
 
     case 'other':
-      return header('wrench', tool.label, tool.fields?.[0]?.value ?? '', false);
+      return header('wrench', tool.label, tool.fields?.[0]?.value ?? otherTarget(tool.raw), false);
 
     case 'image':
       return header('image', tool.label, tool.note ?? '', false);
