@@ -142,7 +142,7 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
         // hover-revealed actions trigger.
         <span className="group/name flex min-w-0 items-center gap-1">
           <span className="min-w-[10ch] truncate text-xs font-medium" title={s.name}>{compact ? middleTruncate(s.name, 16) : s.name}</span>
-          <Button
+          {!compact && <Button
             variant="ghost"
             size="icon-xs"
             className="shrink-0 opacity-0 group-hover/name:opacity-100 focus-visible:opacity-100"
@@ -150,7 +150,7 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
             onClick={startEditingName}
           >
             <PencilIcon aria-hidden className="size-3" />
-          </Button>
+          </Button>}
         </span>
       )}
       {!compact && (
@@ -232,6 +232,10 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
             <MoreHorizontalIcon aria-hidden />
           </DropdownMenuTrigger>
           <DropdownMenuContent className="w-auto">
+            <DropdownMenuItem onClick={startEditingName}>
+              <PencilIcon aria-hidden />
+              Rename
+            </DropdownMenuItem>
             <DropdownMenuItem onClick={() => post({ t: "set-pinned", id: s.id, pinned: s.pinned !== true })}>
               <PinIcon aria-hidden />
               {s.pinned === true ? "Unpin" : "Pin"}

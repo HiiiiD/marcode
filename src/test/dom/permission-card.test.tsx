@@ -129,6 +129,15 @@ suite('PermissionCard', () => {
     screen.getByText('Read config?');
   });
 
+  test('clicking the label of a settled plan row expands it', async () => {
+    const plan: ToolCall = { kind: 'plan', label: 'ExitPlanMode', text: '# Feed\n\nstep one' };
+    renderWithStore(<PermissionCard item={permission({ tool: plan, state: 'allowed' })} sessionId="a" />);
+    const trigger = screen.getByRole('button', { name: /Plan/ });
+    assert.strictEqual(trigger.getAttribute('aria-expanded'), 'false');
+    await userEvent.click(screen.getByText('Plan'));
+    assert.strictEqual(trigger.getAttribute('aria-expanded'), 'true');
+  });
+
   test('a settled approval reads as a sentence about what happened', () => {
     const plan: ToolCall = { kind: 'plan', label: 'ExitPlanMode', text: '# Feed' };
     renderWithStore(<PermissionCard item={permission({ tool: plan, state: 'allowed' })} sessionId="a" />);
