@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   MessageScroller, MessageScrollerButton, MessageScrollerContent,
   MessageScrollerItem, MessageScrollerViewport,
@@ -7,7 +7,6 @@ import { Button } from '@/components/ui/button';
 import { NestedMessagesContext } from './nested-messages-context';
 import { SubagentGroupCard } from './subagent-group-card';
 import { TranscriptItemView } from './transcript-item';
-import { WorkingRow } from './working-row';
 import type { PaneState } from '../reducer';
 import { isLivePrompt } from '../lib/pending-prompts';
 import { splitNestedMessages } from '../lib/nested-messages';
@@ -21,14 +20,7 @@ export function Transcript({
 }) {
   const nested = useMemo(() => splitNestedMessages(pane.items), [pane.items]);
   const first = pane.items[0];
-  const last = pane.items[pane.items.length - 1];
   const idle = pane.summary.status === 'idle';
-  const working = pane.summary.status === 'running';
-  const turnStart = [...pane.items].reverse().find((item) => item.role === 'user')?.ts;
-  // Only reached by a session whose transcript is empty — a brand new session
-  // sending its first message. Every other case has a host timestamp to
-  // measure from, which is the point of `since`.
-  const mountedAt = useRef(Date.now()).current;
 
   // `load-more` is a stateless lookup keyed on beforeItemId, not a consumed
   // cursor — two rapid clicks before the first session-prepend lands would
@@ -80,10 +72,6 @@ export function Transcript({
                 <TranscriptItemView item={entry.item} sessionId={pane.summary.id} canFork={idle && pane.summary.kind !== 'side'} />
               </MessageScrollerItem>
             ))}
-            {/* Not a MessageScrollerItem: it is a state of the session, not
-                an entry in it, and registering it as a message would make the
-                scroller treat every appearance as new content to anchor on. */}
-            {working && <WorkingRow turnStart={turnStart ?? mountedAt} lastEventAt={last?.ts ?? mountedAt} last={last} />}
           </MessageScrollerContent>
         </MessageScrollerViewport>
         <MessageScrollerButton />

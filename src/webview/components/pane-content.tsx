@@ -11,6 +11,7 @@ import { COMPACT_BELOW_WIDTH_PX, STRIP_BELOW_PX, STRIP_BELOW_WIDTH_PX, PaneDensi
 import { PinnedShell } from "./pinned-shell";
 import { PinnedPrompts } from "./pinned-prompts";
 import { SessionHeader } from "./session-header";
+import { WorkingRow } from "./working-row";
 import { SideChatBar } from "./side-chat-bar";
 import { SubagentDrillInContext } from "./subagent-drill-in-context";
 import { Transcript } from "./transcript";
@@ -101,6 +102,7 @@ export function PaneContent({ sessionId, accessibleTitle }: PaneContentProps) {
         </SubagentDrillInContext.Provider>
         <PinnedPrompts pane={paneState} sessionId={sessionId} />
         <PinnedShell pane={paneState} sessionId={sessionId} />
+        {paneState.summary.status === "running" && <WorkingRow pane={paneState} />}
         <Composer
           pane={paneState}
           model={model}

@@ -14,5 +14,5 @@
         "resolveJsonModule": true,
         "skipLibCheck": true
     },
-    "exclude": ["node_modules", "out", "dist", "scripts/spikes", "src/tui/ui", "src/test/tui"]
+    "exclude": ["node_modules", "out", "dist", "scripts/spikes", "scripts/ui-harness", "src/tui/ui", "src/test/tui"]
 }
