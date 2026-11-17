@@ -50,7 +50,7 @@ export function LayoutSizePicker({ current, onPick }: { current: Cell | null; on
               onClick={() => onPick(rows, cols)}
               className={cn(
                 'h-4 rounded-[3px] border outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring',
-                lit ? 'border-primary bg-primary/30' : 'border-border bg-muted/40',
+                lit ? 'border-primary bg-primary/40' : 'border-foreground/20 bg-foreground/10',
               )}
             />
           );

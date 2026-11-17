@@ -32,7 +32,9 @@ interface SessionHeaderProps {
 
 export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
   const { state, post, toggleMaximize } = useStore();
-  const compact = usePaneDensity() !== "comfortable";
+  const density = usePaneDensity();
+  const compact = density !== "comfortable";
+  const strip = density === "strip";
   const maximized = state.maximizedId === pane.summary.id;
   const s = pane.summary;
   // Shown only when there's more than one provider to distinguish between —
@@ -85,7 +87,7 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
   return (
     <div
       className={cn(
-        "flex items-center border-b border-border px-2 text-xs",
+        "flex items-center overflow-hidden border-b border-border px-2 text-xs",
         compact ? "gap-1 py-0.5" : "gap-2 py-1",
         // A pane that needs a human or has failed announces it from across the stack, not only through a small pill.
         s.status === "awaiting-approval" && "bg-attention/10 shadow-[inset_3px_0_0_var(--attention)]",
@@ -268,6 +270,7 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
           {maximized ? <Minimize2Icon aria-hidden /> : <Maximize2Icon aria-hidden />}
         </Button>
       )}
+      {!strip && (
       <Tooltip>
       <TooltipTrigger
         render={(
@@ -290,6 +293,7 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
       </TooltipTrigger>
       <TooltipContent>{dragLabel}</TooltipContent>
       </Tooltip>
+      )}
       {!compact && (
         <Button
           variant="ghost"
@@ -346,6 +350,7 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {!strip && (
       <Button
         variant="ghost"
         size="icon-xs"
@@ -363,6 +368,7 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
       >
         <XIcon aria-hidden />
       </Button>
+      )}
     </div>
   );
 }

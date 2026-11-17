@@ -39,7 +39,7 @@ export function LayoutMenu() {
       <PopoverTrigger render={<Button variant="outline" size="icon-sm" aria-label="Layout" className="shrink-0" />}>
         <LayoutGridIcon aria-hidden />
       </PopoverTrigger>
-      <PopoverContent side="bottom" align="start" className="flex w-80 flex-col gap-3 p-3 text-xs">
+      <PopoverContent side="bottom" align="start" initialFocus={false} className="flex w-80 flex-col gap-3 p-3 text-xs">
         <Section title="Layouts">
           <div className="grid grid-cols-3 gap-1.5">
             {BUILTIN_PRESETS.map((preset) => (
@@ -69,14 +69,14 @@ export function LayoutMenu() {
         </Section>
         <div className="flex items-center justify-between gap-2 border-t border-border pt-2">
           <Button
-            variant="ghost"
+            variant="outline"
             size="sm"
             disabled={openIds.length < 2}
             onClick={() => commit(rearrange(state.layout.root, { width: window.innerWidth, height: window.innerHeight }, MIN_PANE))}
           >
             Auto arrange
           </Button>
-          <Button variant="ghost" size="sm" onClick={() => setSaveOpen(true)}>
+          <Button variant="outline" size="sm" onClick={() => setSaveOpen(true)}>
             Save as preset…
           </Button>
         </div>
