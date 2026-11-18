@@ -3,11 +3,16 @@ import type { TranscriptItem } from '../../protocol/messages';
 export type Beat = 'user' | 'prose' | 'machine' | 'card';
 
 /** What an item is to the eye: the answer, the machinery around it, a decision that needs the user, or the user's own turn. */
-export function beatOf(item: TranscriptItem | undefined): Beat | undefined {
+export function beatOf(item: TranscriptItem | undefined, edge: 'first' | 'last' = 'first'): Beat | undefined {
   if (!item) { return undefined; }
   switch (item.role) {
     case 'user': return 'user';
-    case 'assistant': return 'prose';
+    // An assistant item can open with its reasoning row, which looks and packs like any other machinery; only its text is prose.
+    case 'assistant': {
+      const hasText = item.text.trim() !== '';
+      if (edge === 'first') { return item.thinking ? 'machine' : 'prose'; }
+      return hasText || !item.thinking ? 'prose' : 'machine';
+    }
     case 'tool': case 'shell': case 'compaction': case 'switch': return 'machine';
     default: return 'card';
   }

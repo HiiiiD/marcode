@@ -21,3 +21,17 @@ suite('transcript rhythm', () => {
     assert.strictEqual(beatOf(undefined), undefined);
   });
 });
+
+suite('rhythm of an assistant item that opens with reasoning', () => {
+  const withThinking = { id: 'a', ts: 1, role: 'assistant' as const, text: 'Done.', thinking: 'hm' };
+
+  test('its first beat is machinery and its last is prose, so reasoning packs with the tool rows above it', () => {
+    assert.strictEqual(beatOf(withThinking, 'first'), 'machine');
+    assert.strictEqual(beatOf(withThinking, 'last'), 'prose');
+    assert.strictEqual(gapAbove('machine', beatOf(withThinking, 'first')!), 'mt-0.5');
+  });
+
+  test('reasoning with no text yet is machinery at both ends', () => {
+    assert.strictEqual(beatOf({ ...withThinking, text: '' }, 'last'), 'machine');
+  });
+});

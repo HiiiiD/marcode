@@ -72,12 +72,12 @@ export function Transcript({
               const entries = mergeToolRuns(groupSubagents(nested.main
                 .map((item) => (item.id === streamingId && item.role === 'assistant' ? { ...item, text: settledPrefix(item.text) } : item))
                 .filter((item) => !isLivePrompt(item, pane) && !(item.role === 'assistant' && item.id === streamingId && !item.text && !item.thinking))));
-              const beatAt = (i: number) => {
+              const beatAt = (i: number, edge: 'first' | 'last' = 'first') => {
                 const e = entries[i];
-                return e === undefined ? undefined : e.kind === 'group' ? 'machine' as const : beatOf(e.item);
+                return e === undefined ? undefined : e.kind === 'group' ? 'machine' as const : beatOf(e.item, edge);
               };
               return entries.map((entry, i) => {
-                const gap = gapAbove(beatAt(i - 1), beatAt(i) ?? 'card');
+                const gap = gapAbove(beatAt(i - 1, 'last'), beatAt(i) ?? 'card');
                 // The answer: prose that ends a turn, that is the last prose before the next user message or the end of a settled session.
                 const next = entries.slice(i + 1).find((e) => e.kind === 'item' && (e.item.role === 'user' || e.item.role === 'assistant'));
                 const isAnswer = entry.kind === 'item' && entry.item.role === 'assistant' && idle
