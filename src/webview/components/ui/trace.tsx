@@ -130,7 +130,7 @@ function TraceCollapsibleContent({
         data-slot="trace-collapsible-content-inner"
         className={cn(
           "min-w-0 wrap-break-word",
-          inset ? "mt-0.5 mb-2 ml-[1.625rem] py-1" : "border-t border-border px-2 py-1.5",
+          inset ? "mt-0.5 mb-2 ml-[6.375rem] py-1" : "border-t border-border px-2 py-1.5",
           className
         )}
       >

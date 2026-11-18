@@ -88,7 +88,7 @@ suite('ToolCard', () => {
 
     screen.getByText('-one');
     screen.getByText('+two');
-    screen.getByText('/repo/src/a.ts');
+    assert.ok(screen.getAllByText('/repo/src/a.ts').length > 0);
 
     // The full path stays visible while the action still sends that exact path.
     await userEvent.click(screen.getByTitle('/repo/src/a.ts'));
@@ -129,12 +129,12 @@ suite('ToolCard', () => {
 
   test('a file-edit card shows the shortened path', () => {
     renderWithStore(<ToolCard item={tool({ tool: SAMPLE_TOOL_CALLS['file-edit'] })} />);
-    screen.getByText('…/components/tool-render.ts');
+    screen.getByText('…/webview/components/tool-render.ts');
   });
 
   test('a file-read card shows the shortened path', () => {
     renderWithStore(<ToolCard item={tool({ tool: SAMPLE_TOOL_CALLS['file-read'] })} />);
-    screen.getByText('…/protocol/messages.ts');
+    screen.getByText('src/protocol/messages.ts');
   });
 
   test('a search card shows its pattern', () => {

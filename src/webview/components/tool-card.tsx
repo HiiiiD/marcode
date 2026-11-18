@@ -12,7 +12,7 @@ import { cn } from '@/lib/utils';
 import type { TranscriptItem } from '../../protocol/messages';
 import { ToolBody } from './tool-body';
 import { usePost } from '../store';
-import { describeInput, describeOutput, describeTool, type ToolGlyph } from './tool-render';
+import { describeInput, describeOutcome, describeOutput, describeTool, type ToolGlyph } from './tool-render';
 
 type ToolItem = Extract<TranscriptItem, { role: 'tool' }>;
 
@@ -61,6 +61,10 @@ export function ToolCard({
   // — still running, and failed — get a visible mark. `state` still has a
   // text equivalent below, so nothing is carried by the icon alone.
   const Glyph = state === 'running' ? Loader2Icon : GLYPHS[header.glyph];
+  // One glance at what the call came to, right after its target: a folded run sums its edits' size or shows the last call's output.
+  const outcome = all.length > 1 && tool.kind === 'file-edit'
+    ? sumEdits(all.map((call) => describeOutcome(call.tool, call.output, call.state)))
+    : describeOutcome(tool, item.output, state);
 
   return (
     // `group/item`, not a second `<button>` nested inside the toggle: the
@@ -69,7 +73,7 @@ export function ToolCard({
     // actions trigger sits beside its checkbox item to avoid, not inside it.
     <TraceCollapsible bare open={open} onOpenChange={setOpen} className="group/item my-0">
       <div className="flex items-center">
-        <TraceCollapsibleTrigger className="h-8 px-0 text-xs text-muted-foreground hover:bg-transparent hover:text-foreground [&>[data-slot=trace-icon]:last-child]:opacity-0 group-hover/item:[&>[data-slot=trace-icon]:last-child]:opacity-100 focus-visible:[&>[data-slot=trace-icon]:last-child]:opacity-100 aria-expanded:[&>[data-slot=trace-icon]:last-child]:opacity-100">
+        <TraceCollapsibleTrigger className="h-7 px-0 text-xs text-muted-foreground hover:bg-transparent hover:text-foreground [&>[data-slot=trace-icon]:last-child]:opacity-0 group-hover/item:[&>[data-slot=trace-icon]:last-child]:opacity-100 focus-visible:[&>[data-slot=trace-icon]:last-child]:opacity-100 aria-expanded:[&>[data-slot=trace-icon]:last-child]:opacity-100">
           <Glyph
             aria-hidden
             className={cn(
@@ -87,16 +91,17 @@ export function ToolCard({
               {server}
             </span>
           )}
-          <span className="min-w-[4.5rem] shrink-0 font-medium text-foreground/80">{header.verb}</span>
+          <span className="min-w-[4.5rem] shrink-0 text-muted-foreground">{header.verb}</span>
           {header.primary && (
             <span
-              className={cn('min-w-0 truncate text-muted-foreground', header.mono && 'font-mono')}
+              className={cn('min-w-0 truncate text-foreground/75', header.mono && 'font-mono')}
               title={header.full}
             >
               {header.primary}
             </span>
           )}
-          {all.length > 1 && <span className="shrink-0 rounded bg-muted px-1 text-muted-foreground tabular-nums">×{all.length}</span>}
+          {outcome && <span className="shrink-0 text-muted-foreground tabular-nums">{outcome}</span>}
+          {all.length > 1 && <span className="shrink-0 rounded bg-muted px-1.5 text-foreground/80 tabular-nums">×{all.length}</span>}
           {approval && (
             approval === 'allowed'
               ? <CheckIcon aria-label="allowed" role="img" className="ml-auto shrink-0 text-git-added" />
@@ -105,9 +110,7 @@ export function ToolCard({
           {state === 'error' && (
             // The `attention` spelling used elsewhere in the panel: a word plus
             // a quiet fill, never colour alone.
-            <span className="ml-auto shrink-0 rounded-full border border-destructive/40 bg-destructive/10 px-1.5 font-medium text-destructive">
-              failed
-            </span>
+            <span className="shrink-0 font-medium text-destructive">failed</span>
           )}
         </TraceCollapsibleTrigger>
 
@@ -151,4 +154,15 @@ function ToolDetail({ item, streaming }: { item: ToolItem; streaming: boolean })
       {item.state === 'running' && <p className="text-muted-foreground">Running…</p>}
     </div>
   );
+}
+
+/** `+3 −1` and `+2 −2` folded into `+5 −3`. */
+function sumEdits(parts: string[]): string {
+  let added = 0;
+  let removed = 0;
+  for (const part of parts) {
+    const m = /^\+(\d+) −(\d+)$/.exec(part);
+    if (m) { added += Number(m[1]); removed += Number(m[2]); }
+  }
+  return added + removed > 0 ? `+${added} −${removed}` : '';
 }

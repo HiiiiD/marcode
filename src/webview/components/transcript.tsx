@@ -80,7 +80,7 @@ export function Transcript({
             ))}
           </MessageScrollerContent>
         </MessageScrollerViewport>
-        <MessageScrollerButton />
+        <MessageScrollerButton className="right-4 left-auto translate-x-0 rtl:translate-x-0" />
       </MessageScroller>
     </NestedMessagesContext>
   );

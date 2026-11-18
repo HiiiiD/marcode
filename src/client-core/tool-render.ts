@@ -51,14 +51,11 @@ export type ToolBlock =
   /** A `data:` URI, already self-contained — no webview resource root needed. */
   | { kind: 'image'; dataUri: string };
 
-/** Keep the path root and last two segments — both matter at 300px. */
+/** The last three segments, which is what tells two files apart; a drive or root prefix says nothing at this width. */
 export function shortPath(path: string): string {
   const parts = path.split(/[\\/]/).filter(Boolean);
-  if (parts.length <= 2) { return path; }
-  const prefix = /^[A-Za-z]:[\\/]/.test(path)
-    ? `${path.slice(0, 2)}/…`
-    : path.startsWith('/') ? '/…' : '…';
-  return `${prefix}/${parts.slice(-2).join('/')}`;
+  if (parts.length <= 3) { return path; }
+  return `…/${parts.slice(-3).join('/')}`;
 }
 
 export interface Clamped {
@@ -456,4 +453,33 @@ function diffBodyLines(diff: string): string[] {
     body.push(line);
   }
   return body;
+}
+
+/**
+ * What a settled call came to, in a few characters for its row: the size of an
+ * edit (`+12 −3`), or how much a call printed (`80 lines`). Empty when there
+ * is nothing worth a glance; a failed call says so on its own.
+ */
+export function describeOutcome(tool: ToolCall, output: ToolOutput | undefined, state: 'running' | 'ok' | 'error'): string {
+  if (state !== 'ok') { return ''; }
+  if (tool.kind === 'file-edit') {
+    let added = 0;
+    let removed = 0;
+    for (const file of tool.files) {
+      for (const edit of file.edits ?? []) {
+        if (edit.after !== undefined) { added += edit.after.split('\n').length; }
+        if (edit.before !== undefined) { removed += edit.before.split('\n').length; }
+      }
+      for (const line of file.unifiedDiff ? diffBodyLines(file.unifiedDiff) : []) {
+        if (line.startsWith('+')) { added += 1; } else if (line.startsWith('-')) { removed += 1; }
+      }
+    }
+    return added + removed > 0 ? `+${added} −${removed}` : '';
+  }
+  if (tool.kind === 'command' || tool.kind === 'search' || tool.kind === 'file-read') {
+    if (output?.kind !== 'text') { return ''; }
+    const lines = output.text.replace(/\n+$/, '').split('\n').length;
+    return output.text.trim() !== '' && lines > 1 ? `${lines} lines` : '';
+  }
+  return '';
 }

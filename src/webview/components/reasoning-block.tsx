@@ -31,9 +31,9 @@ export function ReasoningBlock({ text }: { text: string }) {
     <TraceCollapsible bare open={open} onOpenChange={setOpen} className="group/item my-0">
       <TraceCollapsibleTrigger className="h-auto min-h-8 items-start gap-2 px-0 py-1.5 text-xs text-muted-foreground hover:bg-transparent hover:text-foreground [&>[data-slot=trace-icon]:last-child]:opacity-0 group-hover/item:[&>[data-slot=trace-icon]:last-child]:opacity-100 focus-visible:[&>[data-slot=trace-icon]:last-child]:opacity-100 aria-expanded:[&>[data-slot=trace-icon]:last-child]:opacity-100">
         <BrainIcon aria-hidden className="mt-0.5 shrink-0" />
-        <span className="min-w-[4.5rem] shrink-0 font-medium text-foreground/80">Reasoning</span>
+        <span className="min-w-[4.5rem] shrink-0 text-muted-foreground">Reasoning</span>
         {!open && (
-          <span className="line-clamp-2 min-w-0 flex-1 text-muted-foreground">
+          <span className="line-clamp-2 min-w-0 flex-1 text-foreground/70">
             <InlineMarkdown>{preview(text)}</InlineMarkdown>
           </span>
         )}

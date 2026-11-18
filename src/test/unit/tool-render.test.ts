@@ -1,7 +1,7 @@
 import * as assert from 'assert';
 import type { ToolCall } from '../../protocol/messages';
 import {
-  describeInput, describeOutput, describeTool, shortPath,
+  describeInput, describeOutcome, describeOutput, describeTool, shortPath,
 } from '../../webview/components/tool-render';
 
 suite('shortPath', () => {
@@ -11,12 +11,12 @@ suite('shortPath', () => {
   });
 
   test('a longer path is truncated to its last two segments', () => {
-    assert.strictEqual(shortPath('/repo/src/components/a.ts'), '/…/components/a.ts');
+    assert.strictEqual(shortPath('/repo/src/components/a.ts'), '…/src/components/a.ts');
   });
 
   test('Windows backslash separators are split the same as POSIX ones', () => {
     assert.strictEqual(
-      shortPath('C:\\repo\\src\\components\\a.ts'), 'C:/…/components/a.ts',
+      shortPath('C:\\repo\\src\\components\\a.ts'), '…/src/components/a.ts',
     );
   });
 });
@@ -51,7 +51,7 @@ suite('describeTool', () => {
         edits: [{ before: 'old line', after: 'new line\nanother line' }],
       }],
     });
-    assert.strictEqual(header.primary, '/…/b/c.ts');
+    assert.strictEqual(header.primary, '/a/b/c.ts');
   });
 
   test('a multi-file edit counts files instead of naming one', () => {
@@ -455,5 +455,22 @@ suite('describeOutput', () => {
       describeOutput('image', { kind: 'image', dataUri: 'data:image/png;base64,AAAA' }, 'ok'),
       [{ kind: 'image', dataUri: 'data:image/png;base64,AAAA' }],
     );
+  });
+});
+
+suite('describeOutcome', () => {
+  test('sizes an edit and counts what a command printed', () => {
+    assert.strictEqual(describeOutcome(
+      { kind: 'file-edit', label: 'Edit', files: [{ path: '/a', op: 'modify', edits: [{ before: 'a', after: 'b\nc' }] }] },
+      undefined, 'ok'), '+2 −1');
+    assert.strictEqual(describeOutcome(
+      { kind: 'command', label: 'Bash', command: 'ls' }, { kind: 'text', text: 'a\nb\nc\n' }, 'ok'), '3 lines');
+  });
+
+  test('says nothing for a one-line result, a running call or a failure', () => {
+    const command = { kind: 'command' as const, label: 'Bash', command: 'ls' };
+    assert.strictEqual(describeOutcome(command, { kind: 'text', text: 'one' }, 'ok'), '');
+    assert.strictEqual(describeOutcome(command, { kind: 'text', text: 'a\nb' }, 'running'), '');
+    assert.strictEqual(describeOutcome(command, { kind: 'text', text: 'a\nb' }, 'error'), '');
   });
 });
