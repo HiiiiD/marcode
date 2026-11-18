@@ -100,7 +100,7 @@ export function ToolCard({
               {header.primary}
             </span>
           )}
-          {outcome && <span className="shrink-0 text-muted-foreground tabular-nums">{outcome}</span>}
+          {outcome && <Outcome text={outcome} />}
           {all.length > 1 && <span className="shrink-0 rounded bg-muted px-1.5 text-foreground/80 tabular-nums">×{all.length}</span>}
           {approval && (
             approval === 'allowed'
@@ -137,7 +137,9 @@ export function ToolCard({
 
 /** One call's input and result, as the body of an opened row. */
 function ToolDetail({ item, streaming }: { item: ToolItem; streaming: boolean }) {
-  const input = describeInput(item.tool);
+  const header = describeTool(item.tool);
+  // The row already shows the command when it has no leading cd and fits; echoing it again in the panel was a repeat.
+  const input = describeInput(item.tool).filter((b) => !(b.kind === 'command' && item.tool.kind === 'command' && b.text === header.primary));
   const output = describeOutput(
     item.tool.kind, item.output,
     streaming && item.state === 'running' && item.output?.kind === 'text' ? 'ok' : item.state,
@@ -165,4 +167,15 @@ function sumEdits(parts: string[]): string {
     if (m) { added += Number(m[1]); removed += Number(m[2]); }
   }
   return added + removed > 0 ? `+${added} −${removed}` : '';
+}
+
+/** `+12 −3` with the additions green and the removals red, like the diff it summarises; anything else stays muted. */
+function Outcome({ text }: { text: string }) {
+  const m = /^(\+\d+) (−\d+)$/.exec(text);
+  if (!m) { return <span className="shrink-0 text-foreground/60 tabular-nums">{text}</span>; }
+  return (
+    <span className="shrink-0 tabular-nums">
+      <span className="text-git-added">{m[1]}</span> <span className="text-git-deleted">{m[2]}</span>
+    </span>
+  );
 }

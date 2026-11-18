@@ -459,16 +459,16 @@ suite('describeOutput', () => {
 });
 
 suite('describeOutcome', () => {
-  test('sizes an edit and counts what a command printed', () => {
+  test('sizes an edit and counts what a search printed', () => {
     assert.strictEqual(describeOutcome(
       { kind: 'file-edit', label: 'Edit', files: [{ path: '/a', op: 'modify', edits: [{ before: 'a', after: 'b\nc' }] }] },
       undefined, 'ok'), '+2 −1');
     assert.strictEqual(describeOutcome(
-      { kind: 'command', label: 'Bash', command: 'ls' }, { kind: 'text', text: 'a\nb\nc\n' }, 'ok'), '3 lines');
+      { kind: 'search', label: 'Grep', pattern: 'x', mode: 'content' }, { kind: 'text', text: 'a\nb\nc\n' }, 'ok'), '3 lines');
   });
 
   test('says nothing for a one-line result, a running call or a failure', () => {
-    const command = { kind: 'command' as const, label: 'Bash', command: 'ls' };
+    const command = { kind: 'search' as const, label: 'Grep', pattern: 'x', mode: 'content' as const };
     assert.strictEqual(describeOutcome(command, { kind: 'text', text: 'one' }, 'ok'), '');
     assert.strictEqual(describeOutcome(command, { kind: 'text', text: 'a\nb' }, 'running'), '');
     assert.strictEqual(describeOutcome(command, { kind: 'text', text: 'a\nb' }, 'error'), '');

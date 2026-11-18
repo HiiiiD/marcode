@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { cn } from '@/lib/utils';
 import { BrainIcon } from 'lucide-react';
 import { TraceCollapsible, TraceCollapsibleContent, TraceCollapsibleTrigger } from '@/components/ui/trace';
 import { InlineMarkdown } from './inline-markdown';
@@ -29,7 +30,7 @@ export function ReasoningBlock({ text }: { text: string }) {
 
   return (
     <TraceCollapsible bare open={open} onOpenChange={setOpen} className="group/item my-0">
-      <TraceCollapsibleTrigger className="h-auto min-h-8 items-start gap-2 px-0 py-1.5 text-xs text-muted-foreground hover:bg-transparent hover:text-foreground [&>[data-slot=trace-icon]:last-child]:opacity-0 group-hover/item:[&>[data-slot=trace-icon]:last-child]:opacity-100 focus-visible:[&>[data-slot=trace-icon]:last-child]:opacity-100 aria-expanded:[&>[data-slot=trace-icon]:last-child]:opacity-100">
+      <TraceCollapsibleTrigger className={cn("h-auto min-h-8 items-start gap-2 px-0 py-1.5 text-xs text-muted-foreground hover:bg-transparent hover:text-foreground [&>[data-slot=trace-icon]:last-child]:opacity-0 group-hover/item:[&>[data-slot=trace-icon]:last-child]:opacity-100 focus-visible:[&>[data-slot=trace-icon]:last-child]:opacity-100 aria-expanded:[&>[data-slot=trace-icon]:last-child]:opacity-100", open && "min-h-6 pb-0")}>
         <BrainIcon aria-hidden className="mt-0.5 shrink-0" />
         <span className="min-w-[4.5rem] shrink-0 text-muted-foreground">Reasoning</span>
         {!open && (
@@ -38,7 +39,7 @@ export function ReasoningBlock({ text }: { text: string }) {
           </span>
         )}
       </TraceCollapsibleTrigger>
-      <TraceCollapsibleContent inset className="max-h-64 overflow-y-auto text-muted-foreground">
+      <TraceCollapsibleContent inset className="max-h-64 overflow-y-auto text-foreground/80 [&_p]:my-0 [&_p+p]:mt-2">
         <Markdown>{text}</Markdown>
       </TraceCollapsibleContent>
     </TraceCollapsible>

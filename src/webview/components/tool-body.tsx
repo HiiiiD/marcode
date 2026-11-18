@@ -193,11 +193,12 @@ function PathRow({ path, hint }: { path: string; hint?: string }) {
   );
 }
 
+// Plain output and code sit on a hairline rule, not a filled box: inside an opened row a second surface was a box in a box. Only a diff (its tint is information) and an error keep a fill.
 const TONE_CLASS = {
-  output: 'bg-muted',
-  code: 'bg-muted',
-  error: 'bg-destructive/10 text-destructive',
-  diff: 'bg-muted',
+  output: 'border-l border-border py-0.5 pr-1 pl-3',
+  code: 'border-l border-border py-0.5 pr-1 pl-3',
+  error: 'rounded bg-destructive/10 px-1.5 py-1 text-destructive',
+  diff: 'rounded bg-muted px-1.5 py-1',
 } as const;
 
 /**
@@ -221,7 +222,7 @@ function ClampedLines({
   return (
     <div
       className={cn(
-        'rounded px-1.5 py-1 font-mono',
+        'font-mono',
         TONE_CLASS[tone],
         showAll && clamped.hidden > 0 && 'max-h-80 overflow-auto',
       )}
