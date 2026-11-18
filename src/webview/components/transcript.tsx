@@ -12,6 +12,7 @@ import { isLivePrompt } from '../lib/pending-prompts';
 import { splitNestedMessages } from '../lib/nested-messages';
 import { groupSubagents, mergeToolRuns } from '../lib/subagent-groups';
 import { settledPrefix } from '../lib/stream-text';
+import { beatOf, gapAbove } from '../lib/rhythm';
 
 export function Transcript({
   pane, onLoadMore,
@@ -50,7 +51,7 @@ export function Transcript({
               viewport (Content is `min-h-full`): a two-message session sits on
               the composer instead of stranding itself at the top with dead
               space below. Once it overflows, the rule is inert. */}
-          <MessageScrollerContent className="justify-end gap-0.5">
+          <MessageScrollerContent className="justify-end gap-0">
             {pane.hasMore && first && (
               <Button
                 variant="outline"
@@ -67,17 +68,27 @@ export function Transcript({
                 Load earlier messages
               </Button>
             )}
-            {mergeToolRuns(groupSubagents(nested.main
-              .map((item) => (item.id === streamingId && item.role === 'assistant' ? { ...item, text: settledPrefix(item.text) } : item))
-              .filter((item) => !isLivePrompt(item, pane) && !(item.role === 'assistant' && item.id === streamingId && !item.text && !item.thinking)))).map((entry) => entry.kind === 'group' ? (
-              <MessageScrollerItem key={entry.id} messageId={entry.id}>
-                <SubagentGroupCard items={entry.items} sessionId={pane.summary.id} />
-              </MessageScrollerItem>
-            ) : (
-              <MessageScrollerItem key={entry.item.id} messageId={entry.item.id} className={entry.item.role === 'user' ? 'mt-4 first:mt-0' : undefined}>
-                <TranscriptItemView item={entry.item} more={entry.more} sessionId={pane.summary.id} canFork={idle && pane.summary.kind !== 'side'} />
-              </MessageScrollerItem>
-            ))}
+            {(() => {
+              const entries = mergeToolRuns(groupSubagents(nested.main
+                .map((item) => (item.id === streamingId && item.role === 'assistant' ? { ...item, text: settledPrefix(item.text) } : item))
+                .filter((item) => !isLivePrompt(item, pane) && !(item.role === 'assistant' && item.id === streamingId && !item.text && !item.thinking))));
+              const beatAt = (i: number) => {
+                const e = entries[i];
+                return e === undefined ? undefined : e.kind === 'group' ? 'machine' as const : beatOf(e.item);
+              };
+              return entries.map((entry, i) => {
+                const gap = gapAbove(beatAt(i - 1), beatAt(i) ?? 'card');
+                return entry.kind === 'group' ? (
+                  <MessageScrollerItem key={entry.id} messageId={entry.id} className={gap}>
+                    <SubagentGroupCard items={entry.items} sessionId={pane.summary.id} />
+                  </MessageScrollerItem>
+                ) : (
+                  <MessageScrollerItem key={entry.item.id} messageId={entry.item.id} className={gap}>
+                    <TranscriptItemView item={entry.item} more={entry.more} sessionId={pane.summary.id} canFork={idle && pane.summary.kind !== 'side'} />
+                  </MessageScrollerItem>
+                );
+              });
+            })()}
           </MessageScrollerContent>
         </MessageScrollerViewport>
         <MessageScrollerButton className="right-4 left-auto translate-x-0 rtl:translate-x-0" />

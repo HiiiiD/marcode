@@ -33,7 +33,7 @@ const FRAME: Record<TranscriptItemRole, string> = {
     'bg-[color-mix(in_oklch,var(--color-muted),var(--color-foreground)_7%)]',
   ),
   // The reading surface: more air above and below than the rows of tool activity around it, so the answer stands out from the machinery.
-  assistant: 'mt-1 py-3 text-sm leading-relaxed text-foreground',
+  assistant: 'text-sm leading-relaxed text-foreground',
   tool: '',
   // A subagent is a container of tool calls, not one call: a rule the eye can
   // separate from `tool` while scanning, without introducing a colour that

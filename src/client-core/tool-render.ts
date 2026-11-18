@@ -476,7 +476,7 @@ export function describeOutcome(tool: ToolCall, output: ToolOutput | undefined, 
     }
     return added + removed > 0 ? `+${added} −${removed}` : '';
   }
-  if (tool.kind === 'search' || tool.kind === 'file-read') {
+  if (tool.kind === 'command' || tool.kind === 'search' || tool.kind === 'file-read') {
     if (output?.kind !== 'text') { return ''; }
     const lines = output.text.replace(/\n+$/, '').split('\n').length;
     return output.text.trim() !== '' && lines > 1 ? `${lines} lines` : '';
