@@ -34,10 +34,8 @@ const FORKABLE_ROLES: ReadonlySet<TranscriptItem['role']> = new Set(['user', 'as
  * once by the transcript and passed in.
  */
 export const TranscriptItemView = memo(function TranscriptItemView({
-  item, more, sessionId, canFork = false, emphasis = false,
+  item, more, sessionId, canFork = false,
 }: {
-  /** The last prose of a finished turn: the answer, set a step larger than the narration before it. */
-  emphasis?: boolean;
   item: TranscriptItem;
   /** Identical consecutive tool calls folded into this row. */
   more?: Extract<TranscriptItem, { role: 'tool' }>[];
@@ -57,7 +55,7 @@ export const TranscriptItemView = memo(function TranscriptItemView({
       return (
         <TranscriptItemShell role="assistant" label="Agent" ts={item.ts} onFork={onFork}>
           {item.thinking && <ReasoningBlock text={item.thinking} />}
-          {item.text.trim() !== '' && <div className={cn('max-w-[90ch]', item.thinking && 'mt-4', emphasis && 'text-[0.9375rem]')}><Markdown>{item.text}</Markdown></div>}
+          {item.text.trim() !== '' && <div className={cn('max-w-[90ch]', item.thinking && 'mt-4')}><Markdown>{item.text}</Markdown></div>}
         </TranscriptItemShell>
       );
 
