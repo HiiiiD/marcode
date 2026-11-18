@@ -91,7 +91,7 @@ export function ToolCard({
               {server}
             </span>
           )}
-          <span className="min-w-[4.5rem] shrink-0 text-muted-foreground">{header.verb}</span>
+          <span className="min-w-[5.5rem] shrink-0 text-muted-foreground">{header.verb}</span>
           {header.primary && (
             <span
               className={cn('min-w-0 truncate text-foreground/75', header.mono && 'font-mono')}

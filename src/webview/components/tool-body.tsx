@@ -186,7 +186,7 @@ function PathRow({ path, hint }: { path: string; hint?: string }) {
       // height — the same discipline as tool-card.tsx's disclosure row.
       className="flex w-full items-center justify-start gap-1.5 px-1.5 font-normal"
     >
-      <span className="min-w-0 wrap-break-word text-left font-mono">{shortPath(path)}</span>
+      <span className="min-w-0 wrap-break-word text-left font-mono text-foreground/70">{shortPath(path)}</span>
       {hint && <HintText text={hint} />}
       <span className="sr-only">Open in editor</span>
     </Button>
@@ -198,7 +198,7 @@ const TONE_CLASS = {
   output: 'border-l border-border py-0.5 pr-1 pl-3',
   code: 'border-l border-border py-0.5 pr-1 pl-3',
   error: 'rounded bg-destructive/10 px-1.5 py-1 text-destructive',
-  diff: 'rounded bg-muted px-1.5 py-1',
+  diff: 'py-0.5',
 } as const;
 
 /**

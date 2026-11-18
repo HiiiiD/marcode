@@ -170,7 +170,7 @@ function MarkdownTable({ node, children }: { node?: Element; children: ReactNode
           <DownloadIcon />
         </Button>
       </div>
-      <Table className="rounded border border-border">{children}</Table>
+      <Table>{children}</Table>
     </div>
   );
 }

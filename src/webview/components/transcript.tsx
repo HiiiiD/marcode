@@ -78,13 +78,18 @@ export function Transcript({
               };
               return entries.map((entry, i) => {
                 const gap = gapAbove(beatAt(i - 1), beatAt(i) ?? 'card');
+                // The answer: prose that ends a turn, that is the last prose before the next user message or the end of a settled session.
+                const next = entries.slice(i + 1).find((e) => e.kind === 'item' && (e.item.role === 'user' || e.item.role === 'assistant'));
+                const isAnswer = entry.kind === 'item' && entry.item.role === 'assistant' && idle
+                  ? (next === undefined || (next.kind === 'item' && next.item.role === 'user'))
+                  : entry.kind === 'item' && entry.item.role === 'assistant' && next !== undefined && next.kind === 'item' && next.item.role === 'user';
                 return entry.kind === 'group' ? (
                   <MessageScrollerItem key={entry.id} messageId={entry.id} className={gap}>
                     <SubagentGroupCard items={entry.items} sessionId={pane.summary.id} />
                   </MessageScrollerItem>
                 ) : (
                   <MessageScrollerItem key={entry.item.id} messageId={entry.item.id} className={gap}>
-                    <TranscriptItemView item={entry.item} more={entry.more} sessionId={pane.summary.id} canFork={idle && pane.summary.kind !== 'side'} />
+                    <TranscriptItemView item={entry.item} more={entry.more} emphasis={isAnswer} sessionId={pane.summary.id} canFork={idle && pane.summary.kind !== 'side'} />
                   </MessageScrollerItem>
                 );
               });

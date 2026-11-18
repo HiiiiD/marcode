@@ -62,6 +62,20 @@ suite('WorkingRow', () => {
     assert.strictEqual(screen.queryByText(/Second li/), null);
   });
 
+  test('the prose that ends a settled turn is set a step larger than the narration before it', () => {
+    renderApp();
+    hydrate('idle', [
+      ASKED,
+      { id: 'a1', ts: secondsAgo(4), role: 'assistant', text: 'Looking.' },
+      tool({ id: 't1', ts: secondsAgo(3) }),
+      { id: 'a2', ts: secondsAgo(2), role: 'assistant', text: 'All done.' },
+    ]);
+
+    const size = (text: string) => screen.getByText(text).closest('[class*="max-w-"]')!.className.includes('0.9375rem');
+    assert.strictEqual(size('All done.'), true);
+    assert.strictEqual(size('Looking.'), false);
+  });
+
   test('assistant text appears whole once the turn is over', () => {
     renderApp();
     hydrate('idle', [ASKED, { id: 'a1', ts: secondsAgo(1), role: 'assistant', text: 'Look' }]);
