@@ -91,7 +91,7 @@ export function ToolCard({
               {server}
             </span>
           )}
-          <span className="min-w-[5.5rem] shrink-0 text-muted-foreground">{header.verb}</span>
+          <span className="min-w-[5rem] shrink-0 text-muted-foreground">{header.verb}</span>
           {header.primary && (
             <span
               // Consolas at 12px reads a size smaller than the 12px sans beside it (the name, the reasoning preview), so monospace targets are set at 13px to match.
@@ -130,17 +130,21 @@ export function ToolCard({
       </div>
 
       <TraceCollapsibleContent inset className="flex flex-col gap-3">
-        {all.map((call) => <ToolDetail key={call.id} item={call} streaming={streaming} />)}
+        {all.map((call, i) => <ToolDetail key={call.id} item={call} streaming={streaming} nth={all.length > 1 ? i : undefined} />)}
       </TraceCollapsibleContent>
     </TraceCollapsible>
   );
 }
 
 /** One call's input and result, as the body of an opened row. */
-function ToolDetail({ item, streaming }: { item: ToolItem; streaming: boolean }) {
+function ToolDetail({ item, streaming, nth }: { item: ToolItem; streaming: boolean; /** Position within a folded run; later entries drop the repeated path and say which edit they are. */ nth?: number }) {
   const header = describeTool(item.tool);
   // The row already shows the command when it has no leading cd and fits; echoing it again in the panel was a repeat.
-  const input = describeInput(item.tool).filter((b) => !(b.kind === 'command' && item.tool.kind === 'command' && b.text === header.primary));
+  const blocks = describeInput(item.tool);
+  const hint = (blocks.find((b) => b.kind === 'path') as { hint?: string } | undefined)?.hint;
+  const input = (nth !== undefined && nth > 0
+    ? [{ kind: 'note' as const, text: `${header.verb} ${nth + 1}${hint ? ` · ${hint}` : ''}` }, ...blocks.filter((b) => b.kind !== 'path')]
+    : blocks).filter((b) => !(b.kind === 'command' && item.tool.kind === 'command' && b.text === header.primary));
   const output = describeOutput(
     item.tool.kind, item.output,
     streaming && item.state === 'running' && item.output?.kind === 'text' ? 'ok' : item.state,

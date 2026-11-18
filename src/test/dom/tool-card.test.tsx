@@ -31,6 +31,18 @@ suite('ToolCard', () => {
     assert.strictEqual(screen.queryByText('$') === null, true);
   });
 
+  test('a folded run shows its path once and labels each further call', async () => {
+    const edit = (id: string) => tool({
+      id,
+      tool: { kind: 'file-edit', label: 'Edit', files: [{ path: '/repo/src/a.ts', op: 'modify', edits: [{ before: 'one', after: 'two' }] }] },
+    });
+    renderWithStore(<ToolCard item={edit('1')} more={[edit('2')]} />);
+    await expand();
+
+    assert.strictEqual(screen.getAllByText('/repo/src/a.ts').length, 1);
+    screen.getByText(/Edit 2/);
+  });
+
   test('a command with a leading cd keeps its full command in the opened panel', async () => {
     renderWithStore(<ToolCard item={tool({
       tool: { kind: 'command', label: 'Bash', command: 'cd /repo && yarn test:unit' },

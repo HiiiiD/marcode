@@ -255,8 +255,8 @@ function Lines({ lines, diff }: { lines: string[]; diff: boolean }) {
           key={i}
           className={cn(
             // The named tokens, which carry VS Code's always-registered chart colours as a fallback; the raw gitDecoration variables vanish on a theme or install that leaves them unset.
-            diff && line.startsWith('+') && '-mx-1.5 bg-git-added/10 px-1.5 text-git-added',
-            diff && line.startsWith('-') && '-mx-1.5 bg-git-deleted/10 px-1.5 text-git-deleted',
+            diff && line.startsWith('+') && '-mx-1.5 bg-git-added/[0.07] px-1.5 text-git-added',
+            diff && line.startsWith('-') && '-mx-1.5 bg-git-deleted/[0.07] px-1.5 text-git-deleted',
           )}
         >
           {line === '' ? ' ' : line}
