@@ -39,7 +39,8 @@ suite('ToolCard', () => {
     renderWithStore(<ToolCard item={edit('1')} more={[edit('2')]} />);
     await expand();
 
-    assert.strictEqual(screen.getAllByText('/repo/src/a.ts').length, 1);
+    // The row header plus one path row in the panel; the second edit adds none.
+    assert.strictEqual(screen.getAllByText('/repo/src/a.ts').length, 2);
     screen.getByText(/Edit 2/);
   });
 
