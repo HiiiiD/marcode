@@ -94,7 +94,8 @@ export function ToolCard({
           <span className="min-w-[5.5rem] shrink-0 text-muted-foreground">{header.verb}</span>
           {header.primary && (
             <span
-              className={cn('min-w-0 truncate text-foreground/75', header.mono && 'font-mono')}
+              // Consolas at 12px reads a size smaller than the 12px sans beside it (the name, the reasoning preview), so monospace targets are set at 13px to match.
+              className={cn('min-w-0 truncate text-foreground/75', header.mono && 'font-mono text-[0.8125rem]')}
               title={header.full}
             >
               {header.primary}

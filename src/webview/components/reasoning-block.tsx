@@ -29,7 +29,7 @@ export function ReasoningBlock({ text }: { text: string }) {
 
   return (
     <TraceCollapsible bare open={open} onOpenChange={setOpen} className="group/item my-0">
-      <TraceCollapsibleTrigger className={cn("h-7 items-center gap-2 py-0 pr-7 pl-0 text-xs text-muted-foreground hover:bg-transparent hover:text-foreground [&>[data-slot=trace-icon]:last-child]:opacity-40 group-hover/item:[&>[data-slot=trace-icon]:last-child]:opacity-100 focus-visible:[&>[data-slot=trace-icon]:last-child]:opacity-100 aria-expanded:[&>[data-slot=trace-icon]:last-child]:opacity-100", open && "min-h-6 pb-0")}>
+      <TraceCollapsibleTrigger className={cn("h-7 flex-none items-center gap-2 py-0 pr-7 pl-0 text-xs text-muted-foreground hover:bg-transparent hover:text-foreground [&>[data-slot=trace-icon]:last-child]:opacity-40 group-hover/item:[&>[data-slot=trace-icon]:last-child]:opacity-100 focus-visible:[&>[data-slot=trace-icon]:last-child]:opacity-100 aria-expanded:[&>[data-slot=trace-icon]:last-child]:opacity-100", open && "min-h-6 pb-0")}>
         <LightbulbIcon aria-hidden className="shrink-0" />
         <span className="min-w-[5.5rem] shrink-0 text-muted-foreground">Reasoning</span>
         {!open && (
