@@ -41,7 +41,7 @@ export function ReasoningBlock({ text }: { text: string }) {
         <LightbulbIcon aria-hidden className="shrink-0" />
         <span className={cn('shrink-0 text-muted-foreground', open ? 'min-w-0' : 'min-w-[5rem]')}>Reasoning</span>
         {!open && (
-          <span className="min-w-0 flex-1 truncate text-foreground/70">
+          <span className="min-w-0 flex-1 truncate text-foreground/70 [&_strong]:font-normal [&_em]:not-italic">
             <InlineMarkdown>{preview(text)}</InlineMarkdown>
           </span>
         )}
