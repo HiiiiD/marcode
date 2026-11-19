@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { ChevronRightIcon, RefreshCwIcon, Trash2Icon } from "lucide-react";
+import { RefreshCwIcon, Trash2Icon } from "lucide-react";
 import { useState } from "react";
 import type { McpRow } from "../../../client-core/mcp/mcp-rows";
 
@@ -50,24 +50,25 @@ export function McpServerRow({ row, removeFrom, reconnectRestarts, onReconnect, 
         <span className="min-w-0 truncate font-medium">{row.name}</span>
         {row.private && <span className="shrink-0 text-muted-foreground">private</span>}
         <span className="ml-auto flex min-w-0 items-center justify-end gap-1">
-          {failed ? (
-            <button
-              type="button"
-              aria-expanded={expanded}
-              onClick={() => setExpanded((v) => !v)}
-              className="flex items-center gap-0.5 text-destructive outline-none focus-visible:underline"
+          {failed && row.canReconnect ? (
+            <Button
+              variant="outline"
+              size="xs"
+              aria-label={`Reconnect ${row.name}`}
+              title={reconnectRestarts ? "Restarts this session" : undefined}
+              onClick={onReconnect}
             >
-              failed
-              <ChevronRightIcon aria-hidden className={cn("size-3 opacity-60 transition-transform", expanded && "rotate-90")} />
-            </button>
+              <RefreshCwIcon aria-hidden data-icon="inline-start" />
+              Reconnect
+            </Button>
           ) : row.canSignIn ? (
             <Button variant="outline" size="xs" aria-label={`Sign in to ${row.name}`} onClick={onSignIn}>Sign in</Button>
           ) : (
-            row.detail && <span className="truncate text-muted-foreground">{row.detail}</span>
+            failed ? <span className="text-destructive">failed</span> : row.detail && <span className="truncate text-muted-foreground">{row.detail}</span>
           )}
         </span>
         <span className="flex w-14 shrink-0 items-center justify-end opacity-0 transition-opacity group-focus-within/row:opacity-100 group-hover/row:opacity-100">
-          {(row.canReconnect || row.busy) && (
+          {((row.canReconnect && !failed) || row.busy) && (
             <IconAction
               label={`Reconnect ${row.name}`}
               tip={row.busy ? "Restarting…" : reconnectRestarts ? "Restarts this session" : "Reconnect"}
@@ -82,8 +83,22 @@ export function McpServerRow({ row, removeFrom, reconnectRestarts, onReconnect, 
           )}
         </span>
       </div>
-      {failed && expanded && row.detail && (
-        <p className="mb-1 ml-1 border-l border-border py-0.5 pl-3 font-mono text-muted-foreground wrap-break-word">{row.detail}</p>
+      {failed && row.detail && (
+        <button
+          type="button"
+          aria-expanded={expanded}
+          title={expanded ? "Show less" : "Show the full error"}
+          onClick={() => setExpanded((v) => !v)}
+          className={cn(
+            "mb-1 ml-1 cursor-pointer border-l border-destructive/50 py-0.5 pl-3 text-left font-mono text-muted-foreground wrap-break-word outline-none focus-visible:underline",
+            !expanded && "line-clamp-2",
+          )}
+        >
+          {row.detail}
+        </button>
+      )}
+      {row.state === "needs-auth" && !row.canSignIn && !row.busy && (
+        <p className="mb-1 ml-5 text-pretty text-muted-foreground">Sign-in is not available from here for this provider. Authenticate the server in its own CLI, then reconnect.</p>
       )}
       {confirming && (
         <div className="mb-1 ml-4 flex flex-col gap-1.5 rounded-md bg-muted px-2 py-1.5">
