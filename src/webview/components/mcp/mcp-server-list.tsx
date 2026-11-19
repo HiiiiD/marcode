@@ -108,7 +108,7 @@ export function McpServerList({ servers, panel, onAction, onAdd }: {
           <div className="flex items-center justify-between gap-2">
             <span className="text-muted-foreground tabular-nums">{mcpSummary(all)}</span>
             {canManage && (
-              <Button size="sm" variant="outline" onClick={onAdd}>
+              <Button size="sm" variant="secondary" onClick={onAdd}>
                 <PlusIcon aria-hidden data-icon="inline-start" />
                 Add server
               </Button>
