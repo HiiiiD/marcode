@@ -120,12 +120,13 @@ function TraceCollapsibleTrigger({
 
 function TraceCollapsibleContent({
   className,
+  panelClassName,
   children,
   inset,
   ...props
-}: React.ComponentProps<typeof CollapsibleContent> & { inset?: boolean }) {
+}: React.ComponentProps<typeof CollapsibleContent> & { inset?: boolean; /** Classes for the panel element itself, e.g. to make it a flex child. */ panelClassName?: string }) {
   return (
-    <CollapsibleContent data-slot="trace-collapsible-content" {...props}>
+    <CollapsibleContent data-slot="trace-collapsible-content" className={panelClassName} {...props}>
       <div
         data-slot="trace-collapsible-content-inner"
         className={cn(
