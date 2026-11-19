@@ -69,6 +69,7 @@ export function McpServerList({ servers, panel, onAction, onAdd }: {
                       row={row}
                       removeFrom={fileFor(panel, row.removeOrigin)}
                       reconnectRestarts={panel?.capabilities?.reconnect === "restart"}
+                      signInInTerminal={canManage && panel?.capabilities?.signIn === false}
                       onReconnect={() => onAction({ t: "reconnect", name: row.name })}
                       onSignIn={() => onAction({ t: "sign-in", name: row.name })}
                       onRemove={() => { if (row.removeOrigin) { onAction({ t: "remove", name: row.name, origin: row.removeOrigin }); } }}

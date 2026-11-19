@@ -19,7 +19,7 @@ export function createRemoteHooks(io: HookIo) {
     openPlan: (text, path) => io.act('openPlan', [text, path]),
     exportCsv: (csv) => io.act('exportCsv', [csv]),
     exportImage: (uri) => io.act('exportImage', [uri]),
-    login: (providerId) => io.act('login', [providerId]),
+    login: (providerId, purpose) => io.act('login', [providerId, purpose]),
   };
   const picker: AttachmentHost = {
     pick: async () => {

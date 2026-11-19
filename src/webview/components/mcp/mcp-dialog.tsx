@@ -65,7 +65,8 @@ export function McpDialog({ id, open, onOpenChange }: { id: SessionId; open: boo
               if (a.t === "restart") { post({ t: "restart-session", id }); }
               else if (a.t === "remove") { post({ t: "mcp-remove", id, name: a.name, origin: a.origin }); }
               else if (a.t === "reconnect") { post({ t: "mcp-reconnect", id, name: a.name }); }
-              else { post({ t: "mcp-sign-in", id, name: a.name }); }
+              else if (panel?.capabilities?.signIn) { post({ t: "mcp-sign-in", id, name: a.name }); }
+              else if (pane) { post({ t: "login-provider", providerId: pane.summary.providerId, purpose: "mcp" }); }
             }}
           />
         )}

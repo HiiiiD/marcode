@@ -797,7 +797,8 @@ export type WebviewToHost =
    * way `refresh-catalog` already does for any other fixed-in-a-terminal
    * install.
    */
-  | { t: 'login-provider'; providerId: string }
+  /** `purpose: 'mcp'` opens the provider's own CLI on its MCP screen instead of the account login (a provider whose SDK cannot start an MCP sign-in itself). */
+  | { t: 'login-provider'; providerId: string; purpose?: 'mcp' }
   /**
    * A URL from agent-authored markdown, handed to the OS. Not
    * session-addressed for the same reason `reveal-file` is not: where a link

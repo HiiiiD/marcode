@@ -95,7 +95,7 @@ export interface EditorContextHost {
    * result: the webview's own `refresh-catalog` retry is what notices it
    * worked.
    */
-  login(providerId: string): void;
+  login(providerId: string, purpose?: 'mcp'): void;
 }
 
 const NO_EDITOR: EditorContextHost = {
@@ -597,7 +597,7 @@ export class MessageRouter {
         return;
 
       case 'login-provider':
-        this.editor.login(msg.providerId);
+        this.editor.login(msg.providerId, msg.purpose);
         return;
 
       case 'open-external':

@@ -76,10 +76,18 @@ suite("MCP dialog", () => {
   test("delete confirms with the file path, then posts mcp-remove with the origin", async () => {
     const dialog = await openMcp();
     await userEvent.click(dialog.getByRole("button", { name: "More actions for shadcn" }));
-    await userEvent.click(screen.getByRole("menuitem", { name: "Delete…" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: /Delete/ }));
     assert.strictEqual(dialog.getByText(/E:\\repo\\\.mcp\.json/).textContent?.includes("E:\\repo\\.mcp.json"), true);
     await userEvent.click(dialog.getByRole("button", { name: "Delete" }));
     assert.deepStrictEqual(posted().at(-1), { t: "mcp-remove", id: "a", name: "shadcn", origin: "repo" });
+  });
+
+  test("a needs-auth server on a provider that cannot sign in itself opens that provider's CLI in a terminal", async () => {
+    const dialog = await openMcp(panel(), [{ name: "linear", state: "needs-auth", origin: "global" }]);
+    await userEvent.click(dialog.getByRole("button", { name: "Sign in to linear" }));
+    const last = posted().at(-1);
+    assert.strictEqual(last?.t === "login-provider" && last.purpose === "mcp", true);
+    assert.strictEqual(posted().some((m) => m.t === "mcp-sign-in"), false);
   });
 
   test("reconnect posts mcp-reconnect", async () => {

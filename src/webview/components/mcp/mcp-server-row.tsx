@@ -25,11 +25,13 @@ function subtitle(row: McpRow): string {
   return STATE_LABEL[row.state];
 }
 
-export function McpServerRow({ row, removeFrom, reconnectRestarts, onReconnect, onRemove, onSignIn }: {
+export function McpServerRow({ row, removeFrom, reconnectRestarts, signInInTerminal, onReconnect, onRemove, onSignIn }: {
   row: McpRow;
   /** The file Delete will change, named in the confirmation. */
   removeFrom: string | undefined;
   reconnectRestarts: boolean;
+  /** The provider cannot start this sign-in itself, so the button opens its own CLI in a terminal. */
+  signInInTerminal: boolean;
   onReconnect: () => void;
   onRemove: () => void;
   onSignIn: () => void;
@@ -63,8 +65,8 @@ export function McpServerRow({ row, removeFrom, reconnectRestarts, onReconnect, 
             <RefreshCwIcon aria-hidden data-icon="inline-start" />
             Reconnect
           </Button>
-        ) : row.canSignIn ? (
-          <Button variant="outline" size="sm" aria-label={`Sign in to ${row.name}`} onClick={onSignIn}>Sign in</Button>
+        ) : row.canSignIn || (row.state === "needs-auth" && signInInTerminal) ? (
+          <Button variant="outline" size="sm" aria-label={`Sign in to ${row.name}`} title={row.canSignIn ? undefined : "Opens the provider's CLI in a terminal"} onClick={onSignIn}>Sign in</Button>
         ) : null}
         {hasMenu ? (
           <DropdownMenu>
@@ -110,8 +112,8 @@ export function McpServerRow({ row, removeFrom, reconnectRestarts, onReconnect, 
           <span className={cn("block", !expanded && "line-clamp-2")}>{row.detail}</span>
         </button>
       )}
-      {row.state === "needs-auth" && !row.canSignIn && !row.busy && (
-        <p className="mb-2 ml-11 text-pretty text-muted-foreground">Sign in to this server from the provider's own CLI, then reconnect it here.</p>
+      {row.state === "needs-auth" && !row.canSignIn && !signInInTerminal && !row.busy && (
+        <p className="mb-2 ml-11 text-pretty text-muted-foreground">This provider can't sign in to servers from here.</p>
       )}
       {confirming && (
         <div className="mb-2 ml-11 flex flex-col gap-1.5 rounded-lg bg-muted px-3 py-2">
