@@ -69,7 +69,7 @@ suite("MCP dialog", () => {
     const names = dialog.getAllByRole("listitem").map((li) => li.getAttribute("data-server"));
     assert.deepStrictEqual(names, ["figma", "blender", "shadcn"]);
     assert.strictEqual(dialog.getByText("private").textContent, "private");
-    assert.strictEqual(dialog.getByText(/^Repo/).textContent?.includes(".mcp.json"), true);
+    assert.strictEqual(dialog.getByRole("heading", { name: /^Repo/ }).textContent?.includes(".mcp.json"), true);
     assert.strictEqual(dialog.getByText("3 servers · 1 failing").textContent, "3 servers · 1 failing");
   });
 

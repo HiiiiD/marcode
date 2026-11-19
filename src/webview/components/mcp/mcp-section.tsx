@@ -25,7 +25,7 @@ export function McpSection({ label, rows, collapsible, removeFrom, reconnectRest
   const open = !collapsible || !folded;
   const title = (
     <>
-      {label.name}
+      <span className="text-foreground/80">{label.name}</span>
       {label.file && <span className="font-mono"> · {label.file}</span>}
       <span className="tabular-nums"> · {rows.length}</span>
     </>
@@ -38,10 +38,10 @@ export function McpSection({ label, rows, collapsible, removeFrom, reconnectRest
           aria-expanded={open}
           title={label.title}
           onClick={() => setFolded((v) => !v)}
-          className="-mx-1 flex items-center gap-1 rounded-md px-1 pt-3 pb-1 text-left text-xs font-medium text-muted-foreground outline-none hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring"
+          className="relative rounded-md pt-3 pb-1 text-left text-xs font-medium text-muted-foreground outline-none hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring"
         >
-          <ChevronRightIcon aria-hidden className={cn("size-3.5 transition-transform", open && "rotate-90")} />
-          <span>{title}</span>
+          <ChevronRightIcon aria-hidden className={cn("absolute top-[calc(50%+0.25rem)] -left-4 size-3.5 -translate-y-1/2 transition-transform", open && "rotate-90")} />
+          {title}
         </button>
       ) : (
         <h3 className="pt-3 pb-1 text-xs font-medium text-muted-foreground" title={label.title}>{title}</h3>

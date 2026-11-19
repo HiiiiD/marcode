@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { PlusIcon, SearchIcon } from "lucide-react";
+import { AlertCircleIcon, PlusIcon, SearchIcon } from "lucide-react";
 import { useState } from "react";
 import { groupRows, mcpRows, mcpSummary, type McpRow } from "../../../client-core/mcp/mcp-rows";
 import type { McpPanel, McpRemovableOrigin, McpServerStatus } from "../../../protocol/messages";
@@ -66,7 +66,7 @@ export function McpServerList({ servers, panel, onAction, onAdd }: {
       )}
       <div className="flex min-h-0 flex-col gap-1 overflow-y-auto">
         {panel !== undefined && !canManage && (
-          <p className="text-pretty text-muted-foreground">{panel.readOnly ?? "This provider can't manage MCP servers from Marcode."}</p>
+          <p className="text-pretty text-xs text-muted-foreground">{panel.readOnly ?? "This provider can't manage MCP servers from Marcode."}</p>
         )}
         {empty ? (
           <div className="flex flex-col items-center gap-3 py-8 text-center">
@@ -75,7 +75,7 @@ export function McpServerList({ servers, panel, onAction, onAdd }: {
               <p className="text-pretty text-muted-foreground">Servers give the agent extra tools, like GitHub or a database.</p>
             </div>
             {canManage && (
-              <Button size="sm" onClick={onAdd}>
+              <Button size="sm" variant="secondary" onClick={onAdd}>
                 <PlusIcon aria-hidden data-icon="inline-start" />
                 Add server
               </Button>
@@ -92,36 +92,34 @@ export function McpServerList({ servers, panel, onAction, onAdd }: {
           </>
         )}
       </div>
-      <div className="flex shrink-0 flex-col gap-2 border-t border-border pt-3">
-        {panel?.error && <p role="alert" className="text-destructive wrap-break-word">{panel.error}</p>}
-        {pending > 0 ? (
-          <div role="status" className="flex items-center justify-between gap-2">
-            <span className="flex min-w-0 items-center gap-2">
-              <span aria-hidden className="size-2 shrink-0 rounded-full bg-attention" />
-              <span className="truncate">Config changed. Restart to load it.</span>
-            </span>
-            <Button size="sm" disabled={panel?.restarting} onClick={() => onAction({ t: "restart" })}>
-              {panel?.restarting ? "Restarting…" : "Restart session"}
-            </Button>
-          </div>
-        ) : (!empty || !canManage) && (
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-muted-foreground tabular-nums">{mcpSummary(all)}</span>
-            {canManage && (
-              <Button size="sm" variant="secondary" onClick={onAdd}>
-                <PlusIcon aria-hidden data-icon="inline-start" />
-                Add server
-              </Button>
+      {(panel?.error || pending > 0 || !empty || !canManage) && (
+        <div className="flex shrink-0 flex-col gap-2 border-t border-border pt-3">
+          {panel?.error && <p role="alert" className="flex gap-2 rounded-md bg-destructive/10 px-2.5 py-2 text-xs wrap-break-word"><AlertCircleIcon aria-hidden className="mt-px size-3.5 shrink-0 text-destructive" />{panel.error}</p>}
+          <div className="flex items-center justify-between gap-3">
+            {pending > 0 ? (
+              <span role="status" className="flex min-w-0 items-center gap-2">
+                <span aria-hidden className="size-2 shrink-0 rounded-full bg-attention" />
+                <span className="truncate">Config changed. Restart to load it.</span>
+              </span>
+            ) : (
+              <span className="text-xs text-muted-foreground tabular-nums">{mcpSummary(all)}</span>
             )}
+            <span className="flex shrink-0 items-center gap-2">
+              {canManage && (
+                <Button size="sm" variant="secondary" onClick={onAdd}>
+                  <PlusIcon aria-hidden data-icon="inline-start" />
+                  Add server
+                </Button>
+              )}
+              {pending > 0 && (
+                <Button size="sm" disabled={panel?.restarting} onClick={() => onAction({ t: "restart" })}>
+                  {panel?.restarting ? "Restarting…" : "Restart session"}
+                </Button>
+              )}
+            </span>
           </div>
-        )}
-        {pending > 0 && canManage && (
-          <Button size="sm" variant="ghost" className="self-start text-muted-foreground" onClick={onAdd}>
-            <PlusIcon aria-hidden data-icon="inline-start" />
-            Add server
-          </Button>
-        )}
-      </div>
+        </div>
+      )}
     </>
   );
 }

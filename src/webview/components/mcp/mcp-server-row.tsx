@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-import { CopyIcon, MoreHorizontalIcon, RefreshCwIcon, Trash2Icon } from "lucide-react";
+import { AlertCircleIcon, CopyIcon, MoreHorizontalIcon, RefreshCwIcon, Trash2Icon } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import type { McpRow } from "../../../client-core/mcp/mcp-rows";
@@ -11,7 +11,7 @@ const DOT: Record<McpRow["state"], string> = {
   failed: "bg-destructive",
   "needs-auth": "bg-attention",
   pending: "bg-muted-foreground motion-safe:animate-pulse",
-  disabled: "bg-muted-foreground/50",
+  disabled: "border border-muted-foreground/60",
 };
 
 const STATE_LABEL: Record<McpRow["state"], string> = {
@@ -66,17 +66,17 @@ export function McpServerRow({ row, removeFrom, reconnectRestarts, signInInTermi
           <span className={cn("ml-auto shrink-0 truncate text-xs", failed ? "text-destructive" : "text-muted-foreground")}>{subtitle(row)}</span>
         </Lead>
         {row.busy ? (
-          <Button variant="ghost" size="xs" disabled aria-label={`Reconnect ${row.name}`}>
+          <Button variant="ghost" size="xs" className="-mr-2" disabled aria-label={`Reconnect ${row.name}`}>
             <RefreshCwIcon aria-hidden data-icon="inline-start" className="motion-safe:animate-spin" />
             Reconnect
           </Button>
         ) : failed && row.canReconnect ? (
-          <Button variant="ghost" size="xs" className="text-muted-foreground hover:text-foreground" aria-label={`Reconnect ${row.name}`} title={reconnectRestarts ? "Restarts this session" : undefined} onClick={onReconnect}>
+          <Button variant="ghost" size="xs" className="-mr-2 text-foreground/85 hover:text-foreground" aria-label={`Reconnect ${row.name}`} title={reconnectRestarts ? "Restarts this session" : undefined} onClick={onReconnect}>
             <RefreshCwIcon aria-hidden data-icon="inline-start" />
             Reconnect
           </Button>
         ) : row.canSignIn || (row.state === "needs-auth" && signInInTerminal) ? (
-          <Button variant="ghost" size="xs" className="text-primary hover:text-primary" aria-label={`Sign in to ${row.name}`} title={row.canSignIn ? undefined : "Opens the provider's CLI in a terminal"} onClick={onSignIn}>Sign in</Button>
+          <Button variant="ghost" size="xs" className="-mr-2 text-foreground/85 hover:text-foreground" aria-label={`Sign in to ${row.name}`} title={row.canSignIn ? undefined : "Opens the provider's CLI in a terminal"} onClick={onSignIn}>Sign in</Button>
         ) : null}
         {hasMenu ? (
           <DropdownMenu>
@@ -110,10 +110,10 @@ export function McpServerRow({ row, removeFrom, reconnectRestarts, signInInTermi
         ) : <span className="size-6 shrink-0" aria-hidden />}
       </div>
       {failed && row.detail && expanded && (
-        <p className="mb-2 ml-[1.125rem] rounded-md bg-destructive/10 px-2.5 py-1.5 font-mono text-xs text-foreground/80 wrap-break-word">{row.detail}</p>
+        <p className="mb-2 ml-[1.125rem] flex gap-2 rounded-md bg-destructive/10 px-2.5 py-2 text-xs text-foreground/85 wrap-break-word"><AlertCircleIcon aria-hidden className="mt-px size-3.5 shrink-0 text-destructive" /><span className="min-w-0 font-mono">{row.detail}</span></p>
       )}
       {row.state === "needs-auth" && !row.canSignIn && !signInInTerminal && !row.busy && (
-        <p className="mb-2 ml-[1.125rem] text-pretty text-muted-foreground">This provider can't sign in to servers from here.</p>
+        <p className="mb-2 ml-[1.125rem] text-pretty text-xs text-muted-foreground/70">This provider can't sign in to servers from here.</p>
       )}
       {confirming && (
         <div className="mb-2 ml-[1.125rem] flex flex-col gap-1.5 rounded-lg bg-muted px-3 py-2">

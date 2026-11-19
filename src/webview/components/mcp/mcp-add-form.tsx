@@ -4,7 +4,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Tabs, TabsIndicator, TabsList, TabsTab } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import { ArrowLeftIcon } from "lucide-react";
+import { AlertCircleIcon, ArrowLeftIcon } from "lucide-react";
 import { useId, useState } from "react";
 import { parseMcpSnippet } from "../../../client-core/mcp/parse-snippet";
 import { splitCommandLine } from "../../../client-core/mcp/split-command";
@@ -99,11 +99,11 @@ export function McpAddForm({ capabilities, targets, takenIn, serverError, onSubm
         ) : (
           <>
             <Tabs value={kind} onValueChange={(v) => { setKind(v as Kind); setError(undefined); }} className="min-w-0">
-              <TabsList aria-label="Server type">
+              <TabsList aria-label="Server type" className="bg-foreground/10">
                 <TabsTab value="stdio">stdio</TabsTab>
                 <TabsTab value="http">HTTP</TabsTab>
                 {capabilities.sse && <TabsTab value="sse">SSE</TabsTab>}
-                <TabsIndicator />
+                <TabsIndicator className="bg-background shadow-sm ring-0" />
               </TabsList>
             </Tabs>
             <Button type="button" variant="ghost" size="xs" className="shrink-0 text-muted-foreground" onClick={() => { setKind("json"); setError(undefined); }}>
@@ -125,7 +125,7 @@ export function McpAddForm({ capabilities, targets, takenIn, serverError, onSubm
       ) : (
         <>
           <Field id={`${ids}-name`} label="Name">
-            <Input id={`${ids}-name`} className="h-7 font-mono text-xs placeholder:font-sans" placeholder="my-server" value={name} onChange={(e) => setName(e.target.value)} autoComplete="off" />
+            <Input id={`${ids}-name`} className="h-7 font-mono text-xs" placeholder="my-server" value={name} onChange={(e) => setName(e.target.value)} autoComplete="off" />
           </Field>
           {kind === "stdio" ? (
             <>
@@ -136,7 +136,7 @@ export function McpAddForm({ capabilities, targets, takenIn, serverError, onSubm
               >
                 <Input
                   id={`${ids}-command`}
-                  className="h-7 font-mono text-xs placeholder:font-sans"
+                  className="h-7 font-mono text-xs"
                   placeholder="npx -y some-mcp-server"
                   value={command}
                   onChange={(e) => setCommand(e.target.value)}
@@ -145,7 +145,7 @@ export function McpAddForm({ capabilities, targets, takenIn, serverError, onSubm
               </Field>
               {capabilities.workingDirectory && (
                 <Field id={`${ids}-cwd`} label="Working directory">
-                  <Input id={`${ids}-cwd`} className="h-7 font-mono text-xs placeholder:font-sans" placeholder="Optional" value={cwd} onChange={(e) => setCwd(e.target.value)} />
+                  <Input id={`${ids}-cwd`} className="h-7 font-mono text-xs" placeholder="Optional" value={cwd} onChange={(e) => setCwd(e.target.value)} />
                 </Field>
               )}
               <McpKeyValueRows label="Environment" keyPlaceholder="NAME" rows={env} onChange={setEnv} />
@@ -184,13 +184,13 @@ export function McpAddForm({ capabilities, targets, takenIn, serverError, onSubm
       )}
       </div>
 
-      {(error ?? serverError) && <p role="alert" className="text-destructive wrap-break-word">{error ?? serverError}</p>}
+      {(error ?? serverError) && <p role="alert" className="flex gap-2 rounded-md bg-destructive/10 px-2.5 py-2 text-xs wrap-break-word"><AlertCircleIcon aria-hidden className="mt-px size-3.5 shrink-0 text-destructive" />{error ?? serverError}</p>}
 
       <div className="flex items-center justify-between gap-1">
-        <Button type="button" variant="outline" size="xs" onClick={onBack}>Back</Button>
+        <Button type="button" variant="ghost" size="sm" className="-ml-2.5" onClick={onBack}>Back</Button>
         {kind === "json"
-          ? <Button type="submit" size="xs">Use this</Button>
-          : <Button type="submit" size="xs">Add</Button>}
+          ? <Button type="submit" size="sm">Use this</Button>
+          : <Button type="submit" size="sm">Add</Button>}
       </div>
     </form>
   );
