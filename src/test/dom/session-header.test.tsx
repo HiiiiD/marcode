@@ -1,7 +1,7 @@
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import * as assert from "assert";
-import { catalog, layoutOf, snapshot, summary } from "../fixtures/protocol";
+import { catalog, layoutOf, permission, snapshot, summary } from "../fixtures/protocol";
 import { posted, renderApp, sendFromHost } from "./harness";
 
 export function hydrate(over = {}) {
@@ -146,6 +146,43 @@ suite("SessionHeader status", () => {
     const header = screen.getByRole("heading", { level: 2 }).parentElement!;
     const mark = header.querySelector('[title="Claude (work)"]');
     assert.strictEqual(mark !== null && mark.textContent === "W", true);
+  });
+
+  suite("tint and the working line", () => {
+    const headerOf = () => screen.getByRole("heading", { level: 2 }).parentElement!;
+    const hydrateWith = (status: "idle" | "running" | "awaiting-approval", withPermission = false) => {
+      renderApp();
+      const item = permission({ requestId: "r1" });
+      sendFromHost({
+        t: "hydrate",
+        sessions: [summary("a", { status })],
+        layout: layoutOf(["a"]),
+        snapshots: [snapshot("a", {
+          status,
+          ...(withPermission ? { items: [item], pending: [{ requestId: "r1", tool: item.tool }] } : {}),
+        })],
+        catalog: catalog(),
+        unavailable: [],
+        usage: {},
+      });
+    };
+
+    test("an idle pane is not tinted and draws no working line", () => {
+      hydrateWith("idle");
+      assert.strictEqual(headerOf().className.includes("bg-attention") || headerOf().className.includes("bg-primary/10"), false);
+      assert.strictEqual(headerOf().querySelector('[class*="animate-working-line"]') === null, true);
+    });
+
+    test("a working pane draws the line but stays untinted", () => {
+      hydrateWith("running");
+      assert.strictEqual(headerOf().querySelector('[class*="animate-working-line"]') === null, false);
+      assert.strictEqual(headerOf().className.includes("bg-attention"), false);
+    });
+
+    test("a pending permission tints the header amber", () => {
+      hydrateWith("awaiting-approval", true);
+      assert.strictEqual(headerOf().className.includes("bg-attention/10"), true);
+    });
   });
 
   test("the name is plain text until the pencil is clicked", () => {

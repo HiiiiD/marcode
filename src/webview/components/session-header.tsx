@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { GripVerticalIcon, Maximize2Icon, MoreHorizontalIcon, Minimize2Icon, PencilIcon, PinIcon, RefreshCwIcon, XIcon } from "lucide-react";
 import { folderName, middleTruncate } from "../format";
 import { usualCwd } from "../lib/usual-cwd";
+import { pendingPrompts } from "../lib/pending-prompts";
 import type { PaneState } from "../reducer";
 import { useStore } from "../store";
 import { BringBackDialog } from "./bring-back-dialog";
@@ -39,6 +40,7 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
   const strip = density === "strip";
   const maximized = state.maximizedId === pane.summary.id;
   const s = pane.summary;
+  const asksPermission = s.status === "awaiting-approval" && pendingPrompts(pane).some(({ item }) => item.role === "permission");
   // Shown only when there's more than one provider to distinguish between —
   // with a single backend configured, naming it on every pane is noise.
   const [bringBackOpen, setBringBackOpen] = useState(false);
@@ -90,15 +92,24 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
       // A strip is a collapsed pane: clicking anywhere on it that is not a control brings it to the front.
       onClick={strip ? (e) => { if (!(e.target as HTMLElement).closest("button,[role=menuitem]")) { toggleMaximize(s.id); } } : undefined}
       className={cn(
-        "flex items-center overflow-hidden border-b border-border px-2 text-xs",
+        "relative flex items-center overflow-hidden border-b border-border px-2 text-xs",
         compact ? "gap-1 py-0.5" : "gap-2 py-1",
         strip && "cursor-pointer hover:bg-accent",
         // A pane that needs a human or has failed announces it from across the stack, not only through a small pill.
-        s.status === "awaiting-approval" && "bg-primary/10 shadow-[inset_3px_0_0_var(--primary)]",
+        // Only the states that need you are tinted, so a tinted header always means "look at me": amber for a permission, blue for a question.
+        s.status === "awaiting-approval" && (asksPermission
+          ? "bg-attention/10 shadow-[inset_3px_0_0_var(--attention)]"
+          : "bg-primary/10 shadow-[inset_3px_0_0_var(--primary)]"),
         s.status === "error" && "bg-destructive/10 shadow-[inset_3px_0_0_var(--destructive)]",
       )}
     >
-      <StatusBadge status={s.status} wordFor="error" />
+      {s.status === "running" && (
+        // Life without colour: a slim line sweeping along the bottom edge while the agent works.
+        <span aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-px overflow-hidden">
+          <span className="block h-full w-1/3 bg-primary/70 motion-safe:animate-working-line motion-reduce:w-full motion-reduce:bg-primary/30" />
+        </span>
+      )}
+      <StatusBadge status={s.status} wordFor="error" warm={asksPermission} />
       {/* Only worth a mark when there is more than one provider (or instance) to tell apart. */}
       {state.catalog.length > 1 && (
         <span className="flex size-4 shrink-0 items-center justify-center" title={state.catalog.find((p) => p.id === s.providerId)?.displayName}>
