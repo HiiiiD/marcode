@@ -42,11 +42,8 @@ export function McpServerRow({ row, removeFrom, reconnectRestarts, signInInTermi
   const hasMenu = row.canReconnect || row.canRemove || failed;
   return (
     <li data-server={row.name} className="group/row -mx-2 flex min-w-0 flex-col rounded-lg px-2 transition-colors hover:bg-muted/40">
-      <div className="flex min-w-0 items-center gap-3 py-2">
-        <span aria-hidden className="relative flex size-8 shrink-0 items-center justify-center rounded-lg bg-foreground/10 text-sm font-medium text-foreground/80 uppercase">
-          {row.name.charAt(0)}
-          <span className={cn("absolute -right-0.5 -bottom-0.5 size-2.5 rounded-full ring-2 ring-popover", DOT[row.state])} />
-        </span>
+      <div className="flex min-w-0 items-center gap-3 py-2.5">
+        <span aria-hidden className={cn("size-2.5 shrink-0 self-start rounded-full mt-[0.4rem]", DOT[row.state])} />
         <span className="sr-only">{STATE_LABEL[row.state]}</span>
         <div className="flex min-w-0 flex-1 flex-col">
           <div className="flex min-w-0 items-baseline gap-2">
@@ -106,17 +103,17 @@ export function McpServerRow({ row, removeFrom, reconnectRestarts, signInInTermi
           title={expanded ? "Show less" : "Show the full error"}
           onClick={() => setExpanded((v) => !v)}
           className={cn(
-            "mb-2 ml-11 cursor-pointer rounded-md bg-destructive/10 px-2.5 py-1.5 text-left font-mono text-xs text-foreground/80 wrap-break-word outline-none focus-visible:ring-1 focus-visible:ring-ring",
+            "mb-2 ml-[1.375rem] cursor-pointer rounded-md bg-destructive/10 px-2.5 py-1.5 text-left font-mono text-xs text-foreground/80 wrap-break-word outline-none focus-visible:ring-1 focus-visible:ring-ring",
           )}
         >
           <span className={cn("block", !expanded && "line-clamp-2")}>{row.detail}</span>
         </button>
       )}
       {row.state === "needs-auth" && !row.canSignIn && !signInInTerminal && !row.busy && (
-        <p className="mb-2 ml-11 text-pretty text-muted-foreground">This provider can't sign in to servers from here.</p>
+        <p className="mb-2 ml-[1.375rem] text-pretty text-muted-foreground">This provider can't sign in to servers from here.</p>
       )}
       {confirming && (
-        <div className="mb-2 ml-11 flex flex-col gap-1.5 rounded-lg bg-muted px-3 py-2">
+        <div className="mb-2 ml-[1.375rem] flex flex-col gap-1.5 rounded-lg bg-muted px-3 py-2">
           <p className="wrap-break-word">Delete {row.name} from {removeFrom ?? "its config file"}?</p>
           <div className="flex justify-end gap-1">
             <Button variant="ghost" size="xs" onClick={() => setConfirming(false)}>Cancel</Button>
