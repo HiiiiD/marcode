@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ChevronLeftIcon, ChevronRightIcon } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { subagentLabel } from '../../client-core/subagent-window';
 import type { PaneState } from '../../client-core/reducer';
@@ -12,7 +13,7 @@ import { QuestionCard } from './question-card';
 // Module-level so a pane remounting (layout change, reload) never opens the same plan twice.
 const openedPlans = new Set<string>();
 
-export function PinnedPrompts({ pane, sessionId }: { pane: PaneState; sessionId: SessionId }) {
+export function PinnedPrompts({ pane, sessionId, fill }: { pane: PaneState; sessionId: SessionId; fill?: boolean }) {
   const post = usePost();
   const entries = pendingPrompts(pane);
   useEffect(() => {
@@ -28,7 +29,7 @@ export function PinnedPrompts({ pane, sessionId }: { pane: PaneState; sessionId:
   const { parent } = entries[index];
   const total = entries.length;
   return (
-    <section aria-label="Pending prompts" className="flex max-h-[70%] min-h-0 flex-col gap-1 border-t border-border px-2 py-1">
+    <section aria-label="Pending prompts" className={cn("flex min-h-0 flex-col gap-1 border-t border-border px-2 py-1", fill ? "flex-1" : "max-h-[70%]")}>
       {/* A lone prompt from the main agent already says what it needs; the extra header only repeated it. */}
       {(total > 1 || parent) && <div className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
         <span className="min-w-0 flex-1 truncate">

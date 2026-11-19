@@ -3,6 +3,7 @@ import { MessageScrollerProvider } from "@/components/ui/message-scroller";
 import { findModel } from "../../shared/model-catalog";
 import type { SessionId } from "../../protocol/messages";
 import { ownerReason } from "../lib/owner-reason";
+import { pendingPrompts } from "../lib/pending-prompts";
 import { unavailabilityFor } from "../lib/provider-availability";
 import { useStore } from "../store";
 import { ChildrenList } from "./children-list";
@@ -16,6 +17,9 @@ import { WorkingRow } from "./working-row";
 import { SideChatBar } from "./side-chat-bar";
 import { SubagentDrillInContext } from "./subagent-drill-in-context";
 import { Transcript } from "./transcript";
+
+// Below this a pane cannot hold a prompt card above a composer.
+const SHORT_BELOW_PX = 400;
 
 interface PaneContentProps {
   sessionId: SessionId;
@@ -42,11 +46,13 @@ export function PaneContent({ sessionId, accessibleTitle }: PaneContentProps) {
   const model = findModel(provider?.models ?? [], paneState.summary.model);
   const rootRef = useRef<HTMLDivElement>(null);
   const [density, setDensity] = useState<PaneDensity>('comfortable');
+  const [short, setShort] = useState(false);
   useEffect(() => {
     const el = rootRef.current;
     if (!el) { return; }
     const observer = new ResizeObserver(([entry]) => {
       const { height: h, width: w } = entry.contentRect;
+      setShort((v) => (v ? h < SHORT_BELOW_PX + 30 : h < SHORT_BELOW_PX));
       // Dead band so a pane sitting on a threshold does not flip layouts while a header or composer resizes it.
       setDensity((d) => {
         if (w < STRIP_BELOW_WIDTH_PX) { return 'rail'; }
@@ -60,6 +66,8 @@ export function PaneContent({ sessionId, accessibleTitle }: PaneContentProps) {
     observer.observe(el);
     return () => observer.disconnect();
   }, []);
+  // A short pane that needs an answer shows the prompt and nothing else (hidden, not unmounted, so a draft survives).
+  const answering = short && pendingPrompts(paneState).length > 0;
   const running = paneState.summary.status === "running" || paneState.summary.status === "awaiting-approval";
 
   return (
@@ -91,6 +99,7 @@ export function PaneContent({ sessionId, accessibleTitle }: PaneContentProps) {
       >
         {density === "rail" ? <PaneRail pane={paneState} /> : <SessionHeader pane={paneState} accessibleTitle={accessibleTitle} />}
         {density !== "strip" && density !== "rail" && (<>
+        <div className={answering ? "hidden" : "contents"}>
         <SideChatBar sessionId={sessionId} />
         <ChildrenList sessionId={sessionId} />
         <SubagentDrillInContext.Provider
@@ -103,7 +112,9 @@ export function PaneContent({ sessionId, accessibleTitle }: PaneContentProps) {
             />
           </div>
         </SubagentDrillInContext.Provider>
-        <PinnedPrompts pane={paneState} sessionId={sessionId} />
+        </div>
+        <PinnedPrompts pane={paneState} sessionId={sessionId} fill={answering} />
+        <div className={answering ? "hidden" : "contents"}>
         <PinnedShell pane={paneState} sessionId={sessionId} />
         {paneState.summary.status === "running" && <WorkingRow pane={paneState} />}
         <Composer
@@ -112,6 +123,7 @@ export function PaneContent({ sessionId, accessibleTitle }: PaneContentProps) {
           models={provider?.models ?? []}
           unavailableReason={ownerReason(paneState.summary) ?? unavailabilityFor(state, paneState.summary.providerId)}
         />
+        </div>
         </>)}
       </div>
     </MessageScrollerProvider>

@@ -92,7 +92,7 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
       // A strip is a collapsed pane: clicking anywhere on it that is not a control brings it to the front.
       onClick={strip ? (e) => { if (!(e.target as HTMLElement).closest("button,[role=menuitem]")) { toggleMaximize(s.id); } } : undefined}
       className={cn(
-        "relative flex items-center overflow-hidden border-b border-border px-2 text-xs",
+        "relative flex shrink-0 items-center overflow-hidden border-b border-border px-2 text-xs",
         compact ? "gap-1 py-0.5" : "gap-2 py-1",
         strip && "cursor-pointer hover:bg-accent",
         // A pane that needs a human or has failed announces it from across the stack, not only through a small pill.
