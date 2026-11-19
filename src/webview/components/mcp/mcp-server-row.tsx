@@ -41,33 +41,29 @@ export function McpServerRow({ row, removeFrom, reconnectRestarts, signInInTermi
   const failed = row.state === "failed";
   const hasMenu = row.canReconnect || row.canRemove || failed;
   return (
-    <li data-server={row.name} className="group/row -mx-2 flex min-w-0 flex-col rounded-lg px-2 transition-colors hover:bg-muted/40">
-      <div className="flex min-w-0 items-center gap-3 py-2.5">
-        <span aria-hidden className={cn("size-2.5 shrink-0 self-start rounded-full mt-[0.4rem]", DOT[row.state])} />
+    <li data-server={row.name} className="group/row -mx-2 flex min-w-0 flex-col rounded-lg px-2 transition-colors hover:bg-muted/30">
+      <div className="flex h-9 min-w-0 items-center gap-2.5">
+        <span aria-hidden className={cn("size-2 shrink-0 rounded-full", DOT[row.state])} />
         <span className="sr-only">{STATE_LABEL[row.state]}</span>
-        <div className="flex min-w-0 flex-1 flex-col">
-          <div className="flex min-w-0 items-baseline gap-2">
-            <span className="truncate text-sm font-medium">{row.name}</span>
-            {row.private && <span className="shrink-0 text-muted-foreground">private</span>}
-          </div>
-          <p className={cn("truncate text-xs", failed ? "text-destructive" : "text-muted-foreground")}>{subtitle(row)}</p>
-        </div>
+        <span className="min-w-0 truncate">{row.name}</span>
+        {row.private && <span className="shrink-0 text-xs text-muted-foreground">private</span>}
+        <span className={cn("ml-auto shrink-0 truncate text-xs", failed ? "text-destructive" : "text-muted-foreground")}>{subtitle(row)}</span>
         {row.busy ? (
-          <Button variant="outline" size="sm" disabled aria-label={`Reconnect ${row.name}`}>
+          <Button variant="outline" size="xs" disabled aria-label={`Reconnect ${row.name}`}>
             <RefreshCwIcon aria-hidden data-icon="inline-start" className="motion-safe:animate-spin" />
             Reconnect
           </Button>
         ) : failed && row.canReconnect ? (
-          <Button variant="outline" size="sm" aria-label={`Reconnect ${row.name}`} title={reconnectRestarts ? "Restarts this session" : undefined} onClick={onReconnect}>
+          <Button variant="outline" size="xs" aria-label={`Reconnect ${row.name}`} title={reconnectRestarts ? "Restarts this session" : undefined} onClick={onReconnect}>
             <RefreshCwIcon aria-hidden data-icon="inline-start" />
             Reconnect
           </Button>
         ) : row.canSignIn || (row.state === "needs-auth" && signInInTerminal) ? (
-          <Button variant="outline" size="sm" aria-label={`Sign in to ${row.name}`} title={row.canSignIn ? undefined : "Opens the provider's CLI in a terminal"} onClick={onSignIn}>Sign in</Button>
+          <Button variant="outline" size="xs" aria-label={`Sign in to ${row.name}`} title={row.canSignIn ? undefined : "Opens the provider's CLI in a terminal"} onClick={onSignIn}>Sign in</Button>
         ) : null}
         {hasMenu ? (
           <DropdownMenu>
-            <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" className="shrink-0 text-muted-foreground" aria-label={`More actions for ${row.name}`} />}>
+            <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" className="shrink-0 text-muted-foreground opacity-0 group-focus-within/row:opacity-100 group-hover/row:opacity-100 aria-expanded:opacity-100" aria-label={`More actions for ${row.name}`} />}>
               <MoreHorizontalIcon aria-hidden />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-auto min-w-40">
@@ -94,7 +90,7 @@ export function McpServerRow({ row, removeFrom, reconnectRestarts, signInInTermi
               )}
             </DropdownMenuContent>
           </DropdownMenu>
-        ) : <span className="size-7 shrink-0" aria-hidden />}
+        ) : <span className="size-6 shrink-0" aria-hidden />}
       </div>
       {failed && row.detail && (
         <button
@@ -103,17 +99,17 @@ export function McpServerRow({ row, removeFrom, reconnectRestarts, signInInTermi
           title={expanded ? "Show less" : "Show the full error"}
           onClick={() => setExpanded((v) => !v)}
           className={cn(
-            "mb-2 ml-[1.375rem] cursor-pointer rounded-md bg-destructive/10 px-2.5 py-1.5 text-left font-mono text-xs text-foreground/80 wrap-break-word outline-none focus-visible:ring-1 focus-visible:ring-ring",
+            "mb-2 ml-[1.125rem] cursor-pointer rounded-md bg-destructive/10 px-2.5 py-1.5 text-left font-mono text-xs text-foreground/80 wrap-break-word outline-none focus-visible:ring-1 focus-visible:ring-ring",
           )}
         >
           <span className={cn("block", !expanded && "line-clamp-2")}>{row.detail}</span>
         </button>
       )}
       {row.state === "needs-auth" && !row.canSignIn && !signInInTerminal && !row.busy && (
-        <p className="mb-2 ml-[1.375rem] text-pretty text-muted-foreground">This provider can't sign in to servers from here.</p>
+        <p className="mb-2 ml-[1.125rem] text-pretty text-muted-foreground">This provider can't sign in to servers from here.</p>
       )}
       {confirming && (
-        <div className="mb-2 ml-[1.375rem] flex flex-col gap-1.5 rounded-lg bg-muted px-3 py-2">
+        <div className="mb-2 ml-[1.125rem] flex flex-col gap-1.5 rounded-lg bg-muted px-3 py-2">
           <p className="wrap-break-word">Delete {row.name} from {removeFrom ?? "its config file"}?</p>
           <div className="flex justify-end gap-1">
             <Button variant="ghost" size="xs" onClick={() => setConfirming(false)}>Cancel</Button>

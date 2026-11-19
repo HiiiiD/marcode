@@ -64,10 +64,10 @@ suite("MCP dialog", () => {
     assert.strictEqual(screen.queryByRole("button", { name: /MCP servers for/ }) === null, true);
   });
 
-  test("rows group under their config file, problems first within a group", async () => {
+  test("a failing server leads under Needs attention, the rest group under their config file", async () => {
     const dialog = await openMcp();
     const names = dialog.getAllByRole("listitem").map((li) => li.getAttribute("data-server"));
-    assert.deepStrictEqual(names, ["blender", "shadcn", "figma"]);
+    assert.deepStrictEqual(names, ["figma", "blender", "shadcn"]);
     assert.strictEqual(dialog.getByText("private").textContent, "private");
     assert.strictEqual(dialog.getByText(/^Repo/).textContent?.includes(".mcp.json"), true);
     assert.strictEqual(dialog.getByText("3 servers · 1 failing").textContent, "3 servers · 1 failing");
@@ -88,6 +88,16 @@ suite("MCP dialog", () => {
     const last = posted().at(-1);
     assert.strictEqual(last?.t === "login-provider" && last.purpose === "mcp", true);
     assert.strictEqual(posted().some((m) => m.t === "mcp-sign-in"), false);
+  });
+
+  test("with many servers healthy ones fold behind their group, failures stay in view, and a filter finds one by name", async () => {
+    const many: McpServerStatus[] = Array.from({ length: 14 }, (_, i) => ({ name: `srv-${i}`, state: "connected" as const, toolCount: i, origin: "global" as const }));
+    const dialog = await openMcp(panel(), [...many, { name: "broken", state: "failed", error: "boom", origin: "repo" }]);
+    assert.strictEqual(dialog.queryByText("srv-3") === null, true);
+    assert.strictEqual(dialog.getByText("broken").textContent, "broken");
+    await userEvent.type(dialog.getByLabelText("Filter servers"), "srv-3");
+    assert.strictEqual(dialog.getByText("srv-3").textContent, "srv-3");
+    assert.strictEqual(dialog.queryByText("srv-4") === null, true);
   });
 
   test("reconnect posts mcp-reconnect", async () => {

@@ -1,8 +1,16 @@
 import { Button } from "@/components/ui/button";
-import { PlusIcon } from "lucide-react";
-import { groupRows, mcpRows, mcpSummary } from "../../../client-core/mcp/mcp-rows";
+import { Input } from "@/components/ui/input";
+import { PlusIcon, SearchIcon } from "lucide-react";
+import { useState } from "react";
+import { groupRows, mcpRows, mcpSummary, type McpRow } from "../../../client-core/mcp/mcp-rows";
 import type { McpPanel, McpRemovableOrigin, McpServerStatus } from "../../../protocol/messages";
-import { McpServerRow } from "./mcp-server-row";
+import { McpSection, type McpAction } from "./mcp-section";
+
+/** Past this many servers a filter appears and healthy ones start collapsed: the list is for finding the one that needs you. */
+const FILTER_ABOVE = 8;
+const COLLAPSE_ABOVE = 12;
+
+const NEEDS_YOU = new Set<McpRow["state"]>(["failed", "needs-auth", "pending"]);
 
 function basename(path: string): string {
   return path.split(/[\\/]/).filter(Boolean).at(-1) ?? path;
@@ -23,19 +31,39 @@ function fileFor(panel: McpPanel | undefined, origin: McpRemovableOrigin | undef
   return origin === "repo-private" ? `${target.path} (this repo)` : target.path;
 }
 
-/** The body scrolls inside the dialog's fixed frame; what needs an answer (restart, a failed write) sits in the footer so the list never moves. */
+/** The body scrolls inside the dialog's frame; what needs an answer (restart, a failed write) sits in the footer so the list never moves. */
 export function McpServerList({ servers, panel, onAction, onAdd }: {
   servers: McpServerStatus[];
   panel: McpPanel | undefined;
-  onAction: (action: { t: "reconnect" | "sign-in"; name: string } | { t: "remove"; name: string; origin: McpRemovableOrigin } | { t: "restart" }) => void;
+  onAction: (action: McpAction) => void;
   onAdd: () => void;
 }) {
-  const rows = mcpRows(servers, panel);
+  const [query, setQuery] = useState("");
+  const all = mcpRows(servers, panel);
   const canManage = Boolean(panel?.capabilities);
   const pending = panel?.pending.length ?? 0;
-  const empty = rows.length === 0;
+  const empty = all.length === 0;
+  const q = query.trim().toLowerCase();
+  const rows = q ? all.filter((r) => r.name.toLowerCase().includes(q)) : all;
+  const attention = rows.filter((r) => NEEDS_YOU.has(r.state));
+  const healthy = rows.filter((r) => !NEEDS_YOU.has(r.state));
+  const collapsible = all.length > COLLAPSE_ABOVE && q === "";
+
+  const shared = {
+    removeFrom: (row: McpRow) => fileFor(panel, row.removeOrigin),
+    reconnectRestarts: panel?.capabilities?.reconnect === "restart",
+    signInInTerminal: canManage && panel?.capabilities?.signIn === false,
+    onAction,
+  };
+
   return (
     <>
+      {all.length > FILTER_ABOVE && (
+        <div className="relative shrink-0">
+          <SearchIcon aria-hidden className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input aria-label="Filter servers" placeholder="Filter servers" className="h-8 pl-8" value={query} onChange={(e) => setQuery(e.target.value)} />
+        </div>
+      )}
       <div className="flex min-h-0 flex-col gap-1 overflow-y-auto">
         {panel !== undefined && !canManage && (
           <p className="text-pretty text-muted-foreground">{panel.readOnly ?? "This provider can't manage MCP servers from Marcode."}</p>
@@ -53,32 +81,15 @@ export function McpServerList({ servers, panel, onAction, onAdd }: {
               </Button>
             )}
           </div>
+        ) : rows.length === 0 ? (
+          <p className="py-6 text-center text-muted-foreground">No server matches “{query.trim()}”.</p>
         ) : (
-          groupRows(rows).map((group) => {
-            const label = sectionLabel(group.key, panel);
-            return (
-              <section key={group.key} className="flex min-w-0 flex-col">
-                <h3 className="pt-3 pb-1 text-xs font-medium text-muted-foreground" title={label.title}>
-                  {label.name}
-                  {label.file && <span className="font-mono"> · {label.file}</span>}
-                </h3>
-                <ul className="flex min-w-0 flex-col">
-                  {group.rows.map((row) => (
-                    <McpServerRow
-                      key={row.name}
-                      row={row}
-                      removeFrom={fileFor(panel, row.removeOrigin)}
-                      reconnectRestarts={panel?.capabilities?.reconnect === "restart"}
-                      signInInTerminal={canManage && panel?.capabilities?.signIn === false}
-                      onReconnect={() => onAction({ t: "reconnect", name: row.name })}
-                      onSignIn={() => onAction({ t: "sign-in", name: row.name })}
-                      onRemove={() => { if (row.removeOrigin) { onAction({ t: "remove", name: row.name, origin: row.removeOrigin }); } }}
-                    />
-                  ))}
-                </ul>
-              </section>
-            );
-          })
+          <>
+            {attention.length > 0 && <McpSection label={{ name: "Needs attention" }} rows={attention} collapsible={false} {...shared} />}
+            {groupRows(healthy).map((group) => (
+              <McpSection key={group.key} label={sectionLabel(group.key, panel)} rows={group.rows} collapsible={collapsible} {...shared} />
+            ))}
+          </>
         )}
       </div>
       <div className="flex shrink-0 flex-col gap-2 border-t border-border pt-3">
@@ -95,7 +106,7 @@ export function McpServerList({ servers, panel, onAction, onAdd }: {
           </div>
         ) : (!empty || !canManage) && (
           <div className="flex items-center justify-between gap-2">
-            <span className="text-muted-foreground tabular-nums">{mcpSummary(rows)}</span>
+            <span className="text-muted-foreground tabular-nums">{mcpSummary(all)}</span>
             {canManage && (
               <Button size="sm" variant="outline" onClick={onAdd}>
                 <PlusIcon aria-hidden data-icon="inline-start" />
