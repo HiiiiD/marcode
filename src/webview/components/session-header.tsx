@@ -11,6 +11,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { cn } from "@/lib/utils";
 import { GripVerticalIcon, Maximize2Icon, MoreHorizontalIcon, Minimize2Icon, PencilIcon, PinIcon, RefreshCwIcon, XIcon } from "lucide-react";
 import { folderName, middleTruncate } from "../format";
+import { usualCwd } from "../lib/usual-cwd";
 import type { PaneState } from "../reducer";
 import { useStore } from "../store";
 import { BringBackDialog } from "./bring-back-dialog";
@@ -39,7 +40,6 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
   const s = pane.summary;
   // Shown only when there's more than one provider to distinguish between —
   // with a single backend configured, naming it on every pane is noise.
-  const providerLabel = state.catalog.find((p) => p.id === s.providerId)?.displayName;
   const [bringBackOpen, setBringBackOpen] = useState(false);
   const [replaceOpen, setReplaceOpen] = useState(false);
   // The name field, edited inline right here instead of through a dialog —
@@ -97,7 +97,7 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
         s.status === "error" && "bg-destructive/10 shadow-[inset_3px_0_0_var(--destructive)]",
       )}
     >
-      <StatusBadge status={s.status} quietIdle={compact} />
+      <StatusBadge status={s.status} wordFor="error" />
       <SubagentSummary subagents={s.subagents} />
       {/*
         `h2`, not `h1`: this panel is a view inside VS Code's own document,
@@ -153,7 +153,8 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
           </Button>}
         </span>
       )}
-      {!compact && (
+      {/* Only when this session runs somewhere other than where most of the roster does (a worktree, another folder): otherwise every pane says the same thing. */}
+      {!compact && s.cwd !== usualCwd(state.sessions) && (
         <span className="min-w-0 shrink-[4] truncate text-muted-foreground" title={s.cwd}>
           {folderName(s.cwd)}
         </span>
@@ -184,14 +185,7 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
       >
         {s.permissionMode === "bypass" && "Bypassing permissions"}
       </span>
-      <span className="ml-auto flex min-w-0 items-center text-muted-foreground">
-        {!compact && state.catalog.length > 1 && providerLabel && (
-          <span className="text-muted-foreground">
-            <span>&nbsp;</span>
-            <span>{providerLabel}</span>
-          </span>
-        )}
-      </span>
+      <span className="ml-auto" />
       {/*
         Mounted only when there is something in it: the
         only thing this can ever hold is the bring-back door, so it is gated

@@ -86,16 +86,20 @@ suite("SessionHeader status", () => {
     assert.strictEqual(badgeOf()?.textContent, "Bypassing permissions");
   });
 
-  test("the header shows the folder the agent is working in", () => {
+  test("the folder is named only for a session that runs somewhere other than the roster's usual one", () => {
     renderApp();
-    hydrate({ cwd: "/repos/mar-code" });
+    sendFromHost({
+      t: "hydrate",
+      sessions: [summary("a", { cwd: "/repos/app" }), summary("b", { cwd: "/repos/app" }), summary("c", { cwd: "/repos/app-worktree" })],
+      layout: layoutOf(["a", "c"]),
+      snapshots: [snapshot("a", { cwd: "/repos/app" }), snapshot("c", { cwd: "/repos/app-worktree" })],
+      catalog: catalog(),
+      unavailable: [],
+      usage: {},
+    });
 
-    screen.getByText("mar-code");
-    assert.strictEqual(
-      screen.getByText("mar-code").getAttribute("title"),
-      "/repos/mar-code",
-      "the basename is what fits at 300px; the full path is the tooltip",
-    );
+    assert.strictEqual(screen.queryByText("app") === null, true);
+    assert.strictEqual(screen.getByText("app-worktree").getAttribute("title"), "/repos/app-worktree");
   });
 
   test("the title wins the space contest, not the model label", () => {
@@ -108,14 +112,7 @@ suite("SessionHeader status", () => {
     assert.ok(model.className.includes("truncate"), "the model control must be able to shrink too");
   });
 
-  test("the provider is hidden when only one is configured", () => {
-    renderApp();
-    hydrate();
-
-    assert.strictEqual(screen.queryByText("Fake"), null);
-  });
-
-  test("the provider is shown, appended to the metadata span, once more than one is configured", () => {
+  test("the provider word is not in the header: the name and the composer already say it", () => {
     renderApp();
     sendFromHost({
       t: "hydrate",
@@ -127,7 +124,8 @@ suite("SessionHeader status", () => {
       usage: {},
     });
 
-    screen.getByText("Fake");
+    const header = screen.getByRole("heading", { level: 2 }).parentElement!;
+    assert.strictEqual(header.textContent!.includes("Fake"), false);
   });
 
   test("the name is plain text until the pencil is clicked", () => {
