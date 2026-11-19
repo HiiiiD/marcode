@@ -75,7 +75,8 @@ suite("MCP dialog", () => {
 
   test("delete confirms with the file path, then posts mcp-remove with the origin", async () => {
     const dialog = await openMcp();
-    await userEvent.click(dialog.getByRole("button", { name: "Delete shadcn" }));
+    await userEvent.click(dialog.getByRole("button", { name: "More actions for shadcn" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "Delete…" }));
     assert.strictEqual(dialog.getByText(/E:\\repo\\\.mcp\.json/).textContent?.includes("E:\\repo\\.mcp.json"), true);
     await userEvent.click(dialog.getByRole("button", { name: "Delete" }));
     assert.deepStrictEqual(posted().at(-1), { t: "mcp-remove", id: "a", name: "shadcn", origin: "repo" });
@@ -181,7 +182,7 @@ suite("MCP dialog", () => {
   test("paste JSON with several servers shows the one-at-a-time error", async () => {
     const dialog = await openMcp();
     await userEvent.click(dialog.getByRole("button", { name: "Add server" }));
-    await userEvent.click(dialog.getByRole("tab", { name: "Paste JSON" }));
+    await userEvent.click(dialog.getByRole("button", { name: "Paste JSON" }));
     await userEvent.click(dialog.getByLabelText("JSON"));
     await userEvent.paste('{"mcpServers":{"a":{"command":"x"},"b":{"command":"y"}}}');
     await userEvent.click(dialog.getByRole("button", { name: "Use this" }));
@@ -191,7 +192,7 @@ suite("MCP dialog", () => {
   test("paste JSON with one server fills the stdio form", async () => {
     const dialog = await openMcp();
     await userEvent.click(dialog.getByRole("button", { name: "Add server" }));
-    await userEvent.click(dialog.getByRole("tab", { name: "Paste JSON" }));
+    await userEvent.click(dialog.getByRole("button", { name: "Paste JSON" }));
     await userEvent.click(dialog.getByLabelText("JSON"));
     await userEvent.paste('{"mcpServers":{"shad":{"command":"npx","args":["shadcn@latest","mcp"]}}}');
     await userEvent.click(dialog.getByRole("button", { name: "Use this" }));

@@ -58,9 +58,9 @@ export function McpServerList({ servers, panel, onAction, onAdd }: {
             const label = sectionLabel(group.key, panel);
             return (
               <section key={group.key} className="flex min-w-0 flex-col">
-                <h3 className="pt-2 pb-0.5 text-[0.7rem] font-medium tracking-wide text-muted-foreground uppercase" title={label.title}>
+                <h3 className="pt-3 pb-1 text-xs font-medium text-muted-foreground" title={label.title}>
                   {label.name}
-                  {label.file && <span className="font-mono tracking-normal normal-case"> · {label.file}</span>}
+                  {label.file && <span className="font-mono"> · {label.file}</span>}
                 </h3>
                 <ul className="flex min-w-0 flex-col">
                   {group.rows.map((row) => (
@@ -80,26 +80,34 @@ export function McpServerList({ servers, panel, onAction, onAdd }: {
           })
         )}
       </div>
-      <div className="flex shrink-0 flex-col gap-2">
-        {pending > 0 && (
-          <div role="status" className="flex items-center justify-between gap-2 rounded-md bg-attention/10 px-2 py-1.5">
-            <span>Config changed. Restart to load it.</span>
-            <Button size="xs" variant="outline" disabled={panel?.restarting} onClick={() => onAction({ t: "restart" })}>
+      <div className="flex shrink-0 flex-col gap-2 border-t border-border pt-3">
+        {panel?.error && <p role="alert" className="text-destructive wrap-break-word">{panel.error}</p>}
+        {pending > 0 ? (
+          <div role="status" className="flex items-center justify-between gap-2">
+            <span className="flex min-w-0 items-center gap-2">
+              <span aria-hidden className="size-2 shrink-0 rounded-full bg-attention" />
+              <span className="truncate">Config changed. Restart to load it.</span>
+            </span>
+            <Button size="sm" disabled={panel?.restarting} onClick={() => onAction({ t: "restart" })}>
               {panel?.restarting ? "Restarting…" : "Restart session"}
             </Button>
           </div>
-        )}
-        {panel?.error && <p role="alert" className="text-destructive wrap-break-word">{panel.error}</p>}
-        {(!empty || !canManage) && (
+        ) : (!empty || !canManage) && (
           <div className="flex items-center justify-between gap-2">
             <span className="text-muted-foreground tabular-nums">{mcpSummary(rows)}</span>
             {canManage && (
-              <Button size="xs" variant="outline" onClick={onAdd}>
+              <Button size="sm" variant="outline" onClick={onAdd}>
                 <PlusIcon aria-hidden data-icon="inline-start" />
                 Add server
               </Button>
             )}
           </div>
+        )}
+        {pending > 0 && canManage && (
+          <Button size="sm" variant="ghost" className="self-start text-muted-foreground" onClick={onAdd}>
+            <PlusIcon aria-hidden data-icon="inline-start" />
+            Add server
+          </Button>
         )}
       </div>
     </>

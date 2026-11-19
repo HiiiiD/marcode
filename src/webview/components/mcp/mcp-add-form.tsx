@@ -4,6 +4,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Tabs, TabsIndicator, TabsList, TabsTab } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+import { ArrowLeftIcon } from "lucide-react";
 import { useId, useState } from "react";
 import { parseMcpSnippet } from "../../../client-core/mcp/parse-snippet";
 import { splitCommandLine } from "../../../client-core/mcp/split-command";
@@ -89,15 +90,28 @@ export function McpAddForm({ capabilities, targets, takenIn, serverError, onSubm
       onSubmit={(e) => { e.preventDefault(); if (kind === "json") { usePasted(); } else { submit(); } }}
     >
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
-      <Tabs value={kind} onValueChange={(v) => { setKind(v as Kind); setError(undefined); }} className="min-w-0">
-        <TabsList aria-label="Server type">
-          <TabsTab value="stdio">stdio</TabsTab>
-          <TabsTab value="http">HTTP</TabsTab>
-          {capabilities.sse && <TabsTab value="sse">SSE</TabsTab>}
-          <TabsTab value="json">Paste JSON</TabsTab>
-          <TabsIndicator />
-        </TabsList>
-      </Tabs>
+      <div className="flex items-center justify-between gap-2">
+        {kind === "json" ? (
+          <Button type="button" variant="ghost" size="xs" className="-ml-2 text-muted-foreground" onClick={() => { setKind("stdio"); setError(undefined); }}>
+            <ArrowLeftIcon aria-hidden data-icon="inline-start" />
+            Enter manually
+          </Button>
+        ) : (
+          <>
+            <Tabs value={kind} onValueChange={(v) => { setKind(v as Kind); setError(undefined); }} className="min-w-0">
+              <TabsList aria-label="Server type">
+                <TabsTab value="stdio">stdio</TabsTab>
+                <TabsTab value="http">HTTP</TabsTab>
+                {capabilities.sse && <TabsTab value="sse">SSE</TabsTab>}
+                <TabsIndicator />
+              </TabsList>
+            </Tabs>
+            <Button type="button" variant="ghost" size="xs" className="shrink-0 text-muted-foreground" onClick={() => { setKind("json"); setError(undefined); }}>
+              Paste JSON
+            </Button>
+          </>
+        )}
+      </div>
 
       {kind === "json" ? (
         <Field id={`${ids}-json`} label="JSON" hint="A snippet from a README: one server, with or without its mcpServers wrapper.">
@@ -141,7 +155,7 @@ export function McpAddForm({ capabilities, targets, takenIn, serverError, onSubm
               <Field id={`${ids}-url`} label="URL">
                 <Input id={`${ids}-url`} className="h-7 font-mono text-xs" placeholder="https://…/mcp" value={url} onChange={(e) => setUrl(e.target.value)} />
               </Field>
-              <McpKeyValueRows label="Headers" keyPlaceholder="Authorization" rows={headers} onChange={setHeaders} />
+              <McpKeyValueRows label="Headers" secret keyPlaceholder="Authorization" rows={headers} onChange={setHeaders} />
             </>
           )}
           <fieldset className="flex min-w-0 flex-col gap-1">
