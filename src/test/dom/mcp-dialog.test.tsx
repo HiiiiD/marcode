@@ -64,11 +64,12 @@ suite("MCP dialog", () => {
     assert.strictEqual(screen.queryByRole("button", { name: /MCP servers for/ }) === null, true);
   });
 
-  test("rows render problems first with their scope badges", async () => {
+  test("rows group under their config file, problems first within a group", async () => {
     const dialog = await openMcp();
     const names = dialog.getAllByRole("listitem").map((li) => li.getAttribute("data-server"));
-    assert.deepStrictEqual(names, ["figma", "blender", "shadcn"]);
-    assert.strictEqual(dialog.getByText("repo · private · 18 tools").textContent, "repo · private · 18 tools");
+    assert.deepStrictEqual(names, ["blender", "shadcn", "figma"]);
+    assert.strictEqual(dialog.getByText("private").textContent, "private");
+    assert.strictEqual(dialog.getByText(/^Repo/).textContent?.includes(".mcp.json"), true);
     assert.strictEqual(dialog.getByText("3 servers · 1 failing").textContent, "3 servers · 1 failing");
   });
 

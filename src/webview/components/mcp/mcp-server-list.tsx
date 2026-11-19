@@ -1,8 +1,19 @@
 import { Button } from "@/components/ui/button";
 import { PlusIcon } from "lucide-react";
-import { mcpRows, mcpSummary } from "../../../client-core/mcp/mcp-rows";
+import { groupRows, mcpRows, mcpSummary } from "../../../client-core/mcp/mcp-rows";
 import type { McpPanel, McpRemovableOrigin, McpServerStatus } from "../../../protocol/messages";
 import { McpServerRow } from "./mcp-server-row";
+
+function basename(path: string): string {
+  return path.split(/[\\/]/).filter(Boolean).at(-1) ?? path;
+}
+
+function sectionLabel(key: string, panel: McpPanel | undefined): { name: string; file?: string; title?: string } {
+  const scope = key === "repo" || key === "global" ? key : undefined;
+  const target = scope ? panel?.targets?.[scope] : undefined;
+  const name = key.charAt(0).toUpperCase() + key.slice(1);
+  return target && "path" in target ? { name, file: basename(target.path), title: target.path } : { name };
+}
 
 function fileFor(panel: McpPanel | undefined, origin: McpRemovableOrigin | undefined): string | undefined {
   const targets = panel?.targets;
@@ -25,12 +36,12 @@ export function McpServerList({ servers, panel, onAction, onAdd }: {
   const empty = rows.length === 0;
   return (
     <>
-      <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto">
+      <div className="flex min-h-0 flex-col gap-1 overflow-y-auto">
         {panel !== undefined && !canManage && (
           <p className="text-pretty text-muted-foreground">{panel.readOnly ?? "This provider can't manage MCP servers from Marcode."}</p>
         )}
         {empty ? (
-          <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
+          <div className="flex flex-col items-center gap-3 py-8 text-center">
             <div className="flex flex-col gap-1">
               <p className="text-sm font-medium">No MCP servers yet.</p>
               <p className="text-pretty text-muted-foreground">Servers give the agent extra tools, like GitHub or a database.</p>
@@ -43,22 +54,33 @@ export function McpServerList({ servers, panel, onAction, onAdd }: {
             )}
           </div>
         ) : (
-          <ul className="flex min-w-0 flex-col">
-            {rows.map((row) => (
-              <McpServerRow
-                key={row.name}
-                row={row}
-                removeFrom={fileFor(panel, row.removeOrigin)}
-                reconnectRestarts={panel?.capabilities?.reconnect === "restart"}
-                onReconnect={() => onAction({ t: "reconnect", name: row.name })}
-                onSignIn={() => onAction({ t: "sign-in", name: row.name })}
-                onRemove={() => { if (row.removeOrigin) { onAction({ t: "remove", name: row.name, origin: row.removeOrigin }); } }}
-              />
-            ))}
-          </ul>
+          groupRows(rows).map((group) => {
+            const label = sectionLabel(group.key, panel);
+            return (
+              <section key={group.key} className="flex min-w-0 flex-col">
+                <h3 className="pt-2 pb-0.5 text-[0.7rem] font-medium tracking-wide text-muted-foreground uppercase" title={label.title}>
+                  {label.name}
+                  {label.file && <span className="font-mono tracking-normal normal-case"> · {label.file}</span>}
+                </h3>
+                <ul className="flex min-w-0 flex-col">
+                  {group.rows.map((row) => (
+                    <McpServerRow
+                      key={row.name}
+                      row={row}
+                      removeFrom={fileFor(panel, row.removeOrigin)}
+                      reconnectRestarts={panel?.capabilities?.reconnect === "restart"}
+                      onReconnect={() => onAction({ t: "reconnect", name: row.name })}
+                      onSignIn={() => onAction({ t: "sign-in", name: row.name })}
+                      onRemove={() => { if (row.removeOrigin) { onAction({ t: "remove", name: row.name, origin: row.removeOrigin }); } }}
+                    />
+                  ))}
+                </ul>
+              </section>
+            );
+          })
         )}
       </div>
-      <div className="flex flex-col gap-2">
+      <div className="flex shrink-0 flex-col gap-2">
         {pending > 0 && (
           <div role="status" className="flex items-center justify-between gap-2 rounded-md bg-attention/10 px-2 py-1.5">
             <span>Config changed. Restart to load it.</span>

@@ -8,6 +8,10 @@ export interface McpRow {
   canReconnect: boolean;
   canRemove: boolean;
   canSignIn: boolean;
+  /** Which section lists it: 'repo' (shared with repo-private), 'global', or an origin label like 'plugin'. */
+  group: string;
+  /** Defined in the per-project block of the user's own config, not in a file the repo shares. */
+  private?: boolean;
   removeOrigin?: McpRemovableOrigin;
   /** The session is restarting: the row is pending and nothing on it can be acted on. */
   busy?: boolean;
@@ -23,6 +27,15 @@ function badgeOf(s: McpServerStatus): string {
     case 'repo-private': return 'repo · private';
     case 'other': return s.originLabel ?? 'other';
     default: return '';
+  }
+}
+
+function groupOf(s: McpServerStatus): string {
+  switch (s.origin) {
+    case 'repo': case 'repo-private': return 'repo';
+    case 'global': return 'global';
+    case 'other': return s.originLabel ?? 'other';
+    default: return 'other';
   }
 }
 
@@ -47,7 +60,7 @@ export function mcpRows(servers: McpServerStatus[], panel: McpPanel | undefined)
     .sort((a, b) => RANK[a.state] - RANK[b.state] || a.name.localeCompare(b.name))
     .map((s): McpRow => {
       if (panel?.restarting) {
-        return { name: s.name, state: 'pending', badge: badgeOf(s), detail: 'restarting…', canReconnect: false, canRemove: false, canSignIn: false, busy: true };
+        return { name: s.name, state: 'pending', badge: badgeOf(s), detail: 'restarting…', canReconnect: false, canRemove: false, canSignIn: false, group: groupOf(s), ...(s.origin === 'repo-private' ? { private: true } : {}), busy: true };
       }
       const isAdded = added.includes(s);
       const isRemoved = removed.has(s.name);
@@ -60,6 +73,8 @@ export function mcpRows(servers: McpServerStatus[], panel: McpPanel | undefined)
         canReconnect: caps !== null && !isAdded,
         canRemove: removable,
         canSignIn: Boolean(caps?.signIn && s.canSignIn && s.state === 'needs-auth'),
+        group: groupOf(s),
+        ...(s.origin === 'repo-private' ? { private: true } : {}),
         ...(removable ? { removeOrigin: s.origin as McpRemovableOrigin } : {}),
       };
     });
@@ -70,4 +85,16 @@ export function mcpSummary(rows: McpRow[]): string {
   const failing = rows.filter((r) => r.state === 'failed').length;
   const count = `${rows.length} ${rows.length === 1 ? 'server' : 'servers'}`;
   return failing > 0 ? `${count} · ${failing} failing` : count;
+}
+
+export interface McpGroup { key: string; rows: McpRow[] }
+
+/** Repo first, then global, then whatever else (plugins, managed), keeping each group's own order. */
+export function groupRows(rows: McpRow[]): McpGroup[] {
+  const order = ['repo', 'global'];
+  const keys = [...new Set(rows.map((r) => r.group))].sort((a, b) => {
+    const ia = order.indexOf(a), ib = order.indexOf(b);
+    return (ia === -1 ? order.length : ia) - (ib === -1 ? order.length : ib);
+  });
+  return keys.map((key) => ({ key, rows: rows.filter((r) => r.group === key) }));
 }

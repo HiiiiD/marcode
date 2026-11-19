@@ -35,7 +35,7 @@ export function McpDialog({ id, open, onOpenChange }: { id: SessionId; open: boo
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent initialFocus={false} className="flex h-[min(28rem,calc(100dvh-2rem))] flex-col gap-3 overflow-hidden text-xs sm:max-w-md">
+      <DialogContent initialFocus={false} className="top-[10vh] flex max-h-[calc(100dvh-4rem)] translate-y-0 flex-col gap-3 overflow-hidden text-xs sm:max-w-md">
         <DialogHeader className="shrink-0">
           <div className="flex items-baseline justify-between gap-2 pr-7">
             <DialogTitle className="text-sm">{view === "add" ? "Add MCP server" : "MCP servers"}</DialogTitle>

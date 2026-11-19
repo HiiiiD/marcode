@@ -4,7 +4,7 @@ import { mcpRows, type McpRow } from '../../client-core/mcp/mcp-rows';
 import { parsePickerCommand } from '../../tui/view/pickers';
 
 const row = (over: Partial<McpRow> = {}): McpRow => ({
-  name: 'shadcn', state: 'connected', badge: 'repo', detail: '', canReconnect: true, canRemove: true, canSignIn: false,
+  name: 'shadcn', state: 'connected', badge: 'repo', detail: '', canReconnect: true, canRemove: true, canSignIn: false, group: 'repo',
   removeOrigin: 'repo', ...over,
 });
 const ctx = (over: Partial<Parameters<typeof mcpListKey>[1]> = {}) => ({
