@@ -85,7 +85,7 @@ export function McpServerList({ servers, panel, onAction, onAdd }: {
           <p className="py-6 text-center text-muted-foreground">No server matches “{query.trim()}”.</p>
         ) : (
           <>
-            {attention.length > 0 && <McpSection label={{ name: "Needs attention" }} rows={attention} collapsible={false} {...shared} />}
+            {attention.length > 0 && <McpSection label={{ name: "Needs attention" }} rows={attention} collapsible={false} sourceOf={(r) => sectionLabel(r.group, panel).file ?? sectionLabel(r.group, panel).name} {...shared} />}
             {groupRows(healthy).map((group) => (
               <McpSection key={group.key} label={sectionLabel(group.key, panel)} rows={group.rows} collapsible={collapsible} {...shared} />
             ))}

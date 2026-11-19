@@ -11,10 +11,12 @@ export type McpAction =
   | { t: "restart" };
 
 /** One titled run of rows; with a long list the healthy ones fold behind their header so the ones that need you stay in view. */
-export function McpSection({ label, rows, collapsible, removeFrom, reconnectRestarts, signInInTerminal, onAction }: {
+export function McpSection({ label, rows, collapsible, sourceOf, removeFrom, reconnectRestarts, signInInTerminal, onAction }: {
   label: { name: string; file?: string; title?: string };
   rows: McpRow[];
   collapsible: boolean;
+  /** Where each card says its config comes from; omitted when the section header already names the file. */
+  sourceOf?: (row: McpRow) => string | undefined;
   removeFrom: (row: McpRow) => string | undefined;
   reconnectRestarts: boolean;
   signInInTerminal: boolean;
@@ -47,11 +49,12 @@ export function McpSection({ label, rows, collapsible, removeFrom, reconnectRest
         <h3 className="pt-3 pb-1 text-xs font-medium text-muted-foreground" title={label.title}>{title}</h3>
       )}
       {open && (
-        <ul className="flex min-w-0 flex-col">
+        <ul className="grid min-w-0 grid-cols-[repeat(auto-fill,minmax(15rem,1fr))] gap-2 pt-1">
           {rows.map((row) => (
             <McpServerRow
               key={row.name}
               row={row}
+              source={sourceOf?.(row)}
               removeFrom={removeFrom(row)}
               reconnectRestarts={reconnectRestarts}
               signInInTerminal={signInInTerminal}
