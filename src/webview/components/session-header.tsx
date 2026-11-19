@@ -19,6 +19,7 @@ import { closeSession, leafSessionIds } from "./layout-tree";
 import { usePaneDrag } from "./pane-drag-context";
 import { usePaneDensity } from "./pane-density";
 import { PinButton } from "./pin-button";
+import { ProviderMark } from "./provider-stack";
 import { StatusBadge } from "./status-badge";
 import { SubagentSummary } from "./subagent-summary";
 
@@ -98,6 +99,12 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
       )}
     >
       <StatusBadge status={s.status} wordFor="error" />
+      {/* Only worth a mark when there is more than one provider (or instance) to tell apart. */}
+      {state.catalog.length > 1 && (
+        <span className="flex size-4 shrink-0 items-center justify-center" title={state.catalog.find((p) => p.id === s.providerId)?.displayName}>
+          <ProviderMark providerId={s.providerId} />
+        </span>
+      )}
       <SubagentSummary subagents={s.subagents} />
       {/*
         `h2`, not `h1`: this panel is a view inside VS Code's own document,

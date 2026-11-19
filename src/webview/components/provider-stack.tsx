@@ -2,6 +2,7 @@ import {
   Avatar, AvatarBadge, AvatarFallback, AvatarGroup, AvatarGroupCount,
 } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
+import { useStore } from '../store';
 import { PROVIDER_FILLS, PROVIDER_LOGOS } from './provider-logos';
 
 export type MemberState = 'running' | 'blocked' | 'done' | 'failed';
@@ -35,6 +36,24 @@ function Mark({ providerId }: { providerId: string | undefined }) {
   );
 }
 
+/**
+ * A provider's mark: the instance's own icon when `providerInstances` configures
+ * one, else the logo of its kind. Two instances of one kind otherwise draw the
+ * same logo and cannot be told apart.
+ */
+export function ProviderMark({ providerId }: { providerId: string | undefined }) {
+  const { state } = useStore();
+  const icon = state.catalog.find((p) => p.id === providerId)?.icon;
+  if (icon) {
+    return (
+      <span aria-hidden className="text-[0.7rem] leading-none font-medium" style={icon.color ? { color: icon.color } : undefined}>
+        {icon.text}
+      </span>
+    );
+  }
+  return <Mark providerId={providerId} />;
+}
+
 const BADGE: Partial<Record<MemberState, string>> = {
   running: 'bg-muted-foreground motion-safe:animate-pulse',
   blocked: 'bg-primary',
@@ -45,7 +64,7 @@ export function ProviderAvatar({ member }: { member: StackMember }) {
   const badge = BADGE[member.state];
   return (
     <Avatar size="sm" title={`${member.name} · ${member.state === 'blocked' ? 'needs you' : member.state}`}>
-      <AvatarFallback><Mark providerId={member.providerId} /></AvatarFallback>
+      <AvatarFallback><ProviderMark providerId={member.providerId} /></AvatarFallback>
       {badge && <AvatarBadge className={cn(badge)} />}
     </Avatar>
   );

@@ -128,6 +128,26 @@ suite("SessionHeader status", () => {
     assert.strictEqual(header.textContent!.includes("Fake"), false);
   });
 
+  test("a provider mark shows before the name with more than one provider, and an instance icon replaces the kind logo", () => {
+    renderApp();
+    sendFromHost({
+      t: "hydrate",
+      sessions: [summary("a", { providerId: "claude-work" })],
+      layout: layoutOf(["a"]),
+      snapshots: [snapshot("a", { providerId: "claude-work" })],
+      catalog: [
+        ...catalog(),
+        { id: "claude-work", displayName: "Claude (work)", models: [], permissionModes: [], icon: { text: "W", color: "#2f81f7" } },
+      ],
+      unavailable: [],
+      usage: {},
+    });
+
+    const header = screen.getByRole("heading", { level: 2 }).parentElement!;
+    const mark = header.querySelector('[title="Claude (work)"]');
+    assert.strictEqual(mark !== null && mark.textContent === "W", true);
+  });
+
   test("the name is plain text until the pencil is clicked", () => {
     renderApp();
     hydrate();

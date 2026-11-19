@@ -211,3 +211,27 @@ suite('shared/provider-instances', () => {
     });
   });
 });
+
+suite('validateProviderInstances icon and color', () => {
+  const base = { id: 'claude-work', kind: 'claude', displayName: 'Work' };
+
+  test('keeps a one or two character icon with its colour', () => {
+    const { valid, warnings } = validateProviderInstances([{ ...base, icon: 'W', color: '#2f81f7' }], []);
+    assert.deepStrictEqual(warnings, []);
+    assert.strictEqual(valid[0].icon, 'W');
+    assert.strictEqual(valid[0].color, '#2f81f7');
+  });
+
+  test('drops an icon that is too long or a colour that is not #rrggbb, keeping the instance', () => {
+    const { valid, warnings } = validateProviderInstances([{ ...base, icon: 'work', color: 'blue' }], []);
+    assert.strictEqual(valid.length, 1);
+    assert.strictEqual(valid[0].icon, undefined);
+    assert.strictEqual(valid[0].color, undefined);
+    assert.strictEqual(warnings.length, 2);
+  });
+
+  test('a colour without an icon is ignored', () => {
+    const { valid } = validateProviderInstances([{ ...base, color: '#2f81f7' }], []);
+    assert.strictEqual(valid[0].color, undefined);
+  });
+});

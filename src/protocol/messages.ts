@@ -385,6 +385,8 @@ export interface ProviderInfo {
   permissionModes: PermissionModeInfo[];
   /** See `AgentProvider.loginKind` — passed through verbatim by `SessionManager.catalog()`. */
   loginKind?: 'oauth' | 'none';
+  /** A configured instance's own mark (`providerInstances[].icon`); absent means the kind's logo. */
+  icon?: { text: string; color?: string };
 }
 
 /**
