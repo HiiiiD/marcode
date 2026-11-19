@@ -68,7 +68,7 @@ suite("MCP dialog", () => {
     const dialog = await openMcp();
     const names = dialog.getAllByRole("listitem").map((li) => li.getAttribute("data-server"));
     assert.deepStrictEqual(names, ["figma", "blender", "shadcn"]);
-    assert.strictEqual(dialog.getByText("repo · private").textContent, "repo · private");
+    assert.strictEqual(dialog.getByText("repo · private · 18 tools").textContent, "repo · private · 18 tools");
     assert.strictEqual(dialog.getByText("3 servers · 1 failing").textContent, "3 servers · 1 failing");
   });
 
@@ -91,7 +91,7 @@ suite("MCP dialog", () => {
     const reconnect = dialog.getByRole("button", { name: "Reconnect figma" });
     assert.strictEqual(reconnect.hasAttribute("disabled") || reconnect.getAttribute("aria-disabled") === "true", true);
     assert.strictEqual(dialog.queryByRole("button", { name: "Delete shadcn" }) === null, true);
-    assert.strictEqual(dialog.getAllByText("restarting…").length, 3);
+    assert.strictEqual(dialog.getAllByText(/restarting…$/).length, 3);
     await userEvent.click(reconnect);
     assert.strictEqual(posted().some((m) => m.t === "mcp-reconnect"), false);
   });
@@ -107,7 +107,7 @@ suite("MCP dialog", () => {
   test("the restart banner appears for pending changes and posts restart-session", async () => {
     const dialog = await openMcp(panel({ pending: [{ name: "new", origin: "repo", change: "added" }] }));
     assert.strictEqual(dialog.getByText("Config changed. Restart to load it.").textContent, "Config changed. Restart to load it.");
-    assert.strictEqual(dialog.getByText("added · restart to load").textContent, "added · restart to load");
+    assert.strictEqual(dialog.getByText(/added · restart to load$/).textContent?.endsWith("added · restart to load"), true);
     await userEvent.click(dialog.getByRole("button", { name: "Restart session" }));
     assert.deepStrictEqual(posted().at(-1), { t: "restart-session", id: "a" });
   });

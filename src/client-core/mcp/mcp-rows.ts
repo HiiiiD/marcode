@@ -29,6 +29,7 @@ function badgeOf(s: McpServerStatus): string {
 function detailOf(s: McpServerStatus): string {
   if (s.state === 'failed') { return s.error ?? 'failed'; }
   if (s.state === 'needs-auth') { return 'needs sign-in'; }
+  if (s.state === 'disabled') { return 'disabled'; }
   if (s.state === 'connected' && s.toolCount !== undefined) { return `${s.toolCount} ${s.toolCount === 1 ? 'tool' : 'tools'}`; }
   return '';
 }

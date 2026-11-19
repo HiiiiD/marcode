@@ -35,20 +35,20 @@ export function McpDialog({ id, open, onOpenChange }: { id: SessionId; open: boo
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[calc(100dvh-2rem)] gap-3 overflow-y-auto text-xs">
-        <DialogHeader>
-          <div className="flex items-baseline justify-between gap-2 border-b border-border pr-7 pb-2">
+      <DialogContent initialFocus={false} className="flex h-[min(28rem,calc(100dvh-2rem))] flex-col gap-3 overflow-hidden text-xs sm:max-w-md">
+        <DialogHeader className="shrink-0">
+          <div className="flex items-baseline justify-between gap-2 pr-7">
             <DialogTitle className="text-sm">{view === "add" ? "Add MCP server" : "MCP servers"}</DialogTitle>
             <span className="truncate text-muted-foreground">{pane?.summary.name}</span>
           </div>
         </DialogHeader>
         {view === "add" && panel?.capabilities ? (
           <>
-            {panel.error && <p role="alert" className="text-destructive wrap-break-word">{panel.error}</p>}
             <McpAddForm
               capabilities={panel.capabilities}
               targets={panel.targets}
               takenIn={takenIn}
+              serverError={panel.error}
               onBack={() => setView("list")}
               onSubmit={(scope, server) => {
                 awaitingAdd.current = true;

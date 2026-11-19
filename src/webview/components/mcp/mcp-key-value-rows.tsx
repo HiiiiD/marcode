@@ -37,7 +37,7 @@ export function McpKeyValueRows({ label, rows, onChange, keyPlaceholder }: {
           <Input
             aria-label={`${label} value ${i + 1}`}
             className="h-7 min-w-0 flex-1 font-mono text-xs"
-            placeholder="value"
+            placeholder="Value"
             value={row.value}
             onChange={(e) => update(i, { value: e.target.value })}
           />
