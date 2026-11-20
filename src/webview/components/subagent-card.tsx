@@ -16,7 +16,7 @@ import {
 import { useStore } from '../store';
 import { useNestedMessages } from './nested-messages-context';
 import { WorkerMessageRow } from './worker-message-row';
-import { QUIET_AFTER_MS, quietFor, WorkerBar, workerState, WorkerMessageBox } from './worker-controls';
+import { QUIET_AFTER_MS, quietFor, STATUS_TONE, statusWords, WorkerBar, workerState, WorkerMessageBox } from './worker-controls';
 import { expandedDisplayName, findModel } from '../../shared/model-catalog';
 import { useOpenSubagentTranscript } from './subagent-drill-in-context';
 import type { SessionId, TranscriptItem } from '../../protocol/messages';
@@ -96,26 +96,34 @@ export function SubagentCard({
             }]} />
           )}
           <span className="truncate font-medium">{subagentLabel(item)}</span>
+          {wstate ? (
+            // A hosted worker's header is its name and how it is doing; the counts and clocks live nowhere because a dot and a word say more.
+            <>
+              <span className={cn('shrink-0 text-xs font-medium', STATUS_TONE[wstate])}>{statusWords(wstate, quietFor(item, now))}</span>
+              {modelName && <span className="truncate text-xs text-muted-foreground">{modelName}</span>}
+            </>
+          ) : (
           <span className="shrink-0 text-muted-foreground">
-            {isBackgroundDispatch(item) ? (
-              // No "N tools · Xs" claim here — this dispatch settles almost
-              // immediately and never gains nested children, so that line
-              // would always read "0 tools · 0s" and look stuck rather than
-              // "running somewhere this card can't see."
-              'Running in background'
-            ) : (
-              <>
-                {summary.toolCount} {summary.toolCount === 1 ? 'tool' : 'tools'}
-                {' · '}{formatElapsed(summary.elapsedMs)}
-              </>
-            )}
-            {/* Only present when the spawn call named a model explicitly —
-                most subagents inherit the session's, and this is not the
-                place to guess one. Printed as the SDK gave it: this is not a
-                session's model, so there is no catalog row to resolve a
-                display name from. */}
-            {modelName && <>{' · '}{modelName}</>}
-          </span>
+              {isBackgroundDispatch(item) ? (
+                // No "N tools · Xs" claim here — this dispatch settles almost
+                // immediately and never gains nested children, so that line
+                // would always read "0 tools · 0s" and look stuck rather than
+                // "running somewhere this card can't see."
+                'Running in background'
+              ) : (
+                <>
+                  {summary.toolCount} {summary.toolCount === 1 ? 'tool' : 'tools'}
+                  {' · '}{formatElapsed(summary.elapsedMs)}
+                </>
+              )}
+              {/* Only present when the spawn call named a model explicitly —
+                  most subagents inherit the session's, and this is not the
+                  place to guess one. Printed as the SDK gave it: this is not a
+                  session's model, so there is no catalog row to resolve a
+                  display name from. */}
+              {modelName && <>{' · '}{modelName}</>}
+            </span>
+          )}
           {/*
             The visible state is carried by the chevron and, when blocked, by
             the chip below. Everything else gets a text equivalent here, for
@@ -141,7 +149,6 @@ export function SubagentCard({
                 item={item}
                 hostedId={hostedId}
                 state={wstate}
-                quietMs={quietFor(item, now)}
                 messaging={messaging}
                 onToggleMessage={() => setMessaging((v) => !v)}
                 onOpenTranscript={() => openTranscript(item.id)}

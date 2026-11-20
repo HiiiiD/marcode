@@ -33,7 +33,7 @@ export function workerState(item: ToolItem, blocked: boolean, now: number): Work
   return item.state === "ok" ? "done" : "failed";
 }
 
-const STATUS_TONE: Record<WorkerState, string> = {
+export const STATUS_TONE: Record<WorkerState, string> = {
   "needs-you": "text-primary",
   quiet: "text-attention",
   running: "text-muted-foreground",
@@ -42,7 +42,7 @@ const STATUS_TONE: Record<WorkerState, string> = {
 };
 
 /** The status in words, for the expanded card: the header carries it as a dot only. */
-function statusWords(state: WorkerState, quietMs: number): string {
+export function statusWords(state: WorkerState, quietMs: number): string {
   switch (state) {
     case "needs-you": return "Needs you";
     case "quiet": return `Quiet for ${formatElapsed(quietMs)}`;
@@ -51,6 +51,8 @@ function statusWords(state: WorkerState, quietMs: number): string {
     case "done": return "Done";
   }
 }
+
+const endSentence = (text: string): string => (/[.?!]$/.test(text) ? text : `${text}.`);
 
 /** What a blocked worker is waiting for you to decide, in the words its own prompt uses. */
 function waitingOn(item: ToolItem): string | undefined {
@@ -65,8 +67,8 @@ function waitingOn(item: ToolItem): string | undefined {
 }
 
 /** What a hosted worker offers: stop it, message it, and the two ways to look closer. Why it failed, or what it returned, sits above. */
-export function WorkerBar({ item, hostedId, state, quietMs, messaging, onToggleMessage, onOpenTranscript }: {
-  item: ToolItem; hostedId: SessionId; state: WorkerState; quietMs: number; messaging: boolean; onToggleMessage: () => void; onOpenTranscript: () => void;
+export function WorkerBar({ item, hostedId, state, messaging, onToggleMessage, onOpenTranscript }: {
+  item: ToolItem; hostedId: SessionId; state: WorkerState; messaging: boolean; onToggleMessage: () => void; onOpenTranscript: () => void;
 }) {
   const { post } = useStore();
   const running = state === "running" || state === "quiet" || state === "needs-you";
@@ -76,9 +78,8 @@ export function WorkerBar({ item, hostedId, state, quietMs, messaging, onToggleM
 
   return (
     <div className="flex flex-col gap-1.5 pb-1">
-      <p className={cn("text-xs font-medium", STATUS_TONE[state])}>{statusWords(state, quietMs)}</p>
       {state === "needs-you" && (
-        <p className="text-xs text-muted-foreground">{waitingOn(item) ?? "Waiting for you"}. Answer it in the prompt above the composer.</p>
+        <p className="text-xs text-muted-foreground">{endSentence(waitingOn(item) ?? "Waiting for you")} Answer it above the composer.</p>
       )}
       {failed && (
         <p role="alert" className="flex gap-2 rounded-md bg-destructive/10 px-2.5 py-2 text-xs wrap-break-word">
