@@ -4,6 +4,7 @@ import {
   TraceCollapsible, TraceCollapsibleContent, TraceCollapsibleTrigger,
 } from '@/components/ui/trace';
 import { cn } from '@/lib/utils';
+import { ChevronRightIcon } from 'lucide-react';
 import { PermissionCard } from './permission-card';
 import { QuestionCard } from './question-card';
 import { ToolCard } from './tool-card';
@@ -75,28 +76,29 @@ export function SubagentCard({
   const row = rawModel === undefined ? undefined
     : findModel(state.catalog.find((p) => p.id === (item.tool.kind === 'subagent' ? item.tool.provider : undefined))?.models ?? [], rawModel);
   const modelName = row ? expandedDisplayName(row) : rawModel;
-  const card = (
-      <TraceCollapsible
-        bare
-        className="group/item my-0"
-        open={expanded}
-        onOpenChange={(next) => {
+  const changeOpen = (next: boolean) => {
           setOpen(next);
           // Only a collapse that actually overrides a force-open (i.e. the
           // card is blocked right now) should suppress future force-opens.
           // Collapsing an unblocked running card is just tidying up and
           // must not silence a permission that arrives later.
           if (!next && attention) { setManuallyCollapsed(true); }
-        }}
+  };
+  const card = (
+      <TraceCollapsible
+        bare
+        className="group/item my-0"
+        open={expanded}
+        onOpenChange={changeOpen}
       >
         <div className="flex items-center">
-        <TraceCollapsibleTrigger className="h-7 min-w-0 flex-1 px-0 text-xs hover:bg-transparent [&>[data-slot=trace-icon]:last-child]:opacity-40 group-hover/item:[&>[data-slot=trace-icon]:last-child]:opacity-100 focus-visible:[&>[data-slot=trace-icon]:last-child]:opacity-100 aria-expanded:[&>[data-slot=trace-icon]:last-child]:opacity-100">
+        <TraceCollapsibleTrigger className={cn('h-7 min-w-0 flex-1 px-0 text-xs hover:bg-transparent [&>[data-slot=trace-icon]:last-child]:opacity-40 group-hover/item:[&>[data-slot=trace-icon]:last-child]:opacity-100 focus-visible:[&>[data-slot=trace-icon]:last-child]:opacity-100 aria-expanded:[&>[data-slot=trace-icon]:last-child]:opacity-100', hostedId && '[&>[data-slot=trace-icon]:last-child]:hidden')}>
           {hosted && item.tool.kind === 'subagent' && (
             <ProviderStack className="ml-1" members={[{
               providerId: item.tool.provider, name: subagentLabel(item), state: memberState(item, summary.blocked, now),
             }]} />
           )}
-          <span className="truncate font-medium">{subagentLabel(item)}</span>
+          <span className={cn('font-medium', wstate ? 'max-w-[60%] shrink-0 truncate' : 'truncate')}>{subagentLabel(item)}</span>
           {wstate ? (
             // A hosted worker's header is its name and how it is doing; the counts and clocks live nowhere because a dot and a word say more.
             <>
@@ -150,6 +152,12 @@ export function SubagentCard({
               onToggleMessage={() => { setMessaging((v) => !v); setOpen(true); }}
               onOpenTranscript={() => openTranscript(item.id)}
             />
+          )}
+          {hostedId && (
+            // The arrow stays at the far right like every other row's; the actions sit before it.
+            <Button variant="ghost" size="icon-xs" className="ml-0.5 text-muted-foreground/60 hover:bg-transparent hover:text-foreground aria-expanded:bg-transparent" aria-label={expanded ? 'Collapse' : 'Expand'} aria-expanded={expanded} onClick={() => changeOpen(!expanded)}>
+              <ChevronRightIcon aria-hidden className={cn('transition-transform duration-200', expanded && 'rotate-90')} />
+            </Button>
           )}
         </div>
 

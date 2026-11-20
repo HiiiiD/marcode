@@ -95,10 +95,11 @@ export function ToolCard({
           {header.primary && (
             <span
               // Consolas at 12px reads a size smaller than the 12px sans beside it (the name, the reasoning preview), so monospace targets are set at 13px to match.
-              className={cn('min-w-0 truncate text-foreground/75', header.mono && 'font-mono text-[0.8125rem]')}
-              title={header.full}
+              className={cn('min-w-0 truncate text-foreground/75', header.mono && 'font-mono text-xs', header.path && 'text-left [direction:rtl]')}
+              title={header.full ?? (header.path ? header.primary : undefined)}
             >
-              {header.primary}
+              {/* A path that does not fit loses its start, not its file name: rtl moves the ellipsis to the left, the inner ltr span keeps the slashes in order. */}
+              {header.path ? <span dir="ltr" className="[unicode-bidi:isolate]">{header.primary}</span> : header.primary}
             </span>
           )}
           {outcome && <Outcome text={outcome} />}

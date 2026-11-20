@@ -27,6 +27,8 @@ export interface ToolHeader {
   verb: string;
   /** The one argument worth a sidebar's width. Empty when there isn't one. */
   primary: string;
+  /** `primary` is a file path: shown whole, and when the row is too narrow the start gives way, not the file name. */
+  path?: boolean;
   /** Render `primary` in the editor font (a command, a path, a pattern). */
   mono: boolean;
   /** Full value for the `title` attribute when `primary` is truncated. */
@@ -118,8 +120,8 @@ function mcpArguments(input: Record<string, unknown> | undefined): ToolBlock[] {
 }
 
 /** `full` is only worth carrying when the header will actually truncate. */
-function header(glyph: ToolGlyph, verb: string, primary: string, mono: boolean): ToolHeader {
-  return { glyph, verb, mono, primary, ...(primary.length > 40 ? { full: primary } : {}) };
+function header(glyph: ToolGlyph, verb: string, primary: string, mono: boolean, path = false): ToolHeader {
+  return { glyph, verb, mono, primary, ...(path ? { path: true } : {}), ...(primary.length > 40 ? { full: primary } : {}) };
 }
 
 export function describeTool(tool: ToolCall): ToolHeader {
@@ -137,15 +139,15 @@ export function describeTool(tool: ToolCall): ToolHeader {
       const glyph = tool.files.length > 0 && tool.files.every((f) => f.op === 'create')
         ? 'file-plus'
         : 'file-pen';
-      let primary = tool.files.length === 1 ? shortPath(tool.files[0].path) : '';
+      let primary = tool.files.length === 1 ? tool.files[0].path : '';
       if (tool.files.length > 1) {
         primary = `${tool.files.length} files`;
       }
-      return header(glyph, tool.label, primary, true);
+      return header(glyph, tool.label, primary, true, tool.files.length === 1);
     }
 
     case 'file-read':
-      return header('file-text', tool.label, shortPath(tool.path), true);
+      return header('file-text', tool.label, tool.path, true, true);
 
     case 'search':
       return header(

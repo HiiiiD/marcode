@@ -112,7 +112,7 @@ suite('ToolCard', () => {
     assert.ok(screen.getAllByText('/repo/src/a.ts').length > 0);
 
     // The full path stays visible while the action still sends that exact path.
-    await userEvent.click(screen.getByTitle('/repo/src/a.ts'));
+    await userEvent.click(screen.getAllByTitle('/repo/src/a.ts').at(-1)!);
     assert.deepStrictEqual(posted().at(-1), { t: 'reveal-file', path: '/repo/src/a.ts' });
   });
 
@@ -148,12 +148,12 @@ suite('ToolCard', () => {
     screen.getByText('yarn test:unit');
   });
 
-  test('a file-edit card shows the shortened path', () => {
+  test('a file-edit card shows the whole path, leaving the trimming to the layout', () => {
     renderWithStore(<ToolCard item={tool({ tool: SAMPLE_TOOL_CALLS['file-edit'] })} />);
-    screen.getByText('…/webview/components/tool-render.ts');
+    assert.strictEqual(screen.getByText(/webview\/components\/tool-render\.ts$/).textContent?.startsWith('…') === false, true);
   });
 
-  test('a file-read card shows the shortened path', () => {
+  test('a file-read card shows its path', () => {
     renderWithStore(<ToolCard item={tool({ tool: SAMPLE_TOOL_CALLS['file-read'] })} />);
     screen.getByText('src/protocol/messages.ts');
   });
