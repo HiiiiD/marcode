@@ -77,6 +77,8 @@ export function SubagentCard({
   const modelName = row ? expandedDisplayName(row) : rawModel;
   const card = (
       <TraceCollapsible
+        bare
+        className="group/item my-0"
         open={expanded}
         onOpenChange={(next) => {
           setOpen(next);
@@ -87,7 +89,7 @@ export function SubagentCard({
           if (!next && attention) { setManuallyCollapsed(true); }
         }}
       >
-        <TraceCollapsibleTrigger className="w-full flex-none">
+        <TraceCollapsibleTrigger className="h-7 w-full flex-none px-0 text-xs hover:bg-transparent [&>[data-slot=trace-icon]:last-child]:opacity-40 group-hover/item:[&>[data-slot=trace-icon]:last-child]:opacity-100 focus-visible:[&>[data-slot=trace-icon]:last-child]:opacity-100 aria-expanded:[&>[data-slot=trace-icon]:last-child]:opacity-100">
           {hosted && item.tool.kind === 'subagent' && (
             <ProviderStack members={[{
               providerId: item.tool.provider, name: subagentLabel(item), state: memberState(item, summary.blocked, now),
@@ -132,7 +134,7 @@ export function SubagentCard({
           )}
         </TraceCollapsibleTrigger>
 
-        <TraceCollapsibleContent className="py-1">
+        <TraceCollapsibleContent className={cn('mt-0.5 mb-2 py-0', embedded ? 'ml-5' : 'ml-2 border-l border-border pl-3')}>
           <div>
             {hostedId && wstate && (
               <WorkerBar

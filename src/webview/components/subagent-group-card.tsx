@@ -40,18 +40,20 @@ export function SubagentGroupCard({ items, sessionId }: { items: ToolItem[]; ses
   return (
     <TranscriptItemShell role="subagent" label="Team" ts={items[0].ts}>
       <TraceCollapsible
+        bare
+        className="group/item my-0"
         open={expanded}
         onOpenChange={(next) => {
           setOpen(next);
           if (!next && attention) { setManuallyCollapsed(true); }
         }}
       >
-        <TraceCollapsibleTrigger className="w-full flex-none">
+        <TraceCollapsibleTrigger className="h-7 w-full flex-none px-0 text-xs hover:bg-transparent [&>[data-slot=trace-icon]:last-child]:opacity-40 group-hover/item:[&>[data-slot=trace-icon]:last-child]:opacity-100 focus-visible:[&>[data-slot=trace-icon]:last-child]:opacity-100 aria-expanded:[&>[data-slot=trace-icon]:last-child]:opacity-100">
           <ProviderStack members={members} max={8} />
           <span className="shrink-0 font-medium">{items.length} workers</span>
           <span className="sr-only">{blockedCount > 0 ? 'needs you' : ''}</span>
         </TraceCollapsibleTrigger>
-        <TraceCollapsibleContent className="py-1">
+        <TraceCollapsibleContent className="mt-0.5 mb-2 ml-2 border-l border-border py-0 pl-3">
           <div className="flex flex-col gap-1">
             {items.map((item) => <SubagentCard key={item.id} item={item} sessionId={sessionId} embedded />)}
           </div>
