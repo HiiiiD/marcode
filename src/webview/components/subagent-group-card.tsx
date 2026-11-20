@@ -49,11 +49,11 @@ export function SubagentGroupCard({ items, sessionId }: { items: ToolItem[]; ses
         }}
       >
         <TraceCollapsibleTrigger className="h-7 w-full flex-none px-0 text-xs hover:bg-transparent [&>[data-slot=trace-icon]:last-child]:opacity-40 group-hover/item:[&>[data-slot=trace-icon]:last-child]:opacity-100 focus-visible:[&>[data-slot=trace-icon]:last-child]:opacity-100 aria-expanded:[&>[data-slot=trace-icon]:last-child]:opacity-100">
-          <ProviderStack members={members} max={8} />
+          <ProviderStack className="ml-1 -space-x-1.5" members={members} max={8} />
           <span className="shrink-0 font-medium">{items.length} workers</span>
           <span className="sr-only">{blockedCount > 0 ? 'needs you' : ''}</span>
         </TraceCollapsibleTrigger>
-        <TraceCollapsibleContent className="mt-0.5 mb-2 ml-2 border-l border-border py-0 pl-3">
+        <TraceCollapsibleContent className="mt-0.5 mb-2 ml-2 border-t-0 border-l border-border py-0 pl-3">
           <div className="flex flex-col gap-1">
             {items.map((item) => <SubagentCard key={item.id} item={item} sessionId={sessionId} embedded />)}
           </div>

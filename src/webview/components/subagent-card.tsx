@@ -91,7 +91,7 @@ export function SubagentCard({
       >
         <TraceCollapsibleTrigger className="h-7 w-full flex-none px-0 text-xs hover:bg-transparent [&>[data-slot=trace-icon]:last-child]:opacity-40 group-hover/item:[&>[data-slot=trace-icon]:last-child]:opacity-100 focus-visible:[&>[data-slot=trace-icon]:last-child]:opacity-100 aria-expanded:[&>[data-slot=trace-icon]:last-child]:opacity-100">
           {hosted && item.tool.kind === 'subagent' && (
-            <ProviderStack members={[{
+            <ProviderStack className="ml-1" members={[{
               providerId: item.tool.provider, name: subagentLabel(item), state: memberState(item, summary.blocked, now),
             }]} />
           )}
@@ -134,7 +134,7 @@ export function SubagentCard({
           )}
         </TraceCollapsibleTrigger>
 
-        <TraceCollapsibleContent className={cn('mt-0.5 mb-2 py-0', embedded ? 'ml-5' : 'ml-2 border-l border-border pl-3')}>
+        <TraceCollapsibleContent className={cn('mt-0.5 mb-2 border-t-0 py-0', embedded ? 'ml-5' : 'ml-2 border-l border-border pl-3')}>
           <div>
             {hostedId && wstate && (
               <WorkerBar
