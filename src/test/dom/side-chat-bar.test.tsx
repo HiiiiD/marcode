@@ -58,17 +58,23 @@ suite("SideChatBar", () => {
     assert.strictEqual((screen.getByRole("button", { name: "Bring back" }) as HTMLButtonElement).disabled, false);
   });
 
+  test("the pane's own close button closes the side chat, and its name says whose side chat it is", async () => {
+    renderApp();
+    hydrate();
+    await userEvent.click(screen.getByRole("button", { name: "Close side chat" }));
+    assert.deepStrictEqual(posted().at(-1), { t: "close-side-chat", id: "side" });
+    assert.strictEqual(screen.getAllByText(/ · side$/).length > 0, true);
+  });
+
   test("each action posts its message for the side chat", async () => {
     mount();
     resetHost();
 
     await userEvent.click(screen.getByRole("button", { name: "Promote" }));
-    await userEvent.click(screen.getByRole("button", { name: "Close side chat" }));
     await userEvent.click(screen.getByRole("button", { name: "Bring back" }));
 
     assert.deepStrictEqual(posted(), [
       { t: "promote-side-chat", id: "side" },
-      { t: "close-side-chat", id: "side" },
       { t: "merge-side-chat", id: "side" },
     ]);
   });

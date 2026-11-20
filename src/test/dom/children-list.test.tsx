@@ -44,6 +44,11 @@ suite("ChildrenList", () => {
     assert.ok(screen.getByText("Promoted"));
   });
 
+  test("branches of a single kind are named for it", () => {
+    mount([summary("main", { children: [CHILDREN[1]] })], "main");
+    assert.ok(screen.getByRole("button", { name: /1 side chat$/ }));
+  });
+
   test("clicking a branch focuses it, hidden side chats included", async () => {
     mount([summary("main", { children: CHILDREN })], "main");
     await userEvent.click(screen.getByRole("button", { name: /3 forks and side chats/ }));

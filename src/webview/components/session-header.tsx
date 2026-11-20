@@ -40,6 +40,9 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
   const strip = density === "strip";
   const maximized = state.maximizedId === pane.summary.id;
   const s = pane.summary;
+  // A side chat is named for where it came from; its own name returns once it is promoted.
+  const parentName = s.kind === "side" && s.parentId ? state.sessions.find((x) => x.id === s.parentId)?.name : undefined;
+  const label = parentName ? `${parentName} · side` : s.name;
   const asksPermission = s.status === "awaiting-approval" && pendingPrompts(pane).some(({ item }) => item.role === "permission");
   // Shown only when there's more than one provider to distinguish between —
   // with a single backend configured, naming it on every pane is noise.
@@ -127,7 +130,7 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
         assistive tech — so the landmark and the visible control are two
         separate elements carrying the same name.
       */}
-      <h2 className="sr-only">{s.name}</h2>
+      <h2 className="sr-only">{label}</h2>
       {editingName ? (
         // Border and background stay transparent even while editing — it
         // still reads as plain text with a cursor in it, not a form control
@@ -159,7 +162,7 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
         // on every render, same principle as the roster row's own
         // hover-revealed actions trigger.
         <span className="group/name flex min-w-0 items-center gap-1">
-          <span className="min-w-[10ch] truncate text-xs font-medium" title={s.name}>{compact ? middleTruncate(s.name, 16) : s.name}</span>
+          <span className="min-w-[10ch] truncate text-xs font-medium" title={label}>{compact ? middleTruncate(label, 16) : label}</span>
           {!compact && <Button
             variant="ghost"
             size="icon-xs"
@@ -373,8 +376,9 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
       <Button
         variant="ghost"
         size="icon-xs"
-        aria-label={`Hide ${accessibleTitle} from the split`}
+        aria-label={s.kind === "side" ? "Close side chat" : `Hide ${accessibleTitle} from the split`}
         onClick={() => {
+          if (s.kind === "side") { post({ t: "close-side-chat", id: s.id }); return; }
           // Same operation as unchecking the row in the roster, and posts the
           // same message, so the two entry points cannot drift. Hiding is what
           // makes a session indexable for recall.
