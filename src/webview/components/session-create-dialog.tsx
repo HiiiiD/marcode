@@ -14,6 +14,7 @@ import { modeRowsForProvider } from "./permission-modes";
 import { comboLabel, RecentCombos } from "./session-create-recents";
 import { ModelStep, valueOf } from "./session-create-model-step";
 import { OptionsStep } from "./session-create-options-step";
+import { ScrollBody } from "./session-create-scroll-body";
 import { SettingsStep } from "./session-create-settings-step";
 import type { CreateSettings } from "./session-create-settings";
 
@@ -176,13 +177,13 @@ function CreateForm({
           ))}
         </ol>
 
-        <div className="h-[min(52vh,24rem)] overflow-x-hidden overflow-y-auto">
+        <ScrollBody watch={step} className="h-[min(52vh,24rem)]">
           {/* All three stay mounted so the search text, tab and typed values survive moving between steps. */}
           <div hidden={step !== 0} className="flex flex-col gap-3">
             <RecentCombos sessions={state.sessions} catalog={catalog} onPick={applyCombo} />
             <ModelStep catalog={catalog} picked={picked} onPick={(v) => { setPicked(v); setEffort(null); }} />
           </div>
-          <div hidden={step !== 1}>
+          <div hidden={step !== 1} className="h-full">
             <SettingsStep scale={model?.effort} level={level} onEffort={setEffort} rows={rows} mode={effectiveMode} onMode={setMode} />
           </div>
           <div hidden={step !== 2}>
@@ -192,7 +193,7 @@ function CreateForm({
               branch={branch} onBranch={setBranch} base={base} onBase={setBase}
             />
           </div>
-        </div>
+        </ScrollBody>
       </div>
 
       <DialogFooter className="shrink-0 flex-row border-border items-center justify-end">

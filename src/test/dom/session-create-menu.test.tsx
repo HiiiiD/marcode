@@ -155,6 +155,20 @@ suite('SessionCreateMenu', () => {
     assert.ok(within(fake).getByRole('radio', { name: 'Fake Large' }));
     assert.ok(within(other).getByRole('radio', { name: 'Other One' }));
     assert.strictEqual(within(fake).queryByRole('radio', { name: 'Other One' }), null);
+    const header = within(fake).getByText('Fake');
+    assert.strictEqual(header.className.includes('uppercase'), false);
+  });
+
+  test('step 2 effort row labels both ends and every dot', async () => {
+    renderApp();
+    hydrate();
+    await userEvent.click(optionsButton());
+    await nextStep();
+
+    const row = screen.getByLabelText(/^Effort: /);
+    const titles = [...row.querySelectorAll('[title]')].map((el) => el.getAttribute('title'));
+    assert.deepStrictEqual(titles, ['low', 'medium', 'high']);
+    assert.strictEqual(row.querySelectorAll('.capitalize').length, 2);
   });
 
   test('the modal creates with the chosen provider, model, effort and mode', async () => {

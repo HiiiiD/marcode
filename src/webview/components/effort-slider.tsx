@@ -27,15 +27,12 @@ export function EffortSlider({
   value,
   onChange,
   render,
-  labelled = true,
 }: {
   levels: EffortLevel[];
   value: EffortLevel;
   onChange: (level: EffortLevel) => void;
   /** The element the row renders into. See `EffortRowProps`. */
   render: (props: EffortRowProps) => ReactNode;
-  /** False when the host menu already shows an "Effort" heading: the level is then named on the left instead. */
-  labelled?: boolean;
 }) {
   const track = useRef<HTMLSpanElement | null>(null);
   /**
@@ -84,7 +81,7 @@ export function EffortSlider({
         <span
           key={level}
           aria-hidden={level !== value}
-          className={cn("col-start-1 row-start-1 text-xs", labelled ? "text-muted-foreground" : "text-foreground", level !== value && "invisible")}
+          className={cn("col-start-1 row-start-1 text-xs text-foreground", level !== value && "invisible")}
         >
           {level}
         </span>
@@ -119,12 +116,12 @@ export function EffortSlider({
     },
     children: (
       <>
-        {labelled ? <span>Effort</span> : readout}
+        {readout}
         <span
           ref={track}
           // py-2 for the hit area, not for the look: the dots themselves are
           // small, which is a target no one can hit in a sidebar.
-          className="ml-auto flex cursor-pointer items-center gap-2 py-2"
+          className="ml-auto flex cursor-pointer items-center gap-2 py-2 text-xs text-muted-foreground"
           onPointerDown={(e) => {
             dragBox.current = e.currentTarget.getBoundingClientRect();
             e.currentTarget.setPointerCapture(e.pointerId);
@@ -148,18 +145,19 @@ export function EffortSlider({
           }}
           aria-hidden
         >
+          <span className="capitalize">{levels[0]}</span>
           {levels.map((level, i) => (
             <span
               key={level}
+              title={level}
               className={cn(
                 "size-2.5 rounded-full transition-colors",
-                i <= active ? "bg-foreground" : "bg-foreground/20",
-                i === active && "ring-2 ring-foreground/30",
+                i === active ? "bg-foreground ring-2 ring-foreground/30" : i < active ? "bg-foreground/50" : "bg-foreground/15",
               )}
             />
           ))}
+          <span className="capitalize">{levels[levels.length - 1]}</span>
         </span>
-        {labelled && readout}
       </>
     ),
   });

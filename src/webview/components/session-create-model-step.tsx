@@ -147,7 +147,7 @@ export function ModelStep({
               {groups.map(({ provider: p, models }) => (
                 <div key={p.id} role="group" aria-label={p.displayName} className="flex min-w-0 flex-col gap-1">
                   {named && (
-                    <p className="px-0.5 text-[0.65rem] tracking-wide text-muted-foreground uppercase">{p.displayName}</p>
+                    <p className="px-0.5 text-xs text-muted-foreground">{p.displayName}</p>
                   )}
                   {models.map((m) => (
                     <ModelRow

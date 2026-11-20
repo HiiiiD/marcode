@@ -105,13 +105,13 @@ export function ModeMenu({
                 key={m.value}
                 value={m.value}
                 disabled={disableBypass}
-                className="items-start gap-2 py-1"
+                className="items-start gap-2 py-1 pr-1.5 pl-7 *:data-[slot=dropdown-menu-radio-item-indicator]:right-auto *:data-[slot=dropdown-menu-radio-item-indicator]:left-2 *:data-[slot=dropdown-menu-radio-item-indicator]:mt-0.5"
               >
                 <m.icon className="mt-0.5 text-muted-foreground" />
                 <span className="flex min-w-0 flex-col">
                   <span className="font-medium">{m.label}</span>
                   <span className="text-xs leading-snug text-muted-foreground">
-                    {disableBypass ? "Only before the first message" : m.description}
+                    {disableBypass ? "Only before the first message." : m.description}
                   </span>
                 </span>
               </DropdownMenuRadioItem>
@@ -124,7 +124,6 @@ export function ModeMenu({
             <DropdownMenuGroup>
             <DropdownMenuLabel>Effort</DropdownMenuLabel>
             <EffortSlider
-              labelled={false}
               levels={effort.levels}
               value={level}
               onChange={(next) => post({ t: "set-effort", id: pane.summary.id, effort: next })}

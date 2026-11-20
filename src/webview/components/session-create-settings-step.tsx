@@ -20,8 +20,10 @@ export function SettingsStep({
   const ids = useId();
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex h-full flex-col justify-center gap-6">
       {scale && level && scale.levels.length > 0 && (
+        <div className="flex flex-col gap-1">
+        <p className="text-xs font-medium text-muted-foreground">Effort</p>
         <EffortSlider
           levels={scale.levels}
           value={level}
@@ -36,6 +38,7 @@ export function SettingsStep({
             />
           )}
         />
+        </div>
       )}
 
       <div className="flex flex-col gap-2">
