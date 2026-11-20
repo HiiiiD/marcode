@@ -133,7 +133,12 @@ export interface UpdateNotifyHost {
 
 export const NO_UPDATE_NOTIFY: UpdateNotifyHost = { notify: () => {} };
 
+const OPENED_PLANS_CAP = 200;
+
 export class MessageRouter {
+  /** Per router, not per webview: a reloaded webview re-sends every pending plan. */
+  private readonly openedPlans = new Set<string>();
+
   constructor(
     private readonly manager: SessionManager,
     private readonly emit: (msg: HostToWebview) => void,
@@ -605,6 +610,11 @@ export class MessageRouter {
         return;
 
       case 'open-plan':
+        if (this.openedPlans.has(msg.requestId)) { return; }
+        this.openedPlans.add(msg.requestId);
+        if (this.openedPlans.size > OPENED_PLANS_CAP) {
+          this.openedPlans.delete(this.openedPlans.values().next().value as string);
+        }
         this.editor.openPlan?.(msg.text, msg.path);
         return;
 

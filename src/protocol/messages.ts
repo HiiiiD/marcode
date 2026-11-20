@@ -387,6 +387,8 @@ export interface ProviderInfo {
   loginKind?: 'oauth' | 'none';
   /** A configured instance's own mark (`providerInstances[].icon`); absent means the kind's logo. */
   icon?: { text: string; color?: string };
+  /** The base backend (`claude`, `codex`, `opencode`) behind this id; absent for the scripted fake. */
+  kind?: 'claude' | 'codex' | 'opencode';
 }
 
 /**
@@ -810,7 +812,7 @@ export type WebviewToHost =
    */
   | { t: 'open-external'; url: string }
   /** A plan awaiting approval, opened in the editor the moment it arrives; `path` is the plan file when the agent wrote one. */
-  | { t: 'open-plan'; text: string; path?: string }
+  | { t: 'open-plan'; requestId: string; text: string; path?: string }
   /**
    * A markdown table's cells, already CSV-formatted, for the host to save to
    * disk. Not session-addressed — the table exists in rendered transcript

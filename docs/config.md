@@ -34,7 +34,7 @@ Default: `""`
 
 ## `planEditor`
 
-Terminal client only. The command a plan awaiting approval is opened with, given the plan file as its last argument (for example `code -r` or `nvim`). Empty means the plan stays in the approval card. In VS Code the plan always opens in an editor tab beside the panel, so this key is not read there.
+Terminal client only. The command a plan awaiting approval is opened with, given the plan file as its last argument (for example `code -r` or `nvim`). The command is split into arguments (quotes group, no escape characters) and run directly, never through a shell, so the plan path stays a single argument; shell syntax such as pipes or `&&` is not supported, and on Windows use the real executable rather than a `.cmd` shim. The plan opens once per approval request. Empty means the plan stays in the approval card. In VS Code the plan always opens in an editor tab beside the panel, so this key is not read there.
 
 Default: `""`
 

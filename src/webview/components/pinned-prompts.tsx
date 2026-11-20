@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ChevronLeftIcon, ChevronRightIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -10,17 +10,15 @@ import { usePost } from '../store';
 import { PermissionCard } from './permission-card';
 import { QuestionCard } from './question-card';
 
-// Module-level so a pane remounting (layout change, reload) never opens the same plan twice.
-const openedPlans = new Set<string>();
-
 export function PinnedPrompts({ pane, sessionId, fill }: { pane: PaneState; sessionId: SessionId; fill?: boolean }) {
   const post = usePost();
   const entries = pendingPrompts(pane);
+  const sent = useRef(new Set<string>());
   useEffect(() => {
     for (const { item } of entries) {
-      if (item.role !== 'permission' || item.tool.kind !== 'plan' || openedPlans.has(item.requestId)) { continue; }
-      openedPlans.add(item.requestId);
-      post({ t: 'open-plan', text: item.tool.text, ...(item.tool.path ? { path: item.tool.path } : {}) });
+      if (item.role !== 'permission' || item.tool.kind !== 'plan' || sent.current.has(item.requestId)) { continue; }
+      sent.current.add(item.requestId);
+      post({ t: 'open-plan', requestId: item.requestId, text: item.tool.text, ...(item.tool.path ? { path: item.tool.path } : {}) });
     }
   }, [entries, post]);
   const [selectedId, setSelectedId] = useState<string>();
