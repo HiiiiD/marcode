@@ -19,7 +19,7 @@ suite('PermissionCard', () => {
   test('a live pending request renders enabled Allow and Deny', () => {
     renderWithStore(<PermissionCard item={permission()} sessionId="a" />);
     hydrateWith(LIVE);
-    screen.getByText('Allow Write?');
+    screen.getByText('Edit a.txt?');
     assert.strictEqual((screen.getByLabelText('Allow Write') as HTMLButtonElement).disabled, false);
     assert.strictEqual((screen.getByLabelText('Deny Write') as HTMLButtonElement).disabled, false);
   });
@@ -62,14 +62,15 @@ suite('PermissionCard', () => {
     assert.strictEqual((screen.getByLabelText('Deny Write (unavailable)') as HTMLButtonElement).disabled, true);
   });
 
-  test('a resolved item keeps the diff available under a details disclosure', () => {
+  test('a resolved item is the normal tool row with a cross, and keeps the reason when opened', async () => {
     const item = permission({ state: 'denied', reason: 'nope' });
     renderWithStore(<PermissionCard item={item} sessionId="a" />);
     hydrateWith(LIVE);
-    screen.getByText('Write — denied');
-    screen.getByText('nope');
+    screen.getByText('Write');
+    screen.getByLabelText('denied');
     assert.strictEqual(screen.queryByLabelText('Allow Write') === null, true);
-    assert.strictEqual(document.querySelector('details') === null, false);
+    await userEvent.click(screen.getByText('Write'));
+    screen.getByText('nope');
   });
 
   test('an edit-shaped input renders a diff preview', () => {
@@ -111,7 +112,29 @@ suite('PermissionCard', () => {
     renderWithStore(<PermissionCard item={permission({ tool })} sessionId="a" />);
     hydrateWith([{ requestId: 'r1', tool }]);
     assert.ok(screen.getAllByText('github').length > 0);
-    screen.getByText('Allow create_pr?');
+    screen.getByText('Call create_pr?');
+  });
+
+  test('a command and an edit are titled by their action, not the tool name', () => {
+    const command: ToolCall = { kind: 'command', label: 'Bash', command: 'git push --force origin main' };
+    renderWithStore(<PermissionCard item={permission({ tool: command })} sessionId="a" />);
+    hydrateWith([{ requestId: 'r1', tool: command }]);
+    screen.getByText('Run this command?');
+  });
+
+  test('a file read is titled by the file', () => {
+    const read: ToolCall = { kind: 'file-read', label: 'Read', path: '/home/user/.ssh/config' };
+    renderWithStore(<PermissionCard item={permission({ tool: read })} sessionId="a" />);
+    hydrateWith([{ requestId: 'r1', tool: read }]);
+    screen.getByText('Read config?');
+  });
+
+  test('an approved command is the normal command row plus a check', () => {
+    const command: ToolCall = { kind: 'command', label: 'Bash', command: 'git push origin main' };
+    renderWithStore(<PermissionCard item={permission({ tool: command, state: 'allowed' })} sessionId="a" />);
+    screen.getByText('Bash');
+    screen.getByText('git push origin main');
+    screen.getByLabelText('allowed');
   });
 
   test('a plan transition is neutral', () => {
@@ -152,7 +175,7 @@ suite('PermissionCard', () => {
     test('no meta leaves the card exactly as it was', () => {
       renderWithStore(<PermissionCard item={permission()} sessionId="a" />);
       hydrateWith(LIVE);
-      screen.getByText('Allow Write?');
+      screen.getByText('Edit a.txt?');
       assert.strictEqual((screen.getByLabelText('Allow Write') as HTMLButtonElement).disabled, false);
     });
 
@@ -165,12 +188,13 @@ suite('PermissionCard', () => {
       assert.strictEqual((screen.getByLabelText('Deny Write file') as HTMLButtonElement).disabled, false);
     });
 
-    test('a settled card still carries the metadata, under the disclosure', () => {
+    test('a settled card still carries the metadata, once the row is opened', async () => {
       const item = permission({ state: 'allowed', meta: META });
       renderWithStore(<PermissionCard item={item} sessionId="a" />);
       hydrateWith([]);
-      screen.getByText('Write — allowed');
-      screen.getByText('Claude wants to write a.txt');
+      screen.getByLabelText('allowed');
+      await userEvent.click(screen.getByText('Write'));
+      screen.getByText(/Claude wants to write a.txt/);
     });
   });
 
@@ -182,5 +206,16 @@ suite('PermissionCard', () => {
     renderWithStore(<PermissionCard item={permission({ tool })} sessionId="a" />);
     hydrateWith([{ requestId: 'r1', tool }]);
     screen.getByText(/more lines/);
+  });
+
+  test('the approver sees the whole path, never the shortened tail', () => {
+    const full = '/repo/../../etc/passwd';
+    const tool: ToolCall = {
+      kind: 'file-edit', label: 'Write',
+      files: [{ path: full, op: 'create', edits: [{ after: 'x' }] }],
+    };
+    renderWithStore(<PermissionCard item={permission({ tool })} sessionId="a" />);
+    hydrateWith([{ requestId: 'r1', tool }]);
+    screen.getByText(full);
   });
 });

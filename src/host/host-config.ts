@@ -11,6 +11,8 @@ export interface HostConfig {
   systemPrompts: unknown;
   codexPath?: string;
   opencodePath?: string;
+  /** Terminal client only: the command a pending plan is opened with, given the plan file as its last argument. */
+  planEditor?: string;
   usageMirrors: UsageMirror[];
   memory: { enabled: boolean; summarizer: unknown };
   review: { fileCap: number; pollIntervalMs: number; baseRefs: string[] };
@@ -75,6 +77,7 @@ export function parseHostConfig(raw: unknown): { config: HostConfig; warnings: s
   config.systemPrompts = raw.systemPrompts;
   if (typeof raw.codexPath === 'string' && raw.codexPath !== '') { config.codexPath = raw.codexPath; }
   if (typeof raw.opencodePath === 'string' && raw.opencodePath !== '') { config.opencodePath = raw.opencodePath; }
+  if (typeof raw.planEditor === 'string' && raw.planEditor.trim() !== '') { config.planEditor = raw.planEditor.trim(); }
 
   if (Array.isArray(raw.usageMirrors)) {
     config.usageMirrors = raw.usageMirrors.flatMap((entry): UsageMirror[] => {

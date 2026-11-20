@@ -21,7 +21,7 @@ suite('layout menu', () => {
     renderApp();
     hydrateTwo();
     fireEvent.click(screen.getByRole('button', { name: /^Layout$/i }));
-    fireEvent.click(screen.getByRole('button', { name: /2 rows/i }));
+    fireEvent.click(screen.getByRole('button', { name: '2 rows' }));
 
     const last = posted().filter((m) => m.t === 'set-layout').at(-1)!;
     assert.strictEqual(last.t, 'set-layout');
@@ -47,7 +47,7 @@ suite('layout menu', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: /^Layout$/i }));
     const before = posted().filter((m) => m.t === 'set-layout').length;
-    fireEvent.click(screen.getByRole('button', { name: /2 rows/i }));
+    fireEvent.click(screen.getByRole('button', { name: '2 rows' }));
     assert.strictEqual(posted().filter((m) => m.t === 'set-layout').length, before);
 
     fireEvent.click(screen.getByRole('button', { name: /Hide and apply/i }));
@@ -68,19 +68,17 @@ suite('layout menu', () => {
       usage: {},
     });
     fireEvent.click(screen.getByRole('button', { name: /^Layout$/i }));
-    fireEvent.click(screen.getByRole('button', { name: /2 rows/i }));
+    fireEvent.click(screen.getByRole('button', { name: '2 rows' }));
     const before = posted().filter((m) => m.t === 'set-layout').length;
     fireEvent.click(screen.getByRole('button', { name: /^Cancel$/i }));
     assert.strictEqual(posted().filter((m) => m.t === 'set-layout').length, before);
   });
 
-  test('the builder applies a rows x cols grid with the open sessions in the first cells', () => {
+  test('the size picker applies a rows x columns grid with the open sessions in the first cells', () => {
     renderApp();
     hydrateTwo();
     fireEvent.click(screen.getByRole('button', { name: /^Layout$/i }));
-    const cols = document.querySelector('input[aria-label="Columns"]')!;
-    fireEvent.keyDown(cols, { key: 'ArrowRight' });
-    fireEvent.click(screen.getByRole('button', { name: /^Apply$/i }));
+    fireEvent.click(screen.getByRole('button', { name: '1 row by 2 columns' }));
     const last = posted().filter((m) => m.t === 'set-layout').at(-1)!;
     if (last.t !== 'set-layout') { throw new Error('unreachable'); }
     assert.deepStrictEqual(flattenLeaves(last.layout.root).map((l) => l.sessionId), ['s1', null]);
@@ -90,7 +88,7 @@ suite('layout menu', () => {
     renderApp();
     hydrateTwo();
     fireEvent.click(screen.getByRole('button', { name: /^Layout$/i }));
-    fireEvent.click(screen.getByRole('button', { name: /Save current layout as custom/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Save as preset/i }));
     fireEvent.change(screen.getByLabelText(/preset name/i), { target: { value: 'My grid' } });
     fireEvent.click(screen.getByRole('button', { name: /^Save$/i }));
     const last = posted().at(-1);
@@ -117,8 +115,8 @@ suite('layout menu', () => {
   });
 });
 
-suite('layout menu sliders', () => {
-  test('open with the current layout\'s rows and columns', () => {
+suite('layout menu size picker', () => {
+  test('opens showing the current layout as its size', () => {
     renderApp();
     sendFromHost({
       t: 'hydrate',
@@ -130,7 +128,6 @@ suite('layout menu sliders', () => {
       usage: {},
     });
     fireEvent.click(screen.getByRole('button', { name: /^Layout$/i }));
-    const value = (label: string) => document.querySelector(`input[aria-label="${label}"]`)!.getAttribute('aria-valuenow');
-    assert.deepStrictEqual([value('Rows'), value('Columns')], ['2', '1']);
+    assert.strictEqual(screen.getByText('2 × 1') !== undefined, true);
   });
 });

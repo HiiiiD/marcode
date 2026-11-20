@@ -1,4 +1,5 @@
 import { LogInIcon } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { memo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { AttachmentChip } from './attachment-chips';
@@ -33,9 +34,11 @@ const FORKABLE_ROLES: ReadonlySet<TranscriptItem['role']> = new Set(['user', 'as
  * once by the transcript and passed in.
  */
 export const TranscriptItemView = memo(function TranscriptItemView({
-  item, sessionId, canFork = false,
+  item, more, sessionId, canFork = false,
 }: {
   item: TranscriptItem;
+  /** Identical consecutive tool calls folded into this row. */
+  more?: Extract<TranscriptItem, { role: 'tool' }>[];
   sessionId: SessionId;
   canFork?: boolean;
 }) {
@@ -52,7 +55,7 @@ export const TranscriptItemView = memo(function TranscriptItemView({
       return (
         <TranscriptItemShell role="assistant" label="Agent" ts={item.ts} onFork={onFork}>
           {item.thinking && <ReasoningBlock text={item.thinking} />}
-          <Markdown>{item.text}</Markdown>
+          {item.text.trim() !== '' && <div className={cn('max-w-[90ch]', item.thinking && 'mt-4')}><Markdown>{item.text}</Markdown></div>}
         </TranscriptItemShell>
       );
 
@@ -68,7 +71,7 @@ export const TranscriptItemView = memo(function TranscriptItemView({
       return (item.tool.kind === 'subagent' && item.tool.action !== 'message')
         || (item.children && item.children.length > 0)
         ? <SubagentCard item={item} sessionId={sessionId} />
-        : <ToolCard item={item} onFork={onFork} />;
+        : <ToolCard item={item} more={more} onFork={onFork} />;
 
     case 'error':
       return <ErrorItem item={item} sessionId={sessionId} />;

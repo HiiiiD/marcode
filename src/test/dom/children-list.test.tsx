@@ -34,7 +34,7 @@ suite("ChildrenList", () => {
 
   test("the branches are collapsed behind a count and list each kind with its badge", async () => {
     mount([summary("main", { children: CHILDREN })], "main");
-    assert.strictEqual(screen.queryByText("Fork of plan"), null);
+    assert.strictEqual(screen.queryByText("Fork of plan") === null, true);
 
     await userEvent.click(screen.getByRole("button", { name: /3 forks and side chats/ }));
 
@@ -42,6 +42,11 @@ suite("ChildrenList", () => {
     assert.ok(screen.getByText("Fork"));
     assert.ok(screen.getByText("Side chat"));
     assert.ok(screen.getByText("Promoted"));
+  });
+
+  test("branches of a single kind are named for it", () => {
+    mount([summary("main", { children: [CHILDREN[1]] })], "main");
+    assert.ok(screen.getByRole("button", { name: /1 side chat$/ }));
   });
 
   test("clicking a branch focuses it, hidden side chats included", async () => {
@@ -67,6 +72,6 @@ suite("ChildrenList", () => {
     mount([summary("kid", { parentId: "gone", origin: "fork" })], "kid");
 
     assert.ok(screen.getByText("Branched from a deleted chat"));
-    assert.strictEqual(screen.queryByRole("button", { name: /Branched from/ }), null);
+    assert.strictEqual(screen.queryByRole("button", { name: /Branched from/ }) === null, true);
   });
 });

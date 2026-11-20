@@ -589,6 +589,12 @@ suite('layout-tree maximizeSizes', () => {
     assert.deepStrictEqual(flattenLeaves(maximizeSizes(root, 'b')).map((l) => l.size), [15, 70, 15]);
   });
 
+  test('a per-orientation peek leaves a stacked sibling a thin strip and a side one more', () => {
+    const root = S('vertical', [L('a'), S('horizontal', [L('b'), L('c')], 50)]);
+    const sizes = flattenLeaves(maximizeSizes(root, 'c', (o) => (o === 'vertical' ? 4 : 10))).map((l) => [l.sessionId, l.size]);
+    assert.deepStrictEqual(sizes, [['a', 4], ['b', 10], ['c', 90]]);
+  });
+
   test('every ancestor split is maximized toward the pane', () => {
     const root = S('vertical', [L('a'), S('horizontal', [L('b'), L('c')], 50)]);
     const next = maximizeSizes(root, 'c');

@@ -10,8 +10,8 @@ function MemoryRow({ path, percent, source, onOpenFile }: {
   const base = path.slice(cut + 1);
   return (
     <div className="flex items-center gap-2 py-0.5">
-      <Button variant="link" size="xs"
-        className="h-auto min-w-0 flex-1 shrink justify-start gap-0 px-0 pl-4 font-normal"
+      <Button variant="ghost" size="xs"
+        className="h-auto min-w-0 flex-1 shrink justify-start gap-0 py-0.5 pr-1 pl-4 font-normal text-foreground focus-visible:border-transparent focus-visible:bg-muted focus-visible:ring-0"
         title={path} onClick={() => onOpenFile(path)}>
         {dir && <span className="min-w-0 truncate text-muted-foreground [direction:rtl]"><bdi dir="ltr">{dir}</bdi></span>}
         <span className="shrink-0">{base}</span>

@@ -339,6 +339,8 @@ export class SessionManager implements SessionSink {
         models: this.modelsFor(p),
         permissionModes: p.listPermissionModes(),
         ...(p.loginKind ? { loginKind: p.loginKind } : {}),
+        ...(p.icon ? { icon: p.icon } : {}),
+        ...(p.kind ? { kind: p.kind } : {}),
       }))
       .filter((p) => p.models.length > 0);
   }

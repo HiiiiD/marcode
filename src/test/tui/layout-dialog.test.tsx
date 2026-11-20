@@ -149,7 +149,7 @@ test('saved presets are listed under their own heading, and d deletes the focuse
   const probe = await open(hydrateWith({ root: layoutOf(['s1', 's2']).root, presets: [mine('p1', 'Mine')] }, 2));
   expect(m!.frame()).toContain('Saved');
   expect(m!.frame()).toContain('Mine');
-  await m!.pressMany(Array.from({ length: 7 }, () => 'down'));
+  await m!.pressMany(Array.from({ length: 8 }, () => 'down'));
   await m!.press('d');
   const msg = posts('delete-preset')[0];
   expect(msg?.t === 'delete-preset' && msg.id).toBe('p1');
@@ -165,7 +165,7 @@ test('d on the grid rows or a built-in row posts nothing', async () => {
 
 test('a preset deleted by another client under the focus ring clamps the selection instead of crashing', async () => {
   const probe = await open(hydrateWith({ root: layoutOf(['s1', 's2']).root, presets: [mine('p1', 'Mine')] }, 2));
-  await m!.pressMany(Array.from({ length: 7 }, () => 'down'));
+  await m!.pressMany(Array.from({ length: 8 }, () => 'down'));
   await m!.fromHost({ t: 'layout-changed', layout: { root: layoutOf(['s1', 's2']).root, presets: [] } });
   await m!.press('return');
   expect(probe.applied.length).toBe(1);
@@ -191,7 +191,7 @@ test('Esc in the list closes without applying', async () => {
 test('a long saved list is windowed and the selection stays visible', async () => {
   const many = Array.from({ length: 12 }, (_, i) => mine(`p${i}`, `Saved ${i}`));
   await open(hydrateWith({ root: layoutOf(['s1', 's2']).root, presets: many }, 2));
-  await m!.pressMany(Array.from({ length: 2 + 5 + 11 }, () => 'down'));
+  await m!.pressMany(Array.from({ length: 2 + 6 + 11 }, () => 'down'));
   expect(m!.frame()).toContain('› ');
   expect(m!.frame()).toContain('Saved 11');
   expect(m!.frame().includes('2 columns')).toBe(false);
@@ -199,7 +199,7 @@ test('a long saved list is windowed and the selection stays visible', async () =
 
 test('modified s and d are not commands: Ctrl+D leaves the preset, Ctrl+S opens no prompt', async () => {
   await open(hydrateWith({ root: layoutOf(['s1', 's2']).root, presets: [mine('p1', 'Mine')] }, 2));
-  await m!.pressMany(Array.from({ length: 7 }, () => 'down'));
+  await m!.pressMany(Array.from({ length: 8 }, () => 'down'));
   await m!.press('d', { ctrl: true });
   await m!.press('d', { meta: true });
   await m!.press('s', { ctrl: true });

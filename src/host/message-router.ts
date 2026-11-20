@@ -74,6 +74,8 @@ export interface EditorContextHost {
    * needs `vscode.env`, which this module must not import.
    */
   openExternal(url: string): void;
+  /** Opens an approval-pending plan in the editor: the agent's plan file when it has one, else the text as a Markdown document. */
+  openPlan?(text: string, path?: string): void;
   /**
    * Saves `csv` to a file the user picks. Here for the same reason
    * `openDiff` is — it needs `vscode.window.showSaveDialog`, which this
@@ -93,7 +95,7 @@ export interface EditorContextHost {
    * result: the webview's own `refresh-catalog` retry is what notices it
    * worked.
    */
-  login(providerId: string): void;
+  login(providerId: string, purpose?: 'mcp'): void;
 }
 
 const NO_EDITOR: EditorContextHost = {
@@ -131,7 +133,12 @@ export interface UpdateNotifyHost {
 
 export const NO_UPDATE_NOTIFY: UpdateNotifyHost = { notify: () => {} };
 
+const OPENED_PLANS_CAP = 200;
+
 export class MessageRouter {
+  /** Per router, not per webview: a reloaded webview re-sends every pending plan. */
+  private readonly openedPlans = new Set<string>();
+
   constructor(
     private readonly manager: SessionManager,
     private readonly emit: (msg: HostToWebview) => void,
@@ -595,11 +602,20 @@ export class MessageRouter {
         return;
 
       case 'login-provider':
-        this.editor.login(msg.providerId);
+        this.editor.login(msg.providerId, msg.purpose);
         return;
 
       case 'open-external':
         this.editor.openExternal(msg.url);
+        return;
+
+      case 'open-plan':
+        if (this.openedPlans.has(msg.requestId)) { return; }
+        this.openedPlans.add(msg.requestId);
+        if (this.openedPlans.size > OPENED_PLANS_CAP) {
+          this.openedPlans.delete(this.openedPlans.values().next().value as string);
+        }
+        this.editor.openPlan?.(msg.text, msg.path);
         return;
 
       case 'export-table-csv':
@@ -844,7 +860,7 @@ const KNOWN_MESSAGE_TAGS = new Set<WebviewToHost['t']>([
   'expand-sidebar', 'set-viewport', 'open-fleet-subagent',
   'focus-session', 'focus-pane', 'promote-subagent', 'set-pinned', 'set-draft', 'request-history-summaries', 'open-history',
   'memory-estimate', 'request-memory-status', 'memory-reindex', 'memory-resummarize', 'memory-cancel',
-  'refresh-catalog', 'refresh-usage', 'open-settings', 'login-provider', 'open-external', 'export-table-csv',
+  'refresh-catalog', 'refresh-usage', 'open-settings', 'login-provider', 'open-external', 'open-plan', 'export-table-csv',
   'export-image',
   'file-search', 'set-favorite-models', 'run-shell', 'cancel-shell',
   'mcp-open', 'mcp-add', 'mcp-remove', 'mcp-reconnect', 'mcp-sign-in', 'restart-session',

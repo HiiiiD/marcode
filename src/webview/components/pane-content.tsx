@@ -1,17 +1,26 @@
+import { useEffect, useRef, useState } from "react";
+import { cn } from "@/lib/utils";
 import { MessageScrollerProvider } from "@/components/ui/message-scroller";
 import { findModel } from "../../shared/model-catalog";
 import type { SessionId } from "../../protocol/messages";
 import { ownerReason } from "../lib/owner-reason";
+import { pendingPrompts } from "../lib/pending-prompts";
 import { unavailabilityFor } from "../lib/provider-availability";
 import { useStore } from "../store";
 import { ChildrenList } from "./children-list";
 import { Composer } from "./composer";
+import { COMPACT_BELOW_WIDTH_PX, STRIP_BELOW_PX, STRIP_BELOW_WIDTH_PX, PaneDensityContext, type PaneDensity } from "./pane-density";
 import { PinnedShell } from "./pinned-shell";
 import { PinnedPrompts } from "./pinned-prompts";
+import { BranchPaneHeader, isBranchPane } from "./branch-pane-header";
 import { SessionHeader } from "./session-header";
-import { SideChatBar } from "./side-chat-bar";
+import { PaneRail } from "./pane-rail";
+import { WorkingRow } from "./working-row";
 import { SubagentDrillInContext } from "./subagent-drill-in-context";
 import { Transcript } from "./transcript";
+
+// Below this a pane cannot hold a prompt card above a composer.
+const SHORT_BELOW_PX = 400;
 
 interface PaneContentProps {
   sessionId: SessionId;
@@ -36,6 +45,30 @@ export function PaneContent({ sessionId, accessibleTitle }: PaneContentProps) {
   const paneState = state.byId[sessionId];
   const provider = state.catalog.find((p) => p.id === paneState.summary.providerId);
   const model = findModel(provider?.models ?? [], paneState.summary.model);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [density, setDensity] = useState<PaneDensity>('comfortable');
+  const [short, setShort] = useState(false);
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el) { return; }
+    const observer = new ResizeObserver(([entry]) => {
+      const { height: h, width: w } = entry.contentRect;
+      setShort((v) => (v ? h < SHORT_BELOW_PX + 30 : h < SHORT_BELOW_PX));
+      // Dead band so a pane sitting on a threshold does not flip layouts while a header or composer resizes it.
+      setDensity((d) => {
+        if (w < STRIP_BELOW_WIDTH_PX) { return 'rail'; }
+        if (d === 'rail' && w < STRIP_BELOW_WIDTH_PX + 30) { return 'rail'; }
+        if (h < STRIP_BELOW_PX) { return 'strip'; }
+        if (d === 'strip' && h < STRIP_BELOW_PX + 30) { return 'strip'; }
+        if (w < COMPACT_BELOW_WIDTH_PX) { return 'compact'; }
+        return w > COMPACT_BELOW_WIDTH_PX + 40 ? 'comfortable' : d;
+      });
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+  // A short pane that needs an answer shows the prompt and nothing else (hidden, not unmounted, so a draft survives).
+  const answering = short && pendingPrompts(paneState).length > 0;
   const running = paneState.summary.status === "running" || paneState.summary.status === "awaiting-approval";
 
   return (
@@ -48,9 +81,11 @@ export function PaneContent({ sessionId, accessibleTitle }: PaneContentProps) {
     // *top* of the viewport and streams the reply beneath it: that reads as
     // a document scrolling past, not a conversation. One provider per pane,
     // so two panes never share a scroll position.
+    <PaneDensityContext.Provider value={density}>
     <MessageScrollerProvider autoScroll defaultScrollPosition="end">
       <div
-        className="flex h-full flex-col"
+        ref={rootRef}
+        className={cn("flex h-full flex-col", isBranchPane(paneState.summary.kind) && "relative before:pointer-events-none before:absolute before:inset-y-0 before:left-0 before:z-10 before:w-[3px] before:bg-branch/70")}
         // Esc-to-stop, anywhere focus sits in this pane — header, transcript
         // or composer — not just the composer box. An Escape a descendant
         // already used for its own purpose (closing a mention menu,
@@ -63,8 +98,9 @@ export function PaneContent({ sessionId, accessibleTitle }: PaneContentProps) {
           }
         }}
       >
-        <SessionHeader pane={paneState} accessibleTitle={accessibleTitle} />
-        <SideChatBar sessionId={sessionId} />
+        {density === "rail" ? <PaneRail pane={paneState} /> : isBranchPane(paneState.summary.kind) ? <BranchPaneHeader pane={paneState} /> : <SessionHeader pane={paneState} accessibleTitle={accessibleTitle} />}
+        {density !== "strip" && density !== "rail" && (<>
+        <div className={answering ? "hidden" : "contents"}>
         <ChildrenList sessionId={sessionId} />
         <SubagentDrillInContext.Provider
           value={(itemId) => post({ t: "open-fleet-subagent", sessionId, itemId })}
@@ -76,15 +112,21 @@ export function PaneContent({ sessionId, accessibleTitle }: PaneContentProps) {
             />
           </div>
         </SubagentDrillInContext.Provider>
-        <PinnedPrompts pane={paneState} sessionId={sessionId} />
+        </div>
+        <PinnedPrompts pane={paneState} sessionId={sessionId} fill={answering} />
+        <div className={answering ? "hidden" : "contents"}>
         <PinnedShell pane={paneState} sessionId={sessionId} />
+        {paneState.summary.status === "running" && <WorkingRow pane={paneState} />}
         <Composer
           pane={paneState}
           model={model}
           models={provider?.models ?? []}
           unavailableReason={ownerReason(paneState.summary) ?? unavailabilityFor(state, paneState.summary.providerId)}
         />
+        </div>
+        </>)}
       </div>
     </MessageScrollerProvider>
+    </PaneDensityContext.Provider>
   );
 }

@@ -1,9 +1,13 @@
 import { useState } from 'react';
+import { ListChecksIcon, TriangleAlertIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useStore } from '../store';
 import { folderName } from '../format';
 import type { PermissionMeta, SessionId, TranscriptItem } from '../../protocol/messages';
+import { requestTitle } from '../lib/permission-copy';
+import { Markdown } from './markdown';
 import { ToolBody } from './tool-body';
+import { ToolCard } from './tool-card';
 import { describeInput } from './tool-render';
 import { TranscriptItemShell } from './transcript-item-shell';
 
@@ -28,7 +32,10 @@ function PermissionMetaDetail({ meta }: { meta?: PermissionMeta }) {
       {title && <div className="wrap-break-word">{title}</div>}
       {description && <div className="wrap-break-word text-muted-foreground">{description}</div>}
       {decisionReason && (
-        <div className="wrap-break-word text-muted-foreground">{decisionReason}</div>
+        <div className="flex items-start gap-1.5 wrap-break-word text-foreground">
+          <TriangleAlertIcon aria-hidden className="mt-0.5 size-3.5 shrink-0 text-attention" />
+          <span>{decisionReason}</span>
+        </div>
       )}
       {blockedPath && (
         <div className="min-w-0 truncate font-mono text-muted-foreground" title={blockedPath}>
@@ -67,20 +74,18 @@ export function PermissionCard({
   const [answered, setAnswered] = useState(false);
 
   if (item.state !== 'pending') {
-    const label = server
-      ? `${server} ${name} — ${item.state}`
-      : `${name} — ${item.state}`;
+    // What the backend and the user said about it rides along as the row's expandable result.
+    const m = item.meta;
+    const settledNotes = [item.reason, m?.title, m?.description, m?.decisionReason, m?.blockedPath].filter(Boolean).join('\n');
+    // The tool's own row, unchanged, with a check (or a cross) on it: an approved call reads exactly as the call does.
     return (
-      <TranscriptItemShell role="permission" label={label} ts={item.ts}>
-        {item.reason && <div className="text-xs text-muted-foreground">{item.reason}</div>}
-        <details className="text-xs">
-          <summary className="cursor-default text-muted-foreground">What was requested</summary>
-          <div className="mt-1">
-            <PermissionMetaDetail meta={item.meta} />
-            <ToolBody blocks={request} />
-          </div>
-        </details>
-      </TranscriptItemShell>
+      <ToolCard
+        approval={item.state}
+        item={{
+          id: item.id, ts: item.ts, role: 'tool', toolId: item.requestId, tool, state: 'ok',
+          ...(settledNotes ? { output: { kind: 'text' as const, text: settledNotes } } : {}),
+        }}
+      />
     );
   }
 
@@ -107,7 +112,7 @@ export function PermissionCard({
         </div>
         <div className="mb-2">
           <PermissionMetaDetail meta={item.meta} />
-          <ToolBody blocks={request} />
+          <ToolBody blocks={request} fullPaths />
         </div>
         <div className="flex gap-2">
           <Button size="sm" disabled aria-label={`Deny ${name} (unavailable)`}>Deny</Button>
@@ -132,18 +137,19 @@ export function PermissionCard({
 
   if (tool.kind === 'plan') {
     return (
-      <div className="my-0 rounded border border-border bg-muted/20 p-2 text-xs">
-        <div className="mb-1 flex items-baseline gap-2">
+      <div className="my-0 flex flex-col gap-2 rounded border border-border bg-muted/20 p-2 text-xs">
+        <div className="flex items-center gap-2">
+          <ListChecksIcon aria-hidden className="size-4 shrink-0 text-primary" />
           <span className="font-medium">Plan ready</span>
           <span className="truncate text-muted-foreground" title={cwd}>{folderName(cwd)}</span>
         </div>
-        <div className="mb-2 flex flex-col gap-1.5">
-          <p>Review the plan before implementation begins.</p>
-          <p className="text-muted-foreground">
-            Starting implementation will leave read-only Plan mode and allow file changes.
-          </p>
-          <ToolBody blocks={request} />
+        {tool.path && <ToolBody blocks={[{ kind: 'path', path: tool.path, hint: 'Markdown plan' }]} fullPaths />}
+        <div className="max-h-64 overflow-y-auto border-l-2 border-border pl-2.5">
+          <Markdown>{tool.text}</Markdown>
         </div>
+        <p className="text-foreground/80">
+          Starting implementation will leave read-only Plan mode and allow file changes.
+        </p>
         <div className="flex gap-2">
           <Button
             variant="outline"
@@ -166,7 +172,7 @@ export function PermissionCard({
   }
 
   return (
-    <div className="my-0 rounded border-2 border-destructive bg-destructive/10 p-2 text-xs">
+    <div className="my-0 rounded border border-attention/60 bg-attention/10 p-2 text-xs">
       <div className="mb-1 flex items-baseline gap-2">
         {server && (
           // Muted, not colour-per-server — mirrors ToolCard's badge treatment.
@@ -174,12 +180,12 @@ export function PermissionCard({
             {server}
           </span>
         )}
-        <span className="font-medium">Allow {name}?</span>
+        <span className="font-medium">{requestTitle(tool, name, item.meta?.displayName !== undefined)}</span>
         <span className="truncate text-muted-foreground" title={cwd}>{folderName(cwd)}</span>
       </div>
       <div className="mb-2">
         <PermissionMetaDetail meta={item.meta} />
-        <ToolBody blocks={request} clamp={{ head: 4, tail: 2 }} />
+        <ToolBody blocks={tool.kind === "mcp" ? request.filter((b) => !(b.kind === "field" && (b.label === "server" || b.label === "tool"))) : request} clamp={{ head: 4, tail: 2 }} fullPaths />
       </div>
       {/* Deny is the safe, reversible-feeling choice: it comes first in DOM
           and tab order, and Allow — the consequential, irreversible-feeling

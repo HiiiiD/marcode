@@ -35,6 +35,11 @@ export function ApprovalPrompt(props: { sessionId: SessionId; request: Permissio
 
   useEffect(() => { st.set({ mode: 'choose', reason: '' }); }, [request.requestId]);
 
+  useEffect(() => {
+    if (request.tool.kind !== 'plan') { return; }
+    post({ t: 'open-plan', requestId: request.requestId, text: request.tool.text, ...(request.tool.path ? { path: request.tool.path } : {}) });
+  }, [request.requestId]);
+
   const decide = (decision: { allow: true } | { allow: false; reason?: string }) => {
     if (sent.current === request.requestId) { return; }
     sent.current = request.requestId;

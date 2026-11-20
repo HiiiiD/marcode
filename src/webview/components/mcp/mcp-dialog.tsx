@@ -35,20 +35,20 @@ export function McpDialog({ id, open, onOpenChange }: { id: SessionId; open: boo
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[calc(100dvh-2rem)] gap-3 overflow-y-auto text-xs">
-        <DialogHeader>
-          <div className="flex items-baseline justify-between gap-2 border-b border-border pr-7 pb-2">
-            <DialogTitle className="text-sm">{view === "add" ? "Add MCP server" : "MCP servers"}</DialogTitle>
-            <span className="truncate text-muted-foreground">{pane?.summary.name}</span>
+      <DialogContent initialFocus={false} className="top-[10vh] flex max-h-[calc(100dvh-4rem)] translate-y-0 flex-col gap-3 overflow-hidden text-sm sm:max-w-xl">
+        <DialogHeader className="shrink-0">
+          <div className="flex flex-col gap-0.5 pr-7">
+            <DialogTitle className="text-base">{view === "add" ? "Add MCP server" : "MCP servers"}</DialogTitle>
+            {pane?.summary.name && <p className="truncate text-xs text-muted-foreground">for {pane.summary.name}</p>}
           </div>
         </DialogHeader>
         {view === "add" && panel?.capabilities ? (
           <>
-            {panel.error && <p role="alert" className="text-destructive wrap-break-word">{panel.error}</p>}
             <McpAddForm
               capabilities={panel.capabilities}
               targets={panel.targets}
               takenIn={takenIn}
+              serverError={panel.error}
               onBack={() => setView("list")}
               onSubmit={(scope, server) => {
                 awaitingAdd.current = true;
@@ -65,7 +65,8 @@ export function McpDialog({ id, open, onOpenChange }: { id: SessionId; open: boo
               if (a.t === "restart") { post({ t: "restart-session", id }); }
               else if (a.t === "remove") { post({ t: "mcp-remove", id, name: a.name, origin: a.origin }); }
               else if (a.t === "reconnect") { post({ t: "mcp-reconnect", id, name: a.name }); }
-              else { post({ t: "mcp-sign-in", id, name: a.name }); }
+              else if (panel?.capabilities?.signIn) { post({ t: "mcp-sign-in", id, name: a.name }); }
+              else if (pane) { post({ t: "login-provider", providerId: pane.summary.providerId, purpose: "mcp" }); }
             }}
           />
         )}

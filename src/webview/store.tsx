@@ -22,6 +22,8 @@ interface StoreActions {
   /** See `ClientState.pendingSlotPath`. */
   setPendingSlot: (path: number[] | null) => void;
   dismissRearrange: () => void;
+  /** Maximize `id`'s pane, or restore the split when it is already maximized. Client-local, like the keyboard command. */
+  toggleMaximize: (id: SessionId) => void;
 }
 
 interface StoreValue extends StoreActions {
@@ -110,6 +112,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     dismissRejection: (id) => dispatch({ t: 'local-dismiss-rejection', id }),
     setPendingSlot: (path) => dispatch({ t: 'local-pending-slot', path }),
     dismissRearrange: () => dispatch({ t: 'local-dismiss-rearrange' }),
+    toggleMaximize: (id) => dispatch({ t: 'local-toggle-maximize', id }),
   }), [post]);
   const value = useMemo<StoreValue>(() => ({ state, ...actions }), [state, actions]);
 

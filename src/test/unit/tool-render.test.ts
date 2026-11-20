@@ -1,7 +1,7 @@
 import * as assert from 'assert';
 import type { ToolCall } from '../../protocol/messages';
 import {
-  describeInput, describeOutput, describeTool, shortPath,
+  describeInput, describeOutcome, describeOutput, describeTool, shortPath,
 } from '../../webview/components/tool-render';
 
 suite('shortPath', () => {
@@ -11,12 +11,12 @@ suite('shortPath', () => {
   });
 
   test('a longer path is truncated to its last two segments', () => {
-    assert.strictEqual(shortPath('/repo/src/components/a.ts'), '/…/components/a.ts');
+    assert.strictEqual(shortPath('/repo/src/components/a.ts'), '…/src/components/a.ts');
   });
 
   test('Windows backslash separators are split the same as POSIX ones', () => {
     assert.strictEqual(
-      shortPath('C:\\repo\\src\\components\\a.ts'), 'C:/…/components/a.ts',
+      shortPath('C:\\repo\\src\\components\\a.ts'), '…/src/components/a.ts',
     );
   });
 });
@@ -51,7 +51,7 @@ suite('describeTool', () => {
         edits: [{ before: 'old line', after: 'new line\nanother line' }],
       }],
     });
-    assert.strictEqual(header.primary, '/…/b/c.ts');
+    assert.strictEqual(header.primary, '/a/b/c.ts');
   });
 
   test('a multi-file edit counts files instead of naming one', () => {
@@ -197,7 +197,7 @@ suite('describeInput', () => {
       files: [{ path: '/a.ts', op: 'modify', edits: [{ before: 'foo', after: 'bar' }] }],
     });
     assert.deepStrictEqual(blocks, [
-      { kind: 'path', path: '/a.ts' },
+      { kind: 'path', path: '/a.ts', hint: '+1 −1' },
       { kind: 'diff', lines: ['-foo', '+bar'] },
     ]);
   });
@@ -211,7 +211,7 @@ suite('describeInput', () => {
       }],
     });
     assert.deepStrictEqual(blocks, [
-      { kind: 'path', path: '/a.ts' },
+      { kind: 'path', path: '/a.ts', hint: '+1 −1' },
       { kind: 'diff', lines: ['-old', '+new'], unified: '--- a/a.ts\n+++ b/a.ts\n@@ -1 +1 @@\n-old\n+new' },
     ]);
   });
@@ -249,7 +249,7 @@ suite('describeInput', () => {
       }],
     });
     assert.deepStrictEqual(blocks, [
-      { kind: 'path', path: '/s.css' },
+      { kind: 'path', path: '/s.css', hint: '+1 −1' },
       {
         kind: 'diff', lines: ['--color-primary: red;', '++counter: 1;'],
         unified: '--- a/s.css\n+++ b/s.css\n@@ -1,2 +1,2 @@\n--color-primary: red;\n++counter: 1;',
@@ -266,7 +266,7 @@ suite('describeInput', () => {
       }],
     });
     assert.deepStrictEqual(blocks, [
-      { kind: 'path', path: '/a.ts' },
+      { kind: 'path', path: '/a.ts', hint: '+2 −2' },
       {
         kind: 'diff', lines: ['-old1', '+new1', '-old2', '+new2'],
         unified: '--- a/a.ts\n+++ b/a.ts\n@@ -1 +1 @@\n-old1\n+new1\n@@ -10 +10 @@\n-old2\n+new2',
@@ -321,6 +321,18 @@ suite('describeInput', () => {
       { kind: 'field', label: 'server', value: 'github' },
       { kind: 'field', label: 'tool', value: 'create_issue' },
     ]);
+  });
+
+  test('an mcp call lists its arguments, long values clipped and extras counted', () => {
+    const input: Record<string, unknown> = { owner: 'acme', title: 'x'.repeat(300), labels: ['a', 'b'] };
+    for (let i = 0; i < 7; i += 1) { input[`k${i}`] = i; }
+    const blocks = describeInput({ kind: 'mcp', label: 'create_pr', server: 'github', tool: 'create_pr', input });
+    assert.deepStrictEqual(blocks.slice(2, 5), [
+      { kind: 'field', label: 'owner', value: 'acme' },
+      { kind: 'field', label: 'title', value: `${'x'.repeat(240)}…` },
+      { kind: 'field', label: 'labels', value: '["a","b"]' },
+    ]);
+    assert.deepStrictEqual(blocks.at(-1), { kind: 'note', text: '2 more arguments' });
   });
 
   test('marcode__send_message surfaces the message text as a note, not server/tool fields', () => {
@@ -399,6 +411,33 @@ suite('describeOutput', () => {
       [{ kind: 'lines', text: 'boom', tone: 'error' }]);
   });
 
+  test('a shell header drops a leading cd into the workspace but keeps the command', () => {
+    const tool = (command: string) => ({ kind: 'command' as const, label: 'Bash', command, cwd: 'x' }) as Parameters<typeof describeTool>[0];
+    assert.strictEqual(describeTool(tool('cd "e:\Efebia\app" && yarn test')).primary, 'yarn test');
+    assert.strictEqual(describeTool(tool('cd /tmp/x && ls -la')).primary, 'ls -la');
+    assert.strictEqual(describeTool(tool('ls -la')).primary, 'ls -la');
+    assert.strictEqual(describeTool(tool('cd /tmp/x')).primary, 'cd /tmp/x');
+  });
+
+  test('the SDK edit acknowledgement is dropped, a real edit result is kept', () => {
+    assert.deepStrictEqual(describeOutput('file-edit', { kind: 'text', text: 'The file /a.ts has been updated successfully.' }, 'ok'), []);
+    assert.deepStrictEqual(describeOutput('file-edit', { kind: 'text', text: 'Permission denied' }, 'ok'),
+      [{ kind: 'lines', text: 'Permission denied', tone: 'output' }]);
+  });
+
+  test('ANSI colour escapes are stripped from text output', () => {
+    assert.deepStrictEqual(
+      describeOutput('command', { kind: 'text', text: '[36m<th>[39m ok' }, 'ok'),
+      [{ kind: 'lines', text: '<th> ok', tone: 'output' }]);
+  });
+
+  test('a silent successful edit or todo update has no result block', () => {
+    assert.deepStrictEqual(describeOutput('file-edit', { kind: 'none' }, 'ok'), []);
+    assert.deepStrictEqual(describeOutput('todos', { kind: 'text', text: ' ' }, 'ok'), []);
+    assert.deepStrictEqual(describeOutput('file-edit', { kind: 'none' }, 'error'),
+      [{ kind: 'note', text: 'Failed with no output.' }]);
+  });
+
   test('no output says so, and says it differently when it failed', () => {
     assert.deepStrictEqual(describeOutput('command', { kind: 'none' }, 'ok'),
       [{ kind: 'note', text: 'No output.' }]);
@@ -416,5 +455,22 @@ suite('describeOutput', () => {
       describeOutput('image', { kind: 'image', dataUri: 'data:image/png;base64,AAAA' }, 'ok'),
       [{ kind: 'image', dataUri: 'data:image/png;base64,AAAA' }],
     );
+  });
+});
+
+suite('describeOutcome', () => {
+  test('sizes an edit and counts what a search printed', () => {
+    assert.strictEqual(describeOutcome(
+      { kind: 'file-edit', label: 'Edit', files: [{ path: '/a', op: 'modify', edits: [{ before: 'a', after: 'b\nc' }] }] },
+      undefined, 'ok'), '+2 −1');
+    assert.strictEqual(describeOutcome(
+      { kind: 'search', label: 'Grep', pattern: 'x', mode: 'content' }, { kind: 'text', text: 'a\nb\nc\n' }, 'ok'), '3 lines');
+  });
+
+  test('says nothing for a one-line result, a running call or a failure', () => {
+    const command = { kind: 'search' as const, label: 'Grep', pattern: 'x', mode: 'content' as const };
+    assert.strictEqual(describeOutcome(command, { kind: 'text', text: 'one' }, 'ok'), '');
+    assert.strictEqual(describeOutcome(command, { kind: 'text', text: 'a\nb' }, 'running'), '');
+    assert.strictEqual(describeOutcome(command, { kind: 'text', text: 'a\nb' }, 'error'), '');
   });
 });

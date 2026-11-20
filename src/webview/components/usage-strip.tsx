@@ -1,3 +1,4 @@
+import { providerName } from '../lib/provider-name';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
@@ -43,7 +44,7 @@ function WindowChip({ window: w }: { window: UsageWindow }) {
       >
         <Ring percent={w.usedPercent} size={12} />
         <span className="text-muted-foreground">{w.label}</span>
-        <span className="tabular-nums">{w.usedPercent}%</span>
+        <span className={cn('tabular-nums', w.usedPercent >= 80 && 'text-destructive')}>{w.usedPercent}%</span>
       </TooltipTrigger>
       <TooltipContent>{reset ? `${label} · ${reset}` : label}</TooltipContent>
     </Tooltip>
@@ -76,7 +77,7 @@ function ProviderUsage({
   // indistinguishable from any other provider's row.
   if (!live || live.length === 0) {
     return (
-      <div className="flex min-h-5 flex-wrap items-center gap-x-3 gap-y-0.5 text-muted-foreground">
+      <div className="flex min-h-5 min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5 text-muted-foreground">
         <span className="shrink-0">{displayName}</span>
         <span>Plan usage not reported</span>
       </div>
@@ -88,7 +89,7 @@ function ProviderUsage({
   // this size — the account whose numbers scrolled off is exactly the one the
   // strip exists to surface. Wrapping costs a row and hides nothing.
   return (
-    <div className="flex min-h-5 flex-wrap items-center gap-x-3 gap-y-0.5">
+    <div className="flex min-h-5 min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5">
       <span className="shrink-0 text-muted-foreground">{displayName}</span>
       {live.map((w) => <WindowChip key={w.id} window={w} />)}
     </div>
@@ -111,18 +112,15 @@ export function UsageStrip() {
   // first pull lands, which is the right trade in a 300-500px sidebar.
   if (reporting.length === 0) { return null; }
 
-  // One row per provider, stacked — not one line that scrolls. Plan limits
-  // belong to accounts, and two accounts side by side in a 300px column is
-  // the case that overflows, not the exception. Height grows only when a
-  // second provider actually reports.
+  // One row per provider, stacked: plan limits belong to accounts, and each account reads as its own line. A row wraps rather than scrolls, and nothing here has a width of its own.
   return (
-    <div className="flex shrink-0 flex-col gap-1 border-t border-border px-2 py-1 text-xs">
-      <div className="flex items-start gap-1">
+    <div className="flex min-w-0 shrink-0 flex-col gap-1 border-t border-border px-2 py-1 text-xs">
+      <div className="flex min-w-0 items-start gap-1">
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           {reporting.map((id) => (
             <ProviderUsage
               key={id}
-              displayName={state.usageDisplayNames[id] ?? state.catalog.find((p) => p.id === id)?.displayName ?? id}
+              displayName={providerName(state, id)}
               windows={state.usageByProvider[id]}
             />
           ))}
@@ -138,7 +136,7 @@ export function UsageStrip() {
           aria-label="Refresh plan usage"
           onClick={() => post({ t: 'refresh-usage' })}
           disabled={state.usageRefreshing}
-          className="shrink-0"
+          className="shrink-0 text-muted-foreground"
         >
           <RefreshCwIcon aria-hidden className={cn(state.usageRefreshing && 'animate-spin')} />
         </Button>

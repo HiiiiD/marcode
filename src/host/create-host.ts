@@ -245,6 +245,9 @@ export async function createHost(opts: CreateHostOptions): Promise<HostHandle> {
         env: mergedEnv, selfControlMcp: selfControlConfig, loginKind,
       }));
     }
+    const instance = providers.get(cfg.id);
+    if (instance) { instance.kind = cfg.kind; }
+    if (instance && cfg.icon) { instance.icon = { text: cfg.icon, ...(cfg.color ? { color: cfg.color } : {}) }; }
   }
 
   // Extractive digests are idempotent so both hosts write them; only the LLM summarizer costs money, so one host runs it.

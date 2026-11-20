@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   MessageScroller, MessageScrollerButton, MessageScrollerContent,
   MessageScrollerItem, MessageScrollerViewport,
@@ -6,25 +6,15 @@ import {
 import { Button } from '@/components/ui/button';
 import { NestedMessagesContext } from './nested-messages-context';
 import { SubagentGroupCard } from './subagent-group-card';
+import { EmptyPane } from './empty-pane';
 import { TranscriptItemView } from './transcript-item';
-import { WorkingRow } from './working-row';
 import type { PaneState } from '../reducer';
 import { isLivePrompt } from '../lib/pending-prompts';
 import { splitNestedMessages } from '../lib/nested-messages';
-import { groupSubagents } from '../lib/subagent-groups';
-
-/**
- * Whether the tail of the transcript is already saying "something is
- * happening" on its own — an assistant item taking deltas, or a tool card
- * spinning. The working row fills the gaps between those, not the whole turn:
- * a second indicator running alongside live content is noise, and in a column
- * this narrow noise costs a line of the answer.
- */
-function tailIsLive(pane: PaneState): boolean {
-  const last = pane.items[pane.items.length - 1];
-  if (!last) { return false; }
-  return last.role === 'assistant' || (last.role === 'tool' && last.state === 'running');
-}
+import { groupSubagents, mergeToolRuns } from '../lib/subagent-groups';
+import { useStore } from '../store';
+import { settledPrefix } from '../lib/stream-text';
+import { beatOf, gapAbove } from '../lib/rhythm';
 
 export function Transcript({
   pane, onLoadMore,
@@ -32,15 +22,14 @@ export function Transcript({
   pane: PaneState;
   onLoadMore: (beforeItemId: string) => void;
 }) {
+  const { state } = useStore();
   const nested = useMemo(() => splitNestedMessages(pane.items), [pane.items]);
   const first = pane.items[0];
-  const last = pane.items[pane.items.length - 1];
   const idle = pane.summary.status === 'idle';
-  const working = pane.summary.status === 'running' && !tailIsLive(pane);
-  // Only reached by a session whose transcript is empty — a brand new session
-  // sending its first message. Every other case has a host timestamp to
-  // measure from, which is the point of `since`.
-  const mountedAt = useRef(Date.now()).current;
+  // Claude hands over finished blocks; every other backend streams tokens, so its half-written tail is held back to the last whole line or sentence rather than re-rendered per token.
+  const last = pane.items[pane.items.length - 1];
+  const claudeBacked = state.catalog.find((p) => p.id === pane.summary.providerId)?.kind === 'claude';
+  const streamingId = pane.summary.status === 'running' && !claudeBacked && last?.role === 'assistant' && last.text.trim() ? last.id : undefined;
 
   // `load-more` is a stateless lookup keyed on beforeItemId, not a consumed
   // cursor — two rapid clicks before the first session-prepend lands would
@@ -60,13 +49,14 @@ export function Transcript({
     // descendant — can call `useMessageScroller()` to reveal an item in this
     // transcript. Nothing else about the scroller moved.
     <NestedMessagesContext value={nested.byChild}>
-      <MessageScroller className="h-full">
+      <MessageScroller className="relative h-full">
+        {pane.items.length === 0 && !pane.hasMore && <EmptyPane pane={pane} />}
         <MessageScrollerViewport className="px-2" preserveScrollOnPrepend>
           {/* `justify-end` only bites while the content is shorter than the
               viewport (Content is `min-h-full`): a two-message session sits on
               the composer instead of stranding itself at the top with dead
               space below. Once it overflows, the rule is inert. */}
-          <MessageScrollerContent className="justify-end gap-2">
+          <MessageScrollerContent className="justify-end gap-0">
             {pane.hasMore && first && (
               <Button
                 variant="outline"
@@ -83,22 +73,30 @@ export function Transcript({
                 Load earlier messages
               </Button>
             )}
-            {groupSubagents(nested.main.filter((item) => !isLivePrompt(item, pane))).map((entry) => entry.kind === 'group' ? (
-              <MessageScrollerItem key={entry.id} messageId={entry.id}>
-                <SubagentGroupCard items={entry.items} sessionId={pane.summary.id} />
-              </MessageScrollerItem>
-            ) : (
-              <MessageScrollerItem key={entry.item.id} messageId={entry.item.id}>
-                <TranscriptItemView item={entry.item} sessionId={pane.summary.id} canFork={idle && pane.summary.kind !== 'side'} />
-              </MessageScrollerItem>
-            ))}
-            {/* Not a MessageScrollerItem: it is a state of the session, not
-                an entry in it, and registering it as a message would make the
-                scroller treat every appearance as new content to anchor on. */}
-            {working && <WorkingRow since={last?.ts ?? mountedAt} />}
+            {(() => {
+              const entries = mergeToolRuns(groupSubagents(nested.main
+                .map((item) => (item.id === streamingId && item.role === 'assistant' ? { ...item, text: settledPrefix(item.text) } : item))
+                .filter((item) => !isLivePrompt(item, pane) && !(item.role === 'assistant' && item.id === streamingId && !item.text && !item.thinking))));
+              const beatAt = (i: number, edge: 'first' | 'last' = 'first') => {
+                const e = entries[i];
+                return e === undefined ? undefined : e.kind === 'group' ? 'machine' as const : beatOf(e.item, edge);
+              };
+              return entries.map((entry, i) => {
+                const gap = gapAbove(beatAt(i - 1, 'last'), beatAt(i) ?? 'card');
+                return entry.kind === 'group' ? (
+                  <MessageScrollerItem key={entry.id} messageId={entry.id} className={gap}>
+                    <SubagentGroupCard items={entry.items} sessionId={pane.summary.id} />
+                  </MessageScrollerItem>
+                ) : (
+                  <MessageScrollerItem key={entry.item.id} messageId={entry.item.id} className={gap}>
+                    <TranscriptItemView item={entry.item} more={entry.more} sessionId={pane.summary.id} canFork={idle && pane.summary.kind !== 'side'} />
+                  </MessageScrollerItem>
+                );
+              });
+            })()}
           </MessageScrollerContent>
         </MessageScrollerViewport>
-        <MessageScrollerButton />
+        <MessageScrollerButton className="right-4 left-auto translate-x-0 rtl:translate-x-0" />
       </MessageScroller>
     </NestedMessagesContext>
   );

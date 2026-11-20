@@ -122,7 +122,7 @@ suite('UsageStrip', () => {
   test('a provider with a session but no usage is absent', () => {
     const { container } = mountStrip();   // seeds a 'fake' session, no windows
 
-    assert.strictEqual(screen.queryByText(/Plan usage not reported/), null);
+    assert.strictEqual(screen.queryByText(/Plan usage not reported/) === null, true);
     // An API-key provider can never report. A permanent row it can never fill
     // is noise no action clears, so the strip does not render one.
     assert.strictEqual(container.textContent, '');
@@ -171,5 +171,30 @@ suite('UsageStrip', () => {
 
     assert.ok(screen.getByText('Fake'));
     assert.ok(screen.getByText('Other'));
+  });
+
+  test('a raw provider id is shortened to a readable name', () => {
+    mountStrip();
+    sendFromHost({
+      t: 'usage-windows', providerId: 'opencode-openai',
+      windows: [{ id: 'seven-day', label: 'Week', usedPercent: 20, resetsAt: Date.now() + 60_000 }],
+    });
+
+    assert.ok(screen.getByText('OpenCode'));
+    assert.strictEqual(screen.queryByText('opencode-openai') === null, true);
+  });
+
+  test('only a window over 80% takes the warning colour', () => {
+    mountStrip();
+    sendFromHost({
+      t: 'usage-windows', providerId: 'fake',
+      windows: [
+        { id: 'five-hour', label: 'Session (5h)', usedPercent: 90, resetsAt: Date.now() + 60_000 },
+        { id: 'seven-day', label: 'Week', usedPercent: 20, resetsAt: Date.now() + 60_000 },
+      ],
+    });
+
+    assert.strictEqual(screen.getByText('90%').className.includes('text-destructive'), true);
+    assert.strictEqual(screen.getByText('20%').className.includes('text-destructive'), false);
   });
 });

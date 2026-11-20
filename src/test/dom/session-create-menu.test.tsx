@@ -47,6 +47,7 @@ function focusPane(index: number) {
 
 const newButton = () => screen.getAllByRole('button', { name: 'New session' })[0];
 const optionsButton = () => screen.getAllByRole('button', { name: 'New session with options' })[0];
+const nextStep = async (times = 1) => { for (let i = 0; i < times; i += 1) { await userEvent.click(screen.getByRole('button', { name: 'Next' })); } };
 
 suite('SessionCreateMenu', () => {
   setup(() => resetHost());
@@ -153,7 +154,21 @@ suite('SessionCreateMenu', () => {
     const other = screen.getByRole('group', { name: 'Other' });
     assert.ok(within(fake).getByRole('radio', { name: 'Fake Large' }));
     assert.ok(within(other).getByRole('radio', { name: 'Other One' }));
-    assert.strictEqual(within(fake).queryByRole('radio', { name: 'Other One' }), null);
+    assert.strictEqual(within(fake).queryByRole('radio', { name: 'Other One' }) === null, true);
+    const header = within(fake).getByText('Fake');
+    assert.strictEqual(header.className.includes('uppercase'), false);
+  });
+
+  test('step 2 effort row labels both ends and every dot', async () => {
+    renderApp();
+    hydrate();
+    await userEvent.click(optionsButton());
+    await nextStep();
+
+    const row = screen.getByLabelText(/^Effort: /);
+    const titles = [...row.querySelectorAll('[title]')].map((el) => el.getAttribute('title'));
+    assert.deepStrictEqual(titles, ['low', 'medium', 'high']);
+    assert.strictEqual(row.querySelectorAll('.capitalize').length, 2);
   });
 
   test('the modal creates with the chosen provider, model, effort and mode', async () => {
@@ -162,6 +177,7 @@ suite('SessionCreateMenu', () => {
 
     await userEvent.click(optionsButton());
     await userEvent.click(await screen.findByRole('radio', { name: 'Other One' }));
+    await nextStep();
     await userEvent.click(screen.getByRole('radio', { name: 'Plan' }));
     await userEvent.click(screen.getByRole('button', { name: 'Create session' }));
 
@@ -186,6 +202,7 @@ suite('SessionCreateMenu', () => {
       (await screen.findByRole('radio', { name: 'Fake Medium' })).getAttribute('aria-checked'),
       'true',
     );
+    await nextStep();
     assert.strictEqual(
       screen.getByRole('radio', { name: 'Plan' }).getAttribute('aria-checked'),
       'true',
@@ -201,7 +218,7 @@ suite('SessionCreateMenu', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Cancel' }));
 
     assert.strictEqual(posted().length, before);
-    assert.strictEqual(screen.queryByRole('dialog'), null);
+    assert.strictEqual(screen.queryByRole('dialog') === null, true);
   });
 
   test('typing in the model search filters rows across every provider group', async () => {
@@ -296,14 +313,15 @@ suite('SessionCreateMenu', () => {
     assert.ok(await screen.findByRole('button', { name: 'Unstar Fake Large' }));
   });
 
-  test('the branch name field is visible without any extra toggle, and Create stays enabled empty', async () => {
+  test('the branch name field is on the Options step, and Create stays enabled empty', async () => {
     renderApp();
     hydrate([summary('a')], twoProviders());
 
     await userEvent.click(optionsButton());
+    await nextStep(2);
 
     assert.ok(screen.getByLabelText('Branch name'));
-    assert.strictEqual(screen.queryByLabelText('Base branch'), null);
+    assert.strictEqual(screen.queryByLabelText('Base branch') === null, true);
     assert.strictEqual(
       (screen.getByRole('button', { name: 'Create session' }) as HTMLButtonElement).disabled,
       false,
@@ -315,6 +333,7 @@ suite('SessionCreateMenu', () => {
     hydrate([summary('a')], twoProviders());
 
     await userEvent.click(optionsButton());
+    await nextStep(2);
     await userEvent.type(screen.getByLabelText('Branch name'), 'feat/thing');
 
     assert.ok(screen.getByLabelText('Base branch'));
@@ -325,6 +344,7 @@ suite('SessionCreateMenu', () => {
     hydrate([summary('a')], twoProviders());
 
     await userEvent.click(optionsButton());
+    await nextStep(2);
     await userEvent.type(screen.getByLabelText('Branch name'), 'feat/thing');
     await userEvent.type(screen.getByLabelText('Base branch'), 'develop');
     await userEvent.click(screen.getByRole('button', { name: 'Create session' }));
@@ -345,6 +365,7 @@ suite('SessionCreateMenu', () => {
     hydrate([summary('a')], twoProviders());
 
     await userEvent.click(optionsButton());
+    await nextStep(2);
     await userEvent.type(screen.getByLabelText('Branch name'), 'feat/thing');
     await userEvent.click(screen.getByRole('button', { name: 'Create session' }));
 
@@ -358,6 +379,7 @@ suite('SessionCreateMenu', () => {
     hydrate([summary('a')], twoProviders());
 
     await userEvent.click(optionsButton());
+    await nextStep(2);
     await userEvent.type(screen.getByLabelText('Branch name'), '   ');
     await userEvent.click(screen.getByRole('button', { name: 'Create session' }));
 
@@ -390,5 +412,32 @@ suite('SessionCreateMenu', () => {
     for (const control of controls) {
       assert.ok((control as HTMLButtonElement).disabled);
     }
+  });
+
+  test('a recent combination is one click: it creates with that model, effort and mode', async () => {
+    renderApp();
+    hydrate([summary('a', { model: 'fake-medium', effort: 'low', permissionMode: 'plan' })]);
+
+    await userEvent.click(optionsButton());
+    const chip = await screen.findByRole('button', { name: /Fake Medium · low · Plan/ });
+    resetHost();
+    await userEvent.click(chip);
+
+    assert.deepStrictEqual(posted().at(-1), {
+      t: 'create-session', providerId: 'fake', cwd: '', model: 'fake-medium', effort: 'low', mode: 'plan',
+    });
+  });
+
+  test('the dialog is a three-step stepper that opens on the model', async () => {
+    renderApp();
+    hydrate();
+
+    await userEvent.click(optionsButton());
+    await screen.findByRole('radio', { name: 'Fake Large' });
+    assert.strictEqual(screen.getByRole('button', { name: /1 Model/ }).getAttribute('aria-current'), 'step');
+    await nextStep();
+    assert.strictEqual(screen.getByRole('button', { name: /2 Effort & mode/ }).getAttribute('aria-current'), 'step');
+    await userEvent.click(screen.getByRole('button', { name: 'Back' }));
+    assert.strictEqual(screen.getByRole('button', { name: /1 Model/ }).getAttribute('aria-current'), 'step');
   });
 });

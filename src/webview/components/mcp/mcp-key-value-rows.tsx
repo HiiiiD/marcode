@@ -13,11 +13,13 @@ export function toRows(record: Record<string, string>): KeyValueRow[] {
 }
 
 /** Env vars or headers: one editable row per pair. */
-export function McpKeyValueRows({ label, rows, onChange, keyPlaceholder }: {
+export function McpKeyValueRows({ label, rows, onChange, keyPlaceholder, secret }: {
   label: string;
   rows: KeyValueRow[];
   onChange: (rows: KeyValueRow[]) => void;
   keyPlaceholder: string;
+  /** Values are credentials (headers): masked while typing. */
+  secret?: boolean;
 }) {
   const update = (i: number, patch: Partial<KeyValueRow>) => {
     onChange(rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
@@ -37,7 +39,9 @@ export function McpKeyValueRows({ label, rows, onChange, keyPlaceholder }: {
           <Input
             aria-label={`${label} value ${i + 1}`}
             className="h-7 min-w-0 flex-1 font-mono text-xs"
-            placeholder="value"
+            placeholder="Value"
+            type={secret ? "password" : "text"}
+            autoComplete="off"
             value={row.value}
             onChange={(e) => update(i, { value: e.target.value })}
           />

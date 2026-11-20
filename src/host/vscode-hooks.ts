@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import {
-  exportCsv, exportImage, openExternal, openFileDiff, openLoginTerminal, revealFile,
+  exportCsv, exportImage, openExternal, openPlan, openFileDiff, openLoginTerminal, revealFile,
 } from './editor-actions';
 import type { HookSet } from './act-adapter';
 import type { AttachmentHost, ConfigHost, EditorContextHost, FileSearch, UpdateNotifyHost } from './message-router';
@@ -32,12 +32,20 @@ export function createVscodeHooks(deps: VscodeHooksDeps): HookSet & { updateNoti
       }
     },
     openExternal: (url) => { void openExternal(url); },
+    openPlan: (text, planPath) => { void openPlan(text, planPath); },
     exportCsv: (csv) => { void exportCsv(csv); },
     exportImage: (dataUri) => { void exportImage(dataUri); },
-    login: (providerId) => {
+    login: (providerId, purpose) => {
       // A provider with no recipe is a no-op: it has no login flow, or the id is stale.
       const recipe = deps.loginRecipes().get(providerId);
-      if (recipe) { openLoginTerminal(recipe.terminalName, recipe.command, recipe.env); }
+      if (!recipe) { return; }
+      if (purpose === 'mcp') {
+        // The CLI's MCP screen is where its servers are signed in; the account login would be the wrong flow.
+        const cli = recipe.command.replace(/\s+(auth )?login$/, '');
+        openLoginTerminal(`${recipe.terminalName.replace(/ login$/, '')} MCP sign-in`, `${cli} /mcp`, recipe.env);
+        return;
+      }
+      openLoginTerminal(recipe.terminalName, recipe.command, recipe.env);
     },
   };
 

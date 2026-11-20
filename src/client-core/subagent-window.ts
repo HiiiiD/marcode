@@ -65,7 +65,7 @@ export function summarizeSubagent(item: ToolItem, now: number): SubagentSummary 
     if (child.role === 'tool') {
       toolCount++;
       if (child.state === 'running') { running++; }
-    } else if (child.role === 'permission' && child.state === 'pending') {
+    } else if ((child.role === 'permission' || child.role === 'question') && child.state === 'pending') {
       blocked = true;
     }
   }

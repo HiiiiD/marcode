@@ -9,6 +9,13 @@ import type { SessionId } from "../../protocol/messages";
 import { useStore } from "../store";
 import { StatusBadge } from "./status-badge";
 
+/** Name the branches for what they are when they are all one kind. */
+function noun(rows: { badge: string }[], single: boolean): string {
+  if (rows.every((r) => r.badge === "Side chat")) { return single ? "side chat" : "side chats"; }
+  if (rows.every((r) => r.badge === "Fork")) { return single ? "fork" : "forks"; }
+  return single ? "fork or side chat" : "forks and side chats";
+}
+
 /** Where this session came from and the forks and side chats branched off it. */
 export function ChildrenList({ sessionId }: { sessionId: SessionId }) {
   const { state, post } = useStore();
@@ -16,11 +23,13 @@ export function ChildrenList({ sessionId }: { sessionId: SessionId }) {
   const summary = state.byId[sessionId]?.summary;
   const rows = childrenRows(summary?.children);
   const parent = summary?.parentId ? state.sessions.find((s) => s.id === summary.parentId) : undefined;
-  if (!summary || (rows.length === 0 && !summary.parentId)) { return null; }
+  // A side chat names where it came from in its own bar, so it is not said twice.
+  const showParent = Boolean(summary?.parentId) && summary?.kind !== "side";
+  if (!summary || (rows.length === 0 && !showParent)) { return null; }
 
   return (
     <div className="border-b border-border text-xs">
-      {summary.parentId && (parent ? (
+      {showParent && (parent ? (
         <Button
           variant="link"
           size="xs"
@@ -41,7 +50,7 @@ export function ChildrenList({ sessionId }: { sessionId: SessionId }) {
               aria-hidden
               className={cn("shrink-0 text-muted-foreground transition-transform duration-200", open && "rotate-90")}
             />
-            {rows.length} {rows.length === 1 ? "fork or side chat" : "forks and side chats"}
+            {rows.length} {noun(rows, rows.length === 1)}
           </CollapsibleTrigger>
           <CollapsibleContent>
             <ul className="flex flex-col pb-1">

@@ -385,6 +385,10 @@ export interface ProviderInfo {
   permissionModes: PermissionModeInfo[];
   /** See `AgentProvider.loginKind` — passed through verbatim by `SessionManager.catalog()`. */
   loginKind?: 'oauth' | 'none';
+  /** A configured instance's own mark (`providerInstances[].icon`); absent means the kind's logo. */
+  icon?: { text: string; color?: string };
+  /** The base backend (`claude`, `codex`, `opencode`) behind this id; absent for the scripted fake. */
+  kind?: 'claude' | 'codex' | 'opencode';
 }
 
 /**
@@ -795,7 +799,8 @@ export type WebviewToHost =
    * way `refresh-catalog` already does for any other fixed-in-a-terminal
    * install.
    */
-  | { t: 'login-provider'; providerId: string }
+  /** `purpose: 'mcp'` opens the provider's own CLI on its MCP screen instead of the account login (a provider whose SDK cannot start an MCP sign-in itself). */
+  | { t: 'login-provider'; providerId: string; purpose?: 'mcp' }
   /**
    * A URL from agent-authored markdown, handed to the OS. Not
    * session-addressed for the same reason `reveal-file` is not: where a link
@@ -806,6 +811,8 @@ export type WebviewToHost =
    * trusted-domain prompt to what survives.
    */
   | { t: 'open-external'; url: string }
+  /** A plan awaiting approval, opened in the editor the moment it arrives; `path` is the plan file when the agent wrote one. */
+  | { t: 'open-plan'; requestId: string; text: string; path?: string }
   /**
    * A markdown table's cells, already CSV-formatted, for the host to save to
    * disk. Not session-addressed — the table exists in rendered transcript

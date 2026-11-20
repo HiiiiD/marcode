@@ -12,6 +12,12 @@ Default: `["claude","codex","opencode"]`
 
 Extra named instances of an existing provider kind — e.g. a second Claude account, or an OpenCode instance pointed at a different config/provider. Non-secret only; secrets stay in OS env vars referenced by `envMap`. Takes effect after a window reload.
 
+Each entry takes `id`, `kind` (`claude`, `codex` or `opencode`), `displayName`, and optionally `binPath` and `envMap`. Two optional keys give an instance its own mark, so it is not drawn with the same logo as every other instance of its kind: `icon` (one or two characters, such as an emoji or a letter) and `color` (`#rrggbb`, the mark's colour; it needs `icon`). The mark shows before a pane's name whenever more than one provider is configured, and on subagent cards.
+
+```json
+{ "providerInstances": [{ "id": "claude-work", "kind": "claude", "displayName": "Claude (work)", "icon": "W", "color": "#2f81f7" }] }
+```
+
 Default: `[]`
 
 ## `systemPrompts`
@@ -23,6 +29,12 @@ Default: `{}`
 ## `codex.path`
 
 Path to the Codex CLI. Leave empty to use `codex` from PATH.
+
+Default: `""`
+
+## `planEditor`
+
+Terminal client only. The command a plan awaiting approval is opened with, given the plan file as its last argument (for example `code -r` or `nvim`). The command is split into arguments (quotes group, no escape characters) and run directly, never through a shell, so the plan path stays a single argument; shell syntax such as pipes or `&&` is not supported, and on Windows use the real executable rather than a `.cmd` shim. The plan opens once per approval request. Empty means the plan stays in the approval card. In VS Code the plan always opens in an editor tab beside the panel, so this key is not read there.
 
 Default: `""`
 

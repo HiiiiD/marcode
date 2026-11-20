@@ -1,0 +1,28 @@
+/* Approximates VS Code Dark Modern / Light Modern; enough tokens for the webview's index.css mapping. */
+body { margin: 0; font-family: "Segoe UI", system-ui, sans-serif; font-size: 13px; color: var(--vscode-foreground); background: var(--vscode-sideBar-background); }
+.vscode-dark {
+  --vscode-foreground: #cccccc; --vscode-descriptionForeground: #9d9d9d; --vscode-errorForeground: #f85149;
+  --vscode-sideBar-background: #181818; --vscode-sideBar-foreground: #cccccc; --vscode-editor-background: #1f1f1f; --vscode-editor-foreground: #cccccc;
+  --vscode-editorWidget-background: #202020; --vscode-editorWidget-foreground: #cccccc; --vscode-editorWidget-border: #454545;
+  --vscode-button-background: #0078d4; --vscode-button-foreground: #ffffff; --vscode-button-secondaryBackground: #313131; --vscode-button-secondaryForeground: #cccccc;
+  --vscode-list-hoverBackground: #2a2d2e; --vscode-panel-border: #2b2b2b; --vscode-focusBorder: #0078d4;
+  --vscode-input-background: #313131; --vscode-input-border: #3c3c3c; --vscode-input-foreground: #cccccc;
+  --vscode-textLink-foreground: #4daafc; --vscode-badge-background: #616161; --vscode-badge-foreground: #ffffff;
+  --vscode-font-family: "Segoe UI", sans-serif; --vscode-editor-font-family: Consolas, "Courier New", monospace; --vscode-font-size: 13px; --vscode-editor-font-size: 14px;
+  --vscode-gitDecoration-addedResourceForeground: #81b88b; --vscode-gitDecoration-deletedResourceForeground: #c74e39; --vscode-charts-green: #89d185;
+  --vscode-editorWarning-foreground: #cca700; --vscode-charts-purple: #b180d7;
+  color-scheme: dark;
+}
+.vscode-light {
+  --vscode-foreground: #3b3b3b; --vscode-descriptionForeground: #717171; --vscode-errorForeground: #f85149;
+  --vscode-sideBar-background: #f8f8f8; --vscode-sideBar-foreground: #3b3b3b; --vscode-editor-background: #ffffff; --vscode-editor-foreground: #3b3b3b;
+  --vscode-editorWidget-background: #f8f8f8; --vscode-editorWidget-foreground: #3b3b3b; --vscode-editorWidget-border: #c8c8c8;
+  --vscode-button-background: #005fb8; --vscode-button-foreground: #ffffff; --vscode-button-secondaryBackground: #e5e5e5; --vscode-button-secondaryForeground: #3b3b3b;
+  --vscode-list-hoverBackground: #e8e8e8; --vscode-panel-border: #e5e5e5; --vscode-focusBorder: #005fb8;
+  --vscode-input-background: #ffffff; --vscode-input-border: #cecece; --vscode-input-foreground: #3b3b3b;
+  --vscode-textLink-foreground: #005fb8; --vscode-badge-background: #cccccc; --vscode-badge-foreground: #3b3b3b;
+  --vscode-font-family: "Segoe UI", sans-serif; --vscode-editor-font-family: Consolas, "Courier New", monospace; --vscode-font-size: 13px; --vscode-editor-font-size: 14px;
+  --vscode-gitDecoration-addedResourceForeground: #587c0c; --vscode-gitDecoration-deletedResourceForeground: #ad0707; --vscode-charts-green: #388a34;
+  color-scheme: light;
+}
+#root { height: 100vh; }

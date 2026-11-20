@@ -1,5 +1,18 @@
 import * as assert from 'assert';
-import { folderName, formatTokens } from '../../webview/format';
+import { folderName, formatTokens, middleTruncate } from '../../webview/format';
+
+suite('middleTruncate', () => {
+  test('leaves a short name alone', () => {
+    assert.strictEqual(middleTruncate('claude-0', 14), 'claude-0');
+  });
+
+  test('keeps both ends of a long name, within the limit', () => {
+    const out = middleTruncate('codex-11y9upt5', 10);
+    assert.strictEqual(out.length, 10);
+    assert.strictEqual(out, 'code…9upt5');
+    assert.notStrictEqual(out, middleTruncate('codex-kv0xh6vl', 10));
+  });
+});
 
 suite('folderName', () => {
   test('returns the last segment of a forward-slash path', () => {
@@ -48,5 +61,26 @@ suite('formatTokens', () => {
     assert.strictEqual(formatTokens(1_000_000), '1M');
     assert.strictEqual(formatTokens(2_000_000), '2M');
     assert.strictEqual(formatTokens(2_540_000), '2.5M');
+  });
+});
+
+import { settledPrefix } from '../../webview/lib/stream-text';
+
+suite('settledPrefix', () => {
+  test('holds back a half-written first sentence', () => {
+    assert.strictEqual(settledPrefix('Let me look at the'), '');
+  });
+
+  test('shows whole sentences before the first newline', () => {
+    assert.strictEqual(settledPrefix('Done reading. Now chec'), 'Done reading.');
+  });
+
+  test('shows whole lines and holds the unfinished one', () => {
+    assert.strictEqual(settledPrefix('- one\n- two\n- thr'), '- one\n- two\n');
+  });
+
+  test('a very long unfinished line is released at its last word', () => {
+    const long = `${'word '.repeat(60)}tail`;
+    assert.strictEqual(settledPrefix(long), long.slice(0, long.lastIndexOf(' ')));
   });
 });

@@ -200,7 +200,7 @@ suite('PaneGroup', () => {
 
     screen.getByLabelText('Resize between Session a and Session b');
     screen.getByLabelText('Resize between Session b and Session c');
-    assert.strictEqual(screen.queryByLabelText(/Resize between panes/), null);
+    assert.strictEqual(screen.queryByLabelText(/Resize between panes/) === null, true);
   });
 
   test('a pane whose session left the roster is not rendered', () => {
@@ -209,7 +209,7 @@ suite('PaneGroup', () => {
     hydrate(['a', 'b'], ['a']);
 
     screen.getByLabelText('Session: Session a');
-    assert.strictEqual(screen.queryByLabelText('Session: Session b'), null);
+    assert.strictEqual(screen.queryByLabelText('Session: Session b') === null, true);
   });
 
   test('a pane whose session is gone from the roster but whose snapshot lingers is not rendered', () => {
@@ -240,7 +240,7 @@ suite('PaneGroup', () => {
     });
 
     screen.getByLabelText('Session: Session a');
-    assert.strictEqual(screen.queryByLabelText('Session: Session b'), null);
+    assert.strictEqual(screen.queryByLabelText('Session: Session b') === null, true);
   });
 
   test('each pane carries its own composer', () => {
@@ -261,7 +261,7 @@ suite('PaneGroup', () => {
     // The remaining pane's own state doesn't need a host round-trip here:
     // `set-layout` is applied optimistically (see store.tsx's `local-layout`
     // comment), so the pane is already gone by the time this assertion runs.
-    assert.strictEqual(screen.queryByLabelText('Session: Session a'), null);
+    assert.strictEqual(screen.queryByLabelText('Session: Session a') === null, true);
     assert.notStrictEqual(
       document.activeElement, document.body,
       'closing the focused pane must not silently drop focus to <body>',
@@ -306,7 +306,7 @@ suite('PaneGroup', () => {
     // pane-layout.ts's `reconcilePaneLayout`).
     sendFromHost({ t: 'sessions-changed', sessions: [] });
 
-    assert.strictEqual(screen.queryByLabelText('Session: Session a'), null);
+    assert.strictEqual(screen.queryByLabelText('Session: Session a') === null, true);
     assert.notStrictEqual(
       document.activeElement, document.body,
       'deleting the session behind a focused pane must not silently drop focus to <body>',
@@ -786,6 +786,20 @@ suite('PaneGroup keyboard navigation', () => {
     assert.strictEqual(document.querySelectorAll('[data-session-id]').length, 2);
     act(() => { sendFromHost({ t: 'toggle-maximize-pane' }); });
     assert.strictEqual(document.querySelectorAll('[data-session-id]').length, 2);
+    assert.strictEqual(layoutPosts(), before);
+  });
+
+  test('the header maximize button toggles the pane and only exists with more than one pane', () => {
+    renderApp();
+    hydrate(['a', 'b']);
+    const layoutPosts = () => posted().filter((m) => m.t === 'set-layout').length;
+    const before = layoutPosts();
+    const buttons = () => screen.getAllByRole('button', { name: /^Maximize / });
+    assert.strictEqual(buttons().length, 2);
+    fireEvent.click(buttons()[0]);
+    assert.strictEqual(screen.getAllByRole('button', { name: /^Restore the split from / }).length, 1);
+    fireEvent.click(screen.getByRole('button', { name: /^Restore the split from / }));
+    assert.strictEqual(screen.queryAllByRole('button', { name: /^Restore the split from / }).length, 0);
     assert.strictEqual(layoutPosts(), before);
   });
 });

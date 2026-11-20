@@ -13,7 +13,7 @@ export interface LoginRecipeWire {
 export type RejectReason = 'protocol-mismatch' | 'bad-token' | 'upgrade-busy' | 'bad-hello';
 
 export type ActOp =
-  | 'reveal' | 'openDiff' | 'openSettings' | 'openExternal'
+  | 'reveal' | 'openDiff' | 'openSettings' | 'openExternal' | 'openPlan'
   | 'exportCsv' | 'exportImage' | 'login' | 'setFavoriteModels'
   | 'notify' | 'shellNoise';
 export type AskOp = 'pick' | 'search';

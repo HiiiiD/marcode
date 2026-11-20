@@ -17,20 +17,40 @@ suite('ToolCard', () => {
     screen.getByText('Bash');
     screen.getByText('yarn test:unit');
     // Nothing of the payload leaks before the row is opened.
-    assert.strictEqual(document.querySelector('pre'), null);
+    assert.strictEqual(document.querySelector('pre') === null, true);
   });
 
-  test('expanding shows the command and the result under separate headings', async () => {
+  test('expanding shows the result, and the command only when the row does not already say it', async () => {
     renderWithStore(<ToolCard item={tool({
       tool: { kind: 'command', label: 'Bash', command: 'yarn test:unit' },
       output: { kind: 'text', text: '14 passing' },
     })} />);
     await expand();
 
-    screen.getByText('Result');
     screen.getByText('14 passing');
-    // The `$` gutter is decoration for a screen reader — the command reads on
-    // its own, without a stray dollar sign glued to it.
+    assert.strictEqual(screen.queryByText('$') === null, true);
+  });
+
+  test('a folded run shows its path once and labels each further call', async () => {
+    const edit = (id: string) => tool({
+      id,
+      tool: { kind: 'file-edit', label: 'Edit', files: [{ path: '/repo/src/a.ts', op: 'modify', edits: [{ before: 'one', after: 'two' }] }] },
+    });
+    renderWithStore(<ToolCard item={edit('1')} more={[edit('2')]} />);
+    await expand();
+
+    // The row header plus one path row in the panel; the second edit adds none.
+    assert.strictEqual(screen.getAllByText('/repo/src/a.ts').length, 2);
+    screen.getByText(/Edit 2/);
+  });
+
+  test('a command with a leading cd keeps its full command in the opened panel', async () => {
+    renderWithStore(<ToolCard item={tool({
+      tool: { kind: 'command', label: 'Bash', command: 'cd /repo && yarn test:unit' },
+      output: { kind: 'text', text: '14 passing' },
+    })} />);
+    await expand();
+
     const gutter = screen.getByText('$');
     assert.strictEqual(gutter.getAttribute('aria-hidden'), 'true');
   });
@@ -57,7 +77,7 @@ suite('ToolCard', () => {
     await expand();
 
     screen.getByText('Running…');
-    assert.strictEqual(screen.queryByText('Result'), null);
+    assert.strictEqual(screen.queryByText('Result') === null, true);
   });
 
   test('long output is clamped to its opening and its verdict until asked', async () => {
@@ -70,7 +90,7 @@ suite('ToolCard', () => {
 
     screen.getByText('line 0');
     screen.getByText('line 99');
-    assert.strictEqual(screen.queryByText('line 50'), null, 'the middle is what buries a transcript');
+    assert.strictEqual(screen.queryByText('line 50') === null, true, 'the middle is what buries a transcript');
 
     await userEvent.click(screen.getByText('80 more lines'));
     screen.getByText('line 50');
@@ -89,10 +109,10 @@ suite('ToolCard', () => {
 
     screen.getByText('-one');
     screen.getByText('+two');
-    screen.getByText('/repo/src/a.ts');
+    assert.ok(screen.getAllByText('/repo/src/a.ts').length > 0);
 
     // The full path stays visible while the action still sends that exact path.
-    await userEvent.click(screen.getByTitle('/repo/src/a.ts'));
+    await userEvent.click(screen.getAllByTitle('/repo/src/a.ts').at(-1)!);
     assert.deepStrictEqual(posted().at(-1), { t: 'reveal-file', path: '/repo/src/a.ts' });
   });
 
@@ -128,14 +148,14 @@ suite('ToolCard', () => {
     screen.getByText('yarn test:unit');
   });
 
-  test('a file-edit card shows the shortened path', () => {
+  test('a file-edit card shows the whole path, leaving the trimming to the layout', () => {
     renderWithStore(<ToolCard item={tool({ tool: SAMPLE_TOOL_CALLS['file-edit'] })} />);
-    screen.getByText('…/components/tool-render.ts');
+    assert.strictEqual(screen.getByText(/webview\/components\/tool-render\.ts$/).textContent?.startsWith('…') === false, true);
   });
 
-  test('a file-read card shows the shortened path', () => {
+  test('a file-read card shows its path', () => {
     renderWithStore(<ToolCard item={tool({ tool: SAMPLE_TOOL_CALLS['file-read'] })} />);
-    screen.getByText('…/protocol/messages.ts');
+    screen.getByText('src/protocol/messages.ts');
   });
 
   test('a search card shows its pattern', () => {

@@ -27,6 +27,8 @@ export interface ToolHeader {
   verb: string;
   /** The one argument worth a sidebar's width. Empty when there isn't one. */
   primary: string;
+  /** `primary` is a file path: shown whole, and when the row is too narrow the start gives way, not the file name. */
+  path?: boolean;
   /** Render `primary` in the editor font (a command, a path, a pattern). */
   mono: boolean;
   /** Full value for the `title` attribute when `primary` is truncated. */
@@ -51,14 +53,11 @@ export type ToolBlock =
   /** A `data:` URI, already self-contained — no webview resource root needed. */
   | { kind: 'image'; dataUri: string };
 
-/** Keep the path root and last two segments — both matter at 300px. */
+/** The last three segments, which is what tells two files apart; a drive or root prefix says nothing at this width. */
 export function shortPath(path: string): string {
   const parts = path.split(/[\\/]/).filter(Boolean);
-  if (parts.length <= 2) { return path; }
-  const prefix = /^[A-Za-z]:[\\/]/.test(path)
-    ? `${path.slice(0, 2)}/…`
-    : path.startsWith('/') ? '/…' : '…';
-  return `${prefix}/${parts.slice(-2).join('/')}`;
+  if (parts.length <= 3) { return path; }
+  return `…/${parts.slice(-3).join('/')}`;
 }
 
 export interface Clamped {
@@ -86,9 +85,43 @@ export function clampLines(text: string, head = 12, tail = 8): Clamped {
   };
 }
 
+/** The header line is for telling commands apart, and a leading `cd <workspace> &&` is the same on every one of them. */
+function withoutLeadingCd(command: string): string {
+  const stripped = command.replace(/^\s*cd\s+(?:"[^"]*"|'[^']*'|[^\s&;]+)\s*&&\s*/, '');
+  return stripped.length > 0 ? stripped : command;
+}
+
+const OTHER_TARGET_KEYS = ['skill', 'query', 'name', 'description', 'task_id', 'taskId', 'id', 'command', 'path', 'url', 'prompt'];
+
+/** For a tool we do not classify, the one argument that says what the call is about, so the row is never a bare name. */
+function otherTarget(raw: unknown): string {
+  if (typeof raw !== 'object' || raw === null) { return ''; }
+  const record = raw as Record<string, unknown>;
+  for (const key of OTHER_TARGET_KEYS) {
+    const value = record[key];
+    if (typeof value === 'string' && value.trim() !== '') { return value.trim().replace(/\s+/g, ' '); }
+  }
+  return '';
+}
+
+const MAX_MCP_ARGS = 8;
+const MAX_MCP_VALUE = 240;
+
+/** What an MCP call is being asked to do: the arguments themselves, so an approval is made on the real values. */
+function mcpArguments(input: Record<string, unknown> | undefined): ToolBlock[] {
+  if (!input) { return []; }
+  const entries = Object.entries(input);
+  const shown = entries.slice(0, MAX_MCP_ARGS).map(([label, value]): ToolBlock => {
+    const text = typeof value === 'string' ? value : (JSON.stringify(value) ?? String(value));
+    return { kind: 'field', label, value: text.length > MAX_MCP_VALUE ? `${text.slice(0, MAX_MCP_VALUE)}…` : text };
+  });
+  if (entries.length > MAX_MCP_ARGS) { shown.push({ kind: 'note', text: `${entries.length - MAX_MCP_ARGS} more arguments` }); }
+  return shown;
+}
+
 /** `full` is only worth carrying when the header will actually truncate. */
-function header(glyph: ToolGlyph, verb: string, primary: string, mono: boolean): ToolHeader {
-  return { glyph, verb, mono, primary, ...(primary.length > 40 ? { full: primary } : {}) };
+function header(glyph: ToolGlyph, verb: string, primary: string, mono: boolean, path = false): ToolHeader {
+  return { glyph, verb, mono, primary, ...(path ? { path: true } : {}), ...(primary.length > 40 ? { full: primary } : {}) };
 }
 
 export function describeTool(tool: ToolCall): ToolHeader {
@@ -100,21 +133,21 @@ export function describeTool(tool: ToolCall): ToolHeader {
       // command is still one click away in `describeInput`.
       return tool.skill
         ? header('bot', tool.label, tool.skill, false)
-        : header('terminal', tool.label, tool.command, true);
+        : header('terminal', tool.label, withoutLeadingCd(tool.command), true);
 
     case 'file-edit': {
       const glyph = tool.files.length > 0 && tool.files.every((f) => f.op === 'create')
         ? 'file-plus'
         : 'file-pen';
-      let primary = tool.files.length === 1 ? shortPath(tool.files[0].path) : '';
+      let primary = tool.files.length === 1 ? tool.files[0].path : '';
       if (tool.files.length > 1) {
         primary = `${tool.files.length} files`;
       }
-      return header(glyph, tool.label, primary, true);
+      return header(glyph, tool.label, primary, true, tool.files.length === 1);
     }
 
     case 'file-read':
-      return header('file-text', tool.label, shortPath(tool.path), true);
+      return header('file-text', tool.label, tool.path, true, true);
 
     case 'search':
       return header(
@@ -164,7 +197,7 @@ export function describeTool(tool: ToolCall): ToolHeader {
     }
 
     case 'other':
-      return header('wrench', tool.label, tool.fields?.[0]?.value ?? '', false);
+      return header('wrench', tool.label, tool.fields?.[0]?.value ?? otherTarget(tool.raw), true);
 
     case 'image':
       return header('image', tool.label, tool.note ?? '', false);
@@ -176,6 +209,7 @@ export function describeTool(tool: ToolCall): ToolHeader {
 
 function editBlocks(file: FileEdit): ToolBlock[] {
   const blocks: ToolBlock[] = [{ kind: 'path', path: file.path }];
+  const pathBlock = blocks[0] as Extract<ToolBlock, { kind: 'path' }>;
   // A `create` is what the glyph already says (file-plus), and `modify` is
   // the assumed default everywhere else in this card — but a `delete` with
   // no diff body left renders as a pen glyph over an empty box, visually
@@ -195,6 +229,9 @@ function editBlocks(file: FileEdit): ToolBlock[] {
   // stripping them; an empty diff block is an empty bordered box.
   // Only a lone, hunk-bearing patch can be handed to a real diff renderer; mixed sources have no single patch.
   const unified = !file.edits?.length && file.unifiedDiff && /^@@/m.test(file.unifiedDiff) ? file.unifiedDiff : undefined;
+  const added = lines.filter((line) => line.startsWith('+')).length;
+  const removed = lines.filter((line) => line.startsWith('-')).length;
+  if (added + removed > 0) { pathBlock.hint = `+${added} −${removed}`; }
   if (lines.length > 0) { blocks.push(unified === undefined ? { kind: 'diff', lines } : { kind: 'diff', lines, unified }); }
   if (file.replaceAll) {
     blocks.push({ kind: 'field', label: 'scope', value: 'all occurrences' });
@@ -313,6 +350,7 @@ export function describeInput(tool: ToolCall): ToolBlock[] {
       }
       if (tool.server) { blocks.push({ kind: 'field', label: 'server', value: tool.server }); }
       if (tool.tool) { blocks.push({ kind: 'field', label: 'tool', value: tool.tool }); }
+      blocks.push(...mcpArguments(tool.input));
       break;
 
     case 'other': {
@@ -340,12 +378,22 @@ export function describeInput(tool: ToolCall): ToolBlock[] {
   return blocks;
 }
 
+// Colour escapes from a shell are control bytes to a card; they would print as boxes.
+const ANSI = /\[[0-9;?]*[ -/]*[@-~]/g;
+
 export function describeOutput(
   kind: ToolCall['kind'],
-  output: ToolOutput | undefined,
+  rawOutput: ToolOutput | undefined,
   state: 'running' | 'ok' | 'error',
 ): ToolBlock[] {
   if (state === 'running') { return []; }
+  const output = rawOutput?.kind === 'text' ? { ...rawOutput, text: rawOutput.text.replace(ANSI, '') } : rawOutput;
+
+  // An edit or a todo update that succeeds silently has nothing to report; its input already shows the change.
+  // The SDK's own "The file … has been updated successfully" sentence restates the diff already shown.
+  const editAck = kind === 'file-edit' && output?.kind === 'text' && /^The file .* has been (updated|created|overwritten) successfully/i.test(output.text.trim());
+  const silentOk = state === 'ok' && (kind === 'file-edit' || kind === 'todos');
+  if (silentOk && (output === undefined || output.kind === 'none' || (output.kind === 'text' && (output.text.trim().length === 0 || editAck)))) { return []; }
 
   if (output === undefined || output.kind === 'none') {
     return state === 'error'
@@ -407,4 +455,33 @@ function diffBodyLines(diff: string): string[] {
     body.push(line);
   }
   return body;
+}
+
+/**
+ * What a settled call came to, in a few characters for its row: the size of an
+ * edit (`+12 −3`), or how much a call printed (`80 lines`). Empty when there
+ * is nothing worth a glance; a failed call says so on its own.
+ */
+export function describeOutcome(tool: ToolCall, output: ToolOutput | undefined, state: 'running' | 'ok' | 'error'): string {
+  if (state !== 'ok') { return ''; }
+  if (tool.kind === 'file-edit') {
+    let added = 0;
+    let removed = 0;
+    for (const file of tool.files) {
+      for (const edit of file.edits ?? []) {
+        if (edit.after !== undefined) { added += edit.after.split('\n').length; }
+        if (edit.before !== undefined) { removed += edit.before.split('\n').length; }
+      }
+      for (const line of file.unifiedDiff ? diffBodyLines(file.unifiedDiff) : []) {
+        if (line.startsWith('+')) { added += 1; } else if (line.startsWith('-')) { removed += 1; }
+      }
+    }
+    return added + removed > 0 ? `+${added} −${removed}` : '';
+  }
+  if (tool.kind === 'command' || tool.kind === 'search' || tool.kind === 'file-read') {
+    if (output?.kind !== 'text') { return ''; }
+    const lines = output.text.replace(/\n+$/, '').split('\n').length;
+    return output.text.trim() !== '' && lines > 1 ? `${lines} lines` : '';
+  }
+  return '';
 }

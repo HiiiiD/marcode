@@ -1,7 +1,7 @@
 import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import * as assert from "assert";
-import { catalog, layoutOf, snapshot, summary } from "../fixtures/protocol";
+import { catalog, layoutOf, permission, snapshot, summary } from "../fixtures/protocol";
 import { posted, renderApp, sendFromHost } from "./harness";
 
 export function hydrate(over = {}) {
@@ -44,7 +44,7 @@ suite("SessionHeader status", () => {
     hydrate();
     sendFromHost({ t: "session-status", id: "a", status: "error" });
     screen.getByText("Failed");
-    assert.strictEqual(screen.queryByText("Needs you"), null);
+    assert.strictEqual(screen.queryByText("Needs you") === null, true);
   });
 
   test("the roster trigger counts sessions that need the user", () => {
@@ -64,7 +64,7 @@ suite("SessionHeader status", () => {
     assert.strictEqual(badge.closest("[aria-live]")?.getAttribute("aria-live"), "polite");
 
     const rosterCount = screen.getByText(/1 needs you/i);
-    assert.strictEqual(rosterCount.closest("[aria-live]"), null);
+    assert.strictEqual(rosterCount.closest("[aria-live]") === null, true);
   });
 
   test("the bypass badge is a live region mounted before it has anything to say", () => {
@@ -86,16 +86,20 @@ suite("SessionHeader status", () => {
     assert.strictEqual(badgeOf()?.textContent, "Bypassing permissions");
   });
 
-  test("the header shows the folder the agent is working in", () => {
+  test("the folder is named only for a session that runs somewhere other than the roster's usual one", () => {
     renderApp();
-    hydrate({ cwd: "/repos/mar-code" });
+    sendFromHost({
+      t: "hydrate",
+      sessions: [summary("a", { cwd: "/repos/app" }), summary("b", { cwd: "/repos/app" }), summary("c", { cwd: "/repos/app-worktree" })],
+      layout: layoutOf(["a", "c"]),
+      snapshots: [snapshot("a", { cwd: "/repos/app" }), snapshot("c", { cwd: "/repos/app-worktree" })],
+      catalog: catalog(),
+      unavailable: [],
+      usage: {},
+    });
 
-    screen.getByText("mar-code");
-    assert.strictEqual(
-      screen.getByText("mar-code").getAttribute("title"),
-      "/repos/mar-code",
-      "the basename is what fits at 300px; the full path is the tooltip",
-    );
+    assert.strictEqual(screen.queryByText("app") === null, true);
+    assert.strictEqual(screen.getByText("app-worktree").getAttribute("title"), "/repos/app-worktree");
   });
 
   test("the title wins the space contest, not the model label", () => {
@@ -108,14 +112,7 @@ suite("SessionHeader status", () => {
     assert.ok(model.className.includes("truncate"), "the model control must be able to shrink too");
   });
 
-  test("the provider is hidden when only one is configured", () => {
-    renderApp();
-    hydrate();
-
-    assert.strictEqual(screen.queryByText("Fake"), null);
-  });
-
-  test("the provider is shown, appended to the metadata span, once more than one is configured", () => {
+  test("the provider word is not in the header: the name and the composer already say it", () => {
     renderApp();
     sendFromHost({
       t: "hydrate",
@@ -127,7 +124,65 @@ suite("SessionHeader status", () => {
       usage: {},
     });
 
-    screen.getByText("Fake");
+    const header = screen.getByRole("heading", { level: 2 }).parentElement!;
+    assert.strictEqual(header.textContent!.includes("Fake"), false);
+  });
+
+  test("a provider mark shows before the name with more than one provider, and an instance icon replaces the kind logo", () => {
+    renderApp();
+    sendFromHost({
+      t: "hydrate",
+      sessions: [summary("a", { providerId: "claude-work" })],
+      layout: layoutOf(["a"]),
+      snapshots: [snapshot("a", { providerId: "claude-work" })],
+      catalog: [
+        ...catalog(),
+        { id: "claude-work", displayName: "Claude (work)", models: [], permissionModes: [], icon: { text: "W", color: "#2f81f7" } },
+      ],
+      unavailable: [],
+      usage: {},
+    });
+
+    const header = screen.getByRole("heading", { level: 2 }).parentElement!;
+    const mark = header.querySelector('[title="Claude (work)"]');
+    assert.strictEqual(mark !== null && mark.textContent === "W", true);
+  });
+
+  suite("tint and the working line", () => {
+    const headerOf = () => screen.getByRole("heading", { level: 2 }).parentElement!;
+    const hydrateWith = (status: "idle" | "running" | "awaiting-approval", withPermission = false) => {
+      renderApp();
+      const item = permission({ requestId: "r1" });
+      sendFromHost({
+        t: "hydrate",
+        sessions: [summary("a", { status })],
+        layout: layoutOf(["a"]),
+        snapshots: [snapshot("a", {
+          status,
+          ...(withPermission ? { items: [item], pending: [{ requestId: "r1", tool: item.tool }] } : {}),
+        })],
+        catalog: catalog(),
+        unavailable: [],
+        usage: {},
+      });
+    };
+
+    test("an idle pane is not tinted and draws no working line", () => {
+      hydrateWith("idle");
+      assert.strictEqual(headerOf().className.includes("bg-attention") || headerOf().className.includes("bg-primary/10"), false);
+      assert.strictEqual(headerOf().querySelector('[class*="animate-working-line"]') === null, true);
+    });
+
+    test("a working pane draws the line but stays untinted", () => {
+      hydrateWith("running");
+      assert.strictEqual(headerOf().querySelector('[class*="animate-working-line"]') === null, false);
+      assert.strictEqual(headerOf().className.includes("bg-attention"), false);
+    });
+
+    test("a pending permission tints the header amber", () => {
+      hydrateWith("awaiting-approval", true);
+      assert.strictEqual(headerOf().className.includes("bg-attention/10"), true);
+    });
   });
 
   test("the name is plain text until the pencil is clicked", () => {

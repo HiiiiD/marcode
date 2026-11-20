@@ -27,3 +27,5 @@ bin/
 .worktrees
 
 docs/superpowers
+
+.ui-harness

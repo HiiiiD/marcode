@@ -1,5 +1,5 @@
-import { useEffect, useRef } from 'react';
-import { cn } from '@/lib/utils';
+import { Fragment, useEffect, useRef } from 'react';
+import { MenuGroupLabel, MenuRow, menuListClass, useScrollCue } from './menu-list';
 import { truncateName } from '../../client-core/invocables/invocable-menu';
 import type { Invocable } from '../../protocol/messages';
 
@@ -17,6 +17,19 @@ import type { Invocable } from '../../protocol/messages';
  * carries `aria-activedescendant` — ARIA only honours that attribute on the
  * focused element — so every row is a plain `div`, not a tab stop.
  */
+const groupOf = (e: Invocable) => e.origin ?? 'Commands';
+
+/** One header per source: commands first, then the rest alphabetically. Stable inside a group, so relevance order survives. */
+export function groupInvocables(rows: Invocable[]): Invocable[] {
+  const rank = (e: Invocable) => (groupOf(e) === 'Commands' ? 0 : 1);
+  return rows
+    .map((row, i) => ({ row, i }))
+    .sort((a, b) => rank(a.row) - rank(b.row)
+      || (rank(a.row) === 0 ? 0 : groupOf(a.row).localeCompare(groupOf(b.row)))
+      || a.i - b.i)
+    .map((x) => x.row);
+}
+
 export function InvocableMenu({ rows, overflow, activeIndex, listId, onPick }: {
   rows: Invocable[];
   overflow: number;
@@ -26,6 +39,8 @@ export function InvocableMenu({ rows, overflow, activeIndex, listId, onPick }: {
   onPick: (entry: Invocable) => void;
 }) {
   const empty = rows.length === 0;
+  const grouped = rows.some((r) => r.origin);
+  const cue = useScrollCue();
   const activeRow = useRef<HTMLDivElement | null>(null);
 
   // Up to 50 rows in a `max-h-56` box: arrowing past the fold — or wrapping
@@ -47,7 +62,9 @@ export function InvocableMenu({ rows, overflow, activeIndex, listId, onPick }: {
         aria-label="Skills and commands"
         id={listId}
         aria-activedescendant={empty ? undefined : `${listId}-${activeIndex}`}
-        className="max-h-56 w-full overflow-y-auto overscroll-contain"
+        ref={cue.ref}
+        onScroll={cue.onScroll}
+        className={menuListClass(cue.more)}
       >
         {empty && (
           // A row, not an empty box: a menu that vanishes mid-keystroke hands
@@ -67,65 +84,26 @@ export function InvocableMenu({ rows, overflow, activeIndex, listId, onPick }: {
             No match
           </div>
         )}
-        {rows.map((entry, i) => (
-          <div
-            // Positional, not `entry.name`: names cross the host/webview seam
-            // verbatim and are never deduped there, so two entries — a user
-            // skill and a plugin skill sharing a name, say — would collide on
-            // a name-only key. A duplicate key produces a React warning and
-            // can leave `scrollIntoView` targeting the wrong row's ref after
-            // a filter change re-keys the list.
-            key={`${i}-${entry.name}`}
-            ref={i === activeIndex ? activeRow : undefined}
-            id={`${listId}-${i}`}
-            role="option"
-            aria-selected={i === activeIndex}
-            // The full name, since the label above is middle-truncated.
-            title={entry.name}
-            // onMouseDown, not onClick: the textarea must not lose focus
-            // before the pick lands, or the composer's blur-close fires first
-            // and the click lands on a row that is already unmounted.
-            onMouseDown={(e) => { e.preventDefault(); onPick(entry); }}
-            className={cn(
-              'cursor-pointer rounded-md px-1.5 py-1.5',
-              // Only the inactive rows get a hover fill. twMerge cannot merge
-              // across variants, so shipping both leaves `.hover\:bg-muted`
-              // (two class selectors) outranking `.bg-accent` (one) whatever
-              // the source order — hovering the keyboard-active row would
-              // wipe its highlight and strand `text-accent-foreground` on an
-              // unchecked background.
-              i !== activeIndex && 'hover:bg-muted',
-              // Fill *plus* the ring this project uses for the focused pane —
-              // the highlight has to survive a user who cannot separate the
-              // accent fill from the surface behind it.
-              i === activeIndex && 'bg-accent text-accent-foreground ring-1 ring-ring/40 ring-inset',
-            )}
-          >
-            <div className="flex items-baseline gap-2">
-              <span className="truncate text-sm font-medium">{truncateName(entry.name)}</span>
-              {entry.origin && (
-                <span
-                  className={cn(
-                    'ml-auto shrink-0 text-[0.65rem] text-muted-foreground',
-                    i === activeIndex && 'text-accent-foreground/70',
-                  )}
-                >
-                  {entry.origin}
-                </span>
-              )}
-            </div>
-            {entry.description && (
-              <div
-                className={cn(
-                  'truncate text-xs text-muted-foreground',
-                  i === activeIndex && 'text-accent-foreground/80',
-                )}
-              >
-                {entry.description}
-              </div>
-            )}
-          </div>
-        ))}
+        {rows.map((entry, i) => {
+          const group = groupOf(entry);
+          const heading = grouped && (i === 0 || groupOf(rows[i - 1]) !== group);
+          return (
+            // Positional key: names are never deduped across the host/webview seam.
+            <Fragment key={`${i}-${entry.name}`}>
+              {heading && <MenuGroupLabel>{group}</MenuGroupLabel>}
+              <MenuRow
+                rowRef={i === activeIndex ? activeRow : undefined}
+                id={`${listId}-${i}`}
+                active={i === activeIndex}
+                title={entry.name}
+                label={truncateName(entry.name)}
+                detail={entry.description}
+                // onMouseDown, not onClick: a blur before the pick closes the menu first.
+                onPick={() => onPick(entry)}
+              />
+            </Fragment>
+          );
+        })}
       </div>
       {overflow > 0 && (
         // A sibling of the listbox, not a child: `<p>` is not a legal child of

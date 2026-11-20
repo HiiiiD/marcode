@@ -55,6 +55,9 @@
   --git-modified: var(--vscode-gitDecoration-modifiedResourceForeground, var(--vscode-charts-blue));
   --git-deleted: var(--vscode-gitDecoration-deletedResourceForeground, var(--vscode-charts-red));
   --git-renamed: var(--vscode-gitDecoration-renamedResourceForeground, var(--vscode-charts-purple));
+  /* Permission requests: a warm hue that is neither the error red nor the accent blue used for focus and questions. */
+  --attention: var(--vscode-editorWarning-foreground, var(--vscode-charts-yellow, #cca700));
+  --branch: var(--vscode-charts-purple, #b180d7);
   --radius: 4px;
 }
 
@@ -78,6 +81,8 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-attention: var(--attention);
+  --color-branch: var(--branch);
   --color-git-added: var(--git-added);
   --color-git-modified: var(--git-modified);
   --color-git-deleted: var(--git-deleted);
@@ -101,6 +106,18 @@
    * follows rather than a general shimmer.
    */
   --animate-working-dot: working-dot 1.1s ease-in-out infinite;
+  --animate-working-shimmer: working-shimmer 2.4s linear infinite;
+  --animate-working-line: working-line 1.8s ease-in-out infinite;
+}
+
+@keyframes working-line {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(300%); }
+}
+
+@keyframes working-shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
 }
 
 @keyframes working-dot {

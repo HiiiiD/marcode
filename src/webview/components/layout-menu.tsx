@@ -1,21 +1,20 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { LayoutGridIcon, XIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Separator } from '@/components/ui/separator';
-import { Slider } from '@/components/ui/slider';
+import { cn } from '@/lib/utils';
 import { fillShapeKeepingOverflow, gridDims, gridLayout, leafSessionIds } from './layout-tree';
-import { MAX_GRID_DIM } from '../../client-core/layout-apply';
 import { rearrange } from '../../client-core/auto-grid';
 import { MIN_PANE } from '../min-pane';
 import { BUILTIN_PRESETS, shapeMatches } from '../../client-core/layout-presets';
-import { LayoutGridPreview } from './layout-grid-preview';
 import { LayoutOverflowDialog } from './layout-overflow-dialog';
+import { LayoutSizePicker } from './layout-size-picker';
+import { LayoutThumb } from './layout-thumb';
 import { SavePresetDialog } from './layout-save-preset-dialog';
 import { useStore } from '../store';
-import type { LayoutNode } from '../../protocol/messages';
+import type { LayoutNode, LayoutPreset } from '../../protocol/messages';
 
-const single = (v: number | readonly number[]) => (typeof v === 'number' ? v : v[0]);
+const SHORT_NAMES: Record<string, string> = { 'asym-1-2': '1 + 2' };
 
 interface Pending { root: LayoutNode; titles: string[] }
 
@@ -23,8 +22,6 @@ export function LayoutMenu() {
   const { state, post } = useStore();
   const [open, setOpen] = useState(false);
   const [saveOpen, setSaveOpen] = useState(false);
-  const [rows, setRows] = useState(1);
-  const [cols, setCols] = useState(2);
   const [pending, setPending] = useState<Pending | null>(null);
   const openIds = leafSessionIds(state.layout.root);
 
@@ -37,63 +34,51 @@ export function LayoutMenu() {
     const titles = next.hidden.map((id) => state.sessions.find((s) => s.id === id)?.title ?? id);
     setPending({ root: next.root, titles });
   };
-  // Sliders start from the layout as it is now; a non-grid shape keeps whatever was last dialled in.
-  const onOpenChange = (next: boolean) => {
-    if (next) {
-      const dims = gridDims(state.layout.root);
-      if (dims) { setRows(Math.min(dims.rows, MAX_GRID_DIM)); setCols(Math.min(dims.cols, MAX_GRID_DIM)); }
-    }
-    setOpen(next);
-  };
   const applyShape = (shape: LayoutNode) => request(fillShapeKeepingOverflow(shape, openIds));
 
   return (
-    <Popover open={open} onOpenChange={onOpenChange}>
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger render={<Button variant="outline" size="icon-sm" aria-label="Layout" className="shrink-0" />}>
         <LayoutGridIcon aria-hidden />
       </PopoverTrigger>
-      <PopoverContent side="bottom" align="start" className="flex w-64 flex-col gap-3 p-3 text-xs">
-        <div className="flex flex-col gap-2">
-          <DimSlider label="Rows" value={rows} onChange={setRows} />
-          <DimSlider label="Columns" value={cols} onChange={setCols} />
-          <LayoutGridPreview rows={rows} cols={cols} filled={openIds.length} />
-          <Button size="sm" onClick={() => request(gridLayout(rows, cols, openIds))}>Apply</Button>
-        </div>
-        <Separator />
-        <Button
-          variant="ghost"
-          size="sm"
-          className="justify-start"
-          disabled={openIds.length < 2}
-          onClick={() => commit(rearrange(state.layout.root, { width: window.innerWidth, height: window.innerHeight }, MIN_PANE))}
-        >
-          Auto arrange
-        </Button>
-        <Separator />
-        <div className="flex flex-col gap-0.5">
-          {BUILTIN_PRESETS.map((preset) => (
-            <PresetRow
-              key={preset.id}
-              name={preset.name}
-              active={shapeMatches(state.layout.root, preset.root)}
-              onApply={() => applyShape(preset.root)}
-            />
-          ))}
-        </div>
-        <Separator />
-        <div className="flex flex-col gap-0.5">
-          <span className="px-2.5 text-muted-foreground">Custom</span>
-          {state.layout.presets.map((preset) => (
-            <PresetRow
-              key={preset.id}
-              name={preset.name}
-              active={shapeMatches(state.layout.root, preset.root)}
-              onApply={() => applyShape(preset.root)}
-              onDelete={() => post({ t: 'delete-preset', id: preset.id })}
-            />
-          ))}
-          <Button variant="ghost" size="sm" className="justify-start" onClick={() => setSaveOpen(true)}>
-            Save current layout as custom…
+      <PopoverContent side="bottom" align="start" sideOffset={10} initialFocus={false} className="flex max-h-[min(var(--available-height),32rem)] w-80 max-w-[calc(100vw-1rem)] flex-col gap-3 p-3 text-xs">
+        <Section title="Layouts">
+          <div className="grid grid-cols-3 gap-1">
+            {BUILTIN_PRESETS.map((preset) => (
+              <PresetTile
+                key={preset.id}
+                preset={preset}
+                active={shapeMatches(state.layout.root, preset.root)}
+                onApply={() => applyShape(preset.root)}
+              />
+            ))}
+            {state.layout.presets.map((preset) => (
+              <PresetTile
+                key={preset.id}
+                preset={preset}
+                active={shapeMatches(state.layout.root, preset.root)}
+                onApply={() => applyShape(preset.root)}
+                onDelete={() => post({ t: 'delete-preset', id: preset.id })}
+              />
+            ))}
+          </div>
+        </Section>
+        <Section title="Custom grid" hint="Choose rows and columns">
+          <LayoutSizePicker
+            current={gridDims(state.layout.root) ?? null}
+            onPick={(rows, cols) => request(gridLayout(rows, cols, openIds))}
+          />
+        </Section>
+        <div className="flex items-center justify-between gap-2 border-t border-border pt-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => commit(rearrange(state.layout.root, { width: window.innerWidth, height: window.innerHeight }, MIN_PANE))}
+          >
+            Auto arrange
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => setSaveOpen(true)}>
+            Save as preset…
           </Button>
         </div>
       </PopoverContent>
@@ -107,34 +92,47 @@ export function LayoutMenu() {
   );
 }
 
-function DimSlider({ label, value, onChange }: { label: string; value: number; onChange: (n: number) => void }) {
+function Section({ title, hint, children }: { title: string; hint?: string; children: ReactNode }) {
   return (
-    <div className="flex items-center gap-2">
-      <span className="w-16 shrink-0 text-muted-foreground">{label}</span>
-      <Slider
-        getThumbAriaLabel={() => label}
-        min={1}
-        max={MAX_GRID_DIM}
-        step={1}
-        value={[value]}
-        onValueChange={(v) => onChange(single(v))}
-      />
-      <span className="w-3 shrink-0 text-right tabular-nums">{value}</span>
-    </div>
+    <section className="flex flex-col gap-1.5">
+      <h3 className="flex items-baseline justify-between gap-2 text-xs font-medium text-muted-foreground">
+        {title}
+        {hint && <span className="truncate font-normal opacity-80">{hint}</span>}
+      </h3>
+      {children}
+    </section>
   );
 }
 
-function PresetRow({
-  name, active, onApply, onDelete,
-}: { name: string; active: boolean; onApply: () => void; onDelete?: () => void }) {
+function PresetTile({
+  preset, active, onApply, onDelete,
+}: { preset: LayoutPreset; active: boolean; onApply: () => void; onDelete?: () => void }) {
   return (
-    <div className="flex items-center gap-1">
-      <Button variant="ghost" size="sm" className="flex-1 justify-start" onClick={onApply}>
-        {name}
-        {active && ' ✓'}
+    <div className="group/tile relative">
+      <Button
+        type="button"
+        variant="bare"
+        size={null}
+        aria-label={preset.name}
+        aria-pressed={active}
+        onClick={onApply}
+        className={cn(
+          'flex h-[4.25rem] w-full flex-col items-center justify-center gap-1.5 rounded-md px-1 text-muted-foreground outline-none transition-colors',
+          'hover:bg-accent/60 hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring',
+          active && 'bg-accent text-foreground',
+        )}
+      >
+        <LayoutThumb node={preset.root} />
+        <span className="w-full truncate text-center text-[0.6875rem] leading-tight">{SHORT_NAMES[preset.id] ?? preset.name}</span>
       </Button>
       {onDelete && (
-        <Button variant="ghost" size="icon-xs" aria-label={`Delete ${name}`} onClick={onDelete}>
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          aria-label={`Delete ${preset.name}`}
+          className="absolute top-0.5 right-0.5 size-5 opacity-0 group-hover/tile:opacity-100 focus-visible:opacity-100"
+          onClick={onDelete}
+        >
           <XIcon aria-hidden />
         </Button>
       )}

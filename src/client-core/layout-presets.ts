@@ -42,6 +42,17 @@ export const BUILTIN_PRESETS: LayoutPreset[] = [
       ],
     },
   },
+  {
+    id: 'stack-3', name: '3 rows', builtin: true,
+    root: {
+      kind: 'split', orientation: 'vertical', size: 100,
+      children: [
+        { ...leaf(), size: 100 / 3 },
+        { ...leaf(), size: 100 / 3 },
+        { ...leaf(), size: 100 / 3 },
+      ],
+    },
+  },
 ];
 
 /**

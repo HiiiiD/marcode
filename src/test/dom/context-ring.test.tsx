@@ -102,6 +102,23 @@ suite('ContextRing', () => {
     assert.ok(screen.getByRole('button', { name: /CLAUDE\.md/ }));
   });
 
+  test('bar segments and legend rows share one swatch and one percentage per slice', async () => {
+    mount(43);
+    await open('Context 43% used');
+    sendFromHost({
+      t: 'context-breakdown', id: 'a',
+      result: { ok: true, breakdown: breakdown({ systemPercent: 11, memoryPercent: 7, conversationPercent: 25, freePercent: 57 }) },
+    });
+
+    const dialog = screen.getByRole('dialog');
+    const bar = [...dialog.querySelectorAll('[data-slice]')].map((n) => `${n.getAttribute('data-slice')}:${n.getAttribute('data-percent')}`);
+    assert.deepStrictEqual(bar, ['system:11', 'memory:7', 'conversation:25', 'free:57']);
+    const swatches = [...dialog.querySelectorAll('[data-swatch]')].map((n) => n.getAttribute('data-swatch'));
+    assert.deepStrictEqual(swatches, ['system', 'memory', 'conversation', 'free']);
+    const legend = [...dialog.querySelectorAll('[data-swatch]')].map((n) => n.parentElement?.textContent);
+    assert.deepStrictEqual(legend, ['System prompt11%', 'Memory7%', 'Conversation25%', 'Free57%']);
+  });
+
   test('names the window in tokens, so 17% of 258K is not read as 17% of 1M', async () => {
     mount(17);
     await open('Context 17% used');
@@ -240,28 +257,21 @@ suite('ContextRing', () => {
     assert.deepStrictEqual(names, ['/repo/CLAUDE.md', '/home/.claude/CLAUDE.md']);
   });
 
-  test('the header, the ring label and the danger label agree on one number', async () => {
-    mount(86);
-    await open('Context 86% used');
+  test('the header quotes the same basis as the bar once the breakdown is shown', async () => {
+    mount(14);
+    await open('Context 14% used');
 
-    // On the wire, a breakdown reply and the sessions-changed that refreshes
-    // contextPercent from that same fetch may not land in the same tick — so
-    // the header must keep quoting the pushed number even while a breakdown
-    // implying a different total is already on screen underneath it. If the
-    // header derived its own number from the rows again, this would show
-    // "50% used" beside a ring still labelled 86%.
     sendFromHost({
       t: 'context-breakdown', id: 'a',
       result: {
         ok: true,
         breakdown: breakdown({
-          systemPercent: 20, memoryPercent: 6, conversationPercent: 24, freePercent: 50,
+          systemPercent: 6, memoryPercent: 4, conversationPercent: 31, freePercent: 59,
         }),
       },
     });
 
-    assert.ok(screen.getByText('86% used'), 'the header must agree with the ring, not the rows');
-    assert.ok(screen.getByLabelText('Context 86% used'));
+    assert.ok(screen.getByText('41% used'));
   });
 
   test('an out-of-range percentage clamps the label as well as the bar', async () => {
@@ -296,11 +306,12 @@ suite('ContextRing', () => {
     assert.strictEqual(trigger.textContent, '');
   });
 
-  test('shows no usage yet when the session has not reported any', async () => {
+  test('hides the token usage section when the session has not reported any', async () => {
     mount(43);
     await open('Context 43% used');
 
-    assert.ok(screen.getByText('No usage yet'));
+    assert.strictEqual(screen.queryByText('Token usage') === null, true);
+    assert.strictEqual(screen.queryByText('No usage yet') === null, true);
   });
 
   test('renders the four normal usage rows once the session has usage', async () => {

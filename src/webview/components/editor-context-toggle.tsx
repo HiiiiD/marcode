@@ -17,7 +17,10 @@ import type { PaneState } from '../reducer';
  *
  * The label is revealed by a container query rather than a viewport one —
  * a pane can be half the sidebar, so the viewport says nothing useful about
- * how much room this control actually has. The accessible name (`aria-label`,
+ * how much room this control actually has. It only appears in a wide, roomy
+ * pane: the footer shares its row with the mode and model controls, and a
+ * file name there is what pushed them onto a second line. Compact panes keep
+ * just the line span. The accessible name (`aria-label`,
  * built from the same path and line span the visible label renders) carries
  * both the file and the line span either way, so collapsing the visible
  * label to the icon costs nothing to a screen reader.
@@ -44,10 +47,10 @@ export function EditorContextToggle({ pane }: { pane: PaneState }) {
       aria-label={`${verb} editor context ${ctx.path}${lineSpan(ctx)}`}
       title={`${verb} ${contextTitle(ctx)}`}
       onClick={() => post({ t: 'set-include-context', id: pane.summary.id, on: !on })}
-      className={cn('min-w-0 max-w-56', !on && 'text-muted-foreground')}
+      className={cn('min-w-0 max-w-40', !on && 'text-muted-foreground')}
     >
       <FileCode2 aria-hidden="true" />
-      <EditorContextLabel ctx={ctx} className="hidden @[17rem]:flex" />
+      <EditorContextLabel ctx={ctx} className="hidden @[30rem]:flex" />
     </Button>
   );
 }

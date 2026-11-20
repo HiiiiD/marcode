@@ -36,7 +36,7 @@ import { ContextRing } from "./context-ring";
 import { McpDialog } from "./mcp/mcp-dialog";
 import { AttachmentChip, AttachmentChips } from "./attachment-chips";
 import { EditorContextToggle } from "./editor-context-toggle";
-import { InvocableMenu } from "./invocable-menu";
+import { InvocableMenu, groupInvocables } from "./invocable-menu";
 import { ModeMenu } from "./mode-menu";
 import { RefMenu } from "./ref-menu";
 import { SessionCreateDialog } from "./session-create-dialog";
@@ -142,7 +142,7 @@ export function Composer({
    */
   const query = menuQuery(text);
   const view = query !== undefined
-    ? menuView(entries, query)
+    ? (() => { const v = menuView(entries, query); return { ...v, rows: groupInvocables(v.rows) }; })()
     : { rows: [], overflow: 0 };
   // Session-scoped for the same reason as bypassReasonId above: one Composer
   // renders per pane, and `aria-activedescendant` resolves ids document-wide.
@@ -461,7 +461,7 @@ export function Composer({
           ))}
         </div>
       )}
-      <InputGroup className={cn(dragging && 'ring-2 ring-ring')}>
+      <InputGroup className={cn("focus-within:border-ring/60 focus-within:ring-1 focus-within:ring-ring/30", dragging && 'ring-2 ring-ring')}>
         {menu.open && (
           // A block-start addon, not a popover: the list sits above the box in
           // normal flow, so there is no positioning maths, no portal, and
@@ -594,7 +594,7 @@ export function Composer({
           // button and `@` has nowhere else to be announced, and a second
           // button would push a control row that already wraps at 300px onto
           // another line.
-          placeholder="Message the agent… @ names a session or file, paste or drop files"
+          placeholder={pane.summary.kind === "side" ? "Side question. The main chat is unaffected." : "Message the agent… @ for sessions or files"}
           aria-label="Message"
           disabled={disabled}
           aria-describedby={disabled ? blockedReasonId : undefined}
@@ -602,21 +602,11 @@ export function Composer({
           aria-expanded={menu.open || refMenu.open}
           aria-activedescendant={menu.activeOptionId ?? refMenu.activeOptionId}
         />
-        {/*
-          flex-wrap: at pane widths around 300px the mode trigger, the model
-          trigger and one or two buttons cannot share a single row with any
-          breathing room. Wrapping lets settings fall to a second line rather
-          than shrinking the triggers (their labels — "Auto-edit", a model
-          name — are already tight) or hiding overflow behind a horizontal
-          scrollbar a narrow split-pane user is unlikely to notice. Each
-          wrapped line keeps its own `ml-auto`
-          grouping, so the action button still lands at the right edge of
-          whichever line it wraps to.
-        */}
-        <InputGroupAddon align="block-end" className="flex-wrap">
+        {/* One row at every width: the model chip is the only thing that shrinks (min-w-0 + truncate), the mode chip drops its label by container query. */}
+        <InputGroupAddon align="block-end" className="flex-nowrap">
           <Button
             variant="ghost"
-            size="icon-xs"
+            size="icon-sm"
             aria-label="Attach files"
             title="Attach files"
             disabled={disabled}
@@ -633,10 +623,9 @@ export function Composer({
             scale, matching Stop and Send — a labelled button would push this
             wrapping row onto a third line at 300px.
           */}
-          {entries.length > 0 && (
-            <Button
-              variant="outline"
-              size="icon-xs"
+          <Button
+              variant="ghost"
+              size="icon-sm"
               aria-label="Skills and commands"
               // Same disabled-with-a-reason contract as Send and the bypass
               // option: the explanation is real rendered text behind
@@ -644,14 +633,13 @@ export function Composer({
               // control is reachable by neither keyboard focus nor most
               // screen readers. The title stays purely a discoverability aid
               // for the enabled state.
-              disabled={menuBlocked}
-              aria-describedby={menuBlocked ? invocablesReasonId : undefined}
-              title={menuBlocked ? undefined : "Skills and commands"}
+              disabled={menuBlocked || entries.length === 0}
+              aria-describedby={menuBlocked && entries.length > 0 ? invocablesReasonId : undefined}
+              title={menuBlocked || entries.length === 0 ? undefined : "Skills and commands"}
               onClick={openMenu}
             >
               <span>/</span>
             </Button>
-          )}
           {entries.length > 0 && menuBlocked && (
             // sr-only for the same reason as the Send reason below: this row
             // wraps at 300px already and has no room for a sentence, and the
@@ -675,7 +663,7 @@ export function Composer({
           <ModeMenu pane={pane} model={model} disabled={readOnly} />
 
           <Combobox
-            items={(model && !pickerModels.some((m) => m.id === model.id) ? [model, ...pickerModels] : pickerModels)
+            items={(model ? [model, ...pickerModels.filter((m) => m.id !== model.id)] : pickerModels)
               .map((m) => ({ value: m.id, label: expandedDisplayName(m) }))}
             // The one case where the model control does freeze: with the
             // provider gone so is its catalog, so there is nothing to switch
@@ -690,7 +678,7 @@ export function Composer({
           >
             <ComboboxTrigger
               size="sm"
-              className="min-w-0 shrink truncate ml-auto"
+              className="min-w-0 shrink truncate"
               aria-label="Model"
               // Never disabled. `Query.setModel` retargets the live session
               // (see claude-provider.ts), so a switch mid-conversation takes
@@ -698,7 +686,7 @@ export function Composer({
               // there is nothing to freeze and no reason to explain — except
               // when the provider itself is unavailable, see `disabled` above.
               aria-describedby={readOnly ? blockedReasonId : undefined}
-              render={<Button variant={"outline"} />}
+              render={<Button variant="ghost" />}
             >
               <ComboboxValue className="truncate" />
             </ComboboxTrigger>
@@ -714,17 +702,23 @@ export function Composer({
               placeholder="Search models…"
             >
               {(item: { value: string; label: string }) => (
-                <ComboboxItem key={item.value} value={item.value}>
+                <ComboboxItem
+                  key={item.value}
+                  value={item.value}
+                  className="pr-1.5 pl-6 [&>span:last-child]:right-auto [&>span:last-child]:left-1.5"
+                >
                   {item.label}
                 </ComboboxItem>
               )}
             </ComboboxContent>
           </Combobox>
 
+          {/* Stop, Send and the ring wrap as one unit, so every pane breaks its footer the same way. */}
+          <div className="ml-auto flex shrink-0 items-center gap-1">
           {running && (
             <Button
               variant="outline"
-              size="icon-xs"
+              size="icon-sm"
               onClick={() => post({ t: "interrupt", id: pane.summary.id })}
               aria-label={stopLabel}
               title={backgroundTasks === undefined ? "Stop the agent" : stopLabel}
@@ -734,6 +728,8 @@ export function Composer({
           )}
           <Button
             size="icon-sm"
+            variant={text.trim() && !disabled ? "default" : "ghost"}
+            className="disabled:text-muted-foreground disabled:opacity-60"
             onClick={submit}
             // Live during a run: the message is parked by the host, not
             // dropped, so there is nothing to disable. Only a dead provider,
@@ -771,6 +767,7 @@ export function Composer({
           )}
           {state.showCacheTimer && <CacheTimer window={pane.cacheWindow} />}
           <ContextRing pane={pane} open={contextOpen} onOpenChange={setContextOpen} />
+          </div>
           <McpDialog id={pane.summary.id} open={mcpOpen} onOpenChange={setMcpOpen} />
         </InputGroupAddon>
       </InputGroup>

@@ -61,7 +61,7 @@ async function settle(): Promise<void> {
 suite("Composer", () => {
   test("no cache window on the pane renders no cache timer", () => {
     renderWithStore(<Composer pane={pane()} model={NO_EFFORT} models={[]} />);
-    assert.strictEqual(screen.queryByRole("status", { name: /Prompt cache/ }), null);
+    assert.strictEqual(screen.queryByRole("status", { name: /Prompt cache/ }) === null, true);
   });
 
   test("marcode.showCacheTimer off hides the badge even with a cache window", () => {
@@ -72,7 +72,7 @@ suite("Composer", () => {
         models={[]}
       />,
     );
-    assert.strictEqual(screen.queryByRole("status", { name: /Prompt cache/ }), null);
+    assert.strictEqual(screen.queryByRole("status", { name: /Prompt cache/ }) === null, true);
   });
 
   test("marcode.showCacheTimer on renders the cache timer when the pane has a window", () => {
@@ -341,43 +341,22 @@ suite("Composer", () => {
     assert.deepStrictEqual(posted().at(-1), { t: "set-permission-mode", id: "a", mode: "plan" });
   });
 
-  /**
-   * The bypass-disabled reason (`<p id="bypass-reason...">`) is rendered
-   * once per pane's Composer. A fixed, unqualified id would collide across
-   * panes — `getElementById`, which is what `aria-describedby` resolves
-   * against, returns only the first match in the whole document, so the
-   * second pane's disabled bypass option would describe itself using the
-   * first pane's reason text. A single-Composer test can never catch that;
-   * this renders two.
-   */
-  test("the bypass-disabled reason id does not collide across panes", async () => {
-    renderWithStore(
-      <>
-        <Composer pane={startedPane("a")} model={WITH_EFFORT} models={[]} />
-        <Composer pane={startedPane("b")} model={WITH_EFFORT} models={[]} />
-      </>,
-    );
+  test("a started session says once, on the bypass row, why it is unavailable", async () => {
+    renderWithStore(<Composer pane={startedPane("a")} model={WITH_EFFORT} models={[]} />);
 
-    const triggers = screen.getAllByLabelText("Permission mode");
-    assert.strictEqual(triggers.length, 2);
+    await userEvent.click(screen.getByLabelText("Permission mode"));
+    const option = await screen.findByRole("menuitemradio", { name: /bypass/i });
+    assert.strictEqual(option.getAttribute("aria-disabled"), "true");
+    assert.ok(/Only before the first message/.test(option.textContent ?? ""));
+    assert.strictEqual(document.body.textContent?.includes("Bypass can only be chosen"), false);
+  });
 
-    // Read each id while its own menu is open: the popup is portaled and
-    // unmounts on close, so the reason text only exists to resolve against
-    // for as long as the option that points at it does.
-    await userEvent.click(triggers[0]);
-    const optionA = await screen.findByRole("menuitemradio", { name: /bypass/i });
-    const describedByA = optionA.getAttribute("aria-describedby");
-    assert.ok(describedByA);
-    assert.ok(document.getElementById(describedByA)?.textContent?.includes("Bypass can only be chosen"));
-    await userEvent.keyboard("{Escape}");
+  test("Effort has its own section label, with the level named in the row", async () => {
+    renderWithStore(<Composer pane={pane()} model={WITH_EFFORT} models={[]} />);
 
-    await userEvent.click(triggers[1]);
-    const optionB = await screen.findByRole("menuitemradio", { name: /bypass/i });
-    const describedByB = optionB.getAttribute("aria-describedby");
-    assert.ok(describedByB);
-    assert.ok(document.getElementById(describedByB)?.textContent?.includes("Bypass can only be chosen"));
-
-    assert.notStrictEqual(describedByA, describedByB, "each pane must own a distinct reason id");
+    await userEvent.click(screen.getByLabelText("Permission mode"));
+    await screen.findByRole("menuitem", { name: /Effort/ });
+    assert.strictEqual(screen.getAllByText("Effort").length, 1, "one heading, not a label repeated in the row");
   });
 
   test("the composer settings share one height, from their size variants", () => {
@@ -647,7 +626,7 @@ suite("Composer", () => {
     assert.ok(screen.getByRole("option", { name: "GPT Nine" }));
   });
 
-  test("a starred model sorts to the front of the picker", async () => {
+  test("the current model leads the picker, then starred ones", async () => {
     renderWithStore(
       <Composer
         pane={pane()}
@@ -664,7 +643,7 @@ suite("Composer", () => {
     await screen.findByRole("option", { name: "GPT Nine" });
 
     const names = screen.getAllByRole("option").map((o) => o.textContent);
-    assert.deepStrictEqual(names, ["GPT Nine", "Fake Small"]);
+    assert.deepStrictEqual(names, ["Fake Small", "GPT Nine"]);
   });
 
   suite("a session whose provider is unavailable", () => {

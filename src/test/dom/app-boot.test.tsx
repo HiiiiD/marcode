@@ -45,7 +45,7 @@ suite('App boot', () => {
     renderApp();
     hydrate(['a', 'b']);
 
-    assert.strictEqual(screen.queryByText('Loading…'), null);
+    assert.strictEqual(screen.queryByText('Loading…') === null, true);
     screen.getByLabelText('Session: Session a');
     screen.getByLabelText('Session: Session b');
   });

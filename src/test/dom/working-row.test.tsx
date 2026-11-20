@@ -25,53 +25,112 @@ function hydrate(status: SessionStatus, items: TranscriptItem[]) {
 const ASKED: TranscriptItem = { id: 'u1', ts: secondsAgo(5), role: 'user', text: 'fix the scroll' };
 
 suite('WorkingRow', () => {
-  test('an idle session shows no working row', () => {
+  test('an idle session shows no activity line', () => {
     renderApp();
     hydrate('idle', [ASKED]);
 
-    assert.strictEqual(screen.queryByText('Working…'), null);
+    assert.strictEqual(screen.queryByText('Working…') === null, true);
   });
 
-  test('a running turn that has emitted nothing yet shows the row', () => {
+  test('a running turn that has emitted nothing yet says Working', () => {
     renderApp();
     hydrate('running', [ASKED]);
 
     screen.getByText('Working…');
   });
 
-  test('the row times the dead air from the last item, so a reload does not reset it', () => {
+  test('the big clock runs from the user message, so a reload does not reset it', () => {
     renderApp();
     hydrate('running', [{ ...ASKED, ts: secondsAgo(75) }]);
 
     screen.getByText('1:15');
   });
 
-  test('streaming assistant text replaces the row — the content is the signal', () => {
+  test('streaming assistant text keeps the line, naming it Writing', () => {
     renderApp();
     hydrate('running', [ASKED, { id: 'a1', ts: secondsAgo(1), role: 'assistant', text: 'Look' }]);
 
-    assert.strictEqual(screen.queryByText('Working…'), null);
+    screen.getByText('Writing…');
+    assert.strictEqual(screen.queryByText('Look') === null, true);
   });
 
-  test('a running tool replaces the row — its own card already spins', () => {
+  test('a token-streaming backend shows whole lines only, a block-emitting one shows everything', () => {
+    renderApp();
+    hydrate('running', [ASKED, { id: 'a1', ts: secondsAgo(1), role: 'assistant', text: 'First line.\nSecond li' }]);
+
+    screen.getByText('First line.');
+    assert.strictEqual(screen.queryByText(/Second li/) === null, true);
+  });
+
+  test('assistant text appears whole once the turn is over', () => {
+    renderApp();
+    hydrate('idle', [ASKED, { id: 'a1', ts: secondsAgo(1), role: 'assistant', text: 'Look' }]);
+
+    screen.getByText('Look');
+  });
+
+  test('a thinking-only assistant item reads as Thinking', () => {
+    renderApp();
+    hydrate('running', [ASKED, { id: 'a1', ts: secondsAgo(1), role: 'assistant', text: '', thinking: 'hm' }]);
+
+    screen.getByText('Thinking…');
+  });
+
+  test('a running tool names the step', () => {
     renderApp();
     hydrate('running', [ASKED, tool({ id: 't1', ts: secondsAgo(1), state: 'running' })]);
 
-    assert.strictEqual(screen.queryByText('Working…'), null);
+    screen.getByTitle('Bash · yarn test:unit');
   });
 
-  test('the gap after a finished tool is dead air, and shows the row', () => {
+  test('the gap after a finished tool reads as Thinking', () => {
     renderApp();
     hydrate('running', [ASKED, tool({ id: 't1', ts: secondsAgo(3), state: 'ok' })]);
 
-    screen.getByText('Working…');
+    screen.getByText('Thinking…');
   });
 
-  test('a session awaiting approval shows no working row — it is blocked on the user', () => {
+  test('a long-lived last item is not silence while it is the live one', () => {
+    renderApp();
+    hydrate('running', [{ ...ASKED, ts: secondsAgo(125) }]);
+
+    assert.strictEqual(screen.queryByText(/no activity/) === null, true);
+  });
+
+  test('a long silence adds a quiet clock', async function () {
+    this.timeout(6000);
+    const realNow = Date.now;
+    renderApp();
+    hydrate('running', [{ ...ASKED, ts: secondsAgo(125) }]);
+    Date.now = () => realNow() + 125_000;
+    try {
+      await screen.findByText(/no activity 2:0[5-9]/, {}, { timeout: 3000 });
+    } finally {
+      Date.now = realNow;
+    }
+  });
+
+  test('a custom provider instance of the claude kind shows text whole, whatever its id', () => {
+    renderApp();
+    sendFromHost({
+      t: 'hydrate',
+      sessions: [summary('a', { status: 'running', providerId: 'work-account' })],
+      layout: layoutOf(['a']),
+      snapshots: [snapshot('a', { status: 'running', providerId: 'work-account', items: [ASKED, { id: 'a1', ts: secondsAgo(1), role: 'assistant', text: 'First line.\nSecond li' }] })],
+      catalog: catalog().map((p) => ({ ...p, id: 'work-account', kind: 'claude' as const })),
+      unavailable: [],
+      usage: {},
+    });
+
+    screen.getByText(/Second li/);
+  });
+
+  test('a session awaiting approval shows no activity line — the approval card and status already say so', () => {
     renderApp();
     hydrate('awaiting-approval', [ASKED]);
 
-    assert.strictEqual(screen.queryByText('Working…'), null);
+    assert.strictEqual(screen.queryByText('Working…') === null, true);
+    assert.strictEqual(screen.queryByText('Waiting for you') === null, true);
   });
 
   test('the elapsed count is not announced, so it cannot chatter once a second', () => {
@@ -79,7 +138,7 @@ suite('WorkingRow', () => {
     hydrate('running', [{ ...ASKED, ts: secondsAgo(9) }]);
 
     const el = screen.getByText('0:09');
-    assert.strictEqual(el.closest('[aria-live]'), null);
+    assert.strictEqual(el.closest('[aria-live]') === null, true);
     assert.strictEqual(el.getAttribute('aria-hidden'), 'true');
   });
 });

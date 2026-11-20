@@ -91,7 +91,7 @@ export async function bootHost(opts: BootOptions): Promise<Booted> {
     const r = await connectOrSpawn({
       workspaceDir, clientKind: 'tui', roots: [workspaceRoot], defaultCwd: opts.cwd,
       identity: { protocolVersion: PROTOCOL_VERSION, appVersion: APP_VERSION },
-      hooks: daemonHooks(fileIndex, favorites),
+      hooks: daemonHooks(fileIndex, favorites, config.planEditor),
       configSignature: reloadSignature(loaded.config), replaceOlderBuild: true,
       spawn: async () => {
         await fs.mkdir(workspaceDir, { recursive: true });
@@ -111,8 +111,8 @@ export async function bootHost(opts: BootOptions): Promise<Booted> {
   return inProcessBooted(opts, config, workspaceDir, favorites, base, warn);
 }
 
-function daemonHooks(fileIndex: FileIndex, favorites: Favorites): ClientHooks {
-  const editor = terminalEditorHost(() => {});
+function daemonHooks(fileIndex: FileIndex, favorites: Favorites, planEditor?: string): ClientHooks {
+  const editor = terminalEditorHost(() => {}, planEditor);
   return {
     context: () => null,
     act: (op, args) => {
@@ -177,7 +177,7 @@ async function inProcessBooted(
     fileIndex = createTerminalFileIndex(workspaceRoot);
     router = new MessageRouter(
       host.manager, (msg) => loopback.deliver(msg), opts.cwd,
-      terminalEditorHost(() => {}), host.attachments, undefined, config.review.pollIntervalMs,
+      terminalEditorHost(() => {}, config.planEditor), host.attachments, undefined, config.review.pollIntervalMs,
       fileIndex, favorites.get(), terminalConfigHost((ids) => { void favorites.set(ids); }),
     );
   } catch (err) {

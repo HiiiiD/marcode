@@ -2,9 +2,10 @@ import {
   Avatar, AvatarBadge, AvatarFallback, AvatarGroup, AvatarGroupCount,
 } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
+import { useStore } from '../store';
 import { PROVIDER_FILLS, PROVIDER_LOGOS } from './provider-logos';
 
-export type MemberState = 'running' | 'blocked' | 'done' | 'failed';
+export type MemberState = 'running' | 'quiet' | 'blocked' | 'done' | 'failed';
 
 export interface StackMember {
   providerId: string | undefined;
@@ -35,9 +36,29 @@ function Mark({ providerId }: { providerId: string | undefined }) {
   );
 }
 
+/**
+ * A provider's mark: the instance's own icon when `providerInstances` configures
+ * one, else the logo of its kind. Two instances of one kind otherwise draw the
+ * same logo and cannot be told apart.
+ */
+export function ProviderMark({ providerId }: { providerId: string | undefined }) {
+  const { state } = useStore();
+  const icon = state.catalog.find((p) => p.id === providerId)?.icon;
+  if (icon) {
+    return (
+      <span aria-hidden className="text-[0.7rem] leading-none font-medium" style={icon.color ? { color: icon.color } : undefined}>
+        {icon.text}
+      </span>
+    );
+  }
+  return <Mark providerId={providerId} />;
+}
+
 const BADGE: Partial<Record<MemberState, string>> = {
   running: 'bg-muted-foreground motion-safe:animate-pulse',
-  blocked: 'bg-primary',
+  quiet: 'bg-attention motion-safe:animate-pulse',
+  done: 'bg-git-added',
+  blocked: 'bg-primary motion-safe:animate-pulse',
   failed: 'bg-destructive',
 };
 
@@ -45,15 +66,15 @@ export function ProviderAvatar({ member }: { member: StackMember }) {
   const badge = BADGE[member.state];
   return (
     <Avatar size="sm" title={`${member.name} · ${member.state === 'blocked' ? 'needs you' : member.state}`}>
-      <AvatarFallback><Mark providerId={member.providerId} /></AvatarFallback>
+      <AvatarFallback><ProviderMark providerId={member.providerId} /></AvatarFallback>
       {badge && <AvatarBadge className={cn(badge)} />}
     </Avatar>
   );
 }
 
 /** Overlapping provider marks, the first three then `+N`; one member is a stack of one. */
-export function ProviderStack({ members, className }: { members: StackMember[]; className?: string }) {
-  const shown = members.slice(0, MAX_SHOWN);
+export function ProviderStack({ members, className, max = MAX_SHOWN }: { members: StackMember[]; className?: string; max?: number }) {
+  const shown = members.slice(0, max);
   const rest = members.length - shown.length;
   return (
     <AvatarGroup className={cn('shrink-0', className)}>

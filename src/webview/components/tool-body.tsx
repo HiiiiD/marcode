@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { usePost } from '../store';
-import { clampLines, type ToolBlock } from './tool-render';
+import { clampLines, shortPath, type ToolBlock } from './tool-render';
 
 export type Clamp = { head: number; tail: number };
 
@@ -15,16 +15,17 @@ export type Clamp = { head: number; tail: number };
  * for a ~300px column: one column, no side-by-side, and anything that can be
  * long is clamped rather than allowed to bury the rest of the transcript.
  */
-export function ToolBody({ blocks, clamp }: { blocks: ToolBlock[]; clamp?: Clamp }) {
+/** `fullPaths`: show each path whole (an approver must see exactly what they allow) instead of its last segments. */
+export function ToolBody({ blocks, clamp, fullPaths }: { blocks: ToolBlock[]; clamp?: Clamp; fullPaths?: boolean }) {
   if (blocks.length === 0) { return null; }
   return (
     <div className="flex flex-col gap-1.5">
-      {blocks.map((block, i) => <Block key={i} block={block} clamp={clamp} />)}
+      {blocks.map((block, i) => <Block key={i} block={block} clamp={clamp} fullPaths={fullPaths} />)}
     </div>
   );
 }
 
-function Block({ block, clamp }: { block: ToolBlock; clamp?: Clamp }) {
+function Block({ block, clamp, fullPaths }: { block: ToolBlock; clamp?: Clamp; fullPaths?: boolean }) {
   switch (block.kind) {
     case 'note':
       return <p className="wrap-break-word text-muted-foreground">{block.text}</p>;
@@ -39,14 +40,14 @@ function Block({ block, clamp }: { block: ToolBlock; clamp?: Clamp }) {
 
     case 'command':
       return (
-        <div className="flex gap-1.5 rounded bg-muted px-1.5 py-1 font-mono">
+        <div className="flex gap-1.5 border-l border-border py-0.5 pr-1 pl-3 font-mono">
           <span aria-hidden className="shrink-0 select-none text-muted-foreground">$</span>
           <code className="min-w-0 whitespace-pre-wrap wrap-break-word">{block.text}</code>
         </div>
       );
 
     case 'path':
-      return <PathRow path={block.path} hint={block.hint} />;
+      return <PathRow path={block.path} hint={block.hint} full={fullPaths} />;
 
     case 'diff':
       return <ClampedLines lines={block.lines} tone="diff" clamp={clamp} />;
@@ -174,7 +175,7 @@ async function copyImage(dataUri: string): Promise<void> {
  * `reveal-file` message and the editor is one pane away, so a path the agent
  * touched should be reachable without retyping it.
  */
-function PathRow({ path, hint }: { path: string; hint?: string }) {
+function PathRow({ path, hint, full }: { path: string; hint?: string; full?: boolean }) {
   const post = usePost();
   return (
     <Button
@@ -186,18 +187,19 @@ function PathRow({ path, hint }: { path: string; hint?: string }) {
       // height — the same discipline as tool-card.tsx's disclosure row.
       className="flex w-full items-center justify-start gap-1.5 px-1.5 font-normal"
     >
-      <span className="min-w-0 wrap-break-word text-left font-mono">{path}</span>
-      {hint && <span className="shrink-0 text-muted-foreground">{hint}</span>}
+      <span className="min-w-0 wrap-break-word text-left font-mono text-foreground/70">{full ? path : shortPath(path)}</span>
+      {hint && <HintText text={hint} />}
       <span className="sr-only">Open in editor</span>
     </Button>
   );
 }
 
+// Plain output and code sit on a hairline rule, not a filled box: inside an opened row a second surface was a box in a box. Only a diff (its tint is information) and an error keep a fill.
 const TONE_CLASS = {
-  output: 'bg-muted',
-  code: 'bg-muted',
-  error: 'bg-destructive/10 text-destructive',
-  diff: 'bg-muted',
+  output: 'border-l border-border py-0.5 pr-1 pl-3',
+  code: 'border-l border-border py-0.5 pr-1 pl-3',
+  error: 'rounded bg-destructive/10 px-1.5 py-1 text-destructive',
+  diff: 'py-0.5',
 } as const;
 
 /**
@@ -221,7 +223,7 @@ function ClampedLines({
   return (
     <div
       className={cn(
-        'rounded px-1.5 py-1 font-mono',
+        'font-mono',
         TONE_CLASS[tone],
         showAll && clamped.hidden > 0 && 'max-h-80 overflow-auto',
       )}
@@ -253,13 +255,25 @@ function Lines({ lines, diff }: { lines: string[]; diff: boolean }) {
         <div
           key={i}
           className={cn(
-            diff && line.startsWith('+') && 'text-(--vscode-gitDecoration-addedResourceForeground)',
-            diff && line.startsWith('-') && 'text-(--vscode-gitDecoration-deletedResourceForeground)',
+            // The named tokens, which carry VS Code's always-registered chart colours as a fallback; the raw gitDecoration variables vanish on a theme or install that leaves them unset.
+            diff && line.startsWith('+') && '-mx-1.5 bg-git-added/[0.07] px-1.5 text-git-added',
+            diff && line.startsWith('-') && '-mx-1.5 bg-git-deleted/[0.07] px-1.5 text-git-deleted',
           )}
         >
           {line === '' ? ' ' : line}
         </div>
       ))}
     </pre>
+  );
+}
+
+/** `+3 −2` in the diff's own colours; any other hint stays muted. */
+function HintText({ text }: { text: string }) {
+  const m = /^(\+\d+) (−\d+)$/.exec(text);
+  if (!m) { return <span className="shrink-0 text-muted-foreground">{text}</span>; }
+  return (
+    <span className="shrink-0 tabular-nums">
+      <span className="text-git-added">{m[1]}</span> <span className="text-git-deleted">{m[2]}</span>
+    </span>
   );
 }

@@ -47,7 +47,7 @@ function TabsIndicator({ className, ...props }: TabsPrimitive.Indicator.Props) {
         // at an equal z-index a later sibling paints on top — which put an
         // opaque pill over the selected tab's own label text. A negative
         // z-index keeps it behind regardless of DOM order.
-        "absolute top-0.5 bottom-0.5 left-0 -z-10 rounded-[min(var(--radius-md),9px)] bg-background shadow-sm transition-[translate,width] duration-150 ease-out",
+        "absolute top-0.5 bottom-0.5 left-0 -z-10 rounded-[min(var(--radius-md),9px)] bg-accent ring-1 ring-border transition-[translate,width] duration-150 ease-out",
         "translate-x-(--active-tab-left) w-(--active-tab-width)",
         className
       )}

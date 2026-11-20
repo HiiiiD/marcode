@@ -1,5 +1,5 @@
-import { cn } from '@/lib/utils';
 import { useEffect, useRef } from 'react';
+import { MenuGroupLabel, MenuRow, menuListClass, useScrollCue } from './menu-list';
 import type { MentionOption } from '../../client-core/mentions/mention-menu';
 
 /**
@@ -21,6 +21,7 @@ export function RefMenu<P>({
   listId: string;
   onPick: (option: MentionOption<P>) => void;
 }) {
+  const cue = useScrollCue();
   const activeRow = useRef<HTMLDivElement | null>(null);
 
   // The list overflows `max-h-48` from three sessions up, and arrowing past
@@ -47,7 +48,9 @@ export function RefMenu<P>({
         id={listId}
         role="listbox"
         aria-label="Sessions and actions to reference"
-        className="max-h-48 overflow-y-auto overscroll-contain"
+        ref={cue.ref}
+        onScroll={cue.onScroll}
+        className={menuListClass(cue.more)}
       >
         {rows.length === 0 && (
           // A row, not an empty box: the listbox has to stay mounted because
@@ -69,44 +72,18 @@ export function RefMenu<P>({
           // group's own label instead: static text is not a legal child of a
           // listbox, and announcing it twice would be worse than either.
           <div key={group.name} role="group" aria-label={group.name}>
-            <p
-              aria-hidden
-              className="px-1.5 pt-1 text-[0.65rem] tracking-wide text-muted-foreground uppercase"
-            >
-              {group.name}
-            </p>
+            <MenuGroupLabel>{group.name}</MenuGroupLabel>
             {group.rows.map(({ option, index }) => (
-              <div
+              <MenuRow
                 key={option.id}
-                ref={index === activeIndex ? activeRow : undefined}
+                rowRef={index === activeIndex ? activeRow : undefined}
                 id={`${listId}-${index}`}
-                role="option"
-                aria-selected={index === activeIndex}
-                // The full label, since the one below is truncated at a pane
-                // width that leaves two sessions reading the same word.
+                active={index === activeIndex}
                 title={option.label}
-                onMouseDown={(e) => { e.preventDefault(); onPick(option); }}
-                className={cn(
-                  'flex cursor-pointer items-baseline gap-2 rounded-md px-1.5 py-1.5 text-xs',
-                  // Only the inactive rows get a hover fill: twMerge cannot
-                  // merge across variants, so shipping both would leave
-                  // `.hover\:bg-muted` outranking `.bg-accent` and wipe the
-                  // keyboard highlight on hover. Same rule as the `/` menu.
-                  index !== activeIndex && 'hover:bg-muted',
-                  index === activeIndex
-                    && 'bg-accent text-accent-foreground ring-1 ring-ring/40 ring-inset',
-                )}
-              >
-                <span className="min-w-0 truncate font-medium">{option.label}</span>
-                <span
-                  className={cn(
-                    'ml-auto shrink-0 text-muted-foreground',
-                    index === activeIndex && 'text-accent-foreground/70',
-                  )}
-                >
-                  {option.hint}
-                </span>
-              </div>
+                label={option.label}
+                detail={option.hint}
+                onPick={() => onPick(option)}
+              />
             ))}
           </div>
         ))}

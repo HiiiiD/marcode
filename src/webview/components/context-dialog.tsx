@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { formatTokens } from "@/format";
 import { cn } from "@/lib/utils";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { clampPercent, DANGER_PERCENT } from "../../client-core/context-format";
 import type { ContextResult, SessionState } from "../../protocol/messages";
 import type { PaneState } from "../reducer";
@@ -12,17 +12,14 @@ import { MemoryFiles } from './context-memory';
 export { DANGER_PERCENT };
 
 /**
- * The three used slices, densest first, plus the track that stands for the
- * free remainder.
- *
- * One hue at three strengths rather than three hues: the panel inherits the
- * user's VS Code theme, and a palette of its own would read as a guest in it.
- * The order is fixed, so the tint doubles as the row's key.
+ * Three hues from the theme's own git/chart tokens, softened so the bar stays
+ * calm: the legend swatches have to be told apart at a glance, which three
+ * strengths of one blue could not do.
  */
 const SLICE_FILL = {
-  system: "bg-primary",
-  memory: "bg-primary/60",
-  conversation: "bg-primary/30",
+  system: "bg-git-modified/80",
+  memory: "bg-git-renamed/80",
+  conversation: "bg-git-added/80",
   free: "bg-muted-foreground/25",
 } as const;
 
@@ -40,6 +37,8 @@ function StackedBar({ slices }: { slices: { key: SliceKey; percent: number }[] }
       {slices.map(({ key, percent }) => (
         <span
           key={key}
+          data-slice={key}
+          data-percent={percent}
           className={SLICE_FILL[key]}
           // A slice under about half a percent rounds to nothing at this
           // width. It is present, so it gets the thinnest mark that still
@@ -58,7 +57,7 @@ function Row({ slice, label, percent }: { slice: SliceKey; label: string; percen
       {/* Centered, not baseline-aligned: the swatch has no text in it, so a
           baseline is inferred from its box edge and lands a pixel or two off
           the label it keys. */}
-      <span aria-hidden="true" className={cn("size-2 shrink-0 rounded-xs", SLICE_FILL[slice])} />
+      <span aria-hidden="true" data-swatch={slice} className={cn("size-2 shrink-0 rounded-xs", SLICE_FILL[slice])} />
       <span className="min-w-0 flex-1 truncate" title={label}>
         {label}
       </span>
@@ -79,11 +78,11 @@ function UsageRow({ label, tokens }: { label: string; tokens: number }) {
 }
 
 function UsageSection({ usage }: { usage: SessionState["usage"] }) {
-  if (!usage) {
-    return <p className="py-0.5 text-muted-foreground">No usage yet</p>;
-  }
+  if (!usage?.normal) { return null; }
   return (
-    <div className="space-y-2">
+    <div className="space-y-1 border-t border-border pt-2">
+      <p className="text-muted-foreground">Token usage</p>
+      <div className="space-y-2">
       <div>
         <UsageRow label="Input" tokens={usage.normal.inputTokens} />
         <UsageRow label="Output" tokens={usage.normal.outputTokens} />
@@ -101,6 +100,7 @@ function UsageSection({ usage }: { usage: SessionState["usage"] }) {
           <UsageRow label="Cache write" tokens={usage.subagent.cacheCreationTokens} />
         </div>
       )}
+      </div>
     </div>
   );
 }
@@ -142,6 +142,13 @@ function Body({
   }
 
   const b = result.breakdown;
+  const slices: { key: SliceKey; percent: number }[] = [
+    { key: "system", percent: clampPercent(b.systemPercent) },
+    { key: "memory", percent: clampPercent(b.memoryPercent) },
+    { key: "conversation", percent: clampPercent(b.conversationPercent) },
+    { key: "free", percent: clampPercent(b.freePercent) },
+  ];
+  const pct = (key: SliceKey) => slices.find((s) => s.key === key)!.percent;
   const tokens =
     b.usedTokens !== undefined && b.windowTokens !== undefined
       ? `${formatTokens(b.usedTokens)} of ${formatTokens(b.windowTokens)} tokens`
@@ -153,14 +160,7 @@ function Body({
     // width instead of ever reaching the flex truncation below.
     <div className="min-w-0 space-y-3">
       <div className="space-y-1.5">
-        <StackedBar
-          slices={[
-            { key: "system", percent: clampPercent(b.systemPercent) },
-            { key: "memory", percent: clampPercent(b.memoryPercent) },
-            { key: "conversation", percent: clampPercent(b.conversationPercent) },
-            { key: "free", percent: clampPercent(b.freePercent) },
-          ]}
-        />
+        <StackedBar slices={slices} />
         {/* Under the bar, not in the header: the percentages are the reading,
             and this names the window they are percentages *of* — which is
             what tells a 17% session on a 258k window apart from one on 1M.
@@ -169,11 +169,11 @@ function Body({
         {tokens && <p className="text-right tabular-nums text-muted-foreground">{tokens}</p>}
       </div>
       <div>
-        {!b.totalOnly && <Row slice="system" label="System prompt" percent={b.systemPercent} />}
-        {!b.totalOnly && <Row slice="memory" label="Memory" percent={b.memoryPercent} />}
+        {!b.totalOnly && <Row slice="system" label="System prompt" percent={pct("system")} />}
+        {!b.totalOnly && <Row slice="memory" label="Memory" percent={pct("memory")} />}
         {!b.totalOnly && <MemoryFiles breakdown={b} onOpenFile={onOpenFile} />}
-        <Row slice="conversation" label={b.totalOnly ? 'Used context' : 'Conversation'} percent={b.conversationPercent} />
-        <Row slice="free" label="Free" percent={b.freePercent} />
+        <Row slice="conversation" label={b.totalOnly ? 'Used context' : 'Conversation'} percent={pct("conversation")} />
+        <Row slice="free" label="Free" percent={pct("free")} />
         {b.totalOnly && <p className="py-1 text-muted-foreground">Includes system instructions, tools and conversation; separate usage is not reported.</p>}
       </div>
       {b.totalOnly && <div className="min-w-0 border-t border-border pt-2">
@@ -202,14 +202,14 @@ export function ContextDialog({
   const { state, post } = useStore();
   const id = pane.summary.id;
   const result = state.contextBySession[id];
-  // The same pushed value the ring and its danger state read, not a second
-  // number derived from the pulled breakdown below. Serving a breakdown
-  // refreshes `contextPercent` from that same fetch (see
-  // AgentSession.contextBreakdown), so this is never staler than the body it
-  // sits above — and there is one number in play rather than two that can
-  // disagree, which is how a destructive 86% ring ended up beside a
-  // "50% used" header.
-  const headerPercent = pane.summary.contextPercent;
+  // Same basis as the bar below (100 − free) once the breakdown is on
+  // screen: the pushed `contextPercent` can trail a breakdown this dialog
+  // already shows, which read as two different totals in one dialog. Before
+  // the reply, or if it failed, the pushed value is the only reading.
+  const headerPercent = result?.ok
+    ? Math.round(100 - clampPercent(result.breakdown.freePercent))
+    : pane.summary.contextPercent;
+  const popupRef = useRef<HTMLDivElement>(null);
 
   // Pulled, not pushed: the inventory is static-ish and must not ride every
   // transcript patch. Refetched on each open so a long-lived session never
@@ -223,7 +223,7 @@ export function ContextDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="gap-3 text-xs">
+      <DialogContent ref={popupRef} initialFocus={popupRef} className="gap-3 text-xs">
         <DialogHeader>
           {/* pr-7 clears the close button, which is positioned over this
               row's top-right corner. Without it the reading — the one number
@@ -245,10 +245,7 @@ export function ContextDialog({
           onOpenFile={(path) => post({ t: "open-file", id, path })}
           onRetry={() => post({ t: "request-context", id })}
         />
-        <div className="space-y-1 border-t border-border pt-2">
-          <p className="text-muted-foreground">Token usage</p>
-          <UsageSection usage={pane.summary.usage} />
-        </div>
+        <UsageSection usage={pane.summary.usage} />
       </DialogContent>
     </Dialog>
   );

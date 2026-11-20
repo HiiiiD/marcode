@@ -25,6 +25,9 @@ export type PermissionMode = 'default' | 'acceptEdits' | 'auto' | 'plan' | 'dont
  * `workspace-write` never raises an approval for an in-workspace edit, so a
  * Codex `acceptEdits` would be a second name for `default`.
  */
+/** A text mark for a provider instance: one or two characters and an optional `#rrggbb`. */
+export interface ProviderIcon { text: string; color?: string }
+
 export interface PermissionModeInfo {
   id: PermissionMode;
   /**
@@ -533,6 +536,10 @@ export interface ForkThreadResult { resumeToken: string; }
 export interface AgentProvider {
   readonly id: string;
   readonly displayName: string;
+  /** A custom mark for a configured instance (see `ProviderInstanceConfig.icon`); absent means the kind's own logo. */
+  icon?: ProviderIcon;
+  /** The base backend this provider is an instance of; an instance id is arbitrary, so never infer it from `id`. */
+  kind?: 'claude' | 'codex' | 'opencode';
   readonly threadScope: ThreadScope;
   /**
    * Re-homes a vendor thread to a new directory so the move keeps the real

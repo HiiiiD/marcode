@@ -23,7 +23,7 @@ function hydrateWithItems(
 }
 
 suite('TranscriptItemView', () => {
-  test('every item is labelled by role', () => {
+  test('the user is labelled, agent prose carries no label', () => {
     renderApp();
     hydrateWithItems([
       { id: '1', ts: 1, role: 'user', text: 'hello' },
@@ -31,7 +31,7 @@ suite('TranscriptItemView', () => {
     ]);
 
     screen.getByText('You');
-    screen.getByText('Agent');
+    assert.strictEqual(screen.queryByText('Agent') === null, true);
   });
 
   test('assistant text is rendered as markdown', () => {
@@ -158,7 +158,6 @@ suite('TranscriptItemView subagent routing', () => {
     // on children alone made exactly this case look like a generic tool.
     renderWithStore(<TranscriptItemView item={spawned()} sessionId="a" />);
 
-    screen.getByText('Subagent');
     assert.ok(
       screen.getByRole('button', { expanded: false }).textContent?.includes('Explore'),
       'and it is named by the agent type it spawned',
@@ -171,7 +170,7 @@ suite('TranscriptItemView subagent routing', () => {
       tool: { kind: 'file-read', label: 'Read', path: 'a.ts' }, state: 'running',
     }} sessionId="a" />);
 
-    assert.strictEqual(screen.queryByText('Subagent'), null);
+    assert.strictEqual(screen.queryByText('Subagent') === null, true);
   });
 });
 
@@ -189,7 +188,7 @@ const PLAIN: TranscriptItem = { id: 'u2', ts: 2, role: 'user', text: 'plain' };
 suite('TranscriptItemView user context', () => {
   test('a message sent without context shows no chip', () => {
     renderWithStore(<TranscriptItemView item={PLAIN} sessionId="a" />);
-    assert.strictEqual(screen.queryByRole('button', { name: /agent-session/ }), null);
+    assert.strictEqual(screen.queryByRole('button', { name: /agent-session/ }) === null, true);
     assert.ok(screen.getByText('plain'));
   });
 

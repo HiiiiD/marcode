@@ -9,14 +9,19 @@ import {
 import { InputGroup, InputGroupInput } from "@/components/ui/input-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { GripVerticalIcon, MoreHorizontalIcon, PencilIcon, RefreshCwIcon, XIcon } from "lucide-react";
-import { folderName } from "../format";
+import { GripVerticalIcon, Maximize2Icon, MoreHorizontalIcon, Minimize2Icon, PencilIcon, PinIcon, RefreshCwIcon, XIcon } from "lucide-react";
+import { folderName, middleTruncate } from "../format";
+import { providerName } from "../lib/provider-name";
+import { usualCwd } from "../lib/usual-cwd";
+import { pendingPrompts } from "../lib/pending-prompts";
 import type { PaneState } from "../reducer";
 import { useStore } from "../store";
 import { BringBackDialog } from "./bring-back-dialog";
-import { closeSession } from "./layout-tree";
+import { closeSession, leafSessionIds } from "./layout-tree";
 import { usePaneDrag } from "./pane-drag-context";
+import { usePaneDensity } from "./pane-density";
 import { PinButton } from "./pin-button";
+import { ProviderMark } from "./provider-stack";
 import { StatusBadge } from "./status-badge";
 import { SubagentSummary } from "./subagent-summary";
 
@@ -30,11 +35,15 @@ interface SessionHeaderProps {
 }
 
 export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
-  const { state, post } = useStore();
+  const { state, post, toggleMaximize } = useStore();
+  const density = usePaneDensity();
+  const compact = density !== "comfortable";
+  const strip = density === "strip";
+  const maximized = state.maximizedId === pane.summary.id;
   const s = pane.summary;
+  const asksPermission = s.status === "awaiting-approval" && pendingPrompts(pane).some(({ item }) => item.role === "permission");
   // Shown only when there's more than one provider to distinguish between —
   // with a single backend configured, naming it on every pane is noise.
-  const providerLabel = state.catalog.find((p) => p.id === s.providerId)?.displayName;
   const [bringBackOpen, setBringBackOpen] = useState(false);
   const [replaceOpen, setReplaceOpen] = useState(false);
   // The name field, edited inline right here instead of through a dialog —
@@ -80,8 +89,34 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
   const dragLabel = `Drag ${accessibleTitle} to split or reassign a pane`;
 
   return (
-    <div className="flex items-center gap-2 border-b border-border px-2 py-1 text-xs">
-      <StatusBadge status={s.status} />
+    <div
+      // A strip is a collapsed pane: clicking anywhere on it that is not a control brings it to the front.
+      onClick={strip ? (e) => { if (!(e.target as HTMLElement).closest("button,[role=menuitem]")) { toggleMaximize(s.id); } } : undefined}
+      className={cn(
+        "relative flex shrink-0 items-center overflow-hidden border-b border-border px-2 text-xs",
+        compact ? "gap-1 py-0.5" : "gap-2 py-1",
+        strip && "cursor-pointer hover:bg-accent",
+        // A pane that needs a human or has failed announces it from across the stack, not only through a small pill.
+        // Only the states that need you are tinted, so a tinted header always means "look at me": amber for a permission, blue for a question.
+        s.status === "awaiting-approval" && (asksPermission
+          ? "bg-attention/10 shadow-[inset_3px_0_0_var(--attention)]"
+          : "bg-primary/10 shadow-[inset_3px_0_0_var(--primary)]"),
+        s.status === "error" && "bg-destructive/10 shadow-[inset_3px_0_0_var(--destructive)]",
+      )}
+    >
+      {s.status === "running" && (
+        // Life without colour: a slim line sweeping along the bottom edge while the agent works.
+        <span aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-px overflow-hidden">
+          <span className="block h-full w-1/3 bg-primary/70 motion-safe:animate-working-line motion-reduce:w-full motion-reduce:bg-primary/30" />
+        </span>
+      )}
+      <StatusBadge status={s.status} wordFor="error" warm={asksPermission} />
+      {/* Only worth a mark when there is more than one provider (or instance) to tell apart. */}
+      {state.catalog.length > 1 && (
+        <span className="flex size-4 shrink-0 items-center justify-center" title={providerName(state, s.providerId)}>
+          <ProviderMark providerId={s.providerId} />
+        </span>
+      )}
       <SubagentSummary subagents={s.subagents} />
       {/*
         `h2`, not `h1`: this panel is a view inside VS Code's own document,
@@ -100,7 +135,7 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
         // sitting in the toolbar.
         <InputGroup
           className={cn(
-            "h-5 min-w-0 gap-1 truncate border-transparent bg-transparent px-0 dark:bg-transparent",
+            "h-5 w-full min-w-0 max-w-64 gap-1 truncate border-transparent bg-transparent px-0 shadow-none focus-within:border-border focus-within:ring-1 focus-within:ring-ring/30 dark:bg-transparent",
             "hover:border-border",
           )}
         >
@@ -125,21 +160,24 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
         // on every render, same principle as the roster row's own
         // hover-revealed actions trigger.
         <span className="group/name flex min-w-0 items-center gap-1">
-          <span className="truncate text-xs font-medium" title={s.name}>{s.name}</span>
-          <Button
+          <span className="min-w-[10ch] truncate text-xs font-medium" title={s.name}>{compact ? middleTruncate(s.name, 16) : s.name}</span>
+          {!compact && <Button
             variant="ghost"
             size="icon-xs"
-            className="size-4 shrink-0 opacity-0 group-hover/name:opacity-100 focus-visible:opacity-100"
+            className="shrink-0 opacity-0 group-hover/name:opacity-100 focus-visible:opacity-100"
             aria-label={`Rename ${accessibleTitle}`}
             onClick={startEditingName}
           >
             <PencilIcon aria-hidden className="size-3" />
-          </Button>
+          </Button>}
         </span>
       )}
-      <span className="truncate text-muted-foreground" title={s.cwd}>
-        {folderName(s.cwd)}
-      </span>
+      {/* Only when this session runs somewhere other than where most of the roster does (a worktree, another folder): otherwise every pane says the same thing. */}
+      {!compact && s.cwd !== usualCwd(state.sessions) && (
+        <span className="min-w-0 shrink-[4] truncate text-muted-foreground" title={s.cwd}>
+          {folderName(s.cwd)}
+        </span>
+      )}
       {/*
         Text, not a bare colored dot: a color alone would be invisible to a
         colorblind user and meaningless to a new one. Lives in the header
@@ -166,21 +204,14 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
       >
         {s.permissionMode === "bypass" && "Bypassing permissions"}
       </span>
-      <span className="ml-auto flex min-w-0 items-center text-muted-foreground">
-        {state.catalog.length > 1 && providerLabel && (
-          <span className="text-muted-foreground">
-            <span>&nbsp;</span>
-            <span>{providerLabel}</span>
-          </span>
-        )}
-      </span>
+      <span className="ml-auto" />
       {/*
         Mounted only when there is something in it: the
         only thing this can ever hold is the bring-back door, so it is gated
         the same way that door already was — an overflow menu whose single
         item is absent nine times out of ten teaches the user it is empty.
       */}
-      {canBringBack && (
+      {canBringBack && !compact && (
         <DropdownMenu>
           <DropdownMenuTrigger
             render={<Button variant="ghost" size="icon-xs" className="shrink-0" />}
@@ -205,13 +236,61 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
       {canBringBack && (
         <BringBackDialog pane={pane} open={bringBackOpen} onOpenChange={setBringBackOpen} />
       )}
-      <PinButton session={s} accessibleTitle={accessibleTitle} />
+      {compact ? (
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={<Button variant="ghost" size="icon-xs" className="shrink-0" />}
+            aria-label={`Pane actions for ${accessibleTitle}`}
+          >
+            <MoreHorizontalIcon aria-hidden />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent className="w-auto">
+            <DropdownMenuItem onClick={startEditingName}>
+              <PencilIcon aria-hidden />
+              Rename
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => post({ t: "set-pinned", id: s.id, pinned: s.pinned !== true })}>
+              <PinIcon aria-hidden />
+              {s.pinned === true ? "Unpin" : "Pin"}
+            </DropdownMenuItem>
+            {leafSessionIds(state.layout.root).length > 1 && (
+              <DropdownMenuItem onClick={() => toggleMaximize(s.id)}>
+                {maximized ? <Minimize2Icon aria-hidden /> : <Maximize2Icon aria-hidden />}
+                {maximized ? "Restore split" : "Maximize pane"}
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuItem onClick={() => setReplaceOpen(true)}>
+              <RefreshCwIcon aria-hidden />
+              Replace…
+            </DropdownMenuItem>
+            {canBringBack && (
+              <DropdownMenuItem onClick={() => setBringBackOpen(true)}>Bring branch back…</DropdownMenuItem>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : (
+        <PinButton session={s} accessibleTitle={accessibleTitle} />
+      )}
       {/*
         Grab handle for drag-to-split: its own control rather than making the
         whole header draggable, since the header also hosts click targets
         (rename, MCP popover, bring-back menu) that a `draggable` ancestor
         would fight for pointer events on every click.
       */}
+      {!compact && leafSessionIds(state.layout.root).length > 1 && (
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          aria-label={maximized ? `Restore the split from ${accessibleTitle}` : `Maximize ${accessibleTitle}`}
+          aria-pressed={maximized}
+          title={maximized ? "Restore split" : "Maximize pane"}
+          onClick={() => toggleMaximize(s.id)}
+          className="shrink-0"
+        >
+          {maximized ? <Minimize2Icon aria-hidden /> : <Maximize2Icon aria-hidden />}
+        </Button>
+      )}
+      {!strip && (
       <Tooltip>
       <TooltipTrigger
         render={(
@@ -234,15 +313,18 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
       </TooltipTrigger>
       <TooltipContent>{dragLabel}</TooltipContent>
       </Tooltip>
-      <Button
-        variant="ghost"
-        size="icon-xs"
-        aria-label={`Replace ${accessibleTitle}`}
-        onClick={() => setReplaceOpen(true)}
-        className="shrink-0"
-      >
-        <RefreshCwIcon aria-hidden />
-      </Button>
+      )}
+      {!compact && (
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          aria-label={`Replace ${accessibleTitle}`}
+          onClick={() => setReplaceOpen(true)}
+          className="shrink-0"
+        >
+          <RefreshCwIcon aria-hidden />
+        </Button>
+      )}
       {/*
         Replace still gets a confirm, but not because it's destructive: it
         isn't. `replaceSession` just swaps the pane's leaf to a fresh
@@ -288,6 +370,7 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {!strip && (
       <Button
         variant="ghost"
         size="icon-xs"
@@ -305,6 +388,7 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
       >
         <XIcon aria-hidden />
       </Button>
+      )}
     </div>
   );
 }

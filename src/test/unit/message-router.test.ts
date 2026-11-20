@@ -63,6 +63,19 @@ suite('MessageRouter', () => {
     assert.deepStrictEqual(opened, ['https://auth.example/srv']);
   });
 
+  test('open-plan opens a request once and ignores a repeat of its requestId', async () => {
+    const opened: string[] = [];
+    const editor = {
+      current: () => null, reveal: () => {}, openDiff: () => {}, openSettings: () => {}, openExternal: () => {},
+      openPlan: (text: string) => { opened.push(text); }, exportCsv: () => {}, exportImage: () => {}, login: () => {},
+    };
+    const r = new MessageRouter(manager, (m) => sent.push(m), '/tmp', editor, attachments);
+    await r.handle({ t: 'open-plan', requestId: 'r1', text: 'a' });
+    await r.handle({ t: 'open-plan', requestId: 'r1', text: 'a' });
+    await r.handle({ t: 'open-plan', requestId: 'r2', text: 'b' });
+    assert.deepStrictEqual(opened, ['a', 'b']);
+  });
+
   test('restart-session emits a restarting panel then a settled one', async () => {
     const id = (await manager.create('fake', dir)).state.id;
     await router.handle({ t: 'restart-session', id });

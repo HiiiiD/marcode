@@ -35,6 +35,8 @@ interface LayoutNodeViewProps {
   node: LayoutNode;
   path: number[];
   narrow: boolean;
+  /** A pane is maximized: the others are header strips, so their panels may shrink far below the usual minimum. */
+  peeking?: boolean;
   leafState: (sessionId: string | null) => LeafDisplayState;
   names: Map<string, string>;
   activeId: string | null;
@@ -216,7 +218,7 @@ function LeafContent({ node, path, ctx }: { node: LeafNode; path: number[]; ctx:
  * split to have done that wrapping, so this synthesizes it directly.
  */
 export function LayoutNodeView(props: LayoutNodeViewProps) {
-  const { node, path, topLevel, narrow, onLayoutChanged } = props;
+  const { node, path, topLevel, narrow, peeking, onLayoutChanged } = props;
 
   if (node.kind === "leaf") {
     const content = <LeafContent node={node} path={path} ctx={props} />;
@@ -226,7 +228,7 @@ export function LayoutNodeView(props: LayoutNodeViewProps) {
         <ResizablePanel
           id="root"
           defaultSize="100%"
-          minSize="15%"
+          minSize={peeking ? "3%" : "15%"}
           collapsible
           {...leafPanelExtras(node, props)}
         >
@@ -274,7 +276,7 @@ export function LayoutNodeView(props: LayoutNodeViewProps) {
           <ResizablePanel
             id={`${path.join("-")}-${i}`}
             defaultSize={`${child.size}%`}
-            minSize="15%"
+            minSize={peeking ? "3%" : "15%"}
             collapsible
             {...leafPanelExtras(child, props)}
           >

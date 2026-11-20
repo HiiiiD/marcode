@@ -27,6 +27,10 @@ export interface ProviderInstanceConfig {
   displayName: string;
   binPath?: string;
   envMap?: Record<string, EnvMapValue>;
+  /** One or two characters (an emoji, a letter) drawn as the instance's mark; absent means the kind's own logo. */
+  icon?: string;
+  /** `#rrggbb`, the mark's colour. Only meaningful with `icon`. */
+  color?: string;
 }
 
 export interface ProviderInstanceValidation {
@@ -106,10 +110,20 @@ export function validateProviderInstances(
       );
       continue;
     }
+    const icon = typeof record.icon === 'string' ? record.icon.trim() : undefined;
+    const iconOk = icon !== undefined && icon !== '' && Array.from(icon).length <= 2;
+    if (record.icon !== undefined && !iconOk) {
+      warnings.push(`marcode.providerInstances[${index}] ("${id}") has an icon that is not one or two characters; ignoring it.`);
+    }
+    const color = typeof record.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(record.color.trim()) ? record.color.trim() : undefined;
+    if (record.color !== undefined && color === undefined) {
+      warnings.push(`marcode.providerInstances[${index}] ("${id}") has a color that is not #rrggbb; ignoring it.`);
+    }
     seenIds.add(id);
     valid.push({
       id, kind: kind as ProviderInstanceKind, displayName,
       ...(binPath ? { binPath } : {}), ...(envMap ? { envMap } : {}),
+      ...(iconOk ? { icon } : {}), ...(iconOk && color ? { color } : {}),
     });
   }
   return { valid, warnings };
