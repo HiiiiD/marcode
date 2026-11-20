@@ -87,7 +87,7 @@ export function SubagentCard({
   const card = (
       <TraceCollapsible
         bare
-        className="group/item my-0"
+        className="group/item @container my-0"
         open={expanded}
         onOpenChange={changeOpen}
       >
@@ -103,6 +103,10 @@ export function SubagentCard({
             // A hosted worker's header is its name and how it is doing; the counts and clocks live nowhere because a dot and a word say more.
             <>
               <span className={cn('shrink-0 text-xs font-medium', STATUS_TONE[wstate])}>{statusWords(wstate, quietFor(item, now))}</span>
+              {/* Only when the row has room to spare: the counts are nice to have, never worth crowding the name and the status. */}
+              <span className="hidden shrink-0 text-xs text-muted-foreground tabular-nums @[40rem]:inline">
+                {summary.toolCount} {summary.toolCount === 1 ? 'tool' : 'tools'} · {formatElapsed(summary.elapsedMs)}
+              </span>
               {modelName && <span className="truncate text-xs text-muted-foreground">{modelName}</span>}
             </>
           ) : (

@@ -68,7 +68,7 @@ export function ModeMenu({
         title={`Permission mode: ${mode.label}`}
         render={
           <Button
-            variant="outline"
+            variant="ghost"
             size="sm"
             disabled={disabled}
             className={cn(
