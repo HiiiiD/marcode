@@ -5,7 +5,6 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { AlertCircleIcon, ExternalLinkIcon, MessageSquareIcon, MoreHorizontalIcon, PanelTopOpenIcon, SendIcon, SquareIcon } from "lucide-react";
 import { formatElapsed } from "../../client-core/subagent-window";
-import { requestTitle } from "../lib/permission-copy";
 import type { SessionId, TranscriptItem } from "../../protocol/messages";
 import { useStore } from "../store";
 
@@ -52,21 +51,7 @@ export function statusWords(state: WorkerState, quietMs: number): string {
   }
 }
 
-const endSentence = (text: string): string => (/[.?!]$/.test(text) ? text : `${text}.`);
-
-/** What a blocked worker is waiting for you to decide, in the words its own prompt uses. */
-function waitingOn(item: ToolItem): string | undefined {
-  for (const child of item.children ?? []) {
-    if (child.role === "permission" && child.state === "pending") {
-      const label = "label" in child.tool && typeof child.tool.label === "string" ? child.tool.label : "this";
-      return requestTitle(child.tool, label, false);
-    }
-    if (child.role === "question" && child.state === "pending") { return child.questions[0]?.question ?? "A question for you"; }
-  }
-  return undefined;
-}
-
-/** Why a worker failed, or what it is waiting on you for: the only prose a worker card needs. */
+/** Why a worker failed: the only prose a worker card needs. A question or approval it raises is answered in the parent's own prompt strip, so it says nothing about that here. */
 export function WorkerNotes({ item, state }: { item: ToolItem; state: WorkerState }) {
   const output = item.output?.kind === "text" ? item.output.text : undefined;
   const failed = state === "failed";
@@ -77,9 +62,6 @@ export function WorkerNotes({ item, state }: { item: ToolItem; state: WorkerStat
           <AlertCircleIcon aria-hidden className="mt-px size-3.5 shrink-0 text-destructive" />
           <span className="min-w-0">{output ?? "The worker stopped before returning a result."}</span>
         </p>
-      )}
-      {state === "needs-you" && (
-        <p className="mb-1.5 text-xs text-muted-foreground">{endSentence(waitingOn(item) ?? "Waiting for you")} Answer it above the composer.</p>
       )}
     </>
   );

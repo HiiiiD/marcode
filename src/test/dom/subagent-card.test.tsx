@@ -206,7 +206,7 @@ suite('SubagentCard hosted child', () => {
     assert.strictEqual(screen.queryAllByRole('textbox').length, 0);
   });
 
-  test('a hosted worker waiting on a question reads as needing you and says what it asks', () => {
+  test('a hosted worker waiting on a question reads as needing you, with nothing to do on its card', () => {
     const asking = {
       id: 'q1', ts: Date.now(), role: 'question', requestId: 'r1', blocking: true, state: 'pending',
       questions: [{ header: 'Scope', question: 'Which module first?', options: [] }],
@@ -215,7 +215,6 @@ suite('SubagentCard hosted child', () => {
     renderWithStore(<SubagentCard item={item} sessionId="s1" />);
 
     assert.ok(screen.getByText('Needs you'));
-    assert.ok(screen.getByText(/Which module first\?/));
     assert.strictEqual(screen.queryByRole('button', { name: 'Stop this worker' }) === null, true);
   });
 
