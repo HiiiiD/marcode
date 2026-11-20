@@ -10,6 +10,14 @@ export function useScrollCue() {
     if (el) { setMore(el.scrollHeight - el.scrollTop - el.clientHeight > 4); }
   }, []);
   useEffect(measure);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === 'undefined') { return; }
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    if (el.firstElementChild) { observer.observe(el.firstElementChild); }
+    return () => observer.disconnect();
+  }, [measure]);
   return { ref, more, onScroll: measure };
 }
 

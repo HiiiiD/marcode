@@ -1,3 +1,4 @@
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { ChevronRightIcon } from "lucide-react";
 import { useState } from "react";
@@ -35,8 +36,10 @@ export function McpSection({ label, rows, collapsible, sourceOf, removeFrom, rec
   return (
     <section className="flex min-w-0 flex-col">
       {collapsible ? (
-        <button
+        <Button
           type="button"
+          variant="bare"
+          size={null}
           aria-expanded={open}
           title={label.title}
           onClick={() => setFolded((v) => !v)}
@@ -44,7 +47,7 @@ export function McpSection({ label, rows, collapsible, sourceOf, removeFrom, rec
         >
           <ChevronRightIcon aria-hidden className={cn("absolute top-[calc(50%+0.25rem)] -left-4 size-3.5 -translate-y-1/2 transition-transform", open && "rotate-90")} />
           {title}
-        </button>
+        </Button>
       ) : (
         <h3 className="pt-3 pb-1 text-xs font-medium text-muted-foreground" title={label.title}>{title}</h3>
       )}

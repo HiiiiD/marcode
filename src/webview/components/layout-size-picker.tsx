@@ -1,4 +1,5 @@
 import { useState, type KeyboardEvent } from 'react';
+import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { MAX_GRID_DIM } from '../../client-core/layout-apply';
 
@@ -12,7 +13,10 @@ const ARROWS: Record<string, [number, number]> = {
 export function LayoutSizePicker({ current, onPick }: { current: Cell | null; onPick: (rows: number, cols: number) => void }) {
   const [active, setActive] = useState<Cell | null>(null);
   const shown = active ?? current;
-  const tab = shown ?? { rows: 1, cols: 1 };
+  const tab = {
+    rows: Math.min(MAX_GRID_DIM, shown?.rows ?? 1),
+    cols: Math.min(MAX_GRID_DIM, shown?.cols ?? 1),
+  };
 
   const onKeyDown = (e: KeyboardEvent, rows: number, cols: number) => {
     const delta = ARROWS[e.key];
@@ -32,16 +36,19 @@ export function LayoutSizePicker({ current, onPick }: { current: Cell | null; on
         className="mx-auto grid w-fit gap-1.5"
         style={{ gridTemplateColumns: `repeat(${MAX_GRID_DIM}, 1rem)` }}
         onPointerLeave={() => setActive(null)}
+        onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) { setActive(null); } }}
       >
         {Array.from({ length: MAX_GRID_DIM * MAX_GRID_DIM }, (_, i) => {
           const rows = Math.floor(i / MAX_GRID_DIM) + 1;
           const cols = (i % MAX_GRID_DIM) + 1;
           const lit = shown !== null && rows <= shown.rows && cols <= shown.cols;
           return (
-            <button
+            <Button
               key={i}
               id={`layout-cell-${rows}-${cols}`}
               type="button"
+              variant="bare"
+              size={null}
               tabIndex={rows === tab.rows && cols === tab.cols ? 0 : -1}
               aria-label={`${rows} ${rows === 1 ? 'row' : 'rows'} by ${cols} ${cols === 1 ? 'column' : 'columns'}`}
               onPointerEnter={() => setActive({ rows, cols })}

@@ -1,3 +1,4 @@
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { PaneState } from "../reducer";
 import { useStore } from "../store";
@@ -16,19 +17,21 @@ export function PaneRail({ pane }: { pane: PaneState }) {
   const needsYou = s.status === "awaiting-approval";
 
   return (
-    <button
+    <Button
       type="button"
+      variant="bare"
+      size={null}
       aria-label={`Show ${s.name}`}
       title={s.name}
       onClick={() => toggleMaximize(s.id)}
       className={cn(
-        "flex h-full w-full min-w-0 flex-col items-center gap-2 px-1 py-2 text-xs outline-none",
+        "flex h-full w-full min-w-0 flex-col items-center justify-start gap-2 px-1 py-2 text-xs",
         "hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring",
         needsYou && "bg-primary/10 shadow-[inset_0_3px_0_var(--primary)]",
       )}
     >
       <StatusBadge status={s.status} quietIdle compact />
       <span className="min-h-0 flex-1 truncate font-medium [text-orientation:mixed] [writing-mode:vertical-rl]">{s.name}</span>
-    </button>
+    </Button>
   );
 }

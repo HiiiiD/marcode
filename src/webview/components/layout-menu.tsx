@@ -109,8 +109,10 @@ function PresetTile({
 }: { preset: LayoutPreset; active: boolean; onApply: () => void; onDelete?: () => void }) {
   return (
     <div className="group/tile relative">
-      <button
+      <Button
         type="button"
+        variant="bare"
+        size={null}
         aria-label={preset.name}
         aria-pressed={active}
         onClick={onApply}
@@ -122,7 +124,7 @@ function PresetTile({
       >
         <LayoutThumb node={preset.root} />
         <span className="w-full truncate text-center text-[0.6875rem] leading-tight">{SHORT_NAMES[preset.id] ?? preset.name}</span>
-      </button>
+      </Button>
       {onDelete && (
         <Button
           variant="ghost"

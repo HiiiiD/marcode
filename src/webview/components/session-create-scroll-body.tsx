@@ -1,35 +1,14 @@
 import { cn } from "@/lib/utils";
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
+import { useScrollCue } from "./menu-list";
 
 /** Scroll container that fades its bottom edge only while rows are hidden below. */
-export function ScrollBody({ children, watch, className }: { children: ReactNode; watch: unknown; className?: string }) {
-  const ref = useRef<HTMLDivElement | null>(null);
-  const [more, setMore] = useState(false);
-
-  const measure = useCallback(() => {
-    const el = ref.current;
-    if (el) {
-      setMore(el.scrollHeight - el.scrollTop - el.clientHeight > 4);
-    }
-  }, []);
-
-  useEffect(() => {
-    measure();
-    const el = ref.current;
-    if (!el || typeof ResizeObserver === "undefined") {
-      return;
-    }
-    const observer = new ResizeObserver(measure);
-    observer.observe(el);
-    if (el.firstElementChild) {
-      observer.observe(el.firstElementChild);
-    }
-    return () => observer.disconnect();
-  }, [measure, watch]);
+export function ScrollBody({ children, className }: { children: ReactNode; className?: string }) {
+  const { ref, more, onScroll } = useScrollCue();
 
   return (
     <div className={cn("relative", className)}>
-      <div ref={ref} onScroll={measure} className="h-full overflow-x-hidden overflow-y-auto">
+      <div ref={ref} onScroll={onScroll} className="h-full overflow-x-hidden overflow-y-auto">
         {children}
       </div>
       <div

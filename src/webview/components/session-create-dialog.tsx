@@ -160,8 +160,10 @@ function CreateForm({
         <ol aria-label="Steps" className="flex shrink-0 gap-1">
           {STEPS.map((label, i) => (
             <li key={label} className="min-w-0 flex-1">
-              <button
+              <Button
                 type="button"
+                variant="bare"
+                size={null}
                 aria-current={i === step ? "step" : undefined}
                 onClick={() => setStep(i)}
                 className={cn(
@@ -172,12 +174,12 @@ function CreateForm({
               >
                 <span className={i === step ? "font-medium" : undefined}>{i + 1} {label}</span>
                 <span className="truncate text-[0.65rem] opacity-80">{summaries[i] || " "}</span>
-              </button>
+              </Button>
             </li>
           ))}
         </ol>
 
-        <ScrollBody watch={step} className="h-[min(52vh,24rem)]">
+        <ScrollBody className="h-[min(52vh,24rem)]">
           {/* All three stay mounted so the search text, tab and typed values survive moving between steps. */}
           <div hidden={step !== 0} className="flex flex-col gap-3">
             <RecentCombos sessions={state.sessions} catalog={catalog} onPick={applyCombo} />

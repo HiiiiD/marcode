@@ -57,14 +57,16 @@ export function BranchPaneHeader({ pane }: { pane: PaneState }) {
       )}
       <Icon aria-hidden className="size-3.5 shrink-0 text-branch" />
       {parent ? (
-        <button
+        <Button
           type="button"
+          variant="bare"
+          size={null}
           title={`Go to ${parent.name}`}
           onClick={toParent}
           className="min-w-0 shrink-0 cursor-pointer truncate rounded-sm font-semibold text-branch outline-none hover:underline focus-visible:underline"
         >
           {label}
-        </button>
+        </Button>
       ) : (
         <span className="shrink-0 font-semibold text-branch">{label}</span>
       )}
