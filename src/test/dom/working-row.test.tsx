@@ -43,7 +43,7 @@ suite('WorkingRow', () => {
     renderApp();
     hydrate('running', [{ ...ASKED, ts: secondsAgo(75) }]);
 
-    screen.getByText('total 1:15');
+    screen.getByText('1:15');
   });
 
   test('streaming assistant text keeps the line, naming it Writing', () => {
@@ -90,11 +90,39 @@ suite('WorkingRow', () => {
     screen.getByText('Thinking…');
   });
 
-  test('a long silence adds a quiet clock', () => {
+  test('a long-lived last item is not silence while it is the live one', () => {
     renderApp();
     hydrate('running', [{ ...ASKED, ts: secondsAgo(125) }]);
 
-    screen.getByText('no activity 2:05');
+    assert.strictEqual(screen.queryByText(/no activity/) === null, true);
+  });
+
+  test('a long silence adds a quiet clock', async function () {
+    this.timeout(6000);
+    const realNow = Date.now;
+    renderApp();
+    hydrate('running', [{ ...ASKED, ts: secondsAgo(125) }]);
+    Date.now = () => realNow() + 125_000;
+    try {
+      await screen.findByText(/no activity 2:0[5-9]/, {}, { timeout: 3000 });
+    } finally {
+      Date.now = realNow;
+    }
+  });
+
+  test('a custom provider instance of the claude kind shows text whole, whatever its id', () => {
+    renderApp();
+    sendFromHost({
+      t: 'hydrate',
+      sessions: [summary('a', { status: 'running', providerId: 'work-account' })],
+      layout: layoutOf(['a']),
+      snapshots: [snapshot('a', { status: 'running', providerId: 'work-account', items: [ASKED, { id: 'a1', ts: secondsAgo(1), role: 'assistant', text: 'First line.\nSecond li' }] })],
+      catalog: catalog().map((p) => ({ ...p, id: 'work-account', kind: 'claude' as const })),
+      unavailable: [],
+      usage: {},
+    });
+
+    screen.getByText(/Second li/);
   });
 
   test('a session awaiting approval shows no activity line — the approval card and status already say so', () => {

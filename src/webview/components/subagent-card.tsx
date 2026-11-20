@@ -17,16 +17,17 @@ import {
 import { useStore } from '../store';
 import { useNestedMessages } from './nested-messages-context';
 import { WorkerMessageRow } from './worker-message-row';
-import { QUIET_AFTER_MS, quietFor, STATUS_TONE, statusWords, WorkerActions, WorkerNotes, workerState, WorkerMessageBox } from './worker-controls';
+import { quietFor, STATUS_TONE, statusWords, WorkerActions, WorkerNotes, workerState, WorkerMessageBox } from './worker-controls';
+import { activitySignature, QUIET_AFTER_MS, useLastChange } from '../lib/last-change';
 import { expandedDisplayName, findModel } from '../../shared/model-catalog';
 import { useOpenSubagentTranscript } from './subagent-drill-in-context';
 import type { SessionId, TranscriptItem } from '../../protocol/messages';
 
 type ToolItem = Extract<TranscriptItem, { role: 'tool' }>;
 
-export function memberState(item: ToolItem, blocked: boolean, now: number = Date.now()): MemberState {
+export function memberState(item: ToolItem, blocked: boolean, now: number, changedAt: number): MemberState {
   if (blocked) { return 'blocked'; }
-  if (item.state === 'running' && quietFor(item, now) >= QUIET_AFTER_MS) { return 'quiet'; }
+  if (item.state === 'running' && quietFor(item, now, changedAt) >= QUIET_AFTER_MS) { return 'quiet'; }
   return item.state === 'running' ? 'running' : item.state === 'ok' ? 'done' : 'failed';
 }
 
@@ -38,6 +39,7 @@ export function SubagentCard({
   const [messaging, setMessaging] = useState(false);
   const [sent, setSent] = useState<string[]>([]);
   const [now, setNow] = useState(() => Date.now());
+  const changedAt = useLastChange(activitySignature(item));
   const openTranscript = useOpenSubagentTranscript();
   const { post, state } = useStore();
   const hostedId = item.tool.kind === 'subagent' ? item.tool.childSessionId : undefined;
@@ -66,7 +68,7 @@ export function SubagentCard({
   // least visible. Once the user collapses it deliberately it stays
   // collapsed, and the header keeps reporting the block, so the card never
   // fights them.
-  const wstate = hostedId ? workerState(item, summary.blocked, now) : undefined;
+  const wstate = hostedId ? workerState(item, summary.blocked, now, changedAt) : undefined;
   // A worker that failed or went quiet opens itself so the reason is not behind a click; a deliberate collapse still wins.
   const attention = summary.blocked || wstate === 'failed' || wstate === 'quiet';
   const expanded = open || (attention && !manuallyCollapsed);
@@ -95,14 +97,14 @@ export function SubagentCard({
         <TraceCollapsibleTrigger className={cn('h-7 min-w-0 flex-1 px-0 text-xs hover:bg-transparent [&>[data-slot=trace-icon]:last-child]:opacity-40 group-hover/item:[&>[data-slot=trace-icon]:last-child]:opacity-100 focus-visible:[&>[data-slot=trace-icon]:last-child]:opacity-100 aria-expanded:[&>[data-slot=trace-icon]:last-child]:opacity-100', hostedId && '[&>[data-slot=trace-icon]:last-child]:hidden')}>
           {hosted && item.tool.kind === 'subagent' && (
             <ProviderStack className="ml-1" members={[{
-              providerId: item.tool.provider, name: subagentLabel(item), state: memberState(item, summary.blocked, now),
+              providerId: item.tool.provider, name: subagentLabel(item), state: memberState(item, summary.blocked, now, changedAt),
             }]} />
           )}
           <span className={cn('font-medium', wstate ? 'max-w-[60%] shrink-0 truncate' : 'truncate')}>{subagentLabel(item)}</span>
           {wstate ? (
             // A hosted worker's header is its name and how it is doing; the counts and clocks live nowhere because a dot and a word say more.
             <>
-              <span className={cn('shrink-0 text-xs font-medium', STATUS_TONE[wstate])}>{statusWords(wstate, quietFor(item, now))}</span>
+              <span className={cn('shrink-0 text-xs font-medium', STATUS_TONE[wstate])}>{statusWords(wstate, quietFor(item, now, changedAt))}</span>
               {/* Only when the row has room to spare: the counts are nice to have, never worth crowding the name and the status. */}
               <span className="hidden shrink-0 text-xs text-muted-foreground tabular-nums @[40rem]:inline">
                 {summary.toolCount} {summary.toolCount === 1 ? 'tool' : 'tools'} · {formatElapsed(summary.elapsedMs)}

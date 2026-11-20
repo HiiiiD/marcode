@@ -538,6 +538,8 @@ export interface AgentProvider {
   readonly displayName: string;
   /** A custom mark for a configured instance (see `ProviderInstanceConfig.icon`); absent means the kind's own logo. */
   icon?: ProviderIcon;
+  /** The base backend this provider is an instance of; an instance id is arbitrary, so never infer it from `id`. */
+  kind?: 'claude' | 'codex' | 'opencode';
   readonly threadScope: ThreadScope;
   /**
    * Re-homes a vendor thread to a new directory so the move keeps the real

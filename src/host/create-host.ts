@@ -246,6 +246,7 @@ export async function createHost(opts: CreateHostOptions): Promise<HostHandle> {
       }));
     }
     const instance = providers.get(cfg.id);
+    if (instance) { instance.kind = cfg.kind; }
     if (instance && cfg.icon) { instance.icon = { text: cfg.icon, ...(cfg.color ? { color: cfg.color } : {}) }; }
   }
 

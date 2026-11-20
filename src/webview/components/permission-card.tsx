@@ -112,7 +112,7 @@ export function PermissionCard({
         </div>
         <div className="mb-2">
           <PermissionMetaDetail meta={item.meta} />
-          <ToolBody blocks={request} />
+          <ToolBody blocks={request} fullPaths />
         </div>
         <div className="flex gap-2">
           <Button size="sm" disabled aria-label={`Deny ${name} (unavailable)`}>Deny</Button>
@@ -143,7 +143,7 @@ export function PermissionCard({
           <span className="font-medium">Plan ready</span>
           <span className="truncate text-muted-foreground" title={cwd}>{folderName(cwd)}</span>
         </div>
-        {tool.path && <ToolBody blocks={[{ kind: 'path', path: tool.path, hint: 'Markdown plan' }]} />}
+        {tool.path && <ToolBody blocks={[{ kind: 'path', path: tool.path, hint: 'Markdown plan' }]} fullPaths />}
         <div className="max-h-64 overflow-y-auto border-l-2 border-border pl-2.5">
           <Markdown>{tool.text}</Markdown>
         </div>
@@ -185,7 +185,7 @@ export function PermissionCard({
       </div>
       <div className="mb-2">
         <PermissionMetaDetail meta={item.meta} />
-        <ToolBody blocks={tool.kind === "mcp" ? request.filter((b) => !(b.kind === "field" && (b.label === "server" || b.label === "tool"))) : request} clamp={{ head: 4, tail: 2 }} />
+        <ToolBody blocks={tool.kind === "mcp" ? request.filter((b) => !(b.kind === "field" && (b.label === "server" || b.label === "tool"))) : request} clamp={{ head: 4, tail: 2 }} fullPaths />
       </div>
       {/* Deny is the safe, reversible-feeling choice: it comes first in DOM
           and tab order, and Allow — the consequential, irreversible-feeling

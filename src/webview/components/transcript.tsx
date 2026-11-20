@@ -12,6 +12,7 @@ import type { PaneState } from '../reducer';
 import { isLivePrompt } from '../lib/pending-prompts';
 import { splitNestedMessages } from '../lib/nested-messages';
 import { groupSubagents, mergeToolRuns } from '../lib/subagent-groups';
+import { useStore } from '../store';
 import { settledPrefix } from '../lib/stream-text';
 import { beatOf, gapAbove } from '../lib/rhythm';
 
@@ -21,12 +22,14 @@ export function Transcript({
   pane: PaneState;
   onLoadMore: (beforeItemId: string) => void;
 }) {
+  const { state } = useStore();
   const nested = useMemo(() => splitNestedMessages(pane.items), [pane.items]);
   const first = pane.items[0];
   const idle = pane.summary.status === 'idle';
   // Claude hands over finished blocks; every other backend streams tokens, so its half-written tail is held back to the last whole line or sentence rather than re-rendered per token.
   const last = pane.items[pane.items.length - 1];
-  const streamingId = pane.summary.status === 'running' && !pane.summary.providerId.startsWith('claude') && last?.role === 'assistant' && last.text.trim() ? last.id : undefined;
+  const claudeBacked = state.catalog.find((p) => p.id === pane.summary.providerId)?.kind === 'claude';
+  const streamingId = pane.summary.status === 'running' && !claudeBacked && last?.role === 'assistant' && last.text.trim() ? last.id : undefined;
 
   // `load-more` is a stateless lookup keyed on beforeItemId, not a consumed
   // cursor — two rapid clicks before the first session-prepend lands would

@@ -6,6 +6,7 @@ import { ProviderStack } from './provider-stack';
 import { memberState, SubagentCard } from './subagent-card';
 import { workerState, type WorkerState } from './worker-controls';
 import { TranscriptItemShell } from './transcript-item-shell';
+import { activitySignature, useLastChanges } from '../lib/last-change';
 import { subagentLabel, summarizeSubagent } from '../../client-core/subagent-window';
 import type { SessionId, TranscriptItem } from '../../protocol/messages';
 
@@ -16,6 +17,7 @@ export function SubagentGroupCard({ items, sessionId }: { items: ToolItem[]; ses
   const [manuallyCollapsed, setManuallyCollapsed] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const anyRunning = items.some((i) => i.state === 'running');
+  const changes = useLastChanges(items.map((item) => ({ id: item.id, signature: activitySignature(item) })));
 
   useEffect(() => {
     if (!anyRunning) { return; }
@@ -28,11 +30,11 @@ export function SubagentGroupCard({ items, sessionId }: { items: ToolItem[]; ses
     return {
       providerId: item.tool.kind === 'subagent' ? item.tool.provider : undefined,
       name: subagentLabel(item),
-      state: memberState(item, blocked, now),
+      state: memberState(item, blocked, now, changes.get(item.id) ?? now),
     };
   });
   const blockedCount = members.filter((m) => m.state === 'blocked').length;
-  const states = items.map((item) => workerState(item, summarizeSubagent(item, now).blocked, now));
+  const states = items.map((item) => workerState(item, summarizeSubagent(item, now).blocked, now, changes.get(item.id) ?? now));
   const count = (st: WorkerState) => states.filter((x) => x === st).length;
   const attention = blockedCount > 0 || count('failed') > 0 || count('quiet') > 0;
   const expanded = open || (attention && !manuallyCollapsed);

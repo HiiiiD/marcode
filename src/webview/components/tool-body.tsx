@@ -15,16 +15,17 @@ export type Clamp = { head: number; tail: number };
  * for a ~300px column: one column, no side-by-side, and anything that can be
  * long is clamped rather than allowed to bury the rest of the transcript.
  */
-export function ToolBody({ blocks, clamp }: { blocks: ToolBlock[]; clamp?: Clamp }) {
+/** `fullPaths`: show each path whole (an approver must see exactly what they allow) instead of its last segments. */
+export function ToolBody({ blocks, clamp, fullPaths }: { blocks: ToolBlock[]; clamp?: Clamp; fullPaths?: boolean }) {
   if (blocks.length === 0) { return null; }
   return (
     <div className="flex flex-col gap-1.5">
-      {blocks.map((block, i) => <Block key={i} block={block} clamp={clamp} />)}
+      {blocks.map((block, i) => <Block key={i} block={block} clamp={clamp} fullPaths={fullPaths} />)}
     </div>
   );
 }
 
-function Block({ block, clamp }: { block: ToolBlock; clamp?: Clamp }) {
+function Block({ block, clamp, fullPaths }: { block: ToolBlock; clamp?: Clamp; fullPaths?: boolean }) {
   switch (block.kind) {
     case 'note':
       return <p className="wrap-break-word text-muted-foreground">{block.text}</p>;
@@ -46,7 +47,7 @@ function Block({ block, clamp }: { block: ToolBlock; clamp?: Clamp }) {
       );
 
     case 'path':
-      return <PathRow path={block.path} hint={block.hint} />;
+      return <PathRow path={block.path} hint={block.hint} full={fullPaths} />;
 
     case 'diff':
       return <ClampedLines lines={block.lines} tone="diff" clamp={clamp} />;
@@ -174,7 +175,7 @@ async function copyImage(dataUri: string): Promise<void> {
  * `reveal-file` message and the editor is one pane away, so a path the agent
  * touched should be reachable without retyping it.
  */
-function PathRow({ path, hint }: { path: string; hint?: string }) {
+function PathRow({ path, hint, full }: { path: string; hint?: string; full?: boolean }) {
   const post = usePost();
   return (
     <Button
@@ -186,7 +187,7 @@ function PathRow({ path, hint }: { path: string; hint?: string }) {
       // height — the same discipline as tool-card.tsx's disclosure row.
       className="flex w-full items-center justify-start gap-1.5 px-1.5 font-normal"
     >
-      <span className="min-w-0 wrap-break-word text-left font-mono text-foreground/70">{shortPath(path)}</span>
+      <span className="min-w-0 wrap-break-word text-left font-mono text-foreground/70">{full ? path : shortPath(path)}</span>
       {hint && <HintText text={hint} />}
       <span className="sr-only">Open in editor</span>
     </Button>

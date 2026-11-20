@@ -5,7 +5,7 @@ import { describeTool } from '../../client-core/tool-render';
 import type { PaneState } from '../reducer';
 import type { TranscriptItem } from '../../protocol/messages';
 
-const QUIET_AFTER_MS = 60_000;
+import { activitySignature, QUIET_AFTER_MS, useLastChange } from '../lib/last-change';
 
 function clock(ms: number): string {
   const total = Math.max(0, Math.floor(ms / 1000));
@@ -63,7 +63,8 @@ export function WorkingRow({ pane }: { pane: PaneState }) {
   const last = pane.items[pane.items.length - 1];
   const { start, tools, edits } = turnStats(pane.items);
   const step = currentStep(last);
-  const quiet = now - (last?.ts ?? mountedAt);
+  const changedAt = useLastChange(activitySignature(last));
+  const quiet = Math.max(0, now - changedAt);
   const meta = [
     clock(now - (start ?? mountedAt)),
     tools > 0 ? plural(tools, 'tool') : null,

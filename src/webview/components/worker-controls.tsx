@@ -7,28 +7,20 @@ import { AlertCircleIcon, ExternalLinkIcon, MessageSquareIcon, MoreHorizontalIco
 import { formatElapsed } from "../../client-core/subagent-window";
 import type { SessionId, TranscriptItem } from "../../protocol/messages";
 import { useStore } from "../store";
+import { QUIET_AFTER_MS } from "../lib/last-change";
 
 type ToolItem = Extract<TranscriptItem, { role: "tool" }>;
 
-/** Silence this long on a running worker is worth saying out loud: it is working, or it is stuck, and the card cannot tell which. */
-export const QUIET_AFTER_MS = 60_000;
-
 export type WorkerState = "needs-you" | "quiet" | "running" | "failed" | "done";
 
-function lastActivity(item: ToolItem): number {
-  let last = item.ts;
-  for (const child of item.children ?? []) { if (child.ts > last) { last = child.ts; } }
-  return last;
+/** How long a running worker has gone without visibly progressing (`changedAt` from `useLastChange`); 0 when it is not running. */
+export function quietFor(item: ToolItem, now: number, changedAt: number): number {
+  return item.state === "running" ? Math.max(0, now - changedAt) : 0;
 }
 
-/** How long a running worker has gone without doing anything; 0 when it is not running. */
-export function quietFor(item: ToolItem, now: number): number {
-  return item.state === "running" ? Math.max(0, now - lastActivity(item)) : 0;
-}
-
-export function workerState(item: ToolItem, blocked: boolean, now: number): WorkerState {
+export function workerState(item: ToolItem, blocked: boolean, now: number, changedAt: number): WorkerState {
   if (blocked) { return "needs-you"; }
-  if (item.state === "running") { return quietFor(item, now) >= QUIET_AFTER_MS ? "quiet" : "running"; }
+  if (item.state === "running") { return quietFor(item, now, changedAt) >= QUIET_AFTER_MS ? "quiet" : "running"; }
   return item.state === "ok" ? "done" : "failed";
 }
 

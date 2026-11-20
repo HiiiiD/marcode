@@ -207,4 +207,15 @@ suite('PermissionCard', () => {
     hydrateWith([{ requestId: 'r1', tool }]);
     screen.getByText(/more lines/);
   });
+
+  test('the approver sees the whole path, never the shortened tail', () => {
+    const full = '/repo/../../etc/passwd';
+    const tool: ToolCall = {
+      kind: 'file-edit', label: 'Write',
+      files: [{ path: full, op: 'create', edits: [{ after: 'x' }] }],
+    };
+    renderWithStore(<PermissionCard item={permission({ tool })} sessionId="a" />);
+    hydrateWith([{ requestId: 'r1', tool }]);
+    screen.getByText(full);
+  });
 });
