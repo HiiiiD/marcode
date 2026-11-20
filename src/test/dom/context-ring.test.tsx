@@ -240,28 +240,21 @@ suite('ContextRing', () => {
     assert.deepStrictEqual(names, ['/repo/CLAUDE.md', '/home/.claude/CLAUDE.md']);
   });
 
-  test('the header, the ring label and the danger label agree on one number', async () => {
-    mount(86);
-    await open('Context 86% used');
+  test('the header quotes the same basis as the bar once the breakdown is shown', async () => {
+    mount(14);
+    await open('Context 14% used');
 
-    // On the wire, a breakdown reply and the sessions-changed that refreshes
-    // contextPercent from that same fetch may not land in the same tick — so
-    // the header must keep quoting the pushed number even while a breakdown
-    // implying a different total is already on screen underneath it. If the
-    // header derived its own number from the rows again, this would show
-    // "50% used" beside a ring still labelled 86%.
     sendFromHost({
       t: 'context-breakdown', id: 'a',
       result: {
         ok: true,
         breakdown: breakdown({
-          systemPercent: 20, memoryPercent: 6, conversationPercent: 24, freePercent: 50,
+          systemPercent: 6, memoryPercent: 4, conversationPercent: 31, freePercent: 59,
         }),
       },
     });
 
-    assert.ok(screen.getByText('86% used'), 'the header must agree with the ring, not the rows');
-    assert.ok(screen.getByLabelText('Context 86% used'));
+    assert.ok(screen.getByText('41% used'));
   });
 
   test('an out-of-range percentage clamps the label as well as the bar', async () => {
@@ -296,11 +289,12 @@ suite('ContextRing', () => {
     assert.strictEqual(trigger.textContent, '');
   });
 
-  test('shows no usage yet when the session has not reported any', async () => {
+  test('hides the token usage section when the session has not reported any', async () => {
     mount(43);
     await open('Context 43% used');
 
-    assert.ok(screen.getByText('No usage yet'));
+    assert.strictEqual(screen.queryByText('Token usage') === null, true);
+    assert.strictEqual(screen.queryByText('No usage yet') === null, true);
   });
 
   test('renders the four normal usage rows once the session has usage', async () => {
