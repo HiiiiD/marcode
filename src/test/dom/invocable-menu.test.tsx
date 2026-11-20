@@ -42,7 +42,7 @@ suite("invocable menu", () => {
 
     await userEvent.type(screen.getByLabelText("Message"), "see src/foo");
 
-    assert.strictEqual(screen.queryByRole("listbox"), null);
+    assert.strictEqual(screen.queryByRole("listbox") === null, true);
   });
 
   test("a space closes the menu and Enter sends again", async () => {
@@ -51,7 +51,7 @@ suite("invocable menu", () => {
     const box = screen.getByLabelText("Message");
 
     await userEvent.type(box, "/loop 5m");
-    assert.strictEqual(screen.queryByRole("listbox"), null);
+    assert.strictEqual(screen.queryByRole("listbox") === null, true);
 
     await userEvent.type(box, "{Enter}");
     const sends = posted().filter((m) => m.t === "send");
@@ -86,7 +86,7 @@ suite("invocable menu", () => {
     await userEvent.type(box, "/bra");
     await userEvent.keyboard("{Escape}");
 
-    assert.strictEqual(screen.queryByRole("listbox"), null);
+    assert.strictEqual(screen.queryByRole("listbox") === null, true);
     assert.strictEqual(box.value, "/bra");
   });
 
@@ -121,7 +121,7 @@ suite("invocable menu", () => {
 
     assert.strictEqual((screen.getByLabelText("Skills and commands") as HTMLButtonElement).disabled, true);
     await userEvent.type(screen.getByLabelText("Message"), "/");
-    assert.strictEqual(screen.queryByRole("listbox"), null);
+    assert.strictEqual(screen.queryByRole("listbox") === null, true);
   });
 
   test("a provider's own /mcp is replaced by the panel's, without its argument hint", async () => {
@@ -279,7 +279,7 @@ suite("invocable menu", () => {
 
     fireEvent.blur(box);
 
-    assert.strictEqual(screen.queryByRole("listbox"), null);
+    assert.strictEqual(screen.queryByRole("listbox") === null, true);
     assert.strictEqual(screen.getByLabelText("Message").getAttribute("aria-expanded"), "false");
   });
 

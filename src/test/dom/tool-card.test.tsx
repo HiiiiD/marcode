@@ -17,7 +17,7 @@ suite('ToolCard', () => {
     screen.getByText('Bash');
     screen.getByText('yarn test:unit');
     // Nothing of the payload leaks before the row is opened.
-    assert.strictEqual(document.querySelector('pre'), null);
+    assert.strictEqual(document.querySelector('pre') === null, true);
   });
 
   test('expanding shows the result, and the command only when the row does not already say it', async () => {
@@ -77,7 +77,7 @@ suite('ToolCard', () => {
     await expand();
 
     screen.getByText('Running…');
-    assert.strictEqual(screen.queryByText('Result'), null);
+    assert.strictEqual(screen.queryByText('Result') === null, true);
   });
 
   test('long output is clamped to its opening and its verdict until asked', async () => {
@@ -90,7 +90,7 @@ suite('ToolCard', () => {
 
     screen.getByText('line 0');
     screen.getByText('line 99');
-    assert.strictEqual(screen.queryByText('line 50'), null, 'the middle is what buries a transcript');
+    assert.strictEqual(screen.queryByText('line 50') === null, true, 'the middle is what buries a transcript');
 
     await userEvent.click(screen.getByText('80 more lines'));
     screen.getByText('line 50');

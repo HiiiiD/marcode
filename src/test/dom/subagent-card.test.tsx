@@ -33,7 +33,7 @@ suite('SubagentCard', () => {
     const toggle = screen.getByRole('button', { expanded: false });
     assert.ok(toggle.textContent?.includes('Explore'), 'names the agent type, not "Task"');
     assert.ok(toggle.textContent?.includes('1 tool'));
-    assert.strictEqual(screen.queryByText('Read'), null, 'no child is rendered while collapsed');
+    assert.strictEqual(screen.queryByText('Read') === null, true, 'no child is rendered while collapsed');
   });
 
   test('shows the model when the spawn call named one', () => {
@@ -49,7 +49,7 @@ suite('SubagentCard', () => {
   test('omits the model when the spawn call did not name one', () => {
     renderWithStore(<SubagentCard item={subagent([child('c1', 'Read')])} sessionId="s1" />);
 
-    assert.strictEqual(screen.queryByText(/opus|sonnet|haiku/i), null);
+    assert.strictEqual(screen.queryByText(/opus|sonnet|haiku/i) === null, true);
   });
 
   test('expanding reveals the children through the shipped ToolCard', async () => {
@@ -68,7 +68,7 @@ suite('SubagentCard', () => {
 
     assert.ok(screen.getByText('showing last 10 of 25'));
     assert.ok(screen.getByText('Tool24'), 'the newest child is rendered');
-    assert.strictEqual(screen.queryByText('Tool14'), null, 'the eleventh-from-last is not');
+    assert.strictEqual(screen.queryByText('Tool14') === null, true, 'the eleventh-from-last is not');
   });
 
   test('offers to open the full transcript once expanded, window or not', async () => {
@@ -89,7 +89,7 @@ suite('SubagentCard', () => {
     renderWithStore(<SubagentCard item={subagent([child('c1', 'Read')])} sessionId="s1" />);
     await userEvent.click(screen.getByRole('button', { expanded: false }));
 
-    assert.strictEqual(screen.queryByText(/showing last/i), null, 'nothing is truncated here');
+    assert.strictEqual(screen.queryByText(/showing last/i) === null, true, 'nothing is truncated here');
     assert.strictEqual(
       screen.getByRole('button', { name: /open full transcript/i }) !== null,
       true,

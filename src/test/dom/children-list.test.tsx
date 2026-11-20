@@ -34,7 +34,7 @@ suite("ChildrenList", () => {
 
   test("the branches are collapsed behind a count and list each kind with its badge", async () => {
     mount([summary("main", { children: CHILDREN })], "main");
-    assert.strictEqual(screen.queryByText("Fork of plan"), null);
+    assert.strictEqual(screen.queryByText("Fork of plan") === null, true);
 
     await userEvent.click(screen.getByRole("button", { name: /3 forks and side chats/ }));
 
@@ -72,6 +72,6 @@ suite("ChildrenList", () => {
     mount([summary("kid", { parentId: "gone", origin: "fork" })], "kid");
 
     assert.ok(screen.getByText("Branched from a deleted chat"));
-    assert.strictEqual(screen.queryByRole("button", { name: /Branched from/ }), null);
+    assert.strictEqual(screen.queryByRole("button", { name: /Branched from/ }) === null, true);
   });
 });

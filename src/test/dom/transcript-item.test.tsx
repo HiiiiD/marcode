@@ -170,7 +170,7 @@ suite('TranscriptItemView subagent routing', () => {
       tool: { kind: 'file-read', label: 'Read', path: 'a.ts' }, state: 'running',
     }} sessionId="a" />);
 
-    assert.strictEqual(screen.queryByText('Subagent'), null);
+    assert.strictEqual(screen.queryByText('Subagent') === null, true);
   });
 });
 
@@ -188,7 +188,7 @@ const PLAIN: TranscriptItem = { id: 'u2', ts: 2, role: 'user', text: 'plain' };
 suite('TranscriptItemView user context', () => {
   test('a message sent without context shows no chip', () => {
     renderWithStore(<TranscriptItemView item={PLAIN} sessionId="a" />);
-    assert.strictEqual(screen.queryByRole('button', { name: /agent-session/ }), null);
+    assert.strictEqual(screen.queryByRole('button', { name: /agent-session/ }) === null, true);
     assert.ok(screen.getByText('plain'));
   });
 

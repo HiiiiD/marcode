@@ -44,7 +44,7 @@ suite("SessionHeader status", () => {
     hydrate();
     sendFromHost({ t: "session-status", id: "a", status: "error" });
     screen.getByText("Failed");
-    assert.strictEqual(screen.queryByText("Needs you"), null);
+    assert.strictEqual(screen.queryByText("Needs you") === null, true);
   });
 
   test("the roster trigger counts sessions that need the user", () => {
@@ -64,7 +64,7 @@ suite("SessionHeader status", () => {
     assert.strictEqual(badge.closest("[aria-live]")?.getAttribute("aria-live"), "polite");
 
     const rosterCount = screen.getByText(/1 needs you/i);
-    assert.strictEqual(rosterCount.closest("[aria-live]"), null);
+    assert.strictEqual(rosterCount.closest("[aria-live]") === null, true);
   });
 
   test("the bypass badge is a live region mounted before it has anything to say", () => {

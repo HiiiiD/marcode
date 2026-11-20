@@ -61,7 +61,7 @@ async function settle(): Promise<void> {
 suite("Composer", () => {
   test("no cache window on the pane renders no cache timer", () => {
     renderWithStore(<Composer pane={pane()} model={NO_EFFORT} models={[]} />);
-    assert.strictEqual(screen.queryByRole("status", { name: /Prompt cache/ }), null);
+    assert.strictEqual(screen.queryByRole("status", { name: /Prompt cache/ }) === null, true);
   });
 
   test("marcode.showCacheTimer off hides the badge even with a cache window", () => {
@@ -72,7 +72,7 @@ suite("Composer", () => {
         models={[]}
       />,
     );
-    assert.strictEqual(screen.queryByRole("status", { name: /Prompt cache/ }), null);
+    assert.strictEqual(screen.queryByRole("status", { name: /Prompt cache/ }) === null, true);
   });
 
   test("marcode.showCacheTimer on renders the cache timer when the pane has a window", () => {

@@ -154,7 +154,7 @@ suite('SessionCreateMenu', () => {
     const other = screen.getByRole('group', { name: 'Other' });
     assert.ok(within(fake).getByRole('radio', { name: 'Fake Large' }));
     assert.ok(within(other).getByRole('radio', { name: 'Other One' }));
-    assert.strictEqual(within(fake).queryByRole('radio', { name: 'Other One' }), null);
+    assert.strictEqual(within(fake).queryByRole('radio', { name: 'Other One' }) === null, true);
     const header = within(fake).getByText('Fake');
     assert.strictEqual(header.className.includes('uppercase'), false);
   });
@@ -218,7 +218,7 @@ suite('SessionCreateMenu', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Cancel' }));
 
     assert.strictEqual(posted().length, before);
-    assert.strictEqual(screen.queryByRole('dialog'), null);
+    assert.strictEqual(screen.queryByRole('dialog') === null, true);
   });
 
   test('typing in the model search filters rows across every provider group', async () => {
@@ -321,7 +321,7 @@ suite('SessionCreateMenu', () => {
     await nextStep(2);
 
     assert.ok(screen.getByLabelText('Branch name'));
-    assert.strictEqual(screen.queryByLabelText('Base branch'), null);
+    assert.strictEqual(screen.queryByLabelText('Base branch') === null, true);
     assert.strictEqual(
       (screen.getByRole('button', { name: 'Create session' }) as HTMLButtonElement).disabled,
       false,

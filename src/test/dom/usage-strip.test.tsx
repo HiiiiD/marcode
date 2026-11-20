@@ -122,7 +122,7 @@ suite('UsageStrip', () => {
   test('a provider with a session but no usage is absent', () => {
     const { container } = mountStrip();   // seeds a 'fake' session, no windows
 
-    assert.strictEqual(screen.queryByText(/Plan usage not reported/), null);
+    assert.strictEqual(screen.queryByText(/Plan usage not reported/) === null, true);
     // An API-key provider can never report. A permanent row it can never fill
     // is noise no action clears, so the strip does not render one.
     assert.strictEqual(container.textContent, '');

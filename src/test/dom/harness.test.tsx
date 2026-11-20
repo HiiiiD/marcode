@@ -31,6 +31,6 @@ suite('harness', () => {
     });
 
     // No await: the assertion runs on the same tick as the dispatch.
-    assert.strictEqual(screen.queryByText('Loading…'), null);
+    assert.strictEqual(screen.queryByText('Loading…') === null, true);
   });
 });

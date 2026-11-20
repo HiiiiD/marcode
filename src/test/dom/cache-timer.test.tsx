@@ -5,7 +5,7 @@ import { CacheTimer } from '@/components/cache-timer';
 suite('CacheTimer', () => {
   test('no window renders nothing', () => {
     render(<CacheTimer window={undefined} />);
-    assert.strictEqual(screen.queryByRole('status', { name: /Prompt cache/ }), null);
+    assert.strictEqual(screen.queryByRole('status', { name: /Prompt cache/ }) === null, true);
   });
 
   test('a warm window shows minutes left and the full sentence as its title', () => {
