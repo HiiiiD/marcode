@@ -41,7 +41,7 @@ export function LayoutMenu() {
       <PopoverTrigger render={<Button variant="outline" size="icon-sm" aria-label="Layout" className="shrink-0" />}>
         <LayoutGridIcon aria-hidden />
       </PopoverTrigger>
-      <PopoverContent side="bottom" align="start" initialFocus={false} className="flex w-80 flex-col gap-3 p-3 text-xs">
+      <PopoverContent side="bottom" align="start" sideOffset={10} initialFocus={false} className="flex max-h-[min(var(--available-height),32rem)] w-80 max-w-[calc(100vw-1rem)] flex-col gap-3 p-3 text-xs">
         <Section title="Layouts">
           <div className="grid grid-cols-3 gap-1">
             {BUILTIN_PRESETS.map((preset) => (

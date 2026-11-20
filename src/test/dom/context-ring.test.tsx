@@ -102,6 +102,23 @@ suite('ContextRing', () => {
     assert.ok(screen.getByRole('button', { name: /CLAUDE\.md/ }));
   });
 
+  test('bar segments and legend rows share one swatch and one percentage per slice', async () => {
+    mount(43);
+    await open('Context 43% used');
+    sendFromHost({
+      t: 'context-breakdown', id: 'a',
+      result: { ok: true, breakdown: breakdown({ systemPercent: 11, memoryPercent: 7, conversationPercent: 25, freePercent: 57 }) },
+    });
+
+    const dialog = screen.getByRole('dialog');
+    const bar = [...dialog.querySelectorAll('[data-slice]')].map((n) => `${n.getAttribute('data-slice')}:${n.getAttribute('data-percent')}`);
+    assert.deepStrictEqual(bar, ['system:11', 'memory:7', 'conversation:25', 'free:57']);
+    const swatches = [...dialog.querySelectorAll('[data-swatch]')].map((n) => n.getAttribute('data-swatch'));
+    assert.deepStrictEqual(swatches, ['system', 'memory', 'conversation', 'free']);
+    const legend = [...dialog.querySelectorAll('[data-swatch]')].map((n) => n.parentElement?.textContent);
+    assert.deepStrictEqual(legend, ['System prompt11%', 'Memory7%', 'Conversation25%', 'Free57%']);
+  });
+
   test('names the window in tokens, so 17% of 258K is not read as 17% of 1M', async () => {
     mount(17);
     await open('Context 17% used');

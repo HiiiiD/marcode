@@ -37,6 +37,8 @@ function StackedBar({ slices }: { slices: { key: SliceKey; percent: number }[] }
       {slices.map(({ key, percent }) => (
         <span
           key={key}
+          data-slice={key}
+          data-percent={percent}
           className={SLICE_FILL[key]}
           // A slice under about half a percent rounds to nothing at this
           // width. It is present, so it gets the thinnest mark that still
@@ -55,7 +57,7 @@ function Row({ slice, label, percent }: { slice: SliceKey; label: string; percen
       {/* Centered, not baseline-aligned: the swatch has no text in it, so a
           baseline is inferred from its box edge and lands a pixel or two off
           the label it keys. */}
-      <span aria-hidden="true" className={cn("size-2 shrink-0 rounded-xs", SLICE_FILL[slice])} />
+      <span aria-hidden="true" data-swatch={slice} className={cn("size-2 shrink-0 rounded-xs", SLICE_FILL[slice])} />
       <span className="min-w-0 flex-1 truncate" title={label}>
         {label}
       </span>
@@ -140,6 +142,13 @@ function Body({
   }
 
   const b = result.breakdown;
+  const slices: { key: SliceKey; percent: number }[] = [
+    { key: "system", percent: clampPercent(b.systemPercent) },
+    { key: "memory", percent: clampPercent(b.memoryPercent) },
+    { key: "conversation", percent: clampPercent(b.conversationPercent) },
+    { key: "free", percent: clampPercent(b.freePercent) },
+  ];
+  const pct = (key: SliceKey) => slices.find((s) => s.key === key)!.percent;
   const tokens =
     b.usedTokens !== undefined && b.windowTokens !== undefined
       ? `${formatTokens(b.usedTokens)} of ${formatTokens(b.windowTokens)} tokens`
@@ -151,14 +160,7 @@ function Body({
     // width instead of ever reaching the flex truncation below.
     <div className="min-w-0 space-y-3">
       <div className="space-y-1.5">
-        <StackedBar
-          slices={[
-            { key: "system", percent: clampPercent(b.systemPercent) },
-            { key: "memory", percent: clampPercent(b.memoryPercent) },
-            { key: "conversation", percent: clampPercent(b.conversationPercent) },
-            { key: "free", percent: clampPercent(b.freePercent) },
-          ]}
-        />
+        <StackedBar slices={slices} />
         {/* Under the bar, not in the header: the percentages are the reading,
             and this names the window they are percentages *of* — which is
             what tells a 17% session on a 258k window apart from one on 1M.
@@ -167,11 +169,11 @@ function Body({
         {tokens && <p className="text-right tabular-nums text-muted-foreground">{tokens}</p>}
       </div>
       <div>
-        {!b.totalOnly && <Row slice="system" label="System prompt" percent={b.systemPercent} />}
-        {!b.totalOnly && <Row slice="memory" label="Memory" percent={b.memoryPercent} />}
+        {!b.totalOnly && <Row slice="system" label="System prompt" percent={pct("system")} />}
+        {!b.totalOnly && <Row slice="memory" label="Memory" percent={pct("memory")} />}
         {!b.totalOnly && <MemoryFiles breakdown={b} onOpenFile={onOpenFile} />}
-        <Row slice="conversation" label={b.totalOnly ? 'Used context' : 'Conversation'} percent={b.conversationPercent} />
-        <Row slice="free" label="Free" percent={b.freePercent} />
+        <Row slice="conversation" label={b.totalOnly ? 'Used context' : 'Conversation'} percent={pct("conversation")} />
+        <Row slice="free" label="Free" percent={pct("free")} />
         {b.totalOnly && <p className="py-1 text-muted-foreground">Includes system instructions, tools and conversation; separate usage is not reported.</p>}
       </div>
       {b.totalOnly && <div className="min-w-0 border-t border-border pt-2">

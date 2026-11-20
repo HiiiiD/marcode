@@ -29,8 +29,8 @@ export function LayoutSizePicker({ current, onPick }: { current: Cell | null; on
       <div
         role="group"
         aria-label="Grid size"
-        className="grid w-full gap-0.5"
-        style={{ gridTemplateColumns: `repeat(${MAX_GRID_DIM}, minmax(0, 1fr))` }}
+        className="mx-auto grid w-fit gap-1.5"
+        style={{ gridTemplateColumns: `repeat(${MAX_GRID_DIM}, 1rem)` }}
         onPointerLeave={() => setActive(null)}
       >
         {Array.from({ length: MAX_GRID_DIM * MAX_GRID_DIM }, (_, i) => {
@@ -49,8 +49,8 @@ export function LayoutSizePicker({ current, onPick }: { current: Cell | null; on
               onKeyDown={(e) => onKeyDown(e, rows, cols)}
               onClick={() => onPick(rows, cols)}
               className={cn(
-                'h-5 rounded-[3px] outline-none transition-colors focus-visible:ring-1 focus-visible:ring-ring',
-                lit ? 'bg-primary/50' : 'bg-foreground/10 hover:bg-foreground/15',
+                'size-4 rounded-full outline-none transition-colors focus-visible:ring-1 focus-visible:ring-ring',
+                lit ? 'bg-primary' : 'bg-foreground/[0.07] hover:bg-foreground/15',
               )}
             />
           );
