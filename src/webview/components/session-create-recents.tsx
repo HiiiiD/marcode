@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { ZapIcon } from "lucide-react";
 import { recentCombos, type RecentCombo } from "../../client-core/create-recents";
 import type { ProviderInfo, SessionSummary } from "../../protocol/messages";
 import { expandedDisplayName, findModel } from "../../shared/model-catalog";
@@ -23,21 +24,22 @@ export function RecentCombos({
   if (combos.length === 0) { return null; }
 
   return (
-    <section aria-label="Recent settings" className="flex flex-col gap-1">
+    <section aria-label="Recent settings" className="flex flex-col gap-1.5">
       <p className="text-xs font-medium text-muted-foreground">Recent</p>
-      <div className="flex flex-col">
+      <div className="flex flex-wrap gap-1.5">
         {combos.map((combo) => {
           const label = comboLabel(combo, catalog);
           return (
             <Button
               key={label + combo.providerId}
               type="button"
-              variant="ghost"
+              variant="outline"
               size="sm"
               title={label}
-              className="w-full min-w-0 justify-start px-1.5 font-normal text-muted-foreground hover:text-foreground"
+              className="max-w-full min-w-0 justify-start"
               onClick={() => onPick(combo)}
             >
+              <ZapIcon aria-hidden className="text-muted-foreground" />
               <span className="truncate">{label}</span>
             </Button>
           );
