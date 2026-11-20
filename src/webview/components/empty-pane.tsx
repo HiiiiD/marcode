@@ -1,6 +1,7 @@
 import { findModel } from "../../shared/model-catalog";
 import { folderName } from "../../client-core/folder-name";
 import type { PaneState } from "../reducer";
+import { providerName } from "../lib/provider-name";
 import { useStore } from "../store";
 
 /** Overlay, so it never changes the transcript's layout; the pane's height is the container it measures. */
@@ -8,7 +9,7 @@ export function EmptyPane({ pane }: { pane: PaneState }) {
   const { state } = useStore();
   const provider = state.catalog.find((p) => p.id === pane.summary.providerId);
   const model = findModel(provider?.models ?? [], pane.summary.model);
-  const who = [model?.displayName ?? pane.summary.model, provider?.displayName].filter(Boolean).join(" · ");
+  const who = [model?.displayName ?? pane.summary.model, providerName(state, pane.summary.providerId)].filter(Boolean).join(" · ");
 
   return (
     <div

@@ -180,7 +180,7 @@ suite('UsageStrip', () => {
       windows: [{ id: 'seven-day', label: 'Week', usedPercent: 20, resetsAt: Date.now() + 60_000 }],
     });
 
-    assert.ok(screen.getByText('Opencode'));
+    assert.ok(screen.getByText('OpenCode'));
     assert.strictEqual(screen.queryByText('opencode-openai') === null, true);
   });
 

@@ -11,6 +11,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { cn } from "@/lib/utils";
 import { GripVerticalIcon, Maximize2Icon, MoreHorizontalIcon, Minimize2Icon, PencilIcon, PinIcon, RefreshCwIcon, XIcon } from "lucide-react";
 import { folderName, middleTruncate } from "../format";
+import { providerName } from "../lib/provider-name";
 import { usualCwd } from "../lib/usual-cwd";
 import { pendingPrompts } from "../lib/pending-prompts";
 import type { PaneState } from "../reducer";
@@ -112,7 +113,7 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
       <StatusBadge status={s.status} wordFor="error" warm={asksPermission} />
       {/* Only worth a mark when there is more than one provider (or instance) to tell apart. */}
       {state.catalog.length > 1 && (
-        <span className="flex size-4 shrink-0 items-center justify-center" title={state.catalog.find((p) => p.id === s.providerId)?.displayName}>
+        <span className="flex size-4 shrink-0 items-center justify-center" title={providerName(state, s.providerId)}>
           <ProviderMark providerId={s.providerId} />
         </span>
       )}

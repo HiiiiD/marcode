@@ -73,8 +73,6 @@ export function LayoutMenu() {
           <Button
             variant="ghost"
             size="sm"
-            disabled={openIds.length < 2}
-            title={openIds.length < 2 ? 'Needs two or more open sessions' : undefined}
             onClick={() => commit(rearrange(state.layout.root, { width: window.innerWidth, height: window.innerHeight }, MIN_PANE))}
           >
             Auto arrange

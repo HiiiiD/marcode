@@ -1,3 +1,4 @@
+import { providerName } from '../lib/provider-name';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
@@ -95,12 +96,6 @@ function ProviderUsage({
   );
 }
 
-function displayNameFor(id: string, name: string | undefined): string {
-  if (name) { return name; }
-  const first = id.split('-')[0] ?? id;
-  return first.charAt(0).toUpperCase() + first.slice(1);
-}
-
 export function UsageStrip() {
   const { state, post } = useStore();
   // Providers that have actually reported, NOT providers that have sessions.
@@ -125,7 +120,7 @@ export function UsageStrip() {
           {reporting.map((id) => (
             <ProviderUsage
               key={id}
-              displayName={displayNameFor(id, state.usageDisplayNames[id] ?? state.catalog.find((p) => p.id === id)?.displayName)}
+              displayName={providerName(state, id)}
               windows={state.usageByProvider[id]}
             />
           ))}
