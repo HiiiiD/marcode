@@ -116,10 +116,10 @@ suite("invocable menu", () => {
     assert.ok(screen.getByText("No match"));
   });
 
-  test("a pane with no catalog has no control and an inert slash", async () => {
+  test("a pane with no catalog has a disabled control and an inert slash", async () => {
     renderWithStore(<Composer pane={pane()} model={NO_EFFORT} models={[]} />);
 
-    assert.strictEqual(screen.queryByLabelText("Skills and commands"), null);
+    assert.strictEqual((screen.getByLabelText("Skills and commands") as HTMLButtonElement).disabled, true);
     await userEvent.type(screen.getByLabelText("Message"), "/");
     assert.strictEqual(screen.queryByRole("listbox"), null);
   });
