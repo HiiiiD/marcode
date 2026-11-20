@@ -60,7 +60,6 @@ export function WorkerBar({ item, hostedId, state, quietMs, messaging, onToggleM
   const failed = state === "failed";
   const output = item.output?.kind === "text" ? item.output.text : undefined;
   const reason = failed ? output ?? "The worker stopped before returning a result." : undefined;
-  const result = state === "done" ? output?.trim().split("\n")[0] : undefined;
 
   return (
     <div className="flex flex-col gap-1.5 pb-1">
@@ -71,7 +70,6 @@ export function WorkerBar({ item, hostedId, state, quietMs, messaging, onToggleM
           <span className="min-w-0">{reason}</span>
         </p>
       )}
-      {result && <p className="line-clamp-2 text-xs text-muted-foreground">{result}</p>}
       <div className="flex items-center gap-1">
         {running && (
           <Button variant="outline" size="xs" aria-label="Stop this worker" onClick={() => post({ t: "interrupt", id: hostedId })}>
