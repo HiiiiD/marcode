@@ -16,7 +16,7 @@ import {
 import { useStore } from '../store';
 import { useNestedMessages } from './nested-messages-context';
 import { WorkerMessageRow } from './worker-message-row';
-import { WorkerMessageBox, WorkerStatus } from './worker-controls';
+import { quietFor, WorkerBar, WorkerChip, workerState, WorkerMessageBox } from './worker-controls';
 import { expandedDisplayName, findModel } from '../../shared/model-catalog';
 import { useOpenSubagentTranscript } from './subagent-drill-in-context';
 import type { SessionId, TranscriptItem } from '../../protocol/messages';
@@ -33,6 +33,8 @@ export function SubagentCard({
 }: { item: ToolItem; sessionId: SessionId; embedded?: boolean }) {
   const [manuallyCollapsed, setManuallyCollapsed] = useState(false);
   const [open, setOpen] = useState(false);
+  const [messaging, setMessaging] = useState(false);
+  const [sent, setSent] = useState<string[]>([]);
   const [now, setNow] = useState(() => Date.now());
   const openTranscript = useOpenSubagentTranscript();
   const { post, state } = useStore();
@@ -62,7 +64,10 @@ export function SubagentCard({
   // least visible. Once the user collapses it deliberately it stays
   // collapsed, and the header keeps reporting the block, so the card never
   // fights them.
-  const expanded = open || (summary.blocked && !manuallyCollapsed);
+  const wstate = hostedId ? workerState(item, summary.blocked, now) : undefined;
+  // A worker that failed or went quiet opens itself so the reason is not behind a click; a deliberate collapse still wins.
+  const attention = summary.blocked || wstate === 'failed' || wstate === 'quiet';
+  const expanded = open || (attention && !manuallyCollapsed);
 
   const hosted = item.tool.kind === 'subagent' && item.tool.provider !== undefined;
   const rawModel = item.tool.kind === 'subagent' ? item.tool.model : undefined;
@@ -78,7 +83,7 @@ export function SubagentCard({
           // card is blocked right now) should suppress future force-opens.
           // Collapsing an unblocked running card is just tidying up and
           // must not silence a permission that arrives later.
-          if (!next && summary.blocked) { setManuallyCollapsed(true); }
+          if (!next && attention) { setManuallyCollapsed(true); }
         }}
       >
         <TraceCollapsibleTrigger className="w-full flex-none">
@@ -115,10 +120,8 @@ export function SubagentCard({
             accessible name at all.
           */}
           <span className="sr-only">{subagentStateLabel(item, summary.blocked)}</span>
-          {hosted && item.state !== 'running' && item.state !== 'ok' && (
-            <span className="shrink-0 text-destructive">failed</span>
-          )}
-          {summary.blocked && (
+          {wstate && <WorkerChip state={wstate} quietMs={quietFor(item, now)} />}
+          {summary.blocked && !wstate && (
             // The `attention` tone from status-badge.tsx, spelled the same
             // way: text plus a quiet fill, never colour alone. A subagent
             // blocked on the user says the same thing the session badge
@@ -131,8 +134,15 @@ export function SubagentCard({
 
         <TraceCollapsibleContent className="py-1">
           <div>
-            {hostedId && (
-              <WorkerStatus item={item} hostedId={hostedId} now={now} elapsedMs={summary.elapsedMs} blocked={summary.blocked} />
+            {hostedId && wstate && (
+              <WorkerBar
+                item={item}
+                hostedId={hostedId}
+                state={wstate}
+                messaging={messaging}
+                onToggleMessage={() => setMessaging((v) => !v)}
+                onOpenTranscript={() => openTranscript(item.id)}
+              />
             )}
             {/*
               "Open full transcript" used to appear only once the inline
@@ -141,33 +151,29 @@ export function SubagentCard({
               permission-answering included), which is worth reaching for
               any subagent, not only a long-running one. Always offered
               while expanded; the "showing last N of M" text alone is
-              conditional on truncation actually being in effect.
+              conditional on truncation actually being in effect. A hosted
+              worker has both links in its own action menu instead.
             */}
-            <div className="flex items-center justify-between pb-1 text-muted-foreground">
-              {children.length > shown.length && (
-                <p>showing last {shown.length} of {children.length}</p>
-              )}
-              <div className={cn('flex items-center gap-1', children.length <= shown.length && 'ml-auto')}>
-                {hostedId && (
+            {!hostedId && (
+              <div className="flex items-center justify-between pb-1 text-muted-foreground">
+                {children.length > shown.length && (
+                  <p>showing last {shown.length} of {children.length}</p>
+                )}
+                <div className={cn('flex items-center gap-1', children.length <= shown.length && 'ml-auto')}>
                   <Button
                     variant="ghost"
                     size="sm"
                     className="h-6 px-2 text-xs font-normal"
-                    onClick={() => post({ t: 'promote-subagent', id: hostedId })}
+                    onClick={() => openTranscript(item.id)}
                   >
-                    Open as session
+                    Open full transcript
                   </Button>
-                )}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 px-2 text-xs font-normal"
-                  onClick={() => openTranscript(item.id)}
-                >
-                  Open full transcript
-                </Button>
+                </div>
               </div>
-            </div>
+            )}
+            {hostedId && children.length > shown.length && (
+              <p className="pb-1 text-muted-foreground">showing last {shown.length} of {children.length}</p>
+            )}
             <div className="flex flex-col gap-1">
               {timeline.map((entry) => {
                 if ('message' in entry) { return <WorkerMessageRow key={entry.message.id} message={entry.message} />; }
@@ -182,7 +188,15 @@ export function SubagentCard({
                 ) : null;
               })}
             </div>
-            {hostedId && <WorkerMessageBox hostedId={hostedId} name={subagentLabel(item)} running={item.state === 'running'} />}
+            {hostedId && messaging && (
+              <WorkerMessageBox
+                hostedId={hostedId}
+                name={subagentLabel(item)}
+                running={item.state === 'running'}
+                sent={sent}
+                onSent={(body) => setSent((prev) => [...prev, body])}
+              />
+            )}
           </div>
         </TraceCollapsibleContent>
       </TraceCollapsible>

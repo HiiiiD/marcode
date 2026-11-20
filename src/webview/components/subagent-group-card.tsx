@@ -4,6 +4,7 @@ import {
 } from '@/components/ui/trace';
 import { ProviderStack } from './provider-stack';
 import { memberState, SubagentCard } from './subagent-card';
+import { WorkerChip, workerState, type WorkerState } from './worker-controls';
 import { TranscriptItemShell } from './transcript-item-shell';
 import { subagentLabel, summarizeSubagent } from '../../client-core/subagent-window';
 import type { SessionId, TranscriptItem } from '../../protocol/messages';
@@ -31,9 +32,10 @@ export function SubagentGroupCard({ items, sessionId }: { items: ToolItem[]; ses
     };
   });
   const blockedCount = members.filter((m) => m.state === 'blocked').length;
-  const runningCount = members.filter((m) => m.state === 'running').length;
-  const failedCount = members.filter((m) => m.state === 'failed').length;
-  const expanded = open || (blockedCount > 0 && !manuallyCollapsed);
+  const states = items.map((item) => workerState(item, summarizeSubagent(item, now).blocked, now));
+  const count = (st: WorkerState) => states.filter((x) => x === st).length;
+  const attention = blockedCount > 0 || count('failed') > 0 || count('quiet') > 0;
+  const expanded = open || (attention && !manuallyCollapsed);
 
   return (
     <TranscriptItemShell role="subagent" label="Team" ts={items[0].ts}>
@@ -41,21 +43,19 @@ export function SubagentGroupCard({ items, sessionId }: { items: ToolItem[]; ses
         open={expanded}
         onOpenChange={(next) => {
           setOpen(next);
-          if (!next && blockedCount > 0) { setManuallyCollapsed(true); }
+          if (!next && attention) { setManuallyCollapsed(true); }
         }}
       >
         <TraceCollapsibleTrigger className="w-full flex-none">
           <ProviderStack members={members} />
           <span className="truncate font-medium">{items.length} workers</span>
-          <span className="shrink-0 text-muted-foreground">
-            {runningCount > 0 ? `${runningCount} running` : failedCount > 0 ? `${failedCount} failed` : 'done'}
-          </span>
           <span className="sr-only">{blockedCount > 0 ? 'needs you' : ''}</span>
-          {blockedCount > 0 && (
-            <span className="ml-auto shrink-0 rounded-full border border-primary/40 bg-primary/10 px-1.5 py-0.5 font-medium">
-              {blockedCount} need{blockedCount === 1 ? 's' : ''} you
-            </span>
-          )}
+          <span className="flex min-w-0 shrink-0 items-center gap-1">
+            {(['needs-you', 'failed', 'quiet', 'running', 'done'] as const).map((st) => {
+              const n = count(st);
+              return n > 0 ? <span key={st} className="flex items-center gap-1"><WorkerChip state={st} />{n > 1 && <span className="text-muted-foreground tabular-nums">×{n}</span>}</span> : null;
+            })}
+          </span>
         </TraceCollapsibleTrigger>
         <TraceCollapsibleContent className="py-1">
           <div className="flex flex-col gap-1">

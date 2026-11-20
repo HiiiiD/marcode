@@ -2,6 +2,7 @@ import * as assert from 'assert';
 import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { SubagentCard } from '@/components/subagent-card';
+import { SubagentGroupCard } from '@/components/subagent-group-card';
 import { StoreProvider } from '@/store';
 import { posted, renderWithStore, resetHost } from './harness';
 import type { TranscriptItem } from '../../protocol/messages';
@@ -164,33 +165,38 @@ suite('SubagentCard hosted child', () => {
   const hosted = (sessionId?: string) => subagent([], {
     tool: { kind: 'subagent', label: 'Subagent', action: 'spawn', agent: 'claude-ab12', ...(sessionId ? { childSessionId: sessionId } : {}) },
   });
+  /** A worker that started just now: not yet quiet, so its card stays collapsed until opened. */
+  const live = (id: string): ToolItem => ({ ...hosted(id), ts: Date.now() }) as ToolItem;
 
   test('a hosted subagent offers to open it as its own session', async () => {
-    renderWithStore(<SubagentCard item={hosted('s-child')} sessionId="s1" />);
+    renderWithStore(<SubagentCard item={live('s-child')} sessionId="s1" />);
     await userEvent.click(screen.getByRole('button', { expanded: false }));
-    await userEvent.click(screen.getByRole('button', { name: /open as session/i }));
+    screen.getByRole('button', { name: 'More worker actions' }).focus();
+    await userEvent.keyboard('{Enter}');
+    await userEvent.click(await screen.findByRole('menuitem', { name: /open as session/i }));
     assert.deepStrictEqual(posted().filter((m) => m.t === 'promote-subagent'), [{ t: 'promote-subagent', id: 's-child' }]);
   });
 
   test('a running hosted worker can be stopped from its card', async () => {
-    renderWithStore(<SubagentCard item={hosted('s-child')} sessionId="s1" />);
+    renderWithStore(<SubagentCard item={live('s-child')} sessionId="s1" />);
     await userEvent.click(screen.getByRole('button', { expanded: false }));
     await userEvent.click(screen.getByRole('button', { name: 'Stop this worker' }));
     assert.deepStrictEqual(posted().filter((m) => m.t === 'interrupt'), [{ t: 'interrupt', id: 's-child' }]);
   });
 
   test('a failed hosted worker says why, in the card and on its collapsed row', async () => {
-    const item = { ...hosted('s-child'), state: 'error', output: { kind: 'text', text: 'Agent has ended its turn before returning a response' } } as ToolItem;
+    const item = { ...live('s-child'), state: 'error', output: { kind: 'text', text: 'Agent has ended its turn before returning a response' } } as ToolItem;
     renderWithStore(<SubagentCard item={item} sessionId="s1" />);
-    assert.strictEqual(screen.getByRole('button', { expanded: false }).textContent?.includes('failed'), true);
-    await userEvent.click(screen.getByRole('button', { expanded: false }));
+    // It opens itself: the reason is not behind a click.
+    assert.strictEqual(screen.getByRole('button', { expanded: true }).textContent?.includes('Failed'), true);
     assert.ok(screen.getByText('Agent has ended its turn before returning a response'));
     assert.strictEqual(screen.queryByRole('button', { name: 'Stop this worker' }) === null, true);
   });
 
   test('a message typed into a hosted worker card goes to that worker session', async () => {
-    renderWithStore(<SubagentCard item={hosted('s-child')} sessionId="s1" />);
+    renderWithStore(<SubagentCard item={live('s-child')} sessionId="s1" />);
     await userEvent.click(screen.getByRole('button', { expanded: false }));
+    await userEvent.click(screen.getByRole('button', { name: 'Message' }));
     await userEvent.type(screen.getByRole('textbox', { name: /^Message / }), 'use the other API{Enter}');
     assert.deepStrictEqual(posted().filter((m) => m.t === 'send'), [{ t: 'send', id: 's-child', text: 'use the other API' }]);
     assert.ok(screen.getByText('use the other API'));
@@ -207,5 +213,26 @@ suite('SubagentCard hosted child', () => {
     renderWithStore(<SubagentCard item={hosted()} sessionId="s1" />);
     await userEvent.click(screen.getByRole('button', { expanded: false }));
     assert.strictEqual(screen.queryAllByRole('button', { name: /open as session/i }).length, 0);
+  });
+});
+
+suite('SubagentGroupCard', () => {
+  setup(() => { resetHost(); });
+
+  const worker = (id: string, over: Partial<ToolItem>): ToolItem => ({
+    ...subagent([], { id, tool: { kind: 'subagent', label: 'Subagent', action: 'spawn', agent: id, childSessionId: `c-${id}`, provider: 'claude' } }),
+    ...over,
+  }) as ToolItem;
+
+  test('the collapsed team says how many are failing, done and running, and opens on trouble', () => {
+    const items = [
+      worker('a', { state: 'running', ts: Date.now() }),
+      worker('b', { state: 'error', output: { kind: 'text', text: 'boom' } }),
+      worker('c', { state: 'ok' }),
+    ];
+    renderWithStore(<SubagentGroupCard items={items} sessionId="s1" />);
+
+    const row = screen.getAllByRole('button', { expanded: true })[0];
+    assert.strictEqual(['Running', 'Failed', 'Done'].every((w) => row.textContent?.includes(w)), true);
   });
 });
