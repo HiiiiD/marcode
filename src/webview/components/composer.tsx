@@ -36,7 +36,7 @@ import { ContextRing } from "./context-ring";
 import { McpDialog } from "./mcp/mcp-dialog";
 import { AttachmentChip, AttachmentChips } from "./attachment-chips";
 import { EditorContextToggle } from "./editor-context-toggle";
-import { InvocableMenu } from "./invocable-menu";
+import { InvocableMenu, groupInvocables } from "./invocable-menu";
 import { ModeMenu } from "./mode-menu";
 import { RefMenu } from "./ref-menu";
 import { SessionCreateDialog } from "./session-create-dialog";
@@ -142,7 +142,7 @@ export function Composer({
    */
   const query = menuQuery(text);
   const view = query !== undefined
-    ? menuView(entries, query)
+    ? (() => { const v = menuView(entries, query); return { ...v, rows: groupInvocables(v.rows) }; })()
     : { rows: [], overflow: 0 };
   // Session-scoped for the same reason as bypassReasonId above: one Composer
   // renders per pane, and `aria-activedescendant` resolves ids document-wide.
@@ -602,18 +602,8 @@ export function Composer({
           aria-expanded={menu.open || refMenu.open}
           aria-activedescendant={menu.activeOptionId ?? refMenu.activeOptionId}
         />
-        {/*
-          flex-wrap: at pane widths around 300px the mode trigger, the model
-          trigger and one or two buttons cannot share a single row with any
-          breathing room. Wrapping lets settings fall to a second line rather
-          than shrinking the triggers (their labels — "Auto-edit", a model
-          name — are already tight) or hiding overflow behind a horizontal
-          scrollbar a narrow split-pane user is unlikely to notice. Each
-          wrapped line keeps its own `ml-auto`
-          grouping, so the action button still lands at the right edge of
-          whichever line it wraps to.
-        */}
-        <InputGroupAddon align="block-end" className="flex-wrap">
+        {/* One row at every width: the model chip is the only thing that shrinks (min-w-0 + truncate), the mode chip drops its label by container query. */}
+        <InputGroupAddon align="block-end" className="flex-nowrap">
           <Button
             variant="ghost"
             size="icon-sm"

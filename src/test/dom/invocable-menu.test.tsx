@@ -71,12 +71,12 @@ suite("invocable menu", () => {
     const list = screen.getByRole("listbox");
     const activeId = list.getAttribute("aria-activedescendant");
     assert.strictEqual(
-      document.getElementById(activeId ?? "")?.textContent?.includes("superpowers:writing-plans"),
+      document.getElementById(activeId ?? "")?.textContent?.includes("loop"),
       true,
     );
 
     await userEvent.keyboard("{Enter}");
-    assert.strictEqual(box.value, "/superpowers:writing-plans ");
+    assert.strictEqual(box.value, "/loop ");
   });
 
   test("Escape closes the menu and leaves the typed text alone", async () => {
@@ -140,11 +140,11 @@ suite("invocable menu", () => {
 
     await userEvent.click(screen.getByLabelText("Skills and commands"));
 
-    // + the panel's own commands, appended after the provider's entries.
+    // Commands group first: provider commands, then the panel's own, then other sources.
     const texts = screen.getAllByRole("option").map((o) => o.textContent ?? "");
     assert.strictEqual(texts.length, ENTRIES.length + PANEL_COMMAND_COUNT);
     assert.deepStrictEqual(
-      texts.slice(ENTRIES.length).map((t) => ["mcp", "side", "btw"].find((n) => t.replace(/^\//, "").startsWith(n))),
+      texts.slice(2, 2 + PANEL_COMMAND_COUNT).map((t) => ["mcp", "side", "btw"].find((n) => t.replace(/^\//, "").startsWith(n))),
       ["mcp", "side", "btw"],
     );
   });
@@ -170,7 +170,7 @@ suite("invocable menu", () => {
 
     const second = box.getAttribute("aria-activedescendant");
     assert.notStrictEqual(second, first);
-    assert.ok(document.getElementById(second ?? "")?.textContent?.includes("superpowers:writing-plans"));
+    assert.ok(document.getElementById(second ?? "")?.textContent?.includes("loop"));
   });
 
   /**
@@ -187,7 +187,7 @@ suite("invocable menu", () => {
 
     assert.strictEqual(document.activeElement, box, "focus must return to the message box");
     await userEvent.keyboard("{ArrowDown}{Enter}");
-    assert.strictEqual(box.value, "/superpowers:writing-plans ");
+    assert.strictEqual(box.value, "/loop ");
   });
 
   test("typing after the control opens it narrows rather than closing", async () => {
@@ -320,8 +320,8 @@ suite("invocable menu", () => {
 
     const options = screen.getAllByRole("option");
     assert.strictEqual(options.length, 2);
-    assert.ok(options[0].textContent?.includes("User review"));
-    assert.ok(options[1].textContent?.includes("Plugin review"));
+    assert.ok(options[0].textContent?.includes("Plugin review"));
+    assert.ok(options[1].textContent?.includes("User review"));
 
     const calls: Element[] = [];
     const original = Element.prototype.scrollIntoView;
@@ -370,5 +370,20 @@ suite("invocable menu", () => {
       "a mousedown on the overflow line must have its default prevented, or it would blur the textarea and close the menu",
     );
     assert.ok(screen.getByRole("listbox"), "the menu must still be open");
+  });
+});
+
+suite("invocable menu grouping", () => {
+  test("each source header appears once and arrow order follows the visual order", async () => {
+    renderWithStore(<Composer pane={pane(ENTRIES)} model={NO_EFFORT} models={[]} />);
+    const box = screen.getByLabelText("Message");
+
+    await userEvent.type(box, "/");
+
+    const listbox = screen.getByRole("listbox");
+    const headers = Array.from(listbox.querySelectorAll("p")).map((p) => p.textContent);
+    assert.deepStrictEqual(headers, ["Commands", "superpowers"]);
+    const names = screen.getAllByRole("option").map((o) => o.getAttribute("title"));
+    assert.strictEqual(names[names.length - 1], "superpowers:writing-plans");
   });
 });

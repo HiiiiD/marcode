@@ -14,8 +14,8 @@ export function useScrollCue() {
 }
 
 export const menuListClass = (more: boolean) => cn(
-  'max-h-44 w-full overflow-y-auto overscroll-contain',
-  more && '[mask-image:linear-gradient(to_bottom,black_calc(100%-20px),transparent)]',
+  'max-h-44 w-full scroll-pb-5 overflow-y-auto overscroll-contain',
+  more && '[mask-image:linear-gradient(to_bottom,black_calc(100%-16px),transparent)]',
 );
 
 export function MenuGroupLabel({ children }: { children: ReactNode }) {

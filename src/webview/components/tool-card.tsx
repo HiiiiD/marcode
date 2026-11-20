@@ -72,7 +72,7 @@ export function ToolCard({
     // interactive-inside-interactive — the same trap the roster row's own
     // actions trigger sits beside its checkbox item to avoid, not inside it.
     <TraceCollapsible bare open={open} onOpenChange={setOpen} className="group/item my-0">
-      <div className="flex items-center">
+      <div className="@container flex items-center">
         <TraceCollapsibleTrigger className="h-7 px-0 text-xs text-muted-foreground hover:bg-transparent hover:text-foreground [&>[data-slot=trace-icon]:last-child]:opacity-40 group-hover/item:[&>[data-slot=trace-icon]:last-child]:opacity-100 focus-visible:[&>[data-slot=trace-icon]:last-child]:opacity-100 aria-expanded:[&>[data-slot=trace-icon]:last-child]:opacity-100">
           <Glyph
             aria-hidden
@@ -91,7 +91,7 @@ export function ToolCard({
               {server}
             </span>
           )}
-          <span className="min-w-[5rem] shrink-0 text-muted-foreground">{header.verb}</span>
+          <span className="@md:min-w-[5rem] shrink-0 text-muted-foreground">{header.verb}</span>
           {header.primary && (
             <span
               // Consolas at 12px reads a size smaller than the 12px sans beside it (the name, the reasoning preview), so monospace targets are set at 13px to match.

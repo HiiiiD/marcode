@@ -17,6 +17,19 @@ import type { Invocable } from '../../protocol/messages';
  * carries `aria-activedescendant` — ARIA only honours that attribute on the
  * focused element — so every row is a plain `div`, not a tab stop.
  */
+const groupOf = (e: Invocable) => e.origin ?? 'Commands';
+
+/** One header per source: commands first, then the rest alphabetically. Stable inside a group, so relevance order survives. */
+export function groupInvocables(rows: Invocable[]): Invocable[] {
+  const rank = (e: Invocable) => (groupOf(e) === 'Commands' ? 0 : 1);
+  return rows
+    .map((row, i) => ({ row, i }))
+    .sort((a, b) => rank(a.row) - rank(b.row)
+      || (rank(a.row) === 0 ? 0 : groupOf(a.row).localeCompare(groupOf(b.row)))
+      || a.i - b.i)
+    .map((x) => x.row);
+}
+
 export function InvocableMenu({ rows, overflow, activeIndex, listId, onPick }: {
   rows: Invocable[];
   overflow: number;
@@ -72,8 +85,8 @@ export function InvocableMenu({ rows, overflow, activeIndex, listId, onPick }: {
           </div>
         )}
         {rows.map((entry, i) => {
-          const group = entry.origin ?? 'Commands';
-          const heading = grouped && (i === 0 || (rows[i - 1].origin ?? 'Commands') !== group);
+          const group = groupOf(entry);
+          const heading = grouped && (i === 0 || groupOf(rows[i - 1]) !== group);
           return (
             // Positional key: names are never deduped across the host/webview seam.
             <Fragment key={`${i}-${entry.name}`}>
