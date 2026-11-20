@@ -209,6 +209,18 @@ suite('SubagentCard hosted child', () => {
     assert.strictEqual(screen.queryAllByRole('textbox').length, 0);
   });
 
+  test('a hosted worker waiting on a question reads as needing you and says what it asks', () => {
+    const asking = {
+      id: 'q1', ts: Date.now(), role: 'question', requestId: 'r1', blocking: true, state: 'pending',
+      questions: [{ header: 'Scope', question: 'Which module first?', options: [] }],
+    } as unknown as TranscriptItem;
+    const item = { ...live('s-child'), children: [asking] } as ToolItem;
+    renderWithStore(<SubagentCard item={item} sessionId="s1" />);
+
+    assert.ok(screen.getByText('Needs you'));
+    assert.ok(screen.getByText(/Which module first\?/));
+  });
+
   test('a vendor subagent has nothing to promote', async () => {
     renderWithStore(<SubagentCard item={hosted()} sessionId="s1" />);
     await userEvent.click(screen.getByRole('button', { expanded: false }));

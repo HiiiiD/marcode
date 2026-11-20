@@ -55,10 +55,10 @@ export function ProviderMark({ providerId }: { providerId: string | undefined })
 }
 
 const BADGE: Partial<Record<MemberState, string>> = {
-  running: 'bg-primary/70 motion-safe:animate-pulse',
+  running: 'bg-muted-foreground motion-safe:animate-pulse',
   quiet: 'bg-attention motion-safe:animate-pulse',
   done: 'bg-git-added',
-  blocked: 'bg-primary',
+  blocked: 'bg-primary motion-safe:animate-pulse',
   failed: 'bg-destructive',
 };
 

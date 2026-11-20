@@ -85,6 +85,11 @@ suite('subagent window', () => {
     assert.strictEqual(summarizeSubagent(item as never, 2).blocked, true);
   });
 
+  test('a pending question child also marks the subagent blocked', () => {
+    const item = parent([question({ state: 'pending' })]);
+    assert.strictEqual(summarizeSubagent(item as never, 2).blocked, true);
+  });
+
   test('a settled permission child does not mark it blocked', () => {
     const item = parent([{
       id: 'p1', ts: 2, role: 'permission', requestId: 'r1',

@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { AlertCircleIcon, ExternalLinkIcon, MessageSquareIcon, MoreHorizontalIcon, PanelTopOpenIcon, SendIcon, SquareIcon } from "lucide-react";
 import { formatElapsed } from "../../client-core/subagent-window";
+import { requestTitle } from "../lib/permission-copy";
 import type { SessionId, TranscriptItem } from "../../protocol/messages";
 import { useStore } from "../store";
 
@@ -51,6 +52,18 @@ function statusWords(state: WorkerState, quietMs: number): string {
   }
 }
 
+/** What a blocked worker is waiting for you to decide, in the words its own prompt uses. */
+function waitingOn(item: ToolItem): string | undefined {
+  for (const child of item.children ?? []) {
+    if (child.role === "permission" && child.state === "pending") {
+      const label = "label" in child.tool && typeof child.tool.label === "string" ? child.tool.label : "this";
+      return requestTitle(child.tool, label, false);
+    }
+    if (child.role === "question" && child.state === "pending") { return child.questions[0]?.question ?? "A question for you"; }
+  }
+  return undefined;
+}
+
 /** What a hosted worker offers: stop it, message it, and the two ways to look closer. Why it failed, or what it returned, sits above. */
 export function WorkerBar({ item, hostedId, state, quietMs, messaging, onToggleMessage, onOpenTranscript }: {
   item: ToolItem; hostedId: SessionId; state: WorkerState; quietMs: number; messaging: boolean; onToggleMessage: () => void; onOpenTranscript: () => void;
@@ -64,6 +77,9 @@ export function WorkerBar({ item, hostedId, state, quietMs, messaging, onToggleM
   return (
     <div className="flex flex-col gap-1.5 pb-1">
       <p className={cn("text-xs font-medium", STATUS_TONE[state])}>{statusWords(state, quietMs)}</p>
+      {state === "needs-you" && (
+        <p className="text-xs text-muted-foreground">{waitingOn(item) ?? "Waiting for you"}. Answer it in the prompt above the composer.</p>
+      )}
       {failed && (
         <p role="alert" className="flex gap-2 rounded-md bg-destructive/10 px-2.5 py-2 text-xs wrap-break-word">
           <AlertCircleIcon aria-hidden className="mt-px size-3.5 shrink-0 text-destructive" />
