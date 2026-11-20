@@ -134,7 +134,7 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
         // sitting in the toolbar.
         <InputGroup
           className={cn(
-            "h-5 min-w-0 gap-1 truncate border-transparent bg-transparent px-0 dark:bg-transparent",
+            "h-5 w-full min-w-0 max-w-64 gap-1 truncate border-transparent bg-transparent px-0 shadow-none focus-within:border-border focus-within:ring-1 focus-within:ring-ring/30 dark:bg-transparent",
             "hover:border-border",
           )}
         >

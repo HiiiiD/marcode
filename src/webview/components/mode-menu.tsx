@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuRadioGroup,
@@ -49,13 +50,6 @@ export function ModeMenu({
    * told from two sides of the wire.
    */
   const hasStarted = pane.items.length > 0;
-  // Session-scoped, not a bare literal: one ModeMenu renders per pane, so a
-  // fixed id would collide across panes — `getElementById`, which is what
-  // `aria-describedby` resolves against, returns only the first match, and
-  // every other pane's disabled bypass option would describe itself using
-  // pane one's reason text.
-  const bypassReasonId = `bypass-reason-${pane.summary.id}`;
-
   const effort = model?.effort;
   /**
    * The session's level, but only if this model's scale actually has it:
@@ -111,35 +105,26 @@ export function ModeMenu({
                 key={m.value}
                 value={m.value}
                 disabled={disableBypass}
-                // Disabled-with-a-reason, not a silently-absent option — a
-                // user who used bypass earlier in this same session should
-                // be able to tell why it is greyed out now rather than
-                // wonder if it vanished. `aria-describedby` pointing at
-                // real, rendered text rather than a `title`: a title on a
-                // disabled control is reachable by neither keyboard focus
-                // nor most screen readers, since disabled elements are
-                // pulled out of both.
-                aria-describedby={disableBypass ? bypassReasonId : undefined}
-                className="items-start gap-2 py-1.5"
+                className="items-start gap-2 py-1"
               >
                 <m.icon className="mt-0.5 text-muted-foreground" />
-                <span className="flex min-w-0 flex-col gap-0.5">
+                <span className="flex min-w-0 flex-col">
                   <span className="font-medium">{m.label}</span>
-                  <span className="text-xs leading-snug text-muted-foreground">{m.description}</span>
+                  <span className="text-xs leading-snug text-muted-foreground">
+                    {disableBypass ? "Only before the first message" : m.description}
+                  </span>
                 </span>
               </DropdownMenuRadioItem>
             );
           })}
         </DropdownMenuRadioGroup>
-        {hasStarted && (
-          <p id={bypassReasonId} className="px-1.5 py-1 text-[0.65rem] text-muted-foreground">
-            Bypass can only be chosen before the first message is sent.
-          </p>
-        )}
         {effort && level && effort.levels.length > 0 && (
           <>
             <DropdownMenuSeparator />
+            <DropdownMenuGroup>
+            <DropdownMenuLabel>Effort</DropdownMenuLabel>
             <EffortSlider
+              labelled={false}
               levels={effort.levels}
               value={level}
               onChange={(next) => post({ t: "set-effort", id: pane.summary.id, effort: next })}
@@ -148,9 +133,10 @@ export function ModeMenu({
               // keys, leaves the menu open so the result is visible while it
               // changes.
               render={(props) => (
-                <DropdownMenuItem closeOnClick={false} className="gap-3 py-1.5" {...props} />
+                <DropdownMenuItem closeOnClick={false} className="gap-3 py-1" {...props} />
               )}
             />
+            </DropdownMenuGroup>
           </>
         )}
       </DropdownMenuContent>

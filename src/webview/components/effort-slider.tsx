@@ -27,12 +27,15 @@ export function EffortSlider({
   value,
   onChange,
   render,
+  labelled = true,
 }: {
   levels: EffortLevel[];
   value: EffortLevel;
   onChange: (level: EffortLevel) => void;
   /** The element the row renders into. See `EffortRowProps`. */
   render: (props: EffortRowProps) => ReactNode;
+  /** False when the host menu already shows an "Effort" heading: the level is then named on the left instead. */
+  labelled?: boolean;
 }) {
   const track = useRef<HTMLSpanElement | null>(null);
   /**
@@ -73,6 +76,22 @@ export function EffortSlider({
     }
   };
 
+  // Every level stacked in ONE grid cell, the inactive ones merely invisible: the box is as wide as
+  // the widest level name, so the dots never shift while one is being dragged.
+  const readout = (
+    <span className="grid justify-items-start">
+      {levels.map((level) => (
+        <span
+          key={level}
+          aria-hidden={level !== value}
+          className={cn("col-start-1 row-start-1 text-xs", labelled ? "text-muted-foreground" : "text-foreground", level !== value && "invisible")}
+        >
+          {level}
+        </span>
+      ))}
+    </span>
+  );
+
   return render({
     // The accessible name carries the value because the host element is
     // never a real `role="slider"` — a control that announces "Effort" alone
@@ -100,12 +119,12 @@ export function EffortSlider({
     },
     children: (
       <>
-        <span>Effort</span>
+        {labelled ? <span>Effort</span> : readout}
         <span
           ref={track}
           // py-2 for the hit area, not for the look: the dots themselves are
-          // 8px, which is a target no one can hit in a sidebar.
-          className="ml-auto flex cursor-pointer items-center gap-1.5 py-2"
+          // small, which is a target no one can hit in a sidebar.
+          className="ml-auto flex cursor-pointer items-center gap-2 py-2"
           onPointerDown={(e) => {
             dragBox.current = e.currentTarget.getBoundingClientRect();
             e.currentTarget.setPointerCapture(e.pointerId);
@@ -133,41 +152,14 @@ export function EffortSlider({
             <span
               key={level}
               className={cn(
-                "size-2 rounded-full transition-colors",
+                "size-2.5 rounded-full transition-colors",
                 i <= active ? "bg-foreground" : "bg-foreground/20",
                 i === active && "ring-2 ring-foreground/30",
               )}
             />
           ))}
         </span>
-        {/*
-          Every level stacked in ONE grid cell, with the inactive ones merely
-          invisible: the box is then exactly as wide as this model's widest
-          name, measured by the browser in the real font. It has to be
-          reserved rather than fitted — the readout follows an `ml-auto`
-          track, so a value that renders wider than the last one drags the
-          dots leftward out from under the pointer that is setting them, which
-          is why high → medium jumped.
-
-          Reserved by measurement, not by arithmetic: `ch` is the advance of
-          "0", so `6ch` is not the width of "medium" in a proportional face,
-          and the levels come from the provider's catalog row anyway — a model
-          can ship any names, in any number, at any length.
-        */}
-        <span className="grid justify-items-end">
-          {levels.map((level) => (
-            <span
-              key={level}
-              aria-hidden={level !== value}
-              className={cn(
-                "col-start-1 row-start-1 text-xs text-muted-foreground",
-                level !== value && "invisible",
-              )}
-            >
-              {level}
-            </span>
-          ))}
-        </span>
+        {labelled && readout}
       </>
     ),
   });

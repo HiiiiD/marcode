@@ -6,6 +6,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { NestedMessagesContext } from './nested-messages-context';
 import { SubagentGroupCard } from './subagent-group-card';
+import { EmptyPane } from './empty-pane';
 import { TranscriptItemView } from './transcript-item';
 import type { PaneState } from '../reducer';
 import { isLivePrompt } from '../lib/pending-prompts';
@@ -45,7 +46,8 @@ export function Transcript({
     // descendant — can call `useMessageScroller()` to reveal an item in this
     // transcript. Nothing else about the scroller moved.
     <NestedMessagesContext value={nested.byChild}>
-      <MessageScroller className="h-full">
+      <MessageScroller className="relative h-full">
+        {pane.items.length === 0 && !pane.hasMore && <EmptyPane pane={pane} />}
         <MessageScrollerViewport className="px-2" preserveScrollOnPrepend>
           {/* `justify-end` only bites while the content is shorter than the
               viewport (Content is `min-h-full`): a two-message session sits on

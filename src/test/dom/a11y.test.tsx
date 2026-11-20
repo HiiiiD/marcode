@@ -46,7 +46,7 @@ suite('accessibility sweep', () => {
     screen.getByLabelText('Resize between Session a and Session b');
   });
 
-  test('the disabled-bypass reason is available without hover', async () => {
+  test('the disabled-bypass reason is on the row, not in a tooltip', async () => {
     renderApp();
     hydrateOne();
     sendFromHost({
@@ -62,9 +62,10 @@ suite('accessibility sweep', () => {
 
     await userEvent.click(screen.getByLabelText('Permission mode'));
     const bypass = await screen.findByRole('menuitemradio', { name: /bypass/i });
-    assert.ok(
-      bypass.getAttribute('aria-describedby'),
-      'a title on a disabled option is not reliably announced',
+    assert.strictEqual(
+      /Only before the first message/.test(bypass.textContent ?? ''),
+      true,
+      'the reason is row text, so it is announced with the option',
     );
   });
 
