@@ -16,11 +16,13 @@ export function ChildrenList({ sessionId }: { sessionId: SessionId }) {
   const summary = state.byId[sessionId]?.summary;
   const rows = childrenRows(summary?.children);
   const parent = summary?.parentId ? state.sessions.find((s) => s.id === summary.parentId) : undefined;
-  if (!summary || (rows.length === 0 && !summary.parentId)) { return null; }
+  // A side chat names where it came from in its own bar, so it is not said twice.
+  const showParent = Boolean(summary?.parentId) && summary?.kind !== "side";
+  if (!summary || (rows.length === 0 && !showParent)) { return null; }
 
   return (
     <div className="border-b border-border text-xs">
-      {summary.parentId && (parent ? (
+      {showParent && (parent ? (
         <Button
           variant="link"
           size="xs"

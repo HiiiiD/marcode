@@ -1,6 +1,5 @@
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { XIcon } from "lucide-react";
+import { GitBranchIcon, XIcon } from "lucide-react";
 import type { SessionId } from "../../protocol/messages";
 import { modeCanEdit } from "../../shared/side-chat-mode";
 import { useStore } from "../store";
@@ -12,22 +11,36 @@ export function SideChatBar({ sessionId }: { sessionId: SessionId }) {
   if (summary?.kind !== "side") { return null; }
   const canEdit = modeCanEdit(summary.permissionMode);
 
+  const parent = summary.parentId ? state.sessions.find((x) => x.id === summary.parentId) : undefined;
+
   return (
     <div
       role="group"
       aria-label="Side chat"
-      className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-border bg-muted/40 px-2 py-1 text-xs"
+      className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-border bg-muted/30 px-2 py-1.5 text-xs"
     >
+      <GitBranchIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
       <span className="font-medium">Side chat</span>
+      {parent && (
+        <Button
+          variant="link"
+          size="xs"
+          className="h-auto min-w-0 max-w-[40%] shrink justify-start truncate p-0 font-normal text-muted-foreground hover:text-foreground"
+          title={`Go to ${parent.title}`}
+          onClick={() => post({ t: "focus-session", id: parent.id })}
+        >
+          from {parent.title}
+        </Button>
+      )}
       {canEdit && (
-        <Badge variant="outline" role="status" className="border-destructive/60 text-destructive">
+        <span role="status" className="rounded-full bg-attention/15 px-2 py-0.5 font-medium text-attention">
           Can edit files
-        </Badge>
+        </span>
       )}
       <div className="ml-auto flex items-center gap-1">
         <Button
           size="xs"
-          variant="ghost"
+          variant="secondary"
           title="Queue this side chat for your next message in the main chat"
           onClick={() => post({ t: "merge-side-chat", id: sessionId })}
         >
