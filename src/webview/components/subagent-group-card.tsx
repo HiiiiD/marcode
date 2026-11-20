@@ -34,6 +34,7 @@ export function SubagentGroupCard({ items, sessionId }: { items: ToolItem[]; ses
   const blockedCount = members.filter((m) => m.state === 'blocked').length;
   const states = items.map((item) => workerState(item, summarizeSubagent(item, now).blocked, now));
   const count = (st: WorkerState) => states.filter((x) => x === st).length;
+  const healthy = count('running') + count('done');
   const attention = blockedCount > 0 || count('failed') > 0 || count('quiet') > 0;
   const expanded = open || (attention && !manuallyCollapsed);
 
@@ -48,13 +49,19 @@ export function SubagentGroupCard({ items, sessionId }: { items: ToolItem[]; ses
       >
         <TraceCollapsibleTrigger className="w-full flex-none">
           <ProviderStack members={members} />
-          <span className="truncate font-medium">{items.length} workers</span>
+          <span className="shrink-0 font-medium">{items.length} workers</span>
           <span className="sr-only">{blockedCount > 0 ? 'needs you' : ''}</span>
-          <span className="flex min-w-0 shrink-0 items-center gap-1">
-            {(['needs-you', 'failed', 'quiet', 'running', 'done'] as const).map((st) => {
+          <span className="flex min-w-0 items-center gap-1.5 overflow-hidden">
+            {/* Only what needs a look gets a chip; everything fine is one quiet count, so the row reads as "is anything wrong". */}
+            {(['needs-you', 'failed', 'quiet'] as const).map((st) => {
               const n = count(st);
-              return n > 0 ? <span key={st} className="flex items-center gap-1"><WorkerChip state={st} />{n > 1 && <span className="text-muted-foreground tabular-nums">×{n}</span>}</span> : null;
+              return n > 0 ? <span key={st} className="flex shrink-0 items-center gap-1"><WorkerChip state={st} />{n > 1 && <span className="text-muted-foreground tabular-nums">×{n}</span>}</span> : null;
             })}
+            <span className="truncate text-muted-foreground">
+              {attention
+                ? healthy > 0 ? `+${healthy} ok` : ''
+                : count('running') > 0 ? `${count('running')} running${count('done') > 0 ? ` · ${count('done')} done` : ''}` : 'done'}
+            </span>
           </span>
         </TraceCollapsibleTrigger>
         <TraceCollapsibleContent className="py-1">

@@ -224,7 +224,7 @@ suite('SubagentGroupCard', () => {
     ...over,
   }) as ToolItem;
 
-  test('the collapsed team says how many are failing, done and running, and opens on trouble', () => {
+  test('the collapsed team chips only what needs a look, counts the rest, and opens on trouble', () => {
     const items = [
       worker('a', { state: 'running', ts: Date.now() }),
       worker('b', { state: 'error', output: { kind: 'text', text: 'boom' } }),
@@ -233,6 +233,7 @@ suite('SubagentGroupCard', () => {
     renderWithStore(<SubagentGroupCard items={items} sessionId="s1" />);
 
     const row = screen.getAllByRole('button', { expanded: true })[0];
-    assert.strictEqual(['Running', 'Failed', 'Done'].every((w) => row.textContent?.includes(w)), true);
+    assert.strictEqual(['Failed', '+2 ok'].every((w) => row.textContent?.includes(w)), true);
+    assert.strictEqual(row.textContent?.includes('Running') || row.textContent?.includes('Done'), false);
   });
 });
