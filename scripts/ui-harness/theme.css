@@ -10,7 +10,7 @@ body { margin: 0; font-family: "Segoe UI", system-ui, sans-serif; font-size: 13p
   --vscode-textLink-foreground: #4daafc; --vscode-badge-background: #616161; --vscode-badge-foreground: #ffffff;
   --vscode-font-family: "Segoe UI", sans-serif; --vscode-editor-font-family: Consolas, "Courier New", monospace; --vscode-font-size: 13px; --vscode-editor-font-size: 14px;
   --vscode-gitDecoration-addedResourceForeground: #81b88b; --vscode-gitDecoration-deletedResourceForeground: #c74e39; --vscode-charts-green: #89d185;
-  --vscode-editorWarning-foreground: #cca700;
+  --vscode-editorWarning-foreground: #cca700; --vscode-charts-purple: #b180d7;
   color-scheme: dark;
 }
 .vscode-light {

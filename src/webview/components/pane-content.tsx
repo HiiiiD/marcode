@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { cn } from "@/lib/utils";
 import { MessageScrollerProvider } from "@/components/ui/message-scroller";
 import { findModel } from "../../shared/model-catalog";
 import type { SessionId } from "../../protocol/messages";
@@ -11,10 +12,10 @@ import { Composer } from "./composer";
 import { COMPACT_BELOW_WIDTH_PX, STRIP_BELOW_PX, STRIP_BELOW_WIDTH_PX, PaneDensityContext, type PaneDensity } from "./pane-density";
 import { PinnedShell } from "./pinned-shell";
 import { PinnedPrompts } from "./pinned-prompts";
+import { BranchPaneHeader, isBranchPane } from "./branch-pane-header";
 import { SessionHeader } from "./session-header";
 import { PaneRail } from "./pane-rail";
 import { WorkingRow } from "./working-row";
-import { SideChatBar } from "./side-chat-bar";
 import { SubagentDrillInContext } from "./subagent-drill-in-context";
 import { Transcript } from "./transcript";
 
@@ -84,7 +85,7 @@ export function PaneContent({ sessionId, accessibleTitle }: PaneContentProps) {
     <MessageScrollerProvider autoScroll defaultScrollPosition="end">
       <div
         ref={rootRef}
-        className="flex h-full flex-col"
+        className={cn("flex h-full flex-col", isBranchPane(paneState.summary.kind) && "relative before:pointer-events-none before:absolute before:inset-y-0 before:left-0 before:z-10 before:w-[3px] before:bg-branch/70")}
         // Esc-to-stop, anywhere focus sits in this pane — header, transcript
         // or composer — not just the composer box. An Escape a descendant
         // already used for its own purpose (closing a mention menu,
@@ -97,10 +98,9 @@ export function PaneContent({ sessionId, accessibleTitle }: PaneContentProps) {
           }
         }}
       >
-        {density === "rail" ? <PaneRail pane={paneState} /> : <SessionHeader pane={paneState} accessibleTitle={accessibleTitle} />}
+        {density === "rail" ? <PaneRail pane={paneState} /> : isBranchPane(paneState.summary.kind) ? <BranchPaneHeader pane={paneState} /> : <SessionHeader pane={paneState} accessibleTitle={accessibleTitle} />}
         {density !== "strip" && density !== "rail" && (<>
         <div className={answering ? "hidden" : "contents"}>
-        <SideChatBar sessionId={sessionId} />
         <ChildrenList sessionId={sessionId} />
         <SubagentDrillInContext.Provider
           value={(itemId) => post({ t: "open-fleet-subagent", sessionId, itemId })}
