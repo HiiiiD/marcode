@@ -164,12 +164,12 @@ function CreateForm({
                 aria-current={i === step ? "step" : undefined}
                 onClick={() => setStep(i)}
                 className={cn(
-                  "flex w-full min-w-0 flex-col gap-0.5 border-b-2 px-1 pt-1 pb-1.5 text-left text-xs outline-none",
-                  "focus-visible:ring-2 focus-visible:ring-ring",
-                  i === step ? "border-primary text-foreground" : "border-border text-muted-foreground hover:text-foreground",
+                  "flex w-full min-w-0 flex-col gap-0.5 border-b px-1 pt-1 pb-1.5 text-left text-xs outline-none",
+                  "focus-visible:ring-1 focus-visible:ring-ring",
+                  i === step ? "border-foreground text-foreground" : "border-border text-muted-foreground hover:text-foreground",
                 )}
               >
-                <span className="font-medium">{i + 1} {label}</span>
+                <span className={i === step ? "font-medium" : undefined}>{i + 1} {label}</span>
                 <span className="truncate text-[0.65rem] opacity-80">{summaries[i] || " "}</span>
               </button>
             </li>
@@ -195,11 +195,11 @@ function CreateForm({
         </div>
       </div>
 
-      <DialogFooter className="shrink-0 flex-row items-center justify-end">
-        <DialogClose render={<Button variant="outline" size="sm" className="mr-auto" />}>Cancel</DialogClose>
-        {/* Always rendered, only disabled at the ends, so no button ever changes place. */}
-        <Button variant="outline" size="sm" disabled={step === 0} onClick={() => setStep(step - 1)}>Back</Button>
-        <Button variant="outline" size="sm" disabled={step === STEPS.length - 1} onClick={() => setStep(step + 1)}>Next</Button>
+      <DialogFooter className="shrink-0 flex-row border-border items-center justify-end">
+        <DialogClose render={<Button variant="ghost" size="sm" className="mr-auto" />}>Cancel</DialogClose>
+        {/* Always rendered, only invisible at the ends, so no button ever changes place. */}
+        <Button variant="ghost" size="sm" className={cn(step === 0 && "invisible")} disabled={step === 0} onClick={() => setStep(step - 1)}>Back</Button>
+        <Button variant="secondary" size="sm" className={cn(step === STEPS.length - 1 && "invisible")} disabled={step === STEPS.length - 1} onClick={() => setStep(step + 1)}>Next</Button>
         <Button size="sm" disabled={!canCreate} onClick={create}>
           {busy ? (
             <>

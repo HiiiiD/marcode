@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { CheckIcon, LayoutGridIcon, XIcon } from 'lucide-react';
+import { LayoutGridIcon, XIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
@@ -13,6 +13,8 @@ import { LayoutThumb } from './layout-thumb';
 import { SavePresetDialog } from './layout-save-preset-dialog';
 import { useStore } from '../store';
 import type { LayoutNode, LayoutPreset } from '../../protocol/messages';
+
+const SHORT_NAMES: Record<string, string> = { 'asym-1-2': '1 + 2' };
 
 interface Pending { root: LayoutNode; titles: string[] }
 
@@ -41,7 +43,7 @@ export function LayoutMenu() {
       </PopoverTrigger>
       <PopoverContent side="bottom" align="start" initialFocus={false} className="flex w-80 flex-col gap-3 p-3 text-xs">
         <Section title="Layouts">
-          <div className="grid grid-cols-3 gap-1.5">
+          <div className="grid grid-cols-3 gap-1">
             {BUILTIN_PRESETS.map((preset) => (
               <PresetTile
                 key={preset.id}
@@ -61,22 +63,23 @@ export function LayoutMenu() {
             ))}
           </div>
         </Section>
-        <Section title="Custom grid">
+        <Section title="Custom grid" hint="Choose rows and columns">
           <LayoutSizePicker
             current={gridDims(state.layout.root) ?? null}
             onPick={(rows, cols) => request(gridLayout(rows, cols, openIds))}
           />
         </Section>
         <div className="flex items-center justify-between gap-2 border-t border-border pt-2">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={openIds.length < 2}
-            onClick={() => commit(rearrange(state.layout.root, { width: window.innerWidth, height: window.innerHeight }, MIN_PANE))}
-          >
-            Auto arrange
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => setSaveOpen(true)}>
+          {openIds.length >= 2 ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => commit(rearrange(state.layout.root, { width: window.innerWidth, height: window.innerHeight }, MIN_PANE))}
+            >
+              Auto arrange
+            </Button>
+          ) : <span />}
+          <Button variant="ghost" size="sm" onClick={() => setSaveOpen(true)}>
             Save as preset…
           </Button>
         </div>
@@ -91,10 +94,13 @@ export function LayoutMenu() {
   );
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+function Section({ title, hint, children }: { title: string; hint?: string; children: ReactNode }) {
   return (
     <section className="flex flex-col gap-1.5">
-      <h3 className="text-[0.6875rem] font-medium tracking-wide text-muted-foreground uppercase">{title}</h3>
+      <h3 className="flex items-baseline justify-between gap-2 text-xs font-medium text-muted-foreground">
+        {title}
+        {hint && <span className="truncate font-normal opacity-80">{hint}</span>}
+      </h3>
       {children}
     </section>
   );
@@ -111,14 +117,13 @@ function PresetTile({
         aria-pressed={active}
         onClick={onApply}
         className={cn(
-          'relative flex w-full flex-col items-center gap-1 rounded-md border px-1 pt-2 pb-1.5 text-muted-foreground outline-none transition-colors',
-          'hover:bg-accent hover:text-foreground focus-visible:ring-1 focus-visible:ring-foreground/30',
-          active ? 'border-primary bg-primary/10 text-foreground' : 'border-border',
+          'flex h-[4.25rem] w-full flex-col items-center justify-center gap-1.5 rounded-md px-1 text-muted-foreground outline-none transition-colors',
+          'hover:bg-accent/60 hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring',
+          active && 'bg-accent text-foreground',
         )}
       >
-        {active && <CheckIcon aria-hidden className="absolute top-1 left-1 size-3 text-primary" />}
         <LayoutThumb node={preset.root} />
-        <span className="line-clamp-2 w-full text-center text-[0.6875rem] leading-tight">{preset.name}</span>
+        <span className="w-full truncate text-center text-[0.6875rem] leading-tight">{SHORT_NAMES[preset.id] ?? preset.name}</span>
       </button>
       {onDelete && (
         <Button
