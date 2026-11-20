@@ -66,55 +66,59 @@ function waitingOn(item: ToolItem): string | undefined {
   return undefined;
 }
 
-/** What a hosted worker offers: stop it, message it, and the two ways to look closer. Why it failed, or what it returned, sits above. */
-export function WorkerBar({ item, hostedId, state, messaging, onToggleMessage, onOpenTranscript }: {
-  item: ToolItem; hostedId: SessionId; state: WorkerState; messaging: boolean; onToggleMessage: () => void; onOpenTranscript: () => void;
-}) {
-  const { post } = useStore();
-  const running = state === "running" || state === "quiet" || state === "needs-you";
-  const failed = state === "failed";
+/** Why a worker failed, or what it is waiting on you for: the only prose a worker card needs. */
+export function WorkerNotes({ item, state }: { item: ToolItem; state: WorkerState }) {
   const output = item.output?.kind === "text" ? item.output.text : undefined;
-  const reason = failed ? output ?? "The worker stopped before returning a result." : undefined;
-
+  const failed = state === "failed";
   return (
-    <div className="flex flex-col gap-1.5 pb-1">
-      {state === "needs-you" && (
-        <p className="text-xs text-muted-foreground">{endSentence(waitingOn(item) ?? "Waiting for you")} Answer it above the composer.</p>
-      )}
+    <>
       {failed && (
-        <p role="alert" className="flex gap-2 rounded-md bg-destructive/10 px-2.5 py-2 text-xs wrap-break-word">
+        <p role="alert" className="mb-1.5 flex gap-2 rounded-md bg-destructive/10 px-2.5 py-2 text-xs wrap-break-word">
           <AlertCircleIcon aria-hidden className="mt-px size-3.5 shrink-0 text-destructive" />
-          <span className="min-w-0">{reason}</span>
+          <span className="min-w-0">{output ?? "The worker stopped before returning a result."}</span>
         </p>
       )}
-      <div className="flex items-center gap-1">
-        {running && (
-          <Button variant="outline" size="xs" aria-label="Stop this worker" onClick={() => post({ t: "interrupt", id: hostedId })}>
-            <SquareIcon aria-hidden data-icon="inline-start" className="fill-current" />
-            Stop
-          </Button>
-        )}
-        <Button variant="ghost" size="xs" aria-pressed={messaging} onClick={onToggleMessage}>
-          <MessageSquareIcon aria-hidden data-icon="inline-start" />
-          {running ? "Message" : "Follow up"}
+      {state === "needs-you" && (
+        <p className="mb-1.5 text-xs text-muted-foreground">{endSentence(waitingOn(item) ?? "Waiting for you")} Answer it above the composer.</p>
+      )}
+    </>
+  );
+}
+
+/** The worker's few actions as icons on its own header line: Stop only while it runs, then Message (Follow up once it has settled) and the menu. */
+export function WorkerActions({ hostedId, state, messaging, onToggleMessage, onOpenTranscript }: {
+  hostedId: SessionId; state: WorkerState; messaging: boolean; onToggleMessage: () => void; onOpenTranscript: () => void;
+}) {
+  const { post } = useStore();
+  const running = state === "running" || state === "quiet";
+  const settled = state === "failed" || state === "done";
+  const quiet = "text-muted-foreground hover:text-foreground";
+  return (
+    <span className="flex shrink-0 items-center">
+      {running && (
+        <Button variant="ghost" size="icon-xs" className={quiet} aria-label="Stop this worker" title="Stop this worker" onClick={() => post({ t: "interrupt", id: hostedId })}>
+          <SquareIcon aria-hidden className="fill-current" />
         </Button>
-        <DropdownMenu>
-          <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" className="ml-auto text-muted-foreground" aria-label="More worker actions" />}>
-            <MoreHorizontalIcon aria-hidden />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-auto">
-            <DropdownMenuItem onClick={onOpenTranscript}>
-              <ExternalLinkIcon aria-hidden />
-              Open full transcript
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => post({ t: "promote-subagent", id: hostedId })}>
-              <PanelTopOpenIcon aria-hidden />
-              Open as session
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-    </div>
+      )}
+      <Button variant="ghost" size="icon-xs" className={cn(quiet, messaging && "text-foreground")} aria-pressed={messaging} aria-label={settled ? "Follow up" : "Message"} title={settled ? "Follow up with this worker" : "Message this worker"} onClick={onToggleMessage}>
+        <MessageSquareIcon aria-hidden />
+      </Button>
+      <DropdownMenu>
+        <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" className={quiet} aria-label="More worker actions" />}>
+          <MoreHorizontalIcon aria-hidden />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-auto">
+          <DropdownMenuItem onClick={onOpenTranscript}>
+            <ExternalLinkIcon aria-hidden />
+            Open full transcript
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => post({ t: "promote-subagent", id: hostedId })}>
+            <PanelTopOpenIcon aria-hidden />
+            Open as session
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </span>
   );
 }
 

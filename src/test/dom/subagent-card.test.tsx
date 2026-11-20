@@ -170,7 +170,6 @@ suite('SubagentCard hosted child', () => {
 
   test('a hosted subagent offers to open it as its own session', async () => {
     renderWithStore(<SubagentCard item={live('s-child')} sessionId="s1" />);
-    await userEvent.click(screen.getByRole('button', { expanded: false }));
     screen.getByRole('button', { name: 'More worker actions' }).focus();
     await userEvent.keyboard('{Enter}');
     await userEvent.click(await screen.findByRole('menuitem', { name: /open as session/i }));
@@ -179,7 +178,6 @@ suite('SubagentCard hosted child', () => {
 
   test('a running hosted worker can be stopped from its card', async () => {
     renderWithStore(<SubagentCard item={live('s-child')} sessionId="s1" />);
-    await userEvent.click(screen.getByRole('button', { expanded: false }));
     await userEvent.click(screen.getByRole('button', { name: 'Stop this worker' }));
     assert.deepStrictEqual(posted().filter((m) => m.t === 'interrupt'), [{ t: 'interrupt', id: 's-child' }]);
   });
@@ -195,7 +193,6 @@ suite('SubagentCard hosted child', () => {
 
   test('a message typed into a hosted worker card goes to that worker session', async () => {
     renderWithStore(<SubagentCard item={live('s-child')} sessionId="s1" />);
-    await userEvent.click(screen.getByRole('button', { expanded: false }));
     await userEvent.click(screen.getByRole('button', { name: 'Message' }));
     await userEvent.type(screen.getByRole('textbox', { name: /^Message / }), 'use the other API{Enter}');
     assert.deepStrictEqual(posted().filter((m) => m.t === 'send'), [{ t: 'send', id: 's-child', text: 'use the other API' }]);
@@ -219,6 +216,7 @@ suite('SubagentCard hosted child', () => {
 
     assert.ok(screen.getByText('Needs you'));
     assert.ok(screen.getByText(/Which module first\?/));
+    assert.strictEqual(screen.queryByRole('button', { name: 'Stop this worker' }) === null, true);
   });
 
   test('a vendor subagent has nothing to promote', async () => {

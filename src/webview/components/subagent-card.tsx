@@ -16,7 +16,7 @@ import {
 import { useStore } from '../store';
 import { useNestedMessages } from './nested-messages-context';
 import { WorkerMessageRow } from './worker-message-row';
-import { QUIET_AFTER_MS, quietFor, STATUS_TONE, statusWords, WorkerBar, workerState, WorkerMessageBox } from './worker-controls';
+import { QUIET_AFTER_MS, quietFor, STATUS_TONE, statusWords, WorkerActions, WorkerNotes, workerState, WorkerMessageBox } from './worker-controls';
 import { expandedDisplayName, findModel } from '../../shared/model-catalog';
 import { useOpenSubagentTranscript } from './subagent-drill-in-context';
 import type { SessionId, TranscriptItem } from '../../protocol/messages';
@@ -89,7 +89,8 @@ export function SubagentCard({
           if (!next && attention) { setManuallyCollapsed(true); }
         }}
       >
-        <TraceCollapsibleTrigger className="h-7 w-full flex-none px-0 text-xs hover:bg-transparent [&>[data-slot=trace-icon]:last-child]:opacity-40 group-hover/item:[&>[data-slot=trace-icon]:last-child]:opacity-100 focus-visible:[&>[data-slot=trace-icon]:last-child]:opacity-100 aria-expanded:[&>[data-slot=trace-icon]:last-child]:opacity-100">
+        <div className="flex items-center">
+        <TraceCollapsibleTrigger className="h-7 min-w-0 flex-1 px-0 text-xs hover:bg-transparent [&>[data-slot=trace-icon]:last-child]:opacity-40 group-hover/item:[&>[data-slot=trace-icon]:last-child]:opacity-100 focus-visible:[&>[data-slot=trace-icon]:last-child]:opacity-100 aria-expanded:[&>[data-slot=trace-icon]:last-child]:opacity-100">
           {hosted && item.tool.kind === 'subagent' && (
             <ProviderStack className="ml-1" members={[{
               providerId: item.tool.provider, name: subagentLabel(item), state: memberState(item, summary.blocked, now),
@@ -141,19 +142,20 @@ export function SubagentCard({
             </span>
           )}
         </TraceCollapsibleTrigger>
+          {hostedId && wstate && (
+            <WorkerActions
+              hostedId={hostedId}
+              state={wstate}
+              messaging={messaging}
+              onToggleMessage={() => { setMessaging((v) => !v); setOpen(true); }}
+              onOpenTranscript={() => openTranscript(item.id)}
+            />
+          )}
+        </div>
 
         <TraceCollapsibleContent className={cn('mt-0.5 mb-2 border-t-0 py-0', embedded ? 'ml-5' : 'ml-2 border-l border-border pl-3')}>
           <div>
-            {hostedId && wstate && (
-              <WorkerBar
-                item={item}
-                hostedId={hostedId}
-                state={wstate}
-                messaging={messaging}
-                onToggleMessage={() => setMessaging((v) => !v)}
-                onOpenTranscript={() => openTranscript(item.id)}
-              />
-            )}
+            {hostedId && wstate && <WorkerNotes item={item} state={wstate} />}
             {/*
               "Open full transcript" used to appear only once the inline
               window truncated something — but it doesn't just show more
