@@ -158,7 +158,6 @@ suite('TranscriptItemView subagent routing', () => {
     // on children alone made exactly this case look like a generic tool.
     renderWithStore(<TranscriptItemView item={spawned()} sessionId="a" />);
 
-    screen.getByText('Subagent');
     assert.ok(
       screen.getByRole('button', { expanded: false }).textContent?.includes('Explore'),
       'and it is named by the agent type it spawned',

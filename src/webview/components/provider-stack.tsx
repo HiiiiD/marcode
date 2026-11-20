@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils';
 import { useStore } from '../store';
 import { PROVIDER_FILLS, PROVIDER_LOGOS } from './provider-logos';
 
-export type MemberState = 'running' | 'blocked' | 'done' | 'failed';
+export type MemberState = 'running' | 'quiet' | 'blocked' | 'done' | 'failed';
 
 export interface StackMember {
   providerId: string | undefined;
@@ -55,7 +55,9 @@ export function ProviderMark({ providerId }: { providerId: string | undefined })
 }
 
 const BADGE: Partial<Record<MemberState, string>> = {
-  running: 'bg-muted-foreground motion-safe:animate-pulse',
+  running: 'bg-primary/70 motion-safe:animate-pulse',
+  quiet: 'bg-attention motion-safe:animate-pulse',
+  done: 'bg-git-added',
   blocked: 'bg-primary',
   failed: 'bg-destructive',
 };
@@ -71,8 +73,8 @@ export function ProviderAvatar({ member }: { member: StackMember }) {
 }
 
 /** Overlapping provider marks, the first three then `+N`; one member is a stack of one. */
-export function ProviderStack({ members, className }: { members: StackMember[]; className?: string }) {
-  const shown = members.slice(0, MAX_SHOWN);
+export function ProviderStack({ members, className, max = MAX_SHOWN }: { members: StackMember[]; className?: string; max?: number }) {
+  const shown = members.slice(0, max);
   const rest = members.length - shown.length;
   return (
     <AvatarGroup className={cn('shrink-0', className)}>

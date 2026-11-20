@@ -35,10 +35,8 @@ const FRAME: Record<TranscriptItemRole, string> = {
   // The reading surface: more air above and below than the rows of tool activity around it, so the answer stands out from the machinery.
   assistant: 'text-sm leading-relaxed text-foreground',
   tool: '',
-  // A subagent is a container of tool calls, not one call: a rule the eye can
-  // separate from `tool` while scanning, without introducing a colour that
-  // competes with `permission`/`error` (destructive).
-  subagent: 'border-l border-l-muted-foreground pl-2',
+  // Flat like the tool rows it sits among: a worker or a team is one more row of the work log, with no label, time or rule of its own.
+  subagent: '',
   permission: 'border-l border-l-destructive pl-2',
   // No frame of its own: a live question is a full bordered card carrying the
   // `attention` tone, and a gutter rule beside it would be the same signal
@@ -74,7 +72,7 @@ export function TranscriptItemShell({
   return (
     <div className={cn('group/item relative my-0', FRAME[role])}>
       {/* The agent's own prose carries no label: an uppercase name and time above every paragraph was chrome, not information. */}
-      {role !== 'assistant' && <div className="mb-0.5 flex items-baseline gap-2">
+      {role !== 'assistant' && role !== 'subagent' && <div className="mb-0.5 flex items-baseline gap-2">
         <span
           className={cn(
             'text-[0.65rem] font-medium tracking-wide uppercase',

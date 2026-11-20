@@ -4,7 +4,7 @@ import {
 } from '@/components/ui/trace';
 import { ProviderStack } from './provider-stack';
 import { memberState, SubagentCard } from './subagent-card';
-import { WorkerChip, workerState, type WorkerState } from './worker-controls';
+import { workerState, type WorkerState } from './worker-controls';
 import { TranscriptItemShell } from './transcript-item-shell';
 import { subagentLabel, summarizeSubagent } from '../../client-core/subagent-window';
 import type { SessionId, TranscriptItem } from '../../protocol/messages';
@@ -28,13 +28,12 @@ export function SubagentGroupCard({ items, sessionId }: { items: ToolItem[]; ses
     return {
       providerId: item.tool.kind === 'subagent' ? item.tool.provider : undefined,
       name: subagentLabel(item),
-      state: memberState(item, blocked),
+      state: memberState(item, blocked, now),
     };
   });
   const blockedCount = members.filter((m) => m.state === 'blocked').length;
   const states = items.map((item) => workerState(item, summarizeSubagent(item, now).blocked, now));
   const count = (st: WorkerState) => states.filter((x) => x === st).length;
-  const healthy = count('running') + count('done');
   const attention = blockedCount > 0 || count('failed') > 0 || count('quiet') > 0;
   const expanded = open || (attention && !manuallyCollapsed);
 
@@ -48,21 +47,9 @@ export function SubagentGroupCard({ items, sessionId }: { items: ToolItem[]; ses
         }}
       >
         <TraceCollapsibleTrigger className="w-full flex-none">
-          <ProviderStack members={members} />
+          <ProviderStack members={members} max={8} />
           <span className="shrink-0 font-medium">{items.length} workers</span>
           <span className="sr-only">{blockedCount > 0 ? 'needs you' : ''}</span>
-          <span className="flex min-w-0 items-center gap-1.5 overflow-hidden">
-            {/* Only what needs a look gets a chip; everything fine is one quiet count, so the row reads as "is anything wrong". */}
-            {(['needs-you', 'failed', 'quiet'] as const).map((st) => {
-              const n = count(st);
-              return n > 0 ? <span key={st} className="flex shrink-0 items-center gap-1"><WorkerChip state={st} />{n > 1 && <span className="text-muted-foreground tabular-nums">×{n}</span>}</span> : null;
-            })}
-            <span className="truncate text-muted-foreground">
-              {attention
-                ? healthy > 0 ? `+${healthy} ok` : ''
-                : count('running') > 0 ? `${count('running')} running${count('done') > 0 ? ` · ${count('done')} done` : ''}` : 'done'}
-            </span>
-          </span>
         </TraceCollapsibleTrigger>
         <TraceCollapsibleContent className="py-1">
           <div className="flex flex-col gap-1">

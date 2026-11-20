@@ -184,11 +184,11 @@ suite('SubagentCard hosted child', () => {
     assert.deepStrictEqual(posted().filter((m) => m.t === 'interrupt'), [{ t: 'interrupt', id: 's-child' }]);
   });
 
-  test('a failed hosted worker says why, in the card and on its collapsed row', async () => {
+  test('a failed hosted worker opens itself and says what happened and why', async () => {
     const item = { ...live('s-child'), state: 'error', output: { kind: 'text', text: 'Agent has ended its turn before returning a response' } } as ToolItem;
     renderWithStore(<SubagentCard item={item} sessionId="s1" />);
     // It opens itself: the reason is not behind a click.
-    assert.strictEqual(screen.getByRole('button', { expanded: true }).textContent?.includes('Failed'), true);
+    assert.ok(screen.getByText('Failed'));
     assert.ok(screen.getByText('Agent has ended its turn before returning a response'));
     assert.strictEqual(screen.queryByRole('button', { name: 'Stop this worker' }) === null, true);
   });
@@ -224,7 +224,7 @@ suite('SubagentGroupCard', () => {
     ...over,
   }) as ToolItem;
 
-  test('the collapsed team chips only what needs a look, counts the rest, and opens on trouble', () => {
+  test('the team row is names and coloured dots only, and it opens itself on trouble', () => {
     const items = [
       worker('a', { state: 'running', ts: Date.now() }),
       worker('b', { state: 'error', output: { kind: 'text', text: 'boom' } }),
@@ -233,7 +233,9 @@ suite('SubagentGroupCard', () => {
     renderWithStore(<SubagentGroupCard items={items} sessionId="s1" />);
 
     const row = screen.getAllByRole('button', { expanded: true })[0];
-    assert.strictEqual(['Failed', '+2 ok'].every((w) => row.textContent?.includes(w)), true);
-    assert.strictEqual(row.textContent?.includes('Running') || row.textContent?.includes('Done'), false);
+    assert.strictEqual(row.textContent?.includes('3 workers'), true);
+    assert.strictEqual(/Failed|Done|Running|Quiet/.test(row.textContent ?? ''), false);
+    assert.ok(screen.getAllByTitle('b · failed').length > 0);
+    assert.ok(screen.getAllByTitle('c · done').length > 0);
   });
 });

@@ -16,15 +16,16 @@ import {
 import { useStore } from '../store';
 import { useNestedMessages } from './nested-messages-context';
 import { WorkerMessageRow } from './worker-message-row';
-import { quietFor, WorkerBar, WorkerChip, workerState, WorkerMessageBox } from './worker-controls';
+import { QUIET_AFTER_MS, quietFor, WorkerBar, workerState, WorkerMessageBox } from './worker-controls';
 import { expandedDisplayName, findModel } from '../../shared/model-catalog';
 import { useOpenSubagentTranscript } from './subagent-drill-in-context';
 import type { SessionId, TranscriptItem } from '../../protocol/messages';
 
 type ToolItem = Extract<TranscriptItem, { role: 'tool' }>;
 
-export function memberState(item: ToolItem, blocked: boolean): MemberState {
+export function memberState(item: ToolItem, blocked: boolean, now: number = Date.now()): MemberState {
   if (blocked) { return 'blocked'; }
+  if (item.state === 'running' && quietFor(item, now) >= QUIET_AFTER_MS) { return 'quiet'; }
   return item.state === 'running' ? 'running' : item.state === 'ok' ? 'done' : 'failed';
 }
 
@@ -89,7 +90,7 @@ export function SubagentCard({
         <TraceCollapsibleTrigger className="w-full flex-none">
           {hosted && item.tool.kind === 'subagent' && (
             <ProviderStack members={[{
-              providerId: item.tool.provider, name: subagentLabel(item), state: memberState(item, summary.blocked),
+              providerId: item.tool.provider, name: subagentLabel(item), state: memberState(item, summary.blocked, now),
             }]} />
           )}
           <span className="truncate font-medium">{subagentLabel(item)}</span>
@@ -120,7 +121,6 @@ export function SubagentCard({
             accessible name at all.
           */}
           <span className="sr-only">{subagentStateLabel(item, summary.blocked)}</span>
-          {wstate && <WorkerChip state={wstate} quietMs={quietFor(item, now)} />}
           {summary.blocked && !wstate && (
             // The `attention` tone from status-badge.tsx, spelled the same
             // way: text plus a quiet fill, never colour alone. A subagent
@@ -139,6 +139,7 @@ export function SubagentCard({
                 item={item}
                 hostedId={hostedId}
                 state={wstate}
+                quietMs={quietFor(item, now)}
                 messaging={messaging}
                 onToggleMessage={() => setMessaging((v) => !v)}
                 onOpenTranscript={() => openTranscript(item.id)}

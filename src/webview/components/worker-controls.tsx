@@ -32,28 +32,28 @@ export function workerState(item: ToolItem, blocked: boolean, now: number): Work
   return item.state === "ok" ? "done" : "failed";
 }
 
-const CHIP: Record<WorkerState, string> = {
-  "needs-you": "bg-primary/15 text-primary",
-  quiet: "bg-attention/15 text-attention",
-  running: "bg-foreground/10 text-muted-foreground",
-  failed: "bg-destructive/15 text-destructive",
-  done: "bg-git-added/15 text-git-added",
+const STATUS_TONE: Record<WorkerState, string> = {
+  "needs-you": "text-primary",
+  quiet: "text-attention",
+  running: "text-muted-foreground",
+  failed: "text-destructive",
+  done: "text-git-added",
 };
 
-/** The one word that says how a worker is doing, the same in the team row and on its own card. */
-export function WorkerChip({ state, quietMs }: { state: WorkerState; quietMs?: number }) {
-  const label = state === "needs-you" ? "Needs you" : state === "quiet" ? (quietMs === undefined ? "Quiet" : `Quiet ${formatElapsed(quietMs)}`) : state === "running" ? "Running" : state === "failed" ? "Failed" : "Done";
-  return (
-    <span className={cn("inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[0.7rem] font-medium tabular-nums", CHIP[state])}>
-      <span aria-hidden className={cn("size-1.5 rounded-full bg-current", (state === "running" || state === "quiet") && "motion-safe:animate-pulse")} />
-      {label}
-    </span>
-  );
+/** The status in words, for the expanded card: the header carries it as a dot only. */
+function statusWords(state: WorkerState, quietMs: number): string {
+  switch (state) {
+    case "needs-you": return "Needs you";
+    case "quiet": return `Quiet for ${formatElapsed(quietMs)}`;
+    case "running": return "Running";
+    case "failed": return "Failed";
+    case "done": return "Done";
+  }
 }
 
 /** What a hosted worker offers: stop it, message it, and the two ways to look closer. Why it failed, or what it returned, sits above. */
-export function WorkerBar({ item, hostedId, state, messaging, onToggleMessage, onOpenTranscript }: {
-  item: ToolItem; hostedId: SessionId; state: WorkerState; messaging: boolean; onToggleMessage: () => void; onOpenTranscript: () => void;
+export function WorkerBar({ item, hostedId, state, quietMs, messaging, onToggleMessage, onOpenTranscript }: {
+  item: ToolItem; hostedId: SessionId; state: WorkerState; quietMs: number; messaging: boolean; onToggleMessage: () => void; onOpenTranscript: () => void;
 }) {
   const { post } = useStore();
   const running = state === "running" || state === "quiet" || state === "needs-you";
@@ -64,6 +64,7 @@ export function WorkerBar({ item, hostedId, state, messaging, onToggleMessage, o
 
   return (
     <div className="flex flex-col gap-1.5 pb-1">
+      <p className={cn("text-xs font-medium", STATUS_TONE[state])}>{statusWords(state, quietMs)}</p>
       {failed && (
         <p role="alert" className="flex gap-2 rounded-md bg-destructive/10 px-2.5 py-2 text-xs wrap-break-word">
           <AlertCircleIcon aria-hidden className="mt-px size-3.5 shrink-0 text-destructive" />
