@@ -172,6 +172,37 @@ suite('SubagentCard hosted child', () => {
     assert.deepStrictEqual(posted().filter((m) => m.t === 'promote-subagent'), [{ t: 'promote-subagent', id: 's-child' }]);
   });
 
+  test('a running hosted worker can be stopped from its card', async () => {
+    renderWithStore(<SubagentCard item={hosted('s-child')} sessionId="s1" />);
+    await userEvent.click(screen.getByRole('button', { expanded: false }));
+    await userEvent.click(screen.getByRole('button', { name: 'Stop this worker' }));
+    assert.deepStrictEqual(posted().filter((m) => m.t === 'interrupt'), [{ t: 'interrupt', id: 's-child' }]);
+  });
+
+  test('a failed hosted worker says why, in the card and on its collapsed row', async () => {
+    const item = { ...hosted('s-child'), state: 'error', output: { kind: 'text', text: 'Agent has ended its turn before returning a response' } } as ToolItem;
+    renderWithStore(<SubagentCard item={item} sessionId="s1" />);
+    assert.strictEqual(screen.getByRole('button', { expanded: false }).textContent?.includes('failed'), true);
+    await userEvent.click(screen.getByRole('button', { expanded: false }));
+    assert.ok(screen.getByText('Agent has ended its turn before returning a response'));
+    assert.strictEqual(screen.queryByRole('button', { name: 'Stop this worker' }) === null, true);
+  });
+
+  test('a message typed into a hosted worker card goes to that worker session', async () => {
+    renderWithStore(<SubagentCard item={hosted('s-child')} sessionId="s1" />);
+    await userEvent.click(screen.getByRole('button', { expanded: false }));
+    await userEvent.type(screen.getByRole('textbox', { name: /^Message / }), 'use the other API{Enter}');
+    assert.deepStrictEqual(posted().filter((m) => m.t === 'send'), [{ t: 'send', id: 's-child', text: 'use the other API' }]);
+    assert.ok(screen.getByText('use the other API'));
+  });
+
+  test('a vendor subagent has no stop or message controls', async () => {
+    renderWithStore(<SubagentCard item={hosted()} sessionId="s1" />);
+    await userEvent.click(screen.getByRole('button', { expanded: false }));
+    assert.strictEqual(screen.queryAllByRole('button', { name: 'Stop this worker' }).length, 0);
+    assert.strictEqual(screen.queryAllByRole('textbox').length, 0);
+  });
+
   test('a vendor subagent has nothing to promote', async () => {
     renderWithStore(<SubagentCard item={hosted()} sessionId="s1" />);
     await userEvent.click(screen.getByRole('button', { expanded: false }));

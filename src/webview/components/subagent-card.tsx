@@ -16,6 +16,7 @@ import {
 import { useStore } from '../store';
 import { useNestedMessages } from './nested-messages-context';
 import { WorkerMessageRow } from './worker-message-row';
+import { WorkerMessageBox, WorkerStatus } from './worker-controls';
 import { expandedDisplayName, findModel } from '../../shared/model-catalog';
 import { useOpenSubagentTranscript } from './subagent-drill-in-context';
 import type { SessionId, TranscriptItem } from '../../protocol/messages';
@@ -114,6 +115,9 @@ export function SubagentCard({
             accessible name at all.
           */}
           <span className="sr-only">{subagentStateLabel(item, summary.blocked)}</span>
+          {hosted && item.state !== 'running' && item.state !== 'ok' && (
+            <span className="shrink-0 text-destructive">failed</span>
+          )}
           {summary.blocked && (
             // The `attention` tone from status-badge.tsx, spelled the same
             // way: text plus a quiet fill, never colour alone. A subagent
@@ -127,6 +131,9 @@ export function SubagentCard({
 
         <TraceCollapsibleContent className="py-1">
           <div>
+            {hostedId && (
+              <WorkerStatus item={item} hostedId={hostedId} now={now} elapsedMs={summary.elapsedMs} blocked={summary.blocked} />
+            )}
             {/*
               "Open full transcript" used to appear only once the inline
               window truncated something — but it doesn't just show more
@@ -175,6 +182,7 @@ export function SubagentCard({
                 ) : null;
               })}
             </div>
+            {hostedId && <WorkerMessageBox hostedId={hostedId} name={subagentLabel(item)} running={item.state === 'running'} />}
           </div>
         </TraceCollapsibleContent>
       </TraceCollapsible>
