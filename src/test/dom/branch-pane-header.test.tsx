@@ -21,22 +21,22 @@ function hydrate(side: SessionSummary = sideSummary()) {
 }
 
 suite("Branch pane header", () => {
-  test("a side chat says what it is and whose it is, and is not dressed as a session", () => {
+  test("a side chat says what it is, names its parent on hover, and is not dressed as a session", () => {
     renderApp();
     hydrate();
 
     const bar = screen.getByRole("group", { name: "Side chat" });
     assert.strictEqual(bar.textContent?.includes("Side chat"), true);
-    assert.strictEqual(bar.textContent?.includes("of Main work"), true);
+    assert.strictEqual(screen.getByRole("button", { name: "Side chat" }).getAttribute("title"), "Go to Main work");
     assert.strictEqual(within(bar).queryByRole("button", { name: /^(Replace|Drag) / }) === null, true);
   });
 
-  test("the origin is a link that focuses the parent", async () => {
+  test("the label is a link that focuses the parent", async () => {
     renderApp();
     hydrate();
     resetHost();
 
-    await userEvent.click(screen.getByRole("button", { name: "of Main work" }));
+    await userEvent.click(screen.getByRole("button", { name: "Side chat" }));
 
     assert.deepStrictEqual(posted(), [{ t: "focus-session", id: "main" }]);
   });

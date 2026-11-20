@@ -56,20 +56,18 @@ export function BranchPaneHeader({ pane }: { pane: PaneState }) {
         </span>
       )}
       <Icon aria-hidden className="size-3.5 shrink-0 text-branch" />
-      <span className="flex min-w-0 items-baseline gap-1.5">
+      {parent ? (
+        <button
+          type="button"
+          title={`Go to ${parent.name}`}
+          onClick={toParent}
+          className="min-w-0 shrink-0 cursor-pointer truncate rounded-sm font-semibold text-branch outline-none hover:underline focus-visible:underline"
+        >
+          {label}
+        </button>
+      ) : (
         <span className="shrink-0 font-semibold text-branch">{label}</span>
-        {parent && (
-          <Button
-            variant="link"
-            size="xs"
-            className="h-auto min-w-0 justify-start truncate p-0 font-normal text-muted-foreground hover:text-foreground"
-            title={`Go to ${parent.name}`}
-            onClick={toParent}
-          >
-            of {parent.name}
-          </Button>
-        )}
-      </span>
+      )}
       <StatusBadge status={s.status} wordFor="error" warm={asksPermission} quietIdle />
       {s.permissionMode === "bypass" && (
         <span role="status" className="shrink-0 rounded-full border border-destructive/40 bg-destructive/10 px-1.5 py-0.5 text-[0.7rem] font-medium text-destructive">
@@ -91,10 +89,10 @@ export function BranchPaneHeader({ pane }: { pane: PaneState }) {
               Bring back to the main chat
             </DropdownMenuItem>
           )}
-          {parent && !side && (
+          {parent && (
             <DropdownMenuItem onClick={toParent}>
               <ArrowUpLeftIcon aria-hidden />
-              Back to {parent.name}
+              Go to {parent.name}
             </DropdownMenuItem>
           )}
           {canMaximize && (
