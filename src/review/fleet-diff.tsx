@@ -1,8 +1,8 @@
 import { syncDataLoaderFeature } from '@headless-tree/core';
 import { useTree } from '@headless-tree/react';
 import {
-  ArrowDownIcon, ArrowUpIcon, ChevronDownIcon, ChevronRightIcon, FileMinusIcon, FilePenLineIcon,
-  FilePlusIcon, FileSymlinkIcon, RefreshCwIcon, XIcon,
+  ArrowDownIcon, ArrowUpIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon, FileMinusIcon, FilePenLineIcon,
+  FilePlusIcon, FileSymlinkIcon, FolderIcon, FolderOpenIcon, ListFilterIcon, RefreshCwIcon, SearchIcon, UsersIcon, XIcon,
 } from 'lucide-react';
 import {
   useEffect, useMemo, useRef, useState,
@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/button';
 import {
   Combobox, ComboboxContent, ComboboxItem, ComboboxTrigger, ComboboxValue,
 } from '@/components/ui/combobox';
-import { Input } from '@/components/ui/input';
+import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group';
 import { StatusBadge } from '@/components/status-badge';
 import {
   CHEVRON_TOGGLE_CLASS, Tree as FolderTree, TreeItem, TreeItemLabel,
@@ -95,25 +95,15 @@ const FILE_ROW_BASE_INSET = 8;
 const UNATTRIBUTED_KEY = 'unattributed';
 
 /**
- * The tree header's rendered height, in pixels — pinned here so the sticky
- * group header below it can be given the exact same number rather than a
- * second, independent guess.
- *
- * `top-8` (32px) was the first guess and it undershot: the header is two
- * fixed-height rows — `pt-2.5` (10px) + the chevron row, whose tallest child
- * is the `icon-xs` `Button` at 24px + `space-y-0.5` (2px) + the `text-xs`
- * base-line row at its default 16px line-height + `pb-1.5` (6px) — 58px in
- * total, not 32. Both rows truncate rather than wrap, so this height is fixed
- * regardless of path length or branch name; nothing here depends on content
- * that can grow. `TREE_HEADER_HEIGHT` is applied as the header's own explicit
- * height (so it cannot silently drift from this number) and consumed again as
- * the group header's `top`. jsdom performs no layout, so no DOM test can
- * catch a future edit to the header's padding or row heights that stops
- * matching this constant — changing the header's rows means updating this
- * number by hand, and a screenshot is the only thing that verifies the
- * result.
+ * The sticky tree header's rendered height, in pixels — pinned here so the
+ * sticky group header below it can be given the exact same number rather than
+ * a second guess. It is one fixed row: `py-2` (8px top and bottom) around the
+ * `icon-xs` button at 24px. Only that row sticks; the base-ref note under it
+ * wraps and so scrolls with the content, because a sticky box of fixed height
+ * cannot hold text that changes height. jsdom performs no layout, so a
+ * screenshot is the only thing that verifies this number.
  */
-const TREE_HEADER_HEIGHT = 58;
+const TREE_HEADER_HEIGHT = 40;
 
 /** One row's place in the flat, rendered order. */
 interface Row {
@@ -298,100 +288,110 @@ export function FleetDiff() {
   };
 
   return (
-    <section aria-label="Changes across every working tree" className="flex h-screen min-h-0 flex-col">
+    <section aria-label="Changes across every working tree" className="flex h-screen min-h-0 flex-col text-sm">
       {/*
         The same toolbar rhythm as the sidebar's own header — same height,
         same border, same control sizes — so this tab and the panel it opened
         from read as one application rather than two surfaces that happen to
         share a codebase.
       */}
-      <div className="flex items-center gap-2 border-b border-border px-2 py-1 text-xs">
-        <h2 className="min-w-0 truncate font-medium">Changes</h2>
-        {trees !== undefined && trees.length > 0 && (
-          <span className="min-w-0 truncate text-muted-foreground">
-            {shown === total ? summarize(filtered) : `${shown} of ${total} files`}
-          </span>
-        )}
-        {/* Mounted for the life of the tab, same shape as `StatusBadge`'s own
-            live region: only its text changes, and it changes only on a
-            filter edit — never on the 750ms poll, which updates `shown` and
-            `total` without touching `query` or `contestedOnly`. */}
-        <span aria-live="polite" className="sr-only">{filterAnnouncement}</span>
-        <div className="relative min-w-0 max-w-64">
-          <Input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            aria-label="Filter by path"
-            placeholder="Filter by path"
-            className={cn('h-7 text-xs md:text-xs', query !== '' && 'pr-6')}
-          />
-          {query !== '' && (
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              aria-label="Clear filter"
-              className="absolute top-0.5 right-0.5"
-              onClick={() => setQuery('')}
-            >
-              <XIcon aria-hidden />
-            </Button>
-          )}
+      <div className="space-y-2 border-b border-border px-2 py-2 text-xs">
+        <div className="flex items-center gap-2">
+          <InputGroup className="h-8 min-w-0 flex-1">
+            <InputGroupAddon align="inline-start" className="pl-3 text-muted-foreground">
+              <SearchIcon aria-hidden className="size-4" />
+            </InputGroupAddon>
+            <InputGroupInput
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              aria-label="Filter by path"
+              placeholder="Filter files…"
+              className="text-xs md:text-xs"
+            />
+            {query !== '' && (
+              <InputGroupAddon align="inline-end">
+                <Button variant="ghost" size="icon-xs" aria-label="Clear filter" onClick={() => setQuery('')}>
+                  <XIcon aria-hidden />
+                </Button>
+              </InputGroupAddon>
+            )}
+          </InputGroup>
+          <Button
+            variant="outline"
+            size="icon"
+            className={cn('shrink-0', contestedOnly && 'border-attention/70 bg-attention/25 hover:bg-attention/30 dark:border-attention/70 dark:bg-attention/25 dark:hover:bg-attention/30')}
+            aria-label="Contested only"
+            title="Contested only: files two or more sessions edited"
+            aria-pressed={contestedOnly}
+            onClick={() => setContestedOnly((on) => !on)}
+          >
+            <ListFilterIcon aria-hidden />
+          </Button>
         </div>
-        <Button
-          variant={contestedOnly ? 'secondary' : 'ghost'}
-          size="sm"
-          className="text-xs"
-          aria-pressed={contestedOnly}
-          onClick={() => setContestedOnly((on) => !on)}
-        >
-          Contested only
-        </Button>
+        <div className="flex items-center gap-2">
+          <h2 className="shrink-0 text-sm font-semibold">Changes</h2>
+          {trees !== undefined && trees.length > 0 && (
+            <span className="min-w-0 flex-1 text-muted-foreground">
+              {shown === total ? summarize(filtered) : `${shown} of ${total} files`}
+            </span>
+          )}
+          {/* Mounted for the life of the tab, same shape as `StatusBadge`'s own
+              live region: only its text changes, and it changes only on a
+              filter edit — never on the 750ms poll, which updates `shown` and
+              `total` without touching `query` or `contestedOnly`. */}
+          <span aria-live="polite" className="sr-only">{filterAnnouncement}</span>
+          <div className="ml-auto flex shrink-0 items-center gap-1">
         {/*
-          Next/prev walks the flat row order the roving index already counts,
-          so the user never has to find the next file by eye in a 500-row
-          list — the reason this control exists at all.
-        */}
-        <Button
-          variant="outline"
-          size="icon-sm"
-          className="ml-auto shrink-0"
-          aria-label="Open the previous file"
-          disabled={rows.length === 0}
-          onClick={() => {
-            const next = nextIndex(active, 'ArrowUp', rows.length);
-            if (next !== null) { openRow(next); }
-          }}
-        >
-          <ArrowUpIcon aria-hidden />
-        </Button>
-        <Button
-          variant="outline"
-          size="icon-sm"
-          className="shrink-0"
-          aria-label="Open the next file"
-          disabled={rows.length === 0}
-          onClick={() => {
-            // On a tab nothing has focused or opened yet, `active` still
-            // resolves to `0` by default (see `useRovingRows`) — advancing
-            // from it with `nextIndex` would open row 1 and silently skip
-            // row 0, the one file "Previous" would correctly open first.
-            // Once the list has genuine focus, this is ordinary next-row
-            // movement.
-            const next = hadFocus ? nextIndex(active, 'ArrowDown', rows.length) : active;
-            if (next !== null) { openRow(next); }
-          }}
-        >
-          <ArrowDownIcon aria-hidden />
-        </Button>
-        <Button
-          variant="outline"
-          size="icon-sm"
-          className="shrink-0"
-          aria-label="Refresh: read every working tree again"
-          onClick={refresh}
-        >
-          <RefreshCwIcon aria-hidden />
-        </Button>
+            Next/prev walks the flat row order the roving index already counts,
+            so the user never has to find the next file by eye in a 500-row
+            list — the reason this control exists at all.
+          */}
+          <Button
+            variant="outline"
+            size="icon-sm"
+            className="shrink-0"
+            aria-label="Open the previous file"
+            title="Open the previous file"
+            disabled={rows.length === 0}
+            onClick={() => {
+              const next = nextIndex(active, 'ArrowUp', rows.length);
+              if (next !== null) { openRow(next); }
+            }}
+          >
+            <ArrowUpIcon aria-hidden />
+          </Button>
+          <Button
+            variant="outline"
+            size="icon-sm"
+            className="shrink-0"
+            aria-label="Open the next file"
+            title="Open the next file"
+            disabled={rows.length === 0}
+            onClick={() => {
+              // On a tab nothing has focused or opened yet, `active` still
+              // resolves to `0` by default (see `useRovingRows`) — advancing
+              // from it with `nextIndex` would open row 1 and silently skip
+              // row 0, the one file "Previous" would correctly open first.
+              // Once the list has genuine focus, this is ordinary next-row
+              // movement.
+              const next = hadFocus ? nextIndex(active, 'ArrowDown', rows.length) : active;
+              if (next !== null) { openRow(next); }
+            }}
+          >
+            <ArrowDownIcon aria-hidden />
+          </Button>
+          <Button
+            variant="outline"
+            size="icon-sm"
+            className="shrink-0"
+            aria-label="Refresh: read every working tree again"
+            title="Refresh: read every working tree again"
+            onClick={refresh}
+          >
+            <RefreshCwIcon aria-hidden />
+          </Button>
+          </div>
+        </div>
       </div>
 
       <div
@@ -460,6 +460,14 @@ export function FleetDiff() {
                 ? 'No file matches this filter among the files loaded so far.'
                 : 'No file matches this filter.'}
             </p>
+            {contestedOnly && query.trim() === '' && (
+              <p className="text-muted-foreground">
+                Contested means two or more sessions edited the same file.
+              </p>
+            )}
+            <Button variant="outline" size="sm" onClick={() => { setQuery(''); setContestedOnly(false); }}>
+              Clear filters
+            </Button>
             {totalOmitted > 0 && (
               <Button variant="outline" size="sm" onClick={showMore} disabled={atCeiling}>
                 {atCeiling
@@ -540,10 +548,10 @@ function Tree({
       */}
       <div
         data-testid="tree-header"
-        className="sticky top-0 z-10 space-y-0.5 bg-background px-2 pt-2.5 pb-1.5"
+        className="sticky top-0 z-10 bg-background px-2 py-2"
         style={{ height: TREE_HEADER_HEIGHT }}
       >
-        <div className="flex min-w-0 items-center gap-1.5">
+        <div className="flex min-w-0 items-center gap-2">
           <Button
             variant="ghost"
             size="icon-xs"
@@ -562,23 +570,25 @@ function Tree({
             levels say what the nesting already says visually: tree, then the
             sessions inside it.
           */}
-          <h3 className="min-w-0 truncate text-sm font-medium" title={tree.root}>
+          <h3 className="min-w-0 truncate text-sm font-semibold" title={tree.root}>
             {name}
           </h3>
           {tree.branch !== undefined && (
-            <span className="min-w-0 shrink-0 truncate rounded-[min(var(--radius-md),8px)] bg-muted px-1.5 py-0.5 text-muted-foreground">
+            <span className="min-w-0 shrink-0 truncate rounded-[min(var(--radius-md),8px)] bg-muted px-2 py-0.5 text-muted-foreground">
               {tree.branch}
             </span>
           )}
         </div>
+      </div>
+
         {/* Named, never implied. `head` means uncommitted work only, and a
             list that let that pass for "everything this session did" would
             quietly under-report a session that had committed as it went. The
             combobox lets a wrong auto-detected default (a repo whose
             declared default branch is neither `origin/HEAD` nor one of the
             built-in fallbacks) be overridden per-tree, for this tab only. */}
-        <div className="flex min-w-0 items-center gap-1.5 pl-6">
-          <p className="min-w-0 flex-1 truncate text-muted-foreground">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 pb-4 pl-8 pr-2">
+          <p className="min-w-0 flex-1 basis-40 text-muted-foreground">
             {tree.base.kind === 'merge-base'
               ? `Since ${tree.base.ref} (${tree.base.sha.slice(0, 7)})`
               : 'Uncommitted changes only — nothing to compare a branch point against.'}
@@ -594,7 +604,7 @@ function Tree({
           >
             <ComboboxTrigger
               size="sm"
-              className="h-6 shrink-0 px-1.5 text-xs"
+              className="h-6 shrink-0 px-2 text-xs"
               aria-label={`Diff base for ${tree.root}`}
               render={<Button variant="ghost" />}
             >
@@ -609,10 +619,9 @@ function Tree({
             </ComboboxContent>
           </Combobox>
         </div>
-      </div>
 
       {isCollapsed ? null : (
-        <div className="pb-2.5">
+        <div className="pb-3">
           {tree.reason !== undefined ? (
             <p className="px-2 text-muted-foreground">{tree.reason}</p>
           ) : (
@@ -709,7 +718,7 @@ function Group({
   const unattributed = group.sessionId === null;
   const title = group.sessionId === null
     ? 'Not attributed to a session'
-    : titleOf(group.sessionId, sessions);
+    : nameOf(group.sessionId, sessions);
   // Undefined for the unattributed group and for a session that has been
   // deleted since — `titleOf` covers "deleted" in the title text already,
   // but a live-status badge has nothing true to claim about a session that
@@ -719,6 +728,7 @@ function Group({
     : sessions.find((s) => s.id === group.sessionId);
   const groupKey = `${tree.root}::${group.sessionId ?? UNATTRIBUTED_KEY}`;
   const isCollapsed = collapsed.has(groupKey);
+  const contestedCount = group.files.filter((file) => file.claimedBy.length > 1).length;
   const folderRoot = compactFolderTree(buildFolderTree(group.files, ''));
   const { index, childrenOf, folderDirPaths } = indexFolderTree(folderRoot);
 
@@ -815,10 +825,10 @@ function Group({
   }
 
   return (
-    <div className="mt-2.5 first:mt-1">
+    <div className="mt-4 first:mt-0">
       <div
         data-testid="group-header"
-        className="sticky z-[9] flex min-w-0 items-center gap-1.5 bg-background pl-4 pr-2"
+        className="sticky z-[9] flex min-w-0 items-center gap-2 bg-background pl-4 pr-2"
         style={{ top: TREE_HEADER_HEIGHT }}
       >
         <Button
@@ -831,7 +841,7 @@ function Group({
         >
           {isCollapsed ? <ChevronRightIcon aria-hidden /> : <ChevronDownIcon aria-hidden />}
         </Button>
-        <h4 className={cn('min-w-0 truncate text-xs', unattributed ? 'text-muted-foreground' : 'font-medium')}>
+        <h4 className={cn('min-w-0 truncate text-sm font-semibold', unattributed && 'font-medium text-muted-foreground')}>
           {title}
         </h4>
         {/*
@@ -854,6 +864,9 @@ function Group({
           {' '}
           {group.files.length === 1 ? 'file' : 'files'}
         </span>
+        {contestedCount > 0 && (
+          <span className="shrink-0 whitespace-nowrap text-attention">{`${contestedCount} contested`}</span>
+        )}
         <Churn insertions={group.insertions} deletions={group.deletions} className="ml-auto" />
       </div>
       {isCollapsed ? null : (
@@ -862,7 +875,7 @@ function Group({
             // The sentence is the point of the group. Without it "not attributed"
             // reads as a bug in the attribution rather than as what it is: a
             // change no tool call in any transcript accounts for.
-            <p className="pl-4 pt-0.5 text-muted-foreground">
+            <p className="pl-9 pr-4 pt-0.5 text-xs text-muted-foreground">
               No session recorded a tool call for these. A shell command, a build or your own
               edit changed them.
             </p>
@@ -875,13 +888,18 @@ function Group({
             (`--tree-padding`, `TREE_INDENT` per level), not DOM nesting, the
             same scheme the vendored `Tree` primitive uses.
           */}
-          <FolderTree indent={TREE_INDENT} tree={folders} className="mt-1 space-y-0.5 border-l border-border pl-10">
+          <FolderTree indent={TREE_INDENT} tree={folders} className="mt-2 space-y-0.5 pl-4">
             {folders.getItems().map((item) => {
               const data = item.getItemData();
               if (data.kind === 'folder') {
                 return (
                   <TreeItem key={item.getId()} item={item}>
-                    <TreeItemLabel />
+                    <TreeItemLabel className="py-1 text-sm">
+                      {item.isExpanded()
+                        ? <FolderOpenIcon aria-hidden className="size-4 text-muted-foreground" />
+                        : <FolderIcon aria-hidden className="size-4 text-muted-foreground" />}
+                      {item.getItemName()}
+                    </TreeItemLabel>
                   </TreeItem>
                 );
               }
@@ -920,6 +938,11 @@ function Group({
 function basename(path: string): string {
   const slash = path.lastIndexOf('/');
   return slash === -1 ? path : path.slice(slash + 1);
+}
+
+function nameOf(id: SessionId, sessions: SessionSummary[]): string {
+  const s = sessions.find((x) => x.id === id);
+  return s ? (s.name || s.title) : 'Deleted session';
 }
 
 function titleOf(id: SessionId, sessions: SessionSummary[]): string {
@@ -996,7 +1019,11 @@ function FileRow({
       // to match its `TreeItemLabel`'s own `px-2` too — the two have to
       // agree on both, or a file sits at a visibly different depth than a
       // folder row at that same depth.
-      className="w-full justify-start gap-2 pr-2 font-normal"
+      className={cn(
+        'w-full justify-start gap-2 pr-2 text-sm font-normal',
+        // The named claimant sits on its own line so a long session title can never take the filename's width.
+        others.length > 0 && 'h-auto flex-wrap gap-y-0.5 border-l-2 border-l-attention/70 py-1',
+      )}
       style={{ paddingLeft: depth * TREE_INDENT + FILE_ROW_BASE_INSET }}
       // Every row used to be its own stop in the tab order — 400 Tab presses
       // to reach row 400. Only the active row is tabbable; arrow keys move
@@ -1018,34 +1045,40 @@ function FileRow({
         // row's truncating tail: two sessions writing one file is the single
         // situation in this whole surface worth stopping on, and "+1" does
         // not say who to go and read.
-        <Badge
-          variant="outline"
-          className="min-w-0 shrink truncate border-destructive/50 text-destructive"
-          title={`Also ${others.map((id) => titleOf(id, sessions)).join(', ')}`}
-        >
-          Also {others.map((id) => titleOf(id, sessions)).join(', ')}
-        </Badge>
+        <>
+          <span aria-hidden className="order-2 h-0 basis-full" />
+          <Badge
+            variant="outline"
+            className="order-3 ml-6 min-w-0 max-w-[calc(100%-1.5rem)] truncate border-attention/50 text-foreground [&>svg]:text-attention"
+            title={`Also edited by ${others.map((id) => titleOf(id, sessions)).join(', ')}`}
+          >
+            <UsersIcon aria-hidden />
+            <span className="truncate">Also {others.map((id) => nameOf(id, sessions)).join(', ')}</span>
+          </Badge>
+        </>
       )}
       {file.op === 'rename' && file.from !== undefined && (
         <span className="min-w-0 shrink truncate text-muted-foreground" title={file.from}>
           from {file.from}
         </span>
       )}
-      <Churn insertions={file.insertions} deletions={file.deletions} className="ml-auto" />
+      <Churn insertions={file.insertions} deletions={file.deletions} isNew={file.op === 'create'} className="ml-auto" />
     </Button>
   );
 }
 
 function Churn({
-  insertions, deletions, className,
-}: { insertions?: number; deletions?: number; className?: string }) {
+  insertions, deletions, isNew, className,
+}: { insertions?: number; deletions?: number; isNew?: boolean; className?: string }) {
   // A binary file reports neither. Printing `+0 −0` would claim it did not
-  // change, which is the one thing that is certainly false about it.
+  // change, which is the one thing that is certainly false about it. An
+  // untracked file reports neither either, because the host never counts a
+  // new file's lines — that one is "new", not "binary".
   if (insertions === undefined && deletions === undefined) {
-    return <span className={cn('shrink-0 text-muted-foreground', className)}>binary</span>;
+    return <span className={cn('shrink-0 text-xs text-muted-foreground', className)}>{isNew ? 'new' : 'binary'}</span>;
   }
   return (
-    <span className={cn('shrink-0 tabular-nums', className)}>
+    <span className={cn('shrink-0 text-xs tabular-nums', className)}>
       <span className="text-git-added">
         +{insertions ?? 0}
       </span>

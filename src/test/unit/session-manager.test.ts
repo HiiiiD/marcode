@@ -789,6 +789,24 @@ suite('SessionManager', () => {
     assert.ok(m.summaries().find((s) => s.id === id));
   });
 
+  test('close keeps an errored session errored so history can flag it', async () => {
+    const { manager: m, provider } = await makeManager();
+    const id = (await m.create('fake', '/tmp')).state.id;
+    provider.runs[0].emit({ kind: 'turn-end', reason: 'error', error: 'boom' });
+    await settle();
+
+    await m.close(id);
+
+    assert.strictEqual(m.summaries().find((s) => s.id === id)?.status, 'error');
+  });
+
+  test('close resets a running session to idle', async () => {
+    const a = await manager.create('fake', '/tmp');
+    a.send('hello');
+    await manager.close(a.state.id);
+    assert.strictEqual(manager.summaries().find((s) => s.id === a.state.id)?.status, 'idle');
+  });
+
   test('close keeps a session revived by open(), whose items live only on disk', async () => {
     // open() builds a fresh run whose own item count starts at zero, so the
     // decision must consult the persisted transcript too.

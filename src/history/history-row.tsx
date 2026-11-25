@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { ChevronRightIcon, PinIcon, PinOffIcon, RefreshCwIcon } from 'lucide-react';
+import { ChevronRightIcon, PinIcon, RefreshCwIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { TableCell, TableRow } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
+import { TITLE_MAX } from '../shared/title-max';
 import { formatWhen } from './format-when';
 import { TipButton } from './tip-button';
 import { HistoryStatus } from './history-status';
@@ -13,12 +14,13 @@ export function HistoryRow({ session }: { session: SessionSummary }) {
   const { state, post } = useStore();
   const [open, setOpen] = useState(false);
   const pinned = session.pinned === true;
+  const waiting = session.status === 'awaiting-approval';
   const summary = session.summary?.text || session.title;
 
   return (
     <>
-      <TableRow>
-        <TableCell className="w-8 align-middle">
+      <TableRow className={cn('group/row', waiting && 'bg-attention/10 hover:bg-attention/15', session.status === 'error' && 'bg-destructive/10 hover:bg-destructive/15')}>
+        <TableCell className="w-6 pr-0 align-top">
           <TipButton
             tip={open ? 'Collapse' : 'Expand'}
             label={`${open ? 'Collapse' : 'Expand'} ${session.name}`}
@@ -28,33 +30,19 @@ export function HistoryRow({ session }: { session: SessionSummary }) {
             <ChevronRightIcon aria-hidden className={cn('transition-transform', open && 'rotate-90')} />
           </TipButton>
         </TableCell>
-        <TableCell className="min-w-40 align-middle font-medium">
-          <div className="truncate">{session.title}</div>
-          <div className="text-xs font-normal text-muted-foreground">{session.name}</div>
+        <TableCell className="w-full max-w-0 align-top whitespace-normal">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
+            <span className="truncate text-sm font-semibold">{session.name}</span>
+            <HistoryStatus session={session} />
+          </div>
+          <div className="truncate text-xs text-foreground/75">{session.title.length >= TITLE_MAX ? `${session.title}…` : session.title}</div>
+          <div className="flex flex-wrap gap-x-3 text-xs tabular-nums text-muted-foreground">
+            <span>{`${session.providerId} · ${session.model}`}</span>
+            <span>{formatWhen(session.updatedAt)}</span>
+          </div>
         </TableCell>
-        <TableCell className="align-middle">
-          <HistoryStatus session={session} />
-        </TableCell>
-        <TableCell className="align-middle whitespace-nowrap text-muted-foreground">
-          {`${session.providerId} · ${session.model}`}
-        </TableCell>
-        <TableCell className="align-middle whitespace-nowrap tabular-nums text-muted-foreground">
-          {formatWhen(session.updatedAt)}
-        </TableCell>
-        <TableCell className="right-0 bg-background align-middle md:sticky">
+        <TableCell className="align-top">
           <div className="flex items-center justify-end gap-1">
-            {(session.status === 'running' || session.status === 'awaiting-approval') && (
-              <Button
-                variant="outline"
-                size="sm"
-                aria-label={`Stop ${session.name}`}
-                disabled={session.owner !== undefined}
-                title={session.owner ? 'Stop this session in its owning host' : undefined}
-                onClick={() => post({ t: 'interrupt', id: session.id })}
-              >
-                Stop
-              </Button>
-            )}
             {state.memory?.enabled && (
               <TipButton
                 tip="Re-summarize"
@@ -67,13 +55,28 @@ export function HistoryRow({ session }: { session: SessionSummary }) {
             <TipButton
               tip={pinned ? 'Unpin' : 'Pin'}
               label={`${pinned ? 'Unpin' : 'Pin'} ${session.name}`}
+              className={cn(!pinned && 'opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100')}
               onClick={() => post({ t: 'set-pinned', id: session.id, pinned: !pinned })}
             >
-              {pinned ? <PinOffIcon aria-hidden /> : <PinIcon aria-hidden />}
+              <PinIcon aria-hidden className={cn(pinned ? 'fill-current' : 'text-muted-foreground')} />
             </TipButton>
+            {(session.status === 'running' || session.status === 'awaiting-approval') && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="border-destructive/40 text-xs text-destructive hover:text-destructive dark:border-destructive/40 dark:bg-transparent"
+                aria-label={`Stop ${session.name}`}
+                disabled={session.owner !== undefined}
+                title={session.owner ? 'Stop this session in its owning host' : undefined}
+                onClick={() => post({ t: 'interrupt', id: session.id })}
+              >
+                Stop
+              </Button>
+            )}
             <Button
-              variant="outline"
+              variant={session.open ? 'ghost' : 'outline'}
               size="sm"
+              className="text-xs"
               aria-label={`${session.open ? 'Opened' : 'Open'} ${session.name}`}
               disabled={session.open === true}
               onClick={() => post({ t: 'focus-session', id: session.id })}
@@ -86,7 +89,7 @@ export function HistoryRow({ session }: { session: SessionSummary }) {
       {open && (
         <TableRow className="hover:bg-transparent">
           <TableCell />
-          <TableCell colSpan={5} className="whitespace-normal pb-3 pt-0">
+          <TableCell colSpan={2} className="whitespace-normal pb-3 pt-0">
             <p className="text-muted-foreground">{summary}</p>
             <p className="mt-1 text-xs tabular-nums text-muted-foreground">
               {`Created ${formatWhen(session.createdAt)}`}

@@ -46,7 +46,7 @@ export function MemoryStrip() {
   }
 
   return (
-    <div className="flex items-center gap-2 border-b border-border px-3 py-1.5 text-xs text-muted-foreground">
+    <div className="flex items-center gap-2 border-b border-border px-3 py-2 text-xs text-muted-foreground">
       {body}
     </div>
   );
