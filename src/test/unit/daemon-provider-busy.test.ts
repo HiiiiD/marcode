@@ -22,7 +22,7 @@ const sink: SessionSink = {
 };
 
 const state = (providerId: string): SessionState => ({
-  id: 's1', providerId, model: 'm', effort: 'medium', title: 'Untitled', name: 'Untitled', cwd: '/w',
+  id: 's1', providerId, model: 'm', effort: 'medium', title: 'Untitled', name: 'Untitled', cwd: '/tmp',
   status: 'idle', permissionMode: 'default', includeEditorContext: false, resumeTokens: {}, createdAt: 1, updatedAt: 1,
 });
 
