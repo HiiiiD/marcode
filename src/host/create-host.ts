@@ -22,7 +22,7 @@ import { FallbackSummarizer } from './digest/fallback-summarizer';
 import { LlmSummarizer } from './digest/llm-summarizer';
 import { focusSession } from './focus-session';
 import type { HostConfig } from './host-config';
-import { SelfControlMcpServer } from './self-control-mcp-server';
+import { SelfControlMcpServer, type SessionManagerLike } from './self-control-mcp-server';
 import { SessionManager } from './session-manager';
 import { SessionOwnership } from './session-ownership';
 import { TranscriptStore } from './transcript-store';
@@ -97,7 +97,8 @@ export async function createHost(opts: CreateHostOptions): Promise<HostHandle> {
   const accountCache = opts.marcodeHome ? AccountCache.open(path.join(opts.marcodeHome, 'account.sqlite')) : undefined;
   if (accountCache) { manager.setAccountCache(accountCache, { pollMs: opts.pollMs }); }
 
-  const selfControlServer = new SelfControlMcpServer({
+  // `satisfies Required<...>`: every optional member must be wired here, or the build fails.
+  const selfControlManager = {
     catalog: () => manager.catalog(),
     create: (providerId, cwd, model, effort, mode, worktree, includeEditorContext) =>
       manager.create(providerId, cwd, model, effort, mode, worktree, includeEditorContext),
@@ -122,8 +123,12 @@ export async function createHost(opts: CreateHostOptions): Promise<HostHandle> {
     close: (id) => manager.close(id as SessionId),
     contextBreakdown: (id) => manager.contextBreakdown(id as SessionId),
     handoffSummary: (id) => manager.handoffSummary(id as SessionId),
+    usageSnapshot: () => manager.usageSnapshot(),
+    usageDisplayNames: () => manager.usageDisplayNames(),
+    refreshUsage: (cwd) => manager.refreshUsage(cwd),
     recallRoot: (id) => manager.recallRootOfSession(id as SessionId),
-  }, memory, config.spawn.preference);
+  } satisfies Required<SessionManagerLike>;
+  const selfControlServer = new SelfControlMcpServer(selfControlManager, memory, config.spawn.preference);
   manager.setWorkspaceRoots(opts.workspaceRoots);
   let selfControlConfig: SelfControlMcpConfig | undefined;
   try {
