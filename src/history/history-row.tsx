@@ -35,7 +35,7 @@ export function HistoryRow({ session }: { session: SessionSummary }) {
             <span className="truncate text-[13px] font-semibold">{session.name}</span>
             <HistoryStatus session={session} />
           </div>
-          <div className="truncate text-xs text-muted-foreground">{session.title.length >= TITLE_MAX ? `${session.title}…` : session.title}</div>
+          <div className="truncate text-xs text-foreground/75">{session.title.length >= TITLE_MAX ? `${session.title}…` : session.title}</div>
           <div className="flex flex-wrap gap-x-3 text-xs tabular-nums text-muted-foreground">
             <span>{`${session.providerId} · ${session.model}`}</span>
             <span>{formatWhen(session.updatedAt)}</span>
@@ -47,7 +47,7 @@ export function HistoryRow({ session }: { session: SessionSummary }) {
               <Button
                 variant="outline"
                 size="sm"
-                className="border-destructive/40 text-destructive hover:text-destructive dark:border-destructive/40 dark:bg-transparent"
+                className="border-destructive/40 text-xs text-destructive hover:text-destructive dark:border-destructive/40 dark:bg-transparent"
                 aria-label={`Stop ${session.name}`}
                 disabled={session.owner !== undefined}
                 title={session.owner ? 'Stop this session in its owning host' : undefined}
@@ -76,6 +76,7 @@ export function HistoryRow({ session }: { session: SessionSummary }) {
             <Button
               variant={session.open ? 'ghost' : 'outline'}
               size="sm"
+              className="text-xs"
               aria-label={`${session.open ? 'Opened' : 'Open'} ${session.name}`}
               disabled={session.open === true}
               onClick={() => post({ t: 'focus-session', id: session.id })}

@@ -1084,10 +1084,10 @@ function Churn({
   // untracked file reports neither either, because the host never counts a
   // new file's lines — that one is "new", not "binary".
   if (insertions === undefined && deletions === undefined) {
-    return <span className={cn('shrink-0 text-muted-foreground', className)}>{isNew ? 'new' : 'binary'}</span>;
+    return <span className={cn('shrink-0 text-xs text-muted-foreground', className)}>{isNew ? 'new' : 'binary'}</span>;
   }
   return (
-    <span className={cn('shrink-0 tabular-nums', className)}>
+    <span className={cn('shrink-0 text-xs tabular-nums', className)}>
       <span className="text-git-added">
         +{insertions ?? 0}
       </span>

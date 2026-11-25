@@ -49,7 +49,7 @@ export function HistoryToolbar({ query, attentionCount, onChange }: Props) {
         size="sm"
         aria-pressed={active}
         aria-label="Needs attention"
-        className={cn('h-8', active && 'border-attention/70 bg-attention/25 text-foreground hover:bg-attention/30 dark:border-attention/70 dark:bg-attention/25 dark:hover:bg-attention/30')}
+        className={cn('h-8 text-xs', active && 'border-attention/70 bg-attention/25 text-foreground hover:bg-attention/30 dark:border-attention/70 dark:bg-attention/25 dark:hover:bg-attention/30')}
         onClick={() => onChange({ ...query, needsAttention: !active })}
       >
         {active && <CheckIcon aria-hidden />}
@@ -63,7 +63,7 @@ export function HistoryToolbar({ query, attentionCount, onChange }: Props) {
       </Button>
       <DropdownMenu>
         <DropdownMenuTrigger
-          render={<Button variant="outline" size="sm" className="h-8" aria-label="Sort sessions" title={`Sort: ${SORT_LABEL[query.sort]}, ${query.dir === 'asc' ? 'oldest' : 'newest'} first`} />}
+          render={<Button variant="outline" size="sm" className="h-8 text-xs" aria-label="Sort sessions" title={`Sort: ${SORT_LABEL[query.sort]}, ${query.dir === 'asc' ? 'oldest' : 'newest'} first`} />}
         >
           {`${SORT_LABEL[query.sort]} ${query.dir === 'asc' ? '↑' : '↓'}`}
         </DropdownMenuTrigger>
