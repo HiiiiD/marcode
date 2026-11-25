@@ -91,11 +91,11 @@ suite('history app', () => {
   test('an active attention filter says so and can be cleared from the notice', async () => {
     renderHistory();
     hydrate([summary('a', { name: 'alpha-name', status: 'error' }), summary('b', { name: 'beta-name' })]);
-    assert.strictEqual(screen.queryByText('Showing only sessions that need attention') === null, true);
+    assert.strictEqual(screen.queryByText('Showing 1 of 2 sessions that need attention') === null, true);
     await userEvent.click(screen.getByRole('button', { name: /^Needs attention/ }));
-    assert.strictEqual(screen.getByText('Showing only sessions that need attention').textContent, 'Showing only sessions that need attention');
+    assert.strictEqual(screen.getByText('Showing 1 of 2 sessions that need attention').textContent, 'Showing 1 of 2 sessions that need attention');
     await userEvent.click(screen.getByRole('button', { name: 'Clear' }));
-    assert.strictEqual(screen.queryByText('Showing only sessions that need attention') === null, true);
+    assert.strictEqual(screen.queryByText('Showing 1 of 2 sessions that need attention') === null, true);
     assert.strictEqual(screen.getByText('beta-name').textContent, 'beta-name');
   });
 

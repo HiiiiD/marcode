@@ -48,11 +48,13 @@ export function HistoryToolbar({ query, attentionCount, onChange }: Props) {
         variant="outline"
         size="sm"
         aria-pressed={active}
-        className={cn('h-8', active && 'border-attention/70 bg-attention/25 text-foreground hover:bg-attention/30')}
+        aria-label="Needs attention"
+        className={cn('h-8', active && 'border-attention/70 bg-attention/25 text-foreground hover:bg-attention/30 dark:border-attention/70 dark:bg-attention/25 dark:hover:bg-attention/30')}
         onClick={() => onChange({ ...query, needsAttention: !active })}
       >
         {active && <CheckIcon aria-hidden />}
-        Needs attention
+        <span className="hidden min-[480px]:inline">Needs attention</span>
+        <span className="min-[480px]:hidden">Attention</span>
         {attentionCount > 0 && (
           <span className="rounded-full bg-attention/20 px-1.5 text-[11px] tabular-nums text-attention">
             {attentionCount}

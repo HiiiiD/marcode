@@ -309,7 +309,7 @@ export function FleetDiff() {
         <div className="flex items-center gap-2 md:contents">
           <h2 className="shrink-0 font-medium">Changes</h2>
           {trees !== undefined && trees.length > 0 && (
-            <span className="shrink-0 whitespace-nowrap text-muted-foreground">
+            <span className="shrink-0 whitespace-nowrap text-muted-foreground md:order-2">
               {shown === total ? summarize(filtered) : `${shown} of ${total} files`}
             </span>
           )}
@@ -394,7 +394,7 @@ export function FleetDiff() {
         <Button
           variant="outline"
           size="sm"
-          className={cn('text-xs', contestedOnly && 'border-attention/70 bg-attention/25 hover:bg-attention/30')}
+          className={cn('text-xs', contestedOnly && 'border-attention/70 bg-attention/25 hover:bg-attention/30 dark:border-attention/70 dark:bg-attention/25 dark:hover:bg-attention/30')}
           aria-pressed={contestedOnly}
           onClick={() => setContestedOnly((on) => !on)}
         >

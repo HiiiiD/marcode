@@ -47,7 +47,7 @@ export function HistoryRow({ session }: { session: SessionSummary }) {
               <Button
                 variant="outline"
                 size="sm"
-                className="border-destructive/40 text-destructive hover:text-destructive"
+                className="border-destructive/40 text-destructive hover:text-destructive dark:border-destructive/40 dark:bg-transparent"
                 aria-label={`Stop ${session.name}`}
                 disabled={session.owner !== undefined}
                 title={session.owner ? 'Stop this session in its owning host' : undefined}
