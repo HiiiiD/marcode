@@ -31,8 +31,8 @@ export function HistoryRow({ session }: { session: SessionSummary }) {
           </TipButton>
         </TableCell>
         <TableCell className="w-full max-w-0 align-top whitespace-normal">
-          <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5">
-            <span className="truncate text-[13px] font-semibold">{session.name}</span>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
+            <span className="truncate text-sm font-semibold">{session.name}</span>
             <HistoryStatus session={session} />
           </div>
           <div className="truncate text-xs text-foreground/75">{session.title.length >= TITLE_MAX ? `${session.title}…` : session.title}</div>

@@ -21,8 +21,8 @@ export function HistoryToolbar({ query, attentionCount, onChange }: Props) {
   return (
     <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">
       <InputGroup className="h-8 min-w-28 flex-1 basis-40">
-        <InputGroupAddon align="inline-start" className="pl-2.5 text-muted-foreground">
-          <SearchIcon aria-hidden className="size-3.5" />
+        <InputGroupAddon align="inline-start" className="pl-3 text-muted-foreground">
+          <SearchIcon aria-hidden className="size-4" />
         </InputGroupAddon>
         <InputGroupInput
           aria-label="Filter sessions"
@@ -56,7 +56,7 @@ export function HistoryToolbar({ query, attentionCount, onChange }: Props) {
         <span className="hidden min-[480px]:inline">Needs attention</span>
         <span className="min-[480px]:hidden">Attention</span>
         {attentionCount > 0 && (
-          <span className="rounded-full bg-attention/20 px-1.5 text-[11px] tabular-nums text-attention">
+          <span className="rounded-full bg-attention/20 px-2 text-xs tabular-nums text-attention">
             {attentionCount}
           </span>
         )}

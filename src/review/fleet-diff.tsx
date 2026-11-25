@@ -100,9 +100,9 @@ const UNATTRIBUTED_KEY = 'unattributed';
  * second, independent guess.
  *
  * `top-8` (32px) was the first guess and it undershot: the header is two
- * fixed-height rows — `pt-2.5` (10px) + the chevron row, whose tallest child
+ * fixed-height rows — `pt-3` (10px) + the chevron row, whose tallest child
  * is the `icon-xs` `Button` at 24px + `space-y-0.5` (2px) + the `text-xs`
- * base-line row at its default 16px line-height + `pb-1.5` (6px) — 58px in
+ * base-line row at its default 16px line-height + `pb-2` (6px) — 58px in
  * total, not 32. Both rows truncate rather than wrap, so this height is fixed
  * regardless of path length or branch name; nothing here depends on content
  * that can grow. `TREE_HEADER_HEIGHT` is applied as the header's own explicit
@@ -305,11 +305,11 @@ export function FleetDiff() {
         from read as one application rather than two surfaces that happen to
         share a codebase.
       */}
-      <div className="space-y-1.5 border-b border-border px-2 py-2 text-xs">
+      <div className="space-y-2 border-b border-border px-2 py-2 text-xs">
         <div className="flex items-center gap-2">
           <InputGroup className="h-8 min-w-0 flex-1">
-            <InputGroupAddon align="inline-start" className="pl-2.5 text-muted-foreground">
-              <SearchIcon aria-hidden className="size-3.5" />
+            <InputGroupAddon align="inline-start" className="pl-3 text-muted-foreground">
+              <SearchIcon aria-hidden className="size-4" />
             </InputGroupAddon>
             <InputGroupInput
               value={query}
@@ -339,7 +339,7 @@ export function FleetDiff() {
           </Button>
         </div>
         <div className="flex items-center gap-2">
-          <h2 className="shrink-0 text-[13px] font-semibold">Changes</h2>
+          <h2 className="shrink-0 text-sm font-semibold">Changes</h2>
           {trees !== undefined && trees.length > 0 && (
             <span className="min-w-0 truncate text-muted-foreground">
               {shown === total ? summarize(filtered) : `${shown} of ${total} files`}
@@ -558,10 +558,10 @@ function Tree({
       */}
       <div
         data-testid="tree-header"
-        className="sticky top-0 z-10 space-y-0.5 bg-background px-2 pt-2.5 pb-1.5"
+        className="sticky top-0 z-10 space-y-0.5 bg-background px-2 pt-3 pb-2"
         style={{ height: TREE_HEADER_HEIGHT }}
       >
-        <div className="flex min-w-0 items-center gap-1.5">
+        <div className="flex min-w-0 items-center gap-2">
           <Button
             variant="ghost"
             size="icon-xs"
@@ -584,7 +584,7 @@ function Tree({
             {name}
           </h3>
           {tree.branch !== undefined && (
-            <span className="min-w-0 shrink-0 truncate rounded-[min(var(--radius-md),8px)] bg-muted px-1.5 py-0.5 text-muted-foreground">
+            <span className="min-w-0 shrink-0 truncate rounded-[min(var(--radius-md),8px)] bg-muted px-2 py-0.5 text-muted-foreground">
               {tree.branch}
             </span>
           )}
@@ -595,7 +595,7 @@ function Tree({
             combobox lets a wrong auto-detected default (a repo whose
             declared default branch is neither `origin/HEAD` nor one of the
             built-in fallbacks) be overridden per-tree, for this tab only. */}
-        <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 pb-2 pl-6">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 pb-2 pl-6">
           <p className="min-w-0 flex-1 basis-40 text-muted-foreground">
             {tree.base.kind === 'merge-base'
               ? `Since ${tree.base.ref} (${tree.base.sha.slice(0, 7)})`
@@ -612,7 +612,7 @@ function Tree({
           >
             <ComboboxTrigger
               size="sm"
-              className="h-6 shrink-0 px-1.5 text-xs"
+              className="h-6 shrink-0 px-2 text-xs"
               aria-label={`Diff base for ${tree.root}`}
               render={<Button variant="ghost" />}
             >
@@ -630,7 +630,7 @@ function Tree({
       </div>
 
       {isCollapsed ? null : (
-        <div className="pb-2.5">
+        <div className="pb-3">
           {tree.reason !== undefined ? (
             <p className="px-2 text-muted-foreground">{tree.reason}</p>
           ) : (
@@ -834,10 +834,10 @@ function Group({
   }
 
   return (
-    <div className="mt-2.5 first:mt-1">
+    <div className="mt-3 first:mt-1">
       <div
         data-testid="group-header"
-        className="sticky z-[9] flex min-w-0 items-center gap-1.5 bg-background pl-4 pr-2"
+        className="sticky z-[9] flex min-w-0 items-center gap-2 bg-background pl-4 pr-2"
         style={{ top: TREE_HEADER_HEIGHT }}
       >
         <Button
@@ -850,7 +850,7 @@ function Group({
         >
           {isCollapsed ? <ChevronRightIcon aria-hidden /> : <ChevronDownIcon aria-hidden />}
         </Button>
-        <h4 className={cn('min-w-0 truncate text-[13px] font-semibold', unattributed && 'font-medium text-muted-foreground')}>
+        <h4 className={cn('min-w-0 truncate text-sm font-semibold', unattributed && 'font-medium text-muted-foreground')}>
           {title}
         </h4>
         {/*
@@ -903,10 +903,10 @@ function Group({
               if (data.kind === 'folder') {
                 return (
                   <TreeItem key={item.getId()} item={item}>
-                    <TreeItemLabel className="py-1 text-[13px]">
+                    <TreeItemLabel className="py-1 text-sm">
                       {item.isExpanded()
-                        ? <FolderOpenIcon aria-hidden className="size-3.5 text-muted-foreground" />
-                        : <FolderIcon aria-hidden className="size-3.5 text-muted-foreground" />}
+                        ? <FolderOpenIcon aria-hidden className="size-4 text-muted-foreground" />
+                        : <FolderIcon aria-hidden className="size-4 text-muted-foreground" />}
                       {item.getItemName()}
                     </TreeItemLabel>
                   </TreeItem>
@@ -1029,7 +1029,7 @@ function FileRow({
       // agree on both, or a file sits at a visibly different depth than a
       // folder row at that same depth.
       className={cn(
-        'w-full justify-start gap-2 pr-2 text-[13px] font-normal',
+        'w-full justify-start gap-2 pr-2 text-sm font-normal',
         // The named claimant sits on its own line so a long session title can never take the filename's width.
         others.length > 0 && 'h-auto flex-wrap gap-y-0.5 border-l-2 border-l-attention/70 py-1',
       )}

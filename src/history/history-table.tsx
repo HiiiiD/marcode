@@ -7,7 +7,7 @@ function GroupLabel({ label, count }: { label: string; count: number }) {
     <TableRow>
       <TableCell colSpan={3} className="bg-muted/40 py-1 text-xs font-medium text-muted-foreground">
         {label}
-        <span className="ml-1.5 tabular-nums">{count}</span>
+        <span className="ml-2 tabular-nums">{count}</span>
       </TableCell>
     </TableRow>
   );
