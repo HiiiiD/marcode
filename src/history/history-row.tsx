@@ -32,11 +32,11 @@ export function HistoryRow({ session }: { session: SessionSummary }) {
         </TableCell>
         <TableCell className="w-full max-w-0 align-top whitespace-normal">
           <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5">
-            <span className="truncate font-medium">{session.name}</span>
+            <span className="truncate text-[13px] font-semibold">{session.name}</span>
             <HistoryStatus session={session} />
           </div>
-          <div className="truncate text-muted-foreground">{session.title.length >= TITLE_MAX ? `${session.title}…` : session.title}</div>
-          <div className="flex flex-wrap gap-x-3 text-xs tabular-nums text-muted-foreground/80">
+          <div className="truncate text-xs text-muted-foreground">{session.title.length >= TITLE_MAX ? `${session.title}…` : session.title}</div>
+          <div className="flex flex-wrap gap-x-3 text-xs tabular-nums text-muted-foreground">
             <span>{`${session.providerId} · ${session.model}`}</span>
             <span>{formatWhen(session.updatedAt)}</span>
           </div>

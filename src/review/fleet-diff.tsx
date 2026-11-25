@@ -339,7 +339,7 @@ export function FleetDiff() {
           </Button>
         </div>
         <div className="flex items-center gap-2">
-          <h2 className="shrink-0 font-medium">Changes</h2>
+          <h2 className="shrink-0 text-[13px] font-semibold">Changes</h2>
           {trees !== undefined && trees.length > 0 && (
             <span className="min-w-0 truncate text-muted-foreground">
               {shown === total ? summarize(filtered) : `${shown} of ${total} files`}
@@ -850,7 +850,7 @@ function Group({
         >
           {isCollapsed ? <ChevronRightIcon aria-hidden /> : <ChevronDownIcon aria-hidden />}
         </Button>
-        <h4 className={cn('min-w-0 truncate text-xs', unattributed ? 'text-muted-foreground' : 'font-medium')}>
+        <h4 className={cn('min-w-0 truncate text-[13px] font-semibold', unattributed && 'font-medium text-muted-foreground')}>
           {title}
         </h4>
         {/*
@@ -884,7 +884,7 @@ function Group({
             // The sentence is the point of the group. Without it "not attributed"
             // reads as a bug in the attribution rather than as what it is: a
             // change no tool call in any transcript accounts for.
-            <p className="px-4 pt-0.5 text-muted-foreground">
+            <p className="pl-9 pr-4 pt-0.5 text-xs text-muted-foreground">
               No session recorded a tool call for these. A shell command, a build or your own
               edit changed them.
             </p>
@@ -903,7 +903,7 @@ function Group({
               if (data.kind === 'folder') {
                 return (
                   <TreeItem key={item.getId()} item={item}>
-                    <TreeItemLabel className="text-xs">
+                    <TreeItemLabel className="py-1 text-[13px]">
                       {item.isExpanded()
                         ? <FolderOpenIcon aria-hidden className="size-3.5 text-muted-foreground" />
                         : <FolderIcon aria-hidden className="size-3.5 text-muted-foreground" />}
@@ -1029,7 +1029,7 @@ function FileRow({
       // agree on both, or a file sits at a visibly different depth than a
       // folder row at that same depth.
       className={cn(
-        'w-full justify-start gap-2 pr-2 font-normal',
+        'w-full justify-start gap-2 pr-2 text-[13px] font-normal',
         // The named claimant sits on its own line so a long session title can never take the filename's width.
         others.length > 0 && 'h-auto flex-wrap gap-y-0.5 border-l-2 border-l-attention/70 py-1',
       )}
