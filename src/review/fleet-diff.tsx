@@ -298,7 +298,7 @@ export function FleetDiff() {
   };
 
   return (
-    <section aria-label="Changes across every working tree" className="flex h-screen min-h-0 flex-col">
+    <section aria-label="Changes across every working tree" className="flex h-screen min-h-0 flex-col text-sm">
       {/*
         The same toolbar rhythm as the sidebar's own header — same height,
         same border, same control sizes — so this tab and the panel it opened

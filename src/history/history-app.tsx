@@ -32,7 +32,7 @@ export function HistoryApp() {
 
   return (
     <TooltipProvider>
-      <div className="mx-auto flex min-h-screen w-full max-w-4xl flex-col text-foreground">
+      <div className="mx-auto flex min-h-screen w-full max-w-4xl flex-col text-sm text-foreground">
         <HistoryToolbar query={query} attentionCount={attentionCount} onChange={setQuery} />
         {filtered && (
           <div className="flex items-center gap-2 border-b border-border px-3 py-1 text-xs text-muted-foreground">

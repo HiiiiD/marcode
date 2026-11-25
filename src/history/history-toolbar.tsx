@@ -67,7 +67,7 @@ export function HistoryToolbar({ query, attentionCount, onChange }: Props) {
         >
           {`${SORT_LABEL[query.sort]} ${query.dir === 'asc' ? '↑' : '↓'}`}
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
+        <DropdownMenuContent align="end" className="text-sm">
           <DropdownMenuRadioGroup
             value={query.sort}
             onValueChange={(v) => onChange({ ...query, sort: v as SortKey })}
