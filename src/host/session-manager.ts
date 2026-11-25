@@ -2209,7 +2209,8 @@ export class SessionManager implements SessionSink {
     if (!wasForeign) { await this.ownership?.release(id); }
     const state = this.meta.get(id);
     if (state && !wasForeign) {
-      state.status = 'idle';
+      // A failure outlives its pane: the history tab's "Needs attention" is the only place it surfaces once hidden.
+      if (state.status !== 'error') { state.status = 'idle'; }
       state.updatedAt = Date.now();
     }
     this.visible.delete(id);
