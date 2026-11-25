@@ -2,7 +2,7 @@ import { syncDataLoaderFeature } from '@headless-tree/core';
 import { useTree } from '@headless-tree/react';
 import {
   ArrowDownIcon, ArrowUpIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon, FileMinusIcon, FilePenLineIcon,
-  FilePlusIcon, FileSymlinkIcon, RefreshCwIcon, UsersIcon, XIcon,
+  FilePlusIcon, FileSymlinkIcon, FolderIcon, FolderOpenIcon, ListFilterIcon, RefreshCwIcon, SearchIcon, UsersIcon, XIcon,
 } from 'lucide-react';
 import {
   useEffect, useMemo, useRef, useState,
@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/button';
 import {
   Combobox, ComboboxContent, ComboboxItem, ComboboxTrigger, ComboboxValue,
 } from '@/components/ui/combobox';
-import { Input } from '@/components/ui/input';
+import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group';
 import { StatusBadge } from '@/components/status-badge';
 import {
   CHEVRON_TOGGLE_CLASS, Tree as FolderTree, TreeItem, TreeItemLabel,
@@ -305,11 +305,43 @@ export function FleetDiff() {
         from read as one application rather than two surfaces that happen to
         share a codebase.
       */}
-      <div className="flex flex-col gap-1 border-b border-border px-2 py-1 text-xs md:flex-row md:items-center md:gap-2">
-        <div className="flex items-center gap-2 md:contents">
+      <div className="space-y-1.5 border-b border-border px-2 py-2 text-xs">
+        <div className="flex items-center gap-2">
+          <InputGroup className="h-8 min-w-0 flex-1">
+            <InputGroupAddon align="inline-start" className="pl-2.5 text-muted-foreground">
+              <SearchIcon aria-hidden className="size-3.5" />
+            </InputGroupAddon>
+            <InputGroupInput
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              aria-label="Filter by path"
+              placeholder="Filter files…"
+              className="text-xs md:text-xs"
+            />
+            {query !== '' && (
+              <InputGroupAddon align="inline-end">
+                <Button variant="ghost" size="icon-xs" aria-label="Clear filter" onClick={() => setQuery('')}>
+                  <XIcon aria-hidden />
+                </Button>
+              </InputGroupAddon>
+            )}
+          </InputGroup>
+          <Button
+            variant="outline"
+            size="icon"
+            className={cn('shrink-0', contestedOnly && 'border-attention/70 bg-attention/25 hover:bg-attention/30 dark:border-attention/70 dark:bg-attention/25 dark:hover:bg-attention/30')}
+            aria-label="Contested only"
+            title="Contested only: files two or more sessions edited"
+            aria-pressed={contestedOnly}
+            onClick={() => setContestedOnly((on) => !on)}
+          >
+            <ListFilterIcon aria-hidden />
+          </Button>
+        </div>
+        <div className="flex items-center gap-2">
           <h2 className="shrink-0 font-medium">Changes</h2>
           {trees !== undefined && trees.length > 0 && (
-            <span className="shrink-0 whitespace-nowrap text-muted-foreground md:order-2">
+            <span className="min-w-0 truncate text-muted-foreground">
               {shown === total ? summarize(filtered) : `${shown} of ${total} files`}
             </span>
           )}
@@ -318,7 +350,7 @@ export function FleetDiff() {
               filter edit — never on the 750ms poll, which updates `shown` and
               `total` without touching `query` or `contestedOnly`. */}
           <span aria-live="polite" className="sr-only">{filterAnnouncement}</span>
-          <div className="ml-auto flex items-center gap-1 md:order-last">
+          <div className="ml-auto flex shrink-0 items-center gap-1">
         {/*
             Next/prev walks the flat row order the roving index already counts,
             so the user never has to find the next file by eye in a 500-row
@@ -368,39 +400,7 @@ export function FleetDiff() {
           >
             <RefreshCwIcon aria-hidden />
           </Button>
-            </div>
-        </div>
-        <div className="flex items-center gap-2 md:contents">
-        <div className="relative min-w-32 min-w-0 flex-1 md:max-w-64">
-          <Input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            aria-label="Filter by path"
-            placeholder="Filter by path"
-            className={cn('h-7 text-xs md:text-xs', query !== '' && 'pr-6')}
-          />
-          {query !== '' && (
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              aria-label="Clear filter"
-              className="absolute top-0.5 right-0.5"
-              onClick={() => setQuery('')}
-            >
-              <XIcon aria-hidden />
-            </Button>
-          )}
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          className={cn('text-xs', contestedOnly && 'border-attention/70 bg-attention/25 hover:bg-attention/30 dark:border-attention/70 dark:bg-attention/25 dark:hover:bg-attention/30')}
-          aria-pressed={contestedOnly}
-          onClick={() => setContestedOnly((on) => !on)}
-        >
-          {contestedOnly && <CheckIcon aria-hidden />}
-          Contested only
-        </Button>
+          </div>
         </div>
       </div>
 
@@ -737,6 +737,7 @@ function Group({
     : sessions.find((s) => s.id === group.sessionId);
   const groupKey = `${tree.root}::${group.sessionId ?? UNATTRIBUTED_KEY}`;
   const isCollapsed = collapsed.has(groupKey);
+  const contestedCount = group.files.filter((file) => file.claimedBy.length > 1).length;
   const folderRoot = compactFolderTree(buildFolderTree(group.files, ''));
   const { index, childrenOf, folderDirPaths } = indexFolderTree(folderRoot);
 
@@ -872,6 +873,9 @@ function Group({
           {' '}
           {group.files.length === 1 ? 'file' : 'files'}
         </span>
+        {contestedCount > 0 && (
+          <span className="shrink-0 whitespace-nowrap text-attention">{`${contestedCount} contested`}</span>
+        )}
         <Churn insertions={group.insertions} deletions={group.deletions} className="ml-auto" />
       </div>
       {isCollapsed ? null : (
@@ -899,7 +903,12 @@ function Group({
               if (data.kind === 'folder') {
                 return (
                   <TreeItem key={item.getId()} item={item}>
-                    <TreeItemLabel className="text-xs text-muted-foreground" />
+                    <TreeItemLabel className="text-xs">
+                      {item.isExpanded()
+                        ? <FolderOpenIcon aria-hidden className="size-3.5 text-muted-foreground" />
+                        : <FolderIcon aria-hidden className="size-3.5 text-muted-foreground" />}
+                      {item.getItemName()}
+                    </TreeItemLabel>
                   </TreeItem>
                 );
               }
@@ -1022,7 +1031,7 @@ function FileRow({
       className={cn(
         'w-full justify-start gap-2 pr-2 font-normal',
         // The named claimant sits on its own line so a long session title can never take the filename's width.
-        others.length > 0 && 'h-auto flex-wrap gap-y-0.5 py-1',
+        others.length > 0 && 'h-auto flex-wrap gap-y-0.5 border-l-2 border-l-attention/70 py-1',
       )}
       style={{ paddingLeft: depth * TREE_INDENT + FILE_ROW_BASE_INSET }}
       // Every row used to be its own stop in the tab order — 400 Tab presses
