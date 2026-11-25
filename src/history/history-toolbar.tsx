@@ -1,4 +1,4 @@
-import { ArrowDownUpIcon, SearchIcon, XIcon } from 'lucide-react';
+import { ArrowDownUpIcon, CheckIcon, SearchIcon, XIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem,
@@ -51,6 +51,7 @@ export function HistoryToolbar({ query, attentionCount, onChange }: Props) {
         className={cn('h-8', active && 'border-attention/60 bg-attention/15 text-foreground hover:bg-attention/20')}
         onClick={() => onChange({ ...query, needsAttention: !active })}
       >
+        {active && <CheckIcon aria-hidden />}
         Needs attention
         {attentionCount > 0 && (
           <span className="rounded-full bg-attention/20 px-1.5 text-[11px] tabular-nums text-attention">
@@ -60,10 +61,10 @@ export function HistoryToolbar({ query, attentionCount, onChange }: Props) {
       </Button>
       <DropdownMenu>
         <DropdownMenuTrigger
-          render={<Button variant="outline" size="sm" className="h-8" aria-label="Sort sessions" />}
+          render={<Button variant="outline" size="sm" className="h-8" aria-label="Sort sessions" title={`Sort: ${SORT_LABEL[query.sort]}, ${query.dir === 'asc' ? 'oldest' : 'newest'} first`} />}
         >
           <ArrowDownUpIcon aria-hidden />
-          {`${SORT_LABEL[query.sort]} ${query.dir === 'asc' ? '↑' : '↓'}`}
+          <span className="hidden sm:inline">{`${SORT_LABEL[query.sort]} ${query.dir === 'asc' ? '↑' : '↓'}`}</span>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           <DropdownMenuRadioGroup

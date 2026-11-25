@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Button } from '@/components/ui/button';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { HistoryTable } from './history-table';
 import { HistoryToolbar } from './history-toolbar';
@@ -31,6 +32,12 @@ export function HistoryApp() {
     <TooltipProvider>
       <div className="flex min-h-screen flex-col text-foreground">
         <HistoryToolbar query={query} attentionCount={attentionCount} onChange={setQuery} />
+        {query.needsAttention && (
+          <div className="flex items-center gap-2 border-b border-border px-3 py-1 text-xs text-muted-foreground">
+            <span>Showing only sessions that need attention</span>
+            <Button variant="link" size="xs" onClick={() => setQuery({ ...query, needsAttention: false })}>Clear</Button>
+          </div>
+        )}
         <MemoryStrip />
         {body}
       </div>

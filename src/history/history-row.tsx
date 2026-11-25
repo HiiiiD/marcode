@@ -19,7 +19,7 @@ export function HistoryRow({ session }: { session: SessionSummary }) {
   return (
     <>
       <TableRow className={cn(waiting && 'bg-attention/10 hover:bg-attention/15')}>
-        <TableCell className="w-8 align-top">
+        <TableCell className="w-6 pr-0 align-top">
           <TipButton
             tip={open ? 'Collapse' : 'Expand'}
             label={`${open ? 'Collapse' : 'Expand'} ${session.name}`}
@@ -44,8 +44,9 @@ export function HistoryRow({ session }: { session: SessionSummary }) {
           <div className="flex items-center justify-end gap-1">
             {(session.status === 'running' || session.status === 'awaiting-approval') && (
               <Button
-                variant="outline"
+                variant="ghost"
                 size="sm"
+                className="text-destructive hover:text-destructive"
                 aria-label={`Stop ${session.name}`}
                 disabled={session.owner !== undefined}
                 title={session.owner ? 'Stop this session in its owning host' : undefined}

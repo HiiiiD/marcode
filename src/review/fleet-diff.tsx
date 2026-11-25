@@ -863,7 +863,7 @@ function Group({
             // The sentence is the point of the group. Without it "not attributed"
             // reads as a bug in the attribution rather than as what it is: a
             // change no tool call in any transcript accounts for.
-            <p className="pl-4 pt-0.5 text-muted-foreground">
+            <p className="px-4 pt-0.5 text-muted-foreground">
               No session recorded a tool call for these. A shell command, a build or your own
               edit changed them.
             </p>
@@ -876,7 +876,7 @@ function Group({
             (`--tree-padding`, `TREE_INDENT` per level), not DOM nesting, the
             same scheme the vendored `Tree` primitive uses.
           */}
-          <FolderTree indent={TREE_INDENT} tree={folders} className="mt-1 space-y-0.5 border-l border-border pl-10">
+          <FolderTree indent={TREE_INDENT} tree={folders} className="mt-1 space-y-0.5 pl-4">
             {folders.getItems().map((item) => {
               const data = item.getItemData();
               if (data.kind === 'folder') {
@@ -997,7 +997,11 @@ function FileRow({
       // to match its `TreeItemLabel`'s own `px-2` too — the two have to
       // agree on both, or a file sits at a visibly different depth than a
       // folder row at that same depth.
-      className="w-full justify-start gap-2 pr-2 font-normal"
+      className={cn(
+        'w-full justify-start gap-2 pr-2 font-normal',
+        // The named claimant sits on its own line so a long session title can never take the filename's width.
+        others.length > 0 && 'h-auto flex-wrap gap-y-0.5 py-1',
+      )}
       style={{ paddingLeft: depth * TREE_INDENT + FILE_ROW_BASE_INSET }}
       // Every row used to be its own stop in the tab order — 400 Tab presses
       // to reach row 400. Only the active row is tabbable; arrow keys move
@@ -1019,13 +1023,16 @@ function FileRow({
         // row's truncating tail: two sessions writing one file is the single
         // situation in this whole surface worth stopping on, and "+1" does
         // not say who to go and read.
-        <Badge
-          variant="outline"
-          className="min-w-0 shrink truncate border-destructive/50 text-destructive"
-          title={`Also ${others.map((id) => titleOf(id, sessions)).join(', ')}`}
-        >
-          Also {others.map((id) => titleOf(id, sessions)).join(', ')}
-        </Badge>
+        <>
+          <span aria-hidden className="order-2 h-0 basis-full" />
+          <Badge
+            variant="outline"
+            className="order-3 ml-6 min-w-0 max-w-[calc(100%-1.5rem)] truncate border-attention/50 text-attention"
+            title={`Also ${others.map((id) => titleOf(id, sessions)).join(', ')}`}
+          >
+            Also {others.map((id) => titleOf(id, sessions)).join(', ')}
+          </Badge>
+        </>
       )}
       {file.op === 'rename' && file.from !== undefined && (
         <span className="min-w-0 shrink truncate text-muted-foreground" title={file.from}>
