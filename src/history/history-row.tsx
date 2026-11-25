@@ -43,19 +43,6 @@ export function HistoryRow({ session }: { session: SessionSummary }) {
         </TableCell>
         <TableCell className="align-top">
           <div className="flex items-center justify-end gap-1">
-            {(session.status === 'running' || session.status === 'awaiting-approval') && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="border-destructive/40 text-xs text-destructive hover:text-destructive dark:border-destructive/40 dark:bg-transparent"
-                aria-label={`Stop ${session.name}`}
-                disabled={session.owner !== undefined}
-                title={session.owner ? 'Stop this session in its owning host' : undefined}
-                onClick={() => post({ t: 'interrupt', id: session.id })}
-              >
-                Stop
-              </Button>
-            )}
             {state.memory?.enabled && (
               <TipButton
                 tip="Re-summarize"
@@ -73,6 +60,19 @@ export function HistoryRow({ session }: { session: SessionSummary }) {
             >
               <PinIcon aria-hidden className={cn(pinned ? 'fill-current' : 'text-muted-foreground')} />
             </TipButton>
+            {(session.status === 'running' || session.status === 'awaiting-approval') && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="border-destructive/40 text-xs text-destructive hover:text-destructive dark:border-destructive/40 dark:bg-transparent"
+                aria-label={`Stop ${session.name}`}
+                disabled={session.owner !== undefined}
+                title={session.owner ? 'Stop this session in its owning host' : undefined}
+                onClick={() => post({ t: 'interrupt', id: session.id })}
+              >
+                Stop
+              </Button>
+            )}
             <Button
               variant={session.open ? 'ghost' : 'outline'}
               size="sm"

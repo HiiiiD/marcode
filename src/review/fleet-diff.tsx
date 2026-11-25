@@ -95,25 +95,15 @@ const FILE_ROW_BASE_INSET = 8;
 const UNATTRIBUTED_KEY = 'unattributed';
 
 /**
- * The tree header's rendered height, in pixels — pinned here so the sticky
- * group header below it can be given the exact same number rather than a
- * second, independent guess.
- *
- * `top-8` (32px) was the first guess and it undershot: the header is two
- * fixed-height rows — `pt-3` (10px) + the chevron row, whose tallest child
- * is the `icon-xs` `Button` at 24px + `space-y-0.5` (2px) + the `text-xs`
- * base-line row at its default 16px line-height + `pb-2` (6px) — 58px in
- * total, not 32. Both rows truncate rather than wrap, so this height is fixed
- * regardless of path length or branch name; nothing here depends on content
- * that can grow. `TREE_HEADER_HEIGHT` is applied as the header's own explicit
- * height (so it cannot silently drift from this number) and consumed again as
- * the group header's `top`. jsdom performs no layout, so no DOM test can
- * catch a future edit to the header's padding or row heights that stops
- * matching this constant — changing the header's rows means updating this
- * number by hand, and a screenshot is the only thing that verifies the
- * result.
+ * The sticky tree header's rendered height, in pixels — pinned here so the
+ * sticky group header below it can be given the exact same number rather than
+ * a second guess. It is one fixed row: `py-2` (8px top and bottom) around the
+ * `icon-xs` button at 24px. Only that row sticks; the base-ref note under it
+ * wraps and so scrolls with the content, because a sticky box of fixed height
+ * cannot hold text that changes height. jsdom performs no layout, so a
+ * screenshot is the only thing that verifies this number.
  */
-const TREE_HEADER_HEIGHT = 58;
+const TREE_HEADER_HEIGHT = 40;
 
 /** One row's place in the flat, rendered order. */
 interface Row {
@@ -341,7 +331,7 @@ export function FleetDiff() {
         <div className="flex items-center gap-2">
           <h2 className="shrink-0 text-sm font-semibold">Changes</h2>
           {trees !== undefined && trees.length > 0 && (
-            <span className="min-w-0 truncate text-muted-foreground">
+            <span className="min-w-0 flex-1 text-muted-foreground">
               {shown === total ? summarize(filtered) : `${shown} of ${total} files`}
             </span>
           )}
@@ -558,7 +548,7 @@ function Tree({
       */}
       <div
         data-testid="tree-header"
-        className="sticky top-0 z-10 space-y-0.5 bg-background px-2 pt-3 pb-2"
+        className="sticky top-0 z-10 bg-background px-2 py-2"
         style={{ height: TREE_HEADER_HEIGHT }}
       >
         <div className="flex min-w-0 items-center gap-2">
@@ -589,13 +579,15 @@ function Tree({
             </span>
           )}
         </div>
+      </div>
+
         {/* Named, never implied. `head` means uncommitted work only, and a
             list that let that pass for "everything this session did" would
             quietly under-report a session that had committed as it went. The
             combobox lets a wrong auto-detected default (a repo whose
             declared default branch is neither `origin/HEAD` nor one of the
             built-in fallbacks) be overridden per-tree, for this tab only. */}
-        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 pb-2 pl-6">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 pb-4 pl-8 pr-2">
           <p className="min-w-0 flex-1 basis-40 text-muted-foreground">
             {tree.base.kind === 'merge-base'
               ? `Since ${tree.base.ref} (${tree.base.sha.slice(0, 7)})`
@@ -627,7 +619,6 @@ function Tree({
             </ComboboxContent>
           </Combobox>
         </div>
-      </div>
 
       {isCollapsed ? null : (
         <div className="pb-3">
@@ -834,7 +825,7 @@ function Group({
   }
 
   return (
-    <div className="mt-3 first:mt-1">
+    <div className="mt-4 first:mt-0">
       <div
         data-testid="group-header"
         className="sticky z-[9] flex min-w-0 items-center gap-2 bg-background pl-4 pr-2"
@@ -897,7 +888,7 @@ function Group({
             (`--tree-padding`, `TREE_INDENT` per level), not DOM nesting, the
             same scheme the vendored `Tree` primitive uses.
           */}
-          <FolderTree indent={TREE_INDENT} tree={folders} className="mt-1 space-y-0.5 pl-4">
+          <FolderTree indent={TREE_INDENT} tree={folders} className="mt-2 space-y-0.5 pl-4">
             {folders.getItems().map((item) => {
               const data = item.getItemData();
               if (data.kind === 'folder') {
