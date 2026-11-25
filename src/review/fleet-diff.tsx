@@ -2,7 +2,7 @@ import { syncDataLoaderFeature } from '@headless-tree/core';
 import { useTree } from '@headless-tree/react';
 import {
   ArrowDownIcon, ArrowUpIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon, FileMinusIcon, FilePenLineIcon,
-  FilePlusIcon, FileSymlinkIcon, RefreshCwIcon, XIcon,
+  FilePlusIcon, FileSymlinkIcon, RefreshCwIcon, UsersIcon, XIcon,
 } from 'lucide-react';
 import {
   useEffect, useMemo, useRef, useState,
@@ -305,19 +305,73 @@ export function FleetDiff() {
         from read as one application rather than two surfaces that happen to
         share a codebase.
       */}
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-border px-2 py-1 text-xs">
-        <h2 className="shrink-0 font-medium">Changes</h2>
-        {trees !== undefined && trees.length > 0 && (
-          <span className="shrink-0 whitespace-nowrap text-muted-foreground">
-            {shown === total ? summarize(filtered) : `${shown} of ${total} files`}
-          </span>
-        )}
-        {/* Mounted for the life of the tab, same shape as `StatusBadge`'s own
-            live region: only its text changes, and it changes only on a
-            filter edit — never on the 750ms poll, which updates `shown` and
-            `total` without touching `query` or `contestedOnly`. */}
-        <span aria-live="polite" className="sr-only">{filterAnnouncement}</span>
-        <div className="relative min-w-32 max-w-64 flex-1 basis-40">
+      <div className="flex flex-col gap-1 border-b border-border px-2 py-1 text-xs md:flex-row md:items-center md:gap-2">
+        <div className="flex items-center gap-2 md:contents">
+          <h2 className="shrink-0 font-medium">Changes</h2>
+          {trees !== undefined && trees.length > 0 && (
+            <span className="shrink-0 whitespace-nowrap text-muted-foreground">
+              {shown === total ? summarize(filtered) : `${shown} of ${total} files`}
+            </span>
+          )}
+          {/* Mounted for the life of the tab, same shape as `StatusBadge`'s own
+              live region: only its text changes, and it changes only on a
+              filter edit — never on the 750ms poll, which updates `shown` and
+              `total` without touching `query` or `contestedOnly`. */}
+          <span aria-live="polite" className="sr-only">{filterAnnouncement}</span>
+          <div className="ml-auto flex items-center gap-1 md:order-last">
+        {/*
+            Next/prev walks the flat row order the roving index already counts,
+            so the user never has to find the next file by eye in a 500-row
+            list — the reason this control exists at all.
+          */}
+          <Button
+            variant="outline"
+            size="icon-sm"
+            className="shrink-0"
+            aria-label="Open the previous file"
+            title="Open the previous file"
+            disabled={rows.length === 0}
+            onClick={() => {
+              const next = nextIndex(active, 'ArrowUp', rows.length);
+              if (next !== null) { openRow(next); }
+            }}
+          >
+            <ArrowUpIcon aria-hidden />
+          </Button>
+          <Button
+            variant="outline"
+            size="icon-sm"
+            className="shrink-0"
+            aria-label="Open the next file"
+            title="Open the next file"
+            disabled={rows.length === 0}
+            onClick={() => {
+              // On a tab nothing has focused or opened yet, `active` still
+              // resolves to `0` by default (see `useRovingRows`) — advancing
+              // from it with `nextIndex` would open row 1 and silently skip
+              // row 0, the one file "Previous" would correctly open first.
+              // Once the list has genuine focus, this is ordinary next-row
+              // movement.
+              const next = hadFocus ? nextIndex(active, 'ArrowDown', rows.length) : active;
+              if (next !== null) { openRow(next); }
+            }}
+          >
+            <ArrowDownIcon aria-hidden />
+          </Button>
+          <Button
+            variant="outline"
+            size="icon-sm"
+            className="shrink-0"
+            aria-label="Refresh: read every working tree again"
+            title="Refresh: read every working tree again"
+            onClick={refresh}
+          >
+            <RefreshCwIcon aria-hidden />
+          </Button>
+            </div>
+        </div>
+        <div className="flex items-center gap-2 md:contents">
+        <div className="relative min-w-32 min-w-0 flex-1 md:max-w-64">
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -340,59 +394,14 @@ export function FleetDiff() {
         <Button
           variant="outline"
           size="sm"
-          className={cn('text-xs', contestedOnly && 'border-attention/60 bg-attention/15 hover:bg-attention/20')}
+          className={cn('text-xs', contestedOnly && 'border-attention/70 bg-attention/25 hover:bg-attention/30')}
           aria-pressed={contestedOnly}
           onClick={() => setContestedOnly((on) => !on)}
         >
           {contestedOnly && <CheckIcon aria-hidden />}
           Contested only
         </Button>
-        {/*
-          Next/prev walks the flat row order the roving index already counts,
-          so the user never has to find the next file by eye in a 500-row
-          list — the reason this control exists at all.
-        */}
-        <Button
-          variant="outline"
-          size="icon-sm"
-          className="ml-auto shrink-0"
-          aria-label="Open the previous file"
-          disabled={rows.length === 0}
-          onClick={() => {
-            const next = nextIndex(active, 'ArrowUp', rows.length);
-            if (next !== null) { openRow(next); }
-          }}
-        >
-          <ArrowUpIcon aria-hidden />
-        </Button>
-        <Button
-          variant="outline"
-          size="icon-sm"
-          className="shrink-0"
-          aria-label="Open the next file"
-          disabled={rows.length === 0}
-          onClick={() => {
-            // On a tab nothing has focused or opened yet, `active` still
-            // resolves to `0` by default (see `useRovingRows`) — advancing
-            // from it with `nextIndex` would open row 1 and silently skip
-            // row 0, the one file "Previous" would correctly open first.
-            // Once the list has genuine focus, this is ordinary next-row
-            // movement.
-            const next = hadFocus ? nextIndex(active, 'ArrowDown', rows.length) : active;
-            if (next !== null) { openRow(next); }
-          }}
-        >
-          <ArrowDownIcon aria-hidden />
-        </Button>
-        <Button
-          variant="outline"
-          size="icon-sm"
-          className="shrink-0"
-          aria-label="Refresh: read every working tree again"
-          onClick={refresh}
-        >
-          <RefreshCwIcon aria-hidden />
-        </Button>
+        </div>
       </div>
 
       <div
@@ -571,7 +580,7 @@ function Tree({
             levels say what the nesting already says visually: tree, then the
             sessions inside it.
           */}
-          <h3 className="min-w-0 truncate text-sm font-medium" title={tree.root}>
+          <h3 className="min-w-0 truncate text-sm font-semibold" title={tree.root}>
             {name}
           </h3>
           {tree.branch !== undefined && (
@@ -586,8 +595,8 @@ function Tree({
             combobox lets a wrong auto-detected default (a repo whose
             declared default branch is neither `origin/HEAD` nor one of the
             built-in fallbacks) be overridden per-tree, for this tab only. */}
-        <div className="flex min-w-0 items-center gap-1.5 pl-6">
-          <p className="min-w-0 flex-1 text-muted-foreground">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5 pb-2 pl-6">
+          <p className="min-w-0 flex-1 basis-40 text-muted-foreground">
             {tree.base.kind === 'merge-base'
               ? `Since ${tree.base.ref} (${tree.base.sha.slice(0, 7)})`
               : 'Uncommitted changes only — nothing to compare a branch point against.'}
@@ -718,7 +727,7 @@ function Group({
   const unattributed = group.sessionId === null;
   const title = group.sessionId === null
     ? 'Not attributed to a session'
-    : titleOf(group.sessionId, sessions);
+    : nameOf(group.sessionId, sessions);
   // Undefined for the unattributed group and for a session that has been
   // deleted since — `titleOf` covers "deleted" in the title text already,
   // but a live-status badge has nothing true to claim about a session that
@@ -840,7 +849,7 @@ function Group({
         >
           {isCollapsed ? <ChevronRightIcon aria-hidden /> : <ChevronDownIcon aria-hidden />}
         </Button>
-        <h4 className={cn('min-w-0 truncate text-sm', unattributed ? 'text-muted-foreground' : 'font-medium')}>
+        <h4 className={cn('min-w-0 truncate text-xs', unattributed ? 'text-muted-foreground' : 'font-medium')}>
           {title}
         </h4>
         {/*
@@ -929,6 +938,11 @@ function Group({
 function basename(path: string): string {
   const slash = path.lastIndexOf('/');
   return slash === -1 ? path : path.slice(slash + 1);
+}
+
+function nameOf(id: SessionId, sessions: SessionSummary[]): string {
+  const s = sessions.find((x) => x.id === id);
+  return s ? (s.name || s.title) : 'Deleted session';
 }
 
 function titleOf(id: SessionId, sessions: SessionSummary[]): string {
@@ -1035,10 +1049,11 @@ function FileRow({
           <span aria-hidden className="order-2 h-0 basis-full" />
           <Badge
             variant="outline"
-            className="order-3 ml-6 min-w-0 max-w-[calc(100%-1.5rem)] truncate border-attention/50 text-attention"
-            title={`Also ${others.map((id) => titleOf(id, sessions)).join(', ')}`}
+            className="order-3 ml-6 min-w-0 max-w-[calc(100%-1.5rem)] truncate border-attention/50 text-foreground [&>svg]:text-attention"
+            title={`Also edited by ${others.map((id) => titleOf(id, sessions)).join(', ')}`}
           >
-            Also {others.map((id) => titleOf(id, sessions)).join(', ')}
+            <UsersIcon aria-hidden />
+            <span className="truncate">Also {others.map((id) => nameOf(id, sessions)).join(', ')}</span>
           </Badge>
         </>
       )}

@@ -19,7 +19,7 @@ export function HistoryRow({ session }: { session: SessionSummary }) {
 
   return (
     <>
-      <TableRow className={cn('group/row', waiting && 'bg-attention/10 hover:bg-attention/15')}>
+      <TableRow className={cn('group/row', waiting && 'bg-attention/10 hover:bg-attention/15', session.status === 'error' && 'bg-destructive/10 hover:bg-destructive/15')}>
         <TableCell className="w-6 pr-0 align-top">
           <TipButton
             tip={open ? 'Collapse' : 'Expand'}

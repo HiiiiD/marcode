@@ -158,7 +158,7 @@ suite('review structure', () => {
           claimedBy: ['s1', 's2'] }],
       }] } as never,
     );
-    assert.strictEqual(screen.getByText('Also Session B').getAttribute('title'), 'Also Session B');
+    assert.strictEqual(screen.getByText('Also Session B').parentElement?.getAttribute('title'), 'Also edited by Session B');
   });
 
   test("the group's status region stays mounted at idle so a later transition can still announce", () => {
@@ -194,7 +194,7 @@ suite('review structure', () => {
 
     await user.click(toggle);
     assert.strictEqual(toggle.getAttribute('aria-pressed'), 'true');
-    assert.strictEqual(toggle.className.includes('bg-attention/15'), true);
+    assert.strictEqual(toggle.className.includes('bg-attention/25'), true);
   });
 
   // `files: []` with no `reason` is not just what a filter empties a tree

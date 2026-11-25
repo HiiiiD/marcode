@@ -17,10 +17,10 @@ export function HistoryStatus({ session }: { session: SessionSummary }) {
     <span
       className={cn(
         'inline-flex items-center gap-1.5 whitespace-nowrap text-xs',
-        status === 'error' ? 'text-destructive' : waiting ? 'font-medium text-attention' : 'text-muted-foreground',
+        status === 'error' ? 'text-destructive' : waiting ? 'font-medium text-foreground' : 'text-muted-foreground',
       )}
     >
-      <Icon aria-hidden className="size-3.5 shrink-0" />
+      <Icon aria-hidden className={cn('size-3.5 shrink-0', waiting && 'text-attention')} />
       {label}
     </span>
   );
