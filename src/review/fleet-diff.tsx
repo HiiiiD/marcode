@@ -338,9 +338,9 @@ export function FleetDiff() {
           )}
         </div>
         <Button
-          variant={contestedOnly ? 'secondary' : 'ghost'}
+          variant="outline"
           size="sm"
-          className="text-xs"
+          className={cn('text-xs', contestedOnly && 'border-attention/60 bg-attention/15 hover:bg-attention/20')}
           aria-pressed={contestedOnly}
           onClick={() => setContestedOnly((on) => !on)}
         >
@@ -461,6 +461,14 @@ export function FleetDiff() {
                 ? 'No file matches this filter among the files loaded so far.'
                 : 'No file matches this filter.'}
             </p>
+            {contestedOnly && query.trim() === '' && (
+              <p className="text-muted-foreground">
+                Contested means two or more sessions edited the same file.
+              </p>
+            )}
+            <Button variant="outline" size="sm" onClick={() => { setQuery(''); setContestedOnly(false); }}>
+              Clear filters
+            </Button>
             {totalOmitted > 0 && (
               <Button variant="outline" size="sm" onClick={showMore} disabled={atCeiling}>
                 {atCeiling
@@ -832,7 +840,7 @@ function Group({
         >
           {isCollapsed ? <ChevronRightIcon aria-hidden /> : <ChevronDownIcon aria-hidden />}
         </Button>
-        <h4 className={cn('min-w-0 truncate text-xs', unattributed ? 'text-muted-foreground' : 'font-medium')}>
+        <h4 className={cn('min-w-0 truncate text-sm', unattributed ? 'text-muted-foreground' : 'font-medium')}>
           {title}
         </h4>
         {/*
@@ -882,7 +890,7 @@ function Group({
               if (data.kind === 'folder') {
                 return (
                   <TreeItem key={item.getId()} item={item}>
-                    <TreeItemLabel />
+                    <TreeItemLabel className="text-xs text-muted-foreground" />
                   </TreeItem>
                 );
               }
@@ -1039,18 +1047,20 @@ function FileRow({
           from {file.from}
         </span>
       )}
-      <Churn insertions={file.insertions} deletions={file.deletions} className="ml-auto" />
+      <Churn insertions={file.insertions} deletions={file.deletions} isNew={file.op === 'create'} className="ml-auto" />
     </Button>
   );
 }
 
 function Churn({
-  insertions, deletions, className,
-}: { insertions?: number; deletions?: number; className?: string }) {
+  insertions, deletions, isNew, className,
+}: { insertions?: number; deletions?: number; isNew?: boolean; className?: string }) {
   // A binary file reports neither. Printing `+0 −0` would claim it did not
-  // change, which is the one thing that is certainly false about it.
+  // change, which is the one thing that is certainly false about it. An
+  // untracked file reports neither either, because the host never counts a
+  // new file's lines — that one is "new", not "binary".
   if (insertions === undefined && deletions === undefined) {
-    return <span className={cn('shrink-0 text-muted-foreground', className)}>binary</span>;
+    return <span className={cn('shrink-0 text-muted-foreground', className)}>{isNew ? 'new' : 'binary'}</span>;
   }
   return (
     <span className={cn('shrink-0 tabular-nums', className)}>

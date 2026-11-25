@@ -64,7 +64,7 @@ export function HistoryToolbar({ query, attentionCount, onChange }: Props) {
           render={<Button variant="outline" size="sm" className="h-8" aria-label="Sort sessions" title={`Sort: ${SORT_LABEL[query.sort]}, ${query.dir === 'asc' ? 'oldest' : 'newest'} first`} />}
         >
           <ArrowDownUpIcon aria-hidden />
-          <span className="hidden sm:inline">{`${SORT_LABEL[query.sort]} ${query.dir === 'asc' ? '↑' : '↓'}`}</span>
+          {`${SORT_LABEL[query.sort]} ${query.dir === 'asc' ? '↑' : '↓'}`}
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           <DropdownMenuRadioGroup

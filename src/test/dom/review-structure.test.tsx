@@ -36,6 +36,17 @@ suite('review structure', () => {
     assert.strictEqual(screen.queryAllByRole('treeitem', { name: 'src/webview' }).length, 1);
   });
 
+  test('an untracked file reads "new", a tracked file without counts reads "binary"', () => {
+    renderReview();
+    const trees = [{ ...TREES[0], files: [
+      { path: 'src/fresh.ts', op: 'create', claimedBy: ['s1'] },
+      { path: 'src/logo.png', op: 'modify', claimedBy: ['s1'] },
+    ] }];
+    sendFromHost(READY as never, { t: 'fleet-diff', trees } as never);
+    assert.strictEqual(screen.getByText('new').textContent, 'new');
+    assert.strictEqual(screen.getByText('binary').textContent, 'binary');
+  });
+
   test('counts the files in a session group', () => {
     renderReview();
     sendFromHost(READY as never, { t: 'fleet-diff', trees: TREES } as never);
@@ -177,15 +188,13 @@ suite('review structure', () => {
     sendFromHost(READY as never, { t: 'fleet-diff', trees: TREES } as never);
 
     const toggle = screen.getByRole('button', { name: /Contested only/ });
-    // Off is `ghost` (no `bg-background`, the marker `outline` carries but
-    // `ghost` does not), matching `editor-context-toggle.tsx`'s off state —
-    // not `outline`, which the sidebar never uses for this on/off pattern.
-    assert.strictEqual(toggle.className.includes('bg-background'), false);
+    // Bordered in both states, matching history's "Needs attention": a
+    // borderless off state read as plain label text in every critique round.
+    assert.strictEqual(toggle.className.includes('border-input'), true);
 
     await user.click(toggle);
     assert.strictEqual(toggle.getAttribute('aria-pressed'), 'true');
-    // On is `secondary`, the same variant the sidebar toggle switches to.
-    assert.strictEqual(toggle.className.includes('bg-secondary'), true);
+    assert.strictEqual(toggle.className.includes('bg-attention/15'), true);
   });
 
   // `files: []` with no `reason` is not just what a filter empties a tree

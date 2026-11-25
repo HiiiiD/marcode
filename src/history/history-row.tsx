@@ -3,6 +3,7 @@ import { ChevronRightIcon, PinIcon, RefreshCwIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { TableCell, TableRow } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
+import { TITLE_MAX } from '../shared/title-max';
 import { formatWhen } from './format-when';
 import { TipButton } from './tip-button';
 import { HistoryStatus } from './history-status';
@@ -18,7 +19,7 @@ export function HistoryRow({ session }: { session: SessionSummary }) {
 
   return (
     <>
-      <TableRow className={cn(waiting && 'bg-attention/10 hover:bg-attention/15')}>
+      <TableRow className={cn('group/row', waiting && 'bg-attention/10 hover:bg-attention/15')}>
         <TableCell className="w-6 pr-0 align-top">
           <TipButton
             tip={open ? 'Collapse' : 'Expand'}
@@ -34,7 +35,7 @@ export function HistoryRow({ session }: { session: SessionSummary }) {
             <span className="truncate font-medium">{session.name}</span>
             <HistoryStatus session={session} />
           </div>
-          <div className="truncate text-muted-foreground">{session.title}</div>
+          <div className="truncate text-muted-foreground">{session.title.length >= TITLE_MAX ? `${session.title}…` : session.title}</div>
           <div className="flex flex-wrap gap-x-3 text-xs tabular-nums text-muted-foreground/80">
             <span>{`${session.providerId} · ${session.model}`}</span>
             <span>{formatWhen(session.updatedAt)}</span>
@@ -44,9 +45,9 @@ export function HistoryRow({ session }: { session: SessionSummary }) {
           <div className="flex items-center justify-end gap-1">
             {(session.status === 'running' || session.status === 'awaiting-approval') && (
               <Button
-                variant="ghost"
+                variant="outline"
                 size="sm"
-                className="text-destructive hover:text-destructive"
+                className="border-destructive/40 text-destructive hover:text-destructive"
                 aria-label={`Stop ${session.name}`}
                 disabled={session.owner !== undefined}
                 title={session.owner ? 'Stop this session in its owning host' : undefined}
@@ -67,6 +68,7 @@ export function HistoryRow({ session }: { session: SessionSummary }) {
             <TipButton
               tip={pinned ? 'Unpin' : 'Pin'}
               label={`${pinned ? 'Unpin' : 'Pin'} ${session.name}`}
+              className={cn(!pinned && 'opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100')}
               onClick={() => post({ t: 'set-pinned', id: session.id, pinned: !pinned })}
             >
               <PinIcon aria-hidden className={cn(pinned ? 'fill-current' : 'text-muted-foreground')} />

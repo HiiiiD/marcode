@@ -1,3 +1,4 @@
+import { TITLE_MAX } from '../shared/title-max';
 import { resolve } from 'node:path';
 import type {
   FileRef, McpServerStatus, PermissionRequest, QuestionRequest, QueuedMessage, SessionId,
@@ -89,7 +90,6 @@ export interface SessionSink {
   shellAliases?(): ShellAliasTable;
 }
 
-const TITLE_MAX = 60;
 
 /**
  * Whether two absolute paths name the same directory.
