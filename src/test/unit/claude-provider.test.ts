@@ -734,7 +734,7 @@ suite('ClaudeProvider usage pull', () => {
       };
     }) as never));
 
-    const run = provider.start({ cwd: '/repo' } as never);
+    const run = provider.start({ cwd: '/tmp' } as never);
     run.send('hello');            // lazy start: this is what builds the query
     const windows = await run.usageWindows?.();
 
@@ -749,7 +749,7 @@ suite('ClaudeProvider usage pull', () => {
       return { close: () => {} };
     }) as never));
 
-    const run = provider.start({ cwd: '/repo' } as never);
+    const run = provider.start({ cwd: '/tmp' } as never);
 
     // Lazy start is deliberate — a usage pull must not be the thing that
     // spawns a CLI for a session the user never sent to. The activation probe
@@ -1623,7 +1623,7 @@ suite('ClaudeProvider instance overrides', () => {
     });
     assert.strictEqual(provider.id, 'claude-work');
     assert.strictEqual(provider.displayName, 'Claude (work)');
-    const run = provider.start({ cwd: '/repo', permissionMode: 'default', sessionId: 'test-session' });
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default', sessionId: 'test-session' });
     run.send('hi');
     await new Promise((resolve) => setTimeout(resolve, 0));
     assert.strictEqual((capturedOptions?.env as Record<string, string> | undefined)?.ANTHROPIC_API_KEY, 'sk-work');
@@ -1665,7 +1665,7 @@ suite('ClaudeProvider instance overrides', () => {
       onQuery: (options) => { capturedOptions = options as Record<string, unknown>; },
     });
     const provider = new ClaudeProvider(fake.load as never, undefined, { systemPrompt: 'Be terse.' });
-    const run = provider.start({ cwd: '/repo', permissionMode: 'default', sessionId: 'test-session' });
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default', sessionId: 'test-session' });
     run.send('hi');
     await flushMicrotasks();
     assert.strictEqual(capturedOptions?.systemPrompt, 'Be terse.');
@@ -1680,7 +1680,7 @@ suite('ClaudeProvider instance overrides', () => {
     const provider = new ClaudeProvider(fake.load as never, undefined, {
       systemPrompt: { preset: 'claude_code', append: 'Always run yarn lint first.' },
     });
-    const run = provider.start({ cwd: '/repo', permissionMode: 'default', sessionId: 'test-session' });
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default', sessionId: 'test-session' });
     run.send('hi');
     await flushMicrotasks();
     assert.deepStrictEqual(capturedOptions?.systemPrompt, {
@@ -1695,7 +1695,7 @@ suite('ClaudeProvider instance overrides', () => {
       onQuery: (options) => { capturedOptions = options as Record<string, unknown>; },
     });
     const provider = new ClaudeProvider(fake.load as never);
-    const run = provider.start({ cwd: '/repo', permissionMode: 'default', sessionId: 'test-session' });
+    const run = provider.start({ cwd: '/tmp', permissionMode: 'default', sessionId: 'test-session' });
     run.send('hi');
     await flushMicrotasks();
     assert.strictEqual('systemPrompt' in (capturedOptions ?? {}), false);
@@ -1900,5 +1900,23 @@ suite('ClaudeProvider (console-signal exit)', () => {
     await run.dispose();
     const seen = await collect(run);
     assert.strictEqual(seen.some((e) => e.kind === 'turn-end' && e.reason === 'error'), true);
+  });
+});
+
+suite('ClaudeProvider (missing working directory)', () => {
+  test('a cwd that no longer exists ends the turn with a clear error and never spawns the CLI', async () => {
+    const fake = fakeLoadQuery();
+    const provider = new ClaudeProvider(fake.load as never);
+    const missing = path.join(os.tmpdir(), 'marcode-no-such-dir-4f2a9');
+    const run = provider.start({ cwd: missing, permissionMode: 'default', sessionId: 's' });
+    const events = collect(run);
+
+    run.send('hello');
+    await tick();
+
+    assert.strictEqual(fake.calls.length, 0);
+    const end = events().find((e) => e.kind === 'turn-end');
+    assert.strictEqual(end?.kind === 'turn-end' && end.reason === 'error' && end.error === `Working directory not found: ${missing}`, true);
+    await run.dispose();
   });
 });

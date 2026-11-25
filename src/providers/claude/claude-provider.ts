@@ -118,6 +118,7 @@ import type {
   SDKUserMessage,
 } from '@anthropic-ai/claude-agent-sdk' with { 'resolution-mode': 'import' };
 import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/messages' with { 'resolution-mode': 'import' };
+import * as fs from 'node:fs';
 import { findModel, resolveEffort } from '../../shared/model-catalog';
 import { addUsageTotals } from '../../shared/usage-totals';
 import { attachmentLines, imageAttachments, readBase64 } from '../attachment-payload';
@@ -692,6 +693,8 @@ export class ClaudeProvider implements AgentProvider {
       started = true;
       pump = (async () => {
         try {
+          // The SDK reports a missing cwd as a spawn ENOENT and blames the binary's libc.
+          if (!fs.existsSync(opts.cwd)) { throw new Error(`Working directory not found: ${opts.cwd}`); }
           const query = await this.loadQueryFn();
           const constructedOptions = buildOptions();
           const session = query({ prompt: prompts, options: constructedOptions });
