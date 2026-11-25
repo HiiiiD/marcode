@@ -1,7 +1,7 @@
 import { syncDataLoaderFeature } from '@headless-tree/core';
 import { useTree } from '@headless-tree/react';
 import {
-  ArrowDownIcon, ArrowUpIcon, ChevronDownIcon, ChevronRightIcon, FileMinusIcon, FilePenLineIcon,
+  ArrowDownIcon, ArrowUpIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon, FileMinusIcon, FilePenLineIcon,
   FilePlusIcon, FileSymlinkIcon, RefreshCwIcon, XIcon,
 } from 'lucide-react';
 import {
@@ -305,10 +305,10 @@ export function FleetDiff() {
         from read as one application rather than two surfaces that happen to
         share a codebase.
       */}
-      <div className="flex items-center gap-2 border-b border-border px-2 py-1 text-xs">
-        <h2 className="min-w-0 truncate font-medium">Changes</h2>
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-border px-2 py-1 text-xs">
+        <h2 className="shrink-0 font-medium">Changes</h2>
         {trees !== undefined && trees.length > 0 && (
-          <span className="min-w-0 truncate text-muted-foreground">
+          <span className="shrink-0 whitespace-nowrap text-muted-foreground">
             {shown === total ? summarize(filtered) : `${shown} of ${total} files`}
           </span>
         )}
@@ -317,7 +317,7 @@ export function FleetDiff() {
             filter edit — never on the 750ms poll, which updates `shown` and
             `total` without touching `query` or `contestedOnly`. */}
         <span aria-live="polite" className="sr-only">{filterAnnouncement}</span>
-        <div className="relative min-w-0 max-w-64">
+        <div className="relative min-w-32 max-w-64 flex-1 basis-40">
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -344,6 +344,7 @@ export function FleetDiff() {
           aria-pressed={contestedOnly}
           onClick={() => setContestedOnly((on) => !on)}
         >
+          {contestedOnly && <CheckIcon aria-hidden />}
           Contested only
         </Button>
         {/*
@@ -578,7 +579,7 @@ function Tree({
             declared default branch is neither `origin/HEAD` nor one of the
             built-in fallbacks) be overridden per-tree, for this tab only. */}
         <div className="flex min-w-0 items-center gap-1.5 pl-6">
-          <p className="min-w-0 flex-1 truncate text-muted-foreground">
+          <p className="min-w-0 flex-1 text-muted-foreground">
             {tree.base.kind === 'merge-base'
               ? `Since ${tree.base.ref} (${tree.base.sha.slice(0, 7)})`
               : 'Uncommitted changes only — nothing to compare a branch point against.'}

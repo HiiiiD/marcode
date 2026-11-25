@@ -16,8 +16,8 @@ export function HistoryStatus({ session }: { session: SessionSummary }) {
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1.5 whitespace-nowrap',
-        status === 'error' ? 'text-destructive' : waiting ? 'font-medium text-foreground' : 'text-muted-foreground',
+        'inline-flex items-center gap-1.5 whitespace-nowrap text-xs',
+        status === 'error' ? 'text-destructive' : waiting ? 'font-medium text-attention' : 'text-muted-foreground',
       )}
     >
       <Icon aria-hidden className="size-3.5 shrink-0" />

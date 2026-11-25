@@ -44,7 +44,7 @@ suite('history app', () => {
     renderHistory();
     hydrate(sessions());
     assert.deepStrictEqual(order(), ['Delta', 'Alpha', 'Gamma', 'Beta']);
-    assert.strictEqual(screen.getByText('Pinned').textContent, 'Pinned');
+    assert.strictEqual(screen.getByText('Pinned').textContent, 'Pinned1');
   });
 
   test('a row shows last updated, provider and model; summary is collapsed', () => {
@@ -73,10 +73,19 @@ suite('history app', () => {
   test('sort by created, then flip the direction', async () => {
     renderHistory();
     hydrate(sessions());
-    await userEvent.click(screen.getByRole('tab', { name: 'Created' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Sort sessions' }));
+    await userEvent.click(await screen.findByRole('menuitemradio', { name: 'Created' }));
     assert.deepStrictEqual(order(), ['Delta', 'Beta', 'Gamma', 'Alpha']);
-    await userEvent.click(screen.getByRole('button', { name: 'Sort ascending' }));
+    await userEvent.click(await screen.findByRole('menuitemradio', { name: 'Oldest first' }));
     assert.deepStrictEqual(order(), ['Delta', 'Alpha', 'Gamma', 'Beta']);
+  });
+
+  test('the clear button empties the filter', async () => {
+    renderHistory();
+    hydrate(sessions());
+    await userEvent.type(screen.getByRole('textbox', { name: 'Filter sessions' }), 'flaky');
+    await userEvent.click(screen.getByRole('button', { name: 'Clear filter' }));
+    assert.strictEqual(order().length, 4);
   });
 
   test('the text filter matches summaries', async () => {
@@ -150,7 +159,6 @@ suite('history app', () => {
       summary('error', { name: 'failed-worker', status: 'error' }),
       summary('idle', { name: 'idle-worker', status: 'idle' }),
     ]);
-    assert.strictEqual(screen.getByRole('columnheader', { name: 'Status' }).textContent, 'Status');
     assert.strictEqual(screen.getByText('opencode-hidden-worker').textContent, 'opencode-hidden-worker');
     assert.strictEqual(screen.getByText('Waiting for approval').textContent, 'Waiting for approval');
     assert.strictEqual(screen.getByText('Waiting for answer').textContent, 'Waiting for answer');
@@ -158,8 +166,8 @@ suite('history app', () => {
     assert.strictEqual(screen.queryByRole('button', { name: 'Stop idle-worker' }) === null, true);
     assert.strictEqual(screen.queryByRole('button', { name: 'Stop failed-worker' }) === null, true);
 
-    await userEvent.click(screen.getByRole('button', { name: 'Needs attention' }));
-    assert.strictEqual(screen.getByRole('button', { name: 'Needs attention' }).getAttribute('aria-pressed'), 'true');
+    await userEvent.click(screen.getByRole('button', { name: /^Needs attention/ }));
+    assert.strictEqual(screen.getByRole('button', { name: /^Needs attention/ }).getAttribute('aria-pressed'), 'true');
     assert.strictEqual(screen.queryByText('running-worker') === null, true);
     assert.strictEqual(screen.queryByText('idle-worker') === null, true);
     assert.strictEqual(screen.getByText('failed-worker').textContent, 'failed-worker');
@@ -172,7 +180,7 @@ suite('history app', () => {
     sendFromHost({ t: 'sessions-changed', sessions: [{ ...blocked, status: 'idle' }] });
     assert.strictEqual(screen.queryByText('Platform worker') === null, true);
     assert.strictEqual(screen.getByText('No sessions match').textContent, 'No sessions match');
-    await userEvent.click(screen.getByRole('button', { name: 'Needs attention' }));
+    await userEvent.click(screen.getByRole('button', { name: /^Needs attention/ }));
     assert.strictEqual(screen.getByText('Idle').textContent, 'Idle');
     assert.strictEqual(screen.queryByRole('button', { name: 'Stop opencode-hidden-worker' }) === null, true);
   });

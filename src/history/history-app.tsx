@@ -11,6 +11,7 @@ export function HistoryApp() {
   // Ephemeral by design: a reading position in a list that keeps changing.
   const [query, setQuery] = useState<HistoryQuery>(DEFAULT_QUERY);
   const groups = queryHistory(state.sessions, query);
+  const attentionCount = state.sessions.filter((s) => s.status === 'awaiting-approval' || s.status === 'error').length;
   const empty = groups.pinned.length + groups.rest.length === 0;
 
   let body;
@@ -29,7 +30,7 @@ export function HistoryApp() {
   return (
     <TooltipProvider>
       <div className="flex min-h-screen flex-col text-foreground">
-        <HistoryToolbar query={query} onChange={setQuery} />
+        <HistoryToolbar query={query} attentionCount={attentionCount} onChange={setQuery} />
         <MemoryStrip />
         {body}
       </div>

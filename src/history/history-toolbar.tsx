@@ -1,53 +1,88 @@
-import { ArrowDownIcon, ArrowUpIcon } from 'lucide-react';
+import { ArrowDownUpIcon, SearchIcon, XIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Tabs, TabsIndicator, TabsList, TabsTab } from '@/components/ui/tabs';
-import type { HistoryQuery, SortKey } from './history-rows';
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem,
+  DropdownMenuSeparator, DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group';
+import { cn } from '@/lib/utils';
+import type { HistoryQuery, SortDir, SortKey } from './history-rows';
 
 interface Props {
   query: HistoryQuery;
+  attentionCount: number;
   onChange: (next: HistoryQuery) => void;
 }
 
-export function HistoryToolbar({ query, onChange }: Props) {
-  const ascending = query.dir === 'asc';
+const SORT_LABEL: Record<SortKey, string> = { updatedAt: 'Updated', createdAt: 'Created' };
+
+export function HistoryToolbar({ query, attentionCount, onChange }: Props) {
+  const active = query.needsAttention === true;
   return (
     <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2">
-      <Input
-        aria-label="Filter sessions"
-        placeholder="Filter by title, name, model or summary"
-        value={query.text}
-        onChange={(e) => onChange({ ...query, text: e.target.value })}
-        className="h-7 max-w-sm min-w-48 flex-1 text-xs md:text-xs"
-      />
+      <InputGroup className="h-8 min-w-40 flex-1 basis-48">
+        <InputGroupAddon align="inline-start" className="pl-2.5 text-muted-foreground">
+          <SearchIcon aria-hidden className="size-3.5" />
+        </InputGroupAddon>
+        <InputGroupInput
+          aria-label="Filter sessions"
+          placeholder="Filter sessions"
+          value={query.text}
+          onChange={(e) => onChange({ ...query, text: e.target.value })}
+          className="text-xs md:text-xs"
+        />
+        {query.text !== '' && (
+          <InputGroupAddon align="inline-end">
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              aria-label="Clear filter"
+              onClick={() => onChange({ ...query, text: '' })}
+            >
+              <XIcon aria-hidden />
+            </Button>
+          </InputGroupAddon>
+        )}
+      </InputGroup>
       <Button
-        variant={query.needsAttention ? 'secondary' : 'outline'}
+        variant="outline"
         size="sm"
-        aria-pressed={query.needsAttention === true}
-        onClick={() => onChange({ ...query, needsAttention: !query.needsAttention })}
+        aria-pressed={active}
+        className={cn('h-8', active && 'border-attention/60 bg-attention/15 text-foreground hover:bg-attention/20')}
+        onClick={() => onChange({ ...query, needsAttention: !active })}
       >
         Needs attention
+        {attentionCount > 0 && (
+          <span className="rounded-full bg-attention/20 px-1.5 text-[11px] tabular-nums text-attention">
+            {attentionCount}
+          </span>
+        )}
       </Button>
-      <div className="ml-auto flex items-center gap-1">
-        <Tabs
-          value={query.sort}
-          onValueChange={(v) => onChange({ ...query, sort: v as SortKey })}
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={<Button variant="outline" size="sm" className="h-8" aria-label="Sort sessions" />}
         >
-          <TabsList aria-label="Sort by">
-            <TabsTab value="updatedAt">Updated</TabsTab>
-            <TabsTab value="createdAt">Created</TabsTab>
-            <TabsIndicator />
-          </TabsList>
-        </Tabs>
-        <Button
-          variant="outline"
-          size="icon-sm"
-          aria-label={ascending ? 'Sort descending' : 'Sort ascending'}
-          onClick={() => onChange({ ...query, dir: ascending ? 'desc' : 'asc' })}
-        >
-          {ascending ? <ArrowUpIcon aria-hidden /> : <ArrowDownIcon aria-hidden />}
-        </Button>
-      </div>
+          <ArrowDownUpIcon aria-hidden />
+          {`${SORT_LABEL[query.sort]} ${query.dir === 'asc' ? '↑' : '↓'}`}
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuRadioGroup
+            value={query.sort}
+            onValueChange={(v) => onChange({ ...query, sort: v as SortKey })}
+          >
+            <DropdownMenuRadioItem value="updatedAt">Last updated</DropdownMenuRadioItem>
+            <DropdownMenuRadioItem value="createdAt">Created</DropdownMenuRadioItem>
+          </DropdownMenuRadioGroup>
+          <DropdownMenuSeparator />
+          <DropdownMenuRadioGroup
+            value={query.dir}
+            onValueChange={(v) => onChange({ ...query, dir: v as SortDir })}
+          >
+            <DropdownMenuRadioItem value="desc">Newest first</DropdownMenuRadioItem>
+            <DropdownMenuRadioItem value="asc">Oldest first</DropdownMenuRadioItem>
+          </DropdownMenuRadioGroup>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   );
 }

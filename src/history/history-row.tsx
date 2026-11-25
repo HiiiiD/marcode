@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ChevronRightIcon, PinIcon, PinOffIcon, RefreshCwIcon } from 'lucide-react';
+import { ChevronRightIcon, PinIcon, RefreshCwIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { TableCell, TableRow } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
@@ -13,12 +13,13 @@ export function HistoryRow({ session }: { session: SessionSummary }) {
   const { state, post } = useStore();
   const [open, setOpen] = useState(false);
   const pinned = session.pinned === true;
+  const waiting = session.status === 'awaiting-approval';
   const summary = session.summary?.text || session.title;
 
   return (
     <>
-      <TableRow>
-        <TableCell className="w-8 align-middle">
+      <TableRow className={cn(waiting && 'bg-attention/10 hover:bg-attention/15')}>
+        <TableCell className="w-8 align-top">
           <TipButton
             tip={open ? 'Collapse' : 'Expand'}
             label={`${open ? 'Collapse' : 'Expand'} ${session.name}`}
@@ -28,20 +29,18 @@ export function HistoryRow({ session }: { session: SessionSummary }) {
             <ChevronRightIcon aria-hidden className={cn('transition-transform', open && 'rotate-90')} />
           </TipButton>
         </TableCell>
-        <TableCell className="min-w-40 align-middle font-medium">
-          <div className="truncate">{session.title}</div>
-          <div className="text-xs font-normal text-muted-foreground">{session.name}</div>
+        <TableCell className="w-full max-w-0 align-top whitespace-normal">
+          <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5">
+            <span className="truncate font-medium">{session.name}</span>
+            <HistoryStatus session={session} />
+          </div>
+          <div className="truncate text-muted-foreground">{session.title}</div>
+          <div className="flex flex-wrap gap-x-3 text-xs tabular-nums text-muted-foreground/80">
+            <span>{`${session.providerId} · ${session.model}`}</span>
+            <span>{formatWhen(session.updatedAt)}</span>
+          </div>
         </TableCell>
-        <TableCell className="align-middle">
-          <HistoryStatus session={session} />
-        </TableCell>
-        <TableCell className="align-middle whitespace-nowrap text-muted-foreground">
-          {`${session.providerId} · ${session.model}`}
-        </TableCell>
-        <TableCell className="align-middle whitespace-nowrap tabular-nums text-muted-foreground">
-          {formatWhen(session.updatedAt)}
-        </TableCell>
-        <TableCell className="right-0 bg-background align-middle md:sticky">
+        <TableCell className="align-top">
           <div className="flex items-center justify-end gap-1">
             {(session.status === 'running' || session.status === 'awaiting-approval') && (
               <Button
@@ -69,10 +68,10 @@ export function HistoryRow({ session }: { session: SessionSummary }) {
               label={`${pinned ? 'Unpin' : 'Pin'} ${session.name}`}
               onClick={() => post({ t: 'set-pinned', id: session.id, pinned: !pinned })}
             >
-              {pinned ? <PinOffIcon aria-hidden /> : <PinIcon aria-hidden />}
+              <PinIcon aria-hidden className={cn(pinned ? 'fill-current' : 'text-muted-foreground')} />
             </TipButton>
             <Button
-              variant="outline"
+              variant={session.open ? 'ghost' : 'outline'}
               size="sm"
               aria-label={`${session.open ? 'Opened' : 'Open'} ${session.name}`}
               disabled={session.open === true}
@@ -86,7 +85,7 @@ export function HistoryRow({ session }: { session: SessionSummary }) {
       {open && (
         <TableRow className="hover:bg-transparent">
           <TableCell />
-          <TableCell colSpan={5} className="whitespace-normal pb-3 pt-0">
+          <TableCell colSpan={2} className="whitespace-normal pb-3 pt-0">
             <p className="text-muted-foreground">{summary}</p>
             <p className="mt-1 text-xs tabular-nums text-muted-foreground">
               {`Created ${formatWhen(session.createdAt)}`}
