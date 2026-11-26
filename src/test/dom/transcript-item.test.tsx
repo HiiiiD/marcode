@@ -23,14 +23,14 @@ function hydrateWithItems(
 }
 
 suite('TranscriptItemView', () => {
-  test('the user is labelled, agent prose carries no label', () => {
+  test('neither the user nor agent prose carries a name label', () => {
     renderApp();
     hydrateWithItems([
       { id: '1', ts: 1, role: 'user', text: 'hello' },
       { id: '2', ts: 2, role: 'assistant', text: 'hi `there`' },
     ]);
 
-    screen.getByText('You');
+    assert.strictEqual(screen.queryByText('You') === null, true);
     assert.strictEqual(screen.queryByText('Agent') === null, true);
   });
 
@@ -188,9 +188,10 @@ suite('TranscriptItemView from sender', () => {
     assert.strictEqual(screen.queryByText('You') === null, true);
   });
 
-  test('a human-typed message still shows "You"', () => {
+  test('a human-typed message carries no name, only its time', () => {
     renderWithStore(<TranscriptItemView item={PLAIN} sessionId="a" />);
 
-    assert.ok(screen.getByText('You'));
+    assert.strictEqual(screen.queryByText('You') === null, true);
+    assert.strictEqual(screen.queryAllByTitle(/\d/).length > 0, true);
   });
 });

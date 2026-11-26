@@ -151,7 +151,7 @@ function UserItem({
   return (
     <TranscriptItemShell
       role="user"
-      label={item.from ? `Message from ${item.from.name}` : 'You'}
+      label={item.from ? `Message from ${item.from.name}` : undefined}
       ts={item.ts}
      
     >

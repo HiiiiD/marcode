@@ -53,14 +53,15 @@ export function TranscriptItemShell({
   role, label, ts, children,
 }: {
   role: TranscriptItemRole;
-  label: string;
+  /** Absent on the user's own turn: the filled block already says whose it is, so only a sender from another session is named. */
+  label?: string;
   ts?: number;
   children: ReactNode;
 }) {
   return (
     <div className={cn('group/item relative my-0', FRAME[role])}>
       {/* The agent's own prose carries no label: an uppercase name and time above every paragraph was chrome, not information. */}
-      {role !== 'assistant' && role !== 'subagent' && <div className="mb-0.5 flex items-baseline gap-2">
+      {role !== 'assistant' && role !== 'subagent' && label !== undefined && <div className="mb-0.5 flex items-baseline gap-2">
         <span
           className={cn(
             'text-[0.65rem] font-medium tracking-wide uppercase',
@@ -82,7 +83,7 @@ export function TranscriptItemShell({
         )}
       </div>}
       {children}
-      {role === 'assistant' && ts !== undefined && (
+      {(role === 'assistant' || (role === 'user' && label === undefined)) && ts !== undefined && (
         <div className="mt-0.5 text-[0.65rem] text-muted-foreground tabular-nums" title={new Date(ts).toLocaleString()}>
           {new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
         </div>

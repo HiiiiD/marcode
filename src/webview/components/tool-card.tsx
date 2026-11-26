@@ -79,9 +79,15 @@ export function ToolCard({
           />
           <span className="sr-only">{state}</span>
           <span className="min-w-[4.5rem] shrink-0 text-muted-foreground @md:min-w-[5rem]">{server ? 'MCP' : header.verb}</span>
+          {server && (
+            // Read as a path, server then tool: two bare names side by side never said which was which.
+            <span className="flex max-w-[45%] min-w-0 shrink items-baseline gap-1 text-muted-foreground" title={server}>
+              <span className="min-w-0 truncate">{server}</span>
+              <span aria-hidden>›</span>
+            </span>
+          )}
           {header.primary && (
             <span
-              // Consolas at 12px reads a size smaller than the 12px sans beside it (the name, the reasoning preview), so monospace targets are set at 13px to match.
               className={cn('min-w-0 truncate text-foreground/75', header.mono && 'font-mono text-xs', header.path && 'text-left [direction:rtl]')}
               title={header.full ?? (header.path ? header.primary : undefined)}
             >
@@ -89,7 +95,6 @@ export function ToolCard({
               {header.path ? <span dir="ltr" className="[unicode-bidi:isolate]">{header.primary}</span> : header.primary}
             </span>
           )}
-          {server && <span className="min-w-0 shrink truncate text-muted-foreground" title={server}>{server}</span>}
           {outcome && <Outcome text={outcome} />}
           {all.length > 1 && <span className="shrink-0 text-foreground/70 tabular-nums">×{all.length}</span>}
           {approval && (
