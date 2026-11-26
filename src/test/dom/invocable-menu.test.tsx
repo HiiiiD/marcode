@@ -144,8 +144,8 @@ suite("invocable menu", () => {
     const texts = screen.getAllByRole("option").map((o) => o.textContent ?? "");
     assert.strictEqual(texts.length, ENTRIES.length + PANEL_COMMAND_COUNT);
     assert.deepStrictEqual(
-      texts.slice(2, 2 + PANEL_COMMAND_COUNT).map((t) => ["mcp", "side", "btw"].find((n) => t.replace(/^\//, "").startsWith(n))),
-      ["mcp", "side", "btw"],
+      texts.slice(2, 2 + PANEL_COMMAND_COUNT).map((t) => ["mcp", "sync", "side", "btw"].find((n) => t.replace(/^\//, "").startsWith(n))),
+      ["mcp", "sync", "side", "btw"],
     );
   });
 
