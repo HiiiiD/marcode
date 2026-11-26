@@ -143,7 +143,7 @@ Default: `{}`
 
 ## `transcript.density`
 
-How big and how spaced the transcript is. In the panels, prose, your messages and tool rows share one text size taken from VS Code's font size, and `"compact"` / `"comfortable"` scale it, with the transcript's spacing, by about one point down or up (12px / 14px at VS Code's default 13px). A terminal cannot change its font size, so the TUI applies only the spacing: `"compact"` packs tool cards with no blank line between them, `"comfortable"` leaves two blank lines under each message. Takes effect after a window reload (restart the TUI).
+How big and how spaced the transcript is. In the panels, prose and your messages follow VS Code's font size and tool rows sit at 12px; `"compact"` / `"comfortable"` scale both, with the transcript's spacing, by about 8% down or up (prose 12px / 14px and tool rows 11px / 13px at VS Code's default 13px). A terminal cannot change its font size, so the TUI applies only the spacing: `"compact"` packs tool cards with no blank line between them, `"comfortable"` leaves two blank lines under each message. Takes effect after a window reload (restart the TUI).
 
 ```json
 { "transcript": { "density": "compact" } }

@@ -120,10 +120,10 @@
   45% { opacity: 1; }
 }
 
-/* One text size for the whole transcript (prose, the user's turns, tool rows), and its spacing, both scaled from
-   VS Code's font size by `transcript.density`. Tailwind reads both through these variables at runtime. */
+/* Prose and the user's turns follow VS Code's font size; tool rows (text-xs) stay at 12px. `transcript.density`
+   scales both, and the spacing, through these variables, which Tailwind reads at runtime. */
 .transcript-scope {
-  --text-xs: calc(var(--vscode-font-size, 13px) * var(--transcript-scale));
+  --text-xs: calc(0.75rem * var(--transcript-scale));
   --text-sm: calc(var(--vscode-font-size, 13px) * var(--transcript-scale));
   --spacing: calc(0.25rem * var(--transcript-scale));
 }
