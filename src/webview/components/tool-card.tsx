@@ -1,10 +1,9 @@
 import { useEffect, useState } from 'react';
 import {
   BotIcon, CheckIcon, FilePenIcon, FilePlusIcon, FileTextIcon,
-  FolderSearchIcon, GitForkIcon, GlobeIcon, ImageIcon, ListTodoIcon, Loader2Icon, SearchIcon,
+  FolderSearchIcon, GlobeIcon, ImageIcon, ListTodoIcon, Loader2Icon, SearchIcon,
   SendIcon, TerminalIcon, WrenchIcon, XIcon,
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import {
   TraceCollapsible, TraceCollapsibleContent, TraceCollapsibleTrigger,
 } from '@/components/ui/trace';
@@ -32,9 +31,9 @@ const GLYPHS: Record<ToolGlyph, typeof TerminalIcon> = {
 };
 
 export function ToolCard({
-  item, more, onFork, defaultOpen = false, streaming = false, approval,
+  item, more, defaultOpen = false, streaming = false, approval,
 }: {
-  item: ToolItem; onFork?: () => void;
+  item: ToolItem;
   /** Further calls folded into this row: identical consecutive calls read as one line with a count. */
   more?: ToolItem[];
   /** Set when this row is the record of an approval: the row is the tool's own, plus a check (allowed) or a cross (denied). */
@@ -67,10 +66,6 @@ export function ToolCard({
     : describeOutcome(tool, item.output, state);
 
   return (
-    // `group/item`, not a second `<button>` nested inside the toggle: the
-    // toggle below IS a button, and a fork button placed inside it would be
-    // interactive-inside-interactive — the same trap the roster row's own
-    // actions trigger sits beside its checkbox item to avoid, not inside it.
     <TraceCollapsible bare open={open} onOpenChange={setOpen} className="group/item my-0">
       <div className="@container flex items-center">
         <TraceCollapsibleTrigger className="h-7 px-0 text-xs text-muted-foreground hover:bg-transparent hover:text-foreground [&>[data-slot=trace-icon]:last-child]:opacity-40 group-hover/item:[&>[data-slot=trace-icon]:last-child]:opacity-100 focus-visible:[&>[data-slot=trace-icon]:last-child]:opacity-100 aria-expanded:[&>[data-slot=trace-icon]:last-child]:opacity-100">
@@ -83,15 +78,7 @@ export function ToolCard({
             )}
           />
           <span className="sr-only">{state}</span>
-          {server && (
-            // Muted, not colour-per-server: a palette per server would collide
-            // with the status tones already in use and buys nothing when the
-            // name is right beside it.
-            <span className="shrink-0 rounded bg-muted px-1 text-muted-foreground">
-              {server}
-            </span>
-          )}
-          <span className="@md:min-w-[5rem] shrink-0 text-muted-foreground">{header.verb}</span>
+          <span className="min-w-[4.5rem] shrink-0 text-muted-foreground @md:min-w-[5rem]">{server ? 'MCP' : header.verb}</span>
           {header.primary && (
             <span
               // Consolas at 12px reads a size smaller than the 12px sans beside it (the name, the reasoning preview), so monospace targets are set at 13px to match.
@@ -102,6 +89,7 @@ export function ToolCard({
               {header.path ? <span dir="ltr" className="[unicode-bidi:isolate]">{header.primary}</span> : header.primary}
             </span>
           )}
+          {server && <span className="min-w-0 shrink truncate text-muted-foreground" title={server}>{server}</span>}
           {outcome && <Outcome text={outcome} />}
           {all.length > 1 && <span className="shrink-0 text-foreground/70 tabular-nums">×{all.length}</span>}
           {approval && (
@@ -116,18 +104,6 @@ export function ToolCard({
           )}
         </TraceCollapsibleTrigger>
 
-        {onFork && (
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            aria-label="Fork from here"
-            title="Fork a new session from this point"
-            onClick={onFork}
-            className="mr-1 shrink-0 text-muted-foreground opacity-0 group-hover/item:opacity-100 focus:opacity-100"
-          >
-            <GitForkIcon />
-          </Button>
-        )}
       </div>
 
       <TraceCollapsibleContent inset className="flex flex-col gap-3">

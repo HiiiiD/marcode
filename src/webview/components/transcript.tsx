@@ -89,14 +89,14 @@ export function Transcript({
                   </MessageScrollerItem>
                 ) : (
                   <MessageScrollerItem key={entry.item.id} messageId={entry.item.id} className={gap}>
-                    <TranscriptItemView item={entry.item} more={entry.more} sessionId={pane.summary.id} canFork={idle && pane.summary.kind !== 'side'} />
+                    <TranscriptItemView item={entry.item} more={entry.more} sessionId={pane.summary.id} />
                   </MessageScrollerItem>
                 );
               });
             })()}
           </MessageScrollerContent>
         </MessageScrollerViewport>
-        <MessageScrollerButton className="right-4 left-auto translate-x-0 rtl:translate-x-0" />
+        <MessageScrollerButton size="icon" className="border-border bg-background text-foreground shadow-lg ring-1 ring-border hover:bg-muted" />
       </MessageScroller>
     </NestedMessagesContext>
   );

@@ -4,11 +4,11 @@ import {
   TraceCollapsible, TraceCollapsibleContent, TraceCollapsibleTrigger,
 } from '@/components/ui/trace';
 import { cn } from '@/lib/utils';
-import { ChevronRightIcon } from 'lucide-react';
+import { BotIcon, ChevronRightIcon } from 'lucide-react';
 import { PermissionCard } from './permission-card';
 import { QuestionCard } from './question-card';
 import { ToolCard } from './tool-card';
-import { ProviderStack, type MemberState } from './provider-stack';
+import { ProviderMark, type MemberState } from './provider-stack';
 import { TranscriptItemShell } from './transcript-item-shell';
 import {
   formatElapsed, isBackgroundDispatch, subagentLabel, subagentStateLabel, summarizeSubagent,
@@ -95,12 +95,13 @@ export function SubagentCard({
       >
         <div className="flex items-center">
         <TraceCollapsibleTrigger className={cn('h-7 min-w-0 flex-1 px-0 text-xs hover:bg-transparent [&>[data-slot=trace-icon]:last-child]:opacity-40 group-hover/item:[&>[data-slot=trace-icon]:last-child]:opacity-100 focus-visible:[&>[data-slot=trace-icon]:last-child]:opacity-100 aria-expanded:[&>[data-slot=trace-icon]:last-child]:opacity-100', hostedId && '[&>[data-slot=trace-icon]:last-child]:hidden')}>
+          {/* The bare mark in the glyph slot, not an avatar: a 24px circle pushed the row off the tool rows' columns, and the status is already a word. */}
           {hosted && item.tool.kind === 'subagent' && (
-            <ProviderStack className="ml-1" members={[{
-              providerId: item.tool.provider, name: subagentLabel(item), state: memberState(item, summary.blocked, now, changedAt),
-            }]} />
+            <span aria-hidden className="flex size-3.5 shrink-0 items-center justify-center"><ProviderMark providerId={item.tool.provider} /></span>
           )}
-          <span className={cn('font-medium', wstate ? 'max-w-[60%] shrink-0 truncate' : 'truncate')}>{subagentLabel(item)}</span>
+          {!hosted && <BotIcon aria-hidden className="shrink-0 text-muted-foreground" />}
+          {!hosted && <span className="min-w-[4.5rem] shrink-0 text-muted-foreground @md:min-w-[5rem]">Agent</span>}
+          <span className={cn(wstate ? 'min-w-[4.5rem] max-w-[45%] shrink-0 truncate font-medium @md:min-w-[5rem]' : 'min-w-0 truncate text-foreground/75')}>{subagentLabel(item)}</span>
           {wstate ? (
             // A hosted worker's header is its name and how it is doing; the counts and clocks live nowhere because a dot and a word say more.
             <>
@@ -112,7 +113,7 @@ export function SubagentCard({
               {modelName && <span className="truncate text-xs text-muted-foreground">{modelName}</span>}
             </>
           ) : (
-          <span className="shrink-0 text-muted-foreground">
+          <span className="shrink-0 text-foreground/60 tabular-nums">
               {isBackgroundDispatch(item) ? (
                 // No "N tools · Xs" claim here — this dispatch settles almost
                 // immediately and never gains nested children, so that line
@@ -161,13 +162,13 @@ export function SubagentCard({
           )}
           {hostedId && (
             // The arrow stays at the far right like every other row's; the actions sit before it.
-            <Button variant="ghost" size="icon-xs" className="ml-0.5 text-muted-foreground/60 hover:bg-transparent hover:text-foreground aria-expanded:bg-transparent" aria-label={expanded ? 'Collapse' : 'Expand'} aria-expanded={expanded} onClick={() => changeOpen(!expanded)}>
-              <ChevronRightIcon aria-hidden className={cn('transition-transform duration-200', expanded && 'rotate-90')} />
+            <Button variant="ghost" size="icon-xs" className="ml-0.5 size-4 min-w-0 p-0 text-muted-foreground opacity-40 group-hover/item:opacity-100 hover:bg-transparent hover:text-foreground focus-visible:opacity-100 aria-expanded:bg-transparent aria-expanded:opacity-100" aria-label={expanded ? 'Collapse' : 'Expand'} aria-expanded={expanded} onClick={() => changeOpen(!expanded)}>
+              <ChevronRightIcon aria-hidden className={cn('size-3.5 transition-transform duration-200', expanded && 'rotate-90')} />
             </Button>
           )}
         </div>
 
-        <TraceCollapsibleContent className={cn('mt-0.5 mb-2 border-t-0 py-0', embedded ? 'ml-5' : 'ml-2 border-l border-border pl-3')}>
+        <TraceCollapsibleContent className={cn('mt-0.5 mb-2 border-t-0 py-0 pr-0', embedded ? 'ml-5' : 'ml-2 border-l border-border pl-3')}>
           <div>
             {hostedId && wstate && <WorkerNotes item={item} state={wstate} />}
             {/*

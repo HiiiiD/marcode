@@ -173,9 +173,9 @@ suite("SessionHeader status", () => {
       assert.strictEqual(headerOf().querySelector('[class*="animate-working-line"]') === null, true);
     });
 
-    test("a working pane draws the line but stays untinted", () => {
+    test("a working pane draws no moving line and stays untinted", () => {
       hydrateWith("running");
-      assert.strictEqual(headerOf().querySelector('[class*="animate-working-line"]') === null, false);
+      assert.strictEqual(headerOf().querySelector('[class*="animate-working-line"]') === null, true);
       assert.strictEqual(headerOf().className.includes("bg-attention"), false);
     });
 

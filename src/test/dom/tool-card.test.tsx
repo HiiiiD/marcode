@@ -124,7 +124,7 @@ suite('ToolCard', () => {
     renderWithStore(<ToolCard item={item} />);
 
     screen.getByText('github');
-    assert.strictEqual(screen.getAllByText('create_pr').length, 2);
+    assert.strictEqual(screen.getAllByText('create_pr').length, 1);
   });
 
   // Exercises a genuine `other`-kind call — the fallback a provider's

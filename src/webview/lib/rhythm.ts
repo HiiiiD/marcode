@@ -21,12 +21,12 @@ export function beatOf(item: TranscriptItem | undefined, edge: 'first' | 'last' 
 /**
  * The gap above an item, decided by what it follows, so the whole transcript
  * shares one rhythm: machinery packs into tight runs, prose is set off from a
- * run by the same 16px on both sides, and the user's turn gets the most room.
+ * run by a small, equal gap on both sides (the rows carry their own padding), and the user's turn gets the most room.
  */
 export function gapAbove(prev: Beat | undefined, next: Beat): string {
   if (prev === undefined) { return ''; }
   if (next === 'user') { return 'mt-6'; }
-  if (next === 'machine') { return prev === 'machine' ? 'mt-0.5' : prev === 'prose' ? 'mt-4' : 'mt-3'; }
-  if (next === 'prose') { return prev === 'prose' ? 'mt-3' : prev === 'user' ? 'mt-3' : 'mt-4'; }
+  if (next === 'machine') { return prev === 'machine' ? 'mt-0.5' : prev === 'prose' ? 'mt-1.5' : 'mt-3'; }
+  if (next === 'prose') { return prev === 'prose' ? 'mt-3' : prev === 'user' ? 'mt-3' : 'mt-2'; }
   return 'mt-3';
 }

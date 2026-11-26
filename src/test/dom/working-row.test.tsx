@@ -97,19 +97,6 @@ suite('WorkingRow', () => {
     assert.strictEqual(screen.queryByText(/no activity/) === null, true);
   });
 
-  test('a long silence adds a quiet clock', async function () {
-    this.timeout(6000);
-    const realNow = Date.now;
-    renderApp();
-    hydrate('running', [{ ...ASKED, ts: secondsAgo(125) }]);
-    Date.now = () => realNow() + 125_000;
-    try {
-      await screen.findByText(/no activity 2:0[5-9]/, {}, { timeout: 3000 });
-    } finally {
-      Date.now = realNow;
-    }
-  });
-
   test('a custom provider instance of the claude kind shows text whole, whatever its id', () => {
     renderApp();
     sendFromHost({

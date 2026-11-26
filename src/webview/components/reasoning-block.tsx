@@ -18,7 +18,7 @@ function preview(text: string): string {
  * Reasoning, as one more row of the work log: the same parts as a tool call
  * (glyph, name, one line of what it is about, a chevron that appears on hover,
  * a soft inset when opened), so it lines up and weighs the same as the rows
- * around it.
+ * around it. The chevron stays at the row's end open or closed.
  *
  * Always collapsed and never opening or closing on its own: expanding while it
  * streams and folding when the answer arrives would move the answer under the
@@ -28,18 +28,15 @@ export function ReasoningBlock({ text }: { text: string }) {
   const [open, setOpen] = useState(false);
 
   return (
-    // Closed: one full-width row with a one-line preview. Open: the label stays on the left and the thought opens to
-    // its right, on the same line, aligned with the target column of the rows around it.
-    <TraceCollapsible bare open={open} onOpenChange={setOpen} className={cn('group/item my-0', open && 'flex-row items-start')}>
+    <TraceCollapsible bare open={open} onOpenChange={setOpen} className="group/item @container my-0">
       <TraceCollapsibleTrigger
         className={cn(
-          'h-7 flex-none items-center gap-2 py-0 text-xs text-muted-foreground hover:bg-transparent hover:text-foreground',
+          'h-7 flex-none items-center gap-2 py-0 px-0 text-xs text-muted-foreground hover:bg-transparent hover:text-foreground',
           '[&>[data-slot=trace-icon]:last-child]:opacity-40 group-hover/item:[&>[data-slot=trace-icon]:last-child]:opacity-100 focus-visible:[&>[data-slot=trace-icon]:last-child]:opacity-100 aria-expanded:[&>[data-slot=trace-icon]:last-child]:opacity-100',
-          open ? 'w-[6.875rem] pr-0 pl-0' : 'pr-7 pl-0',
         )}
       >
         <LightbulbIcon aria-hidden className="shrink-0" />
-        <span className={cn('shrink-0 text-muted-foreground', open ? 'min-w-0' : 'min-w-[5rem]')}>Reasoning</span>
+        <span className="min-w-[4.5rem] shrink-0 text-muted-foreground @md:min-w-[5rem]">Reasoning</span>
         {!open && (
           <span className="min-w-0 flex-1 truncate text-foreground/70 [&_strong]:font-normal [&_em]:not-italic">
             <InlineMarkdown>{preview(text)}</InlineMarkdown>
@@ -47,8 +44,8 @@ export function ReasoningBlock({ text }: { text: string }) {
         )}
       </TraceCollapsibleTrigger>
       <TraceCollapsibleContent
-        panelClassName="min-w-0 flex-1"
-        className="max-h-64 overflow-y-auto border-t-0 px-0 py-[5px] pr-7 text-foreground/80 [&_p]:my-0 [&_p+p]:mt-2"
+        inset
+        className="mt-0 ml-[1.375rem] max-h-64 overflow-y-auto py-0.5 pr-0 text-foreground/80 [&_p]:my-0 [&_p+p]:mt-2 [&>*:first-child]:mt-0"
       >
         <Markdown>{text}</Markdown>
       </TraceCollapsibleContent>

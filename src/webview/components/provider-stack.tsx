@@ -1,3 +1,4 @@
+import { useId } from 'react';
 import {
   Avatar, AvatarBadge, AvatarFallback, AvatarGroup, AvatarGroupCount,
 } from '@/components/ui/avatar';
@@ -16,6 +17,8 @@ export interface StackMember {
 const MAX_SHOWN = 3;
 
 function Mark({ providerId }: { providerId: string | undefined }) {
+  // One gradient id per svg: a shared id resolves to the first copy in the document, which fails once that copy is unmounted or hidden.
+  const gradientId = `marcode-codex-${useId().replace(/:/g, '')}`;
   const base = providerId?.split(/[-:]/)[0];
   const key = providerId !== undefined && providerId in PROVIDER_LOGOS ? providerId : base;
   const d = key === undefined ? undefined : PROVIDER_LOGOS[key];
@@ -24,14 +27,14 @@ function Mark({ providerId }: { providerId: string | undefined }) {
     <svg viewBox="0 0 24 24" fillRule={key === 'opencode' ? 'evenodd' : 'nonzero'} aria-hidden className="size-3.5 text-foreground">
       {key === 'codex' && (
         <defs>
-          <linearGradient id="marcode-codex-gradient" gradientUnits="userSpaceOnUse" x1="12" x2="12" y1="3" y2="21">
+          <linearGradient id={gradientId} gradientUnits="userSpaceOnUse" x1="12" x2="12" y1="3" y2="21">
             <stop stopColor="#B1A7FF" />
             <stop offset=".5" stopColor="#7A9DFF" />
             <stop offset="1" stopColor="#3941FF" />
           </linearGradient>
         </defs>
       )}
-      <path d={d} fill={PROVIDER_FILLS[key] ?? 'currentColor'} />
+      <path d={d} fill={key === 'codex' ? `url(#${gradientId})` : PROVIDER_FILLS[key] ?? 'currentColor'} />
     </svg>
   );
 }
@@ -67,7 +70,7 @@ export function ProviderAvatar({ member }: { member: StackMember }) {
   return (
     <Avatar size="sm" title={`${member.name} · ${member.state === 'blocked' ? 'needs you' : member.state}`}>
       <AvatarFallback><ProviderMark providerId={member.providerId} /></AvatarFallback>
-      {badge && <AvatarBadge className={cn(badge)} />}
+      {badge && <AvatarBadge className={cn('-right-0.5 -bottom-0.5 ring-1 group-data-[size=sm]/avatar:size-1.5', badge)} />}
     </Avatar>
   );
 }

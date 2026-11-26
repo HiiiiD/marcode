@@ -5,8 +5,8 @@ import { tool } from '../fixtures/protocol';
 suite('transcript rhythm', () => {
   test('machinery packs tight, prose is set off 16px from a run on both sides', () => {
     assert.strictEqual(gapAbove('machine', 'machine'), 'mt-0.5');
-    assert.strictEqual(gapAbove('machine', 'prose'), 'mt-4');
-    assert.strictEqual(gapAbove('prose', 'machine'), 'mt-4');
+    assert.strictEqual(gapAbove('machine', 'prose'), 'mt-2');
+    assert.strictEqual(gapAbove('prose', 'machine'), 'mt-1.5');
   });
 
   test('the first item has no gap above it and the user turn gets the most room', () => {

@@ -5,8 +5,6 @@ import { describeTool } from '../../client-core/tool-render';
 import type { PaneState } from '../reducer';
 import type { TranscriptItem } from '../../protocol/messages';
 
-import { activitySignature, QUIET_AFTER_MS, useLastChange } from '../lib/last-change';
-
 function clock(ms: number): string {
   const total = Math.max(0, Math.floor(ms / 1000));
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
@@ -45,10 +43,8 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
  * out between items nor moves the transcript, and it names the current step
  * rather than saying "working".
  *
- * Both clocks are host timestamps, not mount times, so a window reload does
- * not restart them: the first runs from the user's message, the "quiet" one
- * from the last event and appears only once that gap is long enough to be
- * worth a look. None of it is announced — it changes every second, and
+ * The clock is a host timestamp, not a mount time, so a window reload does
+ * not restart it: it runs from the user's message. None of it is announced — it changes every second, and
  * StatusBadge already announces the status change once.
  */
 export function WorkingRow({ pane }: { pane: PaneState }) {
@@ -63,8 +59,6 @@ export function WorkingRow({ pane }: { pane: PaneState }) {
   const last = pane.items[pane.items.length - 1];
   const { start, tools, edits } = turnStats(pane.items);
   const step = currentStep(last);
-  const changedAt = useLastChange(activitySignature(last));
-  const quiet = Math.max(0, now - changedAt);
   const meta = [
     clock(now - (start ?? mountedAt)),
     tools > 0 ? plural(tools, 'tool') : null,
@@ -84,10 +78,7 @@ export function WorkingRow({ pane }: { pane: PaneState }) {
       >
         {step}
       </span>
-      {quiet > QUIET_AFTER_MS && (
-        <span aria-hidden className="shrink-0 font-medium tabular-nums text-foreground">no activity {clock(quiet)}</span>
-      )}
-      <span aria-hidden className="shrink-0 tabular-nums">{quiet > QUIET_AFTER_MS ? `total ${meta}` : meta}</span>
+      <span aria-hidden className="shrink-0 tabular-nums">{meta}</span>
       <span aria-hidden className="ml-auto shrink-0 opacity-70">
         <span className="@[26rem]:hidden">esc</span>
         <span className="hidden @[26rem]:inline">esc to stop</span>

@@ -104,12 +104,6 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
         s.status === "error" && "bg-destructive/10 shadow-[inset_3px_0_0_var(--destructive)]",
       )}
     >
-      {s.status === "running" && (
-        // Life without colour: a slim line sweeping along the bottom edge while the agent works.
-        <span aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-px overflow-hidden">
-          <span className="block h-full w-1/3 bg-primary/70 motion-safe:animate-working-line motion-reduce:w-full motion-reduce:bg-primary/30" />
-        </span>
-      )}
       <StatusBadge status={s.status} wordFor="error" warm={asksPermission} />
       {/* Only worth a mark when there is more than one provider (or instance) to tell apart. */}
       {state.catalog.length > 1 && (
