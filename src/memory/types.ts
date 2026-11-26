@@ -17,6 +17,20 @@ export interface MemoryHit {
   ts: number;
   /** Where the session ran, so a caller can scope recall to a workspace folder. */
   cwd: string;
+  /** The session's project (normalised git remote), when it had one. */
+  projectId?: string;
+}
+
+/** Where one caller's recall looks: its workspace folder, and its project when it has one. */
+export interface RecallScope { cwdWithin: string; projectId?: string }
+
+/** A row is in scope when no scope is given, or it ran inside `cwdWithin`, or it shares `projectId`. */
+export interface SearchOpts {
+  providerId?: string;
+  limit?: number;
+  match?: 'all' | 'any';
+  cwdWithin?: string;
+  projectId?: string;
 }
 
 export interface MemoryDetail {
@@ -31,13 +45,14 @@ export interface SessionRecord {
   providerId: string;
   cwd: string;
   closedAt: number;
+  projectId?: string;
   /** The full transcript at index time — the caller already has this in memory. */
   items: TranscriptItem[];
   /** Absent means "build the extractive digest from `items`". */
   digest?: SessionDigest;
 }
 
-export type DigestMeta = Pick<SessionDigest, 'source' | 'summarizerVersion' | 'forUpdatedAt'>;
+export type DigestMeta = Pick<SessionDigest, 'source' | 'summarizerVersion' | 'forUpdatedAt'> & { projectId?: string };
 
 /**
  * The swappable seam. v1 ships `FtsMemoryStore` (SQLite + FTS5); a future
@@ -54,10 +69,7 @@ export interface MemoryStore {
    * must appear); `'any'` ranks sessions sharing at least one, for a caller
    * holding a whole prompt rather than a hand-picked keyword.
    */
-  search(
-    query: string,
-    opts?: { providerId?: string; limit?: number; match?: 'all' | 'any'; cwdWithin?: string },
-  ): Promise<MemoryHit[]>;
+  search(query: string, opts?: SearchOpts): Promise<MemoryHit[]>;
   /** Full slice for exactly one hit, on demand. */
   fetch(hit: { sessionId: SessionId; itemId: string }): Promise<MemoryDetail>;
   /**
@@ -70,4 +82,6 @@ export interface MemoryStore {
   getDigest(sessionId: SessionId): Promise<SessionDigest | undefined>;
   /** Cheap: every stored digest's freshness, so a caller can skip current ones. */
   digestMeta(): Promise<Map<SessionId, DigestMeta>>;
+  /** Tags an already indexed session with its project; a no-op for an unknown id. */
+  setProject?(sessionId: SessionId, projectId: string): Promise<void>;
 }

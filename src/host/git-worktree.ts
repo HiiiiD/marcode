@@ -35,13 +35,15 @@ export interface TreeStatus {
 // directions: nothing runtime moves between the two.
 export type { BringBackPlan };
 
-interface GitResult {
+export interface GitResult {
   ok: boolean;
   out: string;
   err: string;
+  /** git never ran (spawn EMFILE/ENOENT/EAGAIN), so the failure says nothing about the directory. */
+  transient?: boolean;
 }
 
-async function git(cwd: string, args: string[]): Promise<GitResult> {
+export async function git(cwd: string, args: string[]): Promise<GitResult> {
   try {
     const { stdout, stderr } = await execFileAsync('git', args, {
       cwd,
@@ -50,9 +52,10 @@ async function git(cwd: string, args: string[]): Promise<GitResult> {
     });
     return { ok: true, out: stdout.trim(), err: stderr.trim() };
   } catch (error) {
-    const shaped = error as { stdout?: string; stderr?: string; message?: string };
+    const shaped = error as { stdout?: string; stderr?: string; message?: string; code?: unknown };
     return {
       ok: false,
+      ...(typeof shaped.code === 'string' ? { transient: true } : {}),
       out: (shaped.stdout ?? '').trim(),
       err: (shaped.stderr ?? shaped.message ?? 'git failed').trim(),
     };

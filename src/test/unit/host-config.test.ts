@@ -139,4 +139,35 @@ suite('host-config', () => {
     assert.deepStrictEqual(tuiGaps('default'), { message: 1, tool: 1 });
     assert.deepStrictEqual(tuiGaps('comfortable'), { message: 2, tool: 1 });
   });
+  suite('projects.overrides', () => {
+    test('defaults to an empty list', () => {
+      assert.deepStrictEqual(defaultHostConfig().projects.overrides, []);
+    });
+
+    test('keeps own and linked entries', () => {
+      const overrides = [{ path: '/a', project: 'own' }, { path: 'C:\\b', project: 'github.com/x/y' }];
+      const { config, warnings } = parseHostConfig({ projects: { overrides } });
+      assert.deepStrictEqual(config.projects.overrides, overrides);
+      assert.deepStrictEqual(warnings, []);
+    });
+
+    test('drops malformed entries with one warning each', () => {
+      const { config, warnings } = parseHostConfig({ projects: { overrides: [
+        { path: '/ok', project: 'own' },
+        { path: 'relative/dir', project: 'own' },
+        { path: '', project: 'own' },
+        { path: '/x', project: '' },
+        { path: 3, project: 'own' },
+        'nope',
+      ] } });
+      assert.deepStrictEqual(config.projects.overrides, [{ path: '/ok', project: 'own' }]);
+      assert.strictEqual(warnings.filter((w) => w.includes('projects.overrides')).length, 5);
+    });
+
+    test('a non-object projects falls back with a warning', () => {
+      const { config, warnings } = parseHostConfig({ projects: 'own' });
+      assert.deepStrictEqual(config.projects.overrides, []);
+      assert.strictEqual(warnings.some((w) => w.includes('projects')), true);
+    });
+  });
 });

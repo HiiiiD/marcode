@@ -1,3 +1,4 @@
+import * as path from 'node:path';
 import type { UsageMirror } from '../providers/types';
 import { DEFAULT_PROVIDER_IDS, KNOWN_PROVIDER_IDS } from '../shared/settings';
 import { parseTheme, type ThemeColors } from '../shared/theme-settings';
@@ -5,6 +6,9 @@ import { parseTranscriptSettings, type TranscriptDensity } from '../shared/trans
 import { SPAWN_PREFERENCES, type SpawnPreference } from './self-control/spawn-preference';
 import { clampCap } from './fleet-diff';
 import { DEFAULT_SHELL_ALIASES, parseShellAliases, type ShellAliasTable } from './shell/shell-aliases';
+
+/** `project` is `'own'` (memory kept apart) or a project id the checkout at `path` is linked to. */
+export interface ProjectOverride { path: string; project: string }
 
 export interface HostConfig {
   enabledProviders: string[];
@@ -16,6 +20,7 @@ export interface HostConfig {
   planEditor?: string;
   usageMirrors: UsageMirror[];
   memory: { enabled: boolean; summarizer: unknown };
+  projects: { overrides: ProjectOverride[] };
   review: { fileCap: number; pollIntervalMs: number; baseRefs: string[] };
   favoriteModels: string[];
   daemon: { enabled: boolean; idleMinutes: number };
@@ -40,6 +45,7 @@ export function defaultHostConfig(): HostConfig {
     systemPrompts: undefined,
     usageMirrors: [],
     memory: { enabled: true, summarizer: undefined },
+    projects: { overrides: [] },
     review: { fileCap: clampCap(undefined), pollIntervalMs: 750, baseRefs: [] },
     favoriteModels: [],
     daemon: { enabled: true, idleMinutes: 10 },
@@ -100,6 +106,28 @@ export function parseHostConfig(raw: unknown): { config: HostConfig; warnings: s
         else { warnings.push('config.json: memory.enabled is not a boolean; using the default.'); }
       }
       config.memory.summarizer = raw.memory.summarizer;
+    }
+  }
+
+  if (raw.projects !== undefined) {
+    if (!isObject(raw.projects)) {
+      warnings.push('config.json: projects is not an object; using the default.');
+    } else if (raw.projects.overrides !== undefined) {
+      if (!Array.isArray(raw.projects.overrides)) {
+        warnings.push('config.json: projects.overrides is not a list; using the default.');
+      } else {
+        config.projects.overrides = raw.projects.overrides.flatMap((entry, i): ProjectOverride[] => {
+          const ok = isObject(entry)
+            && typeof entry.path === 'string' && entry.path.trim() !== ''
+            && (path.posix.isAbsolute(entry.path) || path.win32.isAbsolute(entry.path))
+            && typeof entry.project === 'string' && entry.project.trim() !== '';
+          if (!ok) {
+            warnings.push(`config.json: projects.overrides[${i}] needs an absolute "path" and a non-empty "project"; ignored.`);
+            return [];
+          }
+          return [{ path: entry.path as string, project: entry.project as string }];
+        });
+      }
     }
   }
 

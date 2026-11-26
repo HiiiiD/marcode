@@ -70,6 +70,12 @@ How session digests are written. "off" builds them from the transcript with no m
 
 Default: `{"mode":"off"}`
 
+## `projects.overrides`
+
+Every checkout of a repo (clones and git worktrees alike) shares one memory, matched by its `origin` remote. Each entry changes that for everything under `path`, including worktrees inside it: `{"path": "/abs/checkout", "project": "own"}` keeps its memory apart, and `{"path": "/abs/folder", "project": "github.com/owner/repo"}` links a folder (for instance one with no remote, or no git at all) to that project. The deepest matching `path` wins. Requires a window reload.
+
+Default: `[]`
+
 ## `review.fileCap`
 
 How many changed files the review tab loads per working tree before showing a "Show more" button. A value over 2000 is clamped; an invalid one falls back to 500. Takes effect after a window reload.

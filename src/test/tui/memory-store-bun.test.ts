@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process';
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { FtsMemoryStore } from '../../memory/fts-memory-store';
+import { FtsMemoryStore } from '../../memory/fts/fts-memory-store';
 import type { TranscriptItem } from '../../protocol/messages';
 
 const reader = { tail: async () => ({ items: [] as TranscriptItem[], hasMore: false }) };

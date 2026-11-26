@@ -25,7 +25,8 @@ import { digestText, extractiveDigest, indexLine, type SessionDigest } from '../
 import { digestSession } from '../memory/session-digest';
 import { DigestService, type DigestEstimate, type DigestScope } from './digest/digest-service';
 import { buildMemoryBlock, queryTermsOf } from '../memory/prime-block';
-import type { MemoryStore } from '../memory/types';
+import type { MemoryStore, RecallScope } from '../memory/types';
+import type { ProjectRef } from './project/project-resolver';
 import type {
   AgentProvider, EffortLevel, Invocable, ModelInfo, MoveThreadResult, UpdateInfo, UsageMirror, UsageWindow,
 } from '../providers/types';
@@ -236,6 +237,7 @@ export class SessionManager implements SessionSink {
     private readonly randomSuffix: () => string = randomNameSuffix,
     private readonly usageMirrors: UsageMirror[] = [],
     private readonly moveThreadTimeoutMs = 15000,
+    private readonly projects?: { resolve(cwd: string): Promise<ProjectRef | undefined> },
   ) {
     this.compiledUsageMirrors = usageMirrors.flatMap((mirror) => {
       try { return [{ mirror, pattern: new RegExp(mirror.modelPattern) }]; } catch { return []; }
@@ -246,7 +248,7 @@ export class SessionManager implements SessionSink {
         source: {
           sessions: () => [...this.meta.values()].filter((s) => !isHidden(s)).map((s) => ({
             id: s.id, providerId: s.providerId, cwd: s.cwd, title: s.title,
-            hidden: !this.visible.has(s.id), updatedAt: s.updatedAt,
+            hidden: !this.visible.has(s.id), updatedAt: s.updatedAt, projectId: s.projectId,
           })),
           transcript: async (id) => (await this.store.tail(id, Number.MAX_SAFE_INTEGER)).items,
           projected: (id) => this.meta.get(id)?.summary?.forUpdatedAt,
@@ -322,6 +324,7 @@ export class SessionManager implements SessionSink {
     // and priming would stay blind to every pre-existing session until someone opened the history tab.
     // Extractive only and one job per session, so it never delays a close.
     if (this.digests) { void this.ensureSummaries(); }
+    this.syncProjects();
   }
 
   /**
@@ -2609,9 +2612,18 @@ export class SessionManager implements SessionSink {
     return containing.reduce((best, root) => (root.length > best.length ? root : best));
   }
 
-  recallRootOfSession(id: SessionId): string | undefined {
-    const cwd = this.meta.get(id)?.cwd;
-    return cwd === undefined ? undefined : this.recallRootOf(cwd);
+  async recallScopeOf(cwd: string): Promise<RecallScope> {
+    const cwdWithin = this.recallRootOf(cwd);
+    const projectId = (await this.projects?.resolve(cwd).catch(() => undefined))?.projectId;
+    return projectId ? { cwdWithin, projectId } : { cwdWithin };
+  }
+
+  async recallScopeOfSession(id: SessionId): Promise<RecallScope | undefined> {
+    const state = this.meta.get(id);
+    if (!state) { return undefined; }
+    const scope = await this.recallScopeOf(state.cwd);
+    const projectId = scope.projectId ?? state.projectId;
+    return projectId ? { ...scope, projectId } : scope;
   }
 
   async recall(text: string, cwd: string): Promise<string | undefined> {
@@ -2619,7 +2631,7 @@ export class SessionManager implements SessionSink {
     const terms = queryTermsOf(text);
     if (terms.length === 0) { return undefined; }
     return buildMemoryBlock(await this.memory.search(terms.join(' '), {
-      match: 'any', limit: 5, cwdWithin: this.recallRootOf(cwd),
+      match: 'any', limit: 5, ...(await this.recallScopeOf(cwd)),
     }));
   }
 
@@ -2745,7 +2757,37 @@ export class SessionManager implements SessionSink {
     return byParent;
   }
 
+  /** The cwd each session's `projectId` was last resolved for, so a resolve runs once per cwd. */
+  private readonly projectCwd = new Map<SessionId, string>();
+
+  private syncProjects(): void {
+    if (!this.projects) { return; }
+    const lookups: Promise<boolean>[] = [];
+    for (const state of this.meta.values()) {
+      const cwd = state.cwd;
+      if (this.projectCwd.get(state.id) === cwd) { continue; }
+      this.projectCwd.set(state.id, cwd);
+      lookups.push(this.projects.resolve(cwd).then((ref) => {
+        if (this.disposed || this.meta.get(state.id) !== state || state.cwd !== cwd) { return false; }
+        // Retried on the next change: a miss may be a git spawn that failed, and the resolver
+        // answers a real miss from its cache without running git again.
+        if (!ref) { this.projectCwd.delete(state.id); return false; }
+        if (state.projectId === ref.projectId) { return false; }
+        state.projectId = ref.projectId;
+        if (!this.visible.has(state.id)) {
+          this.memory?.setProject?.(state.id, ref.projectId).catch(() => { /* errors are state: retried by ensureCurrent */ });
+        }
+        return true;
+      }, () => { this.projectCwd.delete(state.id); return false; }));
+    }
+    if (lookups.length === 0) { return; }
+    void Promise.all(lookups).then((updated) => {
+      if (!this.disposed && updated.some(Boolean)) { this.changed(); }
+    });
+  }
+
   changed(): void {
+    this.syncProjects();
     this.emit({ t: 'sessions-changed', sessions: this.summaries() });
     for (const id of this.visible) {
       if (this.meta.get(id)?.kind !== 'side') { continue; }

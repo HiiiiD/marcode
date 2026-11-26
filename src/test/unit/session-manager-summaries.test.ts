@@ -4,7 +4,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { suite, test } from 'mocha';
 import { SessionManager } from '../../host/session-manager';
-import { FtsMemoryStore } from '../../memory/fts-memory-store';
+import { FtsMemoryStore } from '../../memory/fts/fts-memory-store';
 import { TranscriptStore } from '../../host/transcript-store';
 import { FakeProvider } from '../../providers/fake/fake-provider';
 import type { HostToWebview } from '../../protocol/messages';

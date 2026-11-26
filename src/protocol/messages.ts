@@ -224,6 +224,11 @@ export interface SessionState {
    * stripped before the index is written.
    */
   owner?: { host: 'vscode' | 'tui' | 'daemon'; pid: number };
+  /**
+   * The session's project (normalised git remote of its checkout), persisted. Set by the host when
+   * the session is created, loaded or relocated; never cleared because a later cwd resolves to none.
+   */
+  projectId?: string;
   /** The session that spawned this one via a self-control tool; absent for user-created sessions. */
   parentId?: SessionId;
   /**

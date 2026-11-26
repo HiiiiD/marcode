@@ -12,9 +12,18 @@ const transcript = (text: string): TranscriptItem[] => [
 class FakeStore implements MemoryStore {
   digests = new Map<string, SessionDigest>();
   indexed: string[] = [];
+  records: SessionRecord[] = [];
+  projects = new Map<string, string>();
+  setProjectCalls: Array<[string, string]> = [];
   async index(r: SessionRecord) {
     this.digests.set(r.sessionId, r.digest!);
     this.indexed.push(r.sessionId);
+    this.records.push(r);
+    if (r.projectId) { this.projects.set(r.sessionId, r.projectId); } else { this.projects.delete(r.sessionId); }
+  }
+  async setProject(id: string, projectId: string) {
+    this.setProjectCalls.push([id, projectId]);
+    if (this.digests.has(id)) { this.projects.set(id, projectId); }
   }
   async search() { return []; }
   async fetch() { return { sessionId: '', items: [] }; }
@@ -23,6 +32,7 @@ class FakeStore implements MemoryStore {
   async digestMeta() {
     return new Map<string, DigestMeta>([...this.digests].map(([id, d]) => [id, {
       source: d.source, summarizerVersion: d.summarizerVersion, forUpdatedAt: d.forUpdatedAt,
+      projectId: this.projects.get(id),
     }]));
   }
 }
@@ -380,6 +390,35 @@ suite('DigestService', () => {
     test('unknown session resolves undefined', async () => {
       const { service } = rig([]);
       assert.strictEqual(await service.digestForHandoff('nope'), undefined);
+    });
+  });
+
+  suite('projects', () => {
+    test('an extractive digest is indexed with the session projectId', async () => {
+      const { store, service } = rig([session('a', { projectId: 'github.com/a/b' })]);
+      await service.refresh('a');
+      assert.strictEqual(store.records[0].projectId, 'github.com/a/b');
+    });
+
+    test('an llm digest is indexed with the session projectId', async () => {
+      const { store, service } = rig([session('a', { projectId: 'github.com/a/b' })], { summarize: async (_i, b) => llmDigest(b) });
+      await service.upgrade('a');
+      const last = store.records[store.records.length - 1];
+      assert.strictEqual(last.digest?.source, 'llm');
+      assert.strictEqual(last.projectId, 'github.com/a/b');
+    });
+
+    test('ensureCurrent tags a current row missing its project without summarizing again', async () => {
+      let summaries = 0;
+      const sessions = [session('a')];
+      const { store, service } = rig(sessions, { summarize: async (_i, b) => { summaries++; return llmDigest(b); } });
+      await service.upgrade('a');
+      summaries = 0;
+      sessions[0] = { ...sessions[0], projectId: 'github.com/a/b' };
+      await service.ensureCurrent();
+      assert.deepStrictEqual(store.setProjectCalls, [['a', 'github.com/a/b']]);
+      assert.strictEqual(store.digests.get('a')?.source, 'llm');
+      assert.strictEqual(summaries, 0);
     });
   });
 });

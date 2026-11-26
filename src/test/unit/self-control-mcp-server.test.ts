@@ -557,12 +557,15 @@ suite('SelfControlMcpServer memory tools', () => {
   });
 
   test('marcode__recall searches inside the calling session\'s workspace folder', async () => {
-    let seen: { cwdWithin?: string } | undefined;
+    let seen: { cwdWithin?: string; projectId?: string } | undefined;
     const memory = fakeMemory({ search: async (_q, opts) => { seen = opts; return []; } });
-    const server = trackedServer(fakeManager({ recallRoot: (sid) => (sid === 's1' ? '/ws/app' : undefined) }), memory);
+    const server = trackedServer(fakeManager({
+      recallScope: async (sid) => (sid === 's1' ? { cwdWithin: '/ws/app', projectId: 'github.com/a/b' } : undefined),
+    }), memory);
     const config = await server.start();
     await callToolAs(config, 's1', 'marcode__recall', { query: 'login' });
     assert.strictEqual(seen?.cwdWithin, '/ws/app');
+    assert.strictEqual(seen?.projectId, 'github.com/a/b');
     await server.dispose();
   });
 

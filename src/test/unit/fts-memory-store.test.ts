@@ -3,7 +3,8 @@ import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { suite, test } from 'mocha';
-import { FtsMemoryStore } from '../../memory/fts-memory-store';
+import { FtsMemoryStore } from '../../memory/fts/fts-memory-store';
+import { openDatabase } from '../../memory/sqlite-driver';
 import type { TranscriptItem } from '../../protocol/messages';
 
 const noopReader = { tail: async () => ({ items: [] as TranscriptItem[], hasMore: false }) };
@@ -284,5 +285,77 @@ suite('FtsMemoryStore digests', () => {
     });
     const second = new FtsMemoryStore(dbPath, noopReader, 2);
     assert.strictEqual((await second.digestMeta()).size, 0);
+  });
+});
+
+suite('FtsMemoryStore project scope', () => {
+  const index = (store: FtsMemoryStore, id: string, cwd: string, projectId?: string) => store.index({
+    sessionId: id, providerId: 'claude', cwd, closedAt: 1, projectId,
+    items: [userItem(`u-${id}`, 'Investigate the flaky login test')],
+  });
+
+  test('projectId finds a same-project row from another cwd and nothing else', async () => {
+    const store = new FtsMemoryStore(await tempDbPath(), noopReader);
+    await index(store, 'clone', '/elsewhere/clone', 'github.com/a/b');
+    await index(store, 'other', '/unrelated', 'github.com/x/y');
+    await index(store, 'none', '/nowhere');
+    const hits = await store.search('flaky login', { projectId: 'github.com/a/b' });
+    assert.deepStrictEqual(hits.map((h) => h.sessionId), ['clone']);
+    assert.strictEqual(hits[0].projectId, 'github.com/a/b');
+  });
+
+  test('cwdWithin and projectId together return the union', async () => {
+    const store = new FtsMemoryStore(await tempDbPath(), noopReader);
+    await index(store, 'inside', '/ws/app');
+    await index(store, 'clone', '/elsewhere/clone', 'github.com/a/b');
+    await index(store, 'other', '/unrelated', 'github.com/x/y');
+    const hits = await store.search('flaky login', { cwdWithin: '/ws/app', projectId: 'github.com/a/b' });
+    assert.deepStrictEqual(hits.map((h) => h.sessionId).sort(), ['clone', 'inside']);
+  });
+
+  test('setProject makes an indexed session findable by that project', async () => {
+    const store = new FtsMemoryStore(await tempDbPath(), noopReader);
+    await index(store, 's1', '/old/path');
+    await store.setProject('s1', 'github.com/a/b');
+    assert.deepStrictEqual((await store.search('flaky login', { projectId: 'github.com/a/b' })).map((h) => h.sessionId), ['s1']);
+    await store.setProject('missing', 'github.com/a/b');
+  });
+
+  test("an older build's v2 file gains the column, keeps its llm digest, and stays writable the old way", async () => {
+    const dbPath = await tempDbPath();
+    const old = openDatabase(dbPath);
+    old.exec(`
+      PRAGMA user_version = 2;
+      CREATE VIRTUAL TABLE sessions_fts USING fts5(
+        title, summary, text,
+        sessionId UNINDEXED, providerId UNINDEXED, cwd UNINDEXED,
+        firstItemId UNINDEXED, closedAt UNINDEXED
+      );
+      CREATE TABLE digests (
+        sessionId TEXT PRIMARY KEY, source TEXT NOT NULL, summarizerVersion INTEGER NOT NULL,
+        forUpdatedAt INTEGER NOT NULL, json TEXT NOT NULL
+      );
+    `);
+    const llm = { title: 'Fix login', request: 'r', outcome: 'o', learned: [], decisions: [], files: [], source: 'llm', summarizerVersion: 1, forUpdatedAt: 5 };
+    old.prepare('INSERT INTO digests (sessionId, source, summarizerVersion, forUpdatedAt, json) VALUES (?, ?, ?, ?, ?)')
+      .run('s1', 'llm', 1, 5, JSON.stringify(llm));
+    old.close();
+
+    const store = new FtsMemoryStore(dbPath, noopReader);
+    assert.strictEqual((await store.getDigest('s1'))?.source, 'llm');
+    store.close();
+
+    const again = openDatabase(dbPath);
+    assert.strictEqual((again.prepare('PRAGMA user_version').get() as { user_version: number }).user_version, 2);
+    again.prepare('INSERT INTO digests (sessionId, source, summarizerVersion, forUpdatedAt, json) VALUES (?, ?, ?, ?, ?)')
+      .run('s2', 'extractive', 1, 6, JSON.stringify({ ...llm, source: 'extractive' }));
+    again.close();
+  });
+
+  test('a project-only scope is filtered in SQL, so other projects cannot crowd it past the cap', async () => {
+    const store = new FtsMemoryStore(await tempDbPath(), noopReader);
+    for (let i = 0; i < 520; i++) { await index(store, `other${i}`, `/o/${i}`, 'github.com/x/y'); }
+    await index(store, 'mine', '/m', 'github.com/a/b');
+    assert.deepStrictEqual((await store.search('flaky login', { projectId: 'github.com/a/b' })).map((h) => h.sessionId), ['mine']);
   });
 });

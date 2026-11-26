@@ -5,7 +5,7 @@ import { NodeStreamableHTTPServerTransport } from "@modelcontextprotocol/node";
 import { McpServer } from "@modelcontextprotocol/server";
 import { z } from 'zod';
 import { digestText } from '../memory/digest';
-import type { MemoryStore } from '../memory/types';
+import type { MemoryStore, RecallScope } from '../memory/types';
 import type { ContextResult, PermissionMode, TranscriptItem } from '../protocol/messages';
 import type { ToolCall } from '../providers/canonical/tool-call';
 import type { EffortLevel, PermissionMeta, SelfControlMcpConfig, ToolDecision, UsageWindow } from '../providers/types';
@@ -56,8 +56,8 @@ export interface SessionManagerLike {
   setVisible(ids: string[]): Promise<void>;
   /** Shows the session in a pane: visible set and split layout. Falls back to `setVisible` when absent. */
   reveal?(id: string): Promise<void>;
-  /** The folder `marcode__recall` is scoped to for this caller; absent means unscoped. */
-  recallRoot?(sid: string): string | undefined;
+  /** Where `marcode__recall` looks for this caller (workspace folder, project); absent means unscoped. */
+  recallScope?(sid: string): Promise<RecallScope | undefined>;
   /** Every session's addressable identity — see `marcode__list_sessions`. */
   summaries(opts?: { includeSubagents?: boolean }): {
     id: string; name: string; providerId: string; model: string; effort?: EffortLevel;
@@ -305,9 +305,8 @@ export class SelfControlMcpServer {
                     }),
         },
         async ({ query, providerId, limit }) => {
-          const hits = await memory.search(query, {
-            providerId, limit, cwdWithin: sid ? this.sessionManager.recallRoot?.(sid) : undefined,
-          });
+          const scope = sid ? await this.sessionManager.recallScope?.(sid) : undefined;
+          const hits = await memory.search(query, { providerId, limit, ...scope });
           return { content: [{ type: 'text', text: JSON.stringify(hits) }] };
         },
       );
