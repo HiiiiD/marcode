@@ -329,4 +329,39 @@ suite('SessionManager projects', () => {
     assert.deepStrictEqual(await manager.recallScopeOfSession(session.state.id), { cwdWithin: '/w1', projectId: 'p' });
     await manager.dispose();
   });
+
+  test('projects resolved on load reach clients as one roster broadcast, not one per session', async () => {
+    const root = await tempRoot();
+    const first = make(new TranscriptStore(root));
+    for (let i = 0; i < 6; i++) { await first.create('fake', `/repo${i}`); }
+    await first.persistNow();
+    await first.dispose();
+    let broadcasts = 0;
+    const map: Record<string, string> = {};
+    for (let i = 0; i < 6; i++) { map[`/repo${i}`] = `p${i}`; }
+    const resolver = projects(map);
+    const store = new TranscriptStore(root);
+    const second = new SessionManager(
+      store, new Map<string, AgentProvider>([['fake', new FakeProvider()]]),
+      (m) => { if (m.t === 'sessions-changed') { broadcasts++; } },
+      undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, resolver,
+    );
+    await second.init();
+    await until(async () => { await second.persistNow(); return (await store.readIndex()).sessions.every((s) => s.projectId); });
+    assert.strictEqual(broadcasts <= 2, true);
+    await second.dispose();
+  });
+
+  test('a session whose lookup failed is retried on the next change', async () => {
+    let fail = true;
+    const resolver = { resolve: async (cwd: string) => (fail ? undefined : { projectId: 'p', root: cwd }) };
+    const manager = make(new TranscriptStore(await tempRoot()), resolver);
+    const session = await manager.create('fake', '/repo');
+    await new Promise((r) => setTimeout(r, 20));
+    assert.strictEqual(session.state.projectId, undefined);
+    fail = false;
+    manager.changed();
+    await until(() => session.state.projectId === 'p');
+    await manager.dispose();
+  });
 });

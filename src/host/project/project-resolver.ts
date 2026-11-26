@@ -1,6 +1,6 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import { normalizeWorkspacePath } from '../../shared/workspace-dir';
+import { isWithin } from '../../shared/path-scope';
 import { ownProjectId, projectIdFromRemote } from '../../shared/project-id';
 import { git, type GitResult } from '../git-worktree';
 import type { ProjectOverride } from '../host-config';
@@ -21,8 +21,12 @@ async function nearestExisting(dir: string): Promise<string | undefined> {
   }
 }
 
+const MAX_CONCURRENT = 4;
+
 export class ProjectResolver {
   private readonly cache = new Map<string, Promise<ProjectRef | undefined>>();
+  private running = 0;
+  private readonly waiting: Array<() => void> = [];
 
   constructor(
     private readonly overrides: ProjectOverride[],
@@ -33,25 +37,47 @@ export class ProjectResolver {
   resolve(cwd: string): Promise<ProjectRef | undefined> {
     let hit = this.cache.get(cwd);
     if (!hit) {
-      hit = this.lookup(cwd).catch(() => undefined);
+      const pending: Promise<ProjectRef | undefined> = this.limited(() => this.lookup(cwd))
+        .catch(() => ({ ref: undefined, transient: true }))
+        .then((r) => {
+          if (r.transient && this.cache.get(cwd) === pending) { this.cache.delete(cwd); }
+          return r.ref;
+        });
+      hit = pending;
       this.cache.set(cwd, hit);
     }
     return hit;
   }
 
-  private async lookup(cwd: string): Promise<ProjectRef | undefined> {
-    const dir = await nearestExisting(cwd);
-    if (!dir) { return undefined; }
-    const top = await this.run(dir, ['rev-parse', '--show-toplevel']);
-    if (!top.ok || top.out === '') { return undefined; }
-    const root = path.resolve(top.out);
-    const key = normalizeWorkspacePath(root, this.platform);
-    const override = this.overrides.find((o) => normalizeWorkspacePath(o.path, this.platform) === key);
-    if (override) {
-      return { projectId: override.project === 'own' ? ownProjectId(root, this.platform) : override.project, root };
+  private async limited<T>(job: () => Promise<T>): Promise<T> {
+    if (this.running >= MAX_CONCURRENT) { await new Promise<void>((r) => this.waiting.push(r)); }
+    this.running++;
+    try {
+      return await job();
+    } finally {
+      this.running--;
+      this.waiting.shift()?.();
     }
+  }
+
+  private async lookup(cwd: string): Promise<{ ref: ProjectRef | undefined; transient: boolean }> {
+    const dir = await nearestExisting(cwd);
+    if (!dir) { return { ref: undefined, transient: false }; }
+    const top = await this.run(dir, ['rev-parse', '--show-toplevel']);
+    if (top.transient) { return { ref: undefined, transient: true }; }
+    const root = top.ok && top.out !== '' ? path.resolve(top.out) : undefined;
+    const caseInsensitive = this.platform === 'win32' || this.platform === 'darwin';
+    const override = this.overrides
+      .filter((o) => isWithin(o.path, dir, caseInsensitive))
+      .sort((a, b) => b.path.length - a.path.length)[0];
+    if (override) {
+      const projectId = override.project === 'own' ? ownProjectId(override.path, this.platform) : override.project;
+      return { ref: { projectId, root: root ?? path.resolve(override.path) }, transient: false };
+    }
+    if (!root) { return { ref: undefined, transient: false }; }
     const origin = await this.run(root, ['config', '--get', 'remote.origin.url']);
+    if (origin.transient) { return { ref: undefined, transient: true }; }
     const projectId = origin.ok ? projectIdFromRemote(origin.out) : undefined;
-    return projectId ? { projectId, root } : undefined;
+    return { ref: projectId ? { projectId, root } : undefined, transient: false };
   }
 }

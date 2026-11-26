@@ -20,6 +20,8 @@ export function searchRows(db: SqlDb, query: string, opts: SearchOpts = {}): Mem
   // The scope filter runs in JS (path comparison is platform-dependent), so over-fetch to still fill `limit`.
   const fetchLimit = scoped ? Math.max(limit, SCOPED_FETCH) : limit;
   const providerId = opts.providerId ?? null;
+  // A project-only scope filters in SQL, so rows of other projects cannot crowd it past the over-fetch cap.
+  const projectOnly = opts.projectId !== undefined && opts.cwdWithin === undefined ? opts.projectId : null;
   const terms = query.match(/[\p{L}\p{N}_]+/gu) ?? [];
   if (terms.length === 0) { return []; }
   const match = terms.map((term) => `"${term}"`).join(opts.match === 'any' ? ' OR ' : ' ');
@@ -31,9 +33,10 @@ export function searchRows(db: SqlDb, query: string, opts: SearchOpts = {}): Mem
       LEFT JOIN digests d ON d.sessionId = f.sessionId
       WHERE sessions_fts MATCH ?
         AND (? IS NULL OR f.providerId = ?)
+        AND (? IS NULL OR d.projectId = ?)
       ORDER BY rank
       LIMIT ?
-    `).all(match, providerId, providerId, fetchLimit) as Array<{
+    `).all(match, providerId, providerId, projectOnly, projectOnly, fetchLimit) as Array<{
       sessionId: string; firstItemId: string; summary: string; closedAt: number;
       cwd: string; projectId: string | null; rank: number;
     }>;

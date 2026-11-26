@@ -2762,20 +2762,28 @@ export class SessionManager implements SessionSink {
 
   private syncProjects(): void {
     if (!this.projects) { return; }
+    const lookups: Promise<boolean>[] = [];
     for (const state of this.meta.values()) {
       const cwd = state.cwd;
       if (this.projectCwd.get(state.id) === cwd) { continue; }
       this.projectCwd.set(state.id, cwd);
-      this.projects.resolve(cwd).then((ref) => {
-        if (this.disposed || !ref || this.meta.get(state.id) !== state || state.cwd !== cwd) { return; }
-        if (state.projectId === ref.projectId) { return; }
+      lookups.push(this.projects.resolve(cwd).then((ref) => {
+        if (this.disposed || this.meta.get(state.id) !== state || state.cwd !== cwd) { return false; }
+        // Retried on the next change: a miss may be a git spawn that failed, and the resolver
+        // answers a real miss from its cache without running git again.
+        if (!ref) { this.projectCwd.delete(state.id); return false; }
+        if (state.projectId === ref.projectId) { return false; }
         state.projectId = ref.projectId;
         if (!this.visible.has(state.id)) {
           this.memory?.setProject?.(state.id, ref.projectId).catch(() => { /* errors are state: retried by ensureCurrent */ });
         }
-        this.changed();
-      }).catch(() => { /* a failed resolve leaves the previous project */ });
+        return true;
+      }, () => { this.projectCwd.delete(state.id); return false; }));
     }
+    if (lookups.length === 0) { return; }
+    void Promise.all(lookups).then((updated) => {
+      if (!this.disposed && updated.some(Boolean)) { this.changed(); }
+    });
   }
 
   changed(): void {

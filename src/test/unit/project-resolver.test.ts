@@ -90,4 +90,45 @@ suite('ProjectResolver', () => {
     await resolver.resolve(plain);
     assert.strictEqual(calls, first);
   });
+
+  test('a failed git run is not cached; the next resolve tries again', async () => {
+    const dir = await repo('git@github.com:a/b.git');
+    let fail = true;
+    const flaky = (cwd: string, args: string[]): Promise<GitResult> =>
+      (fail ? Promise.resolve({ ok: false, transient: true, out: '', err: 'spawn EMFILE' }) : git(cwd, args));
+    const resolver = new ProjectResolver([], process.platform, flaky);
+    assert.strictEqual(await resolver.resolve(dir), undefined);
+    fail = false;
+    assert.strictEqual((await resolver.resolve(dir))?.projectId, 'github.com/a/b');
+  });
+
+  test('at most four lookups run git at once', async () => {
+    let running = 0;
+    let peak = 0;
+    const slow = async (): Promise<GitResult> => {
+      running++; peak = Math.max(peak, running);
+      await new Promise((r) => setTimeout(r, 5));
+      running--;
+      return { ok: false, out: '', err: 'not a git repository' };
+    };
+    const resolver = new ProjectResolver([], process.platform, slow);
+    const base = await fs.mkdtemp(path.join(os.tmpdir(), 'marcode-many-'));
+    await Promise.all(Array.from({ length: 12 }, (_, i) => resolver.resolve(path.join(base, String(i)))));
+    assert.strictEqual(peak <= 4, true);
+  });
+
+  test("an 'own' override covers the checkout's worktrees too", async () => {
+    const dir = await repo('git@github.com:a/b.git');
+    const wt = path.join(dir, '.worktrees', 'x');
+    sh(dir, 'worktree', 'add', '-q', wt, '-b', 'x');
+    const resolver = new ProjectResolver([{ path: dir, project: 'own' }]);
+    assert.strictEqual((await resolver.resolve(wt))?.projectId, ownProjectId(dir));
+  });
+
+  test('a plain folder with no git can be linked, subfolders included', async () => {
+    const plain = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'marcode-plain-')));
+    await fs.mkdir(path.join(plain, 'sub'));
+    const resolver = new ProjectResolver([{ path: plain, project: 'github.com/a/b' }]);
+    assert.deepStrictEqual(await resolver.resolve(path.join(plain, 'sub')), { projectId: 'github.com/a/b', root: plain });
+  });
 });

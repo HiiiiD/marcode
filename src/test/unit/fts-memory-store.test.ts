@@ -351,4 +351,11 @@ suite('FtsMemoryStore project scope', () => {
       .run('s2', 'extractive', 1, 6, JSON.stringify({ ...llm, source: 'extractive' }));
     again.close();
   });
+
+  test('a project-only scope is filtered in SQL, so other projects cannot crowd it past the cap', async () => {
+    const store = new FtsMemoryStore(await tempDbPath(), noopReader);
+    for (let i = 0; i < 520; i++) { await index(store, `other${i}`, `/o/${i}`, 'github.com/x/y'); }
+    await index(store, 'mine', '/m', 'github.com/a/b');
+    assert.deepStrictEqual((await store.search('flaky login', { projectId: 'github.com/a/b' })).map((h) => h.sessionId), ['mine']);
+  });
 });
