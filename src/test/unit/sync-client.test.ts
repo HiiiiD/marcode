@@ -89,6 +89,16 @@ suite('SyncClient', () => {
     assert.strictEqual(new Set(pulled.map((p) => JSON.stringify(p.payload))).size, 40);
   });
 
+  test('records pushed with chosen ids are stored once, whoever pushes them', async () => {
+    const r = await rig();
+    const a1 = await enrolled(r);
+    const a2 = new SyncClient(a1.credentials);
+    const b = await joined(r, a1, 'laptop');
+    const items = [{ recordId: 'aa'.repeat(16), payload: { n: 1 } }, { recordId: 'bb'.repeat(16), payload: { n: 2 } }];
+    await Promise.all([a1.pushRecords(items), a2.pushRecords(items)]);
+    assert.deepStrictEqual(ok(await b.pull(a1.credentials.deviceId, 0)).map((p) => p.payload), [{ n: 1 }, { n: 2 }]);
+  });
+
   test('a push whose reply was lost is retried and stored once', async () => {
     const r = await rig();
     const seed = await enrolled(r);

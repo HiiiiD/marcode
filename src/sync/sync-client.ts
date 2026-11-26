@@ -252,10 +252,14 @@ export class SyncClient {
   }
 
   push(payloads: unknown[]): Promise<Result<Array<{ recordId: string; seq: number }>>> {
+    return this.pushRecords(payloads.map((payload) => ({ recordId: randomBytes(16).toString('hex'), payload })));
+  }
+
+  /** The caller owns the ids (an outbox row keeps its id across retries and across pushers), so each is stored once. */
+  pushRecords(items: Array<{ recordId: string; payload: unknown }>): Promise<Result<Array<{ recordId: string; seq: number }>>> {
     return guarded(async () => {
       const { epoch, key } = newestKey(this.creds.syncKeys);
-      const records = payloads.map((payload) => {
-        const recordId = randomBytes(16).toString('hex');
+      const records = items.map(({ recordId, payload }) => {
         const plain = Buffer.from(JSON.stringify({ v: ENVELOPE_VERSION, payload }));
         return { recordId, epoch, ...encryptRecord(plain, key, { deviceId: this.creds.deviceId, recordId, epoch }) };
       });
