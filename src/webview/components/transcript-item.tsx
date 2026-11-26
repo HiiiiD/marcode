@@ -19,43 +19,28 @@ import { usePost, useStore } from '../store';
 import type { FileRef, SessionId, SessionRef, TranscriptItem } from '../../protocol/messages';
 
 /**
- * "Fork from here" is offered only on the roles `buildSeed` actually turns
- * into seed lines — a permission/question/relocation/error/switch item is UI
- * chrome, not conversation content, and forking "from" one would branch at a
- * point the new session's provider thread never learns happened.
- */
-const FORKABLE_ROLES: ReadonlySet<TranscriptItem['role']> = new Set(['user', 'assistant', 'tool']);
-
-/**
  * Memoized and free of `state` reads on purpose: with several panes streaming,
- * any re-render here re-parses every Markdown block in every pane. `canFork`
- * is the whole session being idle (not per-turn: a live turn can leave a
- * dangling unanswered tool call or permission past any item in it), computed
- * once by the transcript and passed in.
+ * any re-render here re-parses every Markdown block in every pane.
  */
 export const TranscriptItemView = memo(function TranscriptItemView({
-  item, more, sessionId, canFork = false,
+  item, more, sessionId,
 }: {
   item: TranscriptItem;
   /** Identical consecutive tool calls folded into this row. */
   more?: Extract<TranscriptItem, { role: 'tool' }>[];
   sessionId: SessionId;
-  canFork?: boolean;
 }) {
   const post = usePost();
-  const onFork = canFork && FORKABLE_ROLES.has(item.role)
-    ? () => post({ t: 'fork-session', id: sessionId, itemId: item.id })
-    : undefined;
 
   switch (item.role) {
     case 'user':
-      return <UserItem item={item} sessionId={sessionId} onFork={onFork} />;
+      return <UserItem item={item} sessionId={sessionId} />;
 
     case 'assistant':
       return (
-        <TranscriptItemShell role="assistant" label="Agent" ts={item.ts} onFork={onFork}>
+        <TranscriptItemShell role="assistant" label="Agent" ts={item.text.trim() !== '' ? item.ts : undefined}>
           {item.thinking && <ReasoningBlock text={item.thinking} />}
-          {item.text.trim() !== '' && <div className={cn('max-w-[90ch]', item.thinking && 'mt-4')}><Markdown>{item.text}</Markdown></div>}
+          {item.text.trim() !== '' && <div className={cn(item.thinking && 'mt-2')}><Markdown>{item.text}</Markdown></div>}
         </TranscriptItemShell>
       );
 
@@ -71,7 +56,7 @@ export const TranscriptItemView = memo(function TranscriptItemView({
       return (item.tool.kind === 'subagent' && item.tool.action !== 'message')
         || (item.children && item.children.length > 0)
         ? <SubagentCard item={item} sessionId={sessionId} />
-        : <ToolCard item={item} more={more} onFork={onFork} />;
+        : <ToolCard item={item} more={more} />;
 
     case 'error':
       return <ErrorItem item={item} sessionId={sessionId} />;
@@ -149,11 +134,10 @@ function ErrorItem({
 }
 
 function UserItem({
-  item, sessionId, onFork,
+  item, sessionId,
 }: {
   item: Extract<TranscriptItem, { role: 'user' }>;
   sessionId: SessionId;
-  onFork?: () => void;
 }) {
   const post = usePost();
   const ctx = item.context;
@@ -167,9 +151,9 @@ function UserItem({
   return (
     <TranscriptItemShell
       role="user"
-      label={item.from ? `Message from ${item.from.name}` : 'You'}
+      label={item.from ? `Message from ${item.from.name}` : undefined}
       ts={item.ts}
-      onFork={onFork}
+     
     >
       {ctx && (
         <div className="mb-1 flex">

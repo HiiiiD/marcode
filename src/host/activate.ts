@@ -3,6 +3,7 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { spawnDetached } from '../daemon-client/spawn-daemon';
 import { themeToCss } from '../shared/theme-css';
+import { densityToCss } from '../shared/transcript-density';
 import { reloadSignature } from './host-config';
 import { setLifecycleDebug } from '../shared/lifecycle-debug';
 import { importPreviousStorage, legacySettings, showCacheTimer, warnAboutProfile } from './activation-support';
@@ -94,7 +95,7 @@ export async function activateExtension(context: vscode.ExtensionContext): Promi
   if (host.fallbackNotice) { void vscode.window.showWarningMessage(host.fallbackNotice); }
   for (const warning of host.warnings) { void vscode.window.showWarningMessage(warning); }
 
-  const themeCss = themeToCss(config.theme);
+  const themeCss = themeToCss(config.theme) + densityToCss(config.transcript.density);
   const review = new ReviewPanel(context.extensionUri, () => host.connect('review'), themeCss);
   const fleet = new FleetPanel(context.extensionUri, () => host.connect('fleet'), themeCss);
   const history = new HistoryPanel(context.extensionUri, () => host.connect('history'), themeCss);

@@ -36,15 +36,10 @@ export function EffortSlider({
 }) {
   const track = useRef<HTMLSpanElement | null>(null);
   /**
-   * The track's box as it was when the drag started. Measuring per move
-   * would read the layout the CURRENT value produced, so any width change
-   * downstream of the value moves the dots out from under a pointer that
-   * never left the row. Sizing the readout to its widest level (below)
-   * already stops that shift, but a drag is the one interaction that cannot
-   * survive being wrong even once, and one measurement per gesture is also
-   * simply cheaper than one per move.
+   * The dots' centres as they were when the drag started: measuring per move would read the layout the current value
+   * produced, so any width change downstream of the value would move the dots out from under the pointer.
    */
-  const dragBox = useRef<DOMRect | null>(null);
+  const dragCenters = useRef<number[] | null>(null);
   const active = levels.indexOf(value);
 
   const step = (delta: number) => {
@@ -54,20 +49,17 @@ export function EffortSlider({
     }
   };
 
-  /**
-   * Nearest dot to the pointer, from the track's own box — the dots are
-   * evenly spaced, so index `i` sits at `i / (n - 1)` of the width and
-   * rounding the ratio lands on the one being pointed at. Rounding rather
-   * than flooring is also what makes the two ends forgiving: the outer half
-   * of each end dot's cell snaps to it.
-   */
+  const measure = (): number[] => [...(track.current?.querySelectorAll('[data-effort-dot]') ?? [])]
+    .map((dot) => { const r = dot.getBoundingClientRect(); return r.left + r.width / 2; });
+
+  // Nearest dot by its real centre: the track also holds the end labels, so a ratio of the track's width lands on the wrong dot.
   const setFromX = (clientX: number) => {
-    const box = dragBox.current ?? track.current?.getBoundingClientRect();
-    if (!box || box.width === 0) {
+    const centers = dragCenters.current ?? measure();
+    if (centers.length !== levels.length) {
       return;
     }
-    const ratio = (clientX - box.left) / box.width;
-    const i = Math.min(levels.length - 1, Math.max(0, Math.round(ratio * (levels.length - 1))));
+    let i = 0;
+    centers.forEach((c, j) => { if (Math.abs(c - clientX) < Math.abs(centers[i] - clientX)) { i = j; } });
     if (levels[i] !== value) {
       onChange(levels[i]);
     }
@@ -123,7 +115,7 @@ export function EffortSlider({
           // small, which is a target no one can hit in a sidebar.
           className="ml-auto flex cursor-pointer items-center gap-2 py-2 text-xs text-muted-foreground"
           onPointerDown={(e) => {
-            dragBox.current = e.currentTarget.getBoundingClientRect();
+            dragCenters.current = measure();
             e.currentTarget.setPointerCapture(e.pointerId);
             setFromX(e.clientX);
           }}
@@ -135,13 +127,12 @@ export function EffortSlider({
             }
           }}
           onPointerUp={() => {
-            dragBox.current = null;
+            dragCenters.current = null;
           }}
-          // Capture is released for us when the pointer is lost, but the
-          // cached box has to go with it — a stale one would survive into the
-          // next gesture and be measured against a row that has since moved.
+          // Capture is released for us when the pointer is lost, but the cached centres have to go with it: stale ones
+          // would survive into the next gesture and be measured against a row that has since moved.
           onPointerCancel={() => {
-            dragBox.current = null;
+            dragCenters.current = null;
           }}
           aria-hidden
         >
@@ -150,6 +141,7 @@ export function EffortSlider({
             <span
               key={level}
               title={level}
+              data-effort-dot
               className={cn(
                 "size-2.5 rounded-full transition-colors",
                 i === active ? "bg-foreground ring-2 ring-foreground/30" : i < active ? "bg-foreground/50" : "bg-foreground/15",

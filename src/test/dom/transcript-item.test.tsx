@@ -23,14 +23,14 @@ function hydrateWithItems(
 }
 
 suite('TranscriptItemView', () => {
-  test('the user is labelled, agent prose carries no label', () => {
+  test('neither the user nor agent prose carries a name label', () => {
     renderApp();
     hydrateWithItems([
       { id: '1', ts: 1, role: 'user', text: 'hello' },
       { id: '2', ts: 2, role: 'assistant', text: 'hi `there`' },
     ]);
 
-    screen.getByText('You');
+    assert.strictEqual(screen.queryByText('You') === null, true);
     assert.strictEqual(screen.queryByText('Agent') === null, true);
   });
 
@@ -96,52 +96,6 @@ suite('TranscriptItemView', () => {
     ]);
 
     screen.getByText('Switched model to Fake Small');
-  });
-});
-
-suite('TranscriptItemView fork', () => {
-  test('a user item offers Fork from here while the session is idle', () => {
-    renderApp();
-    hydrateWithItems([{ id: 'u1', ts: 1, role: 'user', text: 'hello' }]);
-
-    assert.ok(screen.getByRole('button', { name: 'Fork from here' }));
-  });
-
-  test('clicking Fork from here asks the host to fork at that item', async () => {
-    renderApp();
-    hydrateWithItems([{ id: 'u1', ts: 1, role: 'user', text: 'hello' }]);
-
-    await userEvent.click(screen.getByRole('button', { name: 'Fork from here' }));
-
-    assert.deepStrictEqual(posted().at(-1), { t: 'fork-session', id: 'a', itemId: 'u1' });
-  });
-
-  test('no fork action while the session is mid-turn', () => {
-    renderApp();
-    sendFromHost({
-      t: 'hydrate',
-      sessions: [summary('a', { status: 'running' })],
-      layout: layoutOf(['a']),
-      snapshots: [snapshot('a', {
-        status: 'running',
-        items: [{ id: 'u1', ts: 1, role: 'user', text: 'hello' }],
-      })],
-      catalog: catalog(),
-      unavailable: [],
-      usage: {},
-    });
-
-    assert.strictEqual(screen.queryByRole('button', { name: 'Fork from here' }) === null, true);
-  });
-
-  test('a permission item offers no fork action — it is not conversation content', () => {
-    renderApp();
-    hydrateWithItems([{
-      id: 'p1', ts: 1, role: 'permission', requestId: 'r1',
-      tool: { kind: 'command', label: 'Bash', command: 'ls' }, state: 'pending',
-    }]);
-
-    assert.strictEqual(screen.queryByRole('button', { name: 'Fork from here' }) === null, true);
   });
 });
 
@@ -234,9 +188,10 @@ suite('TranscriptItemView from sender', () => {
     assert.strictEqual(screen.queryByText('You') === null, true);
   });
 
-  test('a human-typed message still shows "You"', () => {
+  test('a human-typed message carries no name, only its time', () => {
     renderWithStore(<TranscriptItemView item={PLAIN} sessionId="a" />);
 
-    assert.ok(screen.getByText('You'));
+    assert.strictEqual(screen.queryByText('You') === null, true);
+    assert.strictEqual(screen.queryAllByTitle(/\d/).length > 0, true);
   });
 });

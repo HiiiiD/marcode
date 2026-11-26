@@ -51,15 +51,14 @@ suite('WorkingRow', () => {
     hydrate('running', [ASKED, { id: 'a1', ts: secondsAgo(1), role: 'assistant', text: 'Look' }]);
 
     screen.getByText('Writing…');
-    assert.strictEqual(screen.queryByText('Look') === null, true);
+    screen.getByText('Look');
   });
 
-  test('a token-streaming backend shows whole lines only, a block-emitting one shows everything', () => {
+  test('a token-streaming backend shows its text as it arrives, half-written tail included', () => {
     renderApp();
     hydrate('running', [ASKED, { id: 'a1', ts: secondsAgo(1), role: 'assistant', text: 'First line.\nSecond li' }]);
 
-    screen.getByText('First line.');
-    assert.strictEqual(screen.queryByText(/Second li/) === null, true);
+    screen.getByText(/Second li/);
   });
 
   test('assistant text appears whole once the turn is over', () => {
@@ -95,19 +94,6 @@ suite('WorkingRow', () => {
     hydrate('running', [{ ...ASKED, ts: secondsAgo(125) }]);
 
     assert.strictEqual(screen.queryByText(/no activity/) === null, true);
-  });
-
-  test('a long silence adds a quiet clock', async function () {
-    this.timeout(6000);
-    const realNow = Date.now;
-    renderApp();
-    hydrate('running', [{ ...ASKED, ts: secondsAgo(125) }]);
-    Date.now = () => realNow() + 125_000;
-    try {
-      await screen.findByText(/no activity 2:0[5-9]/, {}, { timeout: 3000 });
-    } finally {
-      Date.now = realNow;
-    }
   });
 
   test('a custom provider instance of the claude kind shows text whole, whatever its id', () => {

@@ -193,7 +193,7 @@ export function describeTool(tool: ToolCall): ToolHeader {
       // The server already has its own chip in `tool-card.tsx`, inches to the
       // left — repeating it here read as `[wrench] github Call tool github ·
       // list_repos` at 300px. The tool name alone is the primary.
-      return header('wrench', tool.label, tool.tool, false);
+      return header('wrench', 'Call', tool.tool, false);
     }
 
     case 'other':
@@ -478,7 +478,7 @@ export function describeOutcome(tool: ToolCall, output: ToolOutput | undefined, 
     }
     return added + removed > 0 ? `+${added} −${removed}` : '';
   }
-  if (tool.kind === 'command' || tool.kind === 'search' || tool.kind === 'file-read') {
+  if (tool.kind === 'command' || tool.kind === 'search' || tool.kind === 'file-read' || tool.kind === 'mcp') {
     if (output?.kind !== 'text') { return ''; }
     const lines = output.text.replace(/\n+$/, '').split('\n').length;
     return output.text.trim() !== '' && lines > 1 ? `${lines} lines` : '';

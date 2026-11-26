@@ -1,16 +1,21 @@
 import { useEffect, useState } from 'react';
+import { UsersIcon } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import {
   TraceCollapsible, TraceCollapsibleContent, TraceCollapsibleTrigger,
 } from '@/components/ui/trace';
 import { ProviderStack } from './provider-stack';
 import { memberState, SubagentCard } from './subagent-card';
-import { workerState, type WorkerState } from './worker-controls';
+import { STATUS_TONE, workerState, type WorkerState } from './worker-controls';
 import { TranscriptItemShell } from './transcript-item-shell';
 import { activitySignature, useLastChanges } from '../lib/last-change';
 import { subagentLabel, summarizeSubagent } from '../../client-core/subagent-window';
 import type { SessionId, TranscriptItem } from '../../protocol/messages';
 
 type ToolItem = Extract<TranscriptItem, { role: 'tool' }>;
+
+const TALLY: WorkerState[] = ['needs-you', 'failed', 'quiet', 'running', 'done'];
+const TALLY_WORDS: Record<WorkerState, string> = { 'needs-you': 'need you', failed: 'failed', quiet: 'quiet', running: 'running', done: 'done' };
 
 export function SubagentGroupCard({ items, sessionId }: { items: ToolItem[]; sessionId: SessionId }) {
   const [open, setOpen] = useState(false);
@@ -43,7 +48,7 @@ export function SubagentGroupCard({ items, sessionId }: { items: ToolItem[]; ses
     <TranscriptItemShell role="subagent" label="Team" ts={items[0].ts}>
       <TraceCollapsible
         bare
-        className="group/item my-0"
+        className="group/item @container my-0"
         open={expanded}
         onOpenChange={(next) => {
           setOpen(next);
@@ -51,11 +56,17 @@ export function SubagentGroupCard({ items, sessionId }: { items: ToolItem[]; ses
         }}
       >
         <TraceCollapsibleTrigger className="h-7 w-full flex-none px-0 text-xs hover:bg-transparent [&>[data-slot=trace-icon]:last-child]:opacity-40 group-hover/item:[&>[data-slot=trace-icon]:last-child]:opacity-100 focus-visible:[&>[data-slot=trace-icon]:last-child]:opacity-100 aria-expanded:[&>[data-slot=trace-icon]:last-child]:opacity-100">
-          <ProviderStack className="ml-1 -space-x-1.5" members={members} max={8} />
-          <span className="shrink-0 font-medium">{items.length} workers</span>
+          <UsersIcon aria-hidden className="shrink-0 text-muted-foreground" />
+          <span className="min-w-[4.5rem] shrink-0 text-muted-foreground @md:min-w-[5rem]">{items.length} workers</span>
+          <ProviderStack className="-space-x-1.5" members={members} max={8} />
+          <span className="ml-auto flex shrink-0 gap-2 pl-2">
+            {TALLY.map((st) => count(st) > 0 && (
+              <span key={st} className={cn('tabular-nums', STATUS_TONE[st])}>{count(st)} {TALLY_WORDS[st]}</span>
+            ))}
+          </span>
           <span className="sr-only">{blockedCount > 0 ? 'needs you' : ''}</span>
         </TraceCollapsibleTrigger>
-        <TraceCollapsibleContent className="mt-0.5 mb-2 ml-2 border-t-0 border-l border-border py-0 pl-3">
+        <TraceCollapsibleContent className="mt-0.5 mb-2 ml-2 border-t-0 border-l border-border py-0 pr-0 pl-3">
           <div className="flex flex-col gap-1">
             {items.map((item) => <SubagentCard key={item.id} item={item} sessionId={sessionId} embedded />)}
           </div>

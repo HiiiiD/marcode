@@ -1,6 +1,4 @@
-import { GitForkIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
-import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 export type TranscriptItemRole =
@@ -25,7 +23,8 @@ export type TranscriptItemRole =
  */
 const FRAME: Record<TranscriptItemRole, string> = {
   user: cn(
-    'rounded-lg px-3 py-2',
+    // Sized to its text and set against the right edge, the way a chat reads the sender's own turns.
+    'ml-auto w-fit max-w-full rounded-lg px-3 py-2 text-sm',
     // Derived, not a token lookup: --muted is editorWidget-background, which
     // several themes set equal to the sidebar background. Mixing toward the
     // foreground guarantees the block separates from the column in light,
@@ -33,7 +32,7 @@ const FRAME: Record<TranscriptItemRole, string> = {
     'bg-[color-mix(in_oklch,var(--color-muted),var(--color-foreground)_7%)]',
   ),
   // The reading surface: more air above and below than the rows of tool activity around it, so the answer stands out from the machinery.
-  assistant: 'text-sm leading-relaxed text-foreground',
+  assistant: 'text-sm text-foreground',
   tool: '',
   // Flat like the tool rows it sits among: a worker or a team is one more row of the work log, with no label, time or rule of its own.
   subagent: '',
@@ -52,27 +51,18 @@ const FRAME: Record<TranscriptItemRole, string> = {
  * transcript item, and the frame that says whose turn this is.
  */
 export function TranscriptItemShell({
-  role, label, ts, onFork, children,
+  role, label, ts, children,
 }: {
   role: TranscriptItemRole;
-  label: string;
+  /** Absent on the user's own turn: the filled block already says whose it is, so only a sender from another session is named. */
+  label?: string;
   ts?: number;
-  /**
-   * "Fork from here" — absent for a role that is not a meaningful branch
-   * point (a permission card, say) or while the session cannot fork right
-   * now. The caller decides both; this only renders what it is handed.
-   * Hover-revealed, like the roster row's own actions trigger: unlike the
-   * markdown toolbar's always-on copy button, an icon on every single
-   * transcript item would be a permanent column of chrome down the whole
-   * scroll.
-   */
-  onFork?: () => void;
   children: ReactNode;
 }) {
   return (
     <div className={cn('group/item relative my-0', FRAME[role])}>
       {/* The agent's own prose carries no label: an uppercase name and time above every paragraph was chrome, not information. */}
-      {role !== 'assistant' && role !== 'subagent' && <div className="mb-0.5 flex items-baseline gap-2">
+      {role !== 'assistant' && role !== 'subagent' && label !== undefined && <div className="mb-0.5 flex items-baseline gap-2">
         <span
           className={cn(
             'text-[0.65rem] font-medium tracking-wide uppercase',
@@ -92,32 +82,13 @@ export function TranscriptItemShell({
             {new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
           </span>
         )}
-        {onFork && (
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            aria-label="Fork from here"
-            title="Fork a new session from this point"
-            onClick={onFork}
-            className="ml-auto text-muted-foreground opacity-0 group-hover/item:opacity-100 focus:opacity-100"
-          >
-            <GitForkIcon />
-          </Button>
-        )}
       </div>}
-      {role === 'assistant' && onFork && (
-        <Button
-          variant="ghost"
-          size="icon-xs"
-          aria-label="Fork from here"
-          title="Fork a new session from this point"
-          onClick={onFork}
-          className="absolute top-0 right-0 text-muted-foreground opacity-0 group-hover/item:opacity-100 focus:opacity-100"
-        >
-          <GitForkIcon />
-        </Button>
-      )}
       {children}
+      {(role === 'assistant' || (role === 'user' && label === undefined)) && ts !== undefined && (
+        <div className="mt-0.5 text-[0.65rem] text-muted-foreground tabular-nums" title={new Date(ts).toLocaleString()}>
+          {new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+        </div>
+      )}
     </div>
   );
 }

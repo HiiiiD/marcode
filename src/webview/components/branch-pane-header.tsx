@@ -52,11 +52,6 @@ export function BranchPaneHeader({ pane }: { pane: PaneState }) {
         status === "error" && "bg-destructive/10 shadow-[inset_3px_0_0_var(--destructive)]",
       )}
     >
-      {status === "running" && (
-        <span aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-px overflow-hidden">
-          <span className="block h-full w-1/3 bg-primary/70 motion-safe:animate-working-line motion-reduce:w-full motion-reduce:bg-primary/30" />
-        </span>
-      )}
       <Icon aria-hidden className="size-3.5 shrink-0 text-branch" />
       {parent ? (
         <Button

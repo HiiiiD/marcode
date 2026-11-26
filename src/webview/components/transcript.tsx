@@ -12,8 +12,6 @@ import type { PaneState } from '../reducer';
 import { isLivePrompt } from '../lib/pending-prompts';
 import { splitNestedMessages } from '../lib/nested-messages';
 import { groupSubagents, mergeToolRuns } from '../lib/subagent-groups';
-import { useStore } from '../store';
-import { settledPrefix } from '../lib/stream-text';
 import { beatOf, gapAbove } from '../lib/rhythm';
 
 export function Transcript({
@@ -22,14 +20,9 @@ export function Transcript({
   pane: PaneState;
   onLoadMore: (beforeItemId: string) => void;
 }) {
-  const { state } = useStore();
   const nested = useMemo(() => splitNestedMessages(pane.items), [pane.items]);
   const first = pane.items[0];
   const idle = pane.summary.status === 'idle';
-  // Claude hands over finished blocks; every other backend streams tokens, so its half-written tail is held back to the last whole line or sentence rather than re-rendered per token.
-  const last = pane.items[pane.items.length - 1];
-  const claudeBacked = state.catalog.find((p) => p.id === pane.summary.providerId)?.kind === 'claude';
-  const streamingId = pane.summary.status === 'running' && !claudeBacked && last?.role === 'assistant' && last.text.trim() ? last.id : undefined;
 
   // `load-more` is a stateless lookup keyed on beforeItemId, not a consumed
   // cursor — two rapid clicks before the first session-prepend lands would
@@ -49,7 +42,7 @@ export function Transcript({
     // descendant — can call `useMessageScroller()` to reveal an item in this
     // transcript. Nothing else about the scroller moved.
     <NestedMessagesContext value={nested.byChild}>
-      <MessageScroller className="relative h-full">
+      <MessageScroller className="transcript-scope relative h-full">
         {pane.items.length === 0 && !pane.hasMore && <EmptyPane pane={pane} />}
         <MessageScrollerViewport className="px-2" preserveScrollOnPrepend>
           {/* `justify-end` only bites while the content is shorter than the
@@ -74,9 +67,7 @@ export function Transcript({
               </Button>
             )}
             {(() => {
-              const entries = mergeToolRuns(groupSubagents(nested.main
-                .map((item) => (item.id === streamingId && item.role === 'assistant' ? { ...item, text: settledPrefix(item.text) } : item))
-                .filter((item) => !isLivePrompt(item, pane) && !(item.role === 'assistant' && item.id === streamingId && !item.text && !item.thinking))));
+              const entries = mergeToolRuns(groupSubagents(nested.main.filter((item) => !isLivePrompt(item, pane))));
               const beatAt = (i: number, edge: 'first' | 'last' = 'first') => {
                 const e = entries[i];
                 return e === undefined ? undefined : e.kind === 'group' ? 'machine' as const : beatOf(e.item, edge);
@@ -89,14 +80,14 @@ export function Transcript({
                   </MessageScrollerItem>
                 ) : (
                   <MessageScrollerItem key={entry.item.id} messageId={entry.item.id} className={gap}>
-                    <TranscriptItemView item={entry.item} more={entry.more} sessionId={pane.summary.id} canFork={idle && pane.summary.kind !== 'side'} />
+                    <TranscriptItemView item={entry.item} more={entry.more} sessionId={pane.summary.id} />
                   </MessageScrollerItem>
                 );
               });
             })()}
           </MessageScrollerContent>
         </MessageScrollerViewport>
-        <MessageScrollerButton className="right-4 left-auto translate-x-0 rtl:translate-x-0" />
+        <MessageScrollerButton size="icon" className="border-border bg-background text-foreground shadow-lg ring-1 ring-border hover:bg-muted" />
       </MessageScroller>
     </NestedMessagesContext>
   );

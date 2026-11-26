@@ -56,7 +56,7 @@ export function Markdown({ children }: { children: string }) {
           <CodeBlock node={node}>{content}</CodeBlock>
         ),
         code: ({ className, children: content }) => (
-          <code className={cn('rounded bg-muted px-1 py-0.5 text-xs', className)}>
+          <code className={cn('rounded bg-[color-mix(in_oklch,var(--color-muted),var(--color-foreground)_8%)] px-1 py-0.5 text-xs', className)}>
             {content}
           </code>
         ),
@@ -118,7 +118,7 @@ function MarkdownLink({ href, children }: { href?: string; children: ReactNode }
 function CodeBlock({ node, children }: { node?: Element; children: ReactNode }) {
   return (
     <div className="relative my-1">
-      <pre className="overflow-x-auto rounded bg-muted p-1.5 pr-7 text-xs whitespace-pre-wrap wrap-break-word">
+      <pre className="overflow-x-auto rounded bg-[color-mix(in_oklch,var(--color-muted),var(--color-foreground)_5%)] p-1.5 pr-7 text-xs whitespace-pre-wrap wrap-break-word [&_code]:bg-transparent [&_code]:p-0">
         {children}
       </pre>
       {node && (

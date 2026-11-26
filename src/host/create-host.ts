@@ -104,7 +104,7 @@ export async function createHost(opts: CreateHostOptions): Promise<HostHandle> {
       manager.create(providerId, cwd, model, effort, mode, worktree, includeEditorContext),
     setVisible: (ids) => manager.setVisible(ids as SessionId[]),
     reveal: (id) => focusSession(manager, id as SessionId, config.layout.autoGrid ? manager.autoGrid() : undefined),
-    summaries: () => manager.summaries(),
+    summaries: (opts) => manager.summaries(opts),
     lookup: (id) => manager.lookup(id as SessionId),
     subagents: manager.subagents,
     isForeign: (id) => manager.isForeign(id as SessionId),

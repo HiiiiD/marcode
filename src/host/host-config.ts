@@ -1,6 +1,7 @@
 import type { UsageMirror } from '../providers/types';
 import { DEFAULT_PROVIDER_IDS, KNOWN_PROVIDER_IDS } from '../shared/settings';
 import { parseTheme, type ThemeColors } from '../shared/theme-settings';
+import { parseTranscriptSettings, type TranscriptDensity } from '../shared/transcript-density';
 import { SPAWN_PREFERENCES, type SpawnPreference } from './self-control/spawn-preference';
 import { clampCap } from './fleet-diff';
 import { DEFAULT_SHELL_ALIASES, parseShellAliases, type ShellAliasTable } from './shell/shell-aliases';
@@ -21,6 +22,7 @@ export interface HostConfig {
   shell: { aliases: ShellAliasTable };
   layout: { autoGrid: boolean };
   theme: ThemeColors;
+  transcript: { density: TranscriptDensity };
   claude: { claudeAiConnectors: boolean };
   spawn: { preference: SpawnPreference };
 }
@@ -44,6 +46,7 @@ export function defaultHostConfig(): HostConfig {
     shell: { aliases: { ...DEFAULT_SHELL_ALIASES } },
     layout: { autoGrid: true },
     theme: {},
+    transcript: { density: 'default' },
     claude: { claudeAiConnectors: false },
     spawn: { preference: 'auto' },
   };
@@ -168,6 +171,10 @@ export function parseHostConfig(raw: unknown): { config: HostConfig; warnings: s
   const themed = parseTheme(raw.theme);
   config.theme = themed.theme;
   warnings.push(...themed.warnings);
+
+  const transcript = parseTranscriptSettings(raw.transcript);
+  config.transcript.density = transcript.density;
+  warnings.push(...transcript.warnings);
 
   return { config, warnings };
 }

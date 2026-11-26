@@ -17,7 +17,7 @@ export interface WebviewHtmlOptions {
   title: string;
   /** Empty when the surface has no attachment store — the review tab has none. */
   attachmentBase?: string;
-  /** A validated `:root{…}` rule from `themeToCss`, never raw user text. */
+  /** Validated `:root{…}` rules from `themeToCss` and `densityToCss`, never raw user text. */
   themeCss?: string;
 }
 
