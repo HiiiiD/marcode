@@ -81,6 +81,11 @@ export function registerCommands(d: CommandDeps): vscode.Disposable[] {
     vscode.commands.registerCommand('marcode.history.open', () => { d.history.open(); }),
     vscode.commands.registerCommand('marcode.config.open', openConfig),
     vscode.commands.registerCommand('marcode.memory.reindex', () => reindexMemory(d.connection)),
+    vscode.commands.registerCommand('marcode.sync.open', async () => {
+      // The sidebar may be collapsed or not yet resolved; a post to it would be dropped.
+      await vscode.commands.executeCommand('mar-code.panel.focus');
+      d.provider.post({ t: 'open-sync' });
+    }),
     vscode.commands.registerCommand('marcode.login', async () => {
       const picks = [...d.connection.loginRecipes.entries()]
         .map(([id, recipe]) => ({ label: recipe.terminalName, description: id, recipe }));

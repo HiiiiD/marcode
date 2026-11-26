@@ -219,6 +219,7 @@ export class MessageRouter {
           reviewPollIntervalMs: this.reviewPollIntervalMs,
           favoriteModels: this.favoriteModels,
           showCacheTimer: this.showCacheTimer,
+          syncStatus: this.manager.syncService?.status() ?? 'off',
         });
         this.emit({ t: 'editor-context', ctx: this.editor.current() });
         // Not awaited: hydrate must not wait on a CLI handshake. The catalog
@@ -651,6 +652,25 @@ export class MessageRouter {
       case 'request-context': {
         const result = await this.manager.contextBreakdown(msg.id);
         this.emit({ t: 'context-breakdown', id: msg.id, result });
+        return;
+      }
+
+      case 'sync-open':
+      case 'sync-refresh':
+      case 'sync-setup':
+      case 'sync-join':
+      case 'sync-pair':
+      case 'sync-revoke':
+      case 'sync-leave':
+      case 'sync-forget':
+      case 'sync-project': {
+        const service = this.manager.syncService;
+        if (!service) {
+          this.emit({ t: 'sync-panel', panel: { state: 'unpaired', defaultName: '', error: { message: 'Sync is not available in this window.' } } });
+          return;
+        }
+        const panel = await service.handle(msg, (interim) => { this.emit({ t: 'sync-panel', panel: interim }); });
+        this.emit({ t: 'sync-panel', panel });
         return;
       }
 

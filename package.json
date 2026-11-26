@@ -87,6 +87,10 @@
         "title": "Marcode: Rebuild memory index"
       },
       {
+        "command": "marcode.sync.open",
+        "title": "Marcode: Set up sync"
+      },
+      {
         "command": "marcode.focusPane.1",
         "title": "Marcode: Focus pane 1"
       },
