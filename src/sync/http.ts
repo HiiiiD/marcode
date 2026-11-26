@@ -1,6 +1,7 @@
 export type Reply = { ok: true; status: number; json: Record<string, unknown> } | { ok: false; error: string };
 
 export const REQUEST_TIMEOUT_MS = 30_000;
+export const REVOKED_ERROR = 'This device was revoked or is unknown to the sync server.';
 
 /** One JSON request to the sync server. Never throws: a network failure, a timeout or an error status is a `Reply`. */
 export async function request(
@@ -22,7 +23,7 @@ export async function request(
   }
   let json: Record<string, unknown> = {};
   try { json = text ? JSON.parse(text) as Record<string, unknown> : {}; } catch { /* a non-JSON error page */ }
-  if (res.status === 401) { return { ok: false, error: 'This device was revoked or is unknown to the sync server.' }; }
+  if (res.status === 401) { return { ok: false, error: REVOKED_ERROR }; }
   if (res.status >= 400 && res.status !== 409) {
     return { ok: false, error: `Sync server answered ${res.status}: ${typeof json.error === 'string' ? json.error : res.statusText}` };
   }

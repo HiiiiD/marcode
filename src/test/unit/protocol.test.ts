@@ -92,6 +92,8 @@ function describeInbound(m: WebviewToHost): string {
     case 'run-shell': return 'run-shell';
     case 'cancel-shell': return 'cancel-shell';
     case 'open-plan': return 'open-plan';
+    case 'sync-open': case 'sync-refresh': case 'sync-setup': case 'sync-join': case 'sync-pair':
+    case 'sync-revoke': case 'sync-leave': case 'sync-forget': case 'sync-project': return m.t;
     default: return assertNever(m);
   }
 }
@@ -136,6 +138,7 @@ function describeOutbound(m: HostToWebview): string {
     case 'focus-pane': return 'focus-pane';
     case 'step-pane': return 'step-pane';
     case 'toggle-maximize-pane': return 'toggle-maximize-pane';
+    case 'sync-panel': case 'sync-status': case 'open-sync': return m.t;
     default: return assertNever(m);
   }
 }

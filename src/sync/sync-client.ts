@@ -182,6 +182,18 @@ export class SyncClient {
     });
   }
 
+  /** Revoked devices that still hold the newest key: a revoke whose rotation never finished. */
+  unfinishedRevokes(): Promise<Result<string[]>> {
+    return guarded(async () => {
+      const [devices, state] = await Promise.all([this.devices(), this.keyState()]);
+      if (!devices.ok) { return devices; }
+      if (!state.ok) { return state; }
+      const newest = state.value.holders.reduce((m, h) => Math.max(m, h.epoch), 0);
+      const holders = new Set(state.value.holders.find((h) => h.epoch === newest)?.deviceIds ?? []);
+      return { ok: true, value: devices.value.filter((d) => d.revokedAt !== undefined && holders.has(d.deviceId)).map((d) => d.deviceId) };
+    });
+  }
+
   /** Revokes a device, then rotates so records written from now on use a key it never had. */
   revoke(deviceId: string): Promise<Result<SyncCredentials>> {
     return guarded(async () => {

@@ -38,6 +38,17 @@ encryption keys, so send it over something you trust. The server only ever sees 
 
 Pass `--name <name>` to `setup` or `join` to name the device; the default is the hostname.
 
+## From the panel
+
+Everything above also works from the sidebar and the TUI: run **Marcode: Set up sync** from the
+Command Palette, or type `/sync` in a composer. The dialog joins a server with a pairing code (or sets
+up a new one), lists your devices with Revoke, shows a pairing code with a live expiry when you add a
+device, and lets you choose per repository whether its memory is shared with your other checkouts.
+
+Nothing about sync shows while it is healthy. When the server cannot be reached, or this device was
+removed on another one, a small "Sync offline" / "Sync: device removed" note appears under the usage
+strip; it opens the dialog.
+
 ## Manage devices
 
 ```sh

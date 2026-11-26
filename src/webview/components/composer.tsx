@@ -60,7 +60,7 @@ export function Composer({
    */
   unavailableReason?: string;
 }) {
-  const { state, post, dismissRejection } = useStore();
+  const { state, post, dismissRejection, openSync } = useStore();
   const [text, setText] = useDraft(pane.summary.id);
   useDraftSync(pane.summary.id, text, post);
   /** The selected entry's arg hint. Presentation only; never sent. */
@@ -314,6 +314,8 @@ export function Composer({
       setContextOpen(true);
     } else if (intercept === "mcp") {
       setMcpOpen(true);
+    } else if (intercept === "sync") {
+      openSync();
     } else {
       // `ghost` is presentation only — the arg hint is never part of the message.
       const pruned = pruneMentions(trimmed, refs);

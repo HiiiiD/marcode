@@ -16,7 +16,7 @@ const ENTRIES: Invocable[] = [
 const NO_EFFORT = catalog()[0].models[1];
 
 /** /mcp, /side and /btw: the commands the panel answers itself. */
-const PANEL_COMMAND_COUNT = 3;
+const PANEL_COMMAND_COUNT = 4;
 
 function pane(invocables?: Invocable[]): PaneState {
   return {
@@ -144,8 +144,8 @@ suite("invocable menu", () => {
     const texts = screen.getAllByRole("option").map((o) => o.textContent ?? "");
     assert.strictEqual(texts.length, ENTRIES.length + PANEL_COMMAND_COUNT);
     assert.deepStrictEqual(
-      texts.slice(2, 2 + PANEL_COMMAND_COUNT).map((t) => ["mcp", "side", "btw"].find((n) => t.replace(/^\//, "").startsWith(n))),
-      ["mcp", "side", "btw"],
+      texts.slice(2, 2 + PANEL_COMMAND_COUNT).map((t) => ["mcp", "sync", "side", "btw"].find((n) => t.replace(/^\//, "").startsWith(n))),
+      ["mcp", "sync", "side", "btw"],
     );
   });
 

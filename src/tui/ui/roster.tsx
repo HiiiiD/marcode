@@ -9,6 +9,7 @@ import { useTuiStore } from './store';
 import { Surface } from './surface';
 import { useTokens } from './tokens/tokens-provider';
 import { UsageStrip } from './usage-strip';
+import { SyncStatusLine } from './sync/sync-status-line';
 import { useTheme } from './termcn/hooks/use-theme';
 
 export const ROSTER_W = 26;
@@ -100,6 +101,7 @@ export function Roster({ focused, onFocusSession, onAskDelete, onHandoff, squeez
         ))}
       </scrollbox>
       <UsageStrip width={ROSTER_W - 4} maxLines={stripBudget(height)} />
+      <SyncStatusLine />
       {rows.length === 0 ? <text fg={theme.colors.muted}>{filter !== '' ? 'no match' : 'no sessions yet'}</text> : null}
     </Surface>
   );

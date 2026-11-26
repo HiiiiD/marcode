@@ -19,6 +19,8 @@ import { AccountCache } from './account-cache/account-cache';
 import { seedFromWorkspaces } from './account-cache/seed-from-workspaces';
 import { AttachmentStore } from './attachment-store';
 import { ProjectResolver } from './project/project-resolver';
+import { SyncService } from './sync/sync-service';
+import { configPath } from './config-file';
 import { FallbackSummarizer } from './digest/fallback-summarizer';
 import { LlmSummarizer } from './digest/llm-summarizer';
 import { focusSession } from './focus-session';
@@ -98,16 +100,27 @@ export async function createHost(opts: CreateHostOptions): Promise<HostHandle> {
   // `SessionManager` reads `this.providers` live, so populating it after is safe.
   const providers = new Map<string, AgentProvider>();
 
+  const projects = new ProjectResolver(config.projects.overrides);
   const manager = new SessionManager(
     store, providers, opts.emit, undefined, opts.onShellNoise, attachments,
     config.review.fileCap, config.review.baseRefs, memory, undefined, config.usageMirrors,
-    undefined, new ProjectResolver(config.projects.overrides),
+    undefined, projects,
   );
   const ownership = new SessionOwnership(path.join(opts.workspaceDir, 'sessions'), opts.hostKind);
   manager.setOwnership(ownership, { tailIntervalMs: opts.pollMs });
   manager.setShellAliases(config.shell.aliases);
   const accountCache = opts.marcodeHome ? AccountCache.open(path.join(opts.marcodeHome, 'account.sqlite')) : undefined;
   if (accountCache) { manager.setAccountCache(accountCache, { pollMs: opts.pollMs }); }
+  const sync = opts.marcodeHome
+    ? new SyncService({
+      home: opts.marcodeHome, configFile: configPath(opts.marcodeHome), roots: opts.workspaceRoots,
+      overrides: config.projects.overrides, resolve: (cwd) => projects.resolve(cwd), broadcast: opts.emit,
+    })
+    : undefined;
+  if (sync) {
+    manager.setSyncService(sync);
+    sync.start();
+  }
 
   // `satisfies Required<...>`: every optional member must be wired here, or the build fails.
   const selfControlManager = {
@@ -308,6 +321,7 @@ export async function createHost(opts: CreateHostOptions): Promise<HostHandle> {
     dispose: async () => {
       await manager.dispose();
       accountCache?.close();
+      sync?.dispose();
       await selfControlServer.dispose();
       await digestLock.dispose();
       closeMemory?.();

@@ -530,6 +530,11 @@ export interface PaneLayout {
 }
 
 export type WebviewToHost =
+  | { t: 'sync-open' } | { t: 'sync-refresh' }
+  | { t: 'sync-setup'; server: string; code: string; name: string }
+  | { t: 'sync-join'; server: string; code: string; name: string }
+  | { t: 'sync-pair' } | { t: 'sync-revoke'; deviceId: string } | { t: 'sync-leave' } | { t: 'sync-forget' }
+  | { t: 'sync-project'; path: string; choice: 'shared' | 'own' | { link: string } }
   | { t: 'ready' }
   /**
    * `mode` is the permission mode the session starts in. It is optional and
@@ -855,7 +860,14 @@ export type WebviewToHost =
   | { t: 'set-favorite-models'; ids: string[] };
 
 export type HostToWebview =
+  | { t: 'sync-panel'; panel: SyncPanel }
+  /** Broadcast: drives the panel's status chip, which shows only when sync is broken. */
+  | { t: 'sync-status'; status: SyncStatus }
+  /** Sent by the "Set up sync" command straight to the sidebar. */
+  | { t: 'open-sync' }
   | { t: 'hydrate'; sessions: SessionSummary[]; layout: PaneLayout;
+      /** Absent reads as `'off'`. */
+      syncStatus?: SyncStatus;
       snapshots: SessionSnapshot[]; catalog: ProviderInfo[];
       /**
        * Providers that cannot be picked, and why. Empty at hydrate on a
@@ -1061,3 +1073,19 @@ export type HostToWebview =
       error?: string }> }
   /** The sidebar's link to the background host. Posted by the extension itself; absent means connected. */
   | { t: 'host-link'; status: 'connected' | 'reconnecting' | 'lost' };
+
+export type SyncConnection = 'checking' | 'connected' | 'unreachable' | 'revoked';
+export interface SyncDeviceView { deviceId: string; name: string; lastSeenAt: number; self: boolean; revoked: boolean; unfinishedRevoke?: true }
+/** One repo open in the window: whether its memory is shared with the other checkouts of its project. */
+export interface SyncProjectView { path: string; name: string; projectId?: string; choice: 'shared' | 'own' | 'linked' | 'none' }
+export interface SyncPairingView { code: string; expiresAt: number; joinCommand: string }
+export type SyncField = 'server' | 'code' | 'name';
+/** The Sync dialog's whole state, rendered by both clients; the host owns it. */
+export type SyncPanel =
+  | { state: 'unpaired'; defaultName: string; busy?: boolean; error?: { field?: SyncField; message: string } }
+  | {
+      state: 'paired'; server: string; deviceName: string; connection: SyncConnection; devices: SyncDeviceView[];
+      projects: SyncProjectView[]; pairing?: SyncPairingView; busy?: 'pair' | 'revoke' | 'leave' | 'refresh';
+      error?: { message: string };
+    };
+export type SyncStatus = 'off' | 'ok' | 'offline' | 'revoked';

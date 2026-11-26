@@ -18,6 +18,7 @@ import { ContextDialog } from './context-dialog';
 import { ChildrenDialog } from './children-dialog';
 import { McpDialog } from './mcp/mcp-dialog';
 import { LayoutDialog } from './layout-dialog';
+import { SyncDialog } from './sync/sync-dialog';
 import { StatusLine } from './status-line';
 import { ZoneLine } from './zone-line';
 import { runningShell } from '../../client-core/running-shell';
@@ -54,6 +55,10 @@ export function App(props: AppProps) {
   const [zone, setZone] = useState<PaneZone>('composer');
   const [dialog, setDialog] = useState(false);
   const [picker, setPicker] = useState<PickerKind | null>(null);
+  const syncHandled = useRef(0);
+  useEffect(() => {
+    if (state.syncOpenRequest > syncHandled.current) { syncHandled.current = state.syncOpenRequest; setPicker('sync'); }
+  }, [state.syncOpenRequest]);
   const [deleting, setDeleting] = useState<{ id: SessionId; title: string } | null>(null);
   const [maximized, setMaximized] = useState(false);
   const [handoffSource, setHandoffSource] = useState<HandoffSource | undefined>(undefined);
@@ -181,6 +186,7 @@ export function App(props: AppProps) {
       {picker === 'children' && focusedId ? <ChildrenDialog sessionId={focusedId} onClose={() => { setPicker(null); }} /> : null}
       {picker === 'mcp' && focusedId ? <McpDialog sessionId={focusedId} onClose={() => { setPicker(null); }} /> : null}
       {picker === 'layout' ? <LayoutDialog onApply={layout.applyRoot} onClose={() => { setPicker(null); }} /> : null}
+      {picker === 'sync' ? <SyncDialog onClose={() => { setPicker(null); }} /> : null}
       {deleting ? <DeleteConfirm id={deleting.id} title={deleting.title} onDone={() => { setDeleting(null); }} /> : null}
       <box flexDirection="column" flexShrink={0}>
         <ZoneLine zone={keyZone} width={width} modal={dialog || deleting !== null || picker !== null} />

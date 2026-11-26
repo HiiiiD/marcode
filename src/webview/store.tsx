@@ -8,6 +8,8 @@ import type { SessionId, WebviewToHost } from '../protocol/messages';
 
 interface StoreActions {
   post: (msg: WebviewToHost) => void;
+  /** Open the panel-level Sync dialog (`/sync`, the status chip). */
+  openSync: () => void;
   /**
    * Record that the user is working in `id`. Client-local — nothing is
    * posted, because the host has no use for which pane has focus.
@@ -113,6 +115,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setPendingSlot: (path) => dispatch({ t: 'local-pending-slot', path }),
     dismissRearrange: () => dispatch({ t: 'local-dismiss-rearrange' }),
     toggleMaximize: (id) => dispatch({ t: 'local-toggle-maximize', id }),
+    openSync: () => dispatch({ t: 'local-open-sync' }),
   }), [post]);
   const value = useMemo<StoreValue>(() => ({ state, ...actions }), [state, actions]);
 

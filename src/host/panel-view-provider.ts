@@ -4,6 +4,7 @@ import type { AgentsMdNudgeController } from './agents-md-nudge';
 import { bindSurface, type SurfaceBinding } from './bind-surface';
 import { trackLayout } from './layout-cache';
 import type { SurfaceLink } from './surface-link';
+import { PendingPosts } from './pending-posts';
 import { renderWebviewHtml } from './webview-html';
 import type { HostToWebview, PaneLayout, SessionId } from '../protocol/messages';
 
@@ -36,6 +37,13 @@ export class PanelViewProvider implements vscode.WebviewViewProvider {
     void this.view?.webview.postMessage(msg);
   }
 
+  private readonly pending = new PendingPosts<HostToWebview>();
+
+  /** For a command that just asked VS Code to reveal the view: held until the view exists rather than dropped. */
+  postWhenReady(msg: HostToWebview): void {
+    this.pending.post(msg);
+  }
+
   /** The editor chip tracks the active file; the daemon needs the same value for sends. */
   pushContext(ctx: unknown): void {
     this.post({ t: 'editor-context', ctx: ctx as never });
@@ -59,6 +67,8 @@ export class PanelViewProvider implements vscode.WebviewViewProvider {
 
   resolveWebviewView(view: vscode.WebviewView): void {
     this.view = view;
+    this.pending.attach((msg) => { void view.webview.postMessage(msg); });
+    view.onDidDispose(() => { this.pending.detach(); });
     view.webview.options = {
       enableScripts: true,
       localResourceRoots: [

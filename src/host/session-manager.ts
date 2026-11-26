@@ -27,6 +27,7 @@ import { DigestService, type DigestEstimate, type DigestScope } from './digest/d
 import { buildMemoryBlock, queryTermsOf } from '../memory/prime-block';
 import type { MemoryStore, RecallScope } from '../memory/types';
 import type { ProjectRef } from './project/project-resolver';
+import type { SyncService } from './sync/sync-service';
 import type {
   AgentProvider, EffortLevel, Invocable, ModelInfo, MoveThreadResult, UpdateInfo, UsageMirror, UsageWindow,
 } from '../providers/types';
@@ -2442,6 +2443,10 @@ export class SessionManager implements SessionSink {
 
   /** Injected because this class imports no `vscode`; the extension supplies the open workspace folders. */
   setWorkspaceRoots(roots: () => string[]): void { this.workspaceRoots = roots; }
+
+  /** Absent when the host has no `~/.marcode` home (tests, the bare router); the dialog then says sync is unavailable. */
+  syncService?: SyncService;
+  setSyncService(service: SyncService): void { this.syncService = service; }
 
   private shellAliasTable: ShellAliasTable = DEFAULT_SHELL_ALIASES;
   setShellAliases(table: ShellAliasTable): void { this.shellAliasTable = table; }
