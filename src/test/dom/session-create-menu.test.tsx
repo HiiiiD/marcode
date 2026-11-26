@@ -1,5 +1,5 @@
 import * as assert from 'assert';
-import { act, screen, within } from '@testing-library/react';
+import { act, fireEvent, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ProviderInfo } from '../../protocol/messages';
 import { catalog, layoutOf, snapshot, summary } from '../fixtures/protocol';
@@ -169,6 +169,24 @@ suite('SessionCreateMenu', () => {
     const titles = [...row.querySelectorAll('[title]')].map((el) => el.getAttribute('title'));
     assert.deepStrictEqual(titles, ['low', 'medium', 'high']);
     assert.strictEqual(row.querySelectorAll('.capitalize').length, 2);
+  });
+
+  test('clicking a dot sets that level, even with the end labels inside the track', async () => {
+    renderApp();
+    hydrate();
+    await userEvent.click(optionsButton());
+    await nextStep();
+
+    const row = screen.getByLabelText(/^Effort: /);
+    const dots = [...row.querySelectorAll('[data-effort-dot]')] as HTMLElement[];
+    // Low label, three dots, High label: the dots sit at 40, 58 and 76 inside a 0-120 track.
+    dots.forEach((dot, i) => { dot.getBoundingClientRect = () => ({ left: 35 + i * 18, width: 10, top: 0, height: 10, right: 45 + i * 18, bottom: 10, x: 35 + i * 18, y: 0, toJSON: () => ({}) }); });
+    const track = dots[0].parentElement as HTMLElement & { setPointerCapture?: (id: number) => void };
+    track.setPointerCapture = () => {};
+    fireEvent.pointerDown(track, { clientX: 76, pointerId: 1, buttons: 1 });
+    fireEvent.pointerUp(track, { pointerId: 1 });
+
+    assert.strictEqual(screen.getByLabelText(/^Effort: /).getAttribute('aria-label')?.startsWith('Effort: high.'), true);
   });
 
   test('the modal creates with the chosen provider, model, effort and mode', async () => {
