@@ -30,14 +30,19 @@ export class SubagentService {
 
   constructor(private readonly host: SubagentHost) {}
 
-  running(parentId: SessionId): number { return this.byParent.get(parentId)?.size ?? 0; }
+  // A promoted child stays in its set until its run settles, but it has its own pane now.
+  private working(parentId: SessionId): Entry[] {
+    return [...(this.byParent.get(parentId) ?? [])].filter((e) => !e.promoted);
+  }
+
+  running(parentId: SessionId): number { return this.working(parentId).length; }
 
   counts(parentId: SessionId): { running: number; awaitingApproval: number } | undefined {
-    const entries = this.byParent.get(parentId);
-    if (!entries || entries.size === 0) { return undefined; }
+    const entries = this.working(parentId);
+    if (entries.length === 0) { return undefined; }
     let awaiting = 0;
     for (const e of entries) { awaiting += e.bridge.pendingApprovals(); }
-    return { running: entries.size, awaitingApproval: awaiting };
+    return { running: entries.length, awaitingApproval: awaiting };
   }
 
   cancelSubtree(parentId: SessionId): void {

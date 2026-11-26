@@ -27,6 +27,7 @@ import { useFleetDiffRequests } from './use-fleet-diff-requests';
 import { nextIndex, useRovingRows } from './use-roving-rows';
 import { folderName } from '@/format';
 import { MAX_FILE_CAP } from '../shared/file-cap';
+import { displayStatus } from '../client-core/display-status';
 import type {
   ChangeOp, FileChange, SessionId, SessionSummary, TreeDiff,
 } from '../protocol/messages';
@@ -857,7 +858,7 @@ function Group({
           way.
         */}
         {session !== undefined && (
-          <StatusBadge status={session.status} hideIdle />
+          <StatusBadge status={displayStatus(session)} hideIdle />
         )}
         <span className="min-w-0 shrink-0 truncate text-muted-foreground">
           {group.files.length}

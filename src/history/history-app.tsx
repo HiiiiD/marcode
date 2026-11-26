@@ -4,7 +4,7 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { HistoryTable } from './history-table';
 import { HistoryToolbar } from './history-toolbar';
 import { MemoryStrip } from './memory-strip';
-import { DEFAULT_QUERY, queryHistory, type HistoryQuery } from './history-rows';
+import { DEFAULT_QUERY, needsAttention, queryHistory, type HistoryQuery } from './history-rows';
 import { useStore } from './store';
 
 export function HistoryApp() {
@@ -12,7 +12,7 @@ export function HistoryApp() {
   // Ephemeral by design: a reading position in a list that keeps changing.
   const [query, setQuery] = useState<HistoryQuery>(DEFAULT_QUERY);
   const groups = queryHistory(state.sessions, query);
-  const attentionCount = state.sessions.filter((s) => s.status === 'awaiting-approval' || s.status === 'error').length;
+  const attentionCount = state.sessions.filter(needsAttention).length;
   const shownCount = groups.pinned.length + groups.rest.length;
   const filtered = query.needsAttention === true || query.text.trim() !== '';
   const empty = groups.pinned.length + groups.rest.length === 0;
