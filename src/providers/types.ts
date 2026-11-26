@@ -359,6 +359,11 @@ export type AgentEvent =
   | { kind: 'permission'; id: string; tool: ToolCall; parentId?: string; meta?: PermissionMeta }
   | { kind: 'question'; id: string; questions: QuestionSpec[]; blocking: boolean; parentId?: string }
   | { kind: 'request-cancelled'; id: string }
+  /**
+   * The backend says a turn is under way. Only meaningful for one it started by itself (a
+   * background task or Monitor finishing wakes Claude), which no send of ours marks.
+   */
+  | { kind: 'turn-start' }
   | { kind: 'turn-end'; reason: 'done' | 'interrupted' | 'error'; error?: string }
   /**
    * Context compaction, manual or automatic. `done` may arrive twice: once
@@ -409,8 +414,9 @@ export type AgentEvent =
   /** Full replacement list, not a delta — same snapshot semantics as `invocables`. */
   | { kind: 'mcp-servers'; servers: McpServerStatus[] }
   /**
-   * The live set of background tasks (a Bash command or a subagent the CLI
-   * detached from the foreground turn — Ctrl+B semantics), REPLACING
+   * The live set of background tasks (a subagent the CLI detached from the
+   * foreground turn — Ctrl+B semantics; background shell commands are left
+   * out, see map-events.ts), REPLACING
    * whatever this session tracked before. A turn can end normally
    * (`turn-end`) while this set is still non-empty: the task keeps running
    * after the turn does, so a session must not read as idle — and therefore

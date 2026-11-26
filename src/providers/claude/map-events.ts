@@ -234,14 +234,23 @@ export function mapEvent(msg: unknown): AgentEvent[] {
       // (skipTranscript — memory extraction, summaries) and live-update
       // watchers (Monitor). A watcher never ends on its own, so counting one
       // held the session `running` — Stop up — long after the turn was over.
-      const tasks = (msg as { tasks?: { task_id?: unknown; ambient?: unknown }[] }).tasks;
+      //
+      // `local_bash` is dropped too: a background command is as often a dev server as a
+      // wait, and the CLI itself reports the session idle while one runs. When it finishes
+      // and wakes a turn, `session_state_changed` is what marks that turn running.
+      const tasks = (msg as { tasks?: { task_id?: unknown; task_type?: unknown; ambient?: unknown }[] }).tasks;
       return [{
         kind: 'background-tasks-changed',
         taskIds: Array.isArray(tasks)
-          ? tasks.filter((t) => t.ambient !== true).map((t) => t.task_id)
+          ? tasks.filter((t) => t.ambient !== true && t.task_type !== 'local_bash').map((t) => t.task_id)
             .filter((id): id is string => typeof id === 'string')
           : [],
       }];
+    }
+    if (subtype === 'session_state_changed') {
+      // Forwarded only because the provider sets CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS.
+      // `idle` and `requires_action` add nothing: `result` and the permission ask already say so.
+      return (msg as { state?: unknown }).state === 'running' ? [{ kind: 'turn-start' }] : [];
     }
     if (subtype === 'task_notification') {
       // The SDK's per-task settle edge — emitted unconditionally whenever a

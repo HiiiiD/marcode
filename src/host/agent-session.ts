@@ -1119,6 +1119,10 @@ export class AgentSession {
         this.sink.changed();
         return;
 
+      case 'turn-start':
+        this.reviveNativeQueuedTurn();
+        return;
+
       case 'text':
       case 'thinking': {
         this.reviveNativeQueuedTurn();

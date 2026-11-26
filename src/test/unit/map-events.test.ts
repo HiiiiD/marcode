@@ -390,7 +390,7 @@ suite('mapEvent', () => {
     const out = mapEvent({
       type: 'system', subtype: 'background_tasks_changed',
       tasks: [
-        { task_id: 't1', task_type: 'local_bash', description: 'Running tests' },
+        { task_id: 't1', task_type: 'local_agent', description: 'Investigating' },
         { task_id: 'w1', task_type: 'monitor_ws', description: 'Watching', ambient: true },
         { task_id: 'f1', task_type: 'local_agent', description: 'extract_memories', ambient: true },
       ],
@@ -398,6 +398,38 @@ suite('mapEvent', () => {
     } as never);
 
     assert.deepStrictEqual(out, [{ kind: 'background-tasks-changed', taskIds: ['t1'] }]);
+  });
+
+  // A background command is as often a dev server as a wait, and Claude itself reports the
+  // session idle while one runs; its completion wakes a turn that session_state_changed revives.
+  test('background shell commands do not hold the session busy', () => {
+    const out = mapEvent({
+      type: 'system', subtype: 'background_tasks_changed',
+      tasks: [
+        { task_id: 'b1', task_type: 'local_bash', description: 'npm run dev' },
+        { task_id: 'a1', task_type: 'local_agent', description: 'Investigating' },
+      ],
+      uuid: 'u', session_id: 's',
+    } as never);
+
+    assert.deepStrictEqual(out, [{ kind: 'background-tasks-changed', taskIds: ['a1'] }]);
+  });
+
+  test('session_state_changed running becomes a turn-start event', () => {
+    const out = mapEvent({
+      type: 'system', subtype: 'session_state_changed', state: 'running', uuid: 'u', session_id: 's',
+    } as never);
+
+    assert.deepStrictEqual(out, [{ kind: 'turn-start' }]);
+  });
+
+  test('session_state_changed idle and requires_action map to nothing', () => {
+    for (const state of ['idle', 'requires_action']) {
+      const out = mapEvent({
+        type: 'system', subtype: 'session_state_changed', state, uuid: 'u', session_id: 's',
+      } as never);
+      assert.deepStrictEqual(out, []);
+    }
   });
 
   test('a background_tasks_changed message with no live tasks replaces the set with empty', () => {
