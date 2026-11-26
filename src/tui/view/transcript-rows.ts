@@ -9,8 +9,8 @@ export type ToolItem = Extract<TranscriptItem, { role: 'tool' }>;
 export interface FoldedPermission { state: 'pending' | 'allowed' | 'denied'; reason?: string }
 
 export type TranscriptRow =
-  | { kind: 'user'; id: string; text: string; fromName?: string; attachments?: Attachment[] }
-  | { kind: 'assistant'; id: string; text: string; streaming: boolean }
+  | { kind: 'user'; id: string; ts: number; text: string; fromName?: string; attachments?: Attachment[] }
+  | { kind: 'assistant'; id: string; ts: number; text: string; streaming: boolean }
   | {
       kind: 'tool'; id: string; item: ToolItem; header: ToolHeader; state: 'running' | 'ok' | 'error'; permission?: FoldedPermission;
       /** A `!` command: opens by default, so an Enter on it collapses rather than expands. */
@@ -28,10 +28,10 @@ export function transcriptRows(items: TranscriptItem[], running: boolean): Trans
   for (const item of items) {
     switch (item.role) {
       case 'user':
-        rows.push({ kind: 'user', id: item.id, text: item.text, ...(item.from ? { fromName: item.from.name } : {}), ...(item.attachments?.length ? { attachments: item.attachments } : {}) });
+        rows.push({ kind: 'user', id: item.id, ts: item.ts, text: item.text, ...(item.from ? { fromName: item.from.name } : {}), ...(item.attachments?.length ? { attachments: item.attachments } : {}) });
         break;
       case 'assistant':
-        if (item.text !== '') { rows.push({ kind: 'assistant', id: item.id, text: item.text, streaming: false }); }
+        if (item.text !== '') { rows.push({ kind: 'assistant', id: item.id, ts: item.ts, text: item.text, streaming: false }); }
         break;
       case 'tool':
         rows.push({ kind: 'tool', id: item.id, item, header: describeTool(item.tool), state: item.state });

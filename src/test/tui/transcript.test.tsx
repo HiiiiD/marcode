@@ -40,6 +40,18 @@ test('user and assistant text render, assistant as markdown', async () => {
   expect(/\b(user|assistant|You)\b/.test(m.frame())).toBe(false);
 });
 
+test('agent prose and the user\'s own turn carry their time underneath', async () => {
+  const at = new Date(2026, 0, 1, 9, 41).getTime();
+  const time = new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  m = await mount(<Transcript sessionId="s1" focused />);
+  await m.fromHost(withItems([{ id: 'u1', ts: at, role: 'user', text: 'go' }, { id: 'a1', ts: at, role: 'assistant', text: 'Done here.' }]));
+  await paint('Done here');
+  const rows = m.frame().split(/\r?\n/);
+  const under = (needle: string) => rows[rows.findIndex((r) => r.includes(needle)) + 1] ?? '';
+  expect(under('go')).toContain(time);
+  expect(under('Done here')).toContain(time);
+});
+
 test('a message from another session names its sender', async () => {
   m = await mount(<Transcript sessionId="s1" focused />);
   await m.fromHost(withItems([{ id: 'u1', ts: 1, role: 'user', text: 'status?', from: { sessionId: 's2', name: 'scout' } }]));
@@ -95,12 +107,14 @@ test('the user\'s turn sits on the right of the measure, sized to its text', asy
 
 test('the selected bar stops at the last line of the message, not the spacer row', async () => {
   m = await mount(<Transcript sessionId="s1" focused />);
-  await m.fromHost(withItems([{ id: 'u1', ts: 1, role: 'user', text: 'fix the tests' }, { id: 'u2', ts: 2, role: 'user', text: 'and lint' }]));
-  await m.press('k');
+  await m.fromHost(withItems([{ id: 'u2', ts: 2, role: 'user', text: 'and lint' }, { id: 'u1', ts: 1, role: 'user', text: 'fix the tests' }]));
+  await m.press('j');
   const rows = m.frame().split(/\r?\n/);
   const at = rows.findIndex((r) => r.includes('and lint'));
-  expect(rows[at]?.includes('┃')).toBe(true);
-  expect(barRows().length).toBe(1);
+  const time = rows[at + 1] ?? '';
+  expect(rows[at]?.includes('┃') && time.includes('┃')).toBe(true);
+  expect(barRows().length).toBe(2);
+  expect((rows[at + 2] ?? '').includes('┃')).toBe(false);
 });
 
 test('only the status mark of a failed tool row is red, not its name', async () => {

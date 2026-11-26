@@ -1,4 +1,5 @@
 import type { Attachment } from '../../../protocol/messages';
+import { clockTime } from '../../../client-core/worker-status';
 import type { TranscriptRow } from '../../view/transcript-rows';
 import { useTheme } from '../termcn/hooks/use-theme';
 import { useSyntaxStyle, useTokens } from '../tokens/tokens-provider';
@@ -21,6 +22,7 @@ export function RowView(props: {
   const syntaxStyle = useSyntaxStyle();
   const tokens = useTokens();
   const bold = props.selected ? 1 : 0;
+  const muted = theme.colors.mutedForeground;
   switch (row.kind) {
     case 'user':
       // The user's own turn sits on the right of the measure, sized to its text; the fill (or, without a palette, the
@@ -28,16 +30,18 @@ export function RowView(props: {
       return (
         <box maxWidth={MAX_WIDTH} flexDirection="column" alignItems="flex-end">
           <box flexDirection="column" backgroundColor={tokens?.panel} paddingLeft={1} paddingRight={1}>
-            {row.fromName ? <text fg={theme.colors.mutedForeground}>{`Message from ${row.fromName}`}</text> : null}
+            {row.fromName ? <text fg={muted}>{`Message from ${row.fromName}  ${clockTime(row.ts)}`}</text> : null}
             <text fg={tokens ? undefined : theme.colors.primary} attributes={bold} wrapMode="word">{row.text}</text>
             {row.attachments ? <SentAttachments attachments={row.attachments} cursor={props.attachmentCursor} onOpen={props.onOpenAttachment} /> : null}
+            {row.fromName ? null : <text fg={muted}>{clockTime(row.ts)}</text>}
           </box>
         </box>
       );
     case 'assistant':
       return (
-        <box maxWidth={MAX_WIDTH}>
+        <box maxWidth={MAX_WIDTH} flexDirection="column">
           <markdown content={row.text} streaming={row.streaming} syntaxStyle={syntaxStyle} />
+          <text fg={muted}>{clockTime(row.ts)}</text>
         </box>
       );
     case 'tool':
