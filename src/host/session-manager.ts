@@ -2444,6 +2444,13 @@ export class SessionManager implements SessionSink {
   /** Injected because this class imports no `vscode`; the extension supplies the open workspace folders. */
   setWorkspaceRoots(roots: () => string[]): void { this.workspaceRoots = roots; }
 
+  /** What the memory publisher needs: every session with its project and whether a pane shows it. */
+  publishableSessions(): Array<{ id: SessionId; providerId: string; cwd: string; projectId?: string; hidden: boolean }> {
+    return [...this.meta.values()].filter((s) => !isHidden(s)).map((s) => ({
+      id: s.id, providerId: s.providerId, cwd: s.cwd, ...(s.projectId ? { projectId: s.projectId } : {}), hidden: !this.visible.has(s.id),
+    }));
+  }
+
   /** Absent when the host has no `~/.marcode` home (tests, the bare router); the dialog then says sync is unavailable. */
   syncService?: SyncService;
   setSyncService(service: SyncService): void { this.syncService = service; }

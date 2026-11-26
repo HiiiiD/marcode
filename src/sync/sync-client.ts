@@ -12,7 +12,8 @@ import { checkServerUrl } from './server-url';
 
 export type { SyncCredentials } from './credentials';
 export type Result<T> = { ok: true; value: T } | { ok: false; error: string };
-export interface PulledRecord { deviceId: string; seq: number; recordId: string; payload?: unknown; unreadable?: true }
+/** `missingKey`: sealed under an epoch this device does not hold yet, unlike a tampered record it may become readable. */
+export interface PulledRecord { deviceId: string; seq: number; recordId: string; payload?: unknown; unreadable?: true; missingKey?: true }
 export interface SyncClientOptions { fetch?: typeof fetch; random?: () => number; timeoutMs?: number; idleMs?: number }
 
 const ENVELOPE_VERSION = 1;
@@ -252,10 +253,14 @@ export class SyncClient {
   }
 
   push(payloads: unknown[]): Promise<Result<Array<{ recordId: string; seq: number }>>> {
+    return this.pushRecords(payloads.map((payload) => ({ recordId: randomBytes(16).toString('hex'), payload })));
+  }
+
+  /** The caller owns the ids (an outbox row keeps its id across retries and across pushers), so each is stored once. */
+  pushRecords(items: Array<{ recordId: string; payload: unknown }>): Promise<Result<Array<{ recordId: string; seq: number }>>> {
     return guarded(async () => {
       const { epoch, key } = newestKey(this.creds.syncKeys);
-      const records = payloads.map((payload) => {
-        const recordId = randomBytes(16).toString('hex');
+      const records = items.map(({ recordId, payload }) => {
         const plain = Buffer.from(JSON.stringify({ v: ENVELOPE_VERSION, payload }));
         return { recordId, epoch, ...encryptRecord(plain, key, { deviceId: this.creds.deviceId, recordId, epoch }) };
       });
@@ -281,6 +286,7 @@ export class SyncClient {
   private open(deviceId: string, r: ServedRecord): PulledRecord {
     const base = { deviceId, seq: r.seq, recordId: r.recordId };
     const key = this.creds.syncKeys.find((k) => k.epoch === r.epoch)?.key;
+    if (!key) { return { ...base, unreadable: true, missingKey: true }; }
     const plain = key ? decryptRecord(r, key, { deviceId, recordId: r.recordId, epoch: r.epoch }) : undefined;
     if (!plain) { return { ...base, unreadable: true }; }
     try {

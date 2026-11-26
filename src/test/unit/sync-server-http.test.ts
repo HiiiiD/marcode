@@ -111,6 +111,13 @@ suite('sync server HTTP', () => {
     assert.deepStrictEqual((await call(r, 'GET', '/v1/streams', undefined, a.token)).json.streams, [{ deviceId: a.deviceId, lastSeq: 3 }]);
   });
 
+  test('a body over the request limit is answered with 413, not a dropped connection', async () => {
+    const r = await rig();
+    const a = await enroll(r);
+    const records = Array.from({ length: 10 }, (_, i) => ({ recordId: `r${i}`, epoch: 1, nonce: 'n', ciphertext: 'x'.repeat(900 * 1024) }));
+    assert.strictEqual((await call(r, 'POST', '/v1/records', { records }, a.token)).status, 413);
+  });
+
   test('an oversized record is refused with 413', async () => {
     const r = await rig();
     const a = await enroll(r);

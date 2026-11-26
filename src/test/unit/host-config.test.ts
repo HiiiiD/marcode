@@ -172,12 +172,19 @@ suite('host-config', () => {
   });
   suite('sync', () => {
     test('defaults to nothing configured', () => {
-      assert.deepStrictEqual(defaultHostConfig().sync, {});
+      assert.deepStrictEqual(defaultHostConfig().sync, { excludeProjects: [] });
     });
     test('keeps a valid server and device name', () => {
       const { config } = parseHostConfig({ sync: { server: 'https://sync.example.com/', deviceName: 'desk' } });
-      assert.deepStrictEqual(config.sync, { server: 'https://sync.example.com', deviceName: 'desk' });
+      assert.deepStrictEqual(config.sync, { server: 'https://sync.example.com', deviceName: 'desk', excludeProjects: [] });
     });
+    test('excludeProjects defaults to empty and keeps only strings', () => {
+      assert.deepStrictEqual(defaultHostConfig().sync.excludeProjects, []);
+      const { config, warnings } = parseHostConfig({ sync: { excludeProjects: ['github.com/a/b', 3, ''] } });
+      assert.deepStrictEqual(config.sync.excludeProjects, ['github.com/a/b']);
+      assert.strictEqual(warnings.some((w) => w.includes('sync.excludeProjects')), true);
+    });
+
     test('drops a plain-http public server with a warning naming sync.server', () => {
       const { config, warnings } = parseHostConfig({ sync: { server: 'http://sync.example.com' } });
       assert.strictEqual(config.sync.server, undefined);
