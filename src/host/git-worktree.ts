@@ -35,13 +35,13 @@ export interface TreeStatus {
 // directions: nothing runtime moves between the two.
 export type { BringBackPlan };
 
-interface GitResult {
+export interface GitResult {
   ok: boolean;
   out: string;
   err: string;
 }
 
-async function git(cwd: string, args: string[]): Promise<GitResult> {
+export async function git(cwd: string, args: string[]): Promise<GitResult> {
   try {
     const { stdout, stderr } = await execFileAsync('git', args, {
       cwd,
