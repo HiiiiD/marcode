@@ -94,20 +94,21 @@ suite('describeTool', () => {
     assert.strictEqual(header.primary, 'create_issue');
   });
 
-  test('marcode__send_message shows "Sent to <name>" instead of the tool name', () => {
+  test('marcode__send_message keeps its tool name and adds who it went to', () => {
     const header = describeTool({
       kind: 'mcp', label: 'marcode__send_message', server: 'marcode-self-control',
       tool: 'marcode__send_message', input: { to: 'reviewer', text: 'hi' },
     });
-    assert.strictEqual(header.primary, 'Sent to reviewer');
+    assert.strictEqual(header.primary, 'marcode__send_message → reviewer');
+    assert.strictEqual(header.glyph, 'send');
   });
 
-  test('marcode__send_message with no `to` still renders, empty target', () => {
+  test('marcode__send_message with no `to` reads as the bare tool name', () => {
     const header = describeTool({
       kind: 'mcp', label: 'marcode__send_message', server: 'marcode-self-control',
       tool: 'marcode__send_message',
     });
-    assert.strictEqual(header.primary, 'Sent to ');
+    assert.strictEqual(header.primary, 'marcode__send_message');
   });
 
   test('a plugin-resolved command leads with its skill name and the bot glyph', () => {

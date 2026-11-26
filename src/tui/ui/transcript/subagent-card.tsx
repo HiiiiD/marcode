@@ -13,6 +13,7 @@ import { Collapsible } from './collapsible';
 import { ToolCard } from './tool-card';
 import { RowLabel } from './row-label';
 import { TOOL_GLYPHS } from './tool-glyphs';
+import { ProviderMark } from '../provider-mark';
 
 export function SubagentCard(props: { item: ToolItem; open: boolean; userClosed: boolean; selected: boolean }) {
   const { item } = props;
@@ -43,7 +44,9 @@ export function SubagentCard(props: { item: ToolItem; open: boolean; userClosed:
       open={expanded}
       header={(
         <>
-          <text fg={muted} flexShrink={0}>{TOOL_GLYPHS.bot}</text>
+          {hosted && item.tool.kind === 'subagent'
+            ? <ProviderMark providerId={item.tool.provider} />
+            : <text fg={muted} flexShrink={0}>{TOOL_GLYPHS.bot}</text>}
           {wstate ? (
             // The session id is not something to read at a glance; the status starts on the tools' target column.
             <>

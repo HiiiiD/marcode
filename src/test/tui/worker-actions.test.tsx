@@ -32,6 +32,9 @@ test('a team folds into one row and opens to list its workers', async () => {
   expect(f).toContain('1 running');
   expect(f).toContain('1 done');
   expect(f.includes('Worker')).toBe(false);
+  const teamLine = f.split('\n').find((r) => r.includes('2 workers')) ?? '';
+  expect([...teamLine].filter((c) => c === '◎').length).toBe(2);
+  expect(teamLine.includes('scout') || teamLine.includes('fixer')).toBe(false);
   await m!.press('return');
   expect(m!.frame().split('\n').filter((r) => r.includes('Worker')).length).toBe(2);
 });

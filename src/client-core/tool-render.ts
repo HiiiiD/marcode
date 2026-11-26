@@ -174,25 +174,14 @@ export function describeTool(tool: ToolCall): ToolHeader {
       return header('bot', tool.label, tool.agent ?? tool.summary ?? tool.target ?? '', false);
 
     case 'mcp': {
-      // The one deliberate exception to "nothing here branches on a tool's
-      // name" — see the spec's section D. `marcode__send_message` is this
-      // panel's own cross-session messaging tool, not a third-party MCP
-      // server's, and "Sent to <name>" reads the call the way the rest of
-      // this file reads every other kind: off a typed field, not a name a
-      // user would recognize as a tool at all. A second tool needing
-      // name-specific rendering should become a `ToolCall` kind of its own
-      // instead of a second exception here.
+      // The row's label is `MCP` and the server sits beside it, so the tool's own name must stay in `primary`: the
+      // panel's own send_message only adds who it went to, read off a typed field, never off a name.
       if (tool.tool === 'marcode__send_message') {
         const to = typeof tool.input?.to === 'string' ? tool.input.to : '';
-        return header('send', tool.label, `Sent to ${to}`, false);
+        return header('send', tool.label, to === '' ? tool.tool : `${tool.tool} → ${to}`, false);
       }
       // The nested subagent card below it carries the task and the result; this one is just the call.
-      if (tool.tool === 'marcode__spawn_subagent') {
-        return header('bot', tool.label, 'Delegated to a subagent', false);
-      }
-      // The server already has its own chip in `tool-card.tsx`, inches to the
-      // left — repeating it here read as `[wrench] github Call tool github ·
-      // list_repos` at 300px. The tool name alone is the primary.
+      if (tool.tool === 'marcode__spawn_subagent') { return header('bot', tool.label, tool.tool, false); }
       return header('wrench', 'Call', tool.tool, false);
     }
 

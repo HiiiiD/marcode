@@ -180,9 +180,10 @@ suite('subagent minors', () => {
     assert.notStrictEqual(await manager.subagents.awaitResult(parent.state.id, names[2], 10), undefined);
   });
 
-  test('the generic MCP card for spawn_subagent reads as a delegation, not a raw tool call', () => {
+  test('the generic MCP card for spawn_subagent keeps its tool name and the bot glyph', () => {
     const header = describeTool({ kind: 'mcp', label: 'spawn', server: 'marcode_self_control', tool: 'marcode__spawn_subagent' });
-    assert.strictEqual(header.primary, 'Delegated to a subagent');
+    assert.strictEqual(header.primary, 'marcode__spawn_subagent');
+    assert.strictEqual(header.glyph, 'bot');
   });
 
   test('the Codex tool timeout for our server is raised past its 60s default', () => {
