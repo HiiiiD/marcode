@@ -72,7 +72,7 @@ Default: `{"mode":"off"}`
 
 ## `projects.overrides`
 
-Every checkout of a repo (clones and git worktrees alike) shares one memory, matched by its `origin` remote. Each entry changes that for one checkout root: `{"path": "/abs/checkout", "project": "own"}` keeps its memory apart, and `{"path": "/abs/folder", "project": "github.com/owner/repo"}` links a folder (for instance one with no remote) to that project. `path` must be the checkout's root. Requires a window reload.
+Every checkout of a repo (clones and git worktrees alike) shares one memory, matched by its `origin` remote. Each entry changes that for everything under `path`, including worktrees inside it: `{"path": "/abs/checkout", "project": "own"}` keeps its memory apart, and `{"path": "/abs/folder", "project": "github.com/owner/repo"}` links a folder (for instance one with no remote, or no git at all) to that project. The deepest matching `path` wins. Requires a window reload.
 
 Default: `[]`
 
