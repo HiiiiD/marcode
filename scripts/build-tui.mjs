@@ -1,6 +1,7 @@
 // usage: node scripts/build-tui.mjs [--compile]   (re-runs itself under Bun)
 import { spawnSync } from 'node:child_process';
-import { resolve } from 'node:path';
+import { homedir } from 'node:os';
+import { join, resolve } from 'node:path';
 import process from 'node:process';
 import { pathToFileURL } from 'node:url';
 
@@ -8,10 +9,19 @@ const compile = process.argv.includes('--compile');
 const win = process.platform === 'win32';
 
 if (!process.versions.bun) {
-  const res = spawnSync(win ? 'bun.exe' : 'bun', [import.meta.filename, ...process.argv.slice(2)], {
-    stdio: 'inherit',
-    shell: false,
-  });
+  const exe = win ? 'bun.exe' : 'bun';
+  const args = [import.meta.filename, ...process.argv.slice(2)];
+  let res = spawnSync(exe, args, { stdio: 'inherit', shell: false });
+  // The Bun installer puts it in ~/.bun/bin and only adds that to an interactive shell's PATH.
+  if (res.error?.code === 'ENOENT') {
+    const home = process.env.BUN_INSTALL ?? join(homedir(), '.bun');
+    res = spawnSync(join(home, 'bin', exe), args, { stdio: 'inherit', shell: false });
+  }
+  if (res.error) {
+    console.error(res.error.code === 'ENOENT'
+      ? 'build:tui needs Bun: install it from https://bun.sh, or put its bin folder on PATH.'
+      : `build:tui could not start Bun: ${res.error.message}`);
+  }
   process.exit(res.status ?? 1);
 }
 
@@ -28,10 +38,22 @@ const sqliteStub = {
   },
 };
 
+// Assets are emitted as file:// URLs (tree-sitter fetches its grammars), but OpenTUI checks its native
+// library with existsSync, which a URL never passes; that one import resolves to its real path instead.
+const nativeLibPath = {
+  name: 'opentui-native-path',
+  setup(build) {
+    build.onLoad({ filter: /libopentui\.(dylib|so|dll)$/ }, (args) => ({
+      contents: `export default ${JSON.stringify(args.path)};`,
+      loader: 'js',
+    }));
+  },
+};
+
 const result = await Bun.build({
   entrypoints: ['src/tui/ui/main.tsx'],
   target: 'bun',
-  plugins: [sqliteStub],
+  plugins: compile ? [sqliteStub] : [sqliteStub, nativeLibPath],
   // Pin the host platform so the OpenTUI native packages for other platforms (not installed) are
   // dropped, and DEV=false so the optional react-devtools-core import is dropped.
   define: {
