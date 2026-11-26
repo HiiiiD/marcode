@@ -51,15 +51,14 @@ suite('WorkingRow', () => {
     hydrate('running', [ASKED, { id: 'a1', ts: secondsAgo(1), role: 'assistant', text: 'Look' }]);
 
     screen.getByText('Writing…');
-    assert.strictEqual(screen.queryByText('Look') === null, true);
+    screen.getByText('Look');
   });
 
-  test('a token-streaming backend shows whole lines only, a block-emitting one shows everything', () => {
+  test('a token-streaming backend shows its text as it arrives, half-written tail included', () => {
     renderApp();
     hydrate('running', [ASKED, { id: 'a1', ts: secondsAgo(1), role: 'assistant', text: 'First line.\nSecond li' }]);
 
-    screen.getByText('First line.');
-    assert.strictEqual(screen.queryByText(/Second li/) === null, true);
+    screen.getByText(/Second li/);
   });
 
   test('assistant text appears whole once the turn is over', () => {

@@ -63,24 +63,3 @@ suite('formatTokens', () => {
     assert.strictEqual(formatTokens(2_540_000), '2.5M');
   });
 });
-
-import { settledPrefix } from '../../webview/lib/stream-text';
-
-suite('settledPrefix', () => {
-  test('holds back a half-written first sentence', () => {
-    assert.strictEqual(settledPrefix('Let me look at the'), '');
-  });
-
-  test('shows whole sentences before the first newline', () => {
-    assert.strictEqual(settledPrefix('Done reading. Now chec'), 'Done reading.');
-  });
-
-  test('shows whole lines and holds the unfinished one', () => {
-    assert.strictEqual(settledPrefix('- one\n- two\n- thr'), '- one\n- two\n');
-  });
-
-  test('a very long unfinished line is released at its last word', () => {
-    const long = `${'word '.repeat(60)}tail`;
-    assert.strictEqual(settledPrefix(long), long.slice(0, long.lastIndexOf(' ')));
-  });
-});
