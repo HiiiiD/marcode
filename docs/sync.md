@@ -38,6 +38,22 @@ encryption keys, so send it over something you trust. The server only ever sees 
 
 Pass `--name <name>` to `setup` or `join` to name the device; the default is the hostname.
 
+## What syncs
+
+Your **memory**: once you close a session (the pane's X, or unchecking it in the roster), its digest,
+its searchable text and the start of its transcript are uploaded, encrypted. Every other paired
+machine imports them, and recall and priming in any clone or worktree of the **same repository**
+find them, even while the machine they came from is switched off. Reopening or deleting a session
+withdraws it everywhere.
+
+What does not sync: sessions in a repository without a git remote, repositories marked "Keep
+separate", and project ids listed in `sync.excludeProjects`. Sessions you closed before pairing
+upload the first time each workspace is opened afterwards.
+
+One host per machine does the uploading and downloading (a lease in `~/.marcode/sync/`); if that
+window or daemon exits, another takes over within half a minute. Work done while offline waits in
+`~/.marcode/sync/state.sqlite` and goes up when the server is back.
+
 ## From the panel
 
 Everything above also works from the sidebar and the TUI: run **Marcode: Set up sync** from the

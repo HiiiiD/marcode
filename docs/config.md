@@ -82,6 +82,12 @@ Written by `marcode sync setup` / `marcode sync join`: your sync server's addres
 
 Default: unset (sync off)
 
+## `sync.excludeProjects`
+
+Project ids (as shown in the Sync dialog, e.g. `github.com/owner/repo`) whose sessions never leave this machine, even when sync is on. Projects marked "Keep separate" never sync anyway. Requires a window reload.
+
+Default: `[]`
+
 ## `review.fileCap`
 
 How many changed files the review tab loads per working tree before showing a "Show more" button. A value over 2000 is clamped; an invalid one falls back to 500. Takes effect after a window reload.

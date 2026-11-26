@@ -120,6 +120,9 @@ router. See `docs/daemon.md`.
 | `src/sync-server/` | `marcode sync-server`: `store.ts` (SQLite: devices by token hash, single-use pairings, sealed keys per epoch, records with server-assigned seqs deduped on record id), `server.ts` (`node:http` API + `sse.ts` event hub), `run.ts` (flags, bootstrap code, signals), `main.ts` (the JSX-free entry esbuild bundles to `dist/sync-server.js`; `Dockerfile.sync-server`) |
 | `src/host/sync/` | `SyncService`: the host side of the Sync dialog (`sync-*` → `sync-panel`, joined when a request of the same kind is in flight), credentials and `config.json` writes, and the health check behind `sync-status`; `project-rows.ts` lists the window's repos with their memory choice |
 | `src/client-core/sync/`, `src/webview/components/sync/`, `src/tui/ui/sync/` | The Sync dialog in both clients over the shared `syncPanel`/`syncStatus`/`syncOpenRequest` state; opened by `/sync` and `marcode.sync.open` |
+| `src/sync/memory-records.ts`, `sync-state.ts` | Memory payloads (`memory`, `memory-withdraw`) with their size caps; the machine-wide outbox, published-digest keys and per-device cursors |
+| `src/memory/remote-memory.ts` | Other devices' memory as an FTS store recalled only by project; one writer (the engine's host), read-only elsewhere |
+| `src/host/sync/memory-publisher.ts`, `sync-engine.ts` | The `MemoryStore` wrapper that queues a session's memory on index and a withdraw on forget; the lease-elected engine that pushes the outbox (size-bounded batches, a refused record dropped alone) and pulls every other stream from its cursor |
 | `src/tui/sync-commands.ts` | `marcode sync` setup, join, pair, devices, revoke, status, leave |
 | `src/memory/sqlite-driver.ts` | `openDatabase`: `bun:sqlite` under Bun, `node:sqlite` otherwise, behind the narrow `SqlDb` the FTS store uses; finalizes each statement after one use (Bun's `close()` otherwise leaves the file locked) and probes FTS5 at open |
 | `src/host/transcript-store.ts` | `index.json` + per-session JSONL under the workspace directory; append, load, page. Index writes are atomic; a foreign session's writes are refused |
@@ -348,7 +351,10 @@ These are not style preferences. Breaking one breaks the design.
   caller's, so every clone and worktree of a repo shares one memory. Another workspace's sessions are read from
   its own `memory.sqlite` through `ProjectMemory`, never written: each file has its own host as its only writer,
   and schema changes there are additive only, since an older build sharing the file drops both tables on a
-  `user_version` mismatch. The LLM summarizer runs only on hidden sessions, always falls back to the
+  `user_version` mismatch. **Other devices' sessions** are recalled only by project: a device publishes a session's
+  memory (digest, searchable text, first 40 items, capped at 512 KB) when it is hidden and withdraws it when shown or
+  deleted; the machine's lease-holding `SyncEngine` pushes `~/.marcode/sync/state.sqlite`'s outbox and imports into
+  `remote-memory.sqlite`, whose rows carry a `remote:` cwd so no folder scope ever matches them. The LLM summarizer runs only on hidden sessions, always falls back to the
   extractive digest, and its run is started `withoutSelfControl`: no `marcode__*` tools on any
   provider, and no trace in the vendor CLI's own history (Claude `persistSession: false`, Codex
   ephemeral thread, OpenCode session deleted after the run). On Claude it also loads no user

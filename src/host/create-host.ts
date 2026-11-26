@@ -1,3 +1,4 @@
+import { mkdirSync } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import type { FtsMemoryStore } from '../memory/fts/fts-memory-store';
@@ -20,6 +21,30 @@ import { seedFromWorkspaces } from './account-cache/seed-from-workspaces';
 import { AttachmentStore } from './attachment-store';
 import { ProjectResolver } from './project/project-resolver';
 import { SyncService } from './sync/sync-service';
+import { MemoryPublisher } from './sync/memory-publisher';
+import { SyncEngine } from './sync/sync-engine';
+import { readCredentials } from '../sync/credentials';
+import { SyncState } from '../sync/sync-state';
+import { RemoteMemory } from '../memory/remote-memory';
+
+/**
+ * The machine-wide sync stores under `<home>/sync/`. The writer is only ever written by the engine
+ * that holds the lease; its DDL is idempotent, so a host that never holds it does no harm opening it.
+ */
+function openMemorySync(home: string): { state: SyncState; reader: RemoteMemory; writer: RemoteMemory; close(): void } | undefined {
+  try {
+    const dir = path.join(home, 'sync');
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    const state = new SyncState(path.join(dir, 'state.sqlite'));
+    const file = path.join(dir, 'remote-memory.sqlite');
+    const writer = new RemoteMemory(file);
+    const reader = new RemoteMemory(file, { readOnly: true });
+    return { state, reader, writer, close: () => { reader.close(); writer.close(); state.close(); } };
+  } catch (err) {
+    console.warn('[mar-code] sync: memory sync unavailable', err);
+    return undefined;
+  }
+}
 import { configPath } from './config-file';
 import { FallbackSummarizer } from './digest/fallback-summarizer';
 import { LlmSummarizer } from './digest/llm-summarizer';
@@ -54,6 +79,8 @@ export interface HostHandle {
   enabled: Set<string>;
   loginRecipes: Map<string, LoginRecipe>;
   selfControlServer: SelfControlMcpServer;
+  /** The store recall reads (local, sibling workspaces, other devices); absent when memory is off. */
+  memory?: MemoryStore;
   init(): Promise<void>;
   dispose(): Promise<void>;
 }
@@ -68,6 +95,8 @@ export async function createHost(opts: CreateHostOptions): Promise<HostHandle> {
   let memory: MemoryStore | undefined;
   let fts: FtsMemoryStore | undefined;
   let closeMemory: (() => void) | undefined;
+  const syncCreds = config.memory.enabled && opts.marcodeHome ? await readCredentials(opts.marcodeHome) : undefined;
+  const memorySync = syncCreds && opts.marcodeHome ? openMemorySync(opts.marcodeHome) : undefined;
   if (config.memory.enabled) {
     try {
       // require, not import(): evaluated here so a missing node:sqlite lands in the catch, and it resolves extensionless under tsx, esbuild and bun alike
@@ -80,7 +109,7 @@ export async function createHost(opts: CreateHostOptions): Promise<HostHandle> {
       closeMemory = () => fts?.close();
       try {
         const { ProjectMemory } = require('../memory/project-memory') as typeof import('../memory/project-memory');
-        const shared = new ProjectMemory(fts, opts.workspaceDir);
+        const shared = new ProjectMemory(fts, opts.workspaceDir, memorySync ? { remote: memorySync.reader } : {});
         memory = shared;
         closeMemory = () => shared.close();
       } catch (err) {
@@ -101,7 +130,19 @@ export async function createHost(opts: CreateHostOptions): Promise<HostHandle> {
   const providers = new Map<string, AgentProvider>();
 
   const projects = new ProjectResolver(config.projects.overrides);
-  const manager = new SessionManager(
+  // Every host publishes its own sessions into the machine-wide outbox; the lease decides which one pushes it.
+  let manager!: SessionManager;
+  const publisher = memorySync && memory ? new MemoryPublisher({
+    inner: memory, state: memorySync.state, excluded: config.sync.excludeProjects,
+    relCwd: async (cwd) => {
+      const root = (await projects.resolve(cwd))?.root;
+      return root ? path.relative(root, cwd).split(path.sep).join('/') || '.' : '.';
+    },
+    transcript: async (id) => (await store.tail(id, Number.MAX_SAFE_INTEGER)).items,
+    sessions: () => manager.publishableSessions(),
+  }) : undefined;
+  if (publisher) { memory = publisher; }
+  manager = new SessionManager(
     store, providers, opts.emit, undefined, opts.onShellNoise, attachments,
     config.review.fileCap, config.review.baseRefs, memory, undefined, config.usageMirrors,
     undefined, projects,
@@ -121,6 +162,10 @@ export async function createHost(opts: CreateHostOptions): Promise<HostHandle> {
     manager.setSyncService(sync);
     sync.start();
   }
+  const engine = memorySync && opts.marcodeHome
+    ? new SyncEngine({ home: opts.marcodeHome, hostKind: opts.hostKind, state: memorySync.state, remote: memorySync.writer })
+    : undefined;
+  engine?.start();
 
   // `satisfies Required<...>`: every optional member must be wired here, or the build fails.
   const selfControlManager = {
@@ -310,18 +355,21 @@ export async function createHost(opts: CreateHostOptions): Promise<HostHandle> {
   }
 
   return {
-    manager, store, attachments, providers, enabled, loginRecipes, selfControlServer,
+    manager, store, attachments, providers, enabled, loginRecipes, selfControlServer, memory,
     init: async () => {
       if (accountCache && opts.marcodeHome) {
         await seedFromWorkspaces(accountCache, path.join(opts.marcodeHome, 'workspaces'));
       }
       await manager.init();
+      void publisher?.backfill().catch((err: unknown) => { console.error('[mar-code] sync: backfill failed', err); });
       manager.startRosterSync(opts.pollMs);
     },
     dispose: async () => {
       await manager.dispose();
       accountCache?.close();
       sync?.dispose();
+      await engine?.dispose();
+      memorySync?.close();
       await selfControlServer.dispose();
       await digestLock.dispose();
       closeMemory?.();
