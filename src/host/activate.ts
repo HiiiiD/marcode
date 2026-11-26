@@ -85,7 +85,10 @@ export async function activateExtension(context: vscode.ExtensionContext): Promi
       warn: (text) => { void vscode.window.showWarningMessage(text); },
       shellNoise: warnAboutProfile,
     },
-    spawn: (dir, roots) => spawnDetached(dir, roots, { script: vscode.Uri.joinPath(context.extensionUri, 'dist', 'daemon.js').fsPath }),
+    spawn: (dir, roots) => spawnDetached(dir, roots, {
+      script: vscode.Uri.joinPath(context.extensionUri, 'dist', 'daemon.js').fsPath,
+      debug: vscode.workspace.getConfiguration('marcode').get<boolean>('debug', false),
+    }),
   });
   const host = connection;
   if (host.fallbackNotice) { void vscode.window.showWarningMessage(host.fallbackNotice); }

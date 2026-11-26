@@ -69,7 +69,7 @@ All in the workspace directory.
 | `daemon.json` | `{pid, endpoint, token, protocolVersion, appVersion, startedAt, configSignature}`, written atomically once listening, user-only permissions. Removed on clean exit |
 | `daemon.lock` | Spawn lock (`O_EXCL`), held by the spawning client until the daemon answers; if it never answers in time the lock is kept until it goes stale, so a slow boot cannot get a rival. A lock whose pid is dead, or older than 30 s, is taken over |
 | `daemon.lock.takeover` | Short-lived marker that serializes the takeover of a stale `daemon.lock` |
-| `daemon.log` | The daemon's stdout/stderr and its own lines: `listening on …`, `shutdown requested`, `idle; exiting`, `stopped`, `startup failed: …` |
+| `daemon.log` | The daemon's stdout/stderr and its own lines: `listening on …`, `shutdown requested`, `idle; exiting`, `stopped`, `startup failed: …`. With `marcode.debug` on when the extension spawns it (`MARCODE_DEBUG=1`, or set it yourself for the TUI), also the `[marcode:lifecycle]` turn and status trace |
 
 The endpoint is `\\.\pipe\marcode-<hash>` on Windows and `<tmpdir>/marcode-<uid>/<hash>.sock`
 elsewhere (directory 0700, socket 0600). The token in `daemon.json` is what authenticates a client;
