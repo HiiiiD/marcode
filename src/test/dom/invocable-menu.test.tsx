@@ -16,7 +16,7 @@ const ENTRIES: Invocable[] = [
 const NO_EFFORT = catalog()[0].models[1];
 
 /** /mcp, /side and /btw: the commands the panel answers itself. */
-const PANEL_COMMAND_COUNT = 3;
+const PANEL_COMMAND_COUNT = 4;
 
 function pane(invocables?: Invocable[]): PaneState {
   return {
