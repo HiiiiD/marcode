@@ -846,6 +846,7 @@ export class MessageRouter {
 }
 
 const KNOWN_MESSAGE_TAGS = new Set<WebviewToHost['t']>([
+  'sync-open', 'sync-refresh', 'sync-setup', 'sync-join', 'sync-pair', 'sync-revoke', 'sync-leave', 'sync-forget', 'sync-project',
   'ready', 'create-session', 'set-visible', 'set-layout', 'close-session',
   'delete-session', 'replace-session', 'save-preset', 'delete-preset', 'send', 'interrupt', 'cancel-queued',
   'set-effort', 'set-permission-mode', 'rename-session',

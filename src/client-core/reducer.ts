@@ -5,7 +5,7 @@ import type {
   ContextResult,
   EditorContext,
   FileRef,
-  HostToWebview, Invocable, McpServerStatus, PaneLayout, PermissionRequest, ProviderInfo,
+  HostToWebview, Invocable, McpServerStatus, PaneLayout, SyncPanel, SyncStatus, PermissionRequest, ProviderInfo,
   QuestionRequest,
   McpPanel, SessionId, SessionSummary, StaleTree, TranscriptItem, TreeDiff, UnavailableProvider, UsageWindow,
 } from '../protocol/messages';
@@ -149,6 +149,11 @@ export interface ClientState {
   agentsMdNudgeHits: Array<{ dir: string; kind: 'migrate' | 'add-stub'; error?: string }>;
   /** Carried across hydrate: a reconnect re-hydrates, and the banner clears on the `connected` that follows. */
   hostLink: 'connected' | 'reconnecting' | 'lost';
+  /** The Sync dialog's state, as the host last answered it. */
+  syncPanel?: SyncPanel;
+  syncStatus: SyncStatus;
+  /** Bumped by `/sync` and the "Set up sync" command; the dialog opens on a change. Survives `hydrate`. */
+  syncOpenRequest: number;
   /**
    * `marcode.favoriteModels`: starred rows, keyed `"providerId modelId"`
    * (see `shared/model-catalog.ts#modelKey`). Global client state, not
@@ -205,6 +210,8 @@ export const initialState: ClientState = {
   fileSearchBySession: {},
   agentsMdNudgeHits: [],
   hostLink: 'connected',
+  syncStatus: 'off',
+  syncOpenRequest: 0,
   favoriteModels: [],
   showCacheTimer: false,
   rearrangeOffer: false,
@@ -232,6 +239,7 @@ export type ClientAction =
   | { t: 'local-toggle-maximize'; id: SessionId }
   /** The user answered or dismissed the rearrange offer. */
   | { t: 'local-dismiss-rearrange' }
+  | { t: 'local-open-sync' }
   /**
    * The user closed the composer's rejection line. Client-local because the
    * host emits rejections and forgets them — `rejectionBySession` is the only
@@ -359,6 +367,9 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
         // as `staleTrees`.
         agentsMdNudgeHits: [],
         hostLink: state.hostLink,
+        // The command can land before the sidebar's first hydrate; the request must survive it.
+        syncOpenRequest: state.syncOpenRequest,
+        syncStatus: msg.syncStatus ?? 'off',
         // Absent reads as empty, not "carry the previous reload's list
         // forward" — same posture as `probing`: a host that predates this
         // field (or a hand-built fixture) has not said otherwise.
@@ -471,6 +482,14 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
         ...state, catalog: msg.catalog, unavailable: msg.unavailable,
         probing: msg.probing ?? true,
       };
+
+    case 'sync-panel':
+      return { ...state, syncPanel: msg.panel };
+    case 'sync-status':
+      return { ...state, syncStatus: msg.status };
+    case 'open-sync':
+    case 'local-open-sync':
+      return { ...state, syncOpenRequest: state.syncOpenRequest + 1 };
 
     case 'favorite-models':
       return { ...state, favoriteModels: msg.ids };
