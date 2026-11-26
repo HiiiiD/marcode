@@ -6,10 +6,10 @@ import { middleTruncate } from "../../../client-core/sync/sync-format";
 import type { SyncProjectView, WebviewToHost } from "../../../protocol/messages";
 
 type Choice = Extract<WebviewToHost, { t: "sync-project" }>["choice"];
-const ITEMS = [
+const itemsFor = (linked: boolean) => [
   { value: "shared", label: "Shared" },
   { value: "own", label: "Keep separate" },
-  { value: "link", label: "Link to project…" },
+  { value: "link", label: linked ? "Linked" : "Link to project…" },
 ];
 
 function LinkForm({ project, onLink, onCancel }: { project: SyncProjectView; onLink: (id: string) => void; onCancel: () => void }) {
@@ -43,18 +43,18 @@ function ProjectRow({ project, onChoose }: { project: SyncProjectView; onChoose:
           <Button size="xs" variant="ghost" onClick={() => setLinking(true)}>Link…</Button>
         ) : (
           <Select
-            items={ITEMS}
+            items={itemsFor(project.choice === "linked")}
             value={selected}
             onValueChange={(value) => {
               if (value === "link") { setLinking(true); return; }
               if (value === "shared" || value === "own") { onChoose(value); }
             }}
           >
-            <SelectTrigger size="sm" aria-label={`Memory for ${project.name}`} className="shrink-0 text-xs">
+            <SelectTrigger size="sm" aria-label={`Memory for ${project.name}`} className="max-w-32 shrink-0 text-xs">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {ITEMS.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}
+              {itemsFor(project.choice === "linked").map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}
             </SelectContent>
           </Select>
         )}

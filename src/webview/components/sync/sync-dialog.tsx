@@ -29,7 +29,7 @@ function useNow(deadline: number | undefined): number {
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="flex flex-col gap-1">
+    <section className="flex flex-col gap-2">
       <h3 className="pt-1 text-xs font-medium text-muted-foreground">{title}</h3>
       {children}
     </section>

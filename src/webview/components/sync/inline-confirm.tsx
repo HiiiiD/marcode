@@ -13,7 +13,7 @@ export function InlineConfirm({ text, action, busy, onConfirm, onCancel }: {
       <p className="text-xs text-foreground">{text}</p>
       <div className="flex justify-end gap-1.5">
         <Button size="xs" variant="ghost" onClick={onCancel}>Cancel</Button>
-        <Button size="xs" variant="destructive" disabled={busy} onClick={onConfirm}>{action}</Button>
+        <Button size="xs" disabled={busy} onClick={onConfirm} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">{action}</Button>
       </div>
     </div>
   );

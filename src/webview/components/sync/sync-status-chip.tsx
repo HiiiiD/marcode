@@ -9,8 +9,8 @@ export function SyncStatusChip() {
   const { state, openSync } = useStore();
   if (state.syncStatus !== "offline" && state.syncStatus !== "revoked") { return null; }
   return (
-    <Button variant="ghost" size="xs" onClick={openSync} className="text-attention">
-      <CloudOffIcon aria-hidden />
+    <Button variant="ghost" size="xs" onClick={openSync} className="text-foreground">
+      <CloudOffIcon aria-hidden className="text-attention" />
       {LABEL[state.syncStatus]}
     </Button>
   );

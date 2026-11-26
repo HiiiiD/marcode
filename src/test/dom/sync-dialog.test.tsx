@@ -139,6 +139,11 @@ suite("Sync dialog", () => {
     assert.strictEqual(dialog.getByText("no remote · not shared").textContent, "no remote · not shared");
   });
 
+  test("a linked repo's selector says it is linked", async () => {
+    const dialog = await open({ ...PAIRED, projects: [{ path: "/w/fork", name: "fork", projectId: "github.com/x/y", choice: "linked" }] });
+    assert.strictEqual(dialog.getByRole("combobox", { name: "Memory for fork" }).textContent?.includes("Linked"), true);
+  });
+
   test("long names truncate with the full value kept for hover", async () => {
     const longName = "a-very-long-device-name-that-goes-on-and-on";
     const longId = "github.com/an-organisation-with-a-long-name/and-a-long-repository";
