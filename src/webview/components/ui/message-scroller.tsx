@@ -77,7 +77,9 @@ function MessageScrollerItem({
       data-slot="message-scroller-item"
       scrollAnchor={scrollAnchor}
       className={cn(
-        "min-w-0 shrink-0 [contain-intrinsic-size:auto_10rem] [content-visibility:auto]",
+        // No content-visibility:auto: a reply starts as an empty item at the bottom, and the VS Code webview could keep
+        // skipping it at its remembered 0px, leaving it undrawn until another append forced a layout.
+        "min-w-0 shrink-0",
         className
       )}
       {...props}
