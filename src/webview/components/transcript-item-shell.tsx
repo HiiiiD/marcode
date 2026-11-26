@@ -23,7 +23,8 @@ export type TranscriptItemRole =
  */
 const FRAME: Record<TranscriptItemRole, string> = {
   user: cn(
-    'rounded-lg px-3 py-2 text-sm',
+    // Sized to its text: a one-line message has no business spanning the column.
+    'w-fit max-w-full rounded-lg px-3 py-2 text-sm',
     // Derived, not a token lookup: --muted is editorWidget-background, which
     // several themes set equal to the sidebar background. Mixing toward the
     // foreground guarantees the block separates from the column in light,
