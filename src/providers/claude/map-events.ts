@@ -235,16 +235,17 @@ export function mapEvent(msg: unknown): AgentEvent[] {
       // watchers (Monitor). A watcher never ends on its own, so counting one
       // held the session `running` — Stop up — long after the turn was over.
       //
-      // `local_bash` is dropped too: a background command is as often a dev server as a
-      // wait, and the CLI itself reports the session idle while one runs. When it finishes
+      // `local_bash` goes to `commandIds`: a background command is as often a dev server as
+      // a wait, and the CLI itself reports the session idle while one runs. When it finishes
       // and wakes a turn, `session_state_changed` is what marks that turn running.
       const tasks = (msg as { tasks?: { task_id?: unknown; task_type?: unknown; ambient?: unknown }[] }).tasks;
+      const live = Array.isArray(tasks) ? tasks.filter((t) => t.ambient !== true) : [];
+      const ids = (pick: (t: { task_type?: unknown }) => boolean) => live.filter(pick).map((t) => t.task_id)
+        .filter((id): id is string => typeof id === 'string');
       return [{
         kind: 'background-tasks-changed',
-        taskIds: Array.isArray(tasks)
-          ? tasks.filter((t) => t.ambient !== true && t.task_type !== 'local_bash').map((t) => t.task_id)
-            .filter((id): id is string => typeof id === 'string')
-          : [],
+        taskIds: ids((t) => t.task_type !== 'local_bash'),
+        commandIds: ids((t) => t.task_type === 'local_bash'),
       }];
     }
     if (subtype === 'session_state_changed') {

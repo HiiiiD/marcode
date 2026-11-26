@@ -1,5 +1,5 @@
-export function isBusy(summaries: readonly { status: string }[]): boolean {
-  return summaries.some((s) => s.status !== 'idle' && s.status !== 'error');
+export function isBusy(summaries: readonly { status: string; backgroundCommands?: number }[]): boolean {
+  return summaries.some((s) => (s.status !== 'idle' && s.status !== 'error') || (s.backgroundCommands ?? 0) > 0);
 }
 
 export interface IdleMonitorDeps {

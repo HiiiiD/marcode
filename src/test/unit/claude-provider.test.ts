@@ -1259,7 +1259,7 @@ suite('ClaudeProvider (cancellation)', () => {
           type: 'system', subtype: 'background_tasks_changed',
           tasks: [
             { task_id: 'bg-1', task_type: 'agent', description: 'Investigating' },
-            { task_id: 'bg-2', task_type: 'bash', description: 'Running tests' },
+            { task_id: 'bg-2', task_type: 'local_bash', description: 'Running tests' },
           ],
           uuid: 'u1', session_id: 's1',
         };

@@ -753,7 +753,7 @@ export class ClaudeProvider implements AgentProvider {
               events.push({ kind: 'usage', normal: usageTotal });
             }
             for (const event of mapEvent(msg)) {
-              if (event.kind === 'background-tasks-changed') { backgroundTaskIds = event.taskIds; }
+              if (event.kind === 'background-tasks-changed') { backgroundTaskIds = [...event.taskIds, ...(event.commandIds ?? [])]; }
               // Keep this local mirror in sync with the same per-task edge
               // agent-session.ts pairs against its own set: otherwise
               // interrupt() would still try to stopTask() an id the SDK

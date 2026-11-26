@@ -227,6 +227,7 @@ export class AgentSession {
    * the Stop control over work that is still genuinely in flight.
    */
   private activeBackgroundTasks = new Set<string>();
+  private backgroundCommands = new Set<string>();
   /**
    * Whether the foreground turn is currently in flight — `true` from
    * `deliver()` until `turn-end` settles it back to `false`. Only
@@ -282,6 +283,7 @@ export class AgentSession {
     });
     this._state.activityLabel = this.activityLabelFor(this._state.status);
     delete this._state.backgroundTasks;
+    delete this._state.backgroundCommands;
     delete this._state.waitingOn;
   }
 
@@ -1334,6 +1336,7 @@ export class AgentSession {
 
       case 'background-tasks-changed':
         this.activeBackgroundTasks = new Set(event.taskIds);
+        this.setBackgroundCommands(new Set(event.commandIds ?? []));
         lifecycleDebug('session.background-tasks', {
           sessionId: this._state.id,
           taskIds: event.taskIds,
@@ -1361,6 +1364,11 @@ export class AgentSession {
         // idle/drain follow-up as the snapshot draining to empty — this is
         // what keeps a lost snapshot update from wedging status at
         // 'running' behind a task the SDK itself already closed out.
+        if (this.backgroundCommands.has(event.taskId)) {
+          const rest = new Set(this.backgroundCommands);
+          rest.delete(event.taskId);
+          this.setBackgroundCommands(rest);
+        }
         if (!this.activeBackgroundTasks.delete(event.taskId)) { return; }
         lifecycleDebug('session.task-settled', {
           sessionId: this._state.id,
@@ -1741,6 +1749,14 @@ export class AgentSession {
     });
     this.turnActive = true;
     this.recomputeWaitingStatus('running');
+  }
+
+  private setBackgroundCommands(next: Set<string>): void {
+    const was = this.backgroundCommands.size;
+    this.backgroundCommands = next;
+    if (next.size === was) { return; }
+    if (next.size === 0) { delete this._state.backgroundCommands; } else { this._state.backgroundCommands = next.size; }
+    this.sink.changed();
   }
 
   private setStatus(status: SessionStatus): void {

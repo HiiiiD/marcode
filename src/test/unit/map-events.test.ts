@@ -381,7 +381,7 @@ suite('mapEvent', () => {
       uuid: 'u', session_id: 's',
     } as never);
 
-    assert.deepStrictEqual(out, [{ kind: 'background-tasks-changed', taskIds: ['t1', 't2'] }]);
+    assert.deepStrictEqual(out, [{ kind: 'background-tasks-changed', taskIds: ['t1', 't2'], commandIds: [] }]);
   });
 
   // A watcher (Monitor) or housekeeping fork (memory extraction, summaries)
@@ -397,12 +397,12 @@ suite('mapEvent', () => {
       uuid: 'u', session_id: 's',
     } as never);
 
-    assert.deepStrictEqual(out, [{ kind: 'background-tasks-changed', taskIds: ['t1'] }]);
+    assert.deepStrictEqual(out, [{ kind: 'background-tasks-changed', taskIds: ['t1'], commandIds: [] }]);
   });
 
   // A background command is as often a dev server as a wait, and Claude itself reports the
   // session idle while one runs; its completion wakes a turn that session_state_changed revives.
-  test('background shell commands do not hold the session busy', () => {
+  test('background shell commands are reported apart from the tasks that hold the session busy', () => {
     const out = mapEvent({
       type: 'system', subtype: 'background_tasks_changed',
       tasks: [
@@ -412,7 +412,7 @@ suite('mapEvent', () => {
       uuid: 'u', session_id: 's',
     } as never);
 
-    assert.deepStrictEqual(out, [{ kind: 'background-tasks-changed', taskIds: ['a1'] }]);
+    assert.deepStrictEqual(out, [{ kind: 'background-tasks-changed', taskIds: ['a1'], commandIds: ['b1'] }]);
   });
 
   test('session_state_changed running becomes a turn-start event', () => {
@@ -437,7 +437,7 @@ suite('mapEvent', () => {
       type: 'system', subtype: 'background_tasks_changed', tasks: [], uuid: 'u', session_id: 's',
     } as never);
 
-    assert.deepStrictEqual(out, [{ kind: 'background-tasks-changed', taskIds: [] }]);
+    assert.deepStrictEqual(out, [{ kind: 'background-tasks-changed', taskIds: [], commandIds: [] }]);
   });
 
   test('a task_notification with a terminal status becomes a task-settled event', () => {

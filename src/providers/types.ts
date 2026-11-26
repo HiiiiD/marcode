@@ -423,7 +423,14 @@ export type AgentEvent =
    * must not lose its Stop control — until this drains to `[]`. Claude-only
    * today; a provider with no such concept never emits it.
    */
-  | { kind: 'background-tasks-changed'; taskIds: string[] }
+  | {
+    kind: 'background-tasks-changed'; taskIds: string[];
+    /**
+     * Background shell commands, REPLACED the same way. Not activity, so they never hold a
+     * session `running` (often a dev server); Stop still kills them and the daemon stays up.
+     */
+    commandIds?: string[];
+  }
   /**
    * One specific background task reached a terminal state (settled,
    * failed, or was stopped) — the SDK's own per-task edge, emitted
