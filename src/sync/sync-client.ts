@@ -168,13 +168,25 @@ export class SyncClient {
   async revoke(deviceId: string): Promise<Result<SyncCredentials>> {
     const reply = await this.call('POST', `/v1/devices/${deviceId}/revoke`);
     if (!reply.ok) { return reply; }
+    return this.rotate(new Set());
+  }
+
+  /** This device leaves: the others get a key it excludes itself from, then it revokes itself. */
+  async leave(): Promise<Result<void>> {
+    const rotated = await this.rotate(new Set([this.creds.deviceId]));
+    if (!rotated.ok) { return rotated; }
+    const reply = await this.call('POST', `/v1/devices/${this.creds.deviceId}/revoke`);
+    return reply.ok ? { ok: true, value: undefined } : reply;
+  }
+
+  private async rotate(exclude: Set<string>): Promise<Result<SyncCredentials>> {
     for (let attempt = 0; attempt < ROTATE_ATTEMPTS; attempt++) {
       const refreshed = await this.refreshKeys();
       if (!refreshed.ok) { return refreshed; }
       const [devices, state] = await Promise.all([this.devices(), this.keyState()]);
       if (!devices.ok) { return devices; }
       if (!state.ok) { return state; }
-      const revoked = new Set(devices.value.filter((d) => d.revokedAt !== undefined).map((d) => d.deviceId));
+      const revoked = new Set([...exclude, ...devices.value.filter((d) => d.revokedAt !== undefined).map((d) => d.deviceId)]);
       const newestOnServer = state.value.holders.reduce((m, h) => Math.max(m, h.epoch), 0);
       const newestHolders = state.value.holders.find((h) => h.epoch === newestOnServer)?.deviceIds ?? [];
       // Someone else rotated first: adopt their epoch if no revoked device can read it.
@@ -183,7 +195,7 @@ export class SyncClient {
       const epoch = Math.max(newestOnServer, ...this.creds.syncKeys.map((k) => k.epoch)) + 1;
       const key = generateSyncKey();
       const sealed: Record<string, string> = {};
-      for (const d of devices.value) { if (d.revokedAt === undefined) { sealed[d.deviceId] = seal(Buffer.from(key), d.publicKey); } }
+      for (const d of devices.value) { if (!revoked.has(d.deviceId)) { sealed[d.deviceId] = seal(Buffer.from(key), d.publicKey); } }
       const put = await this.call('PUT', `/v1/keys/${epoch}`, { sealed });
       if (!put.ok) { return put; }
       if (put.status !== 409) {

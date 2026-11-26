@@ -1,3 +1,4 @@
+import { checkServerUrl } from '../sync/server-url';
 import * as path from 'node:path';
 import type { UsageMirror } from '../providers/types';
 import { DEFAULT_PROVIDER_IDS, KNOWN_PROVIDER_IDS } from '../shared/settings';
@@ -21,6 +22,8 @@ export interface HostConfig {
   usageMirrors: UsageMirror[];
   memory: { enabled: boolean; summarizer: unknown };
   projects: { overrides: ProjectOverride[] };
+  /** The sync server and this device's name; the device token and keys live in `sync/credentials.json`, never here. */
+  sync: { server?: string; deviceName?: string };
   review: { fileCap: number; pollIntervalMs: number; baseRefs: string[] };
   favoriteModels: string[];
   daemon: { enabled: boolean; idleMinutes: number };
@@ -46,6 +49,7 @@ export function defaultHostConfig(): HostConfig {
     usageMirrors: [],
     memory: { enabled: true, summarizer: undefined },
     projects: { overrides: [] },
+    sync: {},
     review: { fileCap: clampCap(undefined), pollIntervalMs: 750, baseRefs: [] },
     favoriteModels: [],
     daemon: { enabled: true, idleMinutes: 10 },
@@ -128,6 +132,18 @@ export function parseHostConfig(raw: unknown): { config: HostConfig; warnings: s
           return [{ path: entry.path as string, project: entry.project as string }];
         });
       }
+    }
+  }
+
+  if (raw.sync !== undefined) {
+    if (!isObject(raw.sync)) {
+      warnings.push('config.json: sync is not an object; ignored.');
+    } else {
+      if (raw.sync.server !== undefined) {
+        const verdict = typeof raw.sync.server === 'string' ? checkServerUrl(raw.sync.server) : { ok: false as const, reason: 'not a string' };
+        if (verdict.ok) { config.sync.server = verdict.base; } else { warnings.push(`config.json: sync.server ignored: ${verdict.reason}`); }
+      }
+      if (typeof raw.sync.deviceName === 'string' && raw.sync.deviceName.trim() !== '') { config.sync.deviceName = raw.sync.deviceName; }
     }
   }
 

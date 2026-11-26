@@ -32,3 +32,5 @@ vsc-extension-quickstart.md
 **/*.ts
 **/.vscode-test.*
 .worktrees/**
+dist/sync-server.js*
+Dockerfile.sync-server*

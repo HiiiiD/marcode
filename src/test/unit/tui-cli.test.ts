@@ -44,4 +44,22 @@ suite('tui cli', () => {
   test('a prompt that begins with a login-like word needs --', () => {
     assert.deepStrictEqual(parseArgs(['--', 'login', 'page']), { kind: 'run', prompt: 'login page', forceNew: false });
   });
+  test('sync-server passes its flags through', () => {
+    assert.deepStrictEqual(parseArgs(['sync-server', '--data', '/d', '--port', '9000']), { kind: 'sync-server', args: ['--data', '/d', '--port', '9000'] });
+  });
+  test('sync subcommands', () => {
+    assert.deepStrictEqual(parseArgs(['sync', 'setup', 'https://s', 'MRB-1']), { kind: 'sync', action: 'setup', args: ['https://s', 'MRB-1'] });
+    assert.deepStrictEqual(parseArgs(['sync', 'join', 'https://s', 'MRC-1', '--name', 'lap']), { kind: 'sync', action: 'join', args: ['https://s', 'MRC-1', '--name', 'lap'] });
+    for (const action of ['pair', 'devices', 'status', 'leave']) {
+      assert.deepStrictEqual(parseArgs(['sync', action]), { kind: 'sync', action, args: [] });
+    }
+    assert.deepStrictEqual(parseArgs(['sync', 'revoke', 'ab12']), { kind: 'sync', action: 'revoke', args: ['ab12'] });
+  });
+  test('sync with missing operands or an unknown action is an error', () => {
+    assert.strictEqual(parseArgs(['sync']).kind, 'error');
+    assert.strictEqual(parseArgs(['sync', 'setup', 'https://s']).kind, 'error');
+    assert.strictEqual(parseArgs(['sync', 'join']).kind, 'error');
+    assert.strictEqual(parseArgs(['sync', 'revoke']).kind, 'error');
+    assert.strictEqual(parseArgs(['sync', 'explode']).kind, 'error');
+  });
 });
