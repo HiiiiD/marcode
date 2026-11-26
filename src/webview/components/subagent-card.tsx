@@ -101,7 +101,14 @@ export function SubagentCard({
           )}
           {!hosted && <BotIcon aria-hidden className="shrink-0 text-muted-foreground" />}
           {!hosted && <span className="min-w-[4.5rem] shrink-0 text-muted-foreground @md:min-w-[5rem]">Agent</span>}
-          <span className={cn(wstate ? 'min-w-[4.5rem] max-w-[45%] shrink-0 truncate font-medium @md:min-w-[5rem]' : 'min-w-0 truncate text-foreground/75')}>{subagentLabel(item)}</span>
+          {wstate ? (
+            // The session id is not something to read at a glance; it stays on hover and for screen readers.
+            <span className="min-w-[4.5rem] shrink-0 text-muted-foreground @md:min-w-[5rem]" title={subagentLabel(item)}>
+              Worker<span className="sr-only">{` ${subagentLabel(item)}`}</span>
+            </span>
+          ) : (
+            <span className="min-w-0 truncate text-foreground/75">{subagentLabel(item)}</span>
+          )}
           {wstate ? (
             // A hosted worker's header is its name and how it is doing; the counts and clocks live nowhere because a dot and a word say more.
             <>
