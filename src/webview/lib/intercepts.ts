@@ -10,11 +10,12 @@
  * the same problem and the same answer, and each is one entry plus the
  * surface it names.
  */
-export type InterceptId = 'context' | 'mcp';
+export type InterceptId = 'context' | 'mcp' | 'sync';
 
 const TABLE: Record<string, InterceptId> = {
   '/context': 'context',
   '/mcp': 'mcp',
+  '/sync': 'sync',
 };
 
 /**

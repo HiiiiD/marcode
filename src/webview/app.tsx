@@ -11,6 +11,8 @@ import { rearrange } from '../client-core/auto-grid';
 import { assignAt, leafSessionIds } from './components/layout-tree';
 import { paneEligibleSessions, reconcilePaneLayout, rosterSessionIds } from './components/pane-layout';
 import { UsageStrip } from './components/usage-strip';
+import { SyncDialog } from './components/sync/sync-dialog';
+import { SyncStatusChip } from './components/sync/sync-status-chip';
 import { useStore } from './store';
 import { MIN_PANE } from './min-pane';
 
@@ -147,11 +149,13 @@ export function App() {
               <PaneGroup narrow={narrow} />
             </div>
             <UsageStrip />
+            <div className="flex justify-end px-1 empty:hidden"><SyncStatusChip /></div>
           </>
         ) : (
           <div className="p-3 text-sm text-muted-foreground">Loading…</div>
         )}
       </div>
+      <SyncDialog />
     </TooltipProvider>
   );
 }
