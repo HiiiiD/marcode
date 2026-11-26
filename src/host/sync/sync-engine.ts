@@ -145,11 +145,12 @@ export class SyncEngine {
   }
 
   private nextBatch(): Array<{ recordId: string; payload: unknown }> {
-    const limit = this.deps.pushBytes ?? 6 * 1024 * 1024;
+    // The server caps a body at 8 MiB of JSON; ciphertext is base64 (4/3) plus per-record framing.
+    const limit = this.deps.pushBytes ?? 5.5 * 1024 * 1024;
     const batch: Array<{ recordId: string; payload: unknown }> = [];
     let size = 0;
     for (const row of this.deps.state.peek(200)) {
-      const bytes = Buffer.byteLength(JSON.stringify(row.payload));
+      const bytes = Math.ceil(Buffer.byteLength(JSON.stringify(row.payload)) * 4 / 3) + 512;
       if (batch.length > 0 && size + bytes > limit) { break; }
       batch.push(row);
       size += bytes;
@@ -180,15 +181,19 @@ export class SyncEngine {
     for (const stream of streams.value) {
       if (stream.deviceId === session.creds.deviceId) { continue; }
       let cursor = this.deps.state.cursor(stream.deviceId);
-      while (this.holding && cursor < stream.lastSeq) {
+      let waiting = false;
+      while (this.holding && !waiting && cursor < stream.lastSeq) {
         const page = await session.client.pull(stream.deviceId, cursor, this.deps.pageSize ?? 500);
         if (!page.ok || page.value.length === 0) { break; }
         for (const record of page.value) {
+          // A key not yet sealed for this device may arrive later; skipping now would lose the record for good.
+          if (record.missingKey) { waiting = true; break; }
           const payload = record.unreadable ? undefined : parseMemoryPayload(record.payload);
-          if (payload) {
+          try {
+            if (!payload) { throw new Error('unreadable'); }
             await this.deps.remote.apply(stream.deviceId, payload);
             this.counts.applied++;
-          } else {
+          } catch {
             this.counts.skipped++;
           }
           cursor = record.seq;

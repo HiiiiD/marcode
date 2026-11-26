@@ -45,6 +45,7 @@ suite('memory payloads', () => {
     assert.strictEqual(parseMemoryPayload({ type: 'future', sessionId: 's1' }), undefined);
     assert.strictEqual(parseMemoryPayload({ type: 'memory-withdraw' }), undefined);
     assert.strictEqual(parseMemoryPayload('nope'), undefined);
+    assert.strictEqual(parseMemoryPayload({ ...p, digest: { title: 't' } }), undefined);
   });
 
   test('only remote project ids that are not excluded are shareable', () => {

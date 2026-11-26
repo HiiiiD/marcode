@@ -190,4 +190,48 @@ suite('SyncEngine', function () {
     await until(async () => (await found(b)).includes('s2'));
     assert.strictEqual(again.stats().applied, 1);
   });
+
+  test('a backfill of many near-cap records still goes up in batches the server accepts', async () => {
+    const w = await world();
+    const b = await w.join('laptop');
+    for (let i = 0; i < 12; i++) { w.a.state.enqueue(memory(`big${i}`, `zebra ${'w'.repeat(250 * 1024)}`)); }
+    w.a.state.enqueue({ type: 'memory-withdraw', sessionId: 'big0' });
+    const ea = w.a.engine(); ea.start();
+    const eb = b.engine(); eb.start();
+    await until(() => w.a.state.outboxSize() === 0, 30_000);
+    assert.strictEqual(ea.stats().skipped, 0);
+    await until(() => eb.stats().applied === 13, 30_000);
+  });
+
+  test('a record that breaks apply is skipped, and later records and streams still arrive', async () => {
+    const w = await world();
+    const b = await w.join('laptop');
+    const c = await w.join('tower');
+    w.a.state.enqueue({ ...memory('bad'), digest: { title: 't' } });
+    w.a.state.enqueue(memory('after-bad'));
+    c.state.enqueue(memory('from-c'));
+    const ea = w.a.engine(); ea.start();
+    const ec = c.engine(); ec.start();
+    await until(() => w.a.state.outboxSize() === 0 && c.state.outboxSize() === 0);
+    const eb = b.engine(); eb.start();
+    await until(async () => (await found(b)).includes('after-bad') && (await found(b)).includes('from-c'));
+    assert.strictEqual(eb.stats().skipped, 1);
+  });
+
+  test('a record under a key this device does not have yet is not skipped; the stream waits', async () => {
+    const w = await world();
+    const b = await w.join('laptop');
+    const creds = (await readCredentials(w.a.home))!;
+    const unknownKey = randomBytes(32).toString('base64');
+    const enc = encryptRecord(Buffer.from(JSON.stringify({ v: 1, payload: memory('later') })), unknownKey, { deviceId: creds.deviceId, recordId: 'k9', epoch: 9 });
+    w.a.state.enqueue(memory('before'));
+    const ea = w.a.engine(); ea.start();
+    await until(() => w.a.state.outboxSize() === 0);
+    w.store.append(creds.deviceId, [{ recordId: 'k9', epoch: 9, ...enc }]);
+    const eb = b.engine(); eb.start();
+    await until(async () => (await found(b)).includes('before'));
+    await new Promise((r) => setTimeout(r, 300));
+    assert.strictEqual(eb.stats().skipped, 0);
+    assert.strictEqual(b.state.cursor(creds.deviceId), 1);
+  });
 });

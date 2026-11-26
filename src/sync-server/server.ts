@@ -23,12 +23,13 @@ function readBody(req: IncomingMessage): Promise<Json> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     let size = 0;
+    // Drained, not destroyed: a dropped connection reads as "server unreachable" and the client retries forever.
     req.on('data', (chunk: Buffer) => {
       size += chunk.length;
-      if (size > MAX_BODY) { reject(new HttpError(413, 'body too large')); req.destroy(); return; }
-      chunks.push(chunk);
+      if (size <= MAX_BODY) { chunks.push(chunk); }
     });
     req.on('end', () => {
+      if (size > MAX_BODY) { reject(new HttpError(413, 'body too large')); return; }
       if (size === 0) { resolve({}); return; }
       try {
         const parsed: unknown = JSON.parse(Buffer.concat(chunks).toString('utf8'));

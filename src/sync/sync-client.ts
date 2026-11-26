@@ -12,7 +12,8 @@ import { checkServerUrl } from './server-url';
 
 export type { SyncCredentials } from './credentials';
 export type Result<T> = { ok: true; value: T } | { ok: false; error: string };
-export interface PulledRecord { deviceId: string; seq: number; recordId: string; payload?: unknown; unreadable?: true }
+/** `missingKey`: sealed under an epoch this device does not hold yet, unlike a tampered record it may become readable. */
+export interface PulledRecord { deviceId: string; seq: number; recordId: string; payload?: unknown; unreadable?: true; missingKey?: true }
 export interface SyncClientOptions { fetch?: typeof fetch; random?: () => number; timeoutMs?: number; idleMs?: number }
 
 const ENVELOPE_VERSION = 1;
@@ -285,6 +286,7 @@ export class SyncClient {
   private open(deviceId: string, r: ServedRecord): PulledRecord {
     const base = { deviceId, seq: r.seq, recordId: r.recordId };
     const key = this.creds.syncKeys.find((k) => k.epoch === r.epoch)?.key;
+    if (!key) { return { ...base, unreadable: true, missingKey: true }; }
     const plain = key ? decryptRecord(r, key, { deviceId, recordId: r.recordId, epoch: r.epoch }) : undefined;
     if (!plain) { return { ...base, unreadable: true }; }
     try {

@@ -93,4 +93,39 @@ suite('MemoryPublisher', () => {
     assert.strictEqual(await pub.backfill(), 0);
     assert.strictEqual(payloads().length, 1);
   });
+
+  test('a session reopened while its publish was in flight ends withdrawn, not published', async () => {
+    const sessions = [{ id: 's1', providerId: 'claude', cwd: '/w/repo', projectId: 'github.com/a/b', hidden: true }];
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    const state = new SyncState(path.join(await fs.mkdtemp(path.join(os.tmpdir(), 'marcode-pub-')), 'state.sqlite'));
+    const inner = new Inner();
+    inner.digests.set('s1', digest());
+    const pub = new MemoryPublisher({
+      inner, state, excluded: [], relCwd: async () => { await gate; return '.'; }, transcript: async () => items, sessions: () => sessions,
+    });
+    const publishing = pub.setProject('s1', 'github.com/a/b');
+    await new Promise((r) => setTimeout(r, 10));
+    sessions[0].hidden = false;
+    const forgetting = pub.forget('s1');
+    release();
+    await Promise.all([publishing, forgetting]);
+    const types = state.peek(10).map((r) => (r.payload as { type: string }).type);
+    assert.strictEqual(types.at(-1), 'memory-withdraw');
+    assert.strictEqual(types.includes('memory'), false);
+  });
+
+  test('backfill does not read transcripts of sessions already published', async () => {
+    let reads = 0;
+    const state = new SyncState(path.join(await fs.mkdtemp(path.join(os.tmpdir(), 'marcode-pub-')), 'state.sqlite'));
+    const inner = new Inner();
+    inner.digests.set('s1', digest());
+    const pub = new MemoryPublisher({
+      inner, state, excluded: [], relCwd: async () => '.', transcript: async () => { reads++; return items; },
+      sessions: () => [{ id: 's1', providerId: 'claude', cwd: '/w', projectId: 'github.com/a/b', hidden: true }],
+    });
+    await pub.backfill();
+    await pub.backfill();
+    assert.strictEqual(reads, 1);
+  });
 });

@@ -20,33 +20,48 @@ export interface MemoryPublisherDeps {
  * or forget of a shareable session also lands in the machine-wide outbox the sync engine pushes.
  */
 export class MemoryPublisher implements MemoryStore {
+  /** Per session, so a withdraw can never be queued ahead of a memory record still being built. */
+  private readonly chains = new Map<SessionId, Promise<unknown>>();
+
   constructor(private readonly deps: MemoryPublisherDeps) {}
+
+  private serial<T>(id: SessionId, work: () => Promise<T>): Promise<T> {
+    const next = (this.chains.get(id) ?? Promise.resolve()).then(work, work);
+    const settled = next.catch(() => undefined);
+    this.chains.set(id, settled);
+    void settled.then(() => { if (this.chains.get(id) === settled) { this.chains.delete(id); } });
+    return next;
+  }
 
   async index(record: SessionRecord): Promise<void> {
     await this.deps.inner.index(record);
-    const digest = record.digest ?? await this.deps.inner.getDigest(record.sessionId).catch(() => undefined);
-    if (digest) { await this.publish(record, digest); }
+    await this.serial(record.sessionId, async () => {
+      const digest = record.digest ?? await this.deps.inner.getDigest(record.sessionId).catch(() => undefined);
+      if (digest) { await this.publish(record, digest); }
+    });
   }
 
   async forget(sessionId: SessionId): Promise<void> {
     await this.deps.inner.forget(sessionId);
-    this.safely(() => {
-      this.deps.state.enqueue({ type: 'memory-withdraw', sessionId });
-      this.deps.state.clearPublished(sessionId);
+    await this.serial(sessionId, async () => {
+      this.safely(() => {
+        this.deps.state.enqueue({ type: 'memory-withdraw', sessionId });
+        this.deps.state.clearPublished(sessionId);
+      });
     });
   }
 
   async setProject(sessionId: SessionId, projectId: string): Promise<void> {
     await this.deps.inner.setProject?.(sessionId, projectId);
     const session = this.deps.sessions().find((s) => s.id === sessionId);
-    if (session?.hidden) { await this.publishStored({ ...session, projectId }); }
+    if (session?.hidden) { await this.serial(sessionId, () => this.publishStored({ ...session, projectId })); }
   }
 
   /** Hidden, shareable sessions whose stored digest was never published: what existed before pairing. */
   async backfill(): Promise<number> {
     let count = 0;
     for (const session of this.deps.sessions()) {
-      if (session.hidden && await this.publishStored(session)) { count++; }
+      if (session.hidden && await this.serial(session.id, () => this.publishStored(session))) { count++; }
     }
     return count;
   }
@@ -60,6 +75,7 @@ export class MemoryPublisher implements MemoryStore {
     if (!isShareableProject(session.projectId, this.deps.excluded)) { return false; }
     const digest = await this.deps.inner.getDigest(session.id).catch(() => undefined);
     if (!digest) { return false; }
+    if (this.safelyRead(() => this.deps.state.wasPublished(session.id, digest))) { return false; }
     const items = await this.deps.transcript(session.id).catch(() => [] as TranscriptItem[]);
     return this.publish({
       sessionId: session.id, providerId: session.providerId, cwd: session.cwd, closedAt: digest.forUpdatedAt, items, projectId: session.projectId,
@@ -73,6 +89,8 @@ export class MemoryPublisher implements MemoryStore {
       if (this.deps.state.wasPublished(record.sessionId, digest)) { return false; }
       const payload = memoryPayload({ record, projectId, relCwd: await this.deps.relCwd(record.cwd), digest });
       if (!payload) { return false; }
+      // Re-checked after the awaits above: a session shown again meanwhile must not be published.
+      if (this.deps.sessions().find((s) => s.id === record.sessionId)?.hidden === false) { return false; }
       this.deps.state.enqueue(payload);
       this.deps.state.markPublished(record.sessionId, digest);
       return true;
@@ -80,6 +98,10 @@ export class MemoryPublisher implements MemoryStore {
       console.error('[mar-code] sync: could not queue memory for', record.sessionId, err);
       return false;
     }
+  }
+
+  private safelyRead(read: () => boolean): boolean {
+    try { return read(); } catch { return false; }
   }
 
   private safely(work: () => void): void {

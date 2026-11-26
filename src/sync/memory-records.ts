@@ -44,12 +44,18 @@ export function memoryPayload(input: {
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 
+function isDigest(v: unknown): v is SessionDigest {
+  return isRecord(v) && typeof v.title === 'string' && typeof v.request === 'string' && typeof v.outcome === 'string'
+    && Array.isArray(v.filesEdited) && (v.source === 'extractive' || v.source === 'llm')
+    && typeof v.summarizerVersion === 'number' && typeof v.forUpdatedAt === 'number';
+}
+
 export function parseMemoryPayload(value: unknown): MemoryPayload | undefined {
   if (!isRecord(value) || typeof value.sessionId !== 'string' || value.sessionId === '') { return undefined; }
   if (value.type === 'memory-withdraw') { return { type: 'memory-withdraw', sessionId: value.sessionId }; }
   if (value.type !== 'memory') { return undefined; }
   const ok = typeof value.projectId === 'string' && typeof value.relCwd === 'string' && typeof value.providerId === 'string'
-    && typeof value.title === 'string' && typeof value.closedAt === 'number' && isRecord(value.digest)
+    && typeof value.title === 'string' && typeof value.closedAt === 'number' && isDigest(value.digest)
     && typeof value.text === 'string' && Array.isArray(value.items);
   return ok ? value as MemoryPayload : undefined;
 }
