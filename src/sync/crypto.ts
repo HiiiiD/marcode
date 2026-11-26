@@ -1,6 +1,6 @@
 import {
-  createCipheriv, createDecipheriv, createPrivateKey, createPublicKey, diffieHellman, generateKeyPairSync, hkdfSync,
-  randomBytes,
+  createCipheriv, createDecipheriv, createHmac, createPrivateKey, createPublicKey, diffieHellman, generateKeyPairSync,
+  hkdfSync, randomBytes, timingSafeEqual,
 } from 'node:crypto';
 
 export interface DeviceKeys { publicKey: string; privateKey: string }
@@ -46,16 +46,28 @@ export function generateSyncKey(): string {
   return randomBytes(32).toString('base64');
 }
 
-export function seal(plain: Buffer, recipientPublicKey: string): string {
+export function isDevicePublicKey(publicKey: string): boolean {
+  try {
+    return createPublicKey({ key: Buffer.from(publicKey, 'base64'), format: 'der', type: 'spki' }).asymmetricKeyType === 'x25519';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * `label` (e.g. `epoch:3:device:<id>`) is bound into both the key derivation and the AAD, so the
+ * server cannot relabel a blob sealed for one epoch or recipient as another.
+ */
+export function seal(plain: Buffer, recipientPublicKey: string, label: string): string {
   const eph = generateKeyPairSync('x25519');
   const recipient = createPublicKey({ key: Buffer.from(recipientPublicKey, 'base64'), format: 'der', type: 'spki' });
   const shared = diffieHellman({ privateKey: eph.privateKey, publicKey: recipient });
   const ephPub = eph.publicKey.export({ type: 'spki', format: 'der' });
-  const { nonce, body } = gcmEncrypt(derive(shared, 'marcode-seal'), plain, ephPub);
+  const { nonce, body } = gcmEncrypt(derive(shared, `marcode-seal:${label}`), plain, Buffer.concat([ephPub, Buffer.from(label)]));
   return Buffer.concat([ephPub, nonce, body]).toString('base64');
 }
 
-export function unseal(sealed: string, keys: DeviceKeys): Buffer | undefined {
+export function unseal(sealed: string, keys: DeviceKeys, label: string): Buffer | undefined {
   try {
     const raw = Buffer.from(sealed, 'base64');
     if (raw.length < EPH_PUB + NONCE + TAG) { return undefined; }
@@ -63,7 +75,10 @@ export function unseal(sealed: string, keys: DeviceKeys): Buffer | undefined {
     const publicKey = createPublicKey({ key: ephPub, format: 'der', type: 'spki' });
     const privateKey = createPrivateKey({ key: Buffer.from(keys.privateKey, 'base64'), format: 'der', type: 'pkcs8' });
     const shared = diffieHellman({ privateKey, publicKey });
-    return gcmDecrypt(derive(shared, 'marcode-seal'), raw.subarray(EPH_PUB, EPH_PUB + NONCE), raw.subarray(EPH_PUB + NONCE), ephPub);
+    return gcmDecrypt(
+      derive(shared, `marcode-seal:${label}`), raw.subarray(EPH_PUB, EPH_PUB + NONCE), raw.subarray(EPH_PUB + NONCE),
+      Buffer.concat([ephPub, Buffer.from(label)]),
+    );
   } catch {
     return undefined;
   }
@@ -90,4 +105,31 @@ export function encryptRecord(plain: Buffer, key: string, aad: RecordAad): { non
 
 export function decryptRecord(rec: { nonce: string; ciphertext: string }, key: string, aad: RecordAad): Buffer | undefined {
   return gcmDecrypt(Buffer.from(key, 'base64'), Buffer.from(rec.nonce, 'base64'), Buffer.from(rec.ciphertext, 'base64'), aadOf(aad));
+}
+
+function mac(key: string, message: string): Buffer {
+  return createHmac('sha256', Buffer.from(key, 'base64')).update(message).digest();
+}
+
+function sameMac(expected: Buffer, tag: string): boolean {
+  const given = Buffer.from(tag, 'base64');
+  return given.length === expected.length && timingSafeEqual(given, expected);
+}
+
+/** Proof, by a key holder, that this device row is one of ours; a row the server invents has none. */
+export function admissionTag(key: string, deviceId: string, publicKey: string): string {
+  return mac(key, `admit:${deviceId}:${publicKey}`).toString('base64');
+}
+
+export function verifyAdmission(key: string, deviceId: string, publicKey: string, tag: string): boolean {
+  return sameMac(mac(key, `admit:${deviceId}:${publicKey}`), tag);
+}
+
+/** Made with the previous epoch's key, so the server cannot introduce an epoch key of its own. */
+export function epochTag(previousKey: string, epoch: number, key: string): string {
+  return mac(previousKey, `epoch:${epoch}:${key}`).toString('base64');
+}
+
+export function verifyEpoch(previousKey: string, epoch: number, key: string, tag: string): boolean {
+  return sameMac(mac(previousKey, `epoch:${epoch}:${key}`), tag);
 }

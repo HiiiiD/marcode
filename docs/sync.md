@@ -50,6 +50,13 @@ marcode sync leave            # remove this device
 Revoking a device (or leaving) rotates the encryption key: records written afterwards use a key
 the removed device never had. What it already downloaded stays with it.
 
+## What the server can and cannot do
+
+It cannot read anything: records, keys and pairing secrets are encrypted on your devices. It also
+cannot slip itself in: devices only hand keys to device entries another device vouched for, and
+only accept a new key that was signed with the previous one. Since the server is yours, it is still
+trusted to keep and order the data; a server that withholds or drops records is not detected.
+
 ## What is stored where
 
 | Where | What |

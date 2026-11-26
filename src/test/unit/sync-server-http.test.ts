@@ -8,6 +8,9 @@ import { encodeCode } from '../../sync/pairing-code';
 import { hashSecret } from '../../sync-server/auth';
 import { startSyncServer } from '../../sync-server/server';
 import { SyncStore } from '../../sync-server/store';
+import { generateDeviceKeys } from '../../sync/crypto';
+
+const PK = generateDeviceKeys().publicKey;
 
 interface Rig { url: string; store: SyncStore; code: string; clock: { now: number }; close(): Promise<void> }
 const rigs: Rig[] = [];
@@ -36,14 +39,14 @@ async function call(r: Rig, method: string, route: string, body?: unknown, token
 }
 
 async function enroll(r: Rig): Promise<{ deviceId: string; token: string }> {
-  const res = await call(r, 'POST', '/v1/bootstrap', { code: r.code, name: 'desk', publicKey: 'pkA' });
+  const res = await call(r, 'POST', '/v1/bootstrap', { code: r.code, name: 'desk', publicKey: PK });
   assert.strictEqual(res.status, 200);
   return res.json;
 }
 
 async function second(r: Rig, token: string): Promise<{ deviceId: string; token: string }> {
   await call(r, 'POST', '/v1/pairings', { pairingId: 'p-second', wrapped: 'blob', ttlSec: 600 }, token);
-  return (await call(r, 'POST', '/v1/pairings/p-second/claim', { name: 'laptop', publicKey: 'pkB' })).json;
+  return (await call(r, 'POST', '/v1/pairings/p-second/claim', { name: 'laptop', publicKey: PK })).json;
 }
 
 async function* events(r: Rig, token: string, signal: AbortSignal): AsyncGenerator<string> {
@@ -67,9 +70,9 @@ suite('sync server HTTP', () => {
   test('info reports enrollment, and the bootstrap code works exactly once', async () => {
     const r = await rig();
     assert.deepStrictEqual((await call(r, 'GET', '/v1/info')).json, { apiVersion: 1, enrolled: false });
-    assert.strictEqual((await call(r, 'POST', '/v1/bootstrap', { code: encodeCode('MRB', randomBytes(16)), name: 'x', publicKey: 'p' })).status, 403);
+    assert.strictEqual((await call(r, 'POST', '/v1/bootstrap', { code: encodeCode('MRB', randomBytes(16)), name: 'x', publicKey: PK })).status, 403);
     await enroll(r);
-    assert.strictEqual((await call(r, 'POST', '/v1/bootstrap', { code: r.code, name: 'x', publicKey: 'p' })).status, 403);
+    assert.strictEqual((await call(r, 'POST', '/v1/bootstrap', { code: r.code, name: 'x', publicKey: PK })).status, 403);
     assert.deepStrictEqual((await call(r, 'GET', '/v1/info')).json, { apiVersion: 1, enrolled: true });
   });
 
@@ -84,14 +87,14 @@ suite('sync server HTTP', () => {
     const r = await rig();
     const a = await enroll(r);
     assert.strictEqual((await call(r, 'POST', '/v1/pairings', { pairingId: 'p1', wrapped: 'blob', ttlSec: 600 }, a.token)).status, 204);
-    const claim = await call(r, 'POST', '/v1/pairings/p1/claim', { name: 'laptop', publicKey: 'pkB' });
+    const claim = await call(r, 'POST', '/v1/pairings/p1/claim', { name: 'laptop', publicKey: PK });
     assert.strictEqual(claim.status, 200);
     assert.strictEqual(claim.json.wrapped, 'blob');
     assert.strictEqual(typeof claim.json.token, 'string');
-    assert.strictEqual((await call(r, 'POST', '/v1/pairings/p1/claim', { name: 'evil', publicKey: 'pkE' })).status, 410);
+    assert.strictEqual((await call(r, 'POST', '/v1/pairings/p1/claim', { name: 'evil', publicKey: PK })).status, 410);
     await call(r, 'POST', '/v1/pairings', { pairingId: 'p2', wrapped: 'blob', ttlSec: 900 }, a.token);
     r.clock.now += 901_000;
-    assert.strictEqual((await call(r, 'POST', '/v1/pairings/p2/claim', { name: 'late', publicKey: 'pkL' })).status, 410);
+    assert.strictEqual((await call(r, 'POST', '/v1/pairings/p2/claim', { name: 'late', publicKey: PK })).status, 410);
     assert.strictEqual((await call(r, 'POST', '/v1/pairings', { pairingId: 'p3', wrapped: 'b', ttlSec: 5000 }, a.token)).status, 400);
   });
 
@@ -119,11 +122,12 @@ suite('sync server HTTP', () => {
     const r = await rig();
     const a = await enroll(r);
     const b = await second(r, a.token);
-    assert.strictEqual((await call(r, 'PUT', '/v1/keys/1', { sealed: { [a.deviceId]: 'sa' } }, a.token)).status, 204);
-    assert.strictEqual((await call(r, 'PUT', '/v1/keys/1', { sealed: { [a.deviceId]: 'other' } }, a.token)).status, 409);
+    assert.strictEqual((await call(r, 'PUT', '/v1/keys/1', { sealed: { [a.deviceId]: 'sa' }, tag: 'genesis' }, a.token)).status, 204);
+    assert.strictEqual((await call(r, 'PUT', '/v1/keys/1', { sealed: { [a.deviceId]: 'other' }, tag: 'genesis' }, a.token)).status, 409);
+    assert.strictEqual((await call(r, 'POST', '/v1/keys/7/sealed', { sealed: { [b.deviceId]: 'sb' } }, a.token)).status, 404);
     assert.strictEqual((await call(r, 'POST', '/v1/keys/1/sealed', { sealed: { [b.deviceId]: 'sb' } }, a.token)).status, 204);
     const keysB = await call(r, 'GET', '/v1/keys', undefined, b.token);
-    assert.deepStrictEqual(keysB.json.keys, [{ epoch: 1, sealed: 'sb' }]);
+    assert.deepStrictEqual(keysB.json.keys, [{ epoch: 1, sealed: 'sb', tag: 'genesis' }]);
     assert.deepStrictEqual(keysB.json.holders, [{ epoch: 1, deviceIds: [a.deviceId, b.deviceId].sort() }]);
   });
 
@@ -153,5 +157,24 @@ suite('sync server HTTP', () => {
     assert.strictEqual(await Promise.race([ended, new Promise((res) => setTimeout(() => res(false), 1000))]), true);
     assert.strictEqual((await call(r, 'GET', '/v1/devices', undefined, b.token)).status, 401);
     assert.strictEqual((await call(r, 'GET', '/v1/events', undefined, b.token)).status, 401);
+  });
+
+  test('a malformed claim or bootstrap does not spend the one-time secret', async () => {
+    const r = await rig();
+    const bad = await call(r, 'POST', '/v1/bootstrap', { code: r.code, name: 'desk', publicKey: 'not-a-key' });
+    assert.strictEqual(bad.status, 400);
+    const a = await enroll(r);
+    await call(r, 'POST', '/v1/pairings', { pairingId: 'p1', wrapped: 'blob', ttlSec: 600 }, a.token);
+    assert.strictEqual((await call(r, 'POST', '/v1/pairings/p1/claim', {})).status, 400);
+    assert.strictEqual((await call(r, 'POST', '/v1/pairings/p1/claim', { name: 'laptop', publicKey: PK })).status, 200);
+  });
+
+  test('a pairing made by a device that was then revoked cannot be claimed', async () => {
+    const r = await rig();
+    const a = await enroll(r);
+    const b = await second(r, a.token);
+    await call(r, 'POST', '/v1/pairings', { pairingId: 'p-thief', wrapped: 'blob', ttlSec: 600 }, b.token);
+    await call(r, 'POST', `/v1/devices/${b.deviceId}/revoke`, undefined, a.token);
+    assert.strictEqual((await call(r, 'POST', '/v1/pairings/p-thief/claim', { name: 'thief', publicKey: PK })).status, 410);
   });
 });

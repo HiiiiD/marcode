@@ -36,8 +36,9 @@ suite('SyncStore', () => {
   test('a pairing is claimed once and expires', async () => {
     let now = 1000;
     const store = new SyncStore(await dbPath(), () => now);
-    store.createPairing('p1', 'd', 'blob', 2000);
-    store.createPairing('p2', 'd', 'blob2', 2000);
+    const d = store.addDevice('desk', 'pk', 'tok');
+    store.createPairing('p1', d.deviceId, 'blob', 2000);
+    store.createPairing('p2', d.deviceId, 'blob2', 2000);
     assert.deepStrictEqual(store.claimPairing('p1'), { wrapped: 'blob' });
     assert.strictEqual(store.claimPairing('p1'), 'gone');
     now = 2001;
@@ -72,11 +73,12 @@ suite('SyncStore', () => {
 
   test('epochs are create-only and sealed blobs are never replaced', async () => {
     const store = new SyncStore(await dbPath());
-    assert.strictEqual(store.createEpoch(2, { d1: 's1', d2: 's2' }), true);
-    assert.strictEqual(store.createEpoch(2, { d1: 'other' }), false);
-    store.addSealed(2, { d1: 'replaced?', d3: 's3' });
-    assert.deepStrictEqual(store.keysFor('d1'), [{ epoch: 2, sealed: 's1' }]);
-    assert.deepStrictEqual(store.keysFor('d3'), [{ epoch: 2, sealed: 's3' }]);
+    assert.strictEqual(store.createEpoch(2, { d1: 's1', d2: 's2' }, 't2'), true);
+    assert.strictEqual(store.createEpoch(2, { d1: 'other' }, 'tx'), false);
+    assert.strictEqual(store.addSealed(2, { d1: 'replaced?', d3: 's3' }), true);
+    assert.strictEqual(store.addSealed(9, { d1: 's9' }), false);
+    assert.deepStrictEqual(store.keysFor('d1'), [{ epoch: 2, sealed: 's1', tag: 't2' }]);
+    assert.deepStrictEqual(store.keysFor('d3'), [{ epoch: 2, sealed: 's3', tag: 't2' }]);
     assert.deepStrictEqual(store.holders(), [{ epoch: 2, deviceIds: ['d1', 'd2', 'd3'] }]);
     store.close();
   });
@@ -91,5 +93,18 @@ suite('SyncStore', () => {
     assert.strictEqual(second.deviceByTokenHash('tok')?.name, 'desk');
     assert.strictEqual(second.read(d.deviceId, 0, 10).length, 1);
     second.close();
+  });
+});
+
+suite('SyncStore revocation', () => {
+  test("revoking a device withdraws its pending pairings", async () => {
+    const store = new SyncStore(await dbPath());
+    const d = store.addDevice('laptop', 'pk', 'tok');
+    store.createPairing('p1', d.deviceId, 'blob', Date.now() + 60_000);
+    store.createPairing('p2', d.deviceId, 'blob', Date.now() + 60_000);
+    assert.deepStrictEqual(store.claimPairing('p2'), { wrapped: 'blob' });
+    store.revoke(d.deviceId);
+    assert.strictEqual(store.claimPairing('p1'), 'gone');
+    store.close();
   });
 });

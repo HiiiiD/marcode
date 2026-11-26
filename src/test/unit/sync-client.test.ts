@@ -6,7 +6,10 @@ import * as path from 'node:path';
 import { suite, teardown, test } from 'mocha';
 import type { SyncEvent } from '../../sync/api-types';
 import { readCredentials, writeCredentials, credentialsPath } from '../../sync/credentials';
-import { encryptRecord } from '../../sync/crypto';
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
+import { admissionTag, encryptRecord, epochTag, generateDeviceKeys, generateSyncKey, seal } from '../../sync/crypto';
+import { decodePairingCode, encodePairingCode } from '../../sync/pairing-code';
 import { encodeCode } from '../../sync/pairing-code';
 import { SyncClient, type SyncCredentials } from '../../sync/sync-client';
 import { hashSecret } from '../../sync-server/auth';
@@ -188,3 +191,95 @@ suite('sync credentials', () => {
     }
   });
 });
+
+async function silentServer(mode: 'never-respond' | 'idle-stream'): Promise<string> {
+  const server = createServer((req, res) => {
+    if (mode === 'idle-stream') { res.writeHead(200, { 'content-type': 'text/event-stream' }); res.flushHeaders(); }
+  });
+  await new Promise<void>((res) => server.listen(0, '127.0.0.1', () => res()));
+  cleanups.push(async () => { server.closeAllConnections(); await new Promise((res) => server.close(() => res(undefined))); });
+  return `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+}
+
+const fakeCreds = (server: string): SyncCredentials => ({
+  server, deviceId: 'd', deviceName: 'desk', token: 't', keys: generateDeviceKeys(), syncKeys: [{ epoch: 1, key: generateSyncKey() }],
+});
+
+suite('SyncClient against a hostile or broken server', () => {
+  test('an old sealed key relabelled as a new epoch is not adopted', async () => {
+    const r = await rig();
+    const a = await enrolled(r);
+    const blob = r.store.keysFor(a.credentials.deviceId)[0].sealed;
+    r.store.createEpoch(2, { [a.credentials.deviceId]: blob }, 'tag');
+    ok(await a.refreshKeys());
+    assert.deepStrictEqual(a.credentials.syncKeys.map((k) => k.epoch), [1]);
+  });
+
+  test('a key epoch the server made up is not adopted', async () => {
+    const r = await rig();
+    const a = await enrolled(r);
+    const serverKey = generateSyncKey();
+    const id = a.credentials.deviceId;
+    r.store.createEpoch(2, { [id]: seal(Buffer.from(serverKey), a.credentials.keys.publicKey, `epoch:2:device:${id}`) }, epochTag(generateSyncKey(), 2, serverKey));
+    ok(await a.refreshKeys());
+    assert.deepStrictEqual(a.credentials.syncKeys.map((k) => k.epoch), [1]);
+  });
+
+  test('a device row the server added on its own gets no keys', async () => {
+    const r = await rig();
+    const a = await enrolled(r);
+    const laptop = await joined(r, a, 'laptop');
+    const evil = r.store.addDevice('evil', generateDeviceKeys().publicKey, 'evil-token-hash');
+    ok(await a.healKeys());
+    ok(await a.revoke(laptop.credentials.deviceId));
+    assert.deepStrictEqual(r.store.keysFor(evil.deviceId), []);
+  });
+
+  test('an admitted device with a malformed public key is skipped, not thrown on', async () => {
+    const r = await rig();
+    const a = await enrolled(r);
+    const bad = r.store.addDevice('bad', 'not-a-key', 'bad-token-hash');
+    const { epoch, key } = a.credentials.syncKeys[0];
+    r.store.setAdmission(bad.deviceId, epoch, admissionTag(key, bad.deviceId, 'not-a-key'));
+    assert.strictEqual((await a.healKeys()).ok, true);
+    assert.strictEqual((await a.rotateKey()).ok, true);
+  });
+
+  test('enroll survives a failed key upload, and healing uploads it later', async () => {
+    const r = await rig();
+    const flaky: typeof fetch = async (input, init) => {
+      if (String(input).endsWith('/v1/keys/1') && init?.method === 'PUT') { throw new Error('connection reset'); }
+      return fetch(input, init);
+    };
+    const creds = ok(await SyncClient.enroll(r.url, r.code, 'desk', { fetch: flaky }));
+    assert.deepStrictEqual(r.store.holders(), []);
+    ok(await new SyncClient(creds).healKeys());
+    assert.deepStrictEqual(r.store.holders(), [{ epoch: 1, deviceIds: [creds.deviceId] }]);
+  });
+
+  test('joining with a mistyped secret leaves no live device behind', async () => {
+    const r = await rig();
+    const a = await enrolled(r);
+    const { code } = ok(await a.createPairing());
+    const wrong = encodePairingCode(decodePairingCode(code)!.pairingId, randomBytes(16));
+    assert.strictEqual((await SyncClient.join(r.url, wrong, 'laptop')).ok, false);
+    assert.deepStrictEqual(r.store.devices().filter((d) => d.revokedAt === undefined).map((d) => d.name), ['desk']);
+  });
+
+  test('a server that never answers times a request out', async () => {
+    const url = await silentServer('never-respond');
+    const client = new SyncClient(fakeCreds(url), { timeoutMs: 200 });
+    const started = Date.now();
+    assert.strictEqual((await client.devices()).ok, false);
+    assert.strictEqual(Date.now() - started < 2000, true);
+  });
+
+  test('an event stream that goes silent is dropped and retried', async () => {
+    const url = await silentServer('idle-stream');
+    const seen: SyncEvent[] = [];
+    const follower = new SyncClient(fakeCreds(url), { idleMs: 200 }).follow((e) => seen.push(e));
+    cleanups.push(async () => follower.stop());
+    await until(() => seen.some((e) => e.type === 'connection' && e.state === 'retrying'), 3000);
+  });
+});
+

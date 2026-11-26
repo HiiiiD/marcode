@@ -15,13 +15,13 @@ import { runSyncCommand } from '../../tui/sync-commands';
 const cleanups: Array<() => Promise<void>> = [];
 teardown(async () => { while (cleanups.length) { await cleanups.pop()!(); } });
 
-async function server(): Promise<{ url: string; code: string }> {
+async function server(): Promise<{ url: string; code: string; store: SyncStore }> {
   const store = new SyncStore(path.join(await fs.mkdtemp(path.join(os.tmpdir(), 'marcode-sync-cmd-')), 's.sqlite'));
   const bytes = randomBytes(16);
   store.setBootstrap(hashSecret(bytes));
   const s = await startSyncServer({ store, host: '127.0.0.1', port: 0 });
   cleanups.push(async () => { await s.close(); store.close(); });
-  return { url: s.url, code: encodeCode('MRB', bytes) };
+  return { url: s.url, code: encodeCode('MRB', bytes), store };
 }
 
 function io(home: string) {
@@ -84,6 +84,22 @@ suite('marcode sync', () => {
     assert.strictEqual(desk.lines.join('\n').includes('left the sync server'), true);
     await runSyncCommand({ kind: 'sync', action: 'devices', args: [] }, laptop);
     assert.strictEqual(laptop.lines.some((l) => l.startsWith('desk') && l.includes('revoked')), true);
+  });
+});
+
+suite('marcode sync revoke, interrupted', () => {
+  test('revoking a device that is already revoked still rotates the key', async () => {
+    const s = await server();
+    const desk = io(await home());
+    await runSyncCommand({ kind: 'sync', action: 'setup', args: [s.url, s.code, '--name', 'desk'] }, desk);
+    await runSyncCommand({ kind: 'sync', action: 'pair', args: [] }, desk);
+    const code = desk.lines.join('\n').match(/MRC-[0-9A-Z-]+/)![0];
+    const laptop = io(await home());
+    await runSyncCommand({ kind: 'sync', action: 'join', args: [s.url, code, '--name', 'laptop'] }, laptop);
+    const laptopId = (await readCredentials(laptop.home))!.deviceId;
+    s.store.revoke(laptopId);
+    assert.strictEqual(await runSyncCommand({ kind: 'sync', action: 'revoke', args: [laptopId.slice(0, 8)] }, desk), 0);
+    assert.deepStrictEqual((await readCredentials(desk.home))!.syncKeys.map((k) => k.epoch), [1, 2]);
   });
 });
 

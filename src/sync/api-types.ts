@@ -5,6 +5,8 @@ export interface DeviceRow {
   createdAt: number;
   lastSeenAt: number;
   revokedAt?: number;
+  /** An HMAC by a key holder over this row's id and public key; devices only ever seal keys to admitted rows. */
+  admission?: { epoch: number; tag: string };
 }
 
 /** A record as a device pushes it: `recordId` is random per record, so a retried push is stored once. */

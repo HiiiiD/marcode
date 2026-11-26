@@ -8,11 +8,13 @@ const SCHEMA = 1;
 
 interface DeviceDbRow {
   deviceId: string; name: string; publicKey: string; createdAt: number; lastSeenAt: number; revokedAt: number | null;
+  admissionEpoch: number | null; admissionTag: string | null;
 }
 
 const toDevice = (r: DeviceDbRow): DeviceRow => ({
   deviceId: r.deviceId, name: r.name, publicKey: r.publicKey, createdAt: r.createdAt, lastSeenAt: r.lastSeenAt,
   ...(r.revokedAt !== null ? { revokedAt: r.revokedAt } : {}),
+  ...(r.admissionEpoch !== null && r.admissionTag !== null ? { admission: { epoch: r.admissionEpoch, tag: r.admissionTag } } : {}),
 });
 
 /** Everything the server keeps. It holds only opaque blobs: no plaintext, key or pairing secret ever arrives. */
@@ -26,8 +28,10 @@ export class SyncStore {
       CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS devices (
         deviceId TEXT PRIMARY KEY, name TEXT NOT NULL, publicKey TEXT NOT NULL, tokenHash TEXT NOT NULL UNIQUE,
-        createdAt INTEGER NOT NULL, lastSeenAt INTEGER NOT NULL, revokedAt INTEGER
+        createdAt INTEGER NOT NULL, lastSeenAt INTEGER NOT NULL, revokedAt INTEGER,
+        admissionEpoch INTEGER, admissionTag TEXT
       );
+      CREATE TABLE IF NOT EXISTS epochs (epoch INTEGER PRIMARY KEY, tag TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS pairings (
         pairingId TEXT PRIMARY KEY, byDevice TEXT NOT NULL, wrapped TEXT NOT NULL,
         expiresAt INTEGER NOT NULL, claimedAt INTEGER
@@ -99,7 +103,13 @@ export class SyncStore {
     const exists = this.db.prepare('SELECT 1 AS one FROM devices WHERE deviceId = ? AND revokedAt IS NULL').get(deviceId);
     if (!exists) { return false; }
     this.db.prepare('UPDATE devices SET revokedAt = ? WHERE deviceId = ?').run(this.now(), deviceId);
+    this.db.prepare('DELETE FROM pairings WHERE byDevice = ? AND claimedAt IS NULL').run(deviceId);
     return true;
+  }
+
+  setAdmission(deviceId: string, epoch: number, tag: string): void {
+    this.db.prepare('UPDATE devices SET admissionEpoch = ?, admissionTag = ? WHERE deviceId = ? AND admissionTag IS NULL')
+      .run(epoch, tag, deviceId);
   }
 
   createPairing(pairingId: string, by: string, wrapped: string, expiresAt: number): void {
@@ -109,24 +119,31 @@ export class SyncStore {
 
   claimPairing(pairingId: string): { wrapped: string } | 'gone' {
     return this.tx(() => {
-      const row = this.db.prepare('SELECT wrapped, expiresAt, claimedAt FROM pairings WHERE pairingId = ?').get(pairingId) as
-        { wrapped: string; expiresAt: number; claimedAt: number | null } | undefined;
-      if (!row || row.claimedAt !== null || row.expiresAt < this.now()) { return 'gone' as const; }
+      const row = this.db.prepare(`SELECT p.wrapped, p.expiresAt, p.claimedAt, d.revokedAt FROM pairings p
+        JOIN devices d ON d.deviceId = p.byDevice WHERE p.pairingId = ?`).get(pairingId) as
+        { wrapped: string; expiresAt: number; claimedAt: number | null; revokedAt: number | null } | undefined;
+      if (!row || row.claimedAt !== null || row.revokedAt !== null || row.expiresAt < this.now()) { return 'gone' as const; }
       this.db.prepare('UPDATE pairings SET claimedAt = ? WHERE pairingId = ?').run(this.now(), pairingId);
       return { wrapped: row.wrapped };
     });
   }
 
-  createEpoch(epoch: number, sealedByDevice: Record<string, string>): boolean {
+  createEpoch(epoch: number, sealedByDevice: Record<string, string>, tag: string): boolean {
     return this.tx(() => {
-      if (this.db.prepare('SELECT 1 AS one FROM sealed_keys WHERE epoch = ? LIMIT 1').get(epoch)) { return false; }
+      if (this.db.prepare('SELECT 1 AS one FROM epochs WHERE epoch = ?').get(epoch)) { return false; }
+      this.db.prepare('INSERT INTO epochs (epoch, tag) VALUES (?, ?)').run(epoch, tag);
       this.insertSealed(epoch, sealedByDevice);
       return true;
     });
   }
 
-  addSealed(epoch: number, sealedByDevice: Record<string, string>): void {
-    this.tx(() => { this.insertSealed(epoch, sealedByDevice); });
+  /** Fills devices missing an existing epoch; false when the epoch was never created. */
+  addSealed(epoch: number, sealedByDevice: Record<string, string>): boolean {
+    return this.tx(() => {
+      if (!this.db.prepare('SELECT 1 AS one FROM epochs WHERE epoch = ?').get(epoch)) { return false; }
+      this.insertSealed(epoch, sealedByDevice);
+      return true;
+    });
   }
 
   private insertSealed(epoch: number, sealedByDevice: Record<string, string>): void {
@@ -135,9 +152,10 @@ export class SyncStore {
     }
   }
 
-  keysFor(deviceId: string): Array<{ epoch: number; sealed: string }> {
-    return (this.db.prepare('SELECT epoch, sealed FROM sealed_keys WHERE deviceId = ? ORDER BY epoch').all(deviceId) as
-      Array<{ epoch: number; sealed: string }>).map((r) => ({ epoch: r.epoch, sealed: r.sealed }));
+  keysFor(deviceId: string): Array<{ epoch: number; sealed: string; tag: string }> {
+    return (this.db.prepare(`SELECT s.epoch, s.sealed, e.tag FROM sealed_keys s JOIN epochs e ON e.epoch = s.epoch
+      WHERE s.deviceId = ? ORDER BY s.epoch`).all(deviceId) as
+      Array<{ epoch: number; sealed: string; tag: string }>).map((r) => ({ epoch: r.epoch, sealed: r.sealed, tag: r.tag }));
   }
 
   holders(): Array<{ epoch: number; deviceIds: string[] }> {

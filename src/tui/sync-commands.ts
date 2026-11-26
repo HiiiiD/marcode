@@ -86,13 +86,14 @@ export async function runSyncCommand(cmd: SyncCommand, io: SyncIo = realIo): Pro
       const prefix = operands[0] ?? '';
       const listed = await client.devices();
       if (!listed.ok) { io.err(`marcode sync revoke: ${listed.error}`); return 1; }
-      const matches = prefix === '' ? [] : listed.value.filter((d) => d.revokedAt === undefined && d.deviceId.startsWith(prefix));
+      const matches = prefix === '' ? [] : listed.value.filter((d) => d.deviceId.startsWith(prefix));
       if (matches.length !== 1) {
-        io.err(matches.length === 0 ? `No active device id starts with "${prefix}".` : `"${prefix}" matches ${matches.length} devices; type more of the id.`);
+        io.err(matches.length === 0 ? `No device id starts with "${prefix}".` : `"${prefix}" matches ${matches.length} devices; type more of the id.`);
         return 2;
       }
       if (matches[0].deviceId === creds.deviceId) { io.err('That is this device. Run `marcode sync leave` to remove it.'); return 2; }
-      const result = await client.revoke(matches[0].deviceId);
+      // Already revoked: an earlier revoke whose key rotation did not finish. Rotating again completes it.
+      const result = matches[0].revokedAt === undefined ? await client.revoke(matches[0].deviceId) : await client.rotateKey();
       if (!result.ok) { io.err(`marcode sync revoke: ${result.error}`); return 1; }
       await writeCredentials(home, result.value);
       io.out(`Revoked "${matches[0].name}". New records use a key it never had.`);

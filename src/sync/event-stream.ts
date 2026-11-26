@@ -1,7 +1,8 @@
-/** Reads a `text/event-stream` body, calling `onFrame` per event; comment frames (`: ping`) are skipped. */
+/** Reads a `text/event-stream` body, calling `onFrame` per event (comment frames are skipped) and `onActivity` per chunk. */
 export async function readEvents(
   body: ReadableStream<Uint8Array>,
   onFrame: (event: string, data: string) => void,
+  onActivity: () => void = () => {},
 ): Promise<void> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
@@ -9,6 +10,7 @@ export async function readEvents(
   for (;;) {
     const { value, done } = await reader.read();
     if (done) { return; }
+    onActivity();
     buffer += decoder.decode(value, { stream: true });
     let at: number;
     while ((at = buffer.indexOf('\n\n')) >= 0) {

@@ -225,7 +225,10 @@ These are not style preferences. Breaking one breaks the design.
   `children` list is derived from them.
 - **The sync server never sees plaintext, keys or pairing secrets.** It stores token hashes, public keys, sealed key
   blobs and ciphertext. Records are pushed with random record ids and get their seq from the server (several hosts
-  share one device's credentials); key epochs are create-only. Nothing under `src/sync/` or `src/sync-server/` imports
+  share one device's credentials); key epochs are create-only. A client seals keys only to device rows carrying a
+  valid admission tag (an HMAC by a key holder) and accepts a new epoch only when it is tagged with the previous
+  epoch's key, so the server can relay devices and epochs but never invent one. Sealed blobs are bound to their epoch
+  and recipient. Nothing under `src/sync/` or `src/sync-server/` imports
   `vscode`, and the client never imports the server.
 - **The webview loads no remote resources.** No CDN scripts, styles, fonts or images.
 - **CSP:** `default-src 'none'`; scripts and styles restricted to `webview.cspSource` plus

@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import type { DeviceRow, WireRecord } from '../sync/api-types';
+import { isDevicePublicKey } from '../sync/crypto';
 import { decodeCode } from '../sync/pairing-code';
 import { bearerOf, hashSecret, newToken } from './auth';
 import { EventHub } from './sse';
@@ -60,8 +61,22 @@ function records(v: unknown): WireRecord[] {
   });
 }
 
-const publicDevice = ({ deviceId, name, publicKey, createdAt, lastSeenAt, revokedAt }: DeviceRow): DeviceRow =>
-  ({ deviceId, name, publicKey, createdAt, lastSeenAt, ...(revokedAt !== undefined ? { revokedAt } : {}) });
+const publicDevice = ({ deviceId, name, publicKey, createdAt, lastSeenAt, revokedAt, admission }: DeviceRow): DeviceRow =>
+  ({ deviceId, name, publicKey, createdAt, lastSeenAt, ...(revokedAt !== undefined ? { revokedAt } : {}), ...(admission ? { admission } : {}) });
+
+/** Checked before any one-time secret is spent, so a malformed request cannot burn a code. */
+function newDevice(body: Json): { name: string; publicKey: string } {
+  const name = str(body.name, 'name');
+  const publicKey = str(body.publicKey, 'publicKey');
+  if (!isDevicePublicKey(publicKey)) { throw new HttpError(400, 'publicKey must be an X25519 public key'); }
+  return { name, publicKey };
+}
+
+const epochOf = (v: string): number => {
+  const epoch = Number(v);
+  if (!Number.isInteger(epoch) || epoch < 1) { throw new HttpError(400, 'epoch must be a positive integer'); }
+  return epoch;
+};
 
 export interface SyncServerOptions {
   store: SyncStore;
@@ -83,7 +98,7 @@ export async function startSyncServer(opts: SyncServerOptions): Promise<{ url: s
     return device;
   };
 
-  const issue = (name: string, publicKey: string): { deviceId: string; token: string } => {
+  const issue = ({ name, publicKey }: { name: string; publicKey: string }): { deviceId: string; token: string } => {
     const token = newToken();
     const device = store.addDevice(name, publicKey, hashSecret(token));
     hub.emit('devices', {});
@@ -101,16 +116,17 @@ export async function startSyncServer(opts: SyncServerOptions): Promise<{ url: s
 
     if (method === 'POST' && at('v1', 'bootstrap')) {
       const body = await readBody(req);
+      const device = newDevice(body);
       const bytes = decodeCode('MRB', str(body.code, 'code'), 16);
       if (!bytes || !store.takeBootstrap(hashSecret(bytes))) { throw new HttpError(403, 'bootstrap code is wrong or already used'); }
-      return issue(str(body.name, 'name'), str(body.publicKey, 'publicKey'));
+      return issue(device);
     }
 
     if (method === 'POST' && at('v1', 'pairings', '*', 'claim')) {
-      const body = await readBody(req);
+      const device = newDevice(await readBody(req));
       const claimed = store.claimPairing(parts[2]);
       if (claimed === 'gone') { throw new HttpError(410, 'pairing code expired or already used'); }
-      return { ...issue(str(body.name, 'name'), str(body.publicKey, 'publicKey')), wrapped: claimed.wrapped };
+      return { ...issue(device), wrapped: claimed.wrapped };
     }
 
     const device = authed(req);
@@ -134,16 +150,23 @@ export async function startSyncServer(opts: SyncServerOptions): Promise<{ url: s
       return null;
     }
 
+    if (method === 'PUT' && at('v1', 'devices', 'me', 'admission')) {
+      const body = await readBody(req);
+      store.setAdmission(device.deviceId, epochOf(String(body.epoch)), str(body.tag, 'tag'));
+      hub.emit('devices', {});
+      return null;
+    }
+
     if (method === 'PUT' && at('v1', 'keys', '*')) {
-      const epoch = Number(parts[2]);
-      if (!Number.isInteger(epoch) || epoch < 1) { throw new HttpError(400, 'epoch must be a positive integer'); }
-      if (!store.createEpoch(epoch, sealedMap((await readBody(req)).sealed))) { throw new HttpError(409, 'epoch exists'); }
+      const epoch = epochOf(parts[2]);
+      const body = await readBody(req);
+      if (!store.createEpoch(epoch, sealedMap(body.sealed), str(body.tag, 'tag'))) { throw new HttpError(409, 'epoch exists'); }
       hub.emit('keys', {});
       return null;
     }
 
     if (method === 'POST' && at('v1', 'keys', '*', 'sealed')) {
-      store.addSealed(Number(parts[2]), sealedMap((await readBody(req)).sealed));
+      if (!store.addSealed(epochOf(parts[2]), sealedMap((await readBody(req)).sealed))) { throw new HttpError(404, 'no such epoch'); }
       hub.emit('keys', {});
       return null;
     }
