@@ -1,4 +1,5 @@
 import type { SessionSummary } from '../protocol/messages';
+import { displayStatus } from '../client-core/display-status';
 
 export type SortKey = 'updatedAt' | 'createdAt';
 export type SortDir = 'asc' | 'desc';
@@ -7,6 +8,11 @@ export interface HistoryGroups { pinned: SessionSummary[]; rest: SessionSummary[
 
 export const DEFAULT_QUERY: HistoryQuery = { sort: 'updatedAt', dir: 'desc', text: '' };
 
+export const needsAttention = (s: SessionSummary): boolean => {
+  const shown = displayStatus(s);
+  return shown === 'awaiting-approval' || shown === 'error';
+};
+
 const matches = (s: SessionSummary, needle: string): boolean =>
   [s.title, s.name, s.model, s.providerId, s.summary?.text ?? '']
     .some((field) => field.toLowerCase().includes(needle));
@@ -14,7 +20,7 @@ const matches = (s: SessionSummary, needle: string): boolean =>
 export function queryHistory(sessions: SessionSummary[], q: HistoryQuery): HistoryGroups {
   const needle = q.text.trim().toLowerCase();
   const kept = sessions.filter((s) =>
-    (!q.needsAttention || s.status === 'awaiting-approval' || s.status === 'error')
+    (!q.needsAttention || needsAttention(s))
     && (needle === '' || matches(s, needle)));
   const sign = q.dir === 'asc' ? 1 : -1;
   const order = (a: SessionSummary, b: SessionSummary): number =>

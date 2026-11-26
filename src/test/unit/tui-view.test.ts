@@ -29,6 +29,10 @@ suite('tui view: roster rows', () => {
     assert.strictEqual(rows[3].suffix, 'vscode·4812');
     assert.strictEqual(rows[0].suffix, undefined);
   });
+  test('an idle parent with nested children running shows the running glyph', () => {
+    const rows = rosterRows([summary('a', { status: 'idle', subagents: { running: 1, awaitingApproval: 0 } })], null);
+    assert.deepStrictEqual(rows.map((r) => r.glyph), ['●']);
+  });
   test('pinned rows sort first, stably, and carry the foreign flag', () => {
     const rows = rosterRows([
       summary('a', { name: 'alpha' }),

@@ -67,6 +67,25 @@ suite("SessionHeader status", () => {
     assert.strictEqual(rosterCount.closest("[aria-live]") === null, true);
   });
 
+  // A parent whose own turn ended while hosted nested children still work is not idle.
+  test("an idle parent with nested children running reads Working", () => {
+    renderApp();
+    hydrate();
+    assert.strictEqual(screen.queryByText("Working") === null, true);
+    sendFromHost({ t: "sessions-changed", sessions: [summary("a", { subagents: { running: 1, awaitingApproval: 0 } })] });
+    screen.getByText("Working");
+
+    sendFromHost({ t: "sessions-changed", sessions: [summary("a")] });
+    assert.strictEqual(screen.queryByText("Working") === null, true);
+  });
+
+  test("a nested child waiting on approval counts toward the roster's needs-you", () => {
+    renderApp();
+    hydrate();
+    sendFromHost({ t: "sessions-changed", sessions: [summary("a", { subagents: { running: 1, awaitingApproval: 1 } })] });
+    screen.getByText(/1 needs you/i);
+  });
+
   test("the bypass badge is a live region mounted before it has anything to say", () => {
     renderApp();
     hydrate({ permissionMode: "default" });

@@ -9,6 +9,7 @@ import { SessionCreateMenu } from './session-create-menu';
 import { StaleTreesDialog } from './stale-trees';
 import { useStore } from '../store';
 import { statusView } from '../status';
+import { displayStatus } from '../../client-core/display-status';
 
 interface SessionPickerProps {
   /** Whether the panel is too narrow to split side by side. Measured once,
@@ -25,7 +26,7 @@ export function SessionPicker({ narrow, onReview, onFleet, onHistory }: SessionP
   const { state, post } = useStore();
   const root = state.layout.root;
   const horizontal = root.kind === 'split' && root.orientation === 'horizontal';
-  const needing = state.sessions.filter((s) => statusView(s.status).needsUser).length;
+  const needing = state.sessions.filter((s) => statusView(displayStatus(s)).needsUser).length;
 
   // One string for both `aria-label` and the tooltip below — a sighted
   // hover and a screen reader hear the same thing, rather than the tooltip

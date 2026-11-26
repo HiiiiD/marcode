@@ -309,4 +309,10 @@ suite('daemon client', function () {
       env: { ELECTRON_RUN_AS_NODE: '1' },
     });
   });
+
+  // The trace is written in the daemon, where the sessions run; marcode.debug lives in the window.
+  test('daemonSpawnCommand: a debug extension spawn asks the daemon for the lifecycle trace', () => {
+    const r = daemonSpawnCommand('/w', ['/r'], { execPath: '/code', argv1: undefined }, { script: '/x/dist/daemon.js', debug: true });
+    assert.deepStrictEqual(r.env, { ELECTRON_RUN_AS_NODE: '1', MARCODE_DEBUG: '1' });
+  });
 });

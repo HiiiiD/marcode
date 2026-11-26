@@ -7,6 +7,7 @@ import { pendingPrompts } from "../lib/pending-prompts";
 import { useStore } from "../store";
 import { closeSession, leafSessionIds } from "./layout-tree";
 import { usePaneDensity } from "./pane-density";
+import { displayStatus } from "../../client-core/display-status";
 import { StatusBadge } from "./status-badge";
 
 /** Which sessions get a branch header instead of the full session header: the ones that belong to another session. */
@@ -25,9 +26,10 @@ export function BranchPaneHeader({ pane }: { pane: PaneState }) {
   const { state, post, toggleMaximize } = useStore();
   const compact = usePaneDensity() !== "comfortable";
   const s = pane.summary;
+  const status = displayStatus(s);
   const side = s.kind === "side";
   const parent = s.parentId ? state.sessions.find((x) => x.id === s.parentId) : undefined;
-  const asksPermission = s.status === "awaiting-approval" && pendingPrompts(pane).some(({ item }) => item.role === "permission");
+  const asksPermission = status === "awaiting-approval" && pendingPrompts(pane).some(({ item }) => item.role === "permission");
   const maximized = state.maximizedId === s.id;
   const canMaximize = leafSessionIds(state.layout.root).length > 1;
   const Icon = side ? GitBranchIcon : BotIcon;
@@ -44,10 +46,10 @@ export function BranchPaneHeader({ pane }: { pane: PaneState }) {
       aria-label={label}
       className={cn(
         "relative flex shrink-0 items-center gap-2 overflow-hidden border-b border-border bg-branch/10 px-2 py-1 text-xs shadow-[inset_3px_0_0_var(--branch)]",
-        s.status === "awaiting-approval" && (asksPermission
+        status === "awaiting-approval" && (asksPermission
           ? "bg-attention/10 shadow-[inset_3px_0_0_var(--attention)]"
           : "bg-primary/10 shadow-[inset_3px_0_0_var(--primary)]"),
-        s.status === "error" && "bg-destructive/10 shadow-[inset_3px_0_0_var(--destructive)]",
+        status === "error" && "bg-destructive/10 shadow-[inset_3px_0_0_var(--destructive)]",
       )}
     >
       <Icon aria-hidden className="size-3.5 shrink-0 text-branch" />
@@ -65,7 +67,7 @@ export function BranchPaneHeader({ pane }: { pane: PaneState }) {
       ) : (
         <span className="shrink-0 font-semibold text-branch">{label}</span>
       )}
-      <StatusBadge status={s.status} wordFor="error" warm={asksPermission} quietIdle />
+      <StatusBadge status={status} wordFor="error" warm={asksPermission} quietIdle />
       {s.permissionMode === "bypass" && (
         <span role="status" className="shrink-0 rounded-full border border-destructive/40 bg-destructive/10 px-1.5 py-0.5 text-[0.7rem] font-medium text-destructive">
           Bypassing permissions

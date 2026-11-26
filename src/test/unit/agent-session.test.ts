@@ -1226,6 +1226,22 @@ suite('AgentSession background tasks', () => {
     await session.dispose();
   });
 
+  test('a background command lets the turn go idle but stays counted until it settles', async () => {
+    const provider = new FakeProvider(() => [
+      { kind: 'background-tasks-changed', taskIds: [], commandIds: ['cmd-1'] },
+      { kind: 'turn-end', reason: 'done' },
+    ]);
+    const session = new AgentSession(baseState(), provider, store, sink);
+    session.send('start the dev server');
+    await settle();
+    assert.deepStrictEqual([session.state.status, session.state.backgroundCommands], ['idle', 1]);
+
+    provider.runs[0].emit({ kind: 'task-settled', taskId: 'cmd-1' });
+    await settle();
+    assert.strictEqual(session.state.backgroundCommands, undefined);
+    await session.dispose();
+  });
+
   test('the session goes idle once the background-tasks-changed event reports the set drained', async () => {
     const provider = new FakeProvider(() => [
       { kind: 'background-tasks-changed', taskIds: ['bg-1'] },

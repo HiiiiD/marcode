@@ -4,6 +4,7 @@ import { StatusBadge } from '../webview/components/status-badge';
 import { leafSessionIds } from '../webview/components/layout-tree';
 import type { PaneState } from '../webview/reducer';
 import type { PaneLayout, SessionId } from '../protocol/messages';
+import { displayStatus } from '../client-core/display-status';
 
 /**
  * The forced first step of the fleet tab: pick which of the sidebar's
@@ -41,7 +42,7 @@ export function SessionPicker({
             onClick={() => onPick(sessionId)}
           >
             <span className="truncate font-medium">{paneState.summary.title}</span>
-            <StatusBadge status={paneState.summary.status} />
+            <StatusBadge status={displayStatus(paneState.summary)} />
           </Button>
         );
       })}

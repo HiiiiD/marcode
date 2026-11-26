@@ -1,4 +1,5 @@
 import type { SessionId, SessionStatus, SessionSummary } from '../../protocol/messages';
+import { displayStatus } from '../../client-core/display-status';
 
 export interface RosterRow {
   id: SessionId; title: string; glyph: '●' | '○' | '!' | '✗';
@@ -18,7 +19,7 @@ export function rosterRows(sessions: SessionSummary[], focusedId: SessionId | nu
     .map((s): RosterRow => ({
       id: s.id,
       title: s.name || s.title,
-      glyph: GLYPH[s.status],
+      glyph: GLYPH[displayStatus(s)],
       ...(s.owner ? { suffix: `${s.owner.host}·${s.owner.pid}` } : {}),
       dim: s.owner !== undefined,
       focused: s.id === focusedId,

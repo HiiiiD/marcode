@@ -371,6 +371,39 @@ suite('AgentSession send on a run that queues natively', () => {
     assert.strictEqual(session.state.status, 'running');
   });
 
+  // Claude starts a turn by itself when a background command or Monitor finishes; its own
+  // session_state_changed is the first sign, a second or more before any output.
+  test('a turn-start after turn-end revives running before any output', async () => {
+    const { provider, sink, session } = makeSession();
+    session.send('first');
+    await settle();
+    const run = provider.runs[0];
+    run.emit({ kind: 'turn-end', reason: 'done' });
+    await settle();
+    assert.strictEqual(session.state.status, 'idle');
+
+    run.emit({ kind: 'turn-start' });
+    await settle();
+    assert.strictEqual(session.state.status, 'running');
+    assert.strictEqual(sink.statuses.at(-1), 'running');
+
+    run.emit({ kind: 'turn-end', reason: 'done' });
+    await settle();
+    assert.strictEqual(session.state.status, 'idle');
+  });
+
+  test('a turn-start during a running turn changes nothing', async () => {
+    const { provider, sink, session } = makeSession();
+    session.send('first');
+    await settle();
+    const before = sink.statuses.length;
+
+    provider.runs[0].emit({ kind: 'turn-start' });
+    await settle();
+    assert.strictEqual(session.state.status, 'running');
+    assert.strictEqual(sink.statuses.length, before);
+  });
+
   test('a subagent event after turn-end does not revive running', async () => {
     const { provider, session } = makeSession();
     session.send('first');

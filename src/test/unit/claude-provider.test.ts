@@ -1259,7 +1259,7 @@ suite('ClaudeProvider (cancellation)', () => {
           type: 'system', subtype: 'background_tasks_changed',
           tasks: [
             { task_id: 'bg-1', task_type: 'agent', description: 'Investigating' },
-            { task_id: 'bg-2', task_type: 'bash', description: 'Running tests' },
+            { task_id: 'bg-2', task_type: 'local_bash', description: 'Running tests' },
           ],
           uuid: 'u1', session_id: 's1',
         };
@@ -1795,7 +1795,7 @@ suite('ClaudeProvider MCP management', () => {
     const run = provider.start({ cwd: '/tmp', permissionMode: 'default', sessionId: 's' });
     run.send('go');
     await flushMacrotask();
-    assert.strictEqual(envOf(fake.calls[0].options)?.ENABLE_CLAUDEAI_MCP_SERVERS, undefined);
+    assert.strictEqual(envOf(fake.calls[0].options)?.ENABLE_CLAUDEAI_MCP_SERVERS, process.env.ENABLE_CLAUDEAI_MCP_SERVERS);
     await run.dispose();
   });
 
@@ -1808,6 +1808,20 @@ suite('ClaudeProvider MCP management', () => {
     const env = envOf(fake.calls[0].options);
     assert.deepStrictEqual([env?.CLAUDE_CONFIG_DIR, env?.ENABLE_CLAUDEAI_MCP_SERVERS], ['/cfg', 'false']);
     await run.dispose();
+  });
+
+  // The SDK otherwise consumes the CLI's session_state_changed and never forwards it.
+  test('every run asks the CLI to forward session state, whatever the connector setting', async () => {
+    for (const instance of [undefined, { claudeAiConnectors: true }, { env: { CLAUDE_CONFIG_DIR: '/cfg' } }]) {
+      const fake = fakeLoadQuery();
+      const provider = new ClaudeProvider(fake.load as never, undefined, instance);
+      const run = provider.start({ cwd: '/tmp', permissionMode: 'default', sessionId: 's' });
+      run.send('go');
+      await flushMacrotask();
+      const env = envOf(fake.calls[0].options);
+      assert.strictEqual(env?.CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS, '1');
+      await run.dispose();
+    }
   });
 
   test('status before the first send asks a probe and maps origins', async () => {

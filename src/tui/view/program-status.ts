@@ -1,4 +1,5 @@
 import type { SessionSummary } from '../../protocol/messages';
+import { displayStatus } from '../../client-core/display-status';
 
 export type ProgramStatusReport =
   | { state: 'idle' }
@@ -9,7 +10,7 @@ export type ProgramStatusReport =
 const APP = 'marcode';
 
 export function programStatus(sessions: readonly SessionSummary[]): ProgramStatusReport {
-  const waiting = sessions.filter((s) => s.status === 'awaiting-approval');
+  const waiting = sessions.filter((s) => displayStatus(s) === 'awaiting-approval');
   if (waiting.length > 0) {
     const first = waiting[0]!;
     const name = first.name || first.title;
@@ -20,7 +21,7 @@ export function programStatus(sessions: readonly SessionSummary[]): ProgramStatu
       message: waiting.length === 1 ? `${name} awaits ${noun}` : `${waiting.length} sessions await ${noun}`,
     };
   }
-  const running = sessions.filter((s) => s.status === 'running').length;
+  const running = sessions.filter((s) => displayStatus(s) === 'running').length;
   if (running > 0) {
     return { state: 'working', app: APP, message: running === 1 ? '1 session running' : `${running} sessions running` };
   }

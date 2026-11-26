@@ -62,4 +62,9 @@ suite('daemon idle monitor', () => {
     assert.strictEqual(isBusy([{ status: 'idle' }, { status: 'running' }]), true);
     assert.strictEqual(isBusy([{ status: 'awaiting-approval' }]), true);
   });
+
+  // An idle session's background command (a test run the agent will wake for) dies with the daemon.
+  test('isBusy: an idle session with a background command running counts', () => {
+    assert.strictEqual(isBusy([{ status: 'idle', backgroundCommands: 1 }]), true);
+  });
 });

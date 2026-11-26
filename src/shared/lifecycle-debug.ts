@@ -14,3 +14,9 @@ export function lifecycleDebug(scope: string, metadata: Record<string, unknown>)
   if (!enabled) { return; }
   console.warn(`[marcode:lifecycle] ${scope}`, metadata);
 }
+
+/** How a detached daemon learns the window's `marcode.debug`: read once at startup. */
+export function lifecycleDebugFromEnv(env: NodeJS.ProcessEnv = process.env): void {
+  if (env.MARCODE_DEBUG === '1') { setLifecycleDebug(true); }
+  delete env.MARCODE_DEBUG;
+}
