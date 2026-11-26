@@ -1,4 +1,4 @@
-import { FtsMemoryStore } from '../../memory/fts-memory-store';
+import { FtsMemoryStore } from '../../memory/fts/fts-memory-store';
 
 const [command, file, query] = process.argv.slice(2);
 

@@ -1,8 +1,8 @@
-import { openDatabase, type SqlDb } from './sqlite-driver';
-import type { SessionId, TranscriptItem } from '../protocol/messages';
-import { isWithin } from '../shared/path-scope';
-import { extractiveDigest, indexLine, type SessionDigest } from './digest';
-import type { DigestMeta, MemoryDetail, MemoryHit, MemoryStore, SessionRecord } from './types';
+import { openDatabase, type SqlDb } from '../sqlite-driver';
+import type { SessionId, TranscriptItem } from '../../protocol/messages';
+import { hasProjectColumn, searchRows } from './fts-search';
+import { extractiveDigest, indexLine, type SessionDigest } from '../digest';
+import type { DigestMeta, MemoryDetail, MemoryHit, MemoryStore, SearchOpts, SessionRecord } from '../types';
 
 /**
  * The slice of `TranscriptStore` this store needs to answer `fetch()` — see
@@ -29,7 +29,6 @@ export const FETCH_WINDOW = 40;
  * never to migrate it.
  */
 const SCHEMA_VERSION = 2;
-const SCOPED_FETCH = 500;
 
 /**
  * v1's only `MemoryStore`: one FTS5 row per session, upserted whenever that
@@ -77,6 +76,9 @@ export class FtsMemoryStore implements MemoryStore {
         forUpdatedAt INTEGER NOT NULL, json TEXT NOT NULL
       );
     `);
+    // Added, never versioned: a user_version bump would make an older build sharing this file
+    // drop both tables, LLM digests included. Older inserts name their columns, so they still work.
+    if (!hasProjectColumn(this.db)) { this.db.exec('ALTER TABLE digests ADD COLUMN projectId TEXT'); }
   }
 
   async index(record: SessionRecord): Promise<void> {
@@ -99,9 +101,12 @@ export class FtsMemoryStore implements MemoryStore {
         record.sessionId, record.providerId, record.cwd, firstItemId, record.closedAt,
       );
       this.db.prepare(`
-        INSERT INTO digests (sessionId, source, summarizerVersion, forUpdatedAt, json)
-        VALUES (?, ?, ?, ?, ?)
-      `).run(record.sessionId, digest.source, digest.summarizerVersion, digest.forUpdatedAt, JSON.stringify(digest));
+        INSERT INTO digests (sessionId, source, summarizerVersion, forUpdatedAt, json, projectId)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(
+        record.sessionId, digest.source, digest.summarizerVersion, digest.forUpdatedAt, JSON.stringify(digest),
+        record.projectId ?? null,
+      );
       this.db.exec('COMMIT');
     } catch (err) {
       this.db.exec('ROLLBACK');
@@ -138,58 +143,12 @@ export class FtsMemoryStore implements MemoryStore {
     }]));
   }
 
-  /**
-   * FTS5's `MATCH` clause has its own query grammar — column filters,
-   * `AND`/`OR`/`NOT`, prefix `*`, phrase quoting — that runs BEFORE
-   * tokenization, so punctuation a caller never chose to mean anything
-   * special (`?`, `:`, `/`, `-`, `+`, an empty string) is a syntax error, not
-   * "no results". Recall's contract (see the design spec's Error handling
-   * section) is that a bad query returns no hits rather than throwing, so
-   * every query is reduced to plain double-quoted barewords — FTS5's
-   * implicit AND between quoted terms reproduces the old unquoted-AND
-   * behaviour for ordinary alphanumeric queries — and any remaining SQL
-   * error (a corrupt index, say) is caught rather than left to propagate.
-   */
-  async search(
-    query: string,
-    opts: { providerId?: string; limit?: number; match?: 'all' | 'any'; cwdWithin?: string } = {},
-  ): Promise<MemoryHit[]> {
-    const limit = opts.limit ?? 20;
-    // The folder filter runs in JS (path comparison is platform-dependent), so over-fetch to still fill `limit`.
-    const fetchLimit = opts.cwdWithin ? Math.max(limit, SCOPED_FETCH) : limit;
-    const providerId = opts.providerId ?? null;
-    const terms = query.match(/[\p{L}\p{N}_]+/gu) ?? [];
-    if (terms.length === 0) { return []; }
-    const match = terms.map((term) => `"${term}"`).join(opts.match === 'any' ? ' OR ' : ' ');
-    try {
-      const rows = this.db.prepare(`
-        SELECT sessionId, firstItemId, summary, closedAt, providerId, cwd, bm25(sessions_fts) AS rank
-        FROM sessions_fts
-        WHERE sessions_fts MATCH ?
-          AND (? IS NULL OR providerId = ?)
-        ORDER BY rank
-        LIMIT ?
-      `).all(match, providerId, providerId, fetchLimit) as Array<{
-        sessionId: string; firstItemId: string; summary: string; closedAt: number;
-        providerId: string; cwd: string; rank: number;
-      }>;
-      const inScope = opts.cwdWithin === undefined
-        ? rows
-        : rows.filter((row) => isWithin(opts.cwdWithin as string, row.cwd));
-      return inScope.slice(0, limit).map((row) => ({
-        sessionId: row.sessionId,
-        itemId: row.firstItemId,
-        snippet: row.summary,
-        // bm25() is negative and lower-is-better; flip sign so a caller reads
-        // "higher score is more relevant", the ordinary convention.
-        score: -row.rank,
-        ts: row.closedAt,
-        cwd: row.cwd,
-      }));
-    } catch (err) {
-      console.error('[mar-code] memory search failed', err);
-      return [];
-    }
+  async search(query: string, opts: SearchOpts = {}): Promise<MemoryHit[]> {
+    return searchRows(this.db, query, opts);
+  }
+
+  async setProject(sessionId: SessionId, projectId: string): Promise<void> {
+    this.db.prepare('UPDATE digests SET projectId = ? WHERE sessionId = ?').run(projectId, sessionId);
   }
 
   async fetch(hit: { sessionId: SessionId; itemId: string }): Promise<MemoryDetail> {
