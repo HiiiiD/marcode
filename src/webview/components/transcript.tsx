@@ -42,7 +42,7 @@ export function Transcript({
     // descendant — can call `useMessageScroller()` to reveal an item in this
     // transcript. Nothing else about the scroller moved.
     <NestedMessagesContext value={nested.byChild}>
-      <MessageScroller className="relative h-full">
+      <MessageScroller className="transcript-scope relative h-full">
         {pane.items.length === 0 && !pane.hasMore && <EmptyPane pane={pane} />}
         <MessageScrollerViewport className="px-2" preserveScrollOnPrepend>
           {/* `justify-end` only bites while the content is shorter than the

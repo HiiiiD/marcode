@@ -23,7 +23,7 @@ export type TranscriptItemRole =
  */
 const FRAME: Record<TranscriptItemRole, string> = {
   user: cn(
-    'rounded-lg px-3 py-2 text-sm leading-relaxed',
+    'rounded-lg px-3 py-2 text-sm',
     // Derived, not a token lookup: --muted is editorWidget-background, which
     // several themes set equal to the sidebar background. Mixing toward the
     // foreground guarantees the block separates from the column in light,
@@ -31,7 +31,7 @@ const FRAME: Record<TranscriptItemRole, string> = {
     'bg-[color-mix(in_oklch,var(--color-muted),var(--color-foreground)_7%)]',
   ),
   // The reading surface: more air above and below than the rows of tool activity around it, so the answer stands out from the machinery.
-  assistant: 'text-sm leading-relaxed text-foreground',
+  assistant: 'text-sm text-foreground',
   tool: '',
   // Flat like the tool rows it sits among: a worker or a team is one more row of the work log, with no label, time or rule of its own.
   subagent: '',

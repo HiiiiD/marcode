@@ -59,6 +59,7 @@
   --attention: var(--vscode-editorWarning-foreground, var(--vscode-charts-yellow, #cca700));
   --branch: var(--vscode-charts-purple, #b180d7);
   --radius: 4px;
+  --transcript-scale: 1;
 }
 
 @theme inline {
@@ -117,6 +118,14 @@
 @keyframes working-dot {
   0%, 90%, 100% { opacity: 0.3; }
   45% { opacity: 1; }
+}
+
+/* One text size for the whole transcript (prose, the user's turns, tool rows), and its spacing, both scaled from
+   VS Code's font size by `transcript.density`. Tailwind reads both through these variables at runtime. */
+.transcript-scope {
+  --text-xs: calc(var(--vscode-font-size, 13px) * var(--transcript-scale));
+  --text-sm: calc(var(--vscode-font-size, 13px) * var(--transcript-scale));
+  --spacing: calc(0.25rem * var(--transcript-scale));
 }
 
 body {

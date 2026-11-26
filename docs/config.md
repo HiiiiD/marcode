@@ -141,6 +141,16 @@ A specific key beats the broad key it derives from, which beats the automatic co
 
 Default: `{}`
 
+## `transcript.density`
+
+How big and how spaced the transcript is. In the panels, prose, your messages and tool rows share one text size taken from VS Code's font size, and `"compact"` / `"comfortable"` scale it, with the transcript's spacing, by about one point down or up (12px / 14px at VS Code's default 13px). A terminal cannot change its font size, so the TUI applies only the spacing: `"compact"` packs tool cards with no blank line between them, `"comfortable"` leaves two blank lines under each message. Takes effect after a window reload (restart the TUI).
+
+```json
+{ "transcript": { "density": "compact" } }
+```
+
+Default: `"default"`
+
 ## `spawn.preference`
 
 Where `marcode__spawn_session` and `marcode__spawn_collaborators` run the sessions they start when the model does not say. `"auto"` leaves it to the model, and the tool descriptions steer it toward nesting for work it only waits on. `"nested"` makes nested (a card in the caller's transcript, one grouped card for a team) the default and `"pane"` makes a pane the default. An explicit `nested` argument from the model always wins, so a session the user needs to talk to can still be spawned in a pane. Requires a window reload.

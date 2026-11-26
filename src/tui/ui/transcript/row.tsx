@@ -11,6 +11,7 @@ import { PermissionCard } from './permission-card';
 import { RelocationCardView, type RelocationKeys } from './relocation-card';
 import { SubagentCard } from './subagent-card';
 import { ToolCard } from './tool-card';
+import { useTranscriptGaps } from '../transcript-gaps';
 
 // Readable measure on wide terminals; the bar groups a message with its body.
 const MAX_WIDTH = 100;
@@ -18,10 +19,11 @@ const MAX_WIDTH = 100;
 function Bar({ color, tint, selected, children }: { color: string; tint?: boolean; selected: boolean; children: ReactNode }) {
   const tokens = useTokens();
   const theme = useTheme();
+  const gaps = useTranscriptGaps();
   return (
     <box
       maxWidth={MAX_WIDTH}
-      marginBottom={1}
+      marginBottom={gaps.message}
       border={['left']}
       borderStyle="single"
       {...(tokens ? { customBorderChars: BAR_CHARS } : {})}

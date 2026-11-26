@@ -2,16 +2,18 @@ import type { ReactNode } from 'react';
 import { useTheme } from '../termcn/hooks/use-theme';
 import type { TuiTokens } from '../tokens/derive-tokens';
 import { BAR_CHARS } from './bar-border';
+import { useTranscriptGaps } from '../transcript-gaps';
 
 export function Panel(props: {
   tokens: TuiTokens; open: boolean; selected: boolean; maxWidth: number; header: ReactNode; children?: ReactNode;
 }) {
   const theme = useTheme();
+  const gaps = useTranscriptGaps();
   return (
     <box
       flexDirection="column"
       maxWidth={props.maxWidth}
-      marginBottom={1}
+      marginBottom={gaps.tool}
       border={['left']}
       customBorderChars={BAR_CHARS}
       borderColor={props.selected ? theme.colors.primary : theme.colors.border}

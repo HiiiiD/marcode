@@ -1,5 +1,6 @@
 import * as assert from 'assert';
 import { defaultHostConfig, parseHostConfig, reloadSignature } from '../../host/host-config';
+import { densityToCss, tuiGaps } from '../../shared/transcript-density';
 
 suite('host-config', () => {
   test('an absent file is the defaults with no warnings', () => {
@@ -120,5 +121,22 @@ suite('host-config', () => {
     const a = parseHostConfig({ theme: { primary: '#ffffff' } }).config;
     const b = parseHostConfig({ theme: { primary: '#000000' } }).config;
     assert.notStrictEqual(reloadSignature(a), reloadSignature(b));
+  });
+
+  test('transcript.density defaults to default, accepts the three levels and warns on anything else', () => {
+    assert.strictEqual(defaultHostConfig().transcript.density, 'default');
+    assert.strictEqual(parseHostConfig({ transcript: { density: 'compact' } }).config.transcript.density, 'compact');
+    const bad = parseHostConfig({ transcript: { density: 'tiny' } });
+    assert.strictEqual(bad.config.transcript.density, 'default');
+    assert.strictEqual(bad.warnings.length, 1);
+    assert.strictEqual(parseHostConfig({ transcript: 'compact' }).warnings.length, 1);
+  });
+
+  test('the panel only overrides the scale off the default, and the terminal packs tool cards when compact', () => {
+    assert.strictEqual(densityToCss('default'), '');
+    assert.strictEqual(densityToCss('compact'), ':root{--transcript-scale:0.92}');
+    assert.deepStrictEqual(tuiGaps('compact'), { message: 1, tool: 0 });
+    assert.deepStrictEqual(tuiGaps('default'), { message: 1, tool: 1 });
+    assert.deepStrictEqual(tuiGaps('comfortable'), { message: 2, tool: 1 });
   });
 });

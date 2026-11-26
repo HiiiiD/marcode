@@ -11,6 +11,7 @@ import { TuiStoreProvider } from './store';
 import { detectTokens } from './tokens/detect-tokens';
 import { DetectedTokensProvider } from './tokens/tokens-provider';
 import { TuiThemeProvider } from './tui-theme';
+import { TranscriptGapsProvider } from './transcript-gaps';
 
 const message = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
@@ -103,6 +104,7 @@ async function runTui(cmd: Extract<CliCommand, { kind: 'run' }>): Promise<void> 
     <DetectedTokensProvider detect={detect}>
       <TuiThemeProvider>
         <TuiStoreProvider transport={booted.loopback.transport}>
+          <TranscriptGapsProvider density={booted.fileConfig.transcript.density}>
           <App
             launchCwd={booted.launchCwd}
             prompt={cmd.prompt}
@@ -112,6 +114,7 @@ async function runTui(cmd: Extract<CliCommand, { kind: 'run' }>): Promise<void> 
             subscribeNotices={notices.subscribe}
             onQuit={() => { void shutdown(0); }}
           />
+          </TranscriptGapsProvider>
         </TuiStoreProvider>
       </TuiThemeProvider>
     </DetectedTokensProvider>,
