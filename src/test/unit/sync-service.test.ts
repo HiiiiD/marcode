@@ -167,6 +167,47 @@ suite('SyncService', () => {
   });
 });
 
+suite('SyncService under concurrency', () => {
+  test('a busy interim comes from the last panel at once, never after the final one', async () => {
+    const s = await server();
+    const desk = await service();
+    await desk.handle({ t: 'sync-setup', server: s.url, code: s.code, name: 'desk' });
+    await desk.handle({ t: 'sync-open' });
+    const events: string[] = [];
+    const leaving = desk.svc.handle({ t: 'sync-leave' }, (p) => { events.push(`interim:${p.state}:${p.state === 'paired' ? p.busy : ''}`); });
+    assert.deepStrictEqual(events, ['interim:paired:leave']);
+    const final = await leaving;
+    events.push(`final:${final.state}`);
+    await new Promise((r) => setTimeout(r, 300));
+    assert.strictEqual(events.at(-1), 'final:unpaired');
+    assert.strictEqual(desk.svc.status(), 'off');
+  });
+
+  test('two project changes in quick succession both land', async () => {
+    const s = await server();
+    const resolve = async (cwd: string) => ({ projectId: `github.com/x/${path.basename(cwd)}`, root: cwd });
+    const desk = await service({ roots: ['/w/a', '/w/b'], resolve });
+    await desk.handle({ t: 'sync-setup', server: s.url, code: s.code, name: 'desk' });
+    await Promise.all([
+      desk.handle({ t: 'sync-project', path: '/w/a', choice: 'own' }),
+      desk.handle({ t: 'sync-project', path: '/w/b', choice: { link: 'github.com/x/a' } }),
+    ]);
+    const config = JSON.parse(await fs.readFile(configPath(desk.home), 'utf8')) as { projects: { overrides: unknown[] } };
+    assert.deepStrictEqual(config.projects.overrides, [{ path: '/w/a', project: 'own' }, { path: '/w/b', project: 'github.com/x/a' }]);
+  });
+
+  test('a project change keeps overrides written by someone else since startup', async () => {
+    const s = await server();
+    const desk = await service({ roots: ['/w/a'], resolve: async (cwd) => ({ projectId: 'github.com/x/a', root: cwd }) });
+    await desk.handle({ t: 'sync-setup', server: s.url, code: s.code, name: 'desk' });
+    const config = JSON.parse(await fs.readFile(configPath(desk.home), 'utf8')) as Record<string, unknown>;
+    await fs.writeFile(configPath(desk.home), JSON.stringify({ ...config, projects: { overrides: [{ path: '/elsewhere', project: 'own' }] } }));
+    await desk.handle({ t: 'sync-project', path: '/w/a', choice: 'own' });
+    const after = JSON.parse(await fs.readFile(configPath(desk.home), 'utf8')) as { projects: { overrides: unknown[] } };
+    assert.deepStrictEqual(after.projects.overrides, [{ path: '/elsewhere', project: 'own' }, { path: '/w/a', project: 'own' }]);
+  });
+});
+
 suite('project rows', () => {
   const refs: Record<string, ProjectRef | undefined> = {
     '/w/a': { projectId: 'github.com/x/a', root: '/w/a' },

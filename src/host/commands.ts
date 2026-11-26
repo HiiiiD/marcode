@@ -84,7 +84,7 @@ export function registerCommands(d: CommandDeps): vscode.Disposable[] {
     vscode.commands.registerCommand('marcode.sync.open', async () => {
       // The sidebar may be collapsed or not yet resolved; a post to it would be dropped.
       await vscode.commands.executeCommand('mar-code.panel.focus');
-      d.provider.post({ t: 'open-sync' });
+      d.provider.postWhenReady({ t: 'open-sync' });
     }),
     vscode.commands.registerCommand('marcode.login', async () => {
       const picks = [...d.connection.loginRecipes.entries()]

@@ -43,6 +43,8 @@ export class SyncService {
   private current: SyncStatus = 'off';
   private timer: NodeJS.Timeout | undefined;
   private readonly inflight = new Map<string, Promise<SyncPanel>>();
+  private lastPaired: Paired | undefined;
+  private projectWrites: Promise<unknown> = Promise.resolve();
 
   constructor(private readonly deps: SyncServiceDeps) {
     this.overrides = [...deps.overrides];
@@ -60,8 +62,19 @@ export class SyncService {
     if (this.timer) { clearInterval(this.timer); }
   }
 
-  /** Never rejects; a request already running for the same key is joined rather than repeated. */
+  /**
+   * Never rejects; a request already running for the same key is joined rather than repeated. A
+   * busy interim is sent at once from the last panel, so it can never arrive after the final one.
+   */
   handle(msg: SyncMessage, interim: (panel: SyncPanel) => void): Promise<SyncPanel> {
+    if (msg.t === 'sync-project') {
+      const write = this.projectWrites.then(() => this.run(msg, interim))
+        .catch((err: unknown) => this.panel({ message: err instanceof Error ? err.message : String(err) }));
+      this.projectWrites = write;
+      return write;
+    }
+    const busyKind = msg.t === 'sync-pair' ? 'pair' : msg.t === 'sync-revoke' ? 'revoke' : msg.t === 'sync-leave' ? 'leave' : undefined;
+    if (busyKind && this.lastPaired && !this.inflight.size) { interim({ ...this.lastPaired, busy: busyKind }); }
     const key = msg.t === 'sync-revoke' ? `${msg.t}:${msg.deviceId}` : msg.t;
     const running = this.inflight.get(key);
     if (running) { return running; }
@@ -119,11 +132,11 @@ export class SyncService {
       case 'sync-forget':
         await removeCredentials(this.deps.home);
         this.pairing = undefined;
+        this.lastPaired = undefined;
         this.setStatus('off');
         return this.panel();
       case 'sync-project': {
-        this.overrides = applyProjectChoice(this.overrides, msg.path, msg.choice);
-        await this.patchProjects();
+        await this.writeProjectChoice(msg.path, msg.choice);
         return this.panel();
       }
       default:
@@ -131,10 +144,8 @@ export class SyncService {
     }
     if (!creds) { return this.panel(); }
     const client = this.client(creds);
-    const busy = (kind: Paired['busy']) => { void this.panel().then((p) => { if (p.state === 'paired') { interim({ ...p, busy: kind }); } }); };
     switch (msg.t) {
       case 'sync-pair': {
-        busy('pair');
         const result = await client.createPairing();
         if (!result.ok) { return this.panel({ message: result.error }); }
         await writeCredentials(this.deps.home, client.credentials);
@@ -142,7 +153,6 @@ export class SyncService {
         return this.panel();
       }
       case 'sync-revoke': {
-        busy('revoke');
         const device = unwrap(await client.devices())?.find((d) => d.deviceId === msg.deviceId);
         const result = device?.revokedAt !== undefined ? await client.rotateKey() : await client.revoke(msg.deviceId);
         if (!result.ok) { return this.panel({ message: result.error }); }
@@ -150,11 +160,11 @@ export class SyncService {
         return this.panel();
       }
       case 'sync-leave': {
-        busy('leave');
         const result = await client.leave();
         await removeCredentials(this.deps.home);
         await this.patchSync({});
         this.pairing = undefined;
+        this.lastPaired = undefined;
         this.setStatus('off');
         return result.ok ? this.panel() : { state: 'unpaired', defaultName: this.defaultName(), error: { message: `This device's sync data was removed, but the server could not be told: ${result.error}` } };
       }
@@ -182,10 +192,12 @@ export class SyncService {
       }));
     }
     if (this.pairing && this.pairing.expiresAt <= Date.now()) { this.pairing = undefined; }
-    return {
+    const panel: Paired = {
       state: 'paired', server: creds.server, deviceName: creds.deviceName, connection, devices: this.lastDevices, projects,
-      ...(this.pairing ? { pairing: this.pairing } : {}), ...(error ? { error } : {}),
+      ...(this.pairing ? { pairing: this.pairing } : {}),
     };
+    this.lastPaired = panel;
+    return error ? { ...panel, error } : panel;
   }
 
   private async rawConfig(): Promise<Record<string, unknown>> {
@@ -196,9 +208,16 @@ export class SyncService {
     await patchConfig(this.deps.configFile, { sync });
   }
 
-  private async patchProjects(): Promise<void> {
+  /** Applied to the overrides on disk at write time, so another window's or a hand edit since startup survives. */
+  private async writeProjectChoice(root: string, choice: 'shared' | 'own' | { link: string }): Promise<void> {
     const raw = await this.rawConfig();
     const projects = typeof raw.projects === 'object' && raw.projects !== null ? raw.projects as Record<string, unknown> : {};
-    await patchConfig(this.deps.configFile, { projects: { ...projects, overrides: this.overrides } });
+    const onDisk = Array.isArray(projects.overrides)
+      ? (projects.overrides as unknown[]).filter((o): o is ProjectOverride =>
+        typeof o === 'object' && o !== null && typeof (o as ProjectOverride).path === 'string' && typeof (o as ProjectOverride).project === 'string')
+      : [];
+    const next = applyProjectChoice(onDisk, root, choice);
+    await patchConfig(this.deps.configFile, { projects: { ...projects, overrides: next } });
+    this.overrides = next;
   }
 }

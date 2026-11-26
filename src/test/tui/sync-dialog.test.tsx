@@ -79,3 +79,9 @@ test('the status line appears only when sync is broken', async () => {
   await m.fromHost({ t: 'sync-status', status: 'revoked' });
   expect(m.frame()).toContain('Sync: device removed · /sync');
 });
+
+test('a re-hydrate while open asks for the panel again', async () => {
+  await open(PAIRED);
+  await m!.fromHost(hydrateMsg({}));
+  expect(m!.posted.filter((p) => p.t === 'sync-open').length).toBe(2);
+});

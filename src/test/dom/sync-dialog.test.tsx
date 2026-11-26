@@ -46,6 +46,15 @@ suite("Sync dialog", () => {
     assert.strictEqual(dialog.getByRole("heading", { name: "Sync" }).textContent, "Sync");
   });
 
+  test("a re-hydrate while the dialog is open asks for the panel again", async () => {
+    await open(PAIRED);
+    const before = posted().filter((m) => m.t === "sync-open").length;
+    hydrate();
+    await settle();
+    assert.strictEqual(posted().filter((m) => m.t === "sync-open").length, before + 1);
+    assert.strictEqual(screen.queryByRole("dialog") !== null, true);
+  });
+
   test("the host's open-sync opens it too", async () => {
     renderApp();
     hydrate();

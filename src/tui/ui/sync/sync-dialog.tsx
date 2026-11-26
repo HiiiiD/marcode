@@ -125,8 +125,15 @@ export function SyncDialog({ onClose }: { onClose(): void }) {
   const { state, post } = useTuiStore();
   const postRef = useRef(post);
   postRef.current = post;
-  useEffect(() => { postRef.current({ t: 'sync-open' }); }, []);
   const panel = state.syncPanel;
+  const missing = panel === undefined;
+  const mounted = useRef(false);
+  useEffect(() => { postRef.current({ t: 'sync-open' }); }, []);
+  // A re-hydrate clears the panel while the dialog is up; ask again rather than stay on "Checking…".
+  useEffect(() => {
+    if (!mounted.current) { mounted.current = true; return; }
+    if (missing) { postRef.current({ t: 'sync-open' }); }
+  }, [missing]);
   if (!panel) {
     return (
       <box flexDirection="column" flexShrink={0}>

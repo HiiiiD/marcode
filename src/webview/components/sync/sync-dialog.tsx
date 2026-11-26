@@ -120,6 +120,10 @@ export function SyncDialog() {
   }, [state.syncOpenRequest, post]);
 
   const panel = state.syncPanel;
+  // A re-hydrate (a reconnect, a daemon restart) clears the panel; an open dialog asks again instead of waiting forever.
+  useEffect(() => {
+    if (open && panel === undefined && handled.current > 0) { post({ t: "sync-open" }); }
+  }, [open, panel, post]);
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent initialFocus={false} className="top-[10vh] flex max-h-[calc(100dvh-4rem)] translate-y-0 flex-col gap-3 overflow-hidden text-sm sm:max-w-md">
