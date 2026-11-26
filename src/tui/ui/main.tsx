@@ -6,6 +6,8 @@ import { bootHost, configChangedNotice, initialNotice, type Booted } from '../bo
 import { parseArgs, USAGE, type CliCommand } from '../cli';
 import { createShutdown, installExitSignals } from '../shutdown';
 import { runConfig, runDaemonCommand, runLogin, runMigrate } from '../subcommands';
+import { runSyncCommand } from '../sync-commands';
+import { runSyncServer } from '../../sync-server/run';
 import { App } from './app';
 import { TuiStoreProvider } from './store';
 import { detectTokens } from './tokens/detect-tokens';
@@ -30,6 +32,8 @@ async function runSubcommand(cmd: CliCommand): Promise<number | undefined> {
     case 'config': return runConfig();
     case 'migrate': return runMigrate(cmd.oldDir, process.cwd());
     case 'daemon': return runDaemonCommand(cmd, process.cwd());
+    case 'sync': return runSyncCommand(cmd);
+    case 'sync-server': return runSyncServer(cmd.args, { out: (l) => console.log(l), err: (l) => console.error(l) });
     case 'run': return undefined;
   }
 }
@@ -131,7 +135,7 @@ async function main(): Promise<void> {
     process.exitCode = 1;
   }
   // A stopped daemon's provider children or timers must not keep the process alive.
-  if (cmd.kind === 'daemon' && cmd.action === 'serve') { process.exit(process.exitCode ?? 0); }
+  if ((cmd.kind === 'daemon' && cmd.action === 'serve') || cmd.kind === 'sync-server') { process.exit(process.exitCode ?? 0); }
 }
 
 main().catch((err: unknown) => {

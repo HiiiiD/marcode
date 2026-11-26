@@ -170,4 +170,18 @@ suite('host-config', () => {
       assert.strictEqual(warnings.some((w) => w.includes('projects')), true);
     });
   });
+  suite('sync', () => {
+    test('defaults to nothing configured', () => {
+      assert.deepStrictEqual(defaultHostConfig().sync, {});
+    });
+    test('keeps a valid server and device name', () => {
+      const { config } = parseHostConfig({ sync: { server: 'https://sync.example.com/', deviceName: 'desk' } });
+      assert.deepStrictEqual(config.sync, { server: 'https://sync.example.com', deviceName: 'desk' });
+    });
+    test('drops a plain-http public server with a warning naming sync.server', () => {
+      const { config, warnings } = parseHostConfig({ sync: { server: 'http://sync.example.com' } });
+      assert.strictEqual(config.sync.server, undefined);
+      assert.strictEqual(warnings.some((w) => w.includes('sync.server')), true);
+    });
+  });
 });

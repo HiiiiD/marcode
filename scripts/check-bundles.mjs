@@ -31,4 +31,10 @@ if (daemon.status === 2 && daemon.stderr.includes('this entry only runs')) {
 } else {
   fail('dist/daemon.js', `exit ${daemon.status}: ${(daemon.stderr || daemon.stdout).trim().split('\n')[0]}`);
 }
+const syncServer = spawnSync(process.execPath, [path.join(root, 'dist/sync-server.js'), '--help'], { encoding: 'utf8', timeout: 30_000 });
+if (syncServer.status === 0 && syncServer.stdout.includes('marcode sync-server')) {
+  console.log('ok   dist/sync-server.js');
+} else {
+  fail('dist/sync-server.js', `exit ${syncServer.status}: ${(syncServer.stderr || syncServer.stdout).trim().split('\n')[0]}`);
+}
 process.exit(failed ? 1 : 0);

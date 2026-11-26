@@ -99,6 +99,16 @@ async function main() {
 		alias: hostAlias,
 	});
 
+	// The self-hosted sync server: plain Node (and the Docker image) runs it with no TUI or host graph.
+	const syncServerCtx = await esbuild.context({
+		...common,
+		entryPoints: ['src/sync-server/main.ts'],
+		format: 'cjs',
+		platform: 'node',
+		outfile: 'dist/sync-server.js',
+		external: ['bun:sqlite'],
+	});
+
 	const webviewCtx = await esbuild.context({
 		...common,
 		entryPoints: ['src/webview/main.tsx'],
@@ -152,7 +162,7 @@ async function main() {
 		plugins: [tailwindPlugin('src/history/index.css', 'dist/history.css'), ...common.plugins],
 	});
 
-	const all = [hostCtx, daemonCtx, webviewCtx, reviewCtx, fleetCtx, historyCtx];
+	const all = [hostCtx, daemonCtx, syncServerCtx, webviewCtx, reviewCtx, fleetCtx, historyCtx];
 	if (watch) {
 		await Promise.all(all.map((c) => c.watch()));
 	} else {

@@ -1,0 +1,46 @@
+import type { ServerResponse } from 'node:http';
+
+const PING_MS = 25_000;
+
+/** Open event streams, by device, so a revoke can end that device's streams. */
+export class EventHub {
+  private readonly streams = new Map<string, Set<ServerResponse>>();
+  private readonly ping: NodeJS.Timeout;
+
+  constructor() {
+    this.ping = setInterval(() => { this.write(': ping\n\n'); }, PING_MS);
+    this.ping.unref();
+  }
+
+  open(deviceId: string, res: ServerResponse): void {
+    res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive' });
+    res.write(': open\n\n');
+    const set = this.streams.get(deviceId) ?? new Set();
+    set.add(res);
+    this.streams.set(deviceId, set);
+    res.on('close', () => { set.delete(res); });
+  }
+
+  emit(event: string, data: unknown, exceptDeviceId?: string): void {
+    const frame = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+    for (const [deviceId, set] of this.streams) {
+      if (deviceId === exceptDeviceId) { continue; }
+      for (const res of set) { res.write(frame); }
+    }
+  }
+
+  closeDevice(deviceId: string): void {
+    for (const res of this.streams.get(deviceId) ?? []) { res.end(); }
+    this.streams.delete(deviceId);
+  }
+
+  close(): void {
+    clearInterval(this.ping);
+    for (const set of this.streams.values()) { for (const res of set) { res.end(); } }
+    this.streams.clear();
+  }
+
+  private write(frame: string): void {
+    for (const set of this.streams.values()) { for (const res of set) { res.write(frame); } }
+  }
+}

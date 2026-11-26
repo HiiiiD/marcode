@@ -76,6 +76,12 @@ Every checkout of a repo (clones and git worktrees alike) shares one memory, mat
 
 Default: `[]`
 
+## `sync.server`, `sync.deviceName`
+
+Written by `marcode sync setup` / `marcode sync join`: your sync server's address and this machine's name. `sync.server` must be `https://`, or `http://` on a loopback, LAN or Tailscale address; anything else is ignored with a warning. The device token and the encryption keys are never here: they live in `~/.marcode/sync/credentials.json` (mode 0600). See `docs/sync.md`.
+
+Default: unset (sync off)
+
 ## `review.fileCap`
 
 How many changed files the review tab loads per working tree before showing a "Show more" button. A value over 2000 is clamped; an invalid one falls back to 500. Takes effect after a window reload.

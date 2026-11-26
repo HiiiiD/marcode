@@ -116,6 +116,9 @@ router. See `docs/daemon.md`.
 | `src/shared/project-id.ts`, `src/host/project/project-resolver.ts` | A git remote → project id (`local:<root>` for an `own` override); a cwd → `{ projectId, root }` via `rev-parse --show-toplevel`, `projects.overrides` and `origin`, walking up past a deleted worktree, cached per cwd |
 | `src/memory/fts/` | `fts-memory-store.ts` (this workspace's writer), `fts-search.ts` (the shared `MATCH` + folder/project scope), `fts-memory-reader.ts` (a sibling workspace's file, read-only, 250 ms busy timeout) |
 | `src/memory/project-memory.ts`, `jsonl-transcript.ts` | `ProjectMemory`: the local store plus every sibling `workspaces/*/memory.sqlite`, searched only for a `projectId` scope; reading a sibling's JSONL for `fetch` |
+| `src/sync/` | The sync client, no `vscode`: `crypto.ts` (X25519 sealing, HKDF, AES-256-GCM records whose AAD binds device, record id and key epoch), `pairing-code.ts` (`MRC-`/`MRB-` Crockford codes), `server-url.ts` (https, or http only on loopback/LAN/Tailscale), `credentials.ts` (`~/.marcode/sync/credentials.json`, 0600), `sync-client.ts` (`SyncClient`: enroll, join, pair, revoke with create-only key rotation, `healKeys`, push with random record ids, pull, `follow` over SSE), `api-types.ts` (types only) |
+| `src/sync-server/` | `marcode sync-server`: `store.ts` (SQLite: devices by token hash, single-use pairings, sealed keys per epoch, records with server-assigned seqs deduped on record id), `server.ts` (`node:http` API + `sse.ts` event hub), `run.ts` (flags, bootstrap code, signals), `main.ts` (the JSX-free entry esbuild bundles to `dist/sync-server.js`; `Dockerfile.sync-server`) |
+| `src/tui/sync-commands.ts` | `marcode sync` setup, join, pair, devices, revoke, status, leave |
 | `src/memory/sqlite-driver.ts` | `openDatabase`: `bun:sqlite` under Bun, `node:sqlite` otherwise, behind the narrow `SqlDb` the FTS store uses; finalizes each statement after one use (Bun's `close()` otherwise leaves the file locked) and probes FTS5 at open |
 | `src/host/transcript-store.ts` | `index.json` + per-session JSONL under the workspace directory; append, load, page. Index writes are atomic; a foreign session's writes are refused |
 | `src/host/account-cache/` | `account-cache.ts`: machine-wide `~/.marcode/account.sqlite` (plan usage and model catalog rows, newest `fetchedAt` wins); `validate.ts`: shape checks on stored rows; `seed-from-workspaces.ts`: one-time import of per-workspace `usage.json`/`catalog.json` |
@@ -220,6 +223,13 @@ These are not style preferences. Breaking one breaks the design.
   Promote drops `kind` and keeps `parentId` and `origin`. `merge-side-chat` queues a digest as the parent's next-send seed, even while the parent is working;
   it is not the git `bring-back` flow. Every fork and side chat records `parentId` + `origin`, and the parent's
   `children` list is derived from them.
+- **The sync server never sees plaintext, keys or pairing secrets.** It stores token hashes, public keys, sealed key
+  blobs and ciphertext. Records are pushed with random record ids and get their seq from the server (several hosts
+  share one device's credentials); key epochs are create-only. A client seals keys only to device rows carrying a
+  valid admission tag (an HMAC by a key holder) and accepts a new epoch only when it is tagged with the previous
+  epoch's key, so the server can relay devices and epochs but never invent one. Sealed blobs are bound to their epoch
+  and recipient. Nothing under `src/sync/` or `src/sync-server/` imports
+  `vscode`, and the client never imports the server.
 - **The webview loads no remote resources.** No CDN scripts, styles, fonts or images.
 - **CSP:** `default-src 'none'`; scripts and styles restricted to `webview.cspSource` plus
   a per-load CSPRNG nonce; `localResourceRoots` pinned to `dist/`.
@@ -245,7 +255,7 @@ These are not style preferences. Breaking one breaks the design.
   elsewhere" from a missing index row that this host has not itself seen on disk.
 - **`config.json` is the single source of truth for host settings.** Every setting the host consumes
   (`enabledProviders`, `providerInstances`, `systemPrompts`, `codex.path`, `opencode.path`,
-  `usageMirrors`, `memory.*`, `projects.*`, `review.*`, `favoriteModels`, `theme`, `claude.claudeAiConnectors`) lives in `~/.marcode/config.json`, read by
+  `usageMirrors`, `memory.*`, `projects.*`, `sync.*`, `review.*`, `favoriteModels`, `theme`, `claude.claudeAiConnectors`) lives in `~/.marcode/config.json`, read by
   `createHost`, the account-setup wizard and the favorites handler alike. Only pure-UI settings stay in
   VS Code (`marcode.debug`, `marcode.showCacheTimer`, `marcode.agentsMdNudge.excludePaths`). A change
   takes a window reload. See `docs/config.md`.
