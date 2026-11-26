@@ -40,7 +40,7 @@ export const TranscriptItemView = memo(function TranscriptItemView({
       return (
         <TranscriptItemShell role="assistant" label="Agent" ts={item.text.trim() !== '' ? item.ts : undefined}>
           {item.thinking && <ReasoningBlock text={item.thinking} />}
-          {item.text.trim() !== '' && <div className={cn('max-w-[90ch]', item.thinking && 'mt-2')}><Markdown>{item.text}</Markdown></div>}
+          {item.text.trim() !== '' && <div className={cn(item.thinking && 'mt-2')}><Markdown>{item.text}</Markdown></div>}
         </TranscriptItemShell>
       );
 
