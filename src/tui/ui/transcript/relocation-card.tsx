@@ -24,7 +24,6 @@ export function RelocationCardView(props: { card: RelocationCard; active: boolea
   return (
     <Collapsible
       open={!settled}
-      selected={props.selected}
       header={(
         <>
           <text fg={settled ? muted : theme.colors.warning} flexShrink={0}>⎇</text>

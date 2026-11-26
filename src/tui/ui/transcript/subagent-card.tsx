@@ -1,4 +1,3 @@
-import { TextAttributes } from '@opentui/core';
 import { describeTool } from '../../../client-core/tool-render';
 import {
   formatElapsed, isBackgroundDispatch, subagentLabel, summarizeSubagent, windowChildren,
@@ -8,6 +7,8 @@ import { useTheme } from '../termcn/hooks/use-theme';
 import { useTick } from '../use-ticker';
 import { Collapsible } from './collapsible';
 import { ToolCard } from './tool-card';
+import { RowLabel } from './row-label';
+import { TOOL_GLYPHS } from './tool-glyphs';
 
 export function SubagentCard(props: { item: ToolItem; open: boolean; userClosed: boolean; selected: boolean }) {
   const { item } = props;
@@ -26,17 +27,18 @@ export function SubagentCard(props: { item: ToolItem; open: boolean; userClosed:
   return (
     <Collapsible
       open={expanded}
-      selected={props.selected}
       header={(
         <>
-          <text fg={muted} flexShrink={0}>{expanded ? '▾' : '▸'}</text>
+          <text fg={muted} flexShrink={0}>{TOOL_GLYPHS.bot}</text>
+          <RowLabel text="Agent" selected={props.selected} />
           <box flexShrink={1} minWidth={0} height={1} overflow="hidden">
-            <text attributes={props.selected ? TextAttributes.BOLD : TextAttributes.NONE} wrapMode="none">{subagentLabel(item)}</text>
+            <text wrapMode="none">{subagentLabel(item)}</text>
           </box>
           <box flexGrow={1} flexShrink={100} minWidth={0} height={1} overflow="hidden">
             <text fg={muted} wrapMode="none">{text}</text>
           </box>
           {summary.blocked ? <text fg={theme.colors.primary} flexShrink={0}>Needs you</text> : null}
+          <text fg={muted} flexShrink={0}>{expanded ? '▾' : '▸'}</text>
         </>
       )}
     >

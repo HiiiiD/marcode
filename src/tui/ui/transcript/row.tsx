@@ -1,40 +1,16 @@
-import type { ReactNode } from 'react';
 import type { Attachment } from '../../../protocol/messages';
 import type { TranscriptRow } from '../../view/transcript-rows';
-import { ChatMessage } from '../termcn/components/ui/chat-message';
 import { useTheme } from '../termcn/hooks/use-theme';
 import { useSyntaxStyle, useTokens } from '../tokens/tokens-provider';
-import { BAR_CHARS } from './bar-border';
 import { SentAttachments } from '../attachment-chips';
 import { CompactionCard } from './compaction-card';
 import { PermissionCard } from './permission-card';
 import { RelocationCardView, type RelocationKeys } from './relocation-card';
 import { SubagentCard } from './subagent-card';
 import { ToolCard } from './tool-card';
-import { useTranscriptGaps } from '../transcript-gaps';
 
-// Readable measure on wide terminals; the bar groups a message with its body.
+// Readable measure on wide terminals.
 const MAX_WIDTH = 100;
-
-function Bar({ color, tint, selected, children }: { color: string; tint?: boolean; selected: boolean; children: ReactNode }) {
-  const tokens = useTokens();
-  const theme = useTheme();
-  const gaps = useTranscriptGaps();
-  return (
-    <box
-      maxWidth={MAX_WIDTH}
-      marginBottom={gaps.message}
-      border={['left']}
-      borderStyle="single"
-      {...(tokens ? { customBorderChars: BAR_CHARS } : {})}
-      borderColor={selected ? theme.colors.warning : color}
-      backgroundColor={tokens && selected ? tokens.menu : tokens && tint ? tokens.panel : undefined}
-      paddingLeft={1}
-    >
-      {children}
-    </box>
-  );
-}
 
 export function RowView(props: {
   row: TranscriptRow; selected: boolean; expanded: boolean; closed: boolean; relocationKeys: RelocationKeys;
@@ -47,21 +23,22 @@ export function RowView(props: {
   const bold = props.selected ? 1 : 0;
   switch (row.kind) {
     case 'user':
+      // The user's own turn sits on the right of the measure, sized to its text; the fill (or, without a palette, the
+      // primary colour) says whose it is, so only a sender from another session is named.
       return (
-        <Bar color={theme.colors.primary} tint selected={props.selected}>
-          <ChatMessage sender="user" name={row.fromName}>
-            <text attributes={bold} wrapMode="word">{row.text}</text>
+        <box maxWidth={MAX_WIDTH} flexDirection="column" alignItems="flex-end">
+          <box flexDirection="column" backgroundColor={tokens?.panel} paddingLeft={1} paddingRight={1}>
+            {row.fromName ? <text fg={theme.colors.mutedForeground}>{`Message from ${row.fromName}`}</text> : null}
+            <text fg={tokens ? undefined : theme.colors.primary} attributes={bold} wrapMode="word">{row.text}</text>
             {row.attachments ? <SentAttachments attachments={row.attachments} cursor={props.attachmentCursor} onOpen={props.onOpenAttachment} /> : null}
-          </ChatMessage>
-        </Bar>
+          </box>
+        </box>
       );
     case 'assistant':
       return (
-        <Bar color={tokens ? tokens.menu : theme.colors.success} selected={props.selected}>
-          <ChatMessage sender="assistant">
-            <markdown content={row.text} streaming={row.streaming} syntaxStyle={syntaxStyle} />
-          </ChatMessage>
-        </Bar>
+        <box maxWidth={MAX_WIDTH}>
+          <markdown content={row.text} streaming={row.streaming} syntaxStyle={syntaxStyle} />
+        </box>
       );
     case 'tool':
       return row.item.tool.kind === 'subagent' && row.item.tool.action !== 'message'

@@ -135,8 +135,8 @@ suite('host-config', () => {
   test('the panel only overrides the scale off the default, and the terminal packs tool cards when compact', () => {
     assert.strictEqual(densityToCss('default'), '');
     assert.strictEqual(densityToCss('compact'), ':root{--transcript-scale:0.92}');
-    assert.deepStrictEqual(tuiGaps('compact'), { message: 1, tool: 0 });
-    assert.deepStrictEqual(tuiGaps('default'), { message: 1, tool: 1 });
+    assert.deepStrictEqual(tuiGaps('compact'), { message: 0, tool: 0 });
+    assert.deepStrictEqual(tuiGaps('default'), { message: 1, tool: 0 });
     assert.deepStrictEqual(tuiGaps('comfortable'), { message: 2, tool: 1 });
   });
 });

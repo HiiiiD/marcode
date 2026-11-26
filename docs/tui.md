@@ -148,7 +148,10 @@ Panels, diffs and code are tinted from your terminal's own colors: right after t
 asks the terminal for its background, foreground and ANSI palette (OSC) and derives the surfaces from
 them, so light and dark terminals both work. Startup never waits for the reply. If the terminal does
 not answer within 1.5 s, or the colors are unusable (foreground nearly equal to background), the TUI
-stays on plain named colors and bordered cards. Diffs render with line numbers and syntax highlighting; a card at least
+stays on plain named colors. Either way the transcript is flat, like the VS Code panel: tool, permission and
+subagent rows are one line each with no frame or fill, stacked as one work log; your own turn sits on the right of the
+measure (tinted when the palette is known), agent prose carries no label, and the selected row is marked by a bar in a
+gutter column every row reserves, so moving the selection never shifts text. Diffs render with line numbers and syntax highlighting; a card at least
 120 columns wide shows them side by side. Diffs over 120 lines, or patches the renderer cannot parse,
 show as clamped +/- lines.
 

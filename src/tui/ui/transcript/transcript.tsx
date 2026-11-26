@@ -7,8 +7,23 @@ import { actionFor } from '../../keymap';
 import { transcriptRows, type TranscriptRow } from '../../view/transcript-rows';
 import { useTuiStore } from '../store';
 import { useTheme } from '../termcn/hooks/use-theme';
+import { useTranscriptGaps } from '../transcript-gaps';
+import { BAR_CHARS } from './bar-border';
 import type { RelocationKeys } from './relocation-card';
 import { RowView } from './row';
+
+// Every row reserves the bar's column, so selecting one never shifts the text.
+const GUTTER_CHARS = { ...BAR_CHARS, vertical: ' ' };
+
+const isMessage = (row: TranscriptRow | undefined) => row?.kind === 'user' || row?.kind === 'assistant';
+
+// Outside the bar, so a selected row's bar stops at its last line instead of running through the spacer.
+// Closed tool rows stack as one log; a message, or an open card's body, gets air on both sides.
+function gapAfter(row: TranscriptRow, next: TranscriptRow | undefined, opened: boolean, gaps: { message: number; tool: number }): number {
+  if (next === undefined) { return 0; }
+  if (isMessage(row) || isMessage(next) || opened) { return gaps.message; }
+  return gaps.tool;
+}
 
 export function Transcript({ sessionId, focused, onFork, relocationKeys = 'none' }: {
   sessionId: SessionId; focused: boolean; onFork?(itemId: string): void; relocationKeys?: RelocationKeys;
@@ -132,14 +147,28 @@ export function Transcript({ sessionId, focused, onFork, relocationKeys = 'none'
     if (action.do === 'page-up' || action.do === 'item-prev') { setTimeout(askOlder, 0); }
   });
 
-  const muted = useTheme().colors.mutedForeground;
+  const theme = useTheme();
+  const gaps = useTranscriptGaps();
+  const muted = theme.colors.mutedForeground;
   return (
     <scrollbox ref={scroll} flexGrow={1} stickyScroll stickyStart="bottom" viewportCulling focused={focused}>
       {hasMore ? <text fg={muted}>↑ older messages</text> : null}
       {rows.map((row, i) => {
+        const selected = focused && i === cursor;
+        const opened = row.kind === 'tool' && row.userShell ? !open.has(row.id) : open.has(row.id);
         return (
-          <box key={row.id} id={row.id} flexDirection="column" onMouseDown={() => { setCursorId(row.id); toggleRow(row); }}>
-            <RowView row={row} selected={focused && i === cursor} attachmentCursor={attachCursor?.rowId === row.id ? attachCursor.index : undefined} onOpenAttachment={(a) => { post({ t: 'open-attachment', id: sessionId, attachmentId: a.id, itemId: row.id }); }} expanded={open.has(row.id)} closed={closed.has(row.id)} relocationKeys={relocationKeys} />
+          <box
+            key={row.id}
+            id={row.id}
+            flexDirection="column"
+            marginBottom={gapAfter(row, rows[i + 1], opened, gaps)}
+            border={['left']}
+            customBorderChars={selected ? BAR_CHARS : GUTTER_CHARS}
+            borderColor={theme.colors.primary}
+            paddingLeft={1}
+            onMouseDown={() => { setCursorId(row.id); toggleRow(row); }}
+          >
+            <RowView row={row} selected={selected} attachmentCursor={attachCursor?.rowId === row.id ? attachCursor.index : undefined} onOpenAttachment={(a) => { post({ t: 'open-attachment', id: sessionId, attachmentId: a.id, itemId: row.id }); }} expanded={open.has(row.id)} closed={closed.has(row.id)} relocationKeys={relocationKeys} />
           </box>
         );
       })}
