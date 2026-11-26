@@ -3444,12 +3444,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"global-jsdom@npm:^29.0.0":
-  version: 29.0.0
-  resolution: "global-jsdom@npm:29.0.0"
+"global-jsdom@npm:^31.0.0":
+  version: 31.0.0
+  resolution: "global-jsdom@npm:31.0.0"
   peerDependencies:
-    jsdom: ">=29 <30"
-  checksum: 10c0/afc66cd3038211ca1e40cbb07218e084faf213a6bad4e70b9025137aeb9e7d8d52ad50a0632bdaaf3696b9a133a6ee62454a22a26ad951af740d0c61be467f31
+    jsdom: ">=31 <32"
+  checksum: 10c0/3dc7b1feeb5ac5f1d29c25ec1553ebd12fabc3a424ee0b05d5417426c1454abb02e40e3e0b6d2daf14161d26aea63e672b3b089f481ebe26c96cbff7a9a989a7
   languageName: node
   linkType: hard
 
@@ -4603,7 +4603,7 @@ __metadata:
     clsx: "npm:^2.1.1"
     esbuild: "npm:^0.28.1"
     eslint: "npm:^10.15.0"
-    global-jsdom: "npm:^29.0.0"
+    global-jsdom: "npm:^31.0.0"
     jsdom: "npm:^30.1.3"
     jsonc-parser: "npm:^3.3.1"
     lucide-react: "npm:^1.77.0"
