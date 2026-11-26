@@ -21,6 +21,9 @@ export interface MemoryHit {
   projectId?: string;
 }
 
+/** Where one caller's recall looks: its workspace folder, and its project when it has one. */
+export interface RecallScope { cwdWithin: string; projectId?: string }
+
 /** A row is in scope when no scope is given, or it ran inside `cwdWithin`, or it shares `projectId`. */
 export interface SearchOpts {
   providerId?: string;

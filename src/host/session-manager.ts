@@ -25,7 +25,7 @@ import { digestText, extractiveDigest, indexLine, type SessionDigest } from '../
 import { digestSession } from '../memory/session-digest';
 import { DigestService, type DigestEstimate, type DigestScope } from './digest/digest-service';
 import { buildMemoryBlock, queryTermsOf } from '../memory/prime-block';
-import type { MemoryStore } from '../memory/types';
+import type { MemoryStore, RecallScope } from '../memory/types';
 import type { ProjectRef } from './project/project-resolver';
 import type {
   AgentProvider, EffortLevel, Invocable, ModelInfo, MoveThreadResult, UpdateInfo, UsageMirror, UsageWindow,
@@ -2612,9 +2612,18 @@ export class SessionManager implements SessionSink {
     return containing.reduce((best, root) => (root.length > best.length ? root : best));
   }
 
-  recallRootOfSession(id: SessionId): string | undefined {
-    const cwd = this.meta.get(id)?.cwd;
-    return cwd === undefined ? undefined : this.recallRootOf(cwd);
+  async recallScopeOf(cwd: string): Promise<RecallScope> {
+    const cwdWithin = this.recallRootOf(cwd);
+    const projectId = (await this.projects?.resolve(cwd).catch(() => undefined))?.projectId;
+    return projectId ? { cwdWithin, projectId } : { cwdWithin };
+  }
+
+  async recallScopeOfSession(id: SessionId): Promise<RecallScope | undefined> {
+    const state = this.meta.get(id);
+    if (!state) { return undefined; }
+    const scope = await this.recallScopeOf(state.cwd);
+    const projectId = scope.projectId ?? state.projectId;
+    return projectId ? { ...scope, projectId } : scope;
   }
 
   async recall(text: string, cwd: string): Promise<string | undefined> {
@@ -2622,7 +2631,7 @@ export class SessionManager implements SessionSink {
     const terms = queryTermsOf(text);
     if (terms.length === 0) { return undefined; }
     return buildMemoryBlock(await this.memory.search(terms.join(' '), {
-      match: 'any', limit: 5, cwdWithin: this.recallRootOf(cwd),
+      match: 'any', limit: 5, ...(await this.recallScopeOf(cwd)),
     }));
   }
 

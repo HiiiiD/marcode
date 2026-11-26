@@ -18,6 +18,7 @@ import { validateSystemPrompts } from '../shared/system-prompts';
 import { AccountCache } from './account-cache/account-cache';
 import { seedFromWorkspaces } from './account-cache/seed-from-workspaces';
 import { AttachmentStore } from './attachment-store';
+import { ProjectResolver } from './project/project-resolver';
 import { FallbackSummarizer } from './digest/fallback-summarizer';
 import { LlmSummarizer } from './digest/llm-summarizer';
 import { focusSession } from './focus-session';
@@ -64,6 +65,7 @@ export async function createHost(opts: CreateHostOptions): Promise<HostHandle> {
   // and `SelfControlMcpServer` both accept `memory` as optional.
   let memory: MemoryStore | undefined;
   let fts: FtsMemoryStore | undefined;
+  let closeMemory: (() => void) | undefined;
   if (config.memory.enabled) {
     try {
       // require, not import(): evaluated here so a missing node:sqlite lands in the catch, and it resolves extensionless under tsx, esbuild and bun alike
@@ -73,6 +75,15 @@ export async function createHost(opts: CreateHostOptions): Promise<HostHandle> {
         { tail: (id, limit) => store.tail(id, limit) },
       );
       memory = fts;
+      closeMemory = () => fts?.close();
+      try {
+        const { ProjectMemory } = require('../memory/project-memory') as typeof import('../memory/project-memory');
+        const shared = new ProjectMemory(fts, opts.workspaceDir);
+        memory = shared;
+        closeMemory = () => shared.close();
+      } catch (err) {
+        console.warn('[mar-code] shared project memory unavailable; recall stays in this workspace', err);
+      }
     } catch (err) {
       console.warn('[mar-code] memory store unavailable; recall tools will be disabled', err);
       notify.warn(`Marcode memory is unavailable (${(err as Error).message}); recall and session digests are off in this window.`);
@@ -90,6 +101,7 @@ export async function createHost(opts: CreateHostOptions): Promise<HostHandle> {
   const manager = new SessionManager(
     store, providers, opts.emit, undefined, opts.onShellNoise, attachments,
     config.review.fileCap, config.review.baseRefs, memory, undefined, config.usageMirrors,
+    undefined, new ProjectResolver(config.projects.overrides),
   );
   const ownership = new SessionOwnership(path.join(opts.workspaceDir, 'sessions'), opts.hostKind);
   manager.setOwnership(ownership, { tailIntervalMs: opts.pollMs });
@@ -126,7 +138,7 @@ export async function createHost(opts: CreateHostOptions): Promise<HostHandle> {
     usageSnapshot: () => manager.usageSnapshot(),
     usageDisplayNames: () => manager.usageDisplayNames(),
     refreshUsage: (cwd) => manager.refreshUsage(cwd),
-    recallRoot: (id) => manager.recallRootOfSession(id as SessionId),
+    recallScope: (id) => manager.recallScopeOfSession(id as SessionId),
   } satisfies Required<SessionManagerLike>;
   const selfControlServer = new SelfControlMcpServer(selfControlManager, memory, config.spawn.preference);
   manager.setWorkspaceRoots(opts.workspaceRoots);
@@ -298,7 +310,7 @@ export async function createHost(opts: CreateHostOptions): Promise<HostHandle> {
       accountCache?.close();
       await selfControlServer.dispose();
       await digestLock.dispose();
-      fts?.close();
+      closeMemory?.();
     },
   };
 }

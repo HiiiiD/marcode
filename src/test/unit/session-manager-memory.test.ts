@@ -17,9 +17,9 @@ class RecordingMemoryStore implements MemoryStore {
   indexed: SessionRecord[] = [];
   forgotten: string[] = [];
   async index(record: SessionRecord): Promise<void> { this.indexed.push(record); }
-  searches: { query: string; cwdWithin?: string }[] = [];
-  async search(query: string, opts: { cwdWithin?: string } = {}): Promise<[]> {
-    this.searches.push({ query, cwdWithin: opts.cwdWithin });
+  searches: { query: string; cwdWithin?: string; projectId?: string }[] = [];
+  async search(query: string, opts: { cwdWithin?: string; projectId?: string } = {}): Promise<[]> {
+    this.searches.push({ query, cwdWithin: opts.cwdWithin, projectId: opts.projectId });
     return [];
   }
   async fetch(): Promise<{ sessionId: string; items: [] }> { return { sessionId: '', items: [] }; }
@@ -300,6 +300,33 @@ suite('SessionManager projects', () => {
     release();
     await until(() => tagged.length > 0);
     assert.deepStrictEqual(tagged, [[session.state.id, 'p']]);
+    await manager.dispose();
+  });
+
+  test('priming also searches the caller cwd project', async () => {
+    const memory = new RecordingMemoryStore();
+    const manager = make(new TranscriptStore(await tempRoot()), projects({ '/w1/repo': 'p' }), memory);
+    manager.setWorkspaceRoots(() => ['/w1/repo']);
+    await manager.recall('investigate the flaky login test', '/w1/repo');
+    assert.deepStrictEqual(memory.searches[0], { query: memory.searches[0].query, cwdWithin: '/w1/repo', projectId: 'p' });
+    await manager.dispose();
+  });
+
+  test('a cwd with no project primes exactly as before', async () => {
+    const memory = new RecordingMemoryStore();
+    const manager = make(new TranscriptStore(await tempRoot()), projects({}), memory);
+    manager.setWorkspaceRoots(() => ['/w1/repo']);
+    await manager.recall('investigate the flaky login test', '/w1/repo');
+    assert.strictEqual(memory.searches[0].projectId, undefined);
+    assert.strictEqual(memory.searches[0].cwdWithin, '/w1/repo');
+    await manager.dispose();
+  });
+
+  test('recallScopeOfSession carries the session project', async () => {
+    const manager = make(new TranscriptStore(await tempRoot()), projects({ '/w1/repo': 'p' }));
+    manager.setWorkspaceRoots(() => ['/w1']);
+    const session = await manager.create('fake', '/w1/repo');
+    assert.deepStrictEqual(await manager.recallScopeOfSession(session.state.id), { cwdWithin: '/w1', projectId: 'p' });
     await manager.dispose();
   });
 });

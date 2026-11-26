@@ -113,6 +113,9 @@ router. See `docs/daemon.md`.
 | `src/providers/opencode/map-mcp-status.ts`, `mcp-config.ts` | OpenCode `GET /mcp` → statuses over the run's own server; `opencode.json(c)` edits and the instance's global-config rule |
 | `src/shared/jsonc-config.ts`, `toml-mcp.ts`, `atomic-file.ts`, `with-timeout.ts` | Comment-preserving JSON member edits (hand-spliced: jsonc-parser's formatter re-flows siblings); `[mcp_servers.<name>]` table-block edits; atomic writes; a cleared-timer race |
 | `src/shared/file-cap.ts` | `FILE_CAP`/`MAX_FILE_CAP` — shared so the host and the review webview agree on the default and ceiling without importing across the host/webview boundary |
+| `src/shared/project-id.ts`, `src/host/project/project-resolver.ts` | A git remote → project id (`local:<root>` for an `own` override); a cwd → `{ projectId, root }` via `rev-parse --show-toplevel`, `projects.overrides` and `origin`, walking up past a deleted worktree, cached per cwd |
+| `src/memory/fts/` | `fts-memory-store.ts` (this workspace's writer), `fts-search.ts` (the shared `MATCH` + folder/project scope), `fts-memory-reader.ts` (a sibling workspace's file, read-only, 250 ms busy timeout) |
+| `src/memory/project-memory.ts`, `jsonl-transcript.ts` | `ProjectMemory`: the local store plus every sibling `workspaces/*/memory.sqlite`, searched only for a `projectId` scope; reading a sibling's JSONL for `fetch` |
 | `src/memory/sqlite-driver.ts` | `openDatabase`: `bun:sqlite` under Bun, `node:sqlite` otherwise, behind the narrow `SqlDb` the FTS store uses; finalizes each statement after one use (Bun's `close()` otherwise leaves the file locked) and probes FTS5 at open |
 | `src/host/transcript-store.ts` | `index.json` + per-session JSONL under the workspace directory; append, load, page. Index writes are atomic; a foreign session's writes are refused |
 | `src/host/account-cache/` | `account-cache.ts`: machine-wide `~/.marcode/account.sqlite` (plan usage and model catalog rows, newest `fetchedAt` wins); `validate.ts`: shape checks on stored rows; `seed-from-workspaces.ts`: one-time import of per-workspace `usage.json`/`catalog.json` |
@@ -242,7 +245,7 @@ These are not style preferences. Breaking one breaks the design.
   elsewhere" from a missing index row that this host has not itself seen on disk.
 - **`config.json` is the single source of truth for host settings.** Every setting the host consumes
   (`enabledProviders`, `providerInstances`, `systemPrompts`, `codex.path`, `opencode.path`,
-  `usageMirrors`, `memory.*`, `review.*`, `favoriteModels`, `theme`, `claude.claudeAiConnectors`) lives in `~/.marcode/config.json`, read by
+  `usageMirrors`, `memory.*`, `projects.*`, `review.*`, `favoriteModels`, `theme`, `claude.claudeAiConnectors`) lives in `~/.marcode/config.json`, read by
   `createHost`, the account-setup wizard and the favorites handler alike. Only pure-UI settings stay in
   VS Code (`marcode.debug`, `marcode.showCacheTimer`, `marcode.agentsMdNudge.excludePaths`). A change
   takes a window reload. See `docs/config.md`.
@@ -329,7 +332,11 @@ These are not style preferences. Breaking one breaks the design.
   removes its row. There is no archived state; `SessionState` carries no such flag.
   **Recall is scoped to a workspace folder**: priming and `marcode__recall` only see sessions whose
   cwd is inside the innermost open workspace folder containing the caller's cwd (or the cwd itself
-  when none does). The LLM summarizer runs only on hidden sessions, always falls back to the
+  when none does), **or** whose `projectId` (normalised git `origin`, persisted on `SessionState`) matches the
+  caller's, so every clone and worktree of a repo shares one memory. Another workspace's sessions are read from
+  its own `memory.sqlite` through `ProjectMemory`, never written: each file has its own host as its only writer,
+  and schema changes there are additive only, since an older build sharing the file drops both tables on a
+  `user_version` mismatch. The LLM summarizer runs only on hidden sessions, always falls back to the
   extractive digest, and its run is started `withoutSelfControl`: no `marcode__*` tools on any
   provider, and no trace in the vendor CLI's own history (Claude `persistSession: false`, Codex
   ephemeral thread, OpenCode session deleted after the run). On Claude it also loads no user
