@@ -43,7 +43,7 @@
         "marcode.debug": {
           "type": "boolean",
           "default": false,
-          "description": "Enable additional Marcode diagnostic logging."
+          "description": "Enable additional Marcode diagnostic logging. Session lifecycle lines go to daemon.log in the workspace directory under ~/.marcode; a daemon already running picks this up only after it restarts."
         },
         "marcode.showCacheTimer": {
           "type": "boolean",

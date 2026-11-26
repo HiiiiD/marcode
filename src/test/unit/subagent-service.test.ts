@@ -66,6 +66,24 @@ suite('subagent service', () => {
     assert.strictEqual(manager.summaries({ includeSubagents: true }).length, before);
   });
 
+  // A promoted child has its own pane and status; it no longer works under the parent.
+  test('a promoted child stops counting toward its old parent while it keeps running', async () => {
+    scripts.task = [{ kind: 'permission', id: 'p1', tool: BASH }];
+    const parent = await manager.create('fake', dir);
+    const pending = runSubagent(manager, parent.state.id, spec(dir), 'task');
+    await tick();
+    assert.deepStrictEqual(manager.subagents.counts(parent.state.id), { running: 1, awaitingApproval: 1 });
+    const child = manager.summaries({ includeSubagents: true }).find((s) => s.kind === 'subagent')!;
+
+    assert.strictEqual(manager.subagents.detach(child.id), true);
+    assert.strictEqual(manager.subagents.counts(parent.state.id), undefined);
+    assert.strictEqual(manager.subagents.running(parent.state.id), 0);
+    assert.strictEqual(manager.summaries().find((s) => s.id === parent.state.id)?.subagents, undefined);
+
+    manager.get(child.id)?.interrupt();
+    await pending;
+  });
+
   test('running() counts a blocked child and cancelSubtree settles it, idempotently', async () => {
     scripts.task = [{ kind: 'permission', id: 'p1', tool: BASH }];
     const parent = await manager.create('fake', dir);

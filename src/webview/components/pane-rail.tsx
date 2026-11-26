@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { PaneState } from "../reducer";
 import { useStore } from "../store";
+import { displayStatus } from "../../client-core/display-status";
 import { StatusBadge } from "./status-badge";
 
 /**
@@ -14,7 +15,8 @@ import { StatusBadge } from "./status-badge";
 export function PaneRail({ pane }: { pane: PaneState }) {
   const { toggleMaximize } = useStore();
   const s = pane.summary;
-  const needsYou = s.status === "awaiting-approval";
+  const status = displayStatus(s);
+  const needsYou = status === "awaiting-approval";
 
   return (
     <Button
@@ -30,7 +32,7 @@ export function PaneRail({ pane }: { pane: PaneState }) {
         needsYou && "bg-primary/10 shadow-[inset_0_3px_0_var(--primary)]",
       )}
     >
-      <StatusBadge status={s.status} quietIdle compact />
+      <StatusBadge status={status} quietIdle compact />
       <span className="min-h-0 flex-1 truncate font-medium [text-orientation:mixed] [writing-mode:vertical-rl]">{s.name}</span>
     </Button>
   );

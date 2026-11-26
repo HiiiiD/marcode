@@ -22,6 +22,7 @@ import { usePaneDrag } from "./pane-drag-context";
 import { usePaneDensity } from "./pane-density";
 import { PinButton } from "./pin-button";
 import { ProviderMark } from "./provider-stack";
+import { displayStatus } from "../../client-core/display-status";
 import { StatusBadge } from "./status-badge";
 import { SubagentSummary } from "./subagent-summary";
 
@@ -41,7 +42,8 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
   const strip = density === "strip";
   const maximized = state.maximizedId === pane.summary.id;
   const s = pane.summary;
-  const asksPermission = s.status === "awaiting-approval" && pendingPrompts(pane).some(({ item }) => item.role === "permission");
+  const status = displayStatus(s);
+  const asksPermission = status === "awaiting-approval" && pendingPrompts(pane).some(({ item }) => item.role === "permission");
   // Shown only when there's more than one provider to distinguish between —
   // with a single backend configured, naming it on every pane is noise.
   const [bringBackOpen, setBringBackOpen] = useState(false);
@@ -98,19 +100,19 @@ export function SessionHeader({ pane, accessibleTitle }: SessionHeaderProps) {
         strip && "cursor-pointer hover:bg-accent",
         // A pane that needs a human or has failed announces it from across the stack, not only through a small pill.
         // Only the states that need you are tinted, so a tinted header always means "look at me": amber for a permission, blue for a question.
-        s.status === "awaiting-approval" && (asksPermission
+        status === "awaiting-approval" && (asksPermission
           ? "bg-attention/10 shadow-[inset_3px_0_0_var(--attention)]"
           : "bg-primary/10 shadow-[inset_3px_0_0_var(--primary)]"),
-        s.status === "error" && "bg-destructive/10 shadow-[inset_3px_0_0_var(--destructive)]",
+        status === "error" && "bg-destructive/10 shadow-[inset_3px_0_0_var(--destructive)]",
       )}
     >
-      {s.status === "running" && (
+      {status === "running" && (
         // Life without colour: a slim line sweeping along the bottom edge while the agent works.
         <span aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-px overflow-hidden">
           <span className="block h-full w-1/3 bg-primary/70 motion-safe:animate-working-line motion-reduce:w-full motion-reduce:bg-primary/30" />
         </span>
       )}
-      <StatusBadge status={s.status} wordFor="error" warm={asksPermission} />
+      <StatusBadge status={status} wordFor="error" warm={asksPermission} />
       {/* Only worth a mark when there is more than one provider (or instance) to tell apart. */}
       {state.catalog.length > 1 && (
         <span className="flex size-4 shrink-0 items-center justify-center" title={providerName(state, s.providerId)}>

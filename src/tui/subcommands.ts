@@ -11,6 +11,7 @@ import { defaultLeaseDeps } from '../host/lease';
 import { importOldStorage } from '../host/migrate-storage';
 import { marcodeHome, resolveWorkspaceDir } from '../host/workspace-dir';
 import { APP_VERSION } from '../shared/app-version';
+import { lifecycleDebugFromEnv } from '../shared/lifecycle-debug';
 import { bootHost } from './boot';
 import type { CliCommand } from './cli';
 import { findGitRoot } from './workspace-root';
@@ -101,6 +102,7 @@ async function serveDaemon(workspaceDir: string, roots: string[], home: string, 
   };
   // Detached with stdio ignored: the server's and host's console diagnostics would otherwise vanish.
   console.error = console.warn = (...args: unknown[]) => log(format(...args));
+  lifecycleDebugFromEnv();
   const loaded = await loadConfig(configPath(home));
   for (const w of loaded.warnings) { log(w); }
   const config: HostConfig = { ...defaultHostConfig(), ...loaded.config, ...io.bootConfig };

@@ -341,9 +341,12 @@ export class ClaudeProvider implements AgentProvider {
     this.id = instance?.id ?? 'claude';
     this.displayName = instance?.displayName ?? 'Claude';
     this.env = instance?.env;
-    this.runEnv = instance?.claudeAiConnectors === true
-      ? this.env
-      : { ...(this.env ?? process.env), ENABLE_CLAUDEAI_MCP_SERVERS: 'false' };
+    // The SDK reads session_state_changed itself and drops it unless this is set.
+    this.runEnv = {
+      ...(this.env ?? process.env),
+      CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: '1',
+      ...(instance?.claudeAiConnectors === true ? {} : { ENABLE_CLAUDEAI_MCP_SERVERS: 'false' }),
+    };
     this.pathToClaudeCodeExecutable = instance?.pathToClaudeCodeExecutable;
     this.mcpConfig = new ClaudeMcpConfig({
       env: this.env,
@@ -750,7 +753,7 @@ export class ClaudeProvider implements AgentProvider {
               events.push({ kind: 'usage', normal: usageTotal });
             }
             for (const event of mapEvent(msg)) {
-              if (event.kind === 'background-tasks-changed') { backgroundTaskIds = event.taskIds; }
+              if (event.kind === 'background-tasks-changed') { backgroundTaskIds = [...event.taskIds, ...(event.commandIds ?? [])]; }
               // Keep this local mirror in sync with the same per-task edge
               // agent-session.ts pairs against its own set: otherwise
               // interrupt() would still try to stopTask() an id the SDK

@@ -9,17 +9,19 @@ import { TipButton } from './tip-button';
 import { HistoryStatus } from './history-status';
 import { useStore } from './store';
 import type { SessionSummary } from '../protocol/messages';
+import { displayStatus } from '../client-core/display-status';
 
 export function HistoryRow({ session }: { session: SessionSummary }) {
   const { state, post } = useStore();
   const [open, setOpen] = useState(false);
   const pinned = session.pinned === true;
-  const waiting = session.status === 'awaiting-approval';
+  const shown = displayStatus(session);
+  const waiting = shown === 'awaiting-approval';
   const summary = session.summary?.text || session.title;
 
   return (
     <>
-      <TableRow className={cn('group/row', waiting && 'bg-attention/10 hover:bg-attention/15', session.status === 'error' && 'bg-destructive/10 hover:bg-destructive/15')}>
+      <TableRow className={cn('group/row', waiting && 'bg-attention/10 hover:bg-attention/15', shown === 'error' && 'bg-destructive/10 hover:bg-destructive/15')}>
         <TableCell className="w-6 pr-0 align-top">
           <TipButton
             tip={open ? 'Collapse' : 'Expand'}

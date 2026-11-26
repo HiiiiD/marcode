@@ -359,6 +359,11 @@ export type AgentEvent =
   | { kind: 'permission'; id: string; tool: ToolCall; parentId?: string; meta?: PermissionMeta }
   | { kind: 'question'; id: string; questions: QuestionSpec[]; blocking: boolean; parentId?: string }
   | { kind: 'request-cancelled'; id: string }
+  /**
+   * The backend says a turn is under way. Only meaningful for one it started by itself (a
+   * background task or Monitor finishing wakes Claude), which no send of ours marks.
+   */
+  | { kind: 'turn-start' }
   | { kind: 'turn-end'; reason: 'done' | 'interrupted' | 'error'; error?: string }
   /**
    * Context compaction, manual or automatic. `done` may arrive twice: once
@@ -409,15 +414,23 @@ export type AgentEvent =
   /** Full replacement list, not a delta — same snapshot semantics as `invocables`. */
   | { kind: 'mcp-servers'; servers: McpServerStatus[] }
   /**
-   * The live set of background tasks (a Bash command or a subagent the CLI
-   * detached from the foreground turn — Ctrl+B semantics), REPLACING
+   * The live set of background tasks (a subagent the CLI detached from the
+   * foreground turn — Ctrl+B semantics; background shell commands are left
+   * out, see map-events.ts), REPLACING
    * whatever this session tracked before. A turn can end normally
    * (`turn-end`) while this set is still non-empty: the task keeps running
    * after the turn does, so a session must not read as idle — and therefore
    * must not lose its Stop control — until this drains to `[]`. Claude-only
    * today; a provider with no such concept never emits it.
    */
-  | { kind: 'background-tasks-changed'; taskIds: string[] }
+  | {
+    kind: 'background-tasks-changed'; taskIds: string[];
+    /**
+     * Background shell commands, REPLACED the same way. Not activity, so they never hold a
+     * session `running` (often a dev server); Stop still kills them and the daemon stays up.
+     */
+    commandIds?: string[];
+  }
   /**
    * One specific background task reached a terminal state (settled,
    * failed, or was stopped) — the SDK's own per-task edge, emitted

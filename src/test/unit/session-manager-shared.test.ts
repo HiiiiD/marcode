@@ -301,6 +301,20 @@ suite('SessionManager (shared directory)', () => {
     assert.deepStrictEqual([row?.status, row?.owner], ['idle', undefined]);
   });
 
+  test('a live owner\'s session waiting on approval reads needs-you here too', async () => {
+    const owner = await host('vscode');
+    const guest = await host('tui');
+    const session = await ownedSession(owner);
+    const raw = JSON.parse(await fs.readFile(indexFile(), 'utf8')) as { sessions: { id: string; status: string; waitingOn?: string }[] };
+    const entry = raw.sessions.find((x) => x.id === session.state.id)!;
+    entry.status = 'awaiting-approval';
+    entry.waitingOn = 'permission';
+    await fs.writeFile(indexFile(), JSON.stringify(raw));
+    await guest.manager.syncRoster();
+    const row = guest.manager.summaries().find((x) => x.id === session.state.id);
+    assert.deepStrictEqual([row?.status, row?.waitingOn], ['awaiting-approval', 'permission']);
+  });
+
   test('an unreadable lock opens the session read-only with an error, never taking it over', async () => {
     const owner = await host('vscode');
     const session = await ownedSession(owner);

@@ -2513,7 +2513,8 @@ export class SessionManager implements SessionSink {
     });
     for (const d of merged.adopt) {
       if (d.owner) { this.store.markForeign(d.id); }
-      this.meta.set(d.id, { ...d, status: d.owner && d.status === 'running' ? d.status : 'idle' });
+      const live = d.status === 'running' || d.status === 'awaiting-approval';
+      this.meta.set(d.id, { ...d, status: d.owner && live ? d.status : 'idle' });
     }
     for (const d of merged.update) {
       const mine = this.meta.get(d.id) as SessionState;

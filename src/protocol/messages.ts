@@ -259,6 +259,11 @@ export interface SessionState {
    * persisted.
    */
   backgroundTasks?: number;
+  /**
+   * Background shell commands still running. Never activity (the session can read idle), but
+   * the daemon stays up while any runs. Host-derived, never persisted.
+   */
+  backgroundCommands?: number;
   permissionMode: PermissionMode;
   /** Whether sends from this session attach the editor context. Sticky. */
   includeEditorContext: boolean;

@@ -27,4 +27,9 @@ suite('tui program status', () => {
     const r = programStatus([{ ...s('a', 'awaiting-approval'), waitingOn: 'question' }, { ...s('b', 'awaiting-approval'), waitingOn: 'permission' }]);
     assert.strictEqual(r.state === 'blocked' && r.kind, 'permission');
   });
+
+  test('an idle parent with nested children running counts as running', () => {
+    const r = programStatus([{ ...s('a', 'idle'), subagents: { running: 2, awaitingApproval: 0 } }]);
+    assert.deepStrictEqual(r, { state: 'working', app: 'marcode', message: '1 session running' });
+  });
 });
