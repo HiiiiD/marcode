@@ -46,6 +46,16 @@ suite('createHost', () => {
     assert.strictEqual(warnings.some((m) => m.includes('memory is unavailable')), true);
   });
 
+  test('the self-control adapter forwards includeSubagents, so a parent can find and message its nested children', async () => {
+    const h = await build();
+    const seen: unknown[] = [];
+    const real = h.manager.summaries.bind(h.manager);
+    h.manager.summaries = (opts) => { seen.push(opts); return real(opts); };
+    const adapter = (h.selfControlServer as unknown as { sessionManager: { summaries(o?: { includeSubagents?: boolean }): unknown } }).sessionManager;
+    adapter.summaries({ includeSubagents: true });
+    assert.deepStrictEqual(seen, [{ includeSubagents: true }]);
+  });
+
   test('only the enabled providers are registered', async () => {
     const h = await build();
     assert.deepStrictEqual([...h.providers.keys()], ['fake']);
