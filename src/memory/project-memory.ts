@@ -5,9 +5,12 @@ import type { SessionDigest } from './digest';
 import { FETCH_WINDOW, type FtsMemoryStore } from './fts/fts-memory-store';
 import { FtsMemoryReader, type SiblingReader } from './fts/fts-memory-reader';
 import { readJsonlTranscript } from './jsonl-transcript';
+import type { RemoteMemory } from './remote-memory';
 import type { DigestMeta, MemoryDetail, MemoryHit, MemoryStore, SearchOpts, SessionRecord } from './types';
 
 interface Options {
+  /** Other devices' memory; searched, like siblings, only for a project scope. */
+  remote?: RemoteMemory;
   refreshMs?: number;
   openReader?: (dbPath: string) => SiblingReader;
 }
@@ -23,7 +26,7 @@ export class ProjectMemory implements MemoryStore {
   private readonly refreshMs: number;
   private readonly openReader: (dbPath: string) => SiblingReader;
 
-  constructor(private readonly local: FtsMemoryStore, private readonly workspaceDir: string, opts: Options = {}) {
+  constructor(private readonly local: FtsMemoryStore, private readonly workspaceDir: string, private readonly opts: Options = {}) {
     this.refreshMs = opts.refreshMs ?? 30_000;
     this.openReader = opts.openReader ?? ((dbPath) => new FtsMemoryReader(dbPath));
   }
@@ -44,6 +47,9 @@ export class ProjectMemory implements MemoryStore {
         if (!seen.has(hit.sessionId)) { seen.add(hit.sessionId); merged.push(hit); }
       }
     }
+    for (const hit of await this.remoteOf()?.search(query, scope) ?? []) {
+      if (!seen.has(hit.sessionId)) { seen.add(hit.sessionId); merged.push(hit); }
+    }
     // bm25 scores from separate databases are not strictly comparable (a small index ranks high); accepted.
     return merged.sort((x, y) => y.score - x.score).slice(0, opts.limit ?? 20);
   }
@@ -55,7 +61,7 @@ export class ProjectMemory implements MemoryStore {
       const digest = this.safely(() => reader.getDigest(sessionId), undefined);
       if (digest) { return digest; }
     }
-    return undefined;
+    return this.remoteOf()?.getDigest(sessionId);
   }
 
   async fetch(hit: { sessionId: SessionId; itemId: string }): Promise<MemoryDetail> {
@@ -67,7 +73,8 @@ export class ProjectMemory implements MemoryStore {
       const at = items.findIndex((i) => i.id === hit.itemId);
       if (at >= 0) { return { sessionId: hit.sessionId, items: items.slice(at, at + FETCH_WINDOW) }; }
     }
-    return own;
+    const remote = await this.remoteOf()?.fetch(hit);
+    return remote && remote.items.length > 0 ? remote : own;
   }
 
   close(): void {
@@ -75,6 +82,8 @@ export class ProjectMemory implements MemoryStore {
     this.siblings.clear();
     this.local.close();
   }
+
+  private remoteOf(): RemoteMemory | undefined { return this.opts.remote; }
 
   private safely<T>(read: () => T, fallback: T): T {
     try { return read(); } catch { return fallback; }
