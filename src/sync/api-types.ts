@@ -17,4 +17,4 @@ export type SyncEvent =
   | { type: 'appended'; deviceId: string; lastSeq: number }
   | { type: 'devices' }
   | { type: 'keys' }
-  | { type: 'connection'; state: 'open' | 'retrying' };
+  | { type: 'connection'; state: 'open' | 'retrying' | 'revoked' };
