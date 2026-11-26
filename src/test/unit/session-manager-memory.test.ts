@@ -228,3 +228,78 @@ suite('SessionManager handoff summary', () => {
     assert.strictEqual(await manager.handoffSummary('nope'), undefined);
   });
 });
+
+suite('SessionManager projects', () => {
+  const projects = (map: Record<string, string>) => ({
+    resolve: async (cwd: string) => (map[cwd] ? { projectId: map[cwd], root: cwd } : undefined),
+  });
+  const make = (store: TranscriptStore, resolver?: ReturnType<typeof projects>, memory?: MemoryStore) => new SessionManager(
+    store, new Map<string, AgentProvider>([['fake', new FakeProvider()]]), () => {},
+    undefined, undefined, undefined, undefined, undefined, memory, undefined, undefined, undefined, resolver,
+  );
+  const until = async (done: () => boolean | Promise<boolean>) => {
+    const deadline = Date.now() + 2000;
+    while (!(await done())) {
+      if (Date.now() > deadline) { throw new Error('timed out'); }
+      await new Promise((r) => setTimeout(r, 2));
+    }
+  };
+  const persisted = async (store: TranscriptStore, id: string) =>
+    (await store.readIndex()).sessions.find((s) => s.id === id)?.projectId;
+
+  test('a new session gets its project and it is persisted', async () => {
+    const store = new TranscriptStore(await tempRoot());
+    const manager = make(store, projects({ '/repo': 'p' }));
+    const session = await manager.create('fake', '/repo');
+    await until(() => session.state.projectId === 'p');
+    await manager.persistNow();
+    assert.strictEqual(await persisted(store, session.state.id), 'p');
+    await manager.dispose();
+  });
+
+  test('a cwd change picks up the new project, and an unknown one keeps the old', async () => {
+    const store = new TranscriptStore(await tempRoot());
+    const manager = make(store, projects({ '/repo': 'p', '/wt': 'q' }));
+    const session = await manager.create('fake', '/repo');
+    await until(() => session.state.projectId === 'p');
+    session.state.cwd = '/wt';
+    manager.changed();
+    await until(() => session.state.projectId === 'q');
+    session.state.cwd = '/gone';
+    manager.changed();
+    await new Promise((r) => setTimeout(r, 20));
+    assert.strictEqual(session.state.projectId, 'q');
+    await manager.dispose();
+  });
+
+  test('a session saved before projects existed gets one on load', async () => {
+    const root = await tempRoot();
+    const first = make(new TranscriptStore(root));
+    const id = (await first.create('fake', '/repo')).state.id;
+    await first.persistNow();
+    await first.dispose();
+    const store = new TranscriptStore(root);
+    assert.strictEqual(await persisted(store, id), undefined);
+    const second = make(store, projects({ '/repo': 'p' }));
+    await second.init();
+    await until(async () => { await second.persistNow(); return (await persisted(store, id)) === 'p'; });
+    await second.dispose();
+  });
+
+  test('a hidden session whose project arrives late is tagged in memory', async () => {
+    const memory = new RecordingMemoryStore();
+    const tagged: Array<[string, string]> = [];
+    (memory as MemoryStore).setProject = async (sid, pid) => { tagged.push([sid, pid]); };
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    const slow = { resolve: async (cwd: string) => { await gate; return cwd === '/repo' ? { projectId: 'p', root: cwd } : undefined; } };
+    const manager = make(new TranscriptStore(await tempRoot()), slow, memory);
+    const session = await manager.create('fake', '/repo');
+    session.send('Investigate the flaky login test');
+    await manager.close(session.state.id);
+    release();
+    await until(() => tagged.length > 0);
+    assert.deepStrictEqual(tagged, [[session.state.id, 'p']]);
+    await manager.dispose();
+  });
+});

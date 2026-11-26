@@ -4,6 +4,7 @@ import type { SessionId, TranscriptItem } from '../../protocol/messages';
 
 export interface DigestSession {
   id: SessionId; providerId: string; cwd: string; title: string; hidden: boolean; updatedAt: number;
+  projectId?: string;
 }
 
 export interface DigestSource {
@@ -103,7 +104,7 @@ export class DigestService {
       if (!digest) { return false; }
       await this.o.store.index({
         sessionId: session.id, providerId: session.providerId, cwd: session.cwd,
-        closedAt: session.updatedAt, items, digest,
+        closedAt: session.updatedAt, items, digest, projectId: session.projectId,
       });
       this.o.onDigest(session.id, digest);
       return true;
@@ -125,7 +126,7 @@ export class DigestService {
       if (this.stopped || !this.find(session.id)?.hidden) { return false; }
       await this.o.store.index({
         sessionId: session.id, providerId: session.providerId, cwd: session.cwd,
-        closedAt: session.updatedAt, items, digest,
+        closedAt: session.updatedAt, items, digest, projectId: session.projectId,
       });
       this.o.onDigest(session.id, digest);
       return true;
@@ -207,6 +208,9 @@ export class DigestService {
         const wrote = await this.enqueue('fast', async () => {
           if (!session.hidden) { return this.writeExtractive(session); }
           if (!isCurrent(meta.get(session.id), session)) { return this.writeExtractive(session, true); }
+          if (session.projectId && meta.get(session.id)?.projectId !== session.projectId) {
+            await this.o.store.setProject?.(session.id, session.projectId);
+          }
           if (this.o.source.projected(session.id) === session.updatedAt) { return false; }
           const digest = await this.o.store.getDigest(session.id);
           if (!digest) { return false; }

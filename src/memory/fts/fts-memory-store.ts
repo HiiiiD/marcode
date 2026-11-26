@@ -134,12 +134,14 @@ export class FtsMemoryStore implements MemoryStore {
 
   async digestMeta(): Promise<Map<SessionId, DigestMeta>> {
     const rows = this.db.prepare(
-      'SELECT sessionId, source, summarizerVersion, forUpdatedAt FROM digests',
+      'SELECT sessionId, source, summarizerVersion, forUpdatedAt, projectId FROM digests',
     ).all() as Array<{
       sessionId: string; source: 'extractive' | 'llm'; summarizerVersion: number; forUpdatedAt: number;
+      projectId: string | null;
     }>;
     return new Map(rows.map((r) => [r.sessionId, {
       source: r.source, summarizerVersion: r.summarizerVersion, forUpdatedAt: r.forUpdatedAt,
+      ...(r.projectId ? { projectId: r.projectId } : {}),
     }]));
   }
 

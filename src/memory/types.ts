@@ -49,7 +49,7 @@ export interface SessionRecord {
   digest?: SessionDigest;
 }
 
-export type DigestMeta = Pick<SessionDigest, 'source' | 'summarizerVersion' | 'forUpdatedAt'>;
+export type DigestMeta = Pick<SessionDigest, 'source' | 'summarizerVersion' | 'forUpdatedAt'> & { projectId?: string };
 
 /**
  * The swappable seam. v1 ships `FtsMemoryStore` (SQLite + FTS5); a future
