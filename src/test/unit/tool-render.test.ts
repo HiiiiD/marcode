@@ -94,16 +94,16 @@ suite('describeTool', () => {
     assert.strictEqual(header.primary, 'create_issue');
   });
 
-  test('marcode__send_message keeps its tool name and adds who it went to', () => {
+  test('marcode__send_message reads as its tool name alone', () => {
     const header = describeTool({
       kind: 'mcp', label: 'marcode__send_message', server: 'marcode-self-control',
       tool: 'marcode__send_message', input: { to: 'reviewer', text: 'hi' },
     });
-    assert.strictEqual(header.primary, 'marcode__send_message → reviewer');
+    assert.strictEqual(header.primary, 'marcode__send_message');
     assert.strictEqual(header.glyph, 'send');
   });
 
-  test('marcode__send_message with no `to` reads as the bare tool name', () => {
+  test('marcode__send_message with no input still renders', () => {
     const header = describeTool({
       kind: 'mcp', label: 'marcode__send_message', server: 'marcode-self-control',
       tool: 'marcode__send_message',
@@ -336,12 +336,13 @@ suite('describeInput', () => {
     assert.deepStrictEqual(blocks.at(-1), { kind: 'note', text: '2 more arguments' });
   });
 
-  test('marcode__send_message surfaces the message text as a note, not server/tool fields', () => {
+  test('marcode__send_message shows its parameters and the whole message, not server/tool fields', () => {
+    const text = 'please look '.repeat(40);
     const blocks = describeInput({
       kind: 'mcp', label: 'marcode__send_message', server: 'marcode-self-control',
-      tool: 'marcode__send_message', input: { to: 'reviewer', text: 'please look' },
+      tool: 'marcode__send_message', input: { to: 'reviewer', text },
     });
-    assert.deepStrictEqual(blocks, [{ kind: 'note', text: 'please look' }]);
+    assert.deepStrictEqual(blocks, [{ kind: 'field', label: 'to', value: 'reviewer' }, { kind: 'note', text }]);
   });
 
   test('marcode__send_message with no text yields no block', () => {
