@@ -23,7 +23,7 @@ const DEBOUNCE_MS = 300;
 
 // The textarea defaults Enter to newline and Alt+Enter to submit; flip both, and keep linefeed (Ctrl+J) a newline,
 // and make Ctrl+A select everything rather than the emacs line-home (Home still goes there).
-const KEY_BINDINGS: KeyBinding[] = [
+export const KEY_BINDINGS: KeyBinding[] = [
   { name: 'return', action: 'submit' },
   { name: 'kpenter', action: 'submit' },
   { name: 'return', meta: true, action: 'newline' },

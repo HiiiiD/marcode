@@ -9,6 +9,7 @@ import { PermissionCard } from './permission-card';
 import { RelocationCardView, type RelocationKeys } from './relocation-card';
 import { SubagentCard } from './subagent-card';
 import { ToolCard } from './tool-card';
+import { WorkerGroupRow } from './worker-group-row';
 
 // Readable measure on wide terminals.
 const MAX_WIDTH = 100;
@@ -44,10 +45,14 @@ export function RowView(props: {
           <text fg={muted}>{clockTime(row.ts)}</text>
         </box>
       );
-    case 'tool':
-      return row.item.tool.kind === 'subagent' && row.item.tool.action !== 'message'
+    case 'tool': {
+      const card = row.item.tool.kind === 'subagent' && row.item.tool.action !== 'message'
         ? <SubagentCard item={row.item} open={props.expanded} userClosed={props.closed} selected={props.selected} />
         : <ToolCard item={row.item} permission={row.permission} open={row.userShell ? !props.expanded : props.expanded} streaming={row.userShell === true} selected={props.selected} />;
+      return row.member ? <box paddingLeft={2}>{card}</box> : card;
+    }
+    case 'workers':
+      return <WorkerGroupRow items={row.items} open={props.expanded} selected={props.selected} />;
     case 'permission':
       return <PermissionCard header={row.header} state={row.state} reason={row.reason} selected={props.selected} />;
     case 'question':

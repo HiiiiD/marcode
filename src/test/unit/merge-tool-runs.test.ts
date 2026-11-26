@@ -1,5 +1,5 @@
 import * as assert from 'assert';
-import { groupSubagents, mergeToolRuns } from '../../webview/lib/subagent-groups';
+import { groupSubagents, mergeToolRuns } from '../../client-core/subagent-groups';
 import { tool } from '../fixtures/protocol';
 
 const edit = (id: string, path: string) =>

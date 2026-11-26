@@ -15,7 +15,10 @@ export type TranscriptRow =
       kind: 'tool'; id: string; item: ToolItem; header: ToolHeader; state: 'running' | 'ok' | 'error'; permission?: FoldedPermission;
       /** A `!` command: opens by default, so an Enter on it collapses rather than expands. */
       userShell?: true;
+      /** Listed under an opened team row. */
+      member?: true;
     }
+  | { kind: 'workers'; id: string; items: ToolItem[] }
   | { kind: 'permission'; id: string; header: ToolHeader; state: 'pending' | 'allowed' | 'denied'; reason?: string }
   | { kind: 'question'; id: string; state: string; text: string }
   | { kind: 'relocation'; id: string; card: RelocationCard; active: boolean }

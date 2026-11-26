@@ -10,7 +10,8 @@ export type Action =
   | { do: 'option-next' } | { do: 'option-prev' } | { do: 'option-toggle' } | { do: 'submit-answers' }
   | { do: 'roster-pin' } | { do: 'roster-filter' } | { do: 'roster-delete' } | { do: 'attach-remove' } | { do: 'attach-clipboard' } | { do: 'attach-open' } | { do: 'attachment-next' } | { do: 'attachment-prev' }
   | { do: 'refresh-catalog' } | { do: 'pane-prefix' } | { do: 'fork-item' } | { do: 'promote-item' } | { do: 'roster-handoff' }
-  | { do: 'refresh-usage' } | { do: 'relocation-move' } | { do: 'relocation-stay' } | { do: 'cancel-shell' };
+  | { do: 'refresh-usage' } | { do: 'relocation-move' } | { do: 'relocation-stay' } | { do: 'cancel-shell' }
+  | { do: 'stop-item' } | { do: 'message-item' };
 
 const act = <T extends Action['do']>(d: T) => ({ do: d }) as Extract<Action, { do: T }>;
 
@@ -71,6 +72,8 @@ export function actionFor(zone: Zone, key: KeyInput, ctx: KeyContext): Action | 
         case 'end': return act('repin');
         case 'f': return act('fork-item');
         case 'o': return act('promote-item');
+        case 's': return act('stop-item');
+        case 'm': return act('message-item');
       }
       return undefined;
     case 'roster':

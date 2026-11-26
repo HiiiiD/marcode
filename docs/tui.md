@@ -62,6 +62,8 @@ yarn build:tui:bin    # bin/marcode.exe (bin/marcode elsewhere): standalone, Bun
 | Shift+H | roster | hand off from the row: opens the new-session dialog with the handoff on |
 | h | new-session dialog | toggle "Hand off from <focused session>"; with it on, a prompt line follows the provider and model picks |
 | j / k, Enter | transcript | next / previous item (a message or a tool/subagent card), expand or collapse a card |
+| s | transcript | stop the selected hosted worker while it runs (not for a session owned by another host) |
+| m, then Enter / Esc | transcript | message the selected hosted worker: the composer becomes a "To <worker>" bar whose text goes to the worker, never to this session's draft; Esc goes back |
 | PgUp / PgDn, End | transcript | scroll, re-pin to the bottom |
 | j / k, Enter, x | roster | move, focus, hide the session from the panes |
 | p | roster | pin or unpin the session (pinned sort first, shown with a star) |
@@ -149,7 +151,8 @@ asks the terminal for its background, foreground and ANSI palette (OSC) and deri
 them, so light and dark terminals both work. Startup never waits for the reply. If the terminal does
 not answer within 1.5 s, or the colors are unusable (foreground nearly equal to background), the TUI
 stays on plain named colors. Either way the transcript is flat, like the VS Code panel: tool, permission and
-subagent rows are one line each with no frame or fill, stacked as one work log; your own turn sits on the right of the
+subagent rows are one line each with no frame or fill, stacked as one work log; the workers of one `spawn_collaborators` call fold into a team row (count, names, a
+status tally) that opens to list each worker as its own selectable row; your own turn sits on the right of the
 measure (tinted when the palette is known), agent prose carries no label, and the selected row is marked by a bar in a
 gutter column every row reserves, so moving the selection never shifts text. Diffs render with line numbers and syntax highlighting; a card at least
 120 columns wide shows them side by side. Diffs over 120 lines, or patches the renderer cannot parse,

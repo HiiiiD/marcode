@@ -4,7 +4,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Attachment, SessionId } from '../../../protocol/messages';
 import { summarizeSubagent } from '../../../client-core/subagent-window';
 import { actionFor } from '../../keymap';
-import { transcriptRows, type TranscriptRow } from '../../view/transcript-rows';
+import { transcriptRows, type ToolItem, type TranscriptRow } from '../../view/transcript-rows';
+import { foldWorkerGroups } from '../../view/worker-groups';
+import { subagentLabel } from '../../../client-core/subagent-window';
 import { useTuiStore } from '../store';
 import { useTheme } from '../termcn/hooks/use-theme';
 import { useTranscriptGaps } from '../transcript-gaps';
@@ -15,12 +17,21 @@ import { RowView } from './row';
 // Every row reserves the bar's column, so selecting one never shifts the text.
 const GUTTER_CHARS = { ...BAR_CHARS, vertical: ' ' };
 
+const blockedAny = (items: ToolItem[]) => items.some((i) => summarizeSubagent(i, 0).blocked);
+
+const hostedWorker = (row: TranscriptRow | undefined) =>
+  row?.kind === 'tool' && row.item.tool.kind === 'subagent' && row.item.tool.childSessionId !== undefined
+    ? { id: row.item.tool.childSessionId, item: row.item } : undefined;
+
 const isMessage = (row: TranscriptRow | undefined) => row?.kind === 'user' || row?.kind === 'assistant';
 
 // Outside the bar, so a selected row's bar stops at its last line instead of running through the spacer.
 // Closed tool rows stack as one log; a message, or an open card's body, gets air on both sides.
 function gapAfter(row: TranscriptRow, next: TranscriptRow | undefined, opened: boolean, gaps: { message: number; tool: number }): number {
   if (next === undefined) { return 0; }
+  // An opened team hangs its workers right under it; the air goes after the last one.
+  if (row.kind === 'workers' && opened) { return 0; }
+  if (row.kind === 'tool' && row.member) { return next.kind === 'tool' && next.member ? gaps.tool : gaps.message; }
   if (isMessage(row) || isMessage(next) || opened) { return gaps.message; }
   return gaps.tool;
 }
@@ -28,14 +39,17 @@ function gapAfter(row: TranscriptRow, next: TranscriptRow | undefined, opened: b
 export function Transcript({ sessionId, focused, onFork, relocationKeys = 'none' }: {
   sessionId: SessionId; focused: boolean; onFork?(itemId: string): void; relocationKeys?: RelocationKeys;
 }) {
-  const { state, post, setNotice, chordArmed } = useTuiStore();
+  const { state, post, setNotice, chordArmed, setWorkerTarget } = useTuiStore();
   const pane = state.byId[sessionId];
   const running = pane?.summary.status === 'running';
-  const rows = useMemo(() => transcriptRows(pane?.items ?? [], running), [pane?.items, running]);
   const [cursorId, setCursorId] = useState<string | undefined>(undefined);
   const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
   const [attachCursor, setAttachCursor] = useState<{ rowId: string; index: number } | undefined>(undefined);
   const [closed, setClosed] = useState<ReadonlySet<string>>(new Set());
+  // A team that needs you opens itself, like a blocked subagent card, until the user closes it.
+  const teamOpen = (id: string, items: ToolItem[]) => open.has(id) || (blockedAny(items) && !closed.has(id));
+  const flat = useMemo(() => transcriptRows(pane?.items ?? [], running), [pane?.items, running]);
+  const rows = useMemo(() => foldWorkerGroups(flat, (id, members) => teamOpen(id, members.map((m) => m.item))), [flat, open, closed]);
   const asked = useRef<string | undefined>(undefined);
   const scroll = useRef<ScrollBoxRenderable | null>(null);
   const heightBefore = useRef<number | undefined>(undefined);
@@ -77,6 +91,12 @@ export function Transcript({ sessionId, focused, onFork, relocationKeys = 'none'
   }, [focused]);
 
   const cursor = cursorId === undefined ? -1 : rows.findIndex((r) => r.id === cursorId);
+  // A worker row vanishes when its team closes; the cursor falls back to the team row instead of to nothing.
+  useEffect(() => {
+    if (cursorId === undefined || cursor >= 0) { return; }
+    const team = rows.find((r) => r.kind === 'workers' && r.items.some((i) => i.id === cursorId));
+    if (team) { setCursorId(team.id); }
+  }, [cursorId, cursor, rows]);
   useEffect(() => {
     if (cursorId !== undefined) { scroll.current?.scrollChildIntoView(cursorId); }
   }, [cursorId]);
@@ -86,6 +106,15 @@ export function Transcript({ sessionId, focused, onFork, relocationKeys = 'none'
       if (row.summary === undefined) { return; }
       const id = row.id;
       setOpen((o) => { const n = new Set(o); if (n.has(id)) { n.delete(id); } else { n.add(id); } return n; });
+      return;
+    }
+    if (row?.kind === 'workers') {
+      const id = row.id;
+      const blocked = blockedAny(row.items);
+      const effective = teamOpen(id, row.items);
+      const flipTeam = (s: ReadonlySet<string>, on: boolean) => { const n = new Set(s); if (on) { n.add(id); } else { n.delete(id); } return n; };
+      setOpen((o) => flipTeam(o, !effective));
+      setClosed((c) => flipTeam(c, effective && blocked));
       return;
     }
     if (row?.kind !== 'tool') { return; }
@@ -143,6 +172,19 @@ export function Transcript({ sessionId, focused, onFork, relocationKeys = 'none'
       if (tool?.kind === 'subagent' && tool.childSessionId) { post({ t: 'promote-subagent', id: tool.childSessionId }); }
       else { setNotice('Select a hosted subagent card to open it as a session'); }
     }
+    else if (action.do === 'stop-item' || action.do === 'message-item') {
+      const worker = hostedWorker(current);
+      const owner = pane?.summary.owner;
+      if (!worker) { setNotice('Select a hosted worker to stop or message it'); return; }
+      if (owner) { setNotice(`Cannot reach this worker: "${pane.summary.name || pane.summary.title}" is owned by ${owner.host}`); return; }
+      const live = worker.item.state === 'running';
+      if (action.do === 'stop-item') {
+        if (!live) { setNotice('This worker is not running'); return; }
+        post({ t: 'interrupt', id: worker.id });
+      } else {
+        setWorkerTarget({ paneId: sessionId, workerId: worker.id, name: subagentLabel(worker.item), running: live });
+      }
+    }
     else if (action.do === 'repin') { setCursorId(undefined); box?.scrollTo(Number.MAX_SAFE_INTEGER); }
     if (action.do === 'page-up' || action.do === 'item-prev') { setTimeout(askOlder, 0); }
   });
@@ -155,7 +197,8 @@ export function Transcript({ sessionId, focused, onFork, relocationKeys = 'none'
       {hasMore ? <text fg={muted}>↑ older messages</text> : null}
       {rows.map((row, i) => {
         const selected = focused && i === cursor;
-        const opened = row.kind === 'tool' && row.userShell ? !open.has(row.id) : open.has(row.id);
+        const opened = row.kind === 'workers' ? teamOpen(row.id, row.items)
+          : row.kind === 'tool' && row.userShell ? !open.has(row.id) : open.has(row.id);
         return (
           <box
             key={row.id}
@@ -168,7 +211,7 @@ export function Transcript({ sessionId, focused, onFork, relocationKeys = 'none'
             paddingLeft={1}
             onMouseDown={() => { setCursorId(row.id); toggleRow(row); }}
           >
-            <RowView row={row} selected={selected} attachmentCursor={attachCursor?.rowId === row.id ? attachCursor.index : undefined} onOpenAttachment={(a) => { post({ t: 'open-attachment', id: sessionId, attachmentId: a.id, itemId: row.id }); }} expanded={open.has(row.id)} closed={closed.has(row.id)} relocationKeys={relocationKeys} />
+            <RowView row={row} selected={selected} attachmentCursor={attachCursor?.rowId === row.id ? attachCursor.index : undefined} onOpenAttachment={(a) => { post({ t: 'open-attachment', id: sessionId, attachmentId: a.id, itemId: row.id }); }} expanded={row.kind === 'workers' ? opened : open.has(row.id)} closed={closed.has(row.id)} relocationKeys={relocationKeys} />
           </box>
         );
       })}

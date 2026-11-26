@@ -7,9 +7,10 @@ import { ForeignBanner } from './foreign-banner';
 import { QuestionPrompt } from './question-prompt';
 import { ShellStrip } from './shell-strip';
 import { useTuiStore } from './store';
+import { WorkerMessageBar } from './worker-message-bar';
 
 export function BottomSlotView({ sessionId, focused, onOpenPicker }: { sessionId: SessionId; focused: boolean; onOpenPicker?: (kind: PickerKind) => void }) {
-  const { state } = useTuiStore();
+  const { state, workerTarget } = useTuiStore();
   const pane = state.byId[sessionId];
   const slot = bottomSlot(pane?.summary ?? state.sessions.find((s) => s.id === sessionId), pane);
   switch (slot.kind) {
@@ -19,6 +20,9 @@ export function BottomSlotView({ sessionId, focused, onOpenPicker }: { sessionId
       return <ApprovalPrompt key={slot.request.requestId} sessionId={sessionId} request={slot.request} focused={focused} />;
     case 'foreign': return <ForeignBanner text={slot.text} />;
     case 'composer':
+      if (workerTarget?.paneId === sessionId) {
+        return <WorkerMessageBar key={workerTarget.workerId} target={workerTarget} focused={focused} />;
+      }
       return (
         <box flexDirection="column">
           <ShellStrip sessionId={sessionId} />
