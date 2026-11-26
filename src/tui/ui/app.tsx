@@ -43,7 +43,7 @@ export interface AppProps {
 type PaneZone = 'composer' | 'transcript' | 'roster';
 
 export function App(props: AppProps) {
-  const { state, post, setNotice } = useTuiStore();
+  const { state, post, setNotice, workerTarget, setWorkerTarget } = useTuiStore();
   const layout = usePaneLayout();
   useProgramStatus(state.sessions);
   const { shownId: focusedId, focusSession: focus } = useFocusFallback(layout.placeOrFocus);
@@ -120,6 +120,10 @@ export function App(props: AppProps) {
     relocation: summary && !summary.owner ? activeRelocation(pane?.items ?? []) : undefined,
     runningShellId: summary && !summary.owner ? runningShell(pane?.items ?? [])?.id : undefined,
   });
+
+  // `m` on a worker hands the keyboard to its message bar; leaving the pane drops the target, since the bar's Esc/Tab hold is global.
+  useEffect(() => { if (workerTarget) { setZone('composer'); } }, [workerTarget]);
+  useEffect(() => { if (workerTarget && workerTarget.paneId !== focusedId) { setWorkerTarget(null); } }, [focusedId, workerTarget]);
 
   const onFocusSession = (id: SessionId) => {
     focus(id);

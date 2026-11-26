@@ -9,7 +9,8 @@
     "jsx": "react-jsx",
     "jsxImportSource": "@opentui/react",
     "rootDir": "../..",
-    "paths": { "@termcn/*": ["src/tui/ui/termcn/*"] },
+    "baseUrl": ".",
+    "paths": { "@termcn/*": ["./termcn/*"] },
     "noEmit": true
   },
   "include": ["./**/*"],

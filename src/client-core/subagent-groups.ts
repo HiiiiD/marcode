@@ -1,5 +1,5 @@
-import { describeTool } from '../../client-core/tool-render';
-import type { TranscriptItem } from '../../protocol/messages';
+import { describeTool } from './tool-render';
+import type { TranscriptItem } from '../protocol/messages';
 
 type ToolItem = Extract<TranscriptItem, { role: 'tool' }>;
 
@@ -7,7 +7,8 @@ export type TranscriptEntry =
   | { kind: 'item'; item: TranscriptItem; /** Identical consecutive calls folded into this row. */ more?: ToolItem[] }
   | { kind: 'group'; id: string; items: ToolItem[] };
 
-const groupOf = (item: TranscriptItem): string | undefined =>
+/** The `spawn_collaborators` call a hosted worker belongs to. */
+export const groupOf = (item: TranscriptItem): string | undefined =>
   item.role === 'tool' && item.tool.kind === 'subagent' ? item.tool.groupId : undefined;
 
 /** Folds consecutive hosted workers of one `spawn_collaborators` call into a single entry. */

@@ -9,11 +9,14 @@ export function densityToCss(density: TranscriptDensity): string {
   return density === 'default' ? '' : `:root{--transcript-scale:${PANEL_SCALE[density]}}`;
 }
 
-/** Blank lines the terminal client leaves under a message and under a tool card: a terminal cannot change its font size, only its spacing. */
+/**
+ * Blank lines the terminal client leaves under a message, and between two consecutive tool rows: a terminal cannot
+ * change its font size, only its spacing. Flat tool rows stack as one work log, like the panel's.
+ */
 export function tuiGaps(density: TranscriptDensity): { message: number; tool: number } {
-  if (density === 'compact') { return { message: 1, tool: 0 }; }
+  if (density === 'compact') { return { message: 0, tool: 0 }; }
   if (density === 'comfortable') { return { message: 2, tool: 1 }; }
-  return { message: 1, tool: 1 };
+  return { message: 1, tool: 0 };
 }
 
 export function parseTranscriptSettings(raw: unknown): { density: TranscriptDensity; warnings: string[] } {

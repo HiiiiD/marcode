@@ -36,9 +36,26 @@ test('user and assistant text render, assistant as markdown', async () => {
   ]));
   await paint('All green');
   expect(m.frame()).toContain('fix the tests');
-  expect(m.frame()).toContain('user');
-  expect(m.frame()).toContain('assistant');
   expect(m.frame()).toContain('All green');
+  expect(/\b(user|assistant|You)\b/.test(m.frame())).toBe(false);
+});
+
+test('agent prose and the user\'s own turn carry their time underneath', async () => {
+  const at = new Date(2026, 0, 1, 9, 41).getTime();
+  const time = new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  m = await mount(<Transcript sessionId="s1" focused />);
+  await m.fromHost(withItems([{ id: 'u1', ts: at, role: 'user', text: 'go' }, { id: 'a1', ts: at, role: 'assistant', text: 'Done here.' }]));
+  await paint('Done here');
+  const rows = m.frame().split(/\r?\n/);
+  const under = (needle: string) => rows[rows.findIndex((r) => r.includes(needle)) + 1] ?? '';
+  expect(under('go')).toContain(time);
+  expect(under('Done here')).toContain(time);
+});
+
+test('a message from another session names its sender', async () => {
+  m = await mount(<Transcript sessionId="s1" focused />);
+  await m.fromHost(withItems([{ id: 'u1', ts: 1, role: 'user', text: 'status?', from: { sessionId: 's2', name: 'scout' } }]));
+  expect(m.frame()).toContain('Message from scout');
 });
 
 test('a finished tool row starts no interval timers', async () => {
@@ -53,19 +70,18 @@ test('a finished tool row starts no interval timers', async () => {
   } finally { globalThis.setInterval = real; }
 });
 
-const chevronFg = () => {
-  const spans = m!.setup.captureSpans().lines.flatMap((l) => l.spans);
-  const span = spans.find((s) => s.text.includes('┌'));
-  return span === undefined ? '' : span.fg.toString();
-};
+const barRows = () => m!.frame().split(/\r?\n/).filter((r) => r.includes('┃'));
 
-test('the selected tool row is marked by colour, not only by bold', async () => {
+test('only the selected row draws the gutter bar, and selecting shifts no text', async () => {
   m = await mount(<Transcript sessionId="s1" focused />);
-  await m.fromHost(withItems([tool({ id: 't1' })]));
-  const idle = chevronFg();
-  expect(idle === '').toBe(false);
+  await m.fromHost(withItems([tool({ id: 't1' }), tool({ id: 't2', tool: { kind: 'command', label: 'Grep', command: 'rg x' } })]));
+  const col = (needle: string) => m!.frame().split(/\r?\n/).find((r) => r.includes(needle))?.indexOf(needle) ?? -1;
+  const before = [col('Bash'), col('Grep')];
+  expect(barRows().length).toBe(0);
   await m.press('j');
-  expect(chevronFg() === idle).toBe(false);
+  expect(barRows().length).toBe(1);
+  expect(barRows()[0]?.includes('Bash')).toBe(true);
+  expect([col('Bash'), col('Grep')]).toEqual(before);
 });
 
 const spansOf = () => m!.setup.captureSpans().lines.flatMap((l) => l.spans);
@@ -82,20 +98,23 @@ test('user text is capped to a readable width on a wide terminal', async () => {
   expect(longest > 40).toBe(true);
 });
 
-test('a message body sits behind a left accent bar', async () => {
-  m = await mount(<Transcript sessionId="s1" focused />);
+test('the user\'s turn sits on the right of the measure, sized to its text', async () => {
+  m = await mount(<Transcript sessionId="s1" focused />, { width: 80, height: 20 });
   await m.fromHost(withItems([{ id: 'u1', ts: 1, role: 'user', text: 'fix the tests' }]));
   const row = m.frame().split(/\r?\n/).find((r) => r.includes('fix the tests')) ?? '';
-  expect(row.startsWith('│')).toBe(true);
+  expect(row.indexOf('fix the tests') > 40).toBe(true);
 });
 
-test('the accent bar stops at the last line of the message, not the spacer row', async () => {
+test('the selected bar stops at the last line of the message, not the spacer row', async () => {
   m = await mount(<Transcript sessionId="s1" focused />);
-  await m.fromHost(withItems([{ id: 'u1', ts: 1, role: 'user', text: 'fix the tests' }]));
+  await m.fromHost(withItems([{ id: 'u2', ts: 2, role: 'user', text: 'and lint' }, { id: 'u1', ts: 1, role: 'user', text: 'fix the tests' }]));
+  await m.press('j');
   const rows = m.frame().split(/\r?\n/);
-  const at = rows.findIndex((r) => r.includes('fix the tests'));
-  expect(at >= 0).toBe(true);
-  expect(rows[at + 1].startsWith('│')).toBe(false);
+  const at = rows.findIndex((r) => r.includes('and lint'));
+  const time = rows[at + 1] ?? '';
+  expect(rows[at]?.includes('┃') && time.includes('┃')).toBe(true);
+  expect(barRows().length).toBe(2);
+  expect((rows[at + 2] ?? '').includes('┃')).toBe(false);
 });
 
 test('only the status mark of a failed tool row is red, not its name', async () => {

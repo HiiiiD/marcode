@@ -1,4 +1,3 @@
-import { TextAttributes } from '@opentui/core';
 import { describeInput, describeOutput, describeTool } from '../../../client-core/tool-render';
 import type { FoldedPermission, ToolItem } from '../../view/transcript-rows';
 import { useTheme } from '../termcn/hooks/use-theme';
@@ -7,6 +6,7 @@ import { Collapsible } from './collapsible';
 import { useTokens } from '../tokens/tokens-provider';
 import { nativeDiff, ToolBlocks } from './tool-blocks';
 import { TOOL_GLYPHS } from './tool-glyphs';
+import { RowLabel } from './row-label';
 
 export function ToolCard(props: {
   item: ToolItem; open: boolean; selected: boolean; headerOnly?: boolean; permission?: FoldedPermission;
@@ -39,21 +39,19 @@ export function ToolCard(props: {
     <Collapsible
       open={open}
       wide={wide}
-      selected={props.selected}
       header={(
         <>
           <text fg={failed ? theme.colors.error : muted} flexShrink={0}>{glyph}</text>
+          <RowLabel text={server ? 'MCP' : header.verb} selected={props.selected} />
           {server ? (
+            // Read as a path, server then tool: two bare names side by side never said which was which.
             <box flexShrink={1} minWidth={0} height={1} overflow="hidden">
-              <text fg={muted} wrapMode="none">{`[${server}]`}</text>
+              <text fg={muted} wrapMode="none">{`${server} ›`}</text>
             </box>
           ) : null}
-          <box flexShrink={1} minWidth={0} height={1} overflow="hidden">
-            <text attributes={props.selected ? TextAttributes.BOLD : TextAttributes.NONE} wrapMode="none">{header.verb}</text>
-          </box>
-          {/* The primary absorbs overflow first; verb and chip only shrink once it is gone. */}
+          {/* The target absorbs overflow first; the server only shrinks once it is gone. */}
           <box flexGrow={1} flexShrink={100} minWidth={0} height={1} overflow="hidden">
-            <text fg={muted} wrapMode="none">{header.primary}</text>
+            <text wrapMode="none">{header.primary}</text>
           </box>
           {pill ? <text fg={pill.fg} flexShrink={0}>{pill.text}</text> : null}
           {props.headerOnly ? null : <text fg={muted} flexShrink={0}>{props.open ? '▾' : '▸'}</text>}

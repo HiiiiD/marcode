@@ -25,7 +25,12 @@ export interface TuiStoreValue {
   refreshUsage(): void;
   dismissRejection(id: SessionId): void;
   dismissRearrange(): void;
+  /** A hosted worker the focused pane's bottom slot is addressing instead of the pane's own session. */
+  workerTarget: WorkerTarget | null;
+  setWorkerTarget(target: WorkerTarget | null): void;
 }
+
+export interface WorkerTarget { paneId: SessionId; workerId: SessionId; name: string; running: boolean }
 
 const Ctx = createContext<TuiStoreValue | undefined>(undefined);
 
@@ -34,6 +39,7 @@ export function TuiStoreProvider({ transport, children }: { transport: ClientTra
   const [notice, setNotice] = useState<string | null>(null);
   const [mentionOpen, setMentionOpen] = useState(false);
   const [rosterFiltering, setRosterFiltering] = useState(false);
+  const [workerTarget, setWorkerTarget] = useState<WorkerTarget | null>(null);
   const chordArmed = useRef(false);
   const draftsRef = useRef<DraftStore | undefined>(undefined);
   if (!draftsRef.current) { draftsRef.current = createDraftStore(); }
@@ -76,8 +82,8 @@ export function TuiStoreProvider({ transport, children }: { transport: ClientTra
 
   const focusedId = state.focusedSessionId ?? null;
   const value = useMemo<TuiStoreValue>(
-    () => ({ state, post, drafts, focusedId, focus, setLocalLayout, chordArmed, notice, setNotice, mentionOpen, setMentionOpen, rosterFiltering, setRosterFiltering, refreshUsage, dismissRejection, dismissRearrange }),
-    [state, post, drafts, focusedId, focus, setLocalLayout, chordArmed, notice, mentionOpen, rosterFiltering, refreshUsage, dismissRejection, dismissRearrange],
+    () => ({ state, post, drafts, focusedId, focus, setLocalLayout, chordArmed, notice, setNotice, mentionOpen, setMentionOpen, rosterFiltering, setRosterFiltering, refreshUsage, dismissRejection, dismissRearrange, workerTarget, setWorkerTarget }),
+    [state, post, drafts, focusedId, focus, setLocalLayout, chordArmed, notice, mentionOpen, rosterFiltering, refreshUsage, dismissRejection, dismissRearrange, workerTarget],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

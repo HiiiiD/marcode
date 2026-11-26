@@ -67,3 +67,41 @@ test('a very long agent label keeps the Needs you pill visible at 50 columns', a
   expect(rows.some((r) => r.includes('Needs you'))).toBe(true);
   expect(rows.every((r) => r.trimEnd().length <= 50)).toBe(true);
 });
+
+const worker = { ...spawn, provider: 'claude', childSessionId: 's-child-1' } as const;
+
+test('a built-in subagent reads Agent, then its name', async () => {
+  m = await mount(card(agent()));
+  const line = m.frame().split('\n').find((r) => r.includes('Explore')) ?? '';
+  expect(line.indexOf('Agent') >= 0 && line.indexOf('Agent') < line.indexOf('Explore')).toBe(true);
+});
+
+test('a hosted worker reads Worker and its status, never its session id', async () => {
+  for (const [state, words] of [['running', 'Running'], ['ok', 'Done'], ['error', 'Failed']] as const) {
+    m = await mount(card(agent({ tool: worker, state })));
+    const line = m.frame().split('\n').find((r) => r.includes('Worker')) ?? '';
+    expect(line).toContain(words);
+    expect(m.frame().includes('s-child-1')).toBe(false);
+    m.destroy();
+    m = undefined;
+  }
+});
+
+test('an opened failed worker says why it failed', async () => {
+  m = await mount(card(agent({ tool: worker, state: 'error', output: { kind: 'text', text: 'rate limited' } }), { open: true }));
+  expect(m.frame()).toContain('rate limited');
+});
+
+test('a running worker with no progress for a minute reads Quiet', async () => {
+  const realNow = Date.now;
+  let clock = 1_000_000;
+  Date.now = () => clock;
+  try {
+    m = await mount(card(agent({ tool: worker, state: 'running' })));
+    expect(m.frame()).toContain('Running');
+    clock += 61_000;
+    await new Promise((r) => setTimeout(r, 300));
+    await m.fromHost();
+    expect(m.frame()).toContain('Quiet for');
+  } finally { Date.now = realNow; }
+});

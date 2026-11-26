@@ -11,7 +11,7 @@ import { TranscriptItemView } from './transcript-item';
 import type { PaneState } from '../reducer';
 import { isLivePrompt } from '../lib/pending-prompts';
 import { splitNestedMessages } from '../lib/nested-messages';
-import { groupSubagents, mergeToolRuns } from '../lib/subagent-groups';
+import { groupSubagents, mergeToolRuns } from '../../client-core/subagent-groups';
 import { beatOf, gapAbove } from '../lib/rhythm';
 
 export function Transcript({

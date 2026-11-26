@@ -7,22 +7,11 @@ import { AlertCircleIcon, ExternalLinkIcon, MessageSquareIcon, MoreHorizontalIco
 import { formatElapsed } from "../../client-core/subagent-window";
 import type { SessionId, TranscriptItem } from "../../protocol/messages";
 import { useStore } from "../store";
-import { QUIET_AFTER_MS } from "../lib/last-change";
+import { workerFailure, type WorkerState } from "../../client-core/worker-status";
 
 type ToolItem = Extract<TranscriptItem, { role: "tool" }>;
 
-export type WorkerState = "needs-you" | "quiet" | "running" | "failed" | "done";
-
-/** How long a running worker has gone without visibly progressing (`changedAt` from `useLastChange`); 0 when it is not running. */
-export function quietFor(item: ToolItem, now: number, changedAt: number): number {
-  return item.state === "running" ? Math.max(0, now - changedAt) : 0;
-}
-
-export function workerState(item: ToolItem, blocked: boolean, now: number, changedAt: number): WorkerState {
-  if (blocked) { return "needs-you"; }
-  if (item.state === "running") { return quietFor(item, now, changedAt) >= QUIET_AFTER_MS ? "quiet" : "running"; }
-  return item.state === "ok" ? "done" : "failed";
-}
+export { quietFor, statusWords, workerState, type WorkerState } from "../../client-core/worker-status";
 
 export const STATUS_TONE: Record<WorkerState, string> = {
   "needs-you": "text-primary",
@@ -32,27 +21,15 @@ export const STATUS_TONE: Record<WorkerState, string> = {
   done: "text-git-added",
 };
 
-/** The status in words, for the expanded card: the header carries it as a dot only. */
-export function statusWords(state: WorkerState, quietMs: number): string {
-  switch (state) {
-    case "needs-you": return "Needs you";
-    case "quiet": return `Quiet for ${formatElapsed(quietMs)}`;
-    case "running": return "Running";
-    case "failed": return "Failed";
-    case "done": return "Done";
-  }
-}
-
 /** Why a worker failed: the only prose a worker card needs. A question or approval it raises is answered in the parent's own prompt strip, so it says nothing about that here. */
 export function WorkerNotes({ item, state }: { item: ToolItem; state: WorkerState }) {
-  const output = item.output?.kind === "text" ? item.output.text : undefined;
-  const failed = state === "failed";
+  const failure = workerFailure(item, state);
   return (
     <>
-      {failed && (
+      {failure !== undefined && (
         <p role="alert" className="mb-1.5 flex gap-2 rounded-md bg-destructive/10 px-2.5 py-2 text-xs wrap-break-word">
           <AlertCircleIcon aria-hidden className="mt-px size-3.5 shrink-0 text-destructive" />
-          <span className="min-w-0">{output ?? "The worker stopped before returning a result."}</span>
+          <span className="min-w-0">{failure}</span>
         </p>
       )}
     </>

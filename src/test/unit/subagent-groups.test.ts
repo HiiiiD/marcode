@@ -1,5 +1,5 @@
 import * as assert from 'assert';
-import { groupSubagents } from '../../webview/lib/subagent-groups';
+import { groupSubagents } from '../../client-core/subagent-groups';
 import type { TranscriptItem } from '../../protocol/messages';
 
 const sub = (id: string, groupId?: string): TranscriptItem => ({

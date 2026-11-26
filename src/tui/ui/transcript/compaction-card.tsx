@@ -20,7 +20,6 @@ export function CompactionCard(props: { row: CompactionRow; open: boolean; selec
   return (
     <Collapsible
       open={props.open && row.summary !== undefined}
-      selected={props.selected}
       header={(
         <>
           <text fg={failed ? theme.colors.error : muted} flexShrink={0}>{glyph}</text>
