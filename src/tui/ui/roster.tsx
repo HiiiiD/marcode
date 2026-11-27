@@ -23,10 +23,11 @@ interface RosterProps {
   onFocusSession(id: SessionId): void;
   onAskDelete(row: { id: SessionId; title: string }): void;
   onHandoff(row: { id: SessionId; title: string }): void;
+  onMove?(id: SessionId): void;
   squeezed?: ReadonlySet<SessionId>;
 }
 
-export function Roster({ focused, onFocusSession, onAskDelete, onHandoff, squeezed }: RosterProps) {
+export function Roster({ focused, onFocusSession, onAskDelete, onHandoff, onMove, squeezed }: RosterProps) {
   const { state, focusedId, post, setNotice, setRosterFiltering, chordArmed } = useTuiStore();
   const [filter, setFilter] = useState('');
   const [filtering, setFiltering] = useState(false);
@@ -66,6 +67,9 @@ export function Roster({ focused, onFocusSession, onAskDelete, onHandoff, squeez
     else if (action.do === 'roster-focus' && row) { onFocusSession(row.id); }
     else if (action.do === 'roster-hide' && row) { post({ t: 'close-session', id: row.id }); }
     else if (action.do === 'roster-handoff' && row) { onHandoff({ id: row.id, title: row.title }); }
+    else if (action.do === 'roster-move' && row) {
+      if (row.remote) { onMove?.(row.id); } else { setNotice("Only another device's session can be moved here."); }
+    }
     else if (action.do === 'roster-pin' && row) { post({ t: 'set-pinned', id: row.id, pinned: !row.pinned }); }
     else if (action.do === 'roster-filter') { setFiltering(true); setCursorId(null); }
     else if (action.do === 'roster-delete' && row) {

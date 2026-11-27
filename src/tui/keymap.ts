@@ -9,7 +9,7 @@ export type Action =
   | { do: 'allow' } | { do: 'deny' } | { do: 'confirm' }
   | { do: 'option-next' } | { do: 'option-prev' } | { do: 'option-toggle' } | { do: 'submit-answers' }
   | { do: 'roster-pin' } | { do: 'roster-filter' } | { do: 'roster-delete' } | { do: 'attach-remove' } | { do: 'attach-clipboard' } | { do: 'attach-open' } | { do: 'attachment-next' } | { do: 'attachment-prev' }
-  | { do: 'refresh-catalog' } | { do: 'pane-prefix' } | { do: 'fork-item' } | { do: 'promote-item' } | { do: 'roster-handoff' }
+  | { do: 'refresh-catalog' } | { do: 'pane-prefix' } | { do: 'fork-item' } | { do: 'promote-item' } | { do: 'roster-handoff' } | { do: 'roster-move' }
   | { do: 'refresh-usage' } | { do: 'relocation-move' } | { do: 'relocation-stay' } | { do: 'cancel-shell' };
 
 const act = <T extends Action['do']>(d: T) => ({ do: d }) as Extract<Action, { do: T }>;
@@ -81,6 +81,7 @@ export function actionFor(zone: Zone, key: KeyInput, ctx: KeyContext): Action | 
         case 'x': return act('roster-hide');
         case 'r': return act('roster-rename');
         case 'p': return act('roster-pin');
+        case 'm': return act('roster-move');
         case '/': return act('roster-filter');
         case 'h': return key.shift ? act('roster-handoff') : undefined;
         case 'd': return key.shift ? act('roster-delete') : undefined;

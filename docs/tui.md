@@ -65,6 +65,7 @@ yarn build:tui:bin    # bin/marcode.exe (bin/marcode elsewhere): standalone, Bun
 | PgUp / PgDn, End | transcript | scroll, re-pin to the bottom |
 | j / k, Enter, x | roster | move, focus, hide the session from the panes |
 | p | roster | pin or unpin the session (pinned sort first, shown with a star) |
+| m | roster | on another device's session: move it here, or take it over when its device has been offline long enough. ↑/↓ picks the checkout, Space stops the running turn there, Enter moves, Esc closes |
 | / | roster | filter by title; Enter keeps the filter, Esc clears it |
 | Shift+D, then y / n | roster | delete the session after confirming; refused for a session owned by another host |
 | @ then Up / Down, Tab or Enter, Esc | composer | file mention popup: a pick inserts `@path`, and the file's content travels with the message |

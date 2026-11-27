@@ -177,4 +177,27 @@ suite('MoveResponder', function () {
     await new Promise((res) => setTimeout(res, 500));
     assert.strictEqual(r.manager.isForeign(r.session.state.id), true);
   });
+
+  test('attachments the session references go up before the reply, and a missing one is skipped', async () => {
+    const r = await rig();
+    r.session.send('first');
+    await until(() => r.session.state.status === 'idle');
+    const shot = path.join(await tmp('mar-att-'), 'shot.png');
+    await fs.writeFile(shot, Buffer.from([1, 2, 3]));
+    r.store.append(r.session.state.id, {
+      id: 'u9', ts: 1, role: 'user', text: 'see this',
+      attachments: [
+        { id: 'a1', path: shot, name: 'shot.png', kind: 'image', mediaType: 'image/png', bytes: 3 },
+        { id: 'a2', path: path.join(path.dirname(shot), 'gone.png'), name: 'gone.png', kind: 'image', bytes: 3 },
+      ],
+    });
+    await r.store.flush(r.session.state.id);
+    await r.ask();
+    await until(() => r.replies().length === 1);
+    const types = r.state.peek(1000).map((x) => x.payload as { type: string; attachmentId?: string });
+    const at = types.findIndex((p) => p.type === 'attachment' && p.attachmentId === 'a1');
+    assert.strictEqual(at >= 0 && at < types.findIndex((p) => p.type === 'move-reply'), true);
+    assert.strictEqual(types.some((p) => p.attachmentId === 'a2'), false);
+    assert.strictEqual(r.replies()[0].ok, true);
+  });
 });

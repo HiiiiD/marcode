@@ -46,14 +46,23 @@ suite('MessageRouter move', () => {
     await router.handle({ t: 'take-over-session', id: 'r1', target: { createWorktree: 'feat/x' } });
     assert.deepStrictEqual(calls, ['move:r1:true', 'take:r1']);
     assert.deepStrictEqual(sent.filter((m) => m.t === 'move-panel').length, 1);
-    assert.deepStrictEqual(sent.flatMap((m) => (m.t === 'move-status' ? [m.status.state] : [])), ['waiting', 'done', 'failed']);
+    assert.deepStrictEqual(sent.flatMap((m) => (m.t === 'move-status' ? [m.status.state] : [])), ['waiting', 'waiting', 'done', 'waiting', 'failed']);
   });
 
   test('a service that throws becomes a failed status, never a rejection', async () => {
     const { sent, manager, router } = await rig();
     manager.setMoveService({ moveHere: async () => { throw new Error('boom'); } } as unknown as MoveService);
     await router.handle({ t: 'move-session', id: 'r1', target: { root: '/w' }, cancelTurn: false });
-    const status = sent.find((m) => m.t === 'move-status');
+    const status = sent.filter((m) => m.t === 'move-status').at(-1);
     assert.strictEqual(status?.t === 'move-status' && status.status.state, 'failed');
+  });
+
+  test('a move is reported as waiting before the service does anything', async () => {
+    const { sent, manager, router } = await rig();
+    manager.setMoveService({ moveHere: async () => { await new Promise((r) => setTimeout(r, 50)); } } as unknown as MoveService);
+    const running = router.handle({ t: 'move-session', id: 'r1', target: { createWorktree: 'feat/x' }, cancelTurn: false });
+    await new Promise((r) => setTimeout(r, 5));
+    assert.deepStrictEqual(sent.find((m) => m.t === 'move-status'), { t: 'move-status', id: 'r1', status: { state: 'waiting', step: 'reply' } });
+    await running;
   });
 });

@@ -2759,6 +2759,27 @@ export class SessionManager implements SessionSink {
     this.changed();
   }
 
+  /** The files this session's messages attach, for a move to take along. */
+  async attachmentFiles(id: SessionId): Promise<Array<{ attachmentId: string; name: string; mime: string; path: string }>> {
+    const items = (await this.store.tail(id, Number.MAX_SAFE_INTEGER)).items;
+    return items.flatMap((i) => (i.role === 'user' ? i.attachments ?? [] : []))
+      .map((a) => ({ attachmentId: a.id, name: a.name, mime: a.mediaType ?? '', path: a.path }));
+  }
+
+  /** Copies moved attachments into this workspace and points the moved messages at the copies; one that did not arrive keeps its old path. */
+  private async installAttachments(id: SessionId, items: TranscriptItem[], files?: Map<string, { name: string; bytes: Buffer }>): Promise<TranscriptItem[]> {
+    if (!files || files.size === 0 || !this.attachments) { return items; }
+    const installed = new Map<string, { path: string; storeRelative: string }>();
+    for (const [attachmentId, file] of files) {
+      try { installed.set(attachmentId, await this.attachments.install(id, { id: attachmentId, name: file.name }, file.bytes)); } catch (err) {
+        console.warn('[mar-code] could not install a moved attachment', attachmentId, err);
+      }
+    }
+    return items.map((item) => (item.role === 'user' && item.attachments
+      ? { ...item, attachments: item.attachments.map((a) => ({ ...a, ...(installed.get(a.id) ?? {}) })) }
+      : item));
+  }
+
   hasProvider(id: string): boolean { return this.providers.has(id); }
   providerOf(id: string): AgentProvider | undefined { return this.providers.get(id); }
 
@@ -2772,7 +2793,9 @@ export class SessionManager implements SessionSink {
    * Makes a session moved or taken over from another device this host's own: the mirrored remote row is
    * replaced by a local one in this workspace's store, leased here, with the transcript copied and `notice` after it.
    */
-  async adoptMoved(input: { state: SessionState; items: TranscriptItem[]; seed?: string; notice: string }): Promise<AgentSession> {
+  async adoptMoved(input: {
+    state: SessionState; items: TranscriptItem[]; seed?: string; notice: string; attachments?: Map<string, { name: string; bytes: Buffer }>;
+  }): Promise<AgentSession> {
     const id = input.state.id;
     this.foreign.get(id)?.stop();
     this.foreign.delete(id);
@@ -2784,7 +2807,7 @@ export class SessionManager implements SessionSink {
     this.store.clearForeign(id);
     // Listed as this host's before the first write: the publisher only sends a session it can see is ours.
     this.meta.set(id, state as SessionState);
-    for (const item of input.items) { this.store.append(id, item); }
+    for (const item of await this.installAttachments(id, input.items, input.attachments)) { this.store.append(id, item); }
     this.store.append(id, { id: `moved-${Date.now()}`, ts: Date.now(), role: 'switch', kind: 'relocation', text: input.notice });
     await this.store.flush(id);
     await this.ownership?.claim(id);

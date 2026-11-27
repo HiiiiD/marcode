@@ -190,12 +190,12 @@ export class MoveService {
   private async finish(
     row: SessionState, root: string, ready: Awaited<ReturnType<typeof materialize>>, lead: string,
   ): Promise<{ sessionId: SessionId; thread: 'restored' | 'restarted' }> {
-    const { state: next, items, seed, thread } = ready;
+    const { state: next, items, seed, thread, attachments } = ready;
     const notice = thread === 'restored'
       ? `${lead} Agent thread restored.`
       : `${lead} The agent restarted from the transcript; earlier tool output is not in its context.`;
     if (row.projectId) { this.deps.state.setLastCheckout(row.projectId, root); }
-    await this.deps.manager.adoptMoved({ state: next, items, ...(seed ? { seed } : {}), notice });
+    await this.deps.manager.adoptMoved({ state: next, items, ...(seed ? { seed } : {}), notice, attachments });
     return { sessionId: row.id, thread };
   }
 }

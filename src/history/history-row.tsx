@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useContext, useState } from 'react';
 import { ChevronRightIcon, PinIcon, RefreshCwIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { TableCell, TableRow } from '@/components/ui/table';
@@ -7,6 +7,7 @@ import { TITLE_MAX } from '../shared/title-max';
 import { formatWhen } from './format-when';
 import { TipButton } from './tip-button';
 import { HistoryStatus } from './history-status';
+import { MoveRequest } from './move-dialog';
 import { useStore } from './store';
 import type { SessionSummary } from '../protocol/messages';
 import { displayStatus } from '../client-core/display-status';
@@ -20,6 +21,7 @@ export function HistoryRow({ session }: { session: SessionSummary }) {
   const summary = session.summary?.text || session.title;
   // Another device's session: this device can only read it, so it offers no pin, re-summarize or stop.
   const local = session.remote === undefined;
+  const requestMove = useContext(MoveRequest);
 
   return (
     <>
@@ -77,6 +79,11 @@ export function HistoryRow({ session }: { session: SessionSummary }) {
                 onClick={() => post({ t: 'interrupt', id: session.id })}
               >
                 Stop
+              </Button>
+            )}
+            {!local && (
+              <Button variant="outline" size="sm" className="text-xs" aria-label={`Move ${session.name} here`} onClick={() => { requestMove(session.id); }}>
+                Move here…
               </Button>
             )}
             <Button

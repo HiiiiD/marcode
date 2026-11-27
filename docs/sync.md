@@ -65,14 +65,14 @@ window or daemon exits, another takes over within half a minute. Work done while
 
 ## Moving a session
 
-A session can move to another paired machine and continue there. The move starts on the machine that should run it, on the other device's session row.
+A session can move to another paired machine and continue there. The move starts on the machine that should run it: **Move here…** on the other device's row in the History tab, or `m` on it in the terminal roster. The dialog lists this machine's checkouts of the project (folder and branch), says whether the agent thread comes along, shows the progress, and opens the session in a pane once it has landed.
 
 - **Move here** (the owner is online): the owner finishes its current turn, or stops it if you ask, then hands the session over. It refuses while the checkout has uncommitted changes, commits that are not on the remote, or no upstream ("Push your changes on PC-desk first"). It also refuses while the session has running subagents or an open side chat.
 - **Take over** (the owner has been offline for `sync.takeOverAfterMinutes`, 10 by default): the session continues from the last state that reached the server. A turn that was running on the dead machine is lost. Code that was not pushed from that machine is not here.
 
 You pick the checkout it lands in: one already on the session's branch, the last one you picked, or a new worktree for that branch. Making a worktree runs `git fetch origin <branch>`, the only network git command Marcode runs.
 
-Claude sessions keep their agent thread: it is uploaded at every turn end, and its paths are rewritten for the new checkout and operating system. Codex and OpenCode sessions restart from the transcript, and a note in the transcript says which of the two happened. Attachments do not move yet.
+Claude sessions keep their agent thread: it is uploaded at every turn end, and its paths are rewritten for the new checkout and operating system. Codex and OpenCode sessions restart from the transcript, and a note in the transcript says which of the two happened. Attachments come along on a move; a take over finds only what the owner uploaded before it went offline, so attachments may be missing.
 
 Exactly one machine owns a session at a time: the server keeps an owner record that only a compare-and-swap claim can change. A machine that comes back after being taken over gives the session up. Anything it wrote that never reached the server is kept as a new session, titled "… (from PC-desk, offline)".
 

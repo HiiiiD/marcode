@@ -5,6 +5,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { suite, teardown, test } from 'mocha';
 import { ProjectResolver } from '../../host/project/project-resolver';
+import { AttachmentStore } from '../../host/attachment-store';
 import { SessionManager } from '../../host/session-manager';
 import { SessionOwnership } from '../../host/session-ownership';
 import { MoveService, type MoveStatus } from '../../host/sync/move-service';
@@ -58,7 +59,8 @@ async function world(opts: { threads?: boolean; online?: boolean; lastSeenAt?: n
     }) as unknown as AgentProvider);
   }
   const ws = path.join(home, 'ws');
-  const manager = new SessionManager(new TranscriptStore(ws), providers, () => {});
+  const attachments = new AttachmentStore(ws);
+  const manager = new SessionManager(new TranscriptStore(ws), providers, () => {}, undefined, undefined, attachments);
   const ownership = new SessionOwnership(path.join(ws, 'sessions'), 'vscode', { heartbeatMs: 20 });
   manager.setOwnership(ownership, { tailIntervalMs: 20 });
   manager.setRemoteSessions(new RemoteSessions({ root: mirrorRoot, windowProjects: async () => new Set(['github.com/a/b']), tailIntervalMs: 20 }));
@@ -104,7 +106,7 @@ async function world(opts: { threads?: boolean; online?: boolean; lastSeenAt?: n
     if (!request) { throw new Error('no request'); }
     await mirror.applyMove(a.deviceId, { type: 'move-reply', v: 1, sessionId: 'mv1', requestId: request.requestId, ...body } as never);
   };
-  return { server, a, b, home, root, mirror, manager, service, state, answer, imported, srcRoot };
+  return { server, a, b, home, root, mirror, manager, service, state, answer, imported, srcRoot, attachments };
 }
 
 const run = (work: (on: (s: MoveStatus) => void) => Promise<void>) => {
@@ -193,5 +195,24 @@ suite('MoveService', function () {
     const seen = await run((on) => w.service.moveHere('mv1', { root: w.root }, { cancelTurn: false }, on));
     assert.deepStrictEqual(seen.at(-1), { state: 'failed', reason: `${w.root} is on other, not main. Pick a checkout on main or create a worktree for it.` });
     assert.strictEqual(w.state.peek(100).some((r) => (r.payload as { type: string }).type === 'move-request'), false);
+  });
+
+  test("a moved message's attachment is installed here and its path points at the copy", async () => {
+    const w = await world();
+    const devA = w.a.deviceId;
+    await w.mirror.apply(devA, { type: 'session-ops', v: 1, sessionId: 'mv1', rev: 2, ops: [{ op: 'append', item: {
+      id: 'u2', ts: 2, role: 'user', text: 'look',
+      attachments: [{ id: 'a1', path: 'C:\\Users\\m\\shot.png', name: 'shot.png', kind: 'image', mediaType: 'image/png', bytes: 3 }],
+    } as TranscriptItem }] });
+    for (const c of chunkFile({ type: 'attachment', sessionId: 'mv1', attachmentId: 'a1', name: 'shot.png', mime: 'image/png', generation: 1 }, Buffer.from([7, 8, 9]), 0)) {
+      await w.mirror.applyMove(devA, c);
+    }
+    await w.mirror.flush();
+    const seen = run((on) => w.service.moveHere('mv1', { root: w.root }, { cancelTurn: false }, on));
+    await w.answer({ ok: true, lastRev: 2 });
+    assert.strictEqual((await seen).at(-1)?.state, 'done');
+    const found = await w.manager.attachmentPath('mv1', 'a1', 'u2');
+    assert.strictEqual(found?.startsWith(w.attachments.baseDir), true);
+    assert.deepStrictEqual([...(await fs.readFile(found!))], [7, 8, 9]);
   });
 });

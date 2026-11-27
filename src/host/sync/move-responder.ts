@@ -13,6 +13,7 @@ export interface MoveSource {
   yieldSession(id: SessionId): Promise<void>;
   unyield(id: SessionId): Promise<void>;
   isYielded(id: SessionId): boolean;
+  attachmentFiles(id: SessionId): Promise<Array<{ attachmentId: string; name: string; mime: string; path: string }>>;
 }
 
 export interface MoveResponderDeps {
@@ -107,6 +108,8 @@ export class MoveResponder {
       this.reply(request, { ok: false, reason: `The turn running on ${deviceName} did not finish in time.` });
       return;
     }
+    // Ahead of the reply in this device's stream, so the target has them by the time it reads the reply.
+    await this.deps.threads.attachments(id, await manager.attachmentFiles(id));
     // Uploaded while still ours: once yielded, the thread publisher no longer counts it as this host's.
     const thread = await this.deps.threads.turnEnded(id);
     // Flushed and read-only before the rev is read: nothing written after it could be missed by the target.
