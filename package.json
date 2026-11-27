@@ -300,7 +300,7 @@
     "@agentclientprotocol/sdk": "^1.9.0",
     "@anthropic-ai/claude-agent-sdk": "0.3.329",
     "@base-ui/react": "^1.9.0",
-    "@headless-tree/core": "1.8.0",
+    "@headless-tree/core": "1.8.1",
     "@headless-tree/react": "1.8.0",
     "@modelcontextprotocol/sdk": "^1.32.2",
     "@opencode-ai/sdk": "^1.19.6",
