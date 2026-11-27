@@ -11,6 +11,7 @@ import type { AddressInfo } from 'node:net';
 import { admissionTag, encryptRecord, epochTag, generateDeviceKeys, generateSyncKey, seal } from '../../sync/crypto';
 import { decodePairingCode, encodePairingCode } from '../../sync/pairing-code';
 import { encodeCode } from '../../sync/pairing-code';
+import { ownerKey } from '../../sync/owner-key';
 import { SyncClient, type SyncCredentials } from '../../sync/sync-client';
 import { hashSecret } from '../../sync-server/auth';
 import { startSyncServer } from '../../sync-server/server';
@@ -291,5 +292,31 @@ suite('SyncClient against a hostile or broken server', () => {
     cleanups.push(async () => follower.stop());
     await until(() => seen.some((e) => e.type === 'connection' && e.state === 'retrying'), 3000);
   });
-});
 
+  test('owner keys agree across devices, differ per session and never reveal the id', async () => {
+    const r = await rig();
+    const a = await enrolled(r);
+    const b = await joined(r, a, 'laptop');
+    assert.strictEqual(ownerKey(a.credentials, 's1'), ownerKey(b.credentials, 's1'));
+    assert.notStrictEqual(ownerKey(a.credentials, 's1'), ownerKey(a.credentials, 's2'));
+    assert.strictEqual(ownerKey(a.credentials, 's1').includes('s1'), false);
+  });
+
+  test('claimOwner wins once, and a losing claim reports the record that won', async () => {
+    const r = await rig();
+    const a = await enrolled(r);
+    const b = await joined(r, a, 'laptop');
+    const won = ok(await a.claimOwner('s1', { epoch: 1, expect: 0, baseRev: 3 }));
+    assert.strictEqual('conflict' in won, false);
+    const lost = ok(await b.claimOwner('s1', { epoch: 1, expect: 0, baseRev: 0 }));
+    assert.strictEqual('conflict' in lost && lost.conflict.deviceId, a.credentials.deviceId);
+    const owners = ok(await b.owners());
+    assert.deepStrictEqual(owners.map((o) => [o.key, o.epoch, o.baseRev]), [[ownerKey(b.credentials, 's1'), 1, 3]]);
+    const events: string[] = [];
+    const follow = a.follow((e) => { events.push(e.type); });
+    await until(() => events.includes('connection'));
+    ok(await b.claimOwner('s1', { epoch: 2, expect: 1, baseRev: 0 }));
+    await until(() => events.includes('owners'));
+    follow.stop();
+  });
+});

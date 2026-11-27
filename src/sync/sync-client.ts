@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import type { DeviceRow, ServedRecord, SyncEvent } from './api-types';
+import type { DeviceRow, OwnerRecord, ServedRecord, SyncEvent } from './api-types';
 import type { SyncCredentials } from './credentials';
 import {
   admissionTag, decryptRecord, encryptRecord, epochTag, generateDeviceKeys, generateSyncKey, unwrapWithSecret, wrapWithSecret,
@@ -7,6 +7,7 @@ import {
 import { readEvents } from './event-stream';
 import { isUnreachable, request, type Reply } from './http';
 import { acceptEpochs, GENESIS_TAG, isAdmitted, newestKey, trySeal, type SyncKey } from './keyring';
+import { ownerKey } from './owner-key';
 import { decodePairingCode, encodePairingCode } from './pairing-code';
 import { checkServerUrl } from './server-url';
 
@@ -297,6 +298,20 @@ export class SyncClient {
     }
   }
 
+  async owners(): Promise<Result<OwnerRecord[]>> {
+    return asResult(await this.call('GET', '/v1/owners'), (json) => json.owners as OwnerRecord[]);
+  }
+
+  /** A compare-and-swap claim on a session; losing returns the record that won, not an error. */
+  async claimOwner(sessionId: string, claim: { epoch: number; expect: number; baseRev: number }): Promise<Result<OwnerRecord | { conflict: OwnerRecord }>> {
+    return guarded(async () => {
+      const reply = await this.call('PUT', `/v1/owners/${ownerKey(this.creds, sessionId)}`, claim);
+      if (!reply.ok) { return reply; }
+      const record = reply.json as unknown as OwnerRecord;
+      return { ok: true, value: reply.status === 409 ? { conflict: record } : record };
+    });
+  }
+
   async streams(): Promise<Result<Array<{ deviceId: string; lastSeq: number }>>> {
     return asResult(await this.call('GET', '/v1/streams'), (json) => json.streams as Array<{ deviceId: string; lastSeq: number }>);
   }
@@ -326,6 +341,8 @@ export class SyncClient {
               if (event === 'appended') {
                 const parsed = JSON.parse(data) as { deviceId: string; lastSeq: number };
                 onEvent({ type: 'appended', deviceId: parsed.deviceId, lastSeq: parsed.lastSeq });
+              } else if (event === 'owners') {
+                onEvent({ type: 'owners' });
               } else if (event === 'devices' || event === 'keys') {
                 onEvent({ type: event });
                 void this.healKeys();

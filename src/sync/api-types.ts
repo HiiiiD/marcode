@@ -17,8 +17,12 @@ export interface WireRecord { recordId: string; epoch: number; nonce: string; ci
 /** A record as the server serves it back, with the seq it assigned in that device's stream. */
 export interface ServedRecord extends WireRecord { seq: number }
 
+/** Who owns a session between devices. `key` is an HMAC of the session id; the server never sees the id. */
+export interface OwnerRecord { key: string; deviceId: string; epoch: number; baseRev: number; updatedAt: number }
+
 export type SyncEvent =
   | { type: 'appended'; deviceId: string; lastSeq: number }
   | { type: 'devices' }
+  | { type: 'owners' }
   | { type: 'keys' }
   | { type: 'connection'; state: 'open' | 'retrying' | 'revoked' };
