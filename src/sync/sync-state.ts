@@ -16,6 +16,7 @@ export class SyncState {
       CREATE TABLE IF NOT EXISTS outbox (n INTEGER PRIMARY KEY AUTOINCREMENT, recordId TEXT NOT NULL UNIQUE, payload TEXT NOT NULL, createdAt INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS published (sessionId TEXT PRIMARY KEY, digestKey TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS cursors (deviceId TEXT PRIMARY KEY, seq INTEGER NOT NULL);
+      CREATE TABLE IF NOT EXISTS thread_pub (sessionId TEXT NOT NULL, name TEXT NOT NULL, generation INTEGER NOT NULL, offset INTEGER NOT NULL, PRIMARY KEY (sessionId, name));
       CREATE TABLE IF NOT EXISTS session_pub (sessionId TEXT PRIMARY KEY, rev INTEGER NOT NULL DEFAULT 0, fingerprint TEXT, backfilled INTEGER NOT NULL DEFAULT 0);
     `);
   }
@@ -93,6 +94,16 @@ export class SyncState {
 
   forgetSession(sessionId: string): void {
     this.db.prepare('DELETE FROM session_pub WHERE sessionId = ?').run(sessionId);
+  }
+
+  /** How much of a session's native-thread file has gone up, and in which generation. */
+  threadOffset(sessionId: string, name: string): { generation: number; offset: number } | undefined {
+    return this.db.prepare('SELECT generation, offset FROM thread_pub WHERE sessionId = ? AND name = ?').get(sessionId, name) as { generation: number; offset: number } | undefined;
+  }
+
+  setThreadOffset(sessionId: string, name: string, at: { generation: number; offset: number }): void {
+    this.db.prepare('INSERT INTO thread_pub (sessionId, name, generation, offset) VALUES (?, ?, ?, ?) ON CONFLICT(sessionId, name) DO UPDATE SET generation = excluded.generation, offset = excluded.offset')
+      .run(sessionId, name, at.generation, at.offset);
   }
 
   close(): void {

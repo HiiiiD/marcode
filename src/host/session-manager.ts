@@ -2399,7 +2399,14 @@ export class SessionManager implements SessionSink {
   status(id: SessionId, status: SessionStatus): void {
     if (!this.isSubagent(id)) { this.emit({ t: 'session-status', id, status }); }
     if (status === 'idle') { this.drainQueuedMove(id); }
+    if (status === 'idle' && !this.isSubagent(id) && !this.isForeign(id)) {
+      try { this.turnListener?.(id); } catch (err) { console.error('[mar-code] turn listener failed', err); }
+    }
   }
+
+  private turnListener?: (id: SessionId) => void;
+  /** Hears each owned session settling to idle: the end of a turn, when sync uploads its agent thread. */
+  setTurnListener(listener: (id: SessionId) => void): void { this.turnListener = listener; }
 
   /**
    * Performs a relocation the user asked for mid-turn, now that the turn is
