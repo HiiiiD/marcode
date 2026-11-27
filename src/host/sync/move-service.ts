@@ -7,6 +7,7 @@ import { SyncClient, type SyncClientOptions } from '../../sync/sync-client';
 import type { SyncState } from '../../sync/sync-state';
 import type { ProjectResolver } from '../project/project-resolver';
 import type { SessionManager } from '../session-manager';
+import { gitBranch } from '../project/git-branch';
 import { checkoutsFor, defaultCheckout, ensureWorktree } from './checkouts';
 import { materialize } from './materialize';
 import { readInbox, readRemoteRoster, readThread, removeInbox } from './remote-roster';
@@ -78,10 +79,11 @@ export class MoveService {
       if (!reply.ok) { throw new MoveFailed(reply.reason); }
       onStatus({ state: 'waiting', step: 'transcript' });
       await this.awaitMirror(row, reply.lastRev, reply.thread?.generation);
+      onStatus({ state: 'waiting', step: 'thread' });
+      const ready = await this.prepare(row, root);
       onStatus({ state: 'waiting', step: 'claim' });
       await this.claim(creds, row, reply.lastRev);
-      onStatus({ state: 'waiting', step: 'thread' });
-      return this.finish(row, root, `Moved here from ${row.remote!.deviceName}.`);
+      return this.finish(row, root, ready, `Moved here from ${row.remote!.deviceName}.`);
     });
   }
 
@@ -92,10 +94,11 @@ export class MoveService {
       const root = await this.targetRoot(row, target);
       const creds = await this.creds();
       const mirrored = (await readRemoteRoster(this.deps.mirrorRoot)).rows.find((r) => r.deviceId === row.remote!.deviceId && r.state.id === id);
+      onStatus({ state: 'waiting', step: 'thread' });
+      const ready = await this.prepare(row, root);
       onStatus({ state: 'waiting', step: 'claim' });
       await this.claim(creds, row, mirrored?.rev ?? 0);
-      onStatus({ state: 'waiting', step: 'thread' });
-      return this.finish(row, root, `Taken over from ${row.remote!.deviceName} (last seen ${clock(row.remote!.lastSeenAt)}).`);
+      return this.finish(row, root, ready, `Taken over from ${row.remote!.deviceName} (last seen ${clock(row.remote!.lastSeenAt)}).`);
     });
   }
 
@@ -121,7 +124,14 @@ export class MoveService {
   }
 
   private async targetRoot(row: SessionState, target: MoveTarget): Promise<string> {
-    if ('root' in target) { return target.root; }
+    if ('root' in target) {
+      const wanted = row.remote?.branch;
+      const actual = await gitBranch(target.root);
+      if (wanted && actual && actual !== wanted) {
+        throw new MoveFailed(`${target.root} is on ${actual}, not ${wanted}. Pick a checkout on ${wanted} or create a worktree for it.`);
+      }
+      return target.root;
+    }
     const main = (await checkoutsFor(row.projectId ?? '', this.deps.roots(), this.deps.projects)).find((c) => c.main);
     if (!main) { throw new MoveFailed('No checkout of this project is open here to add a worktree to.'); }
     const made = await ensureWorktree(main.root, target.createWorktree);
@@ -165,16 +175,22 @@ export class MoveService {
     const expect = owners.value.find((o) => o.key === ownerKey(creds, row.id))?.epoch ?? 0;
     const won = await client.claimOwner(row.id, { epoch: expect + 1, expect, baseRev });
     if (!won.ok) { throw new MoveFailed(`Cannot reach the sync server, so nothing moved: ${won.error}`); }
+    if (!('conflict' in won.value)) { this.deps.state.setHeldEpoch(row.id, won.value.epoch); }
     if ('conflict' in won.value) {
       const winner = won.value.conflict.deviceId === row.remote!.deviceId ? row.remote!.deviceName : 'another device';
       throw new MoveFailed(`Moved to ${winner} by another request.`);
     }
   }
 
-  private async finish(row: SessionState, root: string, lead: string): Promise<{ sessionId: SessionId; thread: 'restored' | 'restarted' }> {
-    const { state: next, items, seed, thread } = await materialize({
-      row, root, mirrorRoot: this.deps.mirrorRoot, provider: this.deps.manager.providerOf(row.providerId),
-    });
+  /** Everything that can fail without changing who owns the session, done before the claim. */
+  private prepare(row: SessionState, root: string): ReturnType<typeof materialize> {
+    return materialize({ row, root, mirrorRoot: this.deps.mirrorRoot, provider: this.deps.manager.providerOf(row.providerId) });
+  }
+
+  private async finish(
+    row: SessionState, root: string, ready: Awaited<ReturnType<typeof materialize>>, lead: string,
+  ): Promise<{ sessionId: SessionId; thread: 'restored' | 'restarted' }> {
+    const { state: next, items, seed, thread } = ready;
     const notice = thread === 'restored'
       ? `${lead} Agent thread restored.`
       : `${lead} The agent restarted from the transcript; earlier tool output is not in its context.`;

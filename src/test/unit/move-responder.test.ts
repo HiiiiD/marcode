@@ -40,11 +40,16 @@ const until = async (done: () => boolean | Promise<boolean>, ms = 5000) => {
   while (!(await done())) { if (Date.now() > deadline) { throw new Error('timed out'); } await new Promise((r) => setTimeout(r, 20)); }
 };
 
-async function rig(script: () => AgentEvent[] = () => [{ kind: 'text', delta: 'ok' }, { kind: 'turn-end', reason: 'done' }], claimTimeoutMs = 60_000) {
+async function rig(
+  script: () => AgentEvent[] = () => [{ kind: 'text', delta: 'ok' }, { kind: 'turn-end', reason: 'done' }], claimTimeoutMs = 60_000,
+  opts: { threadFile?: string; ownerOf?: (id: string) => Promise<{ deviceId: string } | undefined> } = {},
+) {
   const repo = await pushedRepo();
   const home = await tmp('mar-src-home-');
   const store = new TranscriptStore(path.join(home, 'ws'));
-  const manager = new SessionManager(store, new Map([['fake', new FakeProvider(script)]]), () => {});
+  const fake = new FakeProvider(script);
+  const provider = opts.threadFile ? Object.assign(fake, { threadFiles: async () => [opts.threadFile!] }) : fake;
+  const manager = new SessionManager(store, new Map([['fake', provider]]), () => {});
   const ownership = new SessionOwnership(path.join(home, 'ws', 'sessions'), 'vscode', { heartbeatMs: 20 });
   manager.setOwnership(ownership, { tailIntervalMs: 20 });
   await manager.init();
@@ -53,14 +58,15 @@ async function rig(script: () => AgentEvent[] = () => [{ kind: 'text', delta: 'o
     store, state, excluded: [], publishable: (id) => manager.publishableSession(id), relCwd: async () => '.', branch: async () => 'main',
   });
   sessions.start();
-  const threads = new ThreadPublisher({ state, providers: new Map(), publishable: (id) => manager.publishableSession(id), excluded: [] });
+  const threads = new ThreadPublisher({ state, providers: new Map([['fake', provider]]), publishable: (id) => manager.publishableSession(id), excluded: [] });
   const mirrorRoot = path.join(home, 'mirror');
   const mirror = new SessionMirror(mirrorRoot);
-  const responder = new MoveResponder({ manager, state, sessions, threads, mirrorRoot, deviceName: 'PC-desk', pollMs: 20, claimTimeoutMs });
+  const responder = new MoveResponder({ manager, state, sessions, threads, mirrorRoot, deviceName: 'PC-desk', pollMs: 20, claimTimeoutMs, selfDeviceId: 'devA', ...(opts.ownerOf ? { ownerOf: opts.ownerOf } : {}) });
   responder.start();
   cleanups.push(async () => { responder.dispose(); sessions.dispose(); await manager.dispose(); await ownership.dispose(); state.close(); });
   const session = await manager.create('fake', repo);
   session.state.projectId = 'github.com/a/b';
+  if (opts.threadFile) { session.state.resumeTokens[`fake:${repo}`] = 'tok'; }
   const ask = (over: { cancelTurn?: boolean; sessionId?: string } = {}) => mirror.applyMove('devB', {
     type: 'move-request', v: 1, sessionId: over.sessionId ?? session.state.id, requestId: `q-${Math.random()}`, to: 'devB', cancelTurn: over.cancelTurn ?? false,
   });
@@ -137,5 +143,38 @@ suite('MoveResponder', function () {
     await until(() => r.replies().length === 1);
     assert.strictEqual(r.manager.isForeign(r.session.state.id), true);
     await until(() => !r.manager.isForeign(r.session.state.id), 3000);
+  });
+
+  test("the reply carries the agent thread, uploaded at hand-over time", async () => {
+    const thread = path.join(await tmp('mar-thread-'), 'tok.jsonl');
+    await fs.writeFile(thread, '{"a":1}\n');
+    const r = await rig(undefined, 60_000, { threadFile: thread });
+    r.session.send('first');
+    await until(() => r.session.state.status === 'idle');
+    await r.ask();
+    await until(() => r.replies().length === 1);
+    const [reply] = r.replies();
+    assert.deepStrictEqual(reply.ok && reply.thread, { generation: 1, bytes: 8 });
+  });
+
+  test('a second request for a session already handed over is refused at once', async () => {
+    const r = await rig();
+    r.session.send('first');
+    await until(() => r.session.state.status === 'idle');
+    await r.ask();
+    await until(() => r.replies().length === 1);
+    await r.ask();
+    await until(() => r.replies().length === 2);
+    assert.deepStrictEqual((r.replies()[1] as { ok: boolean; reason?: string }).reason, 'PC-desk already handed this session to another device.');
+  });
+
+  test('a hand-over the server shows as claimed is never taken back', async () => {
+    const r = await rig(undefined, 200, { ownerOf: async () => ({ deviceId: 'devB' }) });
+    r.session.send('first');
+    await until(() => r.session.state.status === 'idle');
+    await r.ask();
+    await until(() => r.replies().length === 1);
+    await new Promise((res) => setTimeout(res, 500));
+    assert.strictEqual(r.manager.isForeign(r.session.state.id), true);
   });
 });

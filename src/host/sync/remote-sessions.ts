@@ -32,10 +32,13 @@ export class RemoteSessions {
     const ceded: Ceded[] = [];
     const self = this.deps.owners?.self.deviceId;
     for (const s of meta.values()) {
-      if (s.remote) { continue; }
+      // Another host on this machine leases it: that host gives it up, not this one.
+      if (s.remote || s.owner) { continue; }
       const record = ownerOf(s.id);
       if (!record || !self || record.deviceId === self) { continue; }
       const sync = this.deps.owners!.sync;
+      // Only a newer claim than ours: a stale owners file must never take back what this device just won.
+      if (record.epoch <= sync.heldEpoch(s.id)) { continue; }
       ceded.push({ id: s.id, fork: sync.publishedRev(s.id) > record.baseRev || sync.hasOutboxOps(s.id) });
     }
     // A file that could not be read this time says nothing about that device's sessions: keep them.

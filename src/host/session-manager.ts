@@ -2739,10 +2739,10 @@ export class SessionManager implements SessionSink {
         ...state, id: newSessionId(), name: this.defaultName(state.providerId), title: `${state.title} (from ${remote.selfName ?? 'this device'}, offline)`,
         parentId: id, origin: 'fork', resumeTokens: {}, status: 'idle', createdAt: now, updatedAt: now, forkedItemCount: items.length,
       };
-      for (const item of items) { this.store.append(copy.id, item); }
-      await this.store.flush(copy.id);
       await this.ownership?.claim(copy.id);
       this.meta.set(copy.id, copy);
+      for (const item of items) { this.store.append(copy.id, item); }
+      await this.store.flush(copy.id);
     }
     remote.dropOutbox(id);
     this.yielded.delete(id);
@@ -2782,12 +2782,13 @@ export class SessionManager implements SessionSink {
     if (!provider) { throw new Error(`Unknown provider: ${input.state.providerId}`); }
     const { remote: _remote, ...state } = input.state;
     this.store.clearForeign(id);
+    // Listed as this host's before the first write: the publisher only sends a session it can see is ours.
+    this.meta.set(id, state as SessionState);
     for (const item of input.items) { this.store.append(id, item); }
     this.store.append(id, { id: `moved-${Date.now()}`, ts: Date.now(), role: 'switch', kind: 'relocation', text: input.notice });
     await this.store.flush(id);
     await this.ownership?.claim(id);
-    const session = new AgentSession(state as SessionState, provider, this.store, this, input.seed);
-    this.meta.set(id, state as SessionState);
+    const session = new AgentSession(this.meta.get(id) as SessionState, provider, this.store, this, input.seed);
     this.live.set(id, session);
     this.catalogSvc.ensure(this.keyOf(session.state), provider, session.state.cwd);
     if (this.visible.has(id)) { this.emitSnapshot(id, await session.snapshot()); }

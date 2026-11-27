@@ -30,7 +30,8 @@ export class SessionPublisher {
 
   start(): void {
     this.unsubscribe = [
-      this.deps.store.onWritten((id, ops) => { void this.serial(id, () => this.written(id, ops)); }),
+      // Judged now, not when the queue gets to it: a session yielded meanwhile still owes these ops.
+      this.deps.store.onWritten((id, ops) => { const state = this.shareable(id); void this.serial(id, () => this.written(id, ops, state)); }),
       this.deps.store.onRemoved((id) => { void this.serial(id, async () => this.removed(id)); }),
     ];
   }
@@ -76,16 +77,17 @@ export class SessionPublisher {
     return state && isShareableProject(state.projectId, this.deps.excluded) ? state : undefined;
   }
 
-  private async written(id: SessionId, ops: TranscriptOp[]): Promise<void> {
-    if (!this.shareable(id)) { return; }
+  private async written(id: SessionId, ops: TranscriptOp[], state: SessionState | undefined): Promise<void> {
+    if (!state) { return; }
     // A session's first write after pairing sends everything before it too; the ops are in there.
-    if (!this.deps.state.wasBackfilled(id)) { await this.full(id); return; }
+    if (!this.deps.state.wasBackfilled(id)) { await this.full(id, state); return; }
     this.enqueueOps(id, ops);
   }
 
-  private async full(id: SessionId): Promise<boolean> {
-    if (!this.shareable(id) || this.deps.state.wasBackfilled(id)) { return false; }
-    await this.meta(id);
+  private async full(id: SessionId, known?: SessionState): Promise<boolean> {
+    const state = known ?? this.shareable(id);
+    if (!state || this.deps.state.wasBackfilled(id)) { return false; }
+    await this.meta(id, state);
     const { items } = await this.deps.store.tail(id, Number.MAX_SAFE_INTEGER);
     this.enqueueOps(id, items.map((item): TranscriptOp => ({ op: 'append', item })));
     this.deps.state.markBackfilled(id);
@@ -99,8 +101,8 @@ export class SessionPublisher {
     records.forEach((r, i) => { this.deps.state.enqueue({ ...r, rev: first + i }); });
   }
 
-  private async meta(id: SessionId): Promise<void> {
-    const state = this.shareable(id);
+  private async meta(id: SessionId, known?: SessionState): Promise<void> {
+    const state = known ?? this.shareable(id);
     if (!state?.projectId) { return; }
     const branch = await this.branchOf(state.cwd);
     const payload = {

@@ -25,6 +25,9 @@ export interface MoveResponderDeps {
   pollMs?: number;
   /** How long a handed-over session waits for the other device to claim it before this host takes it back. */
   claimTimeoutMs?: number;
+  selfDeviceId?: string;
+  /** The server's owner record for a session, asked before taking a hand-over back. */
+  ownerOf?: (sessionId: SessionId) => Promise<{ deviceId: string } | undefined>;
 }
 
 /** The source half of a move: answers other devices' requests for sessions this host owns. */
@@ -53,10 +56,15 @@ export class MoveResponder {
     try {
       for (const { payload } of await readInbox(this.deps.mirrorRoot)) {
         if (payload.type !== 'move-request' || this.handled.has(payload.requestId)) { continue; }
+        const yielded = this.deps.manager.isYielded(payload.sessionId);
         // Another host on this machine may own it; that host answers.
-        if (!this.deps.manager.publishableSession(payload.sessionId)) { continue; }
+        if (!yielded && !this.deps.manager.publishableSession(payload.sessionId)) { continue; }
         this.handled.add(payload.requestId);
-        await this.answer(payload).catch((err: unknown) => { console.error('[mar-code] sync: move request failed', err); });
+        if (yielded) {
+          this.reply(payload, { ok: false, reason: `${this.deps.deviceName} already handed this session to another device.` });
+        } else {
+          await this.answer(payload).catch((err: unknown) => { console.error('[mar-code] sync: move request failed', err); });
+        }
         await removeInbox(this.deps.mirrorRoot, payload.requestId);
       }
     } catch (err) {
@@ -64,6 +72,14 @@ export class MoveResponder {
     } finally {
       this.busy = false;
     }
+  }
+
+  /** Unclaimed after the wait: back to this host, unless the server says another device holds it. */
+  private async takeBack(id: SessionId): Promise<void> {
+    if (!this.deps.manager.isYielded(id)) { return; }
+    const record = await this.deps.ownerOf?.(id).catch(() => ({ deviceId: '?' }));
+    if (record && record.deviceId !== this.deps.selfDeviceId) { return; }
+    await this.deps.manager.unyield(id);
   }
 
   private reply(request: MoveRequestPayload, body: { ok: true; lastRev: number; thread?: { generation: number; bytes: number } } | { ok: false; reason: string }): void {
@@ -91,14 +107,15 @@ export class MoveResponder {
       this.reply(request, { ok: false, reason: `The turn running on ${deviceName} did not finish in time.` });
       return;
     }
+    // Uploaded while still ours: once yielded, the thread publisher no longer counts it as this host's.
+    const thread = await this.deps.threads.turnEnded(id);
     // Flushed and read-only before the rev is read: nothing written after it could be missed by the target.
     await manager.yieldSession(id);
     await this.deps.sessions.settled(id);
-    const thread = await this.deps.threads.turnEnded(id);
     this.reply(request, { ok: true, lastRev: this.deps.state.publishedRev(id), ...(thread ? { thread } : {}) });
     const timer = setTimeout(() => {
       this.reclaim.delete(id);
-      if (manager.isYielded(id)) { void manager.unyield(id); }
+      void this.takeBack(id);
     }, this.deps.claimTimeoutMs ?? 10 * 60_000);
     timer.unref();
     this.reclaim.set(id, timer);

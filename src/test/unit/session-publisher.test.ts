@@ -127,4 +127,33 @@ suite('SessionPublisher', () => {
     assert.strictEqual(asked, 1);
     assert.strictEqual(r.state.outboxSize(), 5);
   });
+
+  test('a write is published by what the session was when it reached disk, even if the queue was busy', async () => {
+    let current: SessionState | undefined = session();
+    let gate: Promise<void> | undefined;
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'marcode-spub-race-'));
+    const state = new SyncState(path.join(dir, 'state.sqlite'));
+    const store = new TranscriptStore(path.join(dir, 'ws'));
+    const pub = new SessionPublisher({
+      store, state, excluded: [], publishable: () => current, branch: async () => 'main',
+      relCwd: async () => { await gate; return 'src'; },
+    });
+    pub.start();
+    store.append('s1', item('a'));
+    await store.flush('s1');
+    await new Promise((res) => setTimeout(res, 30));
+    await pub.settled('s1');
+    let release!: () => void;
+    gate = new Promise<void>((res) => { release = res; });
+    current = session({ title: 'Renamed' });
+    const busy = pub.publishMeta([current]);
+    store.append('s1', item('b'));
+    await store.flush('s1');
+    current = undefined;
+    release();
+    await busy;
+    await pub.settled('s1');
+    const ids = state.peek(100).flatMap((r) => { const p = r.payload as SessionPayload; return p.type === 'session-ops' ? p.ops.map((o) => o.item.id) : []; });
+    assert.deepStrictEqual(ids, ['a', 'b']);
+  });
 });

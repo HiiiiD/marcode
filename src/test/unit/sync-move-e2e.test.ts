@@ -86,6 +86,12 @@ suite('moving a session between devices (end to end)', function () {
     const moved = laptop.host.manager.summaries().find((s) => s.id === id);
     assert.deepStrictEqual([moved?.remote, moved?.cwd], [undefined, laptop.repo]);
 
+    // Before any new turn here: the moved transcript must already reach the device it came from.
+    await until(async () => desk.host.manager.summaries().some((s) => s.id === id && s.remote?.deviceName === 'laptop'));
+    await desk.host.manager.setVisible([id]);
+    await until(async () => desk.sent.some((m) => m.t === 'session-snapshot' && m.session.id === id
+      && m.session.items.some((i) => i.role === 'user' && i.text === 'first message')));
+
     const live = await laptop.host.manager.open(id);
     live.send('second message, on the laptop');
     await until(async () => live.state.status === 'idle'

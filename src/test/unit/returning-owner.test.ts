@@ -101,4 +101,32 @@ suite('losing a session to another device', () => {
     await r.manager.syncRoster();
     assert.deepStrictEqual(r.manager.summaries().filter((x) => x.id === 'both').map((x) => x.remote?.deviceId), ['devB']);
   });
+
+  test('a stale record never cedes a session this device holds at a newer epoch', async () => {
+    const r = await rig();
+    const s = await r.local();
+    r.state.setHeldEpoch(s.state.id, 2);
+    await r.owner(s.state.id, 'devB', 0);
+    await r.manager.syncRoster();
+    assert.strictEqual(r.manager.summaries().some((x) => x.id === s.state.id && !x.remote), true);
+  });
+
+  test("a session another host on this machine leases is left to that host", async () => {
+    const r = await rig();
+    const s = await r.local();
+    const other = new SessionManager(new TranscriptStore(r.store.root), new Map([['fake', new FakeProvider()]]), () => {});
+    const otherOwnership = new SessionOwnership(path.join(r.store.root, 'sessions'), 'tui', { heartbeatMs: 20 });
+    other.setOwnership(otherOwnership, { tailIntervalMs: 20 });
+    other.setRemoteSessions(new RemoteSessions({
+      root: path.join(r.home, 'mirror'), windowProjects: async () => new Set(['github.com/a/b']), owners: { key, self: { deviceId: 'devA', deviceName: 'PC-desk' }, sync: r.state },
+    }));
+    await other.init();
+    cleanups.push(async () => { await other.dispose(); await otherOwnership.dispose(); });
+    await r.manager.persistNow();
+    await other.syncRoster();
+    await r.owner(s.state.id, 'devB', 0);
+    await other.syncRoster();
+    assert.strictEqual(await fs.stat(path.join(r.store.root, 'sessions', `${s.state.id}.jsonl`)).then(() => true, () => false), true);
+    assert.strictEqual(other.summaries().filter((x) => x.title.endsWith('(from PC-desk, offline)')).length, 0);
+  });
 });

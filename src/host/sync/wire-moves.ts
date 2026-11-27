@@ -1,6 +1,7 @@
 import type { AgentProvider } from '../../providers/types';
 import type { SyncCredentials } from '../../sync/credentials';
 import { ownerKey } from '../../sync/owner-key';
+import { SyncClient } from '../../sync/sync-client';
 import type { SyncState } from '../../sync/sync-state';
 import type { ProjectResolver } from '../project/project-resolver';
 import type { SessionManager } from '../session-manager';
@@ -26,6 +27,12 @@ export function wireMoves(deps: {
   manager.setTurnListener((id) => { void threads.turnEnded(id); });
   const responder = new MoveResponder({
     manager, state: stores.state, sessions: deps.sessions, threads, mirrorRoot: stores.mirrorRoot, deviceName: creds.deviceName,
+    selfDeviceId: creds.deviceId,
+    ownerOf: async (id) => {
+      const owners = await new SyncClient(creds).owners();
+      if (!owners.ok) { throw new Error(owners.error); }
+      return owners.value.find((o) => o.key === ownerKey(creds, id));
+    },
     ...(deps.pollMs !== undefined ? { pollMs: deps.pollMs } : {}),
   });
   responder.start();

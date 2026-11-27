@@ -37,4 +37,12 @@ suite('rewriteThreadPaths', () => {
     const line = JSON.stringify({ text: 'nothing to see', n: 3 });
     assert.strictEqual(rewriteThreadPaths(line, win, mac), line);
   });
+
+  test('a path ends at a JSON escape or a comma, so the next path in the same string is judged on its own', () => {
+    const toWin = { root: 'C:\\code\\repo', sep: '\\' as const };
+    const line = JSON.stringify({ out: '/Users/m/repo/a.ts\n/Users/m/other/b.ts', list: '/Users/m/repo/a.ts,/etc/hosts' });
+    assert.strictEqual(rewriteThreadPaths(line, mac, toWin), JSON.stringify({ out: 'C:\\code\\repo\\a.ts\n/Users/m/other/b.ts', list: 'C:\\code\\repo\\a.ts,/etc/hosts' }));
+    const back = JSON.stringify({ out: 'C:\\Users\\m\\repo\\a.ts\nC:\\other\\b.ts' });
+    assert.strictEqual(rewriteThreadPaths(back, win, mac), JSON.stringify({ out: '/Users/m/repo/a.ts\nC:\\other\\b.ts' }));
+  });
 });

@@ -184,4 +184,14 @@ suite('MoveService', function () {
     assert.strictEqual(w.state.peek(100).some((r) => (r.payload as { type: string }).type === 'move-request'), false);
     assert.deepStrictEqual(ok(await new SyncClient(w.b).owners()), []);
   });
+
+  test('a checkout on another branch stops the move before anything is asked', async () => {
+    const w = await world();
+    const { execFileSync } = await import('node:child_process');
+    execFileSync('git', ['init', '-q', '-b', 'other', w.root]);
+    execFileSync('git', ['-C', w.root, '-c', 'user.email=a@b', '-c', 'user.name=a', 'commit', '-q', '--allow-empty', '-m', 'i']);
+    const seen = await run((on) => w.service.moveHere('mv1', { root: w.root }, { cancelTurn: false }, on));
+    assert.deepStrictEqual(seen.at(-1), { state: 'failed', reason: `${w.root} is on other, not main. Pick a checkout on main or create a worktree for it.` });
+    assert.strictEqual(w.state.peek(100).some((r) => (r.payload as { type: string }).type === 'move-request'), false);
+  });
 });

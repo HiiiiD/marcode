@@ -16,6 +16,7 @@ export class SyncState {
       CREATE TABLE IF NOT EXISTS outbox (n INTEGER PRIMARY KEY AUTOINCREMENT, recordId TEXT NOT NULL UNIQUE, payload TEXT NOT NULL, createdAt INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS published (sessionId TEXT PRIMARY KEY, digestKey TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS cursors (deviceId TEXT PRIMARY KEY, seq INTEGER NOT NULL);
+      CREATE TABLE IF NOT EXISTS held_epoch (sessionId TEXT PRIMARY KEY, epoch INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS last_checkout (projectId TEXT PRIMARY KEY, root TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS thread_pub (sessionId TEXT NOT NULL, name TEXT NOT NULL, generation INTEGER NOT NULL, offset INTEGER NOT NULL, PRIMARY KEY (sessionId, name));
       CREATE TABLE IF NOT EXISTS session_pub (sessionId TEXT PRIMARY KEY, rev INTEGER NOT NULL DEFAULT 0, fingerprint TEXT, backfilled INTEGER NOT NULL DEFAULT 0);
@@ -121,6 +122,15 @@ export class SyncState {
   /** Forgets everything queued for a session another device now owns: sending it would write over that device's copy. */
   dropSessionOutbox(sessionId: string): void {
     this.db.prepare("DELETE FROM outbox WHERE json_extract(payload, '$.sessionId') = ?").run(sessionId);
+  }
+
+  /** The owner-record epoch this device won for a session; 0 when it never claimed one (it published it first). */
+  heldEpoch(sessionId: string): number {
+    return (this.db.prepare('SELECT epoch FROM held_epoch WHERE sessionId = ?').get(sessionId) as { epoch: number } | undefined)?.epoch ?? 0;
+  }
+
+  setHeldEpoch(sessionId: string, epoch: number): void {
+    this.db.prepare('INSERT INTO held_epoch (sessionId, epoch) VALUES (?, ?) ON CONFLICT(sessionId) DO UPDATE SET epoch = MAX(epoch, excluded.epoch)').run(sessionId, epoch);
   }
 
   lastCheckout(projectId: string): string | undefined {
