@@ -64,6 +64,8 @@ export interface SessionManagerLike {
     permissionMode: PermissionMode; status: string; cwd: string;
     includeEditorContext?: boolean;
     owner?: { host: string; pid: number };
+    /** Another device's session: never listed, closed or messaged by these tools. */
+    remote?: { deviceName: string };
     parentId?: string;
     kind?: string;
     backgroundTasks?: number;
@@ -133,11 +135,15 @@ export class SelfControlMcpServer {
   private http: Server | undefined;
   private readonly token = randomBytes(24).toString('hex');
 
+  private readonly sessionManager: SessionManagerLike;
+
   constructor(
-    private readonly sessionManager: SessionManagerLike,
+    private readonly everySession: SessionManagerLike,
     private readonly memory?: MemoryStore,
     private readonly spawnPreference: SpawnPreference = 'auto',
-  ) {}
+  ) {
+    this.sessionManager = localSessionsOnly(everySession);
+  }
 
   /**
    * Registers the one tool on a fresh `McpServer`. Called per request (see
@@ -424,7 +430,9 @@ export class SelfControlMcpServer {
           .find((s) => s.name.toLowerCase() === to.toLowerCase() && this.sessionManager.visibleIds().includes(s.id))
           ?? [...family.children, ...family.siblings].find((s) => s.name.toLowerCase() === to.toLowerCase());
         if (!target) {
-          return { isError: true, content: [{ type: 'text', text: `Unknown session: ${to}` }] };
+          const remote = this.everySession.summaries().find((s) => s.remote && s.name.toLowerCase() === to.toLowerCase())?.remote;
+          const text = remote ? `Session ${to} runs on ${remote.deviceName}; it is read-only on this device.` : `Unknown session: ${to}`;
+          return { isError: true, content: [{ type: 'text', text }] };
         }
         const foreign = () => {
           const owner = this.sessionManager.summaries().find((s) => s.id === target.id)?.owner;
@@ -594,4 +602,17 @@ export class SelfControlMcpServer {
     if (!http) { return; }
     await new Promise<void>((resolve) => { http.close(() => resolve()); });
   }
+}
+
+/** What every tool here sees: this device's sessions only; another device's are read-only rows of the roster. */
+function localSessionsOnly(manager: SessionManagerLike): SessionManagerLike {
+  return new Proxy(manager, {
+    get(target, prop) {
+      if (prop === 'summaries') {
+        return (opts?: { includeSubagents?: boolean }) => target.summaries(opts).filter((s) => s.remote === undefined);
+      }
+      const value: unknown = Reflect.get(target, prop, target);
+      return typeof value === 'function' ? (value as (...args: unknown[]) => unknown).bind(target) : value;
+    },
+  });
 }

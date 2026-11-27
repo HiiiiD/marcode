@@ -123,6 +123,9 @@ router. See `docs/daemon.md`.
 | `src/sync/memory-records.ts`, `sync-state.ts` | Memory payloads (`memory`, `memory-withdraw`) with their size caps; the machine-wide outbox, published-digest keys and per-device cursors |
 | `src/memory/remote-memory.ts` | Other devices' memory as an FTS store recalled only by project; one writer (the engine's host), read-only elsewhere |
 | `src/host/sync/memory-publisher.ts`, `sync-engine.ts` | The `MemoryStore` wrapper that queues a session's memory on index and a withdraw on forget; the lease-elected engine that pushes the outbox (size-bounded batches, a refused record dropped alone) and pulls every other stream from its cursor |
+| `src/sync/session-records.ts`, `payload-size.ts` | Session payloads (`session-meta`, `session-ops` with a per-session `rev`, `session-delete`), each under the 512 KB cap; `PublishedState` is `SessionState` minus host-only fields |
+| `src/host/sync/session-publisher.ts`, `src/host/project/git-branch.ts` | Sends this host's synced sessions to the outbox: everything on a session's first write after pairing, then each `TranscriptStore` write that reached disk, metadata when it changed (after each `persist()`), a tombstone on delete |
+| `src/host/sync/session-mirror.ts`, `remote-roster.ts`, `remote-sessions.ts` | The engine's machine-wide mirror of other devices' sessions (`sync/mirror/<device>/`, a `TranscriptStore` root each, idempotent upserts, gap detection by `rev`); its reader; the rows the manager merges for the window's projects and the read-only tail over them |
 | `src/tui/sync-commands.ts` | `marcode sync` setup, join, pair, devices, revoke, status, leave |
 | `src/memory/sqlite-driver.ts` | `openDatabase`: `bun:sqlite` under Bun, `node:sqlite` otherwise, behind the narrow `SqlDb` the FTS store uses; finalizes each statement after one use (Bun's `close()` otherwise leaves the file locked) and probes FTS5 at open |
 | `src/host/transcript-store.ts` | `index.json` + per-session JSONL under the workspace directory; append, load, page. Index writes are atomic; a foreign session's writes are refused |
@@ -253,6 +256,14 @@ These are not style preferences. Breaking one breaks the design.
   took a developer machine down on 2026-08-14. It only detonates while the test is red,
   which is exactly when you are running it. `screen.getByX` helpers are safe — they throw
   their own message and never hand the node to `assert`.
+- **Another device's session is a remote row (`SessionState.remote`), read-only everywhere but its owner.** It is
+  foreign: never written to `index.json`, never leased, digested, indexed, withdrawn or published from here, never
+  busy for the daemon's idle exit, never a review tree, never forked, and invisible to the self-control tools. It
+  opens over a dormant run (an inert provider when this host lacks it) and a `ForeignTail` on the machine-wide
+  mirror, which only the sync engine's lease holder writes; the cursor never passes ops the mirror has not
+  flushed, and a session op that fails to apply is retried rather than skipped. The history tab and the TUI roster
+  list remote rows per device; the server reports presence (an open event stream), and an offline device's rows
+  read idle.
 - **A host never writes a session it does not own.** The lease file is the owner. A session leased
   by another live host is opened over a dormant provider and `TranscriptStore.markForeign` turns
   every append, replace, flush and remove for it into a no-op, so even a mutator that slips past the

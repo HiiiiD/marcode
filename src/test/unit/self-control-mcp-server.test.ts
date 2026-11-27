@@ -642,6 +642,30 @@ suite('SelfControlMcpServer cross-session messaging', () => {
     await server.dispose();
   });
 
+  test('another device\'s session is never listed, closed or messaged', async () => {
+    let closed = 0;
+    const remote = { deviceId: 'd', deviceName: 'PC-desk', online: true, lastSeenAt: 1, relCwd: '.' };
+    const manager = fakeManager({
+      summaries: () => [
+        { id: 's-caller', name: 'me', providerId: 'claude', status: 'idle', cwd: '/w' } as never,
+        { id: 'r1', name: 'theirs', providerId: 'claude', status: 'idle', cwd: '/x', remote } as never,
+      ],
+      visibleIds: () => ['s-caller', 'r1'],
+      close: async () => { closed++; },
+    });
+    const server = trackedServer(manager);
+    const config = await server.start();
+    const list = JSON.parse((await callToolAs(config, 's-caller', 'marcode__list_sessions', {})).content[0].text) as { name: string }[];
+    assert.deepStrictEqual(list.map((s) => s.name), ['me']);
+    const close = await callToolAs(config, 's-caller', 'marcode__close_session', { to: 'theirs' });
+    assert.strictEqual(close.isError, true);
+    assert.strictEqual(closed, 0);
+    const send = await callToolAs(config, 's-caller', 'marcode__send_message', { to: 'theirs', text: 'hi' });
+    assert.strictEqual(send.isError, true);
+    assert.strictEqual(send.content[0].text, 'Session theirs runs on PC-desk; it is read-only on this device.');
+    await server.dispose();
+  });
+
   test('marcode__list_modes reports ids, labels and the default per provider', async () => {
     const manager = fakeManager({
       catalog: () => [

@@ -60,12 +60,12 @@ export function reduceReview(state: ReviewState, msg: HostToWebview): ReviewStat
       return {
         ...state,
         ready: true,
-        sessions: msg.sessions,
+        sessions: localOnly(msg.sessions),
         pollIntervalMs: msg.reviewPollIntervalMs ?? state.pollIntervalMs,
       };
 
     case 'sessions-changed':
-      return { ...state, sessions: msg.sessions };
+      return { ...state, sessions: localOnly(msg.sessions) };
 
     // A session going idle is the moment its edits have settled. The panel's
     // reducer counts the same thing for the same reason.
@@ -88,4 +88,9 @@ export function reduceReview(state: ReviewState, msg: HostToWebview): ReviewStat
     default:
       return state;
   }
+}
+
+/** Another device's sessions live only in the sidebar roster; this tab describes this device's work. */
+function localOnly(sessions: SessionSummary[]): SessionSummary[] {
+  return sessions.filter((s) => s.remote === undefined);
 }

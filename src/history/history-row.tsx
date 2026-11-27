@@ -18,6 +18,8 @@ export function HistoryRow({ session }: { session: SessionSummary }) {
   const shown = displayStatus(session);
   const waiting = shown === 'awaiting-approval';
   const summary = session.summary?.text || session.title;
+  // Another device's session: this device can only read it, so it offers no pin, re-summarize or stop.
+  const local = session.remote === undefined;
 
   return (
     <>
@@ -45,7 +47,7 @@ export function HistoryRow({ session }: { session: SessionSummary }) {
         </TableCell>
         <TableCell className="align-top">
           <div className="flex items-center justify-end gap-1">
-            {state.memory?.enabled && (
+            {local && state.memory?.enabled && (
               <TipButton
                 tip="Re-summarize"
                 label={`Re-summarize ${session.name}`}
@@ -54,6 +56,7 @@ export function HistoryRow({ session }: { session: SessionSummary }) {
                 <RefreshCwIcon aria-hidden />
               </TipButton>
             )}
+            {local && (
             <TipButton
               tip={pinned ? 'Unpin' : 'Pin'}
               label={`${pinned ? 'Unpin' : 'Pin'} ${session.name}`}
@@ -62,7 +65,8 @@ export function HistoryRow({ session }: { session: SessionSummary }) {
             >
               <PinIcon aria-hidden className={cn(pinned ? 'fill-current' : 'text-muted-foreground')} />
             </TipButton>
-            {(session.status === 'running' || session.status === 'awaiting-approval') && (
+            )}
+            {local && (session.status === 'running' || session.status === 'awaiting-approval') && (
               <Button
                 variant="outline"
                 size="sm"

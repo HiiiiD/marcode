@@ -7,7 +7,8 @@ import { FtsMemoryReader } from './fts/fts-memory-reader';
 import { openPlainDatabase, type SqlDb } from './sqlite-driver';
 import type { MemoryDetail, MemoryHit, SearchOpts } from './types';
 
-const ITEMS_DDL = 'CREATE TABLE IF NOT EXISTS items (sessionId TEXT PRIMARY KEY, json TEXT NOT NULL)';
+const ITEMS_DDL = 'CREATE TABLE IF NOT EXISTS items (sessionId TEXT PRIMARY KEY, json TEXT NOT NULL); '
+  + 'CREATE TABLE IF NOT EXISTS publishers (sessionId TEXT PRIMARY KEY, deviceId TEXT NOT NULL)';
 
 /**
  * Other devices' published memory, machine-wide. Recalled only by project: rows carry a `remote:` cwd
@@ -56,11 +57,17 @@ export class RemoteMemory {
   async apply(deviceId: string, payload: MemoryPayload): Promise<void> {
     if (!this.writer) { return; }
     const { fts, db } = this.writer;
+    const publisher = (db.prepare('SELECT deviceId FROM publishers WHERE sessionId = ?').get(payload.sessionId) as { deviceId: string } | undefined)?.deviceId;
     if (payload.type === 'memory-withdraw') {
+      // Only the device that published a row may withdraw it: another device's withdraw says nothing about it.
+      if (publisher !== undefined && publisher !== deviceId) { return; }
+      db.prepare('DELETE FROM publishers WHERE sessionId = ?').run(payload.sessionId);
       await fts.forget(payload.sessionId);
       db.prepare('DELETE FROM items WHERE sessionId = ?').run(payload.sessionId);
       return;
     }
+    db.prepare('INSERT INTO publishers (sessionId, deviceId) VALUES (?, ?) ON CONFLICT(sessionId) DO UPDATE SET deviceId = excluded.deviceId')
+      .run(payload.sessionId, deviceId);
     db.prepare('INSERT INTO items (sessionId, json) VALUES (?, ?) ON CONFLICT(sessionId) DO UPDATE SET json = excluded.json')
       .run(payload.sessionId, JSON.stringify(payload.items));
     // One synthetic item carries the full searchable text; its id is the real first item's, so fetch anchors there.

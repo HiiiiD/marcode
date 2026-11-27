@@ -95,6 +95,10 @@ export class SyncStore {
     return toDevice({ ...row, lastSeenAt: at });
   }
 
+  touch(deviceId: string): void {
+    this.db.prepare('UPDATE devices SET lastSeenAt = ? WHERE deviceId = ?').run(this.now(), deviceId);
+  }
+
   devices(): DeviceRow[] {
     return (this.db.prepare('SELECT * FROM devices ORDER BY createdAt').all() as DeviceDbRow[]).map(toDevice);
   }

@@ -225,6 +225,15 @@ export interface SessionState {
    */
   owner?: { host: 'vscode' | 'tui' | 'daemon'; pid: number };
   /**
+   * Set only on another device's session, mirrored through sync: read-only here, never persisted, leased,
+   * digested or published. `gap`: part of its transcript never arrived; `newerFormat`: that device writes
+   * records this build cannot read.
+   */
+  remote?: {
+    deviceId: string; deviceName: string; online: boolean; lastSeenAt: number; relCwd: string;
+    branch?: string; gap?: true; newerFormat?: true;
+  };
+  /**
    * The session's project (normalised git remote of its checkout), persisted. Set by the host when
    * the session is created, loaded or relocated; never cleared because a later cwd resolves to none.
    */

@@ -26,7 +26,8 @@ export function SessionPicker({ narrow, onReview, onFleet, onHistory }: SessionP
   const { state, post } = useStore();
   const root = state.layout.root;
   const horizontal = root.kind === 'split' && root.orientation === 'horizontal';
-  const needing = state.sessions.filter((s) => statusView(displayStatus(s)).needsUser).length;
+  // Another device's waiting session cannot be answered from here.
+  const needing = state.sessions.filter((s) => s.remote === undefined && statusView(displayStatus(s)).needsUser).length;
 
   // One string for both `aria-label` and the tooltip below — a sighted
   // hover and a screen reader hear the same thing, rather than the tooltip

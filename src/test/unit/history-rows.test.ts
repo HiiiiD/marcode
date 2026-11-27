@@ -72,4 +72,20 @@ suite('queryHistory', () => {
     assert.deepStrictEqual(ids(result.rest), ['question']);
     assert.deepStrictEqual(ids(queryHistory(list, { ...DEFAULT_QUERY, needsAttention: true }).rest), ['error', 'question']);
   });
+
+  test("other devices' sessions group per device after this device's, under the same filters", () => {
+    const remote = (deviceId: string, deviceName: string, online = true) => ({ deviceId, deviceName, online, lastSeenAt: 5, relCwd: '.' });
+    const list = [
+      summary('mine', { updatedAt: 50 }),
+      summary('t1', { updatedAt: 10, remote: remote('d2', 'Tower') }),
+      summary('l1', { updatedAt: 20, remote: remote('d1', 'Laptop', false) }),
+      summary('l2', { updatedAt: 30, title: 'needle here', remote: remote('d1', 'Laptop', false) }),
+    ];
+    const out = queryHistory(list, DEFAULT_QUERY);
+    assert.deepStrictEqual(ids(out.rest), ['mine']);
+    assert.deepStrictEqual(out.devices.map((g) => [g.deviceName, ids(g.sessions)]), [['Laptop', ['l2', 'l1']], ['Tower', ['t1']]]);
+    assert.strictEqual(out.devices[0].online, false);
+    const filtered = queryHistory(list, { ...DEFAULT_QUERY, text: 'needle' });
+    assert.deepStrictEqual(filtered.devices.map((g) => ids(g.sessions)), [['l2']]);
+  });
 });

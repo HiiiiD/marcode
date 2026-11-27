@@ -300,4 +300,26 @@ suite('history memory actions', () => {
     assert.strictEqual(screen.queryByText('Summarizing 3/10') === null, true);
     assert.strictEqual(screen.queryByRole('button', { name: 'Index memory' }) !== null, true);
   });
+
+  test("another device's sessions sit in their own group, open read-only, with no pin or stop", async () => {
+    renderHistory();
+    const remote = { deviceId: 'd1', deviceName: 'PC-desk', online: true, lastSeenAt: 1, relCwd: '.' };
+    hydrate([
+      summary('a', { title: 'Alpha', name: 'alpha-name', updatedAt: 300 }),
+      summary('r', { title: 'Remote work', name: 'remote-name', updatedAt: 200, status: 'running', remote }),
+    ]);
+    assert.strictEqual(screen.getByText('PC-desk · online').textContent, 'PC-desk · online1');
+    assert.strictEqual(screen.queryByRole('button', { name: 'Pin remote-name' }) === null, true);
+    assert.strictEqual(screen.queryByRole('button', { name: 'Stop remote-name' }) === null, true);
+    await userEvent.click(screen.getByRole('button', { name: 'Open remote-name' }));
+    assert.deepStrictEqual(posted().filter((m) => m.t === 'focus-session').map((m) => (m as { id: string }).id), ['r']);
+  });
+
+  test("a window whose only sessions are another device's still lists them", () => {
+    renderHistory();
+    const remote = { deviceId: 'd1', deviceName: 'PC-desk', online: false, lastSeenAt: 0, relCwd: '.' };
+    hydrate([summary('r', { title: 'Remote work', name: 'remote-name', remote })]);
+    assert.strictEqual(screen.queryByText('No sessions yet') === null, true);
+    assert.strictEqual(screen.getByText('PC-desk · offline').textContent, 'PC-desk · offline1');
+  });
 });

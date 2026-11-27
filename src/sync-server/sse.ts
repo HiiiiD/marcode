@@ -6,8 +6,9 @@ const PING_MS = 25_000;
 export class EventHub {
   private readonly streams = new Map<string, Set<ServerResponse>>();
   private readonly ping: NodeJS.Timeout;
+  private closed = false;
 
-  constructor() {
+  constructor(private readonly opts: { onPresence?: (deviceId: string, online: boolean) => void } = {}) {
     this.ping = setInterval(() => { this.write(': ping\n\n'); }, PING_MS);
     this.ping.unref();
   }
@@ -16,9 +17,19 @@ export class EventHub {
     res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive' });
     res.write(': open\n\n');
     const set = this.streams.get(deviceId) ?? new Set();
+    const first = set.size === 0;
     set.add(res);
     this.streams.set(deviceId, set);
-    res.on('close', () => { set.delete(res); });
+    if (first) { this.opts.onPresence?.(deviceId, true); }
+    res.on('close', () => {
+      if (!set.delete(res) || set.size > 0 || this.closed) { return; }
+      if (this.streams.get(deviceId) === set) { this.streams.delete(deviceId); }
+      this.opts.onPresence?.(deviceId, false);
+    });
+  }
+
+  isOnline(deviceId: string): boolean {
+    return (this.streams.get(deviceId)?.size ?? 0) > 0;
   }
 
   emit(event: string, data: unknown, exceptDeviceId?: string): void {
@@ -35,6 +46,7 @@ export class EventHub {
   }
 
   close(): void {
+    this.closed = true;
     clearInterval(this.ping);
     for (const set of this.streams.values()) { for (const res of set) { res.end(); } }
     this.streams.clear();

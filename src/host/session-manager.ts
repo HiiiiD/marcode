@@ -9,7 +9,7 @@ import { listBranchRefs, treeChanges } from './fleet-diff';
 import {
   bringBack as runBringBack, bringBackPlan, createWorktree, samePath, treeStatus, type TreeStatus,
 } from './git-worktree';
-import { dormantProvider } from './dormant-provider';
+import { dormantProvider, inertProvider } from './dormant-provider';
 import { ForeignTail } from './foreign-tail';
 import { buildSeed } from './replay';
 import { isHidden } from '../shared/session-kind';
@@ -17,6 +17,7 @@ import { nativeFork, planNativeFork, type NativeForkPlan } from './native-fork';
 import { hasOwnTurns } from './side-chat';
 import { buildSideChatDigest, SIDE_CHAT_HEADER } from './side-chat-digest';
 import { mergeRoster } from './roster-sync';
+import type { RemoteSessions } from './sync/remote-sessions';
 import type { OwnClaim, OwnerInfo, SessionOwnership } from './session-ownership';
 import { findPayload, type ResolvedBlock } from './session-refs';
 import { TRANSCRIPT_VERSION, type StoredIndex, type TranscriptStore } from './transcript-store';
@@ -247,7 +248,7 @@ export class SessionManager implements SessionSink {
       this.digests = new DigestService({
         store: this.memory,
         source: {
-          sessions: () => [...this.meta.values()].filter((s) => !isHidden(s)).map((s) => ({
+          sessions: () => [...this.localMeta().values()].filter((s) => !isHidden(s)).map((s) => ({
             id: s.id, providerId: s.providerId, cwd: s.cwd, title: s.title,
             hidden: !this.visible.has(s.id), updatedAt: s.updatedAt, projectId: s.projectId,
           })),
@@ -1580,7 +1581,7 @@ export class SessionManager implements SessionSink {
    */
   private sessionsIn(root: string): SessionId[] {
     const ids: SessionId[] = [];
-    for (const state of this.meta.values()) {
+    for (const state of this.localMeta().values()) {
       if (!isHidden(state) && samePath(resolve(state.cwd), root)) { ids.push(state.id); }
     }
     return ids;
@@ -1709,7 +1710,8 @@ export class SessionManager implements SessionSink {
       const key = process.platform === 'win32' ? full.toLowerCase() : full;
       if (!byKey.has(key)) { byKey.set(key, full); }
     };
-    for (const state of this.meta.values()) {
+    // Another device's cwd names a folder on its disk, not a tree here.
+    for (const state of this.localMeta().values()) {
       add(state.cwd);
       for (const key of Object.keys(state.resumeTokens)) {
         const dir = threadKeyCwd(key, this.providers.keys());
@@ -1898,7 +1900,8 @@ export class SessionManager implements SessionSink {
     if (!itemId) {
       return this.live.get(id)?.pendingAttachments.find((a) => a.id === attachmentId)?.path;
     }
-    if (!this.meta.has(id)) { return undefined; }
+    // Another device's attachment paths point at its own disk.
+    if (!this.meta.has(id) || this.isRemote(id)) { return undefined; }
     const item = await this.store.find(id, itemId);
     if (item?.role !== 'user') { return undefined; }
     return item.attachments?.find((a) => a.id === attachmentId)?.path;
@@ -1938,12 +1941,14 @@ export class SessionManager implements SessionSink {
   private async openOnce(id: SessionId): Promise<AgentSession> {
     const existing = this.live.get(id);
     if (existing) {
-      if (!this.foreign.has(id) || (await this.ownership?.ownerOf(id)) !== undefined) { return existing; }
+      if (!this.foreign.has(id) || this.isRemote(id) || (await this.ownership?.ownerOf(id)) !== undefined) { return existing; }
       await this.releaseForeign(id);
     }
 
     const state = this.meta.get(id);
     if (!state) { throw new Error(`Unknown session: ${id}`); }
+    // Before any lease claim: another device's session gets no lock file here, and may name a provider this host lacks.
+    if (state.remote && this.remote) { return this.openRemote(state, this.remote); }
     const provider = this.providers.get(state.providerId);
     if (!provider) { throw new Error(`Unknown provider: ${state.providerId}`); }
 
@@ -1984,7 +1989,7 @@ export class SessionManager implements SessionSink {
     if (added.length > 0 || removed.length > 0) { this.emit({ t: 'sessions-changed', sessions: this.summaries() }); }
 
     // Recall covers hidden sessions only; a revealed one would otherwise point at itself.
-    for (const id of added) { await this.digests?.forget(id); }
+    for (const id of added) { if (!this.isRemote(id)) { await this.digests?.forget(id); } }
     for (const id of added) {
       // Mark this id as "snapshot in flight" so patch() buffers instead of
       // emitting for it — see the `snapshotting` field doc comment.
@@ -2059,7 +2064,12 @@ export class SessionManager implements SessionSink {
 
   /** Leased by another host: this one may read it but never run, write, discard or delete it. */
   isForeign(id: SessionId): boolean {
-    return this.foreign.has(id) || this.meta.get(id)?.owner !== undefined || this.store.isForeign(id);
+    return this.foreign.has(id) || this.meta.get(id)?.owner !== undefined || this.isRemote(id) || this.store.isForeign(id);
+  }
+
+  /** Another device's session, mirrored through sync. */
+  isRemote(id: SessionId): boolean {
+    return this.meta.get(id)?.remote !== undefined;
   }
 
   // Re-asks the lease file too: a roster-only row learns its owner only at the next sync.
@@ -2446,7 +2456,7 @@ export class SessionManager implements SessionSink {
 
   /** What the memory publisher needs: every session with its project and whether a pane shows it. */
   publishableSessions(): Array<{ id: SessionId; providerId: string; cwd: string; projectId?: string; hidden: boolean }> {
-    return [...this.meta.values()].filter((s) => !isHidden(s)).map((s) => ({
+    return [...this.localMeta().values()].filter((s) => !isHidden(s)).map((s) => ({
       id: s.id, providerId: s.providerId, cwd: s.cwd, ...(s.projectId ? { projectId: s.projectId } : {}), hidden: !this.visible.has(s.id),
     }));
   }
@@ -2460,6 +2470,7 @@ export class SessionManager implements SessionSink {
   shellAliases(): ShellAliasTable { return this.shellAliasTable; }
 
   private ownership?: SessionOwnership;
+  private remote?: RemoteSessions;
   private tailIntervalMs = 750;
   private readonly foreign = new Map<SessionId, ForeignTail>();
   private readonly opening = new Map<SessionId, Promise<AgentSession>>();
@@ -2487,6 +2498,49 @@ export class SessionManager implements SessionSink {
     });
   }
 
+  /** Call before `init()`. */
+  setRemoteSessions(remote: RemoteSessions): void { this.remote = remote; }
+
+  private persistListener?: (sessions: SessionState[]) => void;
+  /** Hears this host's rows each time the index is written; sync publishes what changed from there. */
+  setPersistListener(listener: (sessions: SessionState[]) => void): void { this.persistListener = listener; }
+
+  /** A session another device may see: this host's, not a side chat, subagent, foreign or remote row. */
+  publishableSession(id: SessionId): SessionState | undefined {
+    const state = this.meta.get(id);
+    if (!state || state.kind === 'side' || state.kind === 'subagent' || this.isForeign(id)) { return undefined; }
+    return state;
+  }
+
+  publishableStates(): SessionState[] {
+    return [...this.localMeta().keys()].map((id) => this.publishableSession(id)).filter((s): s is SessionState => s !== undefined);
+  }
+
+  /** Merges the mirror's rows for this window's projects into the roster. */
+  async syncRemoteSessions(): Promise<void> {
+    if (!this.remote || this.disposed) { return; }
+    try {
+      const { adopt, update, drop } = await this.remote.sync(this.meta);
+      for (const d of adopt) { this.meta.set(d.id, d); }
+      for (const d of update) { Object.assign(this.meta.get(d.id) as SessionState, d); }
+      for (const id of drop) { await this.hide(id); this.meta.delete(id); }
+      if (adopt.length + update.length + drop.length > 0) { this.emit({ t: 'sessions-changed', sessions: this.summaries() }); }
+    } catch (err) {
+      console.error('[mar-code] remote roster sync failed', err);
+    }
+  }
+
+  /** The projects this window shows: its sessions' and its workspace folders'. */
+  async windowProjects(): Promise<Set<string>> {
+    const ids = new Set<string>();
+    for (const s of this.meta.values()) { if (!s.remote && s.projectId) { ids.add(s.projectId); } }
+    for (const root of this.workspaceRoots()) {
+      const projectId = (await this.projects?.resolve(root).catch(() => undefined))?.projectId;
+      if (projectId) { ids.add(projectId); }
+    }
+    return ids;
+  }
+
   startRosterSync(intervalMs = 2000): void {
     if (this.rosterTimer || !this.ownership) { return; }
     this.rosterTimer = setInterval(() => { void this.syncRoster(); }, intervalMs);
@@ -2507,7 +2561,7 @@ export class SessionManager implements SessionSink {
     const { index, state: indexState } = await this.store.readIndexState();
     if (indexState !== 'ok') {
       // A missing, torn or other-version index says nothing about what was deleted.
-      const sessions = [...this.meta.values()].map(({ owner: _owner, ...rest }) => rest as SessionState);
+      const sessions = [...this.localMeta().values()].map(({ owner: _owner, ...rest }) => rest as SessionState);
       return { sessions, changed: false, writable: indexState !== 'newer' };
     }
     const disk = index.sessions;
@@ -2516,14 +2570,14 @@ export class SessionManager implements SessionSink {
     const owners = new Map<SessionId, OwnerInfo>();
     const owned = new Set<SessionId>();
     for (const id of new Set([...onDisk, ...this.meta.keys()])) {
-      if (this.deleted.has(id)) { continue; }
+      if (this.deleted.has(id) || this.isRemote(id)) { continue; }
       if (this.ownership?.owns(id)) { owned.add(id); continue; }
       // An unreadable lock keeps whatever owner was last seen rather than reading as free.
       const owner = await this.ownership?.ownerOf(id).catch(() => this.meta.get(id)?.owner);
       if (owner) { owners.set(id, owner); }
     }
     const merged = mergeRoster({
-      ours: this.meta, disk, owners, knownOnDisk: this.knownOnDisk,
+      ours: this.localMeta(), disk, owners, knownOnDisk: this.knownOnDisk,
       owned, tombstones: this.deleted, transcripts: await this.store.transcriptIds(),
     });
     for (const d of merged.adopt) {
@@ -2554,6 +2608,7 @@ export class SessionManager implements SessionSink {
   }
 
   async syncRoster(): Promise<void> {
+    await this.syncRemoteSessions();
     if (!this.ownership || this.disposed) { return; }
     try {
       const { changed } = await this.reconcile();
@@ -2600,6 +2655,25 @@ export class SessionManager implements SessionSink {
       onPatch: (patch) => { this.patch(id, patch); },
       onFree: () => { void this.releaseForeign(id); },
     });
+    this.foreign.set(id, tail);
+    tail.start();
+    this.changed();
+    return session;
+  }
+
+  /** This host's own rows: everything persisted, leased or reconciled against the index. */
+  private localMeta(): Map<SessionId, SessionState> {
+    return new Map([...this.meta].filter(([, s]) => s.remote === undefined));
+  }
+
+  private openRemote(state: SessionState, remote: RemoteSessions): AgentSession {
+    const id = state.id;
+    const provider = this.providers.get(state.providerId) ?? inertProvider(state.providerId);
+    const store = remote.store(state.remote?.deviceId ?? '');
+    store.markForeign(id);
+    const session = new AgentSession(state, dormantProvider(provider), store, this);
+    this.live.set(id, session);
+    const tail = remote.tail(state, (patch) => { this.patch(id, patch); });
     this.foreign.set(id, tail);
     tail.start();
     this.changed();
@@ -2819,7 +2893,7 @@ export class SessionManager implements SessionSink {
   }
 
   private async persist(): Promise<void> {
-    let sessions = [...this.meta.values()].map(({ owner: _owner, ...rest }) => rest as SessionState);
+    let sessions = [...this.localMeta().values()].map(({ owner: _owner, ...rest }) => rest as SessionState);
     let writable = true;
     if (this.ownership) {
       const reconciled = await this.reconcile();
@@ -2829,6 +2903,7 @@ export class SessionManager implements SessionSink {
     if (writable) {
       const index: StoredIndex = { version: TRANSCRIPT_VERSION, sessions, layout: this.paneLayout };
       await this.store.writeIndex(index);
+      try { this.persistListener?.(this.publishableStates()); } catch (err) { console.error('[mar-code] persist listener failed', err); }
       if (this.ownership) { this.knownOnDisk = new Set(sessions.map((x) => x.id)); }
     }
     // Deviation from the brief: TranscriptStore.flush() previously was not

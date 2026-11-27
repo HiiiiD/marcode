@@ -3,16 +3,20 @@ import type { RemoteMemory } from '../../memory/remote-memory';
 import { readCredentials, type SyncCredentials } from '../../sync/credentials';
 import { REVOKED_ERROR } from '../../sync/http';
 import { parseMemoryPayload } from '../../sync/memory-records';
+import { parseSessionPayload } from '../../sync/session-records';
 import { SyncClient, type SyncClientOptions } from '../../sync/sync-client';
 import type { SyncState } from '../../sync/sync-state';
 import type { LeaseHost } from '../lease';
 import { SessionOwnership } from '../session-ownership';
+import type { SessionMirror } from './session-mirror';
 
 export interface SyncEngineDeps {
   home: string;
   hostKind: LeaseHost;
   state: SyncState;
-  remote: RemoteMemory;
+  /** Absent while memory is off: memory records are then skipped, and the cursor moves past them. */
+  remote?: RemoteMemory;
+  mirror?: SessionMirror;
   clientOptions?: SyncClientOptions;
   pollMs?: number;
   claimRetryMs?: number;
@@ -22,7 +26,7 @@ export interface SyncEngineDeps {
 }
 
 const LEASE = 'sync-engine';
-const PUSH_TICK_MS = 2000;
+const PUSH_TICK_MS = 500;
 const REJECTED = /answered (400|413)\b/;
 
 /**
@@ -39,14 +43,14 @@ export class SyncEngine {
   private pushing = false;
   private pulling: Promise<void> | undefined;
   private pullAgain = false;
-  private counts = { pushed: 0, applied: 0, skipped: 0 };
+  private counts = { pushed: 0, applied: 0, skipped: 0, failed: 0 };
 
   constructor(private readonly deps: SyncEngineDeps) {
     this.ownership = new SessionOwnership(path.join(deps.home, 'sync'), deps.hostKind);
     this.ownership.onLost(() => { this.release(); this.scheduleClaim(); });
   }
 
-  stats(): { pushed: number; applied: number; skipped: number; holding: boolean } {
+  stats(): { pushed: number; applied: number; skipped: number; failed: number; holding: boolean } {
     return { ...this.counts, holding: this.holding };
   }
 
@@ -75,8 +79,11 @@ export class SyncEngine {
     const owned = await this.ownership.claim(LEASE).then((c) => c.owned, () => false);
     if (!owned || this.disposed) { this.scheduleClaim(); return; }
     this.holding = true;
+    // Another host may have held the lease since this one last did, and written the mirror meanwhile.
+    this.deps.mirror?.reset();
     this.follower = new SyncClient(creds, this.deps.clientOptions).follow((event) => {
       if (event.type === 'appended') { void this.pull(); }
+      if (event.type === 'devices') { void this.presence(); }
       if (event.type === 'connection' && event.state === 'open') { void this.pull(); }
       if (event.type === 'connection' && event.state === 'revoked') { void this.stop(); }
     });
@@ -84,6 +91,23 @@ export class SyncEngine {
     this.every(this.deps.pollMs ?? 300_000, () => { void this.pull(); });
     void this.push();
     void this.pull();
+    void this.presence();
+  }
+
+  /** Who is online, for the roster's device labels; a failure leaves the last known state. */
+  private async presence(): Promise<void> {
+    if (!this.holding || !this.deps.mirror) { return; }
+    try {
+      const session = await this.client();
+      if (!session) { return; }
+      const devices = await session.client.devices();
+      if (!devices.ok) { return; }
+      await this.deps.mirror.setDevices(devices.value.filter((d) => d.deviceId !== session.creds.deviceId)
+        .map((d) => ({ deviceId: d.deviceId, name: d.name, online: d.online === true, lastSeenAt: d.lastSeenAt })));
+      await this.deps.mirror.flush();
+    } catch (err) {
+      console.error('[mar-code] sync: presence failed', err);
+    }
   }
 
   private every(ms: number, work: () => void): void {
@@ -188,18 +212,37 @@ export class SyncEngine {
         for (const record of page.value) {
           // A key not yet sealed for this device may arrive later; skipping now would lose the record for good.
           if (record.missingKey) { waiting = true; break; }
-          const payload = record.unreadable ? undefined : parseMemoryPayload(record.payload);
-          try {
-            if (!payload) { throw new Error('unreadable'); }
-            await this.deps.remote.apply(stream.deviceId, payload);
-            this.counts.applied++;
-          } catch {
-            this.counts.skipped++;
-          }
+          const outcome = await this.applyRecord(stream.deviceId, record.unreadable ? undefined : record.payload);
+          // A transcript op that failed to apply is retried next cycle: skipping it would leave a hole for good.
+          if (outcome === 'failed') { waiting = true; break; }
+          this.counts[outcome]++;
           cursor = record.seq;
         }
+        // The mirror only buffers until flushed; the cursor must never pass ops still in memory.
+        await this.deps.mirror?.flush();
         this.deps.state.setCursor(stream.deviceId, cursor);
       }
+    }
+    void this.presence();
+  }
+
+  private async applyRecord(deviceId: string, raw: unknown): Promise<'applied' | 'skipped' | 'failed'> {
+    const memory = raw === undefined ? undefined : parseMemoryPayload(raw);
+    if (memory) {
+      if (!this.deps.remote) { return 'skipped'; }
+      // A memory row is a cache: one that will not apply is dropped, as before.
+      return this.deps.remote.apply(deviceId, memory).then(() => 'applied' as const, () => 'skipped' as const);
+    }
+    const session = raw === undefined ? undefined : parseSessionPayload(raw);
+    if (!session || !this.deps.mirror) { return 'skipped'; }
+    if ('newerFormat' in session) { this.deps.mirror.markNewerFormat(deviceId); return 'skipped'; }
+    try {
+      await this.deps.mirror.apply(deviceId, session);
+      return 'applied';
+    } catch (err) {
+      console.error('[mar-code] sync: could not mirror a session record', err);
+      this.counts.failed++;
+      return 'failed';
     }
   }
 }

@@ -153,6 +153,51 @@ suite('sync server HTTP', () => {
     abort.abort();
   });
 
+  test('a device with an open event stream is online, and goes offline with a devices event when it closes', async () => {
+    const r = await rig();
+    const a = await enroll(r);
+    const b = await second(r, a.token);
+    const online = async (): Promise<boolean | undefined> =>
+      ((await call(r, 'GET', '/v1/devices', undefined, a.token)).json.devices as Array<{ deviceId: string; online?: boolean }>)
+        .find((d) => d.deviceId === b.deviceId)?.online;
+    assert.strictEqual(await online(), false);
+    const watchA = new AbortController();
+    const aFrames = events(r, a.token, watchA.signal);
+    const cameOnline = aFrames.next();
+    await new Promise((res) => setTimeout(res, 50));
+    const bAbort = new AbortController();
+    const bStream = events(r, b.token, bAbort.signal);
+    void bStream.next().catch(() => undefined);
+    await new Promise((res) => setTimeout(res, 80));
+    assert.strictEqual(await online(), true);
+    assert.strictEqual(((await cameOnline).value as string).includes('event: devices'), true);
+    r.clock.now += 5000;
+    const next = aFrames.next();
+    bAbort.abort();
+    const frame = (await Promise.race([next, new Promise((res) => setTimeout(() => res({ value: 'timeout' }), 1000))]) as { value: string }).value;
+    assert.strictEqual(frame.includes('event: devices'), true);
+    assert.strictEqual(await online(), false);
+    const row = ((await call(r, 'GET', '/v1/devices', undefined, a.token)).json.devices as Array<{ deviceId: string; lastSeenAt: number }>)
+      .find((d) => d.deviceId === b.deviceId)!;
+    assert.strictEqual(row.lastSeenAt >= r.clock.now, true);
+    watchA.abort();
+  });
+
+  test('a device stays online while one of its two streams is still open', async () => {
+    const r = await rig();
+    const a = await enroll(r);
+    const one = new AbortController();
+    const two = new AbortController();
+    void events(r, a.token, one.signal).next().catch(() => undefined);
+    void events(r, a.token, two.signal).next().catch(() => undefined);
+    await new Promise((res) => setTimeout(res, 80));
+    one.abort();
+    await new Promise((res) => setTimeout(res, 80));
+    const me = ((await call(r, 'GET', '/v1/devices', undefined, a.token)).json.devices as Array<{ online?: boolean }>)[0];
+    assert.strictEqual(me.online, true);
+    two.abort();
+  });
+
   test('a revoked device is refused everywhere and its event stream ends', async () => {
     const r = await rig();
     const a = await enroll(r);
