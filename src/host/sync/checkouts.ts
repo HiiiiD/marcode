@@ -2,7 +2,9 @@ import * as path from 'node:path';
 import { createWorktree, git, samePath } from '../git-worktree';
 import type { ProjectResolver } from '../project/project-resolver';
 
-export interface CheckoutChoice { root: string; branch?: string; main: boolean }
+import type { CheckoutChoice } from '../../protocol/messages';
+
+export type { CheckoutChoice };
 
 function parseWorktrees(porcelain: string): CheckoutChoice[] {
   const out: CheckoutChoice[] = [];

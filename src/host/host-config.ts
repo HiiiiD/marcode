@@ -23,7 +23,7 @@ export interface HostConfig {
   memory: { enabled: boolean; summarizer: unknown };
   projects: { overrides: ProjectOverride[] };
   /** The sync server and this device's name; the device token and keys live in `sync/credentials.json`, never here. */
-  sync: { server?: string; deviceName?: string; excludeProjects: string[] };
+  sync: { server?: string; deviceName?: string; excludeProjects: string[]; takeOverAfterMinutes: number };
   review: { fileCap: number; pollIntervalMs: number; baseRefs: string[] };
   favoriteModels: string[];
   daemon: { enabled: boolean; idleMinutes: number };
@@ -49,7 +49,7 @@ export function defaultHostConfig(): HostConfig {
     usageMirrors: [],
     memory: { enabled: true, summarizer: undefined },
     projects: { overrides: [] },
-    sync: { excludeProjects: [] },
+    sync: { excludeProjects: [], takeOverAfterMinutes: 10 },
     review: { fileCap: clampCap(undefined), pollIntervalMs: 750, baseRefs: [] },
     favoriteModels: [],
     daemon: { enabled: true, idleMinutes: 10 },
@@ -150,6 +150,11 @@ export function parseHostConfig(raw: unknown): { config: HostConfig; warnings: s
         if (config.sync.excludeProjects.length !== list.length || !Array.isArray(raw.sync.excludeProjects)) {
           warnings.push('config.json: sync.excludeProjects must be a list of project ids; other entries ignored.');
         }
+      }
+      if (raw.sync.takeOverAfterMinutes !== undefined) {
+        const minutes = raw.sync.takeOverAfterMinutes;
+        if (typeof minutes === 'number' && Number.isInteger(minutes) && minutes > 0) { config.sync.takeOverAfterMinutes = minutes; }
+        else { warnings.push('config.json: sync.takeOverAfterMinutes must be a whole number of minutes above 0; using 10.'); }
       }
     }
   }

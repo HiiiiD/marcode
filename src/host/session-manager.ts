@@ -17,6 +17,7 @@ import { nativeFork, planNativeFork, type NativeForkPlan } from './native-fork';
 import { hasOwnTurns } from './side-chat';
 import { buildSideChatDigest, SIDE_CHAT_HEADER } from './side-chat-digest';
 import { mergeRoster } from './roster-sync';
+import type { MoveService } from './sync/move-service';
 import type { RemoteSessions } from './sync/remote-sessions';
 import type { OwnClaim, OwnerInfo, SessionOwnership } from './session-ownership';
 import { findPayload, type ResolvedBlock } from './session-refs';
@@ -2472,6 +2473,9 @@ export class SessionManager implements SessionSink {
   /** Absent when the host has no `~/.marcode` home (tests, the bare router); the dialog then says sync is unavailable. */
   syncService?: SyncService;
   setSyncService(service: SyncService): void { this.syncService = service; }
+
+  moveService?: MoveService;
+  setMoveService(service: MoveService): void { this.moveService = service; }
 
   private shellAliasTable: ShellAliasTable = DEFAULT_SHELL_ALIASES;
   setShellAliases(table: ShellAliasTable): void { this.shellAliasTable = table; }

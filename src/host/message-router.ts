@@ -5,7 +5,7 @@ import type { SessionManager } from './session-manager';
 import type { AgentSession } from './agent-session';
 import { MAX_PENDING, type AttachmentStore } from './attachment-store';
 import type {
-  DiffBase, EditorContext, FileRef, HostToWebview, SessionId, SessionRef, SessionSnapshot,
+  DiffBase, EditorContext, FileRef, HostToWebview, MoveStatus, SessionId, SessionRef, SessionSnapshot,
   WebviewToHost,
 } from '../protocol/messages';
 import { fsPathOfUri } from './file-uri';
@@ -655,6 +655,27 @@ export class MessageRouter {
         return;
       }
 
+      case 'request-move-panel': {
+        const service = this.manager.moveService;
+        const panel = service ? await service.panel(msg.id) : {
+          id: msg.id, mode: 'unavailable' as const, reason: 'Sync is not set up on this device.', checkouts: [], thread: 'restarted' as const, ownerName: '', lastSeenAt: 0,
+        };
+        this.emit({ t: 'move-panel', panel });
+        return;
+      }
+      case 'move-session':
+      case 'take-over-session': {
+        const service = this.manager.moveService;
+        const report = (status: MoveStatus) => { this.emit({ t: 'move-status', id: msg.id, status }); };
+        if (!service) { report({ state: 'failed', reason: 'Sync is not set up on this device.' }); return; }
+        try {
+          if (msg.t === 'move-session') { await service.moveHere(msg.id, msg.target, { cancelTurn: msg.cancelTurn }, report); }
+          else { await service.takeOver(msg.id, msg.target, report); }
+        } catch (err) {
+          report({ state: 'failed', reason: `The move failed: ${err instanceof Error ? err.message : String(err)}` });
+        }
+        return;
+      }
       case 'sync-open':
       case 'sync-refresh':
       case 'sync-setup':
@@ -867,6 +888,7 @@ export class MessageRouter {
 
 const KNOWN_MESSAGE_TAGS = new Set<WebviewToHost['t']>([
   'sync-open', 'sync-refresh', 'sync-setup', 'sync-join', 'sync-pair', 'sync-revoke', 'sync-leave', 'sync-forget', 'sync-project',
+  'request-move-panel', 'move-session', 'take-over-session',
   'ready', 'create-session', 'set-visible', 'set-layout', 'close-session',
   'delete-session', 'replace-session', 'save-preset', 'delete-preset', 'send', 'interrupt', 'cancel-queued',
   'set-effort', 'set-permission-mode', 'rename-session',

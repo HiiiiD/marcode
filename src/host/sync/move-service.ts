@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import type { SessionId, SessionState } from '../../protocol/messages';
+import type { MovePanel, MoveStatus, MoveTarget, SessionId, SessionState } from '../../protocol/messages';
 import { readCredentials, type SyncCredentials } from '../../sync/credentials';
 import type { MoveReplyPayload } from '../../sync/move-records';
 import { ownerKey } from '../../sync/owner-key';
@@ -7,16 +7,11 @@ import { SyncClient, type SyncClientOptions } from '../../sync/sync-client';
 import type { SyncState } from '../../sync/sync-state';
 import type { ProjectResolver } from '../project/project-resolver';
 import type { SessionManager } from '../session-manager';
-import { checkoutsFor, ensureWorktree } from './checkouts';
+import { checkoutsFor, defaultCheckout, ensureWorktree } from './checkouts';
 import { materialize } from './materialize';
 import { readInbox, readRemoteRoster, readThread, removeInbox } from './remote-roster';
 
-export type MoveStatus =
-  | { state: 'waiting'; step: 'reply' | 'transcript' | 'claim' | 'thread' }
-  | { state: 'done'; sessionId: SessionId; thread: 'restored' | 'restarted' }
-  | { state: 'failed'; reason: string };
-
-export type MoveTarget = { root: string } | { createWorktree: string };
+export type { MoveStatus, MoveTarget };
 
 export interface MoveServiceDeps {
   manager: SessionManager;
@@ -44,6 +39,27 @@ export class MoveService {
   constructor(private readonly deps: MoveServiceDeps) {}
 
   private now(): number { return (this.deps.now ?? Date.now)(); }
+
+  /** What the dialog shows before anything moves: whether it can, where it would land, and what the agent keeps. */
+  async panel(id: SessionId): Promise<MovePanel> {
+    const row = this.deps.manager.remoteRow(id);
+    if (!row?.remote) {
+      return { id, mode: 'unavailable', reason: 'This session is not on another device.', checkouts: [], thread: 'restarted', ownerName: '', lastSeenAt: 0 };
+    }
+    const { remote } = row;
+    const provider = this.deps.manager.providerOf(row.providerId);
+    const checkouts = row.projectId ? await checkoutsFor(row.projectId, this.deps.roots(), this.deps.projects) : [];
+    const chosen = defaultCheckout(checkouts, remote.branch, row.projectId ? this.deps.state.lastCheckout(row.projectId) : undefined);
+    const base = {
+      id, checkouts, ...(chosen ? { defaultRoot: chosen.root } : {}), ...(remote.branch ? { branch: remote.branch } : {}),
+      thread: provider?.importThread ? 'restored' as const : 'restarted' as const, ownerName: remote.deviceName, lastSeenAt: remote.lastSeenAt,
+    };
+    if (!provider) { return { ...base, mode: 'unavailable', reason: `This device has no ${row.providerId} provider, so the session cannot run here.` }; }
+    if (remote.online) { return { ...base, mode: 'move' }; }
+    if (this.canTakeOver(id)) { return { ...base, mode: 'take-over' }; }
+    const minutes = Math.round(this.deps.takeOverAfterMs / 60_000);
+    return { ...base, mode: 'unavailable', reason: `${remote.deviceName} is offline. It can be taken over ${minutes} minutes after it was last seen (${clock(remote.lastSeenAt)}).` };
+  }
 
   canTakeOver(id: SessionId): boolean {
     const remote = this.deps.manager.remoteRow(id)?.remote;

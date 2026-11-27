@@ -23,10 +23,10 @@ import { ProjectResolver } from './project/project-resolver';
 import { SyncService } from './sync/sync-service';
 import { MemoryPublisher } from './sync/memory-publisher';
 import { SyncEngine } from './sync/sync-engine';
-import { RemoteSessions } from './sync/remote-sessions';
 import { SessionMirror } from './sync/session-mirror';
 import { SessionPublisher } from './sync/session-publisher';
 import { gitBranch } from './project/git-branch';
+import { wireMoves } from './sync/wire-moves';
 import { readCredentials } from '../sync/credentials';
 import { SyncState } from '../sync/sync-state';
 import { RemoteMemory } from '../memory/remote-memory';
@@ -198,11 +198,12 @@ export async function createHost(opts: CreateHostOptions): Promise<HostHandle> {
     sessionPublisher.start();
     manager.setPersistListener((states) => { void sessionPublisher.publishMeta(states); });
   }
-  if (syncStores) {
-    manager.setRemoteSessions(new RemoteSessions({
-      root: syncStores.mirrorRoot, windowProjects: () => manager.windowProjects(), tailIntervalMs: opts.pollMs,
-    }));
-  }
+  const moves = syncStores && syncCreds && opts.marcodeHome && sessionPublisher
+    ? wireMoves({
+      manager, stores: syncStores, creds: syncCreds, home: opts.marcodeHome, sessions: sessionPublisher, providers, projects,
+      roots: opts.workspaceRoots, excluded: config.sync.excludeProjects, takeOverAfterMinutes: config.sync.takeOverAfterMinutes, pollMs: opts.pollMs,
+    })
+    : undefined;
 
   // `satisfies Required<...>`: every optional member must be wired here, or the build fails.
   const selfControlManager = {
@@ -407,6 +408,7 @@ export async function createHost(opts: CreateHostOptions): Promise<HostHandle> {
       await manager.dispose();
       accountCache?.close();
       sync?.dispose();
+      moves?.dispose();
       sessionPublisher?.dispose();
       await engine?.dispose();
       syncStores?.close();

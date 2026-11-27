@@ -126,6 +126,9 @@ router. See `docs/daemon.md`.
 | `src/sync/session-records.ts`, `payload-size.ts` | Session payloads (`session-meta`, `session-ops` with a per-session `rev`, `session-delete`), each under the 512 KB cap; `PublishedState` is `SessionState` minus host-only fields |
 | `src/host/sync/session-publisher.ts`, `src/host/project/git-branch.ts` | Sends this host's synced sessions to the outbox: everything on a session's first write after pairing, then each `TranscriptStore` write that reached disk, metadata when it changed (after each `persist()`), a tombstone on delete |
 | `src/host/sync/session-mirror.ts`, `remote-roster.ts`, `remote-sessions.ts` | The engine's machine-wide mirror of other devices' sessions (`sync/mirror/<device>/`, a `TranscriptStore` root each, idempotent upserts, gap detection by `rev`); its reader; the rows the manager merges for the window's projects and the read-only tail over them |
+| `src/sync/owner-key.ts`, `move-records.ts` | The opaque per-session owner key (HMAC under the oldest sync key); `move-request`/`move-reply`/`thread-chunk`/`attachment` payloads, `chunkFile` and `assemble` |
+| `src/host/sync/thread-publisher.ts`, `thread-paths.ts`, `materialize.ts` | A native thread uploaded at every turn end (incremental, a new generation when the file shrank); cross-OS path rewrite of a moved thread; a mirrored session rebuilt under the target checkout (thread imported, else `buildSeed`) |
+| `src/host/sync/move-responder.ts`, `move-service.ts`, `checkouts.ts`, `wire-moves.ts`, `src/host/project/checkout-state.ts` | The source answering a move (refusals, finish or cancel the turn, yield, reply with `lastRev`); the target's move here, take over and move panel; checkout choice and `git fetch` + `createWorktree`; the wiring in `createHost`; the "all pushed" check |
 | `src/tui/sync-commands.ts` | `marcode sync` setup, join, pair, devices, revoke, status, leave |
 | `src/memory/sqlite-driver.ts` | `openDatabase`: `bun:sqlite` under Bun, `node:sqlite` otherwise, behind the narrow `SqlDb` the FTS store uses; finalizes each statement after one use (Bun's `close()` otherwise leaves the file locked) and probes FTS5 at open |
 | `src/host/transcript-store.ts` | `index.json` + per-session JSONL under the workspace directory; append, load, page. Index writes are atomic; a foreign session's writes are refused |
@@ -264,6 +267,11 @@ These are not style preferences. Breaking one breaks the design.
   flushed, and a session op that fails to apply is retried rather than skipped. The history tab and the TUI roster
   list remote rows per device; the server reports presence (an open event stream), and an offline device's rows
   read idle.
+- **Between devices, ownership is the server's owner record, changed only by compare-and-swap.** No record means the
+  publishing device owns the session at epoch 0. A move is asked by the target and answered by the source, which yields
+  (read-only, flushed) before replying with its `lastRev`; the target claims only once its mirror holds that rev. A host
+  that sees another device's record for a session it holds gives it up: anything it never published past the record's
+  `baseRev` becomes a fork, its outbox for that session is dropped, and the local row goes.
 - **A host never writes a session it does not own.** The lease file is the owner. A session leased
   by another live host is opened over a dormant provider and `TranscriptStore.markForeign` turns
   every append, replace, flush and remove for it into a no-op, so even a mutator that slips past the
