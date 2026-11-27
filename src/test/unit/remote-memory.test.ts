@@ -30,6 +30,14 @@ suite('RemoteMemory', () => {
     r.close();
   });
 
+  test('a withdraw from another device leaves the publisher\'s row in place', async () => {
+    const r = new RemoteMemory(path.join(await dir(), 'remote.sqlite'));
+    await r.apply('dev-a', memory());
+    await r.apply('dev-c', { type: 'memory-withdraw', sessionId: 's1' });
+    assert.deepStrictEqual((await r.search('zebra', { projectId: 'github.com/a/b' })).map((h) => h.sessionId), ['s1']);
+    r.close();
+  });
+
   test('a withdraw removes it everywhere', async () => {
     const r = new RemoteMemory(path.join(await dir(), 'remote.sqlite'));
     await r.apply('dev-a', memory());
