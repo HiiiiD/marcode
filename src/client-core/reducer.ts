@@ -1,3 +1,4 @@
+import { reduceMove, type MoveSlice } from './sync/move-dialog';
 import { leafSessionIds } from './layout-tree';
 import type {
   Attachment,
@@ -151,6 +152,8 @@ export interface ClientState {
   hostLink: 'connected' | 'reconnecting' | 'lost';
   /** The Sync dialog's state, as the host last answered it. */
   syncPanel?: SyncPanel;
+  /** The move dialog's panel and that session's progress, as the host last answered them. */
+  move?: MoveSlice;
   syncStatus: SyncStatus;
   /** Bumped by `/sync` and the "Set up sync" command; the dialog opens on a change. Survives `hydrate`. */
   syncOpenRequest: number;
@@ -485,6 +488,9 @@ export function reduce(state: ClientState, msg: ClientAction): ClientState {
 
     case 'sync-panel':
       return { ...state, syncPanel: msg.panel };
+    case 'move-panel':
+    case 'move-status':
+      return { ...state, move: reduceMove(state.move, msg) };
     case 'sync-status':
       return { ...state, syncStatus: msg.status };
     case 'open-sync':

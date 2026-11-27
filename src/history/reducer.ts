@@ -1,3 +1,4 @@
+import { reduceMove, type MoveSlice } from '../client-core/sync/move-dialog';
 import type { HostToWebview, SessionSummary } from '../protocol/messages';
 
 export interface MemoryStatus { enabled: boolean; llm: boolean }
@@ -11,6 +12,8 @@ export interface HistoryState {
   memory?: MemoryStatus;
   estimate?: MemoryEstimate;
   progress?: MemoryProgress;
+  /** The move dialog's panel and that session's progress. */
+  move?: MoveSlice;
 }
 
 export const initialHistoryState: HistoryState = { ready: false, sessions: [] };
@@ -19,6 +22,7 @@ export function reduceHistory(state: HistoryState, msg: HostToWebview): HistoryS
   switch (msg.t) {
     case 'hydrate': return { ...state, ready: true, sessions: msg.sessions };
     case 'sessions-changed': return { ...state, sessions: msg.sessions };
+    case 'move-panel': case 'move-status': return { ...state, move: reduceMove(state.move, msg) };
     case 'memory-status': return { ...state, memory: { enabled: msg.enabled, llm: msg.llm } };
     case 'memory-estimate': {
       const { scope, sessions, approxInputTokens } = msg;
