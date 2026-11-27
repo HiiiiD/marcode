@@ -2528,11 +2528,12 @@ export class SessionManager implements SessionSink {
   async syncRemoteSessions(): Promise<void> {
     if (!this.remote || this.disposed) { return; }
     try {
-      const { adopt, update, drop } = await this.remote.sync(this.meta);
+      const { adopt, update, drop, ceded } = await this.remote.sync(this.meta);
       for (const d of adopt) { this.meta.set(d.id, d); }
       for (const d of update) { Object.assign(this.meta.get(d.id) as SessionState, d); }
       for (const id of drop) { await this.hide(id); this.meta.delete(id); }
-      if (adopt.length + update.length + drop.length > 0) { this.emit({ t: 'sessions-changed', sessions: this.summaries() }); }
+      for (const c of ceded) { await this.cede(c.id, c.fork, this.remote); }
+      if (adopt.length + update.length + drop.length + ceded.length > 0) { this.emit({ t: 'sessions-changed', sessions: this.summaries() }); }
     } catch (err) {
       console.error('[mar-code] remote roster sync failed', err);
     }
@@ -2718,6 +2719,40 @@ export class SessionManager implements SessionSink {
     const session = new AgentSession(state, dormantProvider(provider), this.store, this);
     this.live.set(state.id, session);
     return session;
+  }
+
+  /**
+   * Another device owns this session now. Content the new owner never received survives as a fork; then the
+   * local row goes (its tombstone clears this device's copy elsewhere), and the owner's copy shows as remote.
+   */
+  private async cede(id: SessionId, fork: boolean, remote: RemoteSessions): Promise<void> {
+    const state = this.meta.get(id);
+    if (!state) { return; }
+    const items = (await this.store.tail(id, Number.MAX_SAFE_INTEGER)).items;
+    if (fork && items.length > 0) {
+      const now = Date.now();
+      const copy: SessionState = {
+        ...state, id: newSessionId(), name: this.defaultName(state.providerId), title: `${state.title} (from ${remote.selfName ?? 'this device'}, offline)`,
+        parentId: id, origin: 'fork', resumeTokens: {}, status: 'idle', createdAt: now, updatedAt: now, forkedItemCount: items.length,
+      };
+      for (const item of items) { this.store.append(copy.id, item); }
+      await this.store.flush(copy.id);
+      await this.ownership?.claim(copy.id);
+      this.meta.set(copy.id, copy);
+    }
+    remote.dropOutbox(id);
+    this.yielded.delete(id);
+    if (this.foreign.has(id)) { await this.detachForeign(id); }
+    const live = this.live.get(id);
+    if (live) { await live.dispose(); this.live.delete(id); }
+    this.visible.delete(id);
+    this.meta.delete(id);
+    if (this.ownership) { this.deleted.add(id); }
+    this.store.clearForeign(id);
+    await this.store.remove(id);
+    await this.ownership?.release(id);
+    await this.memory?.forget(id).catch(() => undefined);
+    this.changed();
   }
 
   hasProvider(id: string): boolean { return this.providers.has(id); }

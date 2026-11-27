@@ -112,6 +112,17 @@ export class SyncState {
       .run(sessionId, name, at.generation, at.offset);
   }
 
+  /** Ops of this session still waiting to go up. */
+  hasOutboxOps(sessionId: string): boolean {
+    return this.db.prepare("SELECT 1 AS x FROM outbox WHERE json_extract(payload, '$.sessionId') = ? AND json_extract(payload, '$.type') = 'session-ops' LIMIT 1")
+      .get(sessionId) !== undefined;
+  }
+
+  /** Forgets everything queued for a session another device now owns: sending it would write over that device's copy. */
+  dropSessionOutbox(sessionId: string): void {
+    this.db.prepare("DELETE FROM outbox WHERE json_extract(payload, '$.sessionId') = ?").run(sessionId);
+  }
+
   lastCheckout(projectId: string): string | undefined {
     return (this.db.prepare('SELECT root FROM last_checkout WHERE projectId = ?').get(projectId) as { root: string } | undefined)?.root;
   }
