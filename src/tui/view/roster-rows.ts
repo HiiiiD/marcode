@@ -3,7 +3,7 @@ import { displayStatus } from '../../client-core/display-status';
 
 export interface RosterRow {
   id: SessionId; title: string; glyph: '●' | '○' | '!' | '✗';
-  suffix?: string; dim: boolean; focused: boolean; pinned: boolean; foreign: boolean; leaf: boolean; squeezed: boolean;
+  suffix?: string; dim: boolean; focused: boolean; pinned: boolean; foreign: boolean; remote: boolean; leaf: boolean; squeezed: boolean;
 }
 
 const GLYPH: Record<SessionStatus, RosterRow['glyph']> = {
@@ -20,14 +20,17 @@ export function rosterRows(sessions: SessionSummary[], focusedId: SessionId | nu
       id: s.id,
       title: s.name || s.title,
       glyph: GLYPH[displayStatus(s)],
-      ...(s.owner ? { suffix: `${s.owner.host}·${s.owner.pid}` } : {}),
-      dim: s.owner !== undefined,
+      ...(s.remote ? { suffix: s.remote.deviceName } : s.owner ? { suffix: `${s.owner.host}·${s.owner.pid}` } : {}),
+      dim: s.owner !== undefined || s.remote !== undefined,
       focused: s.id === focusedId,
       pinned: s.pinned === true,
-      foreign: s.owner !== undefined,
+      foreign: s.owner !== undefined || s.remote !== undefined,
+      remote: s.remote !== undefined,
       leaf: leafIds.has(s.id),
       squeezed: squeezedIds.has(s.id),
     }))
     .filter((row) => needle === '' || row.title.toLowerCase().includes(needle));
-  return [...rows.filter((r) => r.pinned), ...rows.filter((r) => !r.pinned)];
+  const local = rows.filter((r) => !r.remote);
+  // Another device's sessions after this device's: they are read here, never run.
+  return [...local.filter((r) => r.pinned), ...local.filter((r) => !r.pinned), ...rows.filter((r) => r.remote)];
 }

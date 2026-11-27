@@ -29,6 +29,18 @@ suite('SessionPicker', () => {
     assert.strictEqual(screen.queryByRole('menu') === null, true);
   });
 
+  test("another device's waiting session does not count as needing the user here", () => {
+    renderApp();
+    const remote = { deviceId: 'd', deviceName: 'PC-desk', online: true, lastSeenAt: 1, relCwd: '.' };
+    sendFromHost({
+      t: 'hydrate',
+      sessions: [summary('a'), summary('r', { status: 'awaiting-approval', remote })],
+      layout: layoutOf(['a']), snapshots: [snapshot('a')], catalog: catalog(), unavailable: [], usage: {},
+    });
+    const button = screen.getByRole('button', { name: /Browse session history/ });
+    assert.strictEqual((button.textContent ?? '').includes('needs you'), false);
+  });
+
   test('the history button carries the count of sessions that need the user', () => {
     renderApp();
     hydrateAOpen();

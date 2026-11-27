@@ -13,9 +13,9 @@ export function HistoryApp() {
   const [query, setQuery] = useState<HistoryQuery>(DEFAULT_QUERY);
   const groups = queryHistory(state.sessions, query);
   const attentionCount = state.sessions.filter(needsAttention).length;
-  const shownCount = groups.pinned.length + groups.rest.length;
+  const shownCount = groups.pinned.length + groups.rest.length + groups.devices.reduce((n, g) => n + g.sessions.length, 0);
   const filtered = query.needsAttention === true || query.text.trim() !== '';
-  const empty = groups.pinned.length + groups.rest.length === 0;
+  const empty = shownCount === 0;
 
   let body;
   if (!state.ready) {

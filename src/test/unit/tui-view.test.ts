@@ -16,6 +16,12 @@ const ask = (blocking: boolean, id = 'q'): QuestionRequest => ({
 });
 
 suite('tui view: roster rows', () => {
+  test("another device's session is read-only, dimmed, labelled by device and listed after this device's", () => {
+    const remote = { deviceId: 'd', deviceName: 'PC-desk', online: false, lastSeenAt: 1, relCwd: '.' };
+    const rows = rosterRows([summary('r', { updatedAt: 9, remote }), summary('a', { updatedAt: 1 })], null);
+    assert.deepStrictEqual(rows.map((r) => [r.id, r.foreign, r.dim, r.suffix]), [['a', false, false, undefined], ['r', true, true, 'PC-desk']]);
+  });
+
   test('glyph follows status, foreign rows are dim and carry host and pid', () => {
     const rows = rosterRows([
       summary('a', { status: 'running' }),
