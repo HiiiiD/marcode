@@ -2501,6 +2501,21 @@ export class SessionManager implements SessionSink {
   /** Call before `init()`. */
   setRemoteSessions(remote: RemoteSessions): void { this.remote = remote; }
 
+  private persistListener?: (sessions: SessionState[]) => void;
+  /** Hears this host's rows each time the index is written; sync publishes what changed from there. */
+  setPersistListener(listener: (sessions: SessionState[]) => void): void { this.persistListener = listener; }
+
+  /** A session another device may see: this host's, not a side chat, subagent, foreign or remote row. */
+  publishableSession(id: SessionId): SessionState | undefined {
+    const state = this.meta.get(id);
+    if (!state || state.kind === 'side' || state.kind === 'subagent' || this.isForeign(id)) { return undefined; }
+    return state;
+  }
+
+  publishableStates(): SessionState[] {
+    return [...this.localMeta().keys()].map((id) => this.publishableSession(id)).filter((s): s is SessionState => s !== undefined);
+  }
+
   /** Merges the mirror's rows for this window's projects into the roster. */
   async syncRemoteSessions(): Promise<void> {
     if (!this.remote || this.disposed) { return; }
@@ -2888,6 +2903,7 @@ export class SessionManager implements SessionSink {
     if (writable) {
       const index: StoredIndex = { version: TRANSCRIPT_VERSION, sessions, layout: this.paneLayout };
       await this.store.writeIndex(index);
+      try { this.persistListener?.(this.publishableStates()); } catch (err) { console.error('[mar-code] persist listener failed', err); }
       if (this.ownership) { this.knownOnDisk = new Set(sessions.map((x) => x.id)); }
     }
     // Deviation from the brief: TranscriptStore.flush() previously was not

@@ -46,6 +46,15 @@ machine imports them, and recall and priming in any clone or worktree of the **s
 find them, even while the machine they came from is switched off. Reopening or deleting a session
 withdraws it everywhere.
 
+Your **sessions**, read-only elsewhere: every session of a shared repository is uploaded as it runs
+(its transcript once each write reaches disk, its title, status and branch when they change).
+The history tab of every other machine with a clone of that repository lists them after its own,
+one group per device ("PC-desk · online", or "Laptop · offline, last seen 14:32"); the terminal
+roster lists them dimmed, with the device name. Opening one shows its transcript and follows it
+live, a few seconds behind. You cannot send to it, stop it, pin it or delete it from there, and a
+session on a device that is offline reads as idle. Deleting a session removes it everywhere.
+Attachments are not uploaded yet, side chats never are, and subagents travel inside their parent.
+
 What does not sync: sessions in a repository without a git remote, repositories marked "Keep
 separate", and project ids listed in `sync.excludeProjects`. Sessions you closed before pairing
 upload the first time each workspace is opened afterwards.
@@ -89,5 +98,8 @@ trusted to keep and order the data; a server that withholds or drops records is 
 | Where | What |
 |---|---|
 | `~/.marcode/config.json` | `sync.server`, `sync.deviceName` |
+| `~/.marcode/sync/state.sqlite` | the outbox, what was published, per-device cursors |
+| `~/.marcode/sync/remote-memory.sqlite` | other devices' memory, for recall |
+| `~/.marcode/sync/mirror/<device>/` | other devices' sessions: `sessions.json` and one JSONL per session; `mirror/devices.json` holds who is online |
 | `~/.marcode/sync/credentials.json` (0600) | device id, token, device key pair, every encryption key epoch |
 | the server's `--data` directory | device names, token hashes, public keys, sealed keys, encrypted records |
