@@ -1,0 +1,27 @@
+# Two devices and a sync server on a private network, each device with its own disk.
+# Fixed 10.x addresses: plain http is only accepted for LAN, loopback and Tailscale servers.
+name: marcode-sync-e2e
+networks:
+  lan:
+    ipam:
+      config: [{ subnet: 10.77.0.0/24 }]
+services:
+  server:
+    build: { context: ../.., dockerfile: Dockerfile.sync-server }
+    networks: { lan: { ipv4_address: 10.77.0.10 } }
+    ports: ["18787:8787"]
+  desk:
+    build: { context: ., dockerfile: Dockerfile.device }
+    environment: { DEVICE_NAME: desk, PORT: "7000" }
+    volumes: ["./out/driver.js:/app/driver.js:ro", "desk-data:/data"]
+    networks: { lan: { ipv4_address: 10.77.0.21 } }
+    ports: ["17001:7000"]
+  laptop:
+    build: { context: ., dockerfile: Dockerfile.device }
+    environment: { DEVICE_NAME: laptop, PORT: "7000" }
+    volumes: ["./out/driver.js:/app/driver.js:ro", "laptop-data:/data"]
+    networks: { lan: { ipv4_address: 10.77.0.22 } }
+    ports: ["17002:7000"]
+volumes:
+  desk-data: {}
+  laptop-data: {}
