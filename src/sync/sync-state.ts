@@ -16,6 +16,7 @@ export class SyncState {
       CREATE TABLE IF NOT EXISTS outbox (n INTEGER PRIMARY KEY AUTOINCREMENT, recordId TEXT NOT NULL UNIQUE, payload TEXT NOT NULL, createdAt INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS published (sessionId TEXT PRIMARY KEY, digestKey TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS cursors (deviceId TEXT PRIMARY KEY, seq INTEGER NOT NULL);
+      CREATE TABLE IF NOT EXISTS last_checkout (projectId TEXT PRIMARY KEY, root TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS thread_pub (sessionId TEXT NOT NULL, name TEXT NOT NULL, generation INTEGER NOT NULL, offset INTEGER NOT NULL, PRIMARY KEY (sessionId, name));
       CREATE TABLE IF NOT EXISTS session_pub (sessionId TEXT PRIMARY KEY, rev INTEGER NOT NULL DEFAULT 0, fingerprint TEXT, backfilled INTEGER NOT NULL DEFAULT 0);
     `);
@@ -109,6 +110,14 @@ export class SyncState {
   setThreadOffset(sessionId: string, name: string, at: { generation: number; offset: number }): void {
     this.db.prepare('INSERT INTO thread_pub (sessionId, name, generation, offset) VALUES (?, ?, ?, ?) ON CONFLICT(sessionId, name) DO UPDATE SET generation = excluded.generation, offset = excluded.offset')
       .run(sessionId, name, at.generation, at.offset);
+  }
+
+  lastCheckout(projectId: string): string | undefined {
+    return (this.db.prepare('SELECT root FROM last_checkout WHERE projectId = ?').get(projectId) as { root: string } | undefined)?.root;
+  }
+
+  setLastCheckout(projectId: string, root: string): void {
+    this.db.prepare('INSERT INTO last_checkout (projectId, root) VALUES (?, ?) ON CONFLICT(projectId) DO UPDATE SET root = excluded.root').run(projectId, root);
   }
 
   close(): void {
