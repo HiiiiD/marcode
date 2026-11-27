@@ -20,3 +20,12 @@ class DormantRun implements AgentRun {
 export function dormantProvider(provider: AgentProvider): AgentProvider {
   return Object.create(provider, { start: { value: (): AgentRun => new DormantRun() } }) as AgentProvider;
 }
+
+/** Stands in for a provider this host lacks, so another device's session can still be shown read-only. */
+export function inertProvider(id: string): AgentProvider {
+  return {
+    id, displayName: id, threadScope: 'global',
+    listModels: () => [], listPermissionModes: () => [],
+    start: (): AgentRun => new DormantRun(),
+  };
+}
