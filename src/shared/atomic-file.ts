@@ -27,7 +27,7 @@ async function renameWithRetry(from: string, to: string): Promise<void> {
   }
 }
 
-export async function writeFileAtomic(file: string, body: string): Promise<void> {
+export async function writeFileAtomic(file: string, body: string | Uint8Array): Promise<void> {
   await fs.mkdir(path.dirname(file), { recursive: true });
   const tmp = tmpName(file);
   try {

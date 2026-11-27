@@ -119,6 +119,7 @@ import type {
 } from '@anthropic-ai/claude-agent-sdk' with { 'resolution-mode': 'import' };
 import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/messages' with { 'resolution-mode': 'import' };
 import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { findModel, resolveEffort } from '../../shared/model-catalog';
 import { addUsageTotals } from '../../shared/usage-totals';
 import { attachmentLines, imageAttachments, readBase64 } from '../attachment-payload';
@@ -135,7 +136,7 @@ import type {
   QuestionAnswers, SelfControlMcpConfig, StartOptions, ThreadScope, ToolDecision, UsageTotals, UsageWindow,
 } from '../types';
 import { authFailureReason } from './auth-failure';
-import { copySessionFile, sessionsRoot } from './session-file';
+import { copySessionFile, projectSlug, sessionsRoot } from './session-file';
 import { toInvocables } from './map-commands';
 import { toContextBreakdown, toUsageWindows, type ContextUsageLike, type UsageResponseLike } from './map-context';
 import { claudeUsageDelta, mapEvent } from './map-events';
@@ -363,6 +364,24 @@ export class ClaudeProvider implements AgentProvider {
   async moveThread(args: MoveThreadArgs): Promise<MoveThreadResult | false> {
     const ok = await copySessionFile(sessionsRoot(this.env), args.from, args.to, args.resumeToken);
     return ok ? { resumeToken: args.resumeToken } : false;
+  }
+
+  async threadFiles(args: { resumeToken: string; cwd: string }): Promise<string[]> {
+    const file = path.join(sessionsRoot(this.env), projectSlug(args.cwd), `${args.resumeToken}.jsonl`);
+    return fs.promises.stat(file).then(() => [file], () => []);
+  }
+
+  async importThread(args: { resumeToken: string; cwd: string; files: Array<{ name: string; text: string }> }): Promise<{ resumeToken: string } | false> {
+    const main = args.files.find((f) => path.basename(f.name) === `${args.resumeToken}.jsonl`);
+    if (!main) { return false; }
+    try {
+      const dir = path.join(sessionsRoot(this.env), projectSlug(args.cwd));
+      await fs.promises.mkdir(dir, { recursive: true });
+      await fs.promises.writeFile(path.join(dir, `${args.resumeToken}.jsonl`), main.text);
+      return { resumeToken: args.resumeToken };
+    } catch {
+      return false;
+    }
   }
 
   async forkThread(args: ForkThreadArgs): Promise<ForkThreadResult | false> {

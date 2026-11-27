@@ -1,10 +1,13 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
+import type { OwnerRecord } from '../../sync/api-types';
+import type { MovePayload } from '../../sync/move-records';
 import type { SessionPayload } from '../../sync/session-records';
 import { writeFileAtomic } from '../atomic-file';
 import { TranscriptStore } from '../transcript-store';
 import {
-  DEVICES_FILE, type DevicePresence, type MirrorEntry, mirrorStoreDir, readEntries, readJson, SESSIONS_FILE,
+  attachmentDir, chunkFileName, DEVICES_FILE, type DevicePresence, INBOX_DIR, type MirrorEntry, mirrorStoreDir, OWNERS_FILE,
+  readEntries, readJson, SESSIONS_FILE, threadDir,
 } from './remote-roster';
 
 export { mirrorStoreDir } from './remote-roster';
@@ -49,6 +52,38 @@ export class SessionMirror {
       entries[id] = entry;
     }
     this.dirty.add(deviceId);
+  }
+
+  /** Thread and attachment chunks land as one file each (idempotent, any order); move messages go to the inbox. */
+  async applyMove(deviceId: string, payload: MovePayload): Promise<void> {
+    if (payload.type === 'move-request' || payload.type === 'move-reply') {
+      const dir = path.join(this.root, INBOX_DIR);
+      await fs.mkdir(dir, { recursive: true });
+      const kind = payload.type === 'move-request' ? 'request' : 'reply';
+      await writeFileAtomic(path.join(dir, `${encodeURIComponent(payload.requestId)}.${kind}.json`), JSON.stringify({ from: deviceId, payload }));
+      return;
+    }
+    const base = payload.type === 'thread-chunk'
+      ? path.join(threadDir(this.root, deviceId, payload.sessionId), encodeURIComponent(payload.name))
+      : path.join(attachmentDir(this.root, deviceId, payload.sessionId), encodeURIComponent(payload.attachmentId));
+    const dir = path.join(base, String(payload.generation));
+    await fs.mkdir(dir, { recursive: true });
+    await writeFileAtomic(path.join(dir, chunkFileName(payload.offset, payload.total)), Buffer.from(payload.data, 'base64'));
+    if (payload.type === 'attachment') {
+      await writeFileAtomic(path.join(base, 'meta.json'), JSON.stringify({ name: payload.name, mime: payload.mime }));
+    }
+    // Older generations are superseded: the file was rewritten from the start.
+    for (const entry of await fs.readdir(base).catch(() => [] as string[])) {
+      const generation = Number(entry);
+      if (Number.isSafeInteger(generation) && generation < payload.generation) { await fs.rm(path.join(base, entry), { recursive: true, force: true }); }
+    }
+  }
+
+  private owners: OwnerRecord[] | undefined;
+
+  async setOwners(owners: OwnerRecord[]): Promise<void> {
+    this.owners = owners;
+    this.devicesDirty = true;
   }
 
   markNewerFormat(deviceId: string): void {
@@ -106,6 +141,7 @@ export class SessionMirror {
       this.devices = list;
       await fs.mkdir(this.root, { recursive: true });
       await writeFileAtomic(path.join(this.root, DEVICES_FILE), JSON.stringify(list));
+      if (this.owners) { await writeFileAtomic(path.join(this.root, OWNERS_FILE), JSON.stringify(this.owners)); }
       this.devicesDirty = false;
     }
   }

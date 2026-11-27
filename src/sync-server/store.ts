@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { openPlainDatabase, type SqlDb } from '../memory/sqlite-driver';
-import type { DeviceRow, ServedRecord, WireRecord } from '../sync/api-types';
+import type { DeviceRow, OwnerRecord, ServedRecord, WireRecord } from '../sync/api-types';
 
 export interface StoredRecord extends ServedRecord { deviceId: string; receivedAt: number }
 
@@ -43,6 +43,9 @@ export class SyncStore {
         deviceId TEXT NOT NULL, seq INTEGER NOT NULL, recordId TEXT NOT NULL, epoch INTEGER NOT NULL,
         nonce TEXT NOT NULL, ciphertext TEXT NOT NULL, receivedAt INTEGER NOT NULL,
         PRIMARY KEY (deviceId, seq), UNIQUE (deviceId, recordId)
+      );
+      CREATE TABLE IF NOT EXISTS owners (
+        key TEXT PRIMARY KEY, deviceId TEXT NOT NULL, epoch INTEGER NOT NULL, baseRev INTEGER NOT NULL, updatedAt INTEGER NOT NULL
       );
       PRAGMA user_version = ${SCHEMA};
     `);
@@ -97,6 +100,24 @@ export class SyncStore {
 
   touch(deviceId: string): void {
     this.db.prepare('UPDATE devices SET lastSeenAt = ? WHERE deviceId = ?').run(this.now(), deviceId);
+  }
+
+  owners(): OwnerRecord[] {
+    return this.db.prepare('SELECT key, deviceId, epoch, baseRev, updatedAt FROM owners ORDER BY key').all() as unknown as OwnerRecord[];
+  }
+
+  /** Compare-and-swap: the stored epoch (0 when absent) must equal `expect`. */
+  claimOwner(key: string, deviceId: string, claim: { epoch: number; expect: number; baseRev: number }): { ok: true; record: OwnerRecord } | { ok: false; record: OwnerRecord } {
+    return this.tx(() => {
+      const current = this.db.prepare('SELECT key, deviceId, epoch, baseRev, updatedAt FROM owners WHERE key = ?').get(key) as OwnerRecord | undefined;
+      if ((current?.epoch ?? 0) !== claim.expect) {
+        return { ok: false as const, record: current ?? { key, deviceId: '', epoch: 0, baseRev: 0, updatedAt: 0 } };
+      }
+      const record: OwnerRecord = { key, deviceId, epoch: claim.epoch, baseRev: claim.baseRev, updatedAt: this.now() };
+      this.db.prepare('INSERT INTO owners (key, deviceId, epoch, baseRev, updatedAt) VALUES (?, ?, ?, ?, ?) ON CONFLICT(key) DO UPDATE SET deviceId = excluded.deviceId, epoch = excluded.epoch, baseRev = excluded.baseRev, updatedAt = excluded.updatedAt')
+        .run(key, deviceId, record.epoch, record.baseRev, record.updatedAt);
+      return { ok: true as const, record };
+    });
   }
 
   devices(): DeviceRow[] {

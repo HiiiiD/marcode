@@ -186,6 +186,20 @@ export async function startSyncServer(opts: SyncServerOptions): Promise<{ url: s
       return { assigned };
     }
 
+    if (method === 'GET' && at('v1', 'owners')) { return { owners: store.owners() }; }
+
+    if (method === 'PUT' && at('v1', 'owners', '*')) {
+      const body = await readBody(req);
+      const claim = { epoch: Number(body.epoch), expect: Number(body.expect), baseRev: Number(body.baseRev ?? 0) };
+      if (![claim.epoch, claim.expect, claim.baseRev].every(Number.isSafeInteger) || claim.expect < 0 || claim.epoch !== claim.expect + 1 || claim.baseRev < 0) {
+        throw new HttpError(400, 'a claim is { epoch: expect + 1, expect, baseRev }');
+      }
+      const result = store.claimOwner(str(parts[2], 'key'), device.deviceId, claim);
+      if (!result.ok) { res.writeHead(409, { 'content-type': 'application/json' }).end(JSON.stringify(result.record)); return undefined; }
+      hub.emit('owners', {});
+      return result.record;
+    }
+
     if (method === 'GET' && at('v1', 'streams')) { return { streams: store.streams() }; }
 
     if (method === 'GET' && at('v1', 'streams', '*')) {

@@ -88,6 +88,12 @@ Project ids (as shown in the Sync dialog, e.g. `github.com/owner/repo`) whose se
 
 Default: `[]`
 
+## `sync.takeOverAfterMinutes`
+
+How long another device must have been offline before one of its sessions can be taken over from here, in whole minutes. Requires a window reload.
+
+Default: `10`
+
 ## `review.fileCap`
 
 How many changed files the review tab loads per working tree before showing a "Show more" button. A value over 2000 is clamped; an invalid one falls back to 500. Takes effect after a window reload.

@@ -539,6 +539,9 @@ export interface PaneLayout {
 }
 
 export type WebviewToHost =
+  | { t: 'request-move-panel'; id: SessionId }
+  | { t: 'move-session'; id: SessionId; target: MoveTarget; cancelTurn: boolean }
+  | { t: 'take-over-session'; id: SessionId; target: MoveTarget }
   | { t: 'sync-open' } | { t: 'sync-refresh' }
   | { t: 'sync-setup'; server: string; code: string; name: string }
   | { t: 'sync-join'; server: string; code: string; name: string }
@@ -1081,7 +1084,24 @@ export type HostToWebview =
   | { t: 'agents-md-nudge'; hits: Array<{ dir: string; kind: 'migrate' | 'add-stub';
       error?: string }> }
   /** The sidebar's link to the background host. Posted by the extension itself; absent means connected. */
-  | { t: 'host-link'; status: 'connected' | 'reconnecting' | 'lost' };
+  | { t: 'host-link'; status: 'connected' | 'reconnecting' | 'lost' }
+  | { t: 'move-panel'; panel: MovePanel }
+  | { t: 'move-status'; id: SessionId; status: MoveStatus };
+
+/** One checkout of a project on this device: a main tree or a linked worktree. */
+export interface CheckoutChoice { root: string; branch?: string; main: boolean }
+/** Where a moved session lands: an existing checkout, or a worktree created for that branch. */
+export type MoveTarget = { root: string } | { createWorktree: string };
+export type MoveStatus =
+  | { state: 'waiting'; step: 'reply' | 'transcript' | 'claim' | 'thread' }
+  | { state: 'done'; sessionId: SessionId; thread: 'restored' | 'restarted' }
+  | { state: 'failed'; reason: string };
+/** What moving another device's session here would do: the dialog's whole state, answered by the host. */
+export interface MovePanel {
+  id: SessionId; mode: 'move' | 'take-over' | 'unavailable'; reason?: string;
+  checkouts: CheckoutChoice[]; defaultRoot?: string; branch?: string;
+  thread: 'restored' | 'restarted'; ownerName: string; lastSeenAt: number;
+}
 
 export type SyncConnection = 'checking' | 'connected' | 'unreachable' | 'revoked';
 export interface SyncDeviceView { deviceId: string; name: string; lastSeenAt: number; self: boolean; revoked: boolean; unfinishedRevoke?: true }

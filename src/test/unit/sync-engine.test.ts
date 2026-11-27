@@ -4,7 +4,7 @@ import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { suite, teardown, test } from 'mocha';
-import { readRemoteRoster } from '../../host/sync/remote-roster';
+import { readInbox, readOwners, readRemoteRoster } from '../../host/sync/remote-roster';
 import { mirrorStoreDir, SessionMirror } from '../../host/sync/session-mirror';
 import { SyncEngine } from '../../host/sync/sync-engine';
 import { TranscriptStore } from '../../host/transcript-store';
@@ -317,6 +317,26 @@ suite('SyncEngine', function () {
     const e = w.a.engine({ mirror: new Counting(w.a.mirrorRoot) }); e.start();
     await until(() => e.stats().holding);
     assert.strictEqual(resets, 1);
+  });
+
+  test("a claim made by another device shows in this machine's owners file", async () => {
+    const w = await world();
+    const b = await w.join('laptop');
+    const e = w.a.engine(); e.start();
+    await until(() => e.stats().holding);
+    const claimer = new SyncClient((await readCredentials(b.home))!);
+    const won = await claimer.claimOwner('s1', { epoch: 1, expect: 0, baseRev: 2 });
+    assert.strictEqual(won.ok, true);
+    await until(async () => [...(await readOwners(w.a.mirrorRoot)).values()].some((o) => o.deviceId === b.deviceId && o.epoch === 1));
+  });
+
+  test('a move reply from another device reaches the inbox', async () => {
+    const w = await world();
+    const b = await w.join('laptop');
+    b.state.enqueue({ type: 'move-reply', v: 1, sessionId: 's1', requestId: 'q9', ok: false, reason: 'busy' });
+    const eb = b.engine(); eb.start();
+    const ea = w.a.engine(); ea.start();
+    await until(async () => (await readInbox(w.a.mirrorRoot)).some((m) => m.payload.requestId === 'q9'));
   });
 });
 

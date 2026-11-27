@@ -198,6 +198,34 @@ suite('sync server HTTP', () => {
     two.abort();
   });
 
+  test('owner claims are compare-and-swap: one winner per epoch', async () => {
+    const r = await rig();
+    const a = await enroll(r);
+    const b = await second(r, a.token);
+    const first = await call(r, 'PUT', '/v1/owners/k1', { epoch: 1, expect: 0, baseRev: 4 }, a.token);
+    assert.deepStrictEqual([first.status, first.json.deviceId, first.json.epoch, first.json.baseRev], [200, a.deviceId, 1, 4]);
+    const stale = await call(r, 'PUT', '/v1/owners/k1', { epoch: 1, expect: 0, baseRev: 0 }, b.token);
+    assert.deepStrictEqual([stale.status, stale.json.deviceId, stale.json.epoch], [409, a.deviceId, 1]);
+    assert.strictEqual((await call(r, 'PUT', '/v1/owners/k1', { epoch: 5, expect: 1, baseRev: 0 }, b.token)).status, 400);
+    const racers = await Promise.all([a.token, b.token].map((t) => call(r, 'PUT', '/v1/owners/k2', { epoch: 1, expect: 0, baseRev: 0 }, t)));
+    assert.deepStrictEqual(racers.map((x) => x.status).sort(), [200, 409]);
+    const list = (await call(r, 'GET', '/v1/owners', undefined, b.token)).json.owners as Array<{ key: string }>;
+    assert.deepStrictEqual(list.map((o) => o.key).sort(), ['k1', 'k2']);
+  });
+
+  test('another device hears an owners event when a claim lands', async () => {
+    const r = await rig();
+    const a = await enroll(r);
+    const b = await second(r, a.token);
+    const abort = new AbortController();
+    const stream = events(r, b.token, abort.signal);
+    const next = stream.next();
+    await new Promise((res) => setTimeout(res, 50));
+    await call(r, 'PUT', '/v1/owners/k1', { epoch: 1, expect: 0, baseRev: 0 }, a.token);
+    assert.strictEqual(((await next).value as string).includes('event: owners'), true);
+    abort.abort();
+  });
+
   test('a revoked device is refused everywhere and its event stream ends', async () => {
     const r = await rig();
     const a = await enroll(r);

@@ -172,17 +172,26 @@ suite('host-config', () => {
   });
   suite('sync', () => {
     test('defaults to nothing configured', () => {
-      assert.deepStrictEqual(defaultHostConfig().sync, { excludeProjects: [] });
+      assert.deepStrictEqual(defaultHostConfig().sync, { excludeProjects: [], takeOverAfterMinutes: 10 });
     });
     test('keeps a valid server and device name', () => {
       const { config } = parseHostConfig({ sync: { server: 'https://sync.example.com/', deviceName: 'desk' } });
-      assert.deepStrictEqual(config.sync, { server: 'https://sync.example.com', deviceName: 'desk', excludeProjects: [] });
+      assert.deepStrictEqual(config.sync, { server: 'https://sync.example.com', deviceName: 'desk', excludeProjects: [], takeOverAfterMinutes: 10 });
     });
     test('excludeProjects defaults to empty and keeps only strings', () => {
       assert.deepStrictEqual(defaultHostConfig().sync.excludeProjects, []);
       const { config, warnings } = parseHostConfig({ sync: { excludeProjects: ['github.com/a/b', 3, ''] } });
       assert.deepStrictEqual(config.sync.excludeProjects, ['github.com/a/b']);
       assert.strictEqual(warnings.some((w) => w.includes('sync.excludeProjects')), true);
+    });
+
+    test('takeOverAfterMinutes keeps a positive whole number and warns on anything else', () => {
+      assert.strictEqual(parseHostConfig({ sync: { takeOverAfterMinutes: 30 } }).config.sync.takeOverAfterMinutes, 30);
+      for (const bad of [0, -5, 2.5, 'ten']) {
+        const { config, warnings } = parseHostConfig({ sync: { takeOverAfterMinutes: bad } });
+        assert.strictEqual(config.sync.takeOverAfterMinutes, 10);
+        assert.strictEqual(warnings.some((w) => w.includes('sync.takeOverAfterMinutes')), true);
+      }
     });
 
     test('drops a plain-http public server with a warning naming sync.server', () => {

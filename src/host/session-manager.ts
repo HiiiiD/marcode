@@ -17,6 +17,7 @@ import { nativeFork, planNativeFork, type NativeForkPlan } from './native-fork';
 import { hasOwnTurns } from './side-chat';
 import { buildSideChatDigest, SIDE_CHAT_HEADER } from './side-chat-digest';
 import { mergeRoster } from './roster-sync';
+import type { MoveService } from './sync/move-service';
 import type { RemoteSessions } from './sync/remote-sessions';
 import type { OwnClaim, OwnerInfo, SessionOwnership } from './session-ownership';
 import { findPayload, type ResolvedBlock } from './session-refs';
@@ -1949,6 +1950,7 @@ export class SessionManager implements SessionSink {
     if (!state) { throw new Error(`Unknown session: ${id}`); }
     // Before any lease claim: another device's session gets no lock file here, and may name a provider this host lacks.
     if (state.remote && this.remote) { return this.openRemote(state, this.remote); }
+    if (this.yielded.has(id)) { return this.openYielded(state); }
     const provider = this.providers.get(state.providerId);
     if (!provider) { throw new Error(`Unknown provider: ${state.providerId}`); }
 
@@ -2064,7 +2066,7 @@ export class SessionManager implements SessionSink {
 
   /** Leased by another host: this one may read it but never run, write, discard or delete it. */
   isForeign(id: SessionId): boolean {
-    return this.foreign.has(id) || this.meta.get(id)?.owner !== undefined || this.isRemote(id) || this.store.isForeign(id);
+    return this.foreign.has(id) || this.meta.get(id)?.owner !== undefined || this.isRemote(id) || this.yielded.has(id) || this.store.isForeign(id);
   }
 
   /** Another device's session, mirrored through sync. */
@@ -2399,7 +2401,14 @@ export class SessionManager implements SessionSink {
   status(id: SessionId, status: SessionStatus): void {
     if (!this.isSubagent(id)) { this.emit({ t: 'session-status', id, status }); }
     if (status === 'idle') { this.drainQueuedMove(id); }
+    if (status === 'idle' && !this.isSubagent(id) && !this.isForeign(id)) {
+      try { this.turnListener?.(id); } catch (err) { console.error('[mar-code] turn listener failed', err); }
+    }
   }
+
+  private turnListener?: (id: SessionId) => void;
+  /** Hears each owned session settling to idle: the end of a turn, when sync uploads its agent thread. */
+  setTurnListener(listener: (id: SessionId) => void): void { this.turnListener = listener; }
 
   /**
    * Performs a relocation the user asked for mid-turn, now that the turn is
@@ -2465,6 +2474,9 @@ export class SessionManager implements SessionSink {
   syncService?: SyncService;
   setSyncService(service: SyncService): void { this.syncService = service; }
 
+  moveService?: MoveService;
+  setMoveService(service: MoveService): void { this.moveService = service; }
+
   private shellAliasTable: ShellAliasTable = DEFAULT_SHELL_ALIASES;
   setShellAliases(table: ShellAliasTable): void { this.shellAliasTable = table; }
   shellAliases(): ShellAliasTable { return this.shellAliasTable; }
@@ -2520,11 +2532,12 @@ export class SessionManager implements SessionSink {
   async syncRemoteSessions(): Promise<void> {
     if (!this.remote || this.disposed) { return; }
     try {
-      const { adopt, update, drop } = await this.remote.sync(this.meta);
+      const { adopt, update, drop, ceded } = await this.remote.sync(this.meta);
       for (const d of adopt) { this.meta.set(d.id, d); }
       for (const d of update) { Object.assign(this.meta.get(d.id) as SessionState, d); }
       for (const id of drop) { await this.hide(id); this.meta.delete(id); }
-      if (adopt.length + update.length + drop.length > 0) { this.emit({ t: 'sessions-changed', sessions: this.summaries() }); }
+      for (const c of ceded) { await this.cede(c.id, c.fork, this.remote); }
+      if (adopt.length + update.length + drop.length + ceded.length > 0) { this.emit({ t: 'sessions-changed', sessions: this.summaries() }); }
     } catch (err) {
       console.error('[mar-code] remote roster sync failed', err);
     }
@@ -2658,6 +2671,129 @@ export class SessionManager implements SessionSink {
     this.foreign.set(id, tail);
     tail.start();
     this.changed();
+    return session;
+  }
+
+  /** Handed to another device and waiting for it to claim: still listed, but nothing here writes it. */
+  private readonly yielded = new Set<SessionId>();
+
+  isYielded(id: SessionId): boolean { return this.yielded.has(id); }
+
+  /** Why this session cannot move right now, if it cannot. */
+  moveBlocker(id: SessionId): 'subagents' | 'side' | undefined {
+    if ((this.subagents.counts(id)?.running ?? 0) > 0) { return 'subagents'; }
+    return [...this.meta.values()].some((s) => s.kind === 'side' && s.parentId === id) ? 'side' : undefined;
+  }
+
+  /** Lets the current turn finish (or interrupts it), resolving once the session is idle or `timeoutMs` passed. */
+  async finishTurn(id: SessionId, cancel: boolean, timeoutMs = 5 * 60_000): Promise<boolean> {
+    const session = this.live.get(id);
+    if (!session) { return true; }
+    const busy = (): boolean => session.state.status === 'running' || session.state.status === 'awaiting-approval';
+    if (busy() && cancel) { await session.interrupt(); }
+    const deadline = Date.now() + timeoutMs;
+    while (busy()) {
+      if (Date.now() > deadline) { return false; }
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    return true;
+  }
+
+  /** Stops this host writing the session: flushed, then foreign, with no live run. The lease stays held. */
+  async yieldSession(id: SessionId): Promise<void> {
+    await this.store.flush(id);
+    this.yielded.add(id);
+    this.store.markForeign(id);
+    const session = this.live.get(id);
+    if (session) { await session.dispose(); this.live.delete(id); }
+    this.changed();
+  }
+
+  /** The other device never claimed it: this host writes it again. */
+  async unyield(id: SessionId): Promise<void> {
+    if (!this.yielded.delete(id)) { return; }
+    const session = this.live.get(id);
+    if (session) { await session.dispose(); this.live.delete(id); }
+    this.store.clearForeign(id);
+    this.changed();
+  }
+
+  private openYielded(state: SessionState): AgentSession {
+    const provider = this.providers.get(state.providerId) ?? inertProvider(state.providerId);
+    const session = new AgentSession(state, dormantProvider(provider), this.store, this);
+    this.live.set(state.id, session);
+    return session;
+  }
+
+  /**
+   * Another device owns this session now. Content the new owner never received survives as a fork; then the
+   * local row goes (its tombstone clears this device's copy elsewhere), and the owner's copy shows as remote.
+   */
+  private async cede(id: SessionId, fork: boolean, remote: RemoteSessions): Promise<void> {
+    const state = this.meta.get(id);
+    if (!state) { return; }
+    const items = (await this.store.tail(id, Number.MAX_SAFE_INTEGER)).items;
+    if (fork && items.length > 0) {
+      const now = Date.now();
+      const copy: SessionState = {
+        ...state, id: newSessionId(), name: this.defaultName(state.providerId), title: `${state.title} (from ${remote.selfName ?? 'this device'}, offline)`,
+        parentId: id, origin: 'fork', resumeTokens: {}, status: 'idle', createdAt: now, updatedAt: now, forkedItemCount: items.length,
+      };
+      await this.ownership?.claim(copy.id);
+      this.meta.set(copy.id, copy);
+      for (const item of items) { this.store.append(copy.id, item); }
+      await this.store.flush(copy.id);
+    }
+    remote.dropOutbox(id);
+    this.yielded.delete(id);
+    if (this.foreign.has(id)) { await this.detachForeign(id); }
+    const live = this.live.get(id);
+    if (live) { await live.dispose(); this.live.delete(id); }
+    this.visible.delete(id);
+    this.meta.delete(id);
+    if (this.ownership) { this.deleted.add(id); }
+    this.store.clearForeign(id);
+    await this.store.remove(id);
+    await this.ownership?.release(id);
+    await this.memory?.forget(id).catch(() => undefined);
+    this.changed();
+  }
+
+  hasProvider(id: string): boolean { return this.providers.has(id); }
+  providerOf(id: string): AgentProvider | undefined { return this.providers.get(id); }
+
+  /** Another device's session as this window lists it. */
+  remoteRow(id: SessionId): SessionState | undefined {
+    const state = this.meta.get(id);
+    return state?.remote ? state : undefined;
+  }
+
+  /**
+   * Makes a session moved or taken over from another device this host's own: the mirrored remote row is
+   * replaced by a local one in this workspace's store, leased here, with the transcript copied and `notice` after it.
+   */
+  async adoptMoved(input: { state: SessionState; items: TranscriptItem[]; seed?: string; notice: string }): Promise<AgentSession> {
+    const id = input.state.id;
+    this.foreign.get(id)?.stop();
+    this.foreign.delete(id);
+    const old = this.live.get(id);
+    if (old) { await old.dispose(); this.live.delete(id); }
+    const provider = this.providers.get(input.state.providerId);
+    if (!provider) { throw new Error(`Unknown provider: ${input.state.providerId}`); }
+    const { remote: _remote, ...state } = input.state;
+    this.store.clearForeign(id);
+    // Listed as this host's before the first write: the publisher only sends a session it can see is ours.
+    this.meta.set(id, state as SessionState);
+    for (const item of input.items) { this.store.append(id, item); }
+    this.store.append(id, { id: `moved-${Date.now()}`, ts: Date.now(), role: 'switch', kind: 'relocation', text: input.notice });
+    await this.store.flush(id);
+    await this.ownership?.claim(id);
+    const session = new AgentSession(this.meta.get(id) as SessionState, provider, this.store, this, input.seed);
+    this.live.set(id, session);
+    this.catalogSvc.ensure(this.keyOf(session.state), provider, session.state.cwd);
+    if (this.visible.has(id)) { this.emitSnapshot(id, await session.snapshot()); }
+    this.changed();
+    this.emit({ t: 'sessions-changed', sessions: this.summaries() });
     return session;
   }
 
