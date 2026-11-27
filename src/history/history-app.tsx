@@ -4,11 +4,15 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { HistoryTable } from './history-table';
 import { HistoryToolbar } from './history-toolbar';
 import { MemoryStrip } from './memory-strip';
+import { MoveDialog, MoveRequest } from './move-dialog';
 import { DEFAULT_QUERY, needsAttention, queryHistory, type HistoryQuery } from './history-rows';
 import { useStore } from './store';
+import type { SessionId } from '../protocol/messages';
 
 export function HistoryApp() {
-  const { state } = useStore();
+  const { state, post } = useStore();
+  const [moving, setMoving] = useState<SessionId | null>(null);
+  const requestMove = (id: SessionId) => { setMoving(id); post({ t: 'request-move-panel', id }); };
   // Ephemeral by design: a reading position in a list that keeps changing.
   const [query, setQuery] = useState<HistoryQuery>(DEFAULT_QUERY);
   const groups = queryHistory(state.sessions, query);
@@ -32,6 +36,7 @@ export function HistoryApp() {
 
   return (
     <TooltipProvider>
+      <MoveRequest.Provider value={requestMove}>
       <div className="mx-auto flex min-h-screen w-full max-w-4xl flex-col text-sm text-foreground">
         <HistoryToolbar query={query} attentionCount={attentionCount} onChange={setQuery} />
         {filtered && (
@@ -46,6 +51,8 @@ export function HistoryApp() {
         <MemoryStrip />
         {body}
       </div>
+      <MoveDialog id={moving} onClose={() => { setMoving(null); }} />
+      </MoveRequest.Provider>
     </TooltipProvider>
   );
 }
