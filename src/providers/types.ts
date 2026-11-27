@@ -568,6 +568,10 @@ export interface AgentProvider {
    * host with a timeout, like `moveThread`.
    */
   forkThread?(args: ForkThreadArgs): Promise<ForkThreadResult | false>;
+  /** Absolute paths of the files a native thread is made of, for moving it to another device; [] when there is none. */
+  threadFiles?(args: { resumeToken: string; cwd: string }): Promise<string[]>;
+  /** Writes a moved thread's files for `cwd` (paths already rewritten by the host). `false` means "could not". */
+  importThread?(args: { resumeToken: string; cwd: string; files: Array<{ name: string; text: string }> }): Promise<{ resumeToken: string } | false>;
   /**
    * Whether a terminal login flow exists for this instance, and if so what
    * kind. `undefined` for a provider that predates this field — the webview
