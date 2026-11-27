@@ -2720,6 +2720,43 @@ export class SessionManager implements SessionSink {
     return session;
   }
 
+  hasProvider(id: string): boolean { return this.providers.has(id); }
+  providerOf(id: string): AgentProvider | undefined { return this.providers.get(id); }
+
+  /** Another device's session as this window lists it. */
+  remoteRow(id: SessionId): SessionState | undefined {
+    const state = this.meta.get(id);
+    return state?.remote ? state : undefined;
+  }
+
+  /**
+   * Makes a session moved or taken over from another device this host's own: the mirrored remote row is
+   * replaced by a local one in this workspace's store, leased here, with the transcript copied and `notice` after it.
+   */
+  async adoptMoved(input: { state: SessionState; items: TranscriptItem[]; seed?: string; notice: string }): Promise<AgentSession> {
+    const id = input.state.id;
+    this.foreign.get(id)?.stop();
+    this.foreign.delete(id);
+    const old = this.live.get(id);
+    if (old) { await old.dispose(); this.live.delete(id); }
+    const provider = this.providers.get(input.state.providerId);
+    if (!provider) { throw new Error(`Unknown provider: ${input.state.providerId}`); }
+    const { remote: _remote, ...state } = input.state;
+    this.store.clearForeign(id);
+    for (const item of input.items) { this.store.append(id, item); }
+    this.store.append(id, { id: `moved-${Date.now()}`, ts: Date.now(), role: 'switch', kind: 'relocation', text: input.notice });
+    await this.store.flush(id);
+    await this.ownership?.claim(id);
+    const session = new AgentSession(state as SessionState, provider, this.store, this, input.seed);
+    this.meta.set(id, state as SessionState);
+    this.live.set(id, session);
+    this.catalogSvc.ensure(this.keyOf(session.state), provider, session.state.cwd);
+    if (this.visible.has(id)) { this.emitSnapshot(id, await session.snapshot()); }
+    this.changed();
+    this.emit({ t: 'sessions-changed', sessions: this.summaries() });
+    return session;
+  }
+
   /** This host's own rows: everything persisted, leased or reconciled against the index. */
   private localMeta(): Map<SessionId, SessionState> {
     return new Map([...this.meta].filter(([, s]) => s.remote === undefined));
