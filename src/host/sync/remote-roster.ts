@@ -62,6 +62,18 @@ export async function readThread(root: string, deviceId: string, sessionId: stri
   return files;
 }
 
+/** A mirrored session's complete attachments, by attachment id. */
+export async function readAttachments(root: string, deviceId: string, sessionId: string): Promise<Map<string, { name: string; bytes: Buffer }>> {
+  const base = attachmentDir(root, deviceId, sessionId);
+  const out = new Map<string, { name: string; bytes: Buffer }>();
+  for (const id of await dirs(base)) {
+    const file = await readChunks(path.join(base, id));
+    const meta = await readJson<{ name?: string }>(path.join(base, id, 'meta.json'));
+    if (file && meta?.name) { out.set(decodeURIComponent(id), { name: meta.name, bytes: file.bytes }); }
+  }
+  return out;
+}
+
 export async function readInbox(root: string): Promise<InboxMessage[]> {
   const dir = path.join(root, INBOX_DIR);
   const out: InboxMessage[] = [];

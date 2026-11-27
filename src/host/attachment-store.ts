@@ -141,6 +141,16 @@ export class AttachmentStore {
   }
 
   /** Reaps a deleted session's pasted files. Best effort: a failure here must not fail the delete. */
+  /** Writes a moved session's attachment here under its own id, so the moved transcript can point at the copy. */
+  async install(sessionId: string, attachment: { id: string; name: string }, bytes: Buffer): Promise<{ path: string; storeRelative: string }> {
+    const dir = this.dirFor(sessionId);
+    const file = path.join(dir, `${path.basename(attachment.id)}${path.extname(attachment.name)}`);
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(`${file}.tmp`, bytes);
+    await fs.rename(`${file}.tmp`, file);
+    return { path: file, storeRelative: `${sessionId}/${path.basename(file)}` };
+  }
+
   async remove(sessionId: string): Promise<void> {
     await fs.rm(this.dirFor(sessionId), { recursive: true, force: true }).catch(() => {});
   }
