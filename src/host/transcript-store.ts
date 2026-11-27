@@ -1,5 +1,6 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import type { TranscriptOp } from '../sync/session-records';
 import type { PaneLayout, SessionId, SessionState, TranscriptItem } from '../protocol/messages';
 import { writeFileAtomic } from './atomic-file';
 
@@ -85,9 +86,29 @@ export class TranscriptStore {
   // Taken out of `pending` but not yet on disk: a read racing the append would otherwise miss them.
   private writing = new Map<SessionId, TranscriptItem[]>();
 
+  private readonly writtenListeners = new Set<(id: SessionId, ops: TranscriptOp[]) => void>();
+  private readonly removedListeners = new Set<(id: SessionId) => void>();
+
   constructor(private readonly rootDir: string, private readonly layoutHost: string = 'vscode') {}
 
   get root(): string { return this.rootDir; }
+
+  /** Hears every op once it is on disk; never for a foreign session, never for a failed write. */
+  onWritten(listener: (id: SessionId, ops: TranscriptOp[]) => void): () => void {
+    this.writtenListeners.add(listener);
+    return () => { this.writtenListeners.delete(listener); };
+  }
+
+  onRemoved(listener: (id: SessionId) => void): () => void {
+    this.removedListeners.add(listener);
+    return () => { this.removedListeners.delete(listener); };
+  }
+
+  private report<T extends unknown[]>(listeners: Set<(...args: T) => void>, ...args: T): void {
+    for (const listener of listeners) {
+      try { listener(...args); } catch (err) { console.error('[mar-code] transcript listener failed', err); }
+    }
+  }
 
   markForeign(id: SessionId): void {
     this.foreign.add(id);
@@ -311,6 +332,9 @@ export class TranscriptStore {
         this.dirty.add(sessionId);
         throw err;
       }
+      const replaced = [...(reps?.values() ?? [])].map((item): TranscriptOp => ({ op: 'replace', item }));
+      const ops = [...replaced, ...queued.map((item): TranscriptOp => ({ op: 'append', item }))];
+      if (ops.length > 0) { this.report(this.writtenListeners, sessionId, ops); }
       return;
     }
 
@@ -321,6 +345,7 @@ export class TranscriptStore {
     const body = queued.map((i) => JSON.stringify(i)).join('\n');
     try {
       await fs.appendFile(this.sessionFile(sessionId), `${body}\n`, 'utf8');
+      this.report(this.writtenListeners, sessionId, queued.map((item): TranscriptOp => ({ op: 'append', item })));
     } catch (err) {
       // A failed append may still have written part of `body`; re-queueing
       // risks a duplicated prefix, but losing the items outright is worse
@@ -415,6 +440,7 @@ export class TranscriptStore {
       // this behind; don't let it outlive the session it belonged to.
       await fs.rm(`${this.sessionFile(id)}.tmp`, { force: true });
     });
+    this.report(this.removedListeners, id);
     // Drop the chain entry now that removal has actually run: nothing is
     // pending for this id anymore, so there is nothing left to serialize
     // against, and a later flush()/remove() for a reused id starts clean.

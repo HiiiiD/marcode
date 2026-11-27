@@ -9,6 +9,67 @@ function item(id: string, text: string): TranscriptItem {
   return { id, ts: 1, role: 'user', text };
 }
 
+suite('TranscriptStore write observer', () => {
+  let dir: string;
+  let store: TranscriptStore;
+  let calls: Array<{ id: string; ops: Array<{ op: string; id: string }> }>;
+
+  setup(async () => {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mar-store-obs-'));
+    store = new TranscriptStore(dir);
+    calls = [];
+    store.onWritten((id, ops) => { calls.push({ id, ops: ops.map((o) => ({ op: o.op, id: o.item.id })) }); });
+  });
+
+  teardown(async () => { await fs.rm(dir, { recursive: true, force: true }); });
+
+  test('appends reach the listener once they are on disk', async () => {
+    store.append('s1', item('a', 'one'));
+    store.append('s1', item('b', 'two'));
+    await store.flush('s1');
+    assert.deepStrictEqual(calls, [{ id: 's1', ops: [{ op: 'append', id: 'a' }, { op: 'append', id: 'b' }] }]);
+  });
+
+  test('a replace of a flushed item is reported as a replace, a new item beside it as an append', async () => {
+    store.append('s1', item('a', 'one'));
+    await store.flush('s1');
+    calls = [];
+    store.replace('s1', item('a', 'one, edited'));
+    store.append('s1', item('b', 'two'));
+    await store.flush('s1');
+    assert.deepStrictEqual(calls, [{ id: 's1', ops: [{ op: 'replace', id: 'a' }, { op: 'append', id: 'b' }] }]);
+  });
+
+  test('a write that fails reports nothing', async () => {
+    const blocked = new TranscriptStore(path.join(dir, 'file-not-dir'));
+    await fs.writeFile(path.join(dir, 'file-not-dir'), 'x');
+    let heard = 0;
+    blocked.onWritten(() => { heard++; });
+    blocked.append('s1', item('a', 'one'));
+    await blocked.flush('s1').catch(() => undefined);
+    assert.strictEqual(heard, 0);
+  });
+
+  test('a foreign session reports nothing, and a listener that throws does not break the flush', async () => {
+    store.onWritten(() => { throw new Error('listener bug'); });
+    store.markForeign('f1');
+    store.append('f1', item('a', 'one'));
+    await store.flush();
+    store.append('s1', item('a', 'one'));
+    await store.flush('s1');
+    assert.deepStrictEqual(calls.map((c) => c.id), ['s1']);
+  });
+
+  test('remove reaches the removal listener', async () => {
+    const removed: string[] = [];
+    store.onRemoved((id) => { removed.push(id); });
+    store.append('s1', item('a', 'one'));
+    await store.flush('s1');
+    await store.remove('s1');
+    assert.deepStrictEqual(removed, ['s1']);
+  });
+});
+
 suite('TranscriptStore', () => {
   let dir: string;
   let store: TranscriptStore;
