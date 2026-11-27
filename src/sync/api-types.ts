@@ -5,6 +5,8 @@ export interface DeviceRow {
   createdAt: number;
   lastSeenAt: number;
   revokedAt?: number;
+  /** Whether the device holds an open event stream right now. */
+  online?: boolean;
   /** An HMAC by a key holder over this row's id and public key; devices only ever seal keys to admitted rows. */
   admission?: { epoch: number; tag: string };
 }

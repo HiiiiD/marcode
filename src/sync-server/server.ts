@@ -90,7 +90,12 @@ export interface SyncServerOptions {
 export async function startSyncServer(opts: SyncServerOptions): Promise<{ url: string; close(): Promise<void> }> {
   const { store } = opts;
   const now = opts.now ?? Date.now;
-  const hub = new EventHub();
+  const hub: EventHub = new EventHub({
+    onPresence: (deviceId, online) => {
+      if (!online) { store.touch(deviceId); }
+      hub.emit('devices', {}, deviceId);
+    },
+  });
 
   const authed = (req: IncomingMessage): DeviceRow => {
     const token = bearerOf(req.headers.authorization);
@@ -142,7 +147,7 @@ export async function startSyncServer(opts: SyncServerOptions): Promise<{ url: s
       return null;
     }
 
-    if (method === 'GET' && at('v1', 'devices')) { return { devices: store.devices().map(publicDevice) }; }
+    if (method === 'GET' && at('v1', 'devices')) { return { devices: store.devices().map((d) => ({ ...publicDevice(d), online: hub.isOnline(d.deviceId) })) }; }
 
     if (method === 'POST' && at('v1', 'devices', '*', 'revoke')) {
       if (!store.revoke(parts[2])) { throw new HttpError(404, 'no such active device'); }
