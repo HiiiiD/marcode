@@ -151,4 +151,17 @@ suite('AttachmentStore', () => {
     const exists = await fs.stat(path.join(root, 'attachments', 's1')).then(() => true, () => false);
     assert.strictEqual(exists, false);
   });
+
+  test('a moved attachment with a hostile id or name is refused, never written outside its session folder', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'mar-att-install-'));
+    const store = new AttachmentStore(root);
+    for (const bad of [{ id: '..', name: 'x' }, { id: '.', name: 'x' }, { id: 'a/../../b', name: 'y.png' }, { id: 'ok', name: 'evil.p ng' }]) {
+      await assert.rejects(store.install('s1', bad, Buffer.from('z')));
+    }
+    assert.deepStrictEqual((await fs.readdir(root)).sort(), []);
+    for (const name of ['shot.png', '../../shot.png']) {
+      const good = await store.install('s1', { id: 'att-1', name }, Buffer.from('z'));
+      assert.strictEqual(path.dirname(good.path), path.join(store.baseDir, 's1'));
+    }
+  });
 });

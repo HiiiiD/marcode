@@ -169,6 +169,29 @@ test("m on this device's session says only another device's can move; on a remot
   expect(m.frame()).toContain('Move "theirs" here');
 });
 
+test('while the move dialog is open the roster ignores its keys', async () => {
+  m = await mount(<App {...props} />, { width: 120, height: 30 });
+  await m.fromHost(hydrateMsg({
+    sessions: [summary('s1', { name: 'one' }), summary('r1', { name: 'theirs', remote: { deviceId: 'd', deviceName: 'PC-desk', online: true, lastSeenAt: 1, relCwd: '.' } })],
+    snapshots: [snapshot('s1')],
+  }));
+  await m.press('tab');
+  await m.press('tab');
+  await m.press('j');
+  await m.press('m');
+  await m.fromHost({ t: 'move-panel', panel: {
+    id: 'r1', mode: 'move', checkouts: [{ root: '/repo', branch: 'main', main: true }], defaultRoot: '/repo', branch: 'main', thread: 'restarted', ownerName: 'PC-desk', lastSeenAt: 1,
+  } });
+  const before = m.posted.length;
+  await m.press('x');
+  await m.press('return');
+  const after = m.posted.slice(before).map((p) => p.t);
+  expect(after.includes('close-session')).toBe(false);
+  expect(after.includes('focus-pane')).toBe(false);
+  expect(m.posted.some((p) => p.t === 'close-session')).toBe(false);
+  expect(m.posted.filter((p) => p.t === 'move-session').length).toBe(1);
+});
+
 test('delete confirm: y deletes the highlighted session, other keys are inert meanwhile', async () => {
   m = await mount(<App {...props} />, { width: 120, height: 30 });
   await m.fromHost(rosterApp());

@@ -105,7 +105,7 @@ export function App(props: AppProps) {
   const current: PaneZone = zones.includes(zone) ? zone : zones[0] ?? 'composer';
   const keyZone: Zone = slot?.kind === 'permission' ? 'approval' : slot?.kind === 'question' ? 'question' : current;
   const paneZone: PaneZone = keyZone === 'approval' || keyZone === 'question' ? 'composer' : current;
-  const live = (z: PaneZone) => !dialog && !deleting && !picker && paneZone === z;
+  const live = (z: PaneZone) => !dialog && !deleting && !picker && moving === null && paneZone === z;
 
   const estimate = { w: width - (wide && showRoster ? ROSTER_W : 0), h: height - 3 };
   usePaneChords({

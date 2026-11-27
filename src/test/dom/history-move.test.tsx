@@ -74,4 +74,12 @@ suite('history: moving a session here', () => {
     assert.strictEqual(screen.queryByRole('button', { name: 'Move here' }) === null, true);
     assert.strictEqual(screen.getAllByRole('button', { name: 'Close' }).length >= 1, true);
   });
+
+  test('focus moves into the dialog once the panel arrives', async () => {
+    open();
+    await userEvent.click(screen.getByRole('button', { name: 'Move fixer here' }));
+    sendFromHost({ t: 'move-panel', panel: panel() });
+    await screen.findByText('Move "fixer" here');
+    await waitFor(() => { assert.strictEqual(document.activeElement?.closest('[data-slot="dialog-content"]') !== null, true); });
+  });
 });

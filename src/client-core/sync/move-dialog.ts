@@ -11,7 +11,11 @@ export interface MoveDialogView {
 
 /** The dialog's slice of client state: the panel the host last answered, and only that session's statuses. */
 export function reduceMove(slice: MoveSlice | undefined, msg: HostToWebview): MoveSlice | undefined {
-  if (msg.t === 'move-panel') { return { id: msg.panel.id, panel: msg.panel }; }
+  if (msg.t === 'move-panel') {
+    // Reopening the dialog mid-move must not offer the button again; only a settled move starts clean.
+    const running = slice?.id === msg.panel.id && slice.status?.state === 'waiting' ? { status: slice.status } : {};
+    return { id: msg.panel.id, panel: msg.panel, ...running };
+  }
   if (msg.t === 'move-status' && slice && msg.id === slice.id) { return { ...slice, status: msg.status }; }
   return slice;
 }

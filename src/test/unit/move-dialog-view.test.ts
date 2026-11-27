@@ -86,4 +86,13 @@ suite('move dialog view', () => {
     assert.deepStrictEqual(history.move?.status, { state: 'waiting', step: 'claim' });
     assert.deepStrictEqual(client.move?.status, { state: 'waiting', step: 'claim' });
   });
+
+  test('reopening the dialog mid-move keeps it in progress; after a failure it starts clean', () => {
+    let slice = reduceMove(undefined, { t: 'move-panel', panel: panel() });
+    slice = reduceMove(slice, { t: 'move-status', id: 'r1', status: { state: 'waiting', step: 'transcript' } });
+    slice = reduceMove(slice, { t: 'move-panel', panel: panel() });
+    assert.deepStrictEqual(slice?.status, { state: 'waiting', step: 'transcript' });
+    slice = reduceMove(slice, { t: 'move-status', id: 'r1', status: { state: 'failed', reason: 'x' } });
+    assert.strictEqual(reduceMove(slice, { t: 'move-panel', panel: panel() })?.status, undefined);
+  });
 });

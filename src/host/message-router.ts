@@ -668,6 +668,8 @@ export class MessageRouter {
         const service = this.manager.moveService;
         const report = (status: MoveStatus) => { this.emit({ t: 'move-status', id: msg.id, status }); };
         if (!service) { report({ state: 'failed', reason: 'Sync is not set up on this device.' }); return; }
+        // At once, before a worktree fetch or anything else slow: the dialog locks and clears an old failure.
+        report({ state: 'waiting', step: 'reply' });
         try {
           if (msg.t === 'move-session') { await service.moveHere(msg.id, msg.target, { cancelTurn: msg.cancelTurn }, report); }
           else { await service.takeOver(msg.id, msg.target, report); }

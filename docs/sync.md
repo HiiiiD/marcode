@@ -72,7 +72,7 @@ A session can move to another paired machine and continue there. The move starts
 
 You pick the checkout it lands in: one already on the session's branch, the last one you picked, or a new worktree for that branch. Making a worktree runs `git fetch origin <branch>`, the only network git command Marcode runs.
 
-Claude sessions keep their agent thread: it is uploaded at every turn end, and its paths are rewritten for the new checkout and operating system. Codex and OpenCode sessions restart from the transcript, and a note in the transcript says which of the two happened. Attachments move with it.
+Claude sessions keep their agent thread: it is uploaded at every turn end, and its paths are rewritten for the new checkout and operating system. Codex and OpenCode sessions restart from the transcript, and a note in the transcript says which of the two happened. Attachments come along on a move; a take over finds only what the owner uploaded before it went offline, so attachments may be missing.
 
 Exactly one machine owns a session at a time: the server keeps an owner record that only a compare-and-swap claim can change. A machine that comes back after being taken over gives the session up. Anything it wrote that never reached the server is kept as a new session, titled "… (from PC-desk, offline)".
 
