@@ -96,6 +96,7 @@ suite('tui keymap', () => {
   });
   test('roster: p pins, / filters, shift+d deletes, plain d does nothing', () => {
     assert.deepStrictEqual(actionFor('roster', { name: 'p' }, idle), { do: 'roster-pin' });
+    assert.deepStrictEqual(actionFor('roster', { name: 'm' }, idle), { do: 'roster-move' });
     assert.deepStrictEqual(actionFor('roster', { name: '/' }, idle), { do: 'roster-filter' });
     assert.deepStrictEqual(actionFor('roster', { name: 'd', shift: true }, idle), { do: 'roster-delete' });
     assert.strictEqual(actionFor('roster', { name: 'd' }, idle), undefined);

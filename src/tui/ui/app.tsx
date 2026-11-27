@@ -16,6 +16,7 @@ import { PaneTree } from './pane-tree';
 import { Roster, ROSTER_W } from './roster';
 import { ContextDialog } from './context-dialog';
 import { ChildrenDialog } from './children-dialog';
+import { MoveDialog } from './move-dialog';
 import { McpDialog } from './mcp/mcp-dialog';
 import { LayoutDialog } from './layout-dialog';
 import { SyncDialog } from './sync/sync-dialog';
@@ -60,6 +61,7 @@ export function App(props: AppProps) {
     if (state.syncOpenRequest > syncHandled.current) { syncHandled.current = state.syncOpenRequest; setPicker('sync'); }
   }, [state.syncOpenRequest]);
   const [deleting, setDeleting] = useState<{ id: SessionId; title: string } | null>(null);
+  const [moving, setMoving] = useState<SessionId | null>(null);
   const [maximized, setMaximized] = useState(false);
   const [handoffSource, setHandoffSource] = useState<HandoffSource | undefined>(undefined);
   const [kept, setKept] = useState<string | undefined>(undefined);
@@ -108,7 +110,7 @@ export function App(props: AppProps) {
   const estimate = { w: width - (wide && showRoster ? ROSTER_W : 0), h: height - 3 };
   usePaneChords({
     area: { x: 0, y: 0, ...estimate },
-    inert: dialog || deleting !== null || picker !== null,
+    inert: dialog || deleting !== null || picker !== null || moving !== null,
     maximized, layout,
     onSplit: (orientation) => { pendingSplit.current = orientation; openNewSession(); },
     toggleMaximize: () => { setMaximized((v) => !v); },
@@ -134,13 +136,13 @@ export function App(props: AppProps) {
 
   const squeezed = squeezedIds(visibleRects(layout.root, focusedId, { x: 0, y: 0, ...estimate }, maximized).panes);
   const roster = showRoster
-    ? <Roster focused={live('roster')} squeezed={squeezed} onFocusSession={onFocusSession} onAskDelete={(row) => { setDeleting(row); }} onHandoff={(row) => { openNewSession(row); }} />
+    ? <Roster focused={live('roster')} squeezed={squeezed} onFocusSession={onFocusSession} onAskDelete={(row) => { setDeleting(row); }} onHandoff={(row) => { openNewSession(row); }} onMove={setMoving} />
     : null;
   const body = focusedId ? (
     <PaneTree
       estimate={estimate}
       focusedId={focusedId}
-      liveZone={dialog || deleting || picker || paneZone === 'roster' ? null : paneZone}
+      liveZone={dialog || deleting || picker || moving || paneZone === 'roster' ? null : paneZone}
       maximized={maximized}
       onFocus={focus}
       onHide={layout.hide}
@@ -184,6 +186,7 @@ export function App(props: AppProps) {
       ) : null}
       {picker === 'context' && focusedId ? <ContextDialog sessionId={focusedId} onClose={() => { setPicker(null); }} /> : null}
       {picker === 'children' && focusedId ? <ChildrenDialog sessionId={focusedId} onClose={() => { setPicker(null); }} /> : null}
+      {moving ? <MoveDialog sessionId={moving} onClose={() => { setMoving(null); }} onDone={(id) => { setMoving(null); onFocusSession(id); }} /> : null}
       {picker === 'mcp' && focusedId ? <McpDialog sessionId={focusedId} onClose={() => { setPicker(null); }} /> : null}
       {picker === 'layout' ? <LayoutDialog onApply={layout.applyRoot} onClose={() => { setPicker(null); }} /> : null}
       {picker === 'sync' ? <SyncDialog onClose={() => { setPicker(null); }} /> : null}
