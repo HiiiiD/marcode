@@ -2,6 +2,7 @@ import type { SessionDigest } from '../memory/digest';
 import { FETCH_WINDOW } from '../memory/fts/fts-memory-store';
 import type { SessionRecord } from '../memory/types';
 import type { TranscriptItem } from '../protocol/messages';
+import { bytes, trimStrings } from './payload-size';
 
 export type MemoryPayload =
   | {
@@ -13,18 +14,7 @@ export type MemoryPayload =
 export const MEMORY_TEXT_CAP = 200 * 1024;
 // Keeps a record's ciphertext (base64 of the plaintext plus a tag) under the server's 1 MiB record limit.
 export const MEMORY_PAYLOAD_CAP = 512 * 1024;
-const FIELD_CAP = 4 * 1024;
-
-const bytes = (value: unknown): number => Buffer.byteLength(JSON.stringify(value));
-
-function trimStrings(value: unknown, max: number): unknown {
-  if (typeof value === 'string') { return value.length > max ? `${value.slice(0, max)}…` : value; }
-  if (Array.isArray(value)) { return value.map((v) => trimStrings(v, max)); }
-  if (typeof value === 'object' && value !== null) {
-    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, trimStrings(v, max)]));
-  }
-  return value;
-}
+export const FIELD_CAP = 4 * 1024;
 
 export function memoryPayload(input: {
   record: SessionRecord; projectId: string; relCwd: string; digest: SessionDigest;
