@@ -309,6 +309,15 @@ suite('SyncEngine', function () {
     await ea.dispose();
     await until(async () => (await aOnline()) === false);
   });
+
+  test('an engine that gains the lease drops whatever its mirror had cached', async () => {
+    const w = await world();
+    let resets = 0;
+    class Counting extends SessionMirror { override reset(): void { resets++; super.reset(); } }
+    const e = w.a.engine({ mirror: new Counting(w.a.mirrorRoot) }); e.start();
+    await until(() => e.stats().holding);
+    assert.strictEqual(resets, 1);
+  });
 });
 
 function sessionRecords(sessionId: string): SessionPayload[] {

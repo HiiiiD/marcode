@@ -129,4 +129,38 @@ suite('SessionMirror', () => {
     assert.deepStrictEqual((await readRemoteRoster(r.root)).rows, []);
     assert.deepStrictEqual((await readRemoteRoster(path.join(r.root, 'missing'))).rows, []);
   });
+
+  test('a holder that gets the lease back after another host wrote resumes from disk, not from its old cache', async () => {
+    const r = await rig();
+    await r.mirror.apply('devA', meta);
+    await r.mirror.apply('devA', ops(1, ['append', item('a')]));
+    await r.mirror.flush();
+    const other = new SessionMirror(r.root);
+    await other.apply('devA', { ...meta, sessionId: 's2', state: { ...meta.type === 'session-meta' ? meta.state : publishedState(state), id: 's2' } } as SessionPayload);
+    await other.apply('devA', ops(2, ['append', item('b')]));
+    await other.flush();
+    r.mirror.reset();
+    await r.mirror.apply('devA', ops(3, ['replace', item('a', 'a2')]));
+    await r.mirror.flush();
+    assert.deepStrictEqual((await readRemoteRoster(r.root)).rows.map((x) => x.state.id).sort(), ['s1', 's2']);
+    assert.deepStrictEqual((await r.items()).map((i) => [i.id, 'text' in i ? i.text : '']), [['a', 'a2'], ['b', 'b']]);
+  });
+
+  test('a flush running while a record is applied never drops that record\'s roster change', async () => {
+    const r = await rig();
+    await r.mirror.apply('devA', meta);
+    const first = r.mirror.flush();
+    for (let i = 0; i < 3; i++) { await new Promise((res) => setImmediate(res)); }
+    await r.mirror.apply('devA', { ...meta, state: { ...(meta.type === 'session-meta' ? meta.state : publishedState(state)), title: 'Renamed' } } as SessionPayload);
+    await r.mirror.flush();
+    await first;
+    assert.strictEqual((await readRemoteRoster(r.root)).rows[0].state.title, 'Renamed');
+  });
+
+  test('an unreadable sessions file makes apply fail instead of starting that device over', async () => {
+    const r = await rig();
+    await fs.mkdir(mirrorStoreDir(r.root, 'devA'), { recursive: true });
+    await fs.writeFile(path.join(mirrorStoreDir(r.root, 'devA'), 'sessions.json'), '{"entries": {');
+    await assert.rejects(r.mirror.apply('devA', meta));
+  });
 });

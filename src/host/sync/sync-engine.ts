@@ -79,6 +79,8 @@ export class SyncEngine {
     const owned = await this.ownership.claim(LEASE).then((c) => c.owned, () => false);
     if (!owned || this.disposed) { this.scheduleClaim(); return; }
     this.holding = true;
+    // Another host may have held the lease since this one last did, and written the mirror meanwhile.
+    this.deps.mirror?.reset();
     this.follower = new SyncClient(creds, this.deps.clientOptions).follow((event) => {
       if (event.type === 'appended') { void this.pull(); }
       if (event.type === 'devices') { void this.presence(); }

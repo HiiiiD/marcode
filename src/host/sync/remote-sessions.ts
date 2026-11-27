@@ -18,7 +18,9 @@ export class RemoteSessions {
 
   /** Rows to adopt, update or drop; an id this host already holds as a local session is never touched. */
   async sync(meta: Map<SessionId, SessionState>): Promise<{ adopt: SessionState[]; update: SessionState[]; drop: SessionId[] }> {
-    const [{ rows, devices }, projects] = await Promise.all([readRemoteRoster(this.deps.root), this.deps.windowProjects()]);
+    const [{ rows, devices, unreadable }, projects] = await Promise.all([readRemoteRoster(this.deps.root), this.deps.windowProjects()]);
+    // A file that could not be read this time says nothing about that device's sessions: keep them.
+    const unsure = (deviceId: string): boolean => unreadable.includes('*') || unreadable.includes(deviceId);
     const byDevice = new Map(devices.map((d) => [d.deviceId, d]));
     const adopt: SessionState[] = [];
     const update: SessionState[] = [];
@@ -42,7 +44,7 @@ export class RemoteSessions {
       seen.add(next.id);
       if (!mine) { adopt.push(next); } else if (JSON.stringify(mine) !== JSON.stringify({ ...mine, ...next })) { update.push(next); }
     }
-    const drop = [...meta.values()].filter((s) => s.remote && !seen.has(s.id)).map((s) => s.id);
+    const drop = [...meta.values()].filter((s) => s.remote && !seen.has(s.id) && !unsure(s.remote.deviceId)).map((s) => s.id);
     return { adopt, update, drop };
   }
 

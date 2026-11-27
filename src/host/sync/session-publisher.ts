@@ -4,6 +4,8 @@ import { opsPayloads, publishedState, type TranscriptOp } from '../../sync/sessi
 import type { SyncState } from '../../sync/sync-state';
 import type { TranscriptStore } from '../transcript-store';
 
+const BRANCH_TTL_MS = 30_000;
+
 export interface SessionPublisherDeps {
   store: TranscriptStore;
   state: SyncState;
@@ -21,6 +23,8 @@ export interface SessionPublisherDeps {
 export class SessionPublisher {
   private readonly chains = new Map<SessionId, Promise<unknown>>();
   private unsubscribe: Array<() => void> = [];
+  /** Every persist re-checks every session; git is asked about a checkout's branch once per interval, not per session. */
+  private readonly branches = new Map<string, { at: number; value: Promise<string | undefined> }>();
 
   constructor(private readonly deps: SessionPublisherDeps) {}
 
@@ -93,7 +97,7 @@ export class SessionPublisher {
   private async meta(id: SessionId): Promise<void> {
     const state = this.shareable(id);
     if (!state?.projectId) { return; }
-    const branch = await this.deps.branch(state.cwd).catch(() => undefined);
+    const branch = await this.branchOf(state.cwd);
     const payload = {
       type: 'session-meta' as const, v: 1 as const, sessionId: id, projectId: state.projectId,
       relCwd: await this.deps.relCwd(state.cwd), ...(branch ? { branch } : {}), state: publishedState(state),
@@ -102,6 +106,15 @@ export class SessionPublisher {
     if (this.deps.state.metaFingerprint(id) === fingerprint) { return; }
     this.deps.state.enqueue(payload);
     this.deps.state.setMetaFingerprint(id, fingerprint);
+  }
+
+  private branchOf(cwd: string): Promise<string | undefined> {
+    const now = Date.now();
+    const cached = this.branches.get(cwd);
+    if (cached && now - cached.at < BRANCH_TTL_MS) { return cached.value; }
+    const value = this.deps.branch(cwd).catch(() => undefined);
+    this.branches.set(cwd, { at: now, value });
+    return value;
   }
 
   private removed(id: SessionId): void {

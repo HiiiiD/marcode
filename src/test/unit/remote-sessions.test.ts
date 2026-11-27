@@ -187,4 +187,15 @@ suite('RemoteSessions in the manager', () => {
     await h.manager.setVisible(['r1']);
     assert.deepStrictEqual(await h.manager.fleetDiff(), []);
   });
+
+  test("an unreadable mirror file keeps that device's rows and panes", async () => {
+    await mirrorSession();
+    const h = await host();
+    await h.manager.syncRoster();
+    await h.manager.setVisible(['r1']);
+    await fs.writeFile(path.join(mirrorStoreDir(mirrorRoot, 'devA'), 'sessions.json'), '{"entries": {');
+    await h.manager.syncRoster();
+    assert.strictEqual(h.manager.isRemote('r1'), true);
+    assert.strictEqual(h.manager.visibleIds().includes('r1'), true);
+  });
 });

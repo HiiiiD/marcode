@@ -21,6 +21,7 @@ export class SessionMirror {
   private devices: DevicePresence[] | undefined;
   private devicesDirty = false;
   private readonly newer = new Set<string>();
+  private flushing: Promise<void> = Promise.resolve();
 
   constructor(private readonly root: string) {}
 
@@ -62,13 +63,39 @@ export class SessionMirror {
     this.devicesDirty = true;
   }
 
-  async flush(): Promise<void> {
+  /**
+   * Forgets everything cached: another host may have held the lease and written the mirror since.
+   * Call whenever the lease is (re)gained, before the first apply.
+   */
+  reset(): void {
+    this.stores.clear();
+    this.entries.clear();
+    this.dirty.clear();
+    this.devices = undefined;
+    this.devicesDirty = this.newer.size > 0;
+  }
+
+  /** Serialized: a flush that overlapped another could clear a device's dirty mark its own write never covered. */
+  flush(): Promise<void> {
+    const run = this.flushing.then(() => this.flushOnce());
+    this.flushing = run.catch(() => undefined);
+    return run;
+  }
+
+  private async flushOnce(): Promise<void> {
     await Promise.all([...this.stores.values()].map((s) => s.flush()));
-    for (const deviceId of [...this.dirty]) {
-      const dir = mirrorStoreDir(this.root, deviceId);
-      await fs.mkdir(dir, { recursive: true });
-      await writeFileAtomic(path.join(dir, SESSIONS_FILE), JSON.stringify({ entries: this.entries.get(deviceId) ?? {} }));
-      this.dirty.delete(deviceId);
+    // Taken before the writes: an apply landing during them marks its device dirty again for the next flush.
+    const devices = [...this.dirty];
+    this.dirty.clear();
+    try {
+      for (const deviceId of devices) {
+        const dir = mirrorStoreDir(this.root, deviceId);
+        await fs.mkdir(dir, { recursive: true });
+        await writeFileAtomic(path.join(dir, SESSIONS_FILE), JSON.stringify({ entries: this.entries.get(deviceId) ?? {} }));
+      }
+    } catch (err) {
+      for (const deviceId of devices) { this.dirty.add(deviceId); }
+      throw err;
     }
     if (this.devicesDirty) {
       const list = this.devices ?? await readJson<DevicePresence[]>(path.join(this.root, DEVICES_FILE)) ?? [];
@@ -91,7 +118,12 @@ export class SessionMirror {
 
   private async entriesOf(deviceId: string): Promise<Record<string, MirrorEntry>> {
     let entries = this.entries.get(deviceId);
-    if (!entries) { entries = await readEntries(this.root, deviceId); this.entries.set(deviceId, entries); }
+    if (!entries) {
+      entries = await readEntries(this.root, deviceId);
+      // Starting over from nothing would overwrite every row on the next flush; failing retries the record instead.
+      if (!entries) { throw new Error(`mirror: cannot read ${deviceId}'s sessions`); }
+      this.entries.set(deviceId, entries);
+    }
     return entries;
   }
 }

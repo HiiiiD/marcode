@@ -1,6 +1,6 @@
 import type { SessionState, TranscriptItem } from '../protocol/messages';
-import { FIELD_CAP, MEMORY_PAYLOAD_CAP } from './memory-records';
-import { bytes, trimStrings } from './payload-size';
+import { MEMORY_PAYLOAD_CAP } from './memory-records';
+import { bytes, trimDeep } from './payload-size';
 
 const HOST_ONLY = [
   'owner', 'children', 'subagents', 'backgroundTasks', 'backgroundCommands', 'queued', 'waitingOn',
@@ -29,7 +29,7 @@ export function opsPayloads(sessionId: string, firstRev: number, ops: Transcript
   let current: TranscriptOp[] = [];
   const make = (list: TranscriptOp[]): SessionOpsPayload => ({ type: 'session-ops', v: 1, sessionId, rev: firstRev + records.length, ops: list });
   for (const raw of ops) {
-    const op = bytes(make([raw])) > MEMORY_PAYLOAD_CAP ? trimStrings(raw, FIELD_CAP) as TranscriptOp : raw;
+    const op = fitted(raw, (o) => bytes(make([o])) <= MEMORY_PAYLOAD_CAP);
     if (current.length > 0 && bytes(make([...current, op])) > MEMORY_PAYLOAD_CAP) {
       records.push(make(current));
       current = [];
@@ -38,6 +38,19 @@ export function opsPayloads(sessionId: string, firstRev: number, ops: Transcript
   }
   if (current.length > 0) { records.push(make(current)); }
   return records;
+}
+
+// Ever harsher cuts, re-measured each time: a card with hundreds of children can outgrow one trim.
+const SHRINK_STEPS: Array<[number, number]> = [[4096, Infinity], [1024, Infinity], [256, 200], [64, 50], [16, 10], [16, 1]];
+
+function fitted(op: TranscriptOp, fits: (op: TranscriptOp) => boolean): TranscriptOp {
+  if (fits(op)) { return op; }
+  let shrunk = op;
+  for (const [maxString, maxItems] of SHRINK_STEPS) {
+    shrunk = { op: op.op, item: trimDeep(op.item, maxString, maxItems) as TranscriptItem };
+    if (fits(shrunk)) { return shrunk; }
+  }
+  return shrunk;
 }
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);

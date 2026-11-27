@@ -56,4 +56,28 @@ suite('session payloads', () => {
     assert.strictEqual(parseSessionPayload('nope'), undefined);
     assert.strictEqual(parseSessionPayload({ type: 'session-ops', v: 1, sessionId: 's1', rev: 1, ops: [{ op: 'drop', item: {} }] }), undefined);
   });
+
+  test('an item with many large nested children is trimmed until its record fits', () => {
+    const children = Array.from({ length: 300 }, (_, i) => item(`c${i}`, 'w'.repeat(10 * 1024)));
+    const card = { ...item('card', 'subagent'), children } as unknown as TranscriptItem;
+    const [record] = opsPayloads('s1', 1, [{ op: 'replace', item: card }]);
+    assert.strictEqual(size(record) <= MEMORY_PAYLOAD_CAP, true);
+    assert.strictEqual(record.ops[0].item.id, 'card');
+  });
+
+  test('an item with tens of thousands of tiny parts still fits', () => {
+    const parts = Array.from({ length: 40_000 }, (_, i) => ({ k: `part-${i}` }));
+    const id = 'item-0123456789abcdef-0123456789abcdef';
+    const [record] = opsPayloads('s1', 1, [{ op: 'append', item: { ...item(id, 'x'), role: 'assistant', parts } as unknown as TranscriptItem }]);
+    assert.strictEqual(size(record) <= MEMORY_PAYLOAD_CAP, true);
+    assert.deepStrictEqual([record.ops[0].item.id, record.ops[0].item.role], [id, 'assistant']);
+  });
+
+  test('the harshest trim still leaves the item id and role whole', () => {
+    const fields = Object.fromEntries(Array.from({ length: 10_000 }, (_, i) => [`f${i}`, 'v'.repeat(100)]));
+    const id = 'item-0123456789abcdef-0123456789abcdef';
+    const [record] = opsPayloads('s1', 1, [{ op: 'append', item: { ...item(id, 'x'), role: 'assistant', fields } as unknown as TranscriptItem }]);
+    assert.strictEqual(size(record) <= MEMORY_PAYLOAD_CAP, true);
+    assert.deepStrictEqual([record.ops[0].item.id, record.ops[0].item.role], [id, 'assistant']);
+  });
 });

@@ -17,13 +17,13 @@ const session = (over: Partial<SessionState> = {}): SessionState => ({
   includeEditorContext: false, resumeTokens: {}, createdAt: 1, updatedAt: 2, projectId: 'github.com/a/b', ...over,
 });
 
-async function rig(publishable: (id: string) => SessionState | undefined) {
+async function rig(publishable: (id: string) => SessionState | undefined, branch: (cwd: string) => Promise<string | undefined> = async () => 'main') {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'marcode-spub-'));
   const state = new SyncState(path.join(dir, 'state.sqlite'));
   const store = new TranscriptStore(path.join(dir, 'ws'));
   const pub = new SessionPublisher({
     store, state, excluded: ['github.com/secret/repo'], publishable,
-    relCwd: async () => 'src', branch: async () => 'main',
+    relCwd: async () => 'src', branch,
   });
   pub.start();
   const settle = () => new Promise((r) => setTimeout(r, 30));
@@ -116,5 +116,15 @@ suite('SessionPublisher', () => {
     execFileSync('git', ['init', '-q', '-b', 'feat/x', dir]);
     execFileSync('git', ['-C', dir, '-c', 'user.email=a@b', '-c', 'user.name=a', 'commit', '-q', '--allow-empty', '-m', 'i']);
     assert.strictEqual(await gitBranch(dir), 'feat/x');
+  });
+
+  test('publishing metadata asks git for a checkout\'s branch at most once per short interval', async () => {
+    let asked = 0;
+    const states = Array.from({ length: 5 }, (_, i) => session({ id: `s${i}` }));
+    const r = await rig((id) => states.find((s) => s.id === id), async () => { asked++; return 'main'; });
+    await r.pub.publishMeta(states);
+    await r.pub.publishMeta(states);
+    assert.strictEqual(asked, 1);
+    assert.strictEqual(r.state.outboxSize(), 5);
   });
 });

@@ -19,20 +19,40 @@ export async function readJson<T>(file: string): Promise<T | undefined> {
   try { return JSON.parse(await fs.readFile(file, 'utf8')) as T; } catch { return undefined; }
 }
 
-export async function readEntries(root: string, deviceId: string): Promise<Record<string, MirrorEntry>> {
-  const file = await readJson<{ entries?: Record<string, MirrorEntry> }>(path.join(mirrorStoreDir(root, deviceId), SESSIONS_FILE));
-  return typeof file?.entries === 'object' && file.entries !== null ? file.entries : {};
+/** A device's entries: `{}` when it has none yet, `undefined` when the file is there but cannot be read. */
+export async function readEntries(root: string, deviceId: string): Promise<Record<string, MirrorEntry> | undefined> {
+  let text: string;
+  try {
+    text = await fs.readFile(path.join(mirrorStoreDir(root, deviceId), SESSIONS_FILE), 'utf8');
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code === 'ENOENT' ? {} : undefined;
+  }
+  try {
+    const file = JSON.parse(text) as { entries?: Record<string, MirrorEntry> };
+    return typeof file.entries === 'object' && file.entries !== null ? file.entries : {};
+  } catch {
+    return undefined;
+  }
 }
 
-/** Every host's view of the mirror; missing or torn files read as empty. */
-export async function readRemoteRoster(root: string): Promise<{ rows: RemoteRow[]; devices: DevicePresence[] }> {
+/**
+ * Every host's view of the mirror; a missing mirror reads as empty. `unreadable` names the devices whose
+ * file could not be read this time (`'*'` for the whole mirror): that says nothing about their sessions.
+ */
+export async function readRemoteRoster(root: string): Promise<{ rows: RemoteRow[]; devices: DevicePresence[]; unreadable: string[] }> {
   const devices = await readJson<DevicePresence[]>(path.join(root, DEVICES_FILE));
-  const dirs = await fs.readdir(root, { withFileTypes: true }).catch(() => []);
+  const unreadable: string[] = [];
+  const dirs = await fs.readdir(root, { withFileTypes: true }).catch((err: NodeJS.ErrnoException) => {
+    if (err.code !== 'ENOENT') { unreadable.push('*'); }
+    return [];
+  });
   const rows: RemoteRow[] = [];
   for (const dir of dirs) {
     if (!dir.isDirectory()) { continue; }
     const deviceId = decodeURIComponent(dir.name);
-    for (const entry of Object.values(await readEntries(root, deviceId))) {
+    const entries = await readEntries(root, deviceId);
+    if (!entries) { unreadable.push(deviceId); continue; }
+    for (const entry of Object.values(entries)) {
       if (!entry.state || entry.projectId === undefined || entry.relCwd === undefined) { continue; }
       rows.push({
         deviceId, state: entry.state, projectId: entry.projectId, relCwd: entry.relCwd, rev: entry.rev,
@@ -40,5 +60,5 @@ export async function readRemoteRoster(root: string): Promise<{ rows: RemoteRow[
       });
     }
   }
-  return { rows, devices: Array.isArray(devices) ? devices : [] };
+  return { rows, devices: Array.isArray(devices) ? devices : [], unreadable };
 }
