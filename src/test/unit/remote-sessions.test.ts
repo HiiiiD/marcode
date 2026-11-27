@@ -11,6 +11,7 @@ import { TranscriptStore } from '../../host/transcript-store';
 import type { HostToWebview, SessionState, TranscriptItem } from '../../protocol/messages';
 import { FakeProvider } from '../../providers/fake/fake-provider';
 import type { AgentProvider } from '../../providers/types';
+import type { MemoryStore } from '../../memory/types';
 import { publishedState } from '../../sync/session-records';
 
 const item = (id: string, text = id): TranscriptItem => ({ id, ts: 0, role: 'assistant', text });
@@ -43,13 +44,13 @@ suite('RemoteSessions in the manager', () => {
     await fs.rm(dir, { recursive: true, force: true });
   });
 
-  async function host(opts: { ownership?: boolean; providers?: string[] } = {}) {
+  async function host(opts: { ownership?: boolean; providers?: string[]; memory?: MemoryStore } = {}) {
     const ws = path.join(dir, 'ws');
     const store = new TranscriptStore(ws);
     const sent: HostToWebview[] = [];
     const providers = new Map<string, AgentProvider>((opts.providers ?? ['fake']).map((id) =>
       [id, new FakeProvider(() => [{ kind: 'text', delta: 'ok' }, { kind: 'turn-end', reason: 'done' }])]));
-    const manager = new SessionManager(store, providers, (m) => sent.push(m));
+    const manager = new SessionManager(store, providers, (m) => sent.push(m), undefined, undefined, undefined, undefined, undefined, opts.memory);
     const ownership = opts.ownership === false ? undefined : new SessionOwnership(path.join(ws, 'sessions'), 'vscode', { heartbeatMs: 20 });
     if (ownership) { manager.setOwnership(ownership, { tailIntervalMs: 20 }); }
     manager.setRemoteSessions(new RemoteSessions({ root: mirrorRoot, windowProjects: async () => new Set(['github.com/a/b']), tailIntervalMs: 20 }));
@@ -143,5 +144,47 @@ suite('RemoteSessions in the manager', () => {
     assert.strictEqual(h.manager.isRemote('r1'), true);
     const items = (await new TranscriptStore(mirrorStoreDir(mirrorRoot, 'devA')).tail('r1', 100)).items.map((i) => i.id);
     assert.deepStrictEqual(items, ['a', 'b']);
+  });
+
+  test('a remote row is never published, indexed, forgotten or digested here', async () => {
+    const calls: string[] = [];
+    const memory: MemoryStore = {
+      index: async (r) => { calls.push(`index:${r.sessionId}`); },
+      search: async () => [], fetch: async () => ({ sessionId: '', items: [] }),
+      forget: async (id) => { calls.push(`forget:${id}`); },
+      getDigest: async () => undefined, digestMeta: async () => new Map(),
+    };
+    await mirrorSession(remoteState({ status: 'idle' }));
+    const h = await host({ memory });
+    await h.manager.syncRoster();
+    assert.strictEqual(h.manager.publishableSessions().some((s) => s.id === 'r1'), false);
+    await h.manager.setVisible(['r1']);
+    await h.manager.setVisible([]);
+    await h.manager.memoryReindex('all');
+    await new Promise((r) => setTimeout(r, 100));
+    assert.deepStrictEqual(calls.filter((c) => c.endsWith(':r1')), []);
+  });
+
+  test('forking or side-chatting a remote session is refused', async () => {
+    await mirrorSession();
+    const h = await host();
+    await h.manager.syncRoster();
+    await h.manager.open('r1');
+    assert.strictEqual(await h.manager.fork('r1', 'a'), undefined);
+    assert.strictEqual(await h.manager.startSideChat('r1', 'aside'), undefined);
+    assert.deepStrictEqual(h.manager.summaries().map((s) => s.id), ['r1']);
+  });
+
+  test("a remote row's cwd is not one of this machine's review trees", async () => {
+    const repo = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'mar-remote-repo-')));
+    const { execFileSync } = await import('node:child_process');
+    execFileSync('git', ['init', '-q', repo]);
+    execFileSync('git', ['-C', repo, '-c', 'user.email=a@b', '-c', 'user.name=a', 'commit', '-q', '--allow-empty', '-m', 'i']);
+    await fs.writeFile(path.join(repo, 'dirty.txt'), 'x');
+    await mirrorSession(remoteState({ cwd: repo }));
+    const h = await host();
+    await h.manager.syncRoster();
+    await h.manager.setVisible(['r1']);
+    assert.deepStrictEqual(await h.manager.fleetDiff(), []);
   });
 });

@@ -1,5 +1,6 @@
-export function isBusy(summaries: readonly { status: string; backgroundCommands?: number }[]): boolean {
-  return summaries.some((s) => (s.status !== 'idle' && s.status !== 'error') || (s.backgroundCommands ?? 0) > 0);
+export function isBusy(summaries: readonly { status: string; backgroundCommands?: number; remote?: unknown }[]): boolean {
+  // Another device's running session runs there, not in this daemon.
+  return summaries.some((s) => s.remote === undefined && ((s.status !== 'idle' && s.status !== 'error') || (s.backgroundCommands ?? 0) > 0));
 }
 
 export interface IdleMonitorDeps {

@@ -57,6 +57,11 @@ suite('daemon idle monitor', () => {
     assert.strictEqual(h.timers.length, 1);
   });
 
+  test("isBusy: another device's running session does not keep this daemon up", () => {
+    const remote = { deviceId: 'd', deviceName: 'PC', online: true, lastSeenAt: 1, relCwd: '.' };
+    assert.strictEqual(isBusy([{ status: 'running', remote }]), false);
+  });
+
   test('isBusy: running, awaiting-approval count; idle and error do not', () => {
     assert.strictEqual(isBusy([{ status: 'idle' }, { status: 'error' }]), false);
     assert.strictEqual(isBusy([{ status: 'idle' }, { status: 'running' }]), true);

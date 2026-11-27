@@ -248,7 +248,7 @@ export class SessionManager implements SessionSink {
       this.digests = new DigestService({
         store: this.memory,
         source: {
-          sessions: () => [...this.meta.values()].filter((s) => !isHidden(s)).map((s) => ({
+          sessions: () => [...this.localMeta().values()].filter((s) => !isHidden(s)).map((s) => ({
             id: s.id, providerId: s.providerId, cwd: s.cwd, title: s.title,
             hidden: !this.visible.has(s.id), updatedAt: s.updatedAt, projectId: s.projectId,
           })),
@@ -1581,7 +1581,7 @@ export class SessionManager implements SessionSink {
    */
   private sessionsIn(root: string): SessionId[] {
     const ids: SessionId[] = [];
-    for (const state of this.meta.values()) {
+    for (const state of this.localMeta().values()) {
       if (!isHidden(state) && samePath(resolve(state.cwd), root)) { ids.push(state.id); }
     }
     return ids;
@@ -1710,7 +1710,8 @@ export class SessionManager implements SessionSink {
       const key = process.platform === 'win32' ? full.toLowerCase() : full;
       if (!byKey.has(key)) { byKey.set(key, full); }
     };
-    for (const state of this.meta.values()) {
+    // Another device's cwd names a folder on its disk, not a tree here.
+    for (const state of this.localMeta().values()) {
       add(state.cwd);
       for (const key of Object.keys(state.resumeTokens)) {
         const dir = threadKeyCwd(key, this.providers.keys());
@@ -2455,7 +2456,7 @@ export class SessionManager implements SessionSink {
 
   /** What the memory publisher needs: every session with its project and whether a pane shows it. */
   publishableSessions(): Array<{ id: SessionId; providerId: string; cwd: string; projectId?: string; hidden: boolean }> {
-    return [...this.meta.values()].filter((s) => !isHidden(s)).map((s) => ({
+    return [...this.localMeta().values()].filter((s) => !isHidden(s)).map((s) => ({
       id: s.id, providerId: s.providerId, cwd: s.cwd, ...(s.projectId ? { projectId: s.projectId } : {}), hidden: !this.visible.has(s.id),
     }));
   }
