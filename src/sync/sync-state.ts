@@ -16,6 +16,7 @@ export class SyncState {
       CREATE TABLE IF NOT EXISTS outbox (n INTEGER PRIMARY KEY AUTOINCREMENT, recordId TEXT NOT NULL UNIQUE, payload TEXT NOT NULL, createdAt INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS published (sessionId TEXT PRIMARY KEY, digestKey TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS cursors (deviceId TEXT PRIMARY KEY, seq INTEGER NOT NULL);
+      CREATE TABLE IF NOT EXISTS session_pub (sessionId TEXT PRIMARY KEY, rev INTEGER NOT NULL DEFAULT 0, fingerprint TEXT, backfilled INTEGER NOT NULL DEFAULT 0);
     `);
   }
 
@@ -58,6 +59,40 @@ export class SyncState {
 
   setCursor(deviceId: string, seq: number): void {
     this.db.prepare('INSERT INTO cursors (deviceId, seq) VALUES (?, ?) ON CONFLICT(deviceId) DO UPDATE SET seq = MAX(seq, excluded.seq)').run(deviceId, seq);
+  }
+
+  /** Reserves `count` consecutive revs for a session's ops records and returns the first. */
+  nextRevs(sessionId: string, count: number): number {
+    this.db.prepare('INSERT INTO session_pub (sessionId, rev) VALUES (?, ?) ON CONFLICT(sessionId) DO UPDATE SET rev = rev + excluded.rev')
+      .run(sessionId, count);
+    return (this.db.prepare('SELECT rev FROM session_pub WHERE sessionId = ?').get(sessionId) as { rev: number }).rev - count + 1;
+  }
+
+  metaFingerprint(sessionId: string): string | undefined {
+    const row = this.db.prepare('SELECT fingerprint FROM session_pub WHERE sessionId = ?').get(sessionId) as { fingerprint: string | null } | undefined;
+    return row?.fingerprint ?? undefined;
+  }
+
+  setMetaFingerprint(sessionId: string, fingerprint: string): void {
+    this.db.prepare('INSERT INTO session_pub (sessionId, fingerprint) VALUES (?, ?) ON CONFLICT(sessionId) DO UPDATE SET fingerprint = excluded.fingerprint')
+      .run(sessionId, fingerprint);
+  }
+
+  wasBackfilled(sessionId: string): boolean {
+    return (this.db.prepare('SELECT backfilled FROM session_pub WHERE sessionId = ?').get(sessionId) as { backfilled: number } | undefined)?.backfilled === 1;
+  }
+
+  markBackfilled(sessionId: string): void {
+    this.db.prepare('INSERT INTO session_pub (sessionId, backfilled) VALUES (?, 1) ON CONFLICT(sessionId) DO UPDATE SET backfilled = 1').run(sessionId);
+  }
+
+  /** Whether anything of this session ever went out, so a delete knows to send a tombstone. */
+  wasSessionPublished(sessionId: string): boolean {
+    return this.db.prepare('SELECT 1 AS x FROM session_pub WHERE sessionId = ?').get(sessionId) !== undefined;
+  }
+
+  forgetSession(sessionId: string): void {
+    this.db.prepare('DELETE FROM session_pub WHERE sessionId = ?').run(sessionId);
   }
 
   close(): void {
