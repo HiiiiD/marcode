@@ -668,14 +668,14 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@headless-tree/react@npm:1.8.0":
-  version: 1.8.0
-  resolution: "@headless-tree/react@npm:1.8.0"
+"@headless-tree/react@npm:1.8.1":
+  version: 1.8.1
+  resolution: "@headless-tree/react@npm:1.8.1"
   peerDependencies:
     "@headless-tree/core": "*"
     react: "*"
     react-dom: "*"
-  checksum: 10c0/0bc23638b6bac4562224eeb99cb22319359577f9bf4f8c482766dd753e9116deb5e0b71e786df0cce469a4f51b084148882ae6d938841a89bbbee947f4e3f967
+  checksum: 10c0/59aa843bca74dd7b1b11cf3c522db80a0d03721cfbfcb0b5b347730cf12fc3ec58ff1fed0bd6c27c60540dda7344a2750d1b687b821249550240e716ab628793
   languageName: node
   linkType: hard
 
@@ -4578,7 +4578,7 @@ __metadata:
     "@anthropic-ai/sdk": "npm:1.12.0"
     "@base-ui/react": "npm:^1.9.0"
     "@headless-tree/core": "npm:1.8.0"
-    "@headless-tree/react": "npm:1.8.0"
+    "@headless-tree/react": "npm:1.8.1"
     "@modelcontextprotocol/node": "npm:^2.1.2"
     "@modelcontextprotocol/sdk": "npm:^1.32.2"
     "@modelcontextprotocol/server": "npm:^2.4.0"
