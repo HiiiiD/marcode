@@ -1,5 +1,7 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
+import type { OwnerRecord } from '../../sync/api-types';
+import { assemble, type MoveReplyPayload, type MoveRequestPayload } from '../../sync/move-records';
 import type { PublishedState } from '../../sync/session-records';
 
 export interface RemoteRow { deviceId: string; state: PublishedState; projectId: string; relCwd: string; branch?: string; rev: number; gap?: true }
@@ -10,6 +12,77 @@ export interface MirrorEntry { state?: PublishedState; projectId?: string; relCw
 
 export const SESSIONS_FILE = 'sessions.json';
 export const DEVICES_FILE = 'devices.json';
+export const OWNERS_FILE = 'owners.json';
+export const INBOX_DIR = 'inbox';
+
+export interface InboxMessage { from: string; payload: MoveRequestPayload | MoveReplyPayload }
+
+/** One chunk on disk: `<offset>-<total>.bin` under `threads/<session>/<name>/<generation>/`. */
+export const chunkFileName = (offset: number, total: number): string => `${offset}-${total}.bin`;
+
+export function threadDir(root: string, deviceId: string, sessionId: string): string {
+  return path.join(mirrorStoreDir(root, deviceId), 'threads', encodeURIComponent(sessionId));
+}
+
+export function attachmentDir(root: string, deviceId: string, sessionId: string): string {
+  return path.join(mirrorStoreDir(root, deviceId), 'attachments', encodeURIComponent(sessionId));
+}
+
+const dirs = async (dir: string): Promise<string[]> =>
+  (await fs.readdir(dir, { withFileTypes: true }).catch(() => [])).filter((d) => d.isDirectory()).map((d) => d.name);
+
+/** The bytes of the newest generation under `dir`, once complete. */
+export async function readChunks(dir: string): Promise<{ generation: number; bytes: Buffer } | undefined> {
+  const generations = (await dirs(dir)).map(Number).filter(Number.isSafeInteger);
+  if (generations.length === 0) { return undefined; }
+  const generation = Math.max(...generations);
+  const at = path.join(dir, String(generation));
+  const chunks = [];
+  for (const name of await fs.readdir(at).catch(() => [] as string[])) {
+    const m = /^(\d+)-(\d+)\.bin$/.exec(name);
+    if (!m) { continue; }
+    const data = await fs.readFile(path.join(at, name)).catch(() => undefined);
+    if (data) { chunks.push({ generation, offset: Number(m[1]), total: Number(m[2]), data: data.toString('base64') }); }
+  }
+  const bytes = assemble(chunks);
+  return bytes ? { generation, bytes } : undefined;
+}
+
+/** A mirrored session's native-thread files, only when every one of them is complete. */
+export async function readThread(root: string, deviceId: string, sessionId: string): Promise<Array<{ name: string; generation: number; bytes: Buffer }> | undefined> {
+  const base = threadDir(root, deviceId, sessionId);
+  const names = await dirs(base);
+  if (names.length === 0) { return undefined; }
+  const files = [];
+  for (const name of names) {
+    const file = await readChunks(path.join(base, name));
+    if (!file) { return undefined; }
+    files.push({ name: decodeURIComponent(name), ...file });
+  }
+  return files;
+}
+
+export async function readInbox(root: string): Promise<InboxMessage[]> {
+  const dir = path.join(root, INBOX_DIR);
+  const out: InboxMessage[] = [];
+  for (const name of await fs.readdir(dir).catch(() => [] as string[])) {
+    const message = await readJson<InboxMessage>(path.join(dir, name));
+    if (message?.payload) { out.push(message); }
+  }
+  return out;
+}
+
+export async function removeInbox(root: string, requestId: string): Promise<void> {
+  const dir = path.join(root, INBOX_DIR);
+  for (const kind of ['request', 'reply']) {
+    await fs.rm(path.join(dir, `${encodeURIComponent(requestId)}.${kind}.json`), { force: true });
+  }
+}
+
+export async function readOwners(root: string): Promise<Map<string, OwnerRecord>> {
+  const list = await readJson<OwnerRecord[]>(path.join(root, OWNERS_FILE));
+  return new Map((Array.isArray(list) ? list : []).map((o) => [o.key, o]));
+}
 
 export function mirrorStoreDir(root: string, deviceId: string): string {
   return path.join(root, encodeURIComponent(deviceId));

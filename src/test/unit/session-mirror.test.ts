@@ -3,7 +3,8 @@ import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { suite, test } from 'mocha';
-import { readRemoteRoster } from '../../host/sync/remote-roster';
+import { readInbox, readOwners, readRemoteRoster, readThread, removeInbox } from '../../host/sync/remote-roster';
+import { chunkFile } from '../../sync/move-records';
 import { mirrorStoreDir, SessionMirror } from '../../host/sync/session-mirror';
 import { TranscriptStore } from '../../host/transcript-store';
 import type { SessionState, TranscriptItem } from '../../protocol/messages';
@@ -162,5 +163,37 @@ suite('SessionMirror', () => {
     await fs.mkdir(mirrorStoreDir(r.root, 'devA'), { recursive: true });
     await fs.writeFile(path.join(mirrorStoreDir(r.root, 'devA'), 'sessions.json'), '{"entries": {');
     await assert.rejects(r.mirror.apply('devA', meta));
+  });
+
+  test('thread chunks arriving out of order assemble once all are in, and a replay changes nothing', async () => {
+    const r = await rig();
+    const bytes = Buffer.alloc(600 * 1024, 5);
+    const chunks = chunkFile({ type: 'thread-chunk', sessionId: 's1', providerId: 'claude', name: 'tok.jsonl', generation: 1 }, bytes, 0);
+    await r.mirror.applyMove('devA', chunks[2]);
+    await r.mirror.applyMove('devA', chunks[0]);
+    assert.strictEqual(await readThread(r.root, 'devA', 's1'), undefined);
+    await r.mirror.applyMove('devA', chunks[1]);
+    await r.mirror.applyMove('devA', chunks[1]);
+    const thread = await readThread(r.root, 'devA', 's1');
+    assert.deepStrictEqual(thread?.map((f) => [f.name, f.generation, f.bytes.equals(bytes)]), [['tok.jsonl', 1, true]]);
+    await r.mirror.applyMove('devA', chunkFile({ type: 'thread-chunk', sessionId: 's1', providerId: 'claude', name: 'tok.jsonl', generation: 2 }, Buffer.from('fresh'), 0)[0]);
+    assert.deepStrictEqual((await readThread(r.root, 'devA', 's1'))?.map((f) => f.bytes.toString()), ['fresh']);
+  });
+
+  test('move requests and replies land in the inbox until removed', async () => {
+    const r = await rig();
+    await r.mirror.applyMove('devB', { type: 'move-request', v: 1, sessionId: 's1', requestId: 'q1', to: 'devB', cancelTurn: false });
+    await r.mirror.applyMove('devA', { type: 'move-reply', v: 1, sessionId: 's1', requestId: 'q1', ok: true, lastRev: 3 });
+    const inbox = await readInbox(r.root);
+    assert.deepStrictEqual(inbox.map((m) => [m.from, m.payload.type]).sort(), [['devA', 'move-reply'], ['devB', 'move-request']]);
+    await removeInbox(r.root, 'q1');
+    assert.deepStrictEqual(await readInbox(r.root), []);
+  });
+
+  test('owner records round-trip through the mirror', async () => {
+    const r = await rig();
+    await r.mirror.setOwners([{ key: 'k1', deviceId: 'devB', epoch: 2, baseRev: 5, updatedAt: 9 }]);
+    await r.mirror.flush();
+    assert.deepStrictEqual([...(await readOwners(r.root)).entries()], [['k1', { key: 'k1', deviceId: 'devB', epoch: 2, baseRev: 5, updatedAt: 9 }]]);
   });
 });

@@ -3,6 +3,7 @@ import type { RemoteMemory } from '../../memory/remote-memory';
 import { readCredentials, type SyncCredentials } from '../../sync/credentials';
 import { REVOKED_ERROR } from '../../sync/http';
 import { parseMemoryPayload } from '../../sync/memory-records';
+import { parseMovePayload } from '../../sync/move-records';
 import { parseSessionPayload } from '../../sync/session-records';
 import { SyncClient, type SyncClientOptions } from '../../sync/sync-client';
 import type { SyncState } from '../../sync/sync-state';
@@ -84,6 +85,7 @@ export class SyncEngine {
     this.follower = new SyncClient(creds, this.deps.clientOptions).follow((event) => {
       if (event.type === 'appended') { void this.pull(); }
       if (event.type === 'devices') { void this.presence(); }
+      if (event.type === 'owners') { void this.presence(); }
       if (event.type === 'connection' && event.state === 'open') { void this.pull(); }
       if (event.type === 'connection' && event.state === 'revoked') { void this.stop(); }
     });
@@ -104,6 +106,8 @@ export class SyncEngine {
       if (!devices.ok) { return; }
       await this.deps.mirror.setDevices(devices.value.filter((d) => d.deviceId !== session.creds.deviceId)
         .map((d) => ({ deviceId: d.deviceId, name: d.name, online: d.online === true, lastSeenAt: d.lastSeenAt })));
+      const owners = await session.client.owners();
+      if (owners.ok) { await this.deps.mirror.setOwners(owners.value); }
       await this.deps.mirror.flush();
     } catch (err) {
       console.error('[mar-code] sync: presence failed', err);
@@ -232,6 +236,18 @@ export class SyncEngine {
       if (!this.deps.remote) { return 'skipped'; }
       // A memory row is a cache: one that will not apply is dropped, as before.
       return this.deps.remote.apply(deviceId, memory).then(() => 'applied' as const, () => 'skipped' as const);
+    }
+    const move = raw === undefined ? undefined : parseMovePayload(raw);
+    if (move && this.deps.mirror) {
+      if ('newerFormat' in move) { this.deps.mirror.markNewerFormat(deviceId); return 'skipped'; }
+      try {
+        await this.deps.mirror.applyMove(deviceId, move);
+        return 'applied';
+      } catch (err) {
+        console.error('[mar-code] sync: could not mirror a move record', err);
+        this.counts.failed++;
+        return 'failed';
+      }
     }
     const session = raw === undefined ? undefined : parseSessionPayload(raw);
     if (!session || !this.deps.mirror) { return 'skipped'; }
