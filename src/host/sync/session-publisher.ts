@@ -40,6 +40,11 @@ export class SessionPublisher {
     this.unsubscribe = [];
   }
 
+  /** Resolves once everything queued for this session so far is in the outbox. */
+  async settled(id: SessionId): Promise<void> {
+    await this.chains.get(id);
+  }
+
   async publishMeta(states: SessionState[]): Promise<void> {
     await Promise.all(states.map((s) => this.serial(s.id, () => this.meta(s.id))));
   }

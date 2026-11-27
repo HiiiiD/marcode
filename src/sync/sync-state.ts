@@ -69,6 +69,11 @@ export class SyncState {
     return (this.db.prepare('SELECT rev FROM session_pub WHERE sessionId = ?').get(sessionId) as { rev: number }).rev - count + 1;
   }
 
+  /** The last ops rev reserved for a session; 0 when none went out. */
+  publishedRev(sessionId: string): number {
+    return (this.db.prepare('SELECT rev FROM session_pub WHERE sessionId = ?').get(sessionId) as { rev: number } | undefined)?.rev ?? 0;
+  }
+
   metaFingerprint(sessionId: string): string | undefined {
     const row = this.db.prepare('SELECT fingerprint FROM session_pub WHERE sessionId = ?').get(sessionId) as { fingerprint: string | null } | undefined;
     return row?.fingerprint ?? undefined;

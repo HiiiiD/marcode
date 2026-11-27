@@ -1949,6 +1949,7 @@ export class SessionManager implements SessionSink {
     if (!state) { throw new Error(`Unknown session: ${id}`); }
     // Before any lease claim: another device's session gets no lock file here, and may name a provider this host lacks.
     if (state.remote && this.remote) { return this.openRemote(state, this.remote); }
+    if (this.yielded.has(id)) { return this.openYielded(state); }
     const provider = this.providers.get(state.providerId);
     if (!provider) { throw new Error(`Unknown provider: ${state.providerId}`); }
 
@@ -2064,7 +2065,7 @@ export class SessionManager implements SessionSink {
 
   /** Leased by another host: this one may read it but never run, write, discard or delete it. */
   isForeign(id: SessionId): boolean {
-    return this.foreign.has(id) || this.meta.get(id)?.owner !== undefined || this.isRemote(id) || this.store.isForeign(id);
+    return this.foreign.has(id) || this.meta.get(id)?.owner !== undefined || this.isRemote(id) || this.yielded.has(id) || this.store.isForeign(id);
   }
 
   /** Another device's session, mirrored through sync. */
@@ -2665,6 +2666,57 @@ export class SessionManager implements SessionSink {
     this.foreign.set(id, tail);
     tail.start();
     this.changed();
+    return session;
+  }
+
+  /** Handed to another device and waiting for it to claim: still listed, but nothing here writes it. */
+  private readonly yielded = new Set<SessionId>();
+
+  isYielded(id: SessionId): boolean { return this.yielded.has(id); }
+
+  /** Why this session cannot move right now, if it cannot. */
+  moveBlocker(id: SessionId): 'subagents' | 'side' | undefined {
+    if ((this.subagents.counts(id)?.running ?? 0) > 0) { return 'subagents'; }
+    return [...this.meta.values()].some((s) => s.kind === 'side' && s.parentId === id) ? 'side' : undefined;
+  }
+
+  /** Lets the current turn finish (or interrupts it), resolving once the session is idle or `timeoutMs` passed. */
+  async finishTurn(id: SessionId, cancel: boolean, timeoutMs = 5 * 60_000): Promise<boolean> {
+    const session = this.live.get(id);
+    if (!session) { return true; }
+    const busy = (): boolean => session.state.status === 'running' || session.state.status === 'awaiting-approval';
+    if (busy() && cancel) { await session.interrupt(); }
+    const deadline = Date.now() + timeoutMs;
+    while (busy()) {
+      if (Date.now() > deadline) { return false; }
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    return true;
+  }
+
+  /** Stops this host writing the session: flushed, then foreign, with no live run. The lease stays held. */
+  async yieldSession(id: SessionId): Promise<void> {
+    await this.store.flush(id);
+    this.yielded.add(id);
+    this.store.markForeign(id);
+    const session = this.live.get(id);
+    if (session) { await session.dispose(); this.live.delete(id); }
+    this.changed();
+  }
+
+  /** The other device never claimed it: this host writes it again. */
+  async unyield(id: SessionId): Promise<void> {
+    if (!this.yielded.delete(id)) { return; }
+    const session = this.live.get(id);
+    if (session) { await session.dispose(); this.live.delete(id); }
+    this.store.clearForeign(id);
+    this.changed();
+  }
+
+  private openYielded(state: SessionState): AgentSession {
+    const provider = this.providers.get(state.providerId) ?? inertProvider(state.providerId);
+    const session = new AgentSession(state, dormantProvider(provider), this.store, this);
+    this.live.set(state.id, session);
     return session;
   }
 
